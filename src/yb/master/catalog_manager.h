@@ -661,7 +661,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   void DeleteYsqlDatabaseAsync(scoped_refptr<NamespaceInfo> database, const LeaderEpoch& epoch);
 
   // Delete all tables in YSQL database.
-  Status DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& database, const LeaderEpoch& epoch);
+  Status DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& database,
+                            const bool is_for_ysql_major_upgrade,
+                            const LeaderEpoch& epoch);
 
   // List all the current namespaces.
   Status ListNamespaces(const ListNamespacesRequestPB* req,

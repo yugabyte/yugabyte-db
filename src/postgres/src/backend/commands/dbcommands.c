@@ -2547,6 +2547,10 @@ AlterDatabase(ParseState *pstate, AlterDatabaseStmt *stmt, bool isTopLevel)
 	/* Check YB options support */
 	if (YBIsUsingYBParser()) {
 		for (int i = lengthof(unsupported_options); i > 0; --i) {
+			/* Allow template during YSQL major version upgrade */
+			if (IsBinaryUpgrade && unsupported_options[i - 1] == &distemplate)
+				continue;
+
 			DefElem *option = *unsupported_options[i - 1];
 			if (option != NULL && option->arg != NULL) {
 				ereport(YBUnsupportedFeatureSignalLevel(),

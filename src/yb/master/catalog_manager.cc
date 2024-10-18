@@ -9198,7 +9198,10 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
   // Delete all tables in the database. If we're in a ysql major version upgrade, this will delete
   // only the new version's tables.
   TRACE("Delete all tables in YSQL database");
-  Status s = DeleteYsqlDBTables(database, epoch);
+  Status s =
+      DeleteYsqlDBTables(database,
+                         /*is_for_ysql_major_upgrade=*/FLAGS_TEST_online_pg11_to_pg15_upgrade,
+                         epoch);
   WARN_NOT_OK(s, "DeleteYsqlDBTables failed");
   if (!s.ok()) {
     if (FLAGS_TEST_online_pg11_to_pg15_upgrade) {
@@ -9268,7 +9271,13 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
 
 // IMPORTANT: If modifying, consider updating DeleteTable(), the singular deletion API.
 Status CatalogManager::DeleteYsqlDBTables(
-    const scoped_refptr<NamespaceInfo>& database, const LeaderEpoch& epoch) {
+    const scoped_refptr<NamespaceInfo>& database, const bool is_for_ysql_major_upgrade,
+    const LeaderEpoch& epoch) {
+  if (is_for_ysql_major_upgrade) {
+    RSTATUS_DCHECK(FLAGS_TEST_online_pg11_to_pg15_upgrade, IllegalState,
+                   "DeleteYsqlDBTables called with is_for_ysql_major_upgrade=true but "
+                   "FLAGS_TEST_online_pg11_to_pg15_upgrade is false");
+  }
   TabletInfoPtr sys_tablet_info;
   vector<pair<scoped_refptr<TableInfo>, TableInfo::WriteLock>> tables_and_locks;
   std::unordered_set<TableId> sys_table_ids;
@@ -9300,9 +9309,19 @@ Status CatalogManager::DeleteYsqlDBTables(
       if (l->started_deleting()) {
         continue;
       }
-      // During rollback, shared PG15 tables hosted in the template1 namespace are ok to delete.
-      // This is safe because DDLs are disabled and there are no PG15 tservers connected.
-      if (!FLAGS_TEST_online_pg11_to_pg15_upgrade) {
+
+      // During the YSQL major version upgrade, don't drop shared tables for drop database (see the
+      // comment at the beginning of the for loop), because such tables are technically global
+      // tables, not contained in template1.
+      //
+      // During YSQL major version upgrade rollback, shared PG15 tables hosted in the template1
+      // namespace must be deleted so that we return to a clean state. This is safe because DDLs are
+      // disabled and there are no PG15 tservers connected.
+      if (FLAGS_TEST_online_pg11_to_pg15_upgrade) {
+        if (l->pb.is_pg_shared_table() && is_for_ysql_major_upgrade) {
+          continue;
+        }
+      } else {
         RSTATUS_DCHECK(
             !l->pb.is_pg_shared_table(), Corruption, "Shared table found in database");
       }
