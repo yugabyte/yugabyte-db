@@ -748,6 +748,14 @@ YbSendDatabaseOidAndSetupSharedMemory(Oid database_oid, Oid user, bool is_superu
 {
 	/* Send back the database oid */
 	send_oid_info('d', database_oid);
+	if (database_oid == InvalidOid)
+	{
+		YbSendFatalForLogicalConnectionPacket();
+		ereport(WARNING,
+				(errmsg("database \"%s\" does not exist",
+						MyProcPort->database_name)));
+		return;
+	}
 
 	/*
 	 * Create a shared memory block for a client connection if YB_GUC_SUPPORT_VIA_SHMEM
@@ -778,7 +786,8 @@ YbCreateClientId(void)
 	/* This feature is only for Ysql Connection Manager */
 	Assert(yb_is_client_ysqlconnmgr);
 
-	if (SetLogicalClientUserDetailsIfValid(MyProcPort->user_name, &is_superuser, &user) < 0)
+	if (SetLogicalClientUserDetailsIfValid(MyProcPort->user_name, &is_superuser,
+										   &user) < 0)
 		return;
 
 	database = get_database_oid(MyProcPort->database_name, true);
