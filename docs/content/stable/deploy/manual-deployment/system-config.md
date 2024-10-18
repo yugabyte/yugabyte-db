@@ -13,29 +13,25 @@ type: docs
 
 Perform the following configuration on each node in the cluster:
 
-- ntp or chrony
-- ulimits
-- transparent hugepages
+- set up time synchronization
+- set ulimits
+- enable transparent hugepages
 
 Keep in mind that, although YugabyteDB is PostgreSQL compatible and runs a postgres process, it is not a PostgreSQL distribution. The PostgreSQL it runs doesn't need the same OS and system resources that open source PostgreSQL requires. For this reason, the kernel configuration requirements are different.
 
 In particular, the main YugabyteDB process, the YB-TServer, is multi-threaded. As a result, you don't need to modify settings for shared memory and inter-process communication (IPC), because there is no inter-process communication or shared memory in a multi-threaded process model (all memory is shared by the same process).
 
-## ntp
+## Set up time synchronization
 
-If your instance does not have public Internet access, make sure the ntp package is installed:
+YugabyteDB relies on clock synchronization to guarantee consistency in distributed transactions. chrony is the preferred NTP implementation for clock synchronization.
 
-```sh
-$ sudo yum install -y ntp
-```
-
-As of CentOS 8, `ntp` is no longer available and has been replaced by `chrony`. To install, run:
+To install chrony, run:
 
 ```sh
 $ sudo yum install -y chrony
 ```
 
-## ulimits
+## Set ulimits
 
 In Linux, `ulimit` is used to limit and control the usage of system resources (threads, files, and network connections) on a per-process or per-user basis.
 
@@ -195,7 +191,7 @@ LimitRTPRIO=    | ulimit -r            | 0 |
 
 If a ulimit is set to `unlimited`, set it to `infinity` in the systemd configuration file.
 
-## transparent hugepages
+## Enable transparent hugepages
 
 Transparent hugepages should be enabled for optimal performance. By default, they are enabled.
 
