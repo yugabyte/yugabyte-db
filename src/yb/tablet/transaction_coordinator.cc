@@ -357,6 +357,7 @@ class TransactionState {
         case TransactionStatus::COMMITTED: FALLTHROUGH_INTENDED;
         case TransactionStatus::PROMOTED: FALLTHROUGH_INTENDED;
         case TransactionStatus::APPLYING: FALLTHROUGH_INTENDED;
+        case TransactionStatus::PROMOTING: FALLTHROUGH_INTENDED;
         case TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS: FALLTHROUGH_INTENDED;
         case TransactionStatus::IMMEDIATE_CLEANUP: FALLTHROUGH_INTENDED;
         case TransactionStatus::GRACEFUL_CLEANUP:
@@ -469,6 +470,7 @@ class TransactionState {
       case TransactionStatus::CREATED: FALLTHROUGH_INTENDED;
       case TransactionStatus::PROMOTED: FALLTHROUGH_INTENDED;
       case TransactionStatus::APPLYING: FALLTHROUGH_INTENDED;
+      case TransactionStatus::PROMOTING: FALLTHROUGH_INTENDED;
       case TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS: FALLTHROUGH_INTENDED;
       case TransactionStatus::IMMEDIATE_CLEANUP: FALLTHROUGH_INTENDED;
       case TransactionStatus::GRACEFUL_CLEANUP:
@@ -671,10 +673,11 @@ class TransactionState {
       case TransactionStatus::PROMOTED: FALLTHROUGH_INTENDED;
       case TransactionStatus::PENDING:
         return PendingReplicationFinished(data);
-      case TransactionStatus::APPLYING:
-        // APPLYING is handled separately, because it is received for transactions not managed by
-        // this tablet as a transaction status tablet, but tablets that are involved in the data
-        // path (receive write intents) for this transactions
+      case TransactionStatus::APPLYING: FALLTHROUGH_INTENDED;
+      case TransactionStatus::PROMOTING:
+        // APPLYING and PROMOTING handled separately, because it is received for transactions not
+        // managed by this tablet as a transaction status tablet, but tablets that are involved in
+        // the data path (receive write intents) for this transactions
         FATAL_INVALID_ENUM_VALUE(TransactionStatus, data.state.status());
       case TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS:
         // APPLIED_IN_ONE_OF_INVOLVED_TABLETS handled w/o use of RAFT log

@@ -1096,6 +1096,14 @@ Status WaitUntilTabletHasLeader(
       deadline, "Waiting for election in tablet " + tablet_id);
 }
 
+Status WaitForTableLeaders(
+    MiniCluster* cluster, const TableId& table_id, MonoTime deadline) {
+  for (const auto& tablet_id : ListTabletIdsForTable(cluster, table_id)) {
+    RETURN_NOT_OK(WaitUntilTabletHasLeader(cluster, tablet_id, deadline));
+  }
+  return Status::OK();
+}
+
 Status WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta timeout) {
   return WaitFor([cluster] {
     for (size_t i = 0; i != cluster->num_masters(); ++i) {

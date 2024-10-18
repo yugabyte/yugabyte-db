@@ -344,6 +344,9 @@ Status WaitUntilTabletHasLeader(
     MiniCluster* cluster, const TabletId& tablet_id, MonoTime deadline,
     RequireLeaderIsReady require_leader_is_ready = RequireLeaderIsReady::kFalse);
 
+Status WaitForTableLeaders(
+    MiniCluster* cluster, const TableId& table_id, MonoTime deadline);
+
 Status WaitForLeaderOfSingleTablet(
     MiniCluster* cluster, tablet::TabletPeerPtr leader, MonoDelta duration,
     const std::string& description);

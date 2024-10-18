@@ -31,6 +31,7 @@ message TransactionStatePB {
   // PENDING - list of involved tablets, if FLAGS_disable_heartbeat_send_involved_tablets = false.
   // COMMITTED - list of involved tablets
   // APPLYING - single entry, status tablet of this transaction
+  // PROMOTING - single entry, new status tablet of this transaction
   // APPLIED - single entry, tablet that applied this transaction
   // Not used is other cases.
   repeated bytes tablets = 3;
