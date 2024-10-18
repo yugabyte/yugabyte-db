@@ -68,7 +68,7 @@ public class CreateBackupScheduleKubernetes extends BackupScheduleBaseKubernetes
   public void run() {
     addAllCreateBackupScheduleTasks(
         getBackupScheduleUniverseSubtasks(
-            getUniverse(), taskParams().scheduleParams, false /* isDelete */),
+            getUniverse(), taskParams().scheduleParams, null /* deleteScheduleUUID */),
         taskParams().scheduleParams,
         taskParams().customerUUID,
         ybcManager.getStableYbcVersion());

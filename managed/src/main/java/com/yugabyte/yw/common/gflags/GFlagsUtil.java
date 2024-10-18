@@ -650,7 +650,9 @@ public class GFlagsUtil {
     // Add timestamp_history_retention_sec gflag if required.
     Duration timestampHistoryRetentionForPITR =
         Schedule.getMaxBackupIntervalInUniverseForPITRestore(
-            universe.getUniverseUUID(), true /* includeIntermediate */);
+            universe.getUniverseUUID(),
+            true /* includeIntermediate */,
+            null /* excludeScheduleUUID */);
     if (timestampHistoryRetentionForPITR.toSeconds() > 0L) {
       gflags.put(
           TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC,
