@@ -22,6 +22,8 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Scanner;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.minicluster.MiniYBCluster;
@@ -48,6 +50,7 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
   private static final int NUM_THREADS_DB_CONCURRENCY_TESTING = 30;
   private static final int NUM_DB_CONCURRENCY_TESTING = 5;
   private static final int NUM_RETRIES = 10;
+  private static final int IDLE_CONNECTION_TIME_SECS = 5;
 
   protected void waitForDbInfoToGetUpdatedAcrossCluster() {
     try {
@@ -64,6 +67,8 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
 
     builder.addCommonTServerFlag("ysql_conn_mgr_stats_interval",
         Integer.toString(BasePgSQLTest.CONNECTIONS_STATS_UPDATE_INTERVAL_SECS));
+    builder.addCommonTServerFlag(
+        "ysql_conn_mgr_idle_time", Integer.toString(IDLE_CONNECTION_TIME_SECS));
   }
 
   private void executeDDL(String query, boolean shouldSucceed) {
@@ -158,6 +163,59 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
 
     BasePgSQLTest.waitForStatsToGetUpdated();
     dropDatabase(TEST_DB_DROP, true);
+  }
+
+  private static int getPgBackendPid(Statement stmt) throws Exception {
+    ResultSet rs = stmt.executeQuery("SELECT pg_backend_pid()");
+    assertTrue(rs.next());
+    return rs.getInt(1);
+  }
+
+  private static boolean isProcessAlive(long pid) {
+    try {
+        // Use the ps command to check if the process with the given PID is running
+        Process process = Runtime.getRuntime().exec("ps -p " + pid);
+        Scanner scanner = new Scanner(process.getInputStream());
+        boolean found = false;
+        while (scanner.hasNextLine()) {
+            String line = scanner.nextLine();
+            if (line.contains(String.valueOf(pid))) {
+                found = true;
+                break;
+            }
+        }
+        scanner.close();
+        return found;
+    } catch (Exception e) {
+        LOG.error("Got exception", e);
+        fail();
+        return false;
+    }
+  }
+
+  @Test
+  public void testBackendCleanupOnDropDb() throws InterruptedException {
+    int backendPid = -1;
+
+    try (Connection conn = createAndConnectOnDb(TEST_DB_DROP, 0) ;
+        Statement stmt = conn.createStatement()) {
+      // Run a query on the logical connection so that the pool has atleast 1
+      // physical connection.
+      stmt.execute("SELECT 1");
+      backendPid = getPgBackendPid(stmt);
+    } catch (Exception e) {
+      LOG.error("Got exception", e);
+      fail();
+    }
+
+    BasePgSQLTest.waitForStatsToGetUpdated();
+    dropDatabase(TEST_DB_DROP, true);
+
+    // Wait for the backend to be cleaned up. They get cleaned up after 3 * TTL but we sleep for
+    // 4 * TTL to allow the process shutdown to complete.
+    Thread.sleep(4 * IDLE_CONNECTION_TIME_SECS * 1000);
+
+    assertFalse(isProcessAlive(backendPid));
   }
 
   private static void executeQuery(Connection conn, String query, boolean shouldSucceed) {
