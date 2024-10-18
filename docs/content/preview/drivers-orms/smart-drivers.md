@@ -194,7 +194,7 @@ The property `fallback-to-topology-keys-only` is ignored when either the `topolo
 {{<tabpane text=true >}}
 {{% tab header="No topology-keys" lang="no-keys" %}}
 
-When no `topology-keys` is specified, nodes are selected as follows.
+When `topology-keys` is not specified, nodes are selected as follows.
 
 | Load balance setting | Connect to |
 | :--- |:---------------------------------------------------------------------------------------------------|

@@ -162,7 +162,7 @@ The following table describes the connection parameters required to connect, inc
 | `yb-servers-refresh-interval` | The interval in seconds to refresh the servers list; ignored if `load-balance` is false | 300 |
 | `topology-keys` | Enables [Topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing). It can be set to comma-separated geo-locations in the form `cloud.region.zone:priority`. Ignored if `load-balance` is false | Empty |
 | `fallback-to-topology-keys-only` | If set to true and `topology-keys` are specified, the driver only tries to connect to nodes specified in `topology-keys` | false |
-| `failed-host-reconnect-delay-secs` | When the driver is unable to connect to a node, it marks the node as 'failed' using a timestamp. When refreshing the server list via yb_servers(), if the driver sees a failed node in the response, it considers that server for new connections only if the time specified (in seconds) via this property has elapsed from the time it was last marked as failed. | 5 |
+| `failed-host-reconnect-delay-secs` | Time, in seconds, to wait before trying to connect to failed nodes. When the driver is unable to connect to a node, it marks the node as failed using a timestamp, and ignores the node when trying new connections until this time elapses. | 5 |
 
 In v42.7.3-yb-1 and later, the `load_balance` property supports the following additional properties: any (alias for 'true'), only-primary, only-rr, prefer-primary, and prefer-rr. See [Node type-aware load balancing](../../smart-drivers/#node-type-aware-load-balancing).
 
