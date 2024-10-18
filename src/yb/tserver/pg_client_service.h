@@ -92,6 +92,8 @@ class TserverXClusterContextIf;
     (ValidatePlacement) \
     (WaitForBackendsCatalogVersion) \
     (YCQLStatementStats) \
+    (CronSetLastMinute) \
+    (CronGetLastMinute) \
     /**/
 
 // Forwards call to corresponding PgClientSession async method (see

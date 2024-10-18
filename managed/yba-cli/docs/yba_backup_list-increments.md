@@ -10,6 +10,12 @@ List incremental backups of YugabyteDB Anywhere universe backup
 yba backup list-increments [flags]
 ```
 
+### Examples
+
+```
+yba backup list-increments --backup-uuid <backup-uuid>
+```
+
 ### Options
 
 ```

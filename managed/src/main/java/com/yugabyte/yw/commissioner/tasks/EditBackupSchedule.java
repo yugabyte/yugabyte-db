@@ -35,7 +35,7 @@ public class EditBackupSchedule extends BackupScheduleBase {
   public void run() {
     addAllEditBackupScheduleTasks(
         getBackupScheduleUniverseSubtasks(
-            getUniverse(), taskParams().scheduleParams, false /* isDelete */),
+            getUniverse(), taskParams().scheduleParams, null /* deleteScheduleUUID */),
         taskParams().scheduleParams,
         taskParams().customerUUID,
         taskParams().scheduleUUID);

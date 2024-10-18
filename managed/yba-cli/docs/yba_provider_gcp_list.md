@@ -10,6 +10,12 @@ List GCP YugabyteDB Anywhere providers
 yba provider gcp list [flags]
 ```
 
+### Examples
+
+```
+yba provider gcp list
+```
+
 ### Options
 
 ```

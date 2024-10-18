@@ -249,6 +249,9 @@ class PgClient {
 
   Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
 
+  Status SetCronLastMinute(int64_t last_minute);
+  Result<int64_t> GetCronLastMinute();
+
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;
   Status EnumerateActiveTransactions(

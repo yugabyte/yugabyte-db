@@ -29,12 +29,8 @@
 
 namespace yb::pggate {
 
-PgDml::PgDml(
-    PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, bool is_region_local,
-    const PrepareParameters& prepare_params, const PgObjectId& secondary_index_id)
-    : PgStatement(std::move(pg_session)),
-      table_id_(table_id), secondary_index_id_(secondary_index_id),
-      prepare_params_(prepare_params), is_region_local_(is_region_local) {}
+PgDml::PgDml(const PgSession::ScopedRefPtr& pg_session)
+    : PgStatement(pg_session) {}
 
 PgDml::~PgDml() = default;
 
@@ -43,7 +39,7 @@ PgDml::~PgDml() = default;
 Status PgDml::AppendTarget(PgExpr* target) {
   // Except for base_ctid, all targets should be appended to this DML.
   // base_ctid goes to the index_query.
-  return target_ && (prepare_params_.index_only_scan || !target->is_ybbasetid())
+  return target_ && (!secondary_index_query_ || !target->is_ybbasetid())
       ? AppendTargetPB(target) : secondary_index_query_->AppendTargetPB(target);
 }
 
@@ -300,10 +296,9 @@ Status PgDml::UpdateAssignPBs() {
 
 //--------------------------------------------------------------------------------------------------
 
-Result<bool> PgDml::ProcessSecondaryIndexRequest(const PgExecParameters* exec_params) {
+Result<const std::vector<Slice>*> PgDml::FetchYbctidsFromSecondaryIndex() {
   if (!secondary_index_query_) {
-    // Secondary INDEX is not used in this request.
-    return false;
+    return nullptr;
   }
 
   RETURN_NOT_OK(ExecSecondaryIndexOnce());
@@ -314,23 +309,21 @@ Result<bool> PgDml::ProcessSecondaryIndexRequest(const PgExecParameters* exec_pa
   // own operator. The request is combined with 'this' outer SELECT using 'index_request' attribute.
   //   (PgDocOp)doc_op_->(YBPgsqlReadOp)read_op_->(PgsqlReadRequestPB)read_request_::index_request
   if (!secondary_index_query_->has_doc_op()) {
-    return false;
+    return nullptr;
   }
 
   // When INDEX has its own doc_op, execute it to fetch next batch of ybctids which is then used
   // to read data from the main table.
-  retrieved_ybctids_ = VERIFY_RESULT(secondary_index_query_->FetchYbctidBatch());
-  if (!retrieved_ybctids_) {
-    // No more rows of ybctids.
+  return secondary_index_query_->FetchYbctidBatch();
+}
+
+Result<bool> PgDml::ProcessSecondaryIndexRequest() {
+  auto* ybctids = VERIFY_RESULT(FetchYbctidsFromSecondaryIndex());
+  if (!ybctids) {
     return false;
   }
-
-  if (prepare_params_.fetch_ybctids_only)
-    return true;
-
   // Update request with the new batch of ybctids to fetch the next batch of rows.
-  RETURN_NOT_OK(UpdateRequestWithYbctids(
-      *retrieved_ybctids_, KeepOrder(secondary_index_query_->KeepOrder())));
+  RETURN_NOT_OK(UpdateRequestWithYbctids(*ybctids, KeepOrder(secondary_index_query_->KeepOrder())));
 
   AtomicFlagSleepMs(&FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
   return true;
@@ -377,7 +370,7 @@ Result<bool> PgDml::FetchDataFromServer() {
     // Process the secondary index to find the next WHERE condition.
     //   DML(Table) WHERE ybctid IN (SELECT base_ybctid FROM IndexTable),
     //   The nested query would return many rows each of which yields different result-set.
-    if (!VERIFY_RESULT(ProcessSecondaryIndexRequest(nullptr))) {
+    if (!VERIFY_RESULT(ProcessSecondaryIndexRequest())) {
       // Return EOF as the nested subquery does not have any more data.
       return false;
     }
@@ -455,15 +448,12 @@ Result<YBCPgColumnInfo> PgDml::GetColumnInfo(int attr_num) const {
 }
 
 Status PgDml::ExecSecondaryIndexOnce() {
+  DCHECK(secondary_index_query_);
   if (is_secondary_index_executed_) {
     return Status::OK();
   }
   is_secondary_index_executed_ = true;
   return secondary_index_query_->Exec(pg_exec_params_);
-}
-
-Result<PgTableDescPtr> PgDml::LoadTable() {
-  return pg_session_->LoadTable(table_id_);
 }
 
 }  // namespace yb::pggate

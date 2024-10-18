@@ -10,6 +10,18 @@ Create a Custom CA encryption in transit configuration in YugabyteDB Anywhere
 yba eit custom-ca create [flags]
 ```
 
+### Examples
+
+```
+yba eit custom-ca create --name <config-name> \
+	--root-cert-file-path <root-cert-file-path> \
+	--root-ca-file-path-on-node <root-ca-file-path-on-node> \
+	--node-cert-file-path-on-node <node-cert-file-path-on-node> \
+	--node-key-file-path-on-node <node-key-file-path-on-node> \
+	--client-cert-file-path-on-node <client-cert-file-path-on-node> \
+	--client-key-file-path-on-node <client-key-file-path-on-node>
+```
+
 ### Options
 
 ```

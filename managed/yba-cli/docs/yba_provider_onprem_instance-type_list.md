@@ -1,19 +1,25 @@
-## yba eit hashicorp describe
+## yba provider onprem instance-type list
 
-Describe a Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EIT) configuration
+List instance types of a YugabyteDB Anywhere on-premises provider
 
 ### Synopsis
 
-Describe a Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EIT) configuration
+List instance types of a YugabyteDB Anywhere on-premises provider
 
 ```
-yba eit hashicorp describe [flags]
+yba provider onprem instance-type list [flags]
+```
+
+### Examples
+
+```
+yba provider onprem instance-type list --name <provider-name>
 ```
 
 ### Options
 
 ```
-  -h, --help   help for describe
+  -h, --help   help for list
 ```
 
 ### Options inherited from parent commands
@@ -25,7 +31,7 @@ yba eit hashicorp describe [flags]
       --disable-color      Disable colors in output. (default false)
   -H, --host string        YugabyteDB Anywhere Host (default "http://localhost:9000")
   -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
-  -n, --name string        [Optional] The name of the configuration for the action. Required for create, delete, describe, update.
+  -n, --name string        [Optional] The name of the provider for the action. Required for create, delete, describe, instance-type and node.
   -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
       --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)
       --wait               Wait until the task is completed, otherwise it will exit immediately. (default true)
@@ -33,5 +39,5 @@ yba eit hashicorp describe [flags]
 
 ### SEE ALSO
 
-* [yba eit hashicorp](yba_eit_hashicorp.md)	 - Manage a YugabyteDB Anywhere Hashicorp Vault encryption in transit (EIT) certificate configuration
+* [yba provider onprem instance-type](yba_provider_onprem_instance-type.md)	 - Manage YugabyteDB Anywhere onprem instance types
 

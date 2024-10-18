@@ -10,6 +10,13 @@ Update an AWS provider in YugabyteDB Anywhere
 yba provider aws update [flags]
 ```
 
+### Examples
+
+```
+yba provider aws update --name <provider-name> \
+	--remove-region <region-1> --remove-region <region-2>
+```
+
 ### Options
 
 ```

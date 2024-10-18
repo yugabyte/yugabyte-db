@@ -185,9 +185,12 @@ public class CreateBackup extends UniverseTaskBase {
         log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
         List<Backup> backupList = Backup.fetchAllBackupsByTaskUUID(getUserTaskUUID());
         handleFailedBackupAndRestore(backupList, null, isAbort, params().alterLoadBalancer);
-        BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
-        metricService.setFailureStatusMetric(
-            buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
+        if (!isAbort) {
+          // If platform restart causes abort, the task is resumed, so no need to increment metric.
+          BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+          metricService.setFailureStatusMetric(
+              buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
+        }
       } finally {
         // Run an unlock in case the task failed before getting to the unlock. It is okay if it
         // errors out.

@@ -11,6 +11,12 @@ Re-provision node with already stopped processes.
 yba universe node reprovision [flags]
 ```
 
+### Examples
+
+```
+yba universe node reprovision --name <universe-name> --node-name <node-name>
+```
+
 ### Options
 
 ```

@@ -10,6 +10,13 @@ List backups in YugabyteDB Anywhere
 yba backup list [flags]
 ```
 
+### Examples
+
+```
+yba backup list --universe-uuids <universe-uuid-1>,<universe-uuid-2> \
+	--universe-names <universe-name-1>,<universe-name-2>
+```
+
 ### Options
 
 ```

@@ -125,7 +125,6 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
               isEditMode={!isCreateMode}
               isDedicatedMasterField={isDedicatedMasterField}
               disableVolumeSize={isViewMode}
-              disableNumVolumes={!isCreateMode && provider?.code === CloudType.kubernetes}
               maxVolumeCount={maxVolumeCount}
             />
           </>

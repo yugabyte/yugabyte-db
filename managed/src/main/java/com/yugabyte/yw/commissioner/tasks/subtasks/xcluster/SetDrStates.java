@@ -77,6 +77,7 @@ public class SetDrStates extends XClusterConfigTaskBase {
     }
 
     try {
+      boolean changeInXCluster = false;
       if (Objects.nonNull(taskParams().drConfigState)) {
         log.info(
             "Setting the dr config state of xCluster config {} to {} from {}",
@@ -91,6 +92,7 @@ public class SetDrStates extends XClusterConfigTaskBase {
             xClusterConfig.getUuid(),
             taskParams().sourceUniverseState,
             xClusterConfig.getSourceUniverseState());
+        changeInXCluster = true;
         xClusterConfig.setSourceUniverseState(taskParams().sourceUniverseState);
       }
       if (Objects.nonNull(taskParams().targetUniverseState)) {
@@ -99,15 +101,21 @@ public class SetDrStates extends XClusterConfigTaskBase {
             xClusterConfig.getUuid(),
             taskParams().targetUniverseState,
             xClusterConfig.getTargetUniverseState());
+        changeInXCluster = true;
         xClusterConfig.setTargetUniverseState(taskParams().targetUniverseState);
       }
-
-      log.info(
-          "Setting pending keyspace of xCluster config {} to {} from {}",
-          xClusterConfig.getUuid(),
-          taskParams().keyspacePending,
-          xClusterConfig.getKeyspacePending());
-      xClusterConfig.setKeyspacePending(taskParams().keyspacePending);
+      if (Objects.nonNull(taskParams().keyspacePending)) {
+        log.info(
+            "Setting pending keyspace of xCluster config {} to {} from {}",
+            xClusterConfig.getUuid(),
+            taskParams().keyspacePending,
+            xClusterConfig.getKeyspacePending());
+        changeInXCluster = true;
+        xClusterConfig.setKeyspacePending(taskParams().keyspacePending);
+      }
+      if (changeInXCluster) {
+        xClusterConfig.update();
+      }
 
       drConfig.update();
     } catch (Exception e) {

@@ -10,6 +10,12 @@ Delete a universe in YugabyteDB Anywhere
 yba universe delete [flags]
 ```
 
+### Examples
+
+```
+yba universe delete --name <universe-name>
+```
+
 ### Options
 
 ```

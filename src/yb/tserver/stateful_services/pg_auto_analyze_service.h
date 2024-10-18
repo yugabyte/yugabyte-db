@@ -51,11 +51,15 @@ class PgAutoAnalyzeService : public StatefulRpcServiceBase<PgAutoAnalyzeServiceI
       std::unordered_map<TableId, int64_t>& table_id_to_mutations_maps);
   Result<std::unordered_map<NamespaceName, std::set<TableId>>> DetermineTablesForAnalyze(
       std::unordered_map<TableId, int64_t>& table_id_to_mutations_maps);
-  Result<std::vector<TableId>> DoAnalyzeOnCandidateTables(
-      std::unordered_map<NamespaceName, std::set<TableId>>& dbname_to_analyze_target_tables);
+  Result<std::tuple<std::vector<TableId>, std::vector<TableId>, std::unordered_set<NamespaceId>>>
+      DoAnalyzeOnCandidateTables(
+          std::unordered_map<NamespaceName, std::set<TableId>>& dbname_to_analyze_target_tables);
   Status UpdateTableMutationsAfterAnalyze(
       std::vector<TableId>& tables,
       std::unordered_map<TableId, int64_t>& table_id_to_mutations_maps);
+  Status CleanUpDeletedTablesFromServiceTable(
+      std::unordered_map<TableId, int64_t>& table_id_to_mutations_maps,
+      std::vector<TableId>& deleted_tables, std::unordered_set<NamespaceId>& deleted_databases);
 
   STATEFUL_SERVICE_IMPL_METHODS(
       IncreaseMutationCounters);

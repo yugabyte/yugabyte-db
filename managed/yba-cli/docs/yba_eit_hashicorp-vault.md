@@ -1,4 +1,4 @@
-## yba eit hashicorp
+## yba eit hashicorp-vault
 
 Manage a YugabyteDB Anywhere Hashicorp Vault encryption in transit (EIT) certificate configuration
 
@@ -7,14 +7,14 @@ Manage a YugabyteDB Anywhere Hashicorp Vault encryption in transit (EIT) certifi
 Manage a Hashicorp Vault encryption in transit (EIT) certificate configuration in YugabyteDB Anywhere
 
 ```
-yba eit hashicorp [flags]
+yba eit hashicorp-vault [flags]
 ```
 
 ### Options
 
 ```
   -n, --name string   [Optional] The name of the configuration for the action. Required for create, delete, describe, update.
-  -h, --help          help for hashicorp
+  -h, --help          help for hashicorp-vault
 ```
 
 ### Options inherited from parent commands
@@ -34,9 +34,9 @@ yba eit hashicorp [flags]
 ### SEE ALSO
 
 * [yba eit](yba_eit.md)	 - Manage YugabyteDB Anywhere Encryption In Transit (EIT) configurations
-* [yba eit hashicorp create](yba_eit_hashicorp_create.md)	 - Create a YugabyteDB Anywhere Hashicorp Vault encryption in transit configuration
-* [yba eit hashicorp delete](yba_eit_hashicorp_delete.md)	 - Delete a YugabyteDB Anywhere Hashicorp Vault encryption in transit configuration
-* [yba eit hashicorp describe](yba_eit_hashicorp_describe.md)	 - Describe a Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EIT) configuration
-* [yba eit hashicorp list](yba_eit_hashicorp_list.md)	 - List Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EIT) certificate configurations
-* [yba eit hashicorp update](yba_eit_hashicorp_update.md)	 - Update a YugabyteDB Anywhere Hashicorp Vault encryption in transit configuration
+* [yba eit hashicorp-vault create](yba_eit_hashicorp-vault_create.md)	 - Create a YugabyteDB Anywhere Hashicorp Vault encryption in transit configuration
+* [yba eit hashicorp-vault delete](yba_eit_hashicorp-vault_delete.md)	 - Delete a YugabyteDB Anywhere Hashicorp Vault encryption in transit configuration
+* [yba eit hashicorp-vault describe](yba_eit_hashicorp-vault_describe.md)	 - Describe a Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EIT) configuration
+* [yba eit hashicorp-vault list](yba_eit_hashicorp-vault_list.md)	 - List Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EIT) certificate configurations
+* [yba eit hashicorp-vault update](yba_eit_hashicorp-vault_update.md)	 - Update a YugabyteDB Anywhere Hashicorp Vault encryption in transit configuration
 

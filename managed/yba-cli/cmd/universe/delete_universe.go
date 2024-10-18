@@ -20,9 +20,11 @@ import (
 
 // deleteUniverseCmd represents the universe command
 var deleteUniverseCmd = &cobra.Command{
-	Use:   "delete",
-	Short: "Delete a YugabyteDB Anywhere universe",
-	Long:  "Delete a universe in YugabyteDB Anywhere",
+	Use:     "delete",
+	Aliases: []string{"remove", "rm"},
+	Short:   "Delete a YugabyteDB Anywhere universe",
+	Long:    "Delete a universe in YugabyteDB Anywhere",
+	Example: `yba universe delete --name <universe-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		universeName, err := cmd.Flags().GetString("name")
@@ -114,7 +116,7 @@ var deleteUniverseCmd = &cobra.Command{
 		}
 		logrus.Infoln(msg + "\n")
 		taskCtx := formatter.Context{
-			Command: "create",
+			Command: "delete",
 			Output:  os.Stdout,
 			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 		}

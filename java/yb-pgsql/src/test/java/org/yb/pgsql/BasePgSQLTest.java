@@ -197,6 +197,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         "Connection Manager is enabled. Skipping this test with Connection Manager enabled " +
         "until the relevant code is pushed to master.";
 
+  protected static final String EXTENSION_NOT_SUPPORTED =
+      "The extension being used as part of the test is not supported with connection manager.";
+
   // Warmup modes for Connection Manager during test runs.
   protected static enum ConnectionManagerWarmupMode {
     NONE,

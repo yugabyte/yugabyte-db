@@ -22,7 +22,9 @@ var upgradeVMImageCmd = &cobra.Command{
 	Aliases: []string{"vm-image", "linux-os"},
 	Short:   "VM Linux OS patch for a YugabyteDB Anywhere Universe",
 	Long: "VM Linux OS patch for a YugabyteDB Anywhere Universe. Supported only for universes" +
-		" of cloud type AWS, GCP and Azure.",
+		" of cloud type AWS, GCP and Azure. Triggers Rolling restart of all DB nodes.",
+	Example: `yba universe upgrade os --name <universe-name> \
+		--primary-linux-version <image-bundle-name-in-provider> `,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		universeName, err := cmd.Flags().GetString("name")
@@ -188,7 +190,7 @@ func init() {
 	upgradeVMImageCmd.Flags().SortFlags = false
 
 	upgradeVMImageCmd.Flags().String("primary-linux-version", "",
-		"[Required] Primary cluster linux OS version name to be applied.")
+		"[Required] Primary cluster linux OS version name to be applied as listed in the provider.")
 	upgradeVMImageCmd.MarkFlagRequired("primary-linux-version")
 	upgradeVMImageCmd.Flags().Bool("inherit-from-primary", true,
 		"[Optional] Apply the same linux OS version of primary cluster to read replica cluster.")

@@ -986,14 +986,18 @@
           "installVoyagerDesc": "Install YugabyteDB Voyager on the cluster.",
           "specificVersion": "Install a specific version of yb-voyager on your machine using the following command:",
           "installVoyagerLearn": "Learn more about installing Voyager",
-          "assessMigration": "Assess Migration",
+          "assessMigration": "Assess migration",
           "assessMigrationDesc": "Assess the source database to be migrated to check for database compatibility, evaluate cluster size requirements, and estimate migration complexity.",
           "assessMigrationLearn": "Learn more about migration assessment",
           "summary": {
             "heading": "Summary",
             "migrationComplexity": "Migration Complexity",
-            "estimatedMigrationTime": "Estimated Migration Time",
-            "unavailable": "Summary unavailable"
+            "estimatedDataMigrationTime": "Estimated Data Migration Time",
+            "unavailable": "Summary unavailable",
+            "complexityTooltipEasy": "This migration is rated as <bold>Easy</bold>, as it requires <bold>0-20 manual schema changes</bold> and <bold>0 manual app changes</bold>. More details can be found in the <bold>Recommendations</bold> section.",
+            "complexityTooltipMedium": "This migration is rated as <bold>Medium</bold>, as it requires <bold>>20 manual schema changes</bold> and/or <bold>1-5 manual app changes</bold>. More details can be found in the <bold>Recommendations</bold> section.",
+            "complexityTooltipHard": "This migration is rated as <bold>Hard</bold>, as it requires <bold>>5 manual app changes</bold>. More details can be found in the <bold>Recommendations</bold> section.",
+            "complexityLearn": "Learn more about how migration complexity is calculated"
           },
           "sourceEnv": {
             "heading": "Source Environment",
@@ -1009,6 +1013,7 @@
             "rowCount": "Table Row Count",
             "viewSourceObjects": "View Source Objects",
             "viewDetails": "View Details",
+            "schemaDetails": "Schema Details",
             "sourceObjects": {
               "heading": "Source Objects",
               "totalObjects": "Total Objects",
@@ -1023,18 +1028,26 @@
               "size": "Size",
               "rowCount": "Row Count",
               "iops": "IOPS"
-            }
+            },
+            "databaseType": "Database Type",
+            "hostname": "Hostname",
+            "database": "Database",
+            "schema": "Schema"
           },
           "recommendation": {
             "heading": "Recommendations",
             "tooltip": "Facts based approach to sizing that leverages metadata from the source environment",
+            "poweredByCopilot": "Powered by Voyager Copilot",
             "clusterSize": {
               "heading": "Recommended Cluster Size",
               "noOfNodes": "Number of Nodes",
-              "vcpuPerNode": "vCPU / Node",
-              "memoryPerNode": "Memory / Node",
-              "optimalSelectConnPerNode": "Optimal Select Connections / Node",
-              "optimalInsertConnPerNode": "Optimal Insert Connections / Node"
+              "nodeSize": "Node Size",
+              "totalNodeSize": "Total Node Size",
+              "vcpu": "vCPU",
+              "memory": "Memory",
+              "optimalSelectConn": "Optimal Select Connections",
+              "optimalInsertConn": "Optimal Insert Connections",
+              "noOfConnections": "Number of Connections"
             },
             "schema": {
               "heading": "Schema Recommendation",
@@ -1048,6 +1061,31 @@
               "tableName": "Table name",
               "diskSize": "Disk size",
               "schemaRecommendation": "Schema Recommendation"
+            },
+            "dataDistribution": {
+              "heading": "Recommended Data Distribution",
+              "colocated": "Colocated",
+              "tables": "Tables",
+              "size": "Size",
+              "sharded": "Sharded"
+            },
+            "schemaChanges": {
+              "heading": "Recommended Schema Changes",
+              "objectType": "Object Type",
+              "automaticDDLImport": "Automatic DDL Import",
+              "manualRefactoring": "Manual Refactoring",
+              "feature": "Feature",
+              "dataType": "Data Type",
+              "function": "Functin",
+              "allIssueTypes": "All Issue Types",
+              "issue": "Issue",
+              "issueType": "Issue Type",
+              "occurrences": "Occurrences",
+              "previewSqlStatement": "Preview SQL Statement/Object",
+              "workaround": "Workaround",
+              "linkToDocs": "Link to docs",
+              "notAvailable": "N/A",
+              "issueDetails": "Issue Details"
             }
           },
           "refactoring": {
@@ -1101,7 +1139,11 @@
             "sqlObjectCount": "SQL Object Count",
             "tableCount": "Table Count",
             "complexity": "Complexity",
-            "searchSchema": "Search schema"
+            "searchSchema": "Search schema",
+            "easy": "Easy",
+            "medium": "Medium",
+            "hard": "Hard",
+            "notAvailable": "N/A"
           },
           "nextSteps": {
             "phase": "Phase",
@@ -1110,6 +1152,7 @@
         },
         "migrateSchema": {
           "sqlObjectName": "SQL Object Name",
+          "reRunCommand": "Analyze Schema Command",
           "sqlObjectType": "SQL Object Type",
           "reason": "Reason",
           "ghIssue": "GitHub Issue",
@@ -1124,11 +1167,11 @@
           "beforeYouProceed": "Before you proceed...",
           "completeStepsTooltip": "Complete the prior step(s) to proceed",
           "schemaExport": "Schema Export",
-          "schemaExportDesc": "Use the following command to export schema from source database.",
+          "schemaExportDesc": "If you have direct connectivity to the source database from the client machine where voyager is installed, initiate schema export by executing the <0>export schema</0> command of <1>yb-voyager</1>.",
           "schemaExportLearn": "Learn more about how to export schema",
-          "schemaExportSourceDB": "Export schema from source database",
-          "schemaAnalysis": "Schema analysis",
-          "schemaImportTargetDB": "Import schema to target database",
+          "schemaExportSourceDB": "<0>Export schema</0> from source database",
+          "schemaAnalysis": "<0>Analyze schema</0>",
+          "schemaImportTargetDB": "<0>Import schema</0> to target database",
           "schemaAnalysisDesc": "Analyze schema to generate Schema Analysis report which suggests changes to the source DB schema to make it appropriate for YugabyteDB",
           "schemaAnalysisLearn": "Learn more about how to analyze schema",
           "automaticDDLImport": "Automatic DDL Import",
@@ -1142,23 +1185,29 @@
           "tabSuggestedRefactoring": "Suggested Refactoring",
           "schemaImport": "Schema Import",
           "schemaImportDesc": "Use the following command to import schema to target database.",
-          "schemaImportLearn": "Learn more about how to import schema"
+          "schemaImportLearn": "Learn more about how to import schema",
+          "viewAnalyzeCommand": "View command"
         },
         "migrateData": {
           "migratedData": "Migrate data completed successfully",
           "migratedDataDesc": "Data migration is complete",
-          "dataExportSourceDB": "Data export from source database",
+          "dataExportSourceDB": "<0>Data export</0> from source database",
           "dataExport": "Data Export",
           "dataExportDesc": "Use the following command to export data from source database.",
           "dataExportLearn": "Learn more about how to export data",
-          "dataImportTargetDB": "Data import to target database",
+          "dataImportTargetDB": "<0>Data import</0> to target database",
           "dataImport": "Data Import",
           "dataImportDesc": "Use the following command to import data to target database.",
           "dataImportLearn": "Learn more about how to import data",
           "indexTriggerTargetDB": "Index and trigger import to target database",
           "indexTrigger": "Index and Trigger import",
           "indexTriggerDesc": "Import index and trigger to target database.",
-          "indexTriggerLearn": "Learn more about how to import index and trigger"
+          "indexTriggerLearn": "Learn more about how to import index and trigger",
+          "viewCommand": "View command",
+          "viewExportDataCommand": "View command for exporting data",
+          "exportDataCommand": "Export Data Command",
+          "viewImportDataCommand": "View command for importing data",
+          "importDataCommand": "Import Data Command"
         }
       },
       "maintenance": {

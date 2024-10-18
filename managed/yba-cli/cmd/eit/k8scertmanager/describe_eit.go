@@ -17,6 +17,7 @@ var describeK8sCertManagerEITCmd = &cobra.Command{
 		" Encryption In Transit (EIT) configuration",
 	Long: "Describe a K8s Cert Manager YugabyteDB Anywhere" +
 		" Encryption In Transit (EIT) configuration",
+	Example: `yba eit k8s-cert-manager describe --name <config-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		eitutil.DescribeEITValidation(cmd)
 	},

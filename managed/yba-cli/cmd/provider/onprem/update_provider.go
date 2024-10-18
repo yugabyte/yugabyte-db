@@ -20,9 +20,12 @@ import (
 
 // updateOnpremProviderCmd represents the provider command
 var updateOnpremProviderCmd = &cobra.Command{
-	Use:   "update",
-	Short: "Update an On-premises YugabyteDB Anywhere provider",
-	Long:  "Update an On-premises provider in YugabyteDB Anywhere",
+	Use:     "update",
+	Aliases: []string{"edit"},
+	Short:   "Update an On-premises YugabyteDB Anywhere provider",
+	Long:    "Update an On-premises provider in YugabyteDB Anywhere",
+	Example: `yba provider onprem update --name <provider-name> \
+	--new-name <new-provider-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {

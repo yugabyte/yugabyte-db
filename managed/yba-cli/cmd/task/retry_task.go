@@ -22,9 +22,10 @@ import (
 
 // retryTaskCmd represents the retry task command
 var retryTaskCmd = &cobra.Command{
-	Use:   "retry",
-	Short: "Retry a YugabyteDB Anywhere task",
-	Long:  "Retry a task in YugabyteDB Anywhere",
+	Use:     "retry",
+	Short:   "Retry a YugabyteDB Anywhere task",
+	Long:    "Retry a task in YugabyteDB Anywhere",
+	Example: `yba task retry --task-uuid <task-uuid>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		taskUUID, err := cmd.Flags().GetString("task-uuid")
 		if err != nil {

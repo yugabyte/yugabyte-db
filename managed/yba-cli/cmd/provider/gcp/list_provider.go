@@ -11,9 +11,11 @@ import (
 )
 
 var listGCPProviderCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List GCP YugabyteDB Anywhere providers",
-	Long:  "List GCP YugabyteDB Anywhere providers",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List GCP YugabyteDB Anywhere providers",
+	Long:    "List GCP YugabyteDB Anywhere providers",
+	Example: `yba provider gcp list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		providerutil.ListProviderUtil(cmd, "GCP", util.GCPProviderType)
 	},

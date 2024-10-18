@@ -10,6 +10,12 @@ Delete an encryption in transit configuration in YugabyteDB Anywhere
 yba eit delete [flags]
 ```
 
+### Examples
+
+```
+yba eit delete --name <config-name>
+```
+
 ### Options
 
 ```

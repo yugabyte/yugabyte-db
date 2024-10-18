@@ -188,7 +188,7 @@ const BackupObjects = forwardRef<PageRef>((_, forwardRef) => {
       )}
       {selectedKeyspace?.tableType === BACKUP_API_TYPES.YCQL && (
         <SelectTables
-          control={control as unknown as Control<FieldValues>}
+          control={(control as unknown) as Control<FieldValues>}
           tablesInSelectedKeyspace={
             selectedKeyspace?.isDefaultOption
               ? []

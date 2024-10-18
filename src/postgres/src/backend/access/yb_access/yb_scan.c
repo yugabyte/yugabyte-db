@@ -3750,7 +3750,7 @@ YbFetchHeapTuple(Relation relation, Datum ybctid, HeapTuple* tuple)
 		}
 	}
 
-	
+
 	/* Free up memory and return data */
 	pfree(values);
 	pfree(nulls);
@@ -3937,28 +3937,23 @@ ybBeginSample(Relation rel, int targrows)
 	ybSample->deadrows = 0;
 	elog(DEBUG1, "Sampling %d rows from table %s", targrows, RelationGetRelationName(rel));
 
+	reservoir_init_selection_state(&rstate, targrows);
 	/*
 	 * Create new sampler command
 	 */
 	HandleYBStatus(YBCPgNewSample(dboid,
 								  YbGetRelfileNodeId(rel),
-								  targrows,
 								  YBCIsRegionLocal(rel),
+								  targrows,
+								  rstate.W,
+								  rstate.randstate.s0,
+								  rstate.randstate.s1,
 								  &ybSample->handle));
 	for (AttrNumber attnum = 1; attnum <= tupdesc->natts; attnum++)
 	{
 		if (!TupleDescAttr(tupdesc, attnum - 1)->attisdropped)
 			YbDmlAppendTargetRegular(tupdesc, attnum, ybSample->handle);
 	}
-
-	/*
-	 * Initialize sampler random state
-	 */
-	reservoir_init_selection_state(&rstate, targrows);
-	HandleYBStatus(YBCPgInitRandomState(ybSample->handle,
-										rstate.W,
-										rstate.randstate.s0,
-										rstate.randstate.s1));
 
 	return ybSample;
 }

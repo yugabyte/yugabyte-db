@@ -540,8 +540,7 @@ class PgApiImpl {
                    bool is_region_local,
                    PgStatement **handle,
                    YBCPgTransactionSetting transaction_setting =
-                       YBCPgTransactionSetting::YB_TRANSACTIONAL,
-                   PgStatement *block_insert_handle = nullptr);
+                       YBCPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecInsert(PgStatement *handle);
 
@@ -628,13 +627,9 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Analyze.
-  Status NewSample(const PgObjectId& table_id,
-                   const int targrows,
-                   bool is_region_local,
-                   PgStatement **handle);
-
-  Status InitRandomState(
-      PgStatement *handle, double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1);
+  Status NewSample(
+      const PgObjectId& table_id, bool is_region_local, int targrows,
+      const SampleRandomState& rand_state, PgStatement **handle);
 
   Result<bool> SampleNextBlock(PgStatement* handle);
 
@@ -804,6 +799,8 @@ class PgApiImpl {
   Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
 
   bool IsCronLeader() const;
+  Status SetCronLastMinute(int64_t last_minute);
+  Result<int64_t> GetCronLastMinute();
 
   [[nodiscard]] uint64_t GetCurrentReadTimePoint() const;
   Status RestoreReadTimePoint(uint64_t read_time_point_handle);

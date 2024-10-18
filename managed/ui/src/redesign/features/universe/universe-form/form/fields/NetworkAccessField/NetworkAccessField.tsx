@@ -42,7 +42,7 @@ export const NetworkAccessField = ({ disabled }: NetworkAccessFieldProps): React
           inputProps={{
             'data-testid': 'NetworkAccessField-Toggle'
           }}
-          disabled={disabled}
+          // disabled={disabled}
           onChange={handleChange}
           checked={exposingServiceValue === ExposingServiceTypes.EXPOSED}
         />

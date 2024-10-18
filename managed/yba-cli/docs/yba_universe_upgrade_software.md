@@ -10,6 +10,13 @@ Software upgrade for a YugabyteDB Anywhere Universe
 yba universe upgrade software [flags]
 ```
 
+### Examples
+
+```
+yba universe upgrade software --name <universe-name> \
+	--yb-db-version <software-version>
+```
+
 ### Options
 
 ```

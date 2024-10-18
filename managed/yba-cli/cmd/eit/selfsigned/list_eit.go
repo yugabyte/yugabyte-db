@@ -11,11 +11,13 @@ import (
 )
 
 var listSelfSignedEITCmd = &cobra.Command{
-	Use: "list",
+	Use:     "list",
+	Aliases: []string{"ls"},
 	Short: "List Self Signed YugabyteDB Anywhere Encryption In Transit" +
 		" (EIT) certificate configurations",
 	Long: "List Self Signed YugabyteDB Anywhere Encryption In Transit" +
 		" (EIT) certificate configurations",
+	Example: `yba eit self-signed list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		providerutil.ListProviderUtil(cmd, "Self Signed", util.SelfSignedCertificateType)
 	},

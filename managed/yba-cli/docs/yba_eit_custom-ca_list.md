@@ -10,6 +10,12 @@ List Custom CA YugabyteDB Anywhere Encryption In Transit (EIT) certificate confi
 yba eit custom-ca list [flags]
 ```
 
+### Examples
+
+```
+yba eit custom-ca list
+```
+
 ### Options
 
 ```

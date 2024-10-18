@@ -10,6 +10,12 @@ Delete a provider in YugabyteDB Anywhere
 yba provider delete [flags]
 ```
 
+### Examples
+
+```
+yba provider delete --name <provider-name>
+```
+
 ### Options
 
 ```

@@ -132,8 +132,6 @@ uint32 PgAutoAnalyzeService::PeriodicTaskIntervalMs() const {
   return GetAtomicFlag(&FLAGS_ysql_cluster_level_mutation_persist_interval_ms);
 }
 
-// TODO(auto-analyze, #22883): Ignore and clean up entries from auto analyze YCQL table if
-// the databases the entries corresponds to have been deleted.
 // TriggerAnalyze has the following steps:
 // (1) Read from the underlying YCQL table to get all pairs of (table id, mutation count).
 // (2) Get table id to YBTableName mapping using a ListTables rpc to yb-master.
@@ -156,9 +154,13 @@ Status PgAutoAnalyzeService::TriggerAnalyze() {
   auto dbname_to_analyze_target_tables
       = VERIFY_RESULT(DetermineTablesForAnalyze(table_id_to_mutations_maps));
 
-  auto analyzed_tables = VERIFY_RESULT(DoAnalyzeOnCandidateTables(dbname_to_analyze_target_tables));
+  auto [analyzed_tables, deleted_tables, deleted_databases]
+      = VERIFY_RESULT(DoAnalyzeOnCandidateTables(dbname_to_analyze_target_tables));
 
   RETURN_NOT_OK(UpdateTableMutationsAfterAnalyze(analyzed_tables, table_id_to_mutations_maps));
+
+  RETURN_NOT_OK(CleanUpDeletedTablesFromServiceTable(table_id_to_mutations_maps, deleted_tables,
+                                                     deleted_databases));
 
   return Status::OK();
 }
@@ -298,10 +300,13 @@ Result<std::unordered_map<NamespaceName, std::set<TableId>>>
 }
 
 // Trigger ANALYZE on tables database by database.
-Result<std::vector<TableId>> PgAutoAnalyzeService::DoAnalyzeOnCandidateTables(
-  std::unordered_map<NamespaceName, std::set<TableId>>& dbname_to_analyze_target_tables) {
+Result<std::tuple<std::vector<TableId>, std::vector<TableId>, std::unordered_set<NamespaceId>>>
+    PgAutoAnalyzeService::DoAnalyzeOnCandidateTables(
+        std::unordered_map<NamespaceName, std::set<TableId>>& dbname_to_analyze_target_tables) {
   VLOG_WITH_FUNC(2);
   std::vector<TableId> analyzed_tables;
+  std::vector<TableId> deleted_tables;
+  std::unordered_set<NamespaceId> deleted_databases;
   for(const auto& [dbname, tables_to_analyze] : dbname_to_analyze_target_tables) {
     LOG(INFO) << "Trigger ANALYZE for tables within database: " << dbname;
     // Connect to PG database.
@@ -317,8 +322,9 @@ Result<std::vector<TableId>> PgAutoAnalyzeService::DoAnalyzeOnCandidateTables(
       RETURN_NOT_OK(client_future_.get()->GetNamespaceInfo(namespace_id, "", YQL_DATABASE_PGSQL,
                                                            &resp));
       if (!resp.has_namespace_()) { // deleted
-        // TODO(auto-analyze, #22883): a database is deleted. Clean up table entries belonging to
-        // the database from the YCQL service table.
+        // The database is deleted. Need to clean up table entries belonging to
+        // this database from the YCQL service table.
+        deleted_databases.insert(namespace_id);
         continue;
       } else {
         if (resp.namespace_().name() != dbname) { // renamed
@@ -366,8 +372,8 @@ Result<std::vector<TableId>> PgAutoAnalyzeService::DoAnalyzeOnCandidateTables(
             // Need to refresh name cache because the cached table name is outdated.
             refresh_name_cache_ = true;
           } else {
-            // TODO(auto-analyze, #22883): remove deleted table entries from the YCQL service table.
-            analyzed_tables.push_back(table_id);
+            // Need to remove deleted table entries from the YCQL service table.
+            deleted_tables.push_back(table_id);
           }
         }
       } else {
@@ -376,7 +382,7 @@ Result<std::vector<TableId>> PgAutoAnalyzeService::DoAnalyzeOnCandidateTables(
     }
   }
 
-  return analyzed_tables;
+  return make_tuple(analyzed_tables, deleted_tables, deleted_databases);
 }
 
 // Update the table mutations by subtracting the mutations count we fetched
@@ -411,6 +417,8 @@ Status PgAutoAnalyzeService::UpdateTableMutationsAfterAnalyze(
     operand1->set_column_id(mutations_col_id);
     operand2->mutable_value()->set_int64_value(table_id_to_mutations_maps[table_id]);
     ops.push_back(std::move(update_op));
+    auto* const condition = update_req->mutable_if_expr()->mutable_condition();
+    condition->set_op(QL_OP_EXISTS);
 
     // Erase the table we analyzed from table row count cache.
     table_tuple_count_.erase(table_id);
@@ -419,6 +427,62 @@ Status PgAutoAnalyzeService::UpdateTableMutationsAfterAnalyze(
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
   RETURN_NOT_OK_PREPEND(
       session->TEST_ApplyAndFlush(ops), "Failed to clean up mutations from auto analyze table");
+
+  return Status::OK();
+}
+
+// Remove deleted table entries from the YCQL service table.
+Status PgAutoAnalyzeService::CleanUpDeletedTablesFromServiceTable(
+    std::unordered_map<TableId, int64_t>& table_id_to_mutations_maps,
+    std::vector<TableId>& deleted_tables, std::unordered_set<NamespaceId>& deleted_databases) {
+  VLOG_WITH_FUNC(2);
+
+  std::vector<TableId> tables_of_deleted_databases;
+  std::vector<TableId> tables_absent_in_name_cache;
+  for (const auto& [table_id, mutations] : table_id_to_mutations_maps) {
+    // table_id_to_name_ is a subset of table_id_to_mutations_maps
+    if (!table_id_to_name_.contains(table_id)) {
+      // Table with table_id doesn't exist, so remove its entry from the service table.
+      tables_absent_in_name_cache.push_back(table_id);
+    } else if (deleted_databases.contains(VERIFY_RESULT(GetNamespaceIdFromYsqlTableId(table_id)))) {
+      // Tables of deleted databases, so remove its entry from the service table.
+      tables_of_deleted_databases.push_back(table_id);
+    }
+  }
+
+  VLOG(2) << "Cleaning up deleted table entries from the service table.\n"
+          << "Tables were deleted directly: " << ToString(deleted_tables) << "\n"
+          << "Databases were deleted: " << ToString(deleted_databases) << "\n"
+          << "Tables were deleted due to the deleted databases: "
+          << ToString(tables_of_deleted_databases) << "\n"
+          << "Tables that are absent in the name cache: " << ToString(tables_absent_in_name_cache);
+
+  auto* table = VERIFY_RESULT(GetServiceTable());
+  std::vector<client::YBOperationPtr> ops;
+  for (auto& table_id : deleted_tables) {
+    const auto delete_op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+    auto* const delete_req = delete_op->mutable_request();
+    QLAddStringHashValue(delete_req, table_id);
+    ops.push_back(delete_op);
+  }
+  for (auto& table_id : tables_of_deleted_databases) {
+    const auto delete_op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+    auto* const delete_req = delete_op->mutable_request();
+    QLAddStringHashValue(delete_req, table_id);
+    ops.push_back(delete_op);
+  }
+  for (auto& table_id : tables_absent_in_name_cache) {
+    const auto delete_op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+    auto* const delete_req = delete_op->mutable_request();
+    QLAddStringHashValue(delete_req, table_id);
+    ops.push_back(delete_op);
+  }
+
+  auto session = VERIFY_RESULT(GetYBSession(
+      GetAtomicFlag(&FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms) * 1ms));
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  RETURN_NOT_OK_PREPEND(session->TEST_ApplyAndFlush(ops),
+      "Failed to clean up deleted entries from auto analyze table");
 
   return Status::OK();
 }
@@ -438,7 +502,8 @@ Result<bool> PgAutoAnalyzeService::RunPeriodicTask() {
 }
 
 Status PgAutoAnalyzeService::IncreaseMutationCountersImpl(
-    const IncreaseMutationCountersRequestPB& req, IncreaseMutationCountersResponsePB* resp) {
+    const IncreaseMutationCountersRequestPB& req, IncreaseMutationCountersResponsePB* resp,
+    rpc::RpcContext& rpc) {
   VLOG_WITH_FUNC(3) << "req=" << req.ShortDebugString();
 
   for (const auto& elem : req.table_mutation_counts()) {

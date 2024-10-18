@@ -20,6 +20,8 @@ var updateHashicorpVaultEITCmd = &cobra.Command{
 	Aliases: []string{"edit"},
 	Short:   "Update a YugabyteDB Anywhere Hashicorp Vault encryption in transit configuration",
 	Long:    "Update a Hashicorp Vault encryption in transit configuration in YugabyteDB Anywhere",
+	Example: `yba eit hashicorp-vault update --name <config-name> \
+	--token <token>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		eitutil.UpdateEITValidation(cmd)
 	},

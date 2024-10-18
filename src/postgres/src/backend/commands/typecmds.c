@@ -226,6 +226,13 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 	/* Convert list of names to a name and namespace */
 	typeNamespace = QualifiedNameGetCreationNamespace(names, &typeName);
 
+	/*
+	 * Increment sticky object count if the object is a create type of the
+	 * form base or shell type.
+	 */
+	if (YbIsClientYsqlConnMgr())
+		increment_sticky_object_count();
+
 #ifdef NOT_USED
 	/* XXX this is unnecessary given the superuser check above */
 	/* Check we have creation rights in target namespace */

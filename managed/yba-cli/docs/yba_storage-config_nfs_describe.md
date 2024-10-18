@@ -10,6 +10,12 @@ Describe a NFS storage configuration in YugabyteDB Anywhere
 yba storage-config nfs describe [flags]
 ```
 
+### Examples
+
+```
+yba storage-config nfs describe --name <storage-configuration-name>
+```
+
 ### Options
 
 ```

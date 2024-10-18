@@ -8,7 +8,7 @@
  */
 
 import { FC, useMemo } from 'react';
-import { useInfiniteQuery } from 'react-query';
+import { useInfiniteQuery, useQuery } from 'react-query';
 import { keyBy } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -23,6 +23,9 @@ import { ScheduledCard } from './list/ScheduledCard';
 import { ScheduledBackupEmpty } from './ScheduledBackupEmpty';
 import { AllowedTasks } from '../../../helpers/dtos';
 import { getScheduledBackupList } from '../../../../components/backupv2/common/BackupScheduleAPI';
+import { hasNecessaryPerm } from '../../rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../rbac/ApiAndUserPermMapping';
+import { fetchTablesInUniverse } from '../../../../actions/xClusterReplication';
 
 interface ScheduledBackupListProps {
   universeUUID: string;
@@ -44,6 +47,7 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 const ScheduledBackupList: FC<ScheduledBackupListProps> = ({ universeUUID }) => {
+
   const [createScheduledBackupModalVisible, toggleCreateScheduledBackupModalVisible] = useToggle(
     false
   );
@@ -57,7 +61,13 @@ const ScheduledBackupList: FC<ScheduledBackupListProps> = ({ universeUUID }) => 
     }
   );
 
+  const { data: tablesInUniverse, isLoading: isTableListLoading } = useQuery(
+    [universeUUID, 'tables'],
+    () => fetchTablesInUniverse(universeUUID!)
+  );
+
   const storageConfigs = useSelector((reduxState: any) => reduxState.customer.configs);
+  const currentUniverse = useSelector((reduxState: any) => reduxState.universe.currentUniverse);
 
   const storageConfigsMap = useMemo(() => keyBy(storageConfigs?.data ?? [], 'configUUID'), [
     storageConfigs
@@ -82,14 +92,25 @@ const ScheduledBackupList: FC<ScheduledBackupListProps> = ({ universeUUID }) => 
         schedule.backupInfo !== undefined && schedule.backupInfo.universeUUID === universeUUID
     );
 
+  const canCreateBackup = hasNecessaryPerm({
+    onResource: universeUUID,
+    ...ApiPermissionMap.CREATE_BACKUP_SCHEDULE
+  });
+
   if (!schedules || schedules?.length === 0) {
     return (
       <div>
         <ScheduledBackupEmpty
-          hasPerm={true}
+          hasPerm={canCreateBackup}
           onActionButtonClick={() => {
             toggleCreateScheduledBackupModalVisible(true);
           }}
+          disabled={
+            tablesInUniverse?.data.length === 0 ||
+            currentUniverse.data?.universeConfig?.takeBackups === 'false' ||
+            currentUniverse?.data?.universeDetails?.universePaused ||
+            !canCreateBackup
+          }
         />
         <CreateScheduledBackupModal
           visible={createScheduledBackupModalVisible}

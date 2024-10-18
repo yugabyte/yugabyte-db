@@ -17,6 +17,7 @@ import (
 // OnpremProviderCmd represents the provider command
 var OnpremProviderCmd = &cobra.Command{
 	Use:     util.OnpremProviderType,
+	Aliases: []string{"on-premises"},
 	GroupID: "type",
 	Short:   "Manage a YugabyteDB Anywhere on-premises provider",
 	Long: "Create and manage an on-premises provider, " +
@@ -39,6 +40,6 @@ func init() {
 	OnpremProviderCmd.PersistentFlags().StringP("name", "n", "",
 		fmt.Sprintf("[Optional] The name of the provider for the action. %s",
 			formatter.Colorize(
-				"Required for create, delete, describe, instance-types and nodes.",
+				"Required for create, delete, describe, instance-type and node.",
 				formatter.GreenColor)))
 }

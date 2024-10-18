@@ -10,6 +10,14 @@ Create an AWS encryption at rest configuration in YugabyteDB Anywhere
 yba ear aws create [flags]
 ```
 
+### Examples
+
+```
+yba ear aws create --name <config-name> \
+	--access-key-id <access-key-id> --secret-access-key <secret-access-key>\
+	--region <region> --cmk-id <cmk-id> --endpoint <endpoint>
+```
+
 ### Options
 
 ```

@@ -14,9 +14,11 @@ import (
 // deleteEARCmd represents the ear command
 var deleteEARCmd = &cobra.Command{
 	Use:     "delete",
+	Aliases: []string{"remove", "rm"},
 	GroupID: "action",
 	Short:   "Delete a YugabyteDB Anywhere encryption at rest configuration",
 	Long:    "Delete an encryption at rest configuration in YugabyteDB Anywhere",
+	Example: `yba ear delete --name <config-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		earutil.DeleteEARValidation(cmd)
 	},

@@ -22,6 +22,8 @@ var updateHashicorpVaultEARCmd = &cobra.Command{
 	Aliases: []string{"edit"},
 	Short:   "Update a YugabyteDB Anywhere Hashicorp Vault encryption at rest (EAR) configuration",
 	Long:    "Update a Hashicorp Vault encryption at rest (EAR) configuration in YugabyteDB Anywhere",
+	Example: `yba ear hashicorp-vault update --name <config-name> \
+	--token <token>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		configNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {

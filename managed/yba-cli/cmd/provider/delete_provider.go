@@ -14,9 +14,11 @@ import (
 // deleteProviderCmd represents the provider command
 var deleteProviderCmd = &cobra.Command{
 	Use:     "delete",
+	Aliases: []string{"remove", "rm"},
 	GroupID: "action",
 	Short:   "Delete a YugabyteDB Anywhere provider",
 	Long:    "Delete a provider in YugabyteDB Anywhere",
+	Example: `yba provider delete --name <provider-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerutil.DeleteProviderValidation(cmd)
 	},

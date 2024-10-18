@@ -10,6 +10,12 @@ List Azure YugabyteDB Anywhere providers
 yba provider azure list [flags]
 ```
 
+### Examples
+
+```
+yba provider azure list
+```
+
 ### Options
 
 ```

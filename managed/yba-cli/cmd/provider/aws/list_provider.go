@@ -11,9 +11,11 @@ import (
 )
 
 var listAWSProviderCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List AWS YugabyteDB Anywhere providers",
-	Long:  "List AWS YugabyteDB Anywhere providers",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List AWS YugabyteDB Anywhere providers",
+	Long:    "List AWS YugabyteDB Anywhere providers",
+	Example: `yba provider aws list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		providerutil.ListProviderUtil(cmd, "AWS", util.AWSProviderType)
 	},

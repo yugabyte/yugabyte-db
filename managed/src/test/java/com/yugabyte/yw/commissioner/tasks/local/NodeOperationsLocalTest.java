@@ -13,7 +13,6 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.LocalNodeManager;
 import com.yugabyte.yw.common.NodeActionType;
-import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.NodeActionFormData;
@@ -24,7 +23,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
@@ -218,23 +216,5 @@ public class NodeOperationsLocalTest extends LocalProviderUniverseTestBase {
     TaskInfo taskInfo =
         CommissionerBaseTest.waitForTask(UUID.fromString(json.get("taskUUID").asText()), 500);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
-  }
-
-  private void waitTillNumOfTservers(YBClient ybClient, int expected) {
-    RetryTaskUntilCondition<Integer> condition =
-        new RetryTaskUntilCondition<>(
-            () -> getNumberOfTservers(ybClient), (num) -> num == expected);
-    boolean success = condition.retryUntilCond(500, TimeUnit.SECONDS.toMillis(60));
-    if (!success) {
-      throw new RuntimeException("Failed to wait till expected number of tservers");
-    }
-  }
-
-  private Integer getNumberOfTservers(YBClient ybClient) {
-    try {
-      return ybClient.listTabletServers().getTabletServersCount();
-    } catch (Exception e) {
-      return 0;
-    }
   }
 }

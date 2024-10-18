@@ -1274,6 +1274,24 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Status SetCronLastMinute(int64_t last_minute) {
+    tserver::PgCronSetLastMinuteRequestPB req;
+    req.set_last_minute(last_minute);
+    tserver::PgCronSetLastMinuteResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->CronSetLastMinute(req, &resp, PrepareController()));
+    return ResponseStatus(resp);
+  }
+
+  Result<int64_t> GetCronLastMinute() {
+    tserver::PgCronGetLastMinuteRequestPB req;
+    tserver::PgCronGetLastMinuteResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->CronGetLastMinute(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp.last_minute();
+  }
+
  private:
   std::string LogPrefix() const {
     return Format("Session id $0: ", session_id_);
@@ -1598,6 +1616,12 @@ Result<tserver::PgTabletsMetadataResponsePB> PgClient::TabletsMetadata() {
 Result<tserver::PgServersMetricsResponsePB> PgClient::ServersMetrics() {
   return impl_->ServersMetrics();
 }
+
+Status PgClient::SetCronLastMinute(int64_t last_minute) {
+  return impl_->SetCronLastMinute(last_minute);
+}
+
+Result<int64_t> PgClient::GetCronLastMinute() { return impl_->GetCronLastMinute(); }
 
 void PerformExchangeFuture::wait() const {
   if (!value_) {

@@ -9263,7 +9263,7 @@
       "refId" : "E"
     }, {
       "hide" : false,
-      "legendFormat" : "node_exporter",
+      "legendFormat" : "Node Exporter",
       "expr" : "avg(max_over_time(yb_process_open_files{node_prefix=~\"$dbcluster\", process=\"node_exporter\"}[300s])) by (process)",
       "refId" : "F"
     } ],

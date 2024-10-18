@@ -35,7 +35,8 @@ import {
   RESET_AZ_FIELD,
   USER_AZSELECTED_FIELD,
   SPOT_INSTANCE_FIELD,
-  COMMUNICATION_PORTS_FIELD
+  COMMUNICATION_PORTS_FIELD,
+  EXPOSING_SERVICE_FIELD
 } from '../../../utils/constants';
 import { CloudType } from '../../../../../../helpers/dtos';
 import { getPrimaryCluster } from '../../../utils/helpers';
@@ -172,6 +173,7 @@ export const useNodePlacements = (featureFlags: Record<string, any>) => {
   const resetAZ = useWatch({ name: RESET_AZ_FIELD });
   const userAZSelected = useWatch({ name: USER_AZSELECTED_FIELD });
   const communicationPorts = useWatch({ name: COMMUNICATION_PORTS_FIELD });
+  const useNetworkAccess = useWatch({ name: EXPOSING_SERVICE_FIELD });
 
   const cluster =
     clusterType === ClusterType.PRIMARY
@@ -191,7 +193,8 @@ export const useNodePlacements = (featureFlags: Record<string, any>) => {
     tserverK8SNodeResourceSpec,
     masterK8SNodeResourceSpec,
     useSpotInstance,
-    communicationPorts
+    communicationPorts,
+    useNetworkAccess
   });
 
   let payload: any = {};
@@ -316,7 +319,8 @@ export const useNodePlacements = (featureFlags: Record<string, any>) => {
       tserverK8SNodeResourceSpec,
       masterK8SNodeResourceSpec,
       useSpotInstance,
-      communicationPorts
+      communicationPorts,
+      useNetworkAccess
     };
     if (_.isEmpty(regionList)) {
       setValue(PLACEMENTS_FIELD, [], { shouldValidate: true });
@@ -348,7 +352,8 @@ export const useNodePlacements = (featureFlags: Record<string, any>) => {
     tserverK8SNodeResourceSpec,
     masterK8SNodeResourceSpec,
     useSpotInstance,
-    communicationPorts
+    communicationPorts,
+    useNetworkAccess
   ]);
   return { isLoading: isFetching };
 };

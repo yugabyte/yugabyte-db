@@ -1,4 +1,4 @@
-## yba ear hashicorp create
+## yba ear hashicorp-vault create
 
 Create a YugabyteDB Anywhere Hashicorp Vault encryption at rest configuration
 
@@ -7,7 +7,14 @@ Create a YugabyteDB Anywhere Hashicorp Vault encryption at rest configuration
 Create a Hashicorp Vault encryption at rest configuration in YugabyteDB Anywhere
 
 ```
-yba ear hashicorp create [flags]
+yba ear hashicorp-vault create [flags]
+```
+
+### Examples
+
+```
+yba ear hashicorp-vault create --name <config-name> \
+	--token <token> --vault-address <vault-address>
 ```
 
 ### Options
@@ -41,5 +48,5 @@ yba ear hashicorp create [flags]
 
 ### SEE ALSO
 
-* [yba ear hashicorp](yba_ear_hashicorp.md)	 - Manage a YugabyteDB Anywhere Hashicorp Vault encryption at rest (EAR) configuration
+* [yba ear hashicorp-vault](yba_ear_hashicorp-vault.md)	 - Manage a YugabyteDB Anywhere Hashicorp Vault encryption at rest (EAR) configuration
 

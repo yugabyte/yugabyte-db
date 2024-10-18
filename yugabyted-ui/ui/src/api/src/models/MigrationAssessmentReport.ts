@@ -34,6 +34,12 @@ import type { UnsupportedSqlInfo } from './UnsupportedSqlInfo';
 export interface MigrationAssessmentReport  {
   /**
    * 
+   * @type {boolean}
+   * @memberof MigrationAssessmentReport
+   */
+  assessment_status?: boolean;
+  /**
+   * 
    * @type {AssessmentReportSummary}
    * @memberof MigrationAssessmentReport
    */

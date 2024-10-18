@@ -209,21 +209,43 @@ Result<const rapidjson::Value&> GetMember(const rapidjson::Value& root, const ch
   return it->value;
 }
 
-Result<std::string_view> GetMemberAsStr(const rapidjson::Value& root, const char* name) {
+template <typename T>
+Result<T> GetMemberAsType(
+    const rapidjson::Value& root, const char* name,
+    std::function<bool(const rapidjson::Value&)> is_valid_type_func,
+    std::function<T(const rapidjson::Value&)> extract_value_func) {
   const auto& member = VERIFY_RESULT_REF(GetMember(root, name));
-  if (!member.IsString()) {
+  if (!is_valid_type_func(member)) {
     return BadTypeStatus(member);
   }
-  return std::string_view(member.GetString(), member.GetStringLength());
+  return extract_value_func(member);
+}
+
+Result<uint32_t> GetMemberAsUint(rapidjson::Value& document, const char* element_name) {
+  return GetMemberAsType<uint32_t>(
+      document, element_name, [](const auto& value) { return value.IsUint(); },
+      [](const auto& value) { return value.GetUint(); });
+}
+
+Result<uint64_t> GetMemberAsUint64(rapidjson::Document& document, const char* element_name) {
+  return GetMemberAsType<uint64_t>(
+      document, element_name, [](const auto& value) { return value.IsUint64(); },
+      [](const auto& value) { return value.GetUint64(); });
+}
+
+Result<std::string_view> GetMemberAsStr(const rapidjson::Value& root, const char* name) {
+  return GetMemberAsType<std::string_view>(
+      root, name, [](const auto& member) { return member.IsString(); },
+      [](const auto& member) {
+        return std::string_view(member.GetString(), member.GetStringLength());
+      });
 }
 
 Result<rapidjson::Value::ConstArray> GetMemberAsArray(
     const rapidjson::Value& root, const char* name) {
-  const auto& member = VERIFY_RESULT_REF(GetMember(root, name));
-  if (!member.IsArray()) {
-    return BadTypeStatus(member);
-  }
-  return member.GetArray();
+  return GetMemberAsType<rapidjson::Value::ConstArray>(
+      root, name, [](const auto& member) { return member.IsArray(); },
+      [](const auto& member) { return member.GetArray(); });
 }
 
 } // namespace yb::common

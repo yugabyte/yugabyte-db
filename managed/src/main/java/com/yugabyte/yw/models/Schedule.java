@@ -922,10 +922,11 @@ public class Schedule extends Model {
    * @param universeUUID
    * @param includeIntermediate If true, use intermediate schedule state - Creating/Editing when
    *     calculating the max value
+   * @param excludeScheduleUUID Schedule to excule from calculation
    * @return Retention value in seconds
    */
   public static Duration getMaxBackupIntervalInUniverseForPITRestore(
-      UUID universeUUID, boolean includeIntermediate) {
+      UUID universeUUID, boolean includeIntermediate, @Nullable UUID excludeScheduleUUID) {
     List<Schedule> schedules =
         getAllSchedulesByOwnerUUIDAndType(universeUUID, TaskType.CreateBackup);
     List<State> states = new ArrayList<>(Arrays.asList(State.Active, State.Stopped));
@@ -934,7 +935,7 @@ public class Schedule extends Model {
       states.add(State.Creating);
     }
     return schedules.stream()
-        .filter(s -> states.contains(s.status))
+        .filter(s -> states.contains(s.status) && !s.getScheduleUUID().equals(excludeScheduleUUID))
         .map(s -> Json.fromJson(s.getTaskParams(), BackupRequestParams.class))
         .map(ScheduleUtil::getBackupIntervalForPITRestore)
         .max(Comparator.naturalOrder())

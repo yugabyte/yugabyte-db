@@ -92,7 +92,17 @@ export const BackupStrategy = <T extends FieldValues>({
         <ul className={classes.list}>
           <Trans
             i18nKey={`${classPrefix}.helpText`}
-            components={{ li: <li />, a: <a onClick={(e) => e.stopPropagation()} href="#" /> }}
+            components={{
+              li: <li />,
+              a: (
+                <a
+                  onClick={(e) => e.stopPropagation()}
+                  href="https://docs.yugabyte.com/stable/manage/backup-restore/point-in-time-recovery/"
+                  target="_blank"
+                  rel="noreferrer"
+                />
+              )
+            }}
             t={t}
           />
         </ul>

@@ -21,9 +21,10 @@ import (
 
 // preflightNodesCmd represents the provider command
 var preflightNodesCmd = &cobra.Command{
-	Use:   "preflight",
-	Short: "Preflight check a node of a YugabyteDB Anywhere on-premises provider",
-	Long:  "Preflight check a node of a YugabyteDB Anywhere on-premises provider",
+	Use:     "preflight",
+	Short:   "Preflight check a node of a YugabyteDB Anywhere on-premises provider",
+	Long:    "Preflight check a node of a YugabyteDB Anywhere on-premises provider",
+	Example: `yba provider onprem node preflight --name <provider-name> --ip <node-ip>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {

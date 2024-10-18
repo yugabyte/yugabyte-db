@@ -10,6 +10,12 @@ Describe a storage configuration in YugabyteDB Anywhere
 yba storage-config describe [flags]
 ```
 
+### Examples
+
+```
+yba storage-config describe --name <storage-configuration-name>
+```
+
 ### Options
 
 ```

@@ -10,6 +10,12 @@ Update a GCP provider in YugabyteDB Anywhere
 yba provider gcp update [flags]
 ```
 
+### Examples
+
+```
+yba provider gcp update --name <provider-name> --new-name <new-provider-name>
+```
+
 ### Options
 
 ```

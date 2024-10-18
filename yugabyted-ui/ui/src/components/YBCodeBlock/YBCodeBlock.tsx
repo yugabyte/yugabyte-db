@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import CopyIcon from '@app/assets/copy.svg';
 
 export interface CodeBlockProps {
+  highlightSyntax?: boolean;
   showCopyButton?: boolean;
   showCopyIconButton?: boolean;
   multiBlock?: boolean;
@@ -89,11 +90,17 @@ const useStyles = makeStyles((theme) => ({
     whiteSpace: 'pre-wrap',
     margin: 0,
     lineHeight: 2.7,
-    // paddingRight: theme.spacing(8)
+  },
+  hashLine: {
+    color: 'green',
+  },
+  tagWord: {
+    color: 'blue'
   }
 }));
 
 export const YBCodeBlock: FC<CodeBlockProps> = ({
+  highlightSyntax = false,
   showCopyButton,
   showCopyIconButton,
   multiBlock,
@@ -116,9 +123,61 @@ export const YBCodeBlock: FC<CodeBlockProps> = ({
   };
 
   const copyBlock = () => {copy(ref?.current?.innerText ?? '')};
-
   const copyLineBlock = (ev: React.MouseEvent) => copy((ev?.currentTarget?.previousSibling as HTMLElement).innerText);
+  const specialChars: string[] = [' ','\t',',',';','.',':','!','?','(',')','[',']','{','}','"',"'"];
+  const parseText = (text: string) => {
+    return text.split('\n').map((line, lineIndex) => {
+      const trimmedLine = line.trim();
+      const isHashLine = trimmedLine.startsWith('#');
+      const formattedWords = [];
+      let currentWord = '';
+      let tagStart = -1;
 
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+
+        if (specialChars.includes(char) === true) {
+          if (currentWord) {
+            formattedWords.push(currentWord);
+            currentWord = '';
+            tagStart = -1;
+          }
+          formattedWords.push(char);
+        } else {
+          if (char === '<' && currentWord === '') {
+            tagStart = i;
+          }
+          currentWord += char;
+          if (char === '>' && tagStart !== -1) {
+            formattedWords.push(
+              <span key={`word-${lineIndex}-${formattedWords.length}`} className={classes.tagWord}>
+                {currentWord}
+              </span>
+            );
+            currentWord = '';
+            tagStart = -1;
+          }
+        }
+      }
+
+      if (currentWord) {
+        formattedWords.push(currentWord);
+      }
+
+      const lineContent = isHashLine ? (
+        <span className={classes.hashLine}>{formattedWords}</span>
+      ) : (
+        formattedWords
+      );
+
+      return (
+        <span key={`${lineIndex}`} className={clsx({ [classes.hashLine]: isHashLine })}>
+          {lineContent}
+          <br />
+        </span>
+      );
+    });
+  };
   return (
     <>
       <Box className={clsx(classes.block, blockClassName)}>
@@ -130,7 +189,9 @@ export const YBCodeBlock: FC<CodeBlockProps> = ({
         {multiBlock && Array.isArray(text) ? (
           text.map((val: string | React.ReactElement, index: number) => (
             <code className={clsx(classes.code, classes.hoverBlock)} key={`code-block-line-${String(index + 1)}`}>
-              <pre className={classes.innerBlock}>{val}</pre>
+              <pre className={classes.innerBlock}>
+                {(highlightSyntax === true && typeof val === "string") ? parseText(val) : val}
+              </pre>
               {showCopyButton && (
                 <YBButton
                   variant="ghost"
@@ -145,7 +206,7 @@ export const YBCodeBlock: FC<CodeBlockProps> = ({
         ) : (
           <code className={clsx(classes.code, codeClassName)}>
             <pre className={clsx(classes.innerBlock, preClassName)} ref={ref}>
-              {text}
+              {(typeof text === 'string' && highlightSyntax === true) ? parseText(text) : text}
             </pre>
             {showCopyButton && (
               <YBButton variant="ghost" className={classes.copyButton} onClick={copyBlock}>

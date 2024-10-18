@@ -12,9 +12,11 @@ import (
 
 // deleteNFSStorageConfigurationCmd represents the storage command
 var deleteNFSStorageConfigurationCmd = &cobra.Command{
-	Use:   "delete",
-	Short: "Delete a NFS YugabyteDB Anywhere storage configuration",
-	Long:  "Delete a NFS storage configuration in YugabyteDB Anywhere",
+	Use:     "delete",
+	Aliases: []string{"remove", "rm"},
+	Short:   "Delete a NFS YugabyteDB Anywhere storage configuration",
+	Long:    "Delete a NFS storage configuration in YugabyteDB Anywhere",
+	Example: `yba storage-config nfs delete --name <storage-configuration-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		storageconfigurationutil.DeleteStorageConfigurationValidation(cmd)
 	},

@@ -33,6 +33,7 @@ const useStyles = makeStyles((theme) => ({
     display: "flex",
     gap: theme.spacing(0.5),
     alignItems: "center",
+    justifyContent: "center",
     width: "fit-content",
     "& span:first-letter": {
       textTransform: "uppercase",
@@ -69,7 +70,7 @@ const useStyles = makeStyles((theme) => ({
     color: theme.palette.success[700],
   },
   successIcon: {
-    color: theme.palette.success[700],
+    color: theme.palette.success[500],
   },
   error: {
     background: theme.palette.error[100],

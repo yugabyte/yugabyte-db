@@ -22,6 +22,13 @@ var createCustomCAEITCmd = &cobra.Command{
 	Aliases: []string{"add", "upload"},
 	Short:   "Create a YugabyteDB Anywhere Custom CA encryption in transit configuration",
 	Long:    "Create a Custom CA encryption in transit configuration in YugabyteDB Anywhere",
+	Example: `yba eit custom-ca create --name <config-name> \
+	--root-cert-file-path <root-cert-file-path> \
+	--root-ca-file-path-on-node <root-ca-file-path-on-node> \
+	--node-cert-file-path-on-node <node-cert-file-path-on-node> \
+	--node-key-file-path-on-node <node-key-file-path-on-node> \
+	--client-cert-file-path-on-node <client-cert-file-path-on-node> \
+	--client-key-file-path-on-node <client-key-file-path-on-node>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		eitutil.CreateEITValidation(cmd)
 	},

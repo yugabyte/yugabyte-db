@@ -10,6 +10,14 @@ Update an AWS encryption at rest (EAR) configuration in YugabyteDB Anywhere
 yba ear aws update [flags]
 ```
 
+### Examples
+
+```
+yba ear aws update --name <config-name> \
+	--access-key-id <access-key-id> --secret-access-key <secret-access-key>\
+	--endpoint <endpoint>
+```
+
 ### Options
 
 ```

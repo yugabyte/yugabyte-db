@@ -6,7 +6,6 @@ import { MigrationAssessmentReport, useGetMigrationAssessmentInfoQuery } from "@
 import { MigrationAssessmentSummary } from "./AssessmentSummary";
 import { MigrationSourceEnv } from "./AssessmentSourceEnv";
 import { MigrationAssessmentRecommendation } from "./AssessmentRecommendation";
-import { MigrationAssessmentRefactoring } from "./AssessmentRefactoring";
 import { GenericFailure, YBButton, YBCodeBlock } from "@app/components";
 import RefreshIcon from "@app/assets/refresh.svg";
 import BookIcon from "@app/assets/book.svg";
@@ -129,36 +128,26 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
         </Box>
       )}
 
-      {!(isFetching || isFetchingAPI || isErrorMigrationAssessmentInfo) && !isNewMigration && (
+      {!(isFetching || isFetchingAPI || isErrorMigrationAssessmentInfo) && !isNewMigration &&
+          newMigrationAPI?.assessment_status && (
         <>
-          <MigrationAssessmentSummary
-            complexity={
-              newMigrationAPI?.summary?.migration_complexity || migration?.complexity || "N/A"
-            }
-            estimatedMigrationTime={newMigrationAPI?.summary?.estimated_migration_time || "N/A"}
-            summary={
-              newMigrationAPI?.summary?.summary ||
-              t("clusterDetail.voyager.planAndAssess.summary.unavailable")
-            }
-          />
-
-          <MigrationSourceEnv
-            vcpu={newMigrationAPI?.source_environment?.total_vcpu ?? "N/A"}
-            memory={newMigrationAPI?.source_environment?.total_memory ?? "N/A"}
-            disk={newMigrationAPI?.source_environment?.total_disk_size ?? "N/A"}
-            connectionCount={newMigrationAPI?.source_environment?.no_of_connections ?? "N/A"}
-            tableSize={newMigrationAPI?.source_database?.table_size ?? "N/A"}
-            rowCount={newMigrationAPI?.source_database?.table_row_count?.toString() ?? "N/A"}
-            totalSize={newMigrationAPI?.source_database?.total_table_size ?? "N/A"}
-            indexSize={newMigrationAPI?.source_database?.total_index_size ?? "N/A"}
-            migration={migration}
-          />
-
+          <Box display="flex" flexDirection="row" gridGap={theme.spacing(2)} alignItems="stretch">
+            <Box flexBasis="100%">
+              <MigrationAssessmentSummary
+                complexity={
+                  newMigrationAPI?.summary?.migration_complexity || migration?.complexity || "N/A"
+                }
+                estimatedMigrationTime={newMigrationAPI?.summary?.estimated_migration_time || "N/A"}
+              />
+            </Box>
+            <Box flexBasis="100%">
+              <MigrationSourceEnv
+                migration={migration}
+              />
+            </Box>
+          </Box>
           <MigrationAssessmentRecommendation
             migration={migration}
-            recommendation={
-              newMigrationAPI?.target_recommendations?.recommendation_summary ?? "N/A"
-            }
             nodeCount={
               newMigrationAPI?.target_recommendations?.target_cluster_recommendation?.num_nodes ??
               "N/A"
@@ -195,9 +184,6 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
               newMigrationAPI?.target_recommendations?.target_schema_recommendation
                 ?.total_size_sharded_tables ?? "N/A"
             }
-          />
-
-          <MigrationAssessmentRefactoring
             sqlObjects={newMigrationAPI?.recommended_refactoring?.refactor_details}
             unsupportedDataTypes={newMigrationAPI?.unsupported_data_types}
             unsupportedFeatures={newMigrationAPI?.unsupported_features}
@@ -206,7 +192,18 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
         </>
       )}
 
-      {isNewMigration && (<>
+      {!isFetching && !isFetchingAPI &&
+        migration?.migration_phase === 1 && migration?.status === "IN PROGRESS" && (
+          <StepCard
+            title={t("clusterDetail.voyager.planAndAssess.assessMigration")}
+            isLoading
+            showInProgress
+          />
+      )}
+
+      {(isNewMigration ||
+        (!isFetching && !isFetchingAPI && !newMigrationAPI?.assessment_status)) &&
+        !(migration?.migration_phase === 1 && migration?.status === "IN PROGRESS") && (<>
         <Box display="flex" flexDirection="column" gridGap={theme.spacing(2)}>
           <StepCard
             title={t("clusterDetail.voyager.planAndAssess.installVoyager")}
@@ -285,6 +282,7 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
                   }
                   showCopyIconButton={true}
                   preClassName={classes.commandCodeBlock}
+                  highlightSyntax={true}
                 />
                 <Box mt={2} mb={2} width="fit-content">
                   <Link

@@ -10,6 +10,16 @@ Create an universe backup in YugabyteDB Anywhere
 yba backup create [flags]
 ```
 
+### Examples
+
+```
+yba backup create --universe-name <universe-name> \
+	--storage-config-name <storage-config-name> \
+	--table-type <table-type> \
+	--time-before-delete-in-ms 3600000 \
+	--keyspace-info "keyspace-name=<keyspace-name>"
+```
+
 ### Options
 
 ```

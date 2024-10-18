@@ -85,6 +85,7 @@ models/model_target_cluster_spec.go
 models/model_target_recommendation_item.go
 models/model_target_schema_recommendations.go
 models/model_unsupported_sql_info.go
+models/model_unsupported_sql_object_data.go
 models/model_unsupported_sql_with_details.go
 models/model_version_info.go
 models/model_voyager_migrate_data_metrics.go

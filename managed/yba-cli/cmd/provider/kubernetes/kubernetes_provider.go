@@ -15,8 +15,8 @@ import (
 // K8sProviderCmd represents the provider command
 var K8sProviderCmd = &cobra.Command{
 	Use:        util.K8sProviderType,
-	GroupID:    "type",
 	Aliases:    []string{"k8s"},
+	GroupID:    "type",
 	SuggestFor: []string{"gke", "eks", "aks"},
 	Short:      "Manage a YugabyteDB Anywhere K8s provider",
 	Long:       "Manage a K8s provider in YugabyteDB Anywhere",

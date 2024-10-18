@@ -17,6 +17,7 @@ var describeHashicorpVaultEARCmd = &cobra.Command{
 		"Encryption In Transit (EAR) configuration",
 	Long: "Describe a Hashicorp Vault YugabyteDB Anywhere " +
 		"Encryption In Transit (EAR) configuration",
+	Example: `yba ear hashicorp-vault describe --name <config-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		earutil.DescribeEARValidation(cmd)
 	},

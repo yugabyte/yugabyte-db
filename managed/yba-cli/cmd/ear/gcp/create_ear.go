@@ -22,6 +22,10 @@ var createGCPEARCmd = &cobra.Command{
 	Aliases: []string{"add"},
 	Short:   "Create a YugabyteDB Anywhere GCP encryption at rest configuration",
 	Long:    "Create a GCP encryption at rest configuration in YugabyteDB Anywhere",
+	Example: `yba ear gcp create --name <config-name> \
+	--credentials-file-path <credentials-file-path> \
+	--key-ring-name <key-ring-name> --crypto-key-name <crypto-key-name> \
+	--protection-level <protection-level>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		earutil.CreateEARValidation(cmd)
 	},

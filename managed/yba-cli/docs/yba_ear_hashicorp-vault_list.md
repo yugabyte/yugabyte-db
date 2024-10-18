@@ -1,20 +1,25 @@
-## yba ear hashicorp delete
+## yba ear hashicorp-vault list
 
-Delete a YugabyteDB Anywhere Hashicorp Vault encryption at rest configuration
+List Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EAR) configurations
 
 ### Synopsis
 
-Delete a Hashicorp Vault encryption at rest configuration in YugabyteDB Anywhere
+List Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EAR) configurations
 
 ```
-yba ear hashicorp delete [flags]
+yba ear hashicorp-vault list [flags]
+```
+
+### Examples
+
+```
+yba ear hashicorp-vault list
 ```
 
 ### Options
 
 ```
-  -f, --force   [Optional] Bypass the prompt for non-interactive usage.
-  -h, --help    help for delete
+  -h, --help   help for list
 ```
 
 ### Options inherited from parent commands
@@ -34,5 +39,5 @@ yba ear hashicorp delete [flags]
 
 ### SEE ALSO
 
-* [yba ear hashicorp](yba_ear_hashicorp.md)	 - Manage a YugabyteDB Anywhere Hashicorp Vault encryption at rest (EAR) configuration
+* [yba ear hashicorp-vault](yba_ear_hashicorp-vault.md)	 - Manage a YugabyteDB Anywhere Hashicorp Vault encryption at rest (EAR) configuration
 

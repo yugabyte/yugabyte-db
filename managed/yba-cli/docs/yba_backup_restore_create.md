@@ -10,6 +10,17 @@ Restore an universe backup in YugabyteDB Anywhere
 yba backup restore create [flags]
 ```
 
+### Examples
+
+```
+yba backup restore create --universe-name <universe-name> \
+	--storage-config-name <storage-config-name> \
+	--keyspace-info \
+	"keyspace-name=<keyspace-name-1>;storage-location=<storage-location-1>;backup-type=ysql" \
+	--keyspace-info \
+	"keyspace-name=<keyspace-name-2>;storage-location=<storage-location-2>;backup-type=ysql"
+```
+
 ### Options
 
 ```

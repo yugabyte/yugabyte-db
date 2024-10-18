@@ -1,20 +1,26 @@
-## yba eit hashicorp update
+## yba ear hashicorp-vault delete
 
-Update a YugabyteDB Anywhere Hashicorp Vault encryption in transit configuration
+Delete a YugabyteDB Anywhere Hashicorp Vault encryption at rest configuration
 
 ### Synopsis
 
-Update a Hashicorp Vault encryption in transit configuration in YugabyteDB Anywhere
+Delete a Hashicorp Vault encryption at rest configuration in YugabyteDB Anywhere
 
 ```
-yba eit hashicorp update [flags]
+yba ear hashicorp-vault delete [flags]
+```
+
+### Examples
+
+```
+yba ear hashicorp-vault delete --name <config-name>
 ```
 
 ### Options
 
 ```
-      --token string   [Required] Update Hashicorp Vault Token.
-  -h, --help           help for update
+  -f, --force   [Optional] Bypass the prompt for non-interactive usage.
+  -h, --help    help for delete
 ```
 
 ### Options inherited from parent commands
@@ -34,5 +40,5 @@ yba eit hashicorp update [flags]
 
 ### SEE ALSO
 
-* [yba eit hashicorp](yba_eit_hashicorp.md)	 - Manage a YugabyteDB Anywhere Hashicorp Vault encryption in transit (EIT) certificate configuration
+* [yba ear hashicorp-vault](yba_ear_hashicorp-vault.md)	 - Manage a YugabyteDB Anywhere Hashicorp Vault encryption at rest (EAR) configuration
 

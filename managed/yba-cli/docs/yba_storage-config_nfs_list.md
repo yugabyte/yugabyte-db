@@ -10,6 +10,12 @@ List NFS YugabyteDB Anywhere storage-configurations
 yba storage-config nfs list [flags]
 ```
 
+### Examples
+
+```
+yba storage-config nfs list
+```
+
 ### Options
 
 ```
