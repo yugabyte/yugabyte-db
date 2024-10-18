@@ -188,11 +188,12 @@ If no servers are available, the request may return with a failure.
 Consider a cluster with three primary nodes across three zones (zoneA, zoneB, and zoneC); and three read replica nodes in zoneB, zoneC, and zoneD.
 
 The following shows how nodes are selected for new connections, depending on the load balance and topology key settings.
-The property names used are for the Java smart driver; the property names for other smart drivers may be slightly different.
+
+Note that the property names use the Java convention, and property names for other smart drivers may be slightly different.
+
 The property `fallback-to-topology-keys-only` is ignored when either the `topology-keys` empty or when `load-balance` is set to `prefer-primary` or `prefer-rr`.
 
-{{<tabpane text=true >}}
-{{% tab header="No topology-keys" lang="no-keys" %}}
+#### No topology keys
 
 When `topology-keys` is not specified, nodes are selected as follows.
 
@@ -204,14 +205,16 @@ When `topology-keys` is not specified, nodes are selected as follows.
 | prefer-primary | <ol><li>Primary nodes in all zones</li><li>If none, then read replica nodes in entire cluster</li> |
 | prefer-rr | <ol><li>Read replica nodes in all zones</li><li>If none, then primary nodes in entire cluster</li> |
 
-{{% /tab %}}
-{{% tab header="topology-keys specified" lang="100-wh" %}}
+#### Topology keys
 
-When `topology-keys` is specified as `zoneA:1,zoneB:2`, nodes are selected as follows.
+When `topology-keys` is specified, nodes are selected as follows.
 
 {{<tabpane text=true >}}
 
-{{% tab header="fallback-to-topology-keys-only = false (default)" lang="100-wh" %}}
+{{% tab header="No fallback" lang="fallback-false" %}}
+
+When `topology-keys` is specified as `zoneA:1,zoneB:2`, and `fallback-to-topology-keys-only` is false (the default), nodes are selected as follows.
+
 | Load balance setting | Connect to |
 | :--- | :--- |
 | true / any | <ol><li>Any nodes in zoneA</li><li>If none, then any nodes in zoneB</li><li>If none, then any nodes in entire cluster (all zones) |
@@ -221,7 +224,7 @@ When `topology-keys` is specified as `zoneA:1,zoneB:2`, nodes are selected as fo
 | prefer-rr | <ol><li>Read replica nodes in zoneB</li><li>If none, read replica nodes in entire cluster</li><li>If none, then primary nodes in entire cluster |
 
 {{% /tab %}}
-{{% tab header="fallback-to-topology-keys-only = true" lang="100-wh" %}}
+{{% tab header="Fall back" lang="fallback-true" %}}
 
 When `topology-keys` is specified as `zoneA:1,zoneB:2`, and `fallback-to-topology-keys-only` is true, nodes are selected as follows.
 
@@ -233,8 +236,6 @@ When `topology-keys` is specified as `zoneA:1,zoneB:2`, and `fallback-to-topolog
 | prefer-primary | <ol><li>Primary nodes in zoneA</li><li>If none, primary nodes in zoneB</li><li>If none, then primary nodes in entire cluster</li><li>If none, then read replica nodes in entire cluster |
 | prefer-rr | <ol><li>Read replica nodes in zoneB</li><li>If none, read replica nodes in entire cluster</li><li>If none, then primary nodes in entire cluster |
 
-{{% /tab %}}
-{{</tabpane >}}
 {{% /tab %}}
 {{</tabpane >}}
 
