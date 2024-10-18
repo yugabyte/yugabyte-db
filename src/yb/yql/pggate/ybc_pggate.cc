@@ -97,7 +97,7 @@ DEFINE_UNKNOWN_bool(ysql_disable_server_file_access, false,
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_profile, false, "Enable PROFILE feature.");
 
-DEFINE_test_flag(string, ysql_conn_mgr_dowarmup_all_pools_mode, "random",
+DEFINE_test_flag(string, ysql_conn_mgr_dowarmup_all_pools_mode, "none",
   "Enable precreation of server connections in every pool in Ysql Connection Manager and "
   "choose the mode of attachment of idle server connections to clients to serve their queries. "
   "ysql_conn_mgr_dowarmup is responsible for creating server connections only in "
