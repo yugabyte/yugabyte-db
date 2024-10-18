@@ -151,15 +151,15 @@ size_t PerTableLoadState::GetLeaderLoad(const TabletServerId& ts_uuid) const {
 bool PerTableLoadState::ShouldSkipReplica(const TabletReplica& replica) {
   bool is_replica_live = IsTsInLivePlacement(replica.ts_desc);
   // Ignore read replica when balancing live nodes.
-  if (options_->type == LIVE && !is_replica_live) {
+  if (options_->type == ReplicaType::kLive && !is_replica_live) {
     return true;
   }
   // Ignore live replica when balancing read replicas.
-  if (options_->type == READ_ONLY && is_replica_live) {
+  if (options_->type == ReplicaType::kReadOnly && is_replica_live) {
     return true;
   }
   // Ignore read replicas from other clusters.
-  if (options_->type == READ_ONLY && !is_replica_live) {
+  if (options_->type == ReplicaType::kReadOnly && !is_replica_live) {
     const string& placement_uuid = replica.ts_desc->placement_uuid();
     if (placement_uuid != options_->placement_uuid) {
       return true;
@@ -434,7 +434,7 @@ void PerTableLoadState::UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc
 
   bool ts_in_live_placement = IsTsInLivePlacement(ts_desc.get());
   switch (options_->type) {
-    case LIVE: {
+    case ReplicaType::kLive: {
       if (!ts_in_live_placement) {
         VLOG(3) << "TS " << ts_uuid << " is in live placement but this is a read only "
                 << "run.";
@@ -442,7 +442,7 @@ void PerTableLoadState::UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc
       }
       break;
     }
-    case READ_ONLY: {
+    case ReplicaType::kReadOnly: {
       if (ts_in_live_placement) {
         VLOG(3) << "TS " << ts_uuid << " is in read-only placement but this is a live "
                 << "run.";
@@ -461,14 +461,14 @@ void PerTableLoadState::UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc
     }
   }
   sorted_load_.push_back(ts_uuid);
-  if (options_->type == READ_ONLY) {
+  if (options_->type == ReplicaType::kReadOnly) {
     return;
   }
 
   // Add this tablet server for leader load-balancing only if it is part of the live cluster, is
   // not blacklisted and it has heartbeated recently enough to be considered responsive for leader
   // balancing. Also, don't add it if isn't live or hasn't reported all its tablets.
-  if (options_->type == LIVE &&
+  if (options_->type == ReplicaType::kLive &&
       !is_blacklisted &&
       ts_desc->TimeSinceHeartbeat().ToMilliseconds() <
           FLAGS_leader_balance_unresponsive_timeout_ms) {
@@ -508,23 +508,34 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
     VLOG(4) << "Tablet " << tablet_id << " has already been added once skipping another ADD";
     return false;
   }
+
   // We do not add load to blacklisted servers.
   if (global_state_->blacklisted_servers_.count(to_ts)) {
     VLOG(4) << "TS " << to_ts << " is blacklisted, so cannot add tablet " << tablet_id;
     return false;
   }
+
   // We cannot add a tablet to a tablet server if it is already serving it.
   if (ts_meta.running_tablets.count(tablet_id) || ts_meta.starting_tablets.count(tablet_id)) {
     VLOG(4) << "TS " << to_ts << " already has one replica either starting or running of tablet "
             << tablet_id;
     return false;
   }
+
   // If we ask to use placement information, check against it.
   if (placement_info && !GetValidPlacement(to_ts, placement_info).has_value()) {
     YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 30, 4) << "tablet server " << to_ts << " has placement info "
         << "incompatible with tablet " << tablet_id << ". Not allowing it to host this tablet.";
     return false;
   }
+
+  if (ts_meta.starting_tablets.size() >=
+      static_cast<size_t>(options_->kMaxInboundRemoteBootstrapsPerTs)) {
+    VLOG(4) << "TS " << to_ts << " already has " << ts_meta.starting_tablets.size()
+            << " starting tablets. Not allowing it to host another tablet.";
+    return false;
+  }
+
   // If this server has a pending tablet delete for this tablet, don't use it.
   auto ts_it = global_state_->pending_deletes_.find(to_ts);
   if (ts_it != global_state_->pending_deletes_.end() && ts_it->second.contains(tablet_id)) {

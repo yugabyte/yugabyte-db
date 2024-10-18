@@ -156,12 +156,14 @@ class LoadBalancerMockedBase : public YBTest {
     return task_added;
   }
 
+  // cb_.HandleAddReplicas modifies state to account for the corresponding add.
   Result<bool> HandleAddReplicas(
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts)
       NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {
     return cb_.HandleAddReplicas(out_tablet_id, out_from_ts, out_to_ts);
   }
 
+  // cb_.HandleRemoveReplicas modifies state to account for the corresponding add.
   Result<bool> HandleRemoveReplicas(TabletId* out_tablet_id, TabletServerId* out_from_ts)
       NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {
     return cb_.HandleRemoveReplicas(out_tablet_id, out_from_ts);
@@ -328,6 +330,10 @@ class LoadBalancerMockedBase : public YBTest {
   // Clear the tablets_added_ field from the state, used for testing.
   void ClearTabletsAddedForTest() {
     cb_.state_->tablets_added_.clear();
+  }
+
+  Options* GetOptions() {
+    return cb_.state_->options_;
   }
 
   const TableId kTableId;
