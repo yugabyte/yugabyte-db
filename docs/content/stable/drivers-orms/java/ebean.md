@@ -110,7 +110,7 @@ To begin using Ebean in the application, do the following:
 1. Add the following dependency for the YugabyteDB JDBC driver to the `build.sbt` file.
 
     ```sbt
-    libraryDependencies += "com.yugabyte" % "jdbc-yugabytedb" % "42.3.5-yb-8"
+    libraryDependencies += "com.yugabyte" % "jdbc-yugabytedb" % "42.7.3-yb-1"
     ```
 
 1. Enable the PlayEbean plugin in the `build.sbt` file by adding `PlayEbean` as follows:
