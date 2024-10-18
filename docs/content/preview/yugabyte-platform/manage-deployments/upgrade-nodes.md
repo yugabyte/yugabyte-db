@@ -53,6 +53,10 @@ Before you start, make sure that all nodes in the universe are running correctly
 
 Typically, the following sequence will be automated using scripts that call the YugabyteDB Anywhere REST APIs.
 
+{{< tabpane text=true >}}
+
+  {{% tab header="In place" lang="inplace" %}}
+
 For each node in the universe, use the following general procedure:
 
 1. Stop the processes for the node to be patched.
@@ -98,5 +102,49 @@ For each node in the universe, use the following general procedure:
     ```
 
     Check the return status to confirm that the node is started.
+
+  {{% /tab %}}
+
+  {{% tab header="Swap nodes" lang="swap" %}}
+
+For each node in the universe, use the following general procedure:
+
+1. Decommission the node to be patched.
+
+    In YugabyteDB Anywhere, navigate to the universe **Nodes** tab, click the node **Actions**, and choose **Release Node**.
+
+    If using the YugabyteDB Anywhere API, use the following command:
+
+    ```sh
+    curl '<platform-url>/api/v1/customers/<customer_uuid>/universes/<universe_uuid>/nodes/<node_name>' -X 'PUT' -H 'X-AUTH-YW-API-TOKEN: <api-token>' -H 'Content-Type: application/json' -H 'Accept: application/json, text/plain, */*' \
+    --data-raw '{"nodeAction":"RELEASE"}'
+    ```
+
+    Check the return status to confirm that the node is decommissioned.
+
+1. Remove the target node from the on-premises provider so that it's no longer considered to be available for use.
+
+    In YugabyteDB Anywhere, Navigate to **Integrations > Infrastructure > On-Premises Datacenters** tab , select the provider, and select **Instances**. Then click **Actions** for the node to patch and choose **Delete Node**.
+
+1. Perform the steps to update or patch the Linux OS.
+
+    Two common ways to patch or upgrade the OS of VMs include the following:
+
+    - Inline patching - You modify the Linux OS binaries in place (for example, using yum).
+    - Boot disk replacement - You create a separate new VM with a virtual disk containing the new Linux OS patch or upgrade, disconnect the virtual disk from the new VM, and use it to replace the DB node's boot disk. This is typically used with a hypervisor or public cloud.
+
+        If the node uses assisted or fully manual provisioning, after replacing the boot disk, re-provision the node by following the [manual provisioning steps](../../configure-yugabyte-platform/on-premises-script/).
+
+    Ensure that the node retains its IP addresses after the patching of the Linux OS. Also ensure that the existing data volumes on the node remain untouched by the OS patching mechanism.
+
+1. Add the node back to the on-premises provider.
+
+    In YugabyteDB Anywhere, Navigate to **Integrations > Infrastructure > On-Premises Datacenters** tab , select the provider, and select **Instances**. Then click **Add Instances**, enter the IP address of the node and click **Add**.
+
+1. Add the node back to the universe which will also re-provision the node.
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
 
 When finished, you can confirm all nodes in the universe are running correctly in YugabyteDB Anywhere by navigating to the universe **Nodes** tab.
