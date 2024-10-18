@@ -68,7 +68,7 @@ DEFINE_RUNTIME_int32(load_balancer_max_concurrent_tablet_remote_bootstraps_per_t
 
 DEFINE_RUNTIME_int32(load_balancer_max_over_replicated_tablets, 1,
     "Maximum number of running tablet replicas that are allowed to be over the configured "
-    "replication factor.");
+    "replication factor per table.");
 
 DEFINE_RUNTIME_int32(load_balancer_max_concurrent_adds, 1,
     "Maximum number of tablet peer replicas to add in any one run of the load balancer.");
