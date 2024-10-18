@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB Anywhere installations include configuration settings, certificates and keys, and other components required for creating and managing YugabyteDB universes.
+Your YugabyteDB Anywhere installation includes provider configurations, KMS configurations, certificates, users, roles, and other components required for managing YugabyteDB universes.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
@@ -36,9 +36,9 @@ YugabyteDB Anywhere installations include configuration settings, certificates a
   </li>
 </ul>
 
-If you installed YBA using [YBA installer](../../install-yugabyte-platform/install-software/installer/), use the [yba-ctl](../../install-yugabyte-platform/install-software/installer/#download-yba-installer) CLI to back up and restore your YBA installation. The CLI executes the `yb_platform_backup.sh` script to back up an existing YugabyteDB Anywhere server and restore it, when needed, for disaster recovery or migrating to a new server.
+If you installed YugabyteDB Anywhere using [YBA installer](../../install-yugabyte-platform/install-software/installer/), use the [yba-ctl](../../install-yugabyte-platform/install-software/installer/#download-yba-installer) CLI to back up and restore your YugabyteDB Anywhere installation. The CLI executes the `yb_platform_backup.sh` script to back up an existing YugabyteDB Anywhere server and restore it, when needed, for disaster recovery or migrating to a new server.
 
-## Back up YBA
+## Back up YugabyteDB Anywhere
 
 To back up your YugabyteDB Anywhere installation, perform the following steps:
 
@@ -48,30 +48,45 @@ To back up your YugabyteDB Anywhere installation, perform the following steps:
     sudo yba-ctl createBackup <output_path> [flags]
     ```
 
-    The `createBackup` command executes the `yb_platform_backup.sh` script to create a backup of your YugabyteDB Anywhere instance. Specify the `output_path` where you want the backup `.tar.gz` file to be stored.
+    The `createBackup` command executes the `yb_platform_backup.sh` script to create a backup of your YugabyteDB Anywhere instance. Specify the `output_path` where you want the backup `.tgz` file to be stored.
 
-    The following table describes optional flags you can include with the `createBackup` command.
+    The `createBackup` command creates a timestamped `tgz` file for the backup. For example:
 
-    | Flag | Description |
-    | :--- | :---------- |
-    | --data_dir string | Data directory to be backed up. (default: "/opt/yugabyte") |
-    | --exclude_prometheus | Exclude Prometheus metric data from backup. (default: false) |
-    | --exclude_releases | Exclude YugabyteDB releases from backup. (default: false) |
-    | -h, --help | Help for `createBackup`. (default: false) |
-    | --skip_restart | Don't restart processes during execution. (default: false) |
-    | --verbose | Display extra information in the output. (default: false) |
-    | -f, --force (global flag) | Run in non-interactive mode. All user confirmations are skipped. |
-    | --log_level string (global flag) | Log level for this command. Levels: panic, fatal, error, warn, info, debug, trace. (default: "info") |
+    ```sh
+    $ sudo yba-ctl createBackup ~/test_backup
+    $ ls test_backup/
+    ```
 
-1. Verify that the backup `.tar.gz` file, with the correct timestamp, is in the specified output directory.
+    ```output
+    backup_23-04-25-16-54.tgz
+    ```
+
+1. Verify that the backup file, with the correct timestamp, is in the specified output directory.
 
 1. Upload the backup file to your preferred storage location and delete it from the local disk.
 
-## Restore YBA
+### Backup options
+
+The following table describes optional flags you can include with the `createBackup` command.
+
+| Flag | Description | Default |
+| :--- | :---------- | :------ |
+| &#8209;&#8209;disable_version_check | Exclude version metadata when creating backup. | false |
+| --exclude_prometheus | Exclude Prometheus metric data from backup. | false |
+| --exclude_releases | Exclude YugabyteDB releases from backup. | false |
+| -h, --help | Help for `createBackup`. | |
+| --skip_restart | Don't restart processes during execution. | true |
+| --verbose | Display extra information in the output. | false |
+| -f, --force (global flag) | Run in non-interactive mode. All user confirmations are skipped. | |
+| --log_level (global flag) | Log level for this command.<br>Levels: panic, fatal, error, warn, info, debug, trace. | "info" |
+
+## Restore YugabyteDB Anywhere
 
 To restore the YugabyteDB Anywhere content from your saved backup, perform the following:
 
-1. Copy the backup `.tar` file from your storage location.
+1. If YugabyteDB Anywhere is not installed, [install it](../../install-yugabyte-platform/install-software/installer/) using YBA Installer.
+
+1. Copy the backup file from your storage location.
 
 1. Run the `restoreBackup` command as follows:
 
@@ -79,20 +94,27 @@ To restore the YugabyteDB Anywhere content from your saved backup, perform the f
     sudo yba-ctl restoreBackup <input_path> [flags]
     ```
 
-    The `restoreBackup` command executes the `yb_platform_backup.sh` script to restore from a previously taken backup of your YugabyteDB Anywhere instance. Specify the `input_path` to the backup `.tar.gz` file as the only argument.
+    Specify the `input_path` to the backup file as the only argument. For example:
+
+    ```sh
+    $ sudo yba-ctl restoreBackup ~/test_backup/backup_23-04-25-16-64.tgz
+    ```
+
+The `restoreBackup` command executes the `yb_platform_backup.sh` script to restore from the specified backup of your YugabyteDB Anywhere instance.
 
 When finished, the restored YugabyteDB Anywhere is ready to continue managing your universes and clusters.
 
+### Restore options
+
 The following table describes optional flags you can include with the `restoreBackup` command.
 
-| Flag | Description |
-| :--- | :---------- |
-| --destination string | Path to un-tar the backup. (default: "/opt/yugabyte") |
-| -h, --help | Help for restoreBackup. |
-| --migration | Restoring from a Replicated or Yugabundle installation. (default: false) |
-| --skip_dbdrop | Skip dropping the yugaware database before a migration restore. (default: false) |
-| --skip_restart | Don't restart processes during command execution. (default: false) |
-| --use_system_pg | Use system path's `pg_restore` as opposed to installed binary. (default: false) |
-| --verbose | Display extra information in the output. (default: false) |
-| -f, --force (global flag) | Run in non-interactive mode. All user confirmations are skipped. |
-| --log_level string (global flag) | Log level for this command. Levels: panic, fatal, error, warn, info, debug, trace. (default: "info") |
+| Flag | Description | Default |
+| :--- | :---------- | :------ |
+| -h, --help | Help for `restoreBackup`. | |
+| --migration | Restore from a Replicated installation. For information on migrating from Replicated, refer to [Migrate from Replicated](../../install-yugabyte-platform/install-software/installer#migrate-from-replicated). | false |
+| --skip_dbdrop | Skip dropping the YugabyteDB Anywhere database before a migration restore. Valid only if --migration is true. | false |
+| --skip_restart | Don't restart processes during command execution. | true |
+| &#8209;&#8209;use_system_pg | Use system path's `pg_restore` as opposed to installed binary. | false |
+| --verbose | Display extra information in the output. | false |
+| -f, --force (global flag) | Run in non-interactive mode. All user confirmations are skipped. | |
+| --log_level (global flag) | Log level for this command.<br>Levels: panic, fatal, error, warn, info, debug, trace. | "info" |

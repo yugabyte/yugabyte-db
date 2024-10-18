@@ -30,7 +30,7 @@ The YugabyteDB Helm chart has been tested with the following software versions:
 - Amazon EKS running Kubernetes 1.18 (or later) with nodes such that a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB. `m5.2xlarge` is the minimum AWS EC2 instance type that meets these criteria.
 - Helm 3.4 or later
 - YugabyteDB docker image (yugabytedb/yugabyte) 2.1.0 or later
-- For optimal performance, ensure you've set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#ulimits) on each node in your Kubernetes cluster.
+- For optimal performance, ensure you've set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#set-ulimits) on each node in your Kubernetes cluster.
 
 The following steps show how to meet these prerequisites.
 

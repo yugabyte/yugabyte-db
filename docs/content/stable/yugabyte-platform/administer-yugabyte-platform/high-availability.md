@@ -176,7 +176,7 @@ Where `path/to/server_cert.pem` is the location you provided during installation
 If the command fails, check that the certificate chain is correct. You may need to concatenate the intermediate and root certificates to create a CA trust chain. To do this, you can use the `cat` command. For example:
 
 ```sh
-cat CA_root.crt CA_intermediate.crt > CA_combined.crt
+cat CA_intermediate.crt CA_root.crt > CA_combined.crt
 ```
 
 Upload the combined certificate to the trust store and try enabling certificate validation again.
