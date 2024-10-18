@@ -90,6 +90,7 @@ interface ConnectionPoolProps {
   open: boolean;
   onClose: () => void;
   universeData: Universe;
+  isItKubernetesUniverse: boolean;
 }
 
 type ConnectionPoolFormValues = {
@@ -104,7 +105,8 @@ const MAX_PORT = 65535;
 export const EditConnectionPoolModal: FC<ConnectionPoolProps> = ({
   open,
   onClose,
-  universeData
+  universeData,
+  isItKubernetesUniverse
 }) => {
   const { t } = useTranslation();
   const classes = useStyles();
@@ -300,7 +302,7 @@ export const EditConnectionPoolModal: FC<ConnectionPoolProps> = ({
                           <Box flex={1} display={'flex'} width="300px">
                             <YBInput
                               value={value}
-                              disabled={!overRidePortsValue}
+                              disabled={!overRidePortsValue || isItKubernetesUniverse}
                               onChange={onChange}
                               onBlur={(event) => {
                                 let port =

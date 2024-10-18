@@ -10,7 +10,7 @@ import { ThirdStep } from './ThirdStep/ThirdStep';
 import { YBModal, YBButton } from '../../common/forms/fields';
 import { ROOT_URL } from '../../../config';
 import { getSupportBundles } from '../../../selector/supportBundle';
-import { isEmptyObject } from '../../../utils/ObjectUtils';
+import { isEmptyObject, createErrorMessage } from '../../../utils/ObjectUtils';
 import {
   createSupportBundle,
   listSupportBundle,
@@ -94,8 +94,10 @@ export const UniverseSupportBundle = (props) => {
 
   const saveSupportBundle = (universeUUID) => {
     dispatch(crateSupportBundle(universeUUID, payload)).then((response) => {
-      if (response.error && response?.payload?.response?.status === 403) {
-        toast.error(RBAC_ERR_MSG_NO_PERM, { autoClose: 3000 });
+      if (response.error) {
+        if (response?.payload?.response?.status === 403)
+          toast.error(RBAC_ERR_MSG_NO_PERM, { autoClose: 3000 });
+        else toast.error(createErrorMessage(response.payload), { autoClose: 3000 });
       }
       handleStepChange(stepsObj.thirdStep);
       listSupportBundle(universeUUID);

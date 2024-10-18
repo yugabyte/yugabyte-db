@@ -88,7 +88,7 @@ export const AdvancedConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
           <PGCompatibiltyField disabled={!isCreateMode} />
         </Box>
       )}
-      {isPrimary && isConnectionPoolEnabled && provider.code !== CloudType.kubernetes && (
+      {isPrimary && isConnectionPoolEnabled && (
         <Box display="flex" width="100%" mt={2.5}>
           <ConnectionPoolingField disabled={!isCreateMode} />
         </Box>

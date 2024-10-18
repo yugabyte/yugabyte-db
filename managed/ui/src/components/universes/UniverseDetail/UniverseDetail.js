@@ -1227,7 +1227,6 @@ class UniverseDetail extends Component {
                     </RbacValidator>
                   )}
                   {!universePaused &&
-                    !isItKubernetesUniverse &&
                     isConnectionPoolEnabled &&
                     isConfigureYSQLEnabled &&
                     isYSQLEnabledInUniverse &&
@@ -1670,6 +1669,7 @@ class UniverseDetail extends Component {
             this.props.getUniverseInfo(currentUniverse.data.universeUUID);
           }}
           universeData={currentUniverse.data}
+          isItKubernetesUniverse={isItKubernetesUniverse}
         />
 
         <Measure onMeasure={this.onResize.bind(this)}>
