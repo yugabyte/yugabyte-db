@@ -125,6 +125,8 @@ PGDLLEXPORT char *ApiCatalogToApiInternalSchemaName = "helio_api_internal";
 
 PGDLLEXPORT char *HelioApiInternalSchemaName = "helio_api_internal";
 
+PGDLLEXPORT char *ApiCatalogToCoreSchemaName = "helio_core";
+
 typedef struct HelioApiOidCacheData
 {
 	/* OID of the <bigint> OPERATOR(pg_catalog.=) <bigint> operator */
@@ -2950,7 +2952,7 @@ BsonInRangeIntervalFunctionId(void)
 
 	if (Cache.BsonInRangeIntervalFunctionId == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(ApiCatalogSchemaName),
+		List *functionNameList = list_make2(makeString(ApiCatalogToCoreSchemaName),
 											makeString("bson_in_range_interval"));
 		Oid paramOids[5] = { BsonTypeId(), BsonTypeId(), INTERVALOID, BOOLOID, BOOLOID };
 		bool missingOK = false;
@@ -2970,7 +2972,7 @@ BsonInRangeNumericFunctionId(void)
 
 	if (Cache.BsonInRangeNumericFunctionId == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(ApiCatalogSchemaName),
+		List *functionNameList = list_make2(makeString(ApiCatalogToCoreSchemaName),
 											makeString("bson_in_range_numeric"));
 		Oid paramOids[5] = { BsonTypeId(), BsonTypeId(), BsonTypeId(), BOOLOID, BOOLOID };
 		bool missingOK = false;

@@ -170,3 +170,22 @@ test: commands_db_stats
 test: bson_aggregation_stage_index_stats
 test: bson_aggregation_pipeline_tests_coll_agnostic
 test: commands_coll_mod
+
+test: bson_aggregation_pipeline_tests_geonear bson_aggregation_pipeline_stage_setWindowFields
+test: bson_query_modifier_orderby_tests_explain_runtime
+test: bson_query_modifier_orderby_tests_explain_index
+
+test: cursors_basic_support cursors_seqscan bson_aggregation_cursor_tests
+
+# Test is not great with concurrency with the way connections are managed and shard queries
+test: cursors_seqscan_sharded
+
+# collection_management test calls drop_database() and it causes acquiring
+# ExclusiveLock on related documents table. For this reasons, it should not
+# be run in parallel with a test that might call create_indexes() since
+# create_indexes() might deadlock with a command that acquires ExclusiveLock
+# due to the way that postgres behaves when building an index concurrently.
+#
+# See comments written for lock acquisition steps performed between Phase-1
+# and Phase-2 index builds in DefineIndex():
+test: collection_management
