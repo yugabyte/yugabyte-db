@@ -31,12 +31,15 @@ typedef struct CurrentDocumentState
 	/* Whether or not updating the current document is an upsert
 	 * operation
 	 */
-	bool isUpsert;
+	const bool isUpsert;
 
 	/* The source document used to evaluate specific update scenarios
 	 * like rename etc.
 	 */
-	pgbson *sourceDocument;
+	const pgbson *sourceDocument;
+
+	/* For the '$' positional operator, the matching index from the last array in the query filter is found and stored here for reuse in all '$' positional updates */
+	int indexOfPositionalTypeQueryFilter;
 } CurrentDocumentState;
 
 

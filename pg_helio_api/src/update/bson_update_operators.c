@@ -97,7 +97,7 @@ static bool RenameVisitTopLevelField(pgbsonelement *element, const StringView *f
 static void RenameSetTraverseErrorResult(void *state, TraverseBsonResult traverseResult);
 static bool RenameProcessIntermediateArray(void *state, const bson_value_t *value);
 
-static bson_value_t RenameSourceGetValue(pgbson *sourceDocument, const
+static bson_value_t RenameSourceGetValue(const pgbson *sourceDocument, const
 										 char *sourcePathString);
 static void ValidateAddToSetWithDollarEach(const bson_value_t *updateValue,
 										   bool *isEach,
@@ -1191,7 +1191,7 @@ ValidateBitwiseInputParams(const MongoBitwiseOperatorType operatorType,
  * BSON_TYPE_EOD
  */
 static bson_value_t
-RenameSourceGetValue(pgbson *sourceDocument, const char *sourcePathString)
+RenameSourceGetValue(const pgbson *sourceDocument, const char *sourcePathString)
 {
 	bson_iter_t sourceDocIterator;
 	PgbsonInitIterator(sourceDocument, &sourceDocIterator);

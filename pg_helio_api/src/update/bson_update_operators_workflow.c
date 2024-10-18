@@ -376,26 +376,26 @@ static bool TraverseDocumentAndApplyUpdate(bson_iter_t *sourceDocIterator,
 										   pgbson_writer *writer,
 										   const BsonUpdateIntermediatePathNode *tree,
 										   bool isRootLevel,
-										   const CurrentDocumentState *state,
+										   CurrentDocumentState *state,
 										   BsonUpdateTracker *tracker,
 										   bool hasArrayAncestors);
 static bool TraverseArrayAndApplyUpdate(bson_iter_t *sourceDocIterator,
 										pgbson_array_writer *writer,
 										const BsonUpdateIntermediatePathNode *tree,
-										const CurrentDocumentState *state,
+										CurrentDocumentState *state,
 										BsonUpdateTracker *tracker);
 static bool HandleCurrentIteratorPosition(bson_iter_t *documentIterator,
 										  const BsonUpdateIntermediatePathNode *tree,
 										  pgbson_element_writer *writer,
 										  Bitmapset **fieldHandledBitmapSet,
-										  const CurrentDocumentState *state,
+										  CurrentDocumentState *state,
 										  BsonUpdateTracker *tracker,
 										  bool isArray, bool hasArrayAncestors,
 										  StringView *fieldPath);
 static bool IsNodeMatchForIteratorPath(const BsonPathNode *node,
 									   const StringView *fieldPath,
 									   bool isArray,
-									   const CurrentDocumentState *state,
+									   CurrentDocumentState *state,
 									   const bson_value_t *currentValue);
 static bool HandleUnresolvedDocumentFields(const BsonUpdateIntermediatePathNode *tree,
 										   Bitmapset *fieldBitMapSet,
@@ -597,7 +597,7 @@ GetRelativePathUntilField(const BsonPathNode *node)
 inline static bool
 IsAnErrorForIntermediateNodeOfDollarRenameOp(const BsonPathNode *
 											 sourceOrTargetNodeForRenameOP,
-											 pgbson *sourceDoc)
+											 const pgbson *sourceDoc)
 {
 	/* for any operator other than $rename, below value will be NULL and return false */
 	if (sourceOrTargetNodeForRenameOP == NULL)
@@ -686,7 +686,8 @@ ProcessUpdateOperatorWithState(pgbson *sourceDoc,
 	{
 		.documentId = documentId,
 		.isUpsert = isUpsert,
-		.sourceDocument = sourceDoc
+		.sourceDocument = sourceDoc,
+		.indexOfPositionalTypeQueryFilter = -1
 	};
 
 	PgbsonInitIterator(sourceDoc, &docIterator);
@@ -1526,7 +1527,7 @@ TraverseDocumentAndApplyUpdate(bson_iter_t *sourceDocIterator,
 							   pgbson_writer *writer,
 							   const BsonUpdateIntermediatePathNode *tree,
 							   bool isRootLevel,
-							   const CurrentDocumentState *state,
+							   CurrentDocumentState *state,
 							   BsonUpdateTracker *tracker,
 							   bool hasArrayAncestors)
 {
@@ -1592,7 +1593,7 @@ static bool
 TraverseArrayAndApplyUpdate(bson_iter_t *sourceDocIterator,
 							pgbson_array_writer *writer,
 							const BsonUpdateIntermediatePathNode *tree,
-							const CurrentDocumentState *state,
+							CurrentDocumentState *state,
 							BsonUpdateTracker *tracker)
 {
 	check_stack_depth();
@@ -1671,7 +1672,7 @@ HandleCurrentIteratorPosition(bson_iter_t *documentIterator,
 							  const BsonUpdateIntermediatePathNode *tree,
 							  pgbson_element_writer *writer,
 							  Bitmapset **fieldHandledBitmapSet,
-							  const CurrentDocumentState *state,
+							  CurrentDocumentState *state,
 							  BsonUpdateTracker *tracker,
 							  bool isArray,
 							  bool hasArrayAncestors,
@@ -1682,6 +1683,7 @@ HandleCurrentIteratorPosition(bson_iter_t *documentIterator,
 	const BsonPathNode *child;
 	int index = 0;
 	const bson_value_t *currentValue = bson_iter_value(documentIterator);
+
 	foreach_child(child, (&tree->base))
 	{
 		if (!IsNodeMatchForIteratorPath(child, &path, isArray, state, currentValue))
@@ -1836,7 +1838,7 @@ static bool
 IsNodeMatchForIteratorPath(const BsonPathNode *node,
 						   const StringView *fieldPath,
 						   bool isArray,
-						   const CurrentDocumentState *state,
+						   CurrentDocumentState *state,
 						   const bson_value_t *currentValue)
 {
 	const PositionalData *positionalData = GetPositionalData(node);
@@ -1844,22 +1846,29 @@ IsNodeMatchForIteratorPath(const BsonPathNode *node,
 	{
 		case PositionalType_QueryFilter:
 		{
-			int32_t matchedIndex = MatchPositionalQueryAgainstDocument(
-				positionalData->positionalQueryData, state->sourceDocument);
-			if (matchedIndex < 0)
+			/* If `indexOfPositionalTypeQueryFilter` is not -1, it means we've already evaluated the qualifiers and determined the matching index. */
+			if (state->indexOfPositionalTypeQueryFilter == -1)
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
-								errmsg(
-									"The positional operator did not find the match needed from the query.")));
+				int32_t matchedIndex = MatchPositionalQueryAgainstDocument(
+					positionalData->positionalQueryData, state->sourceDocument);
+				if (matchedIndex < 0)
+				{
+					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+									errmsg(
+										"The positional operator did not find the match needed from the query.")));
+				}
+
+				state->indexOfPositionalTypeQueryFilter = matchedIndex;
 			}
 
 			if (isArray)
 			{
 				char buffer[UINT32_MAX_STR_LEN];
 				const char *key;
-				uint32_t keyLength = bson_uint32_to_string((uint32_t) matchedIndex, &key,
-														   buffer,
-														   sizeof buffer);
+				uint32_t keyLength = bson_uint32_to_string(
+					(uint32_t) state->indexOfPositionalTypeQueryFilter, &key,
+					buffer,
+					sizeof buffer);
 				StringView keyView = { .string = key, .length = keyLength };
 				return StringViewEquals(&keyView, fieldPath);
 			}

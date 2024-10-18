@@ -82,3 +82,13 @@ SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_d
     '{ "_id": 3, "a": { "b": [ { "c": 1, "d": 2 } ] } }', '{ "": { "$set": { "a.$.c": 11 } }}', '{ "_id": 1 }');
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document(
     '{ "_id": 3, "a": { "b": [ { "c": 1, "d": 2 } ] } }', '{ "": { "$set": { "a.$.c": 11 } }}', '{ "a.b.c": 1 }');
+
+-- miscellenous cases
+SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{ "_id": 1, "a" : [1,2,3,4], "b" : [5,6,7,8] }', '{ "": { "$set": { "a.$": "new" } }}', '{ "b": 6 }');
+SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{ "_id": 1, "a" : [1,2,3,4], "b" : [5,6,7,8] }', '{ "": { "$set": { "a.$": "new", "b.$" : "new" } }}', '{"a" : 3 ,"b": 6 }');
+SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id" : 1, "key":[{"id":1,"a":1},{"id":2,"a":1}],"key2":[{"id":1,"a":1}]}', '{ "": { "$set": { "key.$.a": 5 } }}', '{"key.id": 2, "key2.id" : 3}');
+SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{ "_id": 1, "a" : [1,2,3,4], "b" : [5,6,7,8], "c" : 1 }', '{ "": { "$set": { "a.$": "new", "b.$" : "new" } }}', '{"a" : 3 ,"b": 6, "c" : 1 }');
+SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{ "_id": 1, "a" : [1,2,3,4], "b" : [5,6,7,8], "c" : 1 }', '{ "": { "$set": { "a.$": "new", "b.$" : "new" } }}', '{"c" : 1 }');
+SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{ "_id": 1, "a" : 1, "c" : 1 }', '{ "": { "$set": { "a.$": "new"} }}', '{"a" :  1}');
+
+
