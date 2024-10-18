@@ -11,11 +11,13 @@ import (
 )
 
 var listHashicorpVaultEARCmd = &cobra.Command{
-	Use: "list",
+	Use:     "list",
+	Aliases: []string{"ls"},
 	Short: "List Hashicorp Vault YugabyteDB Anywhere Encryption In Transit" +
 		" (EAR) configurations",
 	Long: "List Hashicorp Vault YugabyteDB Anywhere Encryption In Transit" +
 		" (EAR) configurations",
+	Example: `yba ear hashicorp-vault list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		earutil.ListEARUtil(cmd, "Hashicorp Vault", util.HashicorpVaultEARType)
 	},

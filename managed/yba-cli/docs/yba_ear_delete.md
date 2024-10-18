@@ -10,6 +10,12 @@ Delete an encryption at rest configuration in YugabyteDB Anywhere
 yba ear delete [flags]
 ```
 
+### Examples
+
+```
+yba ear delete --name <config-name>
+```
+
 ### Options
 
 ```

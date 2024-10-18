@@ -24,6 +24,7 @@ var encryptionAtRestCmd = &cobra.Command{
 	Aliases: []string{"encryption-at-rest", "kms"},
 	Short:   "Encryption-at-rest settings for a universe",
 	Long:    "Encryption-at-rest settings for a universe",
+	Example: `yba universe security ear --name <universe-name> --operation <operation>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		universeName, err := cmd.Flags().GetString("name")

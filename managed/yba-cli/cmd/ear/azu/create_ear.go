@@ -22,6 +22,10 @@ var createAzureEARCmd = &cobra.Command{
 	Aliases: []string{"add"},
 	Short:   "Create a YugabyteDB Anywhere Azure encryption at rest configuration",
 	Long:    "Create an Azure encryption at rest configuration in YugabyteDB Anywhere",
+	Example: `yba ear azure create --name <config-name> \
+	--client-id <client-id> --tenant-id <tenant-id> \
+	--client-secret <client-secret> --vault-url <vault-url> \
+	--key-name <key-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		earutil.CreateEARValidation(cmd)
 		isIAM, err := cmd.Flags().GetBool("use-managed-identity")

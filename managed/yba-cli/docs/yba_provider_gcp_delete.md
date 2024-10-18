@@ -10,6 +10,12 @@ Delete a GCP provider in YugabyteDB Anywhere
 yba provider gcp delete [flags]
 ```
 
+### Examples
+
+```
+yba provider gcp delete --name <provider-name>
+```
+
 ### Options
 
 ```

@@ -15,8 +15,8 @@ import (
 // AzureProviderCmd represents the provider command
 var AzureProviderCmd = &cobra.Command{
 	Use:     "azure",
-	GroupID: "type",
 	Aliases: []string{"az", util.AzureProviderType},
+	GroupID: "type",
 	Short:   "Manage a YugabyteDB Anywhere Azure provider",
 	Long:    "Manage an Azure provider in YugabyteDB Anywhere",
 	Run: func(cmd *cobra.Command, args []string) {

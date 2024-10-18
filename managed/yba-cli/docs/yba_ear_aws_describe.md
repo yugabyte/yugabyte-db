@@ -10,6 +10,12 @@ Describe an AWS YugabyteDB Anywhere Encryption In Transit (EAR) configuration
 yba ear aws describe [flags]
 ```
 
+### Examples
+
+```
+yba ear aws describe --name <config-name>
+```
+
 ### Options
 
 ```

@@ -18,9 +18,11 @@ import (
 // removeInstanceTypesCmd represents the provider command
 var removeInstanceTypesCmd = &cobra.Command{
 	Use:     "remove",
-	Aliases: []string{"delete"},
+	Aliases: []string{"delete", "rm"},
 	Short:   "Delete instance type of a YugabyteDB Anywhere on-premises provider",
 	Long:    "Delete instance types of a YugabyteDB Anywhere on-premises provider",
+	Example: `yba provider onprem instance-type remove \
+	--name <provider-name> --instance-type-name <instance-type-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		providerNameFlag, err := cmd.Flags().GetString("name")

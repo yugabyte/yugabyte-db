@@ -12,9 +12,11 @@ import (
 
 // deleteK8sProviderCmd represents the provider command
 var deleteK8sProviderCmd = &cobra.Command{
-	Use:   "delete",
-	Short: "Delete a Kubernetes YugabyteDB Anywhere provider",
-	Long:  "Delete a Kubernets provider in YugabyteDB Anywhere",
+	Use:     "delete",
+	Aliases: []string{"remove", "rm"},
+	Short:   "Delete a Kubernetes YugabyteDB Anywhere provider",
+	Long:    "Delete a Kubernets provider in YugabyteDB Anywhere",
+	Example: `yba provider kubernetes delete --name <provider-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerutil.DeleteProviderValidation(cmd)
 	},

@@ -10,6 +10,12 @@ Delete a Self Signed encryption in transit configuration in YugabyteDB Anywhere
 yba eit self-signed delete [flags]
 ```
 
+### Examples
+
+```
+yba eit self-signed delete --name <config-name>
+```
+
 ### Options
 
 ```

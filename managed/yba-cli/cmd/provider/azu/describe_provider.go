@@ -15,6 +15,7 @@ var describeAzureProviderCmd = &cobra.Command{
 	Aliases: []string{"get"},
 	Short:   "Describe an Azure YugabyteDB Anywhere provider",
 	Long:    "Describe an Azure provider in YugabyteDB Anywhere",
+	Example: `yba provider azure describe --name <provider-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerutil.DescribeProviderValidation(cmd)
 	},

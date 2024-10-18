@@ -19,9 +19,12 @@ import (
 
 // createAZStorageConfigurationCmd represents the storage config command
 var createAZStorageConfigurationCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create an Azure YugabyteDB Anywhere storage configuration",
-	Long:  "Create an Azure storage configuration in YugabyteDB Anywhere",
+	Use:     "create",
+	Aliases: []string{"add"},
+	Short:   "Create an Azure YugabyteDB Anywhere storage configuration",
+	Long:    "Create an Azure storage configuration in YugabyteDB Anywhere",
+	Example: `yba storage-config azure create --name <storage-configuration-name> \
+	--backup-location <backup-location> --sas-token <sas-token>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		storageNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {

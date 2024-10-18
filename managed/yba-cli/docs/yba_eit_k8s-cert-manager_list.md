@@ -10,6 +10,12 @@ List K8s Cert Manager YugabyteDB Anywhere Encryption In Transit (EIT) certificat
 yba eit k8s-cert-manager list [flags]
 ```
 
+### Examples
+
+```
+yba eit k8s-cert-manager list
+```
+
 ### Options
 
 ```

@@ -10,6 +10,12 @@ Delete a S3 storage configuration in YugabyteDB Anywhere
 yba storage-config s3 delete [flags]
 ```
 
+### Examples
+
+```
+yba storage-config s3 delete --name <storage-configuration-name>
+```
+
 ### Options
 
 ```

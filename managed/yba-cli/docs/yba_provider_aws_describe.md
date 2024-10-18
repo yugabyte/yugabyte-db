@@ -10,6 +10,12 @@ Describe an AWS provider in YugabyteDB Anywhere
 yba provider aws describe [flags]
 ```
 
+### Examples
+
+```
+yba provider aws describe --name <provider-name>
+```
+
 ### Options
 
 ```

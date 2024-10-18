@@ -10,6 +10,12 @@ List restores in YugabyteDB Anywhere
 yba backup restore describe [flags]
 ```
 
+### Examples
+
+```
+yba backup restore describe --uuid <restore-uuid>
+```
+
 ### Options
 
 ```

@@ -18,9 +18,12 @@ import (
 
 // createNFSStorageConfigurationCmd represents the storage config command
 var createNFSStorageConfigurationCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create an NFS YugabyteDB Anywhere storage configuration",
-	Long:  "Create an NFS storage configuration in YugabyteDB Anywhere",
+	Use:     "create",
+	Aliases: []string{"add"},
+	Short:   "Create an NFS YugabyteDB Anywhere storage configuration",
+	Long:    "Create an NFS storage configuration in YugabyteDB Anywhere",
+	Example: `yba storage-config nfs create --name <storage-configuration-name> \
+	--backup-location <backup-location>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		storageNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {

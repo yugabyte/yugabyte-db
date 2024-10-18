@@ -1,4 +1,4 @@
-## yba provider onprem instance-types describe
+## yba provider onprem instance-type describe
 
 Describe instance type of a YugabyteDB Anywhere on-premises provider
 
@@ -7,7 +7,14 @@ Describe instance type of a YugabyteDB Anywhere on-premises provider
 Describe instance types of a YugabyteDB Anywhere on-premises provider
 
 ```
-yba provider onprem instance-types describe [flags]
+yba provider onprem instance-type describe [flags]
+```
+
+### Examples
+
+```
+yba provider onprem instance-type describe \
+	--name <provider-name> --instance-type-name <instance-type-name>
 ```
 
 ### Options
@@ -26,7 +33,7 @@ yba provider onprem instance-types describe [flags]
       --disable-color      Disable colors in output. (default false)
   -H, --host string        YugabyteDB Anywhere Host (default "http://localhost:9000")
   -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
-  -n, --name string        [Optional] The name of the provider for the action. Required for create, delete, describe, instance-types and nodes.
+  -n, --name string        [Optional] The name of the provider for the action. Required for create, delete, describe, instance-type and node.
   -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
       --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)
       --wait               Wait until the task is completed, otherwise it will exit immediately. (default true)
@@ -34,5 +41,5 @@ yba provider onprem instance-types describe [flags]
 
 ### SEE ALSO
 
-* [yba provider onprem instance-types](yba_provider_onprem_instance-types.md)	 - Manage YugabyteDB Anywhere onprem instance types
+* [yba provider onprem instance-type](yba_provider_onprem_instance-type.md)	 - Manage YugabyteDB Anywhere onprem instance types
 

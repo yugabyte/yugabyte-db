@@ -15,6 +15,7 @@ var describeGCPEARCmd = &cobra.Command{
 	Aliases: []string{"get"},
 	Short:   "Describe a GCP YugabyteDB Anywhere Encryption In Transit (EAR) configuration",
 	Long:    "Describe a GCP YugabyteDB Anywhere Encryption In Transit (EAR) configuration",
+	Example: `yba ear gcp describe --name <config-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		earutil.DescribeEARValidation(cmd)
 	},

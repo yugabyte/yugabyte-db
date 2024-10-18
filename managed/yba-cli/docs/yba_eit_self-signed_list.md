@@ -10,6 +10,12 @@ List Self Signed YugabyteDB Anywhere Encryption In Transit (EIT) certificate con
 yba eit self-signed list [flags]
 ```
 
+### Examples
+
+```
+yba eit self-signed list
+```
+
 ### Options
 
 ```

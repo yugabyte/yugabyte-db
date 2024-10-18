@@ -10,6 +10,12 @@ Describe a Self Signed YugabyteDB Anywhere Encryption In Transit (EIT) configura
 yba eit self-signed describe [flags]
 ```
 
+### Examples
+
+```
+yba eit self-signed describe --name <config-name>
+```
+
 ### Options
 
 ```

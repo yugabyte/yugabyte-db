@@ -16,7 +16,7 @@ import (
 // in YugabyteDB Anywhere
 var EITCmd = &cobra.Command{
 	Use:     "eit",
-	Aliases: []string{"encryption-in-transit", "certs"},
+	Aliases: []string{"encryption-in-transit", "cert"},
 	Short:   "Manage YugabyteDB Anywhere Encryption In Transit (EIT) configurations",
 	Long:    "Manage YugabyteDB Anywhere Encryption In Transit (EIT) configurations",
 	Run: func(cmd *cobra.Command, args []string) {

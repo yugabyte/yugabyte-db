@@ -11,11 +11,13 @@ import (
 )
 
 var listCustomCAEITCmd = &cobra.Command{
-	Use: "list",
+	Use:     "list",
+	Aliases: []string{"ls"},
 	Short: "List Custom CA YugabyteDB Anywhere Encryption In Transit" +
 		" (EIT) certificate configurations",
 	Long: "List Custom CA YugabyteDB Anywhere Encryption In Transit" +
 		" (EIT) certificate configurations",
+	Example: `yba eit custom-ca list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		providerutil.ListProviderUtil(cmd, "Custom CA", util.CustomCertHostPathCertificateType)
 	},

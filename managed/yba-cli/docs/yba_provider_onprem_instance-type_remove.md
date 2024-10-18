@@ -1,19 +1,28 @@
-## yba eit hashicorp list
+## yba provider onprem instance-type remove
 
-List Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EIT) certificate configurations
+Delete instance type of a YugabyteDB Anywhere on-premises provider
 
 ### Synopsis
 
-List Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EIT) certificate configurations
+Delete instance types of a YugabyteDB Anywhere on-premises provider
 
 ```
-yba eit hashicorp list [flags]
+yba provider onprem instance-type remove [flags]
+```
+
+### Examples
+
+```
+yba provider onprem instance-type remove \
+	--name <provider-name> --instance-type-name <instance-type-name>
 ```
 
 ### Options
 
 ```
-  -h, --help   help for list
+      --instance-type-name string   [Required] Instance type name.
+  -f, --force                       [Optional] Bypass the prompt for non-interactive usage.
+  -h, --help                        help for remove
 ```
 
 ### Options inherited from parent commands
@@ -25,7 +34,7 @@ yba eit hashicorp list [flags]
       --disable-color      Disable colors in output. (default false)
   -H, --host string        YugabyteDB Anywhere Host (default "http://localhost:9000")
   -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
-  -n, --name string        [Optional] The name of the configuration for the action. Required for create, delete, describe, update.
+  -n, --name string        [Optional] The name of the provider for the action. Required for create, delete, describe, instance-type and node.
   -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
       --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)
       --wait               Wait until the task is completed, otherwise it will exit immediately. (default true)
@@ -33,5 +42,5 @@ yba eit hashicorp list [flags]
 
 ### SEE ALSO
 
-* [yba eit hashicorp](yba_eit_hashicorp.md)	 - Manage a YugabyteDB Anywhere Hashicorp Vault encryption in transit (EIT) certificate configuration
+* [yba provider onprem instance-type](yba_provider_onprem_instance-type.md)	 - Manage YugabyteDB Anywhere onprem instance types
 

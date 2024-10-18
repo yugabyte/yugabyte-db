@@ -10,6 +10,12 @@ Delete a Custom CA encryption in transit configuration in YugabyteDB Anywhere
 yba eit custom-ca delete [flags]
 ```
 
+### Examples
+
+```
+yba eit custom-ca delete --name <config-name>
+```
+
 ### Options
 
 ```

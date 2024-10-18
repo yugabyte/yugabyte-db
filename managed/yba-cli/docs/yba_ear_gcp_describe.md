@@ -10,6 +10,12 @@ Describe a GCP YugabyteDB Anywhere Encryption In Transit (EAR) configuration
 yba ear gcp describe [flags]
 ```
 
+### Examples
+
+```
+yba ear gcp describe --name <config-name>
+```
+
 ### Options
 
 ```

@@ -10,6 +10,13 @@ Create a Self Signed encryption in transit configuration in YugabyteDB Anywhere
 yba eit self-signed create [flags]
 ```
 
+### Examples
+
+```
+yba eit self-signed create --name <config-name> \
+	--key-file-path <key-file-path> --root-cert-file-path <root-cert-file-path>
+```
+
 ### Options
 
 ```

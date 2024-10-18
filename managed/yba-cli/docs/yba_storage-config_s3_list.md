@@ -10,6 +10,12 @@ List S3 YugabyteDB Anywhere storage-configurations
 yba storage-config s3 list [flags]
 ```
 
+### Examples
+
+```
+yba storage-config s3 list
+```
+
 ### Options
 
 ```
