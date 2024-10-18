@@ -124,13 +124,14 @@ public class XClusterTableConfig extends Model {
   @ApiModelProperty(value = "tableInfo from target universe", required = false)
   private TableInfoResp targetTableInfo;
 
-  // Statuses are declared in reverse severity for showing tables in UI with specific order.
+  // Statuses are declared in reverse severity for showing tables in UI with specific order based on
+  // code.
   public enum Status {
-    UnableToFetch("UnableToFetch", 4), // Not stored in YBA DB.
+    UnableToFetch("UnableToFetch", 0), // Not stored in YBA DB.
     Updating("Updating", 1),
     Bootstrapping("Bootstrapping", 2),
     Validated("Validated", 3),
-    Running("Running", 0),
+    Running("Running", 4),
     // The following statuses will leads to alert creation.
     Failed("Failed", -1),
     Error("Error", -2), // Not stored in YBA DB.

@@ -392,7 +392,7 @@ public class XClusterConfig extends Model {
   @JsonProperty("tableDetails")
   public Set<XClusterTableConfig> getTableDetails() {
     return tables.stream()
-        .sorted(Comparator.comparing(XClusterTableConfig::getStatus))
+        .sorted(Comparator.comparing((table) -> table.getStatus().getCode()))
         .collect(Collectors.toCollection(LinkedHashSet::new));
   }
 
