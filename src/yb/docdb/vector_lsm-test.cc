@@ -26,12 +26,16 @@
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/util/path_util.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/vector/ann_methods.h"
 #include "yb/vector/hnswlib_wrapper.h"
 #include "yb/vector/usearch_wrapper.h"
 
 using namespace std::literals;
+
+DECLARE_uint64(TEST_vector_index_delay_saving_first_chunk_ms);
+DECLARE_bool(TEST_vector_index_skip_update_metadata_during_shutdown);
 
 namespace yb::docdb {
 
@@ -378,19 +382,25 @@ void VectorLSMTest::TestBootstrap(bool flush) {
     FloatVectorLSM lsm;
     ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kChunkSize));
     auto frontier_ptr = lsm.GetFlushedFrontier();
-    auto& frontier = *down_cast<TestFrontier*>(frontier_ptr.get());
-    ASSERT_OK(InsertCube(lsm, kDimensions, kChunkSize, frontier.vertex_id()));
+    auto vertex_id = frontier_ptr ? down_cast<TestFrontier*>(frontier_ptr.get())->vertex_id() : 0;
+    ASSERT_OK(InsertCube(lsm, kDimensions, kChunkSize, vertex_id));
 
     VerifyVectorLSM(lsm, kDimensions);
   }
 }
 
 TEST_P(VectorLSMTest, Bootstrap) {
-  TestBootstrap(false);
+  TestBootstrap(/* flush= */ false);
 }
 
 TEST_P(VectorLSMTest, BootstrapWithFlush) {
-  TestBootstrap(true);
+  TestBootstrap(/* flush= */ true);
+}
+
+TEST_P(VectorLSMTest, NotSavedChunk) {
+  FLAGS_TEST_vector_index_delay_saving_first_chunk_ms = 1000 * kTimeMultiplier;
+  FLAGS_TEST_vector_index_skip_update_metadata_during_shutdown = true;
+  TestBootstrap(/* flush= */ false);
 }
 
 TEST_F(VectorLSMTest, MergeChunkResults) {
