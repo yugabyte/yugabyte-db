@@ -123,7 +123,7 @@ Ensuring [ACID](../../architecture/key-concepts/#acid) transactions and full com
 
 - **Availability vs Resource Requirements**: Being a distributed database, YugabyteDB demands more hardware and networking resources to maintain high availability and fault tolerance compared to traditional monolithic databases that run on a single machine.
 
-- **PostgreSQL Feature Support**: Every new PostgreSQL feature must be optimized for distributed environments, which is not a simple task. Be sure to verify that the PostgreSQL features your application relies on are supported in the current version of YugabyteDB.
+- **Robustness vs PostgreSQL compatibility**: Every new PostgreSQL feature must be optimized and rigorously tested for distributed environments before being considered to be supported by YugabyteDB, which is not a simple task. Be sure to verify that the PostgreSQL features your application relies on are supported in the current version of YugabyteDB.
 
     {{<lead link="/preview/explore/ysql-language-features/postgresql-compatibility/#unsupported-postgresql-features">}}
 PostgreSQL compatibility
@@ -152,6 +152,16 @@ Apart from the rigorous failure testing, YugabyteDB passes most of the scenarios
 {{<lead link="/preview/benchmark/resilience/jepsen-testing/">}}
 Jepsen testing
 {{</lead>}}
+
+### How is YugabyteDB different from NoSQL databases?
+
+YugabyteDB is a distributed SQL database with strong transactional capabilities, SQL support, and consistency, bridging the gap between traditional SQL databases and NoSQL systems. NoSQL databases, on the other hand, tend to favor horizontal scalability, flexibility in data models, and eventual consistency, often at the expense of full ACID transactions and complex querying.
+
+- **Strong consistency**: YugabyteDB offers strong consistency, which is not always guaranteed in NoSQL systems that often prioritize availability over consistency and are typically designed for eventual consistency.
+
+- **ACID transactions**: YugabyteDB supports ACID (Atomicity, Consistency, Isolation, Durability) transactions, including those spanning multiple nodes. Many NoSQL databases don't offer this level of transactional support.
+
+- **Data Models**: YugabyteDB supports both relational (SQL) and semi-structured (JSON) data models, whereas most NoSQL databases are typically optimized for specific data models (such as document, key-value, wide-column).
 
 ### How does YugabyteDB compare to other databases?
 
