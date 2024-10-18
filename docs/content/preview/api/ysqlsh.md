@@ -25,7 +25,11 @@ If you are running multiple versions of YugabyteDB, use the newest version of ys
 
 ### Installation
 
-ysqlsh is installed with YugabyteDB and located in the `bin` directory of the YugabyteDB home directory. If you prefer, you can install a standalone version; refer to [YugabyteDB clients](/preview/releases/yugabyte-clients/).
+ysqlsh is installed with YugabyteDB and located in the `bin` directory of the YugabyteDB home directory.
+
+{{<lead link="/preview/releases/yugabyte-clients/">}}
+To download and install a standalone version of the clients, refer to [YugabyteDB clients](/preview/releases/yugabyte-clients/).
+{{</lead>}}
 
 ### Starting ysqlsh
 
