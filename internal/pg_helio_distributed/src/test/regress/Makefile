@@ -19,7 +19,7 @@ export PG_REGRESS_DIFF_OPTS = -dU10 -w
 
 export PGISOLATIONTIMEOUT = 60
 
-.PHONY: check-bson-basic check-bson-minimal
+.PHONY: check-basic check-dist-minimal
 
 define common_test
 	$(top_builddir)/src/test/regress/pg_regress --dlpath=$(BASEPATH) $(EXTENSIONLOAD) --temp-instance ./tmp --temp-config ./postgresql.conf --host localhost --port 58070 $(1) $(2) || (cat regression.diffs && false)
@@ -34,5 +34,8 @@ check-basic:
 
 check-test-output:
 	./validate_test_output.sh
+
+check-dist-minimal:
+	$(call common_test,--schedule=./minimal_schedule, $(EXTRA_TESTS))
 
 all: check-basic check-test-output

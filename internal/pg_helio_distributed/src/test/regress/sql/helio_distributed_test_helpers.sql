@@ -259,6 +259,8 @@ SELECT application_name FROM pg_stat_activity WHERE application_name = 'helio_bg
 -- create a single table in the 'db' database so that existing tests don't change behavior (yet)
 set helio_api.enableNativeColocation to off;
 SELECT helio_api.create_collection('db', 'firstCollection');
+set helio_api.enableNativeColocation to on;
+SELECT helio_api.create_collection('db', 'secondCollection');
 
 CREATE OR REPLACE FUNCTION helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms(
     document helio_core.bson,

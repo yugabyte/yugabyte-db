@@ -261,6 +261,14 @@ NOTICE:  creating collection
  t
 (1 row)
 
+set helio_api.enableNativeColocation to on;
+SELECT helio_api.create_collection('db', 'secondCollection');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
 CREATE OR REPLACE FUNCTION helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms(
     document helio_core.bson,
     path text,

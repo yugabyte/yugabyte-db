@@ -66,6 +66,9 @@ citus-indent:
 
 analysis: citus-indent
 
+check-dist-minimal:
+	$(MAKE) -C src/test check-dist-minimal
+
 check-regress:
 	$(MAKE) -C src/test check-regress
 
