@@ -27,7 +27,9 @@ set -euo pipefail
 VERBOSE=0
 VALIDATE_ONLY=0
 OS_RELEASE=""
+CHRONY_CONF=""
 CHRONY_USER=""
+CLOUD_PROVIDER="unknown"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -277,6 +279,7 @@ require {
 allow bin_t chronyd_t:unix_dgram_socket sendto;
 allow chronyd_t unconfined_service_t:unix_dgram_socket sendto;
 EOF
+  dnf install policycoreutils-devel -y
   checkmodule -M -m -o chrony_uds_access.mod chrony_uds_access.te
   semodule_package -o chrony_uds_access.pp -m chrony_uds_access.mod
   semodule -i chrony_uds_access.pp
@@ -309,6 +312,14 @@ install_clockbound() {
   fi
 }
 
+# Function to detect cloud provider based on the chrony configuration
+retrieve_cloud_provider() {
+  # Check if AWS PTP server is configured
+  if grep -q "server\s*169.254.169.123" "${CHRONY_CONF}"; then
+    CLOUD_PROVIDER="aws"
+  fi
+}
+
 configure_clockbound() {
   if ! systemctl is-active --quiet clockbound; then
     # Configure and start clockbound
@@ -325,29 +336,33 @@ configure_clockbound() {
       fatal "Neither 'chrony' nor '_chrony' user exists. Exiting."
     fi
 
-    # Pick ETH_DEVICE as the first non-loopback device.
-    for iface in /sys/class/net/*; do
-      iface=$(basename "$iface")
-      if [[ "${iface}" != "lo" ]]; then
-        ETH_DEVICE="${iface}"
-        break
-      fi
-    done
-
     EXTRA_ARGS=""
-    if chronyc sources | grep "#.\s*PHC" > /dev/null 2>&1; then
-      # Check if PHC is available on ETH_DEVICE.
-      if ethtool -T "${ETH_DEVICE}" | grep -q "PTP Hardware Clock: none"; then
-        fatal "PHC is not available on ${ETH_DEVICE}."
-      fi
+    # Check for PTP only on AWS instances.
+    retrieve_cloud_provider
+    if [[ "${CLOUD_PROVIDER}" == "aws" ]]; then
+      if chronyc sources | grep "#.\s*PHC" > /dev/null 2>&1; then
+        # Pick ETH_DEVICE as the first non-loopback device.
+        for iface in /sys/class/net/*; do
+          iface=$(basename "$iface")
+          if [[ "${iface}" != "lo" ]]; then
+            ETH_DEVICE="${iface}"
+            break
+          fi
+        done
 
-      # Check whether a PHC source is selected.
-      if ! chronyc sources | grep "#\*\s*PHC" > /dev/null 2>&1; then
-        fatal "PHC source is not selected as the clock soruce."
-      fi
+        # Check if PHC is available on ETH_DEVICE.
+        if ethtool -T "${ETH_DEVICE}" | grep -q "PTP Hardware Clock: none"; then
+          fatal "PHC is not available on ${ETH_DEVICE}."
+        fi
 
-      PHC_ID=$(chronyc sources | grep "#\*\s*PHC" | awk '{print $2}')
-      EXTRA_ARGS="-r ${PHC_ID} -i ${ETH_DEVICE}"
+        # Check whether a PHC source is selected.
+        if ! chronyc sources | grep "#\*\s*PHC" > /dev/null 2>&1; then
+          fatal "PHC source is not selected as the clock soruce."
+        fi
+
+        PHC_ID=$(chronyc sources | grep "#\*\s*PHC" | awk '{print $2}')
+        EXTRA_ARGS="-r ${PHC_ID} -i ${ETH_DEVICE}"
+      fi
     fi
 
     # Create the clockbound service file based on systemd version

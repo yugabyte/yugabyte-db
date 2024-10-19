@@ -666,14 +666,20 @@ def get_cli_title():
     cli_title += div_line
     return cli_title
 
-def has_aws_time_sync_service():
+def using_time_sync_service():
+    # List of recognized IP addresses and sources
+    allow_list = ['169.254.169.123', 'metadata.google.internal', 'PHC',
+                  'aws.com', 'google.com']
+
     try:
         # Run the chronyc sources command and capture the output
         result = subprocess.run(['chronyc', 'sources'], capture_output=True, text=True, timeout=1)
 
-        # Check if 169.254.169.123 is in the output
-        if result.returncode == 0 and '169.254.169.123' in result.stdout:
-            return True
+        # Check if any allowed source is in the output
+        if result.returncode == 0:
+            for source in allow_list:
+                if source in result.stdout:
+                    return True
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return False
 
