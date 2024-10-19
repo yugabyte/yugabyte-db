@@ -1,6 +1,6 @@
 ---
 title: Automatically generated certificates on YugabyteDB Anywhere
-headerTitle: Auto-generated certificates
+headerTitle: Automatically generated certificates
 linkTitle: Auto-generated certificates
 description: YugabyteDB Anywhere-generated self-signed certificates.
 headcontent: Let YugabyteDB Anywhere manage certificates for your universe

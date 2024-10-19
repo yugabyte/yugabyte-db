@@ -148,7 +148,7 @@ After HA is operational, you should enable certificate validation to improve sec
 
 1. Add Certificate Authority (CA) certificates for the active and all standbys to the active instance [trust store](../../security/enable-encryption-in-transit/trust-store/). This allows a standby to connect to the active instance if the standby is promoted to active status.
 
-    **Auto-generated CA certificates**
+    **Automatically generated CA certificates**
 
     If YBA was set up to use automatically generated self-signed certificates (the default), the CA certificate is in the following location on the active and standby instances:
 

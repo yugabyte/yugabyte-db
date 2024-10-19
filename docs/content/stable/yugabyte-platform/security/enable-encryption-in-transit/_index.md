@@ -29,7 +29,7 @@ To view certificate details, click **Show details** for the certificate you want
 {{<index/block>}}
 
   {{<index/item
-    title="Auto-generated certificates"
+    title="Automatically generated certificates"
     body="YugabyteDB Anywhere can create and manage universe certificates."
     href="auto-certificate/"
     icon="fa-thin fa-certificate">}}

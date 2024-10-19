@@ -377,8 +377,8 @@ You can configure the following YBA configuration options.
 | Option | Description |
 | :--- | :--- |
 | `port` | Specify a custom port for the YBA UI to run on. |
-| `keyStorePassword` | Password for the Java keystore. Auto-generated if left empty. |
-| `appSecret` | Play framework crypto secret. Auto-generated if left empty. |
+| `keyStorePassword` | Password for the Java keystore. Automatically generated if left empty. |
+| `appSecret` | Play framework crypto secret. Automatically generated if left empty. |
 
 OAuth related settings are described in the following table. Only set these fields if you intend to use OIDC SSO for your YugabyteDB Anywhere installation (otherwise leave it empty).
 
