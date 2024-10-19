@@ -888,7 +888,8 @@ void* Thread::SuperviseThread(void* arg) {
 }
 
 void Thread::Join() {
-  WARN_NOT_OK(ThreadJoiner(this).Join(), "Thread join failed");
+  auto status = ThreadJoiner(this).Join();
+  LOG_IF(DFATAL, !status.ok()) << "Thread join failed: " << status;
 }
 
 void Thread::FinishThread(void* arg) {

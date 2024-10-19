@@ -2229,8 +2229,13 @@ Status PgClientSession::CheckPlainSessionPendingUsedReadTime(uint64_t txn_serial
 
 std::shared_ptr<CountDownLatch> PgClientSession::ProcessSharedRequest(
     size_t size, SharedExchange* exchange) {
+  auto shared_this = shared_this_.lock();
+  if (!shared_this) {
+    LOG_WITH_FUNC(DFATAL) << "Shared this is null in ProcessSharedRequest";
+    return nullptr;
+  }
   auto data = std::make_shared<SharedExchangeQuery>(
-      shared_this_.lock(), &table_cache_, exchange, stats_exchange_response_size_);
+      shared_this, &table_cache_, exchange, stats_exchange_response_size_);
   auto status = data->Init(size);
   if (status.ok()) {
     static std::atomic<int64_t> next_rpc_id{0};

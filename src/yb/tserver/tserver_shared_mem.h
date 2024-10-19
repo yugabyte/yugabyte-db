@@ -182,6 +182,9 @@ class SharedExchangeThread {
     return exchange_;
   }
 
+  void StartShutdown();
+  void CompleteShutdown();
+
  private:
   SharedExchange exchange_;
   scoped_refptr<Thread> thread_;

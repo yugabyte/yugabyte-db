@@ -207,6 +207,20 @@ class LockablePgClientSession : public PgClientSession {
     });
   }
 
+  void StartShutdown() override {
+    if (exchange_) {
+      exchange_->StartShutdown();
+    }
+    PgClientSession::StartShutdown();
+  }
+
+  void CompleteShutdown() override {
+    if (exchange_) {
+      exchange_->CompleteShutdown();
+    }
+    PgClientSession::CompleteShutdown();
+  }
+
   CoarseTimePoint expiration() const {
     return expiration_.load(std::memory_order_acquire);
   }
