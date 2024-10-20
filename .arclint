@@ -100,7 +100,8 @@
         "(^src/postgres/)",
         "(^[.]gitignore$)",
         "(^.*[.]svg$)",
-        "(^.*[.]md$)"
+        "(^.*[.]md$)",
+        "(^java/yb-pgsql/src/test/resources/expected/)"
       ]
     },
     "pycodestyle": {
