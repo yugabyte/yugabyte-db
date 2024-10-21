@@ -404,3 +404,15 @@ After you run end migration, you will _not_ be able to continue further.
 If you want to back up the schema, data, log files, and the migration reports (`analyze-schema` report, `export data status` output, or `import data status` output) for future reference, use the `--backup-dir` argument, and provide the path of the directory where you want to save the backup content (based on what you choose to back up).
 
 Refer to [end migration](../../reference/end-migration/) for more details on the arguments.
+
+{{< warning title="Deleting the ybvoyager user" >}}
+
+After migration, all the migrated objects (tables, views, and so on) are owned by the `ybvoyager` user. You should transfer the ownership of the objects to some other user (for example, `yugabyte`) and then delete the `ybvoyager` user. Example steps to delete the user are:
+
+```sql
+REASSIGN OWNED BY ybvoyager TO yugabyte;
+DROP OWNED BY ybvoyager;
+DROP USER ybvoyager;
+```
+
+{{< /warning >}}

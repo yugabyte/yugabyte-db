@@ -1320,6 +1320,18 @@ Note that after you end the migration, you will _not_ be able to continue furthe
 
 Refer to [end migration](../../reference/end-migration/) for more details on the arguments.
 
+{{< warning title="Deleting the ybvoyager user" >}}
+
+After migration, all the migrated objects (tables, views, and so on) are owned by the `ybvoyager` user. You should transfer the ownership of the objects to some other user (for example, `yugabyte`) and then delete the `ybvoyager` user. Example steps to delete the user are:
+
+```sql
+REASSIGN OWNED BY ybvoyager TO yugabyte;
+DROP OWNED BY ybvoyager;
+DROP USER ybvoyager;
+```
+
+{{< /warning >}}
+
 ## Limitations
 
 In addition to the Live migration [limitations](../live-migrate/#limitations), the following additional limitations apply to the fall-back feature:
