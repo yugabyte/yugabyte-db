@@ -528,7 +528,7 @@ Default: `2`
 
 ##### --load_balancer_max_over_replicated_tablets
 
-Specifies the maximum number of running tablet replicas that are allowed to be over the configured replication factor.
+Specifies the maximum number of running tablet replicas that are allowed to be over the configured replication factor per table.
 
 Default: `1`
 
