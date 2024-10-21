@@ -84,10 +84,10 @@ docker_aware_cmd() {
 }
 
 run_sudo_cmd() {
-  if [[ "${USER}" = "root" ]]; then
-    $1
-  else
+  if sudo -n true 2>/dev/null; then
     sudo $1
+  else
+    $1
   fi
 }
 
