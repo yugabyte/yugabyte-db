@@ -3,6 +3,7 @@ SET helio_api.next_collection_id TO 3596800;
 SET helio_api.next_collection_index_id TO 3596800;
 
 /* Insert with a.b being an object with various types*/
+SELECT helio_api.drop_collection('db','queryoperator');
 SELECT helio_api.insert_one('db','queryoperator', '{"_id": 1, "a" : { "b" : 0 }}', NULL);
 SELECT helio_api.insert_one('db','queryoperator', '{"_id": 2, "a" : { "b" : 1 }}', NULL);
 SELECT helio_api.insert_one('db','queryoperator', '{"_id": 3, "a" : { "b" : 2.0 }}', NULL);
@@ -12,6 +13,7 @@ SELECT helio_api.insert_one('db','queryoperator', '{"_id": "ab_undefined", "a" :
 SELECT helio_api.insert_one('db','queryoperator', '{"_id": "ab_null", "a" : { "b" : null }}', NULL);
 
 /* Insert elements to a root path for single path index $exists */
+SELECT helio_api.drop_collection('db','singlepathindexexists');
 SELECT helio_api.insert_one('db','singlepathindexexists', '{"_id": 1, "a" : 0}', NULL);
 SELECT helio_api.insert_one('db','singlepathindexexists', '{"_id": 4, "a" : { "b" : "someString" }}', NULL);
 SELECT helio_api.insert_one('db','singlepathindexexists', '{"_id": "b", "b" : 1}', NULL);
@@ -202,6 +204,7 @@ SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHER
 SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') where document @@ '{"a" : {"$all" : [{"$elemMatch" : {"b" : {"$elemMatch": {"c" : {"$gt" : 1} } } } }] } }';
 SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') where document @@ '{"a" : {"$all" : [{"$elemMatch" : {"b" : {"$elemMatch": {"c" : {"$gt" : 1} } }, "d" : {"$elemMatch": {"e" : {"$lt" : 20} } } } }] } }';
 
+SELECT helio_api.drop_collection('db','nullfield');
 SELECT 1 FROM helio_api.insert_one('db','nullfield', '{"_id": 1, "a" : 1, "b": 1}');
 SELECT 1 FROM helio_api.insert_one('db','nullfield', '{"_id": 2, "a" : 2, "b": null}');
 SELECT 1 FROM helio_api.insert_one('db','nullfield', '{"_id": 3, "a" : 3}');

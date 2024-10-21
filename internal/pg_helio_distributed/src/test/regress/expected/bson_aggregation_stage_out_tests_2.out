@@ -650,17 +650,17 @@ NOTICE:  creating collection
    Tasks Shown: All
    ->  Task
          Node: host=localhost port=58070 dbname=regression
-         ->  Merge on documents_9863_9830120 documents_9863
+         ->  Merge on documents_9862_9830118 documents_9862
                ->  Nested Loop Left Join
-                     ->  Bitmap Heap Scan on documents_9862_9830118 collection
-                           Recheck Cond: (shard_key_value = '9862'::bigint)
+                     ->  Bitmap Heap Scan on documents_9861_9830116 collection
+                           Recheck Cond: (shard_key_value = '9861'::bigint)
                            ->  Bitmap Index Scan on _id_
-                                 Index Cond: (shard_key_value = '9862'::bigint)
+                                 Index Cond: (shard_key_value = '9861'::bigint)
                      ->  Materialize
-                           ->  Bitmap Heap Scan on documents_9863_9830120 documents_9863
-                                 Recheck Cond: (shard_key_value = '9863'::bigint)
+                           ->  Bitmap Heap Scan on documents_9862_9830118 documents_9862
+                                 Recheck Cond: (shard_key_value = '9862'::bigint)
                                  ->  Bitmap Index Scan on _id_
-                                       Index Cond: (shard_key_value = '9863'::bigint)
+                                       Index Cond: (shard_key_value = '9862'::bigint)
 (16 rows)
 
 --2) non colocated tables, hash shard distributed
@@ -676,19 +676,19 @@ NOTICE:  creating collection
                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                         
 ---------------------------------------------------------------------
  Custom Scan (Citus MERGE INTO ...)
-   MERGE INTO documents_9865 method: pull to coordinator
+   MERGE INTO documents_9864 method: pull to coordinator
    ->  Custom Scan (Citus Adaptive)
          Output: remote_scan.document, remote_scan.target_shard_key_value, remote_scan.generated_object_id
          Task Count: 1
          Tasks Shown: All
          ->  Task
-               Query: SELECT document, target_shard_key_value, generated_object_id FROM (SELECT collection.document, '9865'::bigint AS target_shard_key_value, helio_api_internal.bson_dollar_merge_generate_object_id(collection.document) AS generated_object_id FROM helio_data.documents_9864_9830124 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '9864'::bigint)) citus_insert_select_subquery
+               Query: SELECT document, target_shard_key_value, generated_object_id FROM (SELECT collection.document, '9864'::bigint AS target_shard_key_value, helio_api_internal.bson_dollar_merge_generate_object_id(collection.document) AS generated_object_id FROM helio_data.documents_9863_9830125 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '9863'::bigint)) citus_insert_select_subquery
                Node: host=localhost port=58070 dbname=regression
-               ->  Bitmap Heap Scan on helio_data.documents_9864_9830124 collection
-                     Output: collection.document, '9865'::bigint, helio_api_internal.bson_dollar_merge_generate_object_id(collection.document)
-                     Recheck Cond: (collection.shard_key_value = '9864'::bigint)
+               ->  Bitmap Heap Scan on helio_data.documents_9863_9830125 collection
+                     Output: collection.document, '9864'::bigint, helio_api_internal.bson_dollar_merge_generate_object_id(collection.document)
+                     Recheck Cond: (collection.shard_key_value = '9863'::bigint)
                      ->  Bitmap Index Scan on _id_
-                           Index Cond: (collection.shard_key_value = '9864'::bigint)
+                           Index Cond: (collection.shard_key_value = '9863'::bigint)
 (14 rows)
 
 --3) sharded source
@@ -702,19 +702,19 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('
                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                         
 ---------------------------------------------------------------------
  Custom Scan (Citus MERGE INTO ...)
-   MERGE INTO documents_9865 method: pull to coordinator
+   MERGE INTO documents_9864 method: pull to coordinator
    ->  Custom Scan (Citus Adaptive)
          Output: remote_scan.document, remote_scan.target_shard_key_value, remote_scan.generated_object_id
          Task Count: 1
          Tasks Shown: All
          ->  Task
-               Query: SELECT document, target_shard_key_value, generated_object_id FROM (SELECT collection.document, '9865'::bigint AS target_shard_key_value, helio_api_internal.bson_dollar_merge_generate_object_id(collection.document) AS generated_object_id FROM helio_data.documents_9864_9830124 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '9864'::bigint)) citus_insert_select_subquery
+               Query: SELECT document, target_shard_key_value, generated_object_id FROM (SELECT collection.document, '9864'::bigint AS target_shard_key_value, helio_api_internal.bson_dollar_merge_generate_object_id(collection.document) AS generated_object_id FROM helio_data.documents_9863_9830125 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '9863'::bigint)) citus_insert_select_subquery
                Node: host=localhost port=58070 dbname=regression
-               ->  Bitmap Heap Scan on helio_data.documents_9864_9830124 collection
-                     Output: collection.document, '9865'::bigint, helio_api_internal.bson_dollar_merge_generate_object_id(collection.document)
-                     Recheck Cond: (collection.shard_key_value = '9864'::bigint)
+               ->  Bitmap Heap Scan on helio_data.documents_9863_9830125 collection
+                     Output: collection.document, '9864'::bigint, helio_api_internal.bson_dollar_merge_generate_object_id(collection.document)
+                     Recheck Cond: (collection.shard_key_value = '9863'::bigint)
                      ->  Bitmap Index Scan on _id_
-                           Index Cond: (collection.shard_key_value = '9864'::bigint)
+                           Index Cond: (collection.shard_key_value = '9863'::bigint)
 (14 rows)
 
 -- simplest test case working with db database

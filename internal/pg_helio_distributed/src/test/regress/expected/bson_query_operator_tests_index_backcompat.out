@@ -16,7 +16,14 @@ SET citus.next_shard_id TO 359680000;
 SET helio_api.next_collection_id TO 3596800;
 SET helio_api.next_collection_index_id TO 3596800;
 /* Insert with a.b being an object with various types*/
+SELECT helio_api.drop_collection('db','queryoperator');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
 SELECT helio_api.insert_one('db','queryoperator', '{"_id": 1, "a" : { "b" : 0 }}', NULL);
+psql:sql/bson_query_operator_tests_core.sql:7: NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
@@ -59,7 +66,14 @@ SELECT helio_api.insert_one('db','queryoperator', '{"_id": "ab_null", "a" : { "b
 (1 row)
 
 /* Insert elements to a root path for single path index $exists */
+SELECT helio_api.drop_collection('db','singlepathindexexists');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
 SELECT helio_api.insert_one('db','singlepathindexexists', '{"_id": 1, "a" : 0}', NULL);
+psql:sql/bson_query_operator_tests_core.sql:17: NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
@@ -1247,7 +1261,14 @@ SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') wher
  { "" : { "$numberInt" : "21" } } | { "_id" : { "$numberInt" : "21" }, "a" : [ { "b" : [ { "c" : { "$numberInt" : "10" } }, { "c" : { "$numberInt" : "15" } }, { "c" : { "$numberInt" : "18" } } ], "d" : [ { "e" : { "$numberInt" : "10" } }, { "e" : { "$numberInt" : "15" } }, { "e" : { "$numberInt" : "18" } } ] } ] }
 (1 row)
 
+SELECT helio_api.drop_collection('db','nullfield');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
 SELECT 1 FROM helio_api.insert_one('db','nullfield', '{"_id": 1, "a" : 1, "b": 1}');
+psql:sql/bson_query_operator_tests_core.sql:208: NOTICE:  creating collection
  ?column? 
 ---------------------------------------------------------------------
         1
@@ -1303,104 +1324,104 @@ SELECT object_id, document FROM helio_api.collection('db', 'nullfield') WHERE do
 ROLLBACK;
 -- these queries are negative tests for $size operator
 SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a.b": { "$size" : -3 }}' ORDER BY object_id;
-psql:sql/bson_query_operator_tests_core.sql:222: ERROR:  Failed to parse $size. Expected a non-negative number in: $size: -3
+psql:sql/bson_query_operator_tests_core.sql:225: ERROR:  Failed to parse $size. Expected a non-negative number in: $size: -3
 SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a.b": { "$size" : 3.1 }}' ORDER BY object_id;
-psql:sql/bson_query_operator_tests_core.sql:223: ERROR:  Failed to parse $size. Expected an integer in: $size: 3.1
+psql:sql/bson_query_operator_tests_core.sql:226: ERROR:  Failed to parse $size. Expected an integer in: $size: 3.1
 SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a.b": { "$size" : -3.4 }}' ORDER BY object_id;
-psql:sql/bson_query_operator_tests_core.sql:224: ERROR:  Failed to parse $size. Expected an integer in: $size: -3.4
+psql:sql/bson_query_operator_tests_core.sql:227: ERROR:  Failed to parse $size. Expected an integer in: $size: -3.4
 -- These can't be tested since the extended json syntax treats $type as an extended json operator and not a call to actual $type function.
 -- SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a.b": { "$type" : 123.56 }}' ORDER BY object_id;
 -- SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a.b": { "$type" : [] }}' ORDER BY object_id;
 -- these queries are negative tests for $all operator
 SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ {"$elemMatch" : {"b" : {"$gt" : 1} } }, 1 ] } }' ORDER BY object_id;
-psql:sql/bson_query_operator_tests_core.sql:231: ERROR:  $all/$elemMatch has to be consistent
-SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ 1, {"$elemMatch" : {"b" : {"$gt" : 1} } } ] } }' ORDER BY object_id;
-psql:sql/bson_query_operator_tests_core.sql:232: ERROR:  no $ expressions in $all
-SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ {"$elemMatch" : {"b" : {"$gt" : 1} } }, {"$all" : [0]} ] } }' ORDER BY object_id;
 psql:sql/bson_query_operator_tests_core.sql:234: ERROR:  $all/$elemMatch has to be consistent
-SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ {"$all" : [0]}, {"$elemMatch" : {"b" : {"$gt" : 1} } } ] } }' ORDER BY object_id;
+SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ 1, {"$elemMatch" : {"b" : {"$gt" : 1} } } ] } }' ORDER BY object_id;
 psql:sql/bson_query_operator_tests_core.sql:235: ERROR:  no $ expressions in $all
-SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ {"$elemMatch" : {"b" : {"$gt" : 1} } }, {} ] } }' ORDER BY object_id;
+SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ {"$elemMatch" : {"b" : {"$gt" : 1} } }, {"$all" : [0]} ] } }' ORDER BY object_id;
 psql:sql/bson_query_operator_tests_core.sql:237: ERROR:  $all/$elemMatch has to be consistent
-SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ {}, {"$elemMatch" : {"b" : {"$gt" : 1} } } ] } }' ORDER BY object_id;
+SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ {"$all" : [0]}, {"$elemMatch" : {"b" : {"$gt" : 1} } } ] } }' ORDER BY object_id;
 psql:sql/bson_query_operator_tests_core.sql:238: ERROR:  no $ expressions in $all
-SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ {"$elemMatch" : {"b" : {"$gt" : 1} } }, { "b" : 1 } ] } }' ORDER BY object_id;
+SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ {"$elemMatch" : {"b" : {"$gt" : 1} } }, {} ] } }' ORDER BY object_id;
 psql:sql/bson_query_operator_tests_core.sql:240: ERROR:  $all/$elemMatch has to be consistent
-SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ { "b" : 1 }, {"$elemMatch" : {"b" : {"$gt" : 1} } } ] } }' ORDER BY object_id;
+SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ {}, {"$elemMatch" : {"b" : {"$gt" : 1} } } ] } }' ORDER BY object_id;
 psql:sql/bson_query_operator_tests_core.sql:241: ERROR:  no $ expressions in $all
-SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ {"$elemMatch" : {"b" : {"$gt" : 1} } }, { "$or" : [ {"b":1} ] } ] } }' ORDER BY object_id;
+SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ {"$elemMatch" : {"b" : {"$gt" : 1} } }, { "b" : 1 } ] } }' ORDER BY object_id;
 psql:sql/bson_query_operator_tests_core.sql:243: ERROR:  $all/$elemMatch has to be consistent
-SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ { "$or" : [ {"b":1} ] }, {"$elemMatch" : {"b" : {"$gt" : 1} } } ] } }' ORDER BY object_id;
+SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ { "b" : 1 }, {"$elemMatch" : {"b" : {"$gt" : 1} } } ] } }' ORDER BY object_id;
 psql:sql/bson_query_operator_tests_core.sql:244: ERROR:  no $ expressions in $all
+SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ {"$elemMatch" : {"b" : {"$gt" : 1} } }, { "$or" : [ {"b":1} ] } ] } }' ORDER BY object_id;
+psql:sql/bson_query_operator_tests_core.sql:246: ERROR:  $all/$elemMatch has to be consistent
+SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ { "$or" : [ {"b":1} ] }, {"$elemMatch" : {"b" : {"$gt" : 1} } } ] } }' ORDER BY object_id;
+psql:sql/bson_query_operator_tests_core.sql:247: ERROR:  no $ expressions in $all
 SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ {"$all" : [1] } ] } }' ORDER BY object_id;
-psql:sql/bson_query_operator_tests_core.sql:246: ERROR:  no $ expressions in $all
+psql:sql/bson_query_operator_tests_core.sql:249: ERROR:  no $ expressions in $all
 -- negative tests for $not operator
 SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$not" : {} } }';
-psql:sql/bson_query_operator_tests_core.sql:249: ERROR:  $not cannot be empty
+psql:sql/bson_query_operator_tests_core.sql:252: ERROR:  $not cannot be empty
 -- negative tests for comp operators with regex
 SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$ne" : {"$regex" : "hello", "$options" : ""} } }';
-psql:sql/bson_query_operator_tests_core.sql:252: ERROR:  Can't have regex as arg to $ne.
+psql:sql/bson_query_operator_tests_core.sql:255: ERROR:  Can't have regex as arg to $ne.
 SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$gt" : {"$regex" : "hello", "$options" : ""} } }';
-psql:sql/bson_query_operator_tests_core.sql:253: ERROR:  Can't have RegEx as arg to predicate over field 'a'.
-SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$gte" : {"$regex" : "hello", "$options" : ""} } }';
-psql:sql/bson_query_operator_tests_core.sql:254: ERROR:  Can't have RegEx as arg to predicate over field 'a'.
-SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$lt" : {"$regex" : "hello", "$options" : ""} } }';
-psql:sql/bson_query_operator_tests_core.sql:255: ERROR:  Can't have RegEx as arg to predicate over field 'a'.
-SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$lte" : {"$regex" : "hello", "$options" : ""} } }';
 psql:sql/bson_query_operator_tests_core.sql:256: ERROR:  Can't have RegEx as arg to predicate over field 'a'.
+SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$gte" : {"$regex" : "hello", "$options" : ""} } }';
+psql:sql/bson_query_operator_tests_core.sql:257: ERROR:  Can't have RegEx as arg to predicate over field 'a'.
+SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$lt" : {"$regex" : "hello", "$options" : ""} } }';
+psql:sql/bson_query_operator_tests_core.sql:258: ERROR:  Can't have RegEx as arg to predicate over field 'a'.
+SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$lte" : {"$regex" : "hello", "$options" : ""} } }';
+psql:sql/bson_query_operator_tests_core.sql:259: ERROR:  Can't have RegEx as arg to predicate over field 'a'.
 -- type undefined, no-operator
 SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : {"$undefined" : true } }';
-psql:sql/bson_query_operator_tests_core.sql:259: ERROR:  cannot compare to undefined
+psql:sql/bson_query_operator_tests_core.sql:262: ERROR:  cannot compare to undefined
 SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : 1, "b" : { "$undefined" : true } }';
-psql:sql/bson_query_operator_tests_core.sql:260: ERROR:  cannot compare to undefined
+psql:sql/bson_query_operator_tests_core.sql:263: ERROR:  cannot compare to undefined
 SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a.b" : { "$undefined" : true } }';
-psql:sql/bson_query_operator_tests_core.sql:261: ERROR:  cannot compare to undefined
+psql:sql/bson_query_operator_tests_core.sql:264: ERROR:  cannot compare to undefined
 -- type undefined, comparison query operators
 SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$eq" : { "$undefined" : true } } }';
-psql:sql/bson_query_operator_tests_core.sql:264: ERROR:  cannot compare to undefined
-SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$ne" : { "$undefined" : true } } }';
-psql:sql/bson_query_operator_tests_core.sql:265: ERROR:  cannot compare to undefined
-SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$gt" : { "$undefined" : true } } }';
-psql:sql/bson_query_operator_tests_core.sql:266: ERROR:  cannot compare to undefined
-SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$gte" : { "$undefined" : true } } }';
 psql:sql/bson_query_operator_tests_core.sql:267: ERROR:  cannot compare to undefined
-SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$lt" : { "$undefined" : true } } }';
+SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$ne" : { "$undefined" : true } } }';
 psql:sql/bson_query_operator_tests_core.sql:268: ERROR:  cannot compare to undefined
-SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$lte" : { "$undefined" : true } } }';
+SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$gt" : { "$undefined" : true } } }';
 psql:sql/bson_query_operator_tests_core.sql:269: ERROR:  cannot compare to undefined
+SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$gte" : { "$undefined" : true } } }';
+psql:sql/bson_query_operator_tests_core.sql:270: ERROR:  cannot compare to undefined
+SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$lt" : { "$undefined" : true } } }';
+psql:sql/bson_query_operator_tests_core.sql:271: ERROR:  cannot compare to undefined
+SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$lte" : { "$undefined" : true } } }';
+psql:sql/bson_query_operator_tests_core.sql:272: ERROR:  cannot compare to undefined
 SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$in" : [ { "$undefined" : true } ] } }';
-psql:sql/bson_query_operator_tests_core.sql:270: ERROR:  InMatchExpression equality cannot be undefined
-SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$in" : [ { "$undefined" : true }, 2, 3, 4 ] } }';
-psql:sql/bson_query_operator_tests_core.sql:271: ERROR:  InMatchExpression equality cannot be undefined
-SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$nin" : [ { "$undefined" : true } ] } }';
-psql:sql/bson_query_operator_tests_core.sql:272: ERROR:  InMatchExpression equality cannot be undefined
-SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$nin" : [ { "$undefined" : true }, 6, 7, 8] } }';
 psql:sql/bson_query_operator_tests_core.sql:273: ERROR:  InMatchExpression equality cannot be undefined
+SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$in" : [ { "$undefined" : true }, 2, 3, 4 ] } }';
+psql:sql/bson_query_operator_tests_core.sql:274: ERROR:  InMatchExpression equality cannot be undefined
+SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$nin" : [ { "$undefined" : true } ] } }';
+psql:sql/bson_query_operator_tests_core.sql:275: ERROR:  InMatchExpression equality cannot be undefined
+SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$nin" : [ { "$undefined" : true }, 6, 7, 8] } }';
+psql:sql/bson_query_operator_tests_core.sql:276: ERROR:  InMatchExpression equality cannot be undefined
 -- type undefined, array query operators
 SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$all" : [ { "$undefined" : true } ] } }';
-psql:sql/bson_query_operator_tests_core.sql:276: ERROR:  cannot compare to undefined
+psql:sql/bson_query_operator_tests_core.sql:279: ERROR:  cannot compare to undefined
 SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$all" : [ { "$undefined" : true }, 2 ] } }';
-psql:sql/bson_query_operator_tests_core.sql:277: ERROR:  cannot compare to undefined
+psql:sql/bson_query_operator_tests_core.sql:280: ERROR:  cannot compare to undefined
 --type undefined, bitwise query operators
 SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{"a": {"$bitsAllClear": {"$undefined": true}}}';
-psql:sql/bson_query_operator_tests_core.sql:280: ERROR:  a takes an Array, a number, or a BinData but received: $bitsAllClear: \{ "$undefined" : true }\
+psql:sql/bson_query_operator_tests_core.sql:283: ERROR:  a takes an Array, a number, or a BinData but received: $bitsAllClear: \{ "$undefined" : true }\
 SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{"a": {"$bitsAllClear": [1, {"$undefined": true}]}}';
-psql:sql/bson_query_operator_tests_core.sql:281: ERROR:  bit positions must be an integer but got: 1: \{ "$undefined" : true }\
+psql:sql/bson_query_operator_tests_core.sql:284: ERROR:  bit positions must be an integer but got: 1: \{ "$undefined" : true }\
 SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{"a": {"$bitsAllSet": {"$undefined": true}}}';
-psql:sql/bson_query_operator_tests_core.sql:282: ERROR:  a takes an Array, a number, or a BinData but received: $bitsAllSet: \{ "$undefined" : true }\
+psql:sql/bson_query_operator_tests_core.sql:285: ERROR:  a takes an Array, a number, or a BinData but received: $bitsAllSet: \{ "$undefined" : true }\
 SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{"a": {"$bitsAllSet":[1, {"$undefined": true}]}}';
-psql:sql/bson_query_operator_tests_core.sql:283: ERROR:  bit positions must be an integer but got: 1: \{ "$undefined" : true }\
+psql:sql/bson_query_operator_tests_core.sql:286: ERROR:  bit positions must be an integer but got: 1: \{ "$undefined" : true }\
 SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{"a": {"$bitsAnyClear": {"$undefined": true}}}';
-psql:sql/bson_query_operator_tests_core.sql:284: ERROR:  a takes an Array, a number, or a BinData but received: $bitsAnyClear: \{ "$undefined" : true }\
+psql:sql/bson_query_operator_tests_core.sql:287: ERROR:  a takes an Array, a number, or a BinData but received: $bitsAnyClear: \{ "$undefined" : true }\
 SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{"a": {"$bitsAnyClear": [1, {"$undefined": true}]}}';
-psql:sql/bson_query_operator_tests_core.sql:285: ERROR:  bit positions must be an integer but got: 1: \{ "$undefined" : true }\
+psql:sql/bson_query_operator_tests_core.sql:288: ERROR:  bit positions must be an integer but got: 1: \{ "$undefined" : true }\
 SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{"a": {"$bitsAnySet": {"$undefined": true}}}';
-psql:sql/bson_query_operator_tests_core.sql:286: ERROR:  a takes an Array, a number, or a BinData but received: $bitsAnySet: \{ "$undefined" : true }\
+psql:sql/bson_query_operator_tests_core.sql:289: ERROR:  a takes an Array, a number, or a BinData but received: $bitsAnySet: \{ "$undefined" : true }\
 SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{"a": {"$bitsAnySet": [1, {"$undefined": true}]}}';
-psql:sql/bson_query_operator_tests_core.sql:287: ERROR:  bit positions must be an integer but got: 1: \{ "$undefined" : true }\
+psql:sql/bson_query_operator_tests_core.sql:290: ERROR:  bit positions must be an integer but got: 1: \{ "$undefined" : true }\
 -- $in with miscellaneous datatypes 
 SELECT helio_api.insert_one('db','queryoperatorIn', '{"_id": 1, "a" : 1}', NULL);
-psql:sql/bson_query_operator_tests_core.sql:290: NOTICE:  creating collection
+psql:sql/bson_query_operator_tests_core.sql:293: NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
