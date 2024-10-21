@@ -125,7 +125,7 @@ These are the wait events introduced by YugabyteDB, however some of the followin
 | Consensus | WAL_Append | DiskIO | \<tablet-id>| A write RPC is persisting WAL edits. |
 | Consensus | WAL_Sync | DiskIO | \<tablet-id>| A write RPC is synchronizing WAL edits. |
 | Consensus | Raft_WaitingForReplication | Network | \<tablet-id>| A write RPC is waiting for Raft replication. |
-| Consensus | Raft_ApplyingEdits | Lock/CPU | \<tablet-id>| A write RPC is applying Raft edits locally. |
+| Consensus | Raft_ApplyingEdits | WaitOnCondition/CPU | \<tablet-id>| A write RPC is applying Raft edits locally. |
 | Consensus | ConsensusMeta_Flush | DiskIO | | ConsensusMetadata is flushed, for example, during Raft term, configuration change, remote bootstrap, and so on. |
 | Consensus | ReplicaState_TakeUpdateLock | WaitOnCondition | | A write/alter RPC needs to wait for the ReplicaState lock to replicate a batch of writes through Raft. |
 | RocksDB | RocksDB_ReadBlockFromFile | DiskIO  | | RocksDB is reading a block from a file. |
