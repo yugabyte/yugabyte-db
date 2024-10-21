@@ -110,6 +110,7 @@ chatbots
 ChatOps
 checksummed
 checksumming
+chrony
 CIDRs
 Citrix
 Citus

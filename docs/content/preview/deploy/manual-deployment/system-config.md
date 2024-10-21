@@ -23,9 +23,9 @@ In particular, the main YugabyteDB process, the YB-TServer, is multi-threaded. A
 
 ## Set up time synchronization
 
-YugabyteDB relies on clock synchronization to guarantee consistency in distributed transactions. Chrony is the prefered NTP implementation for clock synchronization.
+YugabyteDB relies on clock synchronization to guarantee consistency in distributed transactions. chrony is the preferred NTP implementation for clock synchronization.
 
-### Install Chrony
+### Install chrony
 
 To install chrony, run:
 

@@ -13,24 +13,24 @@ type: docs
 
 ## Overview
 
-The YugabyteDB SQL shell ysqlsh provides a CLI for interacting with YugabyteDB using [YSQL](../../api/ysql/). It enables you to:
+The YugabyteDB SQL shell (ysqlsh) provides a CLI for interacting with YugabyteDB using [YSQL](../../api/ysql/). It enables you to:
 
 - interactively enter SQL queries and see the query results
 - input from a file or the command line
 - use [meta-commands](../ysqlsh-meta-commands/) for scripting and administration
 
-ysqlsh works best with servers of the same or an older major version. [Meta-commands](../ysqlsh-meta-commands/) are particularly likely to fail if the server is a newer version than ysqlsh itself. The general functionality of running SQL statements and displaying query results should also work with servers of a newer major version, but this cannot be guaranteed in all cases.
-
-If you are running multiple versions of YugabyteDB, use the newest version of ysqlsh to connect. You can keep and use the matching version of ysqlsh to use with each version of YugabyteDB, but in practice, this shouldn't be necessary.
-
 ### Installation
 
-ysqlsh is installed with YugabyteDB and located in the `bin` directory of the YugabyteDB home directory. If you prefer, you can install a standalone version; refer to [YugabyteDB clients](/preview/releases/yugabyte-clients/).
+ysqlsh is installed with YugabyteDB and located in the `bin` directory of the YugabyteDB home directory.
+
+{{<lead link="/preview/releases/yugabyte-clients/">}}
+To download and install a standalone version of ysqlsh, refer to [YugabyteDB clients](/preview/releases/yugabyte-clients/).
+{{</lead>}}
 
 ### Starting ysqlsh
 
 ```sh
-$ ./bin/ysqlsh
+./bin/ysqlsh
 ```
 
 ```output

@@ -55,7 +55,7 @@ You can create a KMS configuration that uses AWS KMS as follows:
     - **Access Key Id** — Enter the identifier for the access key.
     - **Secret Key Id** — Enter the identifier for the secret key.
     - **Region** — Select the AWS region where the customer master key (CMK) that was used for generating the universe keys is to be located. This setting does not need to match the region where the encrypted universe resides on AWS.
-    - **Customer Master Key ID** — Enter the identifier for the CMK. If an identifier is not entered, a CMK ID will be auto-generated.
+    - **Customer Master Key ID** — Enter the identifier for the CMK. If an identifier is not entered, a CMK ID will be automatically generated.
     - **AWS KMS Endpoint** — Specify the KMS endpoint to ensure that the encryption traffic is routed across your internal links without crossing into an external network.
 
 4. Optionally, click **Upload CMK Policy** to select a custom policy file. The following is the default policy:
