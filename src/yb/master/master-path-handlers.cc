@@ -3560,6 +3560,9 @@ Status MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
     TabletInfos tablets = VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue));
     bool is_user_table = master_->catalog_manager()->IsUserCreatedTable(*table);
     for (const auto& tablet : tablets) {
+      if (tablet->LockForRead()->is_deleted()) {
+        continue;
+      }
       auto replication_locations = tablet->GetReplicaLocations();
       for (const auto& replica : *replication_locations) {
         auto& counts = (*tablet_map)[replica.first];
@@ -3616,6 +3619,9 @@ Result<MasterPathHandlers::TServerTree> MasterPathHandlers::CalculateTServerTree
     TabletInfos tablets = VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue));
 
     for (const auto& tablet : tablets) {
+      if (tablet->LockForRead()->is_deleted()) {
+        continue;
+      }
       auto replica_locations = tablet->GetReplicaLocations();
       for (const auto& replica : *replica_locations) {
         tserver_tree[replica.first][tablet->table()->id()].emplace_back(
@@ -3675,17 +3681,24 @@ void MasterPathHandlers::RenderLoadBalancerViewPanel(
     }
     const string& table_name = table_locked->name();
     const string& table_id = table->id();
-    auto tablet_count = table->TabletCount(IncludeInactive::kTrue);
+
+    std::unordered_set<TabletId> tablet_ids;
+    for (const auto& [_, table_tree] : tserver_tree) {
+      for (const auto& [_, replicas] : table_tree) {
+        for (const auto& replica : replicas) {
+          tablet_ids.insert(replica.tablet_id);
+        }
+      }
+    }
+    auto tablet_count = tablet_ids.size();
 
     *output << Format(
         "<tr>"
         "<td>$0</td>"
         "<td><a href=\"/table?id=$1\">$2</a></td>"
         "<td>$3</td>",
-        EscapeForHtmlToString(keyspace),
-        UrlEncodeToString(table_id),
-        EscapeForHtmlToString(table_name),
-        tablet_count);
+        EscapeForHtmlToString(keyspace), UrlEncodeToString(table_id),
+        EscapeForHtmlToString(table_name), tablet_count);
     for (auto& desc : descs) {
       uint64 num_replicas = 0;
       uint64 num_leaders = 0;
