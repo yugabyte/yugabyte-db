@@ -72,9 +72,11 @@
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_catalog_version.h"
+#include "catalog/pg_yb_logical_client_version.h"
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "catalog/yb_catalog_version.h"
+#include "catalog/yb_logical_client_version.h"
 #include "catalog/yb_type.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
@@ -119,6 +121,8 @@
 static uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 static uint64_t yb_last_known_catalog_cache_version =
 	YB_CATCACHE_VERSION_UNINITIALIZED;
+
+static uint64_t yb_logical_client_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
 uint64_t YBGetActiveCatalogCacheVersion() {
 	if (yb_catalog_version_type == CATALOG_VERSION_CATALOG_TABLE &&
@@ -171,6 +175,13 @@ YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version)
 		ereport(LOG,
 				(errmsg("set local catalog version: %" PRIu64,
 						yb_catalog_cache_version)));
+}
+
+void
+YbSetLogicalClientCacheVersion(uint64_t logical_client_cache_version)
+{
+	if (yb_logical_client_cache_version == YB_CATCACHE_VERSION_UNINITIALIZED)
+		yb_logical_client_cache_version = logical_client_cache_version;
 }
 
 void
@@ -599,6 +610,31 @@ YBIsDBCatalogVersionMode()
 
 	/* We cannot enable per-db catalog version mode yet. */
 	return false;
+}
+
+bool
+YBIsDBLogicalClientVersionMode()
+{
+	static bool cached_is_db_logical_client_version_mode = false;
+
+	if (cached_is_db_logical_client_version_mode)
+		return true;
+
+	if (!IsYugaByteEnabled() ||
+		YbGetLogicalClientVersionType() != LOGICAL_CLIENT_VERSION_CATALOG_TABLE||
+		!*YBCGetGFlags()->TEST_ysql_enable_db_logical_client_version_mode)
+		return false;
+	
+	/*
+	 * During second phase of initdb, logical client version mode is supported.
+	 */
+	if (YBCIsInitDbModeEnvVarSet())
+	{
+		cached_is_db_logical_client_version_mode = true;
+		return true;
+	}
+
+	return true;
 }
 
 static bool
@@ -1810,6 +1846,37 @@ GetActualStmtNode(PlannedStmt *pstmt)
 	return pstmt->utilityStmt;
 }
 
+static bool
+YbShouldIncrementLogicalClientVersion(PlannedStmt *pstmt)
+{
+	Node *parsetree = GetActualStmtNode(pstmt);
+	NodeTag node_tag = nodeTag(parsetree);
+	switch (node_tag) {
+		case T_AlterDatabaseSetStmt:
+		case T_AlterRoleSetStmt:
+			return true;
+		case T_AlterRoleStmt:
+		{
+			AlterRoleStmt *stmt = castNode(AlterRoleStmt, parsetree);
+			if (list_length(stmt->options) == 1)
+			{
+				DefElem *def = (DefElem *) linitial(stmt->options);
+				/*
+				 * In case of ALTER ROLE <role> superuser, increment the
+				 * logical client as for the new backends, the role will have
+				 * superuser priviledges.
+				 */
+				if (strcmp(def->defname, "superuser") == 0)
+					return true;
+			}
+			break;
+		}
+		default:
+			return false;
+	}
+	return false;
+}
+
 YbDdlModeOptional YbGetDdlMode(
 	PlannedStmt *pstmt, ProcessUtilityContext context)
 {
@@ -2339,6 +2406,11 @@ YBTxnDdlProcessUtility(
 				YbInitPinnedCacheIfNeeded(true /* shared_only */);
 
 			YBIncrementDdlNestingLevel(ddl_mode.value);
+
+			if (YbShouldIncrementLogicalClientVersion(pstmt) &&
+				YbIsClientYsqlConnMgr() &&
+				YbIncrementMasterLogicalClientVersionTableEntry())
+				elog(LOG, "Logical client version incremented");
 		}
 
 		if (prev_ProcessUtility)

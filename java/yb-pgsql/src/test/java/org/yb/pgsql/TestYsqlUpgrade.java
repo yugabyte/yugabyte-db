@@ -154,8 +154,10 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    * rels when computing system catalog checksum.
    */
   private static final String SHARED_ENTITY_PREFIX = "pg_yb_test_";
-  private static final String CATALOG_VERSION_TABLE = "pg_yb_catalog_version";
-  private static final String MIGRATIONS_TABLE      = "pg_yb_migration";
+
+  private static final String CATALOG_VERSION_TABLE        = "pg_yb_catalog_version";
+  private static final String MIGRATIONS_TABLE             = "pg_yb_migration";
+  private static final String LOGICAL_CLIENT_VERSION_TABLE = "pg_yb_logical_client_version";
 
   /** Guaranteed to be greated than any real OID, needed for sorted entities to appear at the end */
   private static final long PLACEHOLDER_OID = 1234567890L;
@@ -1915,7 +1917,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     SysCatalogSnapshot simplifiedFreshSnapshot = simplifyCatalogSnapshot.apply(freshSnapshot);
     SysCatalogSnapshot simplifiedMigratedSnapshot = simplifyCatalogSnapshot.apply(migratedSnapshot);
 
-    List<String> tablesToSkip = Arrays.asList(MIGRATIONS_TABLE, CATALOG_VERSION_TABLE);
+    List<String> tablesToSkip = Arrays.asList(
+      MIGRATIONS_TABLE, CATALOG_VERSION_TABLE, LOGICAL_CLIENT_VERSION_TABLE);
 
     simplifiedMigratedSnapshot.catalog.forEach((tableName, migratedRows) -> {
       if (tablesToSkip.contains(tableName))

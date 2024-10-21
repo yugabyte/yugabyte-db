@@ -87,6 +87,8 @@ extern uint64_t YbGetCatalogCacheVersion();
 
 extern void YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version);
 
+extern void YbSetLogicalClientCacheVersion(uint64_t logical_client_cache_version);
+
 extern void YbResetCatalogCacheVersion();
 
 extern uint64_t YbGetLastKnownCatalogCacheVersion();
@@ -255,6 +257,11 @@ extern bool YBIsWaitQueueEnabled();
  * Whether the per database catalog version mode is enabled.
  */
 extern bool YBIsDBCatalogVersionMode();
+
+/*
+ * Whether the per database logical client version mode is enabled.
+ */
+extern bool YBIsDBLogicalClientVersionMode();
 
 /*
  * Whether we need to preload additional catalog tables.

@@ -13,7 +13,7 @@ subdir = src/backend/catalog
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
-SUBDIRS = yb_catalog
+SUBDIRS = yb_catalog yb_logical_client
 
 OBJS = catalog.o dependency.o heap.o index.o indexing.o namespace.o aclchk.o \
        objectaccess.o objectaddress.o partition.o pg_aggregate.o pg_collation.o \
@@ -49,7 +49,7 @@ CATALOG_HEADERS := \
 	pg_collation.h pg_partitioned_table.h pg_range.h pg_transform.h \
 	pg_sequence.h pg_publication.h pg_publication_rel.h pg_subscription.h \
 	pg_subscription_rel.h pg_yb_catalog_version.h pg_yb_migration.h \
-	pg_yb_profile.h pg_yb_role_profile.h pg_yb_tablegroup.h
+	pg_yb_profile.h pg_yb_role_profile.h pg_yb_tablegroup.h pg_yb_logical_client_version.h 
 
 GENERATED_HEADERS := $(CATALOG_HEADERS:%.h=%_d.h) schemapg.h
 
@@ -68,7 +68,7 @@ POSTGRES_BKI_DATA = $(addprefix $(top_srcdir)/src/include/catalog/,\
 	pg_namespace.dat pg_opclass.dat pg_operator.dat pg_opfamily.dat \
 	pg_pltemplate.dat pg_proc.dat pg_range.dat pg_tablespace.dat \
 	pg_ts_config.dat pg_ts_config_map.dat pg_ts_dict.dat pg_ts_parser.dat \
-	pg_ts_template.dat pg_type.dat pg_yb_catalog_version.dat pg_yb_migration.dat \
+	pg_ts_template.dat pg_type.dat pg_yb_catalog_version.dat pg_yb_migration.dat pg_yb_logical_client_version.dat \
 	)
 
 # location of Catalog.pm

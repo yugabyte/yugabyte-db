@@ -41,6 +41,7 @@
 #include "catalog/pg_type_d.h"
 #include "catalog/yb_type.h"
 #include "catalog/yb_catalog_version.h"
+#include "catalog/yb_logical_client_version.h"
 #include "commands/dbcommands.h"
 #include "commands/event_trigger.h"
 #include "commands/tablegroup.h"
@@ -150,6 +151,9 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bo
 
 	if (YBIsDBCatalogVersionMode())
 		YbCreateMasterDBCatalogVersionTableEntry(dboid);
+
+	if (YBIsDBLogicalClientVersionMode())
+		YbCreateMasterDBLogicalClientVersionTableEntry(dboid);
 }
 
 static void
@@ -183,6 +187,9 @@ YBCDropDatabase(Oid dboid, const char *dbname)
 
 	if (YBIsDBCatalogVersionMode())
 		YbDeleteMasterDBCatalogVersionTableEntry(dboid);
+
+	if (YBIsDBLogicalClientVersionMode())
+		YbDeleteMasterDBLogicalClientVersionTableEntry(dboid);
 }
 
 void

@@ -319,10 +319,10 @@ class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithUnlimitedCachePe
   }
 };
 
-constexpr uint64_t kFirstConnectionRPCCountDefault = 5;
-constexpr uint64_t kFirstConnectionRPCCountWithAdditionalTables = 6;
-constexpr uint64_t kFirstConnectionRPCCountWithSmallPreload = 5;
-constexpr uint64_t kSubsequentConnectionRPCCount = 2;
+constexpr uint64_t kFirstConnectionRPCCountDefault = 6;
+constexpr uint64_t kFirstConnectionRPCCountWithAdditionalTables = 7;
+constexpr uint64_t kFirstConnectionRPCCountWithSmallPreload = 6;
+constexpr uint64_t kSubsequentConnectionRPCCount = 3;
 static_assert(kFirstConnectionRPCCountDefault <= kFirstConnectionRPCCountWithAdditionalTables);
 
 // Helper class to fetch number of client connection via pgsql proxy webserver.

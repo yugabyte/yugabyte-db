@@ -80,10 +80,12 @@
 
 #include "pg_yb_utils.h"
 #include "catalog/pg_yb_catalog_version.h"
+#include "catalog/pg_yb_logical_client_version.h"
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "catalog/pg_yb_tablegroup.h"
 #include "catalog/yb_catalog_version.h"
+#include "catalog/yb_logical_client_version.h"
 #include "utils/yb_inheritscache.h"
 
 static HeapTuple GetDatabaseTuple(const char *dbname);
@@ -1085,6 +1087,13 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 	InvalidateCatalogSnapshot();
 	if (IsYugaByteEnabled() && YBCIsSysTablePrefetchingStarted())
 		YBCStopSysTablePrefetching();
+
+	if (YBIsDBLogicalClientVersionMode())
+	{
+		int32_t logical_client_version = YbGetMasterLogicalClientVersion();
+		elog(LOG, "logical_client_version = %d", logical_client_version);
+		YbSetLogicalClientCacheVersion(logical_client_version);
+	}
 
 	/*
 	 * Recheck pg_database to make sure the target database hasn't gone away.
