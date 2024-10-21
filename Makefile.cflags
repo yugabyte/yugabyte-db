@@ -8,7 +8,7 @@ PG_CPPFLAGS = $(shell pkg-config --cflags libbson-static-1.0) -I$(libpq_srcdir) 
 PG_LDFLAGS = $(shell pkg-config --static --libs --cflags libbson-static-1.0) $(shell pkg-config --static --libs --cflags intelmathlib) $(shell pkg-config --static --libs --cflags libpcre2-8) -L/usr/lib
 
 ifeq ($(CC),gcc)
-    PG_CFLAGS = -std=gnu99 -Wall -Wextra -Werror -Wno-declaration-after-statement -Wno-unused-parameter -Wno-maybe-uninitialized -Wno-implicit-fallthrough $(LIBBSON) $(INTEL_DECIMAL_MATH_LIB) $(PCRE2_LIB)
+    PG_CFLAGS = -std=gnu99 -Wall -Wextra -Werror -Wno-declaration-after-statement -Wno-unused-parameter -Wno-implicit-fallthrough $(LIBBSON) $(INTEL_DECIMAL_MATH_LIB) $(PCRE2_LIB)
 else
     PG_CFLAGS = -std=gnu99 -Wall -Wextra -Werror -Wno-declaration-after-statement -Wno-unused-parameter -Wno-implicit-fallthrough $(LIBBSON) $(INTEL_DECIMAL_MATH_LIB) $(PCRE2_LIB)
 endif

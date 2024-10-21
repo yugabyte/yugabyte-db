@@ -2935,6 +2935,7 @@ HandleDollarFirstLastOperators(const bson_value_t *opValue,
 	}
 	else
 	{
+		nConst = NULL;
 		constValue = MakeBsonConst(BsonValueToDocumentPgbson(opValue));
 	}
 
