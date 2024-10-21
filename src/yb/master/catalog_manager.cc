@@ -10999,7 +10999,8 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
 
     bool was_hidden = tablet_lock->ListedAsHidden();
     // Inactive tablet now, so remove it from partitions_.
-    // After all the tablets have been deleted from the tservers, we remove it from tablets_.
+    // TODO(#15043): After all the tablet's replicas have been deleted from the tservers, remove
+    //               it from tablets_.
     tablet->table()->RemoveTablet(tablet->id(), DeactivateOnly::kTrue);
 
     if (tablet_data.hide_only) {
