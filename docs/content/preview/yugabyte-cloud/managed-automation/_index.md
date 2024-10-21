@@ -11,6 +11,7 @@ menu:
     identifier: managed-automation
     weight: 550
 type: indexpage
+showRightNav: true
 ---
 
 Use the following automation tools to manage your YugabyteDB Aeon account and clusters:

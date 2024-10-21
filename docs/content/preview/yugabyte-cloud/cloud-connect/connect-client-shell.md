@@ -11,13 +11,18 @@ menu:
 type: docs
 ---
 
-Connect to your YugabyteDB cluster database from your desktop using the YugabyteDB [ysqlsh](../../../api/ysqlsh/) and [ycqlsh](../../../api/ycqlsh/) client shells installed on your computer. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) and third-party tools to connect.
+Connect to your YugabyteDB cluster database from your desktop using the [YugabyteDB client shells](../../../releases/yugabyte-clients/) installed on your computer.
 
-When connecting via a Yugabyte client shell, ensure you are running the latest versions of the shells (Yugabyte Client 2.6 or later). See [How do I connect to my cluster?](../../../faq/yugabytedb-managed-faq/#how-do-i-connect-to-my-cluster) in the FAQ for details.
+| Client | API | Description |
+| :--- | :--- | :--- |
+| [ysqlsh](../../../api/ysqlsh/) | [YSQL](../../../api/ysql/) | SQL shell for interacting with YugabyteDB using PostgreSQL-compatible YSQL API. |
+| [ycqlsh](../../../api/ycqlsh/) | [YCQL](../../../api/ycql/) | CQL shell for interacting with YugabyteDB using Cassandra-compatible YCQL API. |
+
+Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) and third-party tools to connect.
 
 ## Prerequisites
 
-Before you can connect a desktop client to a YugabyteDB Aeon cluster, you need to do the following:
+To connect a desktop client to a YugabyteDB Aeon cluster, you need to do the following:
 
 - Configure network access
 - Download the cluster certificate
@@ -99,13 +104,6 @@ To connect, follow the client's configuration steps for PostgreSQL or Cassandra,
 Your client may also require the use of the cluster's certificate. Refer to [Download the cluster certificate](../../cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 For detailed steps for configuring popular third party tools, see [GUI clients](/preview/integrations/tools/).
-
-## Related information
-
-- [ysqlsh](../../../api/ysqlsh/) — Overview of the command line interface (CLI), syntax, and commands.
-- [YSQL API](../../../api/ysql/) — Reference for supported YSQL statements, data types, functions, and operators.
-- [ycqlsh](../../../api/ycqlsh/) — Overview of the command line interface (CLI), syntax, and commands.
-- [YCQL API](../../../api/ycql/) — Reference for supported YCQL statements, data types, functions, and operators.
 
 ## Next steps
 

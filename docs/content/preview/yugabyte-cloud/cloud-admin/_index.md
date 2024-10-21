@@ -25,12 +25,12 @@ For information on available plans and their features, refer to [YugabyteDB Pric
     title="Manage billing"
     body="Manage your billing profile and payment methods, view usage, and view invoices."
     href="cloud-billing-profile/"
-    icon="fa-solid fa-file-invoice-dollar">}}
+    icon="fa-thin fa-file-invoice-dollar">}}
 
   {{<index/item
     title="Cluster costs"
     body="Learn how cluster configurations are costed."
     href="cloud-billing-costs/"
-    icon="fa-solid fa-file-invoice-dollar">}}
+    icon="fa-thin fa-file-invoice-dollar">}}
 
 {{</index/block>}}
