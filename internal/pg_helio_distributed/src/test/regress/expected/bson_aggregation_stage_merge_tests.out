@@ -228,6 +228,12 @@ SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "uniqueIndexTest
  { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.uniqueIndexTestSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "uniqueIndexTestSrc", "pipeline": [ {"$merge" : { "on" : ["c" , "b" , "a"],"into": "uniqueIndexTestTarget" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                cursorpage                                                                 | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.uniqueIndexTestSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "uniqueIndexTestSrc", "pipeline": [ {"$merge" : { "on" : "_id", "into": "uniqueIndexTestTarget" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
                                                                 cursorpage                                                                 | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
@@ -1440,6 +1446,16 @@ ERROR:  Cannot find index to verify that join fields will be unique
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : "partialTest" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
 ERROR:  Cannot find index to verify that join fields will be unique
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : ["partialTest", "partialTest2"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : ["a", "a"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Found a duplicate field a
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : ["a", "b", "b"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Found a duplicate field b
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : ["c", "a", "c"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Found a duplicate field c
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : ["x","y"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : ["z","x"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
 ERROR:  Cannot find index to verify that join fields will be unique
 -- _id Negative unique test
 SELECT helio_api.insert_one('db','objectIDNegUniqueIndex',' { "_id" :  10, "a" : 1, "b" : 1, "c" : 1 , "d" : 1, "e" : 1, "f" : 1}', NULL);

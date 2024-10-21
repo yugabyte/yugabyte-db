@@ -156,13 +156,13 @@ static MergeAction * MakeActionWhenNotMatched(WhenNotMatchedAction whenNotMatche
 											  Var *sourceShardKeyVar,
 											  MongoCollection *targetCollection);
 static bool IsCompoundUniqueIndexPresent(const bson_value_t *onValues,
-										 bson_iter_t *indexKeyDocumnetIter,
-										 const int totalIndexKeys);
+										 bson_iter_t *indexKeyDocumentIter,
+										 const int numElementsInMap);
 static void ValidateAndAddObjectIdToWriter(pgbson_writer *writer,
 										   pgbson *sourceDocument,
 										   pgbson *targetDocument);
 static inline bool IsSingleUniqueIndexPresent(const char *onValue,
-											  bson_iter_t *indexKeyDocumnetIter);
+											  bson_iter_t *indexKeyDocumentIter);
 static inline void AddTargetCollectionRTEDollarMerge(Query *query,
 													 MongoCollection *targetCollection);
 static HTAB * InitHashTableFromStringArray(const bson_value_t *onValues, int
@@ -1379,20 +1379,20 @@ VaildateMergeOnFieldValues(const bson_value_t *onValues, uint64 collectionId)
 			continue;
 		}
 
-		bson_iter_t indexKeyDocumnetIter;
+		bson_iter_t indexKeyDocumentIter;
 		pgbson *indexKeyDocument = indexDetail->indexSpec.indexKeyDocument;
-		PgbsonInitIterator(indexKeyDocument, &indexKeyDocumnetIter);
+		PgbsonInitIterator(indexKeyDocument, &indexKeyDocumentIter);
 
 		if (keyNameIfSingleKeyJoin)
 		{
 			if (IsSingleUniqueIndexPresent(keyNameIfSingleKeyJoin,
-										   &indexKeyDocumnetIter))
+										   &indexKeyDocumentIter))
 			{
 				foundRequiredIndex = true;
 				break;
 			}
 		}
-		else if (IsCompoundUniqueIndexPresent(onValues, &indexKeyDocumnetIter,
+		else if (IsCompoundUniqueIndexPresent(onValues, &indexKeyDocumentIter,
 											  numKeysOnField))
 		{
 			foundRequiredIndex = true;
@@ -1430,12 +1430,12 @@ VaildateMergeOnFieldValues(const bson_value_t *onValues, uint64 collectionId)
  * - true if a unique index is present for the given fields, false otherwise.
  */
 static inline bool
-IsSingleUniqueIndexPresent(const char *onValue, bson_iter_t *indexKeyDocumnetIter)
+IsSingleUniqueIndexPresent(const char *onValue, bson_iter_t *indexKeyDocumentIter)
 {
 	pgbsonelement uniqueIndexElement;
 
 	/* if a document contains more than one element, it signifies a compound unique index, such as {"a" : 1, "b" : 1}. we should ignore that */
-	if (TryGetSinglePgbsonElementFromBsonIterator(indexKeyDocumnetIter,
+	if (TryGetSinglePgbsonElementFromBsonIterator(indexKeyDocumentIter,
 												  &uniqueIndexElement))
 	{
 		if (strcmp(uniqueIndexElement.path, onValue) == 0)
@@ -1456,6 +1456,7 @@ IsSingleUniqueIndexPresent(const char *onValue, bson_iter_t *indexKeyDocumnetIte
  * Parameters:
  * - onValues: A bson_value_t of array type.
  * - indexKeyDocumentIter: An iterator for the index key document.
+ * - numElementsInMap: Number of elements in the 'onValues' array from which we will built hashmap.
  *
  * example:
  * - onValues : ["a", "b", "c"]
@@ -1467,36 +1468,37 @@ IsSingleUniqueIndexPresent(const char *onValue, bson_iter_t *indexKeyDocumnetIte
  */
 static bool
 IsCompoundUniqueIndexPresent(const bson_value_t *onValues,
-							 bson_iter_t *indexKeyDocumnetIter,
-							 const int totalIndexKeys)
+							 bson_iter_t *indexKeyDocumentIter,
+							 const int numElementsInMap)
 {
-	HTAB *onValueHashTable = InitHashTableFromStringArray(onValues, totalIndexKeys);
+	HTAB *onValueHashTable = InitHashTableFromStringArray(onValues, numElementsInMap);
 	int foundCount = 0;
 
-	while (bson_iter_next(indexKeyDocumnetIter))
+	/* make sure alll the elements in index document present in hash map */
+	while (bson_iter_next(indexKeyDocumentIter))
 	{
-		StringView currentKey = bson_iter_key_string_view(indexKeyDocumnetIter);
-		bool foundInArray = false;
-		hash_search(onValueHashTable, &currentKey, HASH_FIND, &foundInArray);
-		if (foundInArray)
+		StringView currentKey = bson_iter_key_string_view(indexKeyDocumentIter);
+		bool foundInMap = false;
+		hash_search(onValueHashTable, &currentKey, HASH_FIND, &foundInMap);
+
+		if (!foundInMap)
 		{
-			foundCount++;
+			hash_destroy(onValueHashTable);
+			return false;
 		}
-		else
-		{
-			break;
-		}
+
+		foundCount++;
 	}
 
 	hash_destroy(onValueHashTable);
 
-	/* verify that all keys from `indexKeyDocumentIter` are in the hashmap and that their sizes match, ensuring no extra elements in the hashmap." */
-	if (foundCount == totalIndexKeys)
+	/* ensure that the map does not contain any elements beyond those in the index document */
+	if (foundCount < numElementsInMap)
 	{
-		return true;
+		return false;
 	}
 
-	return false;
+	return true;
 }
 
 
@@ -1528,7 +1530,18 @@ InitHashTableFromStringArray(const bson_value_t *inputKeyArray, int arraySize)
 			inputArrayElement->value.v_utf8.str,
 			inputArrayElement->value.
 			v_utf8.len);
-		hash_search(hashTable, &value, HASH_ENTER, NULL);
+
+		bool found = false;
+		hash_search(hashTable, &value, HASH_ENTER, &found);
+
+		if (found)
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31465),
+							errmsg(
+								"Found a duplicate field %s", value.string),
+							errdetail_log(
+								"Found a duplicate field %s", value.string)));
+		}
 	}
 
 	return hashTable;
