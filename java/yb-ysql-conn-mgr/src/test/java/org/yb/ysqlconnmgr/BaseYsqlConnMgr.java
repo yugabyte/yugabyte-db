@@ -62,6 +62,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     builder.numTservers(NUM_TSERVER);
     builder.replicationFactor(NUM_TSERVER);
     builder.addCommonTServerFlag("ysql_conn_mgr_dowarmup", "false");
+    builder.addCommonTServerFlag("ysql_conn_mgr_superuser_sticky", "false");
     if (warmup_random_mode) {
       builder.addCommonTServerFlag(
       "TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "random");
