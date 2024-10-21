@@ -48,3 +48,13 @@ SELECT * FROM test_truncate_child ORDER BY k;
 TRUNCATE test_truncate CASCADE;
 SELECT * FROM test_truncate;
 SELECT * FROM test_truncate_child;
+
+-- test TRUNCATE on system tables.
+TRUNCATE pg_extension;
+SELECT * FROM pg_extension;
+
+-- test TRUNCATE on temp tables.
+CREATE TEMP TABLE test_truncate_temp (k int, v int);
+INSERT INTO test_truncate_temp(k, v) VALUES (1, 1), (2, 2), (3, 3);
+TRUNCATE test_truncate_temp;
+SELECT * FROM test_truncate_temp;

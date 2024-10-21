@@ -1164,4 +1164,6 @@ extern bool YbIsReadCommittedTxn();
 
 extern YbReadTimePointHandle YbBuildCurrentReadTimePointHandle();
 
+bool YbUseUnsafeTruncate(Relation rel);
+
 #endif /* PG_YB_UTILS_H */

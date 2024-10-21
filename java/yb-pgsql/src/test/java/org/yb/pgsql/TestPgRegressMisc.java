@@ -31,6 +31,13 @@ public class TestPgRegressMisc extends BasePgSQLTest {
   }
 
   @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("ysql_pg_conf_csv", "\"allow_system_table_mods=on\"");
+    return flagMap;
+  }
+
+  @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
   }

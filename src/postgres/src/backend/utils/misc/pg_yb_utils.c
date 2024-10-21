@@ -5026,3 +5026,13 @@ YbReadTimePointHandle YbBuildCurrentReadTimePointHandle()
 			.has_value = true, .value = YBCPgGetCurrentReadTimePoint()}
 		: (YbReadTimePointHandle){};
 }
+
+/*
+ * Determine if the unsafe truncate (i.e., without table rewrite) should
+ * be used for a given relation and its indexes.
+ */
+bool YbUseUnsafeTruncate(Relation rel)
+{
+	return IsYBRelation(rel) &&
+		(IsSystemRelation(rel) || !yb_enable_alter_table_rewrite);
+}

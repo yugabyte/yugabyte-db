@@ -4152,8 +4152,8 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 			indexInfo->ii_ExclusionStrats = NULL;
 		}
 
-		if (IsYugaByteEnabled() && IsSystemRelation(heapRelation))
-			YbTruncate(iRel);
+		if (YbUseUnsafeTruncate(heapRelation))
+			YbUnsafeTruncate(iRel);
 		else
 		{
 			/* We'll build a new physical relation for the index */

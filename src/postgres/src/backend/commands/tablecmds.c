@@ -1877,12 +1877,10 @@ ExecuteTruncateGuts(List *explicit_rels, List *relids, List *relids_logged,
 		 * a new relfilenode in the current (sub)transaction, then we can just
 		 * truncate it in-place, because a rollback would cause the whole
 		 * table or the current physical file to be thrown away anyway.
+		 * YB: Check if the unsafe truncate method should be used.
 		 */
-		if (IsYBRelation(rel) && !yb_enable_alter_table_rewrite)
-		{
-			// Call YugaByte API to truncate tables.
-			YbTruncate(rel);
-		}
+		if (YbUseUnsafeTruncate(rel))
+			YbUnsafeTruncate(rel);
 		else if (rel->rd_createSubid == mySubid ||
 				 rel->rd_newRelfilenodeSubid == mySubid || !IsYBRelation(rel))
 		{
