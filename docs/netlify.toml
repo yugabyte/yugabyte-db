@@ -358,6 +358,10 @@
   from = "/preview/architecture/concepts"
   to = "/preview/architecture/key-concepts"
 
+[[redirects]]
+  from = "/preview/explore/sql-nosql*"
+  to = "/preview/faq/general/#how-is-yugabytedb-different-from-nosql-databases"
+
 # from 404 report (referrer: ycombinator)
 [[redirects]]
   from = "/preview/architecture/concepts/acknowledgements"
