@@ -76,7 +76,6 @@ The following table describes views in YSQL you can use to monitor and tune quer
 | :--- | :---------- |
 | [pg_stat_statements](../query-1-performance/pg-stat-statements) | Get query statistics (such as the _time spent by a query_) |
 | [pg_stat_activity](./pg-stat-activity) | View and analyze live queries |
-| [yb_local_tablets](./yb-local-tablets) | Get YSQL/YCQL and tablet metadata details |
 | [yb_terminated_queries](./yb-pg-stat-get-queries/) | Identify terminated queries |
 | [pg_stat_progress_copy](./pg-stat-progress-copy) | Get the status of a COPY command execution |
 | [pg_locks](./pg-locks) | Get information on locks held by a transaction |
