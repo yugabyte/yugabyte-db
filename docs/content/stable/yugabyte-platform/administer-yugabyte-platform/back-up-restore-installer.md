@@ -53,8 +53,8 @@ To back up your YugabyteDB Anywhere installation, perform the following steps:
     The `createBackup` command creates a timestamped `tgz` file for the backup. For example:
 
     ```sh
-    $ sudo yba-ctl createBackup ~/test_backup
-    $ ls test_backup/
+    sudo yba-ctl createBackup ~/test_backup
+    ls test_backup/
     ```
 
     ```output
@@ -97,7 +97,7 @@ To restore the YugabyteDB Anywhere content from your saved backup, perform the f
     Specify the `input_path` to the backup file as the only argument. For example:
 
     ```sh
-    $ sudo yba-ctl restoreBackup ~/test_backup/backup_23-04-25-16-64.tgz
+    sudo yba-ctl restoreBackup ~/test_backup/backup_23-04-25-16-64.tgz
     ```
 
 The `restoreBackup` command executes the `yb_platform_backup.sh` script to restore from the specified backup of your YugabyteDB Anywhere instance.
