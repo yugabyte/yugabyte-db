@@ -5090,12 +5090,37 @@ int ysql_conn_mgr_sticky_object_count = 0;
 bool yb_ysql_conn_mgr_sticky_guc = false;
 
 /*
- * ```YbIsConnectionMadeStickyUsingGUC()``` returns whether or not the a
- * connection is made sticky using via specific GUC variables.
+ * `yb_ysql_conn_mgr_superuser_existed` denotes whether the session user was
+ * ever a superuser.
+ */
+bool yb_ysql_conn_mgr_superuser_existed = false;
+
+bool YbIsSuperuserConnSticky()
+{
+	return *(YBCGetGFlags()->ysql_conn_mgr_superuser_sticky);
+}
+
+/*
+ * ```YbIsConnectionMadeStickyUsingGUC()``` returns whether or not a
+ * connection is made sticky using specific GUC variables. This also includes
+ * making the connection sticky if the "session user" was ever a superuser,
+ * provided that the flag ysql_conn_mgr_superuser_sticky is enabled.
  */
 static bool YbIsConnectionMadeStickyUsingGUC()
 {
-	return yb_ysql_conn_mgr_sticky_guc;
+	/*
+	 * If the user on this backend was ever a superuser, let the connection
+	 * remain sticky to avoid potential errors during deploy phase for
+	 * superuser-only GUC variables. Deliberately leave superuser() as the last
+	 * condition to avoid unnecessary calls to superuser(), while also allowing
+	 * the history stored in yb_ysql_conn_mgr_superuser_existed to be used on
+	 * priority.
+	 */
+	yb_ysql_conn_mgr_superuser_existed = yb_ysql_conn_mgr_superuser_existed ||
+		session_auth_is_superuser ||
+		superuser();
+	return yb_ysql_conn_mgr_sticky_guc = yb_ysql_conn_mgr_sticky_guc ||
+		(YbIsSuperuserConnSticky() && yb_ysql_conn_mgr_superuser_existed);
 }
 
 /*

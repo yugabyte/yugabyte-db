@@ -108,6 +108,9 @@ DEFINE_test_flag(string, ysql_conn_mgr_dowarmup_all_pools_mode, "random",
   "3) number of server connections in any pool whenever there is a requirement to create the "
   "first backend process in that particular pool.");
 
+DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_superuser_sticky, true,
+  "If enabled, make superuser connections sticky in Ysql Connection Manager.");
+
 // This gflag should be deprecated but kept to avoid breaking some customer
 // clusters using it. Use ysql_catalog_preload_additional_table_list if possible.
 DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_additional_tables, false,
@@ -1996,6 +1999,7 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
           FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode.c_str(),
       .TEST_ysql_enable_db_logical_client_version_mode =
           &FLAGS_TEST_ysql_enable_db_logical_client_version_mode,
+      .ysql_conn_mgr_superuser_sticky = &FLAGS_ysql_conn_mgr_superuser_sticky,
   };
   // clang-format on
   return &accessor;

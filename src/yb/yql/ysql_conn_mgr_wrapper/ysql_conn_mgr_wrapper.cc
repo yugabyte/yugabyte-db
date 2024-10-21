@@ -26,6 +26,7 @@ DECLARE_bool(enable_ysql_conn_mgr_stats);
 DECLARE_int32(ysql_max_connections);
 DECLARE_string(ysql_conn_mgr_warmup_db);
 DECLARE_string(TEST_ysql_conn_mgr_dowarmup_all_pools_mode);
+DECLARE_bool(ysql_conn_mgr_superuser_sticky);
 
 // TODO(janand) : GH #17837  Find the optimum value for `ysql_conn_mgr_idle_time`.
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_idle_time, 60,
@@ -117,6 +118,9 @@ Status YsqlConnMgrWrapper::Start() {
   } else {
     LOG(INFO) << "Warmup of server connections is disabled in ysql connection manager";
   }
+
+  if (FLAGS_ysql_conn_mgr_superuser_sticky)
+    LOG(INFO) << "Superuser connections will be made sticky in ysql connection manager";
 
   std::vector<std::string> argv{
       ysql_conn_mgr_executable, conf_.CreateYsqlConnMgrConfigAndGetPath()};
