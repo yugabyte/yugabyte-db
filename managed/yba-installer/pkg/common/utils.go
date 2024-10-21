@@ -753,7 +753,7 @@ func SetYamlValue(filePath string, yamlPath string, value interface{}) error {
 		root = yaml.Node{
 			Kind: yaml.DocumentNode,
 			Content: []*yaml.Node{&yaml.Node{
-					Kind: yaml.MappingNode,
+				Kind: yaml.MappingNode,
 			}},
 		}
 	}
@@ -905,4 +905,30 @@ func AbsoluteBundlePath(fp string) string {
 	}
 	rootDir := filepath.Dir(executable)
 	return filepath.Join(rootDir, fp)
+}
+
+func SetAllPermissions() error {
+	if err := SetSoftwarePermissions(); err != nil {
+		return err
+	}
+	if err := SetDataPermissions(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func SetSoftwarePermissions() error {
+	userName := viper.GetString("service_username")
+	if err := Chown(GetSoftwareDir(), userName, userName, true); err != nil {
+		return err
+	}
+	return nil
+}
+
+func SetDataPermissions() error {
+	userName := viper.GetString("service_username")
+	if err := Chown(GetDataRoot(), userName, userName, true); err != nil {
+		return err
+	}
+	return nil
 }
