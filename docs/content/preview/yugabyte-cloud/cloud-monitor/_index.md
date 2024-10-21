@@ -50,6 +50,10 @@ View cluster activity, node status, and database properties.
 | Node status | Use the cluster **Nodes** tab to see the nodes in the cluster and their status. |
 | [Activity log](monitor-activity/) | The cluster **Activity** tab provides a running audit of changes made to the cluster. |
 
+### System status
+
+To view an uptime report for your account (Enterprise plan only) and the YugabyteDB Aeon system status, click the **System Status** icon in the bottom left corner.
+
 {{<index/block>}}
 
   {{<index/item
