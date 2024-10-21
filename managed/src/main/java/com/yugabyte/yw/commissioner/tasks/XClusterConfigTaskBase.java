@@ -1294,6 +1294,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                 targetTablesInfoList.stream()
                     .filter(tableInfo -> tableInfo.getTableType().equals(tableType))
                     .collect(Collectors.toList()));
+    log.debug("targetNamespaceNameTablesInfoListMap is {}", targetNamespaceNameTablesInfoListMap);
 
     groupByNamespaceName(requestedSourceTablesInfoList)
         .forEach(
