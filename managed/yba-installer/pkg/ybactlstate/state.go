@@ -99,7 +99,7 @@ func (s *State) TransitionStatus(next status) error {
 
 // Returns sorted list of all schema version defined in migrations map (except default)
 func allSchemaSlice() []int {
-	map[int]migrator migrations := getMigrations()
+	migrations := getMigrations()
 	var schemas []int
 	for key := range migrations {
 		if key == defaultMigratorValue {
