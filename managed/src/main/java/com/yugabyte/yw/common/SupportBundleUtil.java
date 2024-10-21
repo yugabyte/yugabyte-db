@@ -915,6 +915,8 @@ public class SupportBundleUtil {
     ignoreExceptions(() -> getHaMetadata(customer, destDir));
     ignoreExceptions(() -> getXclusterMetadata(customer, destDir));
     ignoreExceptions(() -> getAuditLogs(customer, destDir, startDate, endDate));
-    ignoreExceptions(() -> getTaskInfo(customer, destDir, startDate, endDate));
+    // Reverting the following task info table until we can implement a batch wise solution.
+    // Current approach overloads the memory.
+    // ignoreExceptions(() -> getTaskInfo(customer, destDir, startDate, endDate));
   }
 }
