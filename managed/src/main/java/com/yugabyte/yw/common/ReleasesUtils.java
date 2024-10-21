@@ -36,7 +36,6 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Scanner;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -142,15 +141,8 @@ public class ReleasesUtils {
 
   public ExtractedMetadata versionMetadataFromURL(URL url) {
     // Best effort to get sha256 from url
+    // The current url is sha1, not sha256. When we get a .sha256 file, we can use that.
     String sha256 = null;
-    try {
-      URL shaUrl = new URL(url.toString() + ".sha");
-      Scanner sc = new Scanner(shaUrl.openStream());
-      sha256 = sc.hasNext() ? sc.next() : null;
-      log.debug("found sha256 {} from url {}", sha256, shaUrl.toString());
-    } catch (Exception e) {
-      log.warn("failed to open sha url ", e);
-    }
     ExtractedMetadata em = new ExtractedMetadata();
     try {
       if (isHelmChart(url.getFile())) {
