@@ -214,8 +214,8 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
     return Status::OK();
   }
 
-  bool TableExists(const NamespaceId& namespace_id, const TableId& table_id) {
-    std::lock_guard l(mutex_);
+  bool TableExists(const NamespaceId& namespace_id, const TableId& table_id) EXCLUDES(mutex_) {
+    SharedLock l(mutex_);
     return std::any_of(
         namespace_tables[namespace_id].begin(), namespace_tables[namespace_id].end(),
         [&table_id](const auto& table_info) { return table_info->id() == table_id; });
@@ -223,7 +223,7 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
 
   Status CreateTableIfNotExists(
       const NamespaceId& namespace_id, const TableId& table_id, const TableName& table_name,
-      const PgSchemaName& pg_schema_name) {
+      const PgSchemaName& pg_schema_name) EXCLUDES(mutex_) {
     if (!TableExists(namespace_id, table_id)) {
       RETURN_NOT_OK(CreateTable(namespace_id, table_id, table_name, pg_schema_name));
     }
@@ -232,7 +232,7 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
 
   Result<TableInfoPtr> CreateTable(
       const NamespaceId& namespace_id, const TableId& table_id, const TableName& table_name,
-      const PgSchemaName& pg_schema_name) {
+      const PgSchemaName& pg_schema_name) EXCLUDES(mutex_) {
     SCHECK_FORMAT(
         !TableExists(namespace_id, table_id), AlreadyPresent,
         "Table $0 already exists in namespace $1", table_id, namespace_id);
@@ -249,8 +249,10 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
       l.Commit();
     }
 
-    std::lock_guard l2(mutex_);
-    namespace_tables[namespace_id].push_back(table_info);
+    {
+      std::lock_guard l2(mutex_);
+      namespace_tables[namespace_id].push_back(table_info);
+    }
 
     if (IsTableEligibleForXClusterReplication(*table_info)) {
       RETURN_NOT_OK(AddTableToXClusterSourceTask(*table_info));
@@ -312,8 +314,11 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
           std::bind(&XClusterOutboundReplicationGroupMockedTest::GetNamespace, this, _1),
       .get_tables_func =
           [this](const NamespaceId& namespace_id, bool include_sequences_data) {
-            std::lock_guard l(mutex_);
-            auto tables = namespace_tables[namespace_id];
+            std::vector<TableInfoPtr> tables;
+            {
+              SharedLock l(mutex_);
+              tables = namespace_tables[namespace_id];
+            }
             std::vector<TableDesignator> table_designators;
             for (const auto& table_info : tables) {
               if (IsTableEligibleForXClusterReplication(*table_info)) {
@@ -321,7 +326,11 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
               }
             }
             if (include_sequences_data) {
-              auto sequences_tables = namespace_tables[kPgSequencesDataNamespaceId];
+              std::vector<TableInfoPtr> sequences_tables;
+              {
+                SharedLock l(mutex_);
+                sequences_tables = namespace_tables[kPgSequencesDataNamespaceId];
+              }
               if (sequences_tables.size() > 0) {
                 table_designators.emplace_back(TableDesignator::CreateSequenceTableDesignator(
                     sequences_tables.front(), namespace_id));
