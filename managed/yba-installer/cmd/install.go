@@ -108,6 +108,11 @@ var installCmd = &cobra.Command{
 			log.Info("Completed installing component " + name)
 		}
 
+		// Update permissions of data and software to service username
+		if err := common.SetAllPermissions(); err != nil {
+			log.Fatal("error updating permissions for data and software directories: " + err.Error())
+		}
+
 		// Update state config now that install is complete.
 		state.Config.Hostname = viper.GetString("host")
 		state.CurrentStatus = ybactlstate.InstalledStatus

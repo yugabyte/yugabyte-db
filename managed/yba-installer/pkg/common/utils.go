@@ -1011,3 +1011,14 @@ func KeepMostRecentFiles(folderPath string, regexPattern string, toKeep int) err
 
 	return nil
 }
+
+func SetAllPermissions() error {
+	userName := viper.GetString("service_username")
+	if err := Chown(GetSoftwareDir(), userName, userName, true); err != nil {
+		return err
+	}
+	if err := Chown(GetDataRoot(), userName, userName, true); err != nil {
+		return err
+	}
+	return nil
+}
