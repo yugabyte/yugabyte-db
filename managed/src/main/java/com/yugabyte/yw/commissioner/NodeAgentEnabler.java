@@ -195,14 +195,16 @@ public class NodeAgentEnabler {
     if (!isNodeAgentServerEnabled(provider, universe)) {
       return false;
     }
-    if (!universe.getUniverseDetails().installNodeAgent) {
-      return true;
-    }
-    log.debug(
-        "Node agent is not available on all nodes for universe {}", universe.getUniverseUUID());
-    // Check if mixed mode is allowed.
-    if (confGetter.getConfForScope(universe, UniverseConfKeys.allowNodeAgentClientMixMode)) {
-      return true;
+    if (universe != null) {
+      if (!universe.getUniverseDetails().installNodeAgent) {
+        return true;
+      }
+      log.debug(
+          "Node agent is not available on all nodes for universe {}", universe.getUniverseUUID());
+      // Check if mixed mode is allowed.
+      if (confGetter.getConfForScope(universe, UniverseConfKeys.allowNodeAgentClientMixMode)) {
+        return true;
+      }
     }
     return false;
   }
