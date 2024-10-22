@@ -1492,4 +1492,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " than main Prometheus scrape period to complete",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> oidcGroupClaim =
+      new ConfKeyInfo<>(
+          "yb.security.oidc_group_claim",
+          ScopeType.GLOBAL,
+          "OIDC Group Claim",
+          "Claim in the ID token containing the list of groups. Default value: \"groups\"",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
