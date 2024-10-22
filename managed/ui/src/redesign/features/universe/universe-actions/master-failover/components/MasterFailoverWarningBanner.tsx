@@ -23,25 +23,30 @@ export const MasterFailoverWarningBanner = ({
       </Box>
       <Box display="flex" flexDirection={'column'} mt={0.5} width="100%">
         <Typography variant="body1">{t('universeActions.masterFailover.warning.title')}</Typography>
-        <Typography variant="body2">
-          {t('universeActions.masterFailover.warning.threshold', { duration })}
-        </Typography>
-        <Typography variant="body2">
-          {t('universeActions.masterFailover.warning.runtimeConfigMsg')}
-        </Typography>
-        <Typography variant="body2">
-          {t('universeActions.masterFailover.warning.disable', { duration })}
-        </Typography>
-        <Box display="flex" flexDirection={'row'} width="100%" justifyContent={'flex-end'} mt={2}>
-          <YBButton
-            variant="secondary"
-            size="large"
-            onClick={() => onSnoozeClick()}
-            data-testid="MasterFailoverWarningBanner-Snooze"
-          >
-            {t('universeActions.masterFailover.warning.snoozeBtnText')}
-          </YBButton>
-          &nbsp;
+        <Box
+          display="flex"
+          flexDirection={'row'}
+          width="100%"
+          alignItems={'baseline'}
+          justifyContent={'space-between'}
+        >
+          <Box mt={1}>
+            <Typography variant="body2">
+              {t('universeActions.masterFailover.warning.threshold', { duration })}
+              {t('universeActions.masterFailover.warning.runtimeConfigMsg')}
+            </Typography>
+          </Box>
+          <Box>
+            <YBButton
+              variant="secondary"
+              size="large"
+              onClick={() => onSnoozeClick()}
+              data-testid="MasterFailoverWarningBanner-Snooze"
+            >
+              {t('universeActions.masterFailover.warning.snoozeBtnText')}
+            </YBButton>
+            &nbsp;
+          </Box>
         </Box>
       </Box>
     </Box>

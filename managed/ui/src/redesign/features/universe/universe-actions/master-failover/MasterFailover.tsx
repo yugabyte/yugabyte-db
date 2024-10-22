@@ -16,7 +16,6 @@ import {
 import { Universe } from '../../universe-form/utils/dto';
 import { FailoverJobType, getDiffUTCDuration } from './MasterFailoverUtils';
 import { isNonEmptyObject } from '../../../../../utils/ObjectUtils';
-import { use } from 'i18next';
 
 interface MasterFailoverProps {
   universeData: Universe;
@@ -138,7 +137,7 @@ export const MasterFailover = ({ universeData }: MasterFailoverProps) => {
         />
       )}
       {isNonEmptyObject(postFailoverJob) && (
-        <PostFailoverWarningBanner duration={postFailoverSchedule} onSnoozeClick={onSnoozeClick} />
+        <PostFailoverWarningBanner duration={postFailoverSchedule} />
       )}
     </Box>
   );

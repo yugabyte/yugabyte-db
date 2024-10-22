@@ -171,16 +171,16 @@
       "masterFailover": {
         "warning": {
           "title": "Potential master failure detected",
-          "threshold": "Auto master failover threshold will be attempted to remediate in {{duration}} unless user fixes it manually",
+          "threshold": "Auto master failover will attempt to remediate in {{duration}}. ",
           "snoozeBtnText": "Snooze for 1 hour",
-          "disable": "To disable auto master failover schedule temporarily, click 'Snooze for 1 hour'",
-          "runtimeConfigMsg": "Auto master failover can be permanently disabled by setting the universe scoped runtime config yb.auto_master_failover.enabled to false"
+          "runtimeConfigMsg": "Auto master failover can be permanently disabled through the runtime config yb.auto_master_failover.enabled. "
         }
       },
       "postFailover": {
         "warning": {
-          "title": "Post auto master failover actions will be attempted in {{duration}}",
-          "disable": "To disable post failover actions temporarily, click 'Snooze for 1 hour'",
+          "title": "Post auto master failover actions pending",
+          "threshold": "Post auto master failover actions will be attempted in {{duration}}. ",
+          "manualCleanup": "Any underlying node failures need to be addressed manually through the Replace Node action.",
           "snoozeBtnText": "Snooze for 1 hour"
         }
       },
