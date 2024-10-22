@@ -21,8 +21,10 @@ When you connect to your cluster using Cloud Shell with the YSQL API, the shell 
 
 You have the option of using the following command line interfaces (CLIs) in Cloud Shell:
 
-- [ysqlsh](../../../api/ysqlsh/) - YSQL shell for interacting with YugabyteDB using the [YSQL API](../../../api/ysql/).
-- [ycqlsh](../../../api/ycqlsh/) - YCQL shell, which uses the [YCQL API](../../../api/ycql/).
+| Client | API | Description |
+| :--- | :--- | :--- |
+| [ysqlsh](../../../api/ysqlsh/) | [YSQL](../../../api/ysql/) | SQL shell for interacting with YugabyteDB using PostgreSQL-compatible YSQL API. |
+| [ycqlsh](../../../api/ycqlsh/) | [YCQL](../../../api/ycql/) | CQL shell for interacting with YugabyteDB using Cassandra-compatible YCQL API. |
 
 ## Limitations
 
