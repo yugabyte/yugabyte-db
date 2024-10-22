@@ -535,6 +535,14 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
   VLOG(1) << "Global state after analyzing all tablets: " << global_state_->ToString();
 
   bool task_added = false;
+  // Output parameters are unused in the load balancer, but useful in testing.
+  TabletId out_tablet_id;
+  TabletServerId out_from_ts;
+  TabletServerId out_to_ts;
+
+  // Process under-replicated tablets before general tablet moves since these are highest priority.
+  ProcessUnderReplicatedTablets(
+      remaining_adds, master_errors, task_added, out_tablet_id, out_to_ts);
 
   // Iterate over all the tables to take actions based on the data collected on the previous loop.
   for (const auto& table : GetTables()) {
@@ -563,11 +571,6 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
     VLOG(2) << "Global state: " << global_state_->ToString();
     VLOG(2) << "Sorted load: " << table->id() << ", " << GetSortedLoad();
     VLOG(2) << "Sorted leader load: " << table->id() << ", " << GetSortedLeaderLoad();
-
-    // Output parameters are unused in the load balancer, but useful in testing.
-    TabletId out_tablet_id;
-    TabletServerId out_from_ts;
-    TabletServerId out_to_ts;
 
     if (!PREDICT_FALSE(FLAGS_TEST_load_balancer_handle_under_replicated_tablets_only)) {
       // Handle cleanup after over-replication.
@@ -649,6 +652,59 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
   }
 
   RecordActivity(task_added, master_errors);
+}
+
+std::vector<ClusterLoadBalancer::UnderReplicatedTabletInfo>
+ClusterLoadBalancer::CollectUnderReplicatedTablets() {
+  std::vector<UnderReplicatedTabletInfo> under_replicated_tablets;
+  // Order doesn't matter since we sort later, so we can iterate over the map directly.
+  for (const auto& [table_id, state] : per_table_states_) {
+    for (const auto& tablet_id : state->tablets_missing_replicas_) {
+      const auto& tablet_meta = state->per_tablet_meta_[tablet_id];
+      if (tablet_meta.leader_uuid.empty()) {
+        // If the tablet doesn't have a leader, then we are unable to balance it.
+        continue;
+      }
+      under_replicated_tablets.emplace_back(tablet_id, tablet_meta.NumReplicas(), state.get());
+    }
+  }
+  // Sort by number of replicas, so we focus on tablets with fewer replicas first.
+  std::sort(under_replicated_tablets.begin(), under_replicated_tablets.end());
+  return under_replicated_tablets;
+}
+
+void ClusterLoadBalancer::ProcessUnderReplicatedTablets(
+    int& remaining_adds, uint32_t& master_errors, bool& task_added, TabletId& out_tablet_id,
+    TabletServerId& out_to_ts) {
+  auto under_replicated_tablets = CollectUnderReplicatedTablets();
+  for (const auto& under_replicated_tablet : under_replicated_tablets) {
+    if (remaining_adds == 0) {
+      break;
+    }
+
+    state_ = under_replicated_tablet.table_state;
+    if (state_->allow_only_leader_balancing_) {
+      YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 30, 2)
+          << "Skipping adding replicas. Only leader balancing table " << state_->table_id_;
+      continue;
+    }
+    // Perform a sort to handle any global changes from previous underreplicated adds.
+    state_->SortLoad();
+
+    auto handle_add = HandleAddIfMissingPlacement(under_replicated_tablet.tablet_id, &out_to_ts);
+    if (!handle_add.ok()) {
+      YB_LOG_EVERY_N_SECS_OR_VLOG(WARNING, 30, 1) << Format(
+          "Skipping add replica for under-replicated tablet $0 for table $1: $2",
+          under_replicated_tablet.tablet_id, state_->table_id_, StatusToString(handle_add));
+      master_errors++;
+      continue;
+    }
+    if (*handle_add) {
+      --remaining_adds;
+      task_added = true;
+      out_tablet_id = under_replicated_tablet.tablet_id;
+    }
+  }
 }
 
 void ClusterLoadBalancer::RunLoadBalancer(const LeaderEpoch& epoch) {
@@ -852,68 +908,67 @@ Status ClusterLoadBalancer::AnalyzeTabletsUnlocked(const TableId& table_uuid) {
 }
 
 Result<bool> ClusterLoadBalancer::HandleAddIfMissingPlacement(
-    TabletId* out_tablet_id, TabletServerId* out_to_ts) {
-  for (const auto& tablet_id : state_->tablets_missing_replicas_) {
-    const auto& tablet_meta = state_->per_tablet_meta_[tablet_id];
-    const auto& placement_info = GetPlacementByTablet(tablet_id);
-    const auto& missing_placements = tablet_meta.under_replicated_placements;
-    if (VLOG_IS_ON(3)) {
-      std::ostringstream out;
-      out << Format("Tablet $0 has $1 placement(s) in which it is missing a replica. Finding "
-          "valid TSs to add a replica to. Missing placements: ",
-          tablet_id, missing_placements.size());
-      for (auto& placements : missing_placements) {
-        out << placements.ShortDebugString() << ", ";
-      }
-      VLOG(3) << out.str();
+    const TabletId& tablet_id, TabletServerId* out_to_ts) {
+  RETURN_NOT_OK(CanAddReplicas());
+
+  const auto& tablet_meta = state_->per_tablet_meta_[tablet_id];
+  const auto& placement_info = GetPlacementByTablet(tablet_id);
+  const auto& missing_placements = tablet_meta.under_replicated_placements;
+  if (VLOG_IS_ON(3)) {
+    std::ostringstream out;
+    out << Format(
+        "Tablet $0 has $1 placement(s) in which it is missing a replica. Finding "
+        "valid TSs to add a replica to. Missing placements: ",
+        tablet_id, missing_placements.size());
+    for (auto& placements : missing_placements) {
+      out << placements.ShortDebugString() << ", ";
     }
-    // Loop through TSs by load to find a TS that matches the placement needed and does not already
-    // host this tablet.
-    for (const auto& ts_uuid : state_->sorted_load_) {
-      bool can_choose_ts = false;
-      // If we had no placement information, it means we are just under-replicated, so just check
-      // that we can use this tablet server.
-      if (placement_info.placement_blocks().empty()) {
-        // No need to check placement info, as there is none.
-        can_choose_ts = VERIFY_RESULT(
-            state_->CanAddTabletToTabletServer(tablet_id, ts_uuid, nullptr /* placement_info */));
-        VLOG(3) << "Placement info is not available for tablet " << tablet_id << " so this tablet "
-                << "can be added to any valid TS. TS " << ts_uuid
-                << ", can choose: " << can_choose_ts;
-      } else {
-        // We added a tablet to the set with missing replicas both if it is under-replicated, and we
-        // added a placement to the tablet_meta under_replicated_placements if the num replicas in
-        // that placement is fewer than min_num_replicas. If the under-replicated tablet has a
-        // placement that is under-replicated and the ts is not in that placement, then that ts
-        // isn't valid.
-        const auto& ts_meta = state_->per_ts_meta_[ts_uuid];
-        // Either we have specific placement blocks that are under-replicated, so confirm
-        // that this TS matches or all the placement blocks have min_num_replicas
-        // but overall num_replicas is fewer than expected.
-        // In the latter case, we still need to conform to the placement rules.
-        VLOG(3) << "Tablet " << tablet_id << " has " << missing_placements.size()
-                << " missing placements, checking if we can add to tserver "
-                << ts_uuid;
-        if (missing_placements.empty() ||
-            tablet_meta.CanAddTSToMissingPlacements(ts_meta.descriptor)) {
-          // If we don't have any missing placements but are under-replicated then we need to
-          // validate placement information in order to avoid adding to a wrong placement block.
-          //
-          // Do the placement check for both the cases.
-          // If we have missing placements then this check is a tautology otherwise it matters.
-          can_choose_ts = VERIFY_RESULT(state_->CanAddTabletToTabletServer(tablet_id, ts_uuid,
-                                                                                &placement_info));
-        }
+    VLOG(3) << out.str();
+  }
+  // Loop through TSs by load to find a TS that matches the placement needed and does not already
+  // host this tablet.
+  for (const auto& ts_uuid : state_->sorted_load_) {
+    bool can_choose_ts = false;
+    // If we had no placement information, it means we are just under-replicated, so just check
+    // that we can use this tablet server.
+    if (placement_info.placement_blocks().empty()) {
+      // No need to check placement info, as there is none.
+      can_choose_ts = VERIFY_RESULT(
+          state_->CanAddTabletToTabletServer(tablet_id, ts_uuid, nullptr /* placement_info */));
+      VLOG(3) << "Placement info is not available for tablet " << tablet_id << " so this tablet "
+              << "can be added to any valid TS. TS " << ts_uuid
+              << ", can choose: " << can_choose_ts;
+    } else {
+      // We added a tablet to the set with missing replicas both if it is under-replicated, and we
+      // added a placement to the tablet_meta under_replicated_placements if the num replicas in
+      // that placement is fewer than min_num_replicas. If the under-replicated tablet has a
+      // placement that is under-replicated and the ts is not in that placement, then that ts
+      // isn't valid.
+      const auto& ts_meta = state_->per_ts_meta_[ts_uuid];
+      // Either we have specific placement blocks that are under-replicated, so confirm
+      // that this TS matches or all the placement blocks have min_num_replicas
+      // but overall num_replicas is fewer than expected.
+      // In the latter case, we still need to conform to the placement rules.
+      VLOG(3) << "Tablet " << tablet_id << " has " << missing_placements.size()
+              << " missing placements, checking if we can add to tserver " << ts_uuid;
+      if (missing_placements.empty() ||
+          tablet_meta.CanAddTSToMissingPlacements(ts_meta.descriptor)) {
+        // If we don't have any missing placements but are under-replicated then we need to
+        // validate placement information in order to avoid adding to a wrong placement block.
+        //
+        // Do the placement check for both the cases.
+        // If we have missing placements then this check is a tautology otherwise it matters.
+        can_choose_ts =
+            VERIFY_RESULT(state_->CanAddTabletToTabletServer(tablet_id, ts_uuid, &placement_info));
       }
-      // If we've passed the checks, then we can choose this TS to add the replica to.
-      if (can_choose_ts) {
-        *out_tablet_id = tablet_id;
-        *out_to_ts = ts_uuid;
-        VLOG(3) << "Found tserver " << ts_uuid << " to add a replica of tablet " << tablet_id;
-        RETURN_NOT_OK(AddReplica(tablet_id, ts_uuid));
-        state_->tablets_missing_replicas_.erase(tablet_id);
-        return true;
-      }
+    }
+    // If we've passed the checks, then we can choose this TS to add the replica to.
+    if (can_choose_ts) {
+      *out_to_ts = ts_uuid;
+      VLOG(3) << "Found tserver " << ts_uuid << " to add a replica of tablet " << tablet_id;
+      RETURN_NOT_OK(AddReplica(tablet_id, ts_uuid));
+      state_->tablets_missing_replicas_.erase(tablet_id);
+      return true;
     }
   }
   return false;
@@ -941,8 +996,7 @@ Result<bool> ClusterLoadBalancer::HandleAddIfWrongPlacement(
   return false;
 }
 
-Result<bool> ClusterLoadBalancer::HandleAddReplicas(
-    TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
+Status ClusterLoadBalancer::CanAddReplicas() {
   DCHECK(!state_->allow_only_leader_balancing_);
 
   if (state_->options_->kAllowLimitStartingTablets) {
@@ -968,6 +1022,13 @@ Result<bool> ClusterLoadBalancer::HandleAddReplicas(
         boost::algorithm::join(state_->tablets_over_replicated_, ", "));
   }
 
+  return Status::OK();
+}
+
+Result<bool> ClusterLoadBalancer::HandleAddReplicas(
+    TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
+  RETURN_NOT_OK(CanAddReplicas());
+
   VLOG(3) << "Number of global concurrent remote bootstrap sessions: "
           <<  global_state_->total_starting_tablets_
           << ", max allowed: " << state_->options_->kMaxTabletRemoteBootstraps
@@ -975,11 +1036,7 @@ Result<bool> ClusterLoadBalancer::HandleAddReplicas(
           << ": " << state_->total_starting_
           << ", max allowed: " << state_->options_->kMaxTabletRemoteBootstrapsPerTable;
 
-  // Handle missing placements with highest priority, as it means we're potentially
-  // under-replicated.
-  if (VERIFY_RESULT(HandleAddIfMissingPlacement(out_tablet_id, out_to_ts))) {
-    return true;
-  }
+  // Missing placements / under-replicated tablets are handled in ProcessUnderReplicatedTablets.
 
   // Handle wrong placements as next priority, as these could be servers we're moving off of, so
   // we can decommission ASAP.
