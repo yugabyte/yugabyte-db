@@ -53,7 +53,6 @@ const RBACComponent = (props: WithRouterProps) => {
           eventKey="user-auth-new"
           title={
             <span>
-              <KeyIcon />
               User Authentication New
             </span>
           }
