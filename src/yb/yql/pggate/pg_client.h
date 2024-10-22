@@ -137,6 +137,8 @@ class PgClient {
 
   Status FinishTransaction(Commit commit, const std::optional<DdlMode>& ddl_mode = {});
 
+  Result<tserver::PgListClonesResponsePB> ListDatabaseClones();
+
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 
   Result<std::pair<PgOid, PgOid>> ReserveOids(PgOid database_oid, PgOid next_oid, uint32_t count);

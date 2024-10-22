@@ -371,7 +371,9 @@ TEST_F(CloneStateManagerTest, CreateCloneState) {
   // Check clone state persisted fields.
   SysCloneStatePB expected_pb;
   expected_pb.set_aggregate_state(SysCloneStatePB::CLONE_SCHEMA_STARTED);
+  expected_pb.set_database_type(YQL_DATABASE_CQL);
   expected_pb.set_source_namespace_id(kSourceNamespaceId);
+  expected_pb.set_source_namespace_name(kSourceNamespaceName);
   expected_pb.set_clone_request_seq_no(1);
   expected_pb.set_target_namespace_name(kTargetNamespaceName);
   expected_pb.set_restore_time(kRestoreTime.ToUint64());
@@ -641,15 +643,19 @@ TEST_F(CloneStateManagerTest, Load) {
   SysCloneStatePB clone_state1;
   clone_state1.set_aggregate_state(SysCloneStatePB::COMPLETE);
   clone_state1.set_source_namespace_id(kSourceNamespaceId);
+  clone_state1.set_source_namespace_name(kSourceNamespaceName);
   clone_state1.set_target_namespace_name(kTargetNamespaceName);
+  clone_state1.set_database_type(YQL_DATABASE_PGSQL);
   clone_state1.set_restore_time(kRestoreTime.ToUint64());
   clone_state1.set_clone_request_seq_no(100);
 
   SysCloneStatePB clone_state2;
   clone_state2.set_aggregate_state(SysCloneStatePB::ABORTED);
   clone_state2.set_source_namespace_id(kSourceNamespaceId);
+  clone_state1.set_source_namespace_name(kSourceNamespaceName);
   clone_state2.set_abort_message("Test abort message");
   clone_state2.set_target_namespace_name(kTargetNamespaceName);
+  clone_state1.set_database_type(YQL_DATABASE_PGSQL);
   clone_state2.set_restore_time(kRestoreTime.ToUint64() + 1);
   clone_state2.set_clone_request_seq_no(101);
 

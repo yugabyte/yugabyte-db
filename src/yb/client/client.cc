@@ -1151,6 +1151,12 @@ Status YBClient::GetNamespaceInfo(const std::string& namespace_id,
   return Status::OK();
 }
 
+Status YBClient::ListClones(master::ListClonesResponsePB* ret) {
+  master::ListClonesRequestPB req;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Backup, req, *ret, ListClones);
+  return Status::OK();
+}
+
 Status YBClient::ReservePgsqlOids(const std::string& namespace_id,
                                   const uint32_t next_oid, const uint32_t count,
                                   uint32_t* begin_oid, uint32_t* end_oid) {

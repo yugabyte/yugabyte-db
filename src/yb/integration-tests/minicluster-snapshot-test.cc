@@ -975,6 +975,21 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithS
   ASSERT_EQ(row, kRows[3]);
 }
 
+// Test yb_database_clones (ysql function to list clones)
+TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(YsqlListClonesAPI)) {
+  std::string list_clones_query =
+      "SELECT db_oid, db_name, parent_db_oid, parent_db_name, state, failure_reason FROM "
+      "yb_database_clones()";
+  auto row = ASSERT_RESULT((source_conn_->FetchAllAsString(list_clones_query)));
+  ASSERT_TRUE(row.empty());
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+  auto kExpectedCloneRow =
+      Format("16386, $0, 16384, $1, COMPLETE, NULL", kTargetNamespaceName1, kSourceNamespaceName);
+  row = ASSERT_RESULT((source_conn_->FetchRowAsString(list_clones_query)));
+  ASSERT_EQ(row, kExpectedCloneRow);
+}
+
 TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(TabletSplitting)) {
   const int kNumRows = 1000;
 

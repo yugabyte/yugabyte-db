@@ -76,6 +76,7 @@ class TserverXClusterContextIf;
     (InsertSequenceTuple) \
     (IsInitDbDone) \
     (IsObjectPartOfXRepl) \
+    (ListClones) \
     (ListLiveTabletServers) \
     (ListReplicationSlots) \
     (OpenTable) \

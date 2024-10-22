@@ -363,6 +363,8 @@ class PgApiImpl {
   Status GetTableDesc(const PgObjectId& table_id,
                       PgTableDesc **handle);
 
+  Result<tserver::PgListClonesResponsePB> GetDatabaseClones();
+
   Result<YBCPgColumnInfo> GetColumnInfo(YBCPgTableDesc table_desc,
                                         int16_t attr_number);
 

@@ -2896,6 +2896,94 @@ yb_table_properties(PG_FUNCTION_ARGS)
 	return HeapTupleGetDatum(heap_form_tuple(tupdesc, values, nulls));
 }
 
+Datum
+yb_database_clones(PG_FUNCTION_ARGS)
+{
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	TupleDesc	tupdesc;
+	Tuplestorestate *tupstore;
+	MemoryContext per_query_ctx;
+	MemoryContext oldcontext;
+	int			i;
+#define YB_DATABASE_CLONES_COLS 7
+
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not " \
+						"allowed in this context")));
+
+	/*
+	 * Switch context to construct returned data structures and store
+	 * returned values from tserver.
+	 */
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	/* Build a tuple descriptor */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		ereport(ERROR,
+				(errmsg_internal("return type must be a row type")));
+
+	tupstore = tuplestore_begin_heap(true, false, work_mem);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	YBCPgDatabaseCloneInfo	*database_clones_info = NULL;
+	size_t		num_clones = 0;
+	HandleYBStatus(YBCDatabaseClones(&database_clones_info, &num_clones));
+
+	for (i = 0; i < num_clones; ++i)
+	{
+		YBCPgDatabaseCloneInfo *clone_info = (YBCPgDatabaseCloneInfo *)database_clones_info + i;
+		Datum		values[YB_DATABASE_CLONES_COLS];
+		bool		nulls[YB_DATABASE_CLONES_COLS];
+
+		memset(values, 0, sizeof(values));
+		memset(nulls, 0, sizeof(nulls));
+
+
+		values[1] = CStringGetTextDatum(clone_info->db_name);
+		values[2] = ObjectIdGetDatum(clone_info->parent_db_id);
+		values[3] = CStringGetTextDatum(clone_info->parent_db_name);
+		values[4] = CStringGetTextDatum(clone_info->state);
+		values[5] = TimestampTzGetDatum(clone_info->as_of_time);
+
+		/* Optional values that are not set all the time */
+		if (OidIsValid(clone_info->db_id))
+		{
+			values[0] = ObjectIdGetDatum(clone_info->db_id);
+		}
+		else
+			nulls[0] = true;
+
+		if (strlen(clone_info->failure_reason))
+		{
+			values[6] = CStringGetTextDatum(clone_info->failure_reason);
+		}
+		else
+			nulls[6] = true;
+
+		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+	}
+
+#undef YB_DATABASE_CLONES_COLS
+
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupstore);
+
+	MemoryContextSwitchTo(oldcontext);
+
+	return (Datum) 0;
+}
+
 /*
  * This function is adapted from code of PQescapeLiteral() in fe-exec.c.
  * If use_quote_strategy_token is false, the string value will be converted

@@ -42,6 +42,7 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog_constants.h"
@@ -1778,6 +1779,35 @@ class PgClientServiceImpl::Impl {
     }
 
     *resp->mutable_servers_metrics() = {result.begin(), result.end()};
+    return Status::OK();
+  }
+
+  Status ListClones(
+      const PgListClonesRequestPB& req, PgListClonesResponsePB* resp, rpc::RpcContext* context) {
+    master::ListClonesResponsePB master_resp;
+    RETURN_NOT_OK(client().ListClones(&master_resp));
+    if (master_resp.has_error()) {
+      return StatusFromPB(master_resp.error().status());
+    }
+    for (const auto& clone_state : master_resp.entries()) {
+      if (clone_state.database_type() == YQL_DATABASE_PGSQL) {
+        auto pg_clone_entry = resp->add_database_clones();
+        if (clone_state.has_target_namespace_id()) {
+          pg_clone_entry->set_db_id(
+              VERIFY_RESULT(GetPgsqlDatabaseOid(clone_state.target_namespace_id())));
+        }
+        pg_clone_entry->set_db_name(clone_state.target_namespace_name());
+        pg_clone_entry->set_parent_db_id(
+            VERIFY_RESULT(GetPgsqlDatabaseOid(clone_state.source_namespace_id())));
+        pg_clone_entry->set_parent_db_name(clone_state.source_namespace_name());
+        pg_clone_entry->set_state(
+            master::SysCloneStatePB_State_Name(clone_state.aggregate_state()));
+        pg_clone_entry->set_as_of_time(clone_state.restore_time());
+        if (clone_state.has_abort_message()) {
+          pg_clone_entry->set_failure_reason(clone_state.abort_message());
+        }
+      }
+    }
     return Status::OK();
   }
 
