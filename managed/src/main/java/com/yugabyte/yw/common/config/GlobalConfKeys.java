@@ -1383,4 +1383,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " will be evaluated and returned",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<String> oidcGroupClaim =
+      new ConfKeyInfo<>(
+          "yb.security.oidc_group_claim",
+          ScopeType.GLOBAL,
+          "OIDC Group Claim",
+          "Claim in the ID token containing the list of groups. Default value: \"groups\"",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
