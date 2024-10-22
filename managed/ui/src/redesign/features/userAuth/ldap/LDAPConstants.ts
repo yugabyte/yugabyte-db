@@ -81,18 +81,18 @@ export const AuthModes = [
 ];
 
 export enum LDAPUseQuery {
-  USER_ATTRIBUTE = 'true',
-  GROUP_SEARCH_FILTER = 'false'
+  USER_ATTRIBUTE = 'false',
+  GROUP_SEARCH_FILTER = 'true'
 }
 
 export const LDAPUseQueryOptions = [
   {
     label: 'User Attribute',
-    value: 'true'
+    value: 'false'
   },
   {
     label: 'Group Search Filter',
-    value: 'false'
+    value: 'true'
   }
 ];
 

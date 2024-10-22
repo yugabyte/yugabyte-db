@@ -1,7 +1,6 @@
 -- Queries for the null scan key tests
 
 SET client_min_messages = DEBUG1;
-SET jit = false;
 \set YB_DISABLE_ERROR_PREFIX on
 SET yb_bnl_batch_size to 1;
 

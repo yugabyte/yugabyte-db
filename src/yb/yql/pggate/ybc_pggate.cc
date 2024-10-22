@@ -108,6 +108,9 @@ DEFINE_test_flag(string, ysql_conn_mgr_dowarmup_all_pools_mode, "random",
   "3) number of server connections in any pool whenever there is a requirement to create the "
   "first backend process in that particular pool.");
 
+DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_superuser_sticky, true,
+  "If enabled, make superuser connections sticky in Ysql Connection Manager.");
+
 // This gflag should be deprecated but kept to avoid breaking some customer
 // clusters using it. Use ysql_catalog_preload_additional_table_list if possible.
 DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_additional_tables, false,
@@ -1996,6 +1999,7 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
           FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode.c_str(),
       .TEST_ysql_enable_db_logical_client_version_mode =
           &FLAGS_TEST_ysql_enable_db_logical_client_version_mode,
+      .ysql_conn_mgr_superuser_sticky = &FLAGS_ysql_conn_mgr_superuser_sticky,
   };
   // clang-format on
   return &accessor;
@@ -2704,7 +2708,49 @@ YBCStatus YBCServersMetrics(YBCPgServerMetricsInfo** servers_metrics_info, size_
   return YBCStatusOK();
 }
 
+YBCStatus YBCDatabaseClones(YBCPgDatabaseCloneInfo** database_clones, size_t* count) {
+  const auto result = pgapi->GetDatabaseClones();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  const auto& tserver_clone_entries = result.get().database_clones();
+  *count = tserver_clone_entries.size();
+  if (!tserver_clone_entries.empty()) {
+    *database_clones = static_cast<YBCPgDatabaseCloneInfo*>(
+        YBCPAlloc(sizeof(YBCPgDatabaseCloneInfo) * tserver_clone_entries.size()));
+    YBCPgDatabaseCloneInfo* cur_clone = *database_clones;
+    for (const auto& tserver_clone_entry : tserver_clone_entries) {
+      new (cur_clone) YBCPgDatabaseCloneInfo{
+          .db_id = tserver_clone_entry.db_id(),
+          .db_name = YBCPAllocStdString(tserver_clone_entry.db_name()),
+          .parent_db_id = tserver_clone_entry.parent_db_id(),
+          .parent_db_name = YBCPAllocStdString(tserver_clone_entry.parent_db_name()),
+          .state = YBCPAllocStdString(tserver_clone_entry.state()),
+          .as_of_time = YBCGetPgCallbacks()->UnixEpochToPostgresEpoch(static_cast<int64_t>(
+              HybridTime(tserver_clone_entry.as_of_time()).GetPhysicalValueMicros())),
+          .failure_reason = YBCPAllocStdString(tserver_clone_entry.failure_reason()),
+      };
+      ++cur_clone;
+    }
+  }
+  return YBCStatusOK();
+}
+
 bool YBCIsCronLeader() { return pgapi->IsCronLeader(); }
+
+YBCStatus YBCSetCronLastMinute(int64_t last_minute) {
+  return ToYBCStatus(pgapi->SetCronLastMinute(last_minute));
+}
+
+YBCStatus YBCGetCronLastMinute(int64_t* last_minute) {
+  const auto result = pgapi->GetCronLastMinute();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  *last_minute = result.get();
+
+  return YBCStatusOK();
+}
 
 uint64_t YBCPgGetCurrentReadTimePoint() {
   return pgapi->GetCurrentReadTimePoint();

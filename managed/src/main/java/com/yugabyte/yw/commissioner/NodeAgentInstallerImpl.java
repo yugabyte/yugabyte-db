@@ -106,7 +106,7 @@ public class NodeAgentInstallerImpl implements NodeAgentInstaller {
         id -> {
           UUID taskUuid = commissioner.submit(TaskType.EnableNodeAgentInUniverse, params);
           CustomerTask customerTask =
-              CustomerTask.create(
+              CustomerTask.createWithBackgroundUser(
                   customer,
                   universeUuid,
                   taskUuid,

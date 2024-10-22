@@ -90,7 +90,8 @@ Status TestEchoService::ReloadEchoCountFromTable() {
   return Status::OK();
 }
 
-Status TestEchoService::GetEchoImpl(const GetEchoRequestPB& req, GetEchoResponsePB* resp) {
+Status TestEchoService::GetEchoImpl(
+    const GetEchoRequestPB& req, GetEchoResponsePB* resp, rpc::RpcContext& rpc) {
   std::string echo = req.message();
 
   auto status = RecordRequestInTable(echo);
@@ -112,7 +113,7 @@ Status TestEchoService::GetEchoImpl(const GetEchoRequestPB& req, GetEchoResponse
 }
 
 Status TestEchoService::GetEchoCountImpl(
-    const GetEchoCountRequestPB& req, GetEchoCountResponsePB* resp) {
+    const GetEchoCountRequestPB& req, GetEchoCountResponsePB* resp, rpc::RpcContext& rpc) {
   resp->set_count(echo_count_);
   return Status::OK();
 }

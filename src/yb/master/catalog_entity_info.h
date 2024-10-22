@@ -791,10 +791,13 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // At any point in time it contains only the active tablets (defined in the comment on tablets_).
   std::map<PartitionKey, std::weak_ptr<TabletInfo>> partitions_ GUARDED_BY(lock_);
   // At any point in time it contains both active and inactive tablets.
+  //
   // Currently there are two cases for a tablet to be categorized as inactive:
-  // 1) Not yet deleted split parent tablets for which we've already
-  //    registered child split tablets.
-  // 2) Tablets that are marked as HIDDEN for PITR.
+  // 1) Tablets that have been marked HIDDEN; for example, for PITR or xCluster.
+  // 2) Tablets that have been/are being DELETED.
+  //
+  // Currently, we do not remove tablets we have deleted from tablets_.
+  // TODO(#15043): remove tablets from tablets_ once they have been deleted from all TServers.
   std::unordered_map<TabletId, std::weak_ptr<TabletInfo>> tablets_ GUARDED_BY(lock_);
 
   // Protects partitions_ and tablets_.

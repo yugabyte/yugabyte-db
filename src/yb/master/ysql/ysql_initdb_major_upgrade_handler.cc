@@ -290,7 +290,9 @@ Status YsqlInitDBAndMajorUpgradeHandler::RunRollbackMajorVersionUpgrade(const Le
 
   for (const auto& ns_info : namespaces) {
     LOG(INFO) << "Deleting Ysql major version catalog tables for namespace " << ns_info->name();
-    RETURN_NOT_OK(catalog_manager_.DeleteYsqlDBTables(ns_info, epoch));
+    RETURN_NOT_OK(catalog_manager_.DeleteYsqlDBTables(ns_info,
+                                                      /*is_for_ysql_major_upgrade=*/false,
+                                                      epoch));
   }
 
   RETURN_NOT_OK(ResetNextVerInitdbStatus(epoch));

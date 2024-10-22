@@ -1082,4 +1082,10 @@ Result<yb::tserver::PgServersMetricsResponsePB> PgSession::ServersMetrics() {
   return pg_client_.ServersMetrics();
 }
 
+Status PgSession::SetCronLastMinute(int64_t last_minute) {
+  return pg_client_.SetCronLastMinute(last_minute);
+}
+
+Result<int64_t> PgSession::GetCronLastMinute() { return pg_client_.GetCronLastMinute(); }
+
 }  // namespace yb::pggate

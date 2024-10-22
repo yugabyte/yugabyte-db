@@ -21,9 +21,9 @@ YugabyteDB Anywhere has ended support for Replicated installation. If your Yugab
 - If you haven't already, [download and extract](../install-software/installer/#download-yba-installer) YBA Installer. It is recommended that you migrate using the same version of YBA Installer as the version of YBA you are running in Replicated. For example, if you have v.{{<yb-version version="stable" format="long">}} installed, use the following commands:
 
     ```sh
-    $ wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-    $ tar -xf yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-    $ cd yba_installer_full-{{<yb-version version="stable" format="build">}}/
+    wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
+    tar -xf yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
+    cd yba_installer_full-{{<yb-version version="stable" format="build">}}/
     ```
 
 ## Migrate a Replicated installation
@@ -41,7 +41,7 @@ To migrate in place, do the following:
 1. Optionally, configure the migration as follows:
 
     ```sh
-    $ sudo ./yba-ctl replicated-migrate config
+    sudo ./yba-ctl replicated-migrate config
     ```
 
     This generates a configuration file `/opt/yba-ctl/yba-ctl.yml` with the settings for your current installation, which are used for the migration. You can edit the file to customize the install further.
@@ -57,7 +57,7 @@ The `installRoot` must _not_ be a subdirectory of the Replicated Storage Path (`
 1. Start the migration, passing in your license file:
 
     ```sh
-    $ sudo ./yba-ctl replicated-migrate start -l /path/to/license
+    sudo ./yba-ctl replicated-migrate start -l /path/to/license
     ```
 
     The `start` command runs all [preflight checks](../../install-yugabyte-platform/install-software/installer/#run-preflight-checks) and then proceeds to do the migration, and then waits for YBA to start.
@@ -73,7 +73,7 @@ The `installRoot` must _not_ be a subdirectory of the Replicated Storage Path (`
 1. If the new YBA installation is correct, finish the migration as follows:
 
     ```sh
-    $ sudo ./yba-ctl replicated-migrate finish
+    sudo ./yba-ctl replicated-migrate finish
     ```
 
     This uninstalls Replicated and makes the new YBA instance permanent.

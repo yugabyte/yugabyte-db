@@ -363,6 +363,8 @@ class PgApiImpl {
   Status GetTableDesc(const PgObjectId& table_id,
                       PgTableDesc **handle);
 
+  Result<tserver::PgListClonesResponsePB> GetDatabaseClones();
+
   Result<YBCPgColumnInfo> GetColumnInfo(YBCPgTableDesc table_desc,
                                         int16_t attr_number);
 
@@ -799,6 +801,8 @@ class PgApiImpl {
   Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
 
   bool IsCronLeader() const;
+  Status SetCronLastMinute(int64_t last_minute);
+  Result<int64_t> GetCronLastMinute();
 
   [[nodiscard]] uint64_t GetCurrentReadTimePoint() const;
   Status RestoreReadTimePoint(uint64_t read_time_point_handle);

@@ -155,7 +155,8 @@ This is the current control flow:
 
   2. Cleanup deleted tables & tablets (FIXME: is this implemented?):
      - Remove the tables/tablets with "deleted" state from "sys.catalog"
-     - Remove the tablets with "deleted" state from the in-memory map
+     - [not done 10/2024, TODO(#15043)] Remove the tablets with
+       "deleted" state from the in-memory map
      - Remove the tables with "deleted" state from the in-memory map
 
 When the TS receives a CreateTablet() RPC, it will attempt to create the tablet

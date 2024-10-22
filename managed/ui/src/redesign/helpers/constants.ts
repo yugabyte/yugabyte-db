@@ -39,8 +39,6 @@ export const RuntimeConfigKey = {
   EDIT_IN_USE_PROVIDER_UI_FEATURE_FLAG: 'yb.ui.feature_flags.edit_in_use_provider',
   XCLUSTER_TRANSACTIONAL_PITR_RETENTION_PERIOD:
     'yb.xcluster.transactional.pitr.default_retention_period',
-  XCLUSTER_TRANSACTIONAL_PITR_SNAPSHOT_INTERVAL:
-    'yb.xcluster.transactional.pitr.default_snapshot_interval',
   XCLUSTER_TRANSACTIONAL_ATOMICITY_FEATURE_FLAG: 'yb.xcluster.transactional.enabled',
   ENABLE_XCLUSTER_SKIP_BOOTSTRAPPING: 'yb.ui.xcluster.enable_skip_bootstrapping',
   DISASTER_RECOVERY_FEATURE_FLAG: 'yb.xcluster.dr.enabled',

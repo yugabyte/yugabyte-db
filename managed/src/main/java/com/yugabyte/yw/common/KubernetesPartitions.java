@@ -98,7 +98,7 @@ public class KubernetesPartitions {
         rollStep =
             isReadOnlyCluster
                 ? podUpgradeParams.rollMaxBatchSize.getReadReplicaBatchSize()
-                : podUpgradeParams.rollMaxBatchSize.getReadReplicaBatchSize();
+                : podUpgradeParams.rollMaxBatchSize.getPrimaryBatchSize();
         rollStep = Math.min(numPods, rollStep);
         if (rollStep > 1) {
           log.debug("Using roll step of {}", rollStep);

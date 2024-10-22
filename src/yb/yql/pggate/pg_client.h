@@ -137,6 +137,8 @@ class PgClient {
 
   Status FinishTransaction(Commit commit, const std::optional<DdlMode>& ddl_mode = {});
 
+  Result<tserver::PgListClonesResponsePB> ListDatabaseClones();
+
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 
   Result<std::pair<PgOid, PgOid>> ReserveOids(PgOid database_oid, PgOid next_oid, uint32_t count);
@@ -248,6 +250,9 @@ class PgClient {
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
 
   Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
+
+  Status SetCronLastMinute(int64_t last_minute);
+  Result<int64_t> GetCronLastMinute();
 
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;

@@ -302,5 +302,91 @@ public class TestMisc extends BaseYsqlConnMgr {
     }
   }
 
+  @Test
+  public void testStickySuperuserConns() throws Exception {
+    ResultSet rs;
+    HashSet<Integer> pids = new HashSet<>();
 
+    try (Connection conn = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+        .connect();
+        Statement stmt = conn.createStatement()) {
+      // Sticky superuser flag is not yet enabled, connection should not
+      // be sticky. Assert by verifying set of unique backend pids.
+      assertTrue(verifySessionParameterValue(stmt, "is_superuser", "on"));
+      for (int i = 0; i < 10; i++) {
+        rs = stmt.executeQuery("SELECT pg_backend_pid()");
+        assertTrue(rs.next());
+        pids.add(rs.getInt(1));
+      }
+      assertTrue(pids.size() > 1);
+    }
+
+    // Enable sticky superuser connections and restart the cluster.
+    enableStickySuperuserConnsAndRestartCluster();
+    pids.clear();
+
+    // Create only one superuser logical connection for the test.
+    Connection suConn = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+        .connect();
+    Statement suStmt = suConn.createStatement();
+
+    // Sticky superuser flag is enabled, connection should be sticky.
+    assertTrue(verifySessionParameterValue(suStmt, "is_superuser", "on"));
+    for (int i = 0; i < 10; i++) {
+      rs = suStmt.executeQuery("SELECT pg_backend_pid()");
+      assertTrue(rs.next());
+      pids.add(rs.getInt(1));
+    }
+    assertTrue(pids.size() == 1);
+
+    // Create a non-superuser to verify they do not have stickiness.
+    suStmt.execute("CREATE ROLE test_role LOGIN");
+
+    // Create only one test user logical connection for the test.
+    Connection testConn = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+        .withUser("test_role")
+        .connect();
+    Statement testStmt = testConn.createStatement();
+
+    pids.clear();
+
+    assertTrue(verifySessionParameterValue(testStmt, "is_superuser", "off"));
+    for (int i = 0; i < 10; i++) {
+      rs = testStmt.executeQuery("SELECT pg_backend_pid()");
+      assertTrue(rs.next());
+      pids.add(rs.getInt(1));
+    }
+    assertTrue(pids.size() > 1);
+
+    pids.clear();
+
+    // Alter test_role to now be a superuser and verify stickiness.
+    suStmt.execute("ALTER ROLE test_role SUPERUSER");
+
+    for (int i = 0; i < 10; i++) {
+      rs = testStmt.executeQuery("SELECT pg_backend_pid()");
+      assertTrue(rs.next());
+      pids.add(rs.getInt(1));
+    }
+    assertTrue(pids.size() == 1);
+
+    // The most important part of the test - verify that testConn remains
+    // sticky after removal of superuser privileges.
+    suStmt.execute("ALTER ROLE test_role NOSUPERUSER");
+
+    pids.clear();
+
+    for (int i = 0; i < 10; i++) {
+      rs = testStmt.executeQuery("SELECT pg_backend_pid()");
+      assertTrue(rs.next());
+      pids.add(rs.getInt(1));
+    }
+    assertTrue(pids.size() == 1);
+
+    testConn.close();
+    suConn.close();
+  }
 }

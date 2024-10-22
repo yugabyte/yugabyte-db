@@ -185,7 +185,7 @@
       Group={{ yamlPath "service_username" }}
       {{ end }}
       Type=simple
-      ExecStart= {{ .PromBinaryFile }} \
+      ExecStart= {{ .PromDir }}/prometheus \
       --config.file {{ .ConfFileLocation }} \
       --storage.tsdb.path {{ .DataDir }}/storage \
       --storage.tsdb.retention={{ yamlPath "prometheus.retentionTime" }} \

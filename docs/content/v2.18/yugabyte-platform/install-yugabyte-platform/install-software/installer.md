@@ -266,7 +266,7 @@ The upgrade takes a few minutes to complete. When finished, use the [status comm
 
 ### Backup and restore
 
-YBA Installer also provides utilities to take full backups of the YBA state (not YugabyteDB however) and later restore from them. This not only includes data seen in YBA for your universes, but also metrics stored in Prometheus.
+YBA Installer also provides utilities to take full backups of the YBA state (not YugabyteDB however) and later restore from them. This includes YugabyteDB Anywhere data and metrics stored in Prometheus.
 
 To perform a backup, provide the full path to the directory where the backup will be generated. The `createBackup` command creates a timestamped `tgz` file for the backup. For example:
 
@@ -276,7 +276,7 @@ $ ls test_backup/
 ```
 
 ```output
-backup_23-04-25-16-54.tgz  version_metadata_backup.json
+backup_23-04-25-16-54.tgz
 ```
 
 To restore from the same backup, use the `restoreBackup` command:
@@ -284,6 +284,8 @@ To restore from the same backup, use the `restoreBackup` command:
 ```sh
 $ sudo yba-ctl restoreBackup ~/test_backup/backup_23-04-25-16-64.tgz
 ```
+
+For more information, refer to [Back up and restore YugabyteDB Anywhere](../../../administer-yugabyte-platform/back-up-restore-installer/).
 
 ### Clean (uninstall)
 
@@ -379,8 +381,8 @@ You can configure the following YBA configuration options.
 | Option | Description |
 | :--- | :--- |
 | `port` | Specify a custom port for the YBA UI to run on. |
-| `keyStorePassword` | Password for the Java keystore. Auto-generated if left empty. |
-| `appSecret` | Play framework crypto secret. Auto-generated if left empty. |
+| `keyStorePassword` | Password for the Java keystore. Automatically generated if left empty. |
+| `appSecret` | Play framework crypto secret. Automatically generated if left empty. |
 
 OAuth related settings are described in the following table. Only set these fields if you intend to use OIDC SSO for your YugabyteDB Anywhere installation (otherwise leave it empty).
 

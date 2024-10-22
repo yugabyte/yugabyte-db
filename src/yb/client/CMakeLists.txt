@@ -77,6 +77,7 @@ set(CLIENT_LIBS
   tserver_proto
   tserver_service_proto
   pg_auto_analyze_service_proto
+  pg_cron_leader_service_proto
   gutil
   test_echo_service_proto
   tserver_util

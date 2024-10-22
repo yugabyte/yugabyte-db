@@ -49,21 +49,21 @@ To upgrade using YBA Installer, first download the version of YBA Installer corr
 Download and extract the YBA Installer by entering the following commands:
 
 ```sh
-$ wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-$ tar -xf yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-$ cd yba_installer_full-{{<yb-version version="stable" format="build">}}/
+wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
+tar -xf yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
+cd yba_installer_full-{{<yb-version version="stable" format="build">}}/
 ```
 
 When ready to upgrade, run the `upgrade` command from the untarred directory of the target version of the YBA upgrade:
 
 ```sh
-$ sudo ./yba-ctl upgrade
+sudo ./yba-ctl upgrade
 ```
 
 The upgrade takes a few minutes to complete. When finished, use the status command to verify that YBA has been upgraded to the target version:
 
 ```sh
-$ sudo yba-ctl status
+sudo yba-ctl status
 ```
 
 If you encounter errors or have any problems with an upgrade, contact {{% support-platform %}}.

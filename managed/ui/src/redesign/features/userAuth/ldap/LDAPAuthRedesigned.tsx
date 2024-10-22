@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { find, isString } from 'lodash';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
@@ -158,7 +158,7 @@ const useStyles = makeStyles((theme) => ({
     borderRight: 'none',
     justifyContent: 'center',
     '& .MuiAccordionSummary-root': {
-      height: '86px',
+      height: '120px',
       padding: '16px 24px'
     },
     '& .MuiAccordionSummary-content': {
@@ -171,10 +171,6 @@ const useStyles = makeStyles((theme) => ({
     alignItems: 'center',
     marginBottom: '8px'
   },
-  groupsIcon: {
-    width: '24px',
-    height: '24px'
-  },
   accordionDetails: {
     flexDirection: 'column',
     gap: '24px',
@@ -183,6 +179,9 @@ const useStyles = makeStyles((theme) => ({
   },
   scope: {
     width: '308px'
+  },
+  ldapUseRoleMapping: {
+    marginTop: '16px'
   }
 }));
 
@@ -212,8 +211,8 @@ const initializeFormValues = (configEntries: RunTimeConfigEntry[]) => {
     enable_ldaps === 'true'
       ? SecurityOption.ENABLE_LDAPS
       : enable_ldap_start_tls === 'true'
-      ? SecurityOption.ENABLE_LDAP_START_TLS
-      : SecurityOption.UNSECURE;
+        ? SecurityOption.ENABLE_LDAP_START_TLS
+        : SecurityOption.UNSECURE;
   finalFormData = { ...finalFormData, ldap_security };
 
   return finalFormData;
@@ -304,6 +303,12 @@ export const LDAPAuthNew = () => {
     return promiseArray;
   };
 
+  const ldapUseGroupMapping = watch('ldap_group_use_role_mapping');
+
+  useEffect(()=> {
+    setGroupSettingsExpanded(ldapUseGroupMapping);
+  }, [ldapUseGroupMapping]);
+
   if (isLoading) return <YBLoadingCircleIcon />;
   if (isError) return <YBErrorIndicator />;
 
@@ -322,7 +327,7 @@ export const LDAPAuthNew = () => {
   const securityProtocol = watch('ldap_security');
   const useSearchAndBind = watch('use_search_and_bind');
   const ldapUseQuery = watch('ldap_group_use_query');
-
+  
   const toolTip = (content: string) => {
     return (
       <YBTooltip title={content} placement="top">
@@ -393,21 +398,21 @@ export const LDAPAuthNew = () => {
           />
           {(securityProtocol === SecurityOption.ENABLE_LDAPS ||
             securityProtocol === SecurityOption.ENABLE_LDAP_START_TLS) && (
-            <YBRadioGroupField
-              label={
-                <>
-                  {t('tlsProtocol')}
-                  {toolTip(t('infos.tlsProtocol'))}
-                </>
-              }
-              name="ldap_tls_protocol"
-              options={TLSVersions}
-              control={control}
-              orientation="horizontal"
-              isDisabled={!ldapEnabled}
-              data-testid="tls-protocol"
-            />
-          )}
+              <YBRadioGroupField
+                label={
+                  <>
+                    {t('tlsProtocol')}
+                    {toolTip(t('infos.tlsProtocol'))}
+                  </>
+                }
+                name="ldap_tls_protocol"
+                options={TLSVersions}
+                control={control}
+                orientation="horizontal"
+                isDisabled={!ldapEnabled}
+                data-testid="tls-protocol"
+              />
+            )}
           <YBInputField
             control={control}
             name="ldap_basedn"
@@ -548,16 +553,21 @@ export const LDAPAuthNew = () => {
           </div>
           <Accordion
             expanded={groupSettingsExpanded}
-            onChange={() => setGroupSettingsExpanded(!groupSettingsExpanded)}
             className={classes.groupSettings}
             data-testid="group-settings-tab"
           >
-            <AccordionSummary expandIcon={<ArrowDropDown className={classes.groupsIcon} />}>
+            <AccordionSummary>
               <div className={classes.groupHeader}>
-                <UserGroupsIcon className={classes.groupsIcon} />
                 <Typography variant="body1">{t('group.title')}</Typography>
               </div>
               {t('group.helpText')}
+              <div className={classes.ldapUseRoleMapping}>
+                <YBToggleField
+                  name="ldap_group_use_role_mapping"
+                  control={control}
+                  label={t('ldapUseRoleMapping')}
+                />
+              </div>
             </AccordionSummary>
             <AccordionDetails className={classes.accordionDetails}>
               <YBRadioGroupField

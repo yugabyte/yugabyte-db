@@ -31,7 +31,8 @@ export const MetricTypesWithOperations = {
       'ysql_connections_per_sec',
       'ysql_server_advanced_rpc_per_second',
       'ysql_sql_advanced_latency',
-      'ysql_catalog_cache_misses'
+      'ysql_catalog_cache_misses',
+      'ysql_conn_mgr_active_connections'
       // TODO(bogdan): Add these in once we have histogram support, see #3630.
       // "ysql_server_rpc_p99"
     ]

@@ -24,7 +24,16 @@ message VectorLSMBoundaryPB {
 
 // Information about added chunk.
 message VectorLSMChunkPB {
+  // Serial no is unique for all chunks created during vector lsm lifetime.
+  // Used in chunk filename and never changes.
   uint64 serial_no = 1;
+
+  // Used to order chunks in the in-memory list.
+  // After compaction order_no of the first compacted chunk is used as order_no for the generated
+  // one.
+  // When new chunk is added it receives order_no past latest alive chunk.
+  uint64 order_no = 2;
+
   VectorLSMBoundaryPB smallest = 4;
   VectorLSMBoundaryPB largest = 5;
 }

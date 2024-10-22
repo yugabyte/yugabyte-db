@@ -319,4 +319,63 @@ TEST_F(Pg15UpgradeTest, Sequences) {
   }
 }
 
+TEST_F(Pg15UpgradeTest, MultipleDatabases) {
+  ASSERT_OK(ExecuteStatement("CREATE DATABASE userdb"));
+
+  auto create_table_with_row = [this](const std::string& db_name, const int value) {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB(db_name));
+    ASSERT_OK(conn.Execute(Format("CREATE TABLE t (v INT)")));
+    ASSERT_OK(conn.Execute(Format("INSERT INTO t VALUES ($0)", value)));
+  };
+  ASSERT_NO_FATALS(create_table_with_row("system_platform", 1));
+  ASSERT_NO_FATALS(create_table_with_row("postgres", 10));
+  ASSERT_NO_FATALS(create_table_with_row("userdb", 100));
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  auto add_row_check_rows = [this](const std::string& db_name, const size_t tserver,
+                                   const int value, const std::vector<int>& expected) {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB(db_name, tserver));
+    ASSERT_OK(conn.Execute(Format("INSERT INTO t VALUES ($0)", value)));
+    auto result = ASSERT_RESULT(conn.FetchRows<int>("SELECT v FROM t ORDER BY v"));
+    ASSERT_EQ(result, expected);
+  };
+  ASSERT_NO_FATALS(add_row_check_rows("system_platform", kMixedModeTserverPg15, 2, {1, 2}));
+  ASSERT_NO_FATALS(add_row_check_rows("postgres", kMixedModeTserverPg15, 20, {10, 20}));
+  ASSERT_NO_FATALS(add_row_check_rows("userdb", kMixedModeTserverPg15, 200, {100, 200}));
+
+  ASSERT_NO_FATALS(add_row_check_rows("system_platform", kMixedModeTserverPg11, 3, {1, 2, 3}));
+  ASSERT_NO_FATALS(add_row_check_rows("postgres", kMixedModeTserverPg11, 30, {10, 20, 30}));
+  ASSERT_NO_FATALS(add_row_check_rows("userdb", kMixedModeTserverPg11, 300, {100, 200, 300}));
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  ASSERT_NO_FATALS(add_row_check_rows("system_platform", 0, 4, {1, 2, 3, 4}));
+  ASSERT_NO_FATALS(add_row_check_rows("postgres", 0, 40, {10, 20, 30, 40}));
+  ASSERT_NO_FATALS(add_row_check_rows("userdb", 0, 400, {100, 200, 300, 400}));
+}
+
+TEST_F(Pg15UpgradeTest, Template1) {
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB("template1"));
+    ASSERT_OK(conn.Execute("CREATE FUNCTION template_function() "
+                           "RETURNS INT AS $$ SELECT 11 $$ LANGUAGE sql;"));
+  }
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  auto check_function = [this](const std::string& db_name, const size_t tserver) {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB(db_name, tserver));
+    auto result = ASSERT_RESULT(conn.FetchRows<int>("SELECT template_function()"));
+    ASSERT_EQ(result, std::vector<int>({11}));
+  };
+  ASSERT_NO_FATALS(check_function("template1", kMixedModeTserverPg15));
+  ASSERT_NO_FATALS(check_function("template1", kMixedModeTserverPg11));
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  ASSERT_OK(ExecuteStatement("CREATE DATABASE testdb"));
+  ASSERT_NO_FATALS(check_function("template1", 0));
+  ASSERT_NO_FATALS(check_function("testdb", 0));
+}
+
 }  // namespace yb

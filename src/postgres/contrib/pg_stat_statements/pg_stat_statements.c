@@ -1950,6 +1950,9 @@ done:
 Datum
 pg_stat_statements_reset_1_7(PG_FUNCTION_ARGS)
 {
+	if (YBIsQueryDiagnosticsEnabled())
+		*yb_pgss_last_reset_time = GetCurrentTimestamp();
+
 	Oid			userid;
 	Oid			dbid;
 	uint64		queryid;

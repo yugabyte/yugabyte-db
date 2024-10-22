@@ -123,6 +123,8 @@ YBCStatus YBCFetchFromUrl(const char *url, char **buf);
 
 // Is this node acting as the pg_cron leader?
 bool YBCIsCronLeader();
+YBCStatus YBCSetCronLastMinute(int64_t last_minute);
+YBCStatus YBCGetCronLastMinute(int64_t* last_minute);
 
 //--------------------------------------------------------------------------------------------------
 // YB Bitmap Scan Operations
@@ -911,6 +913,8 @@ void YBCStoreTServerAshSamples(
 YBCStatus YBCLocalTablets(YBCPgTabletsDescriptor** tablets, size_t* count);
 
 YBCStatus YBCServersMetrics(YBCPgServerMetricsInfo** serverMetricsInfo, size_t* count);
+
+YBCStatus YBCDatabaseClones(YBCPgDatabaseCloneInfo** databaseClones, size_t* count);
 
 uint64_t YBCPgGetCurrentReadTimePoint();
 YBCStatus YBCRestoreReadTimePoint(uint64_t read_time_point_handle);

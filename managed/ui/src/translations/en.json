@@ -183,6 +183,14 @@
           "snoozeBtnText": "Snooze for 1 hour"
         }
       },
+      "helmOverrides": {
+        "title": "Kubernetes Overrides",
+        "rollingUpgradeLabel": "Rolling upgrade (upgrade pods one at a time)",
+        "upgradeDelayLabel": "Upgrade delay between Pods:",
+        "addAvailabilityZone": "Add Availability Zone",
+        "forceUpgrade": "Force Upgrade",
+        "forceApply": "Force Apply"
+      },
       "dbRollbackUpgrade": {
         "modalTitle": "Upgrade Database",
         "upgradeAction": "Upgrade",
@@ -2539,6 +2547,7 @@
         "groupSearchBaseDN": "Group Search Base DN",
         "ldapGroupSearchScope": "Select Scope",
         "addServiceAccountDetails": "Add Service Account Details",
+        "ldapUseRoleMapping": "Map YugabyteDB Anywhere built-in roles to your existing LDAP groups",
         "infos": {
           "ldapEnabled": "Enable or Disable LDAP Authentication",
           "ldapURL": "LDAP URL must be a valid URL with port number, Ex:- 0.0.0.0:0000",

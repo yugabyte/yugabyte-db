@@ -1835,7 +1835,7 @@ class NodeChecker():
 
         service_error = service_status == 0
         return e.fill_and_return_entry(
-            ["%s ms" % drift_ms, "ntp service is%s running" % "not" if service_error else ""],
+            ["%s ms" % drift_ms, "ntp service is%s running" % " not" if service_error else ""],
             has_error=service_error, metrics=metrics)
 
     def check_process_stats(self, process_name):
@@ -2137,9 +2137,9 @@ def _ntp_get_clock_drift_ms():
     ntp_out = check_output("systemctl status ntp.service", env)
     ntpd_out = check_output("systemctl status ntpd.service", env)
     if "Active: active" in ntp_out or "Active: active" in ntpd_out:
-        out = check_output("ntpq -p | awk 'NR==3 {print $9}'", env)
-        if "Error" not in out:
-          return int(float(out)*1000) # Convert seconds to milliseconds
+        out = check_output("ntpq -p | awk '$1 ~ \"^*\" {print $9}'", env)
+        if "Error" not in out and out.strip() != "":
+            return int(float(out)) # ntpq -p offset is already in milliseconds
     return "Failed to get clock drift from ntp(d)"
 
 def _timesyncd_get_clock_drift_ms():

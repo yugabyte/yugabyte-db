@@ -56,9 +56,6 @@ class CloneStateInfo : public MetadataCowWrapper<PersistentCloneStateInfo> {
   std::vector<TabletData> GetTabletData();
   void AddTabletData(CloneStateInfo::TabletData tablet_data);
 
-  YQLDatabase DatabaseType();
-  void SetDatabaseType(YQLDatabase database_type);
-
   LeaderEpoch Epoch();
   void SetEpoch(const LeaderEpoch& epoch);
 
@@ -79,7 +76,6 @@ class CloneStateInfo : public MetadataCowWrapper<PersistentCloneStateInfo> {
   const std::string clone_request_id_;
 
   LeaderEpoch epoch_ GUARDED_BY(mutex_);
-  YQLDatabase database_type_ GUARDED_BY(mutex_);
 
   // These fields are set before the clone state is set to CREATING.
   std::vector<TabletData> tablet_data_ GUARDED_BY(mutex_);
