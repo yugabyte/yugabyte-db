@@ -14,6 +14,10 @@ type: docs
 
 Creating databases, tables, and schemas involves a structured process that enables efficient data management. The following detailed guide can help you understand and implement each step.
 
+{{<tip>}}
+For the list of supported and unsupported schema relations operations, , see [Schema operations](../sql-feature-support#schema-operations)
+{{</tip>}}
+
 ## Setup
 
 The examples run on any YugabyteDB universe.

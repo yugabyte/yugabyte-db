@@ -18,7 +18,7 @@ If you need values in some of the columns to be unique, you can specify your ind
 
 When a unique index is applied to two or more columns, the combined values in these columns can't be duplicated in multiple rows. Note that because a `NULL` value is treated as a distinct value, you can have multiple `NULL` values in a column with a unique index.
 
-If a table has a primary key or a [UNIQUE constraint](../other-constraints/#unique-constraint) defined, a corresponding unique index is created automatically.
+If a table has a primary key or a [UNIQUE constraint](../../data-manipulation#constraints) defined, a corresponding unique index is created automatically.
 
 ## Syntax
 
@@ -119,7 +119,7 @@ northwind=# SELECT * FROM categories;
 ## Learn more
 
 - [Unique index with HASH column ordering](../../../../api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering)
-- [UNIQUE constraint](../other-constraints/#unique-constraint)
+- [UNIQUE constraint](../../data-manipulation#constraints)
 - [Indexes on JSON attributes](../../jsonb-ysql/#indexes-on-json-attributes)
 - [Benefits of Index-only scan](https://www.yugabyte.com/blog/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)
 - [CREATE TABLE](../../../../api/ysql/the-sql-language/statements/ddl_create_table/)

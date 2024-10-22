@@ -1,8 +1,8 @@
 ---
-title: Indexes and constraints in YugabyteDB YSQL
-headerTitle: Indexes and constraints
-linkTitle: Indexes and constraints
-description: Using indexes and constraints in YugabyteDB YSQL
+title: Indexes
+headerTitle: Indexes
+linkTitle: Indexes
+description: Using indexes in YugabyteDB YSQL
 headcontent: Explore indexes and constraints in YSQL
 image: /images/section_icons/explore/monitoring.png
 menu:
@@ -13,91 +13,77 @@ menu:
 type: indexpage
 ---
 
-Indexes are powerful tools designed to improve the speed of data retrieval operations by creating efficient pathways to access the data in a table. Similar to an index in a book, SQL indexes allow the database to quickly locate the desired rows without scanning the entire table. While indexes enhance query performance, they can also impact the speed of INSERT, UPDATE, and DELETE operations. In YugabyteDB, Indexes are treated internally as tables and just like tables, they are distributed and stored in [LSM](https://en.wikipedia.org/wiki/Log-structured_merge-tree) format, as opposed to the [B-tree](https://www.postgresql.org/docs/current/btree-implementation.html#BTREE-STRUCTURE) structure used by indexes in PostgreSQL.
+Indexes are powerful tools designed to improve the speed of data retrieval operations by creating efficient pathways to access the data in a table. Similar to an index in a book, SQL indexes allow the database to quickly locate the desired rows without scanning the entire table. While indexes enhance query performance, they can also impact the speed of INSERT, UPDATE, and DELETE operations. In YugabyteDB, Indexes are treated internally as tables and just like tables, they are distributed and stored in [LSM](https://en.wikipedia.org/wiki/Log-structured_merge-tree) format, as opposed to the [B-tree](https://www.postgresql.org/docs/current/btree-implementation.html#BTREE-STRUCTURE) structure used by indexes in PostgreSQL. Let us look at some of the indexes supported by YugabyteDB.
 
 {{<note>}}
 The sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded/distributed. Indexes are not colocated with the base table.
 {{</note>}}
 
-YugabyteDB supports most of the PostgreSQL index semantics in the [YSQL API](../../../api/ysql/).
+## Primary Key
 
-The following table lists different types of indexes and their support in YSQL.
+A primary key is a unique identifier assigned to each row in a relational database table. It ensures that every record has a distinct value, preventing duplicate entries. Primary keys are crucial for maintaining data integrity and enabling efficient data retrieval.
 
-|                | Type | Description  |
-| :------------- | :--- | :--- |
-| {{<icon/yes>}} | [Primary key](primary-key-ysql/) | Unique key that identifies the row |
-| {{<icon/yes>}} | [Foreign key](foreign-key-ysql/) | Link to a column in another table |
-| {{<icon/yes>}} | [Secondary index](secondary-indexes-ysql/) | Index on columns other than the primary key |
-| {{<icon/yes>}} | [Unique index](unique-index-ysql/) | Set one or many columns to be unique |
-| {{<icon/yes>}} | [Multi-column index](secondary-indexes-ysql/#multi-column-index) | Index on multiple columns for faster scan with lesser rows |
-| {{<icon/yes>}} | [Partial index](partial-index-ysql/) | Indexes that apply to only some rows of the table |
-| {{<icon/yes>}} | [Covering index](covering-index-ysql/) | Store other columns in the index for faster retrieval |
-| {{<icon/yes>}} | [Expression index](expression-index-ysql/) | Index based on a functional operation on columns |
-| {{<icon/partial>}} | [GIN index](gin) | Generalized inverted index for fast text search |
-| {{<icon/no>}}  | GIST Index | For spatial search. Tracked - {{<issue 1337>}} |
+{{<lead link="primary-key-ysql/">}}
+To understand how to define primary keys and choose the right columns, see [Primary keys](primary-key-ysql/)
+{{</lead>}}
 
-## Learn more
+## Secondary Index
 
-{{<index/block>}}
+Secondary indexes are additional indexes created on columns other than the primary key. They enhance query performance by allowing faster data retrieval based on non-primary key columns, speeding up search queries, filtering, and sorting operations. Unlike primary keys, which enforce uniqueness and identify each row uniquely, secondary indexes can be created on columns that may contain duplicate values.
 
-  {{<index/item
-    title="Primary keys"
-    body="Explore the use of primary keys in YSQL."
-    href="primary-key-ysql/"
-    icon="fa-thin fa-bars">}}
+{{<lead link="secondary-indexes-ysql/">}}
+To understand how to use indexes for faster retrieval, see [Secondary indexes](secondary-indexes-ysql/)
+{{</lead>}}
 
-  {{<index/item
-    title="Foreign keys"
-    body="Explore the use of foreign keys associated with primary keys in YSQL."
-    href="foreign-key-ysql/"
-    icon="fa-thin fa-list-ul">}}
+## Unique Index
 
-  {{<index/item
-    title="Secondary and multi-column indexes"
-    body="Explore indexes to optimize your database performance with examples."
-    href="secondary-indexes-ysql/"
-    icon="fa-thin fa-list-ol">}}
+Unique index enforces uniqueness, preventing duplicate entries and maintaining data integrity. When a unique index is applied to a column, the database automatically checks for duplicate values and rejects any insert or update operations that would violate this constraint.
 
-  {{<index/item
-    title="Unique indexes"
-    body="Explore unique indexes in YSQL with examples."
-    href="unique-index-ysql/"
-    icon="fa-thin fa-bars-staggered">}}
+{{<lead link="unique-index-ysql/">}}
+To understand how to use unique indexes to maintain data integrity, see [Unique indexes](unique-index-ysql/)
+{{</lead>}}
 
-  {{<index/item
-    title="Partial indexes"
-    body="Explore partial indexes in YSQL with examples."
-    href="partial-index-ysql/"
-    icon="fa-thin fa-list-check">}}
+## Partial indexes
 
-  {{<index/item
-    title="Expression indexes"
-    body="Explore Expression indexes in YSQL with examples."
-    href="expression-index-ysql/"
-    icon="fa-thin fa-percent">}}
+Partial indexes are specialized indexes that include only a subset of rows in a table, based on a specified condition. This type of index is particularly useful for optimizing queries that frequently access a specific portion of the data. By indexing only the rows that meet the condition, partial indexes can reduce storage requirements and improve query performance.
 
-   {{<index/item
-    title="Covering indexes"
-    body="Explore Covering indexes in YSQL with examples."
-    href="covering-index-ysql/"
-    icon="fa-thin fa-table-list">}}
+{{<lead link="partial-index-ysql/">}}
+To understand how to use partial indexes to save space and speed up queries, see [Partial indexes](partial-index-ysql/)
+{{</lead>}}
 
-  {{<index/item
-    title="GIN indexes"
-    body="Use GIN indexes in YSQL to run efficient queries."
-    href="gin/"
-    icon="fa-thin fa-folder-tree">}}
+## Covering index
 
-  {{<index/item
-    title="Other constraints"
-    body="Explore CHECK, UNIQUE, and NOT NULL constraints to optimize your database performance."
-    href="other-constraints/"
-    icon="/images/section_icons/develop/learn.png">}}
+Covering indexes are a type of index that includes all the columns needed to satisfy a query, allowing the database to retrieve the required data directly from the index without accessing the table itself. This can significantly improve query performance by reducing the trip to the table.
 
-  {{<index/item
-    title="Index backfill"
-    body="Understand how you can create indexes without affecting ongoing queries."
-    href="index-backfill/"
-    icon="/images/section_icons/develop/learn.png">}}
+{{<lead link="covering-index-ysql/">}}
+To understand how to use covering indexes to speed up queries, see [Covering indexes](covering-index-ysql/)
+{{</lead>}}
 
-{{</index/block>}}
+## Expression index
+
+Expression indexes are a type of index that is created on a calculated expression rather than a simple column. This allows you to index the result of a function or expression, providing efficient access to data based on the calculated value.
+
+{{<lead link="expression-index-ysql/">}}
+To understand how to use expression indexes in your data model, see [Expression indexes](expression-index-ysql/)
+{{</lead>}}
+
+## GIN index
+
+Generalized Inverted Indexes (GIN) are specialized indexes designed to handle complex data types and full-text search efficiently. GIN indexes are particularly effective for indexing columns that contain composite values, such as arrays, JSONB, and full-text documents.
+
+{{<lead link="gin/">}}
+To understand how to use GIN indexes in your data model, see [GIN indexes](gin/)
+{{</lead>}}
+
+## Index backfill
+
+Index backfill refers to the process of populating an index with existing data after the index has been created. This is particularly important in large databases where creating an index can be time-consuming and resource-intensive. This allows for continued read and write operations on the table, minimizing downtime and maintaining database performance.
+
+{{<lead link="index-backfill/">}}
+To understand how index backfill works, see [Index backfill](index-backfill/)
+{{</lead>}}
+
+## Unsupported Indexes
+
+Generalized Search Tree (GiST) indexes in SQL are versatile indexes that support a wide range of query types and data structures. GiST indexes are particularly useful for indexing complex data types such as geometric shapes, text search, and custom data types. GiST indexes are **not** supported in YugabyteDB. Please follow {{<issue 1337>}} for updates.
+

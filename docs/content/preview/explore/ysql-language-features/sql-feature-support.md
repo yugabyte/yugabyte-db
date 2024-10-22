@@ -66,11 +66,11 @@ YugabyteDB is a distributed SQL database that implements many [standard SQL](htt
 
 |                    |                    Feature                    |                                      Documentation                                      |
 | :----------------: | :-------------------------------------------- | :-------------------------------------------------------------------------------------- |
-|   {{<icon/yes>}}   | Check                                         | [Check constraint](../indexes-constraints/other-constraints/#check-constraint)       |
-|   {{<icon/yes>}}   | Unique                                        | [Unique constraint](../indexes-constraints/other-constraints/#unique-constraint)     |
-|   {{<icon/yes>}}   | Not Null                                      | [Not Null constraint](../indexes-constraints/other-constraints/#not-null-constraint) |
+|   {{<icon/yes>}}   | Check                                         | [Check constraint](../data-manipulation/#check-constraint)       |
+|   {{<icon/yes>}}   | Unique                                        | [Unique constraint](../data-manipulation/#unique-constraint)     |
+|   {{<icon/yes>}}   | Not Null                                      | [Not Null constraint](../data-manipulation/#not-null-constraint) |
 |   {{<icon/yes>}}   | Primary Key                                   | [Primary keys](../indexes-constraints/primary-key-ysql/)                             |
-|   {{<icon/yes>}}   | Foreign Key                                   | [Foreign keys](../indexes-constraints/foreign-key-ysql/)                             |
+|   {{<icon/yes>}}   | Foreign Key                                   | [Foreign keys](../data-manipulation/#foreign-key-constraint/)                             |
 | {{<icon/partial>}} | Default Value                                 |                                                                                         |
 | {{<icon/partial>}} | Deferrable Foreign Key constraints            |                                                                                         |
 |   {{<icon/no>}}    | Deferrable Primary Key and Unique constraints |                                                                                         |

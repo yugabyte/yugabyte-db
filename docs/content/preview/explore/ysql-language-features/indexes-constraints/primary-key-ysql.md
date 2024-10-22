@@ -47,146 +47,126 @@ PRIMARY KEY (columns)
 
 The order of the keys matters a lot in range sharding. The data is distributed and ordered based on the first column, and for rows with the same first column, the rows are ordered on the second column, and so on.
 
-## Syntax and examples
+## Setup
+
+The examples will run on any YugabyteDB universe. To create a universe follow the instructions below.
+
+<!-- begin: nav tabs -->
+{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
+
+{{<nav/panels>}}
+{{<nav/panel name="local" active="true">}}
+<!-- local cluster setup instructions -->
+{{<setup/local numnodes="1" rf="1" >}}
+
+{{</nav/panel>}}
+
+{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
+{{<nav/panel name="cloud">}}{{<setup/cloud>}}{{</nav/panel>}}
+{{</nav/panels>}}
+<!-- end: nav tabs -->
 
 {{<note>}}
 To explain the behavior of queries, the examples use *explain (analyze, dist, costs off)*. In practice, you do not need to do this unless you are trying to optimize performance. For more details, see [Analyze queries](../../../../explore/query-1-performance/explain-analyze).
 {{</note>}}
 
-{{% explore-setup-single %}}
+Create a census table as follows:
 
-### Primary key for a single column
+```sql
+CREATE TABLE census(
+   id int,
+   name varchar(255),
+   age int,
+   zipcode int,
+   employed boolean,
+   PRIMARY KEY(id ASC)
+);
+```
+
+<details> <summary>Add some data to the table as follows.</summary>
+
+```sql
+INSERT INTO public.census ( id,name,age,zipcode,employed ) VALUES
+  (1,'Zachary',55,94085,True),    (2,'James',56,94085,False),    (3,'Kimberly',50,94084,False),
+  (4,'Edward',56,94085,True),     (5,'Barry',56,94084,False),    (6,'Tyler',45,94084,False),
+  (7,'Nancy',47,94085,False),     (8,'Sarah',52,94084,True),     (9,'Nancy',59,94084,False),
+  (10,'Diane',51,94083,False),    (11,'Ashley',42,94083,False),  (12,'Jacqueline',58,94085,False),
+  (13,'Benjamin',49,94084,False), (14,'James',48,94083,False),   (15,'Ann',43,94083,False),
+  (16,'Aimee',47,94085,True),     (17,'Michael',49,94085,False), (18,'Rebecca',40,94085,False),
+  (19,'Kevin',45,94085,True),     (20,'James',45,94084,False),   (21,'Sandra',60,94085,False),
+  (22,'Kathleen',40,94085,True),  (23,'William',42,94084,False), (24,'James',42,94083,False),
+  (25,'Tyler',50,94085,False),    (26,'James',49,94085,True),    (27,'Kathleen',55,94083,True),
+  (28,'Zachary',55,94083,True),   (29,'Rebecca',41,94085,True),  (30,'Jacqueline',49,94085,False),
+  (31,'Diane',48,94083,False),    (32,'Sarah',53,94085,True),    (33,'Rebecca',55,94083,True),
+  (34,'William',47,94085,False),  (35,'William',60,94085,True),  (36,'Sarah',53,94085,False),
+  (37,'Ashley',47,94084,True),    (38,'Ashley',54,94084,False),  (39,'Benjamin',42,94083,False),
+  (40,'Tyler',47,94085,True),     (41,'Michael',42,94084,False), (42,'Diane',50,94084,False),
+  (43,'Nancy',51,94085,False),    (44,'Rebecca',56,94085,False), (45,'Tyler',41,94085,True);
+```
+
+</details>
+
+## Single column
 
 Most commonly, the primary key is added to the table when the table is created, as demonstrated by the following syntax:
 
 ```sql
-CREATE TABLE (
-  column1 data_type PRIMARY KEY,
-  column2 data_type,
-  column3 data_type,
-  …
+CREATE TABLE census(
+   ...
+   id int,
+   PRIMARY KEY(id ASC)
+   ...
 );
 ```
 
-The following example creates the `employees` table with `employee_no` as the primary key, which uniquely identifies an employee.
+It can also be specified along the definition of the column like:
 
 ```sql
-CREATE TABLE employees (
-  employee_no integer PRIMARY KEY,
-  name text,
-  department text
+CREATE TABLE census(
+   ...
+   id int PRIMARY KEY,
+   ...
 );
 ```
 
-### Primary key over multiple columns
+## Multi-column key
 
-The following syntax can be used to define a primary key for more than one column:
+Multiple columns can be grouped to be defined as the primary key like:
 
 ```sql
-CREATE TABLE (
-  column1 data_type,
-  column2 data_type,
-  column3 data_type,
-  …
-  PRIMARY KEY (column1, column2)
+CREATE TABLE census(
+   id int,
+   name varchar(255),
+  ...
+   PRIMARY KEY(id, name ASC)
 );
 ```
 
-The following example creates the `employees` table in which the primary key is a combination of `employee_no` and `name` columns:
+## Adding via a CONSTRAINT
 
-```sql
-CREATE TABLE employees (
-  employee_no integer,
-  name text,
-  department text,
-  PRIMARY KEY (employee_no, name)
-);
-```
-
-### CONSTRAINT
-
-YSQL assigns a default name, in the format `tablename_pkey`, to the primary key constraint. For example, the default name is `employees_pkey` for the `employees` table. If you need a different name, you can specify it using the `CONSTRAINT` clause, as per the following syntax:
+You can define a primary key using the constraint clause as
 
 ```sql
 CONSTRAINT constraint_name PRIMARY KEY(column1, column2, ...);
 ```
 
-The following example demonstrates the use of `CONSTRAINT` to change the default name:
+like:
 
 ```sql
-CONSTRAINT employee_no_pkey PRIMARY KEY(employee_no);
+CONSTRAINT census_pkey PRIMARY KEY(id);
 ```
 
-### ALTER TABLE
+## Using ALTER TABLE
 
-Use the `ALTER TABLE` statement to create a primary key on an existing table with following syntax:
+Although it is advisable to define the primary key along with the table definition, when needed you can use the `ALTER TABLE` statement to create a primary key on an table afte the table is created or defined:
 
 ```sql
-ALTER TABLE table_name ADD PRIMARY KEY (column1, column2);
+ALTER TABLE census ADD PRIMARY KEY (id);
 ```
-
-The following example creates the `employees` table first and then alters it to add a primary key on the `employee_no` column:
-
-```sql
-CREATE TABLE employees (
-  employee_no integer,
-  name text,
-  department text
-);
-
-ALTER TABLE employees ADD PRIMARY KEY (employee_no);
-```
-
-The following example allows you to add an auto-incremented primary key to a new column on an existing table using the `GENERATED ALWAYS AS IDENTITY` property:
-
-```sql
-CREATE TABLE sample(c1 text, c2 text);
-ALTER TABLE sample ADD COLUMN ID INTEGER;
-ALTER TABLE sample ALTER COLUMN ID set NOT NULL;
-ALTER TABLE sample ALTER COLUMN ID ADD GENERATED ALWAYS AS IDENTITY;
-ALTER TABLE sample ADD CONSTRAINT sample_id_pk PRIMARY KEY (ID);
-```
-
-Insert values into the `sample` table and check the contents.
-
-```sql
-yb_demo=# INSERT INTO sample(id, c1, c2)
-             VALUES (1, 'cat'  , 'kitten'),
-                    (2, 'dog'  , 'puppy'),
-                    (3, 'duck' , 'duckling');
-
-yb_demo=# SELECT * FROM sample;
-```
-
-```output
-   c1   |    c2     | id
---------+-----------+----
- cat    | kitten    |  1
- dog    | puppy     |  2
- duck   | duckling  |  3
-(3 rows)
-```
-
-Trying to insert values for `id` into the `sample` results in the following error, as the auto-increment property is now set.
-
-```sql
-yb_demo=# INSERT INTO sample(id, c1, c2)
-             VALUES (4, 'cow' , 'calf'),
-                    (5, 'lion', 'cub');
-```
-
-```output
-ERROR:  cannot insert into column "id"
-DETAIL:  Column "id" is an identity column defined as GENERATED ALWAYS.
-HINT:  Use OVERRIDING SYSTEM VALUE to override.
-```
-
-<!-- ## Primary Key recommended practices in future-->
-
-<!-- Add information here  -->
 
 ## Learn more
 
+- [Designing optimal Primary keys](../../../../develop/data-modeling/primary-keys-ysql)
 - [Primary Key](../../../../api/ysql/the-sql-language/statements/ddl_create_table/#primary-key)
 - [Table with Primary Key](../../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-primary-key)
 - [Natural versus Surrogate Primary Keys in a Distributed SQL Database](https://www.yugabyte.com/blog/natural-versus-surrogate-primary-keys-in-a-distributed-sql-database/)

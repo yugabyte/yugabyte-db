@@ -20,6 +20,10 @@ Whether you're storing text, numbers, dates, or more complex data like arrays an
 
 This guide explores the different data types to handle different kinds of data efficiently.
 
+{{<tip>}}
+For the list of supported datatypes and those that are not supported by Yugabyte, see [Data types](../sql-feature-support#data-types)
+{{</tip>}}
+
 ## Setup
 
 The examples will run on any YugabyteDB universe. To create a universe follow the instructions below.
