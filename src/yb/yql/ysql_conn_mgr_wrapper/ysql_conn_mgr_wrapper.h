@@ -49,10 +49,15 @@ class YsqlConnMgrConf : public yb::ProcessWrapperCommonConfig {
   uint num_resolver_threads_ = 1;
 
   bool log_debug_ = false;
+  bool log_config_ = false;
+  bool log_session_ = false;
+  bool log_query_ = false;
+  bool log_stats_ = false;
 
   void UpdateConfigFromGFlags();
   std::string GetBindAddress();
   void AddSslConfig(std::map<std::string, std::string>* ysql_conn_mgr_configs);
+  void UpdateLogSettings(std::string& log_settings_str);
 };
 
 class YsqlConnMgrWrapper : public yb::ProcessWrapper {
