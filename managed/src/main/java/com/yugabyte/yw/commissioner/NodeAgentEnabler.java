@@ -573,7 +573,11 @@ public class NodeAgentEnabler {
      * false.
      */
     boolean reinstall(
-        UUID customerUuid, UUID universeUuid, NodeDetails nodeDetails, NodeAgent nodeAgent)
+        UUID customerUuid,
+        UUID universeUuid,
+        NodeDetails nodeDetails,
+        NodeAgent nodeAgent,
+        Duration cooldown)
         throws Exception;
 
     /** Set installNodeAgent property in the universe details to false by locking the universe. */
@@ -638,23 +642,8 @@ public class NodeAgentEnabler {
                       Duration cooldown =
                           confGetter.getConfForScope(
                               universe, UniverseConfKeys.nodeAgentEnablerReinstallCooldown);
-                      Instant cooldownEndTime =
-                          nodeAgentOpt
-                              .get()
-                              .getUpdatedAt()
-                              .toInstant()
-                              .plus(cooldown.getSeconds(), ChronoUnit.SECONDS);
-                      if (Instant.now().isAfter(cooldownEndTime)) {
-                        return nodeAgentInstaller.reinstall(
-                            getCustomerUuid(), getUniverseUuid(), node, nodeAgentOpt.get());
-                      }
-                      log.info(
-                          "Reinstall cooldown is active till {} for node {}({}) in universe {}",
-                          cooldownEndTime,
-                          node.getNodeName(),
-                          nodeIp,
-                          universe.getUniverseUUID());
-                      return false;
+                      return nodeAgentInstaller.reinstall(
+                          getCustomerUuid(), getUniverseUuid(), node, nodeAgentOpt.get(), cooldown);
                     }
                     log.debug(
                         "Node agent is already installed for node {}({}) in universe {}",

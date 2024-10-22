@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -159,6 +160,7 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     for (NodeDetails node : universeDetails.nodeDetailsSet) {
       node.cloudInfo.private_ip = ipPrefix + "." + node.getNodeIdx();
+      node.nodeUuid = UUID.randomUUID();
     }
     universe.setUniverseDetails(universeDetails);
     universe.save();
@@ -174,7 +176,7 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     nodeAgent.setCustomerUuid(customerUuid);
     nodeAgent.setOsType(NodeAgent.OSType.LINUX);
     nodeAgent.setArchType(NodeAgent.ArchType.AMD64);
-    nodeAgent.setVersion("2024.2.0.0");
+    nodeAgent.setVersion(Util.getYbaVersion());
     nodeAgent.setHome("/home/yugabyte/node-agent");
     nodeAgent.setState(state);
     nodeAgent.setConfig(new NodeAgent.Config());
@@ -470,7 +472,7 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     for (NodeDetails node : universe1.getNodes()) {
       if (reinstallNode.equals(node)) {
         verify(mockNodeAgentInstaller, times(1))
-            .reinstall(eq(customer1.getUuid()), eq(universeUuid1), eq(node), any());
+            .reinstall(eq(customer1.getUuid()), eq(universeUuid1), eq(node), any(), any());
       } else {
         verify(mockNodeAgentInstaller, times(1))
             .install(eq(customer1.getUuid()), eq(universeUuid1), eq(node));
@@ -497,18 +499,24 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     Universe universe2 = Universe.getOrBadRequest(universeUuid2);
     settableRuntimeConfigFactory
         .forUniverse(universe1)
-        .setValue(UniverseConfKeys.nodeAgentEnablerReinstallCooldown.getKey(), "0s");
+        .setValue(UniverseConfKeys.nodeAgentEnablerReinstallCooldown.getKey(), "1m");
     // Node agent is already installed in a universe marked with installNodeAgent.
     NodeDetails reinstallNode = Iterables.getFirst(universe1.getNodes(), null);
     createNodeAgent(customer1.getUuid(), reinstallNode, NodeAgent.State.REGISTERING);
     when(mockNodeAgentInstaller.install(any(), any(), any())).thenReturn(true);
-    when(mockNodeAgentInstaller.reinstall(any(), any(), eq(reinstallNode), any())).thenReturn(true);
+    when(mockNodeAgentInstaller.reinstall(any(), any(), eq(reinstallNode), any(), any()))
+        .thenReturn(true);
     nodeAgentEnabler.scanUniverses();
     nodeAgentEnabler.waitFor(Duration.ofSeconds(10));
     for (NodeDetails node : universe1.getNodes()) {
       if (reinstallNode.equals(node)) {
         verify(mockNodeAgentInstaller, times(1))
-            .reinstall(eq(customer1.getUuid()), eq(universeUuid1), eq(node), any());
+            .reinstall(
+                eq(customer1.getUuid()),
+                eq(universeUuid1),
+                eq(node),
+                any(),
+                eq(Duration.ofMinutes(1)));
       } else {
         verify(mockNodeAgentInstaller, times(1))
             .install(eq(customer1.getUuid()), eq(universeUuid1), eq(node));
@@ -530,43 +538,6 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     // Field installNodeAgent must not be cleared because migration did not succeed.
     assertEquals(true, universe1.getUniverseDetails().installNodeAgent);
     assertEquals(true, universe01.getUniverseDetails().installNodeAgent);
-  }
-
-  @Test
-  public void testReInstallNodeAgentCooldown() throws Exception {
-    markUniverses();
-    Universe universe1 = Universe.getOrBadRequest(universeUuid1);
-    Universe universe01 = Universe.getOrBadRequest(universeUuid01);
-    Universe universe2 = Universe.getOrBadRequest(universeUuid2);
-    settableRuntimeConfigFactory
-        .forUniverse(universe1)
-        .setValue(UniverseConfKeys.nodeAgentEnablerReinstallCooldown.getKey(), "1m");
-    // Node agent is already installed in a universe marked with installNodeAgent.
-    NodeDetails reinstallNode = Iterables.getFirst(universe1.getNodes(), null);
-    createNodeAgent(customer1.getUuid(), reinstallNode, NodeAgent.State.REGISTERING);
-    when(mockNodeAgentInstaller.install(any(), any(), any())).thenReturn(true);
-    nodeAgentEnabler.scanUniverses();
-    nodeAgentEnabler.waitFor(Duration.ofSeconds(10));
-    for (NodeDetails node : universe1.getNodes()) {
-      if (reinstallNode.equals(node)) {
-        verify(mockNodeAgentInstaller, times(0))
-            .reinstall(eq(customer1.getUuid()), eq(universeUuid1), eq(node), any());
-      } else {
-        verify(mockNodeAgentInstaller, times(1))
-            .install(eq(customer1.getUuid()), eq(universeUuid1), eq(node));
-      }
-    }
-    for (NodeDetails node : universe01.getNodes()) {
-      verify(mockNodeAgentInstaller, times(1))
-          .install(eq(customer1.getUuid()), eq(universeUuid01), eq(node));
-    }
-    for (NodeDetails node : universe2.getNodes()) {
-      verify(mockNodeAgentInstaller, times(0))
-          .install(eq(customer2.getUuid()), eq(universeUuid2), eq(node));
-    }
-    verify(mockNodeAgentInstaller, times(0)).migrate(eq(customer1.getUuid()), eq(universeUuid1));
-    verify(mockNodeAgentInstaller, times(1)).migrate(eq(customer1.getUuid()), eq(universeUuid01));
-    verify(mockNodeAgentInstaller, times(0)).migrate(eq(customer2.getUuid()), eq(universeUuid2));
   }
 
   @Test
