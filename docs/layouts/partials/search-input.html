@@ -1,4 +1,4 @@
-{{ if .Site.Params.search.algolia_docsearch -}}
+{{ if .Site.Params.search.elastic_search -}}
 <div class="search-area">
   <i class="search-icon"></i>
   <input type="search" id="search-query" name="query"  class="td-search-input" placeholder="Search documentation" aria-label="Search documentation"
@@ -6,7 +6,7 @@
   <div class="reset-input"></div>
   {{ if ne .Type "searchpage" }}
   <div class="search-result" style="display:none">
-    <div class="algolia-data" id="docs">
+    <div class="search-output" id="docs">
       <ul id="doc-hit" class="content-panel"></ul>
       <div id="pagination-docs" class="pager"></div>
     </div>

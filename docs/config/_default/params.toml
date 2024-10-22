@@ -11,8 +11,7 @@ version_menu = "Releases"
 version_menu_pagelinks = true
 
 [search]
-  algolia_docsearch = true
-  algolia_sequence_expressions = true
+  elastic_search = true
 
 [path_base_for_github_subdir]
   from = "content/en/(.*?)/"

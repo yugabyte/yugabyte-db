@@ -32,7 +32,6 @@
     "@babel/plugin-proposal-decorators": "7.24.1",
     "@babel/preset-env": "7.24.5",
     "@fortawesome/fontawesome-pro": "6.5.2",
-    "algoliasearch": "4.23.3",
     "babel-loader": "9.1.3",
     "clipboard": "2.0.11",
     "detect-external-link": "2.0.1",
