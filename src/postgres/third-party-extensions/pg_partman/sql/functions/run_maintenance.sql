@@ -172,6 +172,12 @@ LOOP
         WHERE n.nspname = v_parent_schema
         AND c.relname = v_default_tablename;
 
+        -- YB: TODO(#3109): Disable skip after transactional DDL support.
+        IF v_is_default = 'DEFAULT' THEN
+            RAISE NOTICE 'Skip run maintenace job for table % as it has default table attached', v_row.parent_table;
+            CONTINUE;
+        END IF;
+
         IF v_is_default != 'DEFAULT' THEN
             v_default_tablename := v_parent_tablename;
         END IF;

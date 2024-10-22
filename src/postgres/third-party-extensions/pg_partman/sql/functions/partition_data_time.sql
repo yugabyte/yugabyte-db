@@ -118,6 +118,10 @@ ELSIF v_partition_type = 'native' AND current_setting('server_version_num')::int
         v_source_tablename := v_default_tablename;
 
         v_default_exists := true;
+        -- YB: Moving data from default partition is not supported
+        -- TODO(#3109): Re-enable it after transactional DDL support.
+        RAISE NOTICE 'Moving data from default partition to newly created child tables is not supported';
+        RETURN v_total_rows;
         EXECUTE format ('CREATE TEMP TABLE IF NOT EXISTS partman_temp_data_storage (LIKE %I.%I INCLUDING INDEXES) ON COMMIT DROP', v_source_schemaname, v_source_tablename);
     ELSE
         RAISE DEBUG 'No default table found when partition_data_id() was called';

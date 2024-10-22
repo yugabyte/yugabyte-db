@@ -186,7 +186,7 @@ TEST_F(PgPartmanTest, TestIdProcedureSourceTable) {
 }
 
 TEST_F(PgPartmanTest, TestTimeProcedureEpochWeeklyNative) {
-  RunAndAssertTest("test_procedure/test-time-procedure-epoch-weekly-native-part1.sql");
+  RunAndAssertTest("test_procedure/yb_pg_test-time-procedure-epoch-weekly-native-part1.sql");
 
   ASSERT_OK(conn_->Execute(
       "CALL partman.partition_data_proc('partman_test.time_taptest_table', p_wait := 0, "
@@ -200,21 +200,21 @@ TEST_F(PgPartmanTest, TestTimeProcedureEpochWeeklyNative) {
 }
 
 TEST_F(PgPartmanTest, TestTimeProcedureSourceTable) {
-  RunAndAssertTest("test_procedure/test-time-procedure-source-table-part1.sql");
+  RunAndAssertTest("test_procedure/yb_pg_test-time-procedure-source-table-part1.sql");
 
   ASSERT_OK(conn_->Execute(
       "CALL partman.partition_data_proc('partman_test.time_taptest_table', p_wait := 0, "
       "p_source_table := 'partman_test.time_taptest_table_source')"));
 
-  RunAndAssertTest("test_procedure/test-time-procedure-source-table-part2.sql");
+  RunAndAssertTest("test_procedure/yb_pg_test-time-procedure-source-table-part2.sql");
 
   ASSERT_OK(conn_->Execute("CALL partman.run_maintenance_proc();"));
 
-  RunAndAssertTest("test_procedure/test-time-procedure-source-table-part3.sql");
+  RunAndAssertTest("test_procedure/yb_pg_test-time-procedure-source-table-part3.sql");
 }
 
 TEST_F(PgPartmanTest, TestTimeProcedureWeekly) {
-  RunAndAssertTest("test_procedure/test-time-procedure-weekly-part1.sql");
+  RunAndAssertTest("test_procedure/yb_pg_test-time-procedure-weekly-part1.sql");
 
   ASSERT_OK(
       conn_->Execute("CALL partman.reapply_constraints_proc('partman_test.time_taptest_table', "
