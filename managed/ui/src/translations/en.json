@@ -2537,6 +2537,7 @@
         "groupSearchBaseDN": "Group Search Base DN",
         "ldapGroupSearchScope": "Select Scope",
         "addServiceAccountDetails": "Add Service Account Details",
+        "ldapUseRoleMapping": "Map YugabyteDB Anywhere built-in roles to your existing LDAP groups",
         "infos": {
           "ldapEnabled": "Enable or Disable LDAP Authentication",
           "ldapURL": "LDAP URL must be a valid URL with port number, Ex:- 0.0.0.0:0000",
