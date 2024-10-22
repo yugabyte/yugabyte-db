@@ -601,8 +601,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
                Sort Key: object_id
                ->  Index Scan using _id_ on documents_1200_1200005 collection
                      Index Cond: ((shard_key_value = '1200'::bigint) AND (object_id OPERATOR(helio_core.=) ANY ('{"{ \"\" : { \"$numberInt\" : \"1\" } }","{ \"\" : { \"$numberInt\" : \"2\" } }"}'::helio_core.bson[])))
-                     Filter: (document OPERATOR(helio_api_catalog.@*=) '{ "_id" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }'::helio_core.bson)
-(10 rows)
+(9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'queryoperator') WHERE document @@ '{ "$or"  : [{"_id": { "$gt": 1, "$lte" : 5 }}, {"_id":1}]}' ORDER BY object_id;
                                                                                                                                                                QUERY PLAN                                                                                                                                                                

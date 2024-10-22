@@ -226,6 +226,113 @@ TryExtractDataFromRestrictInfo(RestrictInfo *rinfo, AttrNumber *leftAttr, Oid *o
 }
 
 
+inline static bool
+TryExtractObjectIdDataFormFuncExprRestrictInfo(RestrictInfo *rinfo, Oid funcOid,
+											   bson_value_t *filterValue)
+{
+	if (!IsA(rinfo->clause, FuncExpr))
+	{
+		return false;
+	}
+
+	FuncExpr *funcExpr = (FuncExpr *) rinfo->clause;
+
+	if (funcExpr->funcid != funcOid || list_length(funcExpr->args) != 2)
+	{
+		return false;
+	}
+
+	Expr *leftExpr = linitial(funcExpr->args);
+	Expr *rightExpr = lsecond(funcExpr->args);
+	if (!IsA(leftExpr, Var) || !IsA(rightExpr, Const))
+	{
+		return false;
+	}
+
+	if (castNode(Var, leftExpr)->varattno != MONGO_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER)
+	{
+		return false;
+	}
+
+	Const *rightConst = castNode(Const, rightExpr);
+
+	pgbsonelement queryElement;
+	if (!rightConst->constisnull &&
+		TryGetSinglePgbsonElementFromPgbson(DatumGetPgBsonPacked(
+												rightConst->constvalue),
+											&queryElement) &&
+		queryElement.pathLength == 3 && strcmp(queryElement.path, "_id") == 0)
+	{
+		*filterValue = queryElement.bsonValue;
+		return true;
+	}
+
+	return false;
+}
+
+
+static bool
+InMatchIsEquvalentTo(ScalarArrayOpExpr *opExpr, const bson_value_t *arrayValue)
+{
+	if (opExpr == NULL || arrayValue->value_type != BSON_TYPE_ARRAY)
+	{
+		return false;
+	}
+
+	List *inMatchArgs = opExpr->args;
+	if (list_length(inMatchArgs) != 2)
+	{
+		return false;
+	}
+
+	if (!IsA(lsecond(inMatchArgs), Const))
+	{
+		return false;
+	}
+
+	Const *secondMatch = (Const *) lsecond(inMatchArgs);
+
+	bson_iter_t arrayValueIter;
+	BsonValueInitIterator(arrayValue, &arrayValueIter);
+
+	ArrayType *inArrayValue = DatumGetArrayTypeP(secondMatch->constvalue);
+
+	const int slice_ndim = 0;
+	ArrayMetaState *mState = NULL;
+	ArrayIterator inArrayIterator = array_create_iterator(inArrayValue, slice_ndim,
+														  mState);
+	Datum arrayDatum = { 0 };
+	bool isNull = false;
+	while (array_iterate(inArrayIterator, &arrayDatum, &isNull))
+	{
+		if (!bson_iter_next(&arrayValueIter) || isNull)
+		{
+			array_free_iterator(inArrayIterator);
+			return false;
+		}
+
+		const bson_value_t *rightValue = bson_iter_value(&arrayValueIter);
+		pgbsonelement leftElement = { 0 };
+		pgbson *leftBson = DatumGetPgBsonPacked(arrayDatum);
+		PgbsonToSinglePgbsonElement(leftBson, &leftElement);
+
+		if (!BsonValueEquals(&leftElement.bsonValue, rightValue))
+		{
+			array_free_iterator(inArrayIterator);
+			return false;
+		}
+	}
+
+	array_free_iterator(inArrayIterator);
+	if (bson_iter_next(&arrayValueIter))
+	{
+		return false;
+	}
+
+	return true;
+}
+
+
 /*
  * Given a primary key lookup query, trims the restrictInfo based on the lookup
  */
@@ -233,6 +340,7 @@ static void
 TrimPrimaryKeyQuals(List *restrictInfo, IndexPath *primaryKeyPath)
 {
 	RestrictInfo *objectIdFilter = NULL;
+	ScalarArrayOpExpr *objectIdInFilter = NULL;
 	AttrNumber objectAttr = InvalidAttrNumber;
 	Const *rightConst = NULL;
 	Oid opNo = InvalidOid;
@@ -245,16 +353,31 @@ TrimPrimaryKeyQuals(List *restrictInfo, IndexPath *primaryKeyPath)
 		IndexClause *iclause = lfirst_node(IndexClause, cell);
 		if (iclause->indexcol == 1 && list_length(iclause->indexquals) > 0)
 		{
-			objectIdFilter = linitial(iclause->indexquals);
-
-			if (TryExtractDataFromRestrictInfo(objectIdFilter, &objectAttr, &opNo,
-											   &rightConst) &&
-				opNo == BsonEqualOperatorId() &&
-				TryGetSinglePgbsonElementFromPgbson(DatumGetPgBsonPacked(
-														rightConst->constvalue),
-													&queryElement))
+			ListCell *filterCell;
+			foreach(filterCell, iclause->indexquals)
 			{
-				objectIdColumnFilter = queryElement.bsonValue;
+				objectIdFilter = lfirst(filterCell);
+
+				if (TryExtractDataFromRestrictInfo(objectIdFilter, &objectAttr, &opNo,
+												   &rightConst) &&
+					opNo == BsonEqualOperatorId() &&
+					TryGetSinglePgbsonElementFromPgbson(DatumGetPgBsonPacked(
+															rightConst->constvalue),
+														&queryElement))
+				{
+					objectIdColumnFilter = queryElement.bsonValue;
+					break;
+				}
+				else if (IsA(objectIdFilter->clause, ScalarArrayOpExpr))
+				{
+					ScalarArrayOpExpr *arrayOpExpr =
+						(ScalarArrayOpExpr *) objectIdFilter->clause;
+					if (arrayOpExpr->useOr)
+					{
+						objectIdInFilter = arrayOpExpr;
+						break;
+					}
+				}
 			}
 		}
 	}
@@ -266,7 +389,7 @@ TrimPrimaryKeyQuals(List *restrictInfo, IndexPath *primaryKeyPath)
 		primaryKeyPath->path.total_cost = 0;
 	}
 
-	if (objectIdColumnFilter.value_type == BSON_TYPE_EOD)
+	if (objectIdColumnFilter.value_type == BSON_TYPE_EOD && objectIdInFilter == NULL)
 	{
 		return;
 	}
@@ -275,13 +398,26 @@ TrimPrimaryKeyQuals(List *restrictInfo, IndexPath *primaryKeyPath)
 	{
 		RestrictInfo *rinfo = lfirst_node(RestrictInfo, cell);
 		if (TryExtractDataFromRestrictInfo(rinfo, &objectAttr, &opNo, &rightConst) &&
-			objectAttr == MONGO_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER &&
-			opNo == BsonEqualMatchRuntimeOperatorId() &&
-			TryGetSinglePgbsonElementFromPgbson(DatumGetPgBsonPacked(
-													rightConst->constvalue),
-												&queryElement) &&
-			queryElement.pathLength == 3 && strcmp(queryElement.path, "_id") == 0 &&
-			BsonValueEquals(&objectIdColumnFilter, &queryElement.bsonValue))
+			objectAttr == MONGO_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER)
+		{
+			if (objectIdColumnFilter.value_type != BSON_TYPE_EOD &&
+				opNo == BsonEqualMatchRuntimeOperatorId() &&
+				TryGetSinglePgbsonElementFromPgbson(DatumGetPgBsonPacked(
+														rightConst->constvalue),
+													&queryElement) &&
+				queryElement.pathLength == 3 && strcmp(queryElement.path, "_id") == 0 &&
+				BsonValueEquals(&objectIdColumnFilter, &queryElement.bsonValue))
+			{
+				cell->ptr_value = objectIdFilter;
+				return;
+			}
+		}
+		else if (objectIdInFilter != NULL &&
+				 TryExtractObjectIdDataFormFuncExprRestrictInfo(rinfo,
+																BsonInMatchFunctionId(),
+																&queryElement.bsonValue)
+				 &&
+				 InMatchIsEquvalentTo(objectIdInFilter, &queryElement.bsonValue))
 		{
 			cell->ptr_value = objectIdFilter;
 			return;
@@ -303,7 +439,9 @@ AddPointLookupQuery(List *restrictInfo, PlannerInfo *root, RelOptInfo *rel)
 	RestrictInfo *shardKeyFilter = NULL;
 	RestrictInfo *objectIdFilter = NULL;
 	int32_t docObjectIdFilterEqualsIndex = -1;
+	int32_t docObjectIdFilterInIndex = -1;
 	bson_value_t docObjectIdFilter = { 0 };
+	bson_value_t docObjectIdInFilter = { 0 };
 	bson_value_t objectIdColumnFilter = { 0 };
 	AttrNumber objectAttr = InvalidAttrNumber;
 	Const *rightConst = NULL;
@@ -352,6 +490,13 @@ AddPointLookupQuery(List *restrictInfo, PlannerInfo *root, RelOptInfo *rel)
 				docObjectIdFilterEqualsIndex = list_cell_number(restrictInfo, cell);
 				docObjectIdFilter = queryElement.bsonValue;
 			}
+		}
+		else if (IsA(rinfo->clause, FuncExpr) &&
+				 TryExtractObjectIdDataFormFuncExprRestrictInfo(rinfo,
+																BsonInMatchFunctionId(),
+																&docObjectIdInFilter))
+		{
+			docObjectIdFilterInIndex = list_cell_number(restrictInfo, cell);
 		}
 		else if (IsA(rinfo->clause, ScalarArrayOpExpr))
 		{
@@ -424,10 +569,20 @@ AddPointLookupQuery(List *restrictInfo, PlannerInfo *root, RelOptInfo *rel)
 
 				if (objectIdColumnFilter.value_type != BSON_TYPE_EOD &&
 					docObjectIdFilter.value_type != BSON_TYPE_EOD &&
-					BsonValueEquals(&objectIdColumnFilter, &docObjectIdFilter))
+					BsonValueEquals(&objectIdColumnFilter, &docObjectIdFilter) &&
+					docObjectIdFilterEqualsIndex >= 0)
 				{
 					/* We can swap out the docId with the objectId */
 					list_nth_cell(restrictInfo, docObjectIdFilterEqualsIndex)->ptr_value =
+						objectIdFilter;
+				}
+				else if (docObjectIdFilterInIndex >= 0 &&
+						 IsA(objectIdFilter->clause, ScalarArrayOpExpr) &&
+						 InMatchIsEquvalentTo(
+							 (ScalarArrayOpExpr *) objectIdFilter->clause,
+							 &docObjectIdInFilter))
+				{
+					list_nth_cell(restrictInfo, docObjectIdFilterInIndex)->ptr_value =
 						objectIdFilter;
 				}
 
