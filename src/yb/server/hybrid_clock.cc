@@ -64,7 +64,7 @@ METRIC_DEFINE_gauge_int64(server, hybrid_clock_skew,
                            yb::MetricUnit::kMicroseconds,
                            "Server clock skew.");
 
-DEFINE_UNKNOWN_string(time_source, "",
+DEFINE_NON_RUNTIME_string(time_source, "",
               "The clock source that HybridClock should use. "
               "Leave empty for WallClock, clockbound for ClockboundClock, "
               "and other values depend on added clock providers and "
