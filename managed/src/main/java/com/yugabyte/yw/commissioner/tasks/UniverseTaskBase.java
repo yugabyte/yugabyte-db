@@ -4565,8 +4565,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createDnsManipulationTask(
       DnsManager.DnsCommandType eventType, boolean isForceDelete, Universe universe) {
+    return createDnsManipulationTask(eventType, isForceDelete, universe, Collections.emptySet());
+  }
+
+  public SubTaskGroup createDnsManipulationTask(
+      DnsManager.DnsCommandType eventType,
+      boolean isForceDelete,
+      Universe universe,
+      Set<String> serversToExclude) {
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-    return createDnsManipulationTask(eventType, isForceDelete, primaryCluster);
+    return createDnsManipulationTask(eventType, isForceDelete, primaryCluster, serversToExclude);
   }
 
   /**
@@ -4575,10 +4583,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param eventType the type of manipulation to do on the DNS records.
    * @param isForceDelete if this is a delete operation, set this to true to ignore errors
    * @param primaryCluster primary cluster information.
+   * @param serversToExclude servers to exclude
    * @return subtask group
    */
   public SubTaskGroup createDnsManipulationTask(
-      DnsManager.DnsCommandType eventType, boolean isForceDelete, Cluster primaryCluster) {
+      DnsManager.DnsCommandType eventType,
+      boolean isForceDelete,
+      Cluster primaryCluster,
+      Set<String> serversToExclude) {
     UserIntent userIntent = primaryCluster.userIntent;
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateDnsEntry");
     Provider p = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
@@ -4599,6 +4611,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         String.format(
             "%s.%s", userIntent.universeName, Customer.get(p.getCustomerUUID()).getCode());
     params.isForceDelete = isForceDelete;
+    params.serversToExclude = serversToExclude;
     // Create the task to update DNS entries.
     ManipulateDnsRecordTask task = createTask(ManipulateDnsRecordTask.class);
     task.initialize(params);

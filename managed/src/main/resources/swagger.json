@@ -10788,6 +10788,9 @@
           },
           "type" : "object"
         },
+        "hostedZoneId" : {
+          "type" : "string"
+        },
         "ybcBinDir" : {
           "type" : "string"
         },
@@ -10798,6 +10801,7 @@
       "required" : [
         "dataHomeDir",
         "envVars",
+        "hostedZoneId",
         "ybcBinDir",
         "yugabyteBinDir"
       ],
