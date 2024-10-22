@@ -8,6 +8,7 @@ import { AxiosError } from 'axios';
 import { MutateOptions, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import { makeStyles } from '@material-ui/core';
+import { useDispatch } from 'react-redux';
 
 import { AWSProviderEditForm } from './aws/AWSProviderEditForm';
 import { AZUProviderEditForm } from './azu/AZUProviderEditForm';
@@ -21,6 +22,11 @@ import { assertUnreachableCase } from '../../../../utils/errorHandlingUtils';
 import { providerQueryKey } from '../../../../redesign/helpers/api';
 import { fetchTaskUntilItCompletes } from '../../../../actions/xClusterReplication';
 import { UniverseItem } from '../providerView/providerDetails/UniverseTable';
+import {
+  listAccessKeys,
+  listAccessKeysReqCompleted,
+  listAccessKeysResponse
+} from '../../../../actions/cloud';
 
 import { YBProvider, YBProviderMutation } from '../types';
 
@@ -59,7 +65,17 @@ const useStyles = makeStyles((theme) => ({
 export const ProviderEditView = ({ linkedUniverses, providerConfig }: ProviderEditViewProps) => {
   const queryClient = useQueryClient();
   const classes = useStyles();
+  const dispatch = useDispatch();
 
+  const updateCachedAccessKeys = () => {
+    dispatch(listAccessKeys(providerConfig.uuid) as any)
+      .then((response: any) => {
+        dispatch(listAccessKeysResponse(response.payload));
+      })
+      .then(() => {
+        dispatch(listAccessKeysReqCompleted());
+      });
+  };
   const editProviderMutation = useEditProvider(queryClient, {
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries(providerQueryKey.ALL, { exact: true });
@@ -85,11 +101,13 @@ export const ProviderEditView = ({ linkedUniverses, providerConfig }: ProviderEd
           } else {
             toast.success('Provider edit succeeded.');
           }
+          updateCachedAccessKeys();
           queryClient.invalidateQueries(providerQueryKey.ALL, { exact: true });
           queryClient.invalidateQueries(providerQueryKey.detail(variables.providerUUID));
         });
       } else {
         toast.success('Provider edit succeeded.');
+        updateCachedAccessKeys();
       }
     }
   });
