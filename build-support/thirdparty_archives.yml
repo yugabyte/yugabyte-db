@@ -1,198 +1,149 @@
-sha_for_local_checkout: ffb781854e0a662975254c6c075e211c4fde9292
+sha_for_local_checkout: b058f9744463630f9158b0bf339cab87740163a4
 archives:
   - os_type: almalinux8
+    architecture: aarch64
+    compiler_type: clang16
+    is_linuxbrew: false
+    sha: b058f9744463630f9158b0bf339cab87740163a4
+    lto_type:
+    tag: v2.20-20241023194800-b058f97444-almalinux8-aarch64-clang16
+  - os_type: almalinux8
+    architecture: aarch64
+    compiler_type: clang16
+    is_linuxbrew: false
+    sha: b058f9744463630f9158b0bf339cab87740163a4
+    lto_type: full
+    tag: v2.20-20241023194914-b058f97444-almalinux8-aarch64-clang16-full-lto
+  - os_type: almalinux8
     architecture: x86_64
     compiler_type: clang16
     is_linuxbrew: false
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
+    sha: b058f9744463630f9158b0bf339cab87740163a4
     lto_type:
-    tag: v2.20-20240625152710-ffb781854e-almalinux8-x86_64-clang16
+    tag: v2.20-20241023194637-b058f97444-almalinux8-x86_64-clang16
   - os_type: almalinux8
     architecture: x86_64
     compiler_type: clang16
     is_linuxbrew: true
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
+    sha: b058f9744463630f9158b0bf339cab87740163a4
     lto_type:
-    tag: v2.20-20240625152652-ffb781854e-almalinux8-x86_64-clang16-linuxbrew
+    tag: v2.20-20241023194647-b058f97444-almalinux8-x86_64-clang16-linuxbrew
   - os_type: almalinux8
     architecture: x86_64
     compiler_type: clang16
     is_linuxbrew: true
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
+    sha: b058f9744463630f9158b0bf339cab87740163a4
     lto_type: full
-    tag: v2.20-20240625152711-ffb781854e-almalinux8-x86_64-clang16-linuxbrew-full-lto
+    tag: v2.20-20241023194704-b058f97444-almalinux8-x86_64-clang16-linuxbrew-full-lto
   - os_type: almalinux8
     architecture: x86_64
     compiler_type: clang17
     is_linuxbrew: false
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
+    sha: b058f9744463630f9158b0bf339cab87740163a4
     lto_type:
-    tag: v2.20-20240625152641-ffb781854e-almalinux8-x86_64-clang17
+    tag: v2.20-20241023194640-b058f97444-almalinux8-x86_64-clang17
   - os_type: almalinux8
     architecture: x86_64
     compiler_type: clang17
     is_linuxbrew: true
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
+    sha: b058f9744463630f9158b0bf339cab87740163a4
     lto_type:
-    tag: v2.20-20240625152654-ffb781854e-almalinux8-x86_64-clang17-linuxbrew
+    tag: v2.20-20241023194703-b058f97444-almalinux8-x86_64-clang17-linuxbrew
   - os_type: almalinux8
     architecture: x86_64
     compiler_type: clang17
     is_linuxbrew: true
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
+    sha: b058f9744463630f9158b0bf339cab87740163a4
     lto_type: full
-    tag: v2.20-20240625152713-ffb781854e-almalinux8-x86_64-clang17-linuxbrew-full-lto
+    tag: v2.20-20241023194704-b058f97444-almalinux8-x86_64-clang17-linuxbrew-full-lto
   - os_type: almalinux8
     architecture: x86_64
     compiler_type: gcc11
     is_linuxbrew: false
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
+    sha: b058f9744463630f9158b0bf339cab87740163a4
     lto_type:
-    tag: v2.20-20240625152710-ffb781854e-almalinux8-x86_64-gcc11
+    tag: v2.20-20241023194638-b058f97444-almalinux8-x86_64-gcc11
   - os_type: almalinux9
     architecture: x86_64
     compiler_type: clang16
     is_linuxbrew: false
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
+    sha: b058f9744463630f9158b0bf339cab87740163a4
     lto_type:
-    tag: v2.20-20240625152714-ffb781854e-almalinux9-x86_64-clang16
+    tag: v2.20-20241023194657-b058f97444-almalinux9-x86_64-clang16
   - os_type: almalinux9
     architecture: x86_64
     compiler_type: clang17
     is_linuxbrew: false
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
+    sha: b058f9744463630f9158b0bf339cab87740163a4
     lto_type:
-    tag: v2.20-20240625152708-ffb781854e-almalinux9-x86_64-clang17
+    tag: v2.20-20241023194700-b058f97444-almalinux9-x86_64-clang17
   - os_type: almalinux9
     architecture: x86_64
     compiler_type: gcc12
     is_linuxbrew: false
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
+    sha: b058f9744463630f9158b0bf339cab87740163a4
     lto_type:
-    tag: v2.20-20240625152657-ffb781854e-almalinux9-x86_64-gcc12
+    tag: v2.20-20241023194647-b058f97444-almalinux9-x86_64-gcc12
   - os_type: amzn2
     architecture: aarch64
     compiler_type: clang17
     is_linuxbrew: false
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
+    sha: b058f9744463630f9158b0bf339cab87740163a4
     lto_type:
-    tag: v2.20-20240625152843-ffb781854e-amazonlinux2-aarch64-clang17
+    tag: v2.20-20241023194944-b058f97444-amazonlinux2-aarch64-clang17
   - os_type: amzn2
     architecture: aarch64
     compiler_type: clang17
     is_linuxbrew: false
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
+    sha: b058f9744463630f9158b0bf339cab87740163a4
     lto_type: full
-    tag: v2.20-20240625152849-ffb781854e-amazonlinux2-aarch64-clang17-full-lto
+    tag: v2.20-20241023194955-b058f97444-amazonlinux2-aarch64-clang17-full-lto
   - os_type: amzn2
     architecture: x86_64
     compiler_type: clang17
     is_linuxbrew: false
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
+    sha: b058f9744463630f9158b0bf339cab87740163a4
     lto_type:
-    tag: v2.20-20240625152715-ffb781854e-amazonlinux2-x86_64-clang17
-  - os_type: centos7
-    architecture: aarch64
-    compiler_type: clang16
-    is_linuxbrew: false
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
-    lto_type:
-    tag: v2.20-20240625152833-ffb781854e-centos7-aarch64-clang16
-  - os_type: centos7
-    architecture: aarch64
-    compiler_type: clang16
-    is_linuxbrew: false
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
-    lto_type: full
-    tag: v2.20-20240625152836-ffb781854e-centos7-aarch64-clang16-full-lto
-  - os_type: centos7
-    architecture: aarch64
-    compiler_type: clang17
-    is_linuxbrew: false
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
-    lto_type:
-    tag: v2.20-20240625152833-ffb781854e-centos7-aarch64-clang17
-  - os_type: centos7
-    architecture: aarch64
-    compiler_type: clang17
-    is_linuxbrew: false
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
-    lto_type: full
-    tag: v2.20-20240625152831-ffb781854e-centos7-aarch64-clang17-full-lto
-  - os_type: centos7
-    architecture: x86_64
-    compiler_type: clang16
-    is_linuxbrew: false
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
-    lto_type:
-    tag: v2.20-20240625152644-ffb781854e-centos7-x86_64-clang16
-  - os_type: centos7
-    architecture: x86_64
-    compiler_type: clang16
-    is_linuxbrew: false
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
-    lto_type: full
-    tag: v2.20-20240625152702-ffb781854e-centos7-x86_64-clang16-full-lto
-  - os_type: centos7
-    architecture: x86_64
-    compiler_type: clang17
-    is_linuxbrew: false
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
-    lto_type:
-    tag: v2.20-20240625152649-ffb781854e-centos7-x86_64-clang17
-  - os_type: centos7
-    architecture: x86_64
-    compiler_type: clang17
-    is_linuxbrew: false
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
-    lto_type: full
-    tag: v2.20-20240625152647-ffb781854e-centos7-x86_64-clang17-full-lto
-  - os_type: centos7
-    architecture: x86_64
-    compiler_type: gcc11
-    is_linuxbrew: false
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
-    lto_type:
-    tag: v2.20-20240625152646-ffb781854e-centos7-x86_64-gcc11
+    tag: v2.20-20241023194755-b058f97444-amazonlinux2-x86_64-clang17
   - os_type: macos
     architecture: arm64
     compiler_type: clang
     is_linuxbrew: false
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
+    sha: b058f9744463630f9158b0bf339cab87740163a4
     lto_type:
-    tag: v2.20-20240625182152-ffb781854e-macos-arm64
+    tag: v2.20-20241023194555-b058f97444-macos-arm64
   - os_type: macos
     architecture: x86_64
     compiler_type: clang
     is_linuxbrew: false
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
+    sha: b058f9744463630f9158b0bf339cab87740163a4
     lto_type:
-    tag: v2.20-20240625152707-ffb781854e-macos-x86_64
+    tag: v2.20-20241023194655-b058f97444-macos-x86_64
   - os_type: ubuntu20.04
     architecture: x86_64
     compiler_type: clang16
     is_linuxbrew: false
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
+    sha: b058f9744463630f9158b0bf339cab87740163a4
     lto_type:
-    tag: v2.20-20240625152650-ffb781854e-ubuntu2004-x86_64-clang16
+    tag: v2.20-20241023194631-b058f97444-ubuntu2004-x86_64-clang16
   - os_type: ubuntu22.04
     architecture: x86_64
     compiler_type: clang16
     is_linuxbrew: false
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
+    sha: b058f9744463630f9158b0bf339cab87740163a4
     lto_type:
-    tag: v2.20-20240625152651-ffb781854e-ubuntu2204-x86_64-clang16
+    tag: v2.20-20241023194633-b058f97444-ubuntu2204-x86_64-clang16
   - os_type: ubuntu22.04
     architecture: x86_64
     compiler_type: clang17
     is_linuxbrew: false
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
+    sha: b058f9744463630f9158b0bf339cab87740163a4
     lto_type:
-    tag: v2.20-20240625152642-ffb781854e-ubuntu2204-x86_64-clang17
+    tag: v2.20-20241023194634-b058f97444-ubuntu2204-x86_64-clang17
   - os_type: ubuntu22.04
     architecture: x86_64
     compiler_type: gcc11
     is_linuxbrew: false
-    sha: ffb781854e0a662975254c6c075e211c4fde9292
+    sha: b058f9744463630f9158b0bf339cab87740163a4
     lto_type:
-    tag: v2.20-20240625152656-ffb781854e-ubuntu2204-x86_64-gcc11
+    tag: v2.20-20241023194637-b058f97444-ubuntu2204-x86_64-gcc11
