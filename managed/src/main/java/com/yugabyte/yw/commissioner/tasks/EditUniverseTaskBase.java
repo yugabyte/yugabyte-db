@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
+import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.common.Util;
@@ -331,6 +332,11 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
         createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
       }
     }
+    if (!nodesToProvision.isEmpty()) {
+      // Update the DNS entry for this universe to add new tservers.
+      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
 
     // Add new nodes to load balancer.
     createManageLoadBalancerTasks(
@@ -402,6 +408,17 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       createXClusterConfigUpdateMasterAddressesTask();
     }
 
+    if (!tserversToBeRemoved.isEmpty()) {
+      // Update the DNS entry for this universe to remove tservers.
+      createDnsManipulationTask(
+              DnsManager.DnsCommandType.Edit,
+              false,
+              universe,
+              tserversToBeRemoved.stream()
+                  .map(t -> t.cloudInfo.private_ip)
+                  .collect(Collectors.toSet()))
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
     // Finally send destroy to the old set of nodes and remove them from this universe.
     if (!nodesToBeRemoved.isEmpty()) {
       // Remove nodes from load balancer.
