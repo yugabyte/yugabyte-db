@@ -746,6 +746,8 @@ static const AggregationStageDefinition StageDefinitions[] =
 static const int AggregationStageCount = sizeof(StageDefinitions) /
 										 sizeof(AggregationStageDefinition);
 
+static const int MaxEvenFunctionArguments = ((int) (FUNC_MAX_ARGS / 2)) * 2;
+
 PG_FUNCTION_INFO_V1(command_bson_aggregation_pipeline);
 PG_FUNCTION_INFO_V1(command_api_collection);
 PG_FUNCTION_INFO_V1(command_aggregation_support);
@@ -3368,6 +3370,54 @@ HandleChangeStream(const bson_value_t *existingValue, Query *query,
 }
 
 
+/*
+ * Generates the projection functions expression for grouping stages e.g. $group, $setWindowFields
+ * where the maximum number of arguments can be larger than MaxEvenFunctionArguments.
+ */
+Expr *
+GenerateMultiExpressionRepathExpression(List *repathArgs)
+{
+	Assert(repathArgs != NIL && list_length(repathArgs) % 2 == 0);
+
+	CHECK_FOR_INTERRUPTS();
+	check_stack_depth();
+
+	int numOfArguments = list_length(repathArgs);
+	if (numOfArguments <= MaxEvenFunctionArguments)
+	{
+		return (Expr *) makeFuncExpr(BsonRepathAndBuildFunctionOid(),
+									 BsonTypeId(), repathArgs, InvalidOid,
+									 InvalidOid, COERCE_EXPLICIT_CALL);
+	}
+
+	/*
+	 * need to create multiple bson_merge_documents(bson_repath_and_build(...), bson_repath_and_build(...)) expressions
+	 * for each MaxEvenFunctionArguments number of arguments.
+	 * e.g. If 220 arguments are provided then 110 group by accumulators are present in the query.
+	 * which translates to:
+	 * bson_dollar_merge_documents(
+	 *      bson_dollar_merge_documents(
+	 *          bson_repath_and_build(<50 group by exprs>),
+	 *          bson_dollar_merge_documents(
+	 *              bson_repath_and_build(<50 group by exprs>),
+	 *              bson_repath_and_build(<10 group by exprs>)
+	 *      ),
+	 * )
+	 */
+	List *args = list_copy_head(repathArgs, MaxEvenFunctionArguments);
+	List *remainingArgs = list_copy_tail(repathArgs, MaxEvenFunctionArguments);
+	Expr *argsRepathExpression = (Expr *) makeFuncExpr(BsonRepathAndBuildFunctionOid(),
+													   BsonTypeId(), args, InvalidOid,
+													   InvalidOid, COERCE_EXPLICIT_CALL);
+	Expr *remainingArgsExprs = GenerateMultiExpressionRepathExpression(remainingArgs);
+
+	return (Expr *) makeFuncExpr(BsonDollaMergeDocumentsFunctionOid(),
+								 BsonTypeId(),
+								 list_make2(argsRepathExpression, remainingArgsExprs),
+								 InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+}
+
+
 static List *
 AddShardKeyAndIdFilters(const bson_value_t *existingValue, Query *query,
 						AggregationPipelineBuildContext *context,
@@ -5269,10 +5319,9 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 
 	/* Take the output and replace it with the repath_and_build */
 	TargetEntry *entry = linitial(query->targetList);
-	FuncExpr *repathExpression = makeFuncExpr(BsonRepathAndBuildFunctionOid(),
-											  BsonTypeId(), repathArgs, InvalidOid,
-											  InvalidOid, COERCE_EXPLICIT_CALL);
-	entry->expr = (Expr *) repathExpression;
+	Expr *repathExpression = GenerateMultiExpressionRepathExpression(repathArgs);
+
+	entry->expr = repathExpression;
 	entry->resname = origEntry->resname;
 
 

@@ -189,6 +189,8 @@ Query * GenerateConfigDatabaseQuery(AggregationPipelineBuildContext *context);
 bool IsPartitionByFieldsOnShardKey(const pgbson *partitionByFields,
 								   const MongoCollection *collection);
 
+Expr * GenerateMultiExpressionRepathExpression(List *repathArgs);
+
 /* Helper methods */
 
 inline static Const *

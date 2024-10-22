@@ -73,3 +73,49 @@ BEGIN
 END $$;
 
 DROP SCHEMA setWindowFieldSchema CASCADE;
+
+CREATE OR REPLACE FUNCTION check_aggregates(num_elements int)
+RETURNS void AS $fn$
+DECLARE
+    bson_spec jsonb;
+    bson_spec_str text;
+    group_by_spec text;
+    setwindowFields_spec text;
+    groupResult bson;
+    setwindowFieldsResult bson;
+    groupExplainResult jsonb;
+    setwindowFieldsExplainResult jsonb;
+    i int;
+BEGIN
+    -- Initialize the BSON spec as an empty JSONB object
+    bson_spec := '{}'::jsonb;
+
+    -- Loop to add 50 fields to the BSON spec
+    FOR i IN 1..num_elements LOOP
+        bson_spec := jsonb_set(bson_spec, ARRAY['field' || i::text], jsonb_build_object('$sum', 1));
+    END LOOP;
+
+    -- Output the BSON spec
+    bson_spec_str := bson_spec::text;
+    RAISE NOTICE '\n============= TESTING MULTIPLE ARGUMENTS AGGREGATES (%) =======================' , num_elements;
+
+    group_by_spec := '{ "aggregate": "setWindowField_compliance", "pipeline":  [{"$group": { "_id": "$_id", ' ||  substring(bson_spec_str, 2, length(bson_spec_str) - 2)  || ' }}]}';
+    setwindowFields_spec := '{ "aggregate": "setWindowField_compliance", "pipeline":  [{"$setWindowFields": { "output": ' ||  bson_spec_str || ' }}]}';
+
+    SET citus.log_remote_commands = 'on';
+    SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', group_by_spec::helio_core.bson) INTO groupResult;
+    RAISE NOTICE E'\n=============\nGroup by\n=============\nQuery: %\n\nResult: %', group_by_spec, groupResult;
+
+    SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', setwindowFields_spec::helio_core.bson) INTO setwindowFieldsResult;
+    RAISE NOTICE E'\n=============\nSetWindowFields\n=============\nQuery: %\n\nResult: %', setwindowFields_spec, setwindowFieldsResult;
+    RESET citus.log_remote_commands;
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- Check aggregates with different number of aggregation operators
+SELECT check_aggregates(30);
+SELECT check_aggregates(50);
+SELECT check_aggregates(51);
+SELECT check_aggregates(100);
+SELECT check_aggregates(105);
+SELECT check_aggregates(200);
