@@ -5206,7 +5206,7 @@ static bool YbIsConnectionMadeStickyUsingGUC()
 	 */
 	yb_ysql_conn_mgr_superuser_existed = yb_ysql_conn_mgr_superuser_existed ||
 		session_auth_is_superuser ||
-		superuser();
+		(IsTransactionState() && superuser());
 	return yb_ysql_conn_mgr_sticky_guc = yb_ysql_conn_mgr_sticky_guc ||
 		(YbIsSuperuserConnSticky() && yb_ysql_conn_mgr_superuser_existed);
 }
