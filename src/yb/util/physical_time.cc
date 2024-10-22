@@ -138,16 +138,21 @@ const PhysicalClockPtr& AdjTimeClock() {
 #endif
 
 Result<PhysicalTime> MockClock::Now() {
-  RETURN_NOT_OK(mock_status_);
+  {
+    std::lock_guard status_lock(status_mutex_);
+    RETURN_NOT_OK(mock_status_);
+  }
   return CheckClockSyncError(value_.load(boost::memory_order_acquire));
 }
 
 void MockClock::Set(const PhysicalTime& value) {
   value_.store(value, boost::memory_order_release);
+  std::lock_guard status_lock(status_mutex_);
   mock_status_ = Status::OK();
 }
 
 void MockClock::Set(Status status) {
+  std::lock_guard status_lock(status_mutex_);
   mock_status_ = status;
 }
 

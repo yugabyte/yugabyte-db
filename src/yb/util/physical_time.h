@@ -15,6 +15,7 @@
 
 #include <functional> // For std::function
 #include <memory>
+#include <mutex>
 
 #include <boost/atomic.hpp>
 
@@ -65,7 +66,8 @@ class MockClock : public PhysicalClock {
   // Set by calls to SetMockClockWallTimeForTests().
   // For testing purposes only.
   boost::atomic<PhysicalTime> value_{{0, 0}};
-  Status mock_status_;
+  Status mock_status_ GUARDED_BY(status_mutex_);
+  std::mutex status_mutex_;
 };
 
 const PhysicalClockPtr& WallClock();
