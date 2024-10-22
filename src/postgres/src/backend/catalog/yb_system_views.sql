@@ -139,6 +139,13 @@ LANGUAGE INTERNAL
 VOLATILE STRICT PARALLEL SAFE
 AS 'yb_query_diagnostics';
 
+CREATE OR REPLACE FUNCTION
+  yb_cancel_query_diagnostics(query_id int8)
+RETURNS void
+LANGUAGE INTERNAL
+VOLATILE STRICT PARALLEL SAFE
+AS 'yb_cancel_query_diagnostics';
+
 --
 -- Grant and revoke statements on YB objects.
 --
@@ -147,3 +154,5 @@ GRANT EXECUTE ON FUNCTION yb_increment_all_db_catalog_versions(boolean) TO yb_db
 REVOKE EXECUTE ON FUNCTION yb_fix_catalog_version_table(boolean) FROM public;
 REVOKE EXECUTE ON FUNCTION yb_query_diagnostics(int8,int8,int8,boolean,boolean,boolean,int8) FROM public;
 GRANT EXECUTE ON FUNCTION yb_query_diagnostics(int8,int8,int8,boolean,boolean,boolean,int8) TO yb_db_admin;
+REVOKE EXECUTE ON FUNCTION yb_cancel_query_diagnostics(int8) FROM public;
+GRANT EXECUTE ON FUNCTION yb_cancel_query_diagnostics(int8) TO yb_db_admin;

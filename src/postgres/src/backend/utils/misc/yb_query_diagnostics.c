@@ -70,6 +70,7 @@
 #define DIAGNOSTICS_SUCCESS 0
 #define DIAGNOSTICS_IN_PROGRESS 1
 #define DIAGNOSTICS_ERROR 2
+#define DIAGNOSTICS_CANCELLED 3
 
 typedef struct BundleInfo
 {
@@ -104,7 +105,7 @@ TimestampTz *yb_pgss_last_reset_time;
 static HTAB *bundles_in_progress = NULL;
 static LWLock *bundles_in_progress_lock; /* protects bundles_in_progress hash table */
 static YbQueryDiagnosticsBundles *bundles_completed = NULL;
-static const char *status_msg[] = {"Success", "In Progress", "Error"};
+static const char *status_msg[] = {"Success", "In Progress", "Error", "Cancelled"};
 static bool current_query_sampled = false;
 
 static void YbQueryDiagnostics_ExecutorStart(QueryDesc *queryDesc, int eflags);
@@ -127,8 +128,8 @@ static int YbQueryDiagnosticsBundlesShmemSize(void);
 static Datum CreateJsonb(const YbQueryDiagnosticsParams *params);
 static void CreateJsonbInt(JsonbParseState *state, char *key, int64 value);
 static void CreateJsonbBool(JsonbParseState *state, char *key, bool value);
-static void InsertCompletedBundleInfo(const YbQueryDiagnosticsMetadata *metadata, int status,
-									  const char *description);
+static void InsertBundlesIntoView(const YbQueryDiagnosticsMetadata *metadata, int status,
+								  const char *description);
 static void OutputBundle(const YbQueryDiagnosticsMetadata metadata, const char *description,
 						 const char *status, Tuplestorestate *tupstore, TupleDesc tupdesc);
 static void ProcessActiveBundles(Tuplestorestate *tupstore, TupleDesc tupdesc);
@@ -267,8 +268,8 @@ CircularBufferMaxEntries(void)
  * 		Add a query diagnostics entry to the circular buffer.
  */
 static void
-InsertCompletedBundleInfo(const YbQueryDiagnosticsMetadata *metadata, int status,
-						  const char *description)
+InsertBundlesIntoView(const YbQueryDiagnosticsMetadata *metadata, int status,
+					  const char *description)
 {
 	BundleInfo *sample;
 
@@ -1173,7 +1174,7 @@ static void
 FinishBundleProcessing(YbQueryDiagnosticsMetadata *metadata, int status, const char *description)
 {
 	/* Insert the completed bundle info into the bundles_completed circular buffer */
-	InsertCompletedBundleInfo(metadata, status, description);
+	InsertBundlesIntoView(metadata, status, description);
 
 	/* Remove the entry from the bundles_in_progress hash table */
 	RemoveBundleInfo(metadata->params.query_id);
@@ -1887,7 +1888,7 @@ yb_query_diagnostics(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("query diagnostics is not enabled"),
-				 errhint("set TEST_yb_enable_query_diagnostics gflag to true")));
+				 errhint("Set TEST_yb_enable_query_diagnostics gflag to true")));
 
 	YbQueryDiagnosticsMetadata metadata;
 	metadata.start_time = GetCurrentTimestamp();
@@ -1899,4 +1900,52 @@ yb_query_diagnostics(PG_FUNCTION_ARGS)
 	InsertNewBundleInfo(&metadata);
 
 	PG_RETURN_TEXT_P(cstring_to_text(metadata.path));
+}
+
+/*
+ * yb_cancel_query_diagnostics
+ *		Stops query diagnostics for the given query ID, and no data is dumped.
+ *	returns:
+ * 		Nothing is returned if the diagnostics stopped successfully,
+ *		otherwise raises an ereport(ERROR).
+ */
+Datum
+yb_cancel_query_diagnostics(PG_FUNCTION_ARGS)
+{
+	if (!YBIsQueryDiagnosticsEnabled())
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("query diagnostics is not enabled"),
+				 errhint("Set TEST_yb_enable_query_diagnostics gflag to true")));
+
+	int64			query_id = PG_GETARG_INT64(0);
+	YbQueryDiagnosticsEntry *entry;
+
+	if (query_id == 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("there cannot be a query with query_id 0")));
+
+	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
+
+	entry = (YbQueryDiagnosticsEntry *) hash_search(bundles_in_progress,
+													&query_id, HASH_FIND,
+													NULL);
+	if (entry)
+	{
+		InsertBundlesIntoView(&entry->metadata, DIAGNOSTICS_CANCELLED,
+							  "Bundle was cancelled");
+
+		LWLockRelease(bundles_in_progress_lock);
+		RemoveBundleInfo(query_id);
+	}
+	else
+	{
+		LWLockRelease(bundles_in_progress_lock);
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("query diagnostics is not enabled for query_id %ld", query_id)));
+	}
+
+	PG_RETURN_VOID();
 }

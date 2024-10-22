@@ -62,9 +62,9 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
     }
 
     private static final int ASH_SAMPLING_INTERVAL_MS = 500;
-    private static final int BG_WORKER_INTERVAL_MS = 1000;
     private static final int YB_QD_MAX_EXPLAIN_PLAN_LEN = 16384;
     private static final int YB_QD_MAX_BIND_VARS_LEN = 2048;
+    private static final int BG_WORKER_INTERVAL_MS = 1000;
     private static final String noQueriesExecutedWarning = "No query executed;";
     private static final String pgssResetWarning =
         "pg_stat_statements was reset, query string not available;";
@@ -1027,6 +1027,129 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                 .filter(line -> line.equals("Table name: table1"))
                 .count();
             assertEquals("Table1 should appear only once in schema details", 1, table1Count);
+        }
+    }
+
+    /*
+     * Verifies the functionality of the yb_cancel_query_diagnostics() function.
+     *
+     * This test creates three query diagnostics bundles
+     * with intervals of 1, 5, and 10 seconds, respectively.
+     *
+     * The second bundle is cancelled after the first bundle expires.
+     * This is verified by checking the yb_query_diagnostics_status entry.
+     * Further first bundle is verified to be successfully completed,
+     * whereas the 3rd one is still in progress.
+     * Later we wait for the 3rd bundle to expire and assert that it is successfully completed.
+     */
+    @Test
+    public void testYbCancelQueryDiagnostics() throws Exception {
+        int bundle1Interval = 1;
+        int bundle2Interval = 5;
+        int bundle3Interval = 10;
+
+        QueryDiagnosticsParams params1 = new QueryDiagnosticsParams(
+            bundle1Interval,
+            100 /* explainSampleRate */,
+            true /* explainAnalyze */,
+            true /* explainDist */,
+            false /* explainDebug */,
+            0 /* bindVarQueryMinDuration */);
+
+        QueryDiagnosticsParams params2 = new QueryDiagnosticsParams(
+            bundle2Interval,
+            100 /* explainSampleRate */,
+            true /* explainAnalyze */,
+            true /* explainDist */,
+            false /* explainDebug */,
+            0 /* bindVarQueryMinDuration */);
+
+        QueryDiagnosticsParams params3 = new QueryDiagnosticsParams(
+            bundle3Interval,
+            100 /* explainSampleRate */,
+            true /* explainAnalyze */,
+            true /* explainDist */,
+            false /* explainDebug */,
+            0 /* bindVarQueryMinDuration */);
+
+        try (Statement statement = connection.createStatement()) {
+            /* Run query diagnostics on the prepared stmt */
+            String queryId1 = String.valueOf((int) (Math.random() * 1000));
+            String queryId2 = getQueryIdFromPgStatStatements(statement, "PREPARE%");
+            String queryId3 = String.valueOf((int) (Math.random() * 1000));
+
+            /* Start processing query diagnostics bundles */
+            Path bundleDataPath1 = runQueryDiagnostics(statement, queryId1, params1);
+            Path bundleDataPath2 = runQueryDiagnostics(statement, queryId2, params2);
+            Path bundleDataPath3 = runQueryDiagnostics(statement, queryId3, params3);
+
+            /* Wait for the 1st bundle to expire */
+            Thread.sleep((bundle1Interval * 1000) + BG_WORKER_INTERVAL_MS);
+
+            /* Cancel further processing of the 2nd bundle */
+            statement.execute("SELECT yb_cancel_query_diagnostics('" + queryId2 + "')");
+
+            /* Check the cancelled entry within the yb_query_diagnostics_status view */
+            ResultSet resultSet = statement.executeQuery(
+                                    "SELECT * FROM yb_query_diagnostics_status " +
+                                    "where query_id = '" + queryId2 + "'");
+
+            if (!resultSet.next())
+                fail("yb_query_diagnostics_status view does not have expected data");
+
+            /* verify that bundle's diagnostics was cancelled */
+            assertQueryDiagnosticsStatus(resultSet,
+                                         bundleDataPath2 /* expectedViewPath */,
+                                         "Cancelled" /* expectedStatus */,
+                                         "Bundle was cancelled" /* expectedDescription */,
+                                         params2);
+
+            /* Ensure cancelling 2nd bundle does not affect the functioning of other bundles */
+
+            /* 1st bundle has already expired */
+            resultSet = statement.executeQuery(
+                "SELECT * FROM yb_query_diagnostics_status where query_id = '" + queryId1 + "'");
+
+            if (!resultSet.next())
+                fail("yb_query_diagnostics_status view does not have expected data");
+
+            /* verify that the bundle's diagnostics completed successfully */
+            assertQueryDiagnosticsStatus(resultSet,
+                                         bundleDataPath1 /* expectedViewPath */,
+                                         "Success" /* expectedStatus */,
+                                         noQueriesExecutedWarning /* expectedDescription */,
+                                         params1);
+
+            /* 3rd bundle must be in progress */
+            resultSet = statement.executeQuery(
+                "SELECT * FROM yb_query_diagnostics_status where query_id = '" + queryId3 + "'");
+
+            if (!resultSet.next())
+                fail("yb_query_diagnostics_status view does not have expected data");
+
+            /* verify that the bundle's diagnostics is still in progress */
+            assertQueryDiagnosticsStatus(resultSet,
+                                         bundleDataPath3 /* expectedViewPath */,
+                                         "In Progress" /* expectedStatus */,
+                                         "" /* expectedDescription */,
+                                         params3);
+
+            /* Wait for the 3rd bundle to expire */
+            Thread.sleep((bundle3Interval * 1000) + BG_WORKER_INTERVAL_MS);
+
+            /* 3rd bundle must have successfully completed */
+            resultSet = statement.executeQuery(
+                "SELECT * FROM yb_query_diagnostics_status where query_id = '" + queryId3 + "'");
+
+            if (!resultSet.next())
+                fail("yb_query_diagnostics_status view does not have expected data");
+
+            /* verify that the bundle's diagnostics completed successfully */
+            assertQueryDiagnosticsStatus(resultSet,
+                                         bundleDataPath3 /* expectedViewPath */,
+                                         "Success" /* expectedStatus */,
+                                         noQueriesExecutedWarning /* expectedDescription */,
+                                         params3);
         }
     }
 }
