@@ -72,7 +72,18 @@ class PgAshTest : public LibPqTestBase {
   static constexpr int kSamplingIntervalMs = 50;
 };
 
-class PgWaitEventAuxTest : public PgAshTest {
+class PgAshSingleNode : public PgAshTest {
+ public:
+  int GetNumMasters() const override {
+    return 1;
+  }
+
+  int GetNumTabletServers() const override {
+    return 1;
+  }
+};
+
+class PgWaitEventAuxTest : public PgAshSingleNode {
  public:
   explicit PgWaitEventAuxTest(std::reference_wrapper<const RPCs> rpc_list)
       : rpc_list_(rpc_list) {}
@@ -86,14 +97,6 @@ class PgWaitEventAuxTest : public PgAshTest {
         "--TEST_yb_test_wait_event_aux_to_sleep_at_csv=$0", ConvertToCSV(rpc_list_)));
 
     PgAshTest::UpdateMiniClusterOptions(options);
-  }
-
-  int GetNumMasters() const override {
-    return 1;
-  }
-
-  int GetNumTabletServers() const override {
-    return 1;
   }
 
  protected:
@@ -480,6 +483,51 @@ TEST_F_EX(PgWaitEventAuxTest, YB_DISABLE_TEST_IN_TSAN(TabletSplitRPCs), PgTablet
   }, 30s, "Wait for GetTablePartitionList RPC"));
 
   ASSERT_OK(CheckWaitEventAux());
+}
+
+TEST_F(PgAshSingleNode, CheckWaitEventsDescription) {
+  const std::string kPgEventsDesc = "This wait event was inherited from PostgreSQL.";
+
+  std::unordered_set<std::string> pg_events = {
+      "QueryProcessing",
+      "QueryDiagnosticsMain",
+      "YbAshMain",
+      "YBParallelScanEmpty",
+      "YBTxnConflictBackoff",
+      "CopyCommandStreamRead",
+      "CopyCommandStreamWrite",
+      "YbAshCircularBuffer",
+      "YbAshMetadata",
+      "YbQueryDiagnostics",
+      "YbQueryDiagnosticsCircularBuffer"};
+
+  std::unordered_set<std::string> yb_events;
+  for (const auto& code : ash::WaitStateCodeList()) {
+    if (code == ash::WaitStateCode::kUnused || code == ash::WaitStateCode::kYSQLReserved) {
+      continue;
+    }
+    yb_events.insert(ToString(code).erase(0, 1)); // remove 'k' prefix
+  }
+
+  auto rows = ASSERT_RESULT((conn_->FetchRows<std::string, std::string>(
+      "SELECT wait_event, wait_event_description FROM yb_wait_event_desc")));
+
+  for (const auto& [wait_event, description] : rows) {
+    if (pg_events.contains(wait_event)) {
+      ASSERT_STR_NOT_CONTAINS(description, kPgEventsDesc);
+      pg_events.erase(wait_event);
+    } else if (yb_events.contains(wait_event)) {
+      yb_events.erase(wait_event);
+    } else {
+      // deprecated LWLocks from lwlocknames.txt will come up as unassigned,
+      // these should not be present in the view
+      ASSERT_STR_NOT_CONTAINS(wait_event, "unassigned");
+      ASSERT_STR_CONTAINS(description, kPgEventsDesc);
+    }
+  }
+
+  ASSERT_TRUE(pg_events.empty());
+  ASSERT_TRUE(yb_events.empty());
 }
 
 }  // namespace yb::pgwrapper
