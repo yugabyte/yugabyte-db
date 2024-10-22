@@ -147,10 +147,7 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({
   const skipVersionChecksValue = globalRuntimeConfigs?.configEntries?.find(
     (c: any) => c.key === RuntimeConfigKey.SKIP_VERSION_CHECKS
   )?.value;
-  const isRollingUpradeMutlipleNodesEnabled =
-    globalRuntimeConfigs?.configEntries?.find(
-      (c: any) => c.key === RuntimeConfigKey.BATCH_ROLLING_UPGRADE_FEATURE_FLAG
-    )?.value === 'true';
+
   // By default skipVersionChecks is false
   // If runtime config flag is not accessible, assign false to the variable
   const skipVersionChecks =
@@ -303,10 +300,11 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({
         nodePrefix: universeDetails.nodePrefix,
         enableYbc: featureFlags.released.enableYbc || featureFlags.test.enableYbc
       };
-      if (isRollingUpradeMutlipleNodesEnabled && values.rollingUpgrade) {
+      if (values.rollingUpgrade) {
         payload.rollMaxBatchSize = {
-          primaryBatchSize: values.numNodesToUpgradePrimary,
-          readReplicaBatchSize: values.numNodesToUpgradePrimary
+          primaryBatchSize: values.numNodesToUpgradePrimary ?? rollMaxBatchSize.primaryBatchSize,
+          readReplicaBatchSize:
+            values.numNodesToUpgradePrimary ?? rollMaxBatchSize.readReplicaBatchSize
         };
       }
       try {
