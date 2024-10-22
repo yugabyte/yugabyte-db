@@ -20,16 +20,19 @@
 #include <gflags/gflags.h>
 
 namespace yb {
+
 using FlagCallback = std::function<void(void)>;
 
-class FlagCallbackInfo;
+struct FlagCallbackInfo;
+using FlagCallbackInfoPtr = std::shared_ptr<FlagCallbackInfo>;
+
 template<class T>
 class Result;
 
 class FlagCallbackRegistration {
  public:
   FlagCallbackRegistration();
-  explicit FlagCallbackRegistration(const std::shared_ptr<FlagCallbackInfo>& callback_info);
+  explicit FlagCallbackRegistration(const FlagCallbackInfoPtr& callback_info);
   ~FlagCallbackRegistration();
   FlagCallbackRegistration(FlagCallbackRegistration&& other);
   FlagCallbackRegistration& operator=(FlagCallbackRegistration&& other);
@@ -38,8 +41,7 @@ class FlagCallbackRegistration {
 
  private:
   friend class FlagsCallbackRegistry;
-  std::shared_ptr<FlagCallbackInfo> callback_info_;
-  bool callback_registered_;
+  FlagCallbackInfoPtr callback_info_;
 };
 
 // Register a callback which will be invoked when the value of the gFlag changes.
@@ -61,9 +63,10 @@ Result<FlagCallbackRegistration> RegisterFlagUpdateCallback(
 // can result in segfault due to indeterminate order of static initialization.
 #define REGISTER_CALLBACK(flag_name, descriptive_name, callback) \
   static_assert( \
-      sizeof(_DEFINE_FLAG_IN_FILE(flag_name)), "callback must be DEFINED in the same file as the flag"); \
+      sizeof(_DEFINE_FLAG_IN_FILE(flag_name)), \
+      "callback must be DEFINED in the same file as the flag"); \
   namespace { \
-  static const std::shared_ptr<yb::FlagCallbackInfo> BOOST_PP_CAT( \
+  static const yb::FlagCallbackInfoPtr BOOST_PP_CAT( \
       flag_name, _global_callback_registered) \
       __attribute__((unused)) = yb::flags_callback_internal::RegisterGlobalFlagUpdateCallback( \
           &BOOST_PP_CAT(FLAGS_, flag_name), descriptive_name, callback); \
@@ -73,8 +76,8 @@ namespace flags_callback_internal {
 // Don't use this, use REGISTER_CALLBACK instead.
 // A variation of RegisterFlagUpdateCallback which does not allow any failures. If a failure does
 // occur the process will crash.
-std::shared_ptr<FlagCallbackInfo> RegisterGlobalFlagUpdateCallback(
-    const void* flag_ptr, const std::string& descriptive_name, FlagCallback callback);
+FlagCallbackInfoPtr RegisterGlobalFlagUpdateCallback(
+    const void* flag_ptr, const std::string& descriptive_name, const FlagCallback& callback);
 
 void InvokeCallbacks(const void* flag_ptr, const std::string& flag_name);
 }  // namespace flags_callback_internal

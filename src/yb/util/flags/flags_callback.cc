@@ -12,12 +12,18 @@
 //
 
 #include <map>
+
+#include <boost/container/small_vector.hpp>
+
+#include "yb/gutil/map-util.h"
 #include "yb/gutil/singleton.h"
+
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
-#include "yb/util/shared_lock.h"
+#include "yb/util/memory/memory.h"
 #include "yb/util/result.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/thread.h"
 
 DECLARE_bool(TEST_running_test);
@@ -25,14 +31,11 @@ DECLARE_bool(TEST_running_test);
 using std::string;
 
 namespace yb {
-class FlagCallbackInfo {
- public:
-  FlagCallbackInfo(const void* flag_ptr, std::string descriptive_name, FlagCallback callback)
-      : flag_ptr_(flag_ptr), descriptive_name_(descriptive_name), callback_(callback) {}
 
-  const void* flag_ptr_;
-  std::string descriptive_name_;
-  FlagCallback callback_;
+struct FlagCallbackInfo {
+  const void* flag_ptr;
+  std::string descriptive_name;
+  FlagCallback callback;
 };
 
 // Singleton registry storing the list of callbacks for each gFlag.
@@ -40,17 +43,17 @@ class FlagsCallbackRegistry {
  public:
   static FlagsCallbackRegistry* GetInstance() { return Singleton<FlagsCallbackRegistry>::get(); }
 
-  Result<std::shared_ptr<FlagCallbackInfo>> RegisterCallback(
-      const void* flag_ptr, const string& descriptive_name, const FlagCallback callback);
+  Result<FlagCallbackInfoPtr> RegisterCallback(
+      const void* flag_ptr, const std::string& descriptive_name, const FlagCallback& callback);
 
-  Status DeregisterCallback(const std::shared_ptr<FlagCallbackInfo>& callback_info);
+  Status DeregisterCallback(const FlagCallbackInfoPtr& callback_info);
 
   void InvokeCallbacks(const void* flag_ptr);
 
  private:
   struct FlagCallbacks {
     std::mutex mutex;
-    std::vector<std::shared_ptr<FlagCallbackInfo>> callbacks GUARDED_BY(mutex);
+    boost::container::small_vector<FlagCallbackInfoPtr, 2> callbacks GUARDED_BY(mutex);
   };
 
   std::shared_ptr<FlagCallbacks> GetFlagCallbacks(const void* flag_ptr);
@@ -66,8 +69,8 @@ class FlagsCallbackRegistry {
   DISALLOW_COPY_AND_ASSIGN(FlagsCallbackRegistry);
 };
 
-Result<std::shared_ptr<FlagCallbackInfo>> FlagsCallbackRegistry::RegisterCallback(
-    const void* flag_ptr, const string& descriptive_name, FlagCallback callback) {
+Result<FlagCallbackInfoPtr> FlagsCallbackRegistry::RegisterCallback(
+    const void* flag_ptr, const std::string& descriptive_name, const FlagCallback& callback) {
   auto* unique_descriptive_name = &descriptive_name;
   string test_descriptive_name;
   if (FLAGS_TEST_running_test) {
@@ -82,20 +85,20 @@ Result<std::shared_ptr<FlagCallbackInfo>> FlagsCallbackRegistry::RegisterCallbac
   std::shared_ptr<FlagCallbacks> flag_callbacks;
   {
     std::lock_guard lock(mutex_);
-
-    if (!callback_map_.contains(flag_ptr)) {
-      callback_map_[flag_ptr] = std::make_shared<FlagCallbacks>();
-    }
-    flag_callbacks = callback_map_[flag_ptr];
+    flag_callbacks = callback_map_.try_emplace(flag_ptr, LazySharedPtrFactory()).first->second;
   }
 
-  auto info = std::make_shared<FlagCallbackInfo>(flag_ptr, *unique_descriptive_name, callback);
+  auto info = std::make_shared<FlagCallbackInfo>(FlagCallbackInfo {
+    .flag_ptr = flag_ptr,
+    .descriptive_name = *unique_descriptive_name,
+    .callback = callback,
+  });
 
   std::lock_guard lock(flag_callbacks->mutex);
   auto it = std::find_if(
       flag_callbacks->callbacks.begin(), flag_callbacks->callbacks.end(),
-      [&unique_descriptive_name](const std::shared_ptr<FlagCallbackInfo>& flag_info) {
-        return flag_info->descriptive_name_ == *unique_descriptive_name;
+      [&unique_descriptive_name](const FlagCallbackInfoPtr& flag_info) {
+        return flag_info->descriptive_name == *unique_descriptive_name;
       });
 
   SCHECK(
@@ -107,83 +110,81 @@ Result<std::shared_ptr<FlagCallbackInfo>> FlagsCallbackRegistry::RegisterCallbac
 }
 
 Status FlagsCallbackRegistry::DeregisterCallback(
-    const std::shared_ptr<FlagCallbackInfo>& callback_info) {
-  auto flag_callbacks = GetFlagCallbacks(callback_info->flag_ptr_);
+    const FlagCallbackInfoPtr& callback_info) {
+  auto flag_callbacks = GetFlagCallbacks(callback_info->flag_ptr);
   SCHECK(
       flag_callbacks != nullptr, NotFound,
-      Format("Flag for callback '$0' not found", callback_info->descriptive_name_));
+      Format("Flag for callback '$0' not found", callback_info->descriptive_name));
 
   std::lock_guard lock(flag_callbacks->mutex);
-  auto count_erased = std::erase_if(
-      flag_callbacks->callbacks, [callback_info](const std::shared_ptr<FlagCallbackInfo>& cb_info) {
+  auto it = std::find_if(
+      flag_callbacks->callbacks.begin(), flag_callbacks->callbacks.end(),
+      [&callback_info](const FlagCallbackInfoPtr& cb_info) {
         return cb_info.get() == callback_info.get();
-      });
+  });
 
-  SCHECK_GT(
-      count_erased, 0, NotFound,
-      Format("Callback '$0' not found", callback_info->descriptive_name_));
+  SCHECK(
+      it != flag_callbacks->callbacks.end(), NotFound,
+      Format("Callback '$0' not found", callback_info->descriptive_name));
+
+  flag_callbacks->callbacks.erase(it);
 
   return Status::OK();
 }
 
 void FlagsCallbackRegistry::InvokeCallbacks(const void* flag_ptr) {
   auto flag_callbacks = GetFlagCallbacks(flag_ptr);
-
-  if (flag_callbacks != nullptr) {
+  if (flag_callbacks == nullptr) {
+    return;
+  }
+  decltype(flag_callbacks->callbacks) callbacks;
+  {
     std::lock_guard lock(flag_callbacks->mutex);
-    for (auto& cb_info : flag_callbacks->callbacks) {
-      VLOG_WITH_FUNC(1) << ": " << cb_info->descriptive_name_;
-      cb_info->callback_();
-    }
+    callbacks = flag_callbacks->callbacks;
+  }
+  for (const auto& cb_info : callbacks) {
+    VLOG_WITH_FUNC(1) << ": " << cb_info->descriptive_name;
+    cb_info->callback();
   }
 }
 
 std::shared_ptr<FlagsCallbackRegistry::FlagCallbacks> FlagsCallbackRegistry::GetFlagCallbacks(
     const void* flag_ptr) {
   std::lock_guard lock(mutex_);
-  if (callback_map_.contains(flag_ptr)) {
-    return callback_map_[flag_ptr];
-  }
-
-  return nullptr;
+  return FindPtrOrNull(callback_map_, flag_ptr);
 }
 
-FlagCallbackRegistration::FlagCallbackRegistration() : callback_registered_(false) {}
+FlagCallbackRegistration::FlagCallbackRegistration() = default;
 
-FlagCallbackRegistration::FlagCallbackRegistration(
-    const std::shared_ptr<FlagCallbackInfo>& callback_info)
-    : callback_info_(callback_info), callback_registered_(true) {
+FlagCallbackRegistration::FlagCallbackRegistration(const FlagCallbackInfoPtr& callback_info)
+    : callback_info_(callback_info) {
   DCHECK_NOTNULL(callback_info.get());
 }
 
 FlagCallbackRegistration::~FlagCallbackRegistration() {
-  CHECK(!callback_registered_) << callback_info_->descriptive_name_
-                               << " Callback was not Deregistered";
+  CHECK(!callback_info_) << callback_info_->descriptive_name
+                         << " callback was not Deregistered";
 }
 
-FlagCallbackRegistration::FlagCallbackRegistration(FlagCallbackRegistration&& other)
-    : callback_registered_(false) {
+FlagCallbackRegistration::FlagCallbackRegistration(FlagCallbackRegistration&& other) {
   *this = std::move(other);
 }
 
 FlagCallbackRegistration& FlagCallbackRegistration::operator=(FlagCallbackRegistration&& other) {
   if (this != &other) {
-    CHECK(!callback_registered_) << callback_info_->descriptive_name_
-                                 << " Callback was not Deregistered";
+    CHECK(!callback_info_) << callback_info_->descriptive_name
+                           << " Callback was not Deregistered";
 
     callback_info_ = other.callback_info_;
-    callback_registered_ = other.callback_registered_;
-
     other.callback_info_ = nullptr;
-    other.callback_registered_ = false;
   }
   return *this;
 }
 
 void FlagCallbackRegistration::Deregister() {
-  if (callback_registered_) {
+  if (callback_info_) {
     CHECK_OK(FlagsCallbackRegistry::GetInstance()->DeregisterCallback(callback_info_));
-    callback_registered_ = false;
+    callback_info_ = nullptr;
   }
 }
 
@@ -201,8 +202,8 @@ void InvokeCallbacks(const void* flag_ptr, const std::string& flag_name) {
   VLOG_WITH_FUNC(1) << flag_name << ": End";
 }
 
-std::shared_ptr<FlagCallbackInfo> RegisterGlobalFlagUpdateCallback(
-    const void* flag_ptr, const string& descriptive_name, FlagCallback callback) {
+FlagCallbackInfoPtr RegisterGlobalFlagUpdateCallback(
+    const void* flag_ptr, const std::string& descriptive_name, const FlagCallback& callback) {
   return CHECK_RESULT(
       FlagsCallbackRegistry::GetInstance()->RegisterCallback(flag_ptr, descriptive_name, callback));
 }
