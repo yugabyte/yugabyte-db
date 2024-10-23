@@ -77,6 +77,7 @@
 #include "yb/util/fault_injection.h"
 #include "yb/util/file_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -234,17 +235,9 @@ DEFINE_RUNTIME_uint64(reject_writes_min_disk_space_mb, 0,
     "--reject_writes_when_disk_full is enabled. If set to 0, defaults to "
     "--max_disk_throughput_mbps * min(10, --reject_writes_min_disk_space_check_interval_sec).");
 
-template <typename T>
-static bool ValidateGreaterThan0(const char* flag_name, T value) {
-  if (value >= 1) {
-    return true;
-  }
-  LOG_FLAG_VALIDATION_ERROR(flag_name, value) << "Must be at least 1";
-  return false;
-}
-DEFINE_validator(log_min_segments_to_retain, &ValidateGreaterThan0);
-DEFINE_validator(max_disk_throughput_mbps, &ValidateGreaterThan0);
-DEFINE_validator(reject_writes_min_disk_space_check_interval_sec, &ValidateGreaterThan0);
+DEFINE_validator(log_min_segments_to_retain, FLAG_GT_VALUE_VALIDATOR(0));
+DEFINE_validator(max_disk_throughput_mbps, FLAG_GT_VALUE_VALIDATOR(0));
+DEFINE_validator(reject_writes_min_disk_space_check_interval_sec, FLAG_GT_VALUE_VALIDATOR(0));
 
 DEFINE_RUNTIME_uint32(cdc_wal_retention_time_secs, 4 * 3600,
     "WAL retention time in seconds to be used for tables which have a xCluster, "
