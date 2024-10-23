@@ -56,9 +56,7 @@ import { escapeStr, TOAST_OPTIONS, UserDefaultRoleOptions } from '../UserAuthUti
 import { DisableAuthProviderModal } from '../DisableAuthProvider';
 import { transformData } from './LDAPUtils';
 import { getLDAPValidationSchema } from './LDAPValidationSchema';
-import { ArrowDropDown } from '@material-ui/icons';
 import { ReactComponent as User } from '../../../../redesign/assets/user-outline.svg';
-import { ReactComponent as UserGroupsIcon } from '../../../../redesign/assets/user-group.svg';
 import { ReactComponent as BulbIcon } from '../../../../redesign/assets/bulb.svg';
 
 const useStyles = makeStyles((theme) => ({
