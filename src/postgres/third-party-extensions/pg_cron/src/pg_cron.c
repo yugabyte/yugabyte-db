@@ -2157,7 +2157,7 @@ CronBackgroundWorker(Datum main_arg)
 	shm_mq_handle *responseq;
 
 	/* handle SIGTERM like regular backend */
-	pqsignal(SIGTERM, die);
+	pqsignal(SIGTERM, quickdie);
 	/* YB Note: Exit immediately. */
 	pqsignal(SIGQUIT, quickdie);
 	BackgroundWorkerUnblockSignals();
