@@ -34,7 +34,7 @@ export const getLDAPValidationSchema = (t: TFunction) => {
       ['ldap_group_use_query', 'ldap_group_use_role_mapping'],
       {
         is: (ldap_group_use_query, ldap_group_use_role_mapping) =>
-          ldap_group_use_role_mapping === true && ldap_group_use_query === 'true',
+          ldap_group_use_role_mapping === true && ldap_group_use_query === 'false',
         then: Yup.string().required(t('messages.userAttribute')),
         otherwise: Yup.string()
       }
@@ -43,7 +43,7 @@ export const getLDAPValidationSchema = (t: TFunction) => {
       ['ldap_group_use_query', 'ldap_group_use_role_mapping'],
       {
         is: (ldap_group_use_query, ldap_group_use_role_mapping) =>
-          ldap_group_use_role_mapping === true && ldap_group_use_query === 'false',
+          ldap_group_use_role_mapping === true && ldap_group_use_query === 'true',
         then: Yup.string().required(t('messages.searchFilter')),
         otherwise: Yup.string()
       }
@@ -52,7 +52,7 @@ export const getLDAPValidationSchema = (t: TFunction) => {
       ['ldap_group_use_query', 'ldap_group_use_role_mapping'],
       {
         is: (ldap_group_use_query, ldap_group_use_role_mapping) =>
-          ldap_group_use_role_mapping === true && ldap_group_use_query === 'false',
+          ldap_group_use_role_mapping === true && ldap_group_use_query === 'true',
         then: Yup.string().required(t('messages.groupSearchBN')),
         otherwise: Yup.string()
       }
