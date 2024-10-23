@@ -2354,9 +2354,15 @@ public class UniverseCRUDHandler {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot change communication ports for k8s universe");
     }
+    boolean rfChangeEnabled = false;
 
     for (Cluster newCluster : taskParams.clusters) {
       Cluster curCluster = universe.getCluster(newCluster.uuid);
+      if (curCluster.userIntent.replicationFactor != newCluster.userIntent.replicationFactor
+          && !rfChangeEnabled
+          && curCluster.clusterType == ClusterType.PRIMARY) {
+        throw new PlatformServiceException(BAD_REQUEST, "RF change is not available");
+      }
       UserIntent newIntent = newCluster.userIntent;
       UserIntent curIntent = curCluster.userIntent;
       Set<NodeDetails> nodeDetailsSet = taskParams.getNodesInCluster(newCluster.uuid);
