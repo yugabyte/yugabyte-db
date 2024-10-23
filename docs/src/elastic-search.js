@@ -328,6 +328,7 @@
         query: {
           multi_match: {
             query: searchValue,
+            type: 'bool_prefix',
             fields: ['title', 'meta_description', 'headings', 'content'],
           },
         },
@@ -348,7 +349,7 @@
 
     if (response.ok) {
       const data = await response.json();
-      if (data.hits && data.hits.total && data.hits.total.value > 0) {
+      if (data.hits && data.hits.total) {
         const totalResults = data.hits.total.value;
         const totalPages = Math.ceil(totalResults / perPageCount);
         const sectionHTML = docsSection(data.hits.hits);
@@ -356,8 +357,17 @@
         let pagerDetails = {};
 
         document.getElementById('doc-hit').innerHTML = sectionHTML;
-        if (searchSummary !== null) {
-          searchSummary.innerHTML = `${totalResults} results found for <b>"${searchedTerm}"</b>. <a role="button" id="ai-search">Try this search in AI</a>.`;
+        if (data.hits.total.value > 0 && sectionHTML !== '') {
+          if (searchSummary !== null) {
+            searchSummary.innerHTML = `${totalResults} results found for <b>"${searchedTerm}"</b>. <a role="button" id="ai-search">Try this search in AI</a>.`;
+          }
+        } else {
+          const noResultMessage = `No results found for <b>"${searchedTerm}"</b>. <a role="button" id="ai-search">Try this search in AI</a>.`;
+          if (searchSummary) {
+            searchSummary.innerHTML = noResultMessage;
+          } else {
+            document.getElementById('doc-hit').innerHTML = `<li class="no-result">${noResultMessage}</li>`;
+          }
         }
 
         kapaSearch();
@@ -376,7 +386,7 @@
         } else {
           searchPagerparent.className = `pager results-${totalResults}`;
           let viewAll = '';
-          if (totalPages > 1) {
+          if (totalResults > 1) {
             viewAll = `<a href="/search/?query=${searchValue}" title="View all results">View all results</a>`;
           }
 
@@ -386,13 +396,6 @@
             </div>
             ${viewAll}
           </nav>`;
-        }
-      } else {
-        const noResultMessage = `No results found for <b>"${searchedTerm}"</b>. <a role="button" id="ai-search">Try this search in AI</a>.`;
-        if (searchSummary) {
-          searchSummary.innerHTML = noResultMessage;
-        } else {
-          document.getElementById('doc-hit').innerHTML = `<li class="no-result">${noResultMessage}</li>`;
         }
       }
     }
