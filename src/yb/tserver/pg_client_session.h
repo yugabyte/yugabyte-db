@@ -231,10 +231,6 @@ class PgClientSession {
     return GetSessionData(kind).session;
   }
 
-  client::YBTransactionPtr& Transaction(PgClientSessionKind kind) {
-    return GetSessionData(kind).transaction;
-  }
-
   const client::YBTransactionPtr& Transaction(PgClientSessionKind kind) const {
     return GetSessionData(kind).transaction;
   }
