@@ -142,7 +142,7 @@ Usage: yugabyted collect_logs [flags]
 -h | --help
 : Print the command-line help and exit.
 
---stdout *stdout*
+--stdout
 : Redirect the `logs.tar.gz` file's content to stdout. For example, `docker exec \<container-id\> bin/yugabyted collect_logs --stdout > yugabyted.tar.gz`
 
 --data_dir *data-directory*
@@ -234,10 +234,10 @@ To disable encryption at rest for a YugabyteDB cluster which has encryption at r
 -h | --help
 : Print the command-line help and exit.
 
---disable *disable*
+--disable
 : Disable encryption at rest for the cluster. There is no need to set a value for the flag. Use `--enable` or `--disable` flag to toggle encryption features on a YugabyteDB cluster.
 
---enable *enable*
+--enable
 : Enable encryption at rest for the cluster. There is no need to set a value for the flag. Use `--enable` or `--disable` flag to toggle encryption features on a YugabyteDB cluster.
 
 --data_dir *data-directory*

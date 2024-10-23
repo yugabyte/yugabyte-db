@@ -174,14 +174,8 @@ For example, to create node server certificates for hostnames 127.0.0.1, 127.0.0
 --hostnames *hostnames*
 : Hostnames of the nodes to be added in the cluster. Mandatory flag.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server.
-
 --base_dir *base-directory*
 : The base directory for the yugabyted server.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server.
 
 -----
 
@@ -200,17 +194,11 @@ Usage: yugabyted collect_logs [flags]
 -h | --help
 : Print the command-line help and exit.
 
---stdout *stdout*
+--stdout
 : Redirect the `logs.tar.gz` file's content to stdout. For example, `docker exec \<container-id\> bin/yugabyted collect_logs --stdout > yugabyted.tar.gz`
-
---data_dir *data-directory*
-: The data directory for the yugabyted server whose logs are desired.
 
 --base_dir *base-directory*
 : The base directory for the yugabyted server whose logs are desired.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server whose logs are desired.
 
 -----
 
@@ -262,14 +250,8 @@ For example, you would use the following command to create a multi-zone Yugabyte
 --rf *replication-factor*
 : Specify the replication factor for the cluster. This is an optional flag which takes a value of `3` or `5`.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server.
-
 --base_dir *base-directory*
 : The base directory for the yugabyted server.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server.
 
 #### encrypt_at_rest
 
@@ -294,20 +276,14 @@ To disable encryption at rest for a YugabyteDB cluster which has encryption at r
 -h | --help
 : Print the command-line help and exit.
 
---disable *disable*
+--disable
 : Disable encryption at rest for the cluster. There is no need to set a value for the flag. Use `--enable` or `--disable` flag to toggle encryption features on a YugabyteDB cluster.
 
---enable *enable*
+--enable
 : Enable encryption at rest for the cluster. There is no need to set a value for the flag. Use `--enable` or `--disable` flag to toggle encryption features on a YugabyteDB cluster.
-
---data_dir *data-directory*
-: The data directory for the yugabyted server.
 
 --base_dir *base-directory*
 : The base directory for the yugabyted server.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server.
 
 #### point_in_time_recovery
 
@@ -332,6 +308,35 @@ Display point-in-time schedules configured on the cluster:
 ```sh
 ./bin/yugabyted configure point_in_time_recovery --status
 ```
+
+##### point_in_time_recovery flags
+
+-h | --help
+: Print the command-line help and exit.
+
+--database *database*
+: Name of the YSQL database for which point-in-time recovery is to be configured.
+
+--keyspace *keyspace*
+: Name of the YCQL keyspace for which point-in-time recovery is to be configured.
+
+--enable
+: Enable point-in-time recovery for a database or keyspace. There is no need to set a value for the flag. Use `--enable` or `--disable` flag to toggle PITR on a YugabyteDB database.
+
+--disable
+: Disable point-in-time recovery for a database or keyspace.. There is no need to set a value for the flag. Use `--enable` or `--disable` flag to toggle PITR on a YugabyteDB database or keyspace.
+
+--retention *retention-period*
+: Specify the retention period for the snapshots, after which they will be automatically deleted, from the time they were created.
+
+--status
+: Display point-in-time recovery status for a YugabyteDB cluster.
+
+--data_dir *data-directory*
+: The data directory for the yugabyted server.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server.
 
 #### admin_operation
 
@@ -476,23 +481,43 @@ The following sub-commands are available for the `yugabyted connect` command:
 
 Use the `yugabyted connect ysql` sub-command to connect to YugabyteDB with [ysqlsh](../../../api/ysqlsh/).
 
-#### ycql
-
-Use the `yugabyted connect ycql` sub-command to connect to YugabyteDB with [ycqlsh](../../../api/ycqlsh).
-
-#### Flags
+#### ysql flags
 
 -h | --help
 : Print the command-line help and exit.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server to connect to.
+--username *username*
+: YSQL username to connect to the YugabyteDB
+
+--password *password*
+: The password for YSQL username to connect to the YugabyteDB
+
+--database *database*
+: Name of the YSQL database to connect to the YugabyteDB
 
 --base_dir *base-directory*
 : The base directory for the yugabyted server to connect to.
 
---log_dir *log-directory*
-: The log directory for the yugabyted server to connect to.
+#### ycql
+
+Use the `yugabyted connect ycql` sub-command to connect to YugabyteDB with [ycqlsh](../../../api/ycqlsh/).
+
+#### ycql flags
+
+-h | --help
+: Print the command-line help and exit.
+
+--username *username*
+: YCQL username to connect to the YugabyteDB
+
+--password *password*
+: The password for YCQL username to connect to the YugabyteDB
+
+--keyspace *keyspace*
+: Name of the YCQL keyspace to connect to the YugabyteDB
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server to connect to.
 
 -----
 
@@ -526,14 +551,8 @@ Use the `yugabyted demo destroy` sub-command to shut down the yugabyted single-n
 -h | --help
 : Print the help message and exit.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server to connect to or destroy.
-
 --base_dir *base-directory*
 : The base directory for the yugabyted server to connect to or destroy.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server to connect to or destroy.
 
 -----
 
@@ -554,14 +573,8 @@ For examples, see [Destroy a local cluster](#destroy-a-local-cluster).
 -h | --help
 : Print the command-line help and exit.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server that needs to be destroyed.
-
 --base_dir *base-directory*
 : The base directory for the yugabyted server that needs to be destroyed.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server that needs to be destroyed.
 
 -----
 
@@ -863,14 +876,8 @@ Usage: yugabyted status [flags]
 -h | --help
 : Print the command-line help and exit.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server whose status is desired.
-
 --base_dir *base-directory*
 : The base directory for the yugabyted server whose status is desired.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server whose status is desired.
 
 -----
 
@@ -889,14 +896,8 @@ Usage: yugabyted stop [flags]
 -h | --help
 : Print the command-line help and exit.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server that needs to be stopped.
-
 --base_dir *base-directory*
 : The base directory for the yugabyted server that needs to be stopped.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server that needs to be stopped.
 
 -----
 
@@ -915,14 +916,8 @@ Usage: yugabyted version [flags]
 -h | --help
 : Print the command-line help and exit.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server whose version is desired.
-
 --base_dir *base-directory*
 : The base directory for the yugabyted server whose version is desired.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server whose version is desired.
 
 ### xcluster
 
@@ -1035,8 +1030,9 @@ For example, to set up xCluster replication between two clusters, run the follow
 --replication_id *xcluster-replication-id*
 : The replication ID of the xCluster replication to be set up.
 
---bootstrap_done *xcluster-bootstrap-done*
+--bootstrap_done
 : Indicates that you have completed [bootstrapping](#bootstrap-databases-for-xcluster) of databases.
+: Using this flag means the complete DB schema, objects and data (if any) has been copied from source to target. Any changes made to source after `yugabyted xcluster set_up` command will be reflected on the target.
 
 #### add_to_replication
 
@@ -1069,8 +1065,9 @@ For example, to add new databases to an existing xCluster replication between tw
 --databases *xcluster-databases*
 : Comma separated list of databases to be added to existing replication.
 
---bootstrap_done *xcluster-bootstrap-done*
+--bootstrap_done
 : Indicates that you have completed [bootstrapping](#bootstrap-databases-for-xcluster) of databases.
+: Using this flag means the complete DB schema, objects and data (if any) has been copied from source to target. Any changes made to source after `yugabyted xcluster add_to_replication` command will be reflected on the target.
 
 #### status
 
