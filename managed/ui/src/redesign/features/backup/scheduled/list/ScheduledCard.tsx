@@ -124,7 +124,10 @@ const useStyles = makeStyles((theme) => ({
     cursor: 'pointer'
   },
   inactive: {
-    opacity: 0.5
+    color: theme.palette.grey[500],
+    '&:hover': {
+      color: theme.palette.grey[500],
+    }
   }
 }));
 
@@ -195,7 +198,7 @@ export const ScheduledCard: FC<ScheduledCardProps> = ({
     }
     return (
       <span
-        className={classes.link}
+        className={clsx(classes.link, !isScheduleEnabled && classes.inactive)}
         onClick={() => {
           setShowTablesModal(true);
         }}
@@ -276,7 +279,7 @@ export const ScheduledCard: FC<ScheduledCardProps> = ({
       </div>
       <div className={classes.content}>
         <div className={classes.details}>
-          <div className={classes.attribute}>
+          <div className={clsx(classes.attribute, !isScheduleEnabled && classes.inactive)}>
             <span>{t('scope')}</span>
             <span>{t('keyspace')}</span>
             <span>{t('tables')}</span>
@@ -294,14 +297,14 @@ export const ScheduledCard: FC<ScheduledCardProps> = ({
         </div>
         <div className={classes.nextScheduledDates}>
           <div>
-            <div className={classes.attribute}>{t('lastBackup')}</div>
-            <div className={classes.value}>
+            <div className={clsx(classes.attribute, !isScheduleEnabled && classes.inactive)}>{t('lastBackup')}</div>
+            <div className={clsx(classes.value, !isScheduleEnabled && classes.inactive)}>
               {schedule.prevCompletedTask ? ybFormatDate(schedule.prevCompletedTask) : '-'}
             </div>
           </div>
           <div>
-            <div className={classes.attribute}>{t('nextBackup')}</div>
-            <div className={classes.value}>
+            <div className={clsx(classes.attribute, !isScheduleEnabled && classes.inactive)}>{t('nextBackup')}</div>
+            <div className={clsx(classes.value, !isScheduleEnabled && classes.inactive)}>
               {schedule.nextExpectedTask ? ybFormatDate(schedule.nextExpectedTask) : '-'}
             </div>
           </div>
@@ -309,8 +312,8 @@ export const ScheduledCard: FC<ScheduledCardProps> = ({
       </div>
       <div className={classes.footer}>
         <div>
-          <div className={classes.attribute}>{t('backupIntervals')}</div>
-          <div className={classes.value}>
+          <div className={clsx(classes.attribute, !isScheduleEnabled && classes.inactive)}>{t('backupIntervals')}</div>
+          <div className={clsx(classes.value, !isScheduleEnabled && classes.inactive)}>
             {backupInterval} -{' '}
             <Trans
               t={t}
@@ -318,7 +321,7 @@ export const ScheduledCard: FC<ScheduledCardProps> = ({
               components={{
                 a: (
                   <a
-                    className={classes.link}
+                    className={clsx(classes.link, !isScheduleEnabled && classes.inactive)}
                     onClick={() => {
                       setShowIntervalsModal(true);
                     }}
@@ -329,20 +332,20 @@ export const ScheduledCard: FC<ScheduledCardProps> = ({
           </div>
         </div>
         <div>
-          <div className={classes.attribute}>{t('incrementalBackup')}</div>
-          <div className={classes.value}>
+          <div className={clsx(classes.attribute, !isScheduleEnabled && classes.inactive)}>{t('incrementalBackup')}</div>
+          <div className={clsx(classes.value, !isScheduleEnabled && classes.inactive)}>
             {schedule.incrementalBackupFrequency === 0 ? t('disabled') : t('enabled')}
           </div>
         </div>
         <div>
-          <div className={classes.attribute}>{t('pitr')}</div>
-          <div className={classes.value}>
+          <div className={clsx(classes.attribute, !isScheduleEnabled && classes.inactive)}>{t('pitr')}</div>
+          <div className={clsx(classes.value, !isScheduleEnabled && classes.inactive)}>
             {schedule.backupInfo.pointInTimeRestoreEnabled ? t('enabled') : t('disabled')}
           </div>
         </div>
         <div>
-          <div className={classes.attribute}>{t('retentionPeriod')}</div>
-          <div className={classes.value}>
+          <div className={clsx(classes.attribute, !isScheduleEnabled && classes.inactive)}>{t('retentionPeriod')}</div>
+          <div className={clsx(classes.value, !isScheduleEnabled && classes.inactive)}>
             {schedule.backupInfo?.timeBeforeDelete
               ? convertMsecToTimeFrame(
                   schedule.backupInfo.timeBeforeDelete,
@@ -352,12 +355,12 @@ export const ScheduledCard: FC<ScheduledCardProps> = ({
           </div>
         </div>
         <div>
-          <div className={classes.attribute}>{t('storageConfig')}</div>
-          <div className={classes.value}>
+          <div className={clsx(classes.attribute, !isScheduleEnabled && classes.inactive)}>{t('storageConfig')}</div>
+          <div className={clsx(classes.value, !isScheduleEnabled && classes.inactive)}>
             {storageConfig ? (
               <a
                 target="_blank"
-                className={classes.link}
+                className={clsx(classes.link, !isScheduleEnabled && classes.inactive)}
                 href={`/config/backup/${storageConfig ? storageConfig.name.toLowerCase() : ''}`}
                 rel="noreferrer"
               >

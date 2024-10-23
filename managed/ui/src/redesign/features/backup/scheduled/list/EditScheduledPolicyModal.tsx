@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { FC } from 'react';
+import { FC, useCallback, useEffect } from 'react';
 import { Control, useForm } from 'react-hook-form';
 import { useMutation, useQueryClient } from 'react-query';
 import { Trans, useTranslation } from 'react-i18next';
@@ -70,7 +70,7 @@ const EditScheduledPolicyModal: FC<EditScheduledPolicyModalProps> = ({
   const backupFrequencyKeyPrefix = 'backup.scheduled.create.backupFrequency';
   const classes = useStyles();
   const queryClient = useQueryClient();
-  const { control, handleSubmit } = useForm<EditScheduledPolicyModalFormProps>({
+  const { control, handleSubmit, formState: { defaultValues }, reset, watch, setValue } = useForm<EditScheduledPolicyModalFormProps>({
     defaultValues: {
       scheduledBackupType: schedule.backupInfo.pointInTimeRestoreEnabled
         ? BackupStrategyType.POINT_IN_TIME
@@ -84,7 +84,7 @@ const EditScheduledPolicyModal: FC<EditScheduledPolicyModalProps> = ({
       useIncrementalBackup: !!schedule.incrementalBackupFrequency,
       incrementalBackupFrequency: schedule.incrementalBackupFrequency
         ? schedule.incrementalBackupFrequency /
-          (MILLISECONDS_IN as any)[schedule.incrementalBackupFrequencyTimeUnit]
+        (MILLISECONDS_IN as any)[schedule.incrementalBackupFrequencyTimeUnit]
         : 0,
       incrementalBackupFrequencyTimeUnit: capitalize(
         schedule.incrementalBackupFrequencyTimeUnit
@@ -98,6 +98,7 @@ const EditScheduledPolicyModal: FC<EditScheduledPolicyModalProps> = ({
       onSuccess: () => {
         toast.success(t('success'));
         queryClient.invalidateQueries('scheduled_backup_list');
+        reset();
         onHide();
       },
       onError: (error) => {
@@ -105,6 +106,17 @@ const EditScheduledPolicyModal: FC<EditScheduledPolicyModalProps> = ({
       }
     }
   );
+
+  const useCronExpression = watch('useCronExpression');
+
+  useEffect(() => {
+    if (!useCronExpression) {
+      setValue('cronExpression', defaultValues!.cronExpression!);
+    }
+  }, [useCronExpression]);
+
+  const shallowCompare = useCallback((obj1: EditScheduledPolicyModalFormProps, obj2: EditScheduledPolicyModalFormProps) =>
+    (Object.keys(obj1) as (keyof EditScheduledPolicyModalFormProps)[]).every(key => obj1[key] + "" === obj2[key] + ""), []);
 
   if (!visible) return null;
 
@@ -140,7 +152,7 @@ const EditScheduledPolicyModal: FC<EditScheduledPolicyModalProps> = ({
   return (
     <YBModal
       open={true}
-      onClose={onHide}
+      onClose={() => { reset(); onHide(); }}
       title={t('title')}
       overrideWidth={'1000px'}
       overrideHeight={'650px'}
@@ -153,6 +165,11 @@ const EditScheduledPolicyModal: FC<EditScheduledPolicyModalProps> = ({
       cancelLabel={t('cancel', { keyPrefix: 'common' })}
       onSubmit={() => {
         handleSubmit((data) => {
+          if (shallowCompare(defaultValues as any, data)) {
+            toast.error(t('noFieldsChanged'));
+            return;
+          }
+
           const payload: Record<string, any> = {};
           if (data.useCronExpression) {
             payload['cronExpression'] = data.cronExpression;
@@ -166,7 +183,7 @@ const EditScheduledPolicyModal: FC<EditScheduledPolicyModalProps> = ({
           if (data.useIncrementalBackup) {
             payload['incrementalBackupFrequency'] =
               (MILLISECONDS_IN as Record<string, any>)[
-                data.incrementalBackupFrequencyTimeUnit.toUpperCase()
+              data.incrementalBackupFrequencyTimeUnit.toUpperCase()
               ] * data.incrementalBackupFrequency;
             payload[
               'incrementalBackupFrequencyTimeUnit'

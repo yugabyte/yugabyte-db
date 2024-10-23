@@ -101,23 +101,25 @@ export const prepareScheduledBackupPayload = (
 
   const keyspaceGroups = groupBy(backupObjects.selectedTables, 'keySpace');
 
-  payload['keyspaceTableList'] = Object.keys(keyspaceGroups).map((keyspace) => {
-    if (backupObjects.keyspace?.tableType === BACKUP_API_TYPES.YSQL) {
+  if (backupObjects.keyspace?.tableType === BACKUP_API_TYPES.YSQL) {
+    payload['keyspaceTableList'] = backupObjects.keyspace.isDefaultOption
+      ? []
+      : [{ keyspace: backupObjects.keyspace.value }];
+  } else {
+    payload['keyspaceTableList'] = Object.keys(keyspaceGroups).map((keyspace) => {
       return {
-        keyspace
+        keyspace,
+        tableNameList:
+          backupObjects.tableBackupType === Backup_Options_Type.ALL
+            ? []
+            : keyspaceGroups[keyspace].map((t: ITable) => t.tableName),
+        tableUUIDList:
+          backupObjects.tableBackupType === Backup_Options_Type.ALL
+            ? []
+            : keyspaceGroups[keyspace].map((t: ITable) => t.tableUUID)
       };
-    }
-    return {
-      keyspace,
-      tableNameList:
-        backupObjects.tableBackupType === Backup_Options_Type.ALL
-          ? []
-          : keyspaceGroups[keyspace].map((t: ITable) => t.tableName),
-      tableUUIDList:
-        backupObjects.tableBackupType === Backup_Options_Type.ALL
-          ? []
-          : keyspaceGroups[keyspace].map((t: ITable) => t.tableUUID)
-    };
-  });
+    });
+  }
+
   return payload;
 };
