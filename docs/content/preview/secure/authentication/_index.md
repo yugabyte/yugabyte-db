@@ -3,8 +3,8 @@ title: Authentication methods in YugabyteDB
 headerTitle: Authentication methods
 linkTitle: Authentication methods
 description: Verify that users and clients are who they say they are.
-headcontent: Verify that users and clients are who they say they are.
-image: /images/section_icons/secure/authorization.png
+headcontent: Verify that users and clients are who they say they are
+image: fa-thin fa-lock-keyhole
 menu:
   preview:
     identifier: authentication
@@ -21,54 +21,30 @@ The authentication methods do not require any external security infrastructure a
 
 YugabyteDB supports the following methods for authenticating users.
 
-<div class="row">
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="password-authentication/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
-        <div class="title">Password authentication</div>
-      </div>
-      <div class="body">
-          Authenticate using <code>MD5</code> or <code>SCRAM-SHA-256</code> authentication methods.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Password"
+    body="Authenticate using MD5 or SCRAM-SHA-256 authentication methods."
+    href="password-authentication/"
+    icon="fa-thin fa-lock-keyhole">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="ldap-authentication-ysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
-        <div class="title">LDAP authentication</div>
-      </div>
-      <div class="body">
-          Use an external LDAP service to perform client authentication.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="LDAP"
+    body="Use an external LDAP service to perform client authentication."
+    href="ldap-authentication-ysql/"
+    icon="fa-thin fa-user-lock">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="host-based-authentication/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
-        <div class="title">Host-based authentication</div>
-      </div>
-      <div class="body">
-        Fine-grained authentication for local and remote clients based on IP addresses.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Host"
+    body="Fine-grained authentication for local and remote clients based on IP addresses."
+    href="host-based-authentication/"
+    icon="fa-thin fa-globe">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="trust-authentication/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
-        <div class="title">Trust authentication</div>
-      </div>
-      <div class="body">
-          Allow clients to connect using a database user name.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Trust"
+    body="Allow clients to connect using a database user name."
+    href="trust-authentication/"
+    icon="fa-thin fa-handshake">}}
 
-</div>
+{{</index/block>}}
