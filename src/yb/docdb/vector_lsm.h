@@ -104,6 +104,10 @@ struct VectorLSMOptions {
 
 template<vectorindex::IndexableVectorType VectorType,
          vectorindex::ValidDistanceResultType DistanceResultType>
+class VectorLSMInsertTask;
+
+template<vectorindex::IndexableVectorType VectorType,
+         vectorindex::ValidDistanceResultType DistanceResultType>
 class VectorLSM {
  public:
   using DistanceResult = DistanceResultType;
@@ -146,12 +150,16 @@ class VectorLSM {
   using ImmutableChunkPtr = std::shared_ptr<ImmutableChunk>;
 
  private:
+  friend class VectorLSMInsertTask<Vector, DistanceResult>;
+  friend struct MutableChunk;
+
   // Saves the current mutable chunk to disk and creates a new one.
   Status RollChunk() REQUIRES(mutex_);
   Status DoFlush(std::promise<Status>* promise) REQUIRES(mutex_);
 
   // Use var arg to avoid specifying arguments twice in SaveChunk and DoSaveChunk.
   void SaveChunk(const ImmutableChunkPtr& chunk) EXCLUDES(mutex_);
+  void CheckFailure(const Status& status) EXCLUDES(mutex_);
 
   // Actual implementation for SaveChunk, to have ability simply return Status in case of failure.
   Status DoSaveChunk(const ImmutableChunkPtr& chunk) EXCLUDES(mutex_);
@@ -177,6 +185,7 @@ class VectorLSM {
   std::map<size_t, ImmutableChunkPtr> updates_queue_ GUARDED_BY(mutex_);
 
   bool writing_update_ GUARDED_BY(mutex_) = false;
+  Status failed_status_ GUARDED_BY(mutex_);
 };
 
 template <template<class, class> class Factory, class VectorIndex>
