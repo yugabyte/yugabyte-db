@@ -76,6 +76,9 @@ v_top_parent_table              text := split_part(p_parent_table, '.', 2);
 v_unlogged                      char;
 yb_v_parent_table_default       regclass;
 yb_v_enable_default_partition   boolean := false;
+yb_v_is_colocated_table         boolean := false;
+yb_v_schema_name                text;
+yb_v_table_name                 text;
 
 BEGIN
 /*
@@ -86,6 +89,18 @@ IF array_length(string_to_array(p_parent_table, '.'), 1) < 2 THEN
     RAISE EXCEPTION 'Parent table must be schema qualified';
 ELSIF array_length(string_to_array(p_parent_table, '.'), 1) > 2 THEN
     RAISE EXCEPTION 'pg_partman does not support objects with periods in their names';
+END IF;
+
+
+yb_v_schema_name := split_part(p_parent_table, '.', 1);
+yb_v_table_name := split_part(p_parent_table, '.', 2);
+
+EXECUTE format('SELECT is_colocated FROM yb_table_properties(%L::regclass)', quote_ident(yb_v_schema_name) || '.' || quote_ident(yb_v_table_name))
+INTO yb_v_is_colocated_table;
+
+-- YB: Disable create_parent call for colocated table.
+IF yb_v_is_colocated_table = true THEN
+    RAISE EXCEPTION 'Partition table % is a colocated table hence registering it to pg_partman maintenance is not supported', p_parent_table;
 END IF;
 
 IF p_upsert <> '' THEN
