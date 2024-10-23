@@ -18,6 +18,7 @@ import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_ONLY_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_VALUES_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_NESTED_LOOP;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_MODIFY_TABLE;
+import static org.junit.Assume.assumeFalse;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_FUNCTION_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_RESULT;
 import static org.yb.pgsql.ExplainAnalyzeUtils.OPERATION_INSERT;
@@ -349,6 +350,7 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
 
   @Test
   public void testInsertValues() throws Exception {
+    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
     // (DB-12699) Catalog read requests decrease in any warmup mode when
     // connection manager is enabled, but not to the expected value of 0.
     // Allow the test to run without warmed up connections for now.

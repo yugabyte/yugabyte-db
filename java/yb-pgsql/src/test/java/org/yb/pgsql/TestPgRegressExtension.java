@@ -12,6 +12,8 @@
 //
 package org.yb.pgsql;
 
+import static org.junit.Assume.assumeFalse;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.util.YBTestRunnerNonTsanOnly;
@@ -29,6 +31,7 @@ public class TestPgRegressExtension extends BasePgRegressTest {
 
   @Test
   public void testPgRegressExtension() throws Exception {
+    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
     runPgRegressTest("yb_extensions_schedule");
   }
 }

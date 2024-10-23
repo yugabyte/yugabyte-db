@@ -39,6 +39,7 @@ public class TestYsqlMetrics extends BasePgSQLTest {
 
   @Test
   public void testMetrics() throws Exception {
+    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
     Statement statement = connection.createStatement();
 
     // DDL is non-txn.

@@ -318,6 +318,7 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testAlteredTableInOriginalCluster() throws Exception {
+    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE  test_tbl (h INT PRIMARY KEY, a INT, b FLOAT)");
 
@@ -459,6 +460,7 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testLegacyColocatedDBWithColocationIdAlreadySet() throws Exception {
+    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
     markClusterNeedsRecreation();
     restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
                                                      "true"),
@@ -1677,6 +1679,7 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testUserDefinedTypes() throws Exception {
+    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
     // TODO(myang): Add ALTER TYPE test after #1893 is fixed.
     String backupDir = null;
     try (Statement stmt = connection.createStatement()) {
@@ -2093,6 +2096,7 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testOrafce() throws Exception {
+    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
     String backupDir = null;
     try (Statement stmt = connection.createStatement()) {
       // Create orafce extension.

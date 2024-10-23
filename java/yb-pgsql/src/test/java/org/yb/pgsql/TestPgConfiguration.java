@@ -13,6 +13,7 @@
 
 package org.yb.pgsql;
 
+import static org.junit.Assume.assumeFalse;
 import static org.yb.AssertionWrappers.*;
 
 import java.io.File;

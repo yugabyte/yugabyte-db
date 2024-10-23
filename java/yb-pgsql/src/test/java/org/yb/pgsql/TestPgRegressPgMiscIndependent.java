@@ -12,6 +12,8 @@
 //
 package org.yb.pgsql;
 
+import static org.junit.Assume.assumeFalse;
+
 import java.util.Map;
 
 import org.junit.Test;
@@ -40,6 +42,7 @@ public class TestPgRegressPgMiscIndependent extends BasePgRegressTest {
 
   @Test
   public void testPgRegressPgMiscIndependent() throws Exception {
+    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
     runPgRegressTest("yb_pg_misc_independent_serial_schedule");
   }
 }

@@ -21,6 +21,7 @@ import java.sql.Connection;
 import java.sql.Statement;
 import java.util.Map;
 
+import static org.junit.Assume.assumeFalse;
 import static org.yb.AssertionWrappers.*;
 
 @RunWith(YBTestRunner.class)
@@ -38,6 +39,7 @@ public class TestPgFastpathIntentdbSeeks extends BasePgSQLTestWithRpcMetric {
 
   @Test
   public void testFastpathIntentdbSeeks() throws Exception {
+    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
     try (Connection extraConnection = getConnectionBuilder().connect();
          Statement stmt = connection.createStatement();
          Statement extraStmt = extraConnection.createStatement()) {

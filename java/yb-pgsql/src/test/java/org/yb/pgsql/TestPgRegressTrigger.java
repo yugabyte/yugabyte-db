@@ -12,6 +12,8 @@
 //
 package org.yb.pgsql;
 
+import static org.junit.Assume.assumeFalse;
+
 import java.util.Map;
 
 import org.junit.Test;
@@ -42,6 +44,7 @@ public class TestPgRegressTrigger extends BasePgRegressTest {
 
   @Test
   public void testPgRegressTrigger() throws Exception {
+    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
     runPgRegressTest("yb_triggers_schedule");
   }
 }
