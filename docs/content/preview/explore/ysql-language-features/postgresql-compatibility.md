@@ -46,16 +46,16 @@ Conversely, if you are using EPCM on a universe, you cannot set any of the featu
 
 | Feature | Flag/Configuration Parameter | EA | GA |
 | :--- | :--- | :--- | :--- |
-| Read committed | [yb_enable_read_committed_isolation](../../../reference/configuration/yb-tserver/#ysql-default-transaction-isolation) | 2.20 and<br>2024.1 | |
-| Wait-on-conflict | [enable_wait_queues](../../../reference/configuration/yb-tserver/#enable-wait-queues) | 2.20 | 2024.1 |
-| Cost-based optimizer | [yb_enable_base_scans_cost_model](../../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) | 2024.1 | |
-| Batch nested loop join | [yb_enable_batchednl](../../../reference/configuration/yb-tserver/#yb-enable-batchednl) | 2.20 | 2024.1 |
-| Ascending indexing by default | [yb_use_hash_splitting_by_default](../../../reference/configuration/yb-tserver/#yb-use-hash-splitting-by-default) | 2024.1 | |
-| YugabyteDB bitmap scan | [yb_enable_bitmapscan](../../../reference/configuration/yb-tserver/#yb-enable-bitmapscan) | 2024.1.3 | 2024.2 |
+| [Read committed](#read-committed) | [yb_enable_read_committed_isolation](../../../reference/configuration/yb-tserver/#ysql-default-transaction-isolation) | {{<release "2.20, 2024.1">}} | |
+| [Wait-on-conflict](#wait-on-conflict-concurrency) | [enable_wait_queues](../../../reference/configuration/yb-tserver/#enable-wait-queues) | {{<release "2.20">}} | {{<release "2024.1">}} |
+| [Cost-based optimizer](#cost-based-optimizer) | [yb_enable_base_scans_cost_model](../../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) | {{<release "2024.1">}} | |
+| [Batch nested loop join](#batched-nested-loop-join) | [yb_enable_batchednl](../../../reference/configuration/yb-tserver/#yb-enable-batchednl) | {{<release "2.20">}} | {{<release "2024.1">}} |
+| [Ascending indexing by default](#default-ascending-indexing) | [yb_use_hash_splitting_by_default](../../../reference/configuration/yb-tserver/#yb-use-hash-splitting-by-default) | {{<release "2024.1">}} | |
+| [YugabyteDB bitmap scan](#yugabytedb-bitmap-scan) | [yb_enable_bitmapscan](../../../reference/configuration/yb-tserver/#yb-enable-bitmapscan) | {{<release "2024.1.3">}} | {{<release "2024.2">}} |
 
 | Planned Feature | Flag/Configuration Parameter | EA |
 | :--- | :--- | :--- |
-| Efficient communication<br>between PostgreSQL and DocDB | [pg_client_use_shared_memory](../../../reference/configuration/yb-tserver/#pg-client-use-shared-memory) | 2024.2 |
+| Efficient communication<br>between PostgreSQL and DocDB | [pg_client_use_shared_memory](../../../reference/configuration/yb-tserver/#pg-client-use-shared-memory) | {{<release "2024.2">}} |
 | Parallel query | | Planned |
 
 ### Released
@@ -78,9 +78,12 @@ Configuration parameter: `yb_enable_base_scans_cost_model=true`
 
 Cost-based optimizer (CBO) creates optimal execution plans for queries, providing significant performance improvements both in single-primary and distributed PostgreSQL workloads. This feature reduces or eliminates the need to use hints or modify queries to optimize query execution. CBO provides improved performance parity.
 
-Note: When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
+{{<note>}}
+When enabling this parameter, you must run `ANALYZE` on user tables to maintain up-to-date statistics.
 
-Note: When enabling the cost models, ensure that packed row for colocated tables is enabled by setting the `--ysql_enable_packed_row_for_colocated_table` flag to true.
+When enabling the cost models, ensure that packed row for colocated tables is enabled by setting the `--ysql_enable_packed_row_for_colocated_table` flag to true.
+
+{{</note>}}
 
 #### Wait-on-conflict concurrency
 
@@ -179,29 +182,29 @@ The following PostgreSQL features are not supported in YugabyteDB:
 
 | Unsupported PostgreSQL feature      | Track feature request GitHub issue |
 | ----------- | ----------- |
-| LOCK TABLE to obtain a table-level lock | [5384](https://github.com/yugabyte/yugabyte-db/issues/5384)|
-| Table inheritance    | [5956](https://github.com/yugabyte/yugabyte-db/issues/5956)|
-| Exclusion constraints | [3944](https://github.com/yugabyte/yugabyte-db/issues/3944)|
-| Deferrable constraints | [1709](https://github.com/yugabyte/yugabyte-db/issues/1709)|
-| Constraint Triggers|[4700](https://github.com/yugabyte/yugabyte-db/issues/4700)|
-| GiST indexes | [1337](https://github.com/yugabyte/yugabyte-db/issues/1337)|
-| Events (Listen/Notify) | [1872](https://github.com/yugabyte/yugabyte-db/issues/1872)|
-| XML Functions | [1043](https://github.com/yugabyte/yugabyte-db/issues/1043)|
-| XA syntax | [11084](https://github.com/yugabyte/yugabyte-db/issues/11084)|
-| ALTER TYPE | [1893](https://github.com/yugabyte/yugabyte-db/issues/1893)|
-| CREATE CONVERSION | [10866](https://github.com/yugabyte/yugabyte-db/issues/10866)|
-| Primary/Foreign key constraints on foreign tables | [10698](https://github.com/yugabyte/yugabyte-db/issues/10698), [10699](https://github.com/yugabyte/yugabyte-db/issues/10699) |
-| GENERATED ALWAYS AS STORED columns | [10695](https://github.com/yugabyte/yugabyte-db/issues/10695)|
-| Multi-column GIN indexes| [10652](https://github.com/yugabyte/yugabyte-db/issues/10652)|
-| CREATE ACCESS METHOD | [10693](https://github.com/yugabyte/yugabyte-db/issues/10693)|
-| DESC/HASH on GIN indexes (ASC supported) | [10653](https://github.com/yugabyte/yugabyte-db/issues/10653)|
-| CREATE SCHEMA with elements | [10865](https://github.com/yugabyte/yugabyte-db/issues/10865)|
-| Index on citext column | [9698](https://github.com/yugabyte/yugabyte-db/issues/9698)|
-| ABSTIME type | [15637](https://github.com/yugabyte/yugabyte-db/issues/15637)|
-| transaction ids (xid) <br/> YugabyteDB uses [Hybrid logical clocks](../../../architecture/transactions/transactions-overview/#hybrid-logical-clocks) instead of transaction ids. | [15638](https://github.com/yugabyte/yugabyte-db/issues/15638)|
-| DDL operations within transaction| [1404](https://github.com/yugabyte/yugabyte-db/issues/1404)|
-| Some ALTER TABLE variants| [1124](https://github.com/yugabyte/yugabyte-db/issues/1124)|
-| UNLOGGED table | [1129](https://github.com/yugabyte/yugabyte-db/issues/1129) |
-| Indexes on complex datatypes such as INET, CITEXT, JSONB, ARRAYs, and so on.| [9698](https://github.com/yugabyte/yugabyte-db/issues/9698), [23829](https://github.com/yugabyte/yugabyte-db/issues/23829), [17017](https://github.com/yugabyte/yugabyte-db/issues/17017) |
-| %TYPE syntax in Functions/Procedures/Triggers|[23619](https://github.com/yugabyte/yugabyte-db/issues/23619)|
-| Storage parameters on indexes or constraints|[23467](https://github.com/yugabyte/yugabyte-db/issues/23467)|
+| LOCK TABLE to obtain a table-level lock | {{<issue 5384>}}|
+| Table inheritance    | {{<issue 5956>}}|
+| Exclusion constraints | {{<issue 3944>}}|
+| Deferrable constraints | {{<issue 1709>}}|
+| Constraint Triggers|{{<issue 4700>}}|
+| GiST indexes | {{<issue 1337>}}|
+| Events (Listen/Notify) | {{<issue 1872>}}|
+| XML Functions | {{<issue 1043>}}|
+| XA syntax | {{<issue 11084>}}|
+| ALTER TYPE | {{<issue 1893>}}|
+| CREATE CONVERSION | {{<issue 10866>}}|
+| Primary/Foreign key constraints on foreign tables | {{<issue 10698>}}, {{<issue 10699>}} |
+| GENERATED ALWAYS AS STORED columns | {{<issue 10695>}}|
+| Multi-column GIN indexes| {{<issue 10652>}}|
+| CREATE ACCESS METHOD | {{<issue 10693>}}|
+| DESC/HASH on GIN indexes (ASC supported) | {{<issue 10653>}}|
+| CREATE SCHEMA with elements | {{<issue 10865>}}|
+| Index on citext column | {{<issue 9698>}}|
+| ABSTIME type | {{<issue 15637>}}|
+| transaction ids (xid) <br/> YugabyteDB uses [Hybrid logical clocks](../../../architecture/transactions/transactions-overview/#hybrid-logical-clocks) instead of transaction ids. | {{<issue 15638>}}|
+| DDL operations within transaction| {{<issue 1404>}}|
+| Some ALTER TABLE variants| {{<issue 1124>}}|
+| UNLOGGED table | {{<issue 1129>}} |
+| Indexes on complex datatypes such as INET, CITEXT, JSONB, ARRAYs, and so on.| {{<issue 9698>}}, {{<issue 23829>}}, {{<issue 17017>}} |
+| %TYPE syntax in Functions/Procedures/Triggers|{{<issue 23619>}}|
+| Storage parameters on indexes or constraints|{{<issue 23467>}}|

@@ -1,9 +1,9 @@
 ---
 title: JSON support in YSQL
-headerTitle: JSON support
+headerTitle: JSON/JSONB support
 linkTitle: JSON support
 description: YSQL JSON Support in YugabyteDB.
-headcontent: Explore YugabyteDB support for JSON data
+headcontent: Understand hot to operate on JSON data
 menu:
   preview:
     name: JSON support
@@ -13,11 +13,9 @@ menu:
 type: docs
 ---
 
-JSON data types are for storing JSON (JavaScript Object Notation) data, as specified in [RFC 7159](https://tools.ietf.org/html/rfc7159). Such data can also be stored as `text`, but the JSON data types have the advantage of enforcing that each stored value is valid according to the JSON rules. Assorted JSON-specific functions and operators are also available for data stored in these data types.
+JSON data types are for storing JSON (JavaScript Object Notation) data, as specified in [RFC 7159](https://tools.ietf.org/html/rfc7159). Such data can also be stored as `text`, but the JSON data types have the advantage of enforcing that each stored value is valid according to the JSON rules. Assorted JSON-specific functions and operators are also available for data stored in these data types. JSON functionality in YSQL is nearly identical to the [JSON functionality in PostgreSQL](https://www.postgresql.org/docs/11/datatype-json.html).
 
-{{% explore-setup-single %}}
-
-JSON functionality in YSQL is nearly identical to the [JSON functionality in PostgreSQL](https://www.postgresql.org/docs/11/datatype-json.html).
+## JSON vs JSONB
 
 YSQL supports the following two JSON data types:
 
@@ -25,20 +23,33 @@ YSQL supports the following two JSON data types:
 
 * **json** - stores an exact copy of the input text, and therefore preserves semantically-insignificant white space between tokens, as well as the order of keys in JSON objects. Also, if a JSON object in the value contains the same key more than once, all the key/value pairs are kept. The processing functions consider the last value as the operative one.
 
-{{< tip title="When to use jsonb or json" >}}
 In general, most applications should prefer to store JSON data as jsonb, unless there are quite specialized needs, such as legacy assumptions about ordering of object keys.
 
 They accept *almost* identical sets of values as input. The major practical difference is one of efficiency:
 
 * json stores an exact copy of the input text, which processing functions must re-parse on each execution
 * jsonb data is stored in a decomposed binary format that makes it slightly slower to input due to added conversion overhead, but significantly faster to process, because no re-parsing is needed. jsonb also supports indexing, which can be a significant advantage.
-{{< /tip >}}
 
-This section focuses on only the jsonb type.
+## Setup
 
-## Create a table
+The examples will run on any YugabyteDB universe. To create a universe follow the instructions below.
 
-Create a basic table `books` with a primary key and one `jsonb` column `doc` that contains various details about each book.
+<!-- begin: nav tabs -->
+{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
+
+{{<nav/panels>}}
+{{<nav/panel name="local" active="true">}}
+<!-- local cluster setup instructions -->
+{{<setup/local numnodes="1" rf="1" >}}
+
+{{</nav/panel>}}
+
+{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
+{{<nav/panel name="cloud">}}{{<setup/cloud>}}{{</nav/panel>}}
+{{</nav/panels>}}
+<!-- end: nav tabs -->
+
+For the purpose of illustration, let us create a basic table `books` with a primary key and one `jsonb` column `doc` that contains various details about each book.
 
 ```plpgsql
 yugabyte=# CREATE TABLE books(k int primary key, doc jsonb not null);
@@ -122,7 +133,7 @@ This is the result:
 
 ### Using `->` and `->>`
 
-YSQL has two native operators, the [`->` operator](../../../api/ysql/datatypes/type_json/functions-operators/subvalue-operators/#the-160-160-160-160-operator) and the [`->>` operator](../../../api/ysql/datatypes/type_json/functions-operators/subvalue-operators/#the-160-160-160-160-and-160-160-160-160-operators), to query JSON documents. The `->` operator returns a JSON object, while the `->>` operator returns text. These operators work on both `JSON` as well as `JSONB` columns to select a subset of attributes as well as to inspect the JSON document.
+YSQL has two native operators, the [-> operator](../../../api/ysql/datatypes/type_json/functions-operators/subvalue-operators/#the-160-160-160-160-operator) that returns a JSON object and the [->> operator](../../../api/ysql/datatypes/type_json/functions-operators/subvalue-operators/#the-160-160-160-160-and-160-160-160-160-operators) that returns text, to query JSON documents. These operators work on both `JSON` as well as `JSONB` columns to select a subset of attributes as well as to inspect the JSON document.
 
 The following example shows how to select a few attributes from each document.
 

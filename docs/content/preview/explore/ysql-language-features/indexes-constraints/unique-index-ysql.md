@@ -14,11 +14,9 @@ aliases:
 type: docs
 ---
 
-If you need values in some of the columns to be unique, you can specify your index as `UNIQUE`.
+If you need values in some of the columns to be unique, you can create an `UNIQUE` index on that column. The behavior is more of a constraint than an index. If a table has a primary key or a [UNIQUE constraint](../../data-manipulation#constraints) defined, a corresponding unique index is created automatically.
 
 When a unique index is applied to two or more columns, the combined values in these columns can't be duplicated in multiple rows. Note that because a `NULL` value is treated as a distinct value, you can have multiple `NULL` values in a column with a unique index.
-
-If a table has a primary key or a [UNIQUE constraint](../../data-manipulation#constraints) defined, a corresponding unique index is created automatically.
 
 ## Syntax
 
@@ -26,9 +24,24 @@ If a table has a primary key or a [UNIQUE constraint](../../data-manipulation#co
 CREATE UNIQUE INDEX index_name ON table_name(column_list);
 ```
 
-## Example
+## Setup
 
-{{% explore-setup-single %}}
+The examples run on any YugabyteDB universe.
+
+<!-- begin: nav tabs -->
+{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
+
+{{<nav/panels>}}
+{{<nav/panel name="local" active="true">}}
+<!-- local cluster setup instructions -->
+{{<setup/local numnodes="1" rf="1" >}}
+
+{{</nav/panel>}}
+
+{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
+{{<nav/panel name="cloud">}}{{<setup/cloud>}}{{</nav/panel>}}
+{{</nav/panels>}}
+<!-- end: nav tabs -->
 
 This example uses the `categories` table from the [Northwind sample database](../../../../sample-data/northwind/#install-the-northwind-sample-database).
 
@@ -38,7 +51,7 @@ View the contents of the `categories` table:
 northwind=# SELECT * FROM categories  LIMIT 5;
 ```
 
-```output
+```caddyfile{.nocopy}
  category_id | category_name  |                        description                         | picture
 -------------+----------------+------------------------------------------------------------+---------
            4 | Dairy Products | Cheeses                                                    | \x
@@ -56,38 +69,13 @@ northwind=# CREATE UNIQUE INDEX index_category_id
               ON categories(category_id);
 ```
 
-List the index created using the following command:
-
-```sql
-northwind=# SELECT indexname,
-                   indexdef
-            FROM   pg_indexes
-            WHERE  tablename = 'categories';
-```
-
-```output
-     indexname     |                                        indexdef
--------------------+-----------------------------------------------------------------------------------------
- categories_pkey   | CREATE UNIQUE INDEX categories_pkey ON public.categories USING lsm (category_id HASH)
- index_category_id | CREATE UNIQUE INDEX index_category_id ON public.categories USING lsm (category_id HASH)
-(2 rows)
-```
-
-<!-- Explain does not display it as an Index scan like how it does for others.
-northwind=# EXPLAIN SELECT * FROM categories  LIMIT 5;
-                              QUERY PLAN
------------------------------------------------------------------------
- Limit  (cost=0.00..0.50 rows=5 width=114)
-   ->  Seq Scan on categories  (cost=0.00..100.00 rows=1000 width=114)
-(2 rows) -->
-
-After the `CREATE` statement is executed, any attempt to insert a new category with an existing `category_id` will result in an error.
+Now, any attempt to insert a new category with an existing `category_id` will result in an error.
 
 ```sql
 northwind=# INSERT INTO categories(category_id, category_name, description) VALUES (1, 'Savories', 'Spicy chips and snacks');
 ```
 
-```output
+```sql{.nocopy}
 ERROR:  duplicate key value violates unique constraint "categories_pkey"
 ```
 
@@ -101,7 +89,7 @@ northwind=# INSERT INTO categories(category_id, category_name, description) VALU
 northwind=# SELECT * FROM categories;
 ```
 
-```output
+```caddyfile{.nocopy}
  category_id | category_name  |                        description                         | picture
 -------------+----------------+------------------------------------------------------------+---------
            4 | Dairy Products | Cheeses                                                    | \x
@@ -113,7 +101,6 @@ northwind=# SELECT * FROM categories;
            8 | Seafood        | Seaweed and fish                                           | \x
            5 | Grains/Cereals | Breads, crackers, pasta, and cereal                        | \x
            6 | Meat/Poultry   | Prepared meats                                             | \x
-(9 rows)
 ```
 
 ## Learn more

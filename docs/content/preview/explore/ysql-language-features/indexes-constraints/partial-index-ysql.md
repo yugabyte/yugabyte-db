@@ -14,9 +14,7 @@ aliases:
 type: docs
 ---
 
-Partial indexes allow you to improve query performance by reducing the index size. A smaller index is faster to scan, easier to maintain, and requires less storage.
-
-Partial indexing works by specifying the rows defined by a conditional expression (called the predicate of the partial index), typically in the `WHERE` clause of the table.
+Partial indexes allow you to improve query performance by reducing the index size. A smaller index is faster to scan, easier to maintain, and requires less storage. Partial indexing works by specifying the rows defined by a conditional expression (called the predicate of the partial index), typically in the `WHERE` clause of the table.
 
 ## Syntax
 
@@ -26,11 +24,26 @@ CREATE INDEX index_name ON table_name(column_list) WHERE condition;
 
 The `WHERE` clause specifies which rows need to be added to the index.
 
-## Example
+## Setup
 
-{{% explore-setup-single %}}
+The examples run on any YugabyteDB universe.
 
-This example uses the `customers` table from the [Northwind sample database](../../../../sample-data/northwind/#install-the-northwind-sample-database).
+<!-- begin: nav tabs -->
+{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
+
+{{<nav/panels>}}
+{{<nav/panel name="local" active="true">}}
+<!-- local cluster setup instructions -->
+{{<setup/local numnodes="1" rf="1" >}}
+
+{{</nav/panel>}}
+
+{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
+{{<nav/panel name="cloud">}}{{<setup/cloud>}}{{</nav/panel>}}
+{{</nav/panels>}}
+<!-- end: nav tabs -->
+
+For illustration, let us use the `customers` table from the [Northwind sample database](../../../../sample-data/northwind/#install-the-northwind-sample-database).
 
 View the contents of the `customers` table:
 
@@ -38,7 +51,7 @@ View the contents of the `customers` table:
 SELECT * FROM customers LIMIT 3;
 ```
 
-```output
+```caddyfile{.nocopy}
  customer_id |       company_name        |  contact_name  |    contact_title    |           address           |   city    | region | postal_code | country |     phone      |      fax
 -------------+---------------------------+----------------+---------------------+-----------------------------+-----------+--------+-------------+---------+----------------+----------------
  FAMIA       | Familia Arquibaldo        | Aria Cruz      | Marketing Assistant | Rua Orós, 92                | Sao Paulo | SP     | 05442-030   | Brazil  | (11) 555-9857  |
@@ -53,7 +66,7 @@ Suppose you want to query the subset of customers who are Sales Managers in the 
 northwind=# EXPLAIN SELECT * FROM customers where (country = 'USA' and contact_title = 'Sales Manager');
 ```
 
-```output
+```yaml{.nocopy}
                                     QUERY PLAN
 -----------------------------------------------------------------------------------------------
  Seq Scan on customers  (cost=0.00..105.00 rows=1000 width=738)
@@ -75,7 +88,7 @@ Verify with the `EXPLAIN` statement that the number of rows is significantly les
 northwind=# EXPLAIN SELECT * FROM customers where (country = 'USA' and contact_title = 'Sales Manager');
 ```
 
-```output
+```yaml{.nocopy}
                                   QUERY PLAN
 ---------------------------------------------------------------------------------
  Index Scan using index_country on customers  (cost=0.00..5.00 rows=10 width=738)

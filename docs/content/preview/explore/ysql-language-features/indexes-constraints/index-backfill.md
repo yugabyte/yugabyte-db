@@ -14,7 +14,11 @@ menu:
 type: docs
 ---
 
-You can add a new index to an existing table using the YSQL [CREATE INDEX](../../../../api/ysql/the-sql-language/statements/ddl_create_index/#semantics) statement. YugabyteDB supports [online index backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md), which is enabled by default. Using this feature, you can build indexes on tables that already have data, without affecting other concurrent writes. YugabyteDB also supports the [CREATE INDEX NONCONCURRENTLY](../../../../api/ysql/the-sql-language/statements/ddl_create_index/#nonconcurrently) statement to disable online index backfill.
+YugabyteDB supports [online index backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md), that allopws you to build indexes on tables that already have data, without affecting other concurrent writes. YugabyteDB also supports the [CREATE INDEX NONCONCURRENTLY](../../../../api/ysql/the-sql-language/statements/ddl_create_index/#nonconcurrently) statement to disable online index backfill.
+
+{{<note>}}
+Online index backfill is enabled by default.
+{{</note>}}
 
 ## Tracking index creation
 
@@ -30,13 +34,26 @@ The `pg_stat_progress_create_index` view can provide the following details:
 Columns such as lockers_total, lockers_done, current_locker_pid, blocks_total, and blocks_done in the `pg_stat_progress_create_index` view do not apply to YugabyteDB and always have null values.
 {{</note>}}
 
-## Example
+## Setup
 
-The following example demonstrates the possible phases (initializing, backfilling) for the CREATE INDEX operation using the `pg_stat_progress_create_index` view.
+The examples run on any YugabyteDB universe.
 
-{{% explore-setup-single %}}
+<!-- begin: nav tabs -->
+{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
 
-1. From your local YugabyteDB installation directory, connect to the [YSQL](../../../../api/ysqlsh create an index on an existing table as follows:
+{{<nav/panels>}}
+{{<nav/panel name="local" active="true">}}
+<!-- local cluster setup instructions -->
+{{<setup/local numnodes="1" rf="1" >}}
+
+{{</nav/panel>}}
+
+{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
+{{<nav/panel name="cloud">}}{{<setup/cloud>}}{{</nav/panel>}}
+{{</nav/panels>}}
+<!-- end: nav tabs -->
+
+1. From your local YugabyteDB installation directory, connect to the [YSQL](../../../../api/ysqlsh) create an index on an existing table as follows:
 
     ```sql
     CREATE TABLE test(id int);
@@ -125,7 +142,7 @@ This should give you an output similar to the following when an index is being b
  idx_id    | x'aaaa' | 00:00:04.895382 | 27 MB | 25 MB
 ```
 
-## Caveats
+## Limitations
 
 - In YugabyteDB, the `pg_stat_progress_create_index` view is local; it only has entries for CREATE INDEX commands issued by local YSQL clients.
 

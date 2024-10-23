@@ -33,19 +33,15 @@ The examples run on any YugabyteDB universe.
 
 ## Mathematical operators
 
-The following table lists some of the mathematical operators that you can use in YSQL.
+Apart from the standard operators `+, -, *, /` for addition, subtraction, multiplication and division, YugabyteDB also supports the following operators.
 
 | Operator | Description                                | Example    | Result |
 | -------- | ------------------------------------------ | ---------- | ------ |
-| +        | Addition                                   | 1 + 2      | 3   |
-| -        | Subtraction                                | 1 - 2      | -1  |
-| *        | Multiplication                             | 2 * 2      | 4   |
-| /        | Division                                   | 6 / 2      | 3   |
-| %        | Remainder                                  | 5 % 4      | 1   |
-| ^        | Exponent (association of left to right)    | 2.0 ^ 3.0  | 8   |
-| \|/      | Square root                                | \|/ 16.0   | 4   |
-| \|\|/    | Cube root                                  | \|\|/ 27.0 | 3   |
-| !        | Factorial (suffix)                         | 5 !        | 120 |
+| %        | Remainder                                  | 5 % 4      | 1      |
+| ^        | Exponent (association of left to right)    | 2.0 ^ 3.0  | 8      |
+| \|/      | Square root                                | \|/ 16.0   | 4      |
+| \|\|/    | Cube root                                  | \|\|/ 27.0 | 3      |
+| !        | Factorial (suffix)                         | 5 !        | 120    |
 
 The following examples show how to use mathematical operators in a `SELECT` statement:
 
@@ -65,15 +61,10 @@ SELECT ||/ 27.0;
 
 Comparison operators are binary. They return a boolean value of true or false, depending on whether or not the comparison was asserted.
 
-The following table lists comparison operators that you can use in YSQL.
+Apart from the standard numerical comparison operators `<, >, <=, >=, =`, YugabyteDB also supprts,
 
 | Operator | Description              | Example |
 | -------- | ------------------------ | ------- |
-| <        | Less than                | a < 5   |
-| >        | Greater than             | a > 5   |
-| <=       | Less than or equal to    | a <= 5  |
-| >=       | Greater than or equal to | a >= 5  |
-| =        | Equal                    | a = 5   |
 | <>       | Not equal                | a <> 5  |
 | !=       | Not equal                | a != 5  |
 
