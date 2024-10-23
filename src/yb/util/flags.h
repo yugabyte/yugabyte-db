@@ -41,15 +41,35 @@
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/flags/auto_flags.h"
 
-// Redefine the macro from gflags.h with an unused attribute.
-// Note: This macro should be used in the same file that DEFINEs the flag. Using it any other file
-// can result in segfault due to indeterminate order of static initialization.
+// Macro for the registration of a flag validator.
+//
+// ==== DEFINE_validator ====
+// Flag validators enforce that the value assigned to a gFlag satisfy certain conditions. If a new
+// value does not pass all the validation functions then it is not assigned.
+// Check flag_validators.h for commonly used validation functions.
+//
+// The validation function should return true if the flag value is valid, and false otherwise. If
+// the function returns false for the new value of the flag, the flag will retain its current value.
+// If it returns false for the default value, the process will die. Use LOG_FLAG_VALIDATION_ERROR to
+// log error messages when returning false.
+//
+// Validator fuction should be of the form:
+// bool ValidatorFunc(const char* flag_name, <flag_type> value);
+// for strings the second argument should be `const std::string&`.
+//
+// This macro should be used in the same file that DEFINEs the flag. Using it any other file can
+// result in segfault due to indeterminate order of static initialization.
 #ifdef DEFINE_validator
 #undef DEFINE_validator
 #endif
-#define DEFINE_validator(name, validator) \
+#define VALIDATOR_AND_CALL_HELPER(r, unused, validator) && (validator)(_flag_name, _new_value)
+#define DEFINE_validator(name, ...) \
   static const bool BOOST_PP_CAT(name, _validator_registered) __attribute__((unused)) = \
-      google::RegisterFlagValidator(&BOOST_PP_CAT(FLAGS_, name), (validator))
+      google::RegisterFlagValidator(&BOOST_PP_CAT(FLAGS_, name), \
+      [](const char* _flag_name, auto _new_value) -> bool { \
+        return true BOOST_PP_SEQ_FOR_EACH(VALIDATOR_AND_CALL_HELPER, _, \
+                                          BOOST_PP_VARIADIC_TO_SEQ(__VA_ARGS__)); \
+      })
 
 #define SET_FLAG(name, value) \
   (::yb::flags_internal::SetFlag(&BOOST_PP_CAT(FLAGS_, name), BOOST_PP_STRINGIZE(name), value))
@@ -166,5 +186,9 @@ std::unordered_map<FlagType, std::vector<FlagInfo>> GetFlagInfos(
     std::function<bool(const std::string&)> auto_flags_filter,
     std::function<bool(const std::string&)> default_flags_filter,
     const std::map<std::string, std::string>& custom_varz, bool mask_value_if_private = false);
+
+#define LOG_FLAG_VALIDATION_ERROR(flag_name, value) \
+  LOG(ERROR) \
+      << "Invalid value '" << value << "' for flag '" << flag_name << "': "
 
 } // namespace yb

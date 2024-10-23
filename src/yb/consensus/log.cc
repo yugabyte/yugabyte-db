@@ -73,6 +73,7 @@
 #include "yb/util/fault_injection.h"
 #include "yb/util/file_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -215,16 +216,7 @@ DEFINE_RUNTIME_int64(reuse_unclosed_segment_threshold_bytes, INT64_MAX,
             "Log will reuse this last segment as writable active_segment at tablet bootstrap. "
             "Otherwise, Log will create a new segment.");
 
-// Validate that log_min_segments_to_retain >= 1
-static bool ValidateLogsToRetain(const char* flagname, int value) {
-  if (value >= 1) {
-    return true;
-  }
-  LOG(ERROR) << strings::Substitute("$0 must be at least 1, value $1 is invalid",
-                                    flagname, value);
-  return false;
-}
-DEFINE_validator(log_min_segments_to_retain, &ValidateLogsToRetain);
+DEFINE_validator(log_min_segments_to_retain, FLAG_GT_VALUE_VALIDATOR(0));
 
 static std::string kSegmentPlaceholderFilePrefix = ".tmp.newsegment";
 static std::string kSegmentPlaceholderFileTemplate = kSegmentPlaceholderFilePrefix + "XXXXXX";
