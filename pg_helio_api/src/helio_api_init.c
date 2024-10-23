@@ -292,6 +292,9 @@ bool EnableDensifyStage = DEFAULT_ENABLE_DENSIFY_STAGE;
 #define DEFAULT_CLUSTER_ADMIN_ROLE ""
 char *ClusterAdminRole = DEFAULT_CLUSTER_ADMIN_ROLE;
 
+#define SCRAM_DEFAULT_SALT_LEN 28
+int ScramDefaultSaltLen = SCRAM_DEFAULT_SALT_LEN;
+
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
@@ -858,6 +861,15 @@ InitApiConfigurations(char *prefix)
 			"The cluster admin role."),
 		NULL, &ClusterAdminRole, DEFAULT_CLUSTER_ADMIN_ROLE,
 		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomIntVariable(
+		"helio_api.scramDefaultSaltLen",
+		gettext_noop("The default scram salt length."),
+		NULL, &ScramDefaultSaltLen,
+		SCRAM_DEFAULT_SALT_LEN, 1, 64,
+		PGC_SUSET,
+		0,
+		NULL, NULL, NULL);
 }
 
 

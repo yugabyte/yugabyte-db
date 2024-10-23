@@ -17,6 +17,11 @@
 #include "utils/feature_counter.h"
 #include "libpq/scram.h"
 #include "metadata/metadata_cache.h"
+#include <common/saslprep.h>
+#include <common/scram-common.h>
+#include <pg_config.h>
+
+#define SCRAM_MAX_SALT_LEN 64
 
 enum Helio_Roles
 {
@@ -53,6 +58,9 @@ typedef struct
 /* GUC to enable user crud operations */
 extern bool EnableUserCrud;
 
+/* GUC that controls the default salt length*/
+extern int ScramDefaultSaltLen;
+
 PG_FUNCTION_INFO_V1(helio_extension_create_user);
 PG_FUNCTION_INFO_V1(helio_extension_drop_user);
 PG_FUNCTION_INFO_V1(helio_extension_update_user);
@@ -63,6 +71,7 @@ static char * ValidateAndObtainHelioRole(const bson_value_t *rolesDocument);
 static char * ParseDropUserSpec(pgbson *dropSpec);
 static UpdateUserSpec * ParseUpdateUserSpec(pgbson *updateSpec);
 static char * ParseGetUserSpec(pgbson *getSpec);
+static char * PrehashPassword(const char *password);
 
 /*
  * helio_extension_create_user implements the
@@ -92,7 +101,7 @@ helio_extension_create_user(PG_FUNCTION_ARGS)
 	appendStringInfo(createUserInfo,
 					 "CREATE ROLE %s WITH LOGIN PASSWORD '%s' INHERIT IN ROLE %s;",
 					 quote_identifier(spec->createUser),
-					 pg_be_scram_build_secret(spec->pwd),
+					 PrehashPassword(spec->pwd),
 					 quote_identifier(spec->pgRole));
 
 	bool readOnly = false;
@@ -431,7 +440,8 @@ helio_extension_update_user(PG_FUNCTION_ARGS)
 	UpdateUserSpec *spec = ParseUpdateUserSpec(updateUserSpec);
 	StringInfo updateUserInfo = makeStringInfo();
 	appendStringInfo(updateUserInfo, "ALTER USER %s WITH PASSWORD %s;", quote_identifier(
-						 spec->updateUser), quote_literal_cstr(spec->pwd));
+						 spec->updateUser), quote_literal_cstr(PrehashPassword(
+																   spec->pwd)));
 
 	bool readOnly = false;
 	bool isNull = false;
@@ -786,4 +796,66 @@ ParseGetUserSpec(pgbson *getSpec)
 
 	ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 						"Please provide usersInfo or forAllDBs")));
+}
+
+
+/*
+ * This method is mostly copied from pg_be_scram_build_secret in PG. The only substantial change
+ * is that we use a default salt length of 28 as opposed to 16 used by PG. This is to ensure
+ * compatiblity with compass, legacy mongo shell, c drivers, php drivers.
+ */
+static char *
+PrehashPassword(const char *password)
+{
+	char *prep_password;
+	pg_saslprep_rc rc;
+	char saltbuf[SCRAM_MAX_SALT_LEN];
+	char *result;
+	const char *errstr = NULL;
+
+	/*
+	 * Validate that the default salt length is not greater than the max salt length allowed
+	 */
+	if (ScramDefaultSaltLen > SCRAM_MAX_SALT_LEN)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+						errmsg("Invalid value for salt length")));
+	}
+
+	/*
+	 * Normalize the password with SASLprep.  If that doesn't work, because
+	 * the password isn't valid UTF-8 or contains prohibited characters, just
+	 * proceed with the original password.  (See comments at top of file.)
+	 */
+	rc = pg_saslprep(password, &prep_password);
+	if (rc == SASLPREP_SUCCESS)
+	{
+		password = (const char *) prep_password;
+	}
+
+	/* Generate random salt */
+	if (!pg_strong_random(saltbuf, ScramDefaultSaltLen))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("could not generate random salt")));
+	}
+
+#if PG_VERSION_NUM >= 160000  /* PostgreSQL 16.0 or higher */
+	result = scram_build_secret(PG_SHA256, SCRAM_SHA_256_KEY_LEN,
+								saltbuf, ScramDefaultSaltLen,
+								scram_sha_256_iterations, password,
+								&errstr);
+#else
+	result = scram_build_secret(saltbuf, ScramDefaultSaltLen,
+								SCRAM_DEFAULT_ITERATIONS, password,
+								&errstr);
+#endif
+
+	if (prep_password)
+	{
+		pfree(prep_password);
+	}
+
+	return result;
 }
