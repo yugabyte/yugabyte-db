@@ -666,7 +666,9 @@ class TransactionParticipant::Impl
           if (PREDICT_TRUE(!GetAtomicFlag(&FLAGS_TEST_no_schedule_remove_intents))) {
             (**it).ScheduleRemoveIntents(*it, front.reason);
           }
-        } else {
+        } else if (op_id != OpId::Max()) {
+          // Adding post apply metadata entry will be skipped for applied transactions that are
+          // loaded on bootstrap.
           if (!GetAtomicFlag(&FLAGS_cdc_write_post_apply_metadata) ||
               !GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
             break;
@@ -1754,11 +1756,13 @@ class TransactionParticipant::Impl
     if (running_requests_.empty()) {
       bool remove_transaction = true;
 
-      if (op_id < checkpoint_op_id) {
+      if (op_id <= checkpoint_op_id) {
         if (PREDICT_TRUE(!GetAtomicFlag(&FLAGS_TEST_no_schedule_remove_intents))) {
           (**it).ScheduleRemoveIntents(*it, reason);
         }
-      } else {
+      } else if (op_id != OpId::Max()) {
+        // Adding post apply metadata entry will be skipped for applied transactions that are
+        // loaded on bootstrap.
         if (!GetAtomicFlag(&FLAGS_cdc_write_post_apply_metadata) ||
             !GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
           remove_transaction = false;

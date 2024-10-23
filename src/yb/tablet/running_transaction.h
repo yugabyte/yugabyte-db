@@ -211,7 +211,12 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   std::vector<TransactionStatusCallback> abort_waiters_;
 
   TransactionApplyData apply_data_;
-  OpId apply_record_op_id_;
+  // Applied transactions loaded during tablet bootstrap do not have an apply OpID.
+  // However, these transactions may still be needed by CDC (if enabled). To prevent
+  // unintended cleanup of intents for such transactions when CDC is active, the default
+  // is set to OpId::Max. Once CDC stream these txns, their intents will be cleaned up by the intent
+  // SST file cleanup codepath.
+  OpId apply_record_op_id_ = OpId::Max();
   docdb::ApplyTransactionState apply_state_;
   // Atomic that reflects active state, required to provide concurrent access to ProcessingApply.
   std::atomic<bool> processing_apply_{false};

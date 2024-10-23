@@ -56,6 +56,7 @@
 #include "yb/util/result.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/tablet/tablet_types.pb.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -127,6 +128,7 @@ DECLARE_bool(TEST_cdcsdk_disable_deleted_stream_cleanup);
 DECLARE_bool(cdcsdk_enable_cleanup_of_expired_table_entries);
 DECLARE_bool(TEST_cdcsdk_skip_processing_unqualified_tables);
 DECLARE_bool(TEST_cdcsdk_skip_table_removal_from_qualified_list);
+DECLARE_int64(db_write_buffer_size);
 
 namespace yb {
 
@@ -847,6 +849,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Status GetIntentEntriesAndSSTFileCountForTablet(
       const TabletId& tablet_id, std::unordered_map<std::string, std::pair<int64_t, int64_t>>*
                                         initial_intents_and_intent_sst_file_count);
+
+  Status WaitForLogMessage(const std::string& message);
 };
 
 }  // namespace cdc

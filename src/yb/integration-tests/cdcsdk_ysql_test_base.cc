@@ -29,8 +29,8 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/status.h"
-#include "yb/util/test_thread_holder.h"
 
 DECLARE_bool(cdc_write_post_apply_metadata);
 
@@ -4739,6 +4739,10 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
       }
     }
     return Status::OK();
+  }
+
+  Status CDCSDKYsqlTest::WaitForLogMessage(const std::string& message) {
+    return StringWaiterLogSink(message).WaitFor(kRpcTimeout * 1s);
   }
 
 } // namespace cdc
