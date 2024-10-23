@@ -104,10 +104,10 @@ public class ScheduleUtil {
     }
 
     // check if calculated increment backup time is after current time
-    do {
+    while (Util.isTimeExpired(nextIncrementScheduleTaskTime, currentTime)) {
       nextIncrementScheduleTaskTime =
           new Date(nextIncrementScheduleTaskTime.getTime() + incrementFrequency);
-    } while (currentTime.after(nextIncrementScheduleTaskTime));
+    }
 
     return nextIncrementScheduleTaskTime;
   }
