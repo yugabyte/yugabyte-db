@@ -136,9 +136,6 @@ class Webserver::Impl {
 
   Status GetInputHostPort(HostPort* hp) const;
 
-  bool access_logging_enabled = false;
-  bool tcmalloc_logging_enabled = false;
-
   void RegisterPathHandler(const std::string& path, const std::string& alias,
                                    const PathHandlerCallback& callback,
                                    bool is_styled = true,
@@ -156,6 +153,11 @@ class Webserver::Impl {
   void SetFlags(std::unordered_set<std::string>&& flags) EXCLUDES(flags_mutex_);
 
   bool ContainsFlag(const std::string& flag) const EXCLUDES(flags_mutex_);
+
+  void SetLogging(bool enable_access_logging, bool enable_tcmalloc_logging) {
+    access_logging_enabled_.store(enable_access_logging, std::memory_order_release);
+    tcmalloc_logging_enabled_.store(enable_tcmalloc_logging, std::memory_order_release);
+  }
 
  private:
   // Container class for a list of path handler callbacks for a single URL.
@@ -267,6 +269,9 @@ class Webserver::Impl {
   // this server needs. This is used to filter out the flags that are shown in the varz UI.
   std::unordered_set<std::string> auto_flags_ GUARDED_BY(flags_mutex_);
   std::unordered_set<std::string> process_flags_ GUARDED_BY(flags_mutex_);
+
+  std::atomic<bool> access_logging_enabled_ = false;
+  std::atomic<bool> tcmalloc_logging_enabled_ = false;
 };
 
 Webserver::Impl::Impl(const WebserverOptions& opts, const std::string& server_name)
@@ -589,7 +594,7 @@ sq_callback_result_t Webserver::Impl::BeginRequestCallback(struct sq_connection*
     handler = it->second;
   }
 
-  if (access_logging_enabled) {
+  if (access_logging_enabled_.load(std::memory_order_acquire)) {
     string params = request_info->query_string ? Format("?$0", request_info->query_string) : "";
     LOG(INFO) << "webserver request: " << request_info->uri << params;
   }
@@ -598,7 +603,7 @@ sq_callback_result_t Webserver::Impl::BeginRequestCallback(struct sq_connection*
   MemTracker::GcTcmallocIfNeeded();
 
 #if YB_TCMALLOC_ENABLED
-  if (tcmalloc_logging_enabled)
+  if (tcmalloc_logging_enabled_.load(std::memory_order_acquire))
     LOG(INFO) << "webserver tcmalloc stats:"
               << " heap size bytes: " << GetTCMallocPhysicalBytesUsed()
               << ", total physical bytes: " << GetTCMallocCurrentHeapSizeBytes()
@@ -867,8 +872,7 @@ Status Webserver::GetInputHostPort(HostPort* hp) const {
 }
 
 void Webserver::SetLogging(bool enable_access_logging, bool enable_tcmalloc_logging) {
-  impl_->access_logging_enabled = enable_access_logging;
-  impl_->tcmalloc_logging_enabled = enable_tcmalloc_logging;
+  impl_->SetLogging(enable_access_logging, enable_tcmalloc_logging);
 }
 
 void Webserver::RegisterPathHandler(const std::string& path,
