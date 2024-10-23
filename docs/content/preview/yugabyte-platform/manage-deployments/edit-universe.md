@@ -33,12 +33,12 @@ Using the **Edit Universe** page, you can modify the following:
 - Regions - you can select any region configured in the provider used to deploy the universe
 - Number of nodes and Availability zones - as you add nodes, they are automatically distributed among the availability zones; you can also add, configure, and remove availability zones
 - [Master placement](../../create-deployments/dedicated-master/)
-- Instance type and volume size - you can select instance types configured in the provider
+- Instance type, Volume count and size - you can select instance types configured in the provider
+- Replication Factor (RF) - RF increases are supported for both k8s and VM universes. While editing RF, the user can add new AZs but cannot change other universe settings such as instance type
+- Storage Type
 - [User tags](../instance-tags/)
 
 YugabyteDB Anywhere performs these modifications through the [YB-Masters](../../../architecture/yb-master/) powering the universe. The YB-Masters ensure that the new nodes start hosting the tablet leaders for a set of tablets in such a way that the tablet leader count remains evenly balanced across all the available nodes.
-
-Note that you can't change the replication factor of a universe.
 
 To change the number of nodes of universes created with an on-premises cloud provider and secured with third-party certificates obtained from external certification authorities, you must first add the certificates to the nodes you will add to the universe. Refer to [Add certificates](../../security/enable-encryption-in-transit/add-certificate-ca/). Ensure that the certificates are signed by the same external CA and have the same root certificate. In addition, ensure that you copy the certificates to the same locations that you originally used when creating the universe.
 
@@ -56,7 +56,17 @@ For universes that use Google Cloud Provider (GCP), Amazon Web Services (AWS), o
 
 If you change the **Instance Type** or both the **Instance Type** and the **Volume Info** size and then click **Save**, YugabyteDB Anywhere gives you the option to either do a full migration of the universe and its data to new nodes, or do a smart resize, as per the following illustrations:
 
-  ![Full or smart resize1](/images/ee/edit-univ-1.png)
-  ![Full or smart resize2](/images/ee/edit-univ-2.png)
+![Full or smart resize1](/images/ee/edit-univ-1.png)
+![Full or smart resize2](/images/ee/edit-univ-2.png)
 
 If you change only the **Volume Info** size and click **Save**, YugabyteDB Anywhere automatically performs a smart resize.
+
+### Full Move
+
+The following changes in configurations will result in a full move
+
+- Volume info - count and size
+
+- Master/TServer/other communication ports
+
+- Storage Type
