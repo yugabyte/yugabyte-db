@@ -322,8 +322,8 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
           let xClusterConfigNeedBootstrapPerTableResponse: XClusterConfigNeedBootstrapPerTableResponse = {};
           const hasSelectionError = false;
 
-          const tableUuidsToVerifyBootstrapRequirement = formValues.tableUuids.filter((tableUuid) =>
-            noSetupBootstrapRequiredTableUuids.has(tableUuid)
+          const tableUuidsToVerifyBootstrapRequirement = formValues.tableUuids.filter(
+            (tableUuid) => !noSetupBootstrapRequiredTableUuids.has(tableUuid)
           );
           if (tableUuidsToVerifyBootstrapRequirement.length) {
             try {
@@ -381,7 +381,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
             ? setCurrentFormStep(FormStep.BOOTSTRAP_SUMMARY)
             : editTableMutation.mutateAsync(formValues);
         }
-        return tableUuidsToAdd.length > 0
+        return tableUuidsToVerifyBootstrapRequirement.length > 0
           ? setCurrentFormStep(FormStep.BOOTSTRAP_SUMMARY)
           : editTableMutation.mutateAsync(formValues);
       }
@@ -406,13 +406,13 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
 
   const selectedTableUuids = formMethods.watch('tableUuids');
   const isFormDisabled = formMethods.formState.isSubmitting;
-  const tableUuidsToAdd = selectedTableUuids.filter(
+  const tableUuidsToVerifyBootstrapRequirement = selectedTableUuids.filter(
     (tableUuid) => !noSetupBootstrapRequiredTableUuids.has(tableUuid)
   );
   const getSubmitLabel = () => {
     switch (currentFormStep) {
       case FormStep.SELECT_TABLES:
-        return tableUuidsToAdd.length > 0
+        return tableUuidsToVerifyBootstrapRequirement.length > 0
           ? t(
               `step.selectTables.submitButton.bootstrapSummary.${
                 props.isDrInterface ? 'dr' : 'xCluster'
