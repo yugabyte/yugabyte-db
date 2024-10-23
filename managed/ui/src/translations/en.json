@@ -2744,7 +2744,8 @@
           "editModal": {
             "title": "Edit Scheduled Backup Policy",
             "backupStrategy": "Backup Strategy",
-            "success": "Scheduled backup policy is being updated"
+            "success": "Scheduled backup policy is being updated",
+              "noFieldsChanged": "No values changed"
           },
           "deleteModal": {
             "deleteMsg": "Are you sure you want to delete this schedule policy?"
