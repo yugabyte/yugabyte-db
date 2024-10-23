@@ -21,4 +21,6 @@ namespace yb {
 
 std::string PgDeriveSocketDir(const HostPort& host_port);
 
+std::string PgDeriveSocketLockFile(const HostPort& host_port);
+
 } // namespace yb
