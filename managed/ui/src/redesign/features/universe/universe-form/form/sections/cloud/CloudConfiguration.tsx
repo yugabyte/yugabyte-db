@@ -56,6 +56,7 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
   const useK8CustomResourcesObject = runtimeConfigs?.configEntries?.find(
     (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.USE_K8_CUSTOM_RESOURCES_FEATURE_FLAG
   );
+  const isRfChangeEnabled = false;
   const useK8CustomResources = !!(useK8CustomResourcesObject?.value === 'true');
   const isDedicatedNodesEnabled = !!(enableDedicatedNodesObject?.value === 'true');
 
@@ -111,7 +112,8 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
           <TotalNodesField disabled={isViewMode} />
         </Box>
         <Box mt={2}>
-          <ReplicationFactor disabled={isViewMode} isPrimary={isPrimary} isEditMode={isEditMode} />
+          <ReplicationFactor disabled={isViewMode || (isEditPrimary && !isRfChangeEnabled)}
+                             isPrimary={isPrimary} isEditMode={isEditMode} />
         </Box>
         {isPrimary && isGeoPartitionEnabled && (
           <Box mt={2} display="flex" flexDirection="column">
