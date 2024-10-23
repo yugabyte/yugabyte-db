@@ -43,7 +43,7 @@ class TransactionParticipantContext {
   virtual void UpdateClock(HybridTime hybrid_time) = 0;
   virtual bool IsLeader() = 0;
   virtual Status SubmitUpdateTransaction(
-      std::unique_ptr<UpdateTxnOperation> state, int64_t term) = 0;
+      std::unique_ptr<UpdateTxnOperation>& state, int64_t term) = 0;
 
   // Returns hybrid time that lower than any future transaction apply record.
   virtual HybridTime SafeTimeForTransactionParticipant() = 0;

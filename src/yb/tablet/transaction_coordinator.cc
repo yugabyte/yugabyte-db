@@ -1730,7 +1730,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
 
     for (auto& update : actions->updates) {
       auto submit_status =
-          context_.SubmitUpdateTransaction(std::move(update), actions->leader_term);
+          context_.SubmitUpdateTransaction(update, actions->leader_term);
       if (!submit_status.ok()) {
         LOG_WITH_PREFIX(DFATAL)
             << "Could not submit transaction status update operation: "
