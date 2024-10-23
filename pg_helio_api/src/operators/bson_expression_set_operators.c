@@ -58,10 +58,6 @@ typedef struct BsonValueHashEntry
 /* Forward declaration */
 /* --------------------------------------------------------- */
 
-static void InitializeDualArgumentState(bson_value_t firstValue, bson_value_t secondValue,
-										bool
-										hasFieldExpression,
-										DualArgumentExpressionState *state);
 static HTAB * CreateBsonValueElementHashSet(void);
 static int BsonValueHashEntryCompareFunc(const void *obj1, const void *obj2,
 										 Size objsize);
@@ -478,7 +474,8 @@ ParseSetDualOperands(const bson_value_t *argument,
 		DualArgumentExpressionState state;
 		memset(&state, 0, sizeof(DualArgumentExpressionState));
 
-		InitializeDualArgumentState(firstArg->value, secondArg->value, false, &state);
+		InitializeDualArgumentExpressionState(firstArg->value, secondArg->value, false,
+											  &state);
 		processOperatorFunc(&state, &data->value);
 
 		data->kind = AggregationExpressionKind_Constant;
@@ -519,7 +516,8 @@ HandlePreParsedSetDualOperands(pgbson *doc, void *arguments,
 	DualArgumentExpressionState state;
 	memset(&state, 0, sizeof(DualArgumentExpressionState));
 
-	InitializeDualArgumentState(firstValue, secondValue, hasFieldExpression, &state);
+	InitializeDualArgumentExpressionState(firstValue, secondValue, hasFieldExpression,
+										  &state);
 	processOperatorFunc(&state, result);
 
 	ExpressionResultSetValue(expressionResult, result);
@@ -1005,19 +1003,6 @@ ProcessDollarAllOrAnyElementsTrue(const bson_value_t *currentValue, void *state,
 	}
 
 	return true;
-}
-
-
-/* Initializes the state for dual argument expressions. */
-static void
-InitializeDualArgumentState(bson_value_t firstValue, bson_value_t secondValue, bool
-							hasFieldExpression, DualArgumentExpressionState *state)
-{
-	state->firstArgument = firstValue;
-	state->secondArgument = secondValue;
-	state->hasFieldExpression = hasFieldExpression;
-	state->hasNullOrUndefined = IsExpressionResultNullOrUndefined(&firstValue) ||
-								IsExpressionResultNullOrUndefined(&secondValue);
 }
 
 

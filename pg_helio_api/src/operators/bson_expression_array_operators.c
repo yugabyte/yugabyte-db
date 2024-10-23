@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/bson/bson_expression_array_operators.c
+ * src/operators/bson_expression_array_operators.c
  *
  * Array Operator expression implementations of BSON.
  *
@@ -40,6 +40,10 @@
 /* --------------------------------------------------------- */
 /* Type declaration */
 /* --------------------------------------------------------- */
+
+typedef void (*ProcessArrayOperatorOneOperand)(const bson_value_t *currentValue,
+											   bson_value_t *result);
+typedef void (*ProcessArrayOperatorTwoOperands)(void *state, bson_value_t *result);
 
 /* State for a $arrayElemAt, $first or $last operator. */
 typedef struct ArrayElemAtArgumentState
@@ -172,32 +176,46 @@ typedef struct ZipParseInputsResult
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
-static void ProcessDollarIn(bson_value_t *result, void *state);
-static void ProcessDollarSlice(bson_value_t *result, void *state);
-static void ProcessDollarArrayElemAt(bson_value_t *result, void *state);
-static bool ProcessDollarIsArrayElement(bson_value_t *result, const
-										bson_value_t *currentElement,
-										bool isFieldPathExpression, void *state);
-static bool ProcessDollarSizeElement(bson_value_t *result, const
-									 bson_value_t *currentElement,
-									 bool isFieldPathExpression, void *state);
-static bool ProcessDollarArrayToObjectElement(bson_value_t *result,
-											  const bson_value_t *currentElement,
-											  bool isFieldPathExpression, void *state);
-static bool ProcessDollarObjectToArrayElement(bson_value_t *result,
-											  const bson_value_t *currentElement,
-											  bool isFieldPathExpression, void *state);
-static bool ProcessDollarConcatArraysElement(bson_value_t *result,
-											 const bson_value_t *currentElement,
-											 bool isFieldPathExpression, void *state);
-static void ProcessDollarMaxMinN(bson_value_t *result, bson_value_t *evaluatedInput,
-								 bson_value_t *evaluatedLimit, bool isMaxN);
-static void ProcessDollarConcatArraysResult(bson_value_t *result, void *state);
+
+static void ParseArrayOperatorOneOperand(const bson_value_t *argument,
+										 AggregationExpressionData *data,
+										 const char *operatorName,
+										 ProcessArrayOperatorOneOperand
+										 processOperatorFunc,
+										 ParseAggregationExpressionContext *context);
+static void ParseDollarArrayElemAtCore(const bson_value_t *argument,
+									   AggregationExpressionData *data,
+									   const char *operatorName,
+									   ParseAggregationExpressionContext *context);
 static void ParseDollarMaxMinN(const bson_value_t *argument,
 							   AggregationExpressionData *data,
 							   bool isMaxN, ParseAggregationExpressionContext *context);
 static pgbsonelement ParseElementFromObjectForArrayToObject(const bson_value_t *element);
 static pgbsonelement ParseElementFromArrayForArrayToObject(const bson_value_t *element);
+static void HandlePreParsedArrayOperatorOneOperand(pgbson *doc,
+												   const bson_value_t *argument,
+												   ExpressionResult *expressionResult,
+												   ProcessArrayOperatorOneOperand
+												   processOperatorFunc);
+static void HandlePreParsedDollarArrayElemAtCore(pgbson *doc, void *arguments,
+												 ExpressionResult *expressionResult,
+												 char *operatorName);
+
+static void ProcessDollarIn(void *state, bson_value_t *result);
+static void ProcessDollarSlice(void *state, bson_value_t *result);
+static void ProcessDollarArrayElemAt(void *state, bson_value_t *result);
+static void ProcessDollarIsArray(const bson_value_t *currentValue, bson_value_t *result);
+static void ProcessDollarSize(const bson_value_t *currentValue, bson_value_t *result);
+static void ProcessDollarArrayToObject(const bson_value_t *currentValue,
+									   bson_value_t *result);
+static void ProcessDollarObjectToArray(const bson_value_t *currentValue,
+									   bson_value_t *result);
+static bool ProcessDollarConcatArraysElement(const bson_value_t *currentValue,
+											 void *state, bson_value_t *result);
+static void ProcessDollarMaxAndMinN(bson_value_t *result, bson_value_t *evaluatedInput,
+									bson_value_t *evaluatedLimit, bool isMaxN);
+static void ProcessDollarConcatArraysElementResult(void *state, bson_value_t *result);
+
 static void ValidateElementForFirstAndLastN(bson_value_t *elementsToFetch,
 											const char *opName);
 static void FillResultForDollarFirstAndLastN(bson_value_t *input,
@@ -207,19 +225,19 @@ static void FillResultForDollarFirstAndLastN(bson_value_t *input,
 static int32_t GetStartValueForDollarRange(bson_value_t *startValue);
 static int32_t GetEndValueForDollarRange(bson_value_t *endValue);
 static int32_t GetStepValueForDollarRange(bson_value_t *stepValue);
-static void HandlerForParsingMinMax(bool isMax, const bson_value_t *argument,
-									AggregationExpressionData *data,
-									ParseAggregationExpressionContext *context);
-static void HandlerForParsingSumAvg(bool isSum, const bson_value_t *argument,
-									AggregationExpressionData *data,
-									ParseAggregationExpressionContext *context);
+static void ParseDollarMinAndMax(bool isMax, const bson_value_t *argument,
+								 AggregationExpressionData *data,
+								 ParseAggregationExpressionContext *context);
+static void ParseDollarSumAndAverage(bool isSum, const bson_value_t *argument,
+									 AggregationExpressionData *data,
+									 ParseAggregationExpressionContext *context);
 static void SetResultArrayForDollarRange(int32_t startValue, int32_t endValue,
 										 int32_t stepValue, bson_value_t *result);
 static void ValidateArraySizeLimit(int32_t startValue, int32_t endValue,
 								   int32_t stepValue);
 static int32 GetIndexValueFromDollarIdxInput(bson_value_t *arg, bool isStartIndex);
-static int32 FindIndexInArrayForElement(bson_value_t *array, bson_value_t *element,
-										int32 startIndex, int32 endIndex);
+static int32 FindIndexInArrayFor(bson_value_t *array, bson_value_t *element,
+								 int32 startIndex, int32 endIndex);
 static void SetResultArrayForDollarReverse(bson_value_t *array, bson_value_t *result);
 static void SetResultValueForDollarMaxMin(const bson_value_t *inputArgument,
 										  bson_value_t *result, bool isFindMax);
@@ -227,6 +245,7 @@ static void SetResultValueForDollarSumAvg(const bson_value_t *inputArgument,
 										  bson_value_t *result, bool isSum);
 static bool HeapSortComparatorMaxN(const void *first, const void *second);
 static bool HeapSortComparatorMinN(const void *first, const void *second);
+static inline void DollarSliceInputValidation(bson_value_t *inputValue, bool isSecondArg);
 static bson_value_t * ParseZipDefaultsArgument(int rowNum, bson_value_t
 											   evaluatedDefaultsArg, bool
 											   useLongestLengthArgBoolValue);
@@ -242,1092 +261,432 @@ static void SetResultArrayForDollarZip(int rowNum, ZipParseInputsResult parsedIn
 static void ProcessDollarSortArray(bson_value_t *inputValue, SortContext *sortContext,
 								   bson_value_t *result);
 
-/*
- * validate second and third argument of dollar slice operator
- */
-static inline void
-DollarSliceInputValidation(bson_value_t *inputValue, bool isSecondArg)
-{
-	if (!BsonValueIsNumber(inputValue))
-	{
-		ereport(ERROR, (errcode(isSecondArg ?
-								ERRCODE_HELIO_DOLLARSLICEINVALIDTYPESECONDARG :
-								ERRCODE_HELIO_DOLLARSLICEINVALIDTYPETHIRDARG),
-						errmsg(
-							"%s argument to $slice must be numeric, but is of type: %s",
-							isSecondArg ? "Second" : "Third",
-							BsonTypeName(inputValue->value_type)),
-						errdetail_log(
-							"%s argument to $slice must be numeric, but is of type: %s",
-							isSecondArg ? "Second" : "Third",
-							BsonTypeName(inputValue->value_type))));
-	}
 
-	bool checkForFixedInteger = true;
-
-	if (!IsBsonValue32BitInteger(inputValue, checkForFixedInteger))
-	{
-		ereport(ERROR, (errcode(isSecondArg ?
-								ERRCODE_HELIO_DOLLARSLICEINVALIDVALUESECONDARG :
-								ERRCODE_HELIO_DOLLARSLICEINVALIDVALUETHIRDARG),
-						errmsg(
-							"%s argument to $slice can't be represented as a 32-bit integer: %s",
-							isSecondArg ? "Second" : "Third",
-							BsonValueToJsonForLogging(inputValue)),
-						errdetail_log(
-							"%s argument of type %s to $slice can't be represented as a 32-bit integer",
-							isSecondArg ? "Second" : "Third",
-							BsonTypeName(inputValue->value_type))));
-	}
-}
-
+/* --------------------------------------------------------- */
+/* Parse and Handle Pre-parse functions */
+/* --------------------------------------------------------- */
 
 /*
- * Evaluates the output of a $isArray expression.
- * Since a $isArray is expressed as { "$isArray": <expression> }
- * or { "$isArray": [ <expression> ] }
- * We evaluate the inner expression and then return isArray.
+ * Parses a $isArray expression.
+ * $isArray is expressed as { "$isArray": <expression> }
  */
 void
-HandleDollarIsArray(pgbson *doc, const bson_value_t *operatorValue,
-					ExpressionResult *expressionResult)
+ParseDollarIsArray(const bson_value_t *argument, AggregationExpressionData *data,
+				   ParseAggregationExpressionContext *context)
 {
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDollarIsArrayElement,
-		.processExpressionResultFunc = NULL,
-		.state = NULL,
-	};
-
-	int numberOfRequiredArgs = 1;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$isArray", &context);
+	ParseArrayOperatorOneOperand(argument, data, "$isArray",
+								 ProcessDollarIsArray, context);
 }
 
 
 /*
- * Evaluates the output of a $in expression.
- * $in is expressed as { "$in": [ <expression>, <array> ] }
- * We evaluate the inner expression and then return a boolean
- * to indicate if the evaluated expression was found in the array.
+ * Handles executing a pre-parsed $isArray expression.
  */
 void
-HandleDollarIn(pgbson *doc, const bson_value_t *operatorValue,
-			   ExpressionResult *expressionResult)
+HandlePreParsedDollarIsArray(pgbson *doc, void *argument,
+							 ExpressionResult *expressionResult)
 {
-	DualArgumentExpressionState state;
-	memset(&state, 0, sizeof(DualArgumentExpressionState));
-
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDualArgumentElement,
-		.processExpressionResultFunc = ProcessDollarIn,
-		.state = &state,
-	};
-
-	int numberOfRequiredArgs = 2;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$in", &context);
+	HandlePreParsedArrayOperatorOneOperand(doc, argument, expressionResult,
+										   ProcessDollarIsArray);
 }
 
 
 /*
- * Evaluates the output of a $size expression.
- * $size is expressed as { "$size": [ <array> ] }
- * We evaluate the size of the array and return that as an int.
+ * Parses a $size expression.
+ * $size is expressed as { "$size": <expression> }
  */
 void
-HandleDollarSize(pgbson *doc, const bson_value_t *operatorValue,
-				 ExpressionResult *expressionResult)
+ParseDollarSize(const bson_value_t *argument, AggregationExpressionData *data,
+				ParseAggregationExpressionContext *context)
 {
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDollarSizeElement,
-		.processExpressionResultFunc = NULL,
-		.state = NULL,
-	};
-
-	int numberOfRequiredArgs = 1;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$size", &context);
+	ParseArrayOperatorOneOperand(argument, data, "$size",
+								 ProcessDollarSize, context);
 }
 
 
 /*
- * Evaluates the output of a $slice expression.
- * $slice is expressed as { "$slice": [ <array>,numToSkip, numToReturn ] }
- * We slice input array using values numToSkip and numToReturn and returns new sliced array.
+ * Handles executing a pre-parsed $Size expression.
  */
 void
-HandleDollarSlice(pgbson *doc, const bson_value_t *operatorValue,
-				  ExpressionResult *expressionResult)
+HandlePreParsedDollarSize(pgbson *doc, void *argument,
+						  ExpressionResult *expressionResult)
 {
-	ThreeArgumentExpressionState state;
-	memset(&state, 0, sizeof(ThreeArgumentExpressionState));
-
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessThreeArgumentElement,
-		.processExpressionResultFunc = ProcessDollarSlice,
-		.state = &state,
-	};
-
-	int minRequiredArgs = 2;
-	int maxRequiredArgs = 3;
-
-	HandleRangedArgumentExpression(doc, operatorValue, expressionResult,
-								   minRequiredArgs, maxRequiredArgs, "$slice", &context);
+	HandlePreParsedArrayOperatorOneOperand(doc, argument, expressionResult,
+										   ProcessDollarSize);
 }
 
 
 /*
- * Evaluates the output of a $arrayElemAt expression.
- * $arrayElemAt is expressed as { "$arrayElemAt": [ <array>, <idx> ] }
- * We evaluate the inner expressions, and return the element at the specified index.
- * If the index is a negative value, we return counting from the end of the array.
- * If the index exceeds the array bounds, it does not return a result.
- */
-void
-HandleDollarArrayElemAt(pgbson *doc, const bson_value_t *operatorValue,
-						ExpressionResult *expressionResult)
-{
-	ArrayElemAtArgumentState state;
-	memset(&state, 0, sizeof(ArrayElemAtArgumentState));
-
-	state.isArrayElemAtOperator = true;
-	state.opName = "$arrayElemAt";
-
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDualArgumentElement,
-		.processExpressionResultFunc = ProcessDollarArrayElemAt,
-		.state = &state.dualState,
-	};
-
-	int numberOfRequiredArgs = 2;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, state.opName, &context);
-}
-
-
-/*
- * Evaluates the output of a $first expression.
- * $first is expressed as { "$first": [ <expression> ] }
- * We evaluate the inner expression and return the first element of the array.
- * $first is an alias of {$arrayElemAt: [ <expression>, 0 ]}, so we just redirect to that operator.
- */
-void
-HandleDollarFirst(pgbson *doc, const bson_value_t *operatorValue,
-				  ExpressionResult *expressionResult)
-{
-	ArrayElemAtArgumentState state;
-	memset(&state, 0, sizeof(ArrayElemAtArgumentState));
-
-	bson_value_t secondArg;
-	secondArg.value_type = BSON_TYPE_INT32;
-	secondArg.value.v_int32 = 0;
-
-	state.dualState.secondArgument = secondArg;
-	state.isArrayElemAtOperator = false;
-	state.opName = "$first";
-
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDualArgumentElement,
-		.processExpressionResultFunc = ProcessDollarArrayElemAt,
-		.state = &state.dualState,
-	};
-
-	int numberOfRequiredArgs = 1;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, state.opName, &context);
-}
-
-
-/*
- * Evaluates the output of a $last expression.
- * $last is expressed as { "$last": [ <expression> ] }
- * We evaluate the inner expression and return the last element of the array.
- * $last is an alias of {$arrayElemAt: [ <expression>, -1 ]}, so we just redirect to that operator.
- */
-void
-HandleDollarLast(pgbson *doc, const bson_value_t *operatorValue,
-				 ExpressionResult *expressionResult)
-{
-	ArrayElemAtArgumentState state;
-	memset(&state, 0, sizeof(ArrayElemAtArgumentState));
-
-	bson_value_t secondArg;
-	secondArg.value_type = BSON_TYPE_INT32;
-	secondArg.value.v_int32 = -1;
-
-	state.dualState.secondArgument = secondArg;
-	state.isArrayElemAtOperator = false;
-	state.opName = "$last";
-
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDualArgumentElement,
-		.processExpressionResultFunc = ProcessDollarArrayElemAt,
-		.state = &state.dualState,
-	};
-
-	int numberOfRequiredArgs = 1;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, state.opName, &context);
-}
-
-
-/*
- * Evaluates the output of a $objectToArray expression.
- * $objectToArray is expressed as { "$objectToArray": [ <object-expression> ] } or
- * { "$objectToArray": <object-expression> }
- * We evaluate the inner expression and return an array with an object for each key-value pair
- * found in the object expression, $objectToArray does not recursively apply to embedded document fields.
+ * Parses a $objectToArray expression.
+ * $objectToArray is expressed as { "$objectToArray": <expression> }
+ * $objectToArray does not recursively apply to embedded document fields.
  * i.e:
  *   input: {"a": 1, "b": { "c": 2 } }
  *   result: [{ "k": "a", "v": "1" }, { "k": "b", "v": { "c": 2 } }]
  */
 void
-HandleDollarObjectToArray(pgbson *doc, const bson_value_t *operatorValue,
-						  ExpressionResult *expressionResult)
+ParseDollarObjectToArray(const bson_value_t *argument, AggregationExpressionData *data,
+						 ParseAggregationExpressionContext *context)
 {
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDollarObjectToArrayElement,
-		.processExpressionResultFunc = NULL,
-		.state = expressionResult,
-	};
-
-	int numberOfRequiredArgs = 1;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$objectToArray", &context);
+	ParseArrayOperatorOneOperand(argument, data, "$objectToArray",
+								 ProcessDollarObjectToArray, context);
 }
 
 
 /*
- * Evaluates the output of a $arrayToObject expression.
+ * Handles executing a pre-parsed $objectToArray expression.
+ */
+void
+HandlePreParsedDollarObjectToArray(pgbson *doc, void *argument,
+								   ExpressionResult *expressionResult)
+{
+	HandlePreParsedArrayOperatorOneOperand(doc, argument, expressionResult,
+										   ProcessDollarObjectToArray);
+}
+
+
+/*
+ * Parses a $arrayToObject expression.
  * $arrayToObject is expressed as { "$arrayToObject": [ [ {"k": "key", "v": <expression> }, ... ] ] } or
  * { "$arrayToObject": [ ["key", value], ... ]}
- * We evaluate the inner expression and return an an object constructed from the key value pairs found in the array.
- * i.e:
- *   input: [[{ "k": "a", "v": "1" }, { "k": "b", "v": { "c": 2 } }]] or [["a", "1"], ["b", {"c": 2}]]
- *   result: {"a": 1, "b": { "c": 2 } }
  */
 void
-HandleDollarArrayToObject(pgbson *doc, const bson_value_t *operatorValue,
-						  ExpressionResult *expressionResult)
+ParseDollarArrayToObject(const bson_value_t *argument, AggregationExpressionData *data,
+						 ParseAggregationExpressionContext *context)
 {
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDollarArrayToObjectElement,
-		.processExpressionResultFunc = NULL,
-		.state = expressionResult,
-	};
-
-	int numberOfRequiredArgs = 1;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$arrayToObject", &context);
+	ParseArrayOperatorOneOperand(argument, data, "$arrayToObject",
+								 ProcessDollarArrayToObject, context);
 }
 
 
 /*
- * Evaluates the output of a $concatArrays expression.
- * $concatArrays is expressed as { "$concatArrays": [ <array1>, <array2>, .. ] }
- * We evaluate each array and write an array to the result with the concatenation of all arrays
+ * Handles executing a pre-parsed $arrayToObject expression.
  */
 void
-HandleDollarConcatArrays(pgbson *doc, const bson_value_t *operatorValue,
-						 ExpressionResult *expressionResult)
+HandlePreParsedDollarArrayToObject(pgbson *doc, void *argument,
+								   ExpressionResult *expressionResult)
 {
+	HandlePreParsedArrayOperatorOneOperand(doc, argument, expressionResult,
+										   ProcessDollarArrayToObject);
+}
+
+
+/*
+ * Parses a $arrayElemAt expression.
+ * $arrayElemAt is expressed as { "$arrayElemAt": [ <array>, <idx> ] }
+ * If the index is a negative value, we return counting from the end of the array.
+ * If the index exceeds the array bounds, it does not return a result.
+ */
+void
+ParseDollarArrayElemAt(const bson_value_t *argument, AggregationExpressionData *data,
+					   ParseAggregationExpressionContext *context)
+{
+	ParseDollarArrayElemAtCore(argument, data, "$arrayElemAt", context);
+}
+
+
+/*
+ * Handles executing a pre-parsed $arrayElemAt expression.
+ */
+void
+HandlePreParsedDollarArrayElemAt(pgbson *doc, void *argument,
+								 ExpressionResult *expressionResult)
+{
+	HandlePreParsedDollarArrayElemAtCore(doc, argument, expressionResult, "$arrayElemAt");
+}
+
+
+/*
+ * Parses a $first expression.
+ * $first is expressed as { "$first": [ <expression> ] }
+ */
+void
+ParseDollarFirst(const bson_value_t *argument, AggregationExpressionData *data,
+				 ParseAggregationExpressionContext *context)
+{
+	ParseDollarArrayElemAtCore(argument, data, "$first", context);
+}
+
+
+/*
+ * Handles executing a pre-parsed $first expression.
+ */
+void
+HandlePreParsedDollarFirst(pgbson *doc, void *arguments,
+						   ExpressionResult *expressionResult)
+{
+	HandlePreParsedDollarArrayElemAtCore(doc, arguments, expressionResult, "$first");
+}
+
+
+/*
+ * Parses a $last expression.
+ * $last is an alias of {$arrayElemAt: [ <expression>, -1 ]}, so we just redirect to that operator.
+ */
+void
+ParseDollarLast(const bson_value_t *argument, AggregationExpressionData *data,
+				ParseAggregationExpressionContext *context)
+{
+	ParseDollarArrayElemAtCore(argument, data, "$last", context);
+}
+
+
+/*
+ * Handles executing a pre-parsed $last expression.
+ */
+void
+HandlePreParsedDollarLast(pgbson *doc, void *arguments,
+						  ExpressionResult *expressionResult)
+{
+	HandlePreParsedDollarArrayElemAtCore(doc, arguments, expressionResult, "$last");
+}
+
+
+/*
+ * Parses a $in expression.
+ * $in is expressed as { "$in": [ <expression>, <array> ] }
+ */
+void
+ParseDollarIn(const bson_value_t *argument, AggregationExpressionData *data,
+			  ParseAggregationExpressionContext *context)
+{
+	int numRequiredArgs = 2;
+	AggregationExpressionArgumentsKind argumentsKind;
+	List *parsedArguments = ParseFixedArgumentsForExpression(argument, numRequiredArgs,
+															 "$in", &argumentsKind,
+															 context);
+
+	AggregationExpressionData *firstArg = list_nth(parsedArguments, 0);
+	AggregationExpressionData *secondArg = list_nth(parsedArguments, 1);
+
+	if (IsAggregationExpressionConstant(firstArg) && IsAggregationExpressionConstant(
+			secondArg))
+	{
+		DualArgumentExpressionState state;
+		memset(&state, 0, sizeof(DualArgumentExpressionState));
+		InitializeDualArgumentExpressionState(firstArg->value, secondArg->value, false,
+											  &state);
+
+		ProcessDollarIn(&state, &data->value);
+		data->kind = AggregationExpressionKind_Constant;
+		list_free_deep(parsedArguments);
+	}
+	else
+	{
+		data->operator.arguments = parsedArguments;
+		data->operator.argumentsKind = argumentsKind;
+	}
+}
+
+
+/*
+ * Handles executing a pre-parsed $in expression.
+ */
+void
+HandlePreParsedDollarIn(pgbson *doc, void *argument, ExpressionResult *expressionResult)
+{
+	List *arguments = (List *) argument;
+
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+
+	AggregationExpressionData *firstArg = list_nth(arguments, 0);
+	EvaluateAggregationExpressionData(firstArg, doc, &childResult, isNullOnEmpty);
+	bson_value_t firstValue = childResult.value;
+	bool hasFieldExpression = childResult.isFieldPathExpression;
+
+	ExpressionResultReset(&childResult);
+
+	AggregationExpressionData *secondArg = list_nth(arguments, 1);
+	EvaluateAggregationExpressionData(secondArg, doc, &childResult, isNullOnEmpty);
+	bson_value_t secondValue = childResult.value;
+	hasFieldExpression = hasFieldExpression || childResult.isFieldPathExpression;
+
+	DualArgumentExpressionState state;
+	InitializeDualArgumentExpressionState(firstValue, secondValue, hasFieldExpression,
+										  &state);
+
+	bson_value_t result;
+	ProcessDollarIn(&state, &result);
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/*
+ * Parses a $slice expression
+ * $slice is expressed as { $slice: [ <array>, <position>, <n> ] }
+ * with <position> being optional.
+ */
+void
+ParseDollarSlice(const bson_value_t *argument, AggregationExpressionData *data,
+				 ParseAggregationExpressionContext *context)
+{
+	int minNumOfArgs = 2;
+	int maxNumOfArgs = 3;
+
+	AggregationExpressionArgumentsKind argumentsKind;
+	List *parsedArguments = ParseRangeArgumentsForExpression(argument,
+															 minNumOfArgs,
+															 maxNumOfArgs,
+															 "$slice",
+															 &argumentsKind, context);
+
+	bool allArgumentsConstant = true;
+	int i = 0;
+	while (i < parsedArguments->length)
+	{
+		AggregationExpressionData *argData = list_nth(parsedArguments, i);
+		allArgumentsConstant = allArgumentsConstant && IsAggregationExpressionConstant(
+			argData);
+		i += 1;
+	}
+
+	/* If both arguments are constants: compute comparison result, change
+	 * expression type to constant, store the result in the expression value
+	 * and free the arguments list as it won't be needed anymore. */
+	if (allArgumentsConstant)
+	{
+		ThreeArgumentExpressionState state;
+		memset(&state, 0, sizeof(ThreeArgumentExpressionState));
+
+		i = 0;
+		while (i < parsedArguments->length)
+		{
+			AggregationExpressionData *argData = list_nth(parsedArguments, i);
+			ProcessThreeArgumentElement(&argData->value, false, &state);
+			i += 1;
+		}
+
+		ProcessDollarSlice(&state, &data->value);
+		data->kind = AggregationExpressionKind_Constant;
+		list_free_deep(parsedArguments);
+	}
+	else
+	{
+		data->operator.arguments = parsedArguments;
+		data->operator.argumentsKind = argumentsKind;
+	}
+}
+
+
+void
+HandlePreParsedDollarSlice(pgbson *doc, void *arguments,
+						   ExpressionResult *expressionResult)
+{
+	List *argumentsList = (List *) arguments;
+
+	ThreeArgumentExpressionState state;
+	memset(&state, 0, sizeof(ThreeArgumentExpressionState));
+
+	bool hasNullOrUndefined = false;
+	int i = 0;
+	while (i < argumentsList->length)
+	{
+		AggregationExpressionData *argData = list_nth(argumentsList, i);
+		ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+		EvaluateAggregationExpressionData(argData, doc, &childResult, hasNullOrUndefined);
+
+		bson_value_t currentValue = childResult.value;
+		ProcessThreeArgumentElement(&currentValue, childResult.isFieldPathExpression,
+									&state);
+		i += 1;
+	}
+
+	bson_value_t result;
+	ProcessDollarSlice(&state, &result);
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/*
+ * Parse a $concatArrays expression.
+ * $concatArrays is expressed as { "$concatArrays": [ <array1>, <array2>, .. ] }
+ */
+void
+ParseDollarConcatArrays(const bson_value_t *argument, AggregationExpressionData *data,
+						ParseAggregationExpressionContext *context)
+{
+	bool allArgumentsConstant;
+	List *argumentsList = ParseVariableArgumentsForExpression(argument,
+															  &allArgumentsConstant,
+															  context);
+
+	if (allArgumentsConstant)
+	{
+		ConcatArraysState state;
+		memset(&state, 0, sizeof(ConcatArraysState));
+
+		PgbsonWriterInit(&state.writer);
+		PgbsonWriterStartArray(&state.writer, "", 0, &state.arrayWriter);
+
+		int idx = 0;
+		while (argumentsList != NIL && idx < argumentsList->length)
+		{
+			AggregationExpressionData *currentData = list_nth(argumentsList, idx);
+
+			bool continueEnumerating = ProcessDollarConcatArraysElement(
+				&currentData->value,
+				&state,
+				&data->value);
+			if (!continueEnumerating)
+			{
+				data->kind = AggregationExpressionKind_Constant;
+				list_free_deep(argumentsList);
+				return;
+			}
+
+			idx++;
+		}
+
+		data->kind = AggregationExpressionKind_Constant;
+		ProcessDollarConcatArraysElementResult(&state, &data->value);
+		list_free_deep(argumentsList);
+	}
+	else
+	{
+		data->operator.arguments = argumentsList;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_List;
+	}
+}
+
+
+void
+HandlePreParsedDollarConcatArrays(pgbson *doc, void *arguments,
+								  ExpressionResult *expressionResult)
+{
+	List *argumentList = (List *) arguments;
+
 	ConcatArraysState state;
 	memset(&state, 0, sizeof(ConcatArraysState));
 
 	PgbsonWriterInit(&state.writer);
 	PgbsonWriterStartArray(&state.writer, "", 0, &state.arrayWriter);
 
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDollarConcatArraysElement,
-		.processExpressionResultFunc = ProcessDollarConcatArraysResult,
-		.state = &state,
-	};
-
-	bson_value_t startValue;
-	startValue.value_type = BSON_TYPE_ARRAY;
-	HandleVariableArgumentExpression(doc, operatorValue, expressionResult,
-									 &startValue, &context);
-}
-
-
-/* Process the $in operator and returns true or false if the first argument is
- * found or not in the second argument which is the array to search. */
-static void
-ProcessDollarIn(bson_value_t *result, void *state)
-{
-	DualArgumentExpressionState *dollarInState =
-		(DualArgumentExpressionState *) state;
-
-	bson_value_t array = dollarInState->secondArgument;
-
-	if (array.value_type != BSON_TYPE_ARRAY)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARINREQUIRESARRAY), errmsg(
-							"$in requires an array as a second argument, found: %s",
-							array.value_type == BSON_TYPE_EOD ?
-							MISSING_TYPE_NAME :
-							BsonTypeName(array.value_type)),
-						errdetail_log(
-							"$in requires an array as a second argument, found: %s",
-							array.value_type == BSON_TYPE_EOD ?
-							MISSING_TYPE_NAME :
-							BsonTypeName(array.value_type))));
-	}
-
-	bool found = false;
-	bson_value_t elementToFind = dollarInState->firstArgument;
-	bson_iter_t arrayIterator;
-	BsonValueInitIterator(&array, &arrayIterator);
-
-	/* $in expression doesn't support matching by regex */
-	while (bson_iter_next(&arrayIterator))
-	{
-		const bson_value_t *currentValue = bson_iter_value(&arrayIterator);
-
-		if (elementToFind.value_type == BSON_TYPE_NULL &&
-			currentValue->value_type == BSON_TYPE_NULL)
-		{
-			found = true;
-			break;
-		}
-
-		bool isComparisonValid = false;
-		int cmp = CompareBsonValueAndType(&elementToFind, currentValue,
-										  &isComparisonValid);
-		if (cmp == 0 && isComparisonValid)
-		{
-			found = true;
-			break;
-		}
-	}
-
-	result->value_type = BSON_TYPE_BOOL;
-	result->value.v_bool = found;
-}
-
-
-/* Process the $slice operator and save the sliced array into result */
-static void
-ProcessDollarSlice(bson_value_t *result, void *state)
-{
-	ThreeArgumentExpressionState *context = (ThreeArgumentExpressionState *) state;
-	bson_value_t *sourceArray = NULL;
-	int numToSkip = 0;
-	int numToReturn = INT32_MAX;
-
-	if (context->hasNullOrUndefined)
-	{
-		result->value_type = BSON_TYPE_NULL;
-		return;
-	}
-
-	/* fetch first argument from context */
-	sourceArray = &(context->firstArgument);
-
-	if (sourceArray->value_type != BSON_TYPE_ARRAY)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARSLICEINVALIDINPUT), errmsg(
-							"First argument to $slice must be an array, but is of type: %s",
-							BsonTypeName(sourceArray->value_type)),
-						errdetail_log(
-							"First argument to $slice must be an array, but is of type: %s",
-							BsonTypeName(sourceArray->value_type))));
-	}
-
-	/* fetch second argument from context */
-	bson_value_t *currentElement = &(context->secondArgument);
-
-	DollarSliceInputValidation(currentElement, true);
-
-	int int32Val = BsonValueAsInt32(currentElement);
-
-	if (context->totalProcessedArgs == 2 && int32Val >= 0)
-	{
-		numToReturn = int32Val;
-	}
-	else if (int32Val < 0)
-	{
-		int sourceArrayLength = BsonDocumentValueCountKeys(sourceArray);
-		numToSkip = sourceArrayLength + int32Val;
-	}
-	else
-	{
-		numToSkip = int32Val;
-	}
-
-	/* fetch third argument from context */
-	if (context->totalProcessedArgs == 3)
-	{
-		currentElement = &(context->thirdArgument);
-
-		DollarSliceInputValidation(currentElement, false);
-
-		int32Val = BsonValueAsInt32(currentElement);
-
-		if (int32Val <= 0)
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARSLICEINVALIDSIGNTHIRDARG),
-							errmsg(
-								"Third argument to $slice must be positive: %s",
-								BsonValueToJsonForLogging(currentElement)),
-							errdetail_log(
-								"Third argument to $slice must be positive but found negative")));
-		}
-		numToReturn = BsonValueAsInt32(currentElement);
-	}
-
-	/* Traverse input array and create a new sliced array using numToSkip and numToReturn */
-	bson_iter_t arrayIter;
-	BsonValueInitIterator(sourceArray, &arrayIter);
-	pgbson_writer writer;
-	PgbsonWriterInit(&writer);
-	pgbson_array_writer arrayWriter;
-	PgbsonWriterStartArray(&writer, "", 0, &arrayWriter);
-
-	while (numToSkip > 0 && bson_iter_next(&arrayIter))
-	{
-		numToSkip--;
-	}
-
-	while (bson_iter_next(&arrayIter) && numToReturn > 0)
-	{
-		const bson_value_t *tmpVal = bson_iter_value(&arrayIter);
-		PgbsonArrayWriterWriteValue(&arrayWriter, tmpVal);
-		numToReturn--;
-	}
-
-	PgbsonWriterEndArray(&writer, &arrayWriter);
-	*result = PgbsonArrayWriterGetValue(&arrayWriter);
-}
-
-
-/* Process the $arrayElemAt operator and returns the element in the array at the index provided */
-static void
-ProcessDollarArrayElemAt(bson_value_t *result, void *state)
-{
-	ArrayElemAtArgumentState *elemAtState =
-		(ArrayElemAtArgumentState *) state;
-
-	if (elemAtState->dualState.hasNullOrUndefined)
-	{
-		result->value_type = BSON_TYPE_NULL;
-		return;
-	}
-
-	bson_value_t array = elemAtState->dualState.firstArgument;
-	bson_value_t indexValue = elemAtState->dualState.secondArgument;
-
-	if (array.value_type != BSON_TYPE_ARRAY)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_ARRAYOPERATORELEMATFIRSTARGMUSTBEARRAY),
-						errmsg(
-							elemAtState->isArrayElemAtOperator ?
-							"%s's first argument must be an array, but is %s" :
-							"%s's argument must be an array, but is %s",
-							elemAtState->opName,
-							BsonTypeName(array.value_type)),
-						errdetail_log(elemAtState->isArrayElemAtOperator ?
-									  "%s's first argument must be an array, but is %s" :
-									  "%s's argument must be an array, but is %s",
-									  elemAtState->opName,
-									  BsonTypeName(array.value_type))));
-	}
-	if (elemAtState->isArrayElemAtOperator && !BsonTypeIsNumber(indexValue.value_type))
-	{
-		bool isUndefined = IsExpressionResultUndefined(&indexValue);
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYELEMATSECONDARGARGMUSTBENUMERIC),
-						errmsg(
-							"$arrayElemAt's second argument must be a numeric value, but is %s",
-							isUndefined ?
-							MISSING_TYPE_NAME :
-							BsonTypeName(indexValue.value_type)),
-						errdetail_log(
-							"$arrayElemAt's second argument must be a numeric value, but is %s",
-							isUndefined ?
-							MISSING_TYPE_NAME :
-							BsonTypeName(indexValue.value_type))));
-	}
-
-	bool checkFixedInteger = true;
-	if (elemAtState->isArrayElemAtOperator &&
-		!IsBsonValue32BitInteger(&indexValue, checkFixedInteger))
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYELEMATSECONDARGARGMUSTBE32BIT),
-						errmsg(
-							"$arrayElemAt's second argument must be representable as a 32-bit integer: %s",
-							BsonValueToJsonForLogging(&indexValue)),
-						errdetail_log(
-							"$arrayElemAt's second argument of type %s can't be representable as a 32-bit integer",
-							BsonTypeName(indexValue.value_type))));
-	}
-
-	int32_t indexToFind = BsonValueAsInt32(&indexValue);
-	bool found = false;
-
-	/* If the provided index is negative, we need to treat the index as if it started from the end of the array */
-	if (indexToFind < 0)
-	{
-		indexToFind++;
-		bson_iter_t firstIter;
-		BsonValueInitIterator(&array, &firstIter);
-
-		bson_iter_t secondIter;
-		BsonValueInitIterator(&array, &secondIter);
-		while (bson_iter_next(&firstIter))
-		{
-			if (indexToFind == 0)
-			{
-				found = true;
-				bson_iter_next(&secondIter);
-			}
-			else
-			{
-				indexToFind++;
-			}
-		}
-
-		if (found)
-		{
-			*result = *bson_iter_value(&secondIter);
-		}
-	}
-	else
-	{
-		int currentIndex = 0;
-		bson_iter_t arrayIterator;
-		BsonValueInitIterator(&array, &arrayIterator);
-		while (bson_iter_next(&arrayIterator))
-		{
-			if (indexToFind == currentIndex)
-			{
-				found = true;
-				*result = *bson_iter_value(&arrayIterator);
-			}
-
-			currentIndex++;
-		}
-	}
-
-	if (!found)
-	{
-		/* The index was out of bounds, no result is returned. */
-		result->value_type = BSON_TYPE_EOD;
-	}
-}
-
-
-/* Function that checks if $isArray is true or false given an argument. */
-static bool
-ProcessDollarIsArrayElement(bson_value_t *result, const
-							bson_value_t *currentElement,
-							bool isFieldPathExpression, void *state)
-{
-	result->value_type = BSON_TYPE_BOOL;
-	result->value.v_bool = currentElement->value_type == BSON_TYPE_ARRAY;
-	return true;
-}
-
-
-/* Function that checks if the argument for $size is an array and returns the size of it. */
-static bool
-ProcessDollarSizeElement(bson_value_t *result, const
-						 bson_value_t *currentElement,
-						 bool isFieldPathExpression, void *state)
-{
-	if (currentElement->value_type != BSON_TYPE_ARRAY)
-	{
-		bool isUndefined = IsExpressionResultUndefined(currentElement);
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARSIZEREQUIRESARRAY), errmsg(
-							"The argument to $size must be an array, but was of type: %s",
-							isUndefined ?
-							MISSING_TYPE_NAME :
-							BsonTypeName(currentElement->value_type)),
-						errdetail_log(
-							"The argument to $size must be an array, but was of type: %s",
-							isUndefined ?
-							MISSING_TYPE_NAME :
-							BsonTypeName(currentElement->value_type))));
-	}
-
-	int size = 0;
-	bson_iter_t arrayIterator;
-	BsonValueInitIterator(currentElement, &arrayIterator);
-	while (bson_iter_next(&arrayIterator))
-	{
-		size++;
-	}
-
-	result->value_type = BSON_TYPE_INT32;
-	result->value.v_int32 = size;
-	return true;
-}
-
-
-/* Function that checks if the passed argument for $arrayToObject is valid and builds the object from the array,
- * and writes it into the expression result.
- * If there is a duplicate path the last found path wins and it's value is preserved. */
-static bool
-ProcessDollarArrayToObjectElement(bson_value_t *result,
-								  const bson_value_t *currentElement,
-								  bool isFieldPathExpression, void *state)
-{
-	if (IsExpressionResultNullOrUndefined(currentElement))
-	{
-		result->value_type = BSON_TYPE_NULL;
-		return true;
-	}
-	else if (currentElement->value_type != BSON_TYPE_ARRAY)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYTOOBJECTREQUIRESARRAY), errmsg(
-							"$arrayToObject requires an array input, found: %s",
-							BsonTypeName(currentElement->value_type)),
-						errdetail_log("$arrayToObject requires an array input, found: %s",
-									  BsonTypeName(currentElement->value_type))));
-	}
-
-	ExpressionResult *expressionResult = (ExpressionResult *) state;
-
-	bson_iter_t arrayIter;
-	BsonValueInitIterator(currentElement, &arrayIter);
-
-	List *elementsToWrite = NIL;
-	HTAB *hashTable = CreatePgbsonElementHashSet();
-
-	if (bson_iter_next(&arrayIter))
-	{
-		if (!BSON_ITER_HOLDS_ARRAY(&arrayIter) &&
-			!BSON_ITER_HOLDS_DOCUMENT(&arrayIter))
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYTOOBJECTBADINPUTTYPEFORMAT),
-							errmsg(
-								"Unrecognised input type format for $arrayToObject: %s",
-								BsonIterTypeName(&arrayIter)),
-							errdetail_log(
-								"Unrecognised input type format for $arrayToObject: %s",
-								BsonIterTypeName(&arrayIter))));
-		}
-
-		bool expectObjectElements = BSON_ITER_HOLDS_DOCUMENT(&arrayIter);
-		do {
-			pgbsonelement elementToWrite;
-			const bson_value_t *arrayValue = bson_iter_value(&arrayIter);
-
-			if (expectObjectElements)
-			{
-				elementToWrite = ParseElementFromObjectForArrayToObject(arrayValue);
-			}
-			else
-			{
-				elementToWrite = ParseElementFromArrayForArrayToObject(arrayValue);
-			}
-
-			if (strlen(elementToWrite.path) < elementToWrite.pathLength)
-			{
-				HelioErrorEreportCode errorCode = expectObjectElements ?
-												  ERRCODE_HELIO_LOCATION4940401 :
-												  ERRCODE_HELIO_LOCATION4940400;
-
-				ereport(ERROR, (errcode(errorCode), errmsg(
-									"Key field cannot contain an embedded null byte")));
-			}
-
-			PgbsonElementHashEntry searchEntry = {
-				.element = elementToWrite
-			};
-
-			bool found = false;
-			PgbsonElementHashEntry *hashEntry = hash_search(hashTable, &searchEntry,
-															HASH_ENTER, &found);
-
-			if (!found)
-			{
-				elementsToWrite = lappend(elementsToWrite, hashEntry);
-			}
-
-			hashEntry->element = elementToWrite;
-		} while (bson_iter_next(&arrayIter));
-	}
-
-	pgbson_writer objectWriter;
-	pgbson_element_writer *elementWriter =
-		ExpressionResultGetElementWriter(expressionResult);
-
-	PgbsonElementWriterStartDocument(elementWriter, &objectWriter);
-
-	ListCell *elementToWriteCell = NULL;
-	foreach(elementToWriteCell, elementsToWrite)
-	{
-		CHECK_FOR_INTERRUPTS();
-
-		PgbsonElementHashEntry *hashEntry =
-			(PgbsonElementHashEntry *) lfirst(elementToWriteCell);
-		pgbsonelement element = hashEntry->element;
-
-		PgbsonWriterAppendValue(&objectWriter, element.path, element.pathLength,
-								&element.bsonValue);
-	}
-
-	PgbsonElementWriterEndDocument(elementWriter, &objectWriter);
-	ExpressionResultSetValueFromWriter(expressionResult);
-
-	hash_destroy(hashTable);
-	list_free(elementsToWrite);
-	return true;
-}
-
-
-static pgbsonelement
-ParseElementFromObjectForArrayToObject(const bson_value_t *element)
-{
-	if (element->value_type != BSON_TYPE_DOCUMENT)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYTOOBJECTALLMUSTBEOBJECTS),
-						errmsg(
-							"$arrayToObject requires a consistent input format. Elements must all be arrays or all be objects. Object was detected, now found: %s",
-							BsonTypeName(element->value_type)),
-						errdetail_log(
-							"$arrayToObject requires a consistent input format. Elements must all be arrays or all be objects. Object was detected, now found: %s",
-							BsonTypeName(element->value_type))));
-	}
-
-	int keyCount = BsonDocumentValueCountKeys(element);
-	if (keyCount != 2)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYTOOBJECTINCORRECTNUMBEROFKEYS),
-						errmsg(
-							"$arrayToObject requires an object keys of 'k' and 'v'. Found incorrect number of keys:%d",
-							keyCount),
-						errdetail_log(
-							"$arrayToObject requires an object keys of 'k' and 'v'. Found incorrect number of keys:%d",
-							keyCount)));
-	}
-
-	pgbsonelement value = { 0 };
-
-	bson_iter_t docIter;
-	BsonValueInitIterator(element, &docIter);
-
-	while (bson_iter_next(&docIter))
-	{
-		const char *currentKey = bson_iter_key(&docIter);
-		if (strcmp(currentKey, "k") == 0)
-		{
-			const bson_value_t *resultKey = bson_iter_value(&docIter);
-			if (resultKey->value_type != BSON_TYPE_UTF8)
-			{
-				ereport(ERROR, (errcode(
-									ERRCODE_HELIO_DOLLARARRAYTOOBJECTOBJECTKEYMUSTBESTRING),
-								errmsg(
-									"$arrayToObject requires an object with keys 'k' and 'v', where the value of 'k' must be of type string. Found type: %s",
-									BsonTypeName(resultKey->value_type)),
-								errdetail_log(
-									"$arrayToObject requires an object with keys 'k' and 'v', where the value of 'k' must be of type string. Found type: %s",
-									BsonTypeName(resultKey->value_type))));
-			}
-
-			value.path = resultKey->value.v_utf8.str;
-			value.pathLength = resultKey->value.v_utf8.len;
-		}
-		else if (strcmp(currentKey, "v") == 0)
-		{
-			value.bsonValue = *bson_iter_value(&docIter);
-		}
-		else
-		{
-			ereport(ERROR, (errcode(
-								ERRCODE_HELIO_DOLLARARRAYTOOBJECTREQUIRESOBJECTWITHKANDV),
-							errmsg(
-								"$arrayToObject requires an object with keys 'k' and 'v'. Missing either or both keys from: %s",
-								BsonValueToJsonForLogging(element)),
-							errdetail_log(
-								"$arrayToObject requires an object with keys 'k' and 'v'. Missing either or both keys")));
-		}
-	}
-
-	return value;
-}
-
-
-static pgbsonelement
-ParseElementFromArrayForArrayToObject(const bson_value_t *element)
-{
-	if (element->value_type != BSON_TYPE_ARRAY)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYTOOBJECTALLMUSTBEARRAYS), errmsg(
-							"$arrayToObject requires a consistent input format. Elements must all be arrays or all be objects. Array was detected, now found: %s",
-							BsonTypeName(element->value_type)),
-						errdetail_log(
-							"$arrayToObject requires a consistent input format. Elements must all be arrays or all be objects. Array was detected, now found: %s",
-							BsonTypeName(element->value_type))));
-	}
-
-	int arrayLength = BsonDocumentValueCountKeys(element);
-	if (arrayLength != 2)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYTOOBJECTINCORRECTARRAYLENGTH),
-						errmsg(
-							"$arrayToObject requires an array of size 2 arrays,found array of size: %d",
-							arrayLength),
-						errdetail_log(
-							"$arrayToObject requires an array of size 2 arrays,found array of size: %d",
-							arrayLength)));
-	}
-
-	pgbsonelement value = { 0 };
-	bson_iter_t arrayIter;
-	BsonValueInitIterator(element, &arrayIter);
-
-	bson_iter_next(&arrayIter);
-	const bson_value_t *currentKey = bson_iter_value(&arrayIter);
-	if (currentKey->value_type != BSON_TYPE_UTF8)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYTOOBJECTARRAYKEYMUSTBESTRING),
-						errmsg(
-							"$arrayToObject requires an array of key-value pairs, where the key must be of type string. Found key type: %s",
-							BsonTypeName(currentKey->value_type)),
-						errdetail_log(
-							"$arrayToObject requires an array of key-value pairs, where the key must be of type string. Found key type: %s",
-							BsonTypeName(currentKey->value_type))));
-	}
-
-	value.path = currentKey->value.v_utf8.str;
-	value.pathLength = currentKey->value.v_utf8.len;
-
-	bson_iter_next(&arrayIter);
-	value.bsonValue = *bson_iter_value(&arrayIter);
-
-	return value;
-}
-
-
-/* Function that checks if the passed argument for $objectToArray is valid and builds the array from the object,
- * and writest it into the expression result. */
-static bool
-ProcessDollarObjectToArrayElement(bson_value_t *result,
-								  const bson_value_t *currentElement,
-								  bool isFieldPathExpression, void *state)
-{
-	if (IsExpressionResultNullOrUndefined(currentElement))
-	{
-		result->value_type = BSON_TYPE_NULL;
-		return true;
-	}
-	else if (currentElement->value_type != BSON_TYPE_DOCUMENT)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLAROBJECTTOARRAYREQUIRESOBJECT), errmsg(
-							"$objectToArray requires a document input, found: %s",
-							BsonTypeName(currentElement->value_type)),
-						errdetail_log(
-							"$objectToArray requires a document input, found: %s",
-							BsonTypeName(currentElement->value_type))));
-	}
-
-	ExpressionResult *expressionResult = (ExpressionResult *) state;
-
-	bson_iter_t documentIter;
-	BsonValueInitIterator(currentElement, &documentIter);
-
-	pgbson_array_writer childArrayWriter;
-	pgbson_element_writer childArrayElementWriter;
-	pgbson_element_writer *elementWriter =
-		ExpressionResultGetElementWriter(expressionResult);
-
-	PgbsonElementWriterStartArray(elementWriter, &childArrayWriter);
-	PgbsonInitArrayElementWriter(&childArrayWriter, &childArrayElementWriter);
-
-	while (bson_iter_next(&documentIter))
-	{
-		pgbson_writer childObjectWriter;
-		PgbsonElementWriterStartDocument(&childArrayElementWriter, &childObjectWriter);
-
-		PgbsonWriterAppendUtf8(&childObjectWriter, "k", 1,
-							   bson_iter_key(&documentIter));
-		PgbsonWriterAppendValue(&childObjectWriter, "v", 1,
-								bson_iter_value(&documentIter));
-
-		PgbsonElementWriterEndDocument(&childArrayElementWriter, &childObjectWriter);
-	}
-
-	PgbsonElementWriterEndArray(elementWriter, &childArrayWriter);
-	ExpressionResultSetValueFromWriter(expressionResult);
-	return true;
-}
-
-
-/* Function that processes an argument for $concatArrays, validates it is a valid input and adds it to the final result. */
-static bool
-ProcessDollarConcatArraysElement(bson_value_t *result,
-								 const bson_value_t *currentElement,
-								 bool isFieldPathExpression, void *state)
-{
-	if (IsExpressionResultNullOrUndefined(currentElement))
-	{
-		result->value_type = BSON_TYPE_NULL;
-		return false; /* stop processing more arguments. */
-	}
-
-	if (currentElement->value_type != BSON_TYPE_ARRAY)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28664), errmsg(
-							"$concatArrays only supports arrays, not %s",
-							BsonTypeName(currentElement->value_type)),
-						errdetail_log("$concatArrays only supports arrays, not %s",
-									  BsonTypeName(currentElement->value_type))));
-	}
-
-	ConcatArraysState *concatArraysState = state;
-	bson_iter_t arrayIter;
-	BsonValueInitIterator(currentElement, &arrayIter);
-	while (bson_iter_next(&arrayIter))
-	{
-		PgbsonArrayWriterWriteValue(&concatArraysState->arrayWriter,
-									bson_iter_value(&arrayIter));
-	}
-
-	return true;
-}
-
-
-/* Function that writes the final concat arrays result from the array writer. */
-static void
-ProcessDollarConcatArraysResult(bson_value_t *result, void *state)
-{
-	ConcatArraysState *concatArraysState = state;
-
-	/* If we found a null or undefined argument, we should not write
-	 * the result from the writer. */
-	if (result->value_type == BSON_TYPE_NULL)
-	{
-		PgbsonWriterFree(&concatArraysState->writer);
-		return;
-	}
-
-	PgbsonWriterEndArray(&concatArraysState->writer, &concatArraysState->arrayWriter);
-	*result = PgbsonArrayWriterGetValue(&concatArraysState->arrayWriter);
-}
-
-
-/* *******************************************
- *  New aggregation operator's framework which uses pre parsed expression
- *  when building the projection tree.
- *  *******************************************
- */
-
-/*
- * Evaluates the output of a $filter expression.
- * $filter is expressed as { "$filter": { input: <array-expression>, cond: <expression>, as: <string>, limit: <num-expression> } }
- * We evalute the condition with every element of the input array and filter elements when the expression evaluates to false.
- */
-void
-HandlePreParsedDollarFilter(pgbson *doc, void *arguments,
-							ExpressionResult *expressionResult)
-{
-	DollarFilterArguments *filterArguments = arguments;
-
 	bool isNullOnEmpty = false;
-
-	ExpressionResult childExpression = ExpressionResultCreateChild(expressionResult);
-	EvaluateAggregationExpressionData(&filterArguments->limit, doc, &childExpression,
-									  isNullOnEmpty);
-
-	bson_value_t evaluatedLimit = childExpression.value;
-	int32_t limit;
-
-	if (IsExpressionResultNullOrUndefined(&evaluatedLimit))
+	bson_value_t result;
+	int idx = 0;
+	while (argumentList != NIL && idx < argumentList->length)
 	{
-		limit = INT32_MAX;
-	}
-	else
-	{
-		bool checkFixedInteger = true;
-		if (!IsBsonValue32BitInteger(&evaluatedLimit, checkFixedInteger))
+		AggregationExpressionData *currentData = list_nth(argumentList, idx);
+
+		ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+		EvaluateAggregationExpressionData(currentData, doc, &childResult, isNullOnEmpty);
+
+		bson_value_t currentValue = childResult.value;
+
+		bool continueEnumerating = ProcessDollarConcatArraysElement(&currentValue, &state,
+																	&result);
+		if (!continueEnumerating)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION327391), errmsg(
-								"$filter: limit must be represented as a 32-bit integral value: %s",
-								BsonValueToJsonForLogging(&evaluatedLimit)),
-							errdetail_log(
-								"$filter: limit of type %s can't be represented as a 32-bit integral value",
-								BsonTypeName(evaluatedLimit.value_type))));
+			ExpressionResultSetValue(expressionResult, &result);
+			return;
 		}
 
-		limit = BsonValueAsInt32(&evaluatedLimit);
-		if (limit < 1)
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION327392), errmsg(
-								"$filter: limit must be greater than 0: %d",
-								limit)));
-		}
+		idx++;
 	}
 
-	ExpressionResultReset(&childExpression);
-	EvaluateAggregationExpressionData(&filterArguments->input, doc, &childExpression,
-									  isNullOnEmpty);
-
-	bson_value_t evaluatedInputArg = childExpression.value;
-
-	/* In native mongo if the input array is null or an undefined path the result is null. */
-	if (IsExpressionResultNullOrUndefined(&evaluatedInputArg))
-	{
-		bson_value_t nullValue = {
-			.value_type = BSON_TYPE_NULL
-		};
-
-		ExpressionResultSetValue(expressionResult, &nullValue);
-		return;
-	}
-
-	if (evaluatedInputArg.value_type != BSON_TYPE_ARRAY)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28651), errmsg(
-							"input to $filter must be an array not %s", BsonTypeName(
-								evaluatedInputArg.value_type)),
-						errdetail_log("input to $filter must be an array not %s",
-									  BsonTypeName(evaluatedInputArg.value_type))));
-	}
-
-	StringView aliasName = {
-		.string = filterArguments->alias.value.value.v_utf8.str,
-		.length = filterArguments->alias.value.value.v_utf8.len,
-	};
-
-	pgbson_element_writer *resultWriter = ExpressionResultGetElementWriter(
-		expressionResult);
-	pgbson_array_writer arrayWriter;
-	PgbsonElementWriterStartArray(resultWriter, &arrayWriter);
-
-	bson_iter_t arrayIter;
-	BsonValueInitIterator(&evaluatedInputArg, &arrayIter);
-
-	ExpressionResultReset(&childExpression);
-
-	while (limit > 0 && bson_iter_next(&arrayIter))
-	{
-		const bson_value_t *currentElem = bson_iter_value(&arrayIter);
-
-		ExpressionResultReset(&childExpression);
-		ExpressionResultSetConstantVariable(&childExpression, &aliasName, currentElem);
-		EvaluateAggregationExpressionData(&filterArguments->cond, doc, &childExpression,
-										  isNullOnEmpty);
-
-		if (BsonValueAsBool(&childExpression.value))
-		{
-			PgbsonArrayWriterWriteValue(&arrayWriter, currentElem);
-			limit--;
-		}
-	}
-
-	PgbsonElementWriterEndArray(resultWriter, &arrayWriter);
-	ExpressionResultSetValueFromWriter(expressionResult);
+	ProcessDollarConcatArraysElementResult(&state, &result);
+	ExpressionResultSetValue(expressionResult, &result);
 }
 
 
@@ -1434,6 +793,114 @@ ParseDollarFilter(const bson_value_t *argument, AggregationExpressionData *data,
 	ParseAggregationExpressionData(&arguments->cond, &cond, context);
 	data->operator.arguments = arguments;
 	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+}
+
+
+/*
+ * Evaluates the output of a $filter expression.
+ * $filter is expressed as { "$filter": { input: <array-expression>, cond: <expression>, as: <string>, limit: <num-expression> } }
+ * We evalute the condition with every element of the input array and filter elements when the expression evaluates to false.
+ */
+void
+HandlePreParsedDollarFilter(pgbson *doc, void *arguments,
+							ExpressionResult *expressionResult)
+{
+	DollarFilterArguments *filterArguments = arguments;
+
+	bool isNullOnEmpty = false;
+
+	ExpressionResult childExpression = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(&filterArguments->limit, doc, &childExpression,
+									  isNullOnEmpty);
+
+	bson_value_t evaluatedLimit = childExpression.value;
+	int32_t limit;
+
+	if (IsExpressionResultNullOrUndefined(&evaluatedLimit))
+	{
+		limit = INT32_MAX;
+	}
+	else
+	{
+		bool checkFixedInteger = true;
+		if (!IsBsonValue32BitInteger(&evaluatedLimit, checkFixedInteger))
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION327391), errmsg(
+								"$filter: limit must be represented as a 32-bit integral value: %s",
+								BsonValueToJsonForLogging(&evaluatedLimit)),
+							errdetail_log(
+								"$filter: limit of type %s can't be represented as a 32-bit integral value",
+								BsonTypeName(evaluatedLimit.value_type))));
+		}
+
+		limit = BsonValueAsInt32(&evaluatedLimit);
+		if (limit < 1)
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION327392), errmsg(
+								"$filter: limit must be greater than 0: %d",
+								limit)));
+		}
+	}
+
+	ExpressionResultReset(&childExpression);
+	EvaluateAggregationExpressionData(&filterArguments->input, doc, &childExpression,
+									  isNullOnEmpty);
+
+	bson_value_t evaluatedInputArg = childExpression.value;
+
+	/* In native mongo if the input array is null or an undefined path the result is null. */
+	if (IsExpressionResultNullOrUndefined(&evaluatedInputArg))
+	{
+		bson_value_t nullValue = {
+			.value_type = BSON_TYPE_NULL
+		};
+
+		ExpressionResultSetValue(expressionResult, &nullValue);
+		return;
+	}
+
+	if (evaluatedInputArg.value_type != BSON_TYPE_ARRAY)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28651), errmsg(
+							"input to $filter must be an array not %s", BsonTypeName(
+								evaluatedInputArg.value_type)),
+						errdetail_log("input to $filter must be an array not %s",
+									  BsonTypeName(evaluatedInputArg.value_type))));
+	}
+
+	StringView aliasName = {
+		.string = filterArguments->alias.value.value.v_utf8.str,
+		.length = filterArguments->alias.value.value.v_utf8.len,
+	};
+
+	pgbson_element_writer *resultWriter = ExpressionResultGetElementWriter(
+		expressionResult);
+	pgbson_array_writer arrayWriter;
+	PgbsonElementWriterStartArray(resultWriter, &arrayWriter);
+
+	bson_iter_t arrayIter;
+	BsonValueInitIterator(&evaluatedInputArg, &arrayIter);
+
+	ExpressionResultReset(&childExpression);
+
+	while (limit > 0 && bson_iter_next(&arrayIter))
+	{
+		const bson_value_t *currentElem = bson_iter_value(&arrayIter);
+
+		ExpressionResultReset(&childExpression);
+		ExpressionResultSetConstantVariable(&childExpression, &aliasName, currentElem);
+		EvaluateAggregationExpressionData(&filterArguments->cond, doc, &childExpression,
+										  isNullOnEmpty);
+
+		if (BsonValueAsBool(&childExpression.value))
+		{
+			PgbsonArrayWriterWriteValue(&arrayWriter, currentElem);
+			limit--;
+		}
+	}
+
+	PgbsonElementWriterEndArray(resultWriter, &arrayWriter);
+	ExpressionResultSetValueFromWriter(expressionResult);
 }
 
 
@@ -1562,6 +1029,64 @@ ParseDollarLastN(const bson_value_t *inputDocument, AggregationExpressionData *d
 }
 
 
+/*
+ * Parses the input for $reverseArray. Syntax : {$reverseArray: <array expression>}.
+ * The expression should resolve to an array.
+ * $reverseArray function takes in the desired input array and gives the output array which is reversed.
+ */
+void
+ParseDollarReverseArray(const bson_value_t *argument, AggregationExpressionData *data,
+						ParseAggregationExpressionContext *context)
+{
+	data->operator.arguments = ParseFixedArgumentsForExpression(argument, 1,
+																"$reverseArray",
+																&data->operator.
+																argumentsKind,
+																context);
+	data->operator.returnType = BSON_TYPE_ARRAY;
+}
+
+
+/*
+ *	This function is handler for the $reverseArray. The input to the function is {$reverseArray : {array expression}}.
+ *	This evaluates the expression value and then reverses the array.
+ */
+void
+HandlePreParsedDollarReverseArray(pgbson *doc, void *state,
+								  ExpressionResult *expressionResult)
+{
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(
+		(AggregationExpressionData *) state, doc,
+		&childResult,
+		isNullOnEmpty);
+
+
+	if (IsExpressionResultNullOrUndefined(&childResult.value))
+	{
+		bson_value_t result = { 0 };
+		result.value_type = BSON_TYPE_NULL;
+		ExpressionResultSetValue(expressionResult, &result);
+		return;
+	}
+
+	if (childResult.value.value_type != BSON_TYPE_ARRAY)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34435), errmsg(
+							"The argument to $reverseArray must be an array, but was of type: %s",
+							BsonTypeName(childResult.value.value_type)),
+						errdetail_log(
+							"The argument to $reverseArray must be an array, but was of type: %s",
+							BsonTypeName(childResult.value.value_type))));
+	}
+
+	bson_value_t result = { 0 };
+	SetResultArrayForDollarReverse(&childResult.value, &result);
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
 /**
  * This function computes the result for dollarLastN function. and writes into the expression result.
  * @param arguments: This is struct which holds data for the DollarLastN input args.
@@ -1598,7 +1123,2442 @@ HandlePreParsedDollarLastN(pgbson *doc, void *arguments,
 }
 
 
+/*
+ * Parses an $range expression.
+ * $range is expressed as { "$range": [ <expression1>, <expression2>, <expression3 optional> ] }
+ */
+void
+ParseDollarRange(const bson_value_t *argument, AggregationExpressionData *data,
+				 ParseAggregationExpressionContext *context)
+{
+	int minRequiredArgs = 2;
+	int maxRequiredArgs = 3;
+	List *argList = ParseRangeArgumentsForExpression(argument,
+													 minRequiredArgs,
+													 maxRequiredArgs,
+													 "$range",
+													 &data->operator.
+													 argumentsKind,
+													 context);
+
+	AggregationExpressionData *first = list_nth(argList, 0);
+	AggregationExpressionData *second = list_nth(argList, 1);
+	AggregationExpressionData *third = NULL;
+
+	if (argList->length == 3)
+	{
+		third = list_nth(argList, 2);
+	}
+
+	/* pre-processing the args when input is constant. */
+	if (IsAggregationExpressionConstant(first) &&
+		IsAggregationExpressionConstant(second) &&
+		(!third || IsAggregationExpressionConstant(third)))
+	{
+		bson_value_t startRange = first->value;
+		int32_t startValInt32 = GetStartValueForDollarRange(&startRange);
+
+		bson_value_t endRange = second->value;
+		int32_t endValInt32 = GetEndValueForDollarRange(&endRange);
+
+		int32_t stepValInt32 = 1;
+
+		/* Reassign stepVal from a default value when in input in operator. */
+		if (third)
+		{
+			stepValInt32 = GetStepValueForDollarRange(&third->value);
+		}
+
+		SetResultArrayForDollarRange(startValInt32, endValInt32, stepValInt32,
+									 &data->value);
+
+		data->kind = AggregationExpressionKind_Constant;
+
+		/* freeing the list args */
+		list_free_deep(argList);
+		return;
+	}
+
+	data->operator.arguments = argList;
+	data->operator.returnType = BSON_TYPE_ARRAY;
+}
+
+
+/*
+ * Evaluates the output of an $range expression.
+ * $range is expressed as { "$range": [ <expression1>, <expression2>, <expression3 optional> ] }
+ * We evaluate the inner expressions and then return the final array.
+ */
+void
+HandlePreParsedDollarRange(pgbson *doc, void *arguments,
+						   ExpressionResult *expressionResult)
+{
+	List *argList = arguments;
+
+	AggregationExpressionData *first = list_nth(argList, 0);
+	AggregationExpressionData *second = list_nth(argList, 1);
+	AggregationExpressionData *third = NULL;
+	if (argList->length == 3)
+	{
+		third = list_nth(argList, 2);
+	}
+
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(first, doc, &childResult, isNullOnEmpty);
+	bson_value_t startRange = childResult.value;
+	int32_t startValInt32 = GetStartValueForDollarRange(&startRange);
+
+	ExpressionResultReset(&childResult);
+	EvaluateAggregationExpressionData(second, doc, &childResult, isNullOnEmpty);
+	bson_value_t endRange = childResult.value;
+	int32_t endValInt32 = GetEndValueForDollarRange(&endRange);
+
+	int32_t stepValInt32 = 1;
+
+	/*third arg is optional. If this does not exist the step val should be 1. */
+	if (third)
+	{
+		ExpressionResultReset(&childResult);
+		EvaluateAggregationExpressionData(third, doc, &childResult, isNullOnEmpty);
+
+		stepValInt32 = GetStepValueForDollarRange(&childResult.value);
+	}
+
+	bson_value_t result = { 0 };
+	SetResultArrayForDollarRange(startValInt32, endValInt32, stepValInt32, &result);
+
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/*
+ * This function parses the input for operator $min.
+ * The input is specified of type {$min: <expression>} where expression can be any expression.
+ * In case the expression is an array it gives the minimum element in array otherwise returns the resolved expression as it is.
+ */
+void
+ParseDollarMin(const bson_value_t *argument, AggregationExpressionData *data,
+			   ParseAggregationExpressionContext *context)
+{
+	bool isMax = false;
+	ParseDollarMinAndMax(isMax, argument, data, context);
+}
+
+
+/*
+ * This function handles the pre-parsed dollarMax input and results the maximum element in the given argument.
+ */
+void
+HandlePreParsedDollarMin(pgbson *doc, void *arguments,
+						 ExpressionResult *expressionResult)
+{
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(
+		(AggregationExpressionData *) arguments, doc,
+		&childResult,
+		isNullOnEmpty);
+
+	bson_value_t result = { 0 };
+	bool isFindMax = false;
+	SetResultValueForDollarMaxMin(&childResult.value, &result, isFindMax);
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/*
+ * This function parses the input for operator $max.
+ * The input is specified of type {$max: <expression>} where expression can be any expression.
+ * In case the expression is an array it gives the maximum element in array otherwise returns the resolved expression as it is.
+ */
+void
+ParseDollarMax(const bson_value_t *argument, AggregationExpressionData *data,
+			   ParseAggregationExpressionContext *context)
+{
+	bool isMax = true;
+	ParseDollarMinAndMax(isMax, argument, data, context);
+}
+
+
+/*
+ * This function handles the pre-parsed dollarMax input and results the maximum element in the given argument.
+ */
+void
+HandlePreParsedDollarMax(pgbson *doc, void *arguments,
+						 ExpressionResult *expressionResult)
+{
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(
+		(AggregationExpressionData *) arguments, doc,
+		&childResult,
+		isNullOnEmpty);
+
+	bson_value_t result = { 0 };
+	bool isFindMax = true;
+	SetResultValueForDollarMaxMin(&childResult.value, &result, isFindMax);
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/*
+ * This function parses the input for operator $sum.
+ * The input is specified of type {$sum: <expression>} where expression can be any expression.
+ * In case the expression is an array it gives the sum of elements in array.
+ */
+void
+ParseDollarSum(const bson_value_t *argument, AggregationExpressionData *data,
+			   ParseAggregationExpressionContext *context)
+{
+	bool isSum = true;
+	ParseDollarSumAndAverage(isSum, argument, data, context);
+}
+
+
+/*
+ * This function handles the pre-parsed $sum input and results the maximum element in the given argument.
+ */
+void
+HandlePreParsedDollarSum(pgbson *doc, void *arguments,
+						 ExpressionResult *expressionResult)
+{
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(
+		(AggregationExpressionData *) arguments, doc,
+		&childResult,
+		isNullOnEmpty);
+
+	bson_value_t result = { 0 };
+	bool isSum = true;
+	SetResultValueForDollarSumAvg(&childResult.value, &result, isSum);
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/*
+ * This function parses the input for operator $avg.
+ * The input is specified of type {$sum: <expression>} where expression can be any expression.
+ * In case the expression is an array it gives the sum of elements in array.
+ */
+void
+ParseDollarAvg(const bson_value_t *argument, AggregationExpressionData *data,
+			   ParseAggregationExpressionContext *context)
+{
+	bool isSum = false;
+	ParseDollarSumAndAverage(isSum, argument, data, context);
+}
+
+
+/*
+ * This function handles the pre-parsed $avg input and results the maximum element in the given argument.
+ */
+void
+HandlePreParsedDollarAvg(pgbson *doc, void *arguments,
+						 ExpressionResult *expressionResult)
+{
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(
+		(AggregationExpressionData *) arguments, doc,
+		&childResult,
+		isNullOnEmpty);
+
+	bson_value_t result = { 0 };
+	bool isSum = false;
+	SetResultValueForDollarSumAvg(&childResult.value, &result, isSum);
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/* Parses the $maxN expression specified in the bson_value_t and stores it in the data argument.
+ */
+void
+ParseDollarMaxN(const bson_value_t *argument, AggregationExpressionData *data,
+				ParseAggregationExpressionContext *context)
+{
+	bool isMaxN = true;
+	ParseDollarMaxMinN(argument, data, isMaxN, context);
+}
+
+
+/* Parses the $minN expression specified in the bson_value_t and stores it in the data argument.
+ */
+void
+ParseDollarMinN(const bson_value_t *argument, AggregationExpressionData *data,
+				ParseAggregationExpressionContext *context)
+{
+	bool isMaxN = false;
+	ParseDollarMaxMinN(argument, data, isMaxN, context);
+}
+
+
+/*
+ * Evaluates the output of a $maxN/$minN expression. Via the new operator framework.
+ */
+void
+HandlePreParsedDollarMaxMinN(pgbson *doc, void *arguments,
+							 ExpressionResult *expressionResult)
+{
+	DollarMaxMinNArguments *maxMinNArguments = arguments;
+	bool isMaxN = maxMinNArguments->isMaxN;
+
+	bool isNullOnEmpty = false;
+
+	ExpressionResult childExpression = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(&maxMinNArguments->n, doc, &childExpression,
+									  isNullOnEmpty);
+	bson_value_t evaluatedLimit = childExpression.value;
+
+	ExpressionResultReset(&childExpression);
+	EvaluateAggregationExpressionData(&maxMinNArguments->input, doc, &childExpression,
+									  isNullOnEmpty);
+	bson_value_t evaluatedInput = childExpression.value;
+
+	bson_value_t result;
+
+	ProcessDollarMaxAndMinN(&result, &evaluatedLimit, &evaluatedInput, isMaxN);
+
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/*
+ * This function parses the input for dollarIndexOfArray.
+ * The input to this function is of the following format { $indexOfArray: [ <array expression>, <search expression>, <start>, <end> ] }.
+ * Start and end can be expressions which are optional
+ */
+void
+ParseDollarIndexOfArray(const bson_value_t *argument, AggregationExpressionData *data,
+						ParseAggregationExpressionContext *context)
+{
+	int minRequiredArgs = 2;
+	int maxRequiredArgs = 4;
+	List *argsList = ParseRangeArgumentsForExpression(argument, minRequiredArgs,
+													  maxRequiredArgs, "$indexOfArray",
+													  &data->operator.argumentsKind,
+													  context);
+
+	/*This function checks if all elements in list are constant for optimization*/
+	if (AreElementsInListConstant(argsList))
+	{
+		AggregationExpressionData *arrExpressionData = list_nth(argsList, 0);
+		AggregationExpressionData *searchExpressionData = list_nth(argsList, 1);
+
+		/* startIndex and endIndex are optional hence need to add a safe check*/
+		AggregationExpressionData *startIndexExpressionData = argsList->length > 2 ?
+															  list_nth(argsList, 2) :
+															  NULL;
+		AggregationExpressionData *endIndexExpressionData = argsList->length > 3 ?
+															list_nth(argsList, 3) :
+															NULL;
+
+		if (IsExpressionResultNullOrUndefined(&arrExpressionData->value))
+		{
+			bson_value_t result = { 0 };
+			result.value_type = BSON_TYPE_NULL;
+			data->value = result;
+			data->kind = AggregationExpressionKind_Constant;
+
+			/* free the list */
+			list_free_deep(argsList);
+			return;
+		}
+		else if (arrExpressionData->value.value_type != BSON_TYPE_ARRAY)
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40090), errmsg(
+								"$indexOfArray requires an array as a first argument, found: %s",
+								BsonTypeName(arrExpressionData->value.value_type)),
+							errdetail_log(
+								"$indexOfArray requires an array as a first argument, found: %s",
+								BsonTypeName(arrExpressionData->value.value_type))));
+		}
+
+		int32 startIndex = 0;
+		int32 endIndex = INT32_MAX;
+		bool isStartIndex = true;
+		if (startIndexExpressionData)
+		{
+			startIndex = GetIndexValueFromDollarIdxInput(&startIndexExpressionData->value,
+														 isStartIndex);
+		}
+
+		if (endIndexExpressionData)
+		{
+			endIndex = GetIndexValueFromDollarIdxInput(&endIndexExpressionData->value,
+													   !isStartIndex);
+		}
+
+		bson_value_t result = { .value_type = BSON_TYPE_INT32 };
+		result.value.v_int32 = FindIndexInArrayFor(&arrExpressionData->value,
+												   &searchExpressionData->value,
+												   startIndex,
+												   endIndex);
+
+		data->value = result;
+		data->kind = AggregationExpressionKind_Constant;
+
+		/* free the list */
+		list_free_deep(argsList);
+
+		return;
+	}
+	data->operator.arguments = argsList;
+}
+
+
+/*
+ * This function handles the result and processing after the input has been parsed for $indexOfArray.
+ * This function scans the given array in the input to find the specified element in the array given start and end positions.
+ * The start and end positions can be optional if not provided we need to return the first index where the element occurs.
+ */
+void
+HandlePreParsedDollarIndexOfArray(pgbson *doc, void *arguments,
+								  ExpressionResult *expressionResult)
+{
+	List *argsList = (List *) arguments;
+
+	/* evaluating the array argument expression */
+	AggregationExpressionData *arrExpressionData = list_nth(argsList, 0);
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(arrExpressionData, doc, &childResult,
+									  isNullOnEmpty);
+
+	if (IsExpressionResultNullOrUndefined(&childResult.value))
+	{
+		bson_value_t result = { 0 };
+		result.value_type = BSON_TYPE_NULL;
+		ExpressionResultSetValue(expressionResult, &result);
+		return;
+	}
+	else if (childResult.value.value_type != BSON_TYPE_ARRAY)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40090), errmsg(
+							"$indexOfArray requires an array as a first argument, found: %s",
+							BsonTypeName(arrExpressionData->value.value_type)),
+						errdetail_log(
+							"$indexOfArray requires an array as a first argument, found: %s",
+							BsonTypeName(arrExpressionData->value.value_type)
+							)));
+	}
+
+	bson_value_t arrayExpression = childResult.value;
+
+	/* evaluating the to be searched argument expression. */
+	AggregationExpressionData *searchExpressionData = list_nth(argsList, 1);
+	ExpressionResultReset(&childResult);
+	EvaluateAggregationExpressionData(searchExpressionData, doc, &childResult,
+									  isNullOnEmpty);
+	bson_value_t element = childResult.value;
+
+	/* start and end are optional hence need to add a safe check*/
+	AggregationExpressionData *startIndexExpressionData = argsList->length > 2 ? list_nth(
+		argsList, 2) :
+														  NULL;
+	AggregationExpressionData *endIndexExpressionData = argsList->length > 3 ? list_nth(
+		argsList, 3) :
+														NULL;
+
+	int32 startIndex = 0;
+	int32 endIndex = INT32_MAX;
+
+	bool isStartIndex = true;
+
+	if (startIndexExpressionData)
+	{
+		ExpressionResultReset(&childResult);
+		EvaluateAggregationExpressionData(startIndexExpressionData, doc, &childResult,
+										  isNullOnEmpty);
+		startIndex = GetIndexValueFromDollarIdxInput(&childResult.value, isStartIndex);
+	}
+
+	if (endIndexExpressionData)
+	{
+		ExpressionResultReset(&childResult);
+		EvaluateAggregationExpressionData(endIndexExpressionData, doc, &childResult,
+										  isNullOnEmpty);
+		endIndex = GetIndexValueFromDollarIdxInput(&childResult.value, !isStartIndex);
+	}
+
+	bson_value_t result = { .value_type = BSON_TYPE_INT32 };
+	result.value.v_int32 = FindIndexInArrayFor(&arrayExpression, &element,
+											   startIndex,
+											   endIndex);
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/* Parses the $map expression specified in the bson_value_t and stores it in the data argument.
+ */
+void
+ParseDollarMap(const bson_value_t *argument, AggregationExpressionData *data,
+			   ParseAggregationExpressionContext *context)
+{
+	if (argument->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16878), errmsg(
+							"$map only supports an object as its argument")));
+	}
+
+	data->operator.returnType = BSON_TYPE_ARRAY;
+
+	bson_iter_t docIter;
+	BsonValueInitIterator(argument, &docIter);
+
+	bson_value_t input = { 0 };
+	bson_value_t in = { 0 };
+	bson_value_t as = { 0 };
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "input") == 0)
+		{
+			input = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "in") == 0)
+		{
+			in = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "as") == 0)
+		{
+			as = *bson_iter_value(&docIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16879), errmsg(
+								"Unrecognized parameter to $map: %s", key),
+							errdetail_log(
+								"Unrecognized parameter to $map, unexpected key")));
+		}
+	}
+
+	if (input.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16880), errmsg(
+							"Missing 'input' parameter to $map")));
+	}
+
+	if (in.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16882), errmsg(
+							"Missing 'in' parameter to $map")));
+	}
+
+	bson_value_t aliasValue = {
+		.value_type = BSON_TYPE_UTF8,
+		.value.v_utf8.len = 4,
+		.value.v_utf8.str = "this"
+	};
+
+	if (as.value_type != BSON_TYPE_EOD)
+	{
+		if (as.value_type != BSON_TYPE_UTF8)
+		{
+			aliasValue.value.v_utf8.len = 0;
+			aliasValue.value.v_utf8.str = "";
+		}
+		else
+		{
+			aliasValue = as;
+		}
+
+		StringView aliasNameView = {
+			.length = aliasValue.value.v_utf8.len,
+			.string = aliasValue.value.v_utf8.str,
+		};
+
+		ValidateVariableName(aliasNameView);
+	}
+
+	DollarMapArguments *arguments = palloc0(sizeof(DollarMapArguments));
+	arguments->as.value = aliasValue;
+
+	ParseAggregationExpressionData(&arguments->input, &input, context);
+	ParseAggregationExpressionData(&arguments->in, &in, context);
+	data->operator.arguments = arguments;
+	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+}
+
+
+/*
+ * Evaluates the output of a $map expression.
+ * $map is expressed as:
+ * { $map: { input: <expression>, as: <string>, in: <expression> } }
+ */
+void
+HandlePreParsedDollarMap(pgbson *doc, void *arguments,
+						 ExpressionResult *expressionResult)
+{
+	DollarMapArguments *mapArguments = arguments;
+
+	bool isNullOnEmpty = false;
+
+	ExpressionResult childExpression = ExpressionResultCreateChild(expressionResult);
+
+	EvaluateAggregationExpressionData(&mapArguments->input, doc, &childExpression,
+									  isNullOnEmpty);
+
+	bson_value_t evaluatedInputArg = childExpression.value;
+
+	/* In native mongo if the input array is null or an undefined path the result is null. */
+	if (IsExpressionResultNullOrUndefined(&evaluatedInputArg))
+	{
+		bson_value_t nullValue = {
+			.value_type = BSON_TYPE_NULL
+		};
+
+		ExpressionResultSetValue(expressionResult, &nullValue);
+		return;
+	}
+
+	if (evaluatedInputArg.value_type != BSON_TYPE_ARRAY)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16883), errmsg(
+							"input to $map must be an array not %s", BsonTypeName(
+								evaluatedInputArg.value_type)),
+						errdetail_log("input to $map must be an array not %s",
+									  BsonTypeName(evaluatedInputArg.value_type))));
+	}
+
+	StringView aliasName = {
+		.string = mapArguments->as.value.value.v_utf8.str,
+		.length = mapArguments->as.value.value.v_utf8.len,
+	};
+
+	pgbson_element_writer *resultWriter = ExpressionResultGetElementWriter(
+		expressionResult);
+	pgbson_array_writer arrayWriter;
+	PgbsonElementWriterStartArray(resultWriter, &arrayWriter);
+
+	bson_iter_t arrayIter;
+	BsonValueInitIterator(&evaluatedInputArg, &arrayIter);
+
+	const bson_value_t nullValue = {
+		.value_type = BSON_TYPE_NULL
+	};
+
+	while (bson_iter_next(&arrayIter))
+	{
+		const bson_value_t *currentElem = bson_iter_value(&arrayIter);
+
+		ExpressionResult elementExpression = ExpressionResultCreateChild(
+			&childExpression);
+		ExpressionResultSetConstantVariable(&childExpression, &aliasName, currentElem);
+		EvaluateAggregationExpressionData(&mapArguments->in, doc, &elementExpression,
+										  isNullOnEmpty);
+		if (IsExpressionResultNullOrUndefined(&elementExpression.value))
+		{
+			PgbsonArrayWriterWriteValue(&arrayWriter, &nullValue);
+		}
+		else
+		{
+			PgbsonArrayWriterWriteValue(&arrayWriter, &elementExpression.value);
+		}
+	}
+
+	PgbsonElementWriterEndArray(resultWriter, &arrayWriter);
+	ExpressionResultSetValueFromWriter(expressionResult);
+}
+
+
+/* Parses the $reduce expression specified in the bson_value_t and stores it in the data argument.
+ */
+void
+ParseDollarReduce(const bson_value_t *argument, AggregationExpressionData *data,
+				  ParseAggregationExpressionContext *context)
+{
+	if (argument->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40075), errmsg(
+							"$reduce only supports an object as its argument")));
+	}
+
+	data->operator.returnType = BSON_TYPE_ARRAY;
+
+	bson_iter_t docIter;
+	BsonValueInitIterator(argument, &docIter);
+
+	bson_value_t input = { 0 };
+	bson_value_t in = { 0 };
+	bson_value_t initialValue = { 0 };
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "input") == 0)
+		{
+			input = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "in") == 0)
+		{
+			in = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "initialValue") == 0)
+		{
+			initialValue = *bson_iter_value(&docIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40076), errmsg(
+								"Unrecognized parameter to $reduce: %s", key),
+							errdetail_log(
+								"Unrecognized parameter to $reduce, unexpected key")));
+		}
+	}
+
+	if (input.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40077), errmsg(
+							"Missing 'input' parameter to $reduce")));
+	}
+
+	if (in.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40079), errmsg(
+							"Missing 'in' parameter to $reduce")));
+	}
+
+	if (initialValue.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40078), errmsg(
+							"Missing 'initialValue' parameter to $reduce")));
+	}
+
+	DollarReduceArguments *arguments = palloc0(sizeof(DollarReduceArguments));
+
+	ParseAggregationExpressionData(&arguments->input, &input, context);
+	ParseAggregationExpressionData(&arguments->in, &in, context);
+	ParseAggregationExpressionData(&arguments->initialValue, &initialValue, context);
+	data->operator.arguments = arguments;
+	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+}
+
+
+/*
+ * Evaluates the output of a $reduce expression.
+ * $reduce is expressed as:
+ * { $reduce: { input: <expression>, as: <string>, in: <expression> } }
+ */
+void
+HandlePreParsedDollarReduce(pgbson *doc, void *arguments,
+							ExpressionResult *expressionResult)
+{
+	DollarReduceArguments *reduceArguments = arguments;
+
+	bool isNullOnEmpty = false;
+
+	ExpressionResult childExpression = ExpressionResultCreateChild(expressionResult);
+
+	EvaluateAggregationExpressionData(&reduceArguments->input, doc, &childExpression,
+									  isNullOnEmpty);
+
+	bson_value_t evaluatedInputArg = childExpression.value;
+
+	/* In native mongo if the input array is null or an undefined path the result is null. */
+	if (IsExpressionResultNullOrUndefined(&evaluatedInputArg))
+	{
+		bson_value_t nullValue = {
+			.value_type = BSON_TYPE_NULL
+		};
+
+		ExpressionResultSetValue(expressionResult, &nullValue);
+		return;
+	}
+
+	if (evaluatedInputArg.value_type != BSON_TYPE_ARRAY)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40080), errmsg(
+							"input to $reduce must be an array not %s", BsonTypeName(
+								evaluatedInputArg.value_type)),
+						errdetail_log("input to $reduce must be an array not %s",
+									  BsonTypeName(evaluatedInputArg.value_type))));
+	}
+
+	ExpressionResultReset(&childExpression);
+
+	EvaluateAggregationExpressionData(&reduceArguments->initialValue, doc,
+									  &childExpression,
+									  isNullOnEmpty);
+
+	bson_value_t evaluatedInitialValueArg = childExpression.value;
+
+	/* In native mongo if the input array is null or an undefined path the result is null. */
+	if (IsExpressionResultNullOrUndefined(&evaluatedInitialValueArg))
+	{
+		bson_value_t nullValue = {
+			.value_type = BSON_TYPE_NULL
+		};
+
+		ExpressionResultSetValue(expressionResult, &nullValue);
+		return;
+	}
+
+	StringView thisVariableName = {
+		.string = "this",
+		.length = 4,
+	};
+	StringView valueVariableName = {
+		.string = "value",
+		.length = 5,
+	};
+	ExpressionResultSetConstantVariable(&childExpression, &valueVariableName,
+										&evaluatedInitialValueArg);
+
+	bson_iter_t arrayIter;
+	BsonValueInitIterator(&evaluatedInputArg, &arrayIter);
+	bson_value_t result = evaluatedInitialValueArg;
+	while (bson_iter_next(&arrayIter))
+	{
+		const bson_value_t *currentElem = bson_iter_value(&arrayIter);
+		ExpressionResult elementExpression =
+			ExpressionResultCreateChild(&childExpression);
+		ExpressionResultSetConstantVariable(&childExpression, &thisVariableName,
+											currentElem);
+
+		EvaluateAggregationExpressionData(&reduceArguments->in, doc, &elementExpression,
+										  isNullOnEmpty);
+
+		ExpressionResultSetConstantVariable(&childExpression, &valueVariableName,
+											&elementExpression.value);
+		result = elementExpression.value;
+	}
+
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
 /**
+ * Parses the $sortArray expression specified in the bson_value_t and stores it in the data argument.
+ */
+void
+ParseDollarSortArray(const bson_value_t *argument, AggregationExpressionData *data,
+					 ParseAggregationExpressionContext *context)
+{
+	if (argument->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION2942500), errmsg(
+							"$sortArray requires an object as an argument, found: %s",
+							BsonTypeName(argument->value_type)),
+						errdetail_log(
+							"$sortArray requires an object as an argument, found: %s",
+							BsonTypeName(argument->value_type))));
+	}
+
+	data->operator.returnType = BSON_TYPE_ARRAY;
+
+	bson_iter_t docIter;
+	BsonValueInitIterator(argument, &docIter);
+
+	bson_value_t input = { 0 };
+	bson_value_t sortby = { 0 };
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "input") == 0)
+		{
+			input = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "sortBy") == 0)
+		{
+			sortby = *bson_iter_value(&docIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION2942501), errmsg(
+								"$sortArray found an unknown argument: %s", key),
+							errdetail_log(
+								"$sortArray found an unknown argument: %s", key)));
+		}
+	}
+
+	if (input.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION2942502), errmsg(
+							"$sortArray requires 'input' to be specified")));
+	}
+
+	if (sortby.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION2942503), errmsg(
+							"$sortArray requires 'sortBy' to be specified")));
+	}
+
+	DollarSortArrayArguments *arguments = palloc0(sizeof(DollarSortArrayArguments));
+
+	ParseAggregationExpressionData(&arguments->input, &input, context);
+
+	/* Validate $sort spec, and all nested values if value is object */
+	SortContext sortContext;
+	ValidateSortSpecAndSetSortContext(sortby, &sortContext);
+	arguments->sortContext = sortContext;
+
+	if (IsAggregationExpressionConstant(&arguments->input))
+	{
+		ProcessDollarSortArray(&arguments->input.value, &arguments->sortContext,
+							   &data->value);
+		data->kind = AggregationExpressionKind_Constant;
+
+		pfree(arguments);
+	}
+	else
+	{
+		data->operator.arguments = arguments;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+	}
+}
+
+
+/*
+ * Evaluates the output of a $sortArray expression.
+ * $sortArray is expressed as:
+ * { $sortArray: { input: <array>, sortBy: <sort spec> } }
+ */
+void
+HandlePreParsedDollarSortArray(pgbson *doc, void *arguments,
+							   ExpressionResult *expressionResult)
+{
+	DollarSortArrayArguments *sortArrayArguments = arguments;
+	bool isNullOnEmpty = false;
+	ExpressionResult childExpression = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(&sortArrayArguments->input, doc, &childExpression,
+									  isNullOnEmpty);
+	bson_value_t evaluatedInputArg = childExpression.value;
+
+	bson_value_t result;
+	ProcessDollarSortArray(&evaluatedInputArg, &sortArrayArguments->sortContext, &result);
+
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/*
+ * This function parses the input for operator $zip.
+ * The input to this function is of the following format { $zip: { inputs: <expression(array of arrays)>, useLongestLength: <bool>, defaults: <expression> } }.
+ * useLongestLength and defaults are optional arguments.
+ * useLongestLength must be true if defaults is specified.
+ */
+void
+ParseDollarZip(const bson_value_t *argument, AggregationExpressionData *data,
+			   ParseAggregationExpressionContext *context)
+{
+	if (argument->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34460), errmsg(
+							"$zip only supports an object as an argument, found %s",
+							BsonTypeName(
+								argument->value_type)),
+						errdetail_log(
+							"$zip only supports an object as an argument, found %s",
+							BsonTypeName(
+								argument->value_type))));
+	}
+
+	data->operator.returnType = BSON_TYPE_ARRAY;
+
+	bson_iter_t docIter;
+	BsonValueInitIterator(argument, &docIter);
+
+	bson_value_t inputs = { 0 };
+	bson_value_t useLongestLength = { 0 };
+	bson_value_t defaults = { 0 };
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "inputs") == 0)
+		{
+			inputs = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "useLongestLength") == 0)
+		{
+			useLongestLength = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "defaults") == 0)
+		{
+			defaults = *bson_iter_value(&docIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34464), errmsg(
+								"$zip found an unknown argument: %s", key),
+							errdetail_log("$zip found an unknown argument: %s", key)));
+		}
+	}
+
+	if (inputs.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34465), errmsg(
+							"$zip requires at least one input array")));
+	}
+
+	if (useLongestLength.value_type == BSON_TYPE_EOD)
+	{
+		useLongestLength.value_type = BSON_TYPE_BOOL;
+		useLongestLength.value.v_bool = false;
+	}
+	else if (useLongestLength.value_type != BSON_TYPE_BOOL)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34463), errmsg(
+							"useLongestLength must be a bool, found %s", BsonTypeName(
+								useLongestLength.value_type)),
+						errdetail_log("useLongestLength must be a bool, found %s",
+									  BsonTypeName(
+										  useLongestLength.value_type))));
+	}
+
+	DollarZipArguments *arguments = palloc0(sizeof(DollarZipArguments));
+
+	arguments->useLongestLength.value = useLongestLength;
+	ParseAggregationExpressionData(&arguments->inputs, &inputs, context);
+	ParseAggregationExpressionData(&arguments->defaults, &defaults, context);
+
+	if (IsAggregationExpressionConstant(&arguments->inputs) &&
+		IsAggregationExpressionConstant(&arguments->defaults))
+	{
+		/* If all input arguments are constant, we can calculate the result now */
+		ProcessDollarZip(inputs, useLongestLength, defaults, &data->value);
+		data->kind = AggregationExpressionKind_Constant;
+		pfree(arguments);
+	}
+	else
+	{
+		data->operator.arguments = arguments;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+	}
+}
+
+
+/*
+ * Evaluates the output of a $zip expression.
+ * $zip is expressed as:
+ * { $zip: { inputs: <array of arrays>, useLongestLength: <bool>, defaults: <array> } }
+ */
+void
+HandlePreParsedDollarZip(pgbson *doc, void *arguments,
+						 ExpressionResult *expressionResult)
+{
+	DollarZipArguments *zipArguments = arguments;
+
+	bool isNullOnEmpty = false;
+
+	ExpressionResult childExpression = ExpressionResultCreateChild(expressionResult);
+
+	EvaluateAggregationExpressionData(&zipArguments->inputs, doc, &childExpression,
+									  isNullOnEmpty);
+
+	bson_value_t evaluatedInputsArg = childExpression.value;
+
+	ExpressionResultReset(&childExpression);
+
+	EvaluateAggregationExpressionData(&zipArguments->defaults, doc, &childExpression,
+									  isNullOnEmpty);
+
+	bson_value_t evaluatedDefaultsArg = childExpression.value;
+
+	bson_value_t result = { 0 };
+	ProcessDollarZip(evaluatedInputsArg, zipArguments->useLongestLength.value,
+					 evaluatedDefaultsArg, &result);
+
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/* --------------------------------------------------------- */
+/* Parsing and Pre-parsing helper functions */
+/* --------------------------------------------------------- */
+
+static void
+ParseArrayOperatorOneOperand(const bson_value_t *argument,
+							 AggregationExpressionData *data,
+							 const char *operatorName,
+							 ProcessArrayOperatorOneOperand processOperatorFunc,
+							 ParseAggregationExpressionContext *context)
+{
+	int numRequiredArgs = 1;
+	AggregationExpressionArgumentsKind argumentKind;
+	AggregationExpressionData *parsedArgument = ParseFixedArgumentsForExpression(
+		argument, numRequiredArgs, operatorName, &argumentKind, context);
+
+	if (IsAggregationExpressionConstant(parsedArgument))
+	{
+		processOperatorFunc(&parsedArgument->value, &data->value);
+		data->kind = AggregationExpressionKind_Constant;
+		pfree(parsedArgument);
+	}
+	else
+	{
+		data->operator.arguments = parsedArgument;
+		data->operator.argumentsKind = argumentKind;
+	}
+}
+
+
+static void
+HandlePreParsedArrayOperatorOneOperand(pgbson *doc,
+									   const bson_value_t *argument,
+									   ExpressionResult *expressionResult,
+									   ProcessArrayOperatorOneOperand
+									   processOperatorFunc)
+{
+	AggregationExpressionData *parsedArgument = (AggregationExpressionData *) argument;
+
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(parsedArgument, doc, &childResult, isNullOnEmpty);
+	bson_value_t arrayValue = childResult.value;
+
+	bson_value_t result;
+	processOperatorFunc(&arrayValue, &result);
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+static pgbsonelement
+ParseElementFromObjectForArrayToObject(const bson_value_t *element)
+{
+	if (element->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYTOOBJECTALLMUSTBEOBJECTS),
+						errmsg(
+							"$arrayToObject requires a consistent input format. Elements must all be arrays or all be objects. Object was detected, now found: %s",
+							BsonTypeName(element->value_type)),
+						errdetail_log(
+							"$arrayToObject requires a consistent input format. Elements must all be arrays or all be objects. Object was detected, now found: %s",
+							BsonTypeName(element->value_type))));
+	}
+
+	int keyCount = BsonDocumentValueCountKeys(element);
+	if (keyCount != 2)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYTOOBJECTINCORRECTNUMBEROFKEYS),
+						errmsg(
+							"$arrayToObject requires an object keys of 'k' and 'v'. Found incorrect number of keys:%d",
+							keyCount),
+						errdetail_log(
+							"$arrayToObject requires an object keys of 'k' and 'v'. Found incorrect number of keys:%d",
+							keyCount)));
+	}
+
+	pgbsonelement value = { 0 };
+
+	bson_iter_t docIter;
+	BsonValueInitIterator(element, &docIter);
+
+	while (bson_iter_next(&docIter))
+	{
+		const char *currentKey = bson_iter_key(&docIter);
+		if (strcmp(currentKey, "k") == 0)
+		{
+			const bson_value_t *resultKey = bson_iter_value(&docIter);
+			if (resultKey->value_type != BSON_TYPE_UTF8)
+			{
+				ereport(ERROR, (errcode(
+									ERRCODE_HELIO_DOLLARARRAYTOOBJECTOBJECTKEYMUSTBESTRING),
+								errmsg(
+									"$arrayToObject requires an object with keys 'k' and 'v', where the value of 'k' must be of type string. Found type: %s",
+									BsonTypeName(resultKey->value_type)),
+								errdetail_log(
+									"$arrayToObject requires an object with keys 'k' and 'v', where the value of 'k' must be of type string. Found type: %s",
+									BsonTypeName(resultKey->value_type))));
+			}
+
+			value.path = resultKey->value.v_utf8.str;
+			value.pathLength = resultKey->value.v_utf8.len;
+		}
+		else if (strcmp(currentKey, "v") == 0)
+		{
+			value.bsonValue = *bson_iter_value(&docIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(
+								ERRCODE_HELIO_DOLLARARRAYTOOBJECTREQUIRESOBJECTWITHKANDV),
+							errmsg(
+								"$arrayToObject requires an object with keys 'k' and 'v'. Missing either or both keys from: %s",
+								BsonValueToJsonForLogging(element)),
+							errdetail_log(
+								"$arrayToObject requires an object with keys 'k' and 'v'. Missing either or both keys")));
+		}
+	}
+
+	return value;
+}
+
+
+static pgbsonelement
+ParseElementFromArrayForArrayToObject(const bson_value_t *element)
+{
+	if (element->value_type != BSON_TYPE_ARRAY)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYTOOBJECTALLMUSTBEARRAYS), errmsg(
+							"$arrayToObject requires a consistent input format. Elements must all be arrays or all be objects. Array was detected, now found: %s",
+							BsonTypeName(element->value_type)),
+						errdetail_log(
+							"$arrayToObject requires a consistent input format. Elements must all be arrays or all be objects. Array was detected, now found: %s",
+							BsonTypeName(element->value_type))));
+	}
+
+	int arrayLength = BsonDocumentValueCountKeys(element);
+	if (arrayLength != 2)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYTOOBJECTINCORRECTARRAYLENGTH),
+						errmsg(
+							"$arrayToObject requires an array of size 2 arrays,found array of size: %d",
+							arrayLength),
+						errdetail_log(
+							"$arrayToObject requires an array of size 2 arrays,found array of size: %d",
+							arrayLength)));
+	}
+
+	pgbsonelement value = { 0 };
+	bson_iter_t arrayIter;
+	BsonValueInitIterator(element, &arrayIter);
+
+	bson_iter_next(&arrayIter);
+	const bson_value_t *currentKey = bson_iter_value(&arrayIter);
+	if (currentKey->value_type != BSON_TYPE_UTF8)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYTOOBJECTARRAYKEYMUSTBESTRING),
+						errmsg(
+							"$arrayToObject requires an array of key-value pairs, where the key must be of type string. Found key type: %s",
+							BsonTypeName(currentKey->value_type)),
+						errdetail_log(
+							"$arrayToObject requires an array of key-value pairs, where the key must be of type string. Found key type: %s",
+							BsonTypeName(currentKey->value_type))));
+	}
+
+	value.path = currentKey->value.v_utf8.str;
+	value.pathLength = currentKey->value.v_utf8.len;
+
+	bson_iter_next(&arrayIter);
+	value.bsonValue = *bson_iter_value(&arrayIter);
+
+	return value;
+}
+
+
+/*
+ * This function is a common function to parse min and max operator.
+ * This takes in bool isMax as extra argument to confirm whether to process for min or max operator.
+ */
+static void
+ParseDollarMinAndMax(bool isMax, const bson_value_t *argument,
+					 AggregationExpressionData *data,
+					 ParseAggregationExpressionContext *context)
+{
+	char *opName = isMax ? "$max" : "$min";
+	AggregationExpressionData *argumentData = palloc0(
+		sizeof(AggregationExpressionData));
+
+	/*
+	 * When operator expects a single argument and input is an array of single element,
+	 * evaluate the element as argument (not as a list) to match the scenario when input is not an array.
+	 */
+	if (argument->value_type == BSON_TYPE_ARRAY &&
+		BsonDocumentValueCountKeys(argument) == 1)
+	{
+		argumentData = ParseFixedArgumentsForExpression(argument,
+														1,
+														opName,
+														&argumentData->operator.
+														argumentsKind,
+														context);
+	}
+	else
+	{
+		ParseAggregationExpressionData(argumentData, argument, context);
+	}
+
+	if (IsAggregationExpressionConstant(argumentData))
+	{
+		SetResultValueForDollarMaxMin(&argumentData->value, &data->value, isMax);
+		data->kind = AggregationExpressionKind_Constant;
+		pfree(argumentData);
+		return;
+	}
+
+	data->operator.arguments = argumentData;
+	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+}
+
+
+/* Parses the $maxN/$minN expression specified in the bson_value_t and stores it in the data argument.
+ * $maxN is expressed as { "$maxN": { n : <numeric-expression>, input: <array-expression> } }
+ * $minN is expressed as { "$minN": { n : <numeric-expression>, input: <array-expression> } }
+ */
+static void
+ParseDollarMaxMinN(const bson_value_t *argument, AggregationExpressionData *data, bool
+				   isMaxN, ParseAggregationExpressionContext *context)
+{
+	const char *operatorName = isMaxN == true ? "$maxN" : "$minN";
+
+	if (argument->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787900), errmsg(
+							"specification must be an object; found %s: %s", operatorName,
+							BsonValueToJsonForLogging(argument)),
+						errdetail_log(
+							"specification must be an object; found opname:%s input type:%s",
+							operatorName, BsonTypeName(argument->value_type))));
+	}
+
+	data->operator.returnType = BSON_TYPE_ARRAY;
+
+	bson_iter_t docIter;
+	BsonValueInitIterator(argument, &docIter);
+
+	bson_value_t input = { 0 };
+	bson_value_t count = { 0 };
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "input") == 0)
+		{
+			input = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "n") == 0)
+		{
+			count = *bson_iter_value(&docIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787901), errmsg(
+								"Unknown argument for 'n' operator: %s", key),
+							errdetail_log(
+								"Unknown argument for 'n' operator: %s", key)));
+		}
+	}
+
+	if (input.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787907), errmsg(
+							"Missing value for 'input'")));
+	}
+
+	if (count.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787906), errmsg(
+							"Missing value for 'n'")));
+	}
+
+	DollarMaxMinNArguments *arguments = palloc0(sizeof(DollarMaxMinNArguments));
+
+	ParseAggregationExpressionData(&arguments->input, &input, context);
+	ParseAggregationExpressionData(&arguments->n, &count, context);
+
+	arguments->isMaxN = isMaxN;
+
+	if (IsAggregationExpressionConstant(&arguments->input) &&
+		IsAggregationExpressionConstant(&arguments->n))
+	{
+		ProcessDollarMaxAndMinN(&data->value, &arguments->n.value,
+								&arguments->input.value,
+								isMaxN);
+		data->kind = AggregationExpressionKind_Constant;
+		pfree(arguments);
+	}
+	else
+	{
+		data->operator.arguments = arguments;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+	}
+}
+
+
+/*
+ * This function is a common function to parse sum and avg operator.
+ * This takes in bool isSum as extra argument to confirm whether to process for sum or avg operator.
+ */
+static void
+ParseDollarSumAndAverage(bool isSum, const bson_value_t *argument,
+						 AggregationExpressionData *data,
+						 ParseAggregationExpressionContext *context)
+{
+	char *opName = isSum ? "$sum" : "$avg";
+	AggregationExpressionData *argumentData = palloc0(
+		sizeof(AggregationExpressionData));
+
+	/*
+	 * When operator expects a single argument and input is an array of single element,
+	 * evaluate the element as argument (not as a list) to match the scenario when input is not an array.
+	 */
+	if (argument->value_type == BSON_TYPE_ARRAY &&
+		BsonDocumentValueCountKeys(argument) == 1)
+	{
+		argumentData = ParseFixedArgumentsForExpression(argument,
+														1,
+														opName,
+														&argumentData->operator.
+														argumentsKind,
+														context);
+	}
+	else
+	{
+		ParseAggregationExpressionData(argumentData, argument, context);
+	}
+
+	if (IsAggregationExpressionConstant(argumentData))
+	{
+		SetResultValueForDollarSumAvg(&argumentData->value, &data->value, isSum);
+		data->kind = AggregationExpressionKind_Constant;
+		pfree(argumentData);
+		return;
+	}
+
+	data->operator.arguments = argumentData;
+	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+}
+
+
+/* Function that processes defaults argument for $zip */
+/* Validates if defaults is specified correctly */
+static bson_value_t *
+ParseZipDefaultsArgument(int rowNum, bson_value_t evaluatedDefaultsArg, bool
+						 useLongestLengthArgBoolValue)
+{
+	if (!IsExpressionResultNullOrUndefined(&evaluatedDefaultsArg))
+	{
+		if (evaluatedDefaultsArg.value_type != BSON_TYPE_ARRAY)
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34462), errmsg(
+								"defaults must be an array of expressions, found %s",
+								BsonTypeName(
+									evaluatedDefaultsArg.value_type)),
+							errdetail_log(
+								"defaults must be an array of expressions, found %s",
+								BsonTypeName(
+									evaluatedDefaultsArg.value_type))));
+		}
+		else if (useLongestLengthArgBoolValue == false)
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34466), errmsg(
+								"cannot specify defaults unless useLongestLength is true")));
+		}
+		else if (BsonDocumentValueCountKeys(&evaluatedDefaultsArg) != rowNum)
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34467), errmsg(
+								"defaults and inputs must have the same length")));
+		}
+	}
+
+	bson_value_t nullValue = {
+		.value_type = BSON_TYPE_NULL
+	};
+	bson_value_t *defaultsElements = (bson_value_t *) palloc0(rowNum *
+															  sizeof(bson_value_t));
+
+	/* In native mongo, if defaults is empty or not specified, $zip uses null as the default value. */
+	if (IsExpressionResultNullOrUndefined(&evaluatedDefaultsArg))
+	{
+		for (int i = 0; i < rowNum; i++)
+		{
+			defaultsElements[i] = nullValue;
+		}
+	}
+	else
+	{
+		bson_iter_t defaultsIter;
+		BsonValueInitIterator(&evaluatedDefaultsArg, &defaultsIter);
+
+		for (int defaultsIndex = 0; bson_iter_next(&defaultsIter); defaultsIndex++)
+		{
+			defaultsElements[defaultsIndex] = *bson_iter_value(&defaultsIter);
+		}
+	}
+	return defaultsElements;
+}
+
+
+/* Function that processes inputs argument for $zip */
+/* Validates if inputs is specified correctly */
+static ZipParseInputsResult
+ParseZipInputsArgument(int rowNum, bson_value_t evaluatedInputsArg, bool
+					   useLongestLengthArgBoolValue)
+{
+	/* array to store the copy of elements in the inputs, avoid using array iterators multiple times in following loop */
+	bson_value_t **inputsElements = (bson_value_t **) palloc0(rowNum *
+															  sizeof(bson_value_t *));
+
+	/* array to store the length of each array in inputs */
+	int *inputsElementLengths = (int *) palloc0(rowNum * sizeof(int32_t));
+
+	bson_iter_t inputsIter;
+	BsonValueInitIterator(&evaluatedInputsArg, &inputsIter);
+
+	int maxSubArrayLength = -1;
+	int minSubArrayLength = INT_MAX;
+
+	for (int inputsIndex = 0; bson_iter_next(&inputsIter); inputsIndex++)
+	{
+		const bson_value_t *inputsElem = bson_iter_value(&inputsIter);
+
+		/* The length of current subarray in inputs */
+		int currentSubArrayLen = 0;
+
+		/* In native mongo, if any of the inputs arrays resolves to a value of null or refers to a missing field, $zip returns null. */
+		if (IsExpressionResultNullOrUndefined(inputsElem))
+		{
+			ZipParseInputsResult nullValue;
+			nullValue.outputSubArrayLength = -1;
+			pfree(inputsElements);
+			pfree(inputsElementLengths);
+			return nullValue;
+		}
+
+		/* In native mongo, if any of the inputs arrays does not resolve to an array or null nor refers to a missing field, $zip returns an error. */
+		else if (inputsElem->value_type != BSON_TYPE_ARRAY)
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34468), errmsg(
+								"$zip found a non-array expression in input: %s",
+								BsonValueToJsonForLogging(inputsElem)),
+							errdetail_log(
+								"$zip found a non-array expression in input: %s",
+								BsonValueToJsonForLogging(inputsElem))));
+		}
+		else
+		{
+			currentSubArrayLen = BsonDocumentValueCountKeys(inputsElem);
+		}
+
+		maxSubArrayLength = Max(maxSubArrayLength, currentSubArrayLen);
+		minSubArrayLength = Min(minSubArrayLength, currentSubArrayLen);
+
+		inputsElementLengths[inputsIndex] = currentSubArrayLen;
+
+		/* handle empty array in inputs */
+		if (currentSubArrayLen > 0)
+		{
+			bson_value_t *subArrayElements = (bson_value_t *) palloc0(currentSubArrayLen *
+																	  sizeof(bson_value_t));
+			inputsElements[inputsIndex] = subArrayElements;
+
+			bson_iter_t subInputArrayIter;
+			BsonValueInitIterator(inputsElem, &subInputArrayIter);
+
+			for (int subArrayIndex = 0; bson_iter_next(&subInputArrayIter);
+				 subArrayIndex++)
+			{
+				subArrayElements[subArrayIndex] = *bson_iter_value(&subInputArrayIter);
+			}
+		}
+		else
+		{
+			inputsElements[inputsIndex] = NULL;
+		}
+	}
+
+	int outputSubArrayLength = useLongestLengthArgBoolValue ? maxSubArrayLength :
+							   minSubArrayLength;
+
+	return (ZipParseInputsResult) {
+			   .inputsElements = inputsElements,
+			   .inputsElementLengths = inputsElementLengths,
+			   .outputSubArrayLength = outputSubArrayLength
+	};
+}
+
+
+/* Helper to parse expressions of $arrayElemAt, $first, $last. */
+static void
+ParseDollarArrayElemAtCore(const bson_value_t *argument,
+						   AggregationExpressionData *data,
+						   const char *operatorName,
+						   ParseAggregationExpressionContext *context)
+{
+	int numRequiredArgs = strcmp(operatorName, "$arrayElemAt") == 0 ? 2 : 1;
+
+	AggregationExpressionData *parsedArray = NULL;
+	AggregationExpressionData *parsedIndex = NULL;
+	List *parsedArguments = NIL;
+	if (numRequiredArgs == 2)
+	{
+		parsedArguments = ParseFixedArgumentsForExpression(argument, numRequiredArgs,
+														   operatorName,
+														   &data->operator.argumentsKind,
+														   context);
+
+		parsedArray = list_nth(parsedArguments, 0);
+		parsedIndex = list_nth(parsedArguments, 1);
+	}
+	else
+	{
+		parsedArray = ParseFixedArgumentsForExpression(
+			argument, numRequiredArgs,
+			operatorName,
+			&data->operator.argumentsKind,
+			context);
+
+		parsedIndex = palloc0(sizeof(AggregationExpressionData));
+		if (strcmp(operatorName, "$first") == 0)
+		{
+			parsedIndex->value.value_type = BSON_TYPE_INT32;
+			parsedIndex->value.value.v_int32 = 0;
+			parsedIndex->kind = AggregationExpressionKind_Constant;
+		}
+		else if (strcmp(operatorName, "$last") == 0)
+		{
+			parsedIndex->value.value_type = BSON_TYPE_INT32;
+			parsedIndex->value.value.v_int32 = -1;
+			parsedIndex->kind = AggregationExpressionKind_Constant;
+		}
+
+		parsedArguments = list_make2(parsedArray, parsedIndex);
+	}
+
+	if (IsAggregationExpressionConstant(parsedArray) && IsAggregationExpressionConstant(
+			parsedIndex))
+	{
+		ArrayElemAtArgumentState state;
+		memset(&state, 0, sizeof(ArrayElemAtArgumentState));
+
+		InitializeDualArgumentExpressionState(parsedArray->value, parsedIndex->value,
+											  false,
+											  &state.dualState);
+		state.isArrayElemAtOperator = strcmp(operatorName, "$arrayElemAt") == 0;
+		state.opName = operatorName;
+
+		data->value.value_type = BSON_TYPE_EOD;
+		ProcessDollarArrayElemAt(&state, &data->value);
+
+		data->kind = AggregationExpressionKind_Constant;
+		list_free_deep(parsedArguments);
+	}
+	else
+	{
+		data->operator.arguments = parsedArguments;
+	}
+}
+
+
+/* Helper to handle executing pre-parsed expressions of $arrayElemAt, $first and $last. */
+static void
+HandlePreParsedDollarArrayElemAtCore(pgbson *doc, void *argument,
+									 ExpressionResult *expressionResult,
+									 char *operatorName)
+{
+	List *arguments = (List *) argument;
+
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+
+	AggregationExpressionData *parsedArray = list_nth(arguments, 0);
+	EvaluateAggregationExpressionData(parsedArray, doc, &childResult, isNullOnEmpty);
+	bson_value_t arrayValue = childResult.value;
+
+	ExpressionResultReset(&childResult);
+
+	AggregationExpressionData *parsedIndex = list_nth(arguments, 1);
+	EvaluateAggregationExpressionData(parsedIndex, doc, &childResult, isNullOnEmpty);
+	bson_value_t indexValue = childResult.value;
+
+	ArrayElemAtArgumentState state;
+	memset(&state, 0, sizeof(ArrayElemAtArgumentState));
+
+	state.opName = operatorName;
+	InitializeDualArgumentExpressionState(arrayValue, indexValue, false,
+										  &state.dualState);
+	state.isArrayElemAtOperator = strcmp("$arrayElemAt", operatorName) == 0;
+
+	bson_value_t result;
+	ProcessDollarArrayElemAt(&state, &result);
+	if (result.value_type != BSON_TYPE_EOD)
+	{
+		ExpressionResultSetValue(expressionResult, &result);
+	}
+}
+
+
+/* --------------------------------------------------------- */
+/* Process operator helper functions */
+/* --------------------------------------------------------- */
+
+/*
+ * Process the $in operator and returns true or false if the first argument is
+ * found or not in the second argument which is the array to search. */
+static void
+ProcessDollarIn(void *state, bson_value_t *result)
+{
+	DualArgumentExpressionState *dollarInState =
+		(DualArgumentExpressionState *) state;
+
+	bson_value_t array = dollarInState->secondArgument;
+
+	if (array.value_type != BSON_TYPE_ARRAY)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARINREQUIRESARRAY), errmsg(
+							"$in requires an array as a second argument, found: %s",
+							array.value_type == BSON_TYPE_EOD ?
+							MISSING_TYPE_NAME :
+							BsonTypeName(array.value_type)),
+						errdetail_log(
+							"$in requires an array as a second argument, found: %s",
+							array.value_type == BSON_TYPE_EOD ?
+							MISSING_TYPE_NAME :
+							BsonTypeName(array.value_type))));
+	}
+
+	bool found = false;
+	bson_value_t elementToFind = dollarInState->firstArgument;
+	bson_iter_t arrayIterator;
+	BsonValueInitIterator(&array, &arrayIterator);
+
+	/* $in expression doesn't support matching by regex */
+	while (bson_iter_next(&arrayIterator))
+	{
+		const bson_value_t *currentValue = bson_iter_value(&arrayIterator);
+
+		if (elementToFind.value_type == BSON_TYPE_NULL &&
+			currentValue->value_type == BSON_TYPE_NULL)
+		{
+			found = true;
+			break;
+		}
+
+		bool isComparisonValid = false;
+		int cmp = CompareBsonValueAndType(&elementToFind, currentValue,
+										  &isComparisonValid);
+		if (cmp == 0 && isComparisonValid)
+		{
+			found = true;
+			break;
+		}
+	}
+
+	result->value_type = BSON_TYPE_BOOL;
+	result->value.v_bool = found;
+}
+
+
+/* Process the $slice operator and save the sliced array into result */
+static void
+ProcessDollarSlice(void *state, bson_value_t *result)
+{
+	ThreeArgumentExpressionState *context = (ThreeArgumentExpressionState *) state;
+	bson_value_t *sourceArray = NULL;
+	int numToSkip = 0;
+	int numToReturn = INT32_MAX;
+
+	if (context->hasNullOrUndefined)
+	{
+		result->value_type = BSON_TYPE_NULL;
+		return;
+	}
+
+	/* fetch first argument from context */
+	sourceArray = &(context->firstArgument);
+
+	if (sourceArray->value_type != BSON_TYPE_ARRAY)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARSLICEINVALIDINPUT), errmsg(
+							"First argument to $slice must be an array, but is of type: %s",
+							BsonTypeName(sourceArray->value_type)),
+						errdetail_log(
+							"First argument to $slice must be an array, but is of type: %s",
+							BsonTypeName(sourceArray->value_type))));
+	}
+
+	/* fetch second argument from context */
+	bson_value_t *currentElement = &(context->secondArgument);
+
+	DollarSliceInputValidation(currentElement, true);
+
+	int int32Val = BsonValueAsInt32(currentElement);
+
+	if (context->totalProcessedArgs == 2 && int32Val >= 0)
+	{
+		numToReturn = int32Val;
+	}
+	else if (int32Val < 0)
+	{
+		int sourceArrayLength = BsonDocumentValueCountKeys(sourceArray);
+		numToSkip = sourceArrayLength + int32Val;
+	}
+	else
+	{
+		numToSkip = int32Val;
+	}
+
+	/* fetch third argument from context */
+	if (context->totalProcessedArgs == 3)
+	{
+		currentElement = &(context->thirdArgument);
+
+		DollarSliceInputValidation(currentElement, false);
+
+		int32Val = BsonValueAsInt32(currentElement);
+
+		if (int32Val <= 0)
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARSLICEINVALIDSIGNTHIRDARG),
+							errmsg(
+								"Third argument to $slice must be positive: %s",
+								BsonValueToJsonForLogging(currentElement)),
+							errdetail_log(
+								"Third argument to $slice must be positive but found negative")));
+		}
+		numToReturn = BsonValueAsInt32(currentElement);
+	}
+
+	/* Traverse input array and create a new sliced array using numToSkip and numToReturn */
+	bson_iter_t arrayIter;
+	BsonValueInitIterator(sourceArray, &arrayIter);
+	pgbson_writer writer;
+	PgbsonWriterInit(&writer);
+	pgbson_array_writer arrayWriter;
+	PgbsonWriterStartArray(&writer, "", 0, &arrayWriter);
+
+	while (numToSkip > 0 && bson_iter_next(&arrayIter))
+	{
+		numToSkip--;
+	}
+
+	while (bson_iter_next(&arrayIter) && numToReturn > 0)
+	{
+		const bson_value_t *tmpVal = bson_iter_value(&arrayIter);
+		PgbsonArrayWriterWriteValue(&arrayWriter, tmpVal);
+		numToReturn--;
+	}
+
+	PgbsonWriterEndArray(&writer, &arrayWriter);
+	*result = PgbsonArrayWriterGetValue(&arrayWriter);
+}
+
+
+/* Process the $arrayElemAt operator and returns the element in the array at the index provided */
+static void
+ProcessDollarArrayElemAt(void *state, bson_value_t *result)
+{
+	ArrayElemAtArgumentState *elemAtState =
+		(ArrayElemAtArgumentState *) state;
+
+	if (elemAtState->dualState.hasNullOrUndefined)
+	{
+		result->value_type = BSON_TYPE_NULL;
+		return;
+	}
+
+	bson_value_t array = elemAtState->dualState.firstArgument;
+	bson_value_t indexValue = elemAtState->dualState.secondArgument;
+
+	if (array.value_type != BSON_TYPE_ARRAY)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_ARRAYOPERATORELEMATFIRSTARGMUSTBEARRAY),
+						errmsg(
+							elemAtState->isArrayElemAtOperator ?
+							"%s's first argument must be an array, but is %s" :
+							"%s's argument must be an array, but is %s",
+							elemAtState->opName,
+							BsonTypeName(array.value_type)),
+						errdetail_log(elemAtState->isArrayElemAtOperator ?
+									  "%s's first argument must be an array, but is %s" :
+									  "%s's argument must be an array, but is %s",
+									  elemAtState->opName,
+									  BsonTypeName(array.value_type))));
+	}
+	if (elemAtState->isArrayElemAtOperator && !BsonTypeIsNumber(indexValue.value_type))
+	{
+		bool isUndefined = IsExpressionResultUndefined(&indexValue);
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYELEMATSECONDARGARGMUSTBENUMERIC),
+						errmsg(
+							"$arrayElemAt's second argument must be a numeric value, but is %s",
+							isUndefined ?
+							MISSING_TYPE_NAME :
+							BsonTypeName(indexValue.value_type)),
+						errdetail_log(
+							"$arrayElemAt's second argument must be a numeric value, but is %s",
+							isUndefined ?
+							MISSING_TYPE_NAME :
+							BsonTypeName(indexValue.value_type))));
+	}
+
+	bool checkFixedInteger = true;
+	if (elemAtState->isArrayElemAtOperator &&
+		!IsBsonValue32BitInteger(&indexValue, checkFixedInteger))
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYELEMATSECONDARGARGMUSTBE32BIT),
+						errmsg(
+							"$arrayElemAt's second argument must be representable as a 32-bit integer: %s",
+							BsonValueToJsonForLogging(&indexValue)),
+						errdetail_log(
+							"$arrayElemAt's second argument of type %s can't be representable as a 32-bit integer",
+							BsonTypeName(indexValue.value_type))));
+	}
+
+	int32_t indexToFind = BsonValueAsInt32(&indexValue);
+	bool found = false;
+
+	/* If the provided index is negative, we need to treat the index as if it started from the end of the array */
+	if (indexToFind < 0)
+	{
+		indexToFind++;
+		bson_iter_t firstIter;
+		BsonValueInitIterator(&array, &firstIter);
+
+		bson_iter_t secondIter;
+		BsonValueInitIterator(&array, &secondIter);
+		while (bson_iter_next(&firstIter))
+		{
+			if (indexToFind == 0)
+			{
+				found = true;
+				bson_iter_next(&secondIter);
+			}
+			else
+			{
+				indexToFind++;
+			}
+		}
+
+		if (found)
+		{
+			*result = *bson_iter_value(&secondIter);
+		}
+	}
+	else
+	{
+		int currentIndex = 0;
+		bson_iter_t arrayIterator;
+		BsonValueInitIterator(&array, &arrayIterator);
+		while (bson_iter_next(&arrayIterator))
+		{
+			if (indexToFind == currentIndex)
+			{
+				found = true;
+				*result = *bson_iter_value(&arrayIterator);
+			}
+
+			currentIndex++;
+		}
+	}
+
+	if (!found)
+	{
+		/* The index was out of bounds, no result is returned. */
+		result->value_type = BSON_TYPE_EOD;
+	}
+}
+
+
+/* Function that checks if $isArray is true or false given an argument. */
+static void
+ProcessDollarIsArray(const bson_value_t *currentValue, bson_value_t *result)
+{
+	result->value_type = BSON_TYPE_BOOL;
+	result->value.v_bool = currentValue->value_type == BSON_TYPE_ARRAY;
+}
+
+
+/* Function that checks if the argument for $size is an array and returns the size of it. */
+static void
+ProcessDollarSize(const bson_value_t *currentValue, bson_value_t *result)
+{
+	if (currentValue->value_type != BSON_TYPE_ARRAY)
+	{
+		bool isUndefined = IsExpressionResultUndefined(currentValue);
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARSIZEREQUIRESARRAY), errmsg(
+							"The argument to $size must be an array, but was of type: %s",
+							isUndefined ?
+							MISSING_TYPE_NAME :
+							BsonTypeName(currentValue->value_type)),
+						errdetail_log(
+							"The argument to $size must be an array, but was of type: %s",
+							isUndefined ?
+							MISSING_TYPE_NAME :
+							BsonTypeName(currentValue->value_type))));
+	}
+
+	int size = 0;
+	bson_iter_t arrayIterator;
+	BsonValueInitIterator(currentValue, &arrayIterator);
+	while (bson_iter_next(&arrayIterator))
+	{
+		size++;
+	}
+
+	result->value_type = BSON_TYPE_INT32;
+	result->value.v_int32 = size;
+}
+
+
+/* Function that checks if the passed argument for $arrayToObject is valid and builds the object from the array,
+ * and writes it into the expression result.
+ * If there is a duplicate path the last found path wins and it's value is preserved. */
+static void
+ProcessDollarArrayToObject(const bson_value_t *currentValue, bson_value_t *result)
+{
+	if (IsExpressionResultNullOrUndefined(currentValue))
+	{
+		result->value_type = BSON_TYPE_NULL;
+		return;
+	}
+	else if (currentValue->value_type != BSON_TYPE_ARRAY)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYTOOBJECTREQUIRESARRAY), errmsg(
+							"$arrayToObject requires an array input, found: %s",
+							BsonTypeName(currentValue->value_type)),
+						errdetail_log("$arrayToObject requires an array input, found: %s",
+									  BsonTypeName(currentValue->value_type))));
+	}
+
+	bson_iter_t arrayIter;
+	BsonValueInitIterator(currentValue, &arrayIter);
+
+	List *elementsToWrite = NIL;
+	HTAB *hashTable = CreatePgbsonElementHashSet();
+
+	if (bson_iter_next(&arrayIter))
+	{
+		if (!BSON_ITER_HOLDS_ARRAY(&arrayIter) &&
+			!BSON_ITER_HOLDS_DOCUMENT(&arrayIter))
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARARRAYTOOBJECTBADINPUTTYPEFORMAT),
+							errmsg(
+								"Unrecognised input type format for $arrayToObject: %s",
+								BsonIterTypeName(&arrayIter)),
+							errdetail_log(
+								"Unrecognised input type format for $arrayToObject: %s",
+								BsonIterTypeName(&arrayIter))));
+		}
+
+		bool expectObjectElements = BSON_ITER_HOLDS_DOCUMENT(&arrayIter);
+		do {
+			pgbsonelement elementToWrite;
+			const bson_value_t *arrayValue = bson_iter_value(&arrayIter);
+
+			if (expectObjectElements)
+			{
+				elementToWrite = ParseElementFromObjectForArrayToObject(arrayValue);
+			}
+			else
+			{
+				elementToWrite = ParseElementFromArrayForArrayToObject(arrayValue);
+			}
+
+			if (strlen(elementToWrite.path) < elementToWrite.pathLength)
+			{
+				HelioErrorEreportCode errorCode = expectObjectElements ?
+												  ERRCODE_HELIO_LOCATION4940401 :
+												  ERRCODE_HELIO_LOCATION4940400;
+
+				ereport(ERROR, (errcode(errorCode), errmsg(
+									"Key field cannot contain an embedded null byte")));
+			}
+
+			PgbsonElementHashEntry searchEntry = {
+				.element = elementToWrite
+			};
+
+			bool found = false;
+			PgbsonElementHashEntry *hashEntry = hash_search(hashTable, &searchEntry,
+															HASH_ENTER, &found);
+
+			if (!found)
+			{
+				elementsToWrite = lappend(elementsToWrite, hashEntry);
+			}
+
+			hashEntry->element = elementToWrite;
+		} while (bson_iter_next(&arrayIter));
+	}
+
+	pgbson_writer objectWriter;
+	PgbsonWriterInit(&objectWriter);
+
+	pgbson_element_writer elementWriter;
+	PgbsonInitObjectElementWriter(&objectWriter, &elementWriter, "", 0);
+
+	pgbson_writer childWriter;
+	PgbsonElementWriterStartDocument(&elementWriter, &childWriter);
+
+	ListCell *elementToWriteCell = NULL;
+	foreach(elementToWriteCell, elementsToWrite)
+	{
+		CHECK_FOR_INTERRUPTS();
+
+		PgbsonElementHashEntry *hashEntry =
+			(PgbsonElementHashEntry *) lfirst(elementToWriteCell);
+		pgbsonelement element = hashEntry->element;
+
+		PgbsonWriterAppendValue(&childWriter, element.path, element.pathLength,
+								&element.bsonValue);
+	}
+
+	PgbsonElementWriterEndDocument(&elementWriter, &childWriter);
+
+	const bson_value_t bsonValue = PgbsonElementWriterGetValue(&elementWriter);
+
+	pgbson *pgbson = BsonValueToDocumentPgbson(&bsonValue);
+	pgbsonelement element;
+	PgbsonToSinglePgbsonElement(pgbson, &element);
+	*result = element.bsonValue;
+
+	hash_destroy(hashTable);
+	list_free(elementsToWrite);
+}
+
+
+static void
+ProcessDollarSortArray(bson_value_t *inputValue, SortContext *sortContext,
+					   bson_value_t *result)
+{
+	/* In native mongo if the input array is null or an undefined path the result is null. */
+	if (IsExpressionResultNullOrUndefined(inputValue))
+	{
+		result->value_type = BSON_TYPE_NULL;
+		return;
+	}
+
+	if (inputValue->value_type != BSON_TYPE_ARRAY)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION2942504), errmsg(
+							"The input argument to $sortArray must be an array, but was of type: %s",
+							BsonTypeName(inputValue->value_type)),
+						errdetail_log(
+							"The input argument to $sortArray must be an array, but was of type: %s",
+							BsonTypeName(inputValue->value_type))));
+	}
+
+	bson_iter_t arrayIter;
+	BsonValueInitIterator(inputValue, &arrayIter);
+
+	int64_t nElementsInArray = BsonDocumentValueCountKeys(inputValue);
+
+	/* this is temp array to clone the input array */
+	ElementWithIndex *elementsArr = palloc(nElementsInArray * sizeof(ElementWithIndex));
+
+	uint64_t iteration = 0;
+
+	while (bson_iter_next(&arrayIter))
+	{
+		UpdateElementWithIndex(bson_iter_value(&arrayIter), iteration,
+							   &elementsArr[iteration]);
+		iteration++;
+	}
+
+	qsort_arg(elementsArr, nElementsInArray, sizeof(ElementWithIndex),
+			  CompareBsonValuesForSort, sortContext);
+
+	pgbson_writer writer;
+	PgbsonWriterInit(&writer);
+	pgbson_array_writer arrayWriter;
+	PgbsonWriterStartArray(&writer, "", 0, &arrayWriter);
+
+	/* Write the elements in elementsArr into result */
+	for (int64_t i = 0; i < nElementsInArray; i++)
+	{
+		PgbsonArrayWriterWriteValue(&arrayWriter, &elementsArr[i].bsonValue);
+	}
+
+	PgbsonWriterEndArray(&writer, &arrayWriter);
+
+	*result = PgbsonArrayWriterGetValue(&arrayWriter);
+
+	/* All done with temp resources, release*/
+	pfree(elementsArr);
+}
+
+
+/* Function that processes arguments for $zip and calculate result*/
+/* Validates if arguments are specified correctly */
+static void
+ProcessDollarZip(bson_value_t evaluatedInputsArg, bson_value_t evaluatedLongestLengthArg,
+				 bson_value_t evaluatedDefaultsArg, bson_value_t *resultPtr)
+{
+	bson_value_t nullValue = {
+		.value_type = BSON_TYPE_NULL
+	};
+
+	if (evaluatedInputsArg.value_type != BSON_TYPE_ARRAY)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34461), errmsg(
+							"inputs must be an array of expressions, found %s",
+							BsonTypeName(
+								evaluatedInputsArg.value_type)),
+						errdetail_log("inputs must be an array of expressions, found %s",
+									  BsonTypeName(
+										  evaluatedInputsArg.value_type))));
+	}
+
+	int rowNum = BsonDocumentValueCountKeys(&evaluatedInputsArg);
+
+	if (rowNum == 0)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34465), errmsg(
+							"$zip requires at least one input array")));
+	}
+
+	bool useLongestLengthArgBoolValue = evaluatedLongestLengthArg.value.v_bool;
+
+	/* array to store the copy of elements in the defaults, avoid using array iterators multiple times in following loop */
+	bson_value_t *defaultsElements = ParseZipDefaultsArgument(rowNum,
+															  evaluatedDefaultsArg,
+															  useLongestLengthArgBoolValue);
+
+	/* struct to store the parsed inputs argument, avoid using array iterators multiple times in following loop */
+	ZipParseInputsResult parsedInputs = ParseZipInputsArgument(rowNum,
+															   evaluatedInputsArg,
+															   useLongestLengthArgBoolValue);
+
+	/* Early return if any of the inputs arrays resolves to a value of null or refers to a missing field */
+	if (parsedInputs.outputSubArrayLength < 0)
+	{
+		*resultPtr = nullValue;
+		pfree(defaultsElements);
+		return;
+	}
+
+	SetResultArrayForDollarZip(rowNum, parsedInputs, defaultsElements, resultPtr);
+
+	/* free the allocated memory */
+	for (int i = 0; i < rowNum; i++)
+	{
+		if (parsedInputs.inputsElements[i])
+		{
+			pfree(parsedInputs.inputsElements[i]);
+		}
+	}
+	pfree(parsedInputs.inputsElements);
+	pfree(parsedInputs.inputsElementLengths);
+	pfree(defaultsElements);
+}
+
+
+/* Function that processes arguments for $maxN/MinN and calculate result.
+ * Validates if arguments are specified correctly
+ */
+static void
+ProcessDollarMaxAndMinN(bson_value_t *result, bson_value_t *evaluatedLimit,
+						bson_value_t *evaluatedInput, bool isMaxN)
+{
+	int64_t nValue;
+	if (!IsExpressionResultNullOrUndefined(evaluatedLimit) &&
+		BsonTypeIsNumber(evaluatedLimit->value_type))
+	{
+		nValue = BsonValueAsInt64(evaluatedLimit);
+
+		bool checkFixedInteger = true;
+		if (!IsBsonValue64BitInteger(evaluatedLimit, checkFixedInteger))
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31109), errmsg(
+								"Can't coerce out of range value %s to long",
+								BsonValueToJsonForLogging(evaluatedLimit)),
+							errdetail_log(
+								"Can't coerce out of range value to long")));
+		}
+
+		if (nValue < 1)
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787908), errmsg(
+								"'n' must be greater than 0, found %ld",
+								nValue),
+							errdetail_log(
+								"'n' must be greater than 0, found %ld",
+								nValue)));
+		}
+	}
+	else
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787902), errmsg(
+							"Value for 'n' must be of integral type, but found %s",
+							BsonValueToJsonForLogging(evaluatedLimit)),
+						errdetail_log(
+							"Value for 'n' must be of integral type, but found %s",
+							BsonTypeName(evaluatedLimit->value_type))));
+	}
+
+
+	/* In native mongo if the input array is null or an undefined path the result is null. */
+	if (IsExpressionResultNullOrUndefined(evaluatedInput))
+	{
+		result->value_type = BSON_TYPE_NULL;
+		return;
+	}
+
+	if (evaluatedInput->value_type != BSON_TYPE_ARRAY)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5788200)), errmsg(
+					"Input must be an array"));
+	}
+
+	bson_iter_t arrayIter;
+	BsonValueInitIterator(evaluatedInput, &arrayIter);
+
+	int64_t nElementsInArray = BsonDocumentValueCountKeys(evaluatedInput);
+
+	if (nValue > nElementsInArray)
+	{
+		nValue = nElementsInArray;  /* n val result will at most be the size of the array */
+	}
+
+	HeapComparator comparator = isMaxN == true ? HeapSortComparatorMaxN :
+								HeapSortComparatorMinN;
+
+	BinaryHeap *valueHeap = AllocateHeap(nValue, comparator);
+
+	/* Insert all the elements into a heap */
+	while (bson_iter_next(&arrayIter))
+	{
+		const bson_value_t *next = (bson_iter_value(&arrayIter));
+
+		/* skip if value is null or undefined */
+		if (IsExpressionResultNullOrUndefined(next))
+		{
+			continue;
+		}
+
+		/* Heap is full, replace the top & heapify if the new value should be included instead */
+		if (valueHeap->heapSize == valueHeap->heapSpace)
+		{
+			const bson_value_t topHeap = TopHeap(valueHeap);
+			if (!valueHeap->heapComparator(next, &topHeap))
+			{
+				PopFromHeap(valueHeap);
+				PushToHeap(valueHeap, next);
+			}
+		}
+		else
+		{
+			PushToHeap(valueHeap, next);
+		}
+	}
+
+	int64_t numEntries = valueHeap->heapSize;
+
+	bson_value_t *valueArray = (bson_value_t *) palloc(
+		sizeof(bson_value_t) * numEntries);
+
+	/* Write the array in sorted order */
+	while (valueHeap->heapSize > 0)
+	{
+		valueArray[valueHeap->heapSize - 1] = PopFromHeap(valueHeap);
+	}
+
+	pgbson_writer writer;
+	PgbsonWriterInit(&writer);
+	pgbson_array_writer arrayWriter;
+	PgbsonWriterStartArray(&writer, "", 0, &arrayWriter);
+
+
+	/* Write the elements in cArray into result */
+	for (int64_t i = 0; i < numEntries; i++)
+	{
+		PgbsonArrayWriterWriteValue(&arrayWriter, &valueArray[i]);
+	}
+
+	PgbsonWriterEndArray(&writer, &arrayWriter);
+	*result = PgbsonArrayWriterGetValue(&arrayWriter);
+
+	pfree(valueArray);
+	FreeHeap(valueHeap);
+}
+
+
+/* Function that checks if the passed argument for $objectToArray is valid and builds the array from the object,
+ * and writest it into the expression result. */
+static void
+ProcessDollarObjectToArray(const bson_value_t *currentValue, bson_value_t *result)
+{
+	if (IsExpressionResultNullOrUndefined(currentValue))
+	{
+		result->value_type = BSON_TYPE_NULL;
+		return;
+	}
+	else if (currentValue->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLAROBJECTTOARRAYREQUIRESOBJECT), errmsg(
+							"$objectToArray requires a document input, found: %s",
+							BsonTypeName(currentValue->value_type)),
+						errdetail_log(
+							"$objectToArray requires a document input, found: %s",
+							BsonTypeName(currentValue->value_type))));
+	}
+
+	pgbson_writer baseWriter;
+	PgbsonWriterInit(&baseWriter);
+
+	pgbson_element_writer elementWriter;
+	PgbsonInitObjectElementWriter(&baseWriter, &elementWriter, "", 0);
+
+	pgbson_array_writer childArrayWriter;
+	PgbsonElementWriterStartArray(&elementWriter, &childArrayWriter);
+
+	pgbson_element_writer childArrayElementWriter;
+	PgbsonInitArrayElementWriter(&childArrayWriter, &childArrayElementWriter);
+
+	bson_iter_t documentIter;
+	BsonValueInitIterator(currentValue, &documentIter);
+	while (bson_iter_next(&documentIter))
+	{
+		pgbson_writer childObjectWriter;
+		PgbsonElementWriterStartDocument(&childArrayElementWriter, &childObjectWriter);
+
+		PgbsonWriterAppendUtf8(&childObjectWriter, "k", 1,
+							   bson_iter_key(&documentIter));
+		PgbsonWriterAppendValue(&childObjectWriter, "v", 1,
+								bson_iter_value(&documentIter));
+
+		PgbsonElementWriterEndDocument(&childArrayElementWriter, &childObjectWriter);
+	}
+
+	PgbsonElementWriterEndArray(&elementWriter, &childArrayWriter);
+
+	const bson_value_t arrayValue = PgbsonElementWriterGetValue(&elementWriter);
+	pgbson *pgbson = BsonValueToDocumentPgbson(&arrayValue);
+	pgbsonelement element;
+	PgbsonToSinglePgbsonElement(pgbson, &element);
+	*result = element.bsonValue;
+}
+
+
+/* Function that processes an argument for $concatArrays, validates it is a valid input and adds it to the final result. */
+static bool
+ProcessDollarConcatArraysElement(const bson_value_t *currentValue, void *state,
+								 bson_value_t *result)
+{
+	if (IsExpressionResultNullOrUndefined(currentValue))
+	{
+		result->value_type = BSON_TYPE_NULL;
+		return false; /* stop processing more arguments. */
+	}
+
+	if (currentValue->value_type != BSON_TYPE_ARRAY)
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION28664), errmsg(
+							"$concatArrays only supports arrays, not %s",
+							BsonTypeName(currentValue->value_type)),
+						errdetail_log("$concatArrays only supports arrays, not %s",
+									  BsonTypeName(currentValue->value_type))));
+	}
+
+	ConcatArraysState *concatArraysState = state;
+	bson_iter_t arrayIter;
+	BsonValueInitIterator(currentValue, &arrayIter);
+	while (bson_iter_next(&arrayIter))
+	{
+		PgbsonArrayWriterWriteValue(&concatArraysState->arrayWriter,
+									bson_iter_value(&arrayIter));
+	}
+
+	return true;
+}
+
+
+/* Function that writes the final concat arrays result from the array writer. */
+static void
+ProcessDollarConcatArraysElementResult(void *state, bson_value_t *result)
+{
+	ConcatArraysState *concatArraysState = state;
+
+	PgbsonWriterEndArray(&concatArraysState->writer, &concatArraysState->arrayWriter);
+	*result = PgbsonArrayWriterGetValue(&concatArraysState->arrayWriter);
+}
+
+
+/* --------------------------------------------------------- */
+/* Other helper functions */
+/* --------------------------------------------------------- */
+
+/*
  * This function validates and throws error in case bson type is not a numeric > 0 and less than max value of int64 i.e. 9223372036854775807
  */
 static void
@@ -1724,115 +3684,6 @@ FillResultForDollarFirstAndLastN(bson_value_t *input,
 	PgbsonWriterEndArray(&writer, &arrayWriter);
 
 	*result = PgbsonArrayWriterGetValue(&arrayWriter);
-}
-
-
-/*
- * Evaluates the output of an $range expression.
- * $range is expressed as { "$range": [ <expression1>, <expression2>, <expression3 optional> ] }
- * We evaluate the inner expressions and then return the final array.
- */
-void
-HandlePreParsedDollarRange(pgbson *doc, void *arguments,
-						   ExpressionResult *expressionResult)
-{
-	List *argList = arguments;
-
-	AggregationExpressionData *first = list_nth(argList, 0);
-	AggregationExpressionData *second = list_nth(argList, 1);
-	AggregationExpressionData *third = NULL;
-	if (argList->length == 3)
-	{
-		third = list_nth(argList, 2);
-	}
-
-	bool isNullOnEmpty = false;
-	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
-	EvaluateAggregationExpressionData(first, doc, &childResult, isNullOnEmpty);
-	bson_value_t startRange = childResult.value;
-	int32_t startValInt32 = GetStartValueForDollarRange(&startRange);
-
-	ExpressionResultReset(&childResult);
-	EvaluateAggregationExpressionData(second, doc, &childResult, isNullOnEmpty);
-	bson_value_t endRange = childResult.value;
-	int32_t endValInt32 = GetEndValueForDollarRange(&endRange);
-
-	int32_t stepValInt32 = 1;
-
-	/*third arg is optional. If this does not exist the step val should be 1. */
-	if (third)
-	{
-		ExpressionResultReset(&childResult);
-		EvaluateAggregationExpressionData(third, doc, &childResult, isNullOnEmpty);
-
-		stepValInt32 = GetStepValueForDollarRange(&childResult.value);
-	}
-
-	bson_value_t result = { 0 };
-	SetResultArrayForDollarRange(startValInt32, endValInt32, stepValInt32, &result);
-
-	ExpressionResultSetValue(expressionResult, &result);
-}
-
-
-/*
- * Parses an $range expression and sets the parsed data in the data argument.
- * $range is expressed as { "$range": [ <expression1>, <expression2>, <expression3 optional> ] }
- */
-void
-ParseDollarRange(const bson_value_t *argument, AggregationExpressionData *data,
-				 ParseAggregationExpressionContext *context)
-{
-	int minRequiredArgs = 2;
-	int maxRequiredArgs = 3;
-	List *argList = ParseRangeArgumentsForExpression(argument,
-													 minRequiredArgs,
-													 maxRequiredArgs,
-													 "$range",
-													 &data->operator.
-													 argumentsKind,
-													 context);
-
-	AggregationExpressionData *first = list_nth(argList, 0);
-	AggregationExpressionData *second = list_nth(argList, 1);
-	AggregationExpressionData *third = NULL;
-
-	if (argList->length == 3)
-	{
-		third = list_nth(argList, 2);
-	}
-
-	/* pre-processing the args when input is constant. */
-	if (IsAggregationExpressionConstant(first) &&
-		IsAggregationExpressionConstant(second) &&
-		(!third || IsAggregationExpressionConstant(third)))
-	{
-		bson_value_t startRange = first->value;
-		int32_t startValInt32 = GetStartValueForDollarRange(&startRange);
-
-		bson_value_t endRange = second->value;
-		int32_t endValInt32 = GetEndValueForDollarRange(&endRange);
-
-		int32_t stepValInt32 = 1;
-
-		/* Reassign stepVal from a default value when in input in operator. */
-		if (third)
-		{
-			stepValInt32 = GetStepValueForDollarRange(&third->value);
-		}
-
-		SetResultArrayForDollarRange(startValInt32, endValInt32, stepValInt32,
-									 &data->value);
-
-		data->kind = AggregationExpressionKind_Constant;
-
-		/* freeing the list args */
-		list_free_deep(argList);
-		return;
-	}
-
-	data->operator.arguments = argList;
-	data->operator.returnType = BSON_TYPE_ARRAY;
 }
 
 
@@ -2050,64 +3901,6 @@ ValidateArraySizeLimit(int32_t startValue, int32_t endValue, int32_t stepValue)
 
 
 /*
- *	This function is handler for the $reverseArray. The input to the function is {$reverseArray : {array expression}}.
- *	This evaluates the expression value and then reverses the array.
- */
-void
-HandlePreParsedDollarReverseArray(pgbson *doc, void *state,
-								  ExpressionResult *expressionResult)
-{
-	bool isNullOnEmpty = false;
-	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
-	EvaluateAggregationExpressionData(
-		(AggregationExpressionData *) state, doc,
-		&childResult,
-		isNullOnEmpty);
-
-
-	if (IsExpressionResultNullOrUndefined(&childResult.value))
-	{
-		bson_value_t result = { 0 };
-		result.value_type = BSON_TYPE_NULL;
-		ExpressionResultSetValue(expressionResult, &result);
-		return;
-	}
-
-	if (childResult.value.value_type != BSON_TYPE_ARRAY)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34435), errmsg(
-							"The argument to $reverseArray must be an array, but was of type: %s",
-							BsonTypeName(childResult.value.value_type)),
-						errdetail_log(
-							"The argument to $reverseArray must be an array, but was of type: %s",
-							BsonTypeName(childResult.value.value_type))));
-	}
-
-	bson_value_t result = { 0 };
-	SetResultArrayForDollarReverse(&childResult.value, &result);
-	ExpressionResultSetValue(expressionResult, &result);
-}
-
-
-/*
- * Parses the input for $reverseArray. Syntax : {$reverseArray: <array expression>}.
- * The expression should resolve to an array.
- * $reverseArray function takes in the desired input array and gives the output array which is reversed.
- */
-void
-ParseDollarReverseArray(const bson_value_t *argument, AggregationExpressionData *data,
-						ParseAggregationExpressionContext *context)
-{
-	data->operator.arguments = ParseFixedArgumentsForExpression(argument, 1,
-																"$reverseArray",
-																&data->operator.
-																argumentsKind,
-																context);
-	data->operator.returnType = BSON_TYPE_ARRAY;
-}
-
-
-/*
  * This function iterates over the given bson type array and gives the result by reversing the array.
  */
 static void
@@ -2153,172 +3946,6 @@ SetResultArrayForDollarReverse(bson_value_t *array, bson_value_t *result)
 	PgbsonWriterEndArray(&writer, &arrayWriter);
 
 	*result = PgbsonArrayWriterGetValue(&arrayWriter);
-}
-
-
-/*
- * This function handles the result and processing after the input has been parsed for $indexOfArray.
- * This function scans the given array in the input to find the specified element in the array given start and end positions.
- * The start and end positions can be optional if not provided we need to return the first index where the element occurs.
- */
-void
-HandlePreParsedDollarIndexOfArray(pgbson *doc, void *arguments,
-								  ExpressionResult *expressionResult)
-{
-	List *argsList = (List *) arguments;
-
-	/* evaluating the array argument expression */
-	AggregationExpressionData *arrExpressionData = list_nth(argsList, 0);
-	bool isNullOnEmpty = false;
-	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
-	EvaluateAggregationExpressionData(arrExpressionData, doc, &childResult,
-									  isNullOnEmpty);
-
-	if (IsExpressionResultNullOrUndefined(&childResult.value))
-	{
-		bson_value_t result = { 0 };
-		result.value_type = BSON_TYPE_NULL;
-		ExpressionResultSetValue(expressionResult, &result);
-		return;
-	}
-	else if (childResult.value.value_type != BSON_TYPE_ARRAY)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40090), errmsg(
-							"$indexOfArray requires an array as a first argument, found: %s",
-							BsonTypeName(arrExpressionData->value.value_type)),
-						errdetail_log(
-							"$indexOfArray requires an array as a first argument, found: %s",
-							BsonTypeName(arrExpressionData->value.value_type)
-							)));
-	}
-
-	bson_value_t arrayExpression = childResult.value;
-
-	/* evaluating the to be searched argument expression. */
-	AggregationExpressionData *searchExpressionData = list_nth(argsList, 1);
-	ExpressionResultReset(&childResult);
-	EvaluateAggregationExpressionData(searchExpressionData, doc, &childResult,
-									  isNullOnEmpty);
-	bson_value_t element = childResult.value;
-
-	/* start and end are optional hence need to add a safe check*/
-	AggregationExpressionData *startIndexExpressionData = argsList->length > 2 ? list_nth(
-		argsList, 2) :
-														  NULL;
-	AggregationExpressionData *endIndexExpressionData = argsList->length > 3 ? list_nth(
-		argsList, 3) :
-														NULL;
-
-	int32 startIndex = 0;
-	int32 endIndex = INT32_MAX;
-
-	bool isStartIndex = true;
-
-	if (startIndexExpressionData)
-	{
-		ExpressionResultReset(&childResult);
-		EvaluateAggregationExpressionData(startIndexExpressionData, doc, &childResult,
-										  isNullOnEmpty);
-		startIndex = GetIndexValueFromDollarIdxInput(&childResult.value, isStartIndex);
-	}
-
-	if (endIndexExpressionData)
-	{
-		ExpressionResultReset(&childResult);
-		EvaluateAggregationExpressionData(endIndexExpressionData, doc, &childResult,
-										  isNullOnEmpty);
-		endIndex = GetIndexValueFromDollarIdxInput(&childResult.value, !isStartIndex);
-	}
-
-	bson_value_t result = { .value_type = BSON_TYPE_INT32 };
-	result.value.v_int32 = FindIndexInArrayForElement(&arrayExpression, &element,
-													  startIndex,
-													  endIndex);
-	ExpressionResultSetValue(expressionResult, &result);
-}
-
-
-/*
- * This function parses the input for dollarIndexOfArray.
- * The input to this function is of the following format { $indexOfArray: [ <array expression>, <search expression>, <start>, <end> ] }.
- * Start and end can be expressions which are optional
- */
-void
-ParseDollarIndexOfArray(const bson_value_t *argument, AggregationExpressionData *data,
-						ParseAggregationExpressionContext *context)
-{
-	int minRequiredArgs = 2;
-	int maxRequiredArgs = 4;
-	List *argsList = ParseRangeArgumentsForExpression(argument, minRequiredArgs,
-													  maxRequiredArgs, "$indexOfArray",
-													  &data->operator.argumentsKind,
-													  context);
-
-	/*This function checks if all elements in list are constant for optimization*/
-	if (AreElementsInListConstant(argsList))
-	{
-		AggregationExpressionData *arrExpressionData = list_nth(argsList, 0);
-		AggregationExpressionData *searchExpressionData = list_nth(argsList, 1);
-
-		/* startIndex and endIndex are optional hence need to add a safe check*/
-		AggregationExpressionData *startIndexExpressionData = argsList->length > 2 ?
-															  list_nth(argsList, 2) :
-															  NULL;
-		AggregationExpressionData *endIndexExpressionData = argsList->length > 3 ?
-															list_nth(argsList, 3) :
-															NULL;
-
-		if (IsExpressionResultNullOrUndefined(&arrExpressionData->value))
-		{
-			bson_value_t result = { 0 };
-			result.value_type = BSON_TYPE_NULL;
-			data->value = result;
-			data->kind = AggregationExpressionKind_Constant;
-
-			/* free the list */
-			list_free_deep(argsList);
-			return;
-		}
-		else if (arrExpressionData->value.value_type != BSON_TYPE_ARRAY)
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40090), errmsg(
-								"$indexOfArray requires an array as a first argument, found: %s",
-								BsonTypeName(arrExpressionData->value.value_type)),
-							errdetail_log(
-								"$indexOfArray requires an array as a first argument, found: %s",
-								BsonTypeName(arrExpressionData->value.value_type))));
-		}
-
-		int32 startIndex = 0;
-		int32 endIndex = INT32_MAX;
-		bool isStartIndex = true;
-		if (startIndexExpressionData)
-		{
-			startIndex = GetIndexValueFromDollarIdxInput(&startIndexExpressionData->value,
-														 isStartIndex);
-		}
-
-		if (endIndexExpressionData)
-		{
-			endIndex = GetIndexValueFromDollarIdxInput(&endIndexExpressionData->value,
-													   !isStartIndex);
-		}
-
-		bson_value_t result = { .value_type = BSON_TYPE_INT32 };
-		result.value.v_int32 = FindIndexInArrayForElement(&arrExpressionData->value,
-														  &searchExpressionData->value,
-														  startIndex,
-														  endIndex);
-
-		data->value = result;
-		data->kind = AggregationExpressionKind_Constant;
-
-		/* free the list */
-		list_free_deep(argsList);
-
-		return;
-	}
-	data->operator.arguments = argsList;
 }
 
 
@@ -2382,8 +4009,8 @@ GetIndexValueFromDollarIdxInput(bson_value_t *arg, bool isStartIndex)
  * This function returns -1 if startIndex > endIndex or start value is greater than the size of the array.
  */
 static int32
-FindIndexInArrayForElement(bson_value_t *array, bson_value_t *element, int32 startIndex,
-						   int32 endIndex)
+FindIndexInArrayFor(bson_value_t *array, bson_value_t *element, int32 startIndex,
+					int32 endIndex)
 {
 	if (startIndex >= endIndex)
 	{
@@ -2414,232 +4041,118 @@ FindIndexInArrayForElement(bson_value_t *array, bson_value_t *element, int32 sta
 
 
 /*
- * This function handles the pre-parsed dollarMax input and results the maximum element in the given argument.
+ * validate second and third argument of dollar slice operator
  */
-void
-HandlePreParsedDollarMax(pgbson *doc, void *arguments,
-						 ExpressionResult *expressionResult)
+static inline void
+DollarSliceInputValidation(bson_value_t *inputValue, bool isSecondArg)
 {
-	bool isNullOnEmpty = false;
-	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
-	EvaluateAggregationExpressionData(
-		(AggregationExpressionData *) arguments, doc,
-		&childResult,
-		isNullOnEmpty);
+	if (!BsonValueIsNumber(inputValue))
+	{
+		ereport(ERROR, (errcode(isSecondArg ?
+								ERRCODE_HELIO_DOLLARSLICEINVALIDTYPESECONDARG :
+								ERRCODE_HELIO_DOLLARSLICEINVALIDTYPETHIRDARG),
+						errmsg(
+							"%s argument to $slice must be numeric, but is of type: %s",
+							isSecondArg ? "Second" : "Third",
+							BsonTypeName(inputValue->value_type)),
+						errdetail_log(
+							"%s argument to $slice must be numeric, but is of type: %s",
+							isSecondArg ? "Second" : "Third",
+							BsonTypeName(inputValue->value_type))));
+	}
 
-	bson_value_t result = { 0 };
-	bool isFindMax = true;
-	SetResultValueForDollarMaxMin(&childResult.value, &result, isFindMax);
-	ExpressionResultSetValue(expressionResult, &result);
+	bool checkForFixedInteger = true;
+
+	if (!IsBsonValue32BitInteger(inputValue, checkForFixedInteger))
+	{
+		ereport(ERROR, (errcode(isSecondArg ?
+								ERRCODE_HELIO_DOLLARSLICEINVALIDVALUESECONDARG :
+								ERRCODE_HELIO_DOLLARSLICEINVALIDVALUETHIRDARG),
+						errmsg(
+							"%s argument to $slice can't be represented as a 32-bit integer: %s",
+							isSecondArg ? "Second" : "Third",
+							BsonValueToJsonForLogging(inputValue)),
+						errdetail_log(
+							"%s argument of type %s to $slice can't be represented as a 32-bit integer",
+							isSecondArg ? "Second" : "Third",
+							BsonTypeName(inputValue->value_type))));
+	}
 }
 
 
 /*
- * This function parses the input for operator $max.
- * The input is specified of type {$max: <expression>} where expression can be any expression.
- * In case the expression is an array it gives the maximum element in array otherwise returns the resolved expression as it is.
+ * Comparator function for heap utils. For MaxN, we need to build min-heap
  */
-void
-ParseDollarMax(const bson_value_t *argument, AggregationExpressionData *data,
-			   ParseAggregationExpressionContext *context)
+static bool
+HeapSortComparatorMaxN(const void *first,
+					   const void *second)
 {
-	bool isMax = true;
-	HandlerForParsingMinMax(isMax, argument, data, context);
+	bool ignoreIsComparisonValid = false; /* IsComparable ensures this is taken care of */
+	return CompareBsonValueAndType((const bson_value_t *) first,
+								   (const bson_value_t *) second,
+								   &ignoreIsComparisonValid) < 0;
 }
 
 
 /*
- * This function handles the pre-parsed dollarMax input and results the maximum element in the given argument.
+ * Comparator function for heap utils. For MinN, we need to build max-heap
  */
-void
-HandlePreParsedDollarMin(pgbson *doc, void *arguments,
-						 ExpressionResult *expressionResult)
+static bool
+HeapSortComparatorMinN(const void *first,
+					   const void *second)
 {
-	bool isNullOnEmpty = false;
-	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
-	EvaluateAggregationExpressionData(
-		(AggregationExpressionData *) arguments, doc,
-		&childResult,
-		isNullOnEmpty);
-
-	bson_value_t result = { 0 };
-	bool isFindMax = false;
-	SetResultValueForDollarMaxMin(&childResult.value, &result, isFindMax);
-	ExpressionResultSetValue(expressionResult, &result);
+	bool ignoreIsComparisonValid = false; /* IsComparable ensures this is taken care of */
+	return CompareBsonValueAndType((const bson_value_t *) first,
+								   (const bson_value_t *) second,
+								   &ignoreIsComparisonValid) > 0;
 }
 
 
-/*
- * This function parses the input for operator $min.
- * The input is specified of type {$min: <expression>} where expression can be any expression.
- * In case the expression is an array it gives the minimum element in array otherwise returns the resolved expression as it is.
- */
-void
-ParseDollarMin(const bson_value_t *argument, AggregationExpressionData *data,
-			   ParseAggregationExpressionContext *context)
-{
-	bool isMax = false;
-	HandlerForParsingMinMax(isMax, argument, data, context);
-}
-
-
-/*
- * This function parses the input for operator $sum.
- * The input is specified of type {$sum: <expression>} where expression can be any expression.
- * In case the expression is an array it gives the sum of elements in array.
- */
-void
-ParseDollarSum(const bson_value_t *argument, AggregationExpressionData *data,
-			   ParseAggregationExpressionContext *context)
-{
-	bool isSum = true;
-	HandlerForParsingSumAvg(isSum, argument, data, context);
-}
-
-
-/*
- * This function parses the input for operator $avg.
- * The input is specified of type {$sum: <expression>} where expression can be any expression.
- * In case the expression is an array it gives the sum of elements in array.
- */
-void
-ParseDollarAvg(const bson_value_t *argument, AggregationExpressionData *data,
-			   ParseAggregationExpressionContext *context)
-{
-	bool isSum = false;
-	HandlerForParsingSumAvg(isSum, argument, data, context);
-}
-
-
-/*
- * This function handles the pre-parsed $sum input and results the maximum element in the given argument.
- */
-void
-HandlePreParsedDollarSum(pgbson *doc, void *arguments,
-						 ExpressionResult *expressionResult)
-{
-	bool isNullOnEmpty = false;
-	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
-	EvaluateAggregationExpressionData(
-		(AggregationExpressionData *) arguments, doc,
-		&childResult,
-		isNullOnEmpty);
-
-	bson_value_t result = { 0 };
-	bool isSum = true;
-	SetResultValueForDollarSumAvg(&childResult.value, &result, isSum);
-	ExpressionResultSetValue(expressionResult, &result);
-}
-
-
-/*
- * This function handles the pre-parsed $avg input and results the maximum element in the given argument.
- */
-void
-HandlePreParsedDollarAvg(pgbson *doc, void *arguments,
-						 ExpressionResult *expressionResult)
-{
-	bool isNullOnEmpty = false;
-	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
-	EvaluateAggregationExpressionData(
-		(AggregationExpressionData *) arguments, doc,
-		&childResult,
-		isNullOnEmpty);
-
-	bson_value_t result = { 0 };
-	bool isSum = false;
-	SetResultValueForDollarSumAvg(&childResult.value, &result, isSum);
-	ExpressionResultSetValue(expressionResult, &result);
-}
-
-
-/*
- * This function is a common function to parse min and max operator.
- * This takes in bool isMax as extra argument to confirm whether to process for min or max operator.
- */
+/* Function that sets result for $zip operator*/
 static void
-HandlerForParsingMinMax(bool isMax, const bson_value_t *argument,
-						AggregationExpressionData *data,
-						ParseAggregationExpressionContext *context)
+SetResultArrayForDollarZip(int rowNum, ZipParseInputsResult parsedInputs,
+						   bson_value_t *defaultsElements, bson_value_t *resultPtr)
 {
-	char *opName = isMax ? "$max" : "$min";
-	AggregationExpressionData *argumentData = palloc0(
-		sizeof(AggregationExpressionData));
+	/* array to store the copy of elements in the inputs, avoid using array iterators multiple times in following loop */
+	bson_value_t **inputsElements = parsedInputs.inputsElements;
 
-	/*
-	 * When operator expects a single argument and input is an array of single element,
-	 * evaluate the element as argument (not as a list) to match the scenario when input is not an array.
-	 */
-	if (argument->value_type == BSON_TYPE_ARRAY &&
-		BsonDocumentValueCountKeys(argument) == 1)
+	/* array to store the length of each array in inputs */
+	int *inputsElementLengths = parsedInputs.inputsElementLengths;
+
+	/* length of the output subarrays */
+	/* If useLongestLength is true, it is the length of the longest input array. */
+	/* If useLongestLength is false, it is the length of the shortest input array. */
+	int outputSubArrayLength = parsedInputs.outputSubArrayLength;
+
+	pgbson_writer writer;
+	PgbsonWriterInit(&writer);
+	pgbson_array_writer arrayWriter;
+	PgbsonWriterStartArray(&writer, "", 0, &arrayWriter);
+
+	for (int i = 0; i < outputSubArrayLength; i++)
 	{
-		argumentData = ParseFixedArgumentsForExpression(argument,
-														1,
-														opName,
-														&argumentData->operator.
-														argumentsKind,
-														context);
+		pgbson_writer subWriter;
+		PgbsonWriterInit(&subWriter);
+		pgbson_array_writer subArrayWriter;
+		PgbsonWriterStartArray(&subWriter, "", 0, &subArrayWriter);
+		for (int j = 0; j < rowNum; j++)
+		{
+			if (i < inputsElementLengths[j])
+			{
+				PgbsonArrayWriterWriteValue(&subArrayWriter, &inputsElements[j][i]);
+			}
+			else
+			{
+				/* use default value or null */
+				PgbsonArrayWriterWriteValue(&subArrayWriter, &defaultsElements[j]);
+			}
+		}
+		PgbsonWriterEndArray(&subWriter, &subArrayWriter);
+		bson_value_t subArrayValue = PgbsonArrayWriterGetValue(&subArrayWriter);
+		PgbsonArrayWriterWriteValue(&arrayWriter, &subArrayValue);
 	}
-	else
-	{
-		ParseAggregationExpressionData(argumentData, argument, context);
-	}
-
-	if (IsAggregationExpressionConstant(argumentData))
-	{
-		SetResultValueForDollarMaxMin(&argumentData->value, &data->value, isMax);
-		data->kind = AggregationExpressionKind_Constant;
-		pfree(argumentData);
-		return;
-	}
-
-	data->operator.arguments = argumentData;
-	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
-}
-
-
-/*
- * This function is a common function to parse sum and avg operator.
- * This takes in bool isSum as extra argument to confirm whether to process for sum or avg operator.
- */
-static void
-HandlerForParsingSumAvg(bool isSum, const bson_value_t *argument,
-						AggregationExpressionData *data,
-						ParseAggregationExpressionContext *context)
-{
-	char *opName = isSum ? "$sum" : "$avg";
-	AggregationExpressionData *argumentData = palloc0(
-		sizeof(AggregationExpressionData));
-
-	/*
-	 * When operator expects a single argument and input is an array of single element,
-	 * evaluate the element as argument (not as a list) to match the scenario when input is not an array.
-	 */
-	if (argument->value_type == BSON_TYPE_ARRAY &&
-		BsonDocumentValueCountKeys(argument) == 1)
-	{
-		argumentData = ParseFixedArgumentsForExpression(argument,
-														1,
-														opName,
-														&argumentData->operator.
-														argumentsKind,
-														context);
-	}
-	else
-	{
-		ParseAggregationExpressionData(argumentData, argument, context);
-	}
-
-	if (IsAggregationExpressionConstant(argumentData))
-	{
-		SetResultValueForDollarSumAvg(&argumentData->value, &data->value, isSum);
-		data->kind = AggregationExpressionKind_Constant;
-		pfree(argumentData);
-		return;
-	}
-
-	data->operator.arguments = argumentData;
-	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+	PgbsonWriterEndArray(&writer, &arrayWriter);
+	*resultPtr = PgbsonArrayWriterGetValue(&arrayWriter);
 }
 
 
@@ -2780,1192 +4293,4 @@ SetResultValueForDollarSumAvg(const bson_value_t *inputArgument, bson_value_t *r
 			*result = currentSum;
 		}
 	}
-}
-
-
-/*
- * Evaluates the output of a $map expression.
- * $map is expressed as:
- * { $map: { input: <expression>, as: <string>, in: <expression> } }
- */
-void
-HandlePreParsedDollarMap(pgbson *doc, void *arguments,
-						 ExpressionResult *expressionResult)
-{
-	DollarMapArguments *mapArguments = arguments;
-
-	bool isNullOnEmpty = false;
-
-	ExpressionResult childExpression = ExpressionResultCreateChild(expressionResult);
-
-	EvaluateAggregationExpressionData(&mapArguments->input, doc, &childExpression,
-									  isNullOnEmpty);
-
-	bson_value_t evaluatedInputArg = childExpression.value;
-
-	/* In native mongo if the input array is null or an undefined path the result is null. */
-	if (IsExpressionResultNullOrUndefined(&evaluatedInputArg))
-	{
-		bson_value_t nullValue = {
-			.value_type = BSON_TYPE_NULL
-		};
-
-		ExpressionResultSetValue(expressionResult, &nullValue);
-		return;
-	}
-
-	if (evaluatedInputArg.value_type != BSON_TYPE_ARRAY)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16883), errmsg(
-							"input to $map must be an array not %s", BsonTypeName(
-								evaluatedInputArg.value_type)),
-						errdetail_log("input to $map must be an array not %s",
-									  BsonTypeName(evaluatedInputArg.value_type))));
-	}
-
-	StringView aliasName = {
-		.string = mapArguments->as.value.value.v_utf8.str,
-		.length = mapArguments->as.value.value.v_utf8.len,
-	};
-
-	pgbson_element_writer *resultWriter = ExpressionResultGetElementWriter(
-		expressionResult);
-	pgbson_array_writer arrayWriter;
-	PgbsonElementWriterStartArray(resultWriter, &arrayWriter);
-
-	bson_iter_t arrayIter;
-	BsonValueInitIterator(&evaluatedInputArg, &arrayIter);
-
-	const bson_value_t nullValue = {
-		.value_type = BSON_TYPE_NULL
-	};
-
-	while (bson_iter_next(&arrayIter))
-	{
-		const bson_value_t *currentElem = bson_iter_value(&arrayIter);
-
-		ExpressionResult elementExpression = ExpressionResultCreateChild(
-			&childExpression);
-		ExpressionResultSetConstantVariable(&childExpression, &aliasName, currentElem);
-		EvaluateAggregationExpressionData(&mapArguments->in, doc, &elementExpression,
-										  isNullOnEmpty);
-		if (IsExpressionResultNullOrUndefined(&elementExpression.value))
-		{
-			PgbsonArrayWriterWriteValue(&arrayWriter, &nullValue);
-		}
-		else
-		{
-			PgbsonArrayWriterWriteValue(&arrayWriter, &elementExpression.value);
-		}
-	}
-
-	PgbsonElementWriterEndArray(resultWriter, &arrayWriter);
-	ExpressionResultSetValueFromWriter(expressionResult);
-}
-
-
-/* Parses the $map expression specified in the bson_value_t and stores it in the data argument.
- */
-void
-ParseDollarMap(const bson_value_t *argument, AggregationExpressionData *data,
-			   ParseAggregationExpressionContext *context)
-{
-	if (argument->value_type != BSON_TYPE_DOCUMENT)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16878), errmsg(
-							"$map only supports an object as its argument")));
-	}
-
-	data->operator.returnType = BSON_TYPE_ARRAY;
-
-	bson_iter_t docIter;
-	BsonValueInitIterator(argument, &docIter);
-
-	bson_value_t input = { 0 };
-	bson_value_t in = { 0 };
-	bson_value_t as = { 0 };
-	while (bson_iter_next(&docIter))
-	{
-		const char *key = bson_iter_key(&docIter);
-		if (strcmp(key, "input") == 0)
-		{
-			input = *bson_iter_value(&docIter);
-		}
-		else if (strcmp(key, "in") == 0)
-		{
-			in = *bson_iter_value(&docIter);
-		}
-		else if (strcmp(key, "as") == 0)
-		{
-			as = *bson_iter_value(&docIter);
-		}
-		else
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16879), errmsg(
-								"Unrecognized parameter to $map: %s", key),
-							errdetail_log(
-								"Unrecognized parameter to $map, unexpected key")));
-		}
-	}
-
-	if (input.value_type == BSON_TYPE_EOD)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16880), errmsg(
-							"Missing 'input' parameter to $map")));
-	}
-
-	if (in.value_type == BSON_TYPE_EOD)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION16882), errmsg(
-							"Missing 'in' parameter to $map")));
-	}
-
-	bson_value_t aliasValue = {
-		.value_type = BSON_TYPE_UTF8,
-		.value.v_utf8.len = 4,
-		.value.v_utf8.str = "this"
-	};
-
-	if (as.value_type != BSON_TYPE_EOD)
-	{
-		if (as.value_type != BSON_TYPE_UTF8)
-		{
-			aliasValue.value.v_utf8.len = 0;
-			aliasValue.value.v_utf8.str = "";
-		}
-		else
-		{
-			aliasValue = as;
-		}
-
-		StringView aliasNameView = {
-			.length = aliasValue.value.v_utf8.len,
-			.string = aliasValue.value.v_utf8.str,
-		};
-
-		ValidateVariableName(aliasNameView);
-	}
-
-	DollarMapArguments *arguments = palloc0(sizeof(DollarMapArguments));
-	arguments->as.value = aliasValue;
-
-	ParseAggregationExpressionData(&arguments->input, &input, context);
-	ParseAggregationExpressionData(&arguments->in, &in, context);
-	data->operator.arguments = arguments;
-	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
-}
-
-
-/*
- * Evaluates the output of a $reduce expression.
- * $reduce is expressed as:
- * { $reduce: { input: <expression>, as: <string>, in: <expression> } }
- */
-void
-HandlePreParsedDollarReduce(pgbson *doc, void *arguments,
-							ExpressionResult *expressionResult)
-{
-	DollarReduceArguments *reduceArguments = arguments;
-
-	bool isNullOnEmpty = false;
-
-	ExpressionResult childExpression = ExpressionResultCreateChild(expressionResult);
-
-	EvaluateAggregationExpressionData(&reduceArguments->input, doc, &childExpression,
-									  isNullOnEmpty);
-
-	bson_value_t evaluatedInputArg = childExpression.value;
-
-	/* In native mongo if the input array is null or an undefined path the result is null. */
-	if (IsExpressionResultNullOrUndefined(&evaluatedInputArg))
-	{
-		bson_value_t nullValue = {
-			.value_type = BSON_TYPE_NULL
-		};
-
-		ExpressionResultSetValue(expressionResult, &nullValue);
-		return;
-	}
-
-	if (evaluatedInputArg.value_type != BSON_TYPE_ARRAY)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40080), errmsg(
-							"input to $reduce must be an array not %s", BsonTypeName(
-								evaluatedInputArg.value_type)),
-						errdetail_log("input to $reduce must be an array not %s",
-									  BsonTypeName(evaluatedInputArg.value_type))));
-	}
-
-	ExpressionResultReset(&childExpression);
-
-	EvaluateAggregationExpressionData(&reduceArguments->initialValue, doc,
-									  &childExpression,
-									  isNullOnEmpty);
-
-	bson_value_t evaluatedInitialValueArg = childExpression.value;
-
-	/* In native mongo if the input array is null or an undefined path the result is null. */
-	if (IsExpressionResultNullOrUndefined(&evaluatedInitialValueArg))
-	{
-		bson_value_t nullValue = {
-			.value_type = BSON_TYPE_NULL
-		};
-
-		ExpressionResultSetValue(expressionResult, &nullValue);
-		return;
-	}
-
-	StringView thisVariableName = {
-		.string = "this",
-		.length = 4,
-	};
-	StringView valueVariableName = {
-		.string = "value",
-		.length = 5,
-	};
-	ExpressionResultSetConstantVariable(&childExpression, &valueVariableName,
-										&evaluatedInitialValueArg);
-
-	bson_iter_t arrayIter;
-	BsonValueInitIterator(&evaluatedInputArg, &arrayIter);
-	bson_value_t result = evaluatedInitialValueArg;
-	while (bson_iter_next(&arrayIter))
-	{
-		const bson_value_t *currentElem = bson_iter_value(&arrayIter);
-		ExpressionResult elementExpression =
-			ExpressionResultCreateChild(&childExpression);
-		ExpressionResultSetConstantVariable(&childExpression, &thisVariableName,
-											currentElem);
-
-		EvaluateAggregationExpressionData(&reduceArguments->in, doc, &elementExpression,
-										  isNullOnEmpty);
-
-		ExpressionResultSetConstantVariable(&childExpression, &valueVariableName,
-											&elementExpression.value);
-		result = elementExpression.value;
-	}
-
-	ExpressionResultSetValue(expressionResult, &result);
-}
-
-
-/* Parses the $reduce expression specified in the bson_value_t and stores it in the data argument.
- */
-void
-ParseDollarReduce(const bson_value_t *argument, AggregationExpressionData *data,
-				  ParseAggregationExpressionContext *context)
-{
-	if (argument->value_type != BSON_TYPE_DOCUMENT)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40075), errmsg(
-							"$reduce only supports an object as its argument")));
-	}
-
-	data->operator.returnType = BSON_TYPE_ARRAY;
-
-	bson_iter_t docIter;
-	BsonValueInitIterator(argument, &docIter);
-
-	bson_value_t input = { 0 };
-	bson_value_t in = { 0 };
-	bson_value_t initialValue = { 0 };
-	while (bson_iter_next(&docIter))
-	{
-		const char *key = bson_iter_key(&docIter);
-		if (strcmp(key, "input") == 0)
-		{
-			input = *bson_iter_value(&docIter);
-		}
-		else if (strcmp(key, "in") == 0)
-		{
-			in = *bson_iter_value(&docIter);
-		}
-		else if (strcmp(key, "initialValue") == 0)
-		{
-			initialValue = *bson_iter_value(&docIter);
-		}
-		else
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40076), errmsg(
-								"Unrecognized parameter to $reduce: %s", key),
-							errdetail_log(
-								"Unrecognized parameter to $reduce, unexpected key")));
-		}
-	}
-
-	if (input.value_type == BSON_TYPE_EOD)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40077), errmsg(
-							"Missing 'input' parameter to $reduce")));
-	}
-
-	if (in.value_type == BSON_TYPE_EOD)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40079), errmsg(
-							"Missing 'in' parameter to $reduce")));
-	}
-
-	if (initialValue.value_type == BSON_TYPE_EOD)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40078), errmsg(
-							"Missing 'initialValue' parameter to $reduce")));
-	}
-
-	DollarReduceArguments *arguments = palloc0(sizeof(DollarReduceArguments));
-
-	ParseAggregationExpressionData(&arguments->input, &input, context);
-	ParseAggregationExpressionData(&arguments->in, &in, context);
-	ParseAggregationExpressionData(&arguments->initialValue, &initialValue, context);
-	data->operator.arguments = arguments;
-	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
-}
-
-
-/*
- * Evaluates the output of a $sortArray expression.
- * $sortArray is expressed as:
- * { $sortArray: { input: <array>, sortBy: <sort spec> } }
- */
-void
-HandlePreParsedDollarSortArray(pgbson *doc, void *arguments,
-							   ExpressionResult *expressionResult)
-{
-	DollarSortArrayArguments *sortArrayArguments = arguments;
-	bool isNullOnEmpty = false;
-	ExpressionResult childExpression = ExpressionResultCreateChild(expressionResult);
-	EvaluateAggregationExpressionData(&sortArrayArguments->input, doc, &childExpression,
-									  isNullOnEmpty);
-	bson_value_t evaluatedInputArg = childExpression.value;
-
-	bson_value_t result;
-	ProcessDollarSortArray(&evaluatedInputArg, &sortArrayArguments->sortContext, &result);
-
-	ExpressionResultSetValue(expressionResult, &result);
-}
-
-
-/**
- * Parses the $sortArray expression specified in the bson_value_t and stores it in the data argument.
- */
-void
-ParseDollarSortArray(const bson_value_t *argument, AggregationExpressionData *data,
-					 ParseAggregationExpressionContext *context)
-{
-	if (argument->value_type != BSON_TYPE_DOCUMENT)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION2942500), errmsg(
-							"$sortArray requires an object as an argument, found: %s",
-							BsonTypeName(argument->value_type)),
-						errdetail_log(
-							"$sortArray requires an object as an argument, found: %s",
-							BsonTypeName(argument->value_type))));
-	}
-
-	data->operator.returnType = BSON_TYPE_ARRAY;
-
-	bson_iter_t docIter;
-	BsonValueInitIterator(argument, &docIter);
-
-	bson_value_t input = { 0 };
-	bson_value_t sortby = { 0 };
-	while (bson_iter_next(&docIter))
-	{
-		const char *key = bson_iter_key(&docIter);
-		if (strcmp(key, "input") == 0)
-		{
-			input = *bson_iter_value(&docIter);
-		}
-		else if (strcmp(key, "sortBy") == 0)
-		{
-			sortby = *bson_iter_value(&docIter);
-		}
-		else
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION2942501), errmsg(
-								"$sortArray found an unknown argument: %s", key),
-							errdetail_log(
-								"$sortArray found an unknown argument: %s", key)));
-		}
-	}
-
-	if (input.value_type == BSON_TYPE_EOD)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION2942502), errmsg(
-							"$sortArray requires 'input' to be specified")));
-	}
-
-	if (sortby.value_type == BSON_TYPE_EOD)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION2942503), errmsg(
-							"$sortArray requires 'sortBy' to be specified")));
-	}
-
-	DollarSortArrayArguments *arguments = palloc0(sizeof(DollarSortArrayArguments));
-
-	ParseAggregationExpressionData(&arguments->input, &input, context);
-
-	/* Validate $sort spec, and all nested values if value is object */
-	SortContext sortContext;
-	ValidateSortSpecAndSetSortContext(sortby, &sortContext);
-	arguments->sortContext = sortContext;
-
-	if (IsAggregationExpressionConstant(&arguments->input))
-	{
-		ProcessDollarSortArray(&arguments->input.value, &arguments->sortContext,
-							   &data->value);
-		data->kind = AggregationExpressionKind_Constant;
-
-		pfree(arguments);
-	}
-	else
-	{
-		data->operator.arguments = arguments;
-		data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
-	}
-}
-
-
-static
-void
-ProcessDollarSortArray(bson_value_t *inputValue, SortContext *sortContext,
-					   bson_value_t *result)
-{
-	/* In native mongo if the input array is null or an undefined path the result is null. */
-	if (IsExpressionResultNullOrUndefined(inputValue))
-	{
-		result->value_type = BSON_TYPE_NULL;
-		return;
-	}
-
-	if (inputValue->value_type != BSON_TYPE_ARRAY)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION2942504), errmsg(
-							"The input argument to $sortArray must be an array, but was of type: %s",
-							BsonTypeName(inputValue->value_type)),
-						errdetail_log(
-							"The input argument to $sortArray must be an array, but was of type: %s",
-							BsonTypeName(inputValue->value_type))));
-	}
-
-	bson_iter_t arrayIter;
-	BsonValueInitIterator(inputValue, &arrayIter);
-
-	int64_t nElementsInArray = BsonDocumentValueCountKeys(inputValue);
-
-	/* this is temp array to clone the input array */
-	ElementWithIndex *elementsArr = palloc(nElementsInArray * sizeof(ElementWithIndex));
-
-	uint64_t iteration = 0;
-
-	while (bson_iter_next(&arrayIter))
-	{
-		UpdateElementWithIndex(bson_iter_value(&arrayIter), iteration,
-							   &elementsArr[iteration]);
-		iteration++;
-	}
-
-	qsort_arg(elementsArr, nElementsInArray, sizeof(ElementWithIndex),
-			  CompareBsonValuesForSort, sortContext);
-
-	pgbson_writer writer;
-	PgbsonWriterInit(&writer);
-	pgbson_array_writer arrayWriter;
-	PgbsonWriterStartArray(&writer, "", 0, &arrayWriter);
-
-	/* Write the elements in elementsArr into result */
-	for (int64_t i = 0; i < nElementsInArray; i++)
-	{
-		PgbsonArrayWriterWriteValue(&arrayWriter, &elementsArr[i].bsonValue);
-	}
-
-	PgbsonWriterEndArray(&writer, &arrayWriter);
-
-	*result = PgbsonArrayWriterGetValue(&arrayWriter);
-
-	/* All done with temp resources, release*/
-	pfree(elementsArr);
-}
-
-
-/*
- * Evaluates the output of a $maxN/$minN expression. Via the new operator framework.
- */
-void
-HandlePreParsedDollarMaxMinN(pgbson *doc, void *arguments,
-							 ExpressionResult *expressionResult)
-{
-	DollarMaxMinNArguments *maxMinNArguments = arguments;
-	bool isMaxN = maxMinNArguments->isMaxN;
-
-	bool isNullOnEmpty = false;
-
-	ExpressionResult childExpression = ExpressionResultCreateChild(expressionResult);
-	EvaluateAggregationExpressionData(&maxMinNArguments->n, doc, &childExpression,
-									  isNullOnEmpty);
-	bson_value_t evaluatedLimit = childExpression.value;
-
-	ExpressionResultReset(&childExpression);
-	EvaluateAggregationExpressionData(&maxMinNArguments->input, doc, &childExpression,
-									  isNullOnEmpty);
-	bson_value_t evaluatedInput = childExpression.value;
-
-	bson_value_t result;
-
-	ProcessDollarMaxMinN(&result, &evaluatedLimit, &evaluatedInput, isMaxN);
-
-	ExpressionResultSetValue(expressionResult, &result);
-}
-
-
-/* Parses the $maxN expression specified in the bson_value_t and stores it in the data argument.
- */
-void
-ParseDollarMaxN(const bson_value_t *argument, AggregationExpressionData *data,
-				ParseAggregationExpressionContext *context)
-{
-	bool isMaxN = true;
-	ParseDollarMaxMinN(argument, data, isMaxN, context);
-}
-
-
-/* Parses the $minN expression specified in the bson_value_t and stores it in the data argument.
- */
-void
-ParseDollarMinN(const bson_value_t *argument, AggregationExpressionData *data,
-				ParseAggregationExpressionContext *context)
-{
-	bool isMaxN = false;
-	ParseDollarMaxMinN(argument, data, isMaxN, context);
-}
-
-
-/* Function that processes arguments for $maxN/MinN and calculate result.
- * Validates if arguments are specified correctly
- */
-static void
-ProcessDollarMaxMinN(bson_value_t *result, bson_value_t *evaluatedLimit,
-					 bson_value_t *evaluatedInput, bool isMaxN)
-{
-	int64_t nValue;
-	if (!IsExpressionResultNullOrUndefined(evaluatedLimit) &&
-		BsonTypeIsNumber(evaluatedLimit->value_type))
-	{
-		nValue = BsonValueAsInt64(evaluatedLimit);
-
-		bool checkFixedInteger = true;
-		if (!IsBsonValue64BitInteger(evaluatedLimit, checkFixedInteger))
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31109), errmsg(
-								"Can't coerce out of range value %s to long",
-								BsonValueToJsonForLogging(evaluatedLimit)),
-							errdetail_log(
-								"Can't coerce out of range value to long")));
-		}
-
-		if (nValue < 1)
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787908), errmsg(
-								"'n' must be greater than 0, found %ld",
-								nValue),
-							errdetail_log(
-								"'n' must be greater than 0, found %ld",
-								nValue)));
-		}
-	}
-	else
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787902), errmsg(
-							"Value for 'n' must be of integral type, but found %s",
-							BsonValueToJsonForLogging(evaluatedLimit)),
-						errdetail_log(
-							"Value for 'n' must be of integral type, but found %s",
-							BsonTypeName(evaluatedLimit->value_type))));
-	}
-
-
-	/* In native mongo if the input array is null or an undefined path the result is null. */
-	if (IsExpressionResultNullOrUndefined(evaluatedInput))
-	{
-		result->value_type = BSON_TYPE_NULL;
-		return;
-	}
-
-	if (evaluatedInput->value_type != BSON_TYPE_ARRAY)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5788200)), errmsg(
-					"Input must be an array"));
-	}
-
-	bson_iter_t arrayIter;
-	BsonValueInitIterator(evaluatedInput, &arrayIter);
-
-	int64_t nElementsInArray = BsonDocumentValueCountKeys(evaluatedInput);
-
-	if (nValue > nElementsInArray)
-	{
-		nValue = nElementsInArray;  /* n val result will at most be the size of the array */
-	}
-
-	HeapComparator comparator = isMaxN == true ? HeapSortComparatorMaxN :
-								HeapSortComparatorMinN;
-
-	BinaryHeap *valueHeap = AllocateHeap(nValue, comparator);
-
-	/* Insert all the elements into a heap */
-	while (bson_iter_next(&arrayIter))
-	{
-		const bson_value_t *next = (bson_iter_value(&arrayIter));
-
-		/* skip if value is null or undefined */
-		if (IsExpressionResultNullOrUndefined(next))
-		{
-			continue;
-		}
-
-		/* Heap is full, replace the top & heapify if the new value should be included instead */
-		if (valueHeap->heapSize == valueHeap->heapSpace)
-		{
-			const bson_value_t topHeap = TopHeap(valueHeap);
-			if (!valueHeap->heapComparator(next, &topHeap))
-			{
-				PopFromHeap(valueHeap);
-				PushToHeap(valueHeap, next);
-			}
-		}
-		else
-		{
-			PushToHeap(valueHeap, next);
-		}
-	}
-
-	int64_t numEntries = valueHeap->heapSize;
-
-	bson_value_t *valueArray = (bson_value_t *) palloc(
-		sizeof(bson_value_t) * numEntries);
-
-	/* Write the array in sorted order */
-	while (valueHeap->heapSize > 0)
-	{
-		valueArray[valueHeap->heapSize - 1] = PopFromHeap(valueHeap);
-	}
-
-	pgbson_writer writer;
-	PgbsonWriterInit(&writer);
-	pgbson_array_writer arrayWriter;
-	PgbsonWriterStartArray(&writer, "", 0, &arrayWriter);
-
-
-	/* Write the elements in cArray into result */
-	for (int64_t i = 0; i < numEntries; i++)
-	{
-		PgbsonArrayWriterWriteValue(&arrayWriter, &valueArray[i]);
-	}
-
-	PgbsonWriterEndArray(&writer, &arrayWriter);
-	*result = PgbsonArrayWriterGetValue(&arrayWriter);
-
-	pfree(valueArray);
-	FreeHeap(valueHeap);
-}
-
-
-/* Parses the $maxN/$minN expression specified in the bson_value_t and stores it in the data argument.
- * $maxN is expressed as { "$maxN": { n : <numeric-expression>, input: <array-expression> } }
- * $minN is expressed as { "$minN": { n : <numeric-expression>, input: <array-expression> } }
- */
-static void
-ParseDollarMaxMinN(const bson_value_t *argument, AggregationExpressionData *data, bool
-				   isMaxN, ParseAggregationExpressionContext *context)
-{
-	const char *operatorName = isMaxN == true ? "$maxN" : "$minN";
-
-	if (argument->value_type != BSON_TYPE_DOCUMENT)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787900), errmsg(
-							"specification must be an object; found %s: %s", operatorName,
-							BsonValueToJsonForLogging(argument)),
-						errdetail_log(
-							"specification must be an object; found opname:%s input type:%s",
-							operatorName, BsonTypeName(argument->value_type))));
-	}
-
-	data->operator.returnType = BSON_TYPE_ARRAY;
-
-	bson_iter_t docIter;
-	BsonValueInitIterator(argument, &docIter);
-
-	bson_value_t input = { 0 };
-	bson_value_t count = { 0 };
-	while (bson_iter_next(&docIter))
-	{
-		const char *key = bson_iter_key(&docIter);
-		if (strcmp(key, "input") == 0)
-		{
-			input = *bson_iter_value(&docIter);
-		}
-		else if (strcmp(key, "n") == 0)
-		{
-			count = *bson_iter_value(&docIter);
-		}
-		else
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787901), errmsg(
-								"Unknown argument for 'n' operator: %s", key),
-							errdetail_log(
-								"Unknown argument for 'n' operator: %s", key)));
-		}
-	}
-
-	if (input.value_type == BSON_TYPE_EOD)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787907), errmsg(
-							"Missing value for 'input'")));
-	}
-
-	if (count.value_type == BSON_TYPE_EOD)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION5787906), errmsg(
-							"Missing value for 'n'")));
-	}
-
-	DollarMaxMinNArguments *arguments = palloc0(sizeof(DollarMaxMinNArguments));
-
-	ParseAggregationExpressionData(&arguments->input, &input, context);
-	ParseAggregationExpressionData(&arguments->n, &count, context);
-
-	arguments->isMaxN = isMaxN;
-
-	if (IsAggregationExpressionConstant(&arguments->input) &&
-		IsAggregationExpressionConstant(&arguments->n))
-	{
-		ProcessDollarMaxMinN(&data->value, &arguments->n.value, &arguments->input.value,
-							 isMaxN);
-		data->kind = AggregationExpressionKind_Constant;
-		pfree(arguments);
-	}
-	else
-	{
-		data->operator.arguments = arguments;
-		data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
-	}
-}
-
-
-/*
- * Comparator function for heap utils. For MaxN, we need to build min-heap
- */
-static bool
-HeapSortComparatorMaxN(const void *first,
-					   const void *second)
-{
-	bool ignoreIsComparisonValid = false; /* IsComparable ensures this is taken care of */
-	return CompareBsonValueAndType((const bson_value_t *) first,
-								   (const bson_value_t *) second,
-								   &ignoreIsComparisonValid) < 0;
-}
-
-
-/*
- * Comparator function for heap utils. For MinN, we need to build max-heap
- */
-static bool
-HeapSortComparatorMinN(const void *first,
-					   const void *second)
-{
-	bool ignoreIsComparisonValid = false; /* IsComparable ensures this is taken care of */
-	return CompareBsonValueAndType((const bson_value_t *) first,
-								   (const bson_value_t *) second,
-								   &ignoreIsComparisonValid) > 0;
-}
-
-
-/*
- * Evaluates the output of a $zip expression.
- * $zip is expressed as:
- * { $zip: { inputs: <array of arrays>, useLongestLength: <bool>, defaults: <array> } }
- */
-void
-HandlePreParsedDollarZip(pgbson *doc, void *arguments,
-						 ExpressionResult *expressionResult)
-{
-	DollarZipArguments *zipArguments = arguments;
-
-	bool isNullOnEmpty = false;
-
-	ExpressionResult childExpression = ExpressionResultCreateChild(expressionResult);
-
-	EvaluateAggregationExpressionData(&zipArguments->inputs, doc, &childExpression,
-									  isNullOnEmpty);
-
-	bson_value_t evaluatedInputsArg = childExpression.value;
-
-	ExpressionResultReset(&childExpression);
-
-	EvaluateAggregationExpressionData(&zipArguments->defaults, doc, &childExpression,
-									  isNullOnEmpty);
-
-	bson_value_t evaluatedDefaultsArg = childExpression.value;
-
-	bson_value_t result = { 0 };
-	ProcessDollarZip(evaluatedInputsArg, zipArguments->useLongestLength.value,
-					 evaluatedDefaultsArg, &result);
-
-	ExpressionResultSetValue(expressionResult, &result);
-}
-
-
-/*
- * This function parses the input for operator $zip.
- * The input to this function is of the following format { $zip: { inputs: <expression(array of arrays)>, useLongestLength: <bool>, defaults: <expression> } }.
- * useLongestLength and defaults are optional arguments.
- * useLongestLength must be true if defaults is specified.
- */
-void
-ParseDollarZip(const bson_value_t *argument, AggregationExpressionData *data,
-			   ParseAggregationExpressionContext *context)
-{
-	if (argument->value_type != BSON_TYPE_DOCUMENT)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34460), errmsg(
-							"$zip only supports an object as an argument, found %s",
-							BsonTypeName(
-								argument->value_type)),
-						errdetail_log(
-							"$zip only supports an object as an argument, found %s",
-							BsonTypeName(
-								argument->value_type))));
-	}
-
-	data->operator.returnType = BSON_TYPE_ARRAY;
-
-	bson_iter_t docIter;
-	BsonValueInitIterator(argument, &docIter);
-
-	bson_value_t inputs = { 0 };
-	bson_value_t useLongestLength = { 0 };
-	bson_value_t defaults = { 0 };
-	while (bson_iter_next(&docIter))
-	{
-		const char *key = bson_iter_key(&docIter);
-		if (strcmp(key, "inputs") == 0)
-		{
-			inputs = *bson_iter_value(&docIter);
-		}
-		else if (strcmp(key, "useLongestLength") == 0)
-		{
-			useLongestLength = *bson_iter_value(&docIter);
-		}
-		else if (strcmp(key, "defaults") == 0)
-		{
-			defaults = *bson_iter_value(&docIter);
-		}
-		else
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34464), errmsg(
-								"$zip found an unknown argument: %s", key),
-							errdetail_log("$zip found an unknown argument: %s", key)));
-		}
-	}
-
-	if (inputs.value_type == BSON_TYPE_EOD)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34465), errmsg(
-							"$zip requires at least one input array")));
-	}
-
-	if (useLongestLength.value_type == BSON_TYPE_EOD)
-	{
-		useLongestLength.value_type = BSON_TYPE_BOOL;
-		useLongestLength.value.v_bool = false;
-	}
-	else if (useLongestLength.value_type != BSON_TYPE_BOOL)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34463), errmsg(
-							"useLongestLength must be a bool, found %s", BsonTypeName(
-								useLongestLength.value_type)),
-						errdetail_log("useLongestLength must be a bool, found %s",
-									  BsonTypeName(
-										  useLongestLength.value_type))));
-	}
-
-	DollarZipArguments *arguments = palloc0(sizeof(DollarZipArguments));
-
-	arguments->useLongestLength.value = useLongestLength;
-	ParseAggregationExpressionData(&arguments->inputs, &inputs, context);
-	ParseAggregationExpressionData(&arguments->defaults, &defaults, context);
-
-	if (IsAggregationExpressionConstant(&arguments->inputs) &&
-		IsAggregationExpressionConstant(&arguments->defaults))
-	{
-		/* If all input arguments are constant, we can calculate the result now */
-		ProcessDollarZip(inputs, useLongestLength, defaults, &data->value);
-		data->kind = AggregationExpressionKind_Constant;
-		pfree(arguments);
-	}
-	else
-	{
-		data->operator.arguments = arguments;
-		data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
-	}
-}
-
-
-/* Function that processes arguments for $zip and calculate result*/
-/* Validates if arguments are specified correctly */
-static void
-ProcessDollarZip(bson_value_t evaluatedInputsArg, bson_value_t evaluatedLongestLengthArg,
-				 bson_value_t evaluatedDefaultsArg, bson_value_t *resultPtr)
-{
-	bson_value_t nullValue = {
-		.value_type = BSON_TYPE_NULL
-	};
-
-	if (evaluatedInputsArg.value_type != BSON_TYPE_ARRAY)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34461), errmsg(
-							"inputs must be an array of expressions, found %s",
-							BsonTypeName(
-								evaluatedInputsArg.value_type)),
-						errdetail_log("inputs must be an array of expressions, found %s",
-									  BsonTypeName(
-										  evaluatedInputsArg.value_type))));
-	}
-
-	int rowNum = BsonDocumentValueCountKeys(&evaluatedInputsArg);
-
-	if (rowNum == 0)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34465), errmsg(
-							"$zip requires at least one input array")));
-	}
-
-	bool useLongestLengthArgBoolValue = evaluatedLongestLengthArg.value.v_bool;
-
-	/* array to store the copy of elements in the defaults, avoid using array iterators multiple times in following loop */
-	bson_value_t *defaultsElements = ParseZipDefaultsArgument(rowNum,
-															  evaluatedDefaultsArg,
-															  useLongestLengthArgBoolValue);
-
-	/* struct to store the parsed inputs argument, avoid using array iterators multiple times in following loop */
-	ZipParseInputsResult parsedInputs = ParseZipInputsArgument(rowNum,
-															   evaluatedInputsArg,
-															   useLongestLengthArgBoolValue);
-
-	/* Early return if any of the inputs arrays resolves to a value of null or refers to a missing field */
-	if (parsedInputs.outputSubArrayLength < 0)
-	{
-		*resultPtr = nullValue;
-		pfree(defaultsElements);
-		return;
-	}
-
-	SetResultArrayForDollarZip(rowNum, parsedInputs, defaultsElements, resultPtr);
-
-	/* free the allocated memory */
-	for (int i = 0; i < rowNum; i++)
-	{
-		if (parsedInputs.inputsElements[i])
-		{
-			pfree(parsedInputs.inputsElements[i]);
-		}
-	}
-	pfree(parsedInputs.inputsElements);
-	pfree(parsedInputs.inputsElementLengths);
-	pfree(defaultsElements);
-}
-
-
-/* Function that sets result for $zip operator*/
-static void
-SetResultArrayForDollarZip(int rowNum, ZipParseInputsResult parsedInputs,
-						   bson_value_t *defaultsElements, bson_value_t *resultPtr)
-{
-	/* array to store the copy of elements in the inputs, avoid using array iterators multiple times in following loop */
-	bson_value_t **inputsElements = parsedInputs.inputsElements;
-
-	/* array to store the length of each array in inputs */
-	int *inputsElementLengths = parsedInputs.inputsElementLengths;
-
-	/* length of the output subarrays */
-	/* If useLongestLength is true, it is the length of the longest input array. */
-	/* If useLongestLength is false, it is the length of the shortest input array. */
-	int outputSubArrayLength = parsedInputs.outputSubArrayLength;
-
-	pgbson_writer writer;
-	PgbsonWriterInit(&writer);
-	pgbson_array_writer arrayWriter;
-	PgbsonWriterStartArray(&writer, "", 0, &arrayWriter);
-
-	for (int i = 0; i < outputSubArrayLength; i++)
-	{
-		pgbson_writer subWriter;
-		PgbsonWriterInit(&subWriter);
-		pgbson_array_writer subArrayWriter;
-		PgbsonWriterStartArray(&subWriter, "", 0, &subArrayWriter);
-		for (int j = 0; j < rowNum; j++)
-		{
-			if (i < inputsElementLengths[j])
-			{
-				PgbsonArrayWriterWriteValue(&subArrayWriter, &inputsElements[j][i]);
-			}
-			else
-			{
-				/* use default value or null */
-				PgbsonArrayWriterWriteValue(&subArrayWriter, &defaultsElements[j]);
-			}
-		}
-		PgbsonWriterEndArray(&subWriter, &subArrayWriter);
-		bson_value_t subArrayValue = PgbsonArrayWriterGetValue(&subArrayWriter);
-		PgbsonArrayWriterWriteValue(&arrayWriter, &subArrayValue);
-	}
-	PgbsonWriterEndArray(&writer, &arrayWriter);
-	*resultPtr = PgbsonArrayWriterGetValue(&arrayWriter);
-}
-
-
-/* Function that processes defaults argument for $zip */
-/* Validates if defaults is specified correctly */
-static bson_value_t *
-ParseZipDefaultsArgument(int rowNum, bson_value_t evaluatedDefaultsArg, bool
-						 useLongestLengthArgBoolValue)
-{
-	if (!IsExpressionResultNullOrUndefined(&evaluatedDefaultsArg))
-	{
-		if (evaluatedDefaultsArg.value_type != BSON_TYPE_ARRAY)
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34462), errmsg(
-								"defaults must be an array of expressions, found %s",
-								BsonTypeName(
-									evaluatedDefaultsArg.value_type)),
-							errdetail_log(
-								"defaults must be an array of expressions, found %s",
-								BsonTypeName(
-									evaluatedDefaultsArg.value_type))));
-		}
-		else if (useLongestLengthArgBoolValue == false)
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34466), errmsg(
-								"cannot specify defaults unless useLongestLength is true")));
-		}
-		else if (BsonDocumentValueCountKeys(&evaluatedDefaultsArg) != rowNum)
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34467), errmsg(
-								"defaults and inputs must have the same length")));
-		}
-	}
-
-	bson_value_t nullValue = {
-		.value_type = BSON_TYPE_NULL
-	};
-	bson_value_t *defaultsElements = (bson_value_t *) palloc0(rowNum *
-															  sizeof(bson_value_t));
-
-	/* In native mongo, if defaults is empty or not specified, $zip uses null as the default value. */
-	if (IsExpressionResultNullOrUndefined(&evaluatedDefaultsArg))
-	{
-		for (int i = 0; i < rowNum; i++)
-		{
-			defaultsElements[i] = nullValue;
-		}
-	}
-	else
-	{
-		bson_iter_t defaultsIter;
-		BsonValueInitIterator(&evaluatedDefaultsArg, &defaultsIter);
-
-		for (int defaultsIndex = 0; bson_iter_next(&defaultsIter); defaultsIndex++)
-		{
-			defaultsElements[defaultsIndex] = *bson_iter_value(&defaultsIter);
-		}
-	}
-	return defaultsElements;
-}
-
-
-/* Function that processes inputs argument for $zip */
-/* Validates if inputs is specified correctly */
-static ZipParseInputsResult
-ParseZipInputsArgument(int rowNum, bson_value_t evaluatedInputsArg, bool
-					   useLongestLengthArgBoolValue)
-{
-	/* array to store the copy of elements in the inputs, avoid using array iterators multiple times in following loop */
-	bson_value_t **inputsElements = (bson_value_t **) palloc0(rowNum *
-															  sizeof(bson_value_t *));
-
-	/* array to store the length of each array in inputs */
-	int *inputsElementLengths = (int *) palloc0(rowNum * sizeof(int32_t));
-
-	bson_iter_t inputsIter;
-	BsonValueInitIterator(&evaluatedInputsArg, &inputsIter);
-
-	int maxSubArrayLength = -1;
-	int minSubArrayLength = INT_MAX;
-
-	for (int inputsIndex = 0; bson_iter_next(&inputsIter); inputsIndex++)
-	{
-		const bson_value_t *inputsElem = bson_iter_value(&inputsIter);
-
-		/* The length of current subarray in inputs */
-		int currentSubArrayLen = 0;
-
-		/* In native mongo, if any of the inputs arrays resolves to a value of null or refers to a missing field, $zip returns null. */
-		if (IsExpressionResultNullOrUndefined(inputsElem))
-		{
-			ZipParseInputsResult nullValue;
-			nullValue.outputSubArrayLength = -1;
-			pfree(inputsElements);
-			pfree(inputsElementLengths);
-			return nullValue;
-		}
-
-		/* In native mongo, if any of the inputs arrays does not resolve to an array or null nor refers to a missing field, $zip returns an error. */
-		else if (inputsElem->value_type != BSON_TYPE_ARRAY)
-		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION34468), errmsg(
-								"$zip found a non-array expression in input: %s",
-								BsonValueToJsonForLogging(inputsElem)),
-							errdetail_log(
-								"$zip found a non-array expression in input: %s",
-								BsonValueToJsonForLogging(inputsElem))));
-		}
-		else
-		{
-			currentSubArrayLen = BsonDocumentValueCountKeys(inputsElem);
-		}
-
-		maxSubArrayLength = Max(maxSubArrayLength, currentSubArrayLen);
-		minSubArrayLength = Min(minSubArrayLength, currentSubArrayLen);
-
-		inputsElementLengths[inputsIndex] = currentSubArrayLen;
-
-		/* handle empty array in inputs */
-		if (currentSubArrayLen > 0)
-		{
-			bson_value_t *subArrayElements = (bson_value_t *) palloc0(currentSubArrayLen *
-																	  sizeof(bson_value_t));
-			inputsElements[inputsIndex] = subArrayElements;
-
-			bson_iter_t subInputArrayIter;
-			BsonValueInitIterator(inputsElem, &subInputArrayIter);
-
-			for (int subArrayIndex = 0; bson_iter_next(&subInputArrayIter);
-				 subArrayIndex++)
-			{
-				subArrayElements[subArrayIndex] = *bson_iter_value(&subInputArrayIter);
-			}
-		}
-		else
-		{
-			inputsElements[inputsIndex] = NULL;
-		}
-	}
-
-	int outputSubArrayLength = useLongestLengthArgBoolValue ? maxSubArrayLength :
-							   minSubArrayLength;
-
-	return (ZipParseInputsResult) {
-			   .inputsElements = inputsElements,
-			   .inputsElementLengths = inputsElementLengths,
-			   .outputSubArrayLength = outputSubArrayLength
-	};
 }

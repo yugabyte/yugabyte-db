@@ -62,11 +62,10 @@ static void ParseArithmeticDualOperands(const bson_value_t *argument,
 										ProcessArithmeticDualOperands
 										processArithmeticOperatorFunc,
 										ParseAggregationExpressionContext *context);
-static void ParseArithmeticRangeOperands(const bson_value_t *argument,
-										 AggregationExpressionData *data, const
-										 char *operatorName,
-										 ProcessArithmeticDualOperands processOperatorFunc,
-										 ParseAggregationExpressionContext *context);
+static void ParseDollarRoundAndTrunc(const bson_value_t *argument,
+									 AggregationExpressionData *data, const
+									 char *operatorName,
+									 ParseAggregationExpressionContext *context);
 static void ParseArithmeticVariableOperands(const bson_value_t *argument,
 											void *state,
 											AggregationExpressionData *data,
@@ -110,9 +109,6 @@ static void ProcessDollarLog10(const bson_value_t *currentValue, bson_value_t *r
 static void ProcessDollarLn(const bson_value_t *currentValue, bson_value_t *result);
 static void ProcessDollarAbs(const bson_value_t *currentValue, bson_value_t *result);
 static void ProcessDollarAddAccumulatedResult(void *state, bson_value_t *result);
-static void InitializeDualArgumentState(bson_value_t firstValue, bson_value_t secondValue,
-										bool hasFieldExpression,
-										DualArgumentExpressionState *state);
 static bool CheckForDateOverflow(bson_value_t *value);
 static void ThrowIfNotNumeric(const bson_value_t *value, const char *operatorName,
 							  bool isFieldPathExpression);
@@ -376,8 +372,7 @@ void
 ParseDollarRound(const bson_value_t *argument, AggregationExpressionData *data,
 				 ParseAggregationExpressionContext *context)
 {
-	ParseArithmeticRangeOperands(argument, data, "$round",
-								 ProcessDollarRound, context);
+	ParseDollarRoundAndTrunc(argument, data, "$round", context);
 }
 
 
@@ -405,8 +400,7 @@ void
 ParseDollarTrunc(const bson_value_t *argument, AggregationExpressionData *data,
 				 ParseAggregationExpressionContext *context)
 {
-	ParseArithmeticRangeOperands(argument, data, "$trunc",
-								 ProcessDollarTrunc, context);
+	ParseDollarRoundAndTrunc(argument, data, "$trunc", context);
 }
 
 
@@ -716,7 +710,8 @@ ParseArithmeticDualOperands(const bson_value_t *argument,
 		DualArgumentExpressionState state;
 		memset(&state, 0, sizeof(DualArgumentExpressionState));
 
-		InitializeDualArgumentState(firstArg->value, secondArg->value, false, &state);
+		InitializeDualArgumentExpressionState(firstArg->value, secondArg->value, false,
+											  &state);
 		processOperatorFunc(&state, &data->value);
 
 		data->kind = AggregationExpressionKind_Constant;
@@ -758,7 +753,8 @@ HandlePreParsedArithmeticDualOperands(pgbson *doc, void *arguments,
 	DualArgumentExpressionState state;
 	memset(&state, 0, sizeof(DualArgumentExpressionState));
 
-	InitializeDualArgumentState(firstValue, secondValue, hasFieldExpression, &state);
+	InitializeDualArgumentExpressionState(firstValue, secondValue, hasFieldExpression,
+										  &state);
 	processOperatorFunc(&state, &result);
 
 	ExpressionResultSetValue(expressionResult, &result);
@@ -770,12 +766,10 @@ HandlePreParsedArithmeticDualOperands(pgbson *doc, void *arguments,
  * Currently used by only $round and $trunc which take one to two arguments.
  */
 static void
-ParseArithmeticRangeOperands(const bson_value_t *argument,
-							 AggregationExpressionData *data, const
-							 char *operatorName,
-							 ProcessArithmeticDualOperands
-							 processOperatorFunc,
-							 ParseAggregationExpressionContext *context)
+ParseDollarRoundAndTrunc(const bson_value_t *argument,
+						 AggregationExpressionData *data, const
+						 char *operatorName,
+						 ParseAggregationExpressionContext *context)
 {
 	int minNumOfArgs = 1;
 	int maxNumOfArgs = 2;
@@ -835,8 +829,17 @@ ParseArithmeticRangeOperands(const bson_value_t *argument,
 		DualArgumentExpressionState state;
 		memset(&state, 0, sizeof(DualArgumentExpressionState));
 
-		InitializeDualArgumentState(firstArg->value, secondArg->value, false, &state);
-		processOperatorFunc(&state, &data->value);
+		InitializeDualArgumentExpressionState(firstArg->value, secondArg->value, false,
+											  &state);
+
+		if (strcmp(operatorName, "$round"))
+		{
+			ProcessDollarTrunc(&state, &data->value);
+		}
+		else
+		{
+			ProcessDollarRound(&state, &data->value);
+		}
 
 		data->kind = AggregationExpressionKind_Constant;
 		list_free_deep(argumentsList);
@@ -1888,19 +1891,6 @@ ProcessDollarAbs(const bson_value_t *currentValue, bson_value_t *result)
 			result->value.v_int64 = absValue;
 		}
 	}
-}
-
-
-/* Initializes the state for dual argument expressions. */
-static void
-InitializeDualArgumentState(bson_value_t firstValue, bson_value_t secondValue, bool
-							hasFieldExpression, DualArgumentExpressionState *state)
-{
-	state->firstArgument = firstValue;
-	state->secondArgument = secondValue;
-	state->hasFieldExpression = hasFieldExpression;
-	state->hasNullOrUndefined = IsExpressionResultNullOrUndefined(&firstValue) ||
-								IsExpressionResultNullOrUndefined(&secondValue);
 }
 
 

@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/bson/bson_expression.c
+ * src/operators/bson_expression.c
  *
  * Operator expression implementations of BSON.
  *
@@ -201,9 +201,10 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	{ "$anyElementTrue", NULL, &ParseDollarAnyElementTrue,
 	  &HandlePreParsedDollarAnyElementTrue,
 	  FEATURE_AGG_OPERATOR_ANYELEMENTTRUE },
-	{ "$arrayElemAt", &HandleDollarArrayElemAt, NULL, NULL,
+	{ "$arrayElemAt", NULL, &ParseDollarArrayElemAt, &HandlePreParsedDollarArrayElemAt,
 	  FEATURE_AGG_OPERATOR_ARRAYELEMAT },
-	{ "$arrayToObject", &HandleDollarArrayToObject, NULL, NULL,
+	{ "$arrayToObject", NULL, &ParseDollarArrayToObject,
+	  &HandlePreParsedDollarArrayToObject,
 	  FEATURE_AGG_OPERATOR_ARRAYTOOBJECT },
 	{ "$asin", NULL, &ParseDollarAsin, &HandlePreParsedDollarAsin,
 	  FEATURE_AGG_OPERATOR_ASIN },
@@ -235,7 +236,7 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	  FEATURE_AGG_OPERATOR_CMP },
 	{ "$concat", NULL, &ParseDollarConcat, &HandlePreParsedDollarConcat,
 	  FEATURE_AGG_OPERATOR_CONCAT },
-	{ "$concatArrays", &HandleDollarConcatArrays, NULL, NULL,
+	{ "$concatArrays", NULL, &ParseDollarConcatArrays, &HandlePreParsedDollarConcatArrays,
 	  FEATURE_AGG_OPERATOR_CONCATARRAYS },
 	{ "$cond", NULL, &ParseDollarCond, &HandlePreParsedDollarCond,
 	  FEATURE_AGG_OPERATOR_COND },
@@ -277,7 +278,8 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	  FEATURE_AGG_OPERATOR_EXP },
 	{ "$filter", NULL, &ParseDollarFilter, &HandlePreParsedDollarFilter,
 	  FEATURE_AGG_OPERATOR_FILTER },
-	{ "$first", &HandleDollarFirst, NULL, NULL, FEATURE_AGG_OPERATOR_FIRST },
+	{ "$first", NULL, &ParseDollarFirst, &HandlePreParsedDollarFirst,
+	  FEATURE_AGG_OPERATOR_FIRST },
 	{ "$firstN", NULL, &ParseDollarFirstN, &HandlePreParsedDollarFirstN,
 	  FEATURE_AGG_OPERATOR_FIRSTN },
 	{ "$floor", NULL, &ParseDollarFloor, &HandlePreParsedDollarFloor,
@@ -292,14 +294,15 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	  FEATURE_AGG_OPERATOR_HOUR },
 	{ "$ifNull", NULL, &ParseDollarIfNull, &HandlePreParsedDollarIfNull,
 	  FEATURE_AGG_OPERATOR_IFNULL },
-	{ "$in", &HandleDollarIn, NULL, NULL, FEATURE_AGG_OPERATOR_IN },
+	{ "$in", NULL, &ParseDollarIn, &HandlePreParsedDollarIn, FEATURE_AGG_OPERATOR_IN },
 	{ "$indexOfArray", NULL, &ParseDollarIndexOfArray, &HandlePreParsedDollarIndexOfArray,
 	  FEATURE_AGG_OPERATOR_INDEXOFARRAY },
 	{ "$indexOfBytes", NULL, &ParseDollarIndexOfBytes, &HandlePreParsedDollarIndexOfBytes,
 	  FEATURE_AGG_OPERATOR_INDEXOFBYTES },
 	{ "$indexOfCP", NULL, &ParseDollarIndexOfCP, &HandlePreParsedDollarIndexOfCP,
 	  FEATURE_AGG_OPERATOR_INDEXOFCP },
-	{ "$isArray", &HandleDollarIsArray, NULL, NULL, FEATURE_AGG_OPERATOR_ISARRAY },
+	{ "$isArray", NULL, &ParseDollarIsArray, &HandlePreParsedDollarIsArray,
+	  FEATURE_AGG_OPERATOR_ISARRAY },
 	{ "$isNumber", &HandleDollarIsNumber, NULL, NULL, FEATURE_AGG_OPERATOR_ISNUMBER },
 	{ "$isoDayOfWeek", NULL, &ParseDollarIsoDayOfWeek, &HandlePreParsedDollarIsoDayOfWeek,
 	  FEATURE_AGG_OPERATOR_ISODAYOFWEEK },
@@ -307,7 +310,8 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	  FEATURE_AGG_OPERATOR_ISOWEEK },
 	{ "$isoWeekYear", NULL, &ParseDollarIsoWeekYear, &HandlePreParsedDollarIsoWeekYear,
 	  FEATURE_AGG_OPERATOR_ISOWEEKYEAR },
-	{ "$last", &HandleDollarLast, NULL, NULL, FEATURE_AGG_OPERATOR_LAST },
+	{ "$last", NULL, &ParseDollarLast, &HandlePreParsedDollarLast,
+	  FEATURE_AGG_OPERATOR_LAST },
 	{ "$lastN", NULL, &ParseDollarLastN, &HandlePreParsedDollarLastN,
 	  FEATURE_AGG_OPERATOR_LASTN },
 	{ "$let", NULL, &ParseDollarLet, &HandlePreParsedDollarLet,
@@ -352,7 +356,8 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	{ "$ne", NULL, &ParseDollarNe, &HandlePreParsedDollarNe, FEATURE_AGG_OPERATOR_NE },
 	{ "$not", NULL, &ParseDollarNot, &HandlePreParsedDollarNot,
 	  FEATURE_AGG_OPERATOR_NOT },
-	{ "$objectToArray", &HandleDollarObjectToArray, NULL, NULL,
+	{ "$objectToArray", NULL, &ParseDollarObjectToArray,
+	  &HandlePreParsedDollarObjectToArray,
 	  FEATURE_AGG_OPERATOR_OBJECTTOARRAY },
 	{ "$or", NULL, &ParseDollarOr, &HandlePreParsedDollarOr, FEATURE_AGG_OPERATOR_OR },
 	{ "$pow", NULL, &ParseDollarPow, &HandlePreParsedDollarPow,
@@ -403,8 +408,10 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	  FEATURE_AGG_OPERATOR_SIN },
 	{ "$sinh", NULL, &ParseDollarSinh, &HandlePreParsedDollarSinh,
 	  FEATURE_AGG_OPERATOR_SINH },
-	{ "$size", &HandleDollarSize, NULL, NULL, FEATURE_AGG_OPERATOR_SIZE },
-	{ "$slice", &HandleDollarSlice, NULL, NULL, FEATURE_AGG_OPERATOR_SLICE },
+	{ "$size", NULL, &ParseDollarSize, &HandlePreParsedDollarSize,
+	  FEATURE_AGG_OPERATOR_SIZE },
+	{ "$slice", NULL, &ParseDollarSlice, &HandlePreParsedDollarSlice,
+	  FEATURE_AGG_OPERATOR_SLICE },
 	{ "$sortArray", NULL, &ParseDollarSortArray, &HandlePreParsedDollarSortArray,
 	  FEATURE_AGG_OPERATOR_SORTARRAY },
 	{ "$split", NULL, &ParseDollarSplit, &HandlePreParsedDollarSplit,
@@ -2463,9 +2470,8 @@ ProcessDualArgumentElement(bson_value_t *result,
 
 
 /* Process elements for operators which take at most three arguments eg, $slice, $range */
-bool
-ProcessThreeArgumentElement(bson_value_t *result, const
-							bson_value_t *currentElement,
+void
+ProcessThreeArgumentElement(const bson_value_t *currentElement,
 							bool isFieldPathExpression, void *state)
 {
 	ThreeArgumentExpressionState *threeArgState = (ThreeArgumentExpressionState *) state;
@@ -2492,7 +2498,6 @@ ProcessThreeArgumentElement(bson_value_t *result, const
 	threeArgState->hasNullOrUndefined = threeArgState->hasNullOrUndefined ||
 										IsExpressionResultNullOrUndefined(currentElement);
 	threeArgState->totalProcessedArgs++;
-	return true;
 }
 
 
