@@ -208,5 +208,6 @@ race:pqGetpwuid
 race:unum::usearch
 race:hnswlib::HierarchicalNSW
 
-# Known issue with krb5 after updates to postgres 15.
+# Known issues with krb5 after updates to postgres 15.
 race:krb5_gss_init_context
+race:k5_once
