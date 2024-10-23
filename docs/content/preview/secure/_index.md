@@ -58,4 +58,10 @@ type: indexpage
     href="audit-logging/"
     icon="fa-thin fa-calculator">}}
 
+  {{<index/item
+    title="Vulnerability disclosure"
+    body="Learn about Yugabyte vulnerability reporting."
+    href="/preview/secure/vulnerability-disclosure-policy/"
+    icon="fa-thin fa-shield-check">}}
+
 {{</index/block>}}
