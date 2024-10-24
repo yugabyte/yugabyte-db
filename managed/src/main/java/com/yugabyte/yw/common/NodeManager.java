@@ -2061,6 +2061,10 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("--systemd_services");
           }
 
+          if (taskParam.rebootNodeAllowed) {
+            commandArgs.add("--reboot_node_allowed");
+          }
+
           if (taskParam.useTimeSync
               && (cloudType.equals(Common.CloudType.aws)
                   || cloudType.equals(Common.CloudType.gcp)

@@ -224,6 +224,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
           false /* ignore node status check */,
           setupServerParams -> {
             setupServerParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+            setupServerParams.rebootNodeAllowed = true;
           },
           installSoftwareParams -> {
             installSoftwareParams.isMasterInShellMode = true;

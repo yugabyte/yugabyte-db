@@ -263,7 +263,12 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       createInstallNodeAgentTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createWaitForNodeAgentTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createHookProvisionTask(nodeList, TriggerType.PreNodeProvision);
-      createSetupServerTasks(nodeList, p -> p.vmUpgradeTaskType = taskParams().vmUpgradeTaskType)
+      createSetupServerTasks(
+              nodeList,
+              p -> {
+                p.vmUpgradeTaskType = taskParams().vmUpgradeTaskType;
+                p.rebootNodeAllowed = true;
+              })
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
       createHookProvisionTask(nodeList, TriggerType.PostNodeProvision);
       createLocaleCheckTask(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
