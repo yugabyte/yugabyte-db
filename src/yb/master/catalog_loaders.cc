@@ -562,10 +562,8 @@ Status UDTypeLoader::Visit(const UDTypeId& udtype_id, const SysUDTypeEntryPB& me
 Status ObjectLockLoader::Visit(const std::string& host_uuid, const SysObjectLockEntryPB& pb) {
   std::shared_ptr<ObjectLockInfo> info = std::make_shared<ObjectLockInfo>(host_uuid);
   {
-    auto l = info->LockForWrite();
-    l.mutable_data()->pb.CopyFrom(pb);
-    l.Commit();
-    catalog_manager_->object_lock_info_manager_->InsertOrAssign(host_uuid, info);
+    info->Load(pb);
+    catalog_manager_->object_lock_info_manager_->UpdateObjectLocks(host_uuid, info);
   }
 
   LOG(INFO) << "Loaded metadata for type " << info->ToString();

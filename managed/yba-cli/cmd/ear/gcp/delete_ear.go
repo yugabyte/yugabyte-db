@@ -12,9 +12,11 @@ import (
 
 // deleteGCPEARCmd represents the ear command
 var deleteGCPEARCmd = &cobra.Command{
-	Use:   "delete",
-	Short: "Delete a YugabyteDB Anywhere GCP encryption at rest configuration",
-	Long:  "Delete a GCP encryption at rest configuration in YugabyteDB Anywhere",
+	Use:     "delete",
+	Aliases: []string{"remove", "rm"},
+	Short:   "Delete a YugabyteDB Anywhere GCP encryption at rest configuration",
+	Long:    "Delete a GCP encryption at rest configuration in YugabyteDB Anywhere",
+	Example: `yba ear gcp delete --name <config-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		earutil.DeleteEARValidation(cmd)
 	},

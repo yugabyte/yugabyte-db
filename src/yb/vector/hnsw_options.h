@@ -37,12 +37,6 @@ struct HNSWOptions {
 
   size_t max_neighbors_per_vertex_base = 64;
 
-  // The default value is 1/log(2), such that every level gets approximately half of the number of
-  // vertices at the level below it.
-  //
-  // This is currently not used in case of usearch.
-  float ml = 1.4426950408889634;
-
   // The "expansion" parameter during graph construction. The maximum number of results the
   // algorithm maintains internally while constructing the candidate list for the new node's
   // neighbors. This is expansion_add in usearch.

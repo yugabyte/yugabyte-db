@@ -76,16 +76,6 @@ class MasterPathHandlers {
   const std::string kYBLightBlue = "#3eb1cc";
   const std::string kYBGray = "#5e647a";
 
-  const std::vector<std::string> kYBColorList = {
-    "#30307F", "#36B8F5",
-    "#BB43BC", "#43BFC2", "#90948E",
-    "#1C7180", "#EEA95F", "#3590D9",
-    "#F0679E", "#707B8E", "#800000",
-    "#F08080", "#FF8C00", "#7CFC00",
-    "#D2691E", "#696969", "#FFD700",
-    "#B8860B", "#006400", "#FF6347"
-  };
-
   Status Register(Webserver* server);
 
   std::string BytesToHumanReadable (uint64_t bytes);
@@ -302,7 +292,6 @@ class MasterPathHandlers {
   void HandleGetUnderReplicationStatus(const Webserver::WebRequest &req,
                                         Webserver::WebResponse *resp);
   void HandleVersionInfoDump(const Webserver::WebRequest &req, Webserver::WebResponse *resp);
-  void HandlePrettyLB(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleLoadBalancer(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleGetMetaCacheJson(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleStatefulServices(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
@@ -312,7 +301,7 @@ class MasterPathHandlers {
   Status CalculateTabletMap(TabletCountMap* tablet_map);
 
   // Calculate tserver tree for ALL tables if max_table_count == -1.
-  // Otherwise, do not perform calculation if number of tables is less than max_table_count.
+  // Otherwise, do not perform calculation if number of tables is more than max_table_count.
   Result<TServerTree> CalculateTServerTree(int max_table_count);
   void RenderLoadBalancerViewPanel(
       const TServerTree& tserver_tree, const std::vector<std::shared_ptr<TSDescriptor>>& descs,

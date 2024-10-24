@@ -1939,7 +1939,6 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
 
   Schema schema;
   RETURN_NOT_OK(SchemaFromPB(meta.schema(), &schema));
-  const vector<ColumnId>& column_ids = schema.column_ids();
   scoped_refptr<TableInfo> table;
 
   // First, check if namespace id and table id match. If, in addition, other properties match, we
@@ -2157,6 +2156,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     // We also ensure that the number of columns is the same for both regular tables and indexes.
     // Additionally, for indexes, we compare the column ids as we expect them to be
     // preserved.
+    const vector<ColumnId>& column_ids = schema.column_ids();
     if (!persisted_schema.Equals(schema, comparator)
         || persisted_schema.column_ids().size() != column_ids.size()
         || (table->is_index() && persisted_schema.column_ids() != column_ids)) {
@@ -2250,6 +2250,25 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
       l.Commit();
       notify_ts_for_schema_change = true;
+    }
+
+    // Set missing values for tables that were created with a default value. ysql_dump will not
+    // properly set that value because it is only set on ADD COLUMN, and it creates the column
+    // directly in CREATE TABLE.
+    {
+      auto l = table->LockForWrite();
+      for (auto i = 0; i < l.mutable_data()->pb.schema().columns_size(); ++i) {
+        auto& column = meta.schema().columns(i);
+        auto& persisted_column = *l.mutable_data()->pb.mutable_schema()->mutable_columns(i);
+        if (column.has_missing_value() && !persisted_column.has_missing_value()) {
+          *persisted_column.mutable_missing_value() = column.missing_value();
+        }
+      }
+      if (l.is_dirty()) {
+        RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
+        l.Commit();
+        notify_ts_for_schema_change = true;
+      }
     }
 
     // Restore partition key version.

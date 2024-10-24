@@ -17,9 +17,12 @@ import (
 
 // upgradeSoftwareCmd represents the universe upgrade software command
 var upgradeSoftwareCmd = &cobra.Command{
-	Use:   "software",
-	Short: "Software upgrade for a YugabyteDB Anywhere Universe",
-	Long:  "Software upgrade for a YugabyteDB Anywhere Universe",
+	Use:     "software",
+	Aliases: []string{"yb-db-version"},
+	Short:   "Software upgrade for a YugabyteDB Anywhere Universe",
+	Long:    "Software upgrade for a YugabyteDB Anywhere Universe",
+	Example: `yba universe upgrade software --name <universe-name> \
+	--yb-db-version <software-version>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		universeName, err := cmd.Flags().GetString("name")

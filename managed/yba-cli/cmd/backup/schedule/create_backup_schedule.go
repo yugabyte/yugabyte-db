@@ -25,6 +25,10 @@ var createBackupScheduleCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a YugabyteDB Anywhere universe backup schedule",
 	Long:  "Create an universe backup schedule in YugabyteDB Anywhere",
+	Example: `yba backup schedule create -n <schedule-name> \
+	--schedule-frequency-in-secs <schedule-frequency-in-secs> \
+	--universe-name <universe-name> --storage-config-name <storage-config-name> \
+	--table-type <table-type>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		scheduleNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {

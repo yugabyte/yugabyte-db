@@ -10,6 +10,12 @@ Describe a K8s Cert Manager YugabyteDB Anywhere Encryption In Transit (EIT) conf
 yba eit k8s-cert-manager describe [flags]
 ```
 
+### Examples
+
+```
+yba eit k8s-cert-manager describe --name <config-name>
+```
+
 ### Options
 
 ```

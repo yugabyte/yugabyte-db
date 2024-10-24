@@ -207,6 +207,8 @@ class MiniCluster : public MiniClusterBase {
   // Return number of mini masters.
   size_t num_masters() const { return mini_masters_.size(); }
 
+  const MiniMasters& mini_masters() { return mini_masters_; }
+
   // Returns the TabletServer at index 'idx' of this MiniCluster.
   // 'idx' must be between 0 and 'num_tablet_servers' -1.
   tserver::MiniTabletServer* mini_tablet_server(size_t idx);

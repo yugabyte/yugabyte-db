@@ -5,7 +5,9 @@ package com.yugabyte.yw.models;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -14,6 +16,7 @@ import com.yugabyte.yw.forms.DrConfigCreateForm.PitrParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import java.util.ArrayList;
 import java.util.Set;
 import org.junit.Before;
 import org.junit.Test;
@@ -121,5 +124,65 @@ public class DrConfigTest extends FakeDBApplication {
     assertNotEquals(
         activeXClusterConfig1.getReplicationGroupName(),
         activeXClusterConfig2.getReplicationGroupName());
+  }
+
+  @Test
+  public void testDrConfigNoXClusterConfigAttached() {
+    Set<String> sourceDbId1 = Set.of("db1", "db2");
+    DrConfig drConfig =
+        DrConfig.create(
+            "replication1",
+            sourceUniverse.getUniverseUUID(),
+            targetUniverse.getUniverseUUID(),
+            backupRequestParams,
+            new PitrParams(),
+            sourceDbId1);
+    drConfig.setXClusterConfigs(new ArrayList<>());
+    assertEquals(false, drConfig.hasActiveXClusterConfig());
+    assertThrows(IllegalStateException.class, () -> drConfig.getActiveXClusterConfig());
+  }
+
+  @Test
+  public void testDrConfigHasExactlyOneXClusterConfig() {
+    Set<String> sourceDbId1 = Set.of("db1", "db2");
+    DrConfig drConfig =
+        DrConfig.create(
+            "replication1",
+            sourceUniverse.getUniverseUUID(),
+            targetUniverse.getUniverseUUID(),
+            backupRequestParams,
+            new PitrParams(),
+            sourceDbId1);
+    assertEquals(true, drConfig.hasActiveXClusterConfig());
+    try {
+      drConfig.getActiveXClusterConfig();
+    } catch (Exception e) {
+      fail();
+    }
+  }
+
+  @Test
+  public void testDrConfigHasNoActiveXClusterConfig() {
+    Set<String> sourceDbId1 = Set.of("db1");
+    Set<String> sourceDbId2 = Set.of("db2");
+    DrConfig drConfig =
+        DrConfig.create(
+            "replication1",
+            sourceUniverse.getUniverseUUID(),
+            targetUniverse.getUniverseUUID(),
+            backupRequestParams,
+            new PitrParams(),
+            sourceDbId1);
+
+    drConfig.addXClusterConfig(
+        targetUniverse.getUniverseUUID(), sourceUniverse.getUniverseUUID(), ConfigType.Db);
+    drConfig.update();
+    for (XClusterConfig xClusterConfig : drConfig.getXClusterConfigs()) {
+      xClusterConfig.setSecondary(true);
+      xClusterConfig.update();
+    }
+
+    assertEquals(false, drConfig.hasActiveXClusterConfig());
+    assertThrows(IllegalStateException.class, () -> drConfig.getActiveXClusterConfig());
   }
 }

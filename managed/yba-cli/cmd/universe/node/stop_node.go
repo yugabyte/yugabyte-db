@@ -19,6 +19,7 @@ var stopNodeCmd = &cobra.Command{
 	Short: "Stop a node instance in YugabyteDB Anywhere universe",
 	Long: "Stop a node instance in YugabyteDB Anywhere universe.\n" +
 		"Stop the server processes running on the node.",
+	Example: `yba universe node stop --name <universe-name> --node-name <node-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {

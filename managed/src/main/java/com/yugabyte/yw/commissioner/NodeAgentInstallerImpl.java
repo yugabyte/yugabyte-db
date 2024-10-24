@@ -24,6 +24,8 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 import java.util.UUID;
 import javax.inject.Inject;
@@ -61,9 +63,24 @@ public class NodeAgentInstallerImpl implements NodeAgentInstaller {
 
   @Override
   public boolean reinstall(
-      UUID customerUuid, UUID universeUuid, NodeDetails nodeDetails, NodeAgent nodeAgent) {
+      UUID customerUuid,
+      UUID universeUuid,
+      NodeDetails nodeDetails,
+      NodeAgent nodeAgent,
+      Duration cooldown) {
     State state = nodeAgent.getState();
     if (state == State.REGISTERING) {
+      Instant cooldownEndTime =
+          nodeAgent.getUpdatedAt().toInstant().plus(cooldown.getSeconds(), ChronoUnit.SECONDS);
+      if (!cooldown.isZero() && Instant.now().isBefore(cooldownEndTime)) {
+        log.info(
+            "Reinstall cooldown is active till {} for node {}({}) in universe {}",
+            cooldownEndTime,
+            nodeDetails.getNodeName(),
+            nodeAgent.getIp(),
+            universeUuid);
+        return false;
+      }
       InstallNodeAgent task = AbstractTaskBase.createTask(InstallNodeAgent.class);
       task.initialize(createInstallParams(customerUuid, universeUuid, nodeDetails, true));
       waitForNodeAgent(task.install());
@@ -106,7 +123,7 @@ public class NodeAgentInstallerImpl implements NodeAgentInstaller {
         id -> {
           UUID taskUuid = commissioner.submit(TaskType.EnableNodeAgentInUniverse, params);
           CustomerTask customerTask =
-              CustomerTask.create(
+              CustomerTask.createWithBackgroundUser(
                   customer,
                   universeUuid,
                   taskUuid,

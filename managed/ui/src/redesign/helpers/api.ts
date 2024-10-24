@@ -220,7 +220,6 @@ export interface CreateDrConfigRequest {
   };
   pitrParams: {
     retentionPeriodSec: number;
-    snapshotIntervalSec: number;
   };
 
   // `dryRun` - When `true`, it runs the pre-checks without actually running the subtasks

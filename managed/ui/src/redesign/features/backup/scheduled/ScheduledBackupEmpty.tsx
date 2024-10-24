@@ -9,8 +9,7 @@
 
 import { useTranslation } from 'react-i18next';
 import { makeStyles, Typography } from '@material-ui/core';
-import { YBButton } from '../../../components';
-import { BackupDisabledTooltip } from '../../../../components/backupv2/components/BackupEmpty';
+import { YBButton, YBTooltip } from '../../../components';
 
 import { RbacValidator } from '../../rbac/common/RbacApiPermValidator';
 import ScheduleIcon from '../../../assets/schedule.svg';
@@ -47,6 +46,10 @@ export const ScheduledBackupEmpty = ({
     keyPrefix: 'backup.scheduled.empty'
   });
   const classes = useStyles();
+  const wrapWithTooltip = (children: JSX.Element) => {
+    if (!disabled) return children;
+    return <YBTooltip title={t('noTablesOrPermission')}>{children}</YBTooltip>;
+  };
 
   return (
     <div className={classes.root}>
@@ -55,17 +58,20 @@ export const ScheduledBackupEmpty = ({
         {t('subText')}
       </Typography>
       <RbacValidator customValidateFunction={() => hasPerm} isControl>
-        <BackupDisabledTooltip disabled={disabled} hasPerm={hasPerm}>
-          <YBButton
-            onClick={onActionButtonClick}
-            variant="primary"
-            size="large"
-            disabled={disabled}
-            data-testid="create-scheduled-backup"
-          >
-            {t('createSchduledPolicy')}
-          </YBButton>
-        </BackupDisabledTooltip>
+        {
+          wrapWithTooltip(
+            <span>
+              <YBButton
+                onClick={onActionButtonClick}
+                variant="primary"
+                size="large"
+                disabled={disabled}
+                data-testid="create-scheduled-backup"
+              >
+                {t('createSchduledPolicy')}
+              </YBButton>
+            </span>)
+        }
       </RbacValidator>
     </div>
   );

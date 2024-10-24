@@ -11,6 +11,12 @@ Add a previously removed (or not in-use) node to the cluster and balance data on
 yba universe node add [flags]
 ```
 
+### Examples
+
+```
+yba universe node add --name <universe-name> --node-name <node-name>
+```
+
 ### Options
 
 ```

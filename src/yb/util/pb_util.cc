@@ -66,6 +66,7 @@
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util-internal.h"
 #include "yb/util/pb_util.pb.h"
@@ -118,32 +119,32 @@ static const int kPBContainerChecksumLen = sizeof(uint32_t);
 COMPILE_ASSERT((arraysize(kPBContainerMagic) - 1) == kPBContainerMagicLen,
                kPBContainerMagic_does_not_match_expected_length);
 
+// Maximum size of RPC should be larger than size of consensus batch
+// At each layer, we embed the "message" from the previous layer.
+// In order to send three strings of 64, the request from cql/redis will be larger
+// than that because we will have overheads from that layer.
+// Hence, we have a limit of 254MB at the consensus layer.
+// The rpc layer adds its own headers, so we limit the rpc message size to 255MB.
+DEFINE_NON_RUNTIME_uint64(rpc_max_message_size, 255_MB,
+    "The maximum size of a message of any RPC that the server will accept. The sum of "
+    "consensus_max_batch_size_bytes and 1MB should be less than rpc_max_message_size. "
+    "This value must also be less than protobuf_message_total_bytes_limit.");
+
 // To permit parsing of very large PB messages, we must use parse through a CodedInputStream and
 // bump the byte limit. The SetTotalBytesLimit() docs say that 512MB is the shortest theoretical
 // message length that may produce integer overflow warnings, so that's what we'll use.
-DEFINE_UNKNOWN_uint32(
+DEFINE_NON_RUNTIME_uint32(
     protobuf_message_total_bytes_limit, 511_MB,
-    "Limits single protobuf message size for deserialization.");
+    "Limits single protobuf message size for deserialization. This value must be greater than "
+    "rpc_max_message_size and less than 512MB.");
 TAG_FLAG(protobuf_message_total_bytes_limit, advanced);
 TAG_FLAG(protobuf_message_total_bytes_limit, hidden);
 
-namespace {
+DEFINE_validator(rpc_max_message_size, FLAG_LT_FLAG_VALIDATOR(protobuf_message_total_bytes_limit));
 
-bool ProtobufMessageTotalBytesLimitValidator(const char* flag_name, uint32_t value) {
-  constexpr uint32_t kMaxProtobufMessageTotalBytesLimit = 512_MB;
-
-  if (value >= kMaxProtobufMessageTotalBytesLimit) {
-    LOG_FLAG_VALIDATION_ERROR(flag_name, value) << "Must be less than "
-        << kMaxProtobufMessageTotalBytesLimit;
-    return false;
-  }
-
-  return true;
-}
-
-} // namespace
-
-DEFINE_validator(protobuf_message_total_bytes_limit, ProtobufMessageTotalBytesLimitValidator);
+DEFINE_validator(protobuf_message_total_bytes_limit,
+    FLAG_GT_FLAG_VALIDATOR(rpc_max_message_size),
+    FLAG_LT_VALUE_VALIDATOR(512_MB));
 
 namespace yb {
 namespace pb_util {

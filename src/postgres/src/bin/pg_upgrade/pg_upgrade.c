@@ -477,12 +477,6 @@ create_new_objects(void)
 	 * because when it's transiently dropped, connection attempts would fail.
 	 * So handle it in a separate non-parallelized pass.
 	 */
-#ifdef YB_TODO
-	/*
-	 * Fix template1 restore, currently throws
-	 *   UPDATE pg_catalog.pg_database SET datistemplate = false WHERE datname = 'template1';
-	 *   pg_database not found
-	 */
 	for (dbnum = 0; dbnum < old_cluster.dbarr.ndbs; dbnum++)
 	{
 		char		sql_file_name[MAXPGPATH],
@@ -519,7 +513,6 @@ create_new_objects(void)
 
 		break;					/* done once we've processed template1 */
 	}
-#endif
 
 	for (dbnum = 0; dbnum < old_cluster.dbarr.ndbs; dbnum++)
 	{

@@ -72,6 +72,12 @@ struct EstimatedRowCount {
   double dead;
 };
 
+struct SampleRandomState {
+  double w;
+  uint64_t s0;
+  uint64_t s1;
+};
+
 struct LightweightTableYbctid {
   LightweightTableYbctid(PgOid table_id_, const std::string_view& ybctid_)
       : table_id(table_id_), ybctid(ybctid_) {}

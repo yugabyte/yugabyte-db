@@ -24,6 +24,10 @@
 #include <variant>
 #include <vector>
 
+#ifndef __linux__
+#include <libproc.h>
+#endif
+
 #include <boost/algorithm/string.hpp>
 
 #include "yb/tserver/tablet_server_interface.h"
@@ -34,6 +38,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
 #include "yb/util/flags.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/path_util.h"
@@ -305,15 +310,7 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_fkey_catcache, true,
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_nop_alter_role_optimization, true,
     "Enable nop alter role statement optimization.");
 
-static bool ValidateXclusterConsistencyLevel(const char* flag_name, const std::string& value) {
-  if (value != "database" && value != "tablet") {
-    LOG_FLAG_VALIDATION_ERROR(flag_name, value) << "Must be 'database' or 'tablet'";
-    return false;
-  }
-  return true;
-}
-
-DEFINE_validator(ysql_yb_xcluster_consistency_level, &ValidateXclusterConsistencyLevel);
+DEFINE_validator(ysql_yb_xcluster_consistency_level, FLAG_IN_SET_VALIDATOR("database", "tablet"));
 
 DEFINE_NON_RUNTIME_string(ysql_conn_mgr_warmup_db, "yugabyte",
     "Database for which warmup needs to be done.");
@@ -498,6 +495,11 @@ void AppendPgGFlags(vector<string>* lines) {
     lines->push_back(Format("$0=$1", pg_variable_name, flag.current_value));
   }
 }
+
+HostPort GetPgHostPort(const PgProcessConf& conf) {
+  return HostPort(conf.listen_addresses, conf.pg_port);
+}
+
 }  // namespace
 
 Result<string> WritePostgresConfig(const PgProcessConf& conf) {
@@ -688,6 +690,8 @@ Status PgWrapper::PreflightCheck() {
 }
 
 Status PgWrapper::Start() {
+  RETURN_NOT_OK(CleanupPreviousPostgres());
+
   auto postgres_executable = GetPostgresExecutablePath();
   RETURN_NOT_OK(CheckExecutableValid(postgres_executable));
 
@@ -738,8 +742,7 @@ Status PgWrapper::Start() {
   // Configure UNIX domain socket for index backfill tserver-postgres communication and for
   // Yugabyte Platform backups.
   argv.push_back("-k");
-  const std::string& socket_dir = PgDeriveSocketDir(
-      HostPort(conf_.listen_addresses, conf_.pg_port));
+  const std::string& socket_dir = PgDeriveSocketDir(GetPgHostPort(conf_));
   RETURN_NOT_OK(Env::Default()->CreateDirs(socket_dir));
   argv.push_back(socket_dir);
 
@@ -799,7 +802,7 @@ Status PgWrapper::Start() {
   proc_->SetEnv("FLAGS_tmp_dir", FLAGS_tmp_dir);
 
   // See YBSetParentDeathSignal in pg_yb_utils.c for how this is used.
-  proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGINT));
+  proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGQUIT));
   proc_->InheritNonstandardFd(conf_.tserver_shm_fd);
   SetCommonEnv(&*proc_, /* yb_enabled */ true);
 
@@ -1098,11 +1101,13 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
 #ifdef THREAD_SANITIZER
     // Disable reporting signal-unsafe behavior for PostgreSQL because it does a lot of work in
     // signal handlers on shutdown.
+    // Disable thread leak detection since we use SIGQUIT to terminate Postgres which internally
+    // uses _exit. This causes TSAN to report false positives.
     static const std::string kTSANOptionsEnvName = "TSAN_OPTIONS";
     const char* tsan_options = getenv(kTSANOptionsEnvName.c_str());
     proc->SetEnv(
-        kTSANOptionsEnvName,
-        std::string(tsan_options ? tsan_options : "") + " report_signal_unsafe=0");
+        kTSANOptionsEnvName, std::string(tsan_options ? tsan_options : "") +
+                                 " report_signal_unsafe=0 report_thread_leaks=0");
 #endif
 
     // Pass non-default flags to the child process using FLAGS_... environment variables.
@@ -1127,6 +1132,85 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
   }
 }
 
+Status PgWrapper::CleanupPreviousPostgres() {
+  RETURN_NOT_OK(CleanupLockFileAndKillHungPg(JoinPathSegments(conf_.data_dir, "postmaster.pid")));
+  RETURN_NOT_OK(CleanupLockFileAndKillHungPg(PgDeriveSocketLockFile(GetPgHostPort(conf_))));
+
+  return Status::OK();
+}
+
+Status PgWrapper::CleanupLockFileAndKillHungPg(const std::string& lock_file) {
+  auto env = Env::Default();
+  if (!env->FileExists(lock_file)) {
+    return Status::OK();
+  }
+
+  pid_t postgres_pid = 0;
+
+  {
+    std::ifstream file_stream;
+    file_stream.open(lock_file, std::ios_base::in);
+
+    if (!file_stream.eof()) {
+      file_stream >> postgres_pid;
+    }
+    if (file_stream.good()) {
+      file_stream.close();
+    } else {
+      postgres_pid = 0;
+    }
+  }
+
+  if (postgres_pid == 0) {
+    LOG(ERROR) << strings::Substitute(
+        "Error reading postgres process ID from lock file $0. $1 $2", lock_file,
+        ErrnoToString(errno), errno);
+  } else {
+    bool postgres_process_found = false;
+#ifdef __linux__
+    const auto cmd_filename = "/proc/" + std::to_string(postgres_pid) + "/cmdline";
+    std::ifstream postmaster_cmd_file;
+    postmaster_cmd_file.open(cmd_filename, std::ios_base::in);
+    if (postmaster_cmd_file.good()) {
+      std::string cmdline = "";
+      postmaster_cmd_file >> cmdline;
+      postgres_process_found = (cmdline.find("/postgres") != std::string::npos);
+      postmaster_cmd_file.close();
+    }
+#else
+    struct proc_bsdshortinfo info;
+    auto result = proc_pidinfo(
+        postgres_pid, PROC_PIDT_SHORTBSDINFO, 0 /*SHOW_ZOMBIES*/, &info,
+        PROC_PIDT_SHORTBSDINFO_SIZE);
+
+    if (result == PROC_PIDT_SHORTBSDINFO_SIZE) {
+      postgres_process_found = (strcmp(info.pbsi_comm, "postgres") == 0);
+    } else if (errno != ESRCH && errno != EPERM) {
+      LOG(WARNING) << "proc_pidinfo failed for pid " << postgres_pid << ". result: " << result
+                   << ", error: " << ErrnoToString(errno) << "," << errno;
+    }
+#endif
+
+    if (postgres_process_found) {
+      LOG(WARNING) << "Killing older postgres process: " << postgres_pid;
+      // If process does not exist, system may return "process does not exist" or
+      // "operation not permitted" error. Ignore those errors.
+      if (kill(postgres_pid, SIGKILL) != 0 && errno != ESRCH && errno != EPERM) {
+        return STATUS_FORMAT(
+            RuntimeError, "Unable to kill older postgres process $0: $1 $2", postgres_pid,
+            ErrnoToString(errno), errno);
+      }
+      LOG(WARNING) << "Killed older postgres process: " << postgres_pid << ErrnoToString(errno)
+                   << "," << errno;
+    }
+  }
+
+  LOG(INFO) << "Removing stale postgres lock file " << lock_file;
+  WARN_NOT_OK(env->DeleteFile(lock_file), Format("Failed to remove lock file $0", lock_file));
+
+  return Status::OK();
+}
+
 // ------------------------------------------------------------------------------------------------
 // PgSupervisor: monitoring a PostgreSQL child process and restarting if needed
 // ------------------------------------------------------------------------------------------------
@@ -1141,51 +1225,6 @@ PgSupervisor::PgSupervisor(PgProcessConf conf, tserver::TabletServerIf* tserver)
 PgSupervisor::~PgSupervisor() {
   std::lock_guard lock(mtx_);
   DeregisterPgFlagChangeNotifications();
-}
-
-Status PgSupervisor::CleanupOldServerUnlocked() {
-  std::string postmaster_pid_filename = JoinPathSegments(conf_.data_dir, "postmaster.pid");
-  if (Env::Default()->FileExists(postmaster_pid_filename)) {
-    std::ifstream postmaster_pid_file;
-    postmaster_pid_file.open(postmaster_pid_filename, std::ios_base::in);
-    pid_t postgres_pid = 0;
-
-    if (!postmaster_pid_file.eof()) {
-      postmaster_pid_file >> postgres_pid;
-    }
-
-    if (!postmaster_pid_file.good() || postgres_pid == 0) {
-      LOG(ERROR) << strings::Substitute("Error reading postgres process ID from file $0. $1 $2",
-          postmaster_pid_filename, ErrnoToString(errno), errno);
-    } else {
-      LOG(WARNING) << "Killing older postgres process: " << postgres_pid;
-      // If process does not exist, system may return "process does not exist" or
-      // "operation not permitted" error. Ignore those errors.
-      postmaster_pid_file.close();
-      bool postgres_found = true;
-      string cmdline = "";
-#ifdef __linux__
-      string cmd_filename = "/proc/" + std::to_string(postgres_pid) + "/cmdline";
-      std::ifstream postmaster_cmd_file;
-      postmaster_cmd_file.open(cmd_filename, std::ios_base::in);
-      if (postmaster_cmd_file.good()) {
-        postmaster_cmd_file >> cmdline;
-        postgres_found = cmdline.find("/postgres") != std::string::npos;
-        postmaster_cmd_file.close();
-      }
-#endif
-      if (postgres_found) {
-        if (kill(postgres_pid, SIGKILL) != 0 && errno != ESRCH && errno != EPERM) {
-          return STATUS(RuntimeError, "Unable to kill", Errno(errno));
-        }
-      } else {
-        LOG(WARNING) << "Didn't find postgres in " << cmdline;
-      }
-    }
-    WARN_NOT_OK(Env::Default()->DeleteFile(postmaster_pid_filename),
-                "Failed to remove postmaster pid file");
-  }
-  return Status::OK();
 }
 
 Status PgSupervisor::ReloadConfig() {
@@ -1264,7 +1303,6 @@ void PgSupervisor::PrepareForStop() {
 }
 
 Status PgSupervisor::PrepareForStart() {
-  RETURN_NOT_OK(CleanupOldServerUnlocked());
   RETURN_NOT_OK(RegisterPgFlagChangeNotifications());
   return Status::OK();
 }

@@ -33,13 +33,6 @@ class PgSelectIndex;
 
 class PgDml : public PgStatement {
  public:
-  struct PrepareParameters {
-    PrepareParameters() {}
-    bool querying_colocated_table = false;
-    bool index_only_scan = false;
-    bool fetch_ybctids_only = false;
-  };
-
   ~PgDml() override;
 
   // Append a target in SELECT or RETURNING.
@@ -81,7 +74,8 @@ class PgDml : public PgStatement {
   Status AssignColumn(int attnum, PgExpr* attr_value);
 
   // Process the secondary index request if it is nested within this statement.
-  Result<bool> ProcessSecondaryIndexRequest(const PgExecParameters* exec_params);
+  Result<bool> ProcessSecondaryIndexRequest();
+  Result<const std::vector<Slice>*> FetchYbctidsFromSecondaryIndex();
 
   // Fetch a row and return it to Postgres layer.
   Status Fetch(
@@ -106,10 +100,7 @@ class PgDml : public PgStatement {
   [[nodiscard]] bool has_doc_op() const { return doc_op_ != nullptr; }
 
  protected:
-  PgDml(
-      PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id,
-      bool is_region_local, const PrepareParameters& prepare_params = {},
-      const PgObjectId& secondary_index_id = {});
+  explicit PgDml(const PgSession::ScopedRefPtr& pg_session);
 
   // Allocate protobuf for a SELECTed expression.
   virtual LWPgsqlExpressionPB* AllocTargetPB() = 0;
@@ -170,27 +161,8 @@ class PgDml : public PgStatement {
 
   Status ExecSecondaryIndexOnce();
 
-  Result<PgTableDescPtr> LoadTable();
-
   // -----------------------------------------------------------------------------------------------
   // Data members that define the DML statement.
-
-  // Table identifiers
-  // - table_id_ identifies the table to read data from (could be index table).
-  // - secondary_index_id_ identifies the secondary index to be used for scanning.
-  //
-  // Example for query on table_id_ using secondary_index_id_.
-  //   SELECT FROM "table_id_"
-  //     WHERE ybctid IN (SELECT base_ybctid FROM "secondary_index_id_" WHERE matched-index-binds)
-  //
-  // - Postgres will create PgSelect(table_id_) { nested PgSelectIndex (secondary_index_id_) }
-  // - When bind functions are called, it bind user-values to columns in PgSelectIndex as these
-  //   binds will be used to find base_ybctid from the IndexTable.
-  // - When AddTargets() is called, the target is added to PgSelect as data will be reading from
-  //   table_id_ using the found base_ybctid from secondary_index_id_.
-  const PgObjectId table_id_;
-  const PgObjectId secondary_index_id_;
-
   // Targets of statements (Output parameter).
   // - "target_desc_" is the table descriptor where data will be read from.
   // - "targets_" are either selected or returned expressions by DML statements.
@@ -207,17 +179,9 @@ class PgDml : public PgStatement {
   //   from the main table.
   PgTable bind_;
 
-  // Prepare control parameters.
-  const PrepareParameters prepare_params_;
-
-  // Whether or not the statement accesses data within the local region.
-  const bool is_region_local_;
-
   // -----------------------------------------------------------------------------------------------
   // Data members for YB Bitmap Scans.
 
-  // Retrieved ybctids are populated by secondary index requests and used by Bitmap Index Scans.
-  const std::vector<Slice>* retrieved_ybctids_ = nullptr;
   // If requested_ybctids_ is populated, replace the statement binds with this list of ybctids.
   // This is used by YB Bitmap Table Scans.
   const std::vector<Slice>* requested_ybctids_ = nullptr;
@@ -268,15 +232,6 @@ class PgDml : public PgStatement {
   // Yugabyte has a few IN/OUT parameters of statement execution, "pg_exec_params_" is used to sent
   // OUT value back to postgres.
   const PgExecParameters* pg_exec_params_ = nullptr;
-
-  //------------------------------------------------------------------------------------------------
-  // Hashed and range values/components used to compute the tuple id.
-  //
-  // These members are populated by the AddYBTupleIdColumn function and the tuple id is retrieved
-  // using the GetYBTupleId function.
-  //
-  // These members are not used internally by the statement and are simply a utility for computing
-  // the tuple id (ybctid).
 };
 
 }  // namespace yb::pggate

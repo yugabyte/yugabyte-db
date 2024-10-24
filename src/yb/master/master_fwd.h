@@ -71,6 +71,7 @@ class MasterReplicationProxy;
 class MasterSnapshotCoordinator;
 class MasterTestProxy;
 class NamespaceInfo;
+class ObjectLockInfoManager;
 class PermissionsManager;
 class RetryingTSRpcTask;
 class RetryingTSRpcTaskWithTable;

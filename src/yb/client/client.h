@@ -530,6 +530,8 @@ class YBClient {
   Result<bool> NamespaceIdExists(const std::string& namespace_id,
                                  const std::optional<YQLDatabase>& database_type = std::nullopt);
 
+  Status ListClones(master::ListClonesResponsePB* resp);
+
   Status CreateTablegroup(const std::string& namespace_name,
                           const std::string& namespace_id,
                           const std::string& tablegroup_id,

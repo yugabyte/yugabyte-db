@@ -25,7 +25,7 @@ Use YugabyteDB Anywhere to manage certificates used for encryption in transit.
 {{<index/block>}}
 
   {{<index/item
-    title="Auto-generated certificates"
+    title="Automatically generated certificates"
     body="YugabyteDB Anywhere can create and manage universe certificates."
     href="auto-certificate/"
     icon="fa-thin fa-certificate">}}

@@ -2601,6 +2601,7 @@ Status CatalogManager::CleanupCDCSDKDroppedTablesFromStreamInfo(
         if (table_id_iter != ltm->table_id().end()) {
           need_to_update_stream = true;
           ltm.mutable_data()->pb.mutable_table_id()->erase(table_id_iter);
+          ltm.mutable_data()->pb.mutable_replica_identity_map()->erase(table_id);
         }
 
         if (ltm->pb.unqualified_table_id_size() > 0) {
@@ -2609,6 +2610,7 @@ Status CatalogManager::CleanupCDCSDKDroppedTablesFromStreamInfo(
           if (unqualified_table_id_iter != ltm->unqualified_table_id().end()) {
             need_to_update_stream = true;
             ltm.mutable_data()->pb.mutable_unqualified_table_id()->erase(unqualified_table_id_iter);
+            ltm.mutable_data()->pb.mutable_replica_identity_map()->erase(table_id);
           }
         }
       }
@@ -2841,15 +2843,17 @@ Status CatalogManager::GetCDCStream(
       stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(req->stream_id()));
     } else {
       auto replication_slot_name = ReplicationSlotName(req->cdcsdk_ysql_replication_slot_name());
-        if (!cdcsdk_replication_slots_to_stream_map_.contains(replication_slot_name)) {
-          return STATUS(
+      if (!cdcsdk_replication_slots_to_stream_map_.contains(replication_slot_name)) {
+        LOG_WITH_FUNC(WARNING) << "Did not find replication_slot_name: " << replication_slot_name
+                     << " in cdcsdk_replication_slots_to_stream_map_.";
+        return STATUS(
               NotFound, "Could not find CDC stream", req->ShortDebugString(),
-              MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-        }
-        stream_id = cdcsdk_replication_slots_to_stream_map_.at(replication_slot_name);
+            MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+      }
+      stream_id = cdcsdk_replication_slots_to_stream_map_.at(replication_slot_name);
     }
 
-    stream = FindPtrOrNull(cdc_stream_map_, stream_id);
+      stream = FindPtrOrNull(cdc_stream_map_, stream_id);
   }
 
   if (stream == nullptr || stream->LockForRead()->is_deleting()) {

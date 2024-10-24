@@ -12,6 +12,12 @@ Ideally it is added back very soon.
 yba universe node start [flags]
 ```
 
+### Examples
+
+```
+yba universe node start --name <universe-name> --node-name <node-name>
+```
+
 ### Options
 
 ```

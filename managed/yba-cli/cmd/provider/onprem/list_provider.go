@@ -11,9 +11,11 @@ import (
 )
 
 var listOnpremProviderCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List On-premises YugabyteDB Anywhere providers",
-	Long:  "List On-premises YugabyteDB Anywhere providers",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List On-premises YugabyteDB Anywhere providers",
+	Long:    "List On-premises YugabyteDB Anywhere providers",
+	Example: `yba provider onprem list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		providerutil.ListProviderUtil(cmd, "On-premises", util.OnpremProviderType)
 	},

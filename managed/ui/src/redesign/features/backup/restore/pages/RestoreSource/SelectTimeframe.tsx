@@ -237,8 +237,11 @@ export const SelectTimeframe = () => {
             <Trans
               i18nKey="helpText"
               t={t}
-              components={{ b: <b />, a: <a className={classes.link} /> }}
-              values={{ to: 'asd' }}
+              components={{ 
+                b: <b />, 
+                a: <a className={classes.link} href="https://docs.yugabyte.com/stable/manage/backup-restore/point-in-time-recovery/" target='_blank' rel="noreferrer"/> ,
+                to: ybFormatDate(restoreTimeWindow.to)
+              }}
             />
           </Typography>
         </div>

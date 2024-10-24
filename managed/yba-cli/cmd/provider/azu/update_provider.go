@@ -20,9 +20,12 @@ import (
 
 // updateAzureProviderCmd represents the provider command
 var updateAzureProviderCmd = &cobra.Command{
-	Use:   "update",
-	Short: "Update an Azure YugabyteDB Anywhere provider",
-	Long:  "Update an Azure provider in YugabyteDB Anywhere",
+	Use:     "update",
+	Aliases: []string{"edit"},
+	Short:   "Update an Azure YugabyteDB Anywhere provider",
+	Long:    "Update an Azure provider in YugabyteDB Anywhere",
+	Example: `yba provider azure update --name <provider-name> \
+	--hosted-zone-id <hosted-zone-id>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {

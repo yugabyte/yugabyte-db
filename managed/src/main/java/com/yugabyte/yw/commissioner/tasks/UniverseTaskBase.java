@@ -2040,7 +2040,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected Collection<NodeDetails> filterNodesForInstallNodeAgent(
       Universe universe, Collection<NodeDetails> nodes) {
-    NodeAgentClient nodeAgentClient = getInstanceOf(NodeAgentClient.class);
+    NodeAgentEnabler nodeAgentEnabler = getInstanceOf(NodeAgentEnabler.class);
     Map<UUID, Boolean> clusterSkip = new HashMap<>();
     return nodes.stream()
         .filter(n -> n.cloudInfo != null)
@@ -2052,7 +2052,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                       Cluster cluster = universe.getCluster(n.placementUuid);
                       Provider provider =
                           Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-                      if (!nodeAgentClient.isClientEnabled(provider, universe)) {
+                      if (!nodeAgentEnabler.isNodeAgentServerEnabled(provider, universe)) {
                         return false;
                       }
                       if (provider.getCloudCode() == CloudType.onprem) {
@@ -2110,14 +2110,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     Universe universe = getUniverse();
     NodeAgentEnabler nodeAgentEnabler = getInstanceOf(NodeAgentEnabler.class);
-    if (nodeAgentEnabler.shouldMarkUniverse(universe)) {
-      // Mark the universe.
+    if (reinstall == false && nodeAgentEnabler.shouldMarkUniverse(universe)) {
+      // Reinstall forces direct installation in the same task.
       log.info(
           "Skipping node agent installation for universe {} as it is not enabled",
           universe.getUniverseUUID());
       nodeAgentEnabler.markUniverse(universe.getUniverseUUID());
       return subTaskGroup;
     }
+    nodeAgentEnabler.cancelForUniverse(universe.getUniverseUUID());
     Customer customer = Customer.get(universe.getCustomerId());
     filterNodesForInstallNodeAgent(universe, nodes)
         .forEach(
@@ -2160,9 +2161,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       Cluster cluster = getUniverse().getCluster(nodeDetails.placementUuid);
       Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
       if (provider.getCloudCode() == CloudType.onprem) {
-        AccessKey accessKey =
-            AccessKey.getOrBadRequest(provider.getUuid(), cluster.userIntent.accessKeyCode);
-        if (accessKey.getKeyInfo().skipProvisioning) {
+        try {
+          AccessKey accessKey =
+              AccessKey.getOrBadRequest(provider.getUuid(), cluster.userIntent.accessKeyCode);
+          if (accessKey.getKeyInfo().skipProvisioning) {
+            return;
+          }
+        } catch (Exception e) {
+          // Access Key are optional for onprem providers. We can return in case it is not
+          // present as the nodes will be manually provisioned.
           return;
         }
       }
@@ -6456,7 +6463,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               ybcBackup)
           .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
 
-      backupScheduleSubTasks.run();
+      if (scheduleParams.enablePointInTimeRestore) {
+        backupScheduleSubTasks.run();
+      }
 
       // Mark universe update succeeded
       createMarkUniverseUpdateSuccessTasks(universe.getUniverseUUID())

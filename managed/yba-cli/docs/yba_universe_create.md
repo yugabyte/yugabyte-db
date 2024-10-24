@@ -22,7 +22,7 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
 	"{\"primary\": {\"<gflag-1>\": \"<value-1>\",\"<gflag-2>\": \"<value-2>\"},\
 	\"async\": {\"<gflag-1>\": \"<value-1>\",\"<gflag-2>\": \"<value-2>\"}}" \
 	--num-nodes 1 --replication-factor 1 \
-	--user-tags <tag1>=<value1>,<tag2>=<value2>
+	--user-tags <key-1>=<value-1>,<key-2>=<value-2>
 ```
 
 ### Options
@@ -41,7 +41,7 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
       --preferred-region stringArray                     [Optional] Preferred region to place the node of the cluster in. Provide preferred regions for each cluster as a separate flag. Defaults to null.
       --master-gflags string                             [Optional] Master GFlags in map (JSON or YAML) format. Provide the gflags in the following formats: "--master-gflags { \"master-gflag-key-1\":\"value-1\",\"master-gflag-key-2\":\"value-2\" }" or  "--master-gflags "master-gflag-key-1: value-1
                                                          master-gflag-key-2: value-2
-                                                         master-gflag-key-3: value3".
+                                                         master-gflag-key-3: value-3".
       --tserver-gflags string                            [Optional] TServer GFlags in map (JSON or YAML) format. Provide gflags for clusters in the following format: "--tserver-gflags "{\"primary\": {\"tserver-gflag-key-1\": \"value-1\",\"tserver-gflag-key-2\": \"value-2\"},\"async\": {\"tserver-gflag-key-1\": \"value-1\",\"tserver-gflag-key-2\": \"value-2\"}}"" OR "--tserver-gflag "primary:
                                                          	log_min_segments_to_retain: 1
                                                          	log_cache_size_limit_mb: 0
@@ -89,7 +89,7 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
       --use-systemd                                      [Optional] Use SystemD. (default true)
       --access-key-code string                           [Optional] Access Key code (UUID) corresponding to the provider, defaults to the provider's access key.
       --aws-arn-string string                            [Optional] Instance Profile ARN for AWS universes.
-      --user-tags stringToString                         [Optional] User Tags for the DB instances. Provide as key=value pairs per flag. Example "--user-tags name=test --user-tags owner=development" OR "--user-tags name=test,owner=development". (default [])
+      --user-tags stringToString                         [Optional] User Tags for the DB instances. Provide as key-value pairs per flag. Example "--user-tags name=test --user-tags owner=development" OR "--user-tags name=test,owner=development". (default [])
       --kubernetes-universe-overrides-file-path string   [Optional] Helm Overrides file path for the universe, supported for Kubernetes. For examples on universe overrides file contents, please refer to: "https://docs.yugabyte.com/stable/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#configure-helm-overrides"
       --kubernetes-az-overrides-file-path stringArray    [Optional] Helm Overrides file paths for the availabilty zone, supported for Kubernetes. Provide file paths for overrides of each Availabilty zone as a separate flag. For examples on availabilty zone overrides file contents, please refer to: "https://docs.yugabyte.com/stable/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#configure-helm-overrides"
       --master-http-port int                             [Optional] Master HTTP Port. (default 7000)

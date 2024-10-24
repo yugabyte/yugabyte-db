@@ -15,6 +15,7 @@
 #include <boost/algorithm/string.hpp>
 
 #include "yb/util/env_util.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pg_util.h"
@@ -26,6 +27,7 @@ DECLARE_bool(enable_ysql_conn_mgr_stats);
 DECLARE_int32(ysql_max_connections);
 DECLARE_string(ysql_conn_mgr_warmup_db);
 DECLARE_string(TEST_ysql_conn_mgr_dowarmup_all_pools_mode);
+DECLARE_bool(ysql_conn_mgr_superuser_sticky);
 
 // TODO(janand) : GH #17837  Find the optimum value for `ysql_conn_mgr_idle_time`.
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_idle_time, 60,
@@ -36,6 +38,8 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_idle_time, 60,
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_max_client_connections, 10000,
     "Total number of concurrent client connections that the Ysql Connection Manager allows.");
+
+DEFINE_validator(ysql_conn_mgr_max_client_connections, FLAG_GT_VALUE_VALIDATOR(1));
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_num_workers, 0,
   "Number of worker threads used by Ysql Connection Manager. If set as 0 (default value), "
@@ -72,20 +76,6 @@ DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_unix_conn, true,
     "'local all yugabyte trust' in hba.conf (set ysql_hba_conf_csv as 'local all yugabyte trust')."
     );
 
-namespace {
-
-bool ValidateMaxClientConn(const char* flag_name, uint32_t value) {
-  if (value < 1) {
-    LOG_FLAG_VALIDATION_ERROR(flag_name, value) << "Must be greater than 1";
-    return false;
-  }
-  return true;
-}
-
-} // namespace
-
-DEFINE_validator(ysql_conn_mgr_max_client_connections, &ValidateMaxClientConn);
-
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
 
@@ -117,6 +107,9 @@ Status YsqlConnMgrWrapper::Start() {
   } else {
     LOG(INFO) << "Warmup of server connections is disabled in ysql connection manager";
   }
+
+  if (FLAGS_ysql_conn_mgr_superuser_sticky)
+    LOG(INFO) << "Superuser connections will be made sticky in ysql connection manager";
 
   std::vector<std::string> argv{
       ysql_conn_mgr_executable, conf_.CreateYsqlConnMgrConfigAndGetPath()};

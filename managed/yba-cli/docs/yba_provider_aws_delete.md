@@ -10,6 +10,12 @@ Delete an AWS provider in YugabyteDB Anywhere
 yba provider aws delete [flags]
 ```
 
+### Examples
+
+```
+yba provider aws delete --name <provider-name>
+```
+
 ### Options
 
 ```

@@ -248,10 +248,7 @@ static inline void kiwi_vars_init(kiwi_vars_t *vars)
 		      sizeof("odyssey_catchup_timeout"));
 #else
 	vars->size = 0;
-
-	/* Ensure that role oid is "cached" after session authorization oid. */
-	yb_kiwi_var_push(vars, "session_authorization_oid", 26, "-1", 3);
-	yb_kiwi_var_push(vars, "role_oid", 9, "-1", 3);
+	vars->vars = NULL;
 #endif
 }
 
@@ -395,12 +392,6 @@ __attribute__((hot)) static inline int kiwi_vars_cas(kiwi_vars_t *client,
 		/* we do not support odyssey-to-backend compression yet */
 
 		if (strcmp(var->name, "compression") == 0)
-			continue;
-
-		/* do not send default value oid packets to the server */
-		if (((strcmp(var->name, "role_oid") == 0) ||
-			strcmp(var->name, "session_authorization_oid") == 0) &&
-			(strcmp(var->value, "-1") == 0))
 			continue;
 
 		kiwi_var_t *server_var;

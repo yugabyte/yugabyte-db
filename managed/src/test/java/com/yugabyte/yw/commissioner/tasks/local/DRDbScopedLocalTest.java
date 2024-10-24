@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
@@ -52,6 +53,7 @@ import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
+import org.yb.client.YBClient;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -483,7 +485,7 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
 
     // Take down source universe nodes.
     for (NodeDetails sourceNode : sourceUniverse.getNodes()) {
-      killProcessesOnNode(sourceUniverse.getUniverseUUID(), sourceNode.nodeName);
+      killProcessOnNode(sourceUniverse.getUniverseUUID(), sourceNode.nodeName, ServerType.TSERVER);
     }
 
     // Failover DR config.
@@ -510,7 +512,16 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     verifyUniverseState(newSourceUniverse);
 
     for (NodeDetails newTargetNode : newTargetUniverse.getNodes()) {
-      startProcessesOnNode(newTargetUniverse.getUniverseUUID(), newTargetNode.nodeName);
+      startProcessesOnNode(newTargetUniverse.getUniverseUUID(), newTargetNode, ServerType.TSERVER);
+    }
+
+    // Wait for tservers to start.
+    try (YBClient client =
+        ybClientService.getClient(
+            newTargetUniverse.getMasterAddresses(), newTargetUniverse.getCertificateNodetoNode())) {
+      waitTillNumOfTservers(client, 3);
+    } catch (Exception e) {
+      throw new RuntimeException(e);
     }
     verifyUniverseState(newTargetUniverse);
 
@@ -786,7 +797,7 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     deleteDrConfig(drConfigUUID, sourceUniverse, targetUniverse);
   }
 
-  // @Test
+  @Test
   public void testDBScopedXClusterTableConfigStatus()
       throws InterruptedException, JsonMappingException, JsonProcessingException {
     Universe sourceUniverse =

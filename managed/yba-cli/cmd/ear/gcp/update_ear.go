@@ -21,6 +21,8 @@ var updateGCPEARCmd = &cobra.Command{
 	Aliases: []string{"edit"},
 	Short:   "Update a YugabyteDB Anywhere GCP encryption at rest (EAR) configuration",
 	Long:    "Update a GCP encryption at rest (EAR) configuration in YugabyteDB Anywhere",
+	Example: `yba ear gcp update --name <config-name> \
+	--credentials-file-path <credentials-file-path>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		configNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {

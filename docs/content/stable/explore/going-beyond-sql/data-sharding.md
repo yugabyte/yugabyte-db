@@ -37,7 +37,7 @@ To understand how these sharding schemes work, set up a local RF 3 cluster for t
 
 In range sharding the data is split into contiguous ranges of the primary key (in the sort order as defined in the table). Typically tables start as a single tablet and as the data grows and reaches a size threshold, the tablet dynamically splits into two. Tables can also be pre-split during creation.
 
-The primary advantage of range sharding is that it is fast both for range scans and point lookups. The downside to this sharding scheme is that it starts with only one tablet even though there could be multiple nodes in the cluster. The other concern is that if the data being inserted is already sorted, all new inserts would go to only one tablet, even though there are multiple tablets in the cluster.
+The primary advantage of range sharding is that it is fast both for range scans and point lookups. The drawback of the range sharding scheme is that, without a split clause during its creation, it begins with just a single tablet, even if multiple nodes are present in the cluster. The other concern is that if the data being inserted is already sorted, all new inserts would go to only one tablet, even though there are multiple tablets in the cluster.
 
 ### Behavior
 
@@ -83,7 +83,7 @@ If you select all the rows from the table, you will see an output similar to the
 
 Note that all the rows are ordered in ascending order of ID. This is because you specified `id ASC` in the primary key definition.
 
-Even though you have set up a cluster with 3 nodes, only 1 tablet has been created by default. A range-sharded table cannot be split into multiple tablets automatically because the range of numbers is not fixed (it is actually infinite) and it is inefficient for the system to decide which range of numbers should be stored in which tablet. So the inserted rows will be stored only on this tablet.
+Even though you have set up a cluster with 3 nodes, only 1 tablet has been created by default. In the absence of an explict split clause, a range-sharded table is not automatically pre-split into multiple tablets at the time of creation because the number range is not fixed (it’s essentially infinite), and it's inefficient for the system to determine which number ranges should be assigned to specific tablets. So the inserted rows will be stored only on this tablet.
 
 To verify this, execute the same command with EXPLAIN ANALYZE as follows:
 

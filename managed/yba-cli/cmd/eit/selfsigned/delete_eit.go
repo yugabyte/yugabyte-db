@@ -12,9 +12,11 @@ import (
 
 // deleteSelfSignedEITCmd represents the eit command
 var deleteSelfSignedEITCmd = &cobra.Command{
-	Use:   "delete",
-	Short: "Delete a YugabyteDB Anywhere Self Signed encryption in transit configuration",
-	Long:  "Delete a Self Signed encryption in transit configuration in YugabyteDB Anywhere",
+	Use:     "delete",
+	Aliases: []string{"remove", "rm"},
+	Short:   "Delete a YugabyteDB Anywhere Self Signed encryption in transit configuration",
+	Long:    "Delete a Self Signed encryption in transit configuration in YugabyteDB Anywhere",
+	Example: `yba eit self-signed delete --name <config-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		eitutil.DeleteEITValidation(cmd)
 	},

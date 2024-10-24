@@ -197,6 +197,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         "Connection Manager is enabled. Skipping this test with Connection Manager enabled " +
         "until the relevant code is pushed to master.";
 
+  protected static final String EXTENSION_NOT_SUPPORTED =
+      "The extension being used as part of the test is not supported with connection manager.";
+
   // Warmup modes for Connection Manager during test runs.
   protected static enum ConnectionManagerWarmupMode {
     NONE,
@@ -348,6 +351,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       builder.enableYsqlConnMgr(true);
       builder.addCommonTServerFlag("ysql_conn_mgr_stats_interval",
         Integer.toString(CONNECTIONS_STATS_UPDATE_INTERVAL_SECS));
+      builder.addCommonTServerFlag("ysql_conn_mgr_superuser_sticky", "false");
     }
   }
 
@@ -514,6 +518,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
    */
   private void cleanUpCustomDatabases() throws Exception {
     LOG.info("Cleaning up custom databases");
+    if (isTestRunningWithConnectionManager()) {
+      waitForStatsToGetUpdated();
+    }
     try (Statement stmt = connection.createStatement()) {
       for (int i = 0; i < 2; i++) {
         try {
@@ -638,6 +645,18 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         LOG.info ("expected to fail");
       }
     }
+  }
+
+  protected
+  void enableStickySuperuserConnsAndRestartCluster() throws Exception {
+    if (!isTestRunningWithConnectionManager()) {
+      return;
+    }
+
+    Map<String, String> tsFlagMap = getTServerFlags();
+    tsFlagMap.put("ysql_conn_mgr_superuser_sticky", "true");
+    Map<String, String> masterFlagMap = getMasterFlags();
+    restartClusterWithFlags(masterFlagMap, tsFlagMap);
   }
 
   protected

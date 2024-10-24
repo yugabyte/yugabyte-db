@@ -3062,4 +3062,58 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     stream.close();
   }
+
+  // Added with the fix for #24308.
+  @Test
+  public void testWithDropTable() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test_1");
+      stmt.execute("DROP TABLE IF EXISTS test_2");
+      stmt.execute("CREATE TABLE test_1 (a int primary key, b int)");
+      stmt.execute("CREATE TABLE test_2 (a int primary key, b int)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE test_1");
+    }
+
+    String slotName = "test_with_drop_table";
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE test_2");
+      stmt.execute("INSERT INTO test_1 VALUES(1, 1)");
+    }
+
+    // Sleep for some time so that master background thread removes dropped table from the
+    // replica identity map.
+    Thread.sleep(3000 * kMultiplier);
+    PGReplicationStream stream = replConnection.replicationStream()
+      .logical()
+      .withSlotName(slotName)
+      .withStartPosition(LogSequenceNumber.valueOf(0L))
+      .withSlotOption("proto_version", 1)
+      .withSlotOption("publication_names", "pub")
+      .start();
+
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+
+    result.addAll(receiveMessage(stream, 4));
+
+    List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
+      {
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 2));
+        add(PgOutputRelationMessage.CreateForComparison("public", "test_1", 'c',
+          Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+            PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+          Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
+            new PgOutputMessageTupleColumnValue("1")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+      }
+    };
+    assertEquals(expectedResult, result);
+
+    stream.close();
+  }
 }

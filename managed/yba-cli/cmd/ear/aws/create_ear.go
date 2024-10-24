@@ -22,6 +22,9 @@ var createAWSEARCmd = &cobra.Command{
 	Aliases: []string{"add"},
 	Short:   "Create a YugabyteDB Anywhere AWS encryption at rest configuration",
 	Long:    "Create an AWS encryption at rest configuration in YugabyteDB Anywhere",
+	Example: `yba ear aws create --name <config-name> \
+	--access-key-id <access-key-id> --secret-access-key <secret-access-key>\
+	--region <region> --cmk-id <cmk-id> --endpoint <endpoint>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		earutil.CreateEARValidation(cmd)
 		isIAM, err := cmd.Flags().GetBool("use-iam-instance-profile")

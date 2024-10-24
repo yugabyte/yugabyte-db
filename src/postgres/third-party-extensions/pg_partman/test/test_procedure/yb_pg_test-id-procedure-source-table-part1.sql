@@ -33,7 +33,9 @@ CREATE TABLE partman_test.template_id_taptest_table (LIKE partman_test.id_taptes
 
 SELECT create_parent('partman_test.id_taptest_table', 'col1', 'native', '10000', p_jobmon := false, p_template_table := 'partman_test.template_id_taptest_table');
 
-SELECT has_table('partman_test', 'id_taptest_table_default', 'Check id_taptest_table_default exists');
+-- YB: default partition creation is disabled
+-- TODO(#3109): Re-enable it after transactional DDL support.
+SELECT hasnt_table('partman_test', 'id_taptest_table_default', 'Check id_taptest_table_default doesn''t exists');
 SELECT has_table('partman_test', 'id_taptest_table_p0', 'Check id_taptest_table_p0 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p10000', 'Check id_taptest_table_p10000 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p20000', 'Check id_taptest_table_p20000 exists');

@@ -13,10 +13,11 @@ import (
 
 var describeEARCmd = &cobra.Command{
 	Use:     "describe",
-	GroupID: "action",
 	Aliases: []string{"get"},
+	GroupID: "action",
 	Short:   "Describe a YugabyteDB Anywhere Encryption At Rest (EAR) configuration",
 	Long:    "Describe a YugabyteDB Anywhere Encryption At Rest (EAR) configuration",
+	Example: `yba ear describe --name <config-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		earutil.DescribeEARValidation(cmd)
 	},

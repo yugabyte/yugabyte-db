@@ -657,29 +657,6 @@ function(ADD_THIRDPARTY_LIB LIB_NAME)
     target_include_directories(${LIB_NAME}
       SYSTEM INTERFACE "${ARG_INCLUDE_DIRS}")
   endif()
-
-  # Set up an "exported variant" for this thirdparty library (see "Visibility"
-  # above). It's the same as the real target, just with an "_exported" suffix.
-  # We prefer the static archive if it exists (as it's akin to an "internal"
-  # library), but we'll settle for the shared object if we must.
-  #
-  # A shared object exported variant will force any "leaf" library that
-  # transitively depends on it to also depend on it at runtime; this is
-  # desirable for some libraries (e.g. cyrus_sasl).
-  set(LIB_NAME_EXPORTED ${LIB_NAME}_exported)
-  if(ARG_STATIC_LIB)
-    add_library(${LIB_NAME_EXPORTED} STATIC IMPORTED)
-    set_target_properties(${LIB_NAME_EXPORTED}
-      PROPERTIES IMPORTED_LOCATION "${ARG_STATIC_LIB}")
-  else()
-    add_library(${LIB_NAME_EXPORTED} SHARED IMPORTED)
-    set_target_properties(${LIB_NAME_EXPORTED}
-      PROPERTIES IMPORTED_LOCATION "${ARG_SHARED_LIB}")
-  endif()
-  if(ARG_DEPS)
-    set_target_properties(${LIB_NAME_EXPORTED}
-      PROPERTIES IMPORTED_LINK_INTERFACE_LIBRARIES "${ARG_DEPS}")
-  endif()
 endfunction()
 
 # Look in thirdparty prefix paths before anywhere else for system dependencies.

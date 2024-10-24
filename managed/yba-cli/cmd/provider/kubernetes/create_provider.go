@@ -20,9 +20,10 @@ import (
 
 // createK8sProviderCmd represents the provider command
 var createK8sProviderCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create a Kubernetes YugabyteDB Anywhere provider",
-	Long:  "Create a Kubernetes provider in YugabyteDB Anywhere",
+	Use:     "create",
+	Aliases: []string{"add"},
+	Short:   "Create a Kubernetes YugabyteDB Anywhere provider",
+	Long:    "Create a Kubernetes provider in YugabyteDB Anywhere",
 	Example: `yba provider k8s create -n <provider-name> --type gke \
 	--pull-secret-file <pull-secret-file-path> \
 	--region region-name=us-west1 \

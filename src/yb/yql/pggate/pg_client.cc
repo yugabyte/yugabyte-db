@@ -518,6 +518,13 @@ class PgClient::Impl : public BigDataFetcher {
     return BuildTablePartitionList(resp.partitions(), table_id);
   }
 
+  Result<tserver::PgListClonesResponsePB> ListDatabaseClones() {
+    tserver::PgListClonesRequestPB req;
+    tserver::PgListClonesResponsePB resp;
+    RETURN_NOT_OK(proxy_->ListClones(req, &resp, PrepareController()));
+    return resp;
+  }
+
   Status FinishTransaction(Commit commit, const std::optional<DdlMode>& ddl_mode) {
     tserver::PgFinishTransactionRequestPB req;
     req.set_session_id(session_id_);
@@ -1274,6 +1281,24 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Status SetCronLastMinute(int64_t last_minute) {
+    tserver::PgCronSetLastMinuteRequestPB req;
+    req.set_last_minute(last_minute);
+    tserver::PgCronSetLastMinuteResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->CronSetLastMinute(req, &resp, PrepareController()));
+    return ResponseStatus(resp);
+  }
+
+  Result<int64_t> GetCronLastMinute() {
+    tserver::PgCronGetLastMinuteRequestPB req;
+    tserver::PgCronGetLastMinuteResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->CronGetLastMinute(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp.last_minute();
+  }
+
  private:
   std::string LogPrefix() const {
     return Format("Session id $0: ", session_id_);
@@ -1369,6 +1394,10 @@ Result<client::VersionedTablePartitionList> PgClient::GetTablePartitionList(
 
 Status PgClient::FinishTransaction(Commit commit, const std::optional<DdlMode>& ddl_mode) {
   return impl_->FinishTransaction(commit, ddl_mode);
+}
+
+Result<tserver::PgListClonesResponsePB> PgClient::ListDatabaseClones() {
+  return impl_->ListDatabaseClones();
 }
 
 Result<master::GetNamespaceInfoResponsePB> PgClient::GetDatabaseInfo(uint32_t oid) {
@@ -1598,6 +1627,12 @@ Result<tserver::PgTabletsMetadataResponsePB> PgClient::TabletsMetadata() {
 Result<tserver::PgServersMetricsResponsePB> PgClient::ServersMetrics() {
   return impl_->ServersMetrics();
 }
+
+Status PgClient::SetCronLastMinute(int64_t last_minute) {
+  return impl_->SetCronLastMinute(last_minute);
+}
+
+Result<int64_t> PgClient::GetCronLastMinute() { return impl_->GetCronLastMinute(); }
 
 void PerformExchangeFuture::wait() const {
   if (!value_) {

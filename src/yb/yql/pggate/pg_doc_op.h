@@ -481,7 +481,7 @@ class PgDocReadOp : public PgDocOp {
   Status ExecuteInit(const PgExecParameters *exec_params) override;
 
   // Row sampler collects number of live and dead rows it sees.
-  Result<EstimatedRowCount> GetEstimatedRowCount() const;
+  EstimatedRowCount GetEstimatedRowCount() const;
 
   bool IsWrite() const override {
     return false;

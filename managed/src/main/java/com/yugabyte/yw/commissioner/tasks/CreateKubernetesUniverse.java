@@ -251,7 +251,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
                     // Use generated placement since gflagsParams placement will not have masters
                     // populated.
                     placement,
-                    gflagsParams.getMasterAddresses(),
+                    masterAddresses,
                     ServerType.MASTER,
                     gflagsParams.getYbSoftwareVersion(),
                     gflagsParams.getUniverseOverrides(),

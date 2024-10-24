@@ -92,6 +92,15 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
     return indexes_[0]->Distance(lhs, rhs);
   }
 
+  std::string IndexStatsStr() const override {
+    std::ostringstream output;
+    for (size_t i = 0; i < indexes_.size(); ++i) {
+      output << "Index shard #" << i << ":" << std::endl;
+      output << indexes_[i]->IndexStatsStr() << std::endl;
+    }
+    return output.str();
+  }
+
  private:
   std::vector<VectorIndexIfPtr<Vector, DistanceResult>> indexes_;
   std::atomic<size_t> round_robin_counter_;  // Atomic counter for thread-safe round-robin insertion

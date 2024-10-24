@@ -17,15 +17,15 @@ type: docs
 
 The YCQL shell (ycqlsh) is a CLI for interacting with YugabyteDB using [YCQL](../../api/ycql/).
 
-{{< note title="Note" >}}
-
-The YCQL shell was previously named `cqlsh`. Although the `cqlsh` binary is available in the `bin` directory, it is deprecated and will be removed in a future release.
-
-{{< /note >}}
-
 ### Installation
 
-ycqlsh is installed with YugabyteDB and located in the `bin` directory of the YugabyteDB home directory. If you prefer, you can install a standalone version; refer to [YugabyteDB clients](/preview/releases/yugabyte-clients/).
+ycqlsh is installed with YugabyteDB and located in the `bin` directory of the YugabyteDB home directory.
+
+{{<lead link="/preview/releases/yugabyte-clients/">}}
+To download and install a standalone version of ycqlsh, refer to [YugabyteDB clients](/preview/releases/yugabyte-clients/).
+{{</lead>}}
+
+ycqlsh was previously named cqlsh. Although the cqlsh binary is available in the `bin` directory, it is deprecated and will be removed in a future release.
 
 ### Starting ycqlsh
 

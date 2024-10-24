@@ -899,8 +899,10 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    */
   @Test
   public void dmlsUpdatePgCache() throws Exception {
-    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
+    // (DB-13032) This test touches system tables, so enable stickiness for
+    // superuser connections when Connection Manager is enabled.
     if (isTestRunningWithConnectionManager()) {
+      enableStickySuperuserConnsAndRestartCluster();
       beforeTestYsqlUpgrade();
     }
     // Querying pg_sequence_parameters involves pg_sequence cache lookup, not an actual table scan.
@@ -942,7 +944,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    * Clear applied migrations table, re-run migrations and expect nothing to change from reapplying
    * migrations.
    */
-  @Ignore("YB_TODO: Ignore test till pg15-based snapshot is available (towards the end of project)")
+  @Ignore("YB_TODO: Ignore test till pg15-based snapshot is available (2025.1 release)")
   @Test
   public void upgradeIsIdempotent() throws Exception {
     recreateWithYsqlVersion(YsqlSnapshotVersion.EARLIEST);
@@ -958,7 +960,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    * Single-connection variant of {@code upgradeIsIdempotent} test, also ensures there's never too
    * many connections opened.
    */
-  @Ignore("YB_TODO: Ignore test till pg15-based snapshot is available (towards the end of project)")
+  @Ignore("YB_TODO: Ignore test till pg15-based snapshot is available (2025.1 release)")
   @Test
   public void upgradeIsIdempotentSingleConn() throws Exception {
     recreateWithYsqlVersion(YsqlSnapshotVersion.EARLIEST);
@@ -1011,7 +1013,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    * If you see this test failing, please make sure you've added a new YSQL migration as described
    * in {@code src/yb/yql/pgwrapper/ysql_migrations/README.md}.
    */
-  @Ignore("YB_TODO: Ignore test till pg15-based snapshot is available (towards the end of project)")
+  @Ignore("YB_TODO: Ignore test till pg15-based snapshot is available (2025.1 release)")
   @Test
   public void migratingIsEquivalentToReinitdb() throws Exception {
     final SysCatalogSnapshot preSnapshotCustom, preSnapshotTemplate1;

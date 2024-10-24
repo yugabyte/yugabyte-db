@@ -137,10 +137,8 @@ auto GetKeyValue(
 
 } // namespace
 
-PgDmlRead::PgDmlRead(
-    PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, bool is_region_local,
-    const PrepareParameters& prepare_params, const PgObjectId& index_id)
-    : PgDml(std::move(pg_session), table_id, is_region_local, prepare_params, index_id) {
+PgDmlRead::PgDmlRead(const PgSession::ScopedRefPtr& pg_session)
+    : PgDml(pg_session) {
 }
 
 void PgDmlRead::PrepareBinds() {
@@ -164,11 +162,6 @@ void PgDmlRead::SetForwardScan(bool is_forward_scan) {
   } else {
     DCHECK(read_req_->is_forward_scan() == is_forward_scan) << "Cannot change scan direction";
   }
-}
-
-bool PgDmlRead::KeepOrder() const {
-  return secondary_index_query_
-      ? secondary_index_query_->KeepOrder() : read_req_->has_is_forward_scan();
 }
 
 void PgDmlRead::SetDistinctPrefixLength(int distinct_prefix_length) {
@@ -370,18 +363,17 @@ Status PgDmlRead::RetrieveYbctidsFromSecondaryIndex(
   size_t work_mem_bytes = exec_params->work_mem * 1024L;
 
   while (consumed_bytes < work_mem_bytes) {
-    RETURN_NOT_OK(ProcessSecondaryIndexRequest(pg_exec_params_));
-    if (!retrieved_ybctids_)
+    auto* fetched_ybctids = VERIFY_RESULT(FetchYbctidsFromSecondaryIndex());
+    if (!fetched_ybctids)
       break;
 
-    ybctids->reserve(retrieved_ybctids_->size());
+    ybctids->reserve(ybctids->size() + fetched_ybctids->size());
 
-    for (auto ybctid : *retrieved_ybctids_) {
+    for (auto ybctid : *fetched_ybctids) {
       const size_t size = ybctid.size();
-      uint8_t *data = new uint8_t[size];
-      memcpy(data, ybctid.cdata(), size);
+      ybctid.relocate(new uint8_t[size]);
       consumed_bytes += size;
-      ybctids->emplace_back(Slice(data, size));
+      ybctids->push_back(ybctid);
 
       if (consumed_bytes >= work_mem_bytes) {
         *exceeded_work_mem = true;
@@ -437,7 +429,7 @@ Status PgDmlRead::Exec(const PgExecParameters* exec_params) {
   }
 
   // First, process the secondary index request.
-  const auto has_ybctid = VERIFY_RESULT(ProcessSecondaryIndexRequest(exec_params));
+  const auto has_ybctid = VERIFY_RESULT(ProcessSecondaryIndexRequest());
 
   if (!has_ybctid && secondary_index_query_ && secondary_index_query_->has_doc_op()) {
     // No ybctid is found from the IndexScan. Instruct "doc_op_" to abandon the execution and not

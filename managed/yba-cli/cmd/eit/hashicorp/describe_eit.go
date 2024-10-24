@@ -17,6 +17,7 @@ var describeHashicorpVaultEITCmd = &cobra.Command{
 		"Encryption In Transit (EIT) configuration",
 	Long: "Describe a Hashicorp Vault YugabyteDB Anywhere " +
 		"Encryption In Transit (EIT) configuration",
+	Example: `yba eit hashicorp-vault describe --name <config-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		eitutil.DescribeEITValidation(cmd)
 	},

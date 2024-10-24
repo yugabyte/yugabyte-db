@@ -147,6 +147,8 @@ class PgClientSession {
       PgSequenceCache* sequence_cache, PgSharedMemoryPool& shared_mem_pool,
       const EventStatsPtr& stats_exchange_response_size, rpc::Scheduler& scheduler);
 
+  virtual ~PgClientSession() = default;
+
   uint64_t id() const { return id_; }
 
   Status Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context);
@@ -172,8 +174,8 @@ class PgClientSession {
 
   std::pair<uint64_t, std::byte*> ObtainBigSharedMemorySegment(size_t size);
 
-  void StartShutdown();
-  void CompleteShutdown();
+  virtual void StartShutdown();
+  virtual void CompleteShutdown();
 
  private:
   struct SetupSessionResult {
@@ -227,10 +229,6 @@ class PgClientSession {
 
   const client::YBSessionPtr& Session(PgClientSessionKind kind) const {
     return GetSessionData(kind).session;
-  }
-
-  client::YBTransactionPtr& Transaction(PgClientSessionKind kind) {
-    return GetSessionData(kind).transaction;
   }
 
   const client::YBTransactionPtr& Transaction(PgClientSessionKind kind) const {

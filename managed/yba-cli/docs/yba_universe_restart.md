@@ -10,6 +10,12 @@ Restart a YugabyteDB Anywhere Universe
 yba universe restart [flags]
 ```
 
+### Examples
+
+```
+yba universe restart --name <universe-name>
+```
+
 ### Options
 
 ```

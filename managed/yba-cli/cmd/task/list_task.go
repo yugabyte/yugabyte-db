@@ -19,9 +19,11 @@ import (
 )
 
 var listTaskCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List YugabyteDB Anywhere tasks",
-	Long:  "List YugabyteDB Anywhere tasks",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List YugabyteDB Anywhere tasks",
+	Long:    "List YugabyteDB Anywhere tasks",
+	Example: `yba task list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 

@@ -10,6 +10,12 @@ Delete a GCP encryption at rest configuration in YugabyteDB Anywhere
 yba ear gcp delete [flags]
 ```
 
+### Examples
+
+```
+yba ear gcp delete --name <config-name>
+```
+
 ### Options
 
 ```

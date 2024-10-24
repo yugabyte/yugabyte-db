@@ -19,9 +19,11 @@ import (
 
 // listNodesCmd represents the provider command
 var listNodesCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List node instances of a YugabyteDB Anywhere on-premises provider",
-	Long:  "List node instance of a YugabyteDB Anywhere on-premises provider",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List node instances of a YugabyteDB Anywhere on-premises provider",
+	Long:    "List node instance of a YugabyteDB Anywhere on-premises provider",
+	Example: `yba provider onprem node list --name <provider-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {

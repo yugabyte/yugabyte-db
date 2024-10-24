@@ -21,10 +21,11 @@ import (
 
 // createAzureProviderCmd represents the provider command
 var createAzureProviderCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create an Azure YugabyteDB Anywhere provider",
-	Long:  "Create an Azure provider in YugabyteDB Anywhere",
-	Example: `./yba provider azure create -n <provider-name> \
+	Use:     "create",
+	Aliases: []string{"add"},
+	Short:   "Create an Azure YugabyteDB Anywhere provider",
+	Long:    "Create an Azure provider in YugabyteDB Anywhere",
+	Example: `yba provider azure create -n <provider-name> \
 	--region region-name=westus2,vnet=<vnet> --zone zone-name=westus2-1,region-name=westus2,subnet=<subnet> \
 	--rg=<az-resource-group> \
 	--client-id=<az-client-id> \
@@ -281,8 +282,8 @@ func init() {
 		"[Optional] SSH User to access the YugabyteDB nodes.")
 	createAzureProviderCmd.Flags().Int("ssh-port", 22,
 		"[Optional] SSH Port to access the YugabyteDB nodes.")
-	createAzureProviderCmd.Flags().MarkDeprecated("ssh-port", "Use --edit-image-bundle instead.")
-	createAzureProviderCmd.Flags().MarkDeprecated("ssh-user", "Use --edit-image-bundle instead.")
+	createAzureProviderCmd.Flags().MarkDeprecated("ssh-port", "Use --image-bundle instead.")
+	createAzureProviderCmd.Flags().MarkDeprecated("ssh-user", "Use --image-bundle instead.")
 
 	createAzureProviderCmd.Flags().String("custom-ssh-keypair-name", "",
 		"[Optional] Provide custom key pair name to access YugabyteDB nodes. "+

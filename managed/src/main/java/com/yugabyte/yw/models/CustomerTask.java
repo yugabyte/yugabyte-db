@@ -772,6 +772,16 @@ public class CustomerTask extends Model {
         customer, targetUUID, taskUUID, targetType, type, targetName, customTypeName, null);
   }
 
+  public static CustomerTask createWithBackgroundUser(
+      Customer customer,
+      UUID targetUUID,
+      UUID taskUUID,
+      TargetType targetType,
+      TaskType type,
+      String targetName) {
+    return create(customer, targetUUID, taskUUID, targetType, type, targetName, null, "YBA");
+  }
+
   public static CustomerTask get(Long id) {
     return CustomerTask.find.query().where().idEq(id).findOne();
   }

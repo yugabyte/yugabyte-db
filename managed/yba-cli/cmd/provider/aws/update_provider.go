@@ -21,9 +21,12 @@ import (
 
 // updateAWSProviderCmd represents the provider command
 var updateAWSProviderCmd = &cobra.Command{
-	Use:   "update",
-	Short: "Update an AWS YugabyteDB Anywhere provider",
-	Long:  "Update an AWS provider in YugabyteDB Anywhere",
+	Use:     "update",
+	Aliases: []string{"edit"},
+	Short:   "Update an AWS YugabyteDB Anywhere provider",
+	Long:    "Update an AWS provider in YugabyteDB Anywhere",
+	Example: `yba provider aws update --name <provider-name> \
+	--remove-region <region-1> --remove-region <region-2>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {

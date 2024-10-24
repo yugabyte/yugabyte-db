@@ -42,6 +42,7 @@
       "learnMore": "Learn more",
       "clear": "Clear",
       "reminder": "Reminder",
+      "reset": "Reset",
       "duration": {
         "seconds": "Seconds",
         "minutes": "Minutes",
@@ -182,6 +183,14 @@
           "disable": "To disable post failover actions temporarily, click 'Snooze for 1 hour'",
           "snoozeBtnText": "Snooze for 1 hour"
         }
+      },
+      "helmOverrides": {
+        "title": "Kubernetes Overrides",
+        "rollingUpgradeLabel": "Rolling upgrade (upgrade pods one at a time)",
+        "upgradeDelayLabel": "Upgrade delay between Pods:",
+        "addAvailabilityZone": "Add Availability Zone",
+        "forceUpgrade": "Force Upgrade",
+        "forceApply": "Force Apply"
       },
       "dbRollbackUpgrade": {
         "modalTitle": "Upgrade Database",
@@ -591,10 +600,12 @@
         "pods": "pods",
         "cores": "CPU cores",
         "memory": "Memory(Gib)",
+        "numVolumes": "Number of volumes",
         "volumeSize": "Volume Size(Gib)",
         "readReplicas": "Read Replicas",
         "scaleUp": "Scale Up",
-        "scaleDown": "Scale Down"
+        "scaleDown": "Scale Down",
+        "publicNetworkAccess": "Public Network Access"
       },
       "fullMoveModal": {
         "modalTitle": "Confirm Full Move Update",
@@ -2481,8 +2492,10 @@
         "scope": "Scope",
         "emailAttribute": "Email Attribute",
         "refreshTokenURL": "Refresh Token URL",
+        "groupClaim":"Groups Claim",
         "displayJWTToken": "Display JWT token on login",
         "oidcProviderConfig": "Add OIDC Provider configuration ",
+        "oidcUseRoleMapping": "Map YugabyteDB Anywhere roles to your existing OIDC groups",
         "roles": {
           "title": "Role Settings",
           "userRoleSettings": "User Role Settings",
@@ -2513,6 +2526,7 @@
           "emailAttribute": "Scope containing email ID of the user",
           "refreshTokenURL": "Provide the endpoint that will be used for re-fetching the access token",
           "connectOnly": "Users with ConnectOnly role cannot see any information other than their own profile information",
+          "groupClaim":"The claim in the ID token containing a list of groups the user is a member of",
           "jwtTokenURL": "Option to display button to retrieve the JWT token"
         }
       },
@@ -2537,6 +2551,7 @@
         "groupSearchBaseDN": "Group Search Base DN",
         "ldapGroupSearchScope": "Select Scope",
         "addServiceAccountDetails": "Add Service Account Details",
+        "ldapUseRoleMapping": "Map YugabyteDB Anywhere built-in roles to your existing LDAP groups",
         "infos": {
           "ldapEnabled": "Enable or Disable LDAP Authentication",
           "ldapURL": "LDAP URL must be a valid URL with port number, Ex:- 0.0.0.0:0000",
@@ -2601,7 +2616,8 @@
       "scheduled": {
         "empty": {
           "createSchduledPolicy": "Create Scheduled Backup Policy",
-          "subText": "Currently there are no Scheduled Backup Policies to show"
+          "subText": "Currently there are no Scheduled Backup Policies to show",
+          "noTablesOrPermission":"This universe does not have any tables to backup or backup/universe is disabled"
         },
         "create": {
           "title": "Create Scheduled Backup Policy",
@@ -2694,7 +2710,7 @@
             "wontExpire": "Won't expire",
             "backupWillStart": "<b>Note:</b> The next scheduled backup will start shortly following the creation of this policy",
             "helpText": "We recommend performing an on-demand backup prior to executing any DDL changes between backup intervals to prevent data loss.<br/><a>Learn more</a>",
-            "successMsg": "Scheduled backup policy created. A backup will begin shortly.",
+            "successMsg": "Scheduled backup policy is being created. A backup will begin shortly.",
             "errorMsg": "Unable to created scheduled backup policy"
           },
           "loadingMsg": {
@@ -2728,11 +2744,13 @@
           "deletePolicy": "Delete Policy",
           "enabled": "Enabled",
           "disabled": "Disabled",
+          "creating": "Policy creation is in progress...",
           "deleteMsg": "scheduled backup policy is being deleted",
           "editModal": {
             "title": "Edit Scheduled Backup Policy",
             "backupStrategy": "Backup Strategy",
-            "success": "Scheduled backup policy is being updated"
+            "success": "Scheduled backup policy is being updated",
+              "noFieldsChanged": "No values changed"
           },
           "deleteModal": {
             "deleteMsg": "Are you sure you want to delete this schedule policy?"
@@ -2777,7 +2795,7 @@
           "date": "Date",
           "time": "Time",
           "secs": "Second",
-          "helpText": "<b>Note:</b> if a DDL change occurred in any keyspaces(s) from this backup, choose a timestamp between the time of the DDL change and {{to}}. <a>Learn more</a>"
+          "helpText": "<b>Note:</b> if a DDL change occurred in any keyspaces(s) from this backup, choose a timestamp between the time of the DDL change and <to/>. <a>Learn more</a>"
         },
         "target": {
           "selectUniverse": "Select a universe to restore to",

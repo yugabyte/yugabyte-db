@@ -10,6 +10,15 @@ Create a GCP encryption at rest configuration in YugabyteDB Anywhere
 yba ear gcp create [flags]
 ```
 
+### Examples
+
+```
+yba ear gcp create --name <config-name> \
+	--credentials-file-path <credentials-file-path> \
+	--key-ring-name <key-ring-name> --crypto-key-name <crypto-key-name> \
+	--protection-level <protection-level>
+```
+
 ### Options
 
 ```

@@ -76,13 +76,15 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class UsearchIndex :
     public IndexWrapperBase<UsearchIndex<Vector, DistanceResult>, Vector, DistanceResult> {
  public:
+  using IndexImpl = index_dense_gt<VertexId>;
+
   explicit UsearchIndex(const HNSWOptions& options)
       : dimensions_(options.dimensions),
         distance_kind_(options.distance_kind),
         metric_(dimensions_,
                 MetricKindFromDistanceType(distance_kind_),
                 ConvertCoordinateKind(CoordinateTypeTraits<typename Vector::value_type>::kKind)),
-        index_(decltype(index_)::make(
+        index_(IndexImpl::make(
             metric_,
             CreateIndexDenseConfig(options))) {
     CHECK_GT(dimensions_, 0);
@@ -141,6 +143,43 @@ class UsearchIndex :
       return result;
     }
     return Vector();
+  }
+
+  static std::string StatsToStringHelper(const IndexImpl::stats_t& stats) {
+    return Format(
+        "$0 nodes, $1 edges, $2 average edges per node",
+        stats.nodes,
+        stats.edges,
+        StringPrintf("%.2f", stats.edges * 1.0 / stats.nodes));
+  }
+
+  std::string IndexStatsStr() const override {
+    std::ostringstream output;
+
+    // Get the maximum level of the index
+    auto max_level = index_.max_level();
+    output << "Usearch index with " << (max_level + 1) << " levels" << std::endl;
+
+    const auto& config = index_.config();
+    output << "    connectivity: " << config.connectivity << std::endl;
+    output << "    connectivity_base: " << config.connectivity_base << std::endl;
+    output << "    expansion_add: " << config.expansion_add << std::endl;
+    output << "    expansion_search: " << config.expansion_search << std::endl;
+    output << "    inverse_log_connectivity: " << index_.inverse_log_connectivity() << std::endl;
+
+    std::vector<IndexImpl::stats_t> stats_per_level;
+    stats_per_level.resize(max_level + 1);
+    auto total_stats = index_.stats(stats_per_level.data(), max_level);
+
+    // Print connectivity distribution for each level
+    for (size_t level = 0; level <= max_level; ++level) {
+      output << "    Level " << level << ": " << StatsToStringHelper(stats_per_level[level])
+             << std::endl;
+    }
+
+    output << "    Totals: " << StatsToStringHelper(total_stats) << std::endl;
+
+    return output.str();
   }
 
  private:

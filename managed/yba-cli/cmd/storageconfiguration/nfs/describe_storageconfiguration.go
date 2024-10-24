@@ -15,6 +15,7 @@ var describeNFSStorageConfigurationCmd = &cobra.Command{
 	Aliases: []string{"get"},
 	Short:   "Describe a NFS YugabyteDB Anywhere storage configuration",
 	Long:    "Describe a NFS storage configuration in YugabyteDB Anywhere",
+	Example: `yba storage-config nfs describe --name <storage-configuration-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		storageconfigurationutil.DescribeStorageConfigurationValidation(cmd)
 	},

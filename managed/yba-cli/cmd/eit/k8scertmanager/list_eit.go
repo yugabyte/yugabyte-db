@@ -11,11 +11,13 @@ import (
 )
 
 var listK8sCertManagerEITCmd = &cobra.Command{
-	Use: "list",
+	Use:     "list",
+	Aliases: []string{"ls"},
 	Short: "List K8s Cert Manager YugabyteDB Anywhere Encryption In Transit" +
 		" (EIT) certificate configurations",
 	Long: "List K8s Cert Manager YugabyteDB Anywhere Encryption In Transit" +
 		" (EIT) certificate configurations",
+	Example: `yba eit k8s-cert-manager list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		providerutil.ListProviderUtil(cmd, "K8s Cert Manager", util.K8sCertManagerCertificateType)
 	},

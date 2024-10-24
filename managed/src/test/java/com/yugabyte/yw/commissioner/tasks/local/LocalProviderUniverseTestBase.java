@@ -26,12 +26,12 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.LocalNodeManager;
 import com.yugabyte.yw.common.LocalNodeUniverseManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.ShellResponse;
@@ -126,7 +126,7 @@ import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 
 @Slf4j
-public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplicationBaseTest {
+public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest {
   private static final boolean IS_LINUX = System.getProperty("os.name").equalsIgnoreCase("linux");
   private static final Set<String> CONTROL_FILES =
       Set.of(LocalNodeManager.MASTER_EXECUTABLE, LocalNodeManager.TSERVER_EXECUTABLE);
@@ -218,7 +218,6 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
   protected YcqlQueryExecutor ycqlQueryExecutor;
   protected UniverseTableHandler tableHandler;
   protected CertificateHelper certificateHelper;
-  protected Commissioner commissioner;
   protected SettableRuntimeConfigFactory settableRuntimeConfigFactory;
   protected RuntimeConfService runtimeConfService;
   protected JobScheduler jobScheduler;
@@ -427,6 +426,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     runtimeConfService = app.injector().instanceOf(RuntimeConfService.class);
     jobScheduler = app.injector().instanceOf(JobScheduler.class);
     autoMasterFailoverScheduler = app.injector().instanceOf(AutoMasterFailoverScheduler.class);
+    customerTaskManager = app.injector().instanceOf(CustomerTaskManager.class);
   }
 
   @Before
@@ -434,6 +434,13 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     injectDependencies();
 
     settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.releases.use_redesign", "false");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.startMasterOnRemoveNode.getKey(), "true");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.startMasterOnStopNode.getKey(), "true");
+
     settableRuntimeConfigFactory
         .globalRuntimeConf()
         .setValue("yb.universe.consistency_check.enabled", "true");
@@ -1130,6 +1137,24 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
 
   protected boolean isMasterProcessRunning(String nodeName) {
     return localNodeManager.isProcessRunning(nodeName, ServerType.MASTER);
+  }
+
+  protected void waitTillNumOfTservers(YBClient ybClient, int expected) {
+    RetryTaskUntilCondition<Integer> condition =
+        new RetryTaskUntilCondition<>(
+            () -> getNumberOfTservers(ybClient), (num) -> num == expected);
+    boolean success = condition.retryUntilCond(500, TimeUnit.SECONDS.toMillis(60));
+    if (!success) {
+      throw new RuntimeException("Failed to wait till expected number of tservers");
+    }
+  }
+
+  protected Integer getNumberOfTservers(YBClient ybClient) {
+    try {
+      return ybClient.listTabletServers().getTabletServersCount();
+    } catch (Exception e) {
+      return 0;
+    }
   }
 
   // This method waits for the next task to complete.

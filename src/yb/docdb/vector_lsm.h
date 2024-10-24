@@ -14,8 +14,11 @@
 #pragma once
 
 #include <future>
+#include <map>
 
 #include "yb/common/hybrid_time.h"
+
+#include "yb/docdb/vector_lsm.fwd.h"
 
 #include "yb/dockv/key_bytes.h"
 
@@ -101,6 +104,10 @@ struct VectorLSMOptions {
 
 template<vectorindex::IndexableVectorType VectorType,
          vectorindex::ValidDistanceResultType DistanceResultType>
+class VectorLSMInsertTask;
+
+template<vectorindex::IndexableVectorType VectorType,
+         vectorindex::ValidDistanceResultType DistanceResultType>
 class VectorLSM {
  public:
   using DistanceResult = DistanceResultType;
@@ -130,6 +137,8 @@ class VectorLSM {
   Result<SearchResults> Search(const Vector& query_vector, const SearchOptions& options) const;
 
   Status Flush();
+  void StartShutdown();
+  void CompleteShutdown();
 
   size_t TEST_num_immutable_chunks() const;
   bool TEST_HasBackgroundInserts() const;
@@ -138,17 +147,24 @@ class VectorLSM {
 
   struct MutableChunk;
   struct ImmutableChunk;
+  using ImmutableChunkPtr = std::shared_ptr<ImmutableChunk>;
 
  private:
+  friend class VectorLSMInsertTask<Vector, DistanceResult>;
+  friend struct MutableChunk;
+
   // Saves the current mutable chunk to disk and creates a new one.
   Status RollChunk() REQUIRES(mutex_);
   Status DoFlush(std::promise<Status>* promise) REQUIRES(mutex_);
 
   // Use var arg to avoid specifying arguments twice in SaveChunk and DoSaveChunk.
-  template<class... Args>
-  void SaveChunk(std::promise<Status>* promise, Args&&... args) EXCLUDES(mutex_);
-  Status DoSaveChunk(
-      size_t chunk_serial_no, const std::shared_ptr<ImmutableChunk>& chunk) EXCLUDES(mutex_);
+  void SaveChunk(const ImmutableChunkPtr& chunk) EXCLUDES(mutex_);
+  void CheckFailure(const Status& status) EXCLUDES(mutex_);
+
+  // Actual implementation for SaveChunk, to have ability simply return Status in case of failure.
+  Status DoSaveChunk(const ImmutableChunkPtr& chunk) EXCLUDES(mutex_);
+  Status UpdateManifest(
+      rocksdb::WritableFile* metadata_file, ImmutableChunkPtr chunk) EXCLUDES(mutex_);
 
   Status CreateNewMutableChunk() REQUIRES(mutex_);
 
@@ -157,13 +173,19 @@ class VectorLSM {
 
   mutable rw_spinlock mutex_;
   size_t current_chunk_serial_no_ GUARDED_BY(mutex_) = 0;
-  std::atomic<size_t> num_chunks_being_saved_ = 0;
   std::shared_ptr<MutableChunk> mutable_chunk_ GUARDED_BY(mutex_);
-  std::vector<std::shared_ptr<ImmutableChunk>> immutable_chunks_ GUARDED_BY(mutex_);
+  std::vector<ImmutableChunkPtr> immutable_chunks_ GUARDED_BY(mutex_);
   std::unique_ptr<InsertRegistry> insert_registry_;
   // Does not change after Open.
   size_t metadata_file_no_ = 0;
   std::unique_ptr<rocksdb::WritableFile> metadata_file_ GUARDED_BY(mutex_);
+  bool stopping_ GUARDED_BY(mutex_) = false;
+
+  // order_no is used as key in this map.
+  std::map<size_t, ImmutableChunkPtr> updates_queue_ GUARDED_BY(mutex_);
+
+  bool writing_update_ GUARDED_BY(mutex_) = false;
+  Status failed_status_ GUARDED_BY(mutex_);
 };
 
 template <template<class, class> class Factory, class VectorIndex>

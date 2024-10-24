@@ -10,6 +10,12 @@ List YugabyteDB Anywhere storage-configurations
 yba storage-config list [flags]
 ```
 
+### Examples
+
+```
+yba storage-config list
+```
+
 ### Options
 
 ```

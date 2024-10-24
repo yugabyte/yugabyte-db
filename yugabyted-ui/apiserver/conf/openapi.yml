@@ -1038,6 +1038,15 @@ components:
           $ref: '#/components/schemas/TargetClusterSpec'
         target_schema_recommendation:
           $ref: '#/components/schemas/TargetSchemaRecommendations'
+    UnsupportedSqlObjectData:
+      title: Unsupported SQL Object Data
+      description: Unsupported SQL Object Data
+      type: object
+      properties:
+        object_name:
+          type: string
+        sql_statement:
+          type: string
     UnsupportedSqlInfo:
       title: Unsupported SQL Info
       description: Unsupported SQL Info
@@ -1047,6 +1056,12 @@ components:
           type: string
         count:
           type: integer
+        objects:
+          type: array
+          items:
+            $ref: '#/components/schemas/UnsupportedSqlObjectData'
+        docs_link:
+          type: string
     MigrationAssessmentReport:
       title: Details of the migration assessment report
       description: Details of the migration assessment report

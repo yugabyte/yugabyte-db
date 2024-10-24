@@ -207,3 +207,7 @@ race:pqGetpwuid
 # https://gist.github.com/spolitov/1624c44446196a0a35b6b9ceae877f92
 race:unum::usearch
 race:hnswlib::HierarchicalNSW
+
+# Known issues with krb5 after updates to postgres 15.
+race:krb5_gss_init_context
+race:k5_once

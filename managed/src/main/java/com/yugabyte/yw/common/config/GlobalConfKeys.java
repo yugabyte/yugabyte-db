@@ -1355,7 +1355,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "If this flag is enabled, user will be able to enable/disable connection pooling on"
               + " universes.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> xClusterSyncSchedulerInterval =
       new ConfKeyInfo<>(
           "yb.xcluster.xcluster_sync_scheduler_interval",
@@ -1510,4 +1510,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " than main Prometheus scrape period to complete",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> oidcGroupClaim =
+      new ConfKeyInfo<>(
+          "yb.security.oidc_group_claim",
+          ScopeType.GLOBAL,
+          "OIDC Group Claim",
+          "Claim in the ID token containing the list of groups. Default value: \"groups\"",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

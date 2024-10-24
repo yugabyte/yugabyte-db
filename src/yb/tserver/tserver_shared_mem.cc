@@ -467,8 +467,21 @@ SharedExchangeThread::SharedExchangeThread(
 }
 
 SharedExchangeThread::~SharedExchangeThread() {
-  exchange_.SignalStop();
-  thread_->Join();
+  StartShutdown();
+  CompleteShutdown();
+}
+
+void SharedExchangeThread::StartShutdown() {
+  if (thread_) {
+    exchange_.SignalStop();
+  }
+}
+
+void SharedExchangeThread::CompleteShutdown() {
+  if (thread_) {
+    thread_->Join();
+    thread_ = nullptr;
+  }
 }
 
 bool TServerSharedData::IsCronLeader() const {

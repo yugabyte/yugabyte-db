@@ -22,6 +22,7 @@ var describeUniverseCmd = &cobra.Command{
 	Aliases: []string{"get"},
 	Short:   "Describe a YugabyteDB Anywhere universe",
 	Long:    "Describe a universe in YugabyteDB Anywhere",
+	Example: `yba universe describe --name <universe-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		universeNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {

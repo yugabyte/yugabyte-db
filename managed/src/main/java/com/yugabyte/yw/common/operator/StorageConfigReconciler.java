@@ -9,6 +9,7 @@ import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
@@ -72,6 +73,24 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     object.remove("backup_LOCATION");
     object.remove("gcs_CREDENTIALS_JSON");
     object.remove("azure_STORAGE_SAS_TOKEN");
+    object.remove("use_IAM");
+
+    boolean useIAM = object.has("USE_IAM") && (object.get("USE_IAM").asBoolean(false) == true);
+    object.remove("USE_IAM");
+
+    String configType = sc.getSpec().getConfig_type().getValue().split("_")[1];
+    if (useIAM) {
+      String iamFieldName;
+      if (configType.equals(CustomerConfigConsts.NAME_S3)) {
+        iamFieldName = CustomerConfigConsts.USE_S3_IAM_FIELDNAME;
+      } else if (configType.equals(CustomerConfigConsts.NAME_GCS)) {
+        iamFieldName = CustomerConfigConsts.USE_GCP_IAM_FIELDNAME;
+      } else {
+        throw new RuntimeException(
+            String.format("IAM only works with S3/GCS but %s config type used", configType));
+      }
+      object.put(iamFieldName, useIAM);
+    }
 
     return dataJson;
   }
@@ -118,9 +137,9 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
       updateStatus(sc, false, "", e.getMessage());
       return;
     }
-    JsonNode payload = getConfigPayloadFromCRD(sc);
     String configUUID;
     try {
+      JsonNode payload = getConfigPayloadFromCRD(sc);
       String configName = sc.getMetadata().getName();
       CustomerConfig cc =
           CustomerConfig.createStorageConfig(UUID.fromString(cuuid), name, configName, payload);
@@ -145,7 +164,7 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     ObjectMapper objectMapper = new ObjectMapper();
     String cuuid;
     String configUUID = oldSc.getStatus().getResourceUUID();
-    JsonNode payload = getConfigPayloadFromCRD(newSc);
+
     try {
       cuuid = getCustomerUUID();
     } catch (Exception e) {
@@ -156,6 +175,7 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     }
 
     try {
+      JsonNode payload = getConfigPayloadFromCRD(newSc);
       CustomerConfig cc = ccs.getOrBadRequest(UUID.fromString(cuuid), UUID.fromString(configUUID));
       cc.setData((ObjectNode) payload);
       this.ccs.edit(cc);

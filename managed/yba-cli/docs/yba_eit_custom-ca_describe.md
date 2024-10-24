@@ -10,6 +10,12 @@ Describe a Custom CA YugabyteDB Anywhere Encryption In Transit (EIT) configurati
 yba eit custom-ca describe [flags]
 ```
 
+### Examples
+
+```
+yba eit custom-ca describe --name <config-name>
+```
+
 ### Options
 
 ```

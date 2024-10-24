@@ -1210,7 +1210,7 @@ Result<bool> PgDocReadOp::PopulateSamplingOps() {
   return true;
 }
 
-Result<EstimatedRowCount> PgDocReadOp::GetEstimatedRowCount() const {
+EstimatedRowCount PgDocReadOp::GetEstimatedRowCount() const {
   VLOG(1) << "Returning liverows " << sample_rows_;
   // TODO count dead tuples while sampling
   return EstimatedRowCount{.live = sample_rows_, .dead = 0};

@@ -505,7 +505,9 @@ export const getKubernetesDiffClusterData = (
       oldMasterNumCores: 0,
       newMasterNumCores: 0,
       oldMasterMemory: 0,
-      newMasterMemory: 0
+      newMasterMemory: 0,
+      oldTServerVolumeCount: 0,
+      newTServerVolumeCount: 0
     };
   }
 
@@ -525,7 +527,9 @@ export const getKubernetesDiffClusterData = (
     oldMasterNumCores: currentClusterConfig?.userIntent?.masterK8SNodeResourceSpec?.cpuCoreCount,
     newMasterNumCores: newClusterConfig?.userIntent?.masterK8SNodeResourceSpec?.cpuCoreCount,
     oldMasterMemory: currentClusterConfig?.userIntent?.masterK8SNodeResourceSpec?.memoryGib,
-    newMasterMemory: newClusterConfig?.userIntent?.masterK8SNodeResourceSpec?.memoryGib
+    newMasterMemory: newClusterConfig?.userIntent?.masterK8SNodeResourceSpec?.memoryGib,
+    oldTServerVolumeCount: currentClusterConfig?.userIntent?.deviceInfo?.numVolumes,
+    newTServerVolumeCount: newClusterConfig?.userIntent?.deviceInfo?.numVolumes
   };
 };
 

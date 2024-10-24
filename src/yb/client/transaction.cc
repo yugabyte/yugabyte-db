@@ -933,7 +933,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   Status SetPgTxnStart(int64_t pg_txn_start_us) {
     VLOG_WITH_PREFIX(4) << "set pg_txn_start_us_=" << pg_txn_start_us;
     RSTATUS_DCHECK(
-        !metadata_.pg_txn_start_us || metadata_.pg_txn_start_us == pg_txn_start_us,
+        !metadata_.pg_txn_start_us,
         InternalError,
         Format("Tried to set pg_txn_start_us (= $0) to new value (= $1)",
                metadata_.pg_txn_start_us, pg_txn_start_us));

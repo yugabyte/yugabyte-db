@@ -12,9 +12,11 @@ import (
 
 // deleteHashicorpVaultEARCmd represents the ear command
 var deleteHashicorpVaultEARCmd = &cobra.Command{
-	Use:   "delete",
-	Short: "Delete a YugabyteDB Anywhere Hashicorp Vault encryption at rest configuration",
-	Long:  "Delete a Hashicorp Vault encryption at rest configuration in YugabyteDB Anywhere",
+	Use:     "delete",
+	Aliases: []string{"remove", "rm"},
+	Short:   "Delete a YugabyteDB Anywhere Hashicorp Vault encryption at rest configuration",
+	Long:    "Delete a Hashicorp Vault encryption at rest configuration in YugabyteDB Anywhere",
+	Example: `yba ear hashicorp-vault delete --name <config-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		earutil.DeleteEARValidation(cmd)
 	},

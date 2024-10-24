@@ -62,6 +62,7 @@ import com.yugabyte.yw.models.XClusterNamespaceConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -80,11 +81,13 @@ import org.yb.Schema;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.GetUniverseReplicationInfoResponse;
+import org.yb.client.GetXClusterOutboundReplicationGroupInfoResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterReplicationOuterClass;
+import org.yb.master.MasterReplicationOuterClass.GetXClusterOutboundReplicationGroupInfoResponsePB.NamespaceInfoPB;
 import org.yb.master.MasterTypes;
 import org.yb.master.MasterTypes.RelationType;
 import play.Application;
@@ -523,6 +526,18 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
         .thenReturn(mockResponse);
   }
 
+  public void setupMockGetXClusterOutboundReplicationGroupInfo(
+      DrConfig drConfig, String sourceNamespace) throws Exception {
+    NamespaceInfoPB namespaceInfo =
+        NamespaceInfoPB.newBuilder().setNamespaceId(sourceNamespace).clearTableStreams().build();
+    GetXClusterOutboundReplicationGroupInfoResponse mockResponse =
+        new GetXClusterOutboundReplicationGroupInfoResponse(
+            0, "", null, new ArrayList<>(Arrays.asList(namespaceInfo)));
+    when(mockYBClient.getXClusterOutboundReplicationGroupInfo(
+            eq(drConfig.getActiveXClusterConfig().getReplicationGroupName())))
+        .thenReturn(mockResponse);
+  }
+
   @Test
   public void testDbScopedSwitchover() throws Exception {
     String sourceNamespace = "sourceNamespace";
@@ -541,6 +556,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
     String targetNamespace = "targetNamespace";
     setupMockGetUniverseReplicationInfo(drConfig, sourceNamespace, targetNamespace);
+    setupMockGetXClusterOutboundReplicationGroupInfo(drConfig, sourceNamespace);
     ListTablesResponse mockListTablesResponse = mock(ListTablesResponse.class);
     when(mockListTablesResponse.getTableInfoList()).thenReturn(Collections.emptyList());
     when(mockYBClient.getTablesList(nullable(String.class), eq(false), nullable(String.class)))
@@ -562,6 +578,9 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     assertOk(result);
     verify(mockYBClient)
         .getUniverseReplicationInfo(
+            eq(drConfig.getActiveXClusterConfig().getReplicationGroupName()));
+    verify(mockYBClient)
+        .getXClusterOutboundReplicationGroupInfo(
             eq(drConfig.getActiveXClusterConfig().getReplicationGroupName()));
     ArgumentCaptor<DrConfigTaskParams> paramsArgumentCaptor =
         ArgumentCaptor.forClass(DrConfigTaskParams.class);

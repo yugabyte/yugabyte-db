@@ -207,6 +207,11 @@ func upgradeCmd() *cobra.Command {
 				log.Info("Completed upgrade of component " + name)
 			}
 
+			// Permissions update to be safe
+			if err := common.SetAllPermissions(); err != nil {
+				log.Fatal("error updating permissions for data and software directories: " + err.Error())
+			}
+
 			for _, name := range serviceOrder {
 				log.Info("About to restart component " + name)
 				if err := services[name].Restart(); err != nil {

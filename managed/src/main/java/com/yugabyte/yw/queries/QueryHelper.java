@@ -47,13 +47,18 @@ import play.libs.ws.WSClient;
 @Singleton
 public class QueryHelper {
   private static final String RESET_QUERY_SQL = "SELECT pg_stat_statements_reset()";
+  private static final String STAT_RESET_TIME_SQL =
+      "SELECT stats_reset from pg_stat_statements_info";
+  private static final String STAT_RESET_FIELD = "stats_reset";
   private static final String SLOW_QUERY_STATS_UNLIMITED_SQL_1 =
       "SELECT s.userid::regrole as rolname, d.datname, s.queryid, LEFT(s.query, %d) as query,"
           + " s.calls, s.rows, s.local_blks_hit, s.local_blks_written, ";
   private static final String SLOW_QUERY_STATS_PG11 =
       "s.total_time, s.min_time, s.max_time, s.mean_time, s.stddev_time ";
   private static final String SLOW_QUERY_STATS_PG15 =
-      "s.total_exec_time, s.min_exec_time, s.max_exec_time, s.mean_exec_time, s.stddev_exec_time ";
+      "s.total_exec_time, s.min_exec_time, s.max_exec_time, s.mean_exec_time, s.stddev_exec_time,"
+          + " s.min_plan_time, s.max_plan_time, s.mean_plan_time, s.total_plan_time,"
+          + " stddev_plan_time ";
   private static final String SLOW_QUERY_STATS_UNLIMITED_SQL_2 =
       "FROM pg_stat_statements s JOIN pg_database d ON d.oid = s.dbid";
   private static final String HISTOGRAM_QUERY = ", s.yb_latency_histogram ";
@@ -183,6 +188,8 @@ public class QueryHelper {
     boolean usePG15Fields = isPgVersionHigherThan11(universe);
     int ysqlErrorCount = 0;
     int ycqlErrorCount = 0;
+    boolean fetchResetTimeSubmitted = false;
+    String pgStatResetTime = null;
     ObjectNode responseJson = Json.newObject();
     ObjectNode ysqlJson = Json.newObject();
     ObjectNode ycqlJson = Json.newObject();
@@ -212,6 +219,26 @@ public class QueryHelper {
         switch (queryAction) {
           case FETCH_SLOW_QUERIES:
             {
+              // Submit query to fetch reset time.
+              if (!fetchResetTimeSubmitted && usePG15Fields) {
+                // We reset stats on all nodes at the same time so only query reset time from one
+                // node.
+                fetchResetTimeSubmitted = true;
+                callable =
+                    () -> {
+                      RunQueryFormData ysqlQuery = new RunQueryFormData();
+                      ysqlQuery.setQuery(STAT_RESET_TIME_SQL);
+                      ysqlQuery.setDbName("postgres");
+                      return ysqlQueryExecutor.executeQueryInNodeShell(
+                          universe,
+                          ysqlQuery,
+                          node,
+                          confGetter.getConfForScope(
+                              universe, UniverseConfKeys.slowQueryTimeoutSecs));
+                    };
+                Future<JsonNode> future = threadPool.submit(callable);
+                futures.add(future);
+              }
               callable =
                   () -> {
                     RunQueryFormData ysqlQuery = new RunQueryFormData();
@@ -296,6 +323,10 @@ public class QueryHelper {
             // TODO: PLAT-3986 Sort and limit the merged data
             JsonNode ysqlResponse = response.get("result");
             for (JsonNode queryObject : ysqlResponse) {
+              if (queryObject.has(STAT_RESET_FIELD)) {
+                pgStatResetTime = queryObject.get(STAT_RESET_FIELD).asText();
+                continue;
+              }
               if (usePG15Fields) {
                 renamePG15Fields(queryObject);
               }
@@ -370,6 +401,41 @@ public class QueryHelper {
                     previousQueryObj.set("yb_latency_histogram", histogram_a.getArrayNode());
                   }
 
+                  if (usePG15Fields) {
+                    double totalPlanTime =
+                        previousQueryObj.get("total_plan_time").asDouble()
+                            + queryObject.get("total_plan_time").asDouble();
+                    double minPlanTime =
+                        Math.min(
+                            previousQueryObj.get("min_plan_time").asDouble(),
+                            queryObject.get("min_plan_time").asDouble());
+                    double maxPlanTime =
+                        Math.max(
+                            previousQueryObj.get("max_plan_time").asDouble(),
+                            queryObject.get("max_plan_time").asDouble());
+                    double meanPlanTime_a = previousQueryObj.get("mean_plan_time").asDouble();
+                    double meanPlanTime_b = queryObject.get("mean_plan_time").asDouble();
+                    double averagePlanTime =
+                        (n_a * meanPlanTime_a + n_b * meanPlanTime_b) / totalCalls;
+                    double stdPlanTime_a = previousQueryObj.get("stddev_plan_time").asDouble();
+                    double stdPlanTime_b = queryObject.get("stddev_plan_time").asDouble();
+                    // Using the same stddev formula mentioned above.
+                    double stdPlanTime =
+                        Math.sqrt(
+                            (n_a
+                                        * (Math.pow(stdPlanTime_a, 2)
+                                            + Math.pow(meanPlanTime_a - averagePlanTime, 2))
+                                    + n_b
+                                        * (Math.pow(stdPlanTime_b, 2)
+                                            + Math.pow(meanPlanTime_b - averagePlanTime, 2)))
+                                / totalCalls);
+                    previousQueryObj.put("min_plan_time", minPlanTime);
+                    previousQueryObj.put("max_plan_time", maxPlanTime);
+                    previousQueryObj.put("total_plan_time", totalPlanTime);
+                    previousQueryObj.put("mean_plan_time", averagePlanTime);
+                    previousQueryObj.put("stddev_plan_time", stdPlanTime);
+                  }
+
                 } else {
                   queryMap.put(queryID, queryObject);
                 }
@@ -411,6 +477,9 @@ public class QueryHelper {
     }
 
     ysqlJson.put("errorCount", ysqlErrorCount);
+    if (pgStatResetTime != null) {
+      ysqlJson.put(STAT_RESET_FIELD, pgStatResetTime);
+    }
     ycqlJson.put("errorCount", ycqlErrorCount);
     responseJson.set("ysql", ysqlJson);
     responseJson.set("ycql", ycqlJson);

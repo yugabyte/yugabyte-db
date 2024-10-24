@@ -17,8 +17,21 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+readonly PYTHON_EXECUTABLES=('python' 'python3' 'python3.11' 'python3.10' 'python3.9' 'python3.8' 'python3.7' 'python3.6' 'python3.12' 'python2')
+PYTHON_EXECUTABLE=""
+set_python_executable() {
+  for py_executable in "${PYTHON_EXECUTABLES[@]}"; do
+    if which "$py_executable" > /dev/null 2>&1; then
+      PYTHON_EXECUTABLE="$py_executable"
+      export PYTHON_EXECUTABLE
+      return
+    fi
+  done
+}
+
 check_clock_sync_chrony() {
   # if chrond is restarted, tracking will return all 0's
+  set_python_executable
   chrony_tracking="$(chronyc tracking)"
   if [[ $? -ne 0 ]]; then 
     echo "`chronyc tracking` failed to execute"
@@ -31,7 +44,12 @@ check_clock_sync_chrony() {
   local skew=$(echo "${chrony_tracking}" | awk '/System time/ {print $4}')
   local dispersion=$(echo "${chrony_tracking}" | awk '/Root dispersion/ {print $4}')
   local delay=$(echo "${chrony_tracking}" | awk '/Root delay/ {print $4}')
-  local clock_error=$(python -c 'print('${skew}' + '${dispersion}' + (.5 * '${delay}'))')
+  local clock_error=""
+  if [[ -z "${PYTHON_EXECUTABLE}" ]]; then
+    clock_error=${skew}
+  else
+   clock_error=$(${PYTHON_EXECUTABLE} -c 'print('${skew}' + '${dispersion}' + (.5 * '${delay}'))')
+  fi
   
   if awk 'BEGIN{exit !('"$clock_error"' < '"$acceptable_clock_skew_sec"')}'; then
     echo "Clock skew is within acceptable limits: $skew ms"
@@ -44,9 +62,15 @@ check_clock_sync_chrony() {
 
 check_clock_sync_ntpd() {
   #local skew=$(ntpq -c "rv 0 clock" | awk -F'[=,]' '/offset/ {print $3}')
-  local skew=$(ntpq -p | awk 'NR==3 {print $9}')
+  local skew=$(ntpq -p | awk '$1 ~ "^*" {print $9}')
+  local acceptable_skew_ms=$(python -c 'print('${acceptable_clock_skew_sec}' * 1000)')
+
+  if [[ -z "$skew" ]]; then
+    echo "ntpd is not initialized"
+    return 1
+  fi
   
-  if awk 'BEGIN{exit !('"$skew"' < '"$acceptable_clock_skew_sec"')}'; then
+  if awk 'BEGIN{exit !('"$skew"' < '"$acceptable_skew_ms"')}'; then
     echo "Clock skew is within acceptable limits: $skew ms"
     return 0
   else

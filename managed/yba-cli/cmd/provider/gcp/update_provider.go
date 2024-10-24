@@ -20,9 +20,11 @@ import (
 
 // updateGCPProviderCmd represents the provider command
 var updateGCPProviderCmd = &cobra.Command{
-	Use:   "update",
-	Short: "Update a GCP YugabyteDB Anywhere provider",
-	Long:  "Update a GCP provider in YugabyteDB Anywhere",
+	Use:     "update",
+	Aliases: []string{"edit"},
+	Short:   "Update a GCP YugabyteDB Anywhere provider",
+	Long:    "Update a GCP provider in YugabyteDB Anywhere",
+	Example: `yba provider gcp update --name <provider-name> --new-name <new-provider-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {

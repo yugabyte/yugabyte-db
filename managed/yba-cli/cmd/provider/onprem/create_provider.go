@@ -21,11 +21,12 @@ import (
 
 // createOnpremProviderCmd represents the provider command
 var createOnpremProviderCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create an On-premises YugabyteDB Anywhere provider",
+	Use:     "create",
+	Aliases: []string{"add"},
+	Short:   "Create an On-premises YugabyteDB Anywhere provider",
 	Long: "Create an On-premises provider in YugabyteDB Anywhere. " +
 		"To utilize the on-premises provider in universes, manage instance types" +
-		" and node instances using the \"yba provider onprem instance-types/node [operation]\" " +
+		" and node instances using the \"yba provider onprem instance-type/node [operation]\" " +
 		"set of commands",
 	Example: `yba provider onprem create --name <provider-name> \
 	--region region-name=region1 --region region-name=region2 \

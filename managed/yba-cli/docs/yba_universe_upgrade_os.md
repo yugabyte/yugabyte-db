@@ -4,16 +4,23 @@ VM Linux OS patch for a YugabyteDB Anywhere Universe
 
 ### Synopsis
 
-VM Linux OS patch for a YugabyteDB Anywhere Universe. Supported only for universes of cloud type AWS, GCP and Azure.
+VM Linux OS patch for a YugabyteDB Anywhere Universe. Supported only for universes of cloud type AWS, GCP and Azure. Triggers Rolling restart of all DB nodes.
 
 ```
 yba universe upgrade os [flags]
 ```
 
+### Examples
+
+```
+yba universe upgrade os --name <universe-name> \
+		--primary-linux-version <image-bundle-name-in-provider> 
+```
+
 ### Options
 
 ```
-      --primary-linux-version string         [Required] Primary cluster linux OS version name to be applied.
+      --primary-linux-version string         [Required] Primary cluster linux OS version name to be applied as listed in the provider.
       --inherit-from-primary                 [Optional] Apply the same linux OS version of primary cluster to read replica cluster. (default true)
       --rr-linux-version string              [Optional] Read replica cluster linux OS version name to be applied. Ignored if inherit-from-primary is set to true.
       --delay-between-master-servers int32   [Optional] Upgrade delay between Master servers (in miliseconds). (default 18000)
