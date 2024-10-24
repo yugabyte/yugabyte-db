@@ -1,38 +1,10 @@
-import algoliasearch from 'algoliasearch';
-
 /* eslint no-underscore-dangle: 0 */
 (function () {
-  const algoliaAppId = 'UMBCUJCBE8';
-  const algoliaApiKey = 'b6c4bdb11b865250add6fecc38d8ebdf';
-  const algoliaIndexName = 'yugabytedb_docs';
+  const elasticApiKey = 'bEVMcnJwSUJ6QTIwVVNKdUNWVmk6bzhGOFVoUURTamlGME9UWUZpTUp4Zw==';
+  const elasticEndpoint = 'https://80f647c7c1f545fc97ff43f8b602dc86.us-west-2.aws.found.io:443';
+  const elasticIndexName = 'search-docs';
   const ignoreClickOnMeElement = document.querySelector('body:not(.td-searchpage) .search-area');
   const searchInput = document.getElementById('search-query');
-
-  /**
-   * Decode the cookie and return the appropriate cookie value if found
-   * Otherwise empty string is returned.
-   *
-   * return string
-   */
-  function getCookie(cname) {
-    const splittedCookie = document.cookie.split(';');
-    const splittedLength = splittedCookie.length;
-
-    let fetchCookie = 0;
-    let matchedCookie = '';
-
-    while (fetchCookie < splittedLength) {
-      const cookiePair = splittedCookie[fetchCookie].split('=');
-      if (cname === cookiePair[0].trim() && cookiePair[1].trim() !== '') {
-        matchedCookie = decodeURIComponent(cookiePair[1]);
-        break;
-      }
-
-      fetchCookie += 1;
-    }
-
-    return matchedCookie;
-  }
 
   /**
    * Provided name value from the Query param either from URL or with the passed
@@ -92,74 +64,6 @@ import algoliasearch from 'algoliasearch';
   }
 
   /**
-   * Send the click events to Algolia.
-   *
-   * @param {Object} e - click event.
-   */
-  function clickEvents(e) {
-    if ((e.target.parentNode && e.target.parentNode.className === 'search-title') || (e.target.parentNode.parentNode && e.target.parentNode.parentNode.className === 'search-title')) {
-      let clickResult;
-
-      if (e.target.href) {
-        clickResult = e.target;
-      } else if (e.target.parentNode.href) {
-        clickResult = e.target.parentNode;
-      }
-
-      let hitPosition = 0;
-      let objectId = '';
-      let queryId = '';
-
-      if (clickResult.href) {
-        if (clickResult.getAttribute('data-objectid')) {
-          objectId = clickResult.getAttribute('data-objectid');
-        }
-
-        if (clickResult.getAttribute('data-queryid')) {
-          queryId = clickResult.getAttribute('data-queryid');
-        }
-
-        if (clickResult.getAttribute('data-position')) {
-          hitPosition = clickResult.getAttribute('data-position');
-        }
-      }
-
-      if (objectId !== '' && queryId !== '' && hitPosition > 0) {
-        let userTokenValue = getCookie('_ga');
-        if (userTokenValue === '') {
-          userTokenValue = 'noToken';
-        }
-
-        (async () => {
-          const rawResponse = await fetch('https://insights.algolia.io/1/events', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Algolia-Application-Id': algoliaAppId,
-              'X-Algolia-API-Key': algoliaApiKey,
-            },
-            body: JSON.stringify(
-              {
-                events: [{
-                  eventType: 'click',
-                  eventName: 'Link clicked',
-                  index: algoliaIndexName,
-                  userToken: userTokenValue,
-                  queryID: queryId,
-                  objectIDs: [objectId],
-                  positions: [parseInt(hitPosition, 10)],
-                }],
-              },
-            ),
-          });
-
-          await rawResponse.json();
-        })();
-      }
-    }
-  }
-
-  /**
    * Show Message when Search is empty.
    */
   function emptySearch() {
@@ -186,64 +90,33 @@ import algoliasearch from 'algoliasearch';
   /**
    * Main Docs section HTML.
    */
-  function docsSection(queryID, hitIs, resultPosition) {
-    const searchText = encodedSearchedTerm();
-
+  function docsSection(hitIs) {
     let content = '';
-    hitIs.forEach((hit, index) => {
-      const dataPosition = resultPosition + index + 1;
+    hitIs.forEach((hit) => {
       let pageBreadcrumb = '';
       let pageHash = '';
       let pageTitle = '';
       let subHead = '';
 
-      if (hit.title) {
-        pageTitle = hit.title;
-      } else if (hit.headers[0]) {
-        pageTitle = hit.headers[0];
+      if (hit._source.title) {
+        pageTitle = hit._source.title;
+      } else if (hit._source.headings[0]) {
+        pageTitle = hit._source.headings[0];
       } else {
         return;
       }
 
-      if (hit.breadcrumb) {
-        pageBreadcrumb = hit.breadcrumb;
+      if (hit._source.breadcrumb) {
+        pageBreadcrumb = hit._source.breadcrumb.join(' / ');
       }
 
-      if (hit._highlightResult.title.matchLevel !== 'full' && hit._highlightResult.description.matchLevel !== 'full') {
-        let finalSubHead = '';
-        let partialHeaderLength = 0;
-        let headerFull = '';
-        let headerPartial = '';
-        if (hit._highlightResult.headers) {
-          hit._highlightResult.headers.every(pageHeader => {
-            if (pageHeader.matchLevel) {
-              const testSubHead = pageHeader.value.replace(/<em>|<\/em>/g, '');
-              if (testSubHead.indexOf(searchText) !== -1) {
-                finalSubHead = pageHeader.value;
-
-                return false;
-              }
-
-              if (pageHeader.matchLevel === 'full' && headerFull === '') {
-                headerFull = pageHeader.value;
-              } else if (pageHeader.matchLevel === 'partial' && pageHeader.matchedWords.length > partialHeaderLength) {
-                headerPartial = pageHeader.value;
-                partialHeaderLength = pageHeader.matchedWords.length;
-              }
-            }
-
-            return true;
-          });
+      if (!hit.highlight.title && !hit.highlight.meta_description) {
+        if (hit.highlight.headings && hit.highlight.headings[0]) {
+          const finalSubHead = hit.highlight.headings[0];
 
           if (finalSubHead !== '') {
             pageHash = generateHeadingIDs(finalSubHead);
             subHead = finalSubHead.replace(/<em>|<\/em>/g, '');
-          } else if (headerFull !== '') {
-            pageHash = generateHeadingIDs(headerFull);
-            subHead = headerFull.replace(/<em>|<\/em>/g, '');
-          } else if (headerPartial !== '') {
-            pageHash = generateHeadingIDs(headerPartial);
-            subHead = headerPartial.replace(/<em>|<\/em>/g, '');
           }
         }
       }
@@ -254,7 +127,7 @@ import algoliasearch from 'algoliasearch';
 
       content += `<li>
         <div class="search-title">
-          <a href="${hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/')}${pageHash}" data-objectid="${hit.objectID}" data-queryid="${queryID}" data-position="${dataPosition}">
+          <a href="${hit._source.url_path}${pageHash}" data-objectid="${hit._source.id}">
             <span class="search-title-inner">${pageTitle}</span>
             <div class="search-subhead-inner">${subHead}</div>
             <div class="breadcrumb-item">${pageBreadcrumb}</div>
@@ -413,12 +286,15 @@ import algoliasearch from 'algoliasearch';
   }
 
   /**
-   * Add queries with filters selected by user and call search algolia function.
+   * Add queries with filters to fetch search result from Elasticsearch.
    */
-  function searchAlgolia() {
+  async function searchElastic() {
+    const pageItems = searchURLParameter('page');
     const searchedTerm = encodedSearchedTerm();
+    const searchPagerparent = document.querySelector('#pagination-docs');
+    const searchSummary = document.getElementById('search-summary');
+    const searchValue = searchedTerm;
 
-    let searchValue = searchedTerm;
     if (searchValue.length > 0) {
       document.querySelector('.search-result').style.display = 'block';
       setTimeout(() => {
@@ -430,54 +306,58 @@ import algoliasearch from 'algoliasearch';
       return;
     }
 
+    let currentPage = 0;
     let perPageCount = 8;
+    let startFrom = 0;
     if (document.querySelector('body').classList.contains('td-searchpage')) {
       perPageCount = 10;
     }
 
-    const client = algoliasearch(algoliaAppId, algoliaApiKey);
-    const index = client.initIndex(algoliaIndexName);
-    const pageItems = searchURLParameter('page');
-    const searchpagerparent = document.querySelector('#pagination-docs');
-    const searchOptions = {
-      hitsPerPage: perPageCount,
-      page: 0,
-      clickAnalytics: true,
-    };
-    const searchSummary = document.getElementById('search-summary');
-
-    if (searchValue.includes('_')) {
-      const searchScript = document.getElementById('algolia-search-script');
-      const sequenceExpressions = searchScript.getAttribute('data-sequence-expressions');
-
-      if (sequenceExpressions) {
-        searchValue = searchValue.replace(/_/g, '-');
-      }
-    }
-
     if (pageItems && pageItems > 0) {
-      searchOptions.page = pageItems - 1;
+      currentPage = pageItems - 1;
+      startFrom = currentPage * perPageCount;
     }
 
-    index.search(searchValue, searchOptions).then(
-      ({
-        hits, nbHits, nbPages, page, queryID,
-      }) => {
-        const searchResults = document.getElementById('doc-hit');
-        const startResultPosition = page * perPageCount;
+    const response = await fetch(`${elasticEndpoint}/${elasticIndexName}/_search`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `ApiKey ${elasticApiKey}`,
+      },
+      body: JSON.stringify({
+        query: {
+          multi_match: {
+            query: searchValue,
+            type: 'bool_prefix',
+            fields: ['title', 'meta_description', 'headings', 'content'],
+          },
+        },
+        size: perPageCount,
+        from: startFrom,
+        highlight: {
+          fields: {
+            title: {},
+            meta_description: {},
+            headings: {},
+            content: {},
+          },
+          pre_tags: ['<em>'],
+          post_tags: ['</em>'],
+        },
+      }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.hits && data.hits.total) {
+        const totalResults = data.hits.total.value;
+        const totalPages = Math.ceil(totalResults / perPageCount);
+        const sectionHTML = docsSection(data.hits.hits);
 
         let pagerDetails = {};
-        let sectionHTML = '';
-        let totalResults = nbHits;
-        sectionHTML += docsSection(queryID, hits, startResultPosition);
-
-        if (totalResults > 1000) {
-          totalResults = 1000;
-        }
 
         document.getElementById('doc-hit').innerHTML = sectionHTML;
-
-        if (hits.length > 0 && sectionHTML !== '') {
+        if (data.hits.total.value > 0 && sectionHTML !== '') {
           if (searchSummary !== null) {
             searchSummary.innerHTML = `${totalResults} results found for <b>"${searchedTerm}"</b>. <a role="button" id="ai-search">Try this search in AI</a>.`;
           }
@@ -494,19 +374,19 @@ import algoliasearch from 'algoliasearch';
 
         if (document.querySelector('body').classList.contains('td-searchpage')) {
           pagerDetails = {
-            currentPage: page + 1,
+            currentPage: currentPage + 1,
             pagerId: 'pagination-docs',
             pagerType: 'docs',
             totalHits: totalResults,
-            totalPages: nbPages,
+            totalPages,
           };
 
           searchPager(pagerDetails);
-          searchpagerparent.className = `pager results-${totalResults}`;
+          searchPagerparent.className = `pager results-${totalResults}`;
         } else {
-          searchpagerparent.className = `pager results-${totalResults}`;
+          searchPagerparent.className = `pager results-${totalResults}`;
           let viewAll = '';
-          if (nbPages > 1) {
+          if (totalResults > 1) {
             viewAll = `<a href="/search/?query=${searchValue}" title="View all results">View all results</a>`;
           }
 
@@ -517,13 +397,8 @@ import algoliasearch from 'algoliasearch';
             ${viewAll}
           </nav>`;
         }
-
-        if (searchResults) {
-          searchResults.addEventListener('click', clickEvents);
-          searchResults.addEventListener('contextmenu', clickEvents);
-        }
-      },
-    );
+      }
+    }
   }
 
   /**
@@ -537,7 +412,7 @@ import algoliasearch from 'algoliasearch';
             createSearchUrl(e.target.getAttribute('data-pager'));
           }
 
-          searchAlgolia();
+          searchElastic();
           setTimeout(() => {
             window.scrollTo(0, 0);
           }, 800);
@@ -545,7 +420,7 @@ import algoliasearch from 'algoliasearch';
       }
     } else {
       createSearchUrl();
-      searchAlgolia();
+      searchElastic();
     }
   }
 
@@ -559,7 +434,7 @@ import algoliasearch from 'algoliasearch';
     }
 
     document.addEventListener('DOMContentLoaded', () => {
-      searchAlgolia();
+      searchElastic();
     });
 
     // Events binding.

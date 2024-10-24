@@ -160,7 +160,7 @@ body.td-searchpage {
       color: #fff;
     }
 
-    .algolia-data {
+    .search-output {
       padding: 0;
       position: relative;
     }
@@ -168,14 +168,6 @@ body.td-searchpage {
     #doc-hit {
       padding-left: 0;
 
-      /*
-      @media(max-width: 991px) and (min-width: 768px) {
-        justify-content: center;
-      }
-      @media(max-width: 599px) {
-        justify-content: center;
-      }
-      */
       li {
         min-width: 280px;
 
@@ -328,13 +320,6 @@ body.td-searchpage {
 
 body.td-searchpage .td-content {
   position: relative;
-
-  .search-by-algolia {
-    position: absolute;
-    right: 0;
-    top: 6px;
-    width: 200px;
-  }
 }
 
 .search-area {
@@ -366,22 +351,9 @@ body.td-searchpage .td-content {
   }
 }
 
-@media (max-width: 991px) {
-  body.td-searchpage .td-content {
-    .search-by-algolia {
-      width: 150px;
-    }
-  }
-}
-
 @media (max-width: 480px) {
   body.td-searchpage .td-content {
     padding-top: 40px;
-
-    .search-by-algolia {
-      width: 120px;
-      top: 0;
-    }
   }
 }
 
