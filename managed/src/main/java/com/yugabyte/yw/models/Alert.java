@@ -9,10 +9,10 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.setUniqueListValue;
 import static com.yugabyte.yw.models.helpers.CommonUtils.setUniqueListValues;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
-import autovalue.shaded.com.google.common.collect.Streams;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.Streams;
 import com.yugabyte.yw.common.alerts.AlertLabelsProvider;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;

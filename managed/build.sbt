@@ -155,8 +155,6 @@ libraryDependencies ++= Seq(
   javaWs,
   filters,
   guice,
-  "com.google.inject"            % "guice"                % "5.1.0",
-  "com.google.inject.extensions" % "guice-assistedinject" % "5.1.0",
   "org.postgresql" % "postgresql" % "42.3.9",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "ch.qos.logback" % "logback-classic" % "1.4.14",
@@ -210,14 +208,14 @@ libraryDependencies ++= Seq(
   "com.jayway.jsonpath" % "json-path" % "2.9.0",
   "commons-io" % "commons-io" % "2.15.1",
   "commons-codec" % "commons-codec" % "1.16.0",
-  "com.google.apis" % "google-api-services-compute" % "v1-rev20220506-1.32.1",
-  "com.google.apis" % "google-api-services-iam" % "v1-rev20211104-1.32.1",
-  "com.google.cloud" % "google-cloud-compute" % "1.9.1",
-  "com.google.cloud" % "google-cloud-storage" % "2.2.1",
-  "com.google.cloud" % "google-cloud-kms" % "2.4.4",
-  "com.google.cloud" % "google-cloud-resourcemanager" % "1.4.0",
-  "com.google.cloud" % "google-cloud-logging" % "3.14.5",
-  "com.google.oauth-client" % "google-oauth-client" % "1.34.1",
+  "com.google.apis" % "google-api-services-compute" % "v1-rev20241008-2.0.0",
+  "com.google.apis" % "google-api-services-iam" % "v1-rev20240918-2.0.0",
+  "com.google.cloud" % "google-cloud-compute" % "1.62.0",
+  "com.google.cloud" % "google-cloud-storage" % "2.43.2",
+  "com.google.cloud" % "google-cloud-kms" % "2.55.0",
+  "com.google.cloud" % "google-cloud-resourcemanager" % "1.54.0",
+  "com.google.cloud" % "google-cloud-logging" % "3.17.2",
+  "com.google.oauth-client" % "google-oauth-client" % "1.35.0",
   "org.projectlombok" % "lombok" % "1.18.26",
   "com.squareup.okhttp3" % "okhttp" % "4.12.0",
   "io.kamon" %% "kamon-bundle" % "2.5.9",
@@ -255,8 +253,8 @@ libraryDependencies ++= Seq(
   "com.icegreen" % "greenmail" % "2.0.1" % Test,
   "com.icegreen" % "greenmail-junit4" % "2.0.1" % Test,
   "com.squareup.okhttp3" % "mockwebserver" % "4.9.2" % Test,
-  "io.grpc" % "grpc-testing" % "1.48.0" % Test,
-  "io.grpc" % "grpc-inprocess" % "1.63.1" % Test,
+  "io.grpc" % "grpc-testing" % "1.67.1" % Test,
+  "io.grpc" % "grpc-inprocess" % "1.67.1" % Test,
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
   "com.yugabyte" % "yba-client-v2" % "0.1.0-SNAPSHOT" % Test,
@@ -938,8 +936,6 @@ libraryDependencies ++= Seq(
   "com.nimbusds" % "nimbus-jose-jwt" % "7.9",
 )
 
-dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.21.7"
-dependencyOverrides += "com.google.guava" % "guava" % "32.1.1-jre"
 // SSO functionality only works on the older version of nimbusds.
 // Azure library upgrade tries to upgrade nimbusds to latest version.
 dependencyOverrides += "com.nimbusds" % "oauth2-oidc-sdk" % "7.1.1"
