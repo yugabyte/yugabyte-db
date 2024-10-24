@@ -4924,7 +4924,7 @@ yb_create_distinct_index_path(PlannerInfo *root,
 										  pathnode->path.rows,
 										  NULL,
 										  NULL);
-	selectivity = ((Cost) numDistinctRows) / ((Cost) pathnode->path.rows);
+	selectivity = ((Cost) numDistinctRows + 1) / ((Cost) pathnode->path.rows + 1);
 
 	run_cost = pathnode->path.total_cost - pathnode->path.startup_cost;
 	run_cost *= selectivity;
