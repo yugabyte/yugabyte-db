@@ -85,31 +85,32 @@ ALTER TABLE part_b_10_b_20 ATTACH PARTITION part_c_1_100 FOR VALUES FROM (1) TO 
 
 -- The order of subplans should be in bound order
 EXPLAIN (costs off) UPDATE range_parted set c = c - 50 WHERE c > 97;
-                 QUERY PLAN
----------------------------------------------
+                      QUERY PLAN
+-------------------------------------------------------
  Update on range_parted
-   Update on part_a_1_a_10
-   Update on part_a_10_a_20
-   Update on part_b_1_b_10
-   Update on part_c_1_100
-   Update on part_d_1_15
-   Update on part_d_15_20
-   Update on part_b_20_b_30
-   ->  Seq Scan on part_a_1_a_10
-         Storage Filter: (c > '97'::numeric)
-   ->  Seq Scan on part_a_10_a_20
-         Storage Filter: (c > '97'::numeric)
-   ->  Seq Scan on part_b_1_b_10
-         Storage Filter: (c > '97'::numeric)
-   ->  Seq Scan on part_c_1_100
-         Storage Filter: (c > '97'::numeric)
-   ->  Seq Scan on part_d_1_15
-         Storage Filter: (c > '97'::numeric)
-   ->  Seq Scan on part_d_15_20
-         Storage Filter: (c > '97'::numeric)
-   ->  Seq Scan on part_b_20_b_30
-         Storage Filter: (c > '97'::numeric)
-(22 rows)
+   Update on part_a_1_a_10 range_parted_1
+   Update on part_a_10_a_20 range_parted_2
+   Update on part_b_1_b_10 range_parted_3
+   Update on part_c_1_100 range_parted_4
+   Update on part_d_1_15 range_parted_5
+   Update on part_d_15_20 range_parted_6
+   Update on part_b_20_b_30 range_parted_7
+   ->  Append
+         ->  Seq Scan on part_a_1_a_10 range_parted_1
+               Storage Filter: (c > '97'::numeric)
+         ->  Seq Scan on part_a_10_a_20 range_parted_2
+               Storage Filter: (c > '97'::numeric)
+         ->  Seq Scan on part_b_1_b_10 range_parted_3
+               Storage Filter: (c > '97'::numeric)
+         ->  Seq Scan on part_c_1_100 range_parted_4
+               Storage Filter: (c > '97'::numeric)
+         ->  Seq Scan on part_d_1_15 range_parted_5
+               Storage Filter: (c > '97'::numeric)
+         ->  Seq Scan on part_d_15_20 range_parted_6
+               Storage Filter: (c > '97'::numeric)
+         ->  Seq Scan on part_b_20_b_30 range_parted_7
+               Storage Filter: (c > '97'::numeric)
+(23 rows)
 
 -- fail, row movement happens only within the partition subtree.
 UPDATE part_c_100_200 set c = c - 20, d = c WHERE c = 105 AND b = 15;
@@ -118,8 +119,8 @@ DETAIL:  Failing row contains (105, 85, null, b, 15).
 -- fail, no partition key update, so no attempt to move tuple,
 -- but "a = 'a'" violates partition constraint enforced by root partition)
 UPDATE part_b_10_b_20 set a = 'a' WHERE b = 12;
-ERROR:  new row for relation "part_c_1_100" violates partition constraint
-DETAIL:  Failing row contains (null, 1, 96, 12, a).
+ERROR:  new row for relation "part_b_10_b_20" violates partition constraint
+DETAIL:  Failing row contains (null, 96, a, 12, 1).
 -- ok, partition key update, no constraint violation
 UPDATE range_parted set d = d - 10 WHERE d > 10;
 -- ok, no partition key update, no constraint violation
@@ -150,8 +151,8 @@ SELECT * FROM x ORDER BY b;
 
 -- fail, row movement happens only within the partition subtree.
 UPDATE part_b_10_b_20 set b = b - 6 WHERE c > 116 AND d = 2 returning *;
-ERROR:  new row for relation "part_d_1_15" violates partition constraint
-DETAIL:  Failing row contains (2, 117, 2, b, 7).
+ERROR:  new row for relation "part_b_10_b_20" violates partition constraint
+DETAIL:  Failing row contains (2, 117, b, 7, 2).
 -- ok, row movement, with subset of rows moved into different partition.
 WITH x AS (UPDATE range_parted set b = b - 6 WHERE c > 116 returning a, b + c AS f)
 SELECT * FROM x ORDER BY a, f;
@@ -584,8 +585,8 @@ INSERT into sub_parted VALUES (1,2,10);
 -- Test partition constraint violation when intermediate ancestor is used and
 -- constraint is inherited from upper root.
 UPDATE sub_parted set a = 2 WHERE c = 10;
-ERROR:  new row for relation "sub_part2" violates partition constraint
-DETAIL:  Failing row contains (2, 10, 2).
+ERROR:  new row for relation "sub_parted" violates partition constraint
+DETAIL:  Failing row contains (2, 2, 10).
 -- Test update-partition-key, where the unpruned partitions do not have their
 -- partition keys updated.
 SELECT tableoid::regclass::text, * FROM list_parted WHERE a = 2 ORDER BY 1;
@@ -718,27 +719,28 @@ INSERT INTO parted VALUES (1, '1'), (2, '2'), (4, '4'), (6, '6'), (8, '8');
 -- Test whether single row optimization is invoked when
 -- only one partition is being updated.
 EXPLAIN UPDATE parted SET b='5' WHERE a = 1;
-                      QUERY PLAN
-------------------------------------------------------
- Update on parted  (cost=0.00..4.11 rows=1 width=128)
+                     QUERY PLAN
+----------------------------------------------------
+ Update on parted  (cost=0.00..4.11 rows=0 width=0)
    Update on part_a_1_5 parted
-   ->  Result  (cost=0.00..4.11 rows=1 width=128)
+   ->  Result  (cost=0.00..4.11 rows=1 width=100)
 (3 rows)
 
 UPDATE parted SET b='5' WHERE a = 1;
 -- Verify that single row optimization is not invoked when
 -- multiple partitions are being updated.
 EXPLAIN UPDATE parted SET b='6' WHERE a > 1;
-                               QUERY PLAN
-------------------------------------------------------------------------
- Update on parted  (cost=0.00..205.00 rows=2000 width=128)
-   Update on part_a_1_5
-   Update on part_a_5_10
-   ->  Seq Scan on part_a_1_5  (cost=0.00..102.50 rows=1000 width=128)
-         Storage Filter: (a > 1)
-   ->  Seq Scan on part_a_5_10  (cost=0.00..102.50 rows=1000 width=128)
-         Storage Filter: (a > 1)
-(7 rows)
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Update on parted  (cost=0.00..215.00 rows=0 width=0)
+   Update on part_a_1_5 parted_1
+   Update on part_a_5_10 parted_2
+   ->  Append  (cost=0.00..215.00 rows=2000 width=100)
+         ->  Seq Scan on part_a_1_5 parted_1  (cost=0.00..102.50 rows=1000 width=100)
+               Storage Filter: (a > 1)
+         ->  Seq Scan on part_a_5_10 parted_2  (cost=0.00..102.50 rows=1000 width=100)
+               Storage Filter: (a > 1)
+(8 rows)
 
 UPDATE parted SET b='6' WHERE a > 1;
 -- Verify that the updates happened successfully.
