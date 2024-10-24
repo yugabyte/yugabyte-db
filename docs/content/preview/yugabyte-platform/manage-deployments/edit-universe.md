@@ -62,12 +62,12 @@ Smart resize is available for the following operations:
 
     Note that smart resize is not available with Azure ultra disks, or when decreasing the size.
 
-- Or both together.
+- Both together.
 
 In addition, smart resize isn't available if you change any options on the **Edit Universe** page in addition to the **Instance Type** and the size portion of the **Volume Info** field.
 
 When available, if you change the **Instance Type**, or both the **Instance Type** and **Volume Info** size, and then click **Save**, YugabyteDB Anywhere gives you the option to either migrate the universe and its data to new nodes, or do a smart resize.
 
-  ![Smart resize dialog](/images/ee/edit-univ-2.png)
+![Smart resize dialog](/images/ee/edit-univ-2.png)
 
 If you change only the **Volume Info** size and click **Save**, YugabyteDB Anywhere automatically performs a smart resize.
