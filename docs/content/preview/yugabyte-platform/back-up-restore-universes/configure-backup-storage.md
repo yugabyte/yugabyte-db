@@ -129,6 +129,10 @@ You can configure Network File System (NFS) as your backup target, as follows:
 
 5. Click **Save**.
 
+{{< warning title="Prevent back up failure due to NFS unmount on cloud VM restart" >}}
+To avoid potential backup and restore errors, make sure the NFS mount is added to `/etc/fstab`. When a cloud VM is restarted, the NFS mount may get unmounted if its entry is not in `/etc/fstab`. This can lead to backup failures, and errors during [backup](../../back-up-restore-universes/back-up-universe-data/) or [restore](../../back-up-restore-universes/restore-universe-data/).
+{{< /warning >}}
+
 ## Azure Storage
 
 You can configure Azure as your backup target.
