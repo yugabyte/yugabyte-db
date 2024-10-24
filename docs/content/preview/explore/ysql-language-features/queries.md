@@ -57,7 +57,7 @@ INSERT INTO employees VALUES
 
 ### All data
 
-To retrieve all the data from the table, you can use the following query.
+To retrieve all the data from the table, you can use the following query:
 
 ```sql
 SELECT * FROM employees;
@@ -76,7 +76,7 @@ You should see the following output.
 
 ### Just one column
 
-Suppose you want to fetch just the name of the all the employees. For this, you can run the following query.
+Suppose you want to fetch just the name of the all the employees. For this, you can run the following query:
 
 ```sql
 SELECT name FROM employees;
@@ -95,7 +95,7 @@ You will get the following output.
 
 ### Multiple columns
 
-To fetch both the name and department of the all the employees, you can run the following query.
+To fetch both the name and department of the all the employees, you can run the following query:
 
 ```sql
 SELECT name, department FROM employees;
@@ -114,7 +114,7 @@ You will get the following output.
 
 ### Column aliases
 
-Suppose you want to fetch both the name and department together as a single value of the all the employees. Because there is no defined name for the combined value, by default the system generates a column name as `?column?`. You can use the `AS` clause to assign a name for this generated column.
+Suppose you want to fetch both the name and department together as a single value of the all the employees. Because there is no defined name for the combined value, by default the system generates a column name as `?column?`. You can use the AS clause to assign a name for this generated column as follows:
 
 ```sql
 SELECT employee_no, name || ' - ' || department AS combined FROM employees;
@@ -137,7 +137,7 @@ Column aliases may contain spaces. In such a case, you need enclose the alias in
 
 ### Order data
 
-You can use the `ORDER BY` clause to order/sort your result set on a specific condition. You can also specify the kind of ordering you need( e.g, `ASC` or `DESC`). For example, to select few columns and order the results by the name of the employee, you can run
+You can use the ORDER BY clause to order/sort your result set on a specific condition. You can also specify the kind of ordering you need(for example, ASC or DESC). For example, to select few columns and order the results by the name of the employee, you can run the following query:
 
 ```sql
 SELECT name, department FROM employees ORDER BY name DESC;
@@ -158,7 +158,7 @@ You will get the following output.
 The default sort order `ASC` is used when not specified explicitly.
 {{</tip>}}
 
-You can also specify different sort orders for different columns. For example, to fetch the data sorted by the department in ascending order, and then sort the rows with the same department by name in descending order, you can run:
+You can also specify different sort orders for different columns. For example, to fetch the data sorted by the department in ascending order, and then sort the rows with the same department by name in descending order, you can run the following query:
 
 ```sql
 SELECT name, department FROM employees
@@ -182,7 +182,7 @@ Sorting rows that contain NULL values is usually done using the ORDER BY clause 
 
 The default behavior for sorting NULL values depends on whether the DESC or ASC option is used in the ORDER BY clause. When using DESC, the default is NULLS FIRST, and with ASC, the default is NULLS LAST.
 
-For example, to order results by department in ascending order displaying rows with missing departments first, you can run:
+For example, to order results by department in ascending order displaying rows with missing departments first, you can run the following query:
 
 ```sql
 SELECT department FROM employees
@@ -193,7 +193,7 @@ SELECT department FROM employees
 
 A subquery is a query nested inside another SQL query. It is used to perform a query within the context of a larger query, allowing more complex data retrieval and manipulation. Subqueries can be placed inside SELECT, INSERT, UPDATE, or DELETE statements, or within clauses such as WHERE, FROM, or HAVING.
 
-Suppose you want to find students with scores above the average score in the scores table. For this you can run:
+Suppose you want to find students with scores above the average score in the scores table. For this you can run the following query:
 
 ```sql
 SELECT name
@@ -217,23 +217,23 @@ You can use the following syntax to create a basic CTE:
 WITH cte_name (columns) AS (cte_query) statement;
 ```
 
-For example to create a table of combinations of all subjects and student names
+For example, to create a table of combinations of all subjects and student names, you can using the following syntax:
 
 ```sql
 WITH subjects AS ( --> cte name : subjects
     SELECT DISTINCT(subject) FROM scores AS subject --> cte query
 )
--- below is the statemet
+-- below is the statement
 SELECT name, subject
   FROM subjects CROSS JOIN students
   ORDER BY name, subject;
 ```
 
-Here, the distinct list of subjects is formed via the cte query and referred as `subjects` table in the sql statement.
+Here, the distinct list of subjects is formed via the CTE query and referred as `subjects` table in the SQL statement.
 
 ## Filtering
 
-Use the `WHERE` clause to filter the results based on a condition. Only the rows that satisfy a specified condition are included in the result set.
+Use the WHERE clause to filter the results based on a condition. Only the rows that satisfy a specified condition are included in the result set.
 
 For example, to fetch rows only from the `Marketing` department, you can add a condition `department = 'Marketing'` in the `where` clause as follows:
 
@@ -241,7 +241,7 @@ For example, to fetch rows only from the `Marketing` department, you can add a c
 SELECT * FROM employees WHERE department = 'Marketing';
 ```
 
-The following is the output produced by the preceding example:
+Following is the output produced by the preceding example:
 
 ```caddyfile{.nocopy}
  employee_no |    name    | department
@@ -249,7 +249,7 @@ The following is the output produced by the preceding example:
         1221 | John Smith | Marketing
 ```
 
-You can use any of the supported [operators and expressions](../expressions-operators/) (except `ALL`, `ANY`, and `SOME`) to combine multiple conditions to fetch the results you need.
+You can use any of the supported [operators and expressions](../expressions-operators/) (except ALL, ANY, and SOME) to combine multiple conditions to fetch the results you need.
 
 For example, to fetch all employees with names starting with either `B` or `L`, you can use the `OR` operator.
 
@@ -257,7 +257,7 @@ For example, to fetch all employees with names starting with either `B` or `L`, 
 SELECT * FROM employees WHERE name LIKE 'B%' OR name LIKE 'L%';
 ```
 
-The following is the output produced by the preceding example:
+Following is the output produced by the preceding example:
 
 ```caddyfile{.nocopy}
  employee_no |     name     | department
@@ -266,10 +266,10 @@ The following is the output produced by the preceding example:
         1222 | Bette Davis  | Sales
 ```
 
-During the query execution, the `WHERE` clause is evaluated after the `FROM` clause but before the `SELECT` and `ORDER BY` clauses.
+During the query execution, the WHERE clause is evaluated after the FROM clause but before the SELECT and ORDER BY clauses.
 
 {{<warning>}}
-You cannot use column aliases in the `WHERE` clause of `SELECT`.
+You cannot use column aliases in the WHERE clause of SELECT.
 {{</warning>}}
 
 ### Limit rows
@@ -292,7 +292,7 @@ You will get just one row, (usually the first row without the LIMIT), as follows
 
 ### Skip rows
 
-To skip a certain number of rows before returning the result, use the `OFFSET` clause. For example, to skip the first row that would be returned by a `select *`, you can run the following:
+To skip a certain number of rows before returning the result, use the OFFSET clause. For example, to skip the first row that would be returned by a `select *`, you can run the following:
 
 ```sql
 SELECT * FROM employees OFFSET 1;
@@ -309,12 +309,12 @@ You will get the remaining 3 rows.
 ```
 
 {{<tip>}}
-You can accomplish pagination by using `LIMIT` and `OFFSET` in conjunction. For example, you can get the `N`th page of `M` results by adding `OFFSET (N-1)*M LIMIT M`.
+You can accomplish pagination by using LIMIT and OFFSET in conjunction. For example, you can get the `N`th page of `M` results by adding `OFFSET (N-1)*M LIMIT M`.
 {{</tip>}}
 
 ### Match strings
 
-For cases where you don't know the exact query parameter but have an idea of a partial parameter, use `LIKE`. Using the `LIKE` operator allows you to match this partial information with existing data based on a pattern recognition.
+For cases where you don't know the exact query parameter but have an idea of a partial parameter, use LIKE. Using the LIKE operator allows you to match this partial information with existing data based on a pattern recognition.
 
 For example, to find the details of all employees whose name starts with `Luci`, you can execute the following query:
 
@@ -332,13 +332,13 @@ You will get the details of all those whose names start with `Luci`.
 
 ### Duplicate rows
 
-You can use the `DISTINCT` clause to remove duplicate rows from a query result. The `DISTINCT` clause keeps one row for each set of duplicates. You can apply this clause to columns included in the `SELECT` statement's select list. For example, to get the list of departments, you can run:
+You can use the DISTINCT clause to remove duplicate rows from a query result. The DISTINCT clause keeps one row for each set of duplicates. You can apply this clause to columns included in the SELECT statement's select list. For example, to get the list of departments, you can run:
 
 ```sql
 SELECT DISTINCT department FROM employees;
 ```
 
-You will get the following output. Note that even though there are 2 employees in Sales, only one row for Sales has been returned. This is the effect of `DISTINCT`
+You will get the following output. Note that even though there are 2 employees in Sales, only one row for Sales has been returned. This is the effect of DISTINCT.
 
 ```caddyfile{.nocopy}
  department
@@ -350,7 +350,7 @@ You will get the following output. Note that even though there are 2 employees i
 
 ## Grouping
 
-Use `GROUP BY` when you need to organize or summarize data based on specified columns. Grouping is often combined with aggregate functions like COUNT(), SUM(), AVG(), or MAX() to perform calculations on each group. For example, to calculate the number of employees in each department, you can do the following:
+Use GROUP BY when you need to organize or summarize data based on specified columns. Grouping is often combined with aggregate functions like COUNT(), SUM(), AVG(), or MAX() to perform calculations on each group. For example, to calculate the number of employees in each department, you can do the following:
 
 ```sql
 SELECT department, COUNT (employee_no)
@@ -436,7 +436,7 @@ INSERT INTO scores (id, subject, score) VALUES (10, 'English', 40);
 
 ### Inner join
 
-An inner join combines rows from two or more tables based on a related column. Only the rows where there is a match in both tables are included in the result set. Inner joins are useful when you need data from multiple tables that are related to each other through foreign keys or other shared columns. For example, to retrieve the scores of the students in their respective subjects, you can run the following:
+An inner join combines rows from two or more tables based on a related column. Only the rows where there is a match in both tables are included in the result set. Inner joins are helpful when you need data from multiple tables that are related to each other through foreign keys or other shared columns. For example, to retrieve the scores of the students in their respective subjects, you can run the following:
 
 ```sql
 SELECT students.name, scores.subject, scores.score
@@ -467,7 +467,7 @@ In this instance, if a student exists in the students table but has no recorded 
 
 ### Left outer join
 
-The LEFT OUTER JOIN (or simply LEFT JOIN) retrieves all records from the "left" table (the first table listed in the query) and includes matching records from the "right" table (the second table). If there is no match in the right table, the result still includes all rows from the left table, but with NULL values for the columns from the right table. This is useful for identifying missing relationships or data gaps between tables.
+The LEFT OUTER JOIN (or LEFT JOIN) retrieves all records from the "left" table (the first table listed in the query) and includes matching records from the "right" table (the second table). If there is no match in the right table, the result still includes all rows from the left table, but with NULL values for the columns from the right table. This is helpful for identifying missing relationships or data gaps between tables.
 
 For example, when you fetch the `Math` scores of all the students, you can identify that two students did not take the course.
 
@@ -492,7 +492,7 @@ The following output includes all five student names, but has `null` value for s
 
 ### Right outer join
 
-The RIGHT OUTER JOIN (or simply RIGHT JOIN) retrieves all records from the "right" table (the second table listed in the query) and includes matching records from the "left" table (the first table). If there is no match in the left table, the result still includes all rows from the right table, but with NULL values for the columns from the left table.
+The RIGHT OUTER JOIN (or RIGHT JOIN) retrieves all records from the "right" table (the second table listed in the query) and includes matching records from the "left" table (the first table). If there is no match in the left table, the result still includes all rows from the right table, but with NULL values for the columns from the left table.
 
 If you retrieve the scores of the students in English, you will find that there is one unknown student who took the course.
 

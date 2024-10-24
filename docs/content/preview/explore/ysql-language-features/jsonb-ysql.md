@@ -3,7 +3,7 @@ title: JSON support in YSQL
 headerTitle: JSON/JSONB support
 linkTitle: JSON support
 description: YSQL JSON Support in YugabyteDB.
-headcontent: Understand hot to operate on JSON data
+headcontent: Understand how to operate on JSON data
 menu:
   preview:
     name: JSON support

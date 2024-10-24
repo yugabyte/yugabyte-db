@@ -4,6 +4,8 @@ headerTitle: Join strategies in YSQL
 linkTitle: Join Strategies
 description: Understand the various methodologies used for joining multiple tables
 headcontent: Understand the various methods used for joining multiple tables
+aliases:
+  - /preview/explore/ysql-language-features/join-strategies/
 menu:
   preview:
     name: Join strategies
