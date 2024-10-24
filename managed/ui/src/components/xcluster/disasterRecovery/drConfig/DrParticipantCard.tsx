@@ -1,5 +1,6 @@
 import { Box, makeStyles, Typography, useTheme } from '@material-ui/core';
 import { useQuery } from 'react-query';
+import { Link } from 'react-router';
 
 import { api, universeQueryKey } from '../../../../redesign/helpers/api';
 import { YBLoadingCircleIcon } from '../../../common/indicators';
@@ -31,6 +32,12 @@ const useStyles = makeStyles((theme) => ({
     border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`,
     borderRadius: '8px',
     background: theme.palette.ybacolors.backgroundGrayLight
+  },
+  universeLink: {
+    color: theme.palette.common.black,
+    '&:hover': {
+      color: theme.palette.orange[500]
+    }
   }
 }));
 
@@ -70,7 +77,11 @@ export const DrParticipantCard = ({
           <YBLoadingCircleIcon />
         ) : (
           <>
-            <Typography variant="h5">{universeName}</Typography>
+            <Typography variant="h5">
+              <Link to={`/universes/${universeUuid}`} className={classes.universeLink}>
+                {universeName}
+              </Link>
+            </Typography>
           </>
         )}
         <Box marginLeft="auto">
