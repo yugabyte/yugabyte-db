@@ -1,4 +1,4 @@
-use std::ffi::CStr;
+use std::ffi::{c_char, CStr};
 
 use pg_sys::{
     standard_ProcessUtility, AsPgCStr, CommandTag, DestReceiver, ParamListInfoData, PlannedStmt,
@@ -44,7 +44,7 @@ pub(crate) extern "C" fn init_parquet_copy_hook() {
 #[allow(clippy::too_many_arguments)]
 extern "C" fn parquet_copy_hook(
     p_stmt: *mut PlannedStmt,
-    query_string: *const i8,
+    query_string: *const c_char,
     read_only_tree: bool,
     context: u32,
     params: *mut ParamListInfoData,

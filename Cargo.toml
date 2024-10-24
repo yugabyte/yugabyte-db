@@ -36,8 +36,6 @@ parquet = {version = "53", default-features = false, features = [
     "object_store",
 ]}
 pgrx = "=0.12.6"
-serde = {version = "1", default-features = false}
-serde_json = "1"
 tokio = {version = "1", default-features = false, features = ["rt", "time", "macros"]}
 url = "2.5"
 

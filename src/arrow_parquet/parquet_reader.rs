@@ -156,7 +156,7 @@ impl ParquetReaderContext {
                             self.buffer.extend_from_slice(&data_size_bytes);
 
                             /* variable bytes: attribute's data */
-                            let data = vardata_any(datum_bytes) as *const u8;
+                            let data = vardata_any(datum_bytes) as _;
                             let data_bytes = std::slice::from_raw_parts(data, data_size);
                             self.buffer.extend_from_slice(data_bytes);
                         };

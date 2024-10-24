@@ -2095,8 +2095,6 @@ dependencies = [
  "parquet",
  "pgrx",
  "pgrx-tests",
- "serde",
- "serde_json",
  "tokio",
  "url",
 ]

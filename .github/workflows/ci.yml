@@ -1,8 +1,9 @@
 name: CI lints and tests
 on:
   push:
-    branches:
-      - "*"
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
 
 concurrency:
   group: ${{ github.ref }}
@@ -40,7 +41,7 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.81.0
+          toolchain: 1.82.0
           target: x86_64-unknown-linux-gnu
           components: rustfmt, clippy, llvm-tools-preview
 

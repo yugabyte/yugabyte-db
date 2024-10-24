@@ -1,4 +1,4 @@
-use std::ffi::CStr;
+use std::ffi::{c_char, CStr};
 
 use pgrx::{
     ereport, is_a,
@@ -202,41 +202,41 @@ fn convert_copy_to_relation_to_select_stmt(
 // Taken from PG COPY TO code path.
 fn copy_to_stmt_ensure_table_kind(relation: &PgRelation) {
     let relation_pgclass_entry = relation.rd_rel;
-    let relation_kind = (unsafe { *relation_pgclass_entry }).relkind as u8;
+    let relation_kind = (unsafe { *relation_pgclass_entry }).relkind;
 
-    if relation_kind == RELKIND_RELATION {
+    if relation_kind == RELKIND_RELATION as c_char {
         return;
     }
 
-    if relation_kind == RELKIND_VIEW {
+    if relation_kind == RELKIND_VIEW as c_char {
         ereport!(
             PgLogLevel::ERROR,
             PgSqlErrorCode::ERRCODE_WRONG_OBJECT_TYPE,
             format!("cannot copy from view \"{}\"", relation.name()),
             "Try the COPY (SELECT ...) TO variant.",
         );
-    } else if relation_kind == RELKIND_MATVIEW {
+    } else if relation_kind == RELKIND_MATVIEW as c_char {
         ereport!(
             PgLogLevel::ERROR,
             PgSqlErrorCode::ERRCODE_WRONG_OBJECT_TYPE,
             format!("cannot copy from materialized view \"{}\"", relation.name()),
             "Try the COPY (SELECT ...) TO variant.",
         );
-    } else if relation_kind == RELKIND_FOREIGN_TABLE {
+    } else if relation_kind == RELKIND_FOREIGN_TABLE as c_char {
         ereport!(
             PgLogLevel::ERROR,
             PgSqlErrorCode::ERRCODE_WRONG_OBJECT_TYPE,
             format!("cannot copy from foreign table \"{}\"", relation.name()),
             "Try the COPY (SELECT ...) TO variant.",
         );
-    } else if relation_kind == RELKIND_SEQUENCE {
+    } else if relation_kind == RELKIND_SEQUENCE as c_char {
         ereport!(
             PgLogLevel::ERROR,
             PgSqlErrorCode::ERRCODE_WRONG_OBJECT_TYPE,
             format!("cannot copy from sequence \"{}\"", relation.name()),
             "Try the COPY (SELECT ...) TO variant.",
         );
-    } else if relation_kind == RELKIND_PARTITIONED_TABLE {
+    } else if relation_kind == RELKIND_PARTITIONED_TABLE as c_char {
         ereport!(
             PgLogLevel::ERROR,
             PgSqlErrorCode::ERRCODE_WRONG_OBJECT_TYPE,

@@ -1,4 +1,4 @@
-use std::ffi::CStr;
+use std::ffi::{c_char, CStr};
 
 use pg_sys::{
     get_typlenbyval, slot_getallattrs, toast_raw_datum_size, AllocSetContextCreateExtended,
@@ -30,7 +30,7 @@ struct CopyToParquetDestReceiver {
     collected_tuple_count: i64,
     collected_tuple_size: i64,
     collected_tuple_column_sizes: *mut i64,
-    uri: *mut i8,
+    uri: *const c_char,
     compression: PgParquetCompression,
     compression_level: i32,
     row_group_size: i64,
@@ -292,7 +292,7 @@ extern "C" fn copy_destroy(_dest: *mut DestReceiver) {}
 #[pg_guard]
 #[no_mangle]
 pub extern "C" fn create_copy_to_parquet_dest_receiver(
-    uri: *mut i8,
+    uri: *const c_char,
     row_group_size: *const i64,
     row_group_size_bytes: *const i64,
     compression: *const PgParquetCompression,
