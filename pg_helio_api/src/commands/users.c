@@ -19,7 +19,6 @@
 #include "metadata/metadata_cache.h"
 #include <common/saslprep.h>
 #include <common/scram-common.h>
-#include <pg_config.h>
 
 #define SCRAM_MAX_SALT_LEN 64
 
