@@ -251,7 +251,7 @@ SetupCluster(bool isInitialize)
 			bool isNull = false;
 			appendStringInfo(cmdStr,
 							 "GRANT helio_admin_role, helio_readonly_role TO %s WITH ADMIN OPTION;",
-							 quote_literal_cstr(ClusterAdminRole));
+							 quote_identifier(ClusterAdminRole));
 			ExtensionExecuteQueryViaSPI(cmdStr->data, false, SPI_OK_UTILITY,
 										&isNull);
 		}
