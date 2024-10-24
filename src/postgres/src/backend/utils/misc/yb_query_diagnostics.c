@@ -1090,7 +1090,7 @@ YbQueryDiagnosticsMain(Datum main_arg)
 		rc = WaitLatch(MyLatch,
 					   WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
 					   yb_query_diagnostics_bg_worker_interval_ms,
-					   YB_WAIT_EVENT_QUERY_DIAGNOSTICS_MAIN);
+					   WAIT_EVENT_YB_QUERY_DIAGNOSTICS_MAIN);
 		ResetLatch(MyLatch);
 
 		/* Bailout if postmaster has died */

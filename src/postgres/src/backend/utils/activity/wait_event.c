@@ -261,7 +261,7 @@ pgstat_get_wait_activity(WaitEventActivity w)
 		case WAIT_EVENT_WAL_WRITER_MAIN:
 			event_name = "WalWriterMain";
 			break;
-		case YB_WAIT_EVENT_QUERY_DIAGNOSTICS_MAIN:
+		case WAIT_EVENT_YB_QUERY_DIAGNOSTICS_MAIN:
 			event_name = "QueryDiagnosticsMain";
 			break;
 		case WAIT_EVENT_YB_ASH_MAIN:
