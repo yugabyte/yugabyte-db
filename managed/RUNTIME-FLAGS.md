@@ -269,3 +269,4 @@
 | "Enable consistency check for universe" | "yb.universe.consistency_check.enabled" | "UNIVERSE" | "When enabled, all universe operations will attempt consistency check validation before proceeding. Turn off in disaster scenarios to force perform actions." | "Boolean" |
 | "Fail the the health check if no clock sync service is found" | "yb.health_checks.clock_sync_service_required" | "UNIVERSE" | "Require chrony or ntp(d) to be installed for health check to pass" | "Boolean" |
 | "Node Agent Enabler Installation Time-out" | "yb.node_agent.enabler.install_timeout" | "UNIVERSE" | "Node agent enabler installation time-out for the universe" | "Duration" |
+| "Node Agent Enabler Reinstallation Cooldown Period" | "yb.node_agent.enabler.reinstall_cooldown" | "UNIVERSE" | "Node agent enabler reinstallation cooldown period for the universe" | "Duration" |
