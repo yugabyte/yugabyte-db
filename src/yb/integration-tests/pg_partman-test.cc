@@ -243,4 +243,24 @@ TEST_F(PgPartmanTest, TestTimeHourlyNonSuperUser) {
 
 }
 
+TEST_F(PgPartmanTest, TestExceptionWithColocation) {
+  constexpr auto db_name = "db1";
+  ASSERT_OK(conn_->ExecuteFormat("CREATE DATABASE $0 with colocation=true", db_name));
+
+  auto new_db_conn = ASSERT_RESULT(cluster_->ConnectToDB(db_name));
+  ASSERT_OK(new_db_conn.Execute("CREATE SCHEMA partman"));
+  ASSERT_OK(new_db_conn.Execute("CREATE EXTENSION pg_partman WITH SCHEMA partman"));
+
+  ASSERT_OK(
+      new_db_conn.Execute("CREATE TABLE orders (order_id SERIAL,order_date DATE NOT "
+                          "NULL,customer_id INT) PARTITION BY RANGE (order_date)"));
+
+  ASSERT_NOK_STR_CONTAINS(
+      new_db_conn.FetchRow<pgwrapper::PGUint64>(
+          "SELECT partman.create_parent( p_parent_table => 'public.orders', p_control => "
+          "'order_date', "
+          "p_type => 'native',p_interval =>'monthly', p_premake => 5)"),
+      "is a colocated table hence registering it to pg_partman maintenance is not supported");
+}
+
 }; // namespace yb
