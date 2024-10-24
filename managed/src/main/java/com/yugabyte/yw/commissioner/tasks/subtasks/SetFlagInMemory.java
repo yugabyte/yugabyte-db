@@ -93,18 +93,22 @@ public class SetFlagInMemory extends ServerSubTaskBase {
     try {
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
 
-      // Get the user provided Ysql pg conf csv gflag values and the pgaudit ones from the audit log
-      // config on a universe (this will be present only if DB audit log is enabled), and merge them
-      // both before setting the value in memory.
-      String userProvidedYsqlPgConfCsv = gflags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, "");
-      String auditLogYsqlPgConfCsv =
-          GFlagsUtil.getYsqlPgConfCsv(
-              universe.getUniverseDetails().getPrimaryCluster().userIntent.getAuditLogConfig(),
-              null);
-      String finalYsqlPgConfCsv =
-          GFlagsUtil.mergeCSVs(userProvidedYsqlPgConfCsv, auditLogYsqlPgConfCsv, true);
-      if (StringUtils.isNotBlank(finalYsqlPgConfCsv)) {
-        gflags.put(GFlagsUtil.YSQL_PG_CONF_CSV, finalYsqlPgConfCsv);
+      if (!taskParams().updateMasterAddrs) {
+        // Get the user provided Ysql pg conf csv gflag values and the pgaudit ones from the audit
+        // log
+        // config on a universe (this will be present only if DB audit log is enabled), and merge
+        // them
+        // both before setting the value in memory.
+        String userProvidedYsqlPgConfCsv = gflags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, "");
+        String auditLogYsqlPgConfCsv =
+            GFlagsUtil.getYsqlPgConfCsv(
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.getAuditLogConfig(),
+                null);
+        String finalYsqlPgConfCsv =
+            GFlagsUtil.mergeCSVs(userProvidedYsqlPgConfCsv, auditLogYsqlPgConfCsv, true);
+        if (StringUtils.isNotBlank(finalYsqlPgConfCsv)) {
+          gflags.put(GFlagsUtil.YSQL_PG_CONF_CSV, finalYsqlPgConfCsv);
+        }
       }
       // allowed_preview_flags_csv should be set first in order to set the preview flags.
       if (gflags.containsKey(GFlagsUtil.ALLOWED_PREVIEW_FLAGS_CSV)) {
