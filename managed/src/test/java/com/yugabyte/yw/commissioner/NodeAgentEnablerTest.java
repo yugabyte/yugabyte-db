@@ -16,6 +16,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.NodeAgentEnabler.NodeAgentInstaller;
+import com.yugabyte.yw.commissioner.NodeAgentEnabler.UniverseNodeAgentInstaller;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.ApiUtils;
@@ -38,6 +39,9 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -68,8 +72,8 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
 
   @Before
   public void setUp() {
-    customer1 = ModelFactory.testCustomer();
-    customer2 = ModelFactory.testCustomer();
+    customer1 = ModelFactory.testCustomer("customer1");
+    customer2 = ModelFactory.testCustomer("customer2");
     provider1 = ModelFactory.awsProvider(customer1);
     provider2 = ModelFactory.awsProvider(customer2);
     universeUuid1 =
@@ -199,6 +203,17 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     assertEquals(false, universe2.getUniverseDetails().installNodeAgent);
   }
 
+  private void scanUniverses(boolean waitForCompletion) throws Exception {
+    // Max 2 universes for any customer.
+    for (int i = 0; i < 2; i++) {
+      // Scan as many times as the number of universes to pick all the universes.
+      nodeAgentEnabler.scanUniverses();
+      if (waitForCompletion) {
+        nodeAgentEnabler.waitFor(Duration.ofSeconds(10));
+      }
+    }
+  }
+
   @Test
   public void testMarkUniversesForOldProvider() {
     provider1.getDetails().setEnableNodeAgent(false);
@@ -274,8 +289,7 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
   @Test
   public void testInstallNodeAgentFailure() throws Exception {
     markUniverses();
-    nodeAgentEnabler.scanUniverses();
-    nodeAgentEnabler.waitFor(Duration.ofSeconds(10));
+    scanUniverses(true);
     Universe universe1 = Universe.getOrBadRequest(universeUuid1);
     Universe universe01 = Universe.getOrBadRequest(universeUuid01);
     Universe universe2 = Universe.getOrBadRequest(universeUuid2);
@@ -304,8 +318,7 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
         .when(mockNodeAgentInstaller)
         .install(any(), any(), any());
     markUniverses();
-    nodeAgentEnabler.scanUniverses();
-    nodeAgentEnabler.waitFor(Duration.ofSeconds(10));
+    scanUniverses(true);
     Universe universe1 = Universe.getOrBadRequest(universeUuid1);
     Universe universe01 = Universe.getOrBadRequest(universeUuid01);
     Universe universe2 = Universe.getOrBadRequest(universeUuid2);
@@ -337,8 +350,7 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
         .when(mockNodeAgentInstaller)
         .install(any(), eq(universeUuid1), any());
     markUniverses();
-    nodeAgentEnabler.scanUniverses();
-    nodeAgentEnabler.waitFor(Duration.ofSeconds(10));
+    scanUniverses(true);
     Universe universe1 = Universe.getOrBadRequest(universeUuid1);
     Universe universe01 = Universe.getOrBadRequest(universeUuid01);
     Universe universe2 = Universe.getOrBadRequest(universeUuid2);
@@ -372,8 +384,7 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
         .when(mockNodeAgentInstaller)
         .install(any(), eq(universeUuid1), eq(failedNode));
     markUniverses();
-    nodeAgentEnabler.scanUniverses();
-    nodeAgentEnabler.waitFor(Duration.ofSeconds(10));
+    scanUniverses(true);
     Universe universe1 = Universe.getOrBadRequest(universeUuid1);
     Universe universe01 = Universe.getOrBadRequest(universeUuid01);
     Universe universe2 = Universe.getOrBadRequest(universeUuid2);
@@ -402,8 +413,7 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
   public void testInstallNodeAgentAllSuccess() throws Exception {
     when(mockNodeAgentInstaller.install(any(), any(), any())).thenReturn(true);
     markUniverses();
-    nodeAgentEnabler.scanUniverses();
-    nodeAgentEnabler.waitFor(Duration.ofSeconds(10));
+    scanUniverses(true);
     Universe universe1 = Universe.getOrBadRequest(universeUuid1);
     Universe universe01 = Universe.getOrBadRequest(universeUuid01);
     Universe universe2 = Universe.getOrBadRequest(universeUuid2);
@@ -431,6 +441,50 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testInstallNodeAgentOrder() throws Exception {
+    when(mockNodeAgentInstaller.install(any(), any(), any())).thenReturn(true);
+    markUniverses();
+    LinkedList<UUID> universeUuids = new LinkedList<>();
+    for (int i = 0; i < 2; i++) {
+      // Scan as many times as the number of universes to pick all the universes.
+      nodeAgentEnabler.scanUniverses();
+      nodeAgentEnabler.waitFor(Duration.ofSeconds(10));
+      nodeAgentEnabler.getUniverseNodeAgentInstallers().stream()
+          .map(UniverseNodeAgentInstaller::getUniverseUuid)
+          .forEach(universeUuids::add);
+    }
+    List<UUID> expectedOrder = new ArrayList<>();
+    // Customer 1, Universe 1.
+    expectedOrder.add(universeUuid1);
+    // Customer 1, Universe 2.
+    expectedOrder.add(universeUuid01);
+    assertEquals(expectedOrder, universeUuids);
+  }
+
+  @Test
+  public void testCancelInstallNodeAgent() throws Exception {
+    CountDownLatch latch1 = new CountDownLatch(1);
+    CountDownLatch latch2 = new CountDownLatch(1);
+    doAnswer(
+            inv -> {
+              // Let it take long time.
+              latch1.countDown();
+              latch2.await();
+              return true;
+            })
+        .when(mockNodeAgentInstaller)
+        .install(any(), eq(universeUuid1), any());
+    markUniverses();
+    // Scan to start the installation but do not wait for completion otherwise, it'll time out.
+    scanUniverses(false);
+    // Wait for the installation to start.
+    latch1.await();
+    nodeAgentEnabler.cancelForUniverse(universeUuid1);
+    // This must not time out as the stuck installer is cancelled.
+    scanUniverses(true);
+  }
+
+  @Test
   public void testInstallNodeAgentOnUniverseDestroy() throws Exception {
     CountDownLatch latch1 = new CountDownLatch(1);
     CountDownLatch latch2 = new CountDownLatch(1);
@@ -442,17 +496,16 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
               return true;
             })
         .when(mockNodeAgentInstaller)
-        .install(any(), any(), any());
+        .install(any(), eq(universeUuid1), any());
     markUniverses();
-    nodeAgentEnabler.scanUniverses();
-    // Wait for the install to start.
+    // Scan to start the installation but do not wait for completion otherwise, it'll time out.
+    scanUniverses(false);
+    // Wait for the installation to start.
     latch1.await();
     Universe universe1 = Universe.getOrBadRequest(universeUuid1);
     universe1.delete();
     // This run must cancel the already running installation.
-    nodeAgentEnabler.scanUniverses();
-    // This must not time out.
-    nodeAgentEnabler.waitFor(Duration.ofSeconds(10));
+    scanUniverses(true);
   }
 
   @Test
@@ -467,8 +520,7 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     NodeDetails reinstallNode = Iterables.getLast(universe1.getNodes());
     // Node agent is already installed in a universe marked with installNodeAgent.
     createNodeAgent(customer1.getUuid(), reinstallNode, NodeAgent.State.REGISTERING);
-    nodeAgentEnabler.scanUniverses();
-    nodeAgentEnabler.waitFor(Duration.ofSeconds(10));
+    scanUniverses(true);
     for (NodeDetails node : universe1.getNodes()) {
       if (reinstallNode.equals(node)) {
         verify(mockNodeAgentInstaller, times(1))
@@ -506,8 +558,7 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     when(mockNodeAgentInstaller.install(any(), any(), any())).thenReturn(true);
     when(mockNodeAgentInstaller.reinstall(any(), any(), eq(reinstallNode), any(), any()))
         .thenReturn(true);
-    nodeAgentEnabler.scanUniverses();
-    nodeAgentEnabler.waitFor(Duration.ofSeconds(10));
+    scanUniverses(true);
     for (NodeDetails node : universe1.getNodes()) {
       if (reinstallNode.equals(node)) {
         verify(mockNodeAgentInstaller, times(1))
@@ -557,8 +608,7 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
         .when(mockNodeAgentInstaller)
         .migrate(any(), any());
     markUniverses();
-    nodeAgentEnabler.scanUniverses();
-    nodeAgentEnabler.waitFor(Duration.ofSeconds(10));
+    scanUniverses(true);
     // Migration must happen for eligible universes because the install method returned success.
     verify(mockNodeAgentInstaller, times(1)).migrate(eq(customer1.getUuid()), eq(universeUuid1));
     verify(mockNodeAgentInstaller, times(1)).migrate(eq(customer1.getUuid()), eq(universeUuid01));
@@ -570,8 +620,7 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     assertEquals(false, universe1.getUniverseDetails().installNodeAgent);
     assertEquals(false, universe01.getUniverseDetails().installNodeAgent);
     // Run scan again that should not have any effect.
-    nodeAgentEnabler.scanUniverses();
-    nodeAgentEnabler.waitFor(Duration.ofSeconds(10));
+    scanUniverses(true);
     for (NodeDetails node : universe1.getNodes()) {
       verify(mockNodeAgentInstaller, times(1))
           .install(eq(customer1.getUuid()), eq(universeUuid1), eq(node));

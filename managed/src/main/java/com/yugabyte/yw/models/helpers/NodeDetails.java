@@ -353,6 +353,8 @@ public class NodeDetails {
     StringBuilder sb = new StringBuilder();
     sb.append("{name: ")
         .append(nodeName)
+        .append(", nodeUuid: ")
+        .append(nodeUuid)
         .append(", ")
         .append(cloudInfo.toString())
         .append(", isMaster: ")
