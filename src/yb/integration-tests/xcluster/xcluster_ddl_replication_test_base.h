@@ -46,6 +46,8 @@ class XClusterDDLReplicationTestBase : public XClusterYsqlTestBase {
 
   void InsertRowsIntoProducerTableAndVerifyConsumer(const client::YBTableName& producer_table_name);
 
+  Status WaitForSafeTimeToAdvanceToNowWithoutDDLQueue();
+
   Status PrintDDLQueue(Cluster& cluster);
 };
 

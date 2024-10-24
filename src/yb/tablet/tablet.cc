@@ -2534,6 +2534,11 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
     return Status::OK();
   }
 
+  // Handle insert_packed_schema separately.
+  if (operation->request()->insert_packed_schema()) {
+    return InsertPackedSchemaForXClusterTarget(operation, current_table_info);
+  }
+
   LOG_WITH_PREFIX(INFO) << "Alter schema from " << current_table_info->schema().ToString()
                         << " version " << current_table_info->schema_version
                         << " to " << operation->schema()->ToString()
@@ -2587,6 +2592,22 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
       }
     }
   }
+
+  // Flush the updated schema metadata to disk.
+  return metadata_->Flush();
+}
+
+Status Tablet::InsertPackedSchemaForXClusterTarget(
+    ChangeMetadataOperation* operation, std::shared_ptr<yb::tablet::TableInfo> current_table_info) {
+  SCHECK(operation->schema()->has_column_ids(), IllegalState, "Schema must have column ids");
+  // TODO(#22318) handle colocated tables later.
+  SCHECK(
+      !metadata_->colocated(), IllegalState,
+      "Colocated tables are not supported for automatic DDL replication.");
+
+  metadata_->InsertPackedSchemaForXClusterTarget(
+      *operation->schema(), operation->index_map(), operation->schema_version(), operation->op_id(),
+      current_table_info->table_id);
 
   // Flush the updated schema metadata to disk.
   return metadata_->Flush();

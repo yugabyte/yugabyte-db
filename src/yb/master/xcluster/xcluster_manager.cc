@@ -872,6 +872,17 @@ Status XClusterManager::AddTableToReplicationGroup(
       replication_group_id, source_table_id, bootstrap_id, target_table_id, epoch);
 }
 
+// Inserts the sent schema into the historical packing schema for the target table.
+Status XClusterManager::InsertPackedSchemaForXClusterTarget(
+    const InsertPackedSchemaForXClusterTargetRequestPB* req,
+    InsertPackedSchemaForXClusterTargetResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, table_id);
+  return XClusterTargetManager::InsertPackedSchemaForXClusterTarget(
+      req->table_id(), req->packed_schema(), req->current_schema_version(), epoch);
+}
+
 Status XClusterManager::RegisterMonitoredTask(server::MonitoredTaskPtr task) {
   std::lock_guard l(monitored_tasks_mutex_);
   SCHECK_FORMAT(

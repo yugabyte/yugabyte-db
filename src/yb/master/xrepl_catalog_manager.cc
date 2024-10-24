@@ -28,6 +28,7 @@
 
 #include "yb/docdb/docdb_pgapi.h"
 
+#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"

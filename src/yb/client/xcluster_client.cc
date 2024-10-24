@@ -773,4 +773,21 @@ Result<std::vector<xrepl::StreamId>> XClusterClient::GetXClusterStreams(const Ta
   return stream_ids;
 }
 
+Status XClusterClient::InsertPackedSchemaForXClusterTarget(
+    const TableId& table_id, const SchemaPB& packed_schema_to_insert,
+    uint32_t current_schema_version) {
+  SCHECK(!table_id.empty(), InvalidArgument, "Table id is required.");
+
+  master::InsertPackedSchemaForXClusterTargetRequestPB req;
+  req.set_table_id(table_id);
+  req.mutable_packed_schema()->CopyFrom(packed_schema_to_insert);
+  req.set_current_schema_version(current_schema_version);
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(InsertPackedSchemaForXClusterTarget, req);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
 }  // namespace yb::client

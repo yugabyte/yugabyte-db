@@ -132,6 +132,11 @@ message ChangeMetadataRequestPB {
   // For CDCSDK Stream creation with consistent snapshot
   optional bytes retention_requester_id = 18;
   optional bool cdc_sdk_require_history_cutoff = 19;
+
+  // Will insert the new schema into historical packing schema with schema version
+  // [schema_version - 1], and then reinsert the current packing schema with [schema_version].
+  // Schema version must be bumped by 2 before this call is made.
+  optional bool insert_packed_schema = 20;
 }
 
 message SplitTabletRequestPB {

@@ -23,6 +23,7 @@
 
 #include "extension_util.h"
 #include "pg_yb_utils.h"
+#include "tcop/cmdtag.h"
 #include "utils/jsonb.h"
 #include "utils/palloc.h"
 #include "utils/rel.h"
@@ -71,20 +72,30 @@ SPI_GetBool(HeapTuple spi_tuple, int column_id)
 }
 
 bool
+IsPrimaryIndex(Relation rel)
+{
+	return (rel->rd_rel->relkind == RELKIND_INDEX ||
+			rel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX) &&
+		   YBIsCoveredByMainTable(rel);
+}
+
+bool
 ShouldReplicateCreateRelation(Oid rel_oid, List **new_rel_list)
 {
 	Relation rel = RelationIdGetRelation(rel_oid);
 	if (!rel)
 		elog(ERROR, "Could not find relation with oid %d", rel_oid);
-
-	// Ignore temporary tables and covered indexes (same as main table).
-	if (!IsYBBackedRelation(rel) ||
-		((rel->rd_rel->relkind == RELKIND_INDEX ||
-		  rel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX) &&
-		 YBIsCoveredByMainTable(rel)))
+	// Ignore temporary tables.
+	if (!IsYBBackedRelation(rel))
 	{
 		RelationClose(rel);
 		return false;
+	}
+	// Primary indexes are YB-backed, but don't have table properties.
+	if (IsPrimaryIndex(rel))
+	{
+		RelationClose(rel);
+		return true;
 	}
 
 	// Also need to disallow colocated objects until that is supported.
@@ -104,6 +115,37 @@ ShouldReplicateCreateRelation(Oid rel_oid, List **new_rel_list)
 
 	*new_rel_list = lappend(*new_rel_list, new_rel_entry);
 
+	return true;
+}
+
+bool
+ShouldReplicateAlterReplication(Oid rel_oid)
+{
+	Relation rel = RelationIdGetRelation(rel_oid);
+	if (!rel)
+		elog(ERROR, "Could not find relation with oid %d", rel_oid);
+	// Ignore temporary tables.
+	if (!IsYBBackedRelation(rel))
+	{
+		RelationClose(rel);
+		return false;
+	}
+	// Primary indexes are YB-backed, but don't have table properties.
+	if (IsPrimaryIndex(rel))
+	{
+		RelationClose(rel);
+		return true;
+	}
+
+	// Also need to disallow colocated objects until that is supported.
+	YbTableProperties table_props = YbGetTableProperties(rel);
+	bool is_colocated = table_props->is_colocated;
+	RelationClose(rel);
+	if (is_colocated)
+		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg("Colocated objects are not yet supported by "
+							   "yb_xcluster_ddl_replication\n%s",
+							   kManualReplicationErrorMsg)));
 	return true;
 }
 
@@ -135,6 +177,12 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		{
 			should_replicate_ddl |=
 				ShouldReplicateCreateRelation(obj_id, &new_rel_list);
+		}
+		else if (command_tag == CMDTAG_ALTER_TABLE ||
+				 command_tag == CMDTAG_ALTER_INDEX)
+		{
+      // TODO(jhe): May need finer grained control over ALTER TABLE commands.
+	    should_replicate_ddl |= ShouldReplicateAlterReplication(obj_id);
 		}
 		else
 		{

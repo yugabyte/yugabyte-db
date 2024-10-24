@@ -26,6 +26,7 @@
 DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
 
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
+DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
 
 using namespace std::chrono_literals;
 
@@ -444,6 +445,149 @@ TEST_F(XClusterDDLReplicationTest, AddRenamedTable) {
   // Verify row counts.
   auto consumer_table = ASSERT_RESULT(GetConsumerTable(producer_table_name_renamed));
   ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
+}
+
+class XClusterDDLReplicationAddDropColumnTest : public XClusterDDLReplicationTest {
+ public:
+  void SetUp() override {
+    YB_SKIP_TEST_IN_TSAN();
+    XClusterDDLReplicationTest::SetUp();
+    ASSERT_OK(SetUpClusters());
+    ASSERT_OK(CheckpointReplicationGroup());
+    ASSERT_OK(CreateReplicationFromCheckpoint());
+    producer_conn_ =
+        std::make_unique<pgwrapper::PGConn>(ASSERT_RESULT(producer_cluster_.Connect()));
+    consumer_conn_ =
+        std::make_unique<pgwrapper::PGConn>(ASSERT_RESULT(consumer_cluster_.Connect()));
+  }
+
+  Status PerformStep(size_t step) {
+    // Step 0 is initial table creation.
+    if (step == 0) {
+      RETURN_NOT_OK(producer_conn_->ExecuteFormat(
+          "CREATE TABLE IF NOT EXISTS $0($1 int)", kTableName, kColumnNames[0]));
+      return producer_conn_->ExecuteFormat(
+          "INSERT INTO $0($1) values ($2)", kTableName, kColumnNames[0], 0);
+    }
+    // Odd steps are add column, even steps are drop column.
+    if (step % 2) {
+      LOG(INFO) << "STARTING STEP " << step << ": ADD COLUMN " << kColumnNames[step / 2 + 1];
+      RETURN_NOT_OK(producer_conn_->ExecuteFormat(
+          "ALTER TABLE $0 ADD COLUMN $1 int", kTableName, kColumnNames[step / 2 + 1]));
+      RETURN_NOT_OK(producer_conn_->ExecuteFormat(
+          "INSERT INTO $0($1,$2) values ($3,$3)", kTableName, kColumnNames[0],
+          kColumnNames[step / 2 + 1], step));
+    } else {
+      LOG(INFO) << "STARTING STEP " << step << ": DROP COLUMN " << kColumnNames[step / 2];
+      RETURN_NOT_OK(producer_conn_->ExecuteFormat(
+          "ALTER TABLE $0 DROP COLUMN $1", kTableName, kColumnNames[step / 2]));
+      RETURN_NOT_OK(producer_conn_->ExecuteFormat(
+          "INSERT INTO $0($1) values ($2)", kTableName, kColumnNames[0], step));
+    }
+    return Status::OK();
+  }
+
+  Status VerifyTargetData(bool is_paused) {
+    if (!is_paused) {
+      // Tables should have the same schema and data.
+      for (const auto& query :
+           {Format(kDataQueryStr, kTableName, kColumnNames[0]),
+            Format(kSchemaQueryStr, kTableName)}) {
+        auto producer_output = VERIFY_RESULT(producer_conn_->FetchAllAsString(query));
+        auto consumer_output = VERIFY_RESULT(consumer_conn_->FetchAllAsString(query));
+        SCHECK_EQ(producer_output, consumer_output, IllegalState, "Data mismatch");
+      }
+      return Status::OK();
+    }
+
+    // Capture the expected output at the pause step.
+    if (paused_expected_data_output_.empty()) {
+      paused_expected_data_output_ = VERIFY_RESULT(
+          producer_conn_->FetchAllAsString(Format(kDataQueryStr, kTableName, kColumnNames[0])));
+      paused_expected_schema_output_ =
+          VERIFY_RESULT(producer_conn_->FetchAllAsString(Format(kSchemaQueryStr, kTableName)));
+      LOG(INFO) << "Paused expected data output: " << paused_expected_data_output_;
+      LOG(INFO) << "Paused expected schema output: " << paused_expected_schema_output_;
+    }
+
+    // Consumer should be stuck on paused step.
+    auto consumer_output = VERIFY_RESULT(
+        consumer_conn_->FetchAllAsString(Format(kDataQueryStr, kTableName, kColumnNames[0])));
+    SCHECK_EQ(paused_expected_data_output_, consumer_output, IllegalState, "Data mismatch");
+    auto consumer_schema_output =
+        VERIFY_RESULT(consumer_conn_->FetchAllAsString(Format(kSchemaQueryStr, kTableName)));
+    SCHECK_EQ(
+        paused_expected_schema_output_, consumer_schema_output, IllegalState, "Schema mismatch");
+
+    return Status::OK();
+  }
+
+  Status WaitForDDLReplication(bool is_paused) {
+    if (!is_paused) {
+      return WaitForSafeTimeToAdvanceToNow();
+    }
+    // Other pollers asides from ddl_queue should still be able to advance.
+    return WaitForSafeTimeToAdvanceToNowWithoutDDLQueue();
+  }
+
+  Status RunTest(size_t step_to_pause_on) {
+    bool is_paused = false;
+    for (size_t step = 0; step <= kNumSteps; ++step) {
+      RETURN_NOT_OK(PerformStep(step));
+      RETURN_NOT_OK(WaitForDDLReplication(is_paused));
+
+      if (step == step_to_pause_on) {
+        is_paused = true;
+        LOG(INFO) << "STARTING STEP " << kNumSteps + 1 << ": PAUSING";
+        ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = is_paused;
+      }
+
+      RETURN_NOT_OK(VerifyTargetData(is_paused));
+    }
+
+    // Unpause and verify that the consumer catches up.
+    LOG(INFO) << "STARTING STEP " << kNumSteps + 1 << ": UNPAUSE";
+    is_paused = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = is_paused;
+    RETURN_NOT_OK(WaitForDDLReplication(is_paused));
+    RETURN_NOT_OK(VerifyTargetData(is_paused));
+
+    // Reset state.
+    LOG(INFO) << "STARTING STEP " << kNumSteps + 2 << ": RESET";
+    RETURN_NOT_OK(producer_conn_->ExecuteFormat("DELETE FROM $0", kTableName));
+    RETURN_NOT_OK(WaitForDDLReplication(is_paused));
+    RETURN_NOT_OK(VerifyTargetData(is_paused));
+    paused_expected_data_output_.clear();
+    paused_expected_schema_output_.clear();
+
+    return Status::OK();
+  }
+
+ protected:
+  const std::vector<std::string> kColumnNames = {"a", "b", "c"};
+  const size_t kNumSteps = (kColumnNames.size() - 1) * 2;
+  const std::string kTableName = "add_drop_column_table";
+  const std::string kDataQueryStr = "SELECT * FROM $0 ORDER BY $1";
+  const std::string kSchemaQueryStr =
+      "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '$0' ORDER "
+      "BY column_name";
+
+  std::unique_ptr<pgwrapper::PGConn> producer_conn_;
+  std::unique_ptr<pgwrapper::PGConn> consumer_conn_;
+
+  std::string paused_expected_data_output_;
+  std::string paused_expected_schema_output_;
+};
+
+TEST_F(XClusterDDLReplicationAddDropColumnTest, AddDropColumns) {
+  // Repeatedly add/drop columns while inserting data. Run the test multiple times with a pause
+  // after each add/drop. Ensure that the consumer is able to still read older data if paused even
+  // as other streams are making progress.
+  for (size_t i = 0; i < kNumSteps; ++i) {
+    LOG(INFO) << "Running test with pause on step " << i;
+    ASSERT_OK(RunTest(i));
+    LOG(INFO) << "Finished running test with pause on step " << i;
+  }
 }
 
 }  // namespace yb

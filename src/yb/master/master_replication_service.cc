@@ -83,6 +83,7 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
       (IsSetupNamespaceReplicationWithBootstrapDone)
       (AlterUniverseReplication)
       (DeleteUniverseReplication)
+      (InsertPackedSchemaForXClusterTarget)
   )
 };
 
