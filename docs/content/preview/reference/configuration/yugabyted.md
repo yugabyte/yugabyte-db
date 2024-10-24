@@ -323,22 +323,19 @@ Display point-in-time schedules configured on the cluster:
 : Name of the YCQL keyspace for which point-in-time recovery is to be configured.
 
 --enable
-: Enable point-in-time recovery for a database or keyspace. There is no need to set a value for the flag. Use `--enable` or `--disable` flag to toggle PITR on a YugabyteDB database or keyspace.
+: Enable point-in-time recovery for a database or keyspace.
 
 --disable
-: Disable point-in-time recovery for a database or keyspace.. There is no need to set a value for the flag. Use `--enable` or `--disable` flag to toggle PITR on a YugabyteDB database or keyspace.
+: Disable point-in-time recovery for a database or keyspace.
 
 --retention *retention-period*
-: Specify the retention period for the snapshots, after which they will be automatically deleted, from the time they were created.
+: Specify the retention period in days for the snapshots, after which they will be automatically deleted, from the time they were created.
 
 --status
 : Display point-in-time recovery status for a YugabyteDB cluster.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server.
-
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The base directory of the yugabyted server.
 
 #### admin_operation
 
@@ -355,8 +352,8 @@ For example, get the YugabyteDB universe configuration:
 -h | --help
 : Print the command-line help and exit.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server.
+--base_dir *base-directory*
+: The base directory of the yugabyted server.
 
 --command *yb-admin-command*
 : Specify the yb-admin command to be executed on the YugabyteDB cluster.
@@ -491,16 +488,16 @@ Use the `yugabyted connect ysql` sub-command to connect to YugabyteDB with [ysql
 : Print the command-line help and exit.
 
 --username *username*
-: YSQL username to connect to the YugabyteDB
+: YSQL username to connect to the database.
 
 --password *password*
-: The password for YSQL username to connect to the YugabyteDB
+: The password for YSQL user.
 
 --database *database*
-: Name of the YSQL database to connect to the YugabyteDB
+: Name of the YSQL database to connect to.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server to connect to.
+: The base directory of the yugabyted server to connect to.
 
 #### ycql
 
@@ -512,16 +509,16 @@ Use the `yugabyted connect ycql` sub-command to connect to YugabyteDB with [ycql
 : Print the command-line help and exit.
 
 --username *username*
-: YCQL username to connect to the YugabyteDB
+: YCQL username to connect to the keyspace.
 
 --password *password*
-: The password for YCQL username to connect to the YugabyteDB
+: The password for YCQL user.
 
 --keyspace *keyspace*
-: Name of the YCQL keyspace to connect to the YugabyteDB
+: Name of the YCQL keyspace to connect to.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server to connect to.
+: The base directory of the yugabyted server to connect to.
 
 -----
 
@@ -733,7 +730,7 @@ For more advanced examples, see [Examples](#examples).
 : yugabyted advanced configuration file path. Refer to [Use a configuration file](#use-a-configuration-file).
 
 --base_dir *base-directory*
-: The directory where yugabyted stores data, configurations, and logs. Must be an absolute path.
+: The directory where yugabyted stores data, configurations, and logs. Must be an absolute path. By default base directory is `$HOME/var`.
 
 --background *bool*
 : Enable or disable running yugabyted in the background as a daemon. Does not persist on restart. Default: `true`
@@ -798,10 +795,10 @@ The advanced flags supported by the `start` command are as follows:
 : Enable or disable the *call home* feature that sends analytics data to Yugabyte. Default: `true`.
 
 --data_dir *data-directory*
-: The directory where yugabyted stores data. Must be an absolute path. Can be configured to a directory different from the one where configurations and logs are stored.
+: The directory where yugabyted stores data. Must be an absolute path. Can be configured to a directory different from the one where configurations and logs are stored. By default, data directory is `<base_dir>/data`.
 
 --log_dir *log-directory*
-: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored. By default, logs are written to `~/<base_dir>/logs`.
+: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored. By default, logs are written to `<base_dir>/logs`.
 
 --certs_dir *certs-directory*
 : The path to the directory which has the certificates to be used for secure deployment. Must be an absolute path. Default path is `~/<base_dir>/certs`.
@@ -1034,7 +1031,7 @@ For example, to set up xCluster replication between two clusters, run the follow
 
 --bootstrap_done
 : Indicates that you have completed [bootstrapping](#bootstrap-databases-for-xcluster) of databases.
-: Using this flag means the complete DB schema, objects and data (if any) has been copied from source to target. Any changes made to source after `yugabyted xcluster set_up` command will be reflected on the target.
+: Using this flag indicates that the complete database schema, objects, and data (if any) have been copied from source to target. Any changes made to source after `yugabyted xcluster set_up` command will be reflected on the target.
 
 #### add_to_replication
 
@@ -1069,7 +1066,7 @@ For example, to add new databases to an existing xCluster replication between tw
 
 --bootstrap_done
 : Indicates that you have completed [bootstrapping](#bootstrap-databases-for-xcluster) of databases.
-: Using this flag means the complete DB schema, objects and data (if any) has been copied from source to target. Any changes made to source after `yugabyted xcluster add_to_replication` command will be reflected on the target.
+: Using this flag indicates that the complete database schema, objects, and data (if any) have been copied from source to target. Any changes made to source after `yugabyted xcluster add_to_replication` command will be reflected on the target.
 
 #### status
 

@@ -116,14 +116,8 @@ For example, to create node server certificates for hostnames 127.0.0.1, 127.0.0
 --hostnames *hostnames*
 : Hostnames of the nodes to be added in the cluster. Mandatory flag.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server.
-
 --base_dir *base-directory*
 : The base directory for the yugabyted server.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server.
 
 -----
 
@@ -145,14 +139,8 @@ Usage: yugabyted collect_logs [flags]
 --stdout
 : Redirect the `logs.tar.gz` file's content to stdout. For example, `docker exec \<container-id\> bin/yugabyted collect_logs --stdout > yugabyted.tar.gz`
 
---data_dir *data-directory*
-: The data directory for the yugabyted server whose logs are desired.
-
 --base_dir *base-directory*
 : The base directory for the yugabyted server whose logs are desired.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server whose logs are desired.
 
 -----
 
@@ -202,14 +190,8 @@ For example, you would use the following command to create a multi-zone Yugabyte
 --rf *replication-factor*
 : Specify the replication factor for the cluster. This is an optional flag which takes a value of `3` or `5`.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server.
-
 --base_dir *base-directory*
 : The base directory for the yugabyted server.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server.
 
 #### encrypt_at_rest
 
@@ -240,14 +222,8 @@ To disable encryption at rest for a YugabyteDB cluster which has encryption at r
 --enable
 : Enable encryption at rest for the cluster. There is no need to set a value for the flag. Use `--enable` or `--disable` flag to toggle encryption features on a YugabyteDB cluster.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server.
-
 --base_dir *base-directory*
 : The base directory for the yugabyted server.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server.
 
 #### admin_operation
 
@@ -263,9 +239,6 @@ For example, get the YugabyteDB universe configuration:
 
 -h | --help
 : Print the command-line help and exit.
-
---data_dir *data-directory*
-: The data directory for the yugabyted server.
 
 --command *yb-admin-command*
 : Specify the yb-admin command to be executed on the YugabyteDB cluster.
@@ -401,14 +374,8 @@ Use the `yugabyted connect ycql` sub-command to connect to YugabyteDB with [ycql
 -h | --help
 : Print the command-line help and exit.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server to connect to.
-
 --base_dir *base-directory*
 : The base directory for the yugabyted server to connect to.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server to connect to.
 
 -----
 
@@ -442,14 +409,8 @@ Use the `yuagbyted demo destroy` sub-command to shut down the yugabyted single-n
 -h | --help
 : Print the help message and exit.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server to connect to or destroy.
-
 --base_dir *base-directory*
 : The base directory for the yugabyted server to connect to or destroy.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server to connect to or destroy.
 
 -----
 
@@ -470,14 +431,8 @@ For examples, see [Destroy a local cluster](#destroy-a-local-cluster).
 -h | --help
 : Print the command-line help and exit.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server that needs to be destroyed.
-
 --base_dir *base-directory*
 : The base directory for the yugabyted server that needs to be destroyed.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server that needs to be destroyed.
 
 -----
 
@@ -530,7 +485,7 @@ Create a single-node locally and join other nodes that are part of the same clus
 : yugabyted advanced configuration file path. Refer to [Advanced flags](#advanced-flags).
 
 --base_dir *base-directory*
-: The directory where yugabyted stores data, configurations, and logs. Must be an absolute path.
+: The directory where yugabyted stores data, configurations, and logs. Must be an absolute path. By default base directory is `$HOME/var`.
 
 --background *bool*
 : Enable or disable running yugabyted in the background as a daemon. Does not persist on restart. Default: `true`
@@ -595,10 +550,10 @@ Advanced flags can be set by using the configuration file in the `--config` flag
 : Enable or disable the *call home* feature that sends analytics data to Yugabyte. Default: `true`.
 
 --data_dir *data-directory*
-: The directory where yugabyted stores data. Must be an absolute path. Can be configured to a directory different from the one where configurations and logs are stored.
+: The directory where yugabyted stores data. Must be an absolute path. Can be configured to a directory different from the one where configurations and logs are stored. By default, data directory is `<base_dir>/data`.
 
 --log_dir *log-directory*
-: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored. By default, logs are written to `~/<base_dir>/logs`.
+: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored. By default, logs are written to `<base_dir>/logs`.
 
 --certs_dir *certs-directory*
 : The path to the directory which has the certificates to be used for secure deployment. Must be an absolute path. Default path is `~/<base_dir>/certs`.
@@ -650,14 +605,8 @@ Usage: yugabyted status [flags]
 -h | --help
 : Print the command-line help and exit.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server whose status is desired.
-
 --base_dir *base-directory*
 : The base directory for the yugabyted server whose status is desired.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server whose status is desired.
 
 -----
 
@@ -676,14 +625,8 @@ Usage: yugabyted stop [flags]
 -h | --help
 : Print the command-line help and exit.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server that needs to be stopped.
-
 --base_dir *base-directory*
 : The base directory for the yugabyted server that needs to be stopped.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server that needs to be stopped.
 
 -----
 
@@ -702,14 +645,8 @@ Usage: yugabyted version [flags]
 -h | --help
 : Print the command-line help and exit.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server whose version is desired.
-
 --base_dir *base-directory*
 : The base directory for the yugabyted server whose version is desired.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server whose version is desired.
 
 -----
 
