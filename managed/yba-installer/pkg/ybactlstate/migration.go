@@ -257,3 +257,7 @@ func getSchemaVersion() int {
 	}
 	return schemaVersionCache
 }
+
+func getMigrations() map[int]migrator {
+	return migrations
+}
