@@ -20,3 +20,10 @@
 // Changing the value after setup is not recommended.
 DEFINE_NON_RUNTIME_string(cluster_uuid, "", "Cluster UUID to be used by this cluster");
 TAG_FLAG(cluster_uuid, hidden);
+
+// NOTE: This flag guards proto changes and it is not safe to enable during an upgrade, or rollback
+// once enabled. If you want to change the default to true then you will have to make it a
+// kLocalPersisted AutoFlag.
+DEFINE_NON_RUNTIME_bool(enable_pg_cron, false,
+    "Enables the pg_cron extension. Jobs will be run on a single tserver node. The node should be "
+    "assumed to be selected randomly.");

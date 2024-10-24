@@ -53,11 +53,9 @@ class PgCronTest : public MiniClusterTestWithClient<ExternalMiniCluster> {
     opts.num_masters = 1;
     opts.enable_ysql = true;
 
-    opts.extra_master_flags.push_back("--allowed_preview_flags_csv=enable_pg_cron");
     opts.extra_master_flags.push_back("--enable_pg_cron=true");
 
     opts.extra_tserver_flags.push_back("--vmodule=pg_cron*=4");
-    opts.extra_tserver_flags.push_back("--allowed_preview_flags_csv=enable_pg_cron");
     opts.extra_tserver_flags.push_back("--enable_pg_cron=true");
     opts.extra_tserver_flags.push_back(
         Format("--ysql_pg_conf_csv=cron.yb_job_list_refresh_interval=$0", kJobListRefreshInterval));
