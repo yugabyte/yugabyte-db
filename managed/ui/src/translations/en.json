@@ -2696,7 +2696,7 @@
             "wontExpire": "Won't expire",
             "backupWillStart": "<b>Note:</b> The next scheduled backup will start shortly following the creation of this policy",
             "helpText": "We recommend performing an on-demand backup prior to executing any DDL changes between backup intervals to prevent data loss.<br/><a>Learn more</a>",
-            "successMsg": "Scheduled backup policy created. A backup will begin shortly.",
+            "successMsg": "Scheduled backup policy is being created. A backup will begin shortly.",
             "errorMsg": "Unable to created scheduled backup policy"
           },
           "loadingMsg": {
@@ -2730,6 +2730,7 @@
           "deletePolicy": "Delete Policy",
           "enabled": "Enabled",
           "disabled": "Disabled",
+          "creating": "Policy creation is in progress...",
           "deleteMsg": "scheduled backup policy is being deleted",
           "editModal": {
             "title": "Edit Scheduled Backup Policy",

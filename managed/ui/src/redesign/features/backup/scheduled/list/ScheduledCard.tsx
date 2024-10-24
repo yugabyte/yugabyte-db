@@ -188,6 +188,7 @@ export const ScheduledCard: FC<ScheduledCardProps> = ({
   );
 
   const isScheduleEnabled = schedule.status === IBackupScheduleStatus.ACTIVE;
+  const isScheduleCreating = schedule.status === IBackupScheduleStatus.CREATING;
 
   const wrapTableName = (tablesList: string[] | undefined, isKeyspace = false) => {
     if (!Array.isArray(tablesList) || tablesList.length === 0) {
@@ -218,7 +219,7 @@ export const ScheduledCard: FC<ScheduledCardProps> = ({
           </YBTag>
           <YBToggle
             checked={isScheduleEnabled}
-            label={isScheduleEnabled ? t('enabled') : t('disabled')}
+            label={isScheduleEnabled ? t('enabled') : isScheduleCreating ? t('creating') : t('disabled')}
             onClick={(e: any) => {
               toggleSchedule.mutate({
                 scheduleUUID: schedule.scheduleUUID,
