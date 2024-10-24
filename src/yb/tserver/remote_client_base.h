@@ -104,6 +104,9 @@ class RemoteClientBase {
   // State flags that enforce the progress of remote.
   bool started_ = false;  // Session started.
 
+  // Helps determine if the client is in the phase of fetching data over the network.
+  bool fetch_phase_active_ = false;
+
   std::shared_ptr<RemoteBootstrapServiceProxy> proxy_;
   std::unique_ptr<tablet::RaftGroupReplicaSuperBlockPB> superblock_;
 
