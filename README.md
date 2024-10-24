@@ -98,12 +98,61 @@ SELECT * FROM product_example;
 ### Inspect Parquet schema
 You can call `SELECT * FROM parquet.schema(<uri>)` to discover the schema of the Parquet file at given uri.
 
+```sql
+SELECT * FROM parquet.schema('/tmp/product_example.parquet') LIMIT 10;
+             uri              |     name     | type_name  | type_length | repetition_type | num_children | converted_type | scale | precision | field_id | logical_type 
+------------------------------+--------------+------------+-------------+-----------------+--------------+----------------+-------+-----------+----------+--------------
+ /tmp/product_example.parquet | arrow_schema |            |             |                 |            5 |                |       |           |          | 
+ /tmp/product_example.parquet | id           | INT32      |             | OPTIONAL        |              |                |       |           |        0 | 
+ /tmp/product_example.parquet | product      |            |             | OPTIONAL        |            3 |                |       |           |        1 | 
+ /tmp/product_example.parquet | id           | INT32      |             | OPTIONAL        |              |                |       |           |        2 | 
+ /tmp/product_example.parquet | name         | BYTE_ARRAY |             | OPTIONAL        |              | UTF8           |       |           |        3 | STRING
+ /tmp/product_example.parquet | items        |            |             | OPTIONAL        |            1 | LIST           |       |           |        4 | LIST
+ /tmp/product_example.parquet | list         |            |             | REPEATED        |            1 |                |       |           |          | 
+ /tmp/product_example.parquet | items        |            |             | OPTIONAL        |            3 |                |       |           |        5 | 
+ /tmp/product_example.parquet | id           | INT32      |             | OPTIONAL        |              |                |       |           |        6 | 
+ /tmp/product_example.parquet | name         | BYTE_ARRAY |             | OPTIONAL        |              | UTF8           |       |           |        7 | STRING
+(10 rows)
+```
+
 ### Inspect Parquet metadata
 You can call `SELECT * FROM parquet.metadata(<uri>)` to discover the detailed metadata of the Parquet file, such as column statistics, at given uri.
 
+```sql
+SELECT uri, row_group_id, row_group_num_rows, row_group_num_columns, row_group_bytes, column_id, file_offset, num_values, path_in_schema, type_name FROM parquet.metadata('/tmp/product_example.parquet') LIMIT 1;
+             uri              | row_group_id | row_group_num_rows | row_group_num_columns | row_group_bytes | column_id | file_offset | num_values | path_in_schema | type_name 
+------------------------------+--------------+--------------------+-----------------------+-----------------+-----------+-------------+------------+----------------+-----------
+ /tmp/product_example.parquet |            0 |                  1 |                    13 |             842 |         0 |           0 |          1 | id             | INT32
+(1 row)
+```
+
+```sql
+SELECT stats_null_count, stats_distinct_count, stats_min, stats_max, compression, encodings, index_page_offset, dictionary_page_offset, data_page_offset, total_compressed_size, total_uncompressed_size FROM parquet.metadata('/tmp/product_example.parquet') LIMIT 1;
+ stats_null_count | stats_distinct_count | stats_min | stats_max |    compression     |        encodings         | index_page_offset | dictionary_page_offset | data_page_offset | total_compressed_size | total_uncompressed_size 
+------------------+----------------------+-----------+-----------+--------------------+--------------------------+-------------------+------------------------+------------------+-----------------------+-------------------------
+                0 |                      | 1         | 1         | GZIP(GzipLevel(6)) | PLAIN,RLE,RLE_DICTIONARY |                   |                      4 |               42 |                   101 |                      61
+(1 row)
+```
+
 You can call `SELECT * FROM parquet.file_metadata(<uri>)` to discover file level metadata of the Parquet file, such as format version, at given uri.
 
+```sql
+SELECT * FROM parquet.file_metadata('/tmp/product_example.parquet')
+             uri              | created_by | num_rows | num_row_groups | format_version 
+------------------------------+------------+----------+----------------+----------------
+ /tmp/product_example.parquet | pg_parquet |        1 |              1 | 1
+(1 row)
+```
+
 You can call `SELECT * FROM parquet.kv_metadata(<uri>)` to query custom key-value metadata of the Parquet file at given uri.
+
+```sql
+SELECT uri, encode(key, 'escape') as key, encode(value, 'escape') as value FROM parquet.kv_metadata('/tmp/product_example.parquet');
+             uri              |     key      |    value
+------------------------------+--------------+---------------------
+ /tmp/product_example.parquet | ARROW:schema | /////5gIAAAQAAAA ...
+(1 row)
+```
 
 ## Object Store Support
 `pg_parquet` supports reading and writing Parquet files from/to `S3` object store. Only the uris with `s3://` scheme is supported. 
