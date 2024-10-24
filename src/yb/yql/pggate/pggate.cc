@@ -2322,6 +2322,12 @@ void PgApiImpl::ClearSessionState() {
 
 bool PgApiImpl::IsCronLeader() const { return tserver_shared_object_->IsCronLeader(); }
 
+Status PgApiImpl::SetCronLastMinute(int64_t last_minute) {
+  return pg_session_->SetCronLastMinute(last_minute);
+}
+
+Result<int64_t> PgApiImpl::GetCronLastMinute() { return pg_session_->GetCronLastMinute(); }
+
 uint64_t PgApiImpl::GetCurrentReadTimePoint() const {
   return pg_txn_manager_->GetCurrentReadTimePoint();
 }

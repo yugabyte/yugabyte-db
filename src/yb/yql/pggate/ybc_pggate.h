@@ -123,6 +123,8 @@ YBCStatus YBCFetchFromUrl(const char *url, char **buf);
 
 // Is this node acting as the pg_cron leader?
 bool YBCIsCronLeader();
+YBCStatus YBCSetCronLastMinute(int64_t last_minute);
+YBCStatus YBCGetCronLastMinute(int64_t* last_minute);
 
 //--------------------------------------------------------------------------------------------------
 // YB Bitmap Scan Operations

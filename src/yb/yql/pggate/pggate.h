@@ -807,6 +807,8 @@ class PgApiImpl {
   Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
 
   bool IsCronLeader() const;
+  Status SetCronLastMinute(int64_t last_minute);
+  Result<int64_t> GetCronLastMinute();
 
   [[nodiscard]] uint64_t GetCurrentReadTimePoint() const;
   Status RestoreReadTimePoint(uint64_t read_time_point_handle);

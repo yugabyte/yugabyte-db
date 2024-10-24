@@ -375,6 +375,13 @@ Result<std::shared_ptr<client::YBSession>> StatefulServiceBase::GetYBSession(Mon
   return session;
 }
 
+Result<std::shared_ptr<client::YBSession>> StatefulServiceBase::GetYBSession(
+    CoarseTimePoint deadline) {
+  auto session = GetYBClient()->NewSession(deadline);
+  session->SetLeaderTerm(VERIFY_RESULT(GetLeaderTerm()));
+  return session;
+}
+
 Result<client::TableHandle*> StatefulServiceBase::GetServiceTable() {
   std::lock_guard l(table_handle_mutex_);
 

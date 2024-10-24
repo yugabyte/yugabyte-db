@@ -29,6 +29,7 @@
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
+#include "yb/client/stateful_services/pg_cron_leader_service_client.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_info.h"
@@ -1793,6 +1794,32 @@ class PgClientServiceImpl::Impl {
     }
 
     *resp->mutable_servers_metrics() = {result.begin(), result.end()};
+    return Status::OK();
+  }
+
+  Status CronSetLastMinute(
+      const PgCronSetLastMinuteRequestPB& req, PgCronSetLastMinuteResponsePB* resp,
+      rpc::RpcContext* context) {
+    auto controller = std::make_shared<rpc::RpcController>();
+    controller->set_deadline(context->GetClientDeadline());
+
+    stateful_service::PgCronSetLastMinuteRequestPB stateful_service_req;
+    stateful_service_req.set_last_minute(req.last_minute());
+    RETURN_NOT_OK(client::PgCronLeaderServiceClient(client()).PgCronSetLastMinute(
+        stateful_service_req, context->GetClientDeadline()));
+
+    return Status::OK();
+  }
+
+  Status CronGetLastMinute(
+      const PgCronGetLastMinuteRequestPB& req, PgCronGetLastMinuteResponsePB* resp,
+      rpc::RpcContext* context) {
+    stateful_service::PgCronGetLastMinuteRequestPB stateful_service_req;
+    auto stateful_service_resp =
+        VERIFY_RESULT(client::PgCronLeaderServiceClient(client()).PgCronGetLastMinute(
+            stateful_service_req, context->GetClientDeadline()));
+
+    resp->set_last_minute(stateful_service_resp.last_minute());
     return Status::OK();
   }
 
