@@ -107,9 +107,16 @@ public class XClusterDbReplicationSetup extends XClusterConfigTaskBase {
                           + " error: %s",
                       replicationGroupName, doneResponse.errorMessage()));
             }
+            if (!doneResponse.isDone()) {
+              throw new RuntimeException(
+                  String.format(
+                      "CreateXClusterReplication is not done for replication group name: %s",
+                      replicationGroupName));
+            }
+            // Replication setup is complete, check for errors.
             if (doneResponse.hasReplicationError()
                 && !doneResponse.getReplicationError().getCode().equals(ErrorCode.OK)) {
-              throw new RuntimeException(
+              throw new UnrecoverableException(
                   String.format(
                       "IsCreateXClusterReplicationDone rpc for replication group name: %s, hit"
                           + " replication error: %s with error code: %s",
@@ -117,13 +124,8 @@ public class XClusterDbReplicationSetup extends XClusterConfigTaskBase {
                       doneResponse.getReplicationError().getMessage(),
                       doneResponse.getReplicationError().getCode()));
             }
-            if (!doneResponse.isDone()) {
-              throw new RuntimeException(
-                  String.format(
-                      "CreateXClusterReplication is not done for replication group name: %s",
-                      replicationGroupName));
-            }
-            // Replication setup is complete, return.
+          } catch (UnrecoverableException e) {
+            throw e;
           } catch (Exception e) {
             // If the replication group is not found, retrying does not help.
             if (e.getMessage().toLowerCase().contains("not found")) {

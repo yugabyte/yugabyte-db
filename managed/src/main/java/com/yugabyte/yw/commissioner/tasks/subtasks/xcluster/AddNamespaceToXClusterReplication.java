@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.UnrecoverableException;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
@@ -136,9 +137,16 @@ public class AddNamespaceToXClusterReplication extends XClusterConfigTaskBase {
                           + " %s",
                       replicationGroupName, completionResponse.errorMessage()));
             }
+            if (!completionResponse.isDone()) {
+              throw new RuntimeException(
+                  String.format(
+                      "CreateXClusterReplication is not done for replication group name: %s",
+                      replicationGroupName));
+            }
+            // Replication alter is complete, check for errors.
             if (completionResponse.hasReplicationError()
                 && !completionResponse.getReplicationError().getCode().equals(ErrorCode.OK)) {
-              throw new RuntimeException(
+              throw new UnrecoverableException(
                   String.format(
                       "IsAlterXClusterReplication rpc for replication group name: %s, hit"
                           + " replication error: %s with error code: %s",
@@ -146,13 +154,8 @@ public class AddNamespaceToXClusterReplication extends XClusterConfigTaskBase {
                       completionResponse.getReplicationError().getMessage(),
                       completionResponse.getReplicationError().getCode()));
             }
-            if (!completionResponse.isDone()) {
-              throw new RuntimeException(
-                  String.format(
-                      "CreateXClusterReplication is not done for replication group name: %s",
-                      replicationGroupName));
-            }
-            // Replication alter is complete, return.
+          } catch (UnrecoverableException e) {
+            throw e;
           } catch (Exception e) {
             log.error(
                 "IsAlterXClusterReplicationDone rpc for replication group name: {}, hit error: {}",
