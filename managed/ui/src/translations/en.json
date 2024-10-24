@@ -611,7 +611,11 @@
         "modalTitle": "Confirm Full Move Update",
         "submitLabel": "Do full move",
         "modalDescription": "This operation will migrate this universe and all its data to a completely new set of nodes.",
-        "likeToProceed": "Would you like to proceed?"
+        "likeToProceed": "Would you like to proceed?",
+        "assignPublicIP": "Assign Public IP",
+        "instanceProfileARN": "Instance Profile ARN",
+        "enabled": "Enabled",
+        "disabled": "Disabled"
       },
       "validation": {
         "confirmPassword": "Passwords should match",
