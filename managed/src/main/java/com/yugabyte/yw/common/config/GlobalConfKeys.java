@@ -1518,4 +1518,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Claim in the ID token containing the list of groups. Default value: \"groups\"",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Boolean> disableV1APIToken =
+      new ConfKeyInfo<>(
+          "yb.user.disable_v1_api_token",
+          ScopeType.GLOBAL,
+          "Disable V1 API Token",
+          "Disable support for V1 API Token",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

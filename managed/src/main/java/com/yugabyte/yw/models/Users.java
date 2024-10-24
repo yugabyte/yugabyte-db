@@ -5,13 +5,17 @@ package com.yugabyte.yw.models;
 import static com.yugabyte.yw.common.Util.NULL_UUID;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.UNAUTHORIZED;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.concurrent.KeyLock;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.encryption.HashBuilder;
 import com.yugabyte.yw.common.encryption.bc.BcOpenBsdHasher;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import io.ebean.DuplicateKeyException;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -487,8 +491,11 @@ public class Users extends Model {
     // 3. apiTokenFormatVersion.userUUID.apiToken (version 3 . seperated format)
     // The 3rd format is better for shell based clients because dot is easier to escape than dollar
     // The first format would lead to performance degradation in the case of more than 10 users
-    // Recommended to reissue the token (which will follow the first format)
+    // Recommended to reissue the token (which will follow the third format)
 
+    RuntimeConfGetter runtimeConfGetter =
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
+    boolean disableV1APIToken = runtimeConfGetter.getGlobalConf(GlobalConfKeys.disableV1APIToken);
     try {
       boolean isOldFormat = true;
       String regexSeparator = "";
@@ -511,21 +518,28 @@ public class Users extends Model {
           }
         }
       } else {
-        // to authenticate old format of api token with no seperator
-        LOG.warn("Using older API token format. Renew to improve performance.");
-        List<Users> usersList = find.query().where().isNotNull("apiToken").findList();
-        long startTime = System.currentTimeMillis();
-        for (Users user : usersList) {
-          if (Users.hasher.isValid(apiToken, user.getApiToken())) {
-            LOG.info(
-                "Authentication using API token. Completed time: {} ms",
-                System.currentTimeMillis() - startTime);
-            return user;
+        if (disableV1APIToken) {
+          String errMessage =
+              "API Token version 1 is disabled. Please reissue the token. To allow this version of"
+                  + " token, please set yb.user.disable_v1_api_token config to false.";
+          throw new PlatformServiceException(UNAUTHORIZED, errMessage);
+        } else {
+          // to authenticate old format of api token with no seperator
+          LOG.warn("Using older API token format. Renew to improve performance.");
+          List<Users> usersList = find.query().where().isNotNull("apiToken").findList();
+          long startTime = System.currentTimeMillis();
+          for (Users user : usersList) {
+            if (Users.hasher.isValid(apiToken, user.getApiToken())) {
+              LOG.info(
+                  "Authentication using API token. Completed time: {} ms",
+                  System.currentTimeMillis() - startTime);
+              return user;
+            }
           }
+          LOG.info(
+              "Authentication using API token. Completed time: {} ms",
+              System.currentTimeMillis() - startTime);
         }
-        LOG.info(
-            "Authentication using API token. Completed time: {} ms",
-            System.currentTimeMillis() - startTime);
       }
       return null;
     } catch (Exception e) {
