@@ -18,48 +18,31 @@ rightNav:
   hideH4: true
 ---
 
-### Contents
-
-##### General
-
-- [What client APIs are supported by YugabyteDB?](#what-client-apis-are-supported-by-yugabytedb)
-- [When should I pick YCQL over YSQL?](#when-should-i-pick-ycql-over-ysql)
-- [What is the difference between ysqlsh and psql?](#what-is-the-difference-between-ysqlsh-and-psql)
-- [What is the status of the YEDIS API?](#what-is-the-status-of-the-yedis-api)
-
-##### API compatibility
-
-- [What does API compatibility mean exactly?](#what-does-api-compatibility-mean-exactly)
-- [Why are YugabyteDB APIs compatible with popular DB languages?](#why-are-yugabytedb-apis-compatible-with-popular-db-languages)
-
-##### YSQL compatibility with PostgreSQL
-
-- [What is the extent of compatibility with PostgreSQL?](#what-is-the-extent-of-compatibility-with-postgresql)
-- [Can I insert data using YCQL, but read using YSQL, or vice versa?](#can-i-insert-data-using-ycql-but-read-using-ysql-or-vice-versa)
-
-##### YCQL compatibility with Apache Cassandra QL
-
-- [Features present in YCQL but not present in CQL](#features-present-in-ycql-but-not-present-in-cql)
-- [Features present in both YCQL and CQL but YCQL provides stricter guarantees](#features-present-in-ycql-but-not-present-in-cql)
-- [CQL features that are either unnecessary or disallowed in YCQL](#cql-features-that-are-either-unnecessary-or-disallowed-in-ycql)
-- [Do INSERTs do "upserts" by default? How do I insert data only if it is absent?](#do-inserts-do-upserts-by-default-how-do-i-insert-data-only-if-it-is-absent)
-- [Can I have collection data types in the partition key? Will I be able to do partial matches on that collection data type?](#can-i-have-collection-data-types-in-the-partition-key-will-i-be-able-to-do-partial-matches-on-that-collection-data-type)
-- [What is the difference between a `COUNTER` data type and `INTEGER` data type?](#what-is-the-difference-between-a-counter-data-type-and-integer-data-type)
-- [How is 'USING TIMESTAMP' different in YugabyteDB?](#how-is-using-timestamp-different-in-yugabytedb)
-
 ## General
 
 ### What client APIs are supported by YugabyteDB?
 
 YugabyteDB supports two flavors of distributed SQL.
 
+{{<lead link="/preview/api/">}}
+API
+{{</lead>}}
+
 #### Yugabyte SQL (YSQL)
 
-[YSQL](../../api/ysql/) is a fully-relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys). Get started by [exploring YSQL features](../../quick-start/explore/ysql/).
+[YSQL](../../api/ysql/) is a fully-relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys).
+
+{{<lead link="/preview/quick-start/explore/ysql/">}}
+Explore YSQL features
+{{</lead>}}
 
 #### Yugabyte Cloud QL (YCQL)
 
-[YCQL](../../api/ycql/) is a semi-relational SQL API that is best fit for internet-scale OLTP and HTAP applications needing massive data ingestion and blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language. Get started by [exploring YCQL features](/preview/quick-start/explore/ycql/).
+[YCQL](../../api/ycql/) is a semi-relational SQL API that is best fit for internet-scale OLTP and HTAP applications needing massive data ingestion and blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language.
+
+{{<lead link="/preview/quick-start/explore/ycql/">}}
+Explore YCQL features
+{{</lead>}}
 
 {{< note title="Note" >}}
 
@@ -82,9 +65,11 @@ If you have a specific use case in mind, share it in our [Slack community]({{<sl
 
 ### What is the difference between ysqlsh and psql?
 
-The YSQL shell (`ysqlsh`) is functionally similar to PostgreSQL's `psql` , but uses different default values for some variables (for example, the default user, default database, and the path to TLS certificates). This is done for the user's convenience. In the Yugabyte `bin` directory, the deprecated `psql` alias opens the `ysqlsh` CLI. For more details, see [ysqlsh](../../api/ysqlsh/).
+The YSQL shell (ysqlsh) is functionally similar to PostgreSQL's psql , but uses different default values for some variables (for example, the default user, default database, and the path to TLS certificates). This is done for the user's convenience. In the Yugabyte `bin` directory, the deprecated psql alias opens the ysqlsh CLI.
 
-### What is the status of the YEDIS API?
+{{<lead link="../../api/ysqlsh/">}}
+Explore ysqlsh
+{{</lead>}}
 
 In the near-term, Yugabyte is not actively working on new feature or driver enhancements to the [YEDIS](../../yedis/) API other than bug fixes and stability improvements. Current focus is on [YSQL](../../api/ysql/) and [YCQL](../../api/ycql/).
 
@@ -119,9 +104,11 @@ As highlighted in [Distributed PostgreSQL on a Google Spanner Architecture – Q
 - Expressions: Rich set of PostgreSQL built-in functions and operators
 - Other Features: VIEWs, EXPLAIN, PREPARE-BIND-EXECUTE, and JDBC support
 
-For more information, refer to [SQL features](../../explore/ysql-language-features).
+{{<lead link="../../explore/ysql-language-features/">}}
+Explore SQL features
+{{</lead>}}
 
-YugabyteDB's goal is to remain as compatible with PostgreSQL as much as possible. If you see a feature currently missing, please file a [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues) for us.
+YugabyteDB's goal is to remain as compatible with PostgreSQL as much as possible. If you see a feature currently missing, you can file a [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues).
 
 ### Can I insert data using YCQL, but read using YSQL, or vice versa?
 
@@ -150,7 +137,9 @@ YCQL is compatible with v3.4 of Apache Cassandra QL (CQL). Following questions h
 1. Lightweight transactions for compare-and-set operations, such as incrementing integers, are unnecessary because YCQL achieves single-row linearizability by default.
 1. Tunable write consistency is disallowed in YCQL because writes are committed at quorum using Raft replication protocol.
 
-For additional information, see [The Truth Behind Tunable Consistency, Lightweight Transactions, and Secondary Indexes](https://www.yugabyte.com/blog/apache-cassandra-lightweight-transactions-secondary-indexes-tunable-consistency/).
+{{<lead link="https://www.yugabyte.com/blog/apache-cassandra-lightweight-transactions-secondary-indexes-tunable-consistency/">}}
+The Truth Behind Tunable Consistency, Lightweight Transactions, and Secondary Indexes
+{{</lead>}}
 
 ### Do INSERTs do "upserts" by default? How do I insert data only if it is absent?
 
