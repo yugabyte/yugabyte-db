@@ -39,7 +39,7 @@ YugabyteDB Aeon Pricing
 {{</lead>}}
 
 {{<lead link="/preview/yugabyte-cloud/cloud-admin/cloud-billing-costs/">}}
-For a description of how cluster configurations are costed, refer to Cluster costs.
+For a description of how cluster configurations are costed, refer to [Cluster costs](/preview/yugabyte-cloud/cloud-admin/cloud-billing-costs/).
 {{</lead>}}
 
 ### What regions are available?
@@ -47,7 +47,7 @@ For a description of how cluster configurations are costed, refer to Cluster cos
 YugabyteDB Aeon supports all the regions that have robust infrastructure and sufficient demand from customers. If there are regions you would like added, reach out to {{% support-cloud %}}.
 
 {{<lead link="../../yugabyte-cloud/cloud-basics/create-clusters-overview/#cloud-provider-regions">}}
-Refer to Cloud provider regions for a list currently supported regions.
+Refer to [Cloud provider regions](../../yugabyte-cloud/cloud-basics/create-clusters-overview/#cloud-provider-regions) for a list currently supported regions.
 {{</lead>}}
 
 ## Clusters

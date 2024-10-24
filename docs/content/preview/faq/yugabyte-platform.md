@@ -71,11 +71,11 @@ YugabyteDB Anywhere also requires the following:
 - A YugabyteDB Anywhere license file from Yugabyte Support.
 
 {{<lead link="../../yugabyte-platform/prepare/networking/">}}
-For a complete list of networking requirements, see Networking.
+For a complete list of networking requirements, see [Networking](../../yugabyte-platform/prepare/networking/).
 {{</lead>}}
 
 {{<lead link="../../yugabyte-platform/prepare/server-yba/">}}
-For a complete list of hardware and software prerequisites, see Prerequisites.
+For a complete list of hardware and software prerequisites, see [Prerequisites](../../yugabyte-platform/prepare/server-yba/).
 {{</lead>}}
 
 ## Data nodes
@@ -83,11 +83,11 @@ For a complete list of hardware and software prerequisites, see Prerequisites.
 ### What are the requirements to run YugabyteDB data nodes?
 
 {{<lead link="../../yugabyte-platform/prepare/server-nodes-hardware/">}}
-For hardware prerequisites for YugabyteDB data nodes, refer to Hardware prerequisites.
+For hardware prerequisites for YugabyteDB data nodes, refer to [Hardware prerequisites](../../yugabyte-platform/prepare/server-nodes-hardware/).
 {{</lead>}}
 
 {{<lead link="../../yugabyte-platform/prepare/server-nodes-software/">}}
-For software prerequisites for YugabyteDB data nodes, refer to Software prerequisites.
+For software prerequisites for YugabyteDB data nodes, refer to [Software prerequisites](../../yugabyte-platform/prepare/server-nodes-software/).
 {{</lead>}}
 
 ### How does the YugabyteDB Anywhere UI interact with YugabyteDB data nodes?
@@ -177,7 +177,7 @@ Node agent is used to run pre-flight checks on the node during various day-0 and
 In v2.18.6 and later, moving a node from one provider to another does not require unregistering the node agent, as node agents aren't linked to providers.
 
 {{<lead link="../../yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/#reconfigure-a-node-agent">}}
-To change the provider of a node, follow the procedure in Reconfigure a node agent.
+To change the provider of a node, follow the procedure in [Reconfigure a node agent](../../yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/#reconfigure-a-node-agent).
 {{</lead>}}
 
 As long as the IP does not change, the node agent does not try to register again.
@@ -192,17 +192,17 @@ A node agent does the following when the preflight-check command is run:
 
 1. Runs the [preflight_check](https://github.com/yugabyte/yugabyte-db/blob/master/managed/node-agent/resources/preflight_check.sh) script.
 1. Collects the output and converts it to a well-formatted JSON payload.
-1. Sends the payload to YugabyteDB Anywhere for validation. YugabyteDB Anywhere has preflight check threshold values defined in the [runtime configuration](../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/) of the provider. The prefix path for the configuration key name is `yb.node_agent.preflight_checks`. The values can be changed if needed.
+1. Sends the payload to YugabyteDB Anywhere for validation. YugabyteDB Anywhere has preflight check threshold values defined in the [runtime configuration settings](../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/) of the provider. The prefix path for the configuration key name is `yb.node_agent.preflight_checks`. The values can be changed if needed.
 
 ### How do I disable node agent?
 
-You can disable node agents of a provider's universes any time by setting the `yb.node_agent.client.enabled` [Provider Configuration](../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/) for the provider to false.
+You can disable node agents of a provider's universes any time by setting the `yb.node_agent.client.enabled` [Provider Runtime Configuration](../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/) for the provider to false.
 
 This disables all node agents for universes created using the provider, and YugabyteDB Anywhere falls back to using SSH to communicate with universe nodes, using credentials provided during provider creation.
 
 ### How do I change the node agent default port of 9070?
 
-Use the `yb.node_agent.server.port` [Provider Configuration](../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/).
+Use the `yb.node_agent.server.port` [Provider Runtime Configuration](../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/).
 
 The change is reflected only on newly created node agents.
 
