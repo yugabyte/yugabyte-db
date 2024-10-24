@@ -38,7 +38,7 @@ const initialStateFeatureInTest = {
   enableNewAdvancedRestoreModal: false,
   showReplicationSlots: true,
   newTaskDetailsUI: false,
-  enableNewAuthAndMappings: false
+  enableNewAuthAndMappings: true
 };
 
 const initialStateFeatureReleased = {
