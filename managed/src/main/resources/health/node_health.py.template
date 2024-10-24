@@ -1489,7 +1489,8 @@ class NodeChecker():
             return e.fill_and_return_entry(["TServer is not running on this node"], has_error=False)
 
         try:
-            ysqlsh_cmd = self.create_ysqlsh_command()
+            ysqlsh_cmd = self.create_ysqlsh_command(
+                use_internal_port = True if self.enable_connection_pooling else False)
         except RuntimeError as re:
             metric.add_value(0)
             return e.fill_and_return_entry([str(re)], has_error=True, metrics=[metric])
