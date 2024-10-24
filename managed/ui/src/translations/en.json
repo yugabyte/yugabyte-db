@@ -42,6 +42,7 @@
       "learnMore": "Learn more",
       "clear": "Clear",
       "reminder": "Reminder",
+      "reset": "Reset",
       "duration": {
         "seconds": "Seconds",
         "minutes": "Minutes",
@@ -2481,8 +2482,10 @@
         "scope": "Scope",
         "emailAttribute": "Email Attribute",
         "refreshTokenURL": "Refresh Token URL",
+        "groupClaim":"Groups Claim",
         "displayJWTToken": "Display JWT token on login",
         "oidcProviderConfig": "Add OIDC Provider configuration ",
+        "oidcUseRoleMapping": "Map YugabyteDB Anywhere roles to your existing OIDC groups",
         "roles": {
           "title": "Role Settings",
           "userRoleSettings": "User Role Settings",
@@ -2513,6 +2516,7 @@
           "emailAttribute": "Scope containing email ID of the user",
           "refreshTokenURL": "Provide the endpoint that will be used for re-fetching the access token",
           "connectOnly": "Users with ConnectOnly role cannot see any information other than their own profile information",
+          "groupClaim":"The claim in the ID token containing a list of groups the user is a member of",
           "jwtTokenURL": "Option to display button to retrieve the JWT token"
         }
       },

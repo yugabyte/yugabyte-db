@@ -19,6 +19,8 @@ export interface OIDCFormProps {
   showJWTInfoOnLogin: string;
   oidcRefreshTokenEndpoint: string;
   oidc_default_role: string;
+  oidc_group_claim: string;
+  oidc_enable_auto_create_users: boolean;
 }
 
 export const OIDC_FIELDS: Array<keyof OIDCFormProps> = [
@@ -32,5 +34,7 @@ export const OIDC_FIELDS: Array<keyof OIDCFormProps> = [
   'oidcEmailAttribute',
   'showJWTInfoOnLogin',
   'oidcRefreshTokenEndpoint',
-  'oidc_default_role'
+  'oidc_default_role',
+  'oidc_group_claim',
+  'oidc_enable_auto_create_users'
 ];

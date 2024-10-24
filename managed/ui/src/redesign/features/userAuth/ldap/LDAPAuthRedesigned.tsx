@@ -209,8 +209,8 @@ const initializeFormValues = (configEntries: RunTimeConfigEntry[]) => {
     enable_ldaps === 'true'
       ? SecurityOption.ENABLE_LDAPS
       : enable_ldap_start_tls === 'true'
-        ? SecurityOption.ENABLE_LDAP_START_TLS
-        : SecurityOption.UNSECURE;
+      ? SecurityOption.ENABLE_LDAP_START_TLS
+      : SecurityOption.UNSECURE;
   finalFormData = { ...finalFormData, ldap_security };
 
   return finalFormData;
@@ -223,7 +223,14 @@ export const LDAPAuthNew = () => {
     keyPrefix: 'userAuth.LDAP'
   });
 
-  const { control, setValue, watch, getValues, handleSubmit } = useForm<LDAPFormProps>({
+  const {
+    control,
+    setValue,
+    watch,
+    getValues,
+    handleSubmit,
+    formState: { isDirty }
+  } = useForm<LDAPFormProps>({
     resolver: yupResolver(getLDAPValidationSchema(t))
   });
 
@@ -233,7 +240,10 @@ export const LDAPAuthNew = () => {
     },
     {
       onError(_error, variables) {
-        toast.error(t('messages.ldapSaveFailed', { key: variables.key, operation: 'update' }), TOAST_OPTIONS);
+        toast.error(
+          t('messages.ldapSaveFailed', { key: variables.key, operation: 'update' }),
+          TOAST_OPTIONS
+        );
       }
     }
   );
@@ -244,7 +254,10 @@ export const LDAPAuthNew = () => {
     },
     {
       onError(_error, variables) {
-        toast.error(t('messages.ldapSaveFailed', { key: variables.key, operation: 'delete' }), TOAST_OPTIONS);
+        toast.error(
+          t('messages.ldapSaveFailed', { key: variables.key, operation: 'delete' }),
+          TOAST_OPTIONS
+        );
       }
     }
   );
@@ -303,7 +316,7 @@ export const LDAPAuthNew = () => {
 
   const ldapUseGroupMapping = watch('ldap_group_use_role_mapping');
 
-  useEffect(()=> {
+  useEffect(() => {
     setGroupSettingsExpanded(ldapUseGroupMapping);
   }, [ldapUseGroupMapping]);
 
@@ -325,7 +338,7 @@ export const LDAPAuthNew = () => {
   const securityProtocol = watch('ldap_security');
   const useSearchAndBind = watch('use_search_and_bind');
   const ldapUseQuery = watch('ldap_group_use_query');
-  
+
   const toolTip = (content: string) => {
     return (
       <YBTooltip title={content} placement="top">
@@ -396,21 +409,21 @@ export const LDAPAuthNew = () => {
           />
           {(securityProtocol === SecurityOption.ENABLE_LDAPS ||
             securityProtocol === SecurityOption.ENABLE_LDAP_START_TLS) && (
-              <YBRadioGroupField
-                label={
-                  <>
-                    {t('tlsProtocol')}
-                    {toolTip(t('infos.tlsProtocol'))}
-                  </>
-                }
-                name="ldap_tls_protocol"
-                options={TLSVersions}
-                control={control}
-                orientation="horizontal"
-                isDisabled={!ldapEnabled}
-                data-testid="tls-protocol"
-              />
-            )}
+            <YBRadioGroupField
+              label={
+                <>
+                  {t('tlsProtocol')}
+                  {toolTip(t('infos.tlsProtocol'))}
+                </>
+              }
+              name="ldap_tls_protocol"
+              options={TLSVersions}
+              control={control}
+              orientation="horizontal"
+              isDisabled={!ldapEnabled}
+              data-testid="tls-protocol"
+            />
+          )}
           <YBInputField
             control={control}
             name="ldap_basedn"
@@ -564,6 +577,7 @@ export const LDAPAuthNew = () => {
                   name="ldap_group_use_role_mapping"
                   control={control}
                   label={t('ldapUseRoleMapping')}
+                  disabled={!ldapEnabled}
                 />
               </div>
             </AccordionSummary>
@@ -670,10 +684,10 @@ export const LDAPAuthNew = () => {
             }}
             data-testid="ldap-cancel"
           >
-            {t('clear', { keyPrefix: 'common' })}
+            {t('reset', { keyPrefix: 'common' })}
           </YBButton>
           <YBButton
-            disabled={!ldapEnabled}
+            disabled={!ldapEnabled || !isDirty}
             variant="primary"
             size="large"
             onClick={() => {
