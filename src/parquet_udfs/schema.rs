@@ -1,4 +1,6 @@
-use crate::arrow_parquet::uri_utils::{parquet_schema_from_uri, parse_uri, uri_as_string};
+use crate::arrow_parquet::uri_utils::{
+    ensure_access_privilege_to_uri, parquet_schema_from_uri, parse_uri, uri_as_string,
+};
 
 use ::parquet::{
     format::{ConvertedType, FieldRepetitionType, LogicalType, Type},
@@ -32,6 +34,7 @@ mod parquet {
     > {
         let uri = parse_uri(&uri);
 
+        ensure_access_privilege_to_uri(&uri, true);
         let parquet_schema = parquet_schema_from_uri(&uri);
 
         let root_type = parquet_schema.root_schema();

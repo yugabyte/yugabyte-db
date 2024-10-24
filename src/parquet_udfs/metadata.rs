@@ -1,7 +1,9 @@
 use ::parquet::file::statistics::Statistics;
 use pgrx::{iter::TableIterator, name, pg_extern, pg_schema};
 
-use crate::arrow_parquet::uri_utils::{parquet_metadata_from_uri, parse_uri, uri_as_string};
+use crate::arrow_parquet::uri_utils::{
+    ensure_access_privilege_to_uri, parquet_metadata_from_uri, parse_uri, uri_as_string,
+};
 
 #[pg_schema]
 mod parquet {
@@ -39,6 +41,7 @@ mod parquet {
     > {
         let uri = parse_uri(&uri);
 
+        ensure_access_privilege_to_uri(&uri, true);
         let parquet_metadata = parquet_metadata_from_uri(&uri);
 
         let mut rows = vec![];
@@ -137,6 +140,7 @@ mod parquet {
     > {
         let uri = parse_uri(&uri);
 
+        ensure_access_privilege_to_uri(&uri, true);
         let parquet_metadata = parquet_metadata_from_uri(&uri);
 
         let created_by = parquet_metadata
@@ -174,6 +178,7 @@ mod parquet {
     > {
         let uri = parse_uri(&uri);
 
+        ensure_access_privilege_to_uri(&uri, true);
         let parquet_metadata = parquet_metadata_from_uri(&uri);
         let kv_metadata = parquet_metadata.file_metadata().key_value_metadata();
 

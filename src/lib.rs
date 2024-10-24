@@ -2672,6 +2672,9 @@ mod tests {
         let create_role = "create role test_role;";
         Spi::run(create_role).unwrap();
 
+        let grant_role = "grant pg_write_server_files TO test_role;";
+        Spi::run(grant_role).unwrap();
+
         let set_role = "set role test_role;";
         Spi::run(set_role).unwrap();
 

@@ -58,8 +58,6 @@ fn parse_bucket_and_key(uri: &Url) -> (String, String) {
 
 fn object_store_with_location(uri: &Url, copy_from: bool) -> (Arc<dyn ObjectStore>, Path) {
     if uri.scheme() == "s3" {
-        ensure_object_store_access_privilege(copy_from);
-
         let (bucket_name, key) = parse_bucket_and_key(uri);
 
         let storage_container = PG_BACKEND_TOKIO_RUNTIME
@@ -70,8 +68,6 @@ fn object_store_with_location(uri: &Url, copy_from: bool) -> (Arc<dyn ObjectStor
         (storage_container, location)
     } else {
         debug_assert!(uri.scheme() == "file");
-
-        ensure_local_file_access_privilege(copy_from);
 
         let uri = uri_as_string(uri);
 
@@ -251,14 +247,21 @@ pub(crate) fn parquet_writer_from_uri(
         .unwrap_or_else(|e| panic!("failed to create parquet writer for uri {}: {}", uri, e))
 }
 
-fn ensure_object_store_access_privilege(copy_from: bool) {
+pub(crate) fn ensure_access_privilege_to_uri(uri: &Url, copy_from: bool) {
     if unsafe { superuser() } {
         return;
     }
 
     let user_id = unsafe { GetUserId() };
+    let is_file = uri.scheme() == "file";
 
-    let required_role_name = if copy_from {
+    let required_role_name = if is_file {
+        if copy_from {
+            "pg_read_server_files"
+        } else {
+            "pg_write_server_files"
+        }
+    } else if copy_from {
         PARQUET_OBJECT_STORE_READ_ROLE
     } else {
         PARQUET_OBJECT_STORE_WRITE_ROLE
@@ -268,46 +271,19 @@ fn ensure_object_store_access_privilege(copy_from: bool) {
         unsafe { get_role_oid(required_role_name.to_string().as_pg_cstr(), false) };
 
     let operation_str = if copy_from { "from" } else { "to" };
+    let object_type = if is_file { "file" } else { "remote uri" };
 
     if !unsafe { has_privs_of_role(user_id, required_role_id) } {
         ereport!(
             pgrx::PgLogLevel::ERROR,
             pgrx::PgSqlErrorCode::ERRCODE_INSUFFICIENT_PRIVILEGE,
-            format!("permission denied to COPY {} a remote uri", operation_str),
             format!(
-                "Only roles with privileges of the \"{}\" role may COPY {} a remote uri.",
-                required_role_name, operation_str
+                "permission denied to COPY {} a {}",
+                operation_str, object_type
             ),
-        );
-    }
-}
-
-fn ensure_local_file_access_privilege(copy_from: bool) {
-    if unsafe { superuser() } {
-        return;
-    }
-
-    let user_id = unsafe { GetUserId() };
-
-    let required_role_name = if copy_from {
-        "pg_read_server_files"
-    } else {
-        "pg_write_server_files"
-    };
-
-    let required_role_id =
-        unsafe { get_role_oid(required_role_name.to_string().as_pg_cstr(), false) };
-
-    let operation_str = if copy_from { "from" } else { "to" };
-
-    if !unsafe { has_privs_of_role(user_id, required_role_id) } {
-        ereport!(
-            pgrx::PgLogLevel::ERROR,
-            pgrx::PgSqlErrorCode::ERRCODE_INSUFFICIENT_PRIVILEGE,
-            format!("permission denied to COPY {} a file", operation_str),
             format!(
-                "Only roles with privileges of the \"{}\" role may COPY {} a file.",
-                required_role_name, operation_str
+                "Only roles with privileges of the \"{}\" role may COPY {} a {}.",
+                required_role_name, operation_str, object_type
             ),
         );
     }

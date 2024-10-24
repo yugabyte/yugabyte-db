@@ -7,7 +7,10 @@ use pg_sys::{
 use pgrx::{prelude::*, GucSetting};
 
 use crate::{
-    arrow_parquet::{compression::INVALID_COMPRESSION_LEVEL, uri_utils::uri_as_string},
+    arrow_parquet::{
+        compression::INVALID_COMPRESSION_LEVEL,
+        uri_utils::{ensure_access_privilege_to_uri, uri_as_string},
+    },
     parquet_copy_hook::{
         copy_to_dest_receiver::create_copy_to_parquet_dest_receiver,
         copy_utils::{
@@ -59,6 +62,9 @@ extern "C" fn parquet_copy_hook(
 
     if ENABLE_PARQUET_COPY_HOOK.get() && is_copy_to_parquet_stmt(&p_stmt) {
         let uri = copy_stmt_uri(&p_stmt).expect("uri is None");
+        let copy_from = false;
+
+        ensure_access_privilege_to_uri(&uri, copy_from);
 
         validate_copy_to_options(&p_stmt, &uri);
 
@@ -106,6 +112,9 @@ extern "C" fn parquet_copy_hook(
         return;
     } else if ENABLE_PARQUET_COPY_HOOK.get() && is_copy_from_parquet_stmt(&p_stmt) {
         let uri = copy_stmt_uri(&p_stmt).expect("uri is None");
+        let copy_from = true;
+
+        ensure_access_privilege_to_uri(&uri, copy_from);
 
         validate_copy_from_options(&p_stmt);
 
