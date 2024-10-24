@@ -13,8 +13,8 @@ package com.yugabyte.yw.commissioner;
 import static com.yugabyte.yw.common.metrics.MetricService.DEFAULT_METRIC_EXPIRY_SEC;
 import static com.yugabyte.yw.models.helpers.CommonUtils.nowPlusWithoutMillis;
 
-import autovalue.shaded.com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HealthCheck.Details;
