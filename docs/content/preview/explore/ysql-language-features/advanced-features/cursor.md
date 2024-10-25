@@ -30,9 +30,9 @@ The following statements, in order, are associated with YSQL cursors:
 Operations involving cursors must be performed inside transactions.
 {{</note>}}
 
-## Declaring a Cursor
+## Declare a cursor
 
-You need to declare a cursor  before you can open and use it. There are two ways to declare a cursor:
+You need to declare a cursor before you can open and use it. There are two ways to declare a cursor:
 
 - As a variable of type `refcursor` placed in the YSQL block's declaration section, as demonstrated by the following syntax:
 
@@ -58,7 +58,7 @@ DECLARE
 
 `employees_cursor_1` is not bound to a query so it can be used with any query, whereas `employees_cursor_2` encapsulates all rows in the `employees` table and is bound to s specific query.
 
-## Opening a Cursor
+## Open a cursor
 
 The following example shows how to open an unbound cursor. As the cursor variable was not bounded to any query when the cursor was declared, you need to specify the query when you are opening the cursor.
 
@@ -72,11 +72,11 @@ The following example shows how to open a cursor that was already bound to a que
 OPEN employees_cursor_2;
 ```
 
-## Using a Cursor
+## Use a cursor
 
 You can use an open cursor with the YSQL data manipulation statements such as FETCH and DELETE.
 
-### Fetch Rows
+### Fetch rows
 
 Using the FETCH statement, you can obtain all rows or a specific row from the cursor and place it into a target such as a record, a row variable, or a comma-separated list of variables. When the rows are exhausted, the target is set to NULL.
 
@@ -90,7 +90,7 @@ FETCH ALL FROM employees_cursor_2;
 FETCH FROM employees_cursor_2 INTO employees_row;
 ```
 
-### Delete Rows
+### Delete rows
 
 The following example shows how to delete all rows from a cursor:
 
@@ -98,13 +98,13 @@ The following example shows how to delete all rows from a cursor:
 DELETE FROM employees_cursor_2;
 ```
 
-### Return a Cursor
+### Return a cursor
 
 You can return a cursor using a function that opens the cursor and returns its name to the caller which, in turn, can fetch rows from the cursor and close it before the end of the transaction, if needed.
 
-For more information and examples, refer to the "Returning Cursors" section in [Using Cursors](https://www.postgresql.org/docs/11/plpgsql-cursors.html#PLPGSQL-CURSOR-USING).
+For more information and examples, refer to [Using Cursors](https://www.postgresql.org/docs/11/plpgsql-cursors.html#PLPGSQL-CURSOR-USING) in the PostgreSQL documentation.
 
-### Use Loops
+### Use loops
 
 You can iterate through the result set of a bound cursor using a certain form of the FOR statement, as per the following syntax:
 
@@ -120,7 +120,7 @@ The cursor is automatically opened by the FOR statement and closed when the loop
 
 *rec_var* is always of type `record`. This variable's lifecycle is limited by the loop, with each row returned by the cursor assigned to it as the loop body is executed.
 
-## Closing a Cursor
+## Close a cursor
 
 You use the CLOSE statement to complete the cursor lifecycle. By closing the cursor, you release resources before the end of the transaction. This also releases the cursor variable which allows you to open the cursor again.
 

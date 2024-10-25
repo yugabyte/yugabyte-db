@@ -12,7 +12,7 @@ rightNav:
 type: docs
 ---
 
-For efficient management od data in a databse, you need to follow a structured process that involves creating databases, tables, and schemas. The following detailed guide can help you understand and implement each step.
+To manage data in a database efficiently, you need to follow a structured process that involves creating databases, tables, and schemas. The following detailed guide can help you understand and implement each step.
 
 {{<tip>}}
 For the list of supported and unsupported schema relations operations, see [Schema operations](../sql-feature-support#schema-operations).
@@ -387,7 +387,7 @@ ALTER USER yoda WITH PASSWORD 'thereisnotry';
 
 ### User privileges
 
-Users can be granted privileges to perform certain operations on databases and tables. Privileges include actions like `SELECT`, `INSERT`, `UPDATE`, `DELETE`, and more. You can provide privileges to users using the [GRANT](../../../api/ysql/the-sql-language/statements/dcl_grant) command:
+Users can be granted privileges to perform certain operations on databases and tables. Privileges include actions like SELECT, INSERT, UPDATE, DELETE, and more. You can provide privileges to users using the [GRANT](../../../api/ysql/the-sql-language/statements/dcl_grant) command:
 
 ```sql
 GRANT SELECT, INSERT ON TABLE users TO yoda;

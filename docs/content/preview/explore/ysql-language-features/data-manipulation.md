@@ -54,7 +54,7 @@ The INSERT statement in SQL is used to add new rows of data into a table. It spe
 INSERT INTO employees (id, name, department) VALUES (1, 'Johnny Depp', 'Marketing');
 ```
 
-If you are certain about the order of the columns in the table, you can skip mentioning the column names and just specify the value like:
+If you are certain about the order of the columns in the table, you can skip mentioning the column names and just specify the value:
 
 ```sql
 INSERT INTO employees VALUES (1, 'Johnny Depp', 'Marketing');
@@ -73,13 +73,15 @@ INSERT INTO employees VALUES
 
 ## Default values
 
-Default values allow you to define a value that will automatically be inserted into a column if no explicit value is provided during an INSERT operation. This is useful for ensuring that columns always have meaningful data, even when some values are not specified by the user. In our sample schema we have set a default value for the column **department** via `department TEXT DEFAULT 'Engineering'`. This lets you insert a row without explicitly specifying a department for a row like:
+Default values allow you to define a value that will automatically be inserted into a column if no explicit value is provided during an INSERT operation. This is useful for ensuring that columns always have meaningful data, even when some values are not specified by the user.
+
+When creating the `employees` table, we set a default value for the column `department` using the DEFAULT clause (`department TEXT DEFAULT 'Engineering'`). This lets you insert a row without explicitly specifying a department for a row:
 
 ```sql
 INSERT INTO employees (id, name) VALUES (4, 'Bruce Lee');
 ```
 
-Another option is to explicitly specify the missing values as `DEFAULT` in the `INSERT` statement when column names are specified explicitly as shown in the following example:
+Another option is to explicitly specify the missing values as DEFAULT in the INSERT statement when column names are specified explicitly as shown in the following example:
 
 ```sql
 INSERT INTO employees (id, name, department)
@@ -119,13 +121,13 @@ CREATE TABLE employees2 (
 );
 ```
 
-This allows you to omit the serial column during `INSERT` as in the following example:
+This allows you to omit the serial column during INSERT as in the following example:
 
 ```sql
 INSERT INTO employees2 (name, department) VALUES ('Johnny Depp', 'Sales');
 ```
 
-Alternatively, you can provide the `DEFAULT` keyword as the column's value, as shown in the following example:
+Alternatively, you can provide the DEFAULT keyword as the column's value, as shown in the following example:
 
 ```sql
 INSERT INTO employees2 (id, name, department) VALUES (DEFAULT, 'Johnny Depp', 'Sales');
@@ -161,7 +163,7 @@ UPDATE employees SET id = id + 1;
 
 ## Upsert
 
-An UPSERT is a combination of UPDATE and INSERT, allowing you to either insert a new row into a table or update an existing row if it already exists. This operation is particularly useful for avoiding duplication while ensuring data is either added or updated as needed. This functionality is provided by the `INSERT ... ON CONFLICT DO UPDATE` clause.
+An UPSERT is a combination of UPDATE and INSERT, allowing you to either insert a new row into a table or update an existing row if it already exists. This operation is particularly useful for avoiding duplication while ensuring data is either added or updated as needed. This functionality is provided by the INSERT ... ON CONFLICT DO UPDATE clause.
 
 For example, if you try to insert the record `(1, 'Johnny Depp', 'Sales')`, you get an error:
 
@@ -362,7 +364,7 @@ BEGIN;
 COMMIT;
 ```
 
-But when you add the `DEFERRABLE INITIALLY DEFERRED` clause, the preceding transaction succeeds.
+But when you add the DEFERRABLE INITIALLY DEFERRED clause, the preceding transaction succeeds.
 
 ```sql
     dept_id INT,
