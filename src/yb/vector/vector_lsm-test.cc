@@ -16,8 +16,6 @@
 #include <google/protobuf/any.pb.h>
 
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/vector_lsm.h"
-#include "yb/docdb/vector_lsm-test.pb.h"
 
 #include "yb/dockv/doc_key.h"
 
@@ -31,80 +29,41 @@
 #include "yb/vector/ann_methods.h"
 #include "yb/vector/hnswlib_wrapper.h"
 #include "yb/vector/usearch_wrapper.h"
+#include "yb/vector/vector_lsm.h"
+#include "yb/vector/vector_lsm-test.pb.h"
 
 using namespace std::literals;
 
 DECLARE_uint64(TEST_vector_index_delay_saving_first_chunk_ms);
 DECLARE_bool(TEST_vector_index_skip_update_metadata_during_shutdown);
 
-namespace yb::docdb {
+namespace yb::vectorindex {
 
 using FloatVectorLSM = VectorLSM<std::vector<float>, float>;
-using UsearchIndexFactory = MakeVectorIndexFactory<
-    vectorindex::UsearchIndexFactory, FloatVectorLSM>;
-using HnswlibIndexFactory = MakeVectorIndexFactory<
-    vectorindex::HnswlibIndexFactory, FloatVectorLSM>;
+using TestUsearchIndexFactory = MakeVectorIndexFactory<UsearchIndexFactory, FloatVectorLSM>;
+using TestHnswlibIndexFactory = MakeVectorIndexFactory<HnswlibIndexFactory, FloatVectorLSM>;
 
-class VectorLSMKeyValueStorageRocksDbWrapper : public VectorLSMKeyValueStorage {
+class SimpleVectorLSMKeyValueStorage : public VectorLSMKeyValueStorage {
  public:
-  VectorLSMKeyValueStorageRocksDbWrapper(
-      rocksdb::DB* db, const rocksdb::WriteOptions& write_options, ColumnId column_id)
-      : db_(db), write_options_(write_options), column_id_(column_id) {}
+  SimpleVectorLSMKeyValueStorage() = default;
 
   Status StoreBaseTableKeys(const BaseTableKeysBatch& batch, HybridTime write_time) {
-    rocksdb::WriteBatch write_batch;
-    dockv::KeyBytes key_buffer;
-    ValueBuffer value_buffer;
-    IntraTxnWriteId write_id = 0;
     for (const auto& [vertex_id, base_table_key] : batch) {
-      MakeVertexIdKey(vertex_id, key_buffer);
-      DocHybridTime doc_hybrid_time(write_time, write_id++);
-      key_buffer.AppendKeyEntryType(dockv::KeyEntryType::kHybridTime);
-      doc_hybrid_time.AppendEncodedInDocDbFormat(key_buffer.mutable_data());
-
-      value_buffer.Clear();
-      value_buffer.PushBack(dockv::ValueEntryTypeAsChar::kString);
-      value_buffer.Append(base_table_key);
-      write_batch.Put(key_buffer.AsSlice(), value_buffer.AsSlice());
+      storage_.emplace(vertex_id, KeyBuffer(base_table_key));
     }
-    return db_->Write(write_options_, &write_batch);
+    return Status::OK();
   }
 
-  Result<KeyBuffer> ReadBaseTableKey(vectorindex::VertexId vertex_id) {
-    auto iterator = CreateRocksDBIterator(
-        db_, &docdb::KeyBounds::kNoBounds, docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
-        boost::none, rocksdb::kDefaultQueryId, nullptr, nullptr,
-        rocksdb::CacheRestartBlockKeys::kFalse);
-    dockv::KeyBytes key_bytes;
-    MakeVertexIdKey(vertex_id, key_bytes);
-    iterator.Seek(key_bytes.AsSlice());
-    if (iterator.Valid()) {
-      const auto& entry = iterator.Entry();
-      if (entry.key.starts_with(key_bytes.AsSlice())) {
-        auto value = entry.value;
-        if (!value.TryConsumeByte(dockv::ValueEntryTypeAsChar::kString)) {
-          return STATUS_FORMAT(
-              Corruption, "Vertex $0 has invalid value: $1", vertex_id, value.ToDebugHexString());
-        }
-        return KeyBuffer(value);
-      }
+  Result<KeyBuffer> ReadBaseTableKey(VertexId vertex_id) {
+    auto it = storage_.find(vertex_id);
+    if (it == storage_.end()) {
+      return STATUS_FORMAT(NotFound, "Vertex id not found: $0", vertex_id);
     }
-    return STATUS_FORMAT(NotFound, "Vertex id not found: $0", vertex_id);
+    return it->second;
   }
 
  private:
-  void MakeVertexIdKey(vectorindex::VertexId vertex_id, dockv::KeyBytes& key_buffer) {
-    key_buffer.Clear();
-    key_buffer.AppendKeyEntryType(dockv::KeyEntryType::kColumnId);
-    key_buffer.AppendColumnId(column_id_);
-    key_buffer.AppendKeyEntryType(dockv::KeyEntryType::kVertexId);
-    key_buffer.AppendUInt64(vertex_id);
-    key_buffer.AppendKeyEntryType(dockv::KeyEntryType::kGroupEnd);
-  }
-
-  rocksdb::DB* db_;
-  const rocksdb::WriteOptions& write_options_;
-  const ColumnId column_id_;
+  std::unordered_map<VertexId, KeyBuffer> storage_;
 };
 
 class TestFrontier : public rocksdb::UserFrontier {
@@ -169,37 +128,27 @@ class TestFrontier : public rocksdb::UserFrontier {
     return 0;
   }
 
-  vectorindex::VertexId vertex_id() const {
+  VertexId vertex_id() const {
     return vertex_id_;
   }
 
-  void SetVertexId(vectorindex::VertexId vertex_id) {
+  void SetVertexId(VertexId vertex_id) {
     vertex_id_ = vertex_id;
   }
 
  private:
-  vectorindex::VertexId vertex_id_;
+  VertexId vertex_id_;
 };
 
 using TestFrontiers = rocksdb::UserFrontiersBase<TestFrontier>;
 
-class VectorLSMTest : public DocDBTestBase,
-                      public testing::WithParamInterface<vectorindex::ANNMethodKind> {
+class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMethodKind> {
  protected:
   VectorLSMTest()
       : thread_pool_(rpc::ThreadPoolOptions {
           .name = "Insert Thread Pool",
           .max_workers = 10,
         }) {
-  }
-
-  void SetUp() override {
-    DocDBTestBase::SetUp();
-    key_value_storage_.emplace(rocksdb(), write_options(), ColumnId(42));
-  }
-
-  Schema CreateSchema() override {
-    return Schema();
   }
 
   Status InitVectorLSM(FloatVectorLSM& lsm, size_t dimensions, size_t points_per_chunk);
@@ -209,7 +158,7 @@ class VectorLSMTest : public DocDBTestBase,
   Status InsertCube(
       FloatVectorLSM& lsm, size_t dimensions,
       size_t block_size = std::numeric_limits<size_t>::max(),
-      vectorindex::VertexId min_vertex_id = 0);
+      VertexId min_vertex_id = 0);
 
   void VerifyVectorLSM(FloatVectorLSM& lsm, size_t dimensions);
 
@@ -220,26 +169,26 @@ class VectorLSMTest : public DocDBTestBase,
   void TestBootstrap(bool flush);
 
   rpc::ThreadPool thread_pool_;
-  std::optional<VectorLSMKeyValueStorageRocksDbWrapper> key_value_storage_;
+  SimpleVectorLSMKeyValueStorage key_value_storage_;
 };
 
-std::string VertexKey(vectorindex::VertexId vertex_id) {
+std::string VertexKey(VertexId vertex_id) {
   return Format("vertex_$0", vertex_id);
 }
 
-auto VectorIndexFactory(vectorindex::ANNMethodKind ann_method) {
+auto GetVectorIndexFactory(ANNMethodKind ann_method) {
   switch (ann_method) {
-    case vectorindex::ANNMethodKind::kUsearch:
-      return UsearchIndexFactory::Create;
-    case vectorindex::ANNMethodKind::kHnswlib:
-      return HnswlibIndexFactory::Create;
+    case ANNMethodKind::kUsearch:
+      return TestUsearchIndexFactory::Create;
+    case ANNMethodKind::kHnswlib:
+      return TestHnswlibIndexFactory::Create;
   }
-  return decltype(&UsearchIndexFactory::Create)(nullptr);
+  return decltype(&TestUsearchIndexFactory::Create)(nullptr);
 }
 
 FloatVectorLSM::InsertEntries CubeInsertEntries(size_t dimensions) {
   FloatVectorLSM::InsertEntries result;
-  for (vectorindex::VertexId i = 1; i <= (1ULL << dimensions); ++i) {
+  for (VertexId i = 1; i <= (1ULL << dimensions); ++i) {
     auto bits = i - 1;
     FloatVector vector(dimensions);
     for (size_t d = 0; d != dimensions; ++d) {
@@ -256,7 +205,7 @@ FloatVectorLSM::InsertEntries CubeInsertEntries(size_t dimensions) {
 
 Status VectorLSMTest::InsertCube(
     FloatVectorLSM& lsm, size_t dimensions, size_t block_size,
-    vectorindex::VertexId min_vertex_id) {
+    VertexId min_vertex_id) {
   HybridTime write_time(1000, 0);
   auto entries = CubeInsertEntries(dimensions);
   for (size_t i = 0; i < entries.size(); i += block_size) {
@@ -280,16 +229,21 @@ Status VectorLSMTest::InsertCube(
 
 Status VectorLSMTest::OpenVectorLSM(
     FloatVectorLSM& lsm, size_t dimensions, size_t points_per_chunk) {
+
+  std::string test_dir;
+  RETURN_NOT_OK(Env::Default()->GetTestDirectory(&test_dir));
+  test_dir = JoinPathSegments(test_dir, "vector_lsm_test_" + Uuid::Generate().ToString());
+
   FloatVectorLSM::Options options = {
-    .storage_dir = JoinPathSegments(rocksdb_dir_, "vector_lsm"),
-    .vector_index_factory = [factory = VectorIndexFactory(GetParam()), dimensions]() {
-        vectorindex::HNSWOptions hnsw_options = {
+    .storage_dir = JoinPathSegments(test_dir, "vector_lsm"),
+    .vector_index_factory = [factory = GetVectorIndexFactory(GetParam()), dimensions]() {
+        HNSWOptions hnsw_options = {
           .dimensions = dimensions,
         };
         return factory(hnsw_options);
       },
     .points_per_chunk = points_per_chunk,
-    .key_value_storage = &*key_value_storage_,
+    .key_value_storage = &key_value_storage_,
     .thread_pool = &thread_pool_,
     .frontiers_factory = [] { return std::make_unique<TestFrontiers>(); },
   };
@@ -404,7 +358,7 @@ TEST_P(VectorLSMTest, NotSavedChunk) {
 }
 
 TEST_F(VectorLSMTest, MergeChunkResults) {
-  using ChunkResults = std::vector<vectorindex::VertexWithDistance<float>>;
+  using ChunkResults = std::vector<VertexWithDistance<float>>;
   ChunkResults a_src = {{5, 1}, {3, 3}, {1, 5}, {7, 7}};
   ChunkResults b_src = {{2, 2}, {3, 3}, {4, 4}, {9, 7}, {7, 7}};
   for (size_t i = 1; i != a_src.size() + b_src.size(); ++i) {
@@ -421,13 +375,13 @@ TEST_F(VectorLSMTest, MergeChunkResults) {
 }
 
 std::string ANNMethodKindToString(
-    const testing::TestParamInfo<vectorindex::ANNMethodKind>& param_info) {
+    const testing::TestParamInfo<ANNMethodKind>& param_info) {
   return AsString(param_info.param);
 }
 
 INSTANTIATE_TEST_SUITE_P(
     ANNMethodKind, VectorLSMTest,
-    ::testing::ValuesIn(vectorindex::kANNMethodKindArray),
+    ::testing::ValuesIn(kANNMethodKindArray),
     ANNMethodKindToString);
 
-}  // namespace yb::docdb
+}  // namespace yb::vectorindex

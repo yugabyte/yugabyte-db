@@ -285,6 +285,8 @@ class Env {
   // Creating.
   virtual Status CreateDirIfMissing(const std::string& dirname) = 0;
 
+  Status CreateDirs(const std::string& dirname);
+
   // Delete the specified directory.
   virtual Status DeleteDir(const std::string& dirname) = 0;
 

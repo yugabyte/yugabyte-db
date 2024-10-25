@@ -12,11 +12,11 @@
 //
 syntax = "proto3";
 
-package yb.docdb;
+package yb.vectorindex;
 
 import "google/protobuf/any.proto";
 
-option java_package = "org.yb.docdb";
+option java_package = "org.yb.vectorindex";
 
 message VectorLSMBoundaryPB {
   google.protobuf.Any user_frontier = 1;

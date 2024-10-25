@@ -19,8 +19,7 @@ YRPC_GENERATE(
         DOCDB_PROTO_SRCS DOCDB_PROTO_HDRS DOCDB_PROTO_TGTS
         SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
         BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-        NO_SERVICE_MESSAGES_PROTO_FILES docdb.proto
-        NO_SERVICE_PROTO_FILES vector_lsm.proto)
+        NO_SERVICE_MESSAGES_PROTO_FILES docdb.proto)
 
 ADD_YB_LIBRARY(docdb_proto
         SRCS ${DOCDB_PROTO_SRCS}
@@ -81,8 +80,6 @@ set(DOCDB_SRCS
         vector_index.cc
         vector_index_read.cc
         vector_index_update.cc
-        vector_lsm.cc
-        vector_lsm_metadata.cc
         wait_queue.cc
         )
 
@@ -130,19 +127,7 @@ target_link_libraries(yb_docdb_test_common
         yb_test_util
         yb_dockv_test_util)
 
-YRPC_GENERATE(
-        DOCDB_TEST_PROTO_SRCS DOCDB_TEST_PROTO_HDRS DOCDB_TEST_PROTO_TGTS
-        MESSAGES TRUE
-        SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
-        BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-        NO_SERVICE_PROTO_FILES vector_lsm-test.proto)
-
-ADD_YB_LIBRARY(docdb_test_proto
-        SRCS ${DOCDB_TEST_PROTO_SRCS}
-        DEPS protobuf yb_common_proto
-        NONLINK_DEPS ${DOCDB_TEST_PROTO_TGTS})
-
-set(YB_TEST_LINK_LIBS yb_common_test_util yb_docdb_test_common docdb_test_proto ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS yb_common_test_util yb_docdb_test_common ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(doc_operation-test)
 ADD_YB_TEST(docdb_filter_policy-test)
@@ -162,7 +147,6 @@ ADD_YB_TEST(consensus_frontier-test)
 ADD_YB_TEST(compaction_file_filter-test)
 ADD_YB_TEST(usearch_vector_index-test)
 ADD_YB_TEST(vector_index_docdb-test)
-ADD_YB_TEST(vector_lsm-test)
 
 if(YB_BUILD_FUZZ_TARGETS)
   # A library with common code shared between DocDB fuzz tests.

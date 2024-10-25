@@ -12,9 +12,9 @@
 //
 syntax = "proto3";
 
-package yb.docdb;
+package yb.vectorindex;
 
-option java_package = "org.yb.docdb";
+option java_package = "org.yb.vectorindex";
 
 message VectorLSMTestFrontierPB {
   uint64 vertex_id = 1;

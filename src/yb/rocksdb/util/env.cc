@@ -26,6 +26,7 @@
 
 #include "yb/rocksdb/options.h"
 
+#include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 
@@ -101,6 +102,15 @@ yb::Result<std::vector<std::string>> Env::GetChildren(const std::string& dir) {
   std::vector<std::string> result;
   RETURN_NOT_OK(GetChildren(dir, &result));
   return result;
+}
+
+Status Env::CreateDirs(const std::string& dirname) {
+  auto status = FileExists(dirname);
+  if (status.IsNotFound()) {
+    RETURN_NOT_OK(CreateDirs(yb::DirName(dirname)));
+    return CreateDir(dirname);
+  }
+  return status;
 }
 
 Logger::~Logger() {

@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/docdb/vector_lsm_metadata.h"
+#include "yb/vector/vector_lsm_metadata.h"
 
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 
@@ -23,7 +23,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/stol_utils.h"
 
-namespace yb::docdb {
+namespace yb::vectorindex {
 
 namespace {
 
@@ -165,4 +165,4 @@ std::string VectorLSMMetadataLoadResult::ToString() const {
   return YB_STRUCT_TO_STRING(next_free_file_no, updates);
 }
 
-}  // namespace yb::docdb
+}  // namespace yb::vectorindex

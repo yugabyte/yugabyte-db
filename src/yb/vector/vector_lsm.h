@@ -18,8 +18,6 @@
 
 #include "yb/common/hybrid_time.h"
 
-#include "yb/docdb/vector_lsm.fwd.h"
-
 #include "yb/dockv/key_bytes.h"
 
 #include "yb/rocksdb/rocksdb_fwd.h"
@@ -29,11 +27,12 @@
 
 #include "yb/util/locks.h"
 
+#include "yb/vector/vector_lsm.fwd.h"
 #include "yb/vector/vector_index_if.h"
 
-namespace yb::docdb {
+namespace yb::vectorindex {
 
-template<vectorindex::ValidDistanceResultType DistanceResult>
+template<ValidDistanceResultType DistanceResult>
 struct VectorLSMSearchEntry {
   DistanceResult distance;
   // base_table_key could be the encoded DocKey of the corresponding row in the base
@@ -50,26 +49,26 @@ struct VectorLSMSearchOptions {
   size_t max_num_results;
 };
 
-template<vectorindex::IndexableVectorType Vector>
+template<IndexableVectorType Vector>
 struct VectorLSMInsertEntry {
-  vectorindex::VertexId vertex_id;
+  VertexId vertex_id;
   KeyBuffer base_table_key;
   Vector vector;
 };
 
-template<vectorindex::IndexableVectorType Vector,
-         vectorindex::ValidDistanceResultType DistanceResult>
+template<IndexableVectorType Vector,
+         ValidDistanceResultType DistanceResult>
 struct VectorLSMOptions;
 
-template<vectorindex::IndexableVectorType Vector,
-         vectorindex::ValidDistanceResultType DistanceResult>
+template<IndexableVectorType Vector,
+         ValidDistanceResultType DistanceResult>
 class VectorLSMInsertRegistry;
 
-template<vectorindex::IndexableVectorType Vector,
-         vectorindex::ValidDistanceResultType DistanceResult>
+template<IndexableVectorType Vector,
+         ValidDistanceResultType DistanceResult>
 struct VectorLSMTypes {
-  using VectorIndex = vectorindex::VectorIndexIf<Vector, DistanceResult>;
-  using VectorIndexPtr = vectorindex::VectorIndexIfPtr<Vector, DistanceResult>;
+  using VectorIndex = VectorIndexIf<Vector, DistanceResult>;
+  using VectorIndexPtr = VectorIndexIfPtr<Vector, DistanceResult>;
   using VectorIndexFactory = vectorindex::VectorIndexFactory<Vector, DistanceResult>;
   using SearchResults = std::vector<VectorLSMSearchEntry<DistanceResult>>;
   using InsertEntry = VectorLSMInsertEntry<Vector>;
@@ -80,18 +79,18 @@ struct VectorLSMTypes {
   using VertexWithDistance = vectorindex::VertexWithDistance<DistanceResult>;
 };
 
-using BaseTableKeysBatch = std::vector<std::pair<vectorindex::VertexId, Slice>>;
+using BaseTableKeysBatch = std::vector<std::pair<VertexId, Slice>>;
 
 class VectorLSMKeyValueStorage {
  public:
   virtual Status StoreBaseTableKeys(const BaseTableKeysBatch& batch, HybridTime write_time) = 0;
-  virtual Result<KeyBuffer> ReadBaseTableKey(vectorindex::VertexId vertex_id) = 0;
+  virtual Result<KeyBuffer> ReadBaseTableKey(VertexId vertex_id) = 0;
 
   virtual ~VectorLSMKeyValueStorage() = default;
 };
 
-template<vectorindex::IndexableVectorType Vector,
-         vectorindex::ValidDistanceResultType DistanceResult>
+template<IndexableVectorType Vector,
+         ValidDistanceResultType DistanceResult>
 struct VectorLSMOptions {
   using Types = VectorLSMTypes<Vector, DistanceResult>;
   std::string storage_dir;
@@ -102,12 +101,12 @@ struct VectorLSMOptions {
   std::function<rocksdb::UserFrontiersPtr()> frontiers_factory;
 };
 
-template<vectorindex::IndexableVectorType VectorType,
-         vectorindex::ValidDistanceResultType DistanceResultType>
+template<IndexableVectorType VectorType,
+         ValidDistanceResultType DistanceResultType>
 class VectorLSMInsertTask;
 
-template<vectorindex::IndexableVectorType VectorType,
-         vectorindex::ValidDistanceResultType DistanceResultType>
+template<IndexableVectorType VectorType,
+         ValidDistanceResultType DistanceResultType>
 class VectorLSM {
  public:
   using DistanceResult = DistanceResultType;
@@ -192,10 +191,10 @@ template <template<class, class> class Factory, class VectorIndex>
 using MakeVectorIndexFactory =
     Factory<typename VectorIndex::Vector, typename VectorIndex::DistanceResult>;
 
-template<vectorindex::ValidDistanceResultType DistanceResult>
+template<ValidDistanceResultType DistanceResult>
 void MergeChunkResults(
-    std::vector<vectorindex::VertexWithDistance<DistanceResult>>& combined_results,
-    std::vector<vectorindex::VertexWithDistance<DistanceResult>>& chunk_results,
+    std::vector<VertexWithDistance<DistanceResult>>& combined_results,
+    std::vector<VertexWithDistance<DistanceResult>>& chunk_results,
     size_t max_num_results);
 
-}  // namespace yb::docdb
+}  // namespace yb::vectorindex

@@ -13,13 +13,13 @@
 
 #pragma once
 
-#include "yb/docdb/vector_lsm.pb.h"
-
 #include "yb/rocksdb/rocksdb_fwd.h"
 
 #include "yb/util/result.h"
 
-namespace yb::docdb {
+#include "yb/vector/vector_lsm.pb.h"
+
+namespace yb::vectorindex {
 
 struct VectorLSMMetadataLoadResult {
   size_t next_free_file_no = 0;
@@ -34,4 +34,4 @@ Result<std::unique_ptr<rocksdb::WritableFile>> VectorLSMMetadataOpenFile(
     rocksdb::Env* env, const std::string& dir, size_t file_index);
 Status VectorLSMMetadataAppendUpdate(rocksdb::WritableFile& file, const VectorLSMUpdatePB& update);
 
-}  // namespace yb::docdb
+}  // namespace yb::vectorindex

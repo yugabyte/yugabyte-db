@@ -11,14 +11,12 @@
 // under the License.
 //
 
-#include "yb/docdb/vector_lsm.h"
+#include "yb/vector/vector_lsm.h"
 
 #include <queue>
 #include <thread>
 
 #include <boost/intrusive/list.hpp>
-
-#include "yb/docdb/vector_lsm_metadata.h"
 
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/metadata.h"
@@ -30,6 +28,8 @@
 #include "yb/util/file_util.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/unique_lock.h"
+
+#include "yb/vector/vector_lsm_metadata.h"
 
 using namespace std::literals;
 
@@ -55,11 +55,8 @@ DEFINE_test_flag(bool, vector_index_skip_update_metadata_during_shutdown, false,
 DEFINE_test_flag(uint64, vector_index_delay_saving_first_chunk_ms, 0,
                  "Delay saving the first chunk in VectorLSM for specified amount of milliseconds");
 
-namespace yb::docdb {
+namespace yb::vectorindex {
 
-using vectorindex::IndexableVectorType;
-using vectorindex::ValidDistanceResultType;
-using vectorindex::VertexId;
 namespace bi = boost::intrusive;
 
 namespace {
@@ -266,7 +263,7 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
     return true;
   }
 
-  void Insert(VectorLSM& lsm, vectorindex::VertexId vertex_id, const Vector& vector) {
+  void Insert(VectorLSM& lsm, VertexId vertex_id, const Vector& vector) {
     lsm.CheckFailure(index->Insert(vertex_id, vector));
   }
 };
@@ -355,7 +352,7 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
   options_ = std::move(options);
   insert_registry_ = std::make_unique<InsertRegistry>(*options_.thread_pool);
 
-  RETURN_NOT_OK(env_->CreateDirIfMissing(options_.storage_dir));
+  RETURN_NOT_OK(env_->CreateDirs(options_.storage_dir));
   auto load_result = VERIFY_RESULT(VectorLSMMetadataLoad(env_, options_.storage_dir));
   metadata_file_no_ = load_result.next_free_file_no;
   std::unordered_map<size_t, const VectorLSMChunkPB*> chunks;
@@ -453,8 +450,8 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
 // Expects that results_with_chunk and chunk_results already ordered by distance.
 template<ValidDistanceResultType DistanceResult>
 void MergeChunkResults(
-    std::vector<vectorindex::VertexWithDistance<DistanceResult>>& combined_results,
-    std::vector<vectorindex::VertexWithDistance<DistanceResult>>& chunk_results,
+    std::vector<VertexWithDistance<DistanceResult>>& combined_results,
+    std::vector<VertexWithDistance<DistanceResult>>& chunk_results,
     size_t max_num_results) {
   // Store the current size of the existing results.
   auto old_size = std::min(combined_results.size(), max_num_results);
@@ -780,8 +777,8 @@ DistanceResult VectorLSM<Vector, DistanceResult>::TEST_Distance(
 YB_INSTANTIATE_TEMPLATE_FOR_ALL_VECTOR_AND_DISTANCE_RESULT_TYPES(VectorLSM);
 
 template void MergeChunkResults<float>(
-    std::vector<vectorindex::VertexWithDistance<float>>& combined_results,
-    std::vector<vectorindex::VertexWithDistance<float>>& chunk_results,
+    std::vector<VertexWithDistance<float>>& combined_results,
+    std::vector<VertexWithDistance<float>>& chunk_results,
     size_t max_num_results);
 
-}  // namespace yb::docdb
+}  // namespace yb::vectorindex
