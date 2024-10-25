@@ -5754,7 +5754,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       XClusterConfig xClusterConfig,
       boolean keepEntry,
       boolean forceDelete,
-      boolean deletePitrConfigs) {
+      boolean deleteSourcePitrConfigs,
+      boolean deleteTargetPitrConfigs) {
 
     // If target universe is destroyed, ignore creating this subtask.
     if (xClusterConfig.getTargetUniverseUUID() != null
@@ -5783,15 +5784,25 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
     }
 
-    if (deletePitrConfigs
-        && (xClusterConfig.getType() == ConfigType.Txn || xClusterConfig.getType() == ConfigType.Db)
+    if ((xClusterConfig.getType() == ConfigType.Txn || xClusterConfig.getType() == ConfigType.Db)
         && xClusterConfig.getTargetUniverseUUID() != null) {
-      List<PitrConfig> pitrConfigs = xClusterConfig.getPitrConfigs();
-      for (PitrConfig pitrConfig : pitrConfigs) {
-        // Only delete PITR config which were specifically created for DR.
-        if (!pitrConfig.isCreatedForDr()) {
-          continue;
-        }
+      List<PitrConfig> pitrConfigsToDelete =
+          xClusterConfig.getPitrConfigs().stream()
+              .filter(pitrConfig -> pitrConfig.isCreatedForDr())
+              .filter(
+                  pitrConfig ->
+                      (deleteSourcePitrConfigs
+                              && pitrConfig
+                                  .getUniverse()
+                                  .getUniverseUUID()
+                                  .equals(xClusterConfig.getSourceUniverseUUID()))
+                          || (deleteTargetPitrConfigs
+                              && pitrConfig
+                                  .getUniverse()
+                                  .getUniverseUUID()
+                                  .equals(xClusterConfig.getTargetUniverseUUID())))
+              .collect(Collectors.toList());
+      for (PitrConfig pitrConfig : pitrConfigsToDelete) {
         createDeletePitrConfigTask(
             pitrConfig.getUuid(),
             pitrConfig.getUniverse().getUniverseUUID(),

@@ -156,7 +156,8 @@ public class EditDrConfig extends CreateXClusterConfig {
         currentXClusterConfig,
         false /* keepEntry */,
         forceDeleteCurrentXClusterConfig,
-        true /* deletePitrConfig */);
+        false /* deleteSourcePitrConfigs */,
+        true /* deleteTargetPitrConfigs */);
 
     createPromoteSecondaryConfigToMainConfigTask(newXClusterConfig);
 
