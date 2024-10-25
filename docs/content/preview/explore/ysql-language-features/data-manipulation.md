@@ -15,7 +15,7 @@ menu:
 type: docs
 ---
 
-INSERT, UPDATE, and DELETE (often abbreviated as IUD) are fundamental SQL operations used to modify data in a database. This page provides an overview of how to use these commands effectively to manipulate data within a database. You'll learn how to insert new rows into tables, update specific records based on conditions, and delete rows that are no longer needed. Understanding these operations is crucial for maintaining accurate and up-to-date information in your database.
+INSERT, UPDATE, and DELETE (often abbreviated as IUD) are fundamental SQL operations used to modify data in a database. This page provides an overview of how to use these commands effectively to manipulate data in a database. You'll learn how to insert new rows into tables, update specific records based on conditions, and delete rows that are no longer needed. Understanding these operations is crucial for maintaining accurate and up-to-date information in your database.
 
 ## Setup
 
@@ -201,7 +201,7 @@ Now if you select the rows from the table, you will see that the department for 
 
 ## Delete rows
 
-The DELETE statement in SQL is used to remove one or more rows from a table based on a specified condition. This operation is crucial for maintaining and managing the integrity of data within a database.
+The DELETE statement in SQL is used to remove one or more rows from a table based on a specified condition. This operation is crucial for maintaining and managing the integrity of data in a database.
 
 {{<tip>}}
 To remove entire tables or databases you use the DROP statement. The DELETE statement allows for more granular control by targeting specific records.
@@ -255,7 +255,7 @@ CREATE TABLE employees4 (
 ```
 
 {{<note>}}
-You can add an explict name for the constraint. For example:
+You can add an explicit name for the constraint. For example:
 
 `department text CHECK valid_dept (char_length(department) >= 3)`
 {{</note>}}
