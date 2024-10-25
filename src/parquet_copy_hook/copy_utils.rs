@@ -5,7 +5,7 @@ use pgrx::{
     pg_sys::{
         addRangeTableEntryForRelation, defGetInt32, defGetInt64, defGetString, get_namespace_name,
         get_rel_namespace, makeDefElem, makeString, make_parsestate, quote_qualified_identifier,
-        AccessShareLock, AsPgCStr, CopyStmt, CreateTemplateTupleDesc, DefElem, List, NoLock,
+        AccessShareLock, AsPgCStr, CopyStmt, CreateTemplateTupleDesc, DefElem, List, NoLock, Node,
         NodeTag::T_CopyStmt, Oid, ParseNamespaceItem, ParseState, PlannedStmt, QueryEnvironment,
         RangeVar, RangeVarGetRelidExtended, RowExclusiveLock, TupleDescInitEntry,
     },
@@ -18,6 +18,8 @@ use crate::arrow_parquet::{
     parquet_writer::{DEFAULT_ROW_GROUP_SIZE, DEFAULT_ROW_GROUP_SIZE_BYTES},
     uri_utils::parse_uri,
 };
+
+use super::pg_compat::strVal;
 
 pub(crate) fn validate_copy_to_options(p_stmt: &PgBox<PlannedStmt>, uri: &Url) {
     validate_copy_option_names(
@@ -444,13 +446,7 @@ fn copy_stmt_attribute_names(p_stmt: &PgBox<PlannedStmt>) -> Vec<String> {
     unsafe {
         PgList::from_pg(attribute_name_list)
             .iter_ptr()
-            .map(|attribute_name: *mut pgrx::pg_sys::String| {
-                let attribute_name = PgBox::from_pg(attribute_name);
-                CStr::from_ptr(attribute_name.sval)
-                    .to_str()
-                    .expect("cannot get attribute name for copy from statement")
-                    .to_string()
-            })
+            .map(|attribute_name: *mut Node| strVal(attribute_name))
             .collect::<Vec<_>>()
     }
 }

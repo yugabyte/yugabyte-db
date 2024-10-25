@@ -1,5 +1,5 @@
 use parquet_copy_hook::hook::{init_parquet_copy_hook, ENABLE_PARQUET_COPY_HOOK};
-use pg_sys::{AsPgCStr, MarkGUCPrefixReserved};
+use parquet_copy_hook::pg_compat::MarkGUCPrefixReserved;
 use pgrx::{prelude::*, GucContext, GucFlags, GucRegistry};
 
 mod arrow_parquet;
@@ -29,7 +29,7 @@ pub extern "C" fn _PG_init() {
         GucFlags::default(),
     );
 
-    unsafe { MarkGUCPrefixReserved("pg_parquet".as_pg_cstr()) };
+    MarkGUCPrefixReserved("pg_parquet");
 
     init_parquet_copy_hook();
 }

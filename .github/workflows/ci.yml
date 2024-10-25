@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        postgres: [ 16, 17 ]
+        postgres: [ 14, 15, 16, 17 ]
     env:
       PG_MAJOR: ${{ matrix.postgres }}
 
@@ -104,9 +104,9 @@ jobs:
       - name: Run tests
         run: |
           # Set up permissions so that the current user below can create extensions
-          sudo chmod a+rwx $(pg_config --pkglibdir) \
-            $(pg_config --sharedir)/extension \
-            /var/run/postgresql/
+          sudo chmod a+rwx $(pg_config --pkglibdir)          \
+                           $(pg_config --sharedir)/extension \
+                           /var/run/postgresql/
 
           # pgrx tests with runas argument ignores environment variables, so
           # we read env vars from .env file in tests (https://github.com/pgcentralfoundation/pgrx/pull/1674)

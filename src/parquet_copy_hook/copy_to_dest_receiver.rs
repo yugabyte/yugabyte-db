@@ -1,13 +1,13 @@
-use std::ffi::{c_char, CStr};
+use std::ffi::{c_char, CStr, CString};
 
 use pg_sys::{
     get_typlenbyval, slot_getallattrs, toast_raw_datum_size, AllocSetContextCreateExtended,
-    AsPgCStr, BlessTupleDesc, CommandDest, CurrentMemoryContext, Datum, DatumGetCString,
-    DestReceiver, HeapTupleData, List, MemoryContext, MemoryContextAllocZero, MemoryContextDelete,
+    AsPgCStr, BlessTupleDesc, CommandDest, CurrentMemoryContext, Datum, DestReceiver,
+    HeapTupleData, List, MemoryContext, MemoryContextAllocZero, MemoryContextDelete,
     MemoryContextReset, TupleDesc, TupleTableSlot, ALLOCSET_DEFAULT_INITSIZE,
     ALLOCSET_DEFAULT_MAXSIZE, ALLOCSET_DEFAULT_MINSIZE, VARHDRSZ,
 };
-use pgrx::{prelude::*, PgList, PgMemoryContexts, PgTupleDesc};
+use pgrx::{prelude::*, FromDatum, PgList, PgMemoryContexts, PgTupleDesc};
 
 use crate::{
     arrow_parquet::{
@@ -373,15 +373,11 @@ fn tuple_column_sizes(tuple_datums: &[Option<Datum>], tupledesc: &PgTupleDesc) -
                 (unsafe { toast_raw_datum_size(*column_datum) }) as i32 - VARHDRSZ as i32
             } else if typlen == -2 {
                 // cstring
-                let cstring = unsafe { DatumGetCString(*column_datum) };
-
                 let cstring = unsafe {
-                    CStr::from_ptr(cstring)
-                        .to_str()
-                        .expect("cstring is not a valid CString")
+                    CString::from_datum(*column_datum, false)
+                        .expect("cannot get cstring from datum")
                 };
-
-                cstring.len() as i32 + 1
+                cstring.as_bytes().len() as i32 + 1
             } else {
                 // fixed size type
                 typlen as i32

@@ -3,8 +3,8 @@ use std::ffi::{c_char, CStr};
 use pgrx::{
     ereport, is_a,
     pg_sys::{
-        makeRangeVar, pg_analyze_and_rewrite_fixedparams, pg_plan_query, A_Star, ColumnRef,
-        CommandTag, CopyStmt, CreateNewPortal, DestReceiver, GetActiveSnapshot,
+        makeRangeVar, pg_plan_query, A_Star, ColumnRef, CommandTag, CopyStmt, CreateNewPortal,
+        DestReceiver, GetActiveSnapshot, Node,
         NodeTag::{self, T_CopyStmt},
         ParamListInfoData, PlannedStmt, PortalDefineQuery, PortalDrop, PortalRun, PortalStart,
         QueryCompletion, QueryEnvironment, RawStmt, ResTarget, SelectStmt, CURSOR_OPT_PARALLEL_OK,
@@ -14,8 +14,9 @@ use pgrx::{
     AllocatedByRust, PgBox, PgList, PgLogLevel, PgRelation, PgSqlErrorCode,
 };
 
-use crate::parquet_copy_hook::copy_utils::{
-    copy_stmt_has_relation, copy_stmt_lock_mode, copy_stmt_relation_oid,
+use crate::parquet_copy_hook::{
+    copy_utils::{copy_stmt_has_relation, copy_stmt_lock_mode, copy_stmt_relation_oid},
+    pg_compat::pg_analyze_and_rewrite,
 };
 
 // execute_copy_to_with_dest_receiver executes a COPY TO statement with our custom DestReceiver
@@ -28,8 +29,8 @@ use crate::parquet_copy_hook::copy_utils::{
 pub(crate) fn execute_copy_to_with_dest_receiver(
     p_stmt: &PgBox<PlannedStmt>,
     query_string: &CStr,
-    params: PgBox<ParamListInfoData>,
-    query_env: PgBox<QueryEnvironment>,
+    params: &PgBox<ParamListInfoData>,
+    query_env: &PgBox<QueryEnvironment>,
     parquet_dest: PgBox<DestReceiver>,
 ) -> u64 {
     unsafe {
@@ -51,11 +52,9 @@ pub(crate) fn execute_copy_to_with_dest_receiver(
 
         let raw_query = prepare_copy_to_raw_stmt(p_stmt, &copy_stmt, &relation);
 
-        let rewritten_queries = pg_analyze_and_rewrite_fixedparams(
+        let rewritten_queries = pg_analyze_and_rewrite(
             raw_query.as_ptr(),
             query_string.as_ptr(),
-            std::ptr::null_mut(),
-            0,
             query_env.as_ptr(),
         );
 
@@ -156,8 +155,7 @@ fn convert_copy_to_relation_to_select_stmt(
         target_list.push(target.into_pg());
     } else {
         // SELECT a,b,... FROM relation
-        let attribute_name_list =
-            unsafe { PgList::<pgrx::pg_sys::String>::from_pg(copy_stmt.attlist) };
+        let attribute_name_list = unsafe { PgList::<Node>::from_pg(copy_stmt.attlist) };
         for attribute_name in attribute_name_list.iter_ptr() {
             let mut col_ref = unsafe { PgBox::<ColumnRef>::alloc_node(NodeTag::T_ColumnRef) };
 

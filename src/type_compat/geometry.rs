@@ -4,11 +4,11 @@ use once_cell::sync::OnceCell;
 use pgrx::{
     datum::UnboxDatum,
     pg_sys::{
-        get_extension_oid, get_extension_schema, makeString, Anum_pg_type_oid, AsPgCStr, Datum,
-        GetSysCacheOid, InvalidOid, LookupFuncName, Oid, OidFunctionCall1Coll,
-        SysCacheIdentifier::TYPENAMENSP, BYTEAOID,
+        get_extension_oid, makeString, Anum_pg_type_oid, AsPgCStr, Datum, GetSysCacheOid,
+        InvalidOid, LookupFuncName, Oid, OidFunctionCall1Coll, SysCacheIdentifier::TYPENAMENSP,
+        BYTEAOID,
     },
-    FromDatum, IntoDatum, PgList,
+    FromDatum, IntoDatum, PgList, Spi,
 };
 
 // we need to reset the postgis context at each copy start
@@ -56,8 +56,7 @@ impl PostgisContext {
             Some(postgis_ext_oid)
         };
 
-        let postgis_ext_schema_oid =
-            postgis_ext_oid.map(|postgis_ext_oid| unsafe { get_extension_schema(postgis_ext_oid) });
+        let postgis_ext_schema_oid = postgis_ext_oid.map(|_| Self::extension_schema_oid());
 
         let st_asbinary_funcoid = postgis_ext_oid.map(|postgis_ext_oid| {
             Self::st_asbinary_funcoid(
@@ -80,6 +79,12 @@ impl PostgisContext {
             st_asbinary_funcoid,
             st_geomfromwkb_funcoid,
         }
+    }
+
+    fn extension_schema_oid() -> Oid {
+        Spi::get_one("SELECT extnamespace FROM pg_extension WHERE extname = 'postgis'")
+            .expect("failed to get postgis extension schema")
+            .expect("postgis extension schema not found")
     }
 
     fn st_asbinary_funcoid(postgis_ext_oid: Oid, postgis_ext_schema_oid: Oid) -> Oid {

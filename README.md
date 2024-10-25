@@ -235,8 +235,10 @@ There is currently only one GUC parameter to enable/disable the `pg_parquet`:
 > Any type that does not have a corresponding Parquet type will be represented, as a fallback mechanism, as `BYTE_ARRAY` with `STRING` logical type. e.g. `enum`
 
 ## Postgres Support Matrix
-`pg_parquet` is tested with the following PostgreSQL versions:
+`pg_parquet` supports the following PostgreSQL versions:
 | PostgreSQL Major Version | Supported |
 |--------------------------|-----------|
-| 17                       |    ✅     |
+| 14                       |    ✅     |
+| 15                       |    ✅     |
 | 16                       |    ✅     |
+| 17                       |    ✅     |
