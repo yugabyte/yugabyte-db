@@ -139,6 +139,7 @@ To support this, the load balance property accepts the following additional valu
 | prefer-rr | Create connections equally across read replica nodes. If none are available, create them equally across the available primary nodes. |
 
 The default value for the load balance property remains `false`.
+The node selection logic for these values is explained with an example in [this section](#order-of-node-selection-for-new-connections).
 
 ### Topology-aware load balancing
 
@@ -188,44 +189,51 @@ Consider a cluster with three primary nodes across three zones (zoneA, zoneB, an
 
 The following shows how nodes are selected for new connections, depending on the load balance and topology key settings.
 
+Note that the property names use the Java convention, and property names for other smart drivers may be slightly different.
+
+Also, the property `fallback-to-topology-keys-only` is ignored when either the `topology-keys` is empty or when `load-balance` is set to `prefer-primary` or `prefer-rr`.
+
+#### No topology keys
+
+When `topology-keys` is not specified, nodes are selected as follows.
+
+| Load balance setting | Connect to |
+| :--- | :--- |
+| true / any | Any nodes in entire cluster |
+| only-primary | <ol><li>Primary nodes in entire cluster</li><li>Else, fail</li> |
+| only-rr | <ol><li>Read Replica nodes in entire cluster</li><li>Else, fail</li> |
+| prefer-primary | <ol><li>Primary nodes in entire cluster</li><li>Else, read replica nodes in entire cluster</li> |
+| prefer-rr | <ol><li>Read Replica nodes in entire cluster</li><li>Else, primary nodes in entire cluster</li> |
+
+#### Topology keys
+
+When `topology-keys` is specified as `zoneA:1,zoneB:2`, nodes are selected as follows.
+
 {{<tabpane text=true >}}
-{{% tab header="No topology keys" lang="no-keys" %}}
+{{% tab header="No fallback" lang="fallback-false" %}}
 
-When no topology keys are specified, nodes are selected as follows.
+If `fallback-to-topology-keys-only` is false (the default), nodes are selected as follows.
 
 | Load balance setting | Connect to |
 | :--- | :--- |
-| true / any | Any node in all zones |
-| only-primary | Primary nodes in all zones |
-| only-rr | Read replica nodes in all zones |
-| prefer-primary | Primary nodes in all zones, with fallback to read replica nodes |
-| prefer-rr | Read replica nodes in all zones, with fallback to primary nodes |
+| true / any | <ol><li>Any nodes in zoneA</li><li>Else, any nodes in zoneB</li><li>Else, any nodes in entire cluster |
+| only-primary | <ol><li>Primary nodes in zoneA</li><li>Else, primary nodes in zoneB</li><li>Else, primary nodes in entire cluster (all zones)</li><li>Else, fail |
+| only-rr | <ol><li>Read replica nodes in zoneB</li><li>Else, read replica nodes in entire cluster</li><li>Else, fail |
+| prefer-primary | <ol><li>Primary nodes in zoneA</li><li>Else, primary nodes in zoneB</li><li>Else, primary nodes in entire cluster</li><li>Else, read replica nodes in entire cluster |
+| prefer-rr | <ol><li>Read replica nodes in zoneB</li><li>Else, read replica nodes in entire cluster</li><li>Else, primary nodes in entire cluster |
 
 {{% /tab %}}
-{{% tab header="Topology keys" lang="100-wh" %}}
+{{% tab header="Fallback" lang="fallback-true" %}}
 
-When topology keys are specified as `zoneA:1,zoneB:2`, nodes are selected as follows.
-
-| Load balance setting | Connect to |
-| :--- | :--- |
-| true / any | <ol><li>Any nodes in zoneA</li><li>If none, then any nodes in zoneB</li><li>If none, then any nodes in entire cluster (all zones) |
-| only-primary | <ol><li>Primary nodes in zoneA</li><li>If none, then primary nodes in zoneB</li><li>If none, then primary nodes in entire cluster (all zones)</li><li>If none, fail |
-| only-rr | <ol><li>Read replica nodes in zoneB</li><li>If none, read replica nodes in entire cluster (all zones)</li><li>If none, fail |
-| prefer-primary | <ol><li>Primary nodes in zoneA</li><li>If none, primary nodes in zoneB</li><li>If none, then primary nodes in entire cluster</li><li>If none, then read replica nodes in entire cluster |
-| prefer-rr | <ol><li>Read replica nodes in zoneB</li><li>If none, read replica nodes in entire cluster</li><li>If none, then primary nodes in entire cluster |
-
-{{% /tab %}}
-{{% tab header="Fall back to topology keys" lang="100-wh" %}}
-
-When topology keys are specified as `zoneA:1,zoneB:2`, and fallback to topology keys only is true, nodes are selected as follows.
+If `fallback-to-topology-keys-only` is true, nodes are selected as follows.
 
 | Load balance setting | Connect to |
 | :--- | :--- |
-| true / any | <ol><li>Any nodes in zoneA</li><li>If none, then any nodes in zoneB</li><li>If none, then fail |
-| only-primary | <ol><li>Primary nodes in zoneA</li><li>If none, then primary nodes in zoneB</li><li>If none, fail |
-| only-rr | <ol><li>Read replica nodes in zoneB</li><li>If none, fail |
-| prefer-primary | <ol><li>Primary nodes in zoneA</li><li>If none, primary nodes in zoneB</li><li>If none, then primary nodes in entire cluster</li><li>If none, then read replica nodes in entire cluster |
-| prefer-rr | <ol><li>Read replica nodes in zoneB</li><li>If none, read replica nodes in entire cluster</li><li>If none, then primary nodes in entire cluster |
+| true / any | <ol><li>Any nodes in zoneA</li><li>Else, any nodes in zoneB</li><li>Else, fail |
+| only-primary | <ol><li>Primary nodes in zoneA</li><li>Else, primary nodes in zoneB</li><li>Else, fail |
+| only-rr | <ol><li>Read replica nodes in zoneB</li><li>Else, fail |
+| prefer-primary | <ol><li>Primary nodes in zoneA</li><li>Else, primary nodes in zoneB</li><li>Else, primary nodes in entire cluster</li><li>Else, read replica nodes in entire cluster |
+| prefer-rr | <ol><li>Read replica nodes in zoneB</li><li>Else, read replica nodes in entire cluster</li><li>Else, primary nodes in entire cluster |
 
 {{% /tab %}}
 {{</tabpane >}}
