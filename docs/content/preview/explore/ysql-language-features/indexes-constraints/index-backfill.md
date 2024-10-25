@@ -76,7 +76,7 @@ The examples run on any YugabyteDB universe.
 
     Initially, you will see an empty output like this.
 
-    ```output
+    ```caddyfile{.nocopy}
        tblname | indexname | command | phase | tuples_total | tuples_done
       ---------+-----------+---------+-------+--------------+-------------
     ```
@@ -89,7 +89,7 @@ The examples run on any YugabyteDB universe.
 
 1. On the other terminal, you will see the progress on the index creation first with the first phase, `initializing` as:
 
-    ```tablegen
+    ```caddyfile{.nocopy}
      tblname | indexname |          command          |    phase     | tuples_total | tuples_done
     ---------+-----------+---------------------------+--------------+--------------+-------------
      test    | idx_id    | CREATE INDEX CONCURRENTLY | initializing |            0 |           0
@@ -97,7 +97,7 @@ The examples run on any YugabyteDB universe.
 
     And then you will see the index backfilling happen as:
 
-    ```tablegen
+    ```caddyfile{.nocopy}
       tblname | indexname |          command          |    phase    | tuples_total | tuples_done
      ---------+-----------+---------------------------+-------------+--------------+-------------
       test    | idx_id    | CREATE INDEX CONCURRENTLY | backfilling |            0 |           0
@@ -105,7 +105,7 @@ The examples run on any YugabyteDB universe.
 
     You will see the `tuples_done` count increasing as the backfilling progresses. When the backfilling is done, you will see the `tuples_done` count to be updated correctly.
 
-    ```tablegen
+    ```caddyfile{.nocopy}
       tblname | indexname |          command          |    phase    | tuples_total | tuples_done
      ---------+-----------+---------------------------+-------------+--------------+-------------
       test    | idx_id    | CREATE INDEX CONCURRENTLY | backfilling |            0 |     1000000
@@ -134,7 +134,7 @@ SELECT
 
 This should give you an output similar to the following when an index is being backfilled.
 
-```tablegen
+```caddyfile{.nocopy}
  indexname | tablet  |     started     |  mem  |  rss
 -----------+---------+-----------------+-------+-------
  idx_id    | x'aaaa' | 00:00:04.895382 | 27 MB | 25 MB

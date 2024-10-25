@@ -12,7 +12,7 @@ rightNav:
 type: docs
 ---
 
-Creating databases, tables, and schemas involves a structured process that enables efficient data management. The following detailed guide can help you understand and implement each step.
+For efficient management od data in a databse, you need to follow a structured process that involves creating databases, tables, and schemas. The following detailed guide can help you understand and implement each step.
 
 {{<tip>}}
 For the list of supported and unsupported schema relations operations, see [Schema operations](../sql-feature-support#schema-operations).
@@ -230,10 +230,6 @@ To create the schema with name `myschema`, run the following command:
 testdb=# CREATE SCHEMA myschema;
 ```
 
-```output
-CREATE SCHEMA
-```
-
 ### List schemas
 
 List the schemas as follows:
@@ -242,8 +238,7 @@ List the schemas as follows:
 yugabyte=# \dn
 ```
 
-```output
-   List of schemas
+```caddyfile{.nocopy}
    Name   |  Owner
 ----------+----------
  myschema | yugabyte
@@ -259,7 +254,7 @@ To see which schema is currently the default, run the following:
 yugabyte=# SHOW search_path;
 ```
 
-```output
+```caddyfile{.nocopy}
    search_path
 -----------------
  "$user", public
@@ -295,25 +290,23 @@ SET search_path=myschema;
 yugabyte=# SHOW search_path;
 ```
 
-```output
+```caddyfile{.nocopy}
  search_path
 -------------
  myschema
-(1 row)
 ```
 
 List the table you created.
 
-```sql
+```sh
 yugabyte=# \d
 ```
 
-```output
+```caddyfile{.nocopy}
            List of relations
   Schema  | Name  | Type  |  Owner
 ----------+---------+-------+----------
  myschema | users | table | yugabyte
-(1 row)
 ```
 
 ### Drop schemas
@@ -365,7 +358,7 @@ To check all the users provisioned, run the following meta-command:
 yugabyte=# \du
 ```
 
-```output
+```caddyfile{.nocopy}
                                      List of roles
   Role name   |                         Attributes                         | Member of
 --------------+------------------------------------------------------------+-----------
