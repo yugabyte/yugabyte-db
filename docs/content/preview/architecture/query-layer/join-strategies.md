@@ -140,7 +140,7 @@ The query plan would be similar to the following:
 
 In the case of nested loop joins, the inner table is accessed multiple times, once for each outer table row. This leads to multiple RPC requests across the different nodes in the cluster, making this join strategy very slow as the outer table gets larger.
 
-To reduce the number of requests sent across the nodes during the Nested loop join, YugabyteDB adds an optimization to batch multiple keys of the outer table into one RPC request. This batch size can be controlled using the YSQL configuration parameter [yb_bnl_batch_size](../../../reference/configuration/yb-tserver/#yb-bnl-batch-size), which defaults to `1024` (the suggested value for this variable).
+To reduce the number of requests sent across the nodes during the nested loop join, YugabyteDB adds an optimization to batch multiple keys of the outer table into one RPC request. This batch size can be controlled using the YSQL configuration parameter [yb_bnl_batch_size](../../../reference/configuration/yb-tserver/#yb-bnl-batch-size), which defaults to `1024` (the suggested value for this variable).
 
 If `yb_bnl_batch_size` is greater than `1`, the optimizer will try to adopt the batching optimization when other join strategies are not fit for the current query.
 

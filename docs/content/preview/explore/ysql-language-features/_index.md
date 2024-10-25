@@ -44,7 +44,7 @@ To learn more, see [Data types](data-types/)
 YugabyteDB supports a broad range of Data Definition Language (DDL) statements, enabling you to create, modify, and manage database objects like tables, indexes, schemas, and more. With a foundation based on PostgreSQL's syntax, YugabyteDB provides compatibility with many standard SQL DDL commands, including CREATE, ALTER, and DROP. Understanding these DDL features is essential for database administrators and developers working with YugabyteDB's schema management and object creation processes
 
 {{<lead link="../../api/ysql/the-sql-language/statements/#data-definition-language-ddl">}}
-To learn more, see [Data types](../../api/ysql/the-sql-language/statements/#data-definition-language-ddl)
+To learn more, see [Data definition language](../../api/ysql/the-sql-language/statements/#data-definition-language-ddl)
 {{</lead>}}
 
 ## Expressions and operators
@@ -52,7 +52,7 @@ To learn more, see [Data types](../../api/ysql/the-sql-language/statements/#data
 Leveraging its PostgreSQL compatibility, YugabyteDB supports a wide variety of operators—arithmetic, comparison, logical, and string operators—along with complex expressions that allow for powerful data manipulation and retrieval. Understanding these elements is crucial for constructing efficient queries and leveraging the full power of YugabyteDB's SQL interface.
 
 {{<lead link="expressions-operators/">}}
-To learn more, see [Read data](expressions-operators/)
+To learn more, see [Expressions and operators](expressions-operators/)
 {{</lead>}}
 
 ## Write data
@@ -65,7 +65,7 @@ To learn more, see [Write data](data-manipulation/)
 
 ## Reading data
 
-YugabyteDB provides robust support for **Data Manipulation Language (DML)** statements, which are used to query data in a database. These include standard SQL commands like SELECT, `FROM`, `GROUP BY`, `HAVING`. YugabyteDB's DML capabilities align closely with PostgreSQL, allowing for complex queries in a distributed environment. Understanding these DML features is crucial for developers and database users to effectively interact with and manipulate data in YugabyteDB's distributed environment.
+YugabyteDB provides robust support for **Data Manipulation Language (DML)** statements, which are used to query data in a database. These include standard SQL commands like SELECT, FROM, GROUP BY, HAVING. YugabyteDB's DML capabilities align closely with PostgreSQL, allowing for complex queries in a distributed environment. Understanding these DML features is crucial for developers and database users to effectively interact with and manipulate data in YugabyteDB's distributed environment.
 
 {{<lead link="queries/">}}
 To learn more, see [Read data](queries/)
@@ -84,23 +84,23 @@ To learn more, see [Indexes](indexes-constraints/)
 YugabyteDB supports constraints that enforce rules on the data to ensure accuracy and consistency, such as preventing duplicate values or maintaining relationships between tables. Constraints ensure data validity and integrity, preventing invalid data from being inserted or updated.
 
 {{<lead link="data-manipulation/#constraints">}}
-To learn about the various types of constrainsta and how constraints can be deferred, see [Constraints](data-manipulation/#constraints)
+To learn more, see [Constraints](data-manipulation/#constraints)
 {{</lead>}}
 
 ## Extensions
 
-YugabyteDB offers robust support for PostgreSQL extensions, enabling developers to leverage a wide array of powerful tools and functionalities that enhance database capabilities. By integrating popular PostgreSQL extensions, YugabyteDB ensures compatibility and extends its feature set, allowing users to utilize familiar tools for tasks such as full-text search, data encryption, and advanced indexing.
+YugabyteDB offers robust support for PostgreSQL extensions, enabling developers to leverage a wide array of powerful tools and functionalities that enhance database capabilities. By integrating popular PostgreSQL extensions, YugabyteDB ensures compatibility and extends its feature set, allowing you to use familiar tools for tasks such as full-text search, data encryption, and advanced indexing.
 
 {{<lead link="pg-extensions/">}}
-To learn more about which extensions are supported and how to build extensions, see [Extensions](pg-extensions/)
+To learn more, see [Extensions](pg-extensions/)
 {{</lead>}}
 
 ## Advanced SQL features
 
-Apart from the standard SQL features, YugabyteDb also supports advanced features like Cursors, Views, Savepoints, Triggers, Stored procedures and many more.
+Apart from the standard SQL features, YugabyteDb also supports advanced features like cursors, views, savepoints, triggers, stored procedures, and more.
 
 {{<lead link="advanced-features/">}}
-To learn more about these complex features, see [Advanced features](advanced-features/)
+To learn more, see [Advanced features](advanced-features/)
 {{</lead>}}
 
 ## SQL compatibility
@@ -108,13 +108,13 @@ To learn more about these complex features, see [Advanced features](advanced-fea
 YugabyteDB is a distributed SQL database that implements many standard SQL features while introducing some unique capabilities due to its distributed nature. Given the daunting nature of supporting SQL in a distributed environment, not all features are supported.
 
 {{<lead link="sql-feature-support/">}}
-To understand which SQL features are supported fully and which ones are work in progress, see [SQL feature support](sql-feature-support/)
+To learn more, see [SQL feature support](sql-feature-support/)
 {{</lead>}}
 
 ## ProstgreSQL compatibility
 
-YugabyteDB aims to be a fully PostgreSQL-compatible distributed database that supports the majority of PostgreSQL syntax. This means that existing applications built on PostgreSQL can often be migrated to YugabyteDB without changing application code. Many optimizations have done in YugabyteDB to run PostgreSQL applications run with a predicatable performance.
+YugabyteDB aims to be a fully PostgreSQL-compatible distributed database that supports the majority of PostgreSQL syntax. This means that existing applications built on PostgreSQL can often be migrated to YugabyteDB without changing application code. YugabyteDB also includes many optimizations to enable PostgreSQL applications to run with predicatable performance.
 
 {{<lead link="postgresql-compatibility/">}}
-To understand how to enable PostgreSQL sepecific features and see whch features are currently being worked on, see [PostgreSQL compatibility](postgresql-compatibility/)
+To learn more, see [PostgreSQL compatibility](postgresql-compatibility/)
 {{</lead>}}

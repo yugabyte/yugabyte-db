@@ -15,11 +15,11 @@ menu:
 type: docs
 ---
 
-Insert, Update, and Delete (often abbreviated as IUD) are fundamental SQL operations used to modify data in a database. This page provides an overview of how to use these commands effectively to manipulate data within a database. You'll learn how to insert new rows into tables, update specific records based on conditions, and delete rows that are no longer needed. Understanding these operations is crucial for maintaining accurate and up-to-date information in your database.
+INSERT, UPDATE, and DELETE (often abbreviated as IUD) are fundamental SQL operations used to modify data in a database. This page provides an overview of how to use these commands effectively to manipulate data within a database. You'll learn how to insert new rows into tables, update specific records based on conditions, and delete rows that are no longer needed. Understanding these operations is crucial for maintaining accurate and up-to-date information in your database.
 
 ## Setup
 
-The examples will run on any YugabyteDB universe. To create a universe follow the instructions below.
+The examples run on any YugabyteDB universe.
 
 <!-- begin: nav tabs -->
 {{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
@@ -36,7 +36,7 @@ The examples will run on any YugabyteDB universe. To create a universe follow th
 {{</nav/panels>}}
 <!-- end: nav tabs -->
 
-For illustration, let us consider the following employee schema,
+For illustration, consider the following employee schema:
 
 ```sql
 CREATE TABLE employees (
@@ -48,7 +48,7 @@ CREATE TABLE employees (
 
 ## Simple insert
 
-The INSERT statement in SQL is used to add new rows of data into a table. It specifies the table to insert data into, followed by the columns and the corresponding values. A simple INSERT statement is the most basic way to populate a table with new information. To add a row on to the employees table, you can run,
+The INSERT statement in SQL is used to add new rows of data into a table. It specifies the table to insert data into, followed by the columns and the corresponding values. A simple INSERT statement is the most basic way to populate a table with new information. To add a row on to the employees table, run the following:
 
 ```sql
 INSERT INTO employees (id, name, department) VALUES (1, 'Johnny Depp', 'Marketing');
@@ -64,7 +64,7 @@ INSERT INTO employees VALUES (1, 'Johnny Depp', 'Marketing');
 
 ## Multiple rows
 
-You can insert multiple rows in a single `INSERT` statement by specifying multiple values, as shown in the following example:
+You can insert multiple rows in a single INSERT statement by specifying multiple values, as shown in the following example:
 
 ```sql
 INSERT INTO employees VALUES
@@ -90,7 +90,7 @@ INSERT INTO employees (id, name, department)
 
 ## Current timestamp
 
-You can use current timestamps to keep track of when data in a table was added or updated. This can be accomplished column by setting a default value of `NOW()` , as shown below.
+You can use current timestamps to keep track of when data in a table was added or updated. This can be accomplished column by setting a default value of `NOW()`, as follows:
 
 ```sql
 CREATE TABLE employees3 (
@@ -101,17 +101,17 @@ CREATE TABLE employees3 (
 );
 ```
 
-This will ensure that the latest timestamp is automatically added to the row when it is first inserted.
+This ensures that the latest timestamp is automatically added to the row when it is first inserted.
 
 {{<tip>}}
-To update the timestamp on row modification, you would need to use [Triggers](../advanced-features/triggers/#create-triggers)
+To update the timestamp on row modification, you would use [Triggers](../advanced-features/triggers/#create-triggers).
 {{</tip>}}
 
 ## Auto-Increment
 
-Using [Sequences](../../../develop/data-modeling/primary-keys-ysql/#sequence) , you can generate unique identifiers by auto-incrementing the numeric identifier of each preceding row. In most cases, you would use sequences to auto-generate primary keys.
+Using [Sequences](../../../develop/data-modeling/primary-keys-ysql/#sequence), you can generate unique identifiers by auto-incrementing the numeric identifier of each preceding row. In most cases, you would use sequences to auto-generate primary keys.
 
-Although you can assign a default value to a column [via a sequence](../../../develop/data-modeling/primary-keys-ysql/#sequence) typically, you add sequences using the [serial](../../../develop/data-modeling/primary-keys-ysql/#serial) pseudotype that creates a new sequence object and sets the default value for the column to the next value produced by the sequence like:
+Although you can assign a default value to a column via a sequence, typically you add sequences using the [serial](../../../develop/data-modeling/primary-keys-ysql/#serial) pseudotype that creates a new sequence object and sets the default value for the column to the next value produced by the sequence. For example:
 
 ```sql
 CREATE TABLE employees2 (
@@ -137,25 +137,25 @@ INSERT INTO employees2 (id, name, department) VALUES (DEFAULT, 'Johnny Depp', 'S
 
 The UPDATE statement is used to modify existing data in a table. With this command, you can change the values of one or more columns for rows that meet specified conditions, precisely controlling which records need to be altered. Typically UPDATE is used in conjunction with the SET statement.
 
-To update the name of a specific employee, you can run specify a WHERE clause like
+To update the name of a specific employee, you can specify a WHERE clause, like so:
 
 ```sql
 UPDATE employees SET name = 'Dwayne Jhonson' WHERE id = 2;
 ```
 
-If you decide to rename your `Marketing` department to `Brand Management`, you can update all the `Marketing` data as:
+If you decide to rename your `Marketing` department to `Brand Management`, you can update all the `Marketing` data as follows:
 
 ```sql
 UPDATE employees SET department = 'Brand Management' WHERE department = 'Marketing';
 ```
 
-To update the department of all employees to `Sales`, you can run
+To update the department of all employees to `Sales`, you can run the following:
 
 ```sql
 UPDATE employees SET department = 'Sales';
 ```
 
-You can also perform mathematical operations on columns where permitted. For example, you can change the ids for all employees by incrementing by 1 like:
+You can also perform mathematical operations on columns where permitted. For example, you can change the IDs for all employees by incrementing by 1:
 
 ```sql
 UPDATE employees SET id = id + 1;
@@ -163,15 +163,15 @@ UPDATE employees SET id = id + 1;
 
 ## Upsert
 
-An `UPSERT` is a combination of "UPDATE" and "INSERT," allowing you to either insert a new row into a table or update an existing row if it already exists. This operation is particularly useful for avoiding duplication while ensuring data is either added or updated as needed. This functionality is provided by the `INSERT ... ON CONFLICT DO UPDATE` clause.
+An UPSERT is a combination of UPDATE and INSERT, allowing you to either insert a new row into a table or update an existing row if it already exists. This operation is particularly useful for avoiding duplication while ensuring data is either added or updated as needed. This functionality is provided by the `INSERT ... ON CONFLICT DO UPDATE` clause.
 
-For example, if we try to insert record `(1, 'Johnny Depp', 'Sales')` you will get an error like:
+For example, if you try to insert the record `(1, 'Johnny Depp', 'Sales')`, you get an error:
 
 ```sql{.nocopy}
 ERROR:  23505: duplicate key value violates unique constraint "employees_pkey"
 ```
 
-This is because, the record `(1, 'Johnny Depp', 'Marketing')` already exists. Now instead of an error to be thrown, we can either ask the server to ignore the insert with `DO NOTHING` like:
+This is because the record `(1, 'Johnny Depp', 'Marketing')` already exists. Instead of having an error thrown, you can ask the server to ignore the insert using DO NOTHING:
 
 ```sql
 INSERT INTO employees (id, name, department)
@@ -180,7 +180,7 @@ INSERT INTO employees (id, name, department)
     DO NOTHING;
 ```
 
-which would return `INSERT 0 0` to signify no rows were inserted, or we can choose to update the any other column other than the conflicted column (say, department) like:
+This would return `INSERT 0 0` to signify no rows were inserted. Alternatively, you can choose to update any other column other than the conflicted column (say, department) like so:
 
 ```sql
 INSERT INTO employees (id, name, department)
@@ -204,16 +204,16 @@ Now if you select the rows from the table, you will see that the department for 
 The DELETE statement in SQL is used to remove one or more rows from a table based on a specified condition. This operation is crucial for maintaining and managing the integrity of data within a database.
 
 {{<tip>}}
-To remove entire tables or databases you would need to use the DROP statement. The DELETE statement allows for more granular control by targeting specific records.
+To remove entire tables or databases you use the DROP statement. The DELETE statement allows for more granular control by targeting specific records.
 {{</tip>}}
 
-For example to remove a specific a employee, you can run:
+For example, to remove a specific a employee, you can run:
 
 ```sql
 DELETE FROM employees WHERE id = 1;
 ```
 
-And to remove all employees in the `Sales` department, you can run
+To remove all employees in the `Sales` department, you can run:
 
 ```sql
 DELETE FROM employees WHERE department = 'Sales';
@@ -221,9 +221,9 @@ DELETE FROM employees WHERE department = 'Sales';
 
 ## Retrieve affected rows
 
-To return specific column values directly after data modification via INSERT, UPDATE, or DELETE operations, without the need for a separate SELECT query you can use the RETURNING statement.
+To return specific column values directly after data modification via INSERT, UPDATE, or DELETE operations, without the need for a separate SELECT query, you can use the RETURNING statement.
 
-For example, say you want tp update the id of an employee and in the same statement, you want to get back the name and the new id. For this you can do:
+For example, say you want to update the ID of an employee, and in the same statement you want to get back the name and the new ID. Do the following:
 
 ```sql
 UPDATE employees SET id = id + 10
@@ -231,7 +231,7 @@ UPDATE employees SET id = id + 10
   RETURNING name, id;
 ```
 
-In cases of row deletion, you can retrieve the contents of the deleted row, as shown the following example:
+In cases of row deletion, you can retrieve the contents of the deleted row, as follows:
 
 ```sql
 DELETE FROM employees WHERE department = 'Sales' RETURNING *;
@@ -243,7 +243,7 @@ Constraints enforce rules on the data to ensure accuracy and consistency, such a
 
 ### CHECK Constraint
 
-The CHECK constraint in SQL is used to enforce specific rules on the values that can be entered into a column. It ensures that all data in a table meets predefined conditions, improving data integrity by preventing invalid entries. For example, in the employees table you add a validation rule to check for sanity of the department name like:
+The CHECK constraint in SQL is used to enforce specific rules on the values that can be entered into a column. It ensures that all data in a table meets predefined conditions, improving data integrity by preventing invalid entries. For example, in the employees table you add a validation rule to check for sanity of the department name like so:
 
 ```sql
 DROP TABLE IF EXISTS employees4;
@@ -255,31 +255,33 @@ CREATE TABLE employees4 (
 ```
 
 {{<note>}}
-You can add a explict name for the constraint like `department text CHECK valid_dept (char_length(department) >= 3)`
+You can add an explict name for the constraint. For example:
+
+`department text CHECK valid_dept (char_length(department) >= 3)`
 {{</note>}}
 
-Now when you insert into the table an invalid department name like:
+Now when you insert an invalid department name into the table, like this:
 
 ```sql
 INSERT INTO employees4 VALUES(2, 'John', 'X');
 ```
 
-an error would be thrown like:
+An error is thrown:
 
 ```sql{.nocopy}
 ERROR:  23514: new row for relation "employees4" violates check constraint "employees4_department_check"
 ```
 
-You can add a check constraint after the table is created with ALTER TABLE.
+You can add a check constraint after the table is created using ALTER TABLE.
 
 ```sql
 ALTER TABLE employees4
   ADD CONSTRAINT id_check CHECK (id > 0);
 ```
 
-### UNIQUE Constraint
+### UNIQUE constraint
 
-The UNIQUE constraint ensures that all values in a specified column (or a group of columns) are distinct across the table, preventing duplicate entries. For example, you can enforce uniqueness of phone number in your employee table like:
+The UNIQUE constraint ensures that all values in a specified column (or a group of columns) are distinct across the table, preventing duplicate entries. For example, you can enforce uniqueness of phone number in your employee table as follows:
 
 ```sql
 CREATE TABLE employees5 (
@@ -290,15 +292,15 @@ CREATE TABLE employees5 (
 );
 ```
 
-When a record with a phone number already existing in the table is inserted, an error will be thrown as below:
+When a record with a phone number that already exists is inserted into the table, an error is thrown:
 
 ```sql{.nocopy}
 ERROR:  23505: duplicate key value violates unique constraint "employees5_phone_key"
 ```
 
-### NOT NULL Constraint
+### NOT NULL constraint
 
-The NOT NULL constraint ensures that a column cannot store NULL values, meaning that every row in the table must have a value for this column. For example, you can add a constraint to ensure that the employee name is always valid like:
+The NOT NULL constraint ensures that a column cannot store NULL values, meaning that every row in the table must have a value for this column. For example, you can add a constraint to ensure that the employee name is always valid as follows:
 
 ```sql
 CREATE TABLE employees6 (
@@ -308,7 +310,7 @@ CREATE TABLE employees6 (
 );
 ```
 
-When a NULL value for name is inserted, you will get an error as:
+When a NULL value for name is inserted, you get an error:
 
 ```sql{.nocopy}
 ERROR:  23502: null value in column "name" violates not-null constraint
@@ -316,7 +318,7 @@ ERROR:  23502: null value in column "name" violates not-null constraint
 
 ### Foreign key constraint
 
-Foreign Key constraints are used to enforce referential integrity between two tables in a relational database. They create a link between data in two tables, ensuring that relationships between tables remain consistent. Foreign keys help prevent orphaned records by ensuring that references to related data remain valid. For example, consider the scenario where you have a `departments` table that has `dept_id` and other info and an employee table that links the employee with `dept_id`.
+Foreign Key constraints are used to enforce referential integrity between two tables in a relational database. They create a link between data in two tables, ensuring that relationships between tables remain consistent. Foreign keys help prevent orphaned records by ensuring that references to related data remain valid. For example, consider the scenario where you have a `departments` table that has `dept_id` and other info, and an employee table that links the employee using `dept_id`.
 
 ```sql
 CREATE TABLE departments (
@@ -333,7 +335,7 @@ CREATE TABLE employees (
 );
 ```
 
-As you have a foreign key constraint set up between these 2 tables, you will not be able to insert a row into the `employees` tables with an invalid `dept_id`. It will throw a `violates foreign key constraint` error like:
+As you have a foreign key constraint set up between these tables, you won't be able to insert a row into the `employees` tables with an invalid `dept_id`. It will throw a `violates foreign key constraint` error:
 
 ```sql
 INSERT INTO employees VALUES(1, 'Brian', 2000);
@@ -362,7 +364,7 @@ BEGIN;
 COMMIT;
 ```
 
-But when you add the `DEFERRABLE INITIALLY DEFERRED` clause, the above transaction will succeed!
+But when you add the `DEFERRABLE INITIALLY DEFERRED` clause, the preceding transaction succeeds.
 
 ```sql
     dept_id INT,

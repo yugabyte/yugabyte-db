@@ -12,7 +12,7 @@ menu:
 type: indexpage
 ---
 
-This page describes some advanced SQL features supported by YugabyteDB.
+This section describes some advanced SQL features supported by YugabyteDB.
 
 ## Cursors
 
@@ -22,7 +22,7 @@ Cursors are database objects used to retrieve, manipulate, and navigate through 
 To understand how to create and operate on cursors, see [Cursors](cursor/)
 {{</lead>}}
 
-## Table Partitioning
+## Table partitioning
 
 Table partitioning is a database optimization technique that divides a large table into smaller, more manageable pieces called partitions. Each partition can be managed and accessed independently, which can significantly improve query performance and simplify maintenance tasks. Partitioning can be based on various criteria, such as ranges of values, lists of values, or hash functions.
 
@@ -56,7 +56,7 @@ To understand how to use collations correctly for your data, see [Collations](co
 
 ## Foreign data wrappers
 
-Foreign Data Wrappers (FDWs) are a feature that allows a YugabyteDB to access and interact with external data sources as if they were local tables. This capability enables seamless integration of diverse data sources, such as other databases, files, or web services, into your SQL queries. FDWs provide a standardized way to query and manipulate external data, making it easier to combine and analyze information from multiple systems.
+Foreign data wrappers (FDWs) allow YugabyteDB to access and interact with external data sources as if they were local tables. This capability enables seamless integration of diverse data sources, such as other databases, files, or web services, into your SQL queries. FDWs provide a standardized way to query and manipulate external data, making it easier to combine and analyze information from multiple systems.
 
 {{<lead link="foreign-data-wrappers/">}}
 To understand how to extend the reach of your database, enhance data integration, and streamline workflows, see [Foreign data wrappers](foreign-data-wrappers/)

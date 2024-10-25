@@ -117,7 +117,7 @@ In addition:
 - YSQL supports wide SQL functionality, such as the following:
   - [All data types](../../explore/ysql-language-features/data-types/)
   - [Built-in functions and expressions](../../explore/ysql-language-features/expressions-operators/)
-  - [Joins](../../explore/ysql-language-features/queries#join-columns) - inner join, outer join, full outer join, cross join, natural join
+  - [Joins](../../explore/ysql-language-features/queries/#join-columns) - inner join, outer join, full outer join, cross join, natural join
   - [Constraints](../../explore/ysql-language-features/indexes-constraints/) - primary key, foreign key, unique, not null, check
   - [Secondary indexes](../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/) (including multi-column and covering columns)
   - [Distributed transactions](../../explore/transactions/distributed-transactions-ysql/) (Serializable, Snapshot, and Read Committed Isolation)

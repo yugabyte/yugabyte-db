@@ -16,7 +16,7 @@ This section describes how to use stored procedures to perform transactions.
 
 ## Create a stored procedure
 
-Stored procedures, in large part, are just functions that support transactions. To create a stored procedure in YSQL, use the [`CREATE PROCEDURE`](../../../../api/ysql/the-sql-language/statements/ddl_create_procedure/) statement, which has the following syntax:
+Stored procedures, in large part, are just functions that support transactions. To create a stored procedure in YSQL, use the [CREATE PROCEDURE](../../../../api/ysql/the-sql-language/statements/ddl_create_procedure/) statement, which has the following syntax:
 
 ```sql
 CREATE [OR REPLACE] PROCEDURE procedure_name(parameter_list)
@@ -32,15 +32,15 @@ $$;
 
 {{< note title="Using return" >}}
 
-Stored procedures don't return any values, other than errors. In a function, you use `return <expression>` to return a value. In a stored procedure, `return` does not support an expression, and ends the procedure immediately.
+Stored procedures don't return any values, other than errors. In a function, you use `RETURN <expression>` to return a value. In a stored procedure, RETURN does not support an expression, and ends the procedure immediately.
 
-To return a value from a stored procedure, use an [`INOUT`](../../../../api/ysql/keywords) parameter.
+To return a value from a stored procedure, use an [INOUT](../../../../api/ysql/keywords) parameter.
 
 {{< /note >}}
 
 ## Invoke a stored procedure
 
-To invoke a stored procedure, use the [`CALL`](../../../../api/ysql/the-sql-language/statements/cmd_call/) statement, which has the following syntax:
+To invoke a stored procedure, use the [CALL](../../../../api/ysql/the-sql-language/statements/cmd_call/) statement, which has the following syntax:
 
 ```sql
 CALL stored_procedure_name(argument_list)
@@ -54,7 +54,7 @@ yugabyte=# call move_money(1,2,1000);
 
 ## Delete a stored procedure
 
-To remove a stored procedure, use the [`DROP PROCEDURE`](../../../../api/ysql/the-sql-language/statements/ddl_drop_procedure/) statement, which has the following syntax:
+To remove a stored procedure, use the [DROP PROCEDURE](../../../../api/ysql/the-sql-language/statements/ddl_drop_procedure/) statement, which has the following syntax:
 
 ```sql
 DROP PROCEDURE [IF EXISTS] stored_procedure_name(argument_list)
