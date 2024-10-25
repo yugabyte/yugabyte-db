@@ -100,49 +100,6 @@ implementation 'com.zaxxer:HikariCP:4.0.3'
 
 ### Step 2: Set up the database connection
 
-<table>
-    <tr>
-        <td rowspan="3">load-balance ↓</td>
-        <td colspan="3">Order of node selection for new connections</td>
-    </tr>
-    <tr>
-        <td>topology-keys is not specified</td>
-        <td colspan="2">topology-keys = "zoneA:1,zoneB:2"</td>
-    </tr>
-    <tr>
-        <td>fallback-to-topology-keys-only is ignored</td>
-        <td>fallback-to-topology-keys-only = false (default)</td>
-        <td>fallback-to-topology-keys-only = true</td>
-    </tr>
-    <tr>
-        <td>true or any</td>
-        <td>1. Any nodes in entire cluster (all zones)</td>
-        <td>1. Any nodes in zoneA <br/>2. If none, then any nodes in zoneB<br/>3. If none, then any nodes in entire cluster (all zones)</td>
-        <td>1. Any nodes in zoneA<br/>2. If none, then any nodes in zoneB<br/>3. If none, fail</td>
-    </tr>
-    <tr>
-        <td>only-primary</td>
-        <td>1. Primary nodes in entire cluster (all zones)<br/>2. If none, fail</td>
-        <td>1. Primary nodes in zoneA<br/>2. If none, then primary nodes in zoneB <br/>3. If none, then primary nodes in entire cluster (all zones)<br/>4. If none, fail</td>
-        <td>1. Primary nodes in zoneA<br/>2. If none, then primary nodes in zoneB<br/>3. If none, fail</td>
-    </tr>
-    <tr>
-        <td>only-rr</td>
-        <td>1. Read Replica nodes in entire cluster (all zones)<br/>2. If none, fail</td>
-        <td>1. Read Replica nodes in zoneB<br/>2. If none, Read Replica nodes in entire cluster (all zones)<br/>3. If none, fail</td>
-        <td>1. Read Replica nodes in zoneB<br/>2. If none, fail</td>
-    </tr>
-    <tr>
-        <td>prefer-primary</td>
-        <td>1. Primary nodes in entire cluster<br/>2. If none, then Read Replica nodes in entire cluster</td>
-        <td colspan="2">1. Primary nodes in zoneA<br/>2. If none, primary nodes in zoneB<br/>3. If none, then primary nodes in entire cluster<br/>4. If none, then Read Replica nodes in entire cluster</td>
-    </tr>
-    <tr>
-        <td>prefer-rr</td>
-        <td>1. Read Replica nodes in entire cluster<br/>2. If none, then primary nodes in entire cluster</td>
-        <td colspan="2">1. Read Replica nodes in zoneB<br/>2. If none, Read Replica nodes in entire cluster<br/>3. If none, then primary nodes in entire cluster</td>
-    </tr>
-</table>
 After setting up the dependencies, implement the Java client application using the YugabyteDB JDBC driver to connect to your YugabyteDB cluster and run queries on the sample data.
 
 Set up the driver properties to configure the credentials and SSL certificates for connecting to your cluster. Java applications can connect to and query the YugabyteDB database using the `java.sql.DriverManager` class. All the JDBC interfaces required for working with YugabyteDB database are part of the `java.sql.*` package.

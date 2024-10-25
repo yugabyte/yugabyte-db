@@ -217,7 +217,7 @@ If `fallback-to-topology-keys-only` is false (the default), nodes are selected a
 | Load balance setting | Connect to |
 | :--- | :--- |
 | true / any | <ol><li>Any nodes in zoneA</li><li>Else, any nodes in zoneB</li><li>Else, any nodes in entire cluster |
-| only-primary | <ol><li>Primary nodes in zoneA</li><li>Else, primary nodes in zoneB</li><li>Else, primary nodes in entire cluster (all zones)</li><li>Else, fail |
+| only-primary | <ol><li>Primary nodes in zoneA</li><li>Else, primary nodes in zoneB</li><li>Else, primary nodes in entire cluster</li><li>Else, fail |
 | only-rr | <ol><li>Read replica nodes in zoneB</li><li>Else, read replica nodes in entire cluster</li><li>Else, fail |
 | prefer-primary | <ol><li>Primary nodes in zoneA</li><li>Else, primary nodes in zoneB</li><li>Else, primary nodes in entire cluster</li><li>Else, read replica nodes in entire cluster |
 | prefer-rr | <ol><li>Read replica nodes in zoneB</li><li>Else, read replica nodes in entire cluster</li><li>Else, primary nodes in entire cluster |
