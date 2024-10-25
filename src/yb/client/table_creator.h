@@ -177,6 +177,10 @@ class YBTableCreator {
 
   std::string ResponseNoticeMessage() const { return resp_notice_message_; }
 
+  const std::string& get_table_id() const {
+    return table_id_;
+  }
+
  private:
   friend class YBClient;
 
