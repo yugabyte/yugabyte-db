@@ -172,7 +172,7 @@ The query plan after the index is added would be something like:
    Storage Index Rows Scanned: 1
 ```
 
-Now only one row was scanned to retrieve one row.
+Now only one row is scanned to retrieve one row.
 
 ## Learn more
 

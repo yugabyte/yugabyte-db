@@ -15,11 +15,21 @@ aliases:
 type: docs
 ---
 
-The Primary Key constraint is a means to uniquely identify a specific row in a table via one or more columns. To define a primary key, you create a constraint that is, functionally, a [unique index](../unique-index-ysql/) applied to the table columns. It is crucial to choose and design the primary key of the table for several reasons.
+The Primary Key constraint is a means to uniquely identify a specific row in a table via one or more columns. To define a primary key, you create a constraint that is, functionally, a [unique index](../unique-index-ysql/) applied to the table columns.
 
-- **Uniqueness**. The Primary key is a column or a set of columns that act as the unique identifier for the rows of the table. This is essential to identify a row uniquely across the different nodes in the cluster.
-- **Data distribution**. In YugabyteDB, data is distributed based on the primary key. In [hash sharding](../../../../explore/going-beyond-sql/data-sharding#hash-sharding), the data is distributed based on the hash of the Primary key. In [range sharding](../../../../explore/going-beyond-sql/data-sharding#range-sharding), it is based on the actual value of the primary key.
-- **Data ordering**. The table data is internally ordered based on the primary key of the table. In [hash sharding](../../../../explore/going-beyond-sql/data-sharding#hash-sharding), the data is ordered based on the hash of the Primary key. In [range sharding](../../../../explore/going-beyond-sql/data-sharding#range-sharding), it is ordered on the actual value of the primary key.
+When choosing and designing the primary key of a table, it's important to get the following characteristics right:
+
+- Uniqueness.
+
+    The primary key is a column or a set of columns that act as the unique identifier for the rows of the table. This is essential to identify a row uniquely across the different nodes in the cluster.
+
+- Data distribution.
+
+    In YugabyteDB, data is distributed based on the primary key. In [hash sharding](../../../../explore/going-beyond-sql/data-sharding#hash-sharding), the data is distributed based on the hash of the primary key. In [range sharding](../../../../explore/going-beyond-sql/data-sharding#range-sharding), it is based on the actual value of the primary key.
+
+- Data ordering.
+
+    The table data is internally ordered based on the primary key of the table. In hash sharding, the data is ordered based on the hash of the Primary key. In range sharding, it is ordered on the actual value of the primary key.
 
 ## Definition of the primary key
 
@@ -29,7 +39,7 @@ Primary keys can be defined when the table is defined using the `PRIMARY KEY (co
 In the absence of an explicit primary key, YugabyteDB automatically inserts an internal *row_id* to be used as the primary key. This *row_id* is not accessible by users.
 {{</warning>}}
 
-In [hash sharding](../../../../explore/going-beyond-sql/data-sharding#hash-sharding) the primary key definition has the following format:
+In hash sharding the primary key definition has the following format:
 
 ```sql{.nocopy}
 PRIMARY KEY ((columns),    columns)

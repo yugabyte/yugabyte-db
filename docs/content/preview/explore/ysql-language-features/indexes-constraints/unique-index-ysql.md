@@ -16,7 +16,7 @@ type: docs
 
 If you need values in some of the columns to be unique, you can create a UNIQUE index on that column. The behavior is more of a constraint than an index. If a table has a primary key or a [UNIQUE constraint](../../data-manipulation/#constraints) defined, a corresponding unique index is created automatically.
 
-When a unique index is applied to two or more columns, the combined values in these columns can't be duplicated in multiple rows. Note that because a `NULL` value is treated as a distinct value, you can have multiple `NULL` values in a column with a unique index.
+When a unique index is applied to two or more columns, the combined values in these columns can't be duplicated in multiple rows. Note that because a NULL value is treated as a distinct value, you can have multiple NULL values in a column with a unique index.
 
 ## Syntax
 

@@ -22,7 +22,7 @@ Partial indexes allow you to improve query performance by reducing the index siz
 CREATE INDEX index_name ON table_name(column_list) WHERE condition;
 ```
 
-The `WHERE` clause specifies which rows need to be added to the index.
+The WHERE clause specifies which rows need to be added to the index.
 
 ## Setup
 
@@ -60,7 +60,7 @@ SELECT * FROM customers LIMIT 3;
 (3 rows)
 ```
 
-Suppose you want to query the subset of customers who are Sales Managers in the USA. The query plan using the `EXPLAIN` statement would look like the following:
+Suppose you want to query the subset of customers who are Sales Managers in the USA. The query plan using the EXPLAIN statement would look like the following:
 
 ```sql
 northwind=# EXPLAIN SELECT * FROM customers where (country = 'USA' and contact_title = 'Sales Manager');
@@ -74,7 +74,7 @@ northwind=# EXPLAIN SELECT * FROM customers where (country = 'USA' and contact_t
 (2 rows)
 ```
 
-Without creating a partial index, querying the `customers` table with the `WHERE` clause scans all the rows sequentially. Creating a partial index limits the number of rows to be scanned for the same query.
+Without creating a partial index, querying the `customers` table using the WHERE clause scans all the rows sequentially. Creating a partial index limits the number of rows to be scanned for the same query.
 
 Create a partial index on the columns `country` and `city` from the `customers` table as follows:
 
@@ -82,7 +82,7 @@ Create a partial index on the columns `country` and `city` from the `customers` 
 northwind=# CREATE INDEX index_country ON customers(country) WHERE(contact_title = 'Sales Manager');
 ```
 
-Verify with the `EXPLAIN` statement that the number of rows is significantly less compared to the original query plan.
+Using the EXPLAIN statement, verify that the number of rows is significantly less compared to the original query plan.
 
 ```sql
 northwind=# EXPLAIN SELECT * FROM customers where (country = 'USA' and contact_title = 'Sales Manager');

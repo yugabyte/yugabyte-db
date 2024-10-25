@@ -51,7 +51,7 @@ The examples run on any YugabyteDB universe.
 {{</nav/panels>}}
 <!-- end: nav tabs -->
 
-1. From your local YugabyteDB installation directory, connect to the [YSQL](../../../../api/ysqlsh) create an index on an existing table as follows:
+1. From your local YugabyteDB installation directory, create an index on an existing table as follows:
 
     ```sql
     CREATE TABLE test(id int);
@@ -113,7 +113,7 @@ The examples run on any YugabyteDB universe.
 
 ## Memory usage
 
-Backfilling consumes some amount of memory. The memory consumption is directly proportional to the data size per-row, the number of write operations batched together, and the number of parallel backfills. You can view the approximate memory usage by executing the following SQL statement via `ysqlsh`.
+Backfilling consumes some amount of memory. The memory consumption is directly proportional to the data size per-row, the number of write operations batched together, and the number of parallel backfills. You can view the approximate memory usage by executing the following SQL statement:
 
 ```sql
 SELECT

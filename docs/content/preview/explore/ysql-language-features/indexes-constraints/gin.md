@@ -12,13 +12,13 @@ menu:
 type: docs
 ---
 
-{{<warning>}}
-GIN indexes are [work in progress](#limitations). Track issue {{<issue 7850>}} for updates.
-{{</warning>}}
-
 A GIN index is an inverted index, meaning it stores a mapping from values within a column to the rows that contain those values. This is particularly useful for data types that can contain multiple values, such as arrays, JSONB documents, and full-text search vectors. They allow efficient searches for specific elements within these composite values.
 
 Unlike regular indexes, which store a single entry for each row, GIN indexes store multiple entries for each row, one for each component value. This allows them to efficiently handle queries that search for individual elements within a composite value.
+
+{{<warning>}}
+GIN indexes are [work in progress](#limitations). Track issue {{<issue 7850>}} for updates.
+{{</warning>}}
 
 You can create the index using `USING ybgin` to specify the index access method:
 
