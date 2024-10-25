@@ -287,7 +287,8 @@ public class EditXClusterConfig extends CreateXClusterConfig {
             xClusterConfig,
             true /* keepEntry */,
             taskParams().isForced(),
-            false /* deletePitrConfigs */);
+            false /* deleteSourcePitrConfigs */,
+            false /* deleteTargetPitrConfigs */);
 
         if (xClusterConfig.isUsedForDr()) {
           createSetDrStatesTask(
