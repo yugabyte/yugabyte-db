@@ -79,7 +79,7 @@ Do the following to create a 3-node multi-region cluster and a geo-partitioned t
 
     For more information on how to set up a cluster, see [tablespaces](../../../../../explore/going-beyond-sql/tablespaces/).
 
-1. Using the tablespaces, you can create a geo-partitioned table as follows. This is a partitioned table with 3 partitions, where each partition is pinned to a different location based on the regions. The geo_partition column value is default to be the currently connected region as in `yb_server_region()`.
+1. Using the tablespaces, you can create a geo-partitioned table as follows. This is a partitioned table with 3 partitions, where each partition is pinned to a different location based on the regions. The `geo_partition` column value is default to be the currently connected region as in `yb_server_region()`.
 
     ```sql
     CREATE TABLE users(user_id INTEGER NOT NULL,
@@ -97,7 +97,7 @@ Do the following to create a 3-node multi-region cluster and a geo-partitioned t
 
 1. Insert data to the `users` table:
 
-    If your server is connected to region `us-west-1`, you can insert rows into the `users` table without having to specify the `geo_partition` column value.
+    If your server is connected to region us-west-1, you can insert rows into the `users` table without having to specify the `geo_partition` column value.
 
     ```sql
     INSERT INTO users VALUES(1, 'US West user');
@@ -127,7 +127,7 @@ Do the following to create a 3-node multi-region cluster and a geo-partitioned t
 
 ### Using yb_server_region() on a partitioned table
 
-Assuming that the client is in the `us-west-1` region, using `yb_server_region()` in the `WHERE` clause causes YSQL to only scan the `us_user_west` table:
+Assuming that the client is in the us-west-1 region, using `yb_server_region()` in the WHERE clause causes YSQL to only scan the `us_user_west` table:
 
 ```sql
 EXPLAIN (COSTS OFF) SELECT * FROM users WHERE geo_partition=yb_server_region();
@@ -143,7 +143,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM users WHERE geo_partition=yb_server_region();
 (4 rows)
 ```
 
-In other words, using `yb_server_region()` in the `WHERE` clause automatically returns only values from your current region.
+In other words, using `yb_server_region()` in the WHERE clause automatically returns only values from your current region.
 
 ```sql
 SELECT * FROM users WHERE geo_partition=yb_server_region();
@@ -155,12 +155,6 @@ SELECT * FROM users WHERE geo_partition=yb_server_region();
        1 | US West user | us-west-1
 (1 row)
 ```
-
-{{< note title="Note" >}}
-
-If you didn't set the placement_zone flag at node startup, yb_server_zone() returns NULL.
-
-{{< /note >}}
 
 ## See also
 
