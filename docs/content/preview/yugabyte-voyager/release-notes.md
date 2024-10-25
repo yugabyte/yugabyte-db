@@ -13,6 +13,31 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## v1.8.4 - October 28, 2024
+
+### New features
+
+- Adaptive Parallelism. Introduced dynamic adjustments to the number of `parallel jobs` in the import data](../reference/data-migration/import-data/) command based on real-time CPU and memory usage within the YugabyteDB cluster. This new feature prevents resource under/over-utilization, optimizes import speeds and enhances efficiency. It ensures stability across both snapshot and CDC (live migration) phases without the need for manual intervention.
+
+- Unsupported query construct detection. Introduced a capability in the [assess-migration](../reference/assess-migration/) command to detect and report SQL queries containing features and constructs unsupported by YugabyteDB, such as advisory locks, system columns, and XML functions. This will help in identifying potential application migration related issues early in the migration process.
+
+- Guardrails for YugabyteDB Voyager commands. Added guardrails checks to validate source/target database permissions, verify binary dependencies, and check database version compatibility for PostgreSQL in all [yb-voyager](../reference/yb-voyager-cli/) commands. This feature is currently disabled by default and can be enabled with the `--run-guardrails-checks` flag during assess-migration, export data, and import data phases.
+
+### Enhancements
+
+- Added support in [assess-migration](../reference/assess-migration/) and [analyze-schema](../reference/schema-migration/analyze-schema/) command to report the unsupported datatypes for live migration during fall-forward/fall-back such as user-defined types, array of enums, and so on.
+- Improved coverage of reporting PostGIS datatypes by including BOX2D, BOX3D, and TOPOGEOMETRY in the assess-migration and analyze-schema report.
+- Introduced the `--log-level` flag across all voyager commands to configure log levels.
+- Included Voyager version details in assess-migration and analyze-schema reports.
+- Added a confirmation prompt (yes/no) for start clean during data export, allowing users to confirm before proceeding.
+- Enhanced export and import commands output to display exported/imported table list by row counts, with the largest tables on top.
+
+### Bug fixes
+
+- Fixed [import data](../reference/data-migration/import-data/) and `import data file` commands to ensure batches created from data files don't exceed the default batch size limit (200MB), preventing "RPC message too long" errors with large rows. Also, added an immediate check to error out for single row size over 200MB.
+- Fixed an issue in `analyze-schema` where partitioned tables were incorrectly reported as having the insufficient columns in the primary key constraint due to a regex misidentifying the CONSTRAINT clause before primary key definition.
+- Fixed the object names in the schema summary of `assess-migration` and `analyze-schema` reports for OPERATOR names and to uniquely identify the INDEX, TRIGGER, and POLICY objects by adding table name to it.
+
 ## v1.8.3 - October 15, 2024
 
 ### Enhancements
