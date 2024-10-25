@@ -30,10 +30,9 @@ inline const char* DecodeVarint32Ptr(
 }
 
 inline const char* DecodeSignedVarint64Ptr(
-    const char* p, const char* limit, const char* read_allowed_from, int64_t* value,
-    const bool is_non_zero) {
+    const char* p, const char* limit, int64_t* value, const bool is_non_zero) {
   if (is_non_zero) {
-    return GetSignedVarint64Ptr(p, limit, read_allowed_from, value);
+    return GetSignedVarint64Ptr(p, limit, value);
   }
   *value = 0;
   return p;
@@ -54,7 +53,7 @@ inline const char* DecodeSignedVarint64Ptr(
 // Returns either pointer to the next byte to read (containing key/value data) or nullptr in case
 // of decoding failure or corruption.
 inline const char* DecodeEntryThreeSharedParts(
-    const char* p, const char* limit, const char* read_allowed_from, uint32_t* shared_prefix_size,
+    const char* p, const char* limit, uint32_t* shared_prefix_size,
     uint32_t* non_shared_1_size, int64_t* non_shared_1_size_delta, bool* is_something_shared,
     uint32_t* non_shared_2_size, int64_t* non_shared_2_size_delta,
     uint32_t* shared_last_component_size, uint64_t* shared_last_component_increase,
@@ -117,7 +116,7 @@ inline const char* DecodeEntryThreeSharedParts(
           return nullptr;
         }
         p = DecodeSignedVarint64Ptr(
-            p, limit, read_allowed_from, non_shared_1_size_delta, (encoded_2 & 8) != 0);
+            p, limit, non_shared_1_size_delta, (encoded_2 & 8) != 0);
         if (PREDICT_FALSE(!p)) {
           return nullptr;
         }
@@ -126,7 +125,7 @@ inline const char* DecodeEntryThreeSharedParts(
           return nullptr;
         }
         p = DecodeSignedVarint64Ptr(
-            p, limit, read_allowed_from, non_shared_2_size_delta, (encoded_2 & 32) != 0);
+            p, limit, non_shared_2_size_delta, (encoded_2 & 32) != 0);
         if (PREDICT_FALSE(!p)) {
           return nullptr;
         }

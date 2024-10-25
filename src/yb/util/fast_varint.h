@@ -41,38 +41,22 @@ void FastAppendSignedVarIntToBuffer(int64_t v, Buffer* dest) {
 }
 
 // Returns status, decoded value and size consumed from source.
-// Might use effective performance optimization that reads before src, but not before
-// read_allowed_from.
 Status FastDecodeSignedVarInt(
-    const uint8_t* src, size_t src_size, const uint8_t* read_allowed_from, int64_t* v,
-    size_t* decoded_size);
+    const uint8_t* src, size_t src_size, int64_t* v, size_t* decoded_size);
 
 inline Status FastDecodeSignedVarInt(
-    const char* src, size_t src_size, const char* read_allowed_from, int64_t* v,
-    size_t* decoded_size) {
-  return FastDecodeSignedVarInt(
-      to_uchar_ptr(src), src_size, to_uchar_ptr(read_allowed_from), v,
-      decoded_size);
+    const char* src, size_t src_size, int64_t* v, size_t* decoded_size) {
+  return FastDecodeSignedVarInt(to_uchar_ptr(src), src_size, v, decoded_size);
 }
-
-// WARNING:
-// FastDecodeSignedVarIntUnsafe functions below are optimized for performance, but require from
-// caller to guarantee that we can read some bytes (up to 7) before src.
 
 // Consumes decoded part of the slice.
-Result<int64_t> FastDecodeSignedVarIntUnsafe(Slice* slice);
-Status FastDecodeSignedVarIntUnsafe(const uint8_t* src,
-                                      size_t src_size,
-                                      int64_t* v,
-                                      size_t* decoded_size);
+Result<int64_t> FastDecodeSignedVarInt(Slice* slice);
+Status FastDecodeSignedVarInt(const uint8_t* src,
+                              size_t src_size,
+                              int64_t* v,
+                              size_t* decoded_size);
 
-// The same as FastDecodeSignedVarIntUnsafe but takes a regular char pointer.
-inline Status FastDecodeSignedVarIntUnsafe(
-    const char* src, size_t src_size, int64_t* v, size_t* decoded_size) {
-  return FastDecodeSignedVarIntUnsafe(to_uchar_ptr(src), src_size, v, decoded_size);
-}
-
-Status FastDecodeSignedVarIntUnsafe(
+Status FastDecodeSignedVarInt(
     const std::string& encoded, int64_t* v, size_t* decoded_size);
 
 // Encoding a "descending VarInt" is simply decoding -v as a VarInt.
@@ -89,8 +73,8 @@ inline void FastEncodeDescendingSignedVarInt(int64_t v, std::string *dest) {
 }
 
 // Decode a "descending VarInt" encoded by FastEncodeDescendingVarInt.
-Status FastDecodeDescendingSignedVarIntUnsafe(Slice *slice, int64_t *dest);
-Result<int64_t> FastDecodeDescendingSignedVarIntUnsafe(Slice* slice);
+Status FastDecodeDescendingSignedVarInt(Slice *slice, int64_t *dest);
+Result<int64_t> FastDecodeDescendingSignedVarInt(Slice* slice);
 size_t FastDecodeDescendingSignedVarIntSize(Slice src);
 
 size_t UnsignedVarIntLength(uint64_t v);
