@@ -111,7 +111,8 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
         xClusterConfig,
         false /* keepEntry */,
         taskParams().isForced(),
-        true /* deletePitrConfigs */);
+        true /* deleteSourcePitrConfigs */,
+        true /* deleteTargetPitrConfigs */);
 
     // Fetch all universes that are connected through xCluster config to source and
     // target universe.
