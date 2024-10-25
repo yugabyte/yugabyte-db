@@ -433,7 +433,8 @@ BuildBsonUpdateMetadata(BsonUpdateMetadata *metadata, pgbson *updateSpec,
 		case UpdateType_Operator:
 		{
 			metadata->operatorState = GetOperatorUpdateState(updateSpec, querySpec,
-															 arrayFilters);
+															 arrayFilters,
+															 buildSourceDocOnUpsert);
 			break;
 		}
 

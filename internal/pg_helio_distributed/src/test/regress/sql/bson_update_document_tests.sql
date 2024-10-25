@@ -270,6 +270,10 @@ SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_d
 
 -- update scenario tests: $setOnInsert (non-upsert)
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": { "b": 2 } }', '{ "": { "$setOnInsert": { "a.b": 1, "c": 2, "d": 4 } } }', '{}');
+SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": "double", "v": 42.13}', '{ "": { "$setOnInsert": {"v.foo": 1} } }', '{}');
+SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": "double", "v": 42.13}', '{ "": { "$setOnInsert": {"v.-1.foo": 1} } }', '{}');
+SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": "array", "v": [42]}', '{ "": { "$setOnInsert": {"v.array.0": 1} } }', '{}');
+SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": "array", "v": [42]}', '{ "": { "$setOnInsert": {"v.0.foo": 1} } }', '{}');
 
 -- upsert:
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{}', '{ "": { "$set": { "a": 2, "_id": 1 } } }', '{}');
@@ -917,6 +921,8 @@ SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_d
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"a" : 1, "f" : 1, "b" : { "c" : { "d" : 1 } }}', '{ "": { "$rename": { "b.c.d.f": "t.k"} } }', '{}');
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"key": 1,"key2": 2,"f": {"g": 1, "h": 1},"j": 1,"k": 1}', '{ "": { "$rename": { "f.g": "k.m","f.h":"j.m"} } }', '{}');
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"key": 1,"key2": 2,"f": {"g": 1, "h": 1},"j": {},"k": 1}', '{ "": { "$rename": { "f.g": "k.m","f.h":"j.m"} } }', '{}');
+SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"a": 1, "f": 1}', '{ "": { "$rename": { "f.g": "a"}, "$setOnInsert": { "b": "f.g" } } }', '{}'); -- $rename with $setOnInsert
+SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"a": 1, "f": 1}', '{ "": { "$setOnInsert": { "f.g": "a" }, "$rename": { "f.g": "a"} } }', '{}');
 
 --$rename working complex cases
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "key": 1,"key2": 2,"f": {"g": 1, "h": 1},"h":1}', '{ "": { "$rename": { "key": "f.g"} } }', '{}');
