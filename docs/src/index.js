@@ -163,6 +163,13 @@ $(document).ready(() => {
    * Main (Header) Nav.
    */
   (() => {
+    const closeTopbar = document.querySelector('.info-topbar-close');
+    if (closeTopbar) {
+      closeTopbar.addEventListener('click', () => {
+        document.querySelector('.info-topbar').classList.add('closed');
+      });
+    }
+
     // Active main Nav.
     yugabyteActiveMainNav();
 
