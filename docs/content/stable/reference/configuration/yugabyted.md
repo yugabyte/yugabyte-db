@@ -726,7 +726,7 @@ For more advanced examples, see [Examples](#examples).
 : yugabyted advanced configuration file path. Refer to [Use a configuration file](#use-a-configuration-file).
 
 --base_dir *base-directory*
-: The directory where yugabyted stores data, configurations, and logs. Must be an absolute path. By default base directory is `$HOME/var`.
+: The directory where yugabyted stores data, configurations, and logs. Must be an absolute path. By default, base directory is `$HOME/var`.
 
 --background *bool*
 : Enable or disable running yugabyted in the background as a daemon. Does not persist on restart. Default: `true`
@@ -797,7 +797,7 @@ The advanced flags supported by the `start` command are as follows:
 : The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored. By default, logs are written to `<base_dir>/logs`.
 
 --certs_dir *certs-directory*
-: The path to the directory which has the certificates to be used for secure deployment. Must be an absolute path. Default path is `~/<base_dir>/certs`.
+: The path to the directory which has the certificates to be used for secure deployment. Must be an absolute path. Default path is `<base_dir>/certs`.
 
 --master_flags *master_flags*
 : Specify extra [master flags](../../../reference/configuration/yb-master#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
