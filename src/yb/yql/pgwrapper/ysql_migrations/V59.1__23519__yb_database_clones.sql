@@ -8,8 +8,8 @@ BEGIN;
   proargdefaults, protrftypes, prosrc, probin, proconfig, proacl
   ) VALUES
   -- implementation of yb_database_clones
-  (8076, 'yb_database_clones', 11, 10, 12, 1, 3, 0, '-', 'f', false, false, true, true,
-  'v', 's', 0, 0, 2249, '', '{26,25,26,25,25,1184,25}', '{o,o,o,o,o,o,o}',
+  (8076, 'yb_database_clones', 11, 10, 12, 1, 10, 0, '-', 'f', false, false, true, true,
+  'v', 'r', 0, 0, 2249, '', '{26,25,26,25,25,1184,25}', '{o,o,o,o,o,o,o}',
   '{db_oid,db_name,parent_db_oid,parent_db_name,state,as_of_time,failure_reason}',
   NULL, NULL, 'yb_database_clones', NULL, NULL, NULL)
   ON CONFLICT DO NOTHING;
