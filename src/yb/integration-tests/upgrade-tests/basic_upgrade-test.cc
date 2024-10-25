@@ -273,5 +273,7 @@ INSTANTIATE_TEST_SUITE_P(
     UpgradeFrom_2024_1_0_1, BasicUpgradeTest, ::testing::Values(kBuild_2024_1_0_1));
 INSTANTIATE_TEST_SUITE_P(
     UpgradeFrom_2024_2_0_0, BasicUpgradeTest, ::testing::Values(kBuild_2024_2_0_0));
+INSTANTIATE_TEST_SUITE_P(
+    UpgradeFrom_2_25_0_0, BasicUpgradeTest, ::testing::Values(kBuild_2_25_0_0));
 
 }  // namespace yb

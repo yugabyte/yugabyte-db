@@ -96,7 +96,7 @@ Result<BuildInfo> GetBuildInfoForVersion(const std::string& version) {
 }
 
 // Download and extract the old version if it does not already exist, and return the old version bin
-// path. A ready.txt file is places in the bin directory to indicate that the old version is ready
+// path. A ready.txt file is placed in the bin directory to indicate that the old version is ready
 // for use.
 Result<std::string> DownloadAndGetBinPath(const BuildInfo& build_info) {
   std::string arch = "linux";
@@ -211,6 +211,26 @@ Status SetYsqlMajorUpgradeFlagOnMasters(ExternalMiniCluster& cluster, bool enabl
   return Status::OK();
 }
 
+// This is a pg15 version which supports upgrade only from certain versions.
+// Check if the given version is supported for upgrade.
+bool IsUpgradeSupported(const std::string& from_version) {
+  auto parts = StringSplit(from_version, '.');
+  CHECK_GE(parts.size(), 2);
+  int major = std::stoi(parts[0]);
+  auto minor = std::stoi(parts[1]);
+  CHECK_GT(major, 0);
+  CHECK_GT(minor, 0);
+
+  // Stable releases in the older 2 dot numbering scheme are not supported.
+  // Only preview release after 2.25 are supported.
+  if (major == 2) {
+    return minor >= 25;
+  }
+
+  // Only 2024.2.0.0 and later are supported.
+  return major > 2024 || (major == 2024 && minor >= 2);
+}
+
 }  // namespace
 
 UpgradeTestBase::UpgradeTestBase(const std::string& from_version)
@@ -220,12 +240,6 @@ UpgradeTestBase::UpgradeTestBase(const std::string& from_version)
 }
 
 void UpgradeTestBase::SetUp() {
-  // TODO: Convert this to a minimum version check with a <
-  if (old_version_info_.version != kBuild_2024_2_0_0) {
-    test_skipped_ = true;
-    GTEST_SKIP() << "PG15 upgrade is only supported from version " << kBuild_2024_2_0_0;
-  }
-
   if (IsSanitizer()) {
     test_skipped_ = true;
     GTEST_SKIP() << "Upgrade testing not supported with sanitizers";
@@ -243,11 +257,15 @@ void UpgradeTestBase::SetUp() {
                  << " for this OS architecture and build type";
   }
 
+  if (!IsUpgradeSupported(old_version_info_.version)) {
+    test_skipped_ = true;
+    GTEST_SKIP() << "PG15 upgrade not supported from version " << old_version_info_.version;
+  }
+
   ExternalMiniClusterITestBase::SetUp();
 
   VersionInfo::GetVersionInfoPB(&current_version_info_);
   LOG(INFO) << "Current version: " << current_version_info_.DebugString();
-  ASSERT_NE(old_version_info_.version, current_version_info_.version_number());
 }
 
 Status UpgradeTestBase::StartClusterInOldVersion() {
@@ -289,6 +307,8 @@ Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOption
   rpc.set_timeout(kTimeout);
   RETURN_NOT_OK(
       cluster_->GetLeaderMasterProxy<server::GenericServiceProxy>().GetStatus(req, &resp, &rpc));
+  LOG(INFO) << "From version: " << resp.status().version_info().DebugString();
+
   is_ysql_major_version_upgrade_ = resp.status().version_info().ysql_major_version() !=
                                    current_version_info_.ysql_major_version();
 
