@@ -114,7 +114,7 @@ inline const char* DecodeRestartEntry(
       uint64_t shared_last_component_increase;
 
       auto* result = DecodeEntryThreeSharedParts(
-          p, limit, read_allowed_from, &shared_prefix_size, key_size, &non_shared_1_size_delta,
+          p, limit, &shared_prefix_size, key_size, &non_shared_1_size_delta,
           &is_something_shared, &non_shared_2_size, &non_shared_2_size_delta,
           &shared_last_component_size, &shared_last_component_increase, &value_size);
       if (PREDICT_FALSE(!result || is_something_shared)) {
@@ -323,16 +323,13 @@ namespace {
 // This function decodes next key-value pair starting at p and encoded with three_shared_parts
 // delta-encoding algorithm (see ThreeSharedPartsEncoder inside block_builder.cc).
 // limit specifies exclusive upper bound on where we allowed to decode from.
-// read_allowed_from specifies exclusive upper bound on where we allowed to read data from (used
-// for performance optimization in some cases to read by multi-bytes chunks), but still only data
-// before the limit will be used for decoding.
 //
 // The function relies on *key to contain previous decoded key and updates it with a next one.
 // *value is set to Slice pointing to corresponding key's value.
 //
 // Returns whether decoding was successful.
 inline bool ParseNextKeyThreeSharedParts(
-    const char* p, const char* limit, const char* read_allowed_from, IterKey* key, Slice* value) {
+    const char* p, const char* limit, IterKey* key, Slice* value) {
   uint32_t shared_prefix_size, non_shared_1_size, non_shared_2_size, shared_last_component_size,
       value_size;
   bool is_something_shared;
@@ -340,7 +337,7 @@ inline bool ParseNextKeyThreeSharedParts(
   uint64_t shared_last_component_increase;
 
   p = DecodeEntryThreeSharedParts(
-      p, limit, read_allowed_from, &shared_prefix_size, &non_shared_1_size,
+      p, limit, &shared_prefix_size, &non_shared_1_size,
       &non_shared_1_size_delta, &is_something_shared, &non_shared_2_size, &non_shared_2_size_delta,
       &shared_last_component_size, &shared_last_component_increase, &value_size);
   if (p == nullptr) {
@@ -470,9 +467,8 @@ bool BlockIter::ParseNextKey() {
     }
     case KeyValueEncodingFormat::kKeyDeltaEncodingThreeSharedParts: {
       valid_encoding_type = true;
-      if (!ParseNextKeyThreeSharedParts(entry_data, data_end, data_,
-                                        &CurrentEntry().key_,
-                                        &CurrentEntry().entry_.value)) {
+      if (!ParseNextKeyThreeSharedParts(
+              entry_data, data_end, &CurrentEntry().key_, &CurrentEntry().entry_.value)) {
         CorruptionError("ParseNextKeyThreeSharedParts failed");
         return false;
       }

@@ -98,7 +98,7 @@ Result<ValueControlFields> DecodeControlFields(Slice* slice, IntentDocHt intent_
   if (entry_type == KeyEntryType::kTtl) {
     slice->consume_byte();
     result.ttl = MonoDelta::FromMilliseconds(VERIFY_RESULT_PREPEND(
-        FastDecodeSignedVarIntUnsafe(slice),
+        FastDecodeSignedVarInt(slice),
         Format("Failed to decode TTL in $0", original.ToDebugHexString())));
     entry_type = GetKeyEntryType(*slice);
   }
