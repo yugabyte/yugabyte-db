@@ -15,7 +15,7 @@ type: docs
 Creating databases, tables, and schemas involves a structured process that enables efficient data management. The following detailed guide can help you understand and implement each step.
 
 {{<tip>}}
-For the list of supported and unsupported schema relations operations, , see [Schema operations](../sql-feature-support#schema-operations)
+For the list of supported and unsupported schema relations operations, see [Schema operations](../sql-feature-support#schema-operations).
 {{</tip>}}
 
 ## Setup
@@ -92,9 +92,9 @@ testdb=# \l
 
 To drop or delete the database, connect to another database and then use the `DROP` command.
 
-{{<warning>}}
+{{<note>}}
 You cannot drop the database you are connected to.
-{{</warning>}}
+{{</note>}}
 
 Connect to another database as follows:
 
@@ -118,7 +118,7 @@ DROP DATABASE
 
 ## Tables
 
-A table is the fundamental database object that stores the actual data in a structured format, consisting of rows and columns. Tables are created in a specific schema (by default public) and contain the data that applications and users interact with. Each table has a defined structure, with columns representing the different attributes or fields of the data, and rows representing individual records or entries.
+A table is the fundamental database object that stores the actual data in a structured format, consisting of rows and columns. Tables are created in a specific schema (by default the `public` schema) and contain the data that applications and users interact with. Each table has a defined structure, with columns representing the different attributes or fields of the data, and rows representing individual records or entries.
 
 ### Create a table
 
@@ -164,9 +164,7 @@ yugabyte=# \d+
  public | users_id_seq | sequence | yugabyte | 0 bytes |
 ```
 
-{{<note>}}
-The `users_id_seq` sequence you see above is the result of the `serial` datatype that has been used in the definition of the `id` column.
-{{</note>}}
+The `users_id_seq` sequence is the result of the `serial` datatype that has been used in the definition of the `id` column.
 
 ### Insert data
 
@@ -176,9 +174,7 @@ After the tables are set up, you can add data to them. To add a record to the ta
 INSERT INTO users VALUES(1, 'Yoda');
 ```
 
-{{<note>}}
-The above statement does not have an explicit value for the column `email` as a default value of `NULL` has been set for that column.
-{{</note>}}
+As the statement does not have an explicit value for the column `email`, the default value of `NULL` is set for that column.
 
 ### Query data
 
@@ -214,7 +210,7 @@ To drop an existing column, say `enabled`, you can run the following command:
 ALTER TABLE users DROP COLUMN enabled ;
 ```
 
-#### Modify a column's name
+#### Modify a column name
 
 To modify the name of a column, say to change the name of the `id` column to `user_id`, do the following:
 
@@ -285,13 +281,11 @@ yugabyte=# CREATE TABLE myschema.users(
 );
 ```
 
-{{<note>}}
-At this point, the `default` schema is still the selected schema, and running the `\d` meta-command would not list the table you just created.
-{{</note>}}
+At this point, the `public` schema is still the selected schema, and running the `\d` meta-command would not list the table you just created.
 
 ### Switch schemas
 
-To set `myschema` as the default schema in this session, do the following:
+To set `myschema` as the current schema in this session, do the following:
 
 ```sql
 SET search_path=myschema;
@@ -316,18 +310,18 @@ yugabyte=# \d
 
 ```output
            List of relations
-  Schema  |  Name   | Type  |  Owner
+  Schema  | Name  | Type  |  Owner
 ----------+---------+-------+----------
- myschema | company | table | yugabyte
+ myschema | users | table | yugabyte
 (1 row)
 ```
 
 ### Drop schemas
 
-To drop the schema `myschema` and all the objects inside it, first change the current default schema.
+To drop the schema `myschema` and all the objects inside it, first change the current schema.
 
 ```sql
-yugabyte=# SET search_path=default;
+yugabyte=# SET search_path=public;
 ```
 
 Next, run the `DROP` statement as follows:
@@ -339,17 +333,15 @@ yugabyte=# DROP SCHEMA myschema CASCADE;
 You should see the following output.
 
 ```sql{.nocopy}
-NOTICE:  drop cascades to table myschema.company
+NOTICE:  drop cascades to table myschema.users
 DROP SCHEMA
 ```
 
 ## Users
 
-Managing users (also called roles) involves creating, altering, deleting users, and managing their permissions.
+Managing users (also called roles) involves creating, altering, and deleting users, and managing their permissions.
 
-{{<note>}}
 By default, YugabyteDB has two admin users already created: `yugabyte` (the recommended user) and `postgres` (mainly for backward compatibility with PostgreSQL).
-{{</note>}}
 
 ### Current user
 
@@ -427,5 +419,5 @@ ALTER USER yoda WITH NOSUPERUSER;
 To delete a user, use the [DROP USER](../../../api/ysql/the-sql-language/statements/dcl_drop_user) command:
 
 ```sql
-DROP USER yoda ;
+DROP USER yoda;
 ```

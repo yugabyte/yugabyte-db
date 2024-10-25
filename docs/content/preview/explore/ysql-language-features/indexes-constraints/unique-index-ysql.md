@@ -14,7 +14,7 @@ aliases:
 type: docs
 ---
 
-If you need values in some of the columns to be unique, you can create an `UNIQUE` index on that column. The behavior is more of a constraint than an index. If a table has a primary key or a [UNIQUE constraint](../../data-manipulation#constraints) defined, a corresponding unique index is created automatically.
+If you need values in some of the columns to be unique, you can create a UNIQUE index on that column. The behavior is more of a constraint than an index. If a table has a primary key or a [UNIQUE constraint](../../data-manipulation/#constraints) defined, a corresponding unique index is created automatically.
 
 When a unique index is applied to two or more columns, the combined values in these columns can't be duplicated in multiple rows. Note that because a `NULL` value is treated as a distinct value, you can have multiple `NULL` values in a column with a unique index.
 
@@ -62,14 +62,14 @@ northwind=# SELECT * FROM categories  LIMIT 5;
 (5 rows)
 ```
 
-Create a `UNIQUE` index for the `category_id` column in the `categories` table.
+Create a UNIQUE index for the `category_id` column in the `categories` table.
 
 ```sql
 northwind=# CREATE UNIQUE INDEX index_category_id
               ON categories(category_id);
 ```
 
-Now, any attempt to insert a new category with an existing `category_id` will result in an error.
+Now, any attempt to insert a new category with an existing `category_id` results in an error.
 
 ```sql
 northwind=# INSERT INTO categories(category_id, category_name, description) VALUES (1, 'Savories', 'Spicy chips and snacks');

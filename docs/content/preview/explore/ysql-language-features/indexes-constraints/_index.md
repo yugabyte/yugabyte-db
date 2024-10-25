@@ -13,13 +13,13 @@ menu:
 type: indexpage
 ---
 
-Indexes are powerful tools designed to improve the speed of data retrieval operations by creating efficient pathways to access the data in a table. Similar to an index in a book, SQL indexes allow the database to quickly locate the desired rows without scanning the entire table. While indexes enhance query performance, they can also impact the speed of INSERT, UPDATE, and DELETE operations. In YugabyteDB, Indexes are treated internally as tables and just like tables, they are distributed and stored in [LSM](https://en.wikipedia.org/wiki/Log-structured_merge-tree) format, as opposed to the [B-tree](https://www.postgresql.org/docs/current/btree-implementation.html#BTREE-STRUCTURE) structure used by indexes in PostgreSQL. Let us look at some of the indexes supported by YugabyteDB.
+Indexes are powerful tools designed to improve the speed of data retrieval operations by creating efficient pathways to access the data in a table. Similar to an index in a book, SQL indexes allow the database to quickly locate the desired rows without scanning the entire table. While indexes enhance query performance, they can also impact the speed of INSERT, UPDATE, and DELETE operations. In YugabyteDB, indexes are treated internally as tables, and just like tables, they are distributed and stored in [LSM](https://en.wikipedia.org/wiki/Log-structured_merge-tree) format, as opposed to the [B-tree](https://www.postgresql.org/docs/current/btree-implementation.html#BTREE-STRUCTURE) structure used by indexes in PostgreSQL.
 
 {{<note>}}
 The sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded/distributed. Indexes are not colocated with the base table.
 {{</note>}}
 
-## Primary Key
+## Primary key
 
 A primary key is a unique identifier assigned to each row in a relational database table. It ensures that every record has a distinct value, preventing duplicate entries. Primary keys are crucial for maintaining data integrity and enabling efficient data retrieval.
 
@@ -27,7 +27,7 @@ A primary key is a unique identifier assigned to each row in a relational databa
 To understand how to define primary keys and choose the right columns, see [Primary keys](primary-key-ysql/)
 {{</lead>}}
 
-## Secondary Index
+## Secondary index
 
 Secondary indexes are additional indexes created on columns other than the primary key. They enhance query performance by allowing faster data retrieval based on non-primary key columns, speeding up search queries, filtering, and sorting operations. Unlike primary keys, which enforce uniqueness and identify each row uniquely, secondary indexes can be created on columns that may contain duplicate values.
 
@@ -35,7 +35,7 @@ Secondary indexes are additional indexes created on columns other than the prima
 To understand how to use indexes for faster retrieval, see [Secondary indexes](secondary-indexes-ysql/)
 {{</lead>}}
 
-## Unique Index
+## Unique index
 
 Unique index enforces uniqueness, preventing duplicate entries and maintaining data integrity. When a unique index is applied to a column, the database automatically checks for duplicate values and rejects any insert or update operations that would violate this constraint.
 
@@ -53,7 +53,7 @@ To understand how to use partial indexes to save space and speed up queries, see
 
 ## Covering index
 
-Covering indexes are a type of index that includes all the columns needed to satisfy a query, allowing the database to retrieve the required data directly from the index without accessing the table itself. This can significantly improve query performance by reducing the trip to the table.
+Covering indexes include all the columns needed to satisfy a query, allowing the database to retrieve the required data directly from the index without accessing the table itself. This can significantly improve query performance by reducing the trip to the table.
 
 {{<lead link="covering-index-ysql/">}}
 To understand how to use covering indexes to speed up queries, see [Covering indexes](covering-index-ysql/)
@@ -61,7 +61,7 @@ To understand how to use covering indexes to speed up queries, see [Covering ind
 
 ## Expression index
 
-Expression indexes are a type of index that is created on a calculated expression rather than a simple column. This allows you to index the result of a function or expression, providing efficient access to data based on the calculated value.
+Expression indexes are created on a calculated expression rather than a simple column. This allows you to index the result of a function or expression, providing efficient access to data based on the calculated value.
 
 {{<lead link="expression-index-ysql/">}}
 To understand how to use expression indexes in your data model, see [Expression indexes](expression-index-ysql/)
@@ -83,7 +83,6 @@ Index backfill refers to the process of populating an index with existing data a
 To understand how index backfill works, see [Index backfill](index-backfill/)
 {{</lead>}}
 
-## Unsupported Indexes
+## Unsupported indexes
 
-Generalized Search Tree (GiST) indexes in SQL are versatile indexes that support a wide range of query types and data structures. GiST indexes are particularly useful for indexing complex data types such as geometric shapes, text search, and custom data types. GiST indexes are **not** supported in YugabyteDB. Please follow {{<issue 1337>}} for updates.
-
+Generalized Search Tree (GiST) indexes in SQL are versatile indexes that support a wide range of query types and data structures. GiST indexes are particularly useful for indexing complex data types such as geometric shapes, text search, and custom data types. GiST indexes are **not** supported in YugabyteDB; follow {{<issue 1337>}} for updates.

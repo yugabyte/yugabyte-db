@@ -18,7 +18,7 @@ A covering index is an efficient way to perform [index-only](https://wiki.postgr
 
 ## Setup
 
-The examples will run on any YugabyteDB universe. To create a universe follow the instructions below.
+The examples run on any YugabyteDB universe.
 
 <!-- begin: nav tabs -->
 {{<nav/tabs list="local,anywhere,cloud" active="local"/>}}

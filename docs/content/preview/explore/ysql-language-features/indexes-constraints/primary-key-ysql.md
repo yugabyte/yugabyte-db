@@ -49,7 +49,7 @@ The order of the keys matters a lot in range sharding. The data is distributed a
 
 ## Setup
 
-The examples will run on any YugabyteDB universe. To create a universe follow the instructions below.
+The examples run on any YugabyteDB universe.
 
 <!-- begin: nav tabs -->
 {{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
@@ -119,7 +119,7 @@ CREATE TABLE census(
 );
 ```
 
-It can also be specified along the definition of the column like:
+It can also be specified along the definition of the column like so:
 
 ```sql
 CREATE TABLE census(
@@ -131,7 +131,7 @@ CREATE TABLE census(
 
 ## Multi-column key
 
-Multiple columns can be grouped to be defined as the primary key like:
+Multiple columns can be grouped to be defined as the primary key as follows:
 
 ```sql
 CREATE TABLE census(
@@ -144,13 +144,11 @@ CREATE TABLE census(
 
 ## Adding via a CONSTRAINT
 
-You can define a primary key using the constraint clause as
+You can define a primary key using the constraint clause as follows:
 
 ```sql
 CONSTRAINT constraint_name PRIMARY KEY(column1, column2, ...);
 ```
-
-like:
 
 ```sql
 CONSTRAINT census_pkey PRIMARY KEY(id);
@@ -158,7 +156,7 @@ CONSTRAINT census_pkey PRIMARY KEY(id);
 
 ## Using ALTER TABLE
 
-Although it is advisable to define the primary key along with the table definition, when needed you can use the `ALTER TABLE` statement to create a primary key on an table afte the table is created or defined:
+Although you should define the primary key along with the table definition, when needed you can use the ALTER TABLE statement to create a primary key on a table after the table is created or defined:
 
 ```sql
 ALTER TABLE census ADD PRIMARY KEY (id);

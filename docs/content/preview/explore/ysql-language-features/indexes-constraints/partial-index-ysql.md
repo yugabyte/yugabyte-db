@@ -14,7 +14,7 @@ aliases:
 type: docs
 ---
 
-Partial indexes allow you to improve query performance by reducing the index size. A smaller index is faster to scan, easier to maintain, and requires less storage. Partial indexing works by specifying the rows defined by a conditional expression (called the predicate of the partial index), typically in the `WHERE` clause of the table.
+Partial indexes allow you to improve query performance by reducing the index size. A smaller index is faster to scan, easier to maintain, and requires less storage. Partial indexing works by specifying the rows defined by a conditional expression (called the predicate of the partial index), typically in the WHERE clause of the table.
 
 ## Syntax
 
@@ -43,7 +43,7 @@ The examples run on any YugabyteDB universe.
 {{</nav/panels>}}
 <!-- end: nav tabs -->
 
-For illustration, let us use the `customers` table from the [Northwind sample database](../../../../sample-data/northwind/#install-the-northwind-sample-database).
+The example uses the `customers` table from the [Northwind sample database](../../../../sample-data/northwind/#install-the-northwind-sample-database).
 
 View the contents of the `customers` table:
 

@@ -19,20 +19,20 @@ JSON data types are for storing JSON (JavaScript Object Notation) data, as speci
 
 YSQL supports the following two JSON data types:
 
-* **jsonb** - does not preserve white space, does not preserve the order of object keys, and does not keep duplicate object keys. If duplicate keys are specified in the input, only the last value is kept.
+- **jsonb** - does not preserve white space, does not preserve the order of object keys, and does not keep duplicate object keys. If duplicate keys are specified in the input, only the last value is kept.
 
-* **json** - stores an exact copy of the input text, and therefore preserves semantically-insignificant white space between tokens, as well as the order of keys in JSON objects. Also, if a JSON object in the value contains the same key more than once, all the key/value pairs are kept. The processing functions consider the last value as the operative one.
+- **json** - stores an exact copy of the input text, and therefore preserves semantically-insignificant white space between tokens, as well as the order of keys in JSON objects. Also, if a JSON object in the value contains the same key more than once, all the key/value pairs are kept. The processing functions consider the last value as the operative one.
 
 In general, most applications should prefer to store JSON data as jsonb, unless there are quite specialized needs, such as legacy assumptions about ordering of object keys.
 
 They accept *almost* identical sets of values as input. The major practical difference is one of efficiency:
 
-* json stores an exact copy of the input text, which processing functions must re-parse on each execution
-* jsonb data is stored in a decomposed binary format that makes it slightly slower to input due to added conversion overhead, but significantly faster to process, because no re-parsing is needed. jsonb also supports indexing, which can be a significant advantage.
+- json stores an exact copy of the input text, which processing functions must re-parse on each execution
+- jsonb data is stored in a decomposed binary format that makes it slightly slower to input due to added conversion overhead, but significantly faster to process, because no re-parsing is needed. jsonb also supports indexing, which can be a significant advantage.
 
 ## Setup
 
-The examples will run on any YugabyteDB universe. To create a universe follow the instructions below.
+The examples run on any YugabyteDB universe.
 
 <!-- begin: nav tabs -->
 {{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
@@ -49,13 +49,13 @@ The examples will run on any YugabyteDB universe. To create a universe follow th
 {{</nav/panels>}}
 <!-- end: nav tabs -->
 
-For the purpose of illustration, let us create a basic table `books` with a primary key and one `jsonb` column `doc` that contains various details about each book.
+To illustrate, create a basic table `books` with a primary key and one `jsonb` column `doc` that contains various details about each book.
 
 ```plpgsql
 yugabyte=# CREATE TABLE books(k int primary key, doc jsonb not null);
 ```
 
-Next, insert some rows which contain details about various books. These details are represented as JSON documents, as shown below.
+Next, insert some rows which contain details about various books. These details are represented as JSON documents.
 
 ```plpgsql
 yugabyte=# INSERT INTO books(k, doc) values
@@ -133,7 +133,12 @@ This is the result:
 
 ### Using `->` and `->>`
 
-YSQL has two native operators, the [-> operator](../../../api/ysql/datatypes/type_json/functions-operators/subvalue-operators/#the-160-160-160-160-operator) that returns a JSON object and the [->> operator](../../../api/ysql/datatypes/type_json/functions-operators/subvalue-operators/#the-160-160-160-160-and-160-160-160-160-operators) that returns text, to query JSON documents. These operators work on both `JSON` as well as `JSONB` columns to select a subset of attributes as well as to inspect the JSON document.
+YSQL has two native operators to query JSON documents:
+
+- [`->`](../../../api/ysql/datatypes/type_json/functions-operators/subvalue-operators/#the-160-160-160-160-operator) returns a JSON object.
+- [`->>`](../../../api/ysql/datatypes/type_json/functions-operators/subvalue-operators/#the-160-160-160-160-and-160-160-160-160-operators) returns text.
+
+These operators work on both `JSON` and `JSONB` columns to select a subset of attributes as well as to inspect the JSON document.
 
 The following example shows how to select a few attributes from each document.
 
@@ -448,6 +453,6 @@ ERROR:  23505: duplicate key value violates unique constraint "books_isbn_unq"
 
 ## Read more
 
-* [JSON data types and functionality](../../../api/ysql/datatypes/type_json/) reference
-* [JSON functions and operators](../../../api/ysql/datatypes/type_json/functions-operators/)
-* [Create indexes and check constraints on JSON columns](../../../api/ysql/datatypes/type_json/create-indexes-check-constraints/)
+- [JSON data types and functionality](../../../api/ysql/datatypes/type_json/) reference
+- [JSON functions and operators](../../../api/ysql/datatypes/type_json/functions-operators/)
+- [Create indexes and check constraints on JSON columns](../../../api/ysql/datatypes/type_json/create-indexes-check-constraints/)

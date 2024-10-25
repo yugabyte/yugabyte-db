@@ -137,7 +137,7 @@ Column aliases may contain spaces. In such a case, you need enclose the alias in
 
 ### Order data
 
-You can use the ORDER BY clause to order/sort your result set on a specific condition. You can also specify the kind of ordering you need(for example, ASC or DESC). For example, to select few columns and order the results by the name of the employee, you can run the following query:
+You can use the ORDER BY clause to order/sort your result set on a specific condition. You can also specify the kind of ordering you need (for example, ASC or DESC). For example, to select columns and order the results by the name of the employee, you can run the following query:
 
 ```sql
 SELECT name, department FROM employees ORDER BY name DESC;
@@ -191,7 +191,7 @@ SELECT department FROM employees
 
 ### Subqueries
 
-A subquery is a query nested inside another SQL query. It is used to perform a query within the context of a larger query, allowing more complex data retrieval and manipulation. Subqueries can be placed inside SELECT, INSERT, UPDATE, or DELETE statements, or within clauses such as WHERE, FROM, or HAVING.
+A subquery is a query nested inside another SQL query. It is used to perform a query in the context of a larger query, allowing more complex data retrieval and manipulation. Subqueries can be placed inside SELECT, INSERT, UPDATE, or DELETE statements, or in clauses such as WHERE, FROM, or HAVING.
 
 Suppose you want to find students with scores above the average score in the scores table. For this you can run the following query:
 
@@ -205,7 +205,7 @@ WHERE id IN (
 );
 ```
 
-Here, `SELECT AVG(score) FROM scores` is the subquery that calculates the average score and passes it on to `SELECT id FROM scores` which itself is another subquery that finds the ids of the students with score greater than the average score.
+`SELECT AVG(score) FROM scores` is the subquery that calculates the average score and passes it on to `SELECT id FROM scores`, which itself is another subquery that finds the IDs of the students with a score greater than the average score.
 
 ### CTEs
 
@@ -235,7 +235,7 @@ Here, the distinct list of subjects is formed via the CTE query and referred as 
 
 Use the WHERE clause to filter the results based on a condition. Only the rows that satisfy a specified condition are included in the result set.
 
-For example, to fetch rows only from the `Marketing` department, you can add a condition `department = 'Marketing'` in the `where` clause as follows:
+For example, to fetch rows only from the `Marketing` department, you can add a condition `department = 'Marketing'` in the WHERE clause as follows:
 
 ```sql
 SELECT * FROM employees WHERE department = 'Marketing';
@@ -251,7 +251,7 @@ Following is the output produced by the preceding example:
 
 You can use any of the supported [operators and expressions](../expressions-operators/) (except ALL, ANY, and SOME) to combine multiple conditions to fetch the results you need.
 
-For example, to fetch all employees with names starting with either `B` or `L`, you can use the `OR` operator.
+For example, to fetch all employees with names starting with either B or L, you can use the OR operator.
 
 ```sql
 SELECT * FROM employees WHERE name LIKE 'B%' OR name LIKE 'L%';

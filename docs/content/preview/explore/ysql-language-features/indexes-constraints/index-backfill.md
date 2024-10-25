@@ -14,7 +14,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB supports [online index backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md), that allopws you to build indexes on tables that already have data, without affecting other concurrent writes. YugabyteDB also supports the [CREATE INDEX NONCONCURRENTLY](../../../../api/ysql/the-sql-language/statements/ddl_create_index/#nonconcurrently) statement to disable online index backfill.
+YugabyteDB supports [online index backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md), that allows you to build indexes on tables that already have data, without affecting other concurrent writes. YugabyteDB also supports the [CREATE INDEX NONCONCURRENTLY](../../../../api/ysql/the-sql-language/statements/ddl_create_index/#nonconcurrently) statement to disable online index backfill.
 
 {{<note>}}
 Online index backfill is enabled by default.
@@ -30,9 +30,7 @@ The `pg_stat_progress_create_index` view can provide the following details:
 - The current phase of the command is either `initializing` or `backfilling`.
 - Index progress report for all the different configurations of an index or index build such as non-concurrent index builds, GIN indexes, partial indexes, and include indexes.
 
-{{<note>}}
-Columns such as lockers_total, lockers_done, current_locker_pid, blocks_total, and blocks_done in the `pg_stat_progress_create_index` view do not apply to YugabyteDB and always have null values.
-{{</note>}}
+Columns such as `lockers_total`, `lockers_done`, `current_locker_pid`, `blocks_total`, and `blocks_done` in the `pg_stat_progress_create_index` view do not apply to YugabyteDB and always have null values.
 
 ## Setup
 
@@ -105,7 +103,7 @@ The examples run on any YugabyteDB universe.
       test    | idx_id    | CREATE INDEX CONCURRENTLY | backfilling |            0 |           0
     ```
 
-    You will see the tuples_done count increasing as the backfilling progresses. When the backfilling is done, you will see the `tuples_done` count to be updated correctly.
+    You will see the `tuples_done` count increasing as the backfilling progresses. When the backfilling is done, you will see the `tuples_done` count to be updated correctly.
 
     ```tablegen
       tblname | indexname |          command          |    phase    | tuples_total | tuples_done

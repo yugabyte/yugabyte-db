@@ -37,7 +37,7 @@ The columns that are specified in the [CREATE INDEX](../../../../api/ysql/the-sq
 
 ## Setup
 
-The examples will run on any YugabyteDB universe. To create a universe follow the instructions below.
+The examples run on any YugabyteDB universe.
 
 <!-- begin: nav tabs -->
 {{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
@@ -92,7 +92,7 @@ INSERT INTO public.census ( id,name,age,zipcode,employed ) VALUES
 
 ## Simple index
 
-You can create indexes using the [CREATE INDEX](../../../../api/ysql/the-sql-language/statements/ddl_create_index/) to speed up lookups on a singe column.
+You can create indexes using [CREATE INDEX](../../../../api/ysql/the-sql-language/statements/ddl_create_index/) to speed up lookups on a singe column.
 
 For example to create an index on zipcode, you can run:
 
@@ -102,13 +102,13 @@ CREATE INDEX idx_zip on census(zipcode);
 
 ## Multi-column index
 
-You can create indexes on multiple columns enabling queries with conditions on all the columns in the index to perform faster. For example, to speed up a query that looks up data based on name and zipcode like:
+You can create indexes on multiple columns, enabling queries with conditions on all the columns in the index to perform faster. For example, to speed up a query that looks up data based on name and zipcode:
 
 ```sql
 SELECT * FROM census WHERE name = 'Kevin' AND zipcode = 94085;
 ```
 
-we can create an index on name and zipcode as:
+Create an index on name and zipcode as follows:
 
 ```sql
 CREATE INDEX idx_name_zip on census(name, zipcode);
@@ -124,21 +124,21 @@ SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'census';
 
 ## Remove indexes
 
-You can remove one or more existing indexes using the [DROP INDEX](../../../../api/ysql/the-sql-language/statements/ddl_drop_index/) statement. For example to drop the index on zipcode, you can run:
+You can remove one or more existing indexes using the [DROP INDEX](../../../../api/ysql/the-sql-language/statements/ddl_drop_index/) statement. For example, to drop the index on zipcode, you can run:
 
 ```sql
-DROP INDEX idx_zip ;
+DROP INDEX idx_zip;
 ```
 
 ## Understanding performance
 
-You can use the [EXPLAIN ANALYZE](../../../../api/ysql/the-sql-language/statements/perf_explain/) statement to check if a query uses an index and determine the query plan before execution. For example, consider the query:
+You can use the [EXPLAIN ANALYZE](../../../../api/ysql/the-sql-language/statements/perf_explain/) statement to check if a query uses an index and determine the query plan before execution. For example, consider the following query:
 
 ```sql
 EXPLAIN (ANALYZE, DIST, COSTS OFF) SELECT * FROM census WHERE name = 'Kevin' AND zipcode = 94085;
 ```
 
-without the corresponding index, the query plan would be:
+Without the corresponding index, the query plan would be:
 
 ```yaml{.nocopy}
                                       QUERY PLAN
@@ -151,7 +151,7 @@ without the corresponding index, the query plan would be:
    Storage Table Rows Scanned: 45
 ```
 
-All the `45` rows in the table were scanned to retrieve one row. Now lets add an index for this query.
+All 45 rows in the table were scanned to retrieve one row. Now add an index for this query.
 
 ```sql
 CREATE INDEX idx_name_zip on census(name, zipcode);
@@ -172,7 +172,7 @@ The query plan after the index is added would be something like:
    Storage Index Rows Scanned: 1
 ```
 
-Now only `one` row was scanned to retrieve `one` row.
+Now only one row was scanned to retrieve one row.
 
 ## Learn more
 

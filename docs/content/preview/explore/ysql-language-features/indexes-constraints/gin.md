@@ -13,7 +13,7 @@ type: docs
 ---
 
 {{<warning>}}
-GIN indexes are work in progress. Please track issue {{<issue 7850>}} for updates.
+GIN indexes are [work in progress](#limitations). Track issue {{<issue 7850>}} for updates.
 {{</warning>}}
 
 A GIN index is an inverted index, meaning it stores a mapping from values within a column to the rows that contain those values. This is particularly useful for data types that can contain multiple values, such as arrays, JSONB documents, and full-text search vectors. They allow efficient searches for specific elements within these composite values.
@@ -34,7 +34,7 @@ GIN indexes can't be unique, so `CREATE UNIQUE INDEX` is not allowed.
 
 ## Deviation from PostgreSQL
 
-YugabyteDB GIN indexes are tad different from PostgreSQL GIN indexes:
+YugabyteDB GIN indexes are slightly different from PostgreSQL GIN indexes:
 
 - PostgreSQL uses bitmap index scan, while YugabyteDB uses index scan.
 - In YugabyteDB, deletes to the index are written explicitly. This is due to storage-layer architecture differences and is also true for regular indexes.
@@ -60,7 +60,7 @@ The examples run on any YugabyteDB universe.
 {{</nav/panels>}}
 <!-- end: nav tabs -->
 
-For illustration let us set up some table and insert some data.
+For illustration, set up some tables and insert some data.
 
 ```sql
 CREATE TABLE vectors (v tsvector, k serial PRIMARY KEY);
@@ -145,7 +145,7 @@ The assumption in the following examples is that you are using the GIN index in 
     Time: 2.838 ms
     ```
 
-    Notice the over 3x timing improvement when using GIN index. This is on a relatively small table: a little over 1000 rows. With more and/or bigger rows, the timing improvement should get better.
+    Notice the over 3x timing improvement when using GIN index. This is on a relatively small table: a little over 1000 rows. With more and/or bigger rows, the performance improvement should get better.
 
 1. Use a GIN index on an int array as follows:
 
@@ -215,7 +215,7 @@ By default, JSONB GIN indexes use the opclass `jsonb_ops`. Another opclass, `jso
 
 The difference is the way they extract elements out of a JSONB. `jsonb_ops` extracts keys and values and encodes them as `<flag_byte><value>`. For example, `'{"abc":[123,true]}'` maps to three GIN keys: `\001abc`, `\004123`, `\003t`. The flag bytes here indicate the types key, numeric, and boolean, respectively.
 
-On the other hand, `jsonb_path_ops` extracts hashed paths. Using the above example, there are two paths: `"abc" -> 123` and `"abc" -> true`. Then, there are two GIN keys based on those paths using an internal hashing mechanism: `-1570777299`, `-1227915239`.
+On the other hand, `jsonb_path_ops` extracts hashed paths. Using the preceding example, there are two paths: `"abc" -> 123` and `"abc" -> true`. Then, there are two GIN keys based on those paths using an internal hashing mechanism: `-1570777299`, `-1227915239`.
 
 `jsonb_path_ops` is better suited for queries involving paths, such as the `jsonb @> jsonb` operator. However, it doesn't support as many operators as `jsonb_ops`. If write performance and storage aren't an issue, it may be worth creating a GIN index of each jsonb opclass so that reads can choose the faster one.
 
@@ -264,7 +264,7 @@ DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
 Time: 2.885 ms
 ```
 
-To get around this you can use a  `UNION` like:
+To get around this you can use a UNION:
 
 ```sql
 EXPLAIN
