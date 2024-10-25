@@ -31,9 +31,9 @@ A database is a collection of related data, organized into tables, which store t
 To learn more, see [Schemas and Tables](databases-schemas-tables/)
 {{</lead>}}
 
-## Datatypes
+## Data types
 
-YugabyteDB offers extensive support for SQL datatypes, closely aligning with PostgreSQL's type system. It includes common data types like INTEGER, VARCHAR, BOOLEAN, TIMESTAMP, and more, along with advanced types such as arrays and JSONB, similar to PostgreSQL. Understanding the supported datatypes is crucial for effective schema design and query optimization in YugabyteDB.
+YugabyteDB offers extensive support for SQL data types, closely aligning with PostgreSQL's type system. It includes common data types like INTEGER, VARCHAR, BOOLEAN, TIMESTAMP, and more, along with advanced types such as arrays and JSONB, similar to PostgreSQL. Understanding the supported data types is crucial for effective schema design and query optimization in YugabyteDB.
 
 {{<lead link="data-types/">}}
 To learn more, see [Data types](data-types/)
@@ -113,7 +113,7 @@ To learn more, see [SQL feature support](sql-feature-support/)
 
 ## ProstgreSQL compatibility
 
-YugabyteDB aims to be a fully PostgreSQL-compatible distributed database that supports the majority of PostgreSQL syntax. This means that existing applications built on PostgreSQL can often be migrated to YugabyteDB without changing application code. YugabyteDB also includes many optimizations to enable PostgreSQL applications to run with predicatable performance.
+YugabyteDB aims to be a fully PostgreSQL-compatible distributed database that supports the majority of PostgreSQL syntax. This means that existing applications built on PostgreSQL can often be migrated to YugabyteDB without changing application code. YugabyteDB also includes many optimizations to enable PostgreSQL applications to run with predictable performance.
 
 {{<lead link="postgresql-compatibility/">}}
 To learn more, see [PostgreSQL compatibility](postgresql-compatibility/)

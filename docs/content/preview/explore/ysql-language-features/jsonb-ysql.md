@@ -17,18 +17,14 @@ JSON data types are for storing JSON (JavaScript Object Notation) data, as speci
 
 ## JSON vs JSONB
 
-YSQL supports the following two JSON data types:
+YSQL supports two JSON data types, which accept *almost* identical sets of values as input. The major practical difference is one of efficiency.
 
-- **jsonb** - does not preserve white space, does not preserve the order of object keys, and does not keep duplicate object keys. If duplicate keys are specified in the input, only the last value is kept.
+| Type | Description |
+| :--- | :---------- |
+| JSON | Stores an exact copy of the input text, and therefore preserves semantically-insignificant white space between tokens, as well as the order of keys in JSON objects. Also, if a JSON object in the value contains the same key more than once, all the key/value pairs are kept.<br>The processing functions consider the last value as the operative one, and must re-parse the JSON on each execution. |
+| JSONB | Does not preserve white space, does not preserve the order of object keys, and does not keep duplicate object keys. If duplicate keys are specified in the input, only the last value is kept.<br>Data is stored in a decomposed binary format that makes it slightly slower to input due to added conversion overhead, but significantly faster to process, because no re-parsing is needed. JSONB also supports indexing, which can be a significant advantage. |
 
-- **json** - stores an exact copy of the input text, and therefore preserves semantically-insignificant white space between tokens, as well as the order of keys in JSON objects. Also, if a JSON object in the value contains the same key more than once, all the key/value pairs are kept. The processing functions consider the last value as the operative one.
-
-In general, most applications should prefer to store JSON data as jsonb, unless there are quite specialized needs, such as legacy assumptions about ordering of object keys.
-
-They accept *almost* identical sets of values as input. The major practical difference is one of efficiency:
-
-- json stores an exact copy of the input text, which processing functions must re-parse on each execution
-- jsonb data is stored in a decomposed binary format that makes it slightly slower to input due to added conversion overhead, but significantly faster to process, because no re-parsing is needed. jsonb also supports indexing, which can be a significant advantage.
+In general, most applications should prefer to store JSON data as JSONB, unless there are quite specialized needs, such as legacy assumptions about ordering of object keys.
 
 ## Setup
 
@@ -49,7 +45,7 @@ The examples run on any YugabyteDB universe.
 {{</nav/panels>}}
 <!-- end: nav tabs -->
 
-To illustrate, create a basic table `books` with a primary key and one `jsonb` column `doc` that contains various details about each book.
+To illustrate, create a basic table `books` with a primary key and one JSONB column `doc` that contains various details about each book.
 
 ```plpgsql
 yugabyte=# CREATE TABLE books(k int primary key, doc jsonb not null);
@@ -138,7 +134,7 @@ YSQL has two native operators to query JSON documents:
 - [`->`](../../../api/ysql/datatypes/type_json/functions-operators/subvalue-operators/#the-160-160-160-160-operator) returns a JSON object.
 - [`->>`](../../../api/ysql/datatypes/type_json/functions-operators/subvalue-operators/#the-160-160-160-160-and-160-160-160-160-operators) returns text.
 
-These operators work on both `JSON` and `JSONB` columns to select a subset of attributes as well as to inspect the JSON document.
+These operators work on both JSON and JSONB columns to select a subset of attributes as well as to inspect the JSON document.
 
 The following example shows how to select a few attributes from each document.
 
@@ -337,7 +333,7 @@ This is the result:
 
 ### Format JSON - `jsonb_pretty`
 
-When you select a `jsonb` (or `json`) value in `ysqlsh`, you see the terse `text` typecast of the value. The  [`jsonb_pretty()`](../../../api/ysql/datatypes/type_json/functions-operators/jsonb-pretty/) function returns a more human-readable format:
+When you select a JSONB (or JSON) value in ysqlsh, you see the terse `text` typecast of the value. The [`jsonb_pretty()`](../../../api/ysql/datatypes/type_json/functions-operators/jsonb-pretty/) function returns a more human-readable format:
 
 ```plpgsql
 yugabyte=# SELECT jsonb_pretty(doc) FROM books WHERE k=1;
@@ -362,7 +358,7 @@ This is the result:
 
 ## Constraints
 
-You can create constraints on `jsonb` data types. This section includes some examples. For a fuller discussion, refer to [Create indexes and check constraints on JSON columns](../../../api/ysql/datatypes/type_json/create-indexes-check-constraints/).
+You can create constraints on JSONB data types. This section includes some examples. For a fuller discussion, refer to [Create indexes and check constraints on JSON columns](../../../api/ysql/datatypes/type_json/create-indexes-check-constraints/).
 
 ### Check JSON documents are objects
 
@@ -421,9 +417,9 @@ order by 3;
 
 ### Partial and expression indexes
 
-You might want to index only those documents that contain the attribute (as opposed to indexing the rows that have a `NULL` value for that attribute). This is a common scenario because not all the documents would have all the attributes defined. This can be achieved using a *partial index*.
+You might want to index only those documents that contain the attribute (as opposed to indexing the rows that have a NULL value for that attribute). This is a common scenario because not all the documents would have all the attributes defined. This can be achieved using a *partial index*.
 
-In the previous section where you created a secondary index, not all the books may have the `year` attribute defined. Suppose that you want to index only those documents that have a `NOT NULL` `year` attribute. Create the following partial index:
+In the previous section where you created a secondary index, not all the books may have the `year` attribute defined. Suppose that you want to index only those documents that have a NOT NULL `year` attribute. Create the following partial index:
 
 ```plpgsql
 CREATE INDEX books_year

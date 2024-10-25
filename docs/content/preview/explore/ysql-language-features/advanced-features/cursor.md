@@ -16,19 +16,19 @@ This document describes how to use YSQL cursors to process a result set query on
 
 ## Overview
 
-A cursor represents a pointer with read-only access to the result set of a `SELECT` query. Cursors allow you to encapsulate a query and process individual rows. This enables you to divide a large result set into parts for processing of each part, thus making your query more efficient and preventing memory overflow.
+A cursor represents a pointer with read-only access to the result set of a SELECT query. Cursors allow you to encapsulate a query and process individual rows. This enables you to divide a large result set into parts for processing of each part, thus making your query more efficient and preventing memory overflow.
 
 You can create a function that returns a reference to a cursor, therefore returning a large result set ready to be processed by the caller of the function. You can also use cursors in procedures.
 
 The following statements, in order, are associated with YSQL cursors:
 
-- `DECLARE` – Allows you to create and execute the cursor inside a transaction.
+- DECLARE – Allows you to create and execute the cursor inside a transaction.
 
-- `OPEN` – Allows you to open the cursor.
+- OPEN – Allows you to open the cursor.
 
-- `FETCH` – Allows you to retrieve rows from an open cursor.
+- FETCH – Allows you to retrieve rows from an open cursor.
 
-- `CLOSE` – Allows you to close the cursor and release memory used during the process.
+- CLOSE – Allows you to close the cursor and release memory used during the process.
 
   <!--
 
@@ -56,7 +56,7 @@ You need to declare a cursor  before you can open and use it. There are two ways
   new_cursor CURSOR [( arguments )] FOR a_query;
   ```
 
-  *new_cursor* represents a variable name for the cursor. *arguments* represents a comma-separated list of query parameters that are substituted by values when the cursor is opened. *a_query* represents any `SELECT` statement.
+  *new_cursor* represents a variable name for the cursor. *arguments* represents a comma-separated list of query parameters that are substituted by values when the cursor is opened. *a_query* represents any SELECT statement.
 
   <!--
 
@@ -80,7 +80,7 @@ DECLARE
 
 ## Opening a Cursor
 
-The following example shows how to open an unbound cursor. Since the cursor variable was not bounded to any query when the cursor was declared, you need to specify the query when you are opening the cursor.
+The following example shows how to open an unbound cursor. As the cursor variable was not bounded to any query when the cursor was declared, you need to specify the query when you are opening the cursor.
 
 ```sql
 OPEN employees_cursor_1 FOR SELECT * FROM employees;
@@ -94,13 +94,13 @@ OPEN employees_cursor_2;
 
 ## Using a Cursor
 
-You can use an open cursor with the YSQL data manipulation statements such as `FETCH` and `DELETE`.
+You can use an open cursor with the YSQL data manipulation statements such as FETCH and DELETE.
 
 ### How to Fetch Rows
 
-Using the `FETCH` statement, you can obtain all rows or a specific row from the cursor and place it into a target such as a record, a row variable, or a comma-separated list of variables. When the rows are exhausted, the target is set to`NULL`.
+Using the FETCH statement, you can obtain all rows or a specific row from the cursor and place it into a target such as a record, a row variable, or a comma-separated list of variables. When the rows are exhausted, the target is set to NULL.
 
-The following examples show how to apply the `FETCH` statement to a cursor:
+The following examples show how to apply the FETCH statement to a cursor:
 
 ```sql
 FETCH ALL FROM employees_cursor_2;
@@ -194,7 +194,7 @@ For more information and examples, refer to the "Returning Cursors" section in [
 
 ### How to Use Loops
 
-You can iterate through the result set of a bound cursor using a certain form of the `FOR` statement, as per the following syntax:
+You can iterate through the result set of a bound cursor using a certain form of the FOR statement, as per the following syntax:
 
 ```sql
 FOR rec_var
@@ -204,13 +204,13 @@ LOOP
 END LOOP;
 ```
 
-The cursor is automatically opened by the `FOR` statement and closed when the loop exits. If the cursor was declared to accept arguments, a list of argument value expressions must appear (they will be substituted in the query).
+The cursor is automatically opened by the FOR statement and closed when the loop exits. If the cursor was declared to accept arguments, a list of argument value expressions must appear (they will be substituted in the query).
 
 *rec_var* is always of type `record`. This variable's lifecycle is limited by the loop, with each row returned by the cursor assigned to it as the loop body is executed.
 
 ## Closing a Cursor
 
-You use the `CLOSE` statement to complete the cursor lifecycle. By closing the cursor, you release resources before the end of the transaction. This also releases the cursor variable which allows you to open the cursor again.
+You use the CLOSE statement to complete the cursor lifecycle. By closing the cursor, you release resources before the end of the transaction. This also releases the cursor variable which allows you to open the cursor again.
 
 The following example shows how to close a cursor:
 

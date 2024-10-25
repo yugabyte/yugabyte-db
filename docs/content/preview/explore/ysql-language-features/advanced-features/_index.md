@@ -40,7 +40,7 @@ To understand how to create and operate on view, see [Views](views/)
 
 ## Savepoint
 
-Savepoints are markers within a transaction that allow you to roll back part of the transaction without affecting the entire transaction. They are particularly useful in long transactions where multiple operations are performed, as they enable finer control over the transaction’s execution and help maintain data integrity by allowing partial rollbacks.
+Savepoints are markers in a transaction that allow you to roll back part of the transaction without affecting the entire transaction. They are particularly useful in long transactions where multiple operations are performed, as they enable finer control over the transaction's execution and help maintain data integrity by allowing partial rollbacks.
 
 {{<lead link="savepoints/">}}
 To understand how to use savepoints, see [Savepoints](savepoints/)

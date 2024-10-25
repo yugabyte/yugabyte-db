@@ -90,7 +90,7 @@ testdb=# \l
 
 ### Drop database
 
-To drop or delete the database, connect to another database and then use the `DROP` command.
+To drop or delete the database, connect to another database and then use the DROP command.
 
 {{<note>}}
 You cannot drop the database you are connected to.
@@ -106,7 +106,7 @@ testdb=# \c yugabyte
 You are now connected to database "yugabyte" as user "yugabyte".
 ```
 
-Use the `DROP` command as follows:
+Use the DROP command as follows:
 
 ```sql
 yugabyte=# DROP DATABASE testdb;
@@ -324,7 +324,7 @@ To drop the schema `myschema` and all the objects inside it, first change the cu
 yugabyte=# SET search_path=public;
 ```
 
-Next, run the `DROP` statement as follows:
+Next, run the DROP statement as follows:
 
 ```sql
 yugabyte=# DROP SCHEMA myschema CASCADE;

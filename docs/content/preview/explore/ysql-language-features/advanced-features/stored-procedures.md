@@ -67,7 +67,7 @@ For example,
 yugabyte=# drop procedure move_money(integer, integer, decimal);
 ```
 
-If the name of the stored procedure is not unique (for example, if you had two `insert_data()` procedures, one of which accepted two integers and another which accepted an integer and a varchar), you must specify the data types in the `DROP PROCEDURE` statement. Otherwise, you can omit the data types.
+If the name of the stored procedure is not unique (for example, if you had two `insert_data()` procedures, one of which accepted two integers and another which accepted an integer and a varchar), you must specify the data types in the DROP PROCEDURE statement. Otherwise, you can omit the data types.
 
 ## Example workflow
 

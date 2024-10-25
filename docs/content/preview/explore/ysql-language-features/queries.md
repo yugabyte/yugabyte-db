@@ -229,7 +229,7 @@ SELECT name, subject
   ORDER BY name, subject;
 ```
 
-Here, the distinct list of subjects is formed via the CTE query and referred as `subjects` table in the SQL statement.
+In this case, the distinct list of subjects is formed via the CTE query and referred as `subjects` table in the SQL statement.
 
 ## Filtering
 
@@ -309,7 +309,7 @@ You will get the remaining 3 rows.
 ```
 
 {{<tip>}}
-You can accomplish pagination by using LIMIT and OFFSET in conjunction. For example, you can get the `N`th page of `M` results by adding `OFFSET (N-1)*M LIMIT M`.
+You can accomplish pagination by using LIMIT and OFFSET in conjunction. For example, you can get the Nth page of M results by adding `OFFSET (N-1)*M LIMIT M`.
 {{</tip>}}
 
 ### Match strings
@@ -546,7 +546,7 @@ You will see `null` values from both tables.
 
 ### Cross join
 
-A CROSS JOIN returns the Cartesian product of two tables, meaning it combines every row from the first table with every row from the second table. This type of join doesn't require any condition to match rows between the tables. For example, when you cross join the students table (`5` rows) with the scores (`16` rows), the resultset includes all combinations of student names with all subjects (`5*16 = 80` rows)
+A CROSS JOIN returns the Cartesian product of two tables, meaning it combines every row from the first table with every row from the second table. This type of join doesn't require any condition to match rows between the tables. For example, when you cross join the students table (`5` rows) with the scores (`16` rows), the result set includes all combinations of student names with all subjects (`5*16 = 80` rows)
 
 ```sql
 SELECT name, subject
