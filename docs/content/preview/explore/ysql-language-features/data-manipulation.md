@@ -56,8 +56,6 @@ INSERT INTO employees (id, name, department) VALUES (1, 'Johnny Depp', 'Marketin
 
 If you are certain about the order of the columns in the table, you can skip mentioning the column names and just specify the value like:
 
-Assuming you know the order of columns in the table, you can insert a row by executing the following command:
-
 ```sql
 INSERT INTO employees VALUES (1, 'Johnny Depp', 'Marketing');
 ```
@@ -75,13 +73,13 @@ INSERT INTO employees VALUES
 
 ## Default values
 
-Default values allow you to define a value that will automatically be inserted into a column if no explicit value is provided during an INSERT operation. This is useful for ensuring that columns always have meaningful data, even when some values are not specified by the user.
+Default values allow you to define a value that will automatically be inserted into a column if no explicit value is provided during an INSERT operation. This is useful for ensuring that columns always have meaningful data, even when some values are not specified by the user. In our sample schema we have set a default value for the column **department** via `department TEXT DEFAULT 'Engineering'`. This lets you insert a row without explicitly specifying a department for a row like:
 
 ```sql
 INSERT INTO employees (id, name) VALUES (4, 'Bruce Lee');
 ```
 
-Another option is to explicitly specify the missing values as `DEFAULT` in the `INSERT` statement, as shown in the following example:
+Another option is to explicitly specify the missing values as `DEFAULT` in the `INSERT` statement when column names are specified explicitly as shown in the following example:
 
 ```sql
 INSERT INTO employees (id, name, department)
