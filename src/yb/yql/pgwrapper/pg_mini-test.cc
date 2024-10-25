@@ -74,18 +74,21 @@ using std::string;
 
 using namespace std::literals;
 
+DECLARE_bool(TEST_disable_flush_on_shutdown);
+DECLARE_bool(TEST_enable_pg_client_mock);
 DECLARE_bool(TEST_force_master_leader_resolution);
+DECLARE_bool(TEST_no_schedule_remove_intents);
+DECLARE_bool(delete_intents_sst_files);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_tracing);
-DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(enable_wait_queues);
+DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(pg_client_use_shared_memory);
-DECLARE_bool(ysql_yb_enable_replica_identity);
-DECLARE_bool(TEST_enable_pg_client_mock);
-DECLARE_bool(delete_intents_sst_files);
+DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_bool(use_bootstrap_intent_ht_filter);
-DECLARE_bool(TEST_no_schedule_remove_intents);
-DECLARE_bool(TEST_disable_flush_on_shutdown);
+DECLARE_bool(ysql_yb_ash_enable_infra);
+DECLARE_bool(ysql_yb_enable_ash);
+DECLARE_bool(ysql_yb_enable_replica_identity);
 
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
@@ -102,6 +105,7 @@ DECLARE_int32(tracing_level);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int32(yb_num_shards_per_tserver);
+DECLARE_int32(ysql_yb_ash_sample_size);
 
 DECLARE_int64(TEST_inject_random_delay_on_txn_status_response_ms);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
@@ -115,18 +119,14 @@ DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
 DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
 DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 
-DECLARE_uint64(max_clock_skew_usec);
-
 DECLARE_string(time_source);
 DECLARE_string(ysql_yb_default_replica_identity);
 
-DECLARE_bool(rocksdb_disable_compactions);
-DECLARE_uint64(pg_client_session_expiration_ms);
+DECLARE_uint64(consensus_max_batch_size_bytes);
+DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(pg_client_heartbeat_interval_ms);
-
-DECLARE_bool(ysql_yb_ash_enable_infra);
-DECLARE_bool(ysql_yb_enable_ash);
-DECLARE_int32(ysql_yb_ash_sample_size);
+DECLARE_uint64(pg_client_session_expiration_ms);
+DECLARE_uint64(rpc_max_message_size);
 
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_gauge_uint64(aborted_transactions_pending_cleanup);
@@ -2215,7 +2215,11 @@ TEST_F(PgMiniTest, NoWaitForRPCOnTermination) {
 
 TEST_F(PgMiniTest, ReadHugeRow) {
   constexpr size_t kNumColumns = 2;
-  constexpr size_t kColumnSize = 254000000;
+  constexpr size_t kColumnSize = 254000000 / RegularBuildVsSanitizers(1, 16);
+  if (IsSanitizer()) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_max_message_size) = kColumnSize + 1_MB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_max_batch_size_bytes) = kColumnSize - 1_KB - 1;
+  }
 
   std::string create_query = "CREATE TABLE test(pk INT PRIMARY KEY";
   for (size_t i = 0; i < kNumColumns; ++i) {
