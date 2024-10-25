@@ -124,8 +124,8 @@ PREREQS_ERROR_MSGS = {
             ' please free the port and restart the node.',
     'ycql_metric_port': 'YCQL metrics port {} is already in use. For accessing the YCQL metrics,' \
             ' please free the port and restart the node.',
-    'clockbound': 'Clockbound is recommended on AWS clusters. It can reduce read restart errors' \
-        ' significantly in concurrent workloads.' \
+    'clockbound': 'Clockbound is recommended on AWS/Azure/GCP clusters.' \
+        ' It can reduce read restart errors significantly in concurrent workloads.' \
         ' Relevant flag: --enhance_time_sync_via_clockbound.',
 }
 QUICK_START_LINKS = {
@@ -671,31 +671,19 @@ def using_time_sync_service():
     allow_list = ['169.254.169.123', 'metadata.google.internal', 'PHC',
                   'aws.com', 'google.com']
 
-    try:
-        # Run the chronyc sources command and capture the output
-        result = subprocess.run(['chronyc', 'sources'], capture_output=True, text=True, timeout=1)
-
-        # Check if any allowed source is in the output
-        if result.returncode == 0:
-            for source in allow_list:
-                if source in result.stdout:
-                    return True
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        return False
+    cmd = ['chronyc', 'sources']
+    out, err, ret_code = run_process(cmd, timeout=1, log_cmd=True)
+    if ret_code == 0:
+        for source in allow_list:
+            if source in out:
+                return True
 
     return False
 
 def is_phc_configured():
-    try:
-        # Run the chronyc sources command and capture the output
-        result = subprocess.run(['systemctl', 'status', 'clockbound'],
-                                capture_output=True, text=True, timeout=1)
-
-        # Check if PHC is in the output
-        if result.returncode == 0 and 'PHC' in result.stdout:
-            return True
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        return False
+    cmd = ['systemctl', 'status', 'clockbound']
+    out, err, retcode = run_process(cmd, timeout=1, log_cmd=True)
+    return retcode == 0 and 'PHC' in out
 
 class ControlScript(object):
     def __init__(self):
@@ -2800,11 +2788,12 @@ class ControlScript(object):
             prereqs_warn.add('ntp/chrony')
             prereqs_warn_flag = True
 
-        # Configuring clockbound is strongly recommended for AWS clusters.
-        if has_aws_time_sync_service() and not self.configs.temp_data[
-                "enhance_time_sync_via_clockbound"]:
-            prereqs_warn.add('clockbound')
-            prereqs_warn_flag = True
+        # TODO: Uncomment this block when clockbound becomes GA.
+        # # Configuring clockbound is strongly recommended for AWS clusters.
+        # if using_time_sync_service() and not self.configs.temp_data[
+        #         "enhance_time_sync_via_clockbound"]:
+        #     prereqs_warn.add('clockbound')
+        #     prereqs_warn_flag = True
 
         (failed_ports, warning_ports, mandatory_port_available,
         recommended_port_available) = self.check_ports()
@@ -4091,18 +4080,14 @@ class ControlScript(object):
         Output.init_animation("Validating system config for clockbound...")
         configure_clockbound_path = find_binary_location("configure_clockbound.sh")
         cmd = ["bash", configure_clockbound_path, "--validate"]
-        try:
-            subprocess.check_call(cmd)
-            Output.update_animation("Clockbound configured successfully.")
-        except subprocess.CalledProcessError as e:
-            exit_code = e.returncode
-            Output.update_animation("Failed to validate clockbound configuration.",
+        out, err, retcode = run_process(cmd)
+        if retcode == 0:
+            Output.update_animation("System configured for clockbound.")
+        else:
+            Output.update_animation("Failed to validate system configuration for clockbound.",
                                     status=Output.ANIMATION_FAIL)
             Output.log_error_and_exit(
-                Output.make_red("ERROR") + f": Exit code: {exit_code}."
-                " Did you run configure_clockbound.sh script?"
-            )
-
+                Output.make_red("ERROR") + ": Did you run configure_clockbound.sh script?")
 
     # Runs post_install script for linux computers.
     def post_install_yb(self):
