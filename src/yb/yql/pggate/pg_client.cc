@@ -438,7 +438,13 @@ class PgClient::Impl : public BigDataFetcher {
         } else {
           auto instance_id = heartbeat_resp_.instance_id();
           if (!instance_id.empty()) {
-            exchange_.emplace(instance_id, heartbeat_resp_.session_id(), tserver::Create::kFalse);
+            auto exchange = tserver::SharedExchange::Make(
+                instance_id, heartbeat_resp_.session_id(), tserver::Create::kFalse);
+            if (exchange.ok()) {
+              exchange_.emplace(std::move(*exchange));
+            } else {
+              LOG(DFATAL) << "Failed to create exchange: " << exchange.status();
+            }
           }
           create_session_promise_.set_value(heartbeat_resp_.session_id());
         }

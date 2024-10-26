@@ -146,7 +146,7 @@ YB_STRONGLY_TYPED_BOOL(Create);
 
 class SharedExchange {
  public:
-  SharedExchange(const std::string& instance_id, uint64_t session_id, Create create);
+  SharedExchange(SharedExchange&&);
   ~SharedExchange();
 
   std::byte* Obtain(size_t required_size);
@@ -163,8 +163,13 @@ class SharedExchange {
 
   static Status Cleanup(const std::string& instance_id);
 
+  static Result<SharedExchange> Make(
+      const std::string& instance_id, uint64_t session_id, Create create);
+
  private:
   class Impl;
+
+  explicit SharedExchange(std::unique_ptr<Impl> impl);
   std::unique_ptr<Impl> impl_;
 };
 
@@ -172,9 +177,7 @@ using SharedExchangeListener = std::function<void(size_t)>;
 
 class SharedExchangeThread {
  public:
-  SharedExchangeThread(
-      const std::string& instance_id, uint64_t session_id, Create create,
-      const SharedExchangeListener& listener);
+  SharedExchangeThread(SharedExchange exchange, const SharedExchangeListener& listener);
 
   ~SharedExchangeThread();
 
