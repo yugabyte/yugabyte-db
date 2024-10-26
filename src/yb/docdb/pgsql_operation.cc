@@ -67,17 +67,17 @@
 #include "yb/util/trace.h"
 #include "yb/util/yb_pg_errcodes.h"
 
-#include "yb/vector/vectorann.h"
+#include "yb/vector_index/vectorann.h"
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
 using namespace std::literals;
 
-using yb::vectorindex::ANNPagingState;
-using yb::vectorindex::DocKeyWithDistance;
-using yb::vectorindex::IndexableVectorType;
-using yb::vectorindex::DummyANNFactory;
-using yb::vectorindex::VectorANN;
+using yb::vector_index::ANNPagingState;
+using yb::vector_index::DocKeyWithDistance;
+using yb::vector_index::IndexableVectorType;
+using yb::vector_index::DummyANNFactory;
+using yb::vector_index::VectorANN;
 
 DECLARE_bool(ysql_disable_index_backfill);
 
@@ -1967,7 +1967,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorSearch(
 
   auto query_vec = request_.vector_idx_options().vector().binary_value();
 
-  auto ysql_query_vec = pointer_cast<const vectorindex::YSQLVector*>(query_vec.data());
+  auto ysql_query_vec = pointer_cast<const vector_index::YSQLVector*>(query_vec.data());
 
   auto query_vec_ref = VERIFY_RESULT(
       VectorANN<FloatVector>::GetVectorFromYSQLWire(*ysql_query_vec, query_vec.size()));
@@ -2013,7 +2013,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorSearch(
       if (!vec_value.has_value()) continue;
       // Add the vector to the ANN store
       auto vec = VERIFY_RESULT(VectorANN<FloatVector>::GetVectorFromYSQLWire(
-          *pointer_cast<const vectorindex::YSQLVector*>(vec_value->binary_value().data()),
+          *pointer_cast<const vector_index::YSQLVector*>(vec_value->binary_value().data()),
           vec_value->binary_value().size()));
       auto doc_iter = down_cast<DocRowwiseIterator*>(table_iter_.get());
       ann_store->Add(vec, doc_iter->GetTupleId());

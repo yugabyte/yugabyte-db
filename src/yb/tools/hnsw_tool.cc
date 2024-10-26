@@ -27,17 +27,17 @@
 #include "yb/util/string_util.h"
 #include "yb/util/test_thread_holder.h"
 
-#include "yb/vector/ann_methods.h"
-#include "yb/vector/ann_validation.h"
-#include "yb/vector/benchmark_data.h"
-#include "yb/vector/distance.h"
-#include "yb/vector/graph_repr_defs.h"
-#include "yb/vector/hnsw_options.h"
-#include "yb/vector/hnsw_util.h"
-#include "yb/vector/hnswlib_wrapper.h"
-#include "yb/vector/sharded_index.h"
-#include "yb/vector/usearch_wrapper.h"
-#include "yb/vector/vector_index_wrapper_util.h"
+#include "yb/vector_index/ann_methods.h"
+#include "yb/vector_index/ann_validation.h"
+#include "yb/vector_index/benchmark_data.h"
+#include "yb/vector_index/distance.h"
+#include "yb/vector_index/graph_repr_defs.h"
+#include "yb/vector_index/hnsw_options.h"
+#include "yb/vector_index/hnsw_util.h"
+#include "yb/vector_index/hnswlib_wrapper.h"
+#include "yb/vector_index/sharded_index.h"
+#include "yb/vector_index/usearch_wrapper.h"
+#include "yb/vector_index/vector_index_wrapper_util.h"
 
 #include "yb/tools/tool_arguments.h"
 
@@ -47,9 +47,9 @@ using namespace std::literals;
 
 namespace yb::tools {
 
-// Rather than constantly adding needed identifiers from the vectorindex namespace here, it seem to
+// Rather than constantly adding needed identifiers from the vector_index namespace here, it seem to
 // be reasonable to import the whole namespace in this vector index focused tool.
-using namespace yb::vectorindex;  // NOLINT
+using namespace yb::vector_index;  // NOLINT
 
 #define HNSW_ACTIONS (Help)(Benchmark)
 
@@ -545,9 +545,9 @@ class BenchmarkTool {
           *reader,
           // The set of vertex ids to recompute ground truth with.
           //
-          // In case ground truth is specified as an input file, it must have been computed using all
-          // input vectors, so we must use all vectors to validate them. Otherwise, use the set of
-          // vectors we've inserted.
+          // In case ground truth is specified as an input file, it must have been computed using
+          // all input vectors, so we must use all vectors to validate them. Otherwise, use the set
+          // of vectors we've inserted.
           loaded_ground_truth_.empty() ? vertex_ids_to_insert_ : all_vertex_ids_);
 
       LOG(INFO) << "Validating top k=" << k << " results with " << query_vectors.size()
@@ -580,13 +580,14 @@ class BenchmarkTool {
     bool report_based_on_time = false;
     if (args_.report_interval_ms > 0) {
       auto prev_elapsed_usec = prev_elapsed_usec_.load();
-      auto next_report_time = prev_elapsed_usec + static_cast<int64_t>(1000 * args_.report_interval_ms);
+      auto next_report_time = prev_elapsed_usec + make_signed(1000 * args_.report_interval_ms);
       report_based_on_time =
           next_report_time < elapsed_usec &&
           prev_elapsed_usec_.compare_exchange_strong(prev_elapsed_usec, elapsed_usec);
     }
     if (!force && !report_based_on_time &&
-        (args_.report_num_keys == 0 || num_inserted == 0 || num_inserted % args_.report_num_keys != 0)) {
+        (args_.report_num_keys == 0 || num_inserted == 0 ||
+         num_inserted % args_.report_num_keys != 0)) {
       return;
     }
     auto last_report_count = last_progress_report_count_.exchange(num_inserted);
