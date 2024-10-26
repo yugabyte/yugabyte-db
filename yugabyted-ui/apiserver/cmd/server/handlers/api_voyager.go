@@ -1205,19 +1205,40 @@ func getMigrationAssessmentReportFuture(log logger.Logger, migrationUuid string,
 
         sqlMetadataList := []models.SqlObjectMetadata{}
         tableIndexList := assessmentReport.TableIndexStats
-        for _, dbObjectStat := range tableIndexList {
-            var sqlMetadata1 models.SqlObjectMetadata
-            sqlMetadata1.ObjectName = dbObjectStat.ObjectName
-            if dbObjectStat.IsIndex {
-                sqlMetadata1.SqlType = "Index"
-            } else {
-                sqlMetadata1.SqlType = "Table"
-            }
-            sqlMetadata1.RowCount = dbObjectStat.RowCount
-            sqlMetadata1.Iops = dbObjectStat.Reads
-            sqlMetadata1.Size = dbObjectStat.SizeInBytes
+        setForSchemaObjectPairs := map[string]int{}
+        for _, dbObjectStat := range assessmentReport.SchemaSummary.DBObjects {
+          var sqlMetadata1 models.SqlObjectMetadata
+          allObjectNames := dbObjectStat.ObjectNames
+          allObjectNamesArray := strings.Split(allObjectNames, ", ")
+          for _, currentObjName := range allObjectNamesArray {
+            sqlMetadata1.SqlType = strings.ToLower(dbObjectStat.ObjectType)
+
+            sqlMetadata1.Size = -1
+            sqlMetadata1.Iops = -1
+            sqlMetadata1.ObjectName = currentObjName
+            setForSchemaObjectPairs[strings.ToLower(currentObjName)] = len(sqlMetadataList)
             sqlMetadataList = append(sqlMetadataList, sqlMetadata1)
+          }
         }
+
+        for _, dbObjectStat := range tableIndexList {
+          currentObjectName := string(dbObjectStat.SchemaName) + "." +
+            string(dbObjectStat.ObjectName)
+          // Here searching with and without schema names is important because of inconsistent
+          // payload
+          objectNameLower := strings.ToLower(currentObjectName)
+          objectNameOnlyLower := strings.ToLower(string(dbObjectStat.ObjectName))
+          index, exists := setForSchemaObjectPairs[objectNameLower]
+          if !exists {
+            index, exists = setForSchemaObjectPairs[objectNameOnlyLower]
+          }
+          if exists {
+            sqlMetadataList[index].Iops = dbObjectStat.Reads
+            sqlMetadataList[index].Size = dbObjectStat.SizeInBytes
+            sqlMetadataList[index].ObjectName = currentObjectName
+          }
+        }
+
         assessmentSourceDBDetails.SqlObjectsMetadata = sqlMetadataList
 
         sqlObjectsList := []models.SqlObjectCount{}
