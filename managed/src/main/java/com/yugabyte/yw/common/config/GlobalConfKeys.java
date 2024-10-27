@@ -1510,4 +1510,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " than main Prometheus scrape period to complete",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> disableV1APIToken =
+      new ConfKeyInfo<>(
+          "yb.user.disable_v1_api_token",
+          ScopeType.GLOBAL,
+          "Disable V1 API Token",
+          "Disable support for V1 API Token",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
