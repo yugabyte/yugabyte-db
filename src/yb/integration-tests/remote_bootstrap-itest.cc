@@ -796,7 +796,8 @@ TEST_F(RemoteBootstrapITest, IncompleteWALDownloadDoesntCauseCrash) {
       "--use_preelection=false"s,
       "--memstore_size_mb=1"s,
       "--TEST_download_partial_wal_segments=true"s,
-      "--remote_bootstrap_idle_timeout_ms="s + std::to_string(kBootstrapIdleTimeoutMs)
+      Format("--remote_bootstrap_idle_timeout_ms=$0", kBootstrapIdleTimeoutMs),
+      Format("--remote_bootstrap_successful_session_idle_timeout_ms=$0", kBootstrapIdleTimeoutMs),
   };
 
   const int kNumTabletServers = 3;
