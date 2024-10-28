@@ -253,6 +253,11 @@ class ExternalMiniCluster : public MiniClusterBase {
       const std::vector<std::string>& extra_flags = {},
       int num_drives = -1);
 
+  // Shuts down the tablet server(s) and removes it/them from the masters' ts registry.
+  Status RemoveTabletServer(const std::string& ts_uuid, MonoTime deadline);
+  Status RemoveTabletServers(
+      const std::vector<std::reference_wrapper<const std::string>>& ts_uuids, MonoTime deadline);
+
   // Start YB Controller servers for all the existing TSs.
   Status StartYbControllerServers();
 

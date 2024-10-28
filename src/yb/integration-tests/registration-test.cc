@@ -243,7 +243,8 @@ TEST_F(RegistrationTest, TestTabletReports) {
   // After restart, check that the tablet reports produced the expected number of writes to the
   // catalog table. We expect two updates per tablet, since both replicas should have increased
   // their term on restart.
-  EXPECT_EQ(2 * FLAGS_yb_num_shards_per_tserver, GetCatalogMetric(METRIC_rows_inserted));
+  // We also expect one write for the ts registry entry written for the tserver.
+  EXPECT_EQ(2 * FLAGS_yb_num_shards_per_tserver + 1, GetCatalogMetric(METRIC_rows_inserted));
 
   // If we restart just the master, it should not write any data to the catalog, since the
   // tablets themselves are not changing term, etc.

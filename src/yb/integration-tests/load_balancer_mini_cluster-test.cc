@@ -463,7 +463,7 @@ TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
   {
     master::TSDescriptorPtr ts3_desc = *ts3_it;
     auto l = ts3_desc->LockForWrite();
-    l.mutable_data()->pb.set_state(master::SysTServerEntryPB::REPLACED);
+    l.mutable_data()->pb.set_state(master::SysTabletServerEntryPB::REPLACED);
     l.Commit();
   }
 

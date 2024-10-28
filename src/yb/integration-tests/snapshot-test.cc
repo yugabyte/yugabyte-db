@@ -584,7 +584,9 @@ TEST_F(SnapshotTest, ImportedSnapshotsDoNotBlockCleanup) {
 
   // Drop table and verify table is dropped, not hidden.
   ASSERT_OK(client_->DeleteTable(workload.table_name(), true /* wait */));
-  ASSERT_TRUE(ASSERT_RESULT(IsTableDropped(table->id())));
+  ASSERT_OK(WaitFor(
+      std::bind(&SnapshotTest::IsTableDropped, this, table->id()), 120s,
+      "Timed out waiting for table to be dropped"));
 }
 
 YB_STRONGLY_TYPED_BOOL(Imported);

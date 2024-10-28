@@ -22,9 +22,20 @@ namespace yb::master {
 MasterClusterClient::MasterClusterClient(MasterClusterProxy&& proxy) noexcept
     : proxy_(std::move(proxy)) {}
 
-Status MasterClusterClient::BlacklistHost(HostPortPB&& host) const {
+Status MasterClusterClient::BlacklistHost(HostPortPB&& hp) const {
   auto config = VERIFY_RESULT(GetMasterClusterConfig());
-  *config.mutable_server_blacklist()->add_hosts() = std::move(host);
+  *config.mutable_server_blacklist()->add_hosts() = std::move(hp);
+  return ChangeMasterClusterConfig(std::move(config));
+}
+
+Status MasterClusterClient::UnBlacklistHost(const HostPortPB& hp) const {
+  auto config = VERIFY_RESULT(GetMasterClusterConfig());
+  auto* hosts = config.mutable_server_blacklist()->mutable_hosts();
+  auto new_end =
+      std::remove_if(hosts->begin(), hosts->end(), [&hp](const auto& current_hp) -> bool {
+        return current_hp.host() == hp.host() && current_hp.port() == hp.port();
+      });
+  (void)new_end;
   return ChangeMasterClusterConfig(std::move(config));
 }
 

@@ -606,13 +606,8 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterCrashDuringRemoteBootstrap) {
   // We'll do a config change to remote bootstrap a replica here later. For
   // now, shut it down.
   LOG(INFO) << "Shutting down TS " << cluster_->tablet_server(kTsIndex)->uuid();
-  cluster_->tablet_server(kTsIndex)->Shutdown();
-
-  // Bounce the Master so it gets new tablet reports and doesn't try to assign
-  // a replica to the dead TS.
-  cluster_->master()->Shutdown();
-  ASSERT_OK(cluster_->master()->Restart());
-  ASSERT_OK(cluster_->WaitForTabletServerCount(2, timeout));
+  ASSERT_OK(cluster_->RemoveTabletServer(
+      cluster_->tablet_server(kTsIndex)->uuid(), MonoTime::Now() + timeout));
 
   // Start a workload on the cluster, and run it for a little while.
   TestWorkload workload(cluster_.get());
@@ -718,13 +713,8 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
   // We'll do a config change to remote bootstrap a replica here later. For
   // now, shut it down.
   LOG(INFO) << "Shutting down TS " << cluster_->tablet_server(kTsIndex)->uuid();
-  cluster_->tablet_server(kTsIndex)->Shutdown();
-
-  // Bounce the Master so it gets new tablet reports and doesn't try to assign
-  // a replica to the dead TS.
-  cluster_->master()->Shutdown();
-  ASSERT_OK(cluster_->master()->Restart());
-  ASSERT_OK(cluster_->WaitForTabletServerCount(2, timeout));
+  ASSERT_OK(cluster_->RemoveTabletServer(
+      cluster_->tablet_server(kTsIndex)->uuid(), MonoTime::Now() + timeout));
 
   // Start a workload on the cluster, and run it for a little while.
   TestWorkload workload(cluster_.get());
