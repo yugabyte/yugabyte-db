@@ -7,21 +7,21 @@ body > header:has(.info-topbar) + .container-fluid .td-main {
 }
 
 body > header:not(:has(.info-topbar.closed)) + .container-fluid .td-main {
-  @media (min-width: 1550px) {
-    padding-top: 80px;
-
-    aside.td-sidebar {
-      top: 214px;
-      max-height: calc(100vh - 214px);
-    }
-  }
-
   @media (min-width: 992px) {
     padding-top: 50px;
 
     aside.td-sidebar {
       top: 184px;
       max-height: calc(100vh - 184px);
+    }
+  }
+
+  @media (min-width: 1550px) {
+    padding-top: 80px;
+
+    aside.td-sidebar {
+      top: 214px;
+      max-height: calc(100vh - 214px);
     }
   }
 }
