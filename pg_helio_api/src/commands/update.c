@@ -850,6 +850,7 @@ DoMultiUpdate(MongoCollection *collection, List *updates, text *transactionId,
 	PG_CATCH();
 	{
 		MemoryContextSwitchTo(oldContext);
+		FlushErrorState();
 
 		/* Abort the inner transaction */
 		RollbackAndReleaseCurrentSubTransaction();
@@ -912,7 +913,6 @@ DoSingleUpdate(MongoCollection *collection, UpdateSpec *updateSpec, text *transa
 		batchResult->writeErrors = lappend(batchResult->writeErrors,
 										   GetWriteErrorFromErrorData(errorData,
 																	  updateIndex));
-
 		isSuccess = false;
 	}
 	PG_END_TRY();
