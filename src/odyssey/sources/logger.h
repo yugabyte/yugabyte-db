@@ -22,6 +22,11 @@ struct od_logger {
 	int format_len;
 
 	int fd;
+	char *log_dir;
+	int current_log_size;
+	int max_log_size;
+	int rotate_interval;
+	time_t next_rotate_timestamp;
 
 	int loaded;
 	int64_t machine;
@@ -48,8 +53,23 @@ static inline void od_logger_set_format(od_logger_t *logger, char *format)
 	logger->format_len = strlen(format);
 }
 
-extern int od_logger_open(od_logger_t *, char *);
-extern int od_logger_reopen(od_logger_t *, char *);
+static inline void od_logger_set_dir(od_logger_t *logger, char *dir)
+{
+	logger->log_dir = dir;
+}
+
+static inline void od_logger_set_max_size(od_logger_t *logger, int max_size)
+{
+	logger->max_log_size = max_size;
+}
+
+static inline void od_logger_set_rotate_interval(od_logger_t *logger, int rotate_interval)
+{
+	logger->rotate_interval = rotate_interval;
+}
+
+extern int od_logger_open(od_logger_t *);
+extern int od_logger_reopen(od_logger_t *);
 extern int od_logger_open_syslog(od_logger_t *, char *, char *);
 extern void od_logger_close(od_logger_t *);
 extern void od_logger_write(od_logger_t *, od_logger_level_t, char *, void *,

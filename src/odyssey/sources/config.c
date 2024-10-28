@@ -19,7 +19,9 @@ void od_config_init(od_config_t *config)
 	config->log_config = 0;
 	config->log_session = 1;
 	config->log_query = 0;
-	config->log_file = NULL;
+	config->log_dir = NULL;
+	config->log_max_size = 0;
+	config->log_rotate_interval = 0;
 	config->log_stats = 1;
 	config->log_general_stats_prom = 0;
 	config->log_route_stats_prom = 0;
@@ -80,8 +82,8 @@ void od_config_free(od_config_t *config)
 		listen = od_container_of(i, od_config_listen_t, link);
 		od_config_listen_free(listen);
 	}
-	if (config->log_file)
-		free(config->log_file);
+	if (config->log_dir)
+		free(config->log_dir);
 	if (config->log_format)
 		free(config->log_format);
 	if (config->pid_file)
@@ -259,9 +261,13 @@ void od_config_print(od_config_t *config, od_logger_t *logger)
 	if (config->log_format)
 		od_log(logger, "config", NULL, NULL,
 		       "log_format              %s", config->log_format);
-	if (config->log_file)
+	if (config->log_dir)
 		od_log(logger, "config", NULL, NULL,
-		       "log_file                %s", config->log_file);
+		       "log_dir                %s", config->log_dir);
+	od_log(logger, "config", NULL, NULL,
+		    "log_max_size          %d", config->log_max_size);
+	od_log(logger, "config", NULL, NULL,
+		   	"log_rotate_interval       %d", config->log_rotate_interval);
 	od_log(logger, "config", NULL, NULL, "log_to_stdout           %s",
 	       od_config_yes_no(config->log_to_stdout));
 	od_log(logger, "config", NULL, NULL, "log_syslog              %s",
