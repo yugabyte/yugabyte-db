@@ -227,10 +227,19 @@ od_logger_format(od_logger_t *logger, od_logger_level_t level, char *context,
 			case 't': {
 				struct timeval tv;
 				gettimeofday(&tv, NULL);
+				/*
+				 * YB NOTE: We've changed the logging format here to match the format used
+				 * by PG. This helps correlated logs across the connection manager and PG
+				 * backends.
+				*/
 				len = strftime(dst_pos, dst_end - dst_pos,
-					       "%FT%TZ", gmtime(&tv.tv_sec));
+					       "%Y-%m-%d %H:%M:%S",
+					       gmtime(&tv.tv_sec));
 				dst_pos += len;
-
+				len = od_snprintf(dst_pos, dst_end - dst_pos,
+						  ".%03d UTC",
+						  (signed)(tv.tv_usec / 1000));
+				dst_pos += len;
 				break;
 			}
 			/* millis */
