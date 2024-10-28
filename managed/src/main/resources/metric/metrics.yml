@@ -2018,7 +2018,7 @@ ysql_conn_mgr_active_connections:
   function: "avg_over_time|sum"
   range: true
   filters:
-    saved_name: "ysql_conn_mgr_active_clients|ysql_conn_mgr_queued_clients|ysql_conn_mgr_idle_or_pending_clients|ysql_conn_mgr_clients_total"
+    saved_name: "ysql_conn_mgr_active_clients|ysql_conn_mgr_queued_clients|ysql_conn_mgr_waiting_clients|ysql_conn_mgr_clients_total"
   group_by: "saved_name"
   panel_group: "YSQL Ops & Latency"
   layout:
@@ -2029,7 +2029,7 @@ ysql_conn_mgr_active_connections:
       alias:
         "ysql_conn_mgr_active_clients": "Active"
         "ysql_conn_mgr_queued_clients": "Queued"
-        "ysql_conn_mgr_idle_or_pending_clients": "Idle/Pending"
+        "ysql_conn_mgr_waiting_clients": "Idle/Pending"
         "ysql_conn_mgr_clients_total": "Total"
 
 #Cassandra Metrics
@@ -3719,7 +3719,7 @@ process_open_files:
         "yb-postmaster": "Postmaster"
         "otelcol-contrib": "Otel Collector"
         "yb-controller-server": "YB-Controller"
-
+        "node_exporter": "Node Exporter"
 
 ysql_catalog_cache_misses:
   metric: "rpc_latency_count"

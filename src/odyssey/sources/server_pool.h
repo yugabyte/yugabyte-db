@@ -146,7 +146,7 @@ static inline od_server_t *yb_od_server_pool_idle_last(od_server_pool_t *pool)
 static inline od_server_t *yb_od_server_pool_idle_random (od_server_pool_t *pool)
 {
 	od_list_t *target = &pool->idle;
-	od_server_t *server;
+	od_server_t *server = NULL;
 	od_list_t *i, *n;
 	int len = pool->count_idle;
 	if (len == 0)

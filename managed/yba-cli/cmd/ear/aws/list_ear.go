@@ -11,11 +11,13 @@ import (
 )
 
 var listAWSEARCmd = &cobra.Command{
-	Use: "list",
+	Use:     "list",
+	Aliases: []string{"ls"},
 	Short: "List AWS YugabyteDB Anywhere Encryption In Transit" +
 		" (EAR) configurations",
 	Long: "List AWS YugabyteDB Anywhere Encryption In Transit" +
 		" (EAR) configurations",
+	Example: `yba ear aws list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		earutil.ListEARUtil(cmd, "AWS", util.AWSEARType)
 	},

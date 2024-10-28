@@ -977,11 +977,19 @@ YBInitPostgresBackend(
 		IpAddressToBytes(&ash_config);
 		YBCInitPgGate(type_table, count, callbacks, session_id, &ash_config);
 		YBCInstallTxnDdlHook();
-		if (yb_ash_enable_infra)
-			YbAshInit();
 
-		if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())
-			YbQueryDiagnosticsInstallHook();
+		/*
+		 * The auth-backend doesn't execute user queries. So we don't need ASH
+		 * and query diagnostics.
+		 */
+		if (!YbIsAuthBackend())
+		{
+			if (yb_ash_enable_infra)
+				YbAshInit();
+
+			if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())
+				YbQueryDiagnosticsInstallHook();
+		}
 
 		/*
 		 * For each process, we create one YBC session for PostgreSQL to use
@@ -1631,6 +1639,8 @@ int yb_toast_catcache_threshold = -1;
 int yb_parallel_range_size = 1024 * 1024;
 int yb_insert_on_conflict_read_batch_size = 1024;
 bool yb_enable_fkey_catcache = true;
+bool yb_enable_nop_alter_role_optimization = true;
+bool yb_enable_inplace_index_update = true;
 
 YBUpdateOptimizationOptions yb_update_optimization_options = {
 	.has_infra = true,
@@ -3140,6 +3150,94 @@ yb_table_properties(PG_FUNCTION_ARGS)
 	relation_close(rel, AccessShareLock);
 
 	return HeapTupleGetDatum(heap_form_tuple(tupdesc, values, nulls));
+}
+
+Datum
+yb_database_clones(PG_FUNCTION_ARGS)
+{
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	TupleDesc	tupdesc;
+	Tuplestorestate *tupstore;
+	MemoryContext per_query_ctx;
+	MemoryContext oldcontext;
+	int			i;
+#define YB_DATABASE_CLONES_COLS 7
+
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not " \
+						"allowed in this context")));
+
+	/*
+	 * Switch context to construct returned data structures and store
+	 * returned values from tserver.
+	 */
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	/* Build a tuple descriptor */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		ereport(ERROR,
+				(errmsg_internal("return type must be a row type")));
+
+	tupstore = tuplestore_begin_heap(true, false, work_mem);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	YBCPgDatabaseCloneInfo	*database_clones_info = NULL;
+	size_t		num_clones = 0;
+	HandleYBStatus(YBCDatabaseClones(&database_clones_info, &num_clones));
+
+	for (i = 0; i < num_clones; ++i)
+	{
+		YBCPgDatabaseCloneInfo *clone_info = (YBCPgDatabaseCloneInfo *)database_clones_info + i;
+		Datum		values[YB_DATABASE_CLONES_COLS];
+		bool		nulls[YB_DATABASE_CLONES_COLS];
+
+		memset(values, 0, sizeof(values));
+		memset(nulls, 0, sizeof(nulls));
+
+
+		values[1] = CStringGetTextDatum(clone_info->db_name);
+		values[2] = ObjectIdGetDatum(clone_info->parent_db_id);
+		values[3] = CStringGetTextDatum(clone_info->parent_db_name);
+		values[4] = CStringGetTextDatum(clone_info->state);
+		values[5] = TimestampTzGetDatum(clone_info->as_of_time);
+
+		/* Optional values that are not set all the time */
+		if (OidIsValid(clone_info->db_id))
+		{
+			values[0] = ObjectIdGetDatum(clone_info->db_id);
+		}
+		else
+			nulls[0] = true;
+
+		if (strlen(clone_info->failure_reason))
+		{
+			values[6] = CStringGetTextDatum(clone_info->failure_reason);
+		}
+		else
+			nulls[6] = true;
+
+		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+	}
+
+#undef YB_DATABASE_CLONES_COLS
+
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupstore);
+
+	MemoryContextSwitchTo(oldcontext);
+
+	return (Datum) 0;
 }
 
 /*
@@ -5080,12 +5178,37 @@ int ysql_conn_mgr_sticky_object_count = 0;
 bool yb_ysql_conn_mgr_sticky_guc = false;
 
 /*
- * ```YbIsConnectionMadeStickyUsingGUC()``` returns whether or not the a
- * connection is made sticky using via specific GUC variables.
+ * `yb_ysql_conn_mgr_superuser_existed` denotes whether the session user was
+ * ever a superuser.
+ */
+bool yb_ysql_conn_mgr_superuser_existed = false;
+
+bool YbIsSuperuserConnSticky()
+{
+	return *(YBCGetGFlags()->ysql_conn_mgr_superuser_sticky);
+}
+
+/*
+ * ```YbIsConnectionMadeStickyUsingGUC()``` returns whether or not a
+ * connection is made sticky using specific GUC variables. This also includes
+ * making the connection sticky if the "session user" was ever a superuser,
+ * provided that the flag ysql_conn_mgr_superuser_sticky is enabled.
  */
 static bool YbIsConnectionMadeStickyUsingGUC()
 {
-	return yb_ysql_conn_mgr_sticky_guc;
+	/*
+	 * If the user on this backend was ever a superuser, let the connection
+	 * remain sticky to avoid potential errors during deploy phase for
+	 * superuser-only GUC variables. Deliberately leave superuser() as the last
+	 * condition to avoid unnecessary calls to superuser(), while also allowing
+	 * the history stored in yb_ysql_conn_mgr_superuser_existed to be used on
+	 * priority.
+	 */
+	yb_ysql_conn_mgr_superuser_existed = yb_ysql_conn_mgr_superuser_existed ||
+		session_auth_is_superuser ||
+		(IsTransactionState() && superuser());
+	return yb_ysql_conn_mgr_sticky_guc = yb_ysql_conn_mgr_sticky_guc ||
+		(YbIsSuperuserConnSticky() && yb_ysql_conn_mgr_superuser_existed);
 }
 
 /*
@@ -5518,6 +5641,11 @@ bool YbIsYsqlConnMgrWarmupModeEnabled()
 	return strcmp(YBCGetGFlags()->TEST_ysql_conn_mgr_dowarmup_all_pools_mode, "none") != 0;
 }
 
+bool YbIsAuthBackend()
+{
+	return yb_is_auth_backend;
+}
+
 /* Used in YB to check if an attribute is a key column. */
 bool YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum)
 {
@@ -5540,4 +5668,14 @@ SortByDir YbGetIndexKeySortOrdering(Relation indexRel)
 	if (indexRel->rd_indoption[0] & INDOPTION_DESC)
 		return SORTBY_DESC;
 	return SORTBY_ASC;
+}
+
+/*
+ * Determine if the unsafe truncate (i.e., without table rewrite) should
+ * be used for a given relation and its indexes.
+ */
+bool YbUseUnsafeTruncate(Relation rel)
+{
+	return IsYBRelation(rel) &&
+		(IsSystemRelation(rel) || !yb_enable_alter_table_rewrite);
 }

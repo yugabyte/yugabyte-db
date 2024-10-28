@@ -1,0 +1,19 @@
+title: PrometheusHostInfo
+description: |
+  PrometheusHostInfo
+
+  Information about the the Prometheus instance for the current YBA. Part of PrometheusHostInfoResp.
+type: object
+required:
+  - prometheus_url
+  - use_browser_fqdn
+properties:
+  prometheus_url:
+    description: URL for accessing Prometheus
+    type: string
+    example: 'https://localhost:9000'
+    readOnly: true
+  use_browser_fqdn:
+    description: If the Prometheus link in the browser should use the browser's FQDN or use prometheus url directly.
+    type: boolean
+    readOnly: true

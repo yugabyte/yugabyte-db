@@ -13,8 +13,8 @@ import (
 
 // HashicorpVaultEARCmd represents the ear command
 var HashicorpVaultEARCmd = &cobra.Command{
-	Use:     "hashicorp",
-	Aliases: []string{"hashicorp-vault", "hcv"},
+	Use:     "hashicorp-vault",
+	Aliases: []string{"hashicorp", "hcv"},
 	GroupID: "type",
 	Short:   "Manage a YugabyteDB Anywhere Hashicorp Vault encryption at rest (EAR) configuration",
 	Long:    "Manage a Hashicorp Vault encryption at rest (EAR) configuration in YugabyteDB Anywhere",

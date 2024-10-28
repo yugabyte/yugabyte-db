@@ -7,7 +7,7 @@ import yaml
 import pprint
 import json
 
-from configs.config import parse_config
+from configs.config import parse_config, validate_config
 from configs import setup_logger
 from executor import Executor
 
@@ -78,6 +78,7 @@ def main():
         print("Parsing YAML failed with ", e)
         raise
     conf = parse_config(ynp_config)
+    validate_config(conf)
     setup_logger.setup_logger(conf)
 
     logger = logging.getLogger(__name__)

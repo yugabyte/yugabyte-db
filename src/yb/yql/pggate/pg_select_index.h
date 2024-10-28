@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "yb/util/result.h"
+#include "yb/util/slice.h"
 #include "yb/util/status.h"
 
 #include "yb/yql/pggate/pg_select.h"
@@ -26,20 +27,25 @@ namespace yb::pggate {
 
 class PgSelectIndex : public PgSelect {
  public:
-  PgSelectIndex(
-      PgSession::ScopedRefPtr pg_session, const PgObjectId& index_id,
-      bool is_region_local, const PrepareParameters& prepare_params = {});
-
-  // Prepare NESTED query for secondary index. This function is called when Postgres layer is
-  // accessing the IndexTable via an outer select (Sequential or primary scans)
-  Status PrepareSubquery(std::shared_ptr<LWPgsqlReadRequestPB> read_req);
-
   virtual Result<const std::vector<Slice>*> FetchYbctidBatch();
+
+  [[nodiscard]] bool KeepOrder() const;
+
+  static Result<std::unique_ptr<PgSelectIndex>> Make(
+      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& index_id,
+      bool is_region_local, std::shared_ptr<LWPgsqlReadRequestPB>&& read_req = {});
+
+ protected:
+  explicit PgSelectIndex(const PgSession::ScopedRefPtr& pg_session);
 
  private:
   // Get next batch of ybctids from either PgGate::cache or server.
   Result<bool> GetNextYbctidBatch();
 
+  // Prepare NESTED query for secondary index. This function is called when Postgres layer is
+  // accessing the IndexTable via an outer select (Sequential or primary scans)
+  Status PrepareSubquery(
+        const PgObjectId& index_id, std::shared_ptr<LWPgsqlReadRequestPB>&& read_req);
 };
 
 }  // namespace yb::pggate

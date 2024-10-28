@@ -88,6 +88,10 @@ class ObjectLockTest : public YBMiniClusterTestBase<MiniCluster> {
     return MasterProxy(VERIFY_RESULT(cluster_->GetLeaderMiniMaster()));
   }
 
+  const std::string& TSUuid(size_t ts_idx) const {
+    return cluster_->mini_tablet_server(ts_idx)->server()->permanent_uuid();
+  }
+
  private:
   std::unique_ptr<rpc::Messenger> client_messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
@@ -101,10 +105,11 @@ constexpr uint64_t kObjectId2 = 2;
 constexpr size_t kTimeoutMs = 5000;
 
 tserver::AcquireObjectLockRequestPB AcquireRequestFor(
-    uint64_t session_id, uint64_t database_id, uint64_t object_id, TableLockType lock_type) {
+    const std::string& session_host_uuid, uint64_t session_id, uint64_t database_id,
+    uint64_t object_id, TableLockType lock_type) {
   tserver::AcquireObjectLockRequestPB req;
   req.set_session_id(session_id);
-  req.set_session_host_uuid("localhost");
+  req.set_session_host_uuid(session_host_uuid);
   auto* lock = req.add_object_locks();
   lock->set_database_oid(database_id);
   lock->set_object_oid(object_id);
@@ -119,27 +124,29 @@ rpc::RpcController RpcController() {
 }
 
 Status AcquireLockAt(
-    tserver::TabletServerServiceProxy* proxy, uint64_t session_id, uint64_t database_id,
-    uint64_t object_id, TableLockType type) {
+    tserver::TabletServerServiceProxy* proxy, const std::string& session_host_uuid,
+    uint64_t session_id, uint64_t database_id, uint64_t object_id, TableLockType type) {
   tserver::AcquireObjectLockResponsePB resp;
-  auto req = AcquireRequestFor(session_id, database_id, object_id, type);
+  auto req = AcquireRequestFor(session_host_uuid, session_id, database_id, object_id, type);
   auto rpc_controller = RpcController();
   return proxy->AcquireObjectLocks(req, &resp, &rpc_controller);
 }
 
 void AcquireLockAsyncAt(
-    tserver::TabletServerServiceProxy* proxy, rpc::RpcController* controller, uint64_t session_id,
-    uint64_t database_id, uint64_t object_id, TableLockType type, std::function<void()> callback,
+    tserver::TabletServerServiceProxy* proxy, rpc::RpcController* controller,
+    const std::string& session_host_uuid, uint64_t session_id, uint64_t database_id,
+    uint64_t object_id, TableLockType type, std::function<void()> callback,
     tserver::AcquireObjectLockResponsePB* resp) {
-  auto req = AcquireRequestFor(session_id, database_id, object_id, type);
+  auto req = AcquireRequestFor(session_host_uuid, session_id, database_id, object_id, type);
   proxy->AcquireObjectLocksAsync(req, resp, controller, callback);
 }
 
 tserver::ReleaseObjectLockRequestPB ReleaseRequestFor(
-    uint64_t session_id, uint64_t database_id, uint64_t object_id) {
+    const std::string& session_host_uuid, uint64_t session_id, uint64_t database_id,
+    uint64_t object_id) {
   tserver::ReleaseObjectLockRequestPB req;
   req.set_session_id(session_id);
-  req.set_session_host_uuid("localhost");
+  req.set_session_host_uuid(session_host_uuid);
   auto* lock = req.add_object_locks();
   lock->set_database_oid(database_id);
   lock->set_object_oid(object_id);
@@ -147,42 +154,48 @@ tserver::ReleaseObjectLockRequestPB ReleaseRequestFor(
 }
 
 Status ReleaseLockAt(
-    tserver::TabletServerServiceProxy* proxy, uint64_t session_id, uint64_t database_id,
-    uint64_t object_id) {
+    tserver::TabletServerServiceProxy* proxy, const std::string& session_host_uuid,
+    uint64_t session_id, uint64_t database_id, uint64_t object_id) {
   tserver::ReleaseObjectLockResponsePB resp;
   rpc::RpcController controller = RpcController();
-  auto req = ReleaseRequestFor(session_id, database_id, object_id);
+  auto req = ReleaseRequestFor(session_host_uuid, session_id, database_id, object_id);
   return proxy->ReleaseObjectLocks(req, &resp, &controller);
 }
 
 TEST_F(ObjectLockTest, AcquireObjectLocks) {
+  const auto& kSessionHostUuid = TSUuid(0);
   auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
   ASSERT_OK(AcquireLockAt(
-      &master_proxy, kSessionId, kDatabaseID, kObjectId, TableLockType::ACCESS_EXCLUSIVE));
+      &master_proxy, kSessionHostUuid, kSessionId, kDatabaseID, kObjectId,
+      TableLockType::ACCESS_EXCLUSIVE));
 }
 
 TEST_F(ObjectLockTest, ReleaseObjectLocks) {
+  const auto& kSessionHostUuid = TSUuid(0);
   auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
   ASSERT_OK(AcquireLockAt(
-      &master_proxy, kSessionId, kDatabaseID, kObjectId, TableLockType::ACCESS_EXCLUSIVE));
-  ASSERT_OK(ReleaseLockAt(&master_proxy, kSessionId, kDatabaseID, kObjectId));
+      &master_proxy, kSessionHostUuid, kSessionId, kDatabaseID, kObjectId,
+      TableLockType::ACCESS_EXCLUSIVE));
+  ASSERT_OK(ReleaseLockAt(&master_proxy, kSessionHostUuid, kSessionId, kDatabaseID, kObjectId));
 }
 
 TEST_F(ObjectLockTest, AcquireObjectLocksWaitsOnTServer) {
+  const auto& kSessionHostUuid = TSUuid(0);
   // Acquire lock on TServer-0
   auto* tserver0 = cluster_->mini_tablet_server(0);
   auto tserver0_proxy = TServerProxy(0);
   ASSERT_OK(AcquireLockAt(
-      &tserver0_proxy, kSessionId, kDatabaseID, kObjectId, TableLockType::ACCESS_SHARE));
+      &tserver0_proxy, kSessionHostUuid, kSessionId, kDatabaseID, kObjectId,
+      TableLockType::ACCESS_SHARE));
 
   ASSERT_EQ(tserver0->server()->ts_local_lock_manager()->TEST_WaitingLocksSize(), 0);
-  CountDownLatch latch(1);
+  CountDownLatch ddl_latch(1);
   auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
   tserver::AcquireObjectLockResponsePB resp;
   auto controller = RpcController();
   AcquireLockAsyncAt(
-      &master_proxy, &controller, kSessionId2, kDatabaseID, kObjectId,
-      TableLockType::ACCESS_EXCLUSIVE, latch.CountDownCallback(), &resp);
+      &master_proxy, &controller, kSessionHostUuid, kSessionId2, kDatabaseID, kObjectId,
+      TableLockType::ACCESS_EXCLUSIVE, ddl_latch.CountDownCallback(), &resp);
 
   // Wait. But the lock acquisition should not be successful.
   ASSERT_OK(WaitFor(
@@ -192,36 +205,142 @@ TEST_F(ObjectLockTest, AcquireObjectLocksWaitsOnTServer) {
       MonoDelta::FromMilliseconds(kTimeoutMs), "wait for blocking on TServer0"));
 
   // Release lock at TServer-0
-  ASSERT_OK(ReleaseLockAt(&tserver0_proxy, kSessionId, kDatabaseID, kObjectId));
+  ASSERT_OK(ReleaseLockAt(&tserver0_proxy, kSessionHostUuid, kSessionId, kDatabaseID, kObjectId));
 
   // Verify that lock acquistion at master is successful.
-  ASSERT_TRUE(latch.WaitFor(MonoDelta::FromMilliseconds(kTimeoutMs)));
+  ASSERT_TRUE(ddl_latch.WaitFor(MonoDelta::FromMilliseconds(kTimeoutMs)));
   ASSERT_EQ(tserver0->server()->ts_local_lock_manager()->TEST_WaitingLocksSize(), 0);
 }
 
 TEST_F(ObjectLockTest, AcquireAndReleaseDDLLock) {
+  const auto& kSessionHostUuid = TSUuid(0);
   auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
   ASSERT_OK(AcquireLockAt(
-      &master_proxy, kSessionId2, kDatabaseID, kObjectId, TableLockType::ACCESS_EXCLUSIVE));
-  ASSERT_OK(ReleaseLockAt(&master_proxy, kSessionId2, kDatabaseID, kObjectId));
+      &master_proxy, kSessionHostUuid, kSessionId2, kDatabaseID, kObjectId,
+      TableLockType::ACCESS_EXCLUSIVE));
+  ASSERT_OK(ReleaseLockAt(&master_proxy, kSessionHostUuid, kSessionId2, kDatabaseID, kObjectId));
 
   // Release non-existent lock.
-  ASSERT_OK(ReleaseLockAt(&master_proxy, kSessionId2, kDatabaseID, kObjectId2));
+  ASSERT_OK(ReleaseLockAt(&master_proxy, kSessionHostUuid, kSessionId2, kDatabaseID, kObjectId2));
+}
+
+void DumpMasterAndTServerLocks(
+    MiniCluster* cluster, const std::string& message = "", bool dump_master_html = false,
+    bool dump_tserver_html = true) {
+  LOG(INFO) << message;
+  for (auto& master : cluster->mini_masters()) {
+    auto master_local_lock_manager = master->master()
+                                         ->catalog_manager_impl()
+                                         ->object_lock_info_manager()
+                                         ->TEST_ts_local_lock_manager();
+    LOG(INFO) << master->ToString()
+              << " TestWaitingLocksSize: " << master_local_lock_manager->TEST_WaitingLocksSize()
+              << " TestGrantedLocksSize: " << master_local_lock_manager->TEST_GrantedLocksSize();
+    if (dump_master_html) {
+      master_local_lock_manager->DumpLocksToHtml(LOG(INFO));
+    }
+  }
+  for (auto& ts : cluster->mini_tablet_servers()) {
+    LOG(INFO) << ts->ToString() << " TestWaitingLocksSize: "
+              << ts->server()->ts_local_lock_manager()->TEST_WaitingLocksSize()
+              << " TestGrantedLocksSize: "
+              << ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize();
+    if (dump_tserver_html) {
+      ts->server()->ts_local_lock_manager()->DumpLocksToHtml(LOG(INFO));
+    }
+  }
+}
+
+TEST_F(ObjectLockTest, DDLLockWaitsAtMaster) {
+  const auto& kSessionHostUuid = TSUuid(0);
+  auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
+  ASSERT_OK(AcquireLockAt(
+      &master_proxy, kSessionHostUuid, kSessionId, kDatabaseID, kObjectId,
+      TableLockType::ACCESS_EXCLUSIVE));
+  auto master_local_lock_manager = cluster_->mini_master()
+                                       ->master()
+                                       ->catalog_manager_impl()
+                                       ->object_lock_info_manager()
+                                       ->TEST_ts_local_lock_manager();
+
+  DumpMasterAndTServerLocks(cluster_.get(), "After taking lock from session-1 ");
+  auto expected_locks = master_local_lock_manager->TEST_GrantedLocksSize();
+  ASSERT_GE(expected_locks, 1);
+  ASSERT_EQ(master_local_lock_manager->TEST_WaitingLocksSize(), 0);
+  for (auto ts : cluster_->mini_tablet_servers()) {
+    ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), expected_locks);
+    ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_WaitingLocksSize(), 0);
+  }
+
+  CountDownLatch ddl_latch(1);
+  tserver::AcquireObjectLockResponsePB resp;
+  auto controller = RpcController();
+  AcquireLockAsyncAt(
+      &master_proxy, &controller, kSessionHostUuid, kSessionId2, kDatabaseID, kObjectId,
+      TableLockType::ACCESS_EXCLUSIVE, ddl_latch.CountDownCallback(), &resp);
+
+  // Wait for the lock acquisition to wait at master.
+  ASSERT_OK(WaitFor(
+      [master_local_lock_manager]() -> bool {
+        return master_local_lock_manager->TEST_WaitingLocksSize() > 0;
+      },
+      MonoDelta::FromMilliseconds(kTimeoutMs), "Wait for blocking on the master"));
+
+  DumpMasterAndTServerLocks(cluster_.get(), "After requesting lock from session-2 ");
+  // Locks for weak intents are granted at the Master. But locks for strong intents are not granted.
+  // Neither of the locks are granted by the TServer, as the request is still waiting at the Master.
+  auto old_expected_locks = expected_locks;
+  expected_locks = master_local_lock_manager->TEST_GrantedLocksSize();
+  ASSERT_GE(expected_locks, 1);
+  ASSERT_GT(expected_locks, old_expected_locks);
+  for (auto ts : cluster_->mini_tablet_servers()) {
+    ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), old_expected_locks);
+    ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_WaitingLocksSize(), 0);
+  }
+
+  // Release lock from Session-1
+  ASSERT_OK(ReleaseLockAt(&master_proxy, kSessionHostUuid, kSessionId, kDatabaseID, kObjectId));
+
+  // Verify that lock acquistion for session-2 is successful.
+  ASSERT_TRUE(ddl_latch.WaitFor(MonoDelta::FromMilliseconds(kTimeoutMs)));
+
+  DumpMasterAndTServerLocks(
+      cluster_.get(), "After releasing lock from session-1 : session-2 should acquire the lock");
+  expected_locks = master_local_lock_manager->TEST_GrantedLocksSize();
+  ASSERT_GE(expected_locks, 1);
+  ASSERT_EQ(expected_locks, old_expected_locks);
+  ASSERT_EQ(master_local_lock_manager->TEST_WaitingLocksSize(), 0);
+  for (auto ts : cluster_->mini_tablet_servers()) {
+    ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), old_expected_locks);
+    ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_WaitingLocksSize(), 0);
+  }
+
+  // Release lock from Session-2
+  ASSERT_OK(ReleaseLockAt(&master_proxy, kSessionHostUuid, kSessionId2, kDatabaseID, kObjectId));
+  DumpMasterAndTServerLocks(cluster_.get(), "After releasing all locks");
+  ASSERT_EQ(master_local_lock_manager->TEST_GrantedLocksSize(), 0);
+  ASSERT_EQ(master_local_lock_manager->TEST_WaitingLocksSize(), 0);
+  for (auto ts : cluster_->mini_tablet_servers()) {
+    ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), 0);
+    ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_WaitingLocksSize(), 0);
+  }
 }
 
 TEST_F(ObjectLockTest, AcquireObjectLocksRetriesUponMultipleTServerAddition) {
+  const auto& kSessionHostUuid = TSUuid(0);
   auto* tserver0 = cluster_->mini_tablet_server(0);
   auto tserver0_proxy = TServerProxyFor(tserver0);
   ASSERT_OK(AcquireLockAt(
-      &tserver0_proxy, kSessionId, kDatabaseID, kObjectId, TableLockType::ACCESS_SHARE));
+      &tserver0_proxy, kSessionHostUuid, kSessionId, kDatabaseID, kObjectId,
+      TableLockType::ACCESS_SHARE));
 
-  CountDownLatch latch(1);
+  CountDownLatch ddl_latch(1);
   tserver::AcquireObjectLockResponsePB resp;
   auto controller = RpcController();
   auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
   AcquireLockAsyncAt(
-      &master_proxy, &controller, kSessionId2, kDatabaseID, kObjectId,
-      TableLockType::ACCESS_EXCLUSIVE, latch.CountDownCallback(), &resp);
+      &master_proxy, &controller, kSessionHostUuid, kSessionId2, kDatabaseID, kObjectId,
+      TableLockType::ACCESS_EXCLUSIVE, ddl_latch.CountDownCallback(), &resp);
 
   // Wait. But the lock acquisition should not be successful.
   ASSERT_OK(WaitFor(
@@ -235,53 +354,59 @@ TEST_F(ObjectLockTest, AcquireObjectLocksRetriesUponMultipleTServerAddition) {
   ASSERT_OK(cluster_->WaitForTabletServerCount(num_ts + 1));
 
   // Add TS-4.
-  auto* added_tserver1 = cluster_->mini_tablet_server(num_ts);
-  ASSERT_EQ(added_tserver1->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), 0);
-  auto added_tserver1_proxy = TServerProxyFor(added_tserver1);
-  ASSERT_OK(AcquireLockAt(
-      &added_tserver1_proxy, kSessionId, kDatabaseID, kObjectId, TableLockType::ACCESS_SHARE));
-  ASSERT_GE(added_tserver1->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), 1);
+  auto* added_tserver = cluster_->mini_tablet_server(num_ts);
+  // TS-4 will be bootstrapping from the master's state, so it should
+  // have granted the DDL lock.
+  ASSERT_OK(WaitFor(
+      [added_tserver]() -> bool {
+        return added_tserver->server()->ts_local_lock_manager()->TEST_GrantedLocksSize() > 0;
+      },
+      MonoDelta::FromMilliseconds(kTimeoutMs), "wait for bootstrapping on TServer4"));
+  ASSERT_EQ(added_tserver->server()->ts_local_lock_manager()->TEST_WaitingLocksSize(), 0);
 
-  ASSERT_EQ(added_tserver1->server()->ts_local_lock_manager()->TEST_WaitingLocksSize(), 0);
+  CountDownLatch ts_latch(1);
+  tserver::AcquireObjectLockResponsePB ts_resp;
+  auto ts_controller = RpcController();
+  auto added_tserver_proxy = TServerProxyFor(added_tserver);
+  AcquireLockAsyncAt(
+      &added_tserver_proxy, &ts_controller, kSessionHostUuid, kSessionId, kDatabaseID, kObjectId,
+      TableLockType::ACCESS_SHARE, ts_latch.CountDownCallback(), &ts_resp);
+  // DML will be blocked by the DDL lock granted on TS-4 during bootstrap.
+  ASSERT_OK(WaitFor(
+      [added_tserver]() -> bool {
+        return added_tserver->server()->ts_local_lock_manager()->TEST_WaitingLocksSize() > 0;
+      },
+      MonoDelta::FromMilliseconds(kTimeoutMs), "wait for blocking on TServer4"));
+  ASSERT_GE(added_tserver->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), 1);
+  ASSERT_GE(added_tserver->server()->ts_local_lock_manager()->TEST_WaitingLocksSize(), 1);
+
+  // DDL will be waiting to get the lock on TS-1
   ASSERT_GE(tserver0->server()->ts_local_lock_manager()->TEST_WaitingLocksSize(), 1);
-  ASSERT_OK(ReleaseLockAt(&tserver0_proxy, kSessionId, kDatabaseID, kObjectId));
 
-  // Now the exclusive lock acquisition should be retried to added_tserver1. But wait on it since
-  // we took a shared lock above.
-  ASSERT_OK(WaitFor(
-      [added_tserver1]() -> bool {
-        return added_tserver1->server()->ts_local_lock_manager()->TEST_WaitingLocksSize() > 0;
-      },
-      MonoDelta::FromMilliseconds(kTimeoutMs), "wait for blocking on TServer0"));
-  ASSERT_GE(added_tserver1->server()->ts_local_lock_manager()->TEST_WaitingLocksSize(), 1);
-  // Release lock at TS-4
-  ASSERT_OK(ReleaseLockAt(&added_tserver1_proxy, kSessionId, kDatabaseID, kObjectId));
+  ASSERT_OK(ReleaseLockAt(&tserver0_proxy, kSessionHostUuid, kSessionId, kDatabaseID, kObjectId));
+  // Verify that DDL lock acquistion is successful.
+  ASSERT_TRUE(ddl_latch.WaitFor(MonoDelta::FromMilliseconds(kTimeoutMs)));
 
-  // Verify that lock acquistion at master is successful.
-  ASSERT_TRUE(latch.WaitFor(MonoDelta::FromMilliseconds(kTimeoutMs)));
-  // lock acquisition be have retried and taken the lock on TS-4
-  ASSERT_GE(added_tserver1->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), 1);
+  // Release DDL lock
+  ASSERT_OK(ReleaseLockAt(&master_proxy, kSessionHostUuid, kSessionId2, kDatabaseID, kObjectId));
 
-  // Add TS-5
-  ASSERT_OK(cluster_->AddTabletServer());
-  ASSERT_OK(cluster_->WaitForTabletServerCount(num_ts + 2));
+  // Verify that DML lock acquistion is successful.
+  ASSERT_TRUE(ts_latch.WaitFor(MonoDelta::FromMilliseconds(kTimeoutMs)));
+  ASSERT_GE(added_tserver->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), 1);
+  ASSERT_EQ(added_tserver->server()->ts_local_lock_manager()->TEST_WaitingLocksSize(), 0);
 
-  auto* added_tserver2 = cluster_->mini_tablet_server(num_ts + 1);
-  ASSERT_OK(WaitFor(
-      [added_tserver2]() {
-        return added_tserver2->server()->ts_local_lock_manager()->TEST_GrantedLocksSize() > 0;
-      },
-      1s, "Wait for the added TS to bootstrap"));
-  // DDL lock acquisition should have bootstrapped during registration and taken the lock on TS-5
-  // also
-  ASSERT_GE(added_tserver2->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), 1);
-  ASSERT_EQ(added_tserver2->server()->ts_local_lock_manager()->TEST_WaitingLocksSize(), 0);
+  // Release DML lock at TS-4
+  ASSERT_OK(
+      ReleaseLockAt(&added_tserver_proxy, kSessionHostUuid, kSessionId, kDatabaseID, kObjectId));
+  ASSERT_EQ(added_tserver->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), 0);
 }
 
 TEST_F(ObjectLockTest, BootstrapTServersUponAddition) {
+  const auto& kSessionHostUuid = TSUuid(0);
   auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
   ASSERT_OK(AcquireLockAt(
-      &master_proxy, kSessionId2, kDatabaseID, kObjectId, TableLockType::ACCESS_EXCLUSIVE));
+      &master_proxy, kSessionHostUuid, kSessionId2, kDatabaseID, kObjectId,
+      TableLockType::ACCESS_EXCLUSIVE));
 
   auto num_ts = cluster_->num_tablet_servers();
   ASSERT_OK(cluster_->AddTabletServer());
@@ -307,7 +432,7 @@ TEST_F(ObjectLockTest, BootstrapTServersUponAddition) {
     ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), expected_locks);
   }
 
-  ASSERT_OK(ReleaseLockAt(&master_proxy, kSessionId2, kDatabaseID, kObjectId));
+  ASSERT_OK(ReleaseLockAt(&master_proxy, kSessionHostUuid, kSessionId2, kDatabaseID, kObjectId));
 
   LOG(INFO) << "Counts after releasing the DDL lock";
   expected_locks = 0;
@@ -328,6 +453,7 @@ class MultiMasterObjectLockTest : public ObjectLockTest {
 };
 
 TEST_F_EX(ObjectLockTest, AcquireAndReleaseDDLLockAcrossMasterFailover, MultiMasterObjectLockTest) {
+  const auto& kSessionHostUuid = TSUuid(0);
   const auto num_ts = cluster_->num_tablet_servers();
   auto* leader_master1 = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
   {
@@ -335,18 +461,32 @@ TEST_F_EX(ObjectLockTest, AcquireAndReleaseDDLLockAcrossMasterFailover, MultiMas
               << leader_master1->ToString();
     auto master_proxy = MasterProxy(leader_master1);
     ASSERT_OK(AcquireLockAt(
-        &master_proxy, kSessionId2, kDatabaseID, kObjectId, TableLockType::ACCESS_EXCLUSIVE));
+        &master_proxy, kSessionHostUuid, kSessionId2, kDatabaseID, kObjectId,
+        TableLockType::ACCESS_EXCLUSIVE));
   }
 
+  auto master_local_lock_manager1 = leader_master1->master()
+                                        ->catalog_manager_impl()
+                                        ->object_lock_info_manager()
+                                        ->TEST_ts_local_lock_manager();
+  ASSERT_GE(master_local_lock_manager1->TEST_GrantedLocksSize(), 1);
   for (const auto& tserver : cluster_->mini_tablet_servers()) {
     LOG(INFO) << tserver->ToString() << " GrantedLocks "
               << tserver->server()->ts_local_lock_manager()->TEST_GrantedLocksSize();
     ASSERT_GE(tserver->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), 1);
   }
 
+  DumpMasterAndTServerLocks(cluster_.get(), "Before step down");
   LOG(INFO) << "Stepping down from " << leader_master1->ToString();
   ASSERT_OK(cluster_->StepDownMasterLeader());
   ASSERT_OK(cluster_->WaitForTabletServerCount(num_ts));
+  auto* leader_master2 = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  auto master_local_lock_manager2 = leader_master2->master()
+                                        ->catalog_manager_impl()
+                                        ->object_lock_info_manager()
+                                        ->TEST_ts_local_lock_manager();
+  ASSERT_GE(master_local_lock_manager2->TEST_GrantedLocksSize(), 1);
+  DumpMasterAndTServerLocks(cluster_.get(), "After step down");
 
   ASSERT_OK(cluster_->AddTabletServer());
   ASSERT_OK(cluster_->WaitForTabletServerCount(num_ts + 1));
@@ -362,12 +502,11 @@ TEST_F_EX(ObjectLockTest, AcquireAndReleaseDDLLockAcrossMasterFailover, MultiMas
   ASSERT_GE(added_tserver->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), 1);
 
   // Release lock
-  auto* leader_master2 = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
   {
     LOG(INFO) << "Releasing lock on object " << kObjectId << " at master "
               << leader_master2->ToString();
     auto master_proxy = MasterProxy(leader_master2);
-    ASSERT_OK(ReleaseLockAt(&master_proxy, kSessionId2, kDatabaseID, kObjectId));
+    ASSERT_OK(ReleaseLockAt(&master_proxy, kSessionHostUuid, kSessionId2, kDatabaseID, kObjectId));
   }
 }
 

@@ -576,7 +576,7 @@ Use the `yugabyted demo connect` subcommand to load the  [Northwind sample datas
 
 #### destroy
 
-Use the `yuagbyted demo destroy` subcommand to shut down the yugabyted single-node cluster and remove data, configuration, and log directories. This subcommand also deletes the `yb_demo_northwind` database.
+Use the `yugabyted demo destroy` subcommand to shut down the yugabyted single-node cluster and remove data, configuration, and log directories. This subcommand also deletes the `yb_demo_northwind` database.
 
 #### Flags
 

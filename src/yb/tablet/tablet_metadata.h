@@ -497,6 +497,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
                  const OpId& op_id,
                  const TableId& table_id = "") REQUIRES(data_mutex_);
 
+  void InsertPackedSchemaForXClusterTarget(
+      const Schema& schema, const qlexpr::IndexMap& index_map, const SchemaVersion version,
+      const OpId& op_id, const TableId& table_id);
+
   void SetPartitionSchema(const dockv::PartitionSchema& partition_schema);
 
   void SetTableName(

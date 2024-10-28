@@ -36,9 +36,9 @@ yba backup [flags]
 * [yba backup create](yba_backup_create.md)	 - Create a YugabyteDB Anywhere universe backup
 * [yba backup delete](yba_backup_delete.md)	 - Delete a YugabyteDB Anywhere universe backup
 * [yba backup describe](yba_backup_describe.md)	 - Describe a YugabyteDB Anywhere universe backup
-* [yba backup edit](yba_backup_edit.md)	 - Edit a YugabyteDB Anywhere universe backup
 * [yba backup list](yba_backup_list.md)	 - List YugabyteDB Anywhere backups
 * [yba backup list-increments](yba_backup_list-increments.md)	 - List the incremental backups of a backup
 * [yba backup restore](yba_backup_restore.md)	 - Manage YugabyteDB Anywhere universe backup restores
 * [yba backup schedule](yba_backup_schedule.md)	 - Manage YugabyteDB Anywhere universe backup schedules
+* [yba backup update](yba_backup_update.md)	 - Edit a YugabyteDB Anywhere universe backup
 

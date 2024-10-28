@@ -99,7 +99,8 @@ public class FailoverDrConfig extends EditDrConfig {
                 currentXClusterConfig,
                 false /* keepEntry */,
                 true /* forceDelete */,
-                false /* deletePitrConfigs */);
+                false /* deleteSourcePitrConfigs */,
+                false /* deleteTargetPitrConfigs */);
           }
 
           // Todo: remove the following subtask from all the tasks.

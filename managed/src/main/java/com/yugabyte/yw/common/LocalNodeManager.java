@@ -141,7 +141,7 @@ public class LocalNodeManager {
                     killPostMasterProcess(baseDir);
                   }
                   log.debug("Destroying {}", process.pid());
-                  killProcess(process.pid());
+                  killProcess(process.pid(), false);
                 } catch (Exception e) {
                   log.error("Failed to destroy process " + process, e);
                 }
@@ -202,16 +202,16 @@ public class LocalNodeManager {
     }
   }
 
-  private void killProcess(long pid) throws IOException, InterruptedException {
+  private void killProcess(long pid, boolean throwIfAbsent) {
     try {
-      terminateProcessAndSubprocesses(pid);
+      terminateProcessAndSubprocesses(pid, throwIfAbsent);
     } catch (SecurityException | IllegalArgumentException e) {
       System.err.println("Error occurred while terminating process: " + e.getMessage());
       e.printStackTrace();
     }
   }
 
-  private void terminateProcessAndSubprocesses(long pid) {
+  private void terminateProcessAndSubprocesses(long pid, boolean throwIfAbsent) {
     ProcessHandle.of(pid)
         .ifPresentOrElse(
             process -> {
@@ -221,7 +221,9 @@ public class LocalNodeManager {
               process.destroy();
             },
             () -> {
-              throw new IllegalArgumentException("No such process with PID: " + pid);
+              if (throwIfAbsent) {
+                throw new IllegalArgumentException("No such process with PID: " + pid);
+              }
             });
   }
 
@@ -233,7 +235,7 @@ public class LocalNodeManager {
       Process process = nodeInfo.processMap.get(serverType);
       if (process != null) {
         log.debug("Destroying process with pid {} for {}", process.pid(), nodeInfo.ip);
-        killProcess(process.pid());
+        killProcess(process.pid(), true);
       }
     }
   }
@@ -702,6 +704,13 @@ public class LocalNodeManager {
       UniverseDefinitionTaskParams.UserIntent userIntent,
       UniverseTaskBase.ServerType serverType,
       NodeInfo nodeInfo) {
+    if (nodeInfo.processMap.get(serverType) != null) {
+      Process process = nodeInfo.processMap.get(serverType);
+      if (process.isAlive()) {
+        log.debug("Already have started process");
+        return;
+      }
+    }
     List<String> args = new ArrayList<>();
     String executable;
     LocalCloudInfo localCloudInfo = getCloudInfo(userIntent);
@@ -756,12 +765,7 @@ public class LocalNodeManager {
       throw new IllegalStateException("No process of type " + serverType + " for " + nodeInfo.name);
     }
     log.debug("Killing process {}", process.pid());
-    try {
-      killProcess(process.pid());
-    } catch (IOException | InterruptedException e) {
-      System.err.println("Error occurred while terminating process: " + e.getMessage());
-      e.printStackTrace();
-    }
+    killProcess(process.pid(), true);
   }
 
   private static List<String> readProcessIdsFromFile(String filePath) {

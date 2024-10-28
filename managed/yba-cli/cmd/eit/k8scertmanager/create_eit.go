@@ -22,6 +22,8 @@ var createK8sCertManagerEITCmd = &cobra.Command{
 	Aliases: []string{"add", "upload"},
 	Short:   "Create a YugabyteDB Anywhere K8s Cert Manager encryption in transit configuration",
 	Long:    "Create a K8s Cert Manager encryption in transit configuration in YugabyteDB Anywhere",
+	Example: `yba eit k8s-cert-manager create --name <config-name> \
+	--root-cert-file-path <root-cert-file-path>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		eitutil.CreateEITValidation(cmd)
 	},

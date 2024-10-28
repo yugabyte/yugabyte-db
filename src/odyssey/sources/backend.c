@@ -239,25 +239,25 @@ static inline int od_backend_startup(od_server_t *server,
 				return -1;
 			}
 
-			/* set server parameters */
-			kiwi_vars_update(&server->vars, name, name_len, value,
-					 value_len);
+			// set server parameters, ignore startup session_authorization
+			// session_authorization is sent by the server during startup,
+			// if not ignored, will make every connection sticky
+			if ((name_len != sizeof("session_authorization") ||
+				strncmp(name, "session_authorization", name_len))) {
+				kiwi_vars_update(&server->vars, name, name_len, value, value_len);
 
-			if (route_params) {
-				// skip volatile params
-				// we skip in_hot_standby here because it may change
-				// during connection lifetime, if server was
-				// promoted
-				if (name_len != sizeof("in_hot_standby") ||
-				    strncmp(name, "in_hot_standby", name_len)) {
-					kiwi_param_t *param;
-					param = kiwi_param_allocate(name,
-								    name_len,
-								    value,
-								    value_len);
-					if (param)
-						kiwi_params_add(route_params,
-								param);
+				if (route_params) {
+					// skip volatile params
+					// we skip in_hot_standby here because it may change
+					// during connection lifetime, if server was
+					// promoted
+					if (name_len != sizeof("in_hot_standby") ||
+					    strncmp(name, "in_hot_standby", name_len)) {
+						kiwi_param_t *param;
+						param = kiwi_param_allocate(name, name_len, value, value_len);
+						if (param)
+							kiwi_params_add(route_params, param);
+					}
 				}
 			}
 
@@ -275,6 +275,7 @@ static inline int od_backend_startup(od_server_t *server,
 			return -1;
 		case YB_OID_DETAILS:
 			rc = yb_handle_oid_pkt_server(instance, server, msg, db_name);
+			machine_msg_free(msg);
 			if (rc == -1)
 				return -1;
 			if (yb_is_route_invalid(route))
@@ -700,7 +701,7 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 		return -1;
 	}
 
-	/* ignore caching of role-dependent parameters, only store oid */
+	/* connection manager does not track role-dependent parameters */
 	if (strcmp("role", name) == 0 || strcmp("session_authorization", name) == 0)
 		return 0;
 
@@ -714,10 +715,6 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 	} else {
 		kiwi_vars_update_both(&client->vars, &server->vars, name,
 				      name_len, value, value_len);
-
-		/* reset role whenever session_authorization is changed by the user */
-		if (strcmp(name, "session_authorization_oid") == 0)
-			kiwi_vars_update_both(&client->vars, &server->vars, "role_oid", 9, "-1", 3);
 	}
 
 	return 0;

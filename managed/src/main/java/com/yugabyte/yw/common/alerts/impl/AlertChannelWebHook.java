@@ -53,9 +53,10 @@ public class AlertChannelWebHook extends AlertChannelWebBase {
     JsonNode body = Json.parse(text);
 
     try {
+      log.debug("Sending WebHook alert notification {} to {}", body, params.getWebhookUrl());
+
       WSResponse response =
           sendRequest(WEBHOOK_WS_KEY, params.getWebhookUrl(), body, params.getHttpAuth());
-
       // To be on the safe side - just accept all 2XX responses as success
       if (response.getStatus() < HttpStatus.SC_OK
           || response.getStatus() >= HttpStatus.SC_MULTIPLE_CHOICES) {

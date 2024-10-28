@@ -10,6 +10,12 @@ Describe a YugabyteDB Anywhere Encryption At Rest (EAR) configuration
 yba ear describe [flags]
 ```
 
+### Examples
+
+```
+yba ear describe --name <config-name>
+```
+
 ### Options
 
 ```

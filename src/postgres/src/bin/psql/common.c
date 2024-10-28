@@ -221,23 +221,17 @@ psql_get_variable(const char *varname, PsqlScanQuoteType quote,
 
 
 /*
- * YB_TODO(jasonk)
- * - Postgres no longer uses psql_error.
- * - Need to reintro "YB_DISABLE_ERROR_PREFIX" to Pg15 code.
- *
- * psql_error(const char *fmt,...) is gone.
- */
-
-/*
  * for backend Notice messages (INFO, WARNING, etc)
  */
 void
 NoticeProcessor(void *arg, const char *message)
 {
 	(void) arg;					/* not used */
+
+	yb_set_should_log_filename(!GetVariable(pset.vars, "YB_DISABLE_ERROR_PREFIX"));
+
 	pg_log_info("%s", message);
 }
-
 
 
 /*

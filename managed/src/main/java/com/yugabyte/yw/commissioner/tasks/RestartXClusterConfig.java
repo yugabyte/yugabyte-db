@@ -61,7 +61,8 @@ public class RestartXClusterConfig extends EditXClusterConfig {
                           config,
                           false /* keepEntry */,
                           true /* forceDelete */,
-                          false /* deletePitrConfigs */));
+                          false /* deleteSourcePitrConfigs */,
+                          false /* deleteTargetPitrConfigs */));
         }
 
         boolean isDBScopedReplication = xClusterConfig.getType() == ConfigType.Db;
@@ -112,7 +113,8 @@ public class RestartXClusterConfig extends EditXClusterConfig {
               xClusterConfig,
               true /* keepEntry */,
               taskParams().isForced(),
-              false /* deletePitrConfigs */);
+              false /* deleteSourcePitrConfigs */,
+              false /* deleteTargetPitrConfigs */);
 
           if (xClusterConfig.isUsedForDr()) {
             createSetDrStatesTask(

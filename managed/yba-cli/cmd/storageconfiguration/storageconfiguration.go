@@ -15,9 +15,10 @@ import (
 // StorageConfigurationCmd set of commands are used to perform operations on storage
 // configurations in YugabyteDB Anywhere
 var StorageConfigurationCmd = &cobra.Command{
-	Use:   "storage-config",
-	Short: "Manage YugabyteDB Anywhere storage configurations",
-	Long:  "Manage YugabyteDB Anywhere storage configurations",
+	Use:     "storage-config",
+	Aliases: []string{"storage-configuration", "storage"},
+	Short:   "Manage YugabyteDB Anywhere storage configurations",
+	Long:    "Manage YugabyteDB Anywhere storage configurations",
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
 	},

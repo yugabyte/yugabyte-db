@@ -13,7 +13,7 @@ yba provider azure create [flags]
 ### Examples
 
 ```
-./yba provider azure create -n <provider-name> \
+yba provider azure create -n <provider-name> \
 	--region region-name=westus2,vnet=<vnet> --zone zone-name=westus2-1,region-name=westus2,subnet=<subnet> \
 	--rg=<az-resource-group> \
 	--client-id=<az-client-id> \

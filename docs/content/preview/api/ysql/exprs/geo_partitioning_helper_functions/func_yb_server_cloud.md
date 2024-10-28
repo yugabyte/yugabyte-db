@@ -4,7 +4,7 @@ headerTitle: yb_server_cloud()
 linkTitle: yb_server_cloud()
 description: Returns the cloud provider of the currently connected node
 menu:
-  preview:
+  preview_api:
     identifier: api-ysql-exprs-yb_server_cloud
     parent: geo-partitioning-helper-functions
 type: docs
@@ -28,12 +28,6 @@ yugabyte=# SELECT yb_server_cloud();
  aws
 (1 row)
 ```
-
-{{< note title="Note" >}}
-
-If you didn't set the placement_cloud flag at node startup, yb_server_cloud() returns NULL.
-
-{{< /note >}}
 
 ## See also
 

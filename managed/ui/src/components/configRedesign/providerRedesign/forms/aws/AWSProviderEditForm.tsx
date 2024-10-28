@@ -36,6 +36,7 @@ import {
   NTPSetupType,
   ProviderCode,
   ProviderOperation,
+  SshPrivateKeyInputType,
   VPCSetupType,
   YBImageType
 } from '../../constants';
@@ -75,9 +76,8 @@ import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { YBBanner, YBBannerVariant } from '../../../../common/descriptors';
 import { RuntimeConfigKey, YBAHost } from '../../../../../redesign/helpers/constants';
 import { isAxiosError, isYBPBeanValidationError } from '../../../../../utils/errorHandlingUtils';
-import { CloudType, YBPError, YBPStructuredError } from '../../../../../redesign/helpers/dtos';
+import { YBPError, YBPStructuredError } from '../../../../../redesign/helpers/dtos';
 import { AWSProviderCredentialType, VPC_SETUP_OPTIONS } from './constants';
-import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { VersionWarningBanner } from '../components/VersionWarningBanner';
 import { NTP_SERVER_REGEX } from '../constants';
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
@@ -103,6 +103,7 @@ import {
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
 import { ImageBundle } from '../../../../../redesign/features/universe/universe-form/utils/dto';
+import { SshPrivateKeyFormField } from '../../components/SshPrivateKeyField';
 
 interface AWSProviderEditFormProps {
   editProvider: EditProvider;
@@ -129,6 +130,8 @@ export interface AWSProviderEditFormFieldValues {
   sshKeypairName: string;
   sshPort: number | null;
   sshPrivateKeyContent: File;
+  sshPrivateKeyContentText: string;
+  sshPrivateKeyInputType: SshPrivateKeyInputType;
   sshUser: string;
   vpcSetupType: VPCSetupType;
   ybImageType: YBImageType;
@@ -160,11 +163,26 @@ const VALIDATION_SCHEMA = object().shape({
       'SSH Keypair management choice is required.'
     )
   }),
-  sshPrivateKeyContent: mixed().when(['editSSHKeypair', 'sshKeypairManagement'], {
-    is: (editSSHKeypair, sshKeypairManagement) =>
-      editSSHKeypair && sshKeypairManagement === KeyPairManagement.SELF_MANAGED,
-    then: mixed().required('SSH private key is required.')
-  }),
+  sshPrivateKeyContent: mixed().when(
+    ['editSSHKeypair', 'sshKeypairManagement', 'sshPrivateKeyInputType'],
+    {
+      is: (editSSHKeypair, sshKeypairManagement, sshPrivateKeyInputType) =>
+        editSSHKeypair &&
+        sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
+        sshPrivateKeyInputType === SshPrivateKeyInputType.UPLOAD_KEY,
+      then: mixed().required('SSH private key is required.')
+    }
+  ),
+  sshPrivateKeyContentText: string().when(
+    ['editSSHKeypair', 'sshKeypairManagement', 'sshPrivateKeyInputType'],
+    {
+      is: (editSSHKeypair, sshKeypairManagement, sshPrivateKeyInputType) =>
+        editSSHKeypair &&
+        sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
+        sshPrivateKeyInputType === SshPrivateKeyInputType.PASTE_KEY,
+      then: string().required('SSH private key is required.')
+    }
+  ),
   hostedZoneId: string().when('enableHostedZone', {
     is: true,
     then: string().required('Route 53 zone id is required.')
@@ -719,22 +737,11 @@ export const AWSProviderEditForm = ({
                           fullWidth
                         />
                       </FormField>
-                      <FormField>
-                        <FieldLabel>SSH Private Key Content</FieldLabel>
-                        <YBDropZoneField
-                          name="sshPrivateKeyContent"
-                          control={formMethods.control}
-                          actionButtonText="Upload SSH Key PEM File"
-                          multipleFiles={false}
-                          showHelpText={false}
-                          disabled={getIsFieldDisabled(
-                            ProviderCode.AWS,
-                            'sshPrivateKeyContent',
-                            isFormDisabled,
-                            isProviderInUse
-                          )}
-                        />
-                      </FormField>
+                      <SshPrivateKeyFormField
+                        isFormDisabled={isFormDisabled}
+                        isProviderInUse={isProviderInUse}
+                        providerCode={ProviderCode.AWS}
+                      />
                     </>
                   )}
                 </>
@@ -897,6 +904,7 @@ const constructDefaultFormValues = (
   })),
   skipKeyValidateAndUpload: false,
   sshKeypairManagement: getLatestAccessKey(providerConfig.allAccessKeys)?.keyInfo.managementState,
+  sshPrivateKeyInputType: SshPrivateKeyInputType.UPLOAD_KEY,
   sshPort: providerConfig.details.sshPort ?? null,
   sshUser: providerConfig.details.sshUser ?? '',
   version: providerConfig.version,
@@ -909,14 +917,16 @@ const constructProviderPayload = async (
   providerConfig: AWSProvider
 ): Promise<YBProviderMutation> => {
   let sshPrivateKeyContent = '';
-  try {
-    sshPrivateKeyContent =
-      formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
-      formValues.sshPrivateKeyContent
+  if (formValues.sshPrivateKeyInputType === SshPrivateKeyInputType.UPLOAD_KEY) {
+    try {
+      sshPrivateKeyContent = formValues.sshPrivateKeyContent
         ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
         : '';
-  } catch (error) {
-    throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
+    } catch (error) {
+      throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
+    }
+  } else {
+    sshPrivateKeyContent = formValues.sshPrivateKeyContentText;
   }
   const imageBundles = constructImageBundlePayload(formValues, true);
 

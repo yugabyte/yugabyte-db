@@ -83,6 +83,10 @@ var reconfigureCmd = &cobra.Command{
 				pg := services[name].(Postgres)
 				pg.modifyPostgresConf()
 			}
+			// Set permissions to be safe
+			if err := common.SetAllPermissions(); err != nil {
+				log.Fatal("error updating permissions for data and software directories: " + err.Error())
+			}
 			log.Info("Starting service " + name)
 			services[name].Start()
 		}

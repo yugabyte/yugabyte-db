@@ -652,7 +652,9 @@ public class GFlagsUtil {
     // Add timestamp_history_retention_sec gflag if required.
     Duration timestampHistoryRetentionForPITR =
         Schedule.getMaxBackupIntervalInUniverseForPITRestore(
-            universe.getUniverseUUID(), true /* includeIntermediate */);
+            universe.getUniverseUUID(),
+            true /* includeIntermediate */,
+            null /* excludeScheduleUUID */);
     if (timestampHistoryRetentionForPITR.toSeconds() > 0L) {
       gflags.put(
           TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC,
@@ -778,9 +780,14 @@ public class GFlagsUtil {
     return gflags;
   }
 
-  private static String getYsqlPgConfCsv(AnsibleConfigureServers.Params taskParams) {
-    List<String> ysqlPgConfCsvEntries = new ArrayList<>();
+  public static String getYsqlPgConfCsv(AnsibleConfigureServers.Params taskParams) {
     AuditLogConfig auditLogConfig = taskParams.auditLogConfig;
+    return getYsqlPgConfCsv(auditLogConfig, taskParams.ysqlMajorVersionUpgradeState);
+  }
+
+  public static String getYsqlPgConfCsv(
+      AuditLogConfig auditLogConfig, YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
+    List<String> ysqlPgConfCsvEntries = new ArrayList<>();
     if (auditLogConfig != null) {
       if (auditLogConfig.getYsqlAuditConfig() != null
           && auditLogConfig.getYsqlAuditConfig().isEnabled()) {
@@ -817,8 +824,8 @@ public class GFlagsUtil {
                 "pgaudit.log_statement_once", ysqlAuditConfig.isLogStatementOnce()));
       }
     }
-    if (taskParams.ysqlMajorVersionUpgradeState != null
-        && !taskParams.ysqlMajorVersionUpgradeState.equals(YsqlMajorVersionUpgradeState.FINALIZE)) {
+    if (ysqlMajorVersionUpgradeState != null
+        && !ysqlMajorVersionUpgradeState.equals(YsqlMajorVersionUpgradeState.FINALIZE)) {
       ysqlPgConfCsvEntries.add("yb_enable_expression_pushdown=false");
     }
     return String.join(",", ysqlPgConfCsvEntries);

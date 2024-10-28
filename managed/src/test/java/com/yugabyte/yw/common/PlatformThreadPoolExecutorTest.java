@@ -104,7 +104,6 @@ public class PlatformThreadPoolExecutorTest {
   public void testTaskCountUnderMaxPool() throws InterruptedException {
     int taskCount = 20;
     BlockingQueue<Runnable> queue = new LinkedBlockingQueue<>(100);
-    CountDownLatch startedCount = new CountDownLatch(taskCount);
     CountDownLatch latch = new CountDownLatch(1);
     CountDownLatch execCount = new CountDownLatch(taskCount);
     PlatformThreadPoolExecutor executor =
@@ -115,6 +114,7 @@ public class PlatformThreadPoolExecutorTest {
             TimeUnit.SECONDS,
             queue);
     for (int i = 0; i < taskCount; i++) {
+      CountDownLatch startedCount = new CountDownLatch(1);
       executor.submit(
           () -> {
             try {
@@ -125,8 +125,10 @@ public class PlatformThreadPoolExecutorTest {
               throw new RuntimeException(e);
             }
           });
+      // Wait for each thread to start. If the tasks are queued, this must time out.
+      // This gives time to the executor to correctly set the active thread count.
+      startedCount.await(5, TimeUnit.SECONDS);
     }
-    startedCount.await(10, TimeUnit.SECONDS);
     latch.countDown();
     // Wait for all of them to complete otherwise exception is thrown
     execCount.await(10, TimeUnit.SECONDS);

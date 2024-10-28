@@ -22,9 +22,13 @@ import (
 
 // addInstanceTypesCmd represents the provider command
 var addInstanceTypesCmd = &cobra.Command{
-	Use:   "add",
-	Short: "Add an instance type to YugabyteDB Anywhere on-premises provider",
-	Long:  "Add an instance type to YugabyteDB Anywhere on-premises provider",
+	Use:     "add",
+	Aliases: []string{"create"},
+	Short:   "Add an instance type to YugabyteDB Anywhere on-premises provider",
+	Long:    "Add an instance type to YugabyteDB Anywhere on-premises provider",
+	Example: `yba provider onprem instance-type add \
+	--name <provider-name> --instance-type-name <instance-type>\
+	--volume mount-points="<mount-point>",size=<size>,type=<volume-type>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {

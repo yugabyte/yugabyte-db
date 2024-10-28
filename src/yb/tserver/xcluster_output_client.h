@@ -42,7 +42,6 @@ struct XClusterOutputClientResponse {
 };
 
 class XClusterPoller;
-struct XClusterClient;
 
 class XClusterOutputClient : public XClusterAsyncExecutor {
  public:

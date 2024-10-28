@@ -20,9 +20,12 @@ import (
 
 // updateAzureProviderCmd represents the provider command
 var updateAzureProviderCmd = &cobra.Command{
-	Use:   "update",
-	Short: "Update an Azure YugabyteDB Anywhere provider",
-	Long:  "Update an Azure provider in YugabyteDB Anywhere",
+	Use:     "update",
+	Aliases: []string{"edit"},
+	Short:   "Update an Azure YugabyteDB Anywhere provider",
+	Long:    "Update an Azure provider in YugabyteDB Anywhere",
+	Example: `yba provider azure update --name <provider-name> \
+	--hosted-zone-id <hosted-zone-id>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -290,18 +293,15 @@ var updateAzureProviderCmd = &cobra.Command{
 
 		// End of Updating Image Bundles
 
-		rUpdate, response, err := authAPI.EditProvider(provider.GetUuid()).
+		rTask, response, err := authAPI.EditProvider(provider.GetUuid()).
 			EditProviderRequest(provider).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Provider: Azure", "Update")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		providerUUID := rUpdate.GetResourceUUID()
-		taskUUID := rUpdate.GetTaskUUID()
-
 		providerutil.WaitForUpdateProviderTask(
-			authAPI, providerName, providerUUID, providerCode, taskUUID)
+			authAPI, providerName, rTask, providerCode)
 	},
 }
 

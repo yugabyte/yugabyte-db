@@ -51,6 +51,8 @@ public class AlertChannelSlack extends AlertChannelWebBase {
     message.text = text;
 
     try {
+      log.debug("Sending Slack alert notification {} to {}", text, message.username);
+
       WSResponse response = sendRequest(SLACK_WS_KEY, params.getWebhookUrl(), message);
 
       if (response.getStatus() != HttpStatus.SC_OK) {

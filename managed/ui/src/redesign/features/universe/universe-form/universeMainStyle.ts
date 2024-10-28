@@ -94,6 +94,16 @@ export const useFormMainStyles = makeStyles((theme) => ({
     ['@media screen and (min-width: 500px) and (max-width: 1260px)']: {
       marginTop: theme.spacing(2)
     }
+  },
+
+  upgradeDetailsContainer: {
+    width: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    padding: theme.spacing(2),
+    marginTop: theme.spacing(2),
+    border: '1px solid #E5E5E9',
+    borderRadius: '8px'
   }
 }));
 

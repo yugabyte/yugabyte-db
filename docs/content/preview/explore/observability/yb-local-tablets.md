@@ -34,7 +34,7 @@ The columns of the `yb_local_tablets` view are described in the following table.
 
 {{% explore-setup-single %}}
 
-Note that as this view is accessible via YSQL, run your examples using [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh).
+Note that as this view is accessible via YSQL, run your examples using [ysqlsh](../../../api/ysqlsh/#starting-ysqlsh).
 
 ### Describe the columns in the view
 

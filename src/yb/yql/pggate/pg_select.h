@@ -14,18 +14,35 @@
 
 #pragma once
 
+#include <memory>
+#include <optional>
+
+#include "yb/util/result.h"
+
 #include "yb/yql/pggate/pg_dml_read.h"
 
 namespace yb::pggate {
 
 class PgSelect : public PgDmlRead {
  public:
-  PgSelect(
-      PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, bool is_region_local,
-      const PrepareParameters& prepare_params, const PgObjectId& index_id = {});
+  struct IndexQueryInfo {
+    IndexQueryInfo(PgObjectId id_, bool is_embedded_)
+        : id(id_), is_embedded(is_embedded_) {}
 
-  // Prepare query before execution.
-  Status Prepare() override;
+    PgObjectId id;
+    bool is_embedded;
+  };
+
+  static Result<std::unique_ptr<PgSelect>> Make(
+      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool is_region_local,
+      const std::optional<IndexQueryInfo>& index_info = std::nullopt);
+
+ protected:
+  explicit PgSelect(const PgSession::ScopedRefPtr& pg_session);
+
+  Status Prepare(
+      const PgObjectId& table_id, bool is_region_local,
+      const std::optional<IndexQueryInfo>& index_info = std::nullopt);
 };
 
 }  // namespace yb::pggate

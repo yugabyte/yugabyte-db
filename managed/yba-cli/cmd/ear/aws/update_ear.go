@@ -22,6 +22,9 @@ var updateAWSEARCmd = &cobra.Command{
 	Aliases: []string{"edit"},
 	Short:   "Update a YugabyteDB Anywhere AWS encryption at rest (EAR) configuration",
 	Long:    "Update an AWS encryption at rest (EAR) configuration in YugabyteDB Anywhere",
+	Example: `yba ear aws update --name <config-name> \
+	--access-key-id <access-key-id> --secret-access-key <secret-access-key>\
+	--endpoint <endpoint>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		configNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {

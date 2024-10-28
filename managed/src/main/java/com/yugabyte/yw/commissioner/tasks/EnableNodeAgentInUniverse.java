@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.NodeAgentEnabler;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Universe;
@@ -48,7 +49,8 @@ public class EnableNodeAgentInUniverse extends UniverseDefinitionTaskBase {
                         "Node agent must be present for node %s with IP %s",
                         n.getNodeName(), n.cloudInfo.private_ip));
               }
-              createWaitForNodeAgentTasks(universe.getNodes());
+              createWaitForNodeAgentTasks(universe.getNodes())
+                  .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
             });
   }
 
@@ -57,11 +59,13 @@ public class EnableNodeAgentInUniverse extends UniverseDefinitionTaskBase {
     Universe universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
     try {
       createUpdateUniverseFieldsTask(
-          u -> {
-            UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
-            universeDetails.installNodeAgent = false;
-          });
-      createMarkUniverseUpdateSuccessTasks(universe.getUniverseUUID());
+              u -> {
+                UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
+                universeDetails.installNodeAgent = false;
+              })
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createMarkUniverseUpdateSuccessTasks(universe.getUniverseUUID())
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       getRunnableTask().runSubTasks();
     } catch (RuntimeException e) {
       log.error("Error executing task {} with error='{}'.", getName(), e.getMessage(), e);

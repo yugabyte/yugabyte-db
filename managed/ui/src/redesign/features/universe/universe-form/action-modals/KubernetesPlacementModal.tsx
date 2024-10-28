@@ -52,7 +52,8 @@ export const KubernetesPlacementModal: FC<KubernetesPlacementModalProps> = ({
   const tserverConfigChanged =
     diffClusterData.oldTServerNumCores !== diffClusterData.newTServerNumCores ||
     diffClusterData.oldTServerMemory !== diffClusterData.newTServerMemory ||
-    diffClusterData.oldTServerVolumeSize !== diffClusterData.newTServerVolumeSize;
+    diffClusterData.oldTServerVolumeSize !== diffClusterData.newTServerVolumeSize ||
+    diffClusterData.oldTServerVolumeCount !== diffClusterData.newTServerVolumeCount;
   const masterConfigChanged =
     diffClusterData.oldMasterNumCores !== diffClusterData.newMasterNumCores ||
     diffClusterData.oldMasterMemory !== diffClusterData.newMasterMemory;
@@ -91,6 +92,14 @@ export const KubernetesPlacementModal: FC<KubernetesPlacementModalProps> = ({
                   {t('universeForm.kubernetesPlacementModal.memory')}&nbsp;
                   <b>
                     {isNew ? diffClusterData.newTServerMemory : diffClusterData.oldTServerMemory}
+                  </b>
+                </Box>
+                <Box>
+                  {t('universeForm.kubernetesPlacementModal.numVolumes')} &nbsp;
+                  <b>
+                    {isNew
+                      ? diffClusterData.newTServerVolumeCount
+                      : diffClusterData.oldTServerVolumeCount}
                   </b>
                 </Box>
                 <Box>
@@ -148,6 +157,18 @@ export const KubernetesPlacementModal: FC<KubernetesPlacementModalProps> = ({
             }
           </>
         )}
+        {isPrimary &&
+          oldCluster?.userIntent?.enableExposingService !==
+            newCluster?.userIntent?.enableExposingService && (
+            <Box className={classes.configConfirmationBox}>
+              {t('universeForm.kubernetesPlacementModal.publicNetworkAccess')} -&nbsp;
+              <b>
+                {isNew
+                  ? newCluster?.userIntent?.enableExposingService
+                  : oldCluster?.userIntent?.enableExposingService}
+              </b>
+            </Box>
+          )}
         {!isPrimary && diffClusterData.oldNumReadReplicas !== diffClusterData.newNumReadReplicas && (
           <Box className={classes.configConfirmationBox}>
             {t('universeForm.kubernetesPlacementModal.readReplicas')} -&nbsp;

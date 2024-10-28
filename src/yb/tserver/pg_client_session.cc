@@ -1177,7 +1177,7 @@ Status PgClientSession::FinishTransaction(
       silently_altered_db = ddl_mode.silently_altered_db().value();
     }
   }
-  auto& txn = Transaction(kind);
+  auto& txn = GetSessionData(kind).transaction;
   if (!txn) {
     VLOG_WITH_PREFIX_AND_FUNC(2) << "ddl: " << is_ddl << ", no running transaction";
     return Status::OK();
@@ -1304,11 +1304,7 @@ template <class DataPtr>
 Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
                                   rpc::RpcContext* context) {
   auto& options = *data->req.mutable_options();
-  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
-    if (options.has_ash_metadata()) {
-      wait_state->UpdateMetadataFromPB(options.ash_metadata());
-    }
-  }
+  TryUpdateAshWaitState(options);
   auto ddl_mode = options.ddl_mode() || options.yb_non_ddl_txn_for_sys_tables_allowed();
   if (!ddl_mode && xcluster_context_ && xcluster_context_->IsReadOnlyMode(options.namespace_id())) {
     for (const auto& op : data->req.ops()) {
@@ -1583,7 +1579,6 @@ Result<PgClientSession::SetupSessionResult> PgClientSession::SetupSession(
         InvalidArgument,
         Format("Expected active_sub_transaction_id to be >= $0", kMinSubTransactionId));
     transaction->SetActiveSubTransaction(options.active_sub_transaction_id());
-    RETURN_NOT_OK(transaction->SetPgTxnStart(options.pg_txn_start_us()));
   }
 
   return SetupSessionResult{
@@ -1634,7 +1629,7 @@ Status PgClientSession::DoBeginTransactionIfNecessary(
 
   auto priority = options.priority();
   auto& session = EnsureSession(PgClientSessionKind::kPlain, deadline);
-  auto& txn = Transaction(PgClientSessionKind::kPlain);
+  auto& txn = GetSessionData(PgClientSessionKind::kPlain).transaction;
   if (txn && txn_serial_no_ != options.txn_serial_no()) {
     VLOG_WITH_PREFIX(2)
         << "Abort previous transaction, use existing priority: " << options.use_existing_priority()
@@ -1664,6 +1659,7 @@ Status PgClientSession::DoBeginTransactionIfNecessary(
   txn = transaction_builder_(
     IsDDL::kFalse, client::ForceGlobalTransaction(options.force_global_transaction()), deadline);
   txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
+  RETURN_NOT_OK(txn->SetPgTxnStart(options.pg_txn_start_us()));
   if ((isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
            isolation == IsolationLevel::READ_COMMITTED) &&
       txn_serial_no_ == options.txn_serial_no()) {
@@ -1696,7 +1692,7 @@ Result<const TransactionMetadata*> PgClientSession::GetDdlTransactionMetadata(
     return nullptr;
   }
 
-  auto& txn = Transaction(PgClientSessionKind::kDdl);
+  auto& txn = GetSessionData(PgClientSessionKind::kDdl).transaction;
   if (!txn) {
     const auto isolation = FLAGS_ysql_serializable_isolation_for_ddl_txn
         ? IsolationLevel::SERIALIZABLE_ISOLATION : IsolationLevel::SNAPSHOT_ISOLATION;
@@ -2229,8 +2225,13 @@ Status PgClientSession::CheckPlainSessionPendingUsedReadTime(uint64_t txn_serial
 
 std::shared_ptr<CountDownLatch> PgClientSession::ProcessSharedRequest(
     size_t size, SharedExchange* exchange) {
+  auto shared_this = shared_this_.lock();
+  if (!shared_this) {
+    LOG_WITH_FUNC(DFATAL) << "Shared this is null in ProcessSharedRequest";
+    return nullptr;
+  }
   auto data = std::make_shared<SharedExchangeQuery>(
-      shared_this_.lock(), &table_cache_, exchange, stats_exchange_response_size_);
+      shared_this, &table_cache_, exchange, stats_exchange_response_size_);
   auto status = data->Init(size);
   if (status.ok()) {
     static std::atomic<int64_t> next_rpc_id{0};

@@ -10,6 +10,15 @@ Create an universe backup schedule in YugabyteDB Anywhere
 yba backup schedule create [flags]
 ```
 
+### Examples
+
+```
+yba backup schedule create -n <schedule-name> \
+	--schedule-frequency-in-secs <schedule-frequency-in-secs> \
+	--universe-name <universe-name> --storage-config-name <storage-config-name> \
+	--table-type <table-type>
+```
+
 ### Options
 
 ```

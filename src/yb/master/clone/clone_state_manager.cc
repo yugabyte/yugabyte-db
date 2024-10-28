@@ -217,29 +217,33 @@ CloneStateManager::CloneStateManager(
     external_funcs_(std::move(external_funcs)) {}
 
 Status CloneStateManager::ListClones(const ListClonesRequestPB* req, ListClonesResponsePB* resp) {
-  if (!req->has_source_namespace_id()) {
-    return STATUS_FORMAT(InvalidArgument, "Missing source namespace id in request: $0",
-                         req->ShortDebugString());
-  }
-
   // Get matching clone states.
   std::vector<CloneStateInfoPtr> clone_states;
   {
     std::lock_guard l(mutex_);
-    auto it = source_clone_state_map_.find(req->source_namespace_id());
-    if (it != source_clone_state_map_.end()) {
-      std::copy_if(
-        it->second.begin(), it->second.end(), std::back_inserter(clone_states),
-        [req](const auto& clone) {
-          return !req->has_seq_no() ||
-                 req->seq_no() == clone->LockForRead()->pb.clone_request_seq_no();
-      });
+    if (req->has_source_namespace_id()) {
+      auto it = source_clone_state_map_.find(req->source_namespace_id());
+      if (it != source_clone_state_map_.end()) {
+        std::copy_if(
+            it->second.begin(), it->second.end(), std::back_inserter(clone_states),
+            [req](const auto& clone) {
+              return !req->has_seq_no() ||
+                     req->seq_no() == clone->LockForRead()->pb.clone_request_seq_no();
+            });
+      }
+    } else {
+      for (const auto& source_clones : source_clone_state_map_) {
+        std::copy(
+            source_clones.second.begin(), source_clones.second.end(),
+            std::back_inserter(clone_states));
+      }
     }
   }
 
   // Populate the response.
   for (const auto& clone_state : clone_states) {
-    *resp->add_entries() = clone_state->LockForRead()->pb;
+    SysCloneStatePB* list_clone_entry = resp->add_entries();
+    list_clone_entry->CopyFrom(clone_state->LockForRead()->pb);
   }
   return Status::OK();
 }
@@ -354,6 +358,12 @@ Status CloneStateManager::StartTabletsCloning(
   if (namespace_map.size() != 1) {
     return STATUS_FORMAT(IllegalState, "Expected 1 namespace, got $0", namespace_map.size());
   }
+
+  auto lock = clone_state->LockForWrite();
+  auto target_namespace_id = namespace_map[lock.data().pb.source_namespace_id()].new_namespace_id;
+  lock.mutable_data()->pb.set_target_namespace_id(target_namespace_id);
+  RETURN_NOT_OK(external_funcs_->Upsert(clone_state->Epoch().leader_term, clone_state));
+  lock.Commit();
 
   // Generate a new snapshot.
   // All indexes already are in the request. Do not add them twice.
@@ -474,15 +484,16 @@ Result<CloneStateInfoPtr> CloneStateManager::CreateCloneState(
   namespace_lock.mutable_data()->pb.set_clone_request_seq_no(seq_no);
 
   auto clone_state = std::make_shared<CloneStateInfo>(GenerateObjectId());
-  clone_state->SetDatabaseType(database_type);
   clone_state->SetEpoch(epoch);
   clone_state->mutable_metadata()->StartMutation();
   auto* pb = &clone_state->mutable_metadata()->mutable_dirty()->pb;
   pb->set_aggregate_state(SysCloneStatePB::CLONE_SCHEMA_STARTED);
   pb->set_clone_request_seq_no(seq_no);
   pb->set_source_namespace_id(source_namespace->id());
+  pb->set_source_namespace_name(source_namespace->name());
   pb->set_restore_time(restore_time.ToUint64());
   pb->set_target_namespace_name(target_namespace_name);
+  pb->set_database_type(database_type);
   RETURN_NOT_OK(external_funcs_->Upsert(
       clone_state->Epoch().leader_term, clone_state, source_namespace));
   namespace_lock.Commit();
@@ -708,7 +719,7 @@ Status CloneStateManager::HandleRestoringState(const CloneStateInfoPtr& clone_st
     return Status::OK();
   }
 
-  if (clone_state->DatabaseType() == YQL_DATABASE_PGSQL) {
+  if (lock->pb.database_type() == YQL_DATABASE_PGSQL) {
     lock.mutable_data()->pb.set_aggregate_state(SysCloneStatePB::RESTORED);
     RETURN_NOT_OK(external_funcs_->Upsert(clone_state->Epoch().leader_term, clone_state));
     lock.Commit();

@@ -10,6 +10,13 @@ Update an S3 storage configuration in YugabyteDB Anywhere
 yba storage-config s3 update [flags]
 ```
 
+### Examples
+
+```
+yba storage-config s3 update --name <storage-configuration-name> \
+	--new-name <new-storage-configuration-name>
+```
+
 ### Options
 
 ```

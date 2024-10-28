@@ -21,8 +21,10 @@ When you connect to your cluster using Cloud Shell with the YSQL API, the shell 
 
 You have the option of using the following command line interfaces (CLIs) in Cloud Shell:
 
-- [ysqlsh](../../../admin/ysqlsh/) - YSQL shell for interacting with YugabyteDB using the [YSQL API](../../../api/ysql/).
-- [ycqlsh](../../../admin/ycqlsh/) - YCQL shell, which uses the [YCQL API](../../../api/ycql/).
+| Client | API | Description |
+| :--- | :--- | :--- |
+| [ysqlsh](../../../api/ysqlsh/) | [YSQL](../../../api/ysql/) | SQL shell for interacting with YugabyteDB using PostgreSQL-compatible YSQL API. |
+| [ycqlsh](../../../api/ycqlsh/) | [YCQL](../../../api/ycql/) | CQL shell for interacting with YugabyteDB using Cassandra-compatible YCQL API. |
 
 ## Limitations
 
@@ -75,7 +77,7 @@ admin@ycqlsh:yugabyte>
 
 ## ysqlsh meta-commands in Cloud Shell
 
-Cloud Shell supports the use of ysqlsh [meta-commands](../../../admin/ysqlsh-meta-commands/). However, for security reasons, some commands are not available. With the exception of read-only access to the `/share` directory to load the [sample datasets](../../../sample-data/), commands that access the filesystem do not work in Cloud Shell.
+Cloud Shell supports the use of ysqlsh [meta-commands](../../../api/ysqlsh-meta-commands/). However, for security reasons, some commands are not available. With the exception of read-only access to the `/share` directory to load the [sample datasets](../../../sample-data/), commands that access the filesystem do not work in Cloud Shell.
 
 The following table lists common meta-commands that can be used in Cloud Shell.
 
@@ -106,8 +108,8 @@ The following table lists common meta-commands that can be used in Cloud Shell.
 
 - [YSQL API](../../../api/ysql/) — Reference for supported YSQL statements, data types, functions, and operators.
 - [YCQL API](../../../api/ycql/) — Reference for supported YCQL statements, data types, functions, and operators.
-- [ysqlsh](../../../admin/ysqlsh/) — Overview of the CLI, syntax, and meta-commands.
-- [ycqlsh](../../../admin/ycqlsh/) — Overview of the CLI, syntax, and commands.
+- [ysqlsh](../../../api/ysqlsh/) — Overview of the CLI, syntax, and meta-commands.
+- [ycqlsh](../../../api/ycqlsh/) — Overview of the CLI, syntax, and commands.
 
 ## Next steps
 

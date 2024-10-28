@@ -186,7 +186,7 @@ TEST_F(PgPartmanTest, TestIdProcedureSourceTable) {
 }
 
 TEST_F(PgPartmanTest, TestTimeProcedureEpochWeeklyNative) {
-  RunAndAssertTest("test_procedure/test-time-procedure-epoch-weekly-native-part1.sql");
+  RunAndAssertTest("test_procedure/yb_pg_test-time-procedure-epoch-weekly-native-part1.sql");
 
   ASSERT_OK(conn_->Execute(
       "CALL partman.partition_data_proc('partman_test.time_taptest_table', p_wait := 0, "
@@ -200,21 +200,21 @@ TEST_F(PgPartmanTest, TestTimeProcedureEpochWeeklyNative) {
 }
 
 TEST_F(PgPartmanTest, TestTimeProcedureSourceTable) {
-  RunAndAssertTest("test_procedure/test-time-procedure-source-table-part1.sql");
+  RunAndAssertTest("test_procedure/yb_pg_test-time-procedure-source-table-part1.sql");
 
   ASSERT_OK(conn_->Execute(
       "CALL partman.partition_data_proc('partman_test.time_taptest_table', p_wait := 0, "
       "p_source_table := 'partman_test.time_taptest_table_source')"));
 
-  RunAndAssertTest("test_procedure/test-time-procedure-source-table-part2.sql");
+  RunAndAssertTest("test_procedure/yb_pg_test-time-procedure-source-table-part2.sql");
 
   ASSERT_OK(conn_->Execute("CALL partman.run_maintenance_proc();"));
 
-  RunAndAssertTest("test_procedure/test-time-procedure-source-table-part3.sql");
+  RunAndAssertTest("test_procedure/yb_pg_test-time-procedure-source-table-part3.sql");
 }
 
 TEST_F(PgPartmanTest, TestTimeProcedureWeekly) {
-  RunAndAssertTest("test_procedure/test-time-procedure-weekly-part1.sql");
+  RunAndAssertTest("test_procedure/yb_pg_test-time-procedure-weekly-part1.sql");
 
   ASSERT_OK(
       conn_->Execute("CALL partman.reapply_constraints_proc('partman_test.time_taptest_table', "
@@ -241,6 +241,26 @@ TEST_F(PgPartmanTest, TestTimeHourlyNonSuperUser) {
   ASSERT_OK(InitializeTestCommand(owner));
   RunAndAssertTest("test_native/test_nonsuperuser/yb_pg_test-time-hourly-nonsuperuser-part2.sql");
 
+}
+
+TEST_F(PgPartmanTest, TestExceptionWithColocation) {
+  constexpr auto db_name = "db1";
+  ASSERT_OK(conn_->ExecuteFormat("CREATE DATABASE $0 with colocation=true", db_name));
+
+  auto new_db_conn = ASSERT_RESULT(cluster_->ConnectToDB(db_name));
+  ASSERT_OK(new_db_conn.Execute("CREATE SCHEMA partman"));
+  ASSERT_OK(new_db_conn.Execute("CREATE EXTENSION pg_partman WITH SCHEMA partman"));
+
+  ASSERT_OK(
+      new_db_conn.Execute("CREATE TABLE orders (order_id SERIAL,order_date DATE NOT "
+                          "NULL,customer_id INT) PARTITION BY RANGE (order_date)"));
+
+  ASSERT_NOK_STR_CONTAINS(
+      new_db_conn.FetchRow<pgwrapper::PGUint64>(
+          "SELECT partman.create_parent( p_parent_table => 'public.orders', p_control => "
+          "'order_date', "
+          "p_type => 'native',p_interval =>'monthly', p_premake => 5)"),
+      "is a colocated table hence registering it to pg_partman maintenance is not supported");
 }
 
 }; // namespace yb

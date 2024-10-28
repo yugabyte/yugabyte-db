@@ -181,6 +181,21 @@ public class DrConfig extends Model {
         .orElseThrow(() -> new IllegalStateException("No active xCluster config found"));
   }
 
+  public boolean hasActiveXClusterConfig() {
+    if (xClusterConfigs.isEmpty()) {
+      return false;
+    }
+    if (xClusterConfigs.size() == 1) {
+      return true;
+    }
+    for (XClusterConfig xClusterConfig : xClusterConfigs) {
+      if (!xClusterConfig.isSecondary()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   @JsonIgnore
   public Optional<XClusterConfig> getActiveXClusterConfig(
       UUID sourceUniverseUuid, UUID targetUniverseUuid) {
@@ -214,15 +229,7 @@ public class DrConfig extends Model {
   }
 
   public String getNewXClusterConfigName(UUID sourceUniverseUUID, UUID targetUniverseUUID) {
-    int id = 0;
-    while (true) {
-      String newName = "--DR-CONFIG-" + this.name + "-" + id;
-      if (Objects.isNull(
-          XClusterConfig.getByNameSourceTarget(newName, sourceUniverseUUID, targetUniverseUUID))) {
-        return newName;
-      }
-      id++;
-    }
+    return "--DR-CONFIG-" + this.name + "--_" + UUID.randomUUID();
   }
 
   @Override

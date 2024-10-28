@@ -2229,7 +2229,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_EXPLAIN
 		},
 		&jit_enabled,
-		true,
+		false,
 		NULL, NULL, NULL
 	},
 
@@ -2980,12 +2980,37 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_inplace_index_update", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Enables the in-place update of non-key columns of secondary indexes "
+						 "when key columns of the index are not updated. This is useful when "
+						 "updating the included columns in a covering index among others."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_inplace_index_update,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_fkey_catcache", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable preloading of foreign key information into the relation cache."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_fkey_catcache,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_nop_alter_role_optimization", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Enable nop alter role statement optimization to avoid catalog version "
+						 "increment if the alter role statement does not involve any change."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_nop_alter_role_optimization,
 		true,
 		NULL, NULL, NULL
 	},
@@ -8226,6 +8251,8 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 								set_extra_field(&conf->gen, &conf->gen.extra,
 												newextra);
 								changed = true;
+								if (conf->gen.flags & GUC_YB_CUSTOM_STICKY)
+									yb_ysql_conn_mgr_sticky_guc = true;
 							}
 
 							/*
@@ -8413,51 +8440,6 @@ ReportGUCOption(struct config_generic *record)
 			free(record->last_reported);
 		record->last_reported = strdup(val);
 
-		/*
-		 * Send the equivalent of a ParameterStatus packet corresponding to a
-		 * role oid back to YSQL Connection Manager. Also ensure that we are
-		 * in an active transaction before sending the packet, we cannot search
-		 * for role oids otherwise.
-		 */
-		if (YbIsClientYsqlConnMgr())
-		{
-			int yb_role_oid_type = 0;
-			StringInfoData rolebuf;
-
-			if (strcmp(record->name, "role") == 0)
-				yb_role_oid_type = 1;
-			else if (strcmp(record->name, "session_authorization") == 0)
-				yb_role_oid_type = 2;
-			else
-			{
-				pfree(val);
-				return;
-			}
-			/*
-			 * Header 'r' informs Connection Manager that this packet does
-			 * not need to be forwarded back to the client
-			 */
-			pq_beginmessage(&rolebuf, 'r');
-
-			if (yb_role_oid_type == 1)
-				pq_sendstring(&rolebuf, "role_oid");
-			else if (yb_role_oid_type == 2)
-				pq_sendstring(&rolebuf, "session_authorization_oid");
-			if (val != NULL &&
-				strcmp(val, "none") != 0 &&
-				strcmp(val, "default") != 0 &&
-				IsTransactionState())
-			{
-				char oid[16];
-				snprintf(oid, 16, "%u", get_role_oid(val, false));
-
-				pq_sendstring(&rolebuf, oid);
-
-			}
-			else
-				pq_sendstring(&rolebuf, "-1");
-			pq_endmessage(&rolebuf);
-		}
 	}
 
 	pfree(val);
@@ -9264,35 +9246,14 @@ set_config_option_ext(const char *name, const char *value,
 		Assert(YbIsClientYsqlConnMgr());
 
 	/*
-	 * role_oid and session_authorization_oid are provisions made for YSQL
-	 * Connection Manager to handle scenarios around "ALTER ROLE RENAME"
-	 * queries as it only caches the previously used role by that client.
+	 * For session_authorization and role, only make the connection sticky if
+	 * the value is modified by a client-issued SET statement. We cannot use
+	 * the assign hook to do so, as postgres utilizes it at connection startup.
 	 */
-	if (YbIsClientYsqlConnMgr())
-	{
-		if (strcmp(name, "role_oid") == 0)
-		{
-			/* Handle RESET ROLE queries */
-			if (!value || strcmp(value, "0") == 0)
-				return set_config_option("role", NULL, context, source, action,
-										 changeVal, elevel, is_reload);
-			return set_config_option("role",
-									 GetUserNameFromId(atoi(value), false),
-									 context, source, action, changeVal, elevel,
-									 is_reload);
-		} else if (strcmp(name, "session_authorization_oid") == 0)
-		{
-			/* Handle RESET SESSION AUTHORIZATION queries */
-			if (!value || strcmp(value, "0") == 0)
-				return set_config_option("session_authorization", NULL, context,
-										 source, action, changeVal, elevel,
-										 is_reload);
-			return set_config_option("session_authorization",
-									 GetUserNameFromId(atoi(value), false),
-									 context, source, action, changeVal, elevel,
-									 is_reload);
-		}
-	}
+	if (YbIsClientYsqlConnMgr() &&
+		((strncmp(name, "session_authorization", strlen("session_authorization")) == 0) ||
+		(strncmp(name, "role", strlen("role")) == 0)))
+			yb_ysql_conn_mgr_sticky_guc = true;
 
 	if (elevel == 0)
 	{
@@ -10022,6 +9983,8 @@ set_config_option_ext(const char *name, const char *value,
 					conf->gen.source = source;
 					conf->gen.scontext = context;
 					conf->gen.srole = srole;
+					if (conf->gen.flags & GUC_YB_CUSTOM_STICKY)
+						yb_ysql_conn_mgr_sticky_guc = true;
 				}
 
 				if (makeDefault)
@@ -11528,6 +11491,9 @@ DefineCustomStringVariable(const char *name,
 	var->assign_hook = assign_hook;
 	var->show_hook = show_hook;
 	define_custom_variable(&var->gen);
+
+	/* make custom string variables sticky for connection manager */
+	var->gen.flags |= GUC_YB_CUSTOM_STICKY;
 }
 
 void

@@ -15,6 +15,7 @@ var describeS3StorageConfigurationCmd = &cobra.Command{
 	Aliases: []string{"get"},
 	Short:   "Describe a S3 YugabyteDB Anywhere storage configuration",
 	Long:    "Describe a S3 storage configuration in YugabyteDB Anywhere",
+	Example: `yba storage-config s3 describe --name <storage-configuration-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		storageconfigurationutil.DescribeStorageConfigurationValidation(cmd)
 	},

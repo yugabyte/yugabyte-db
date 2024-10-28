@@ -775,6 +775,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  help="Path to GCP credentials file used for logs export.")
         self.parser.add_argument('--ycql_audit_log_level', default=None,
                                  help="YCQL audit log level.")
+        self.parser.add_argument('--reboot_node_allowed', action='store_true', default=False,
+                                 help='If set YBA will reboot the node for configuring the ulimits')
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -847,6 +849,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             self.extra_vars.update({"otel_col_gcp_creds_local": args.otel_col_gcp_creds_file})
         if args.ycql_audit_log_level:
             self.extra_vars.update({"ycql_audit_log_level": args.ycql_audit_log_level})
+        if args.reboot_node_allowed:
+            self.extra_vars.update({"reboot_node_allowed": args.reboot_node_allowed})
 
         if wait_for_server(self.extra_vars):
             self.cloud.setup_ansible(args).run("yb-server-provision.yml",

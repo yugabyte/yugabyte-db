@@ -279,7 +279,7 @@ class XClusterTestBase : public YBTest {
   Status WaitForReplicationDrain(
       int expected_num_nondrained = 0, int timeout_secs = kRpcTimeout,
       std::optional<uint64> target_time = std::nullopt,
-      std::vector<TableId> producer_table_ids = {});
+      std::vector<TableId> producer_table_ids = {}, YBClient* source_client = nullptr);
 
   YBClient* producer_client() {
     return producer_cluster_.client_.get();
@@ -345,7 +345,7 @@ class XClusterTestBase : public YBTest {
   Status PauseResumeXClusterProducerStreams(
       const std::vector<xrepl::StreamId>& stream_ids, bool is_paused);
 
-  Result<TableId> GetColocatedDatabaseParentTableId();
+  Result<TableId> GetColocatedDatabaseParentTableId(Cluster* cluster = nullptr);
 
   Result<master::MasterReplicationProxy> GetProducerMasterProxy();
 

@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { find, isString } from 'lodash';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
@@ -56,9 +56,7 @@ import { escapeStr, TOAST_OPTIONS, UserDefaultRoleOptions } from '../UserAuthUti
 import { DisableAuthProviderModal } from '../DisableAuthProvider';
 import { transformData } from './LDAPUtils';
 import { getLDAPValidationSchema } from './LDAPValidationSchema';
-import { ArrowDropDown } from '@material-ui/icons';
 import { ReactComponent as User } from '../../../../redesign/assets/user-outline.svg';
-import { ReactComponent as UserGroupsIcon } from '../../../../redesign/assets/user-group.svg';
 import { ReactComponent as BulbIcon } from '../../../../redesign/assets/bulb.svg';
 
 const useStyles = makeStyles((theme) => ({
@@ -158,7 +156,7 @@ const useStyles = makeStyles((theme) => ({
     borderRight: 'none',
     justifyContent: 'center',
     '& .MuiAccordionSummary-root': {
-      height: '86px',
+      height: '120px',
       padding: '16px 24px'
     },
     '& .MuiAccordionSummary-content': {
@@ -171,10 +169,6 @@ const useStyles = makeStyles((theme) => ({
     alignItems: 'center',
     marginBottom: '8px'
   },
-  groupsIcon: {
-    width: '24px',
-    height: '24px'
-  },
   accordionDetails: {
     flexDirection: 'column',
     gap: '24px',
@@ -183,6 +177,9 @@ const useStyles = makeStyles((theme) => ({
   },
   scope: {
     width: '308px'
+  },
+  ldapUseRoleMapping: {
+    marginTop: '16px'
   }
 }));
 
@@ -226,7 +223,15 @@ export const LDAPAuthNew = () => {
     keyPrefix: 'userAuth.LDAP'
   });
 
-  const { control, setValue, watch, getValues, handleSubmit } = useForm<LDAPFormProps>({
+  const {
+    control,
+    setValue,
+    watch,
+    getValues,
+    handleSubmit,
+    clearErrors,
+    formState: { isDirty }
+  } = useForm<LDAPFormProps>({
     resolver: yupResolver(getLDAPValidationSchema(t))
   });
 
@@ -236,7 +241,10 @@ export const LDAPAuthNew = () => {
     },
     {
       onError(_error, variables) {
-        toast.error(t('messages.ldapSaveFailed', { key: variables.key, operation: 'update' }), TOAST_OPTIONS);
+        toast.error(
+          t('messages.ldapSaveFailed', { key: variables.key, operation: 'update' }),
+          TOAST_OPTIONS
+        );
       }
     }
   );
@@ -247,7 +255,10 @@ export const LDAPAuthNew = () => {
     },
     {
       onError(_error, variables) {
-        toast.error(t('messages.ldapSaveFailed', { key: variables.key, operation: 'delete' }), TOAST_OPTIONS);
+        toast.error(
+          t('messages.ldapSaveFailed', { key: variables.key, operation: 'delete' }),
+          TOAST_OPTIONS
+        );
       }
     }
   );
@@ -257,7 +268,7 @@ export const LDAPAuthNew = () => {
   const [groupSettingsExpanded, setGroupSettingsExpanded] = useToggle(true);
   const queryClient = useQueryClient();
 
-  const { isLoading, isError } = useQuery(
+  const { isLoading } = useQuery(
     [LDAP_RUNTIME_CONFIGS_QUERY_KEY],
     () => api.fetchRunTimeConfigs(true),
     {
@@ -304,8 +315,13 @@ export const LDAPAuthNew = () => {
     return promiseArray;
   };
 
+  const ldapUseGroupMapping = watch('ldap_group_use_role_mapping');
+
+  useEffect(() => {
+    setGroupSettingsExpanded(ldapUseGroupMapping);
+  }, [ldapUseGroupMapping]);
+
   if (isLoading) return <YBLoadingCircleIcon />;
-  if (isError) return <YBErrorIndicator />;
 
   const UserDefaultRole = [
     {
@@ -548,16 +564,22 @@ export const LDAPAuthNew = () => {
           </div>
           <Accordion
             expanded={groupSettingsExpanded}
-            onChange={() => setGroupSettingsExpanded(!groupSettingsExpanded)}
             className={classes.groupSettings}
             data-testid="group-settings-tab"
           >
-            <AccordionSummary expandIcon={<ArrowDropDown className={classes.groupsIcon} />}>
+            <AccordionSummary>
               <div className={classes.groupHeader}>
-                <UserGroupsIcon className={classes.groupsIcon} />
                 <Typography variant="body1">{t('group.title')}</Typography>
               </div>
               {t('group.helpText')}
+              <div className={classes.ldapUseRoleMapping}>
+                <YBToggleField
+                  name="ldap_group_use_role_mapping"
+                  control={control}
+                  label={t('ldapUseRoleMapping')}
+                  disabled={!ldapEnabled}
+                />
+              </div>
             </AccordionSummary>
             <AccordionDetails className={classes.accordionDetails}>
               <YBRadioGroupField
@@ -658,14 +680,15 @@ export const LDAPAuthNew = () => {
             variant="primary"
             size="large"
             onClick={() => {
+              clearErrors();
               queryClient.invalidateQueries(LDAP_RUNTIME_CONFIGS_QUERY_KEY);
             }}
             data-testid="ldap-cancel"
           >
-            {t('clear', { keyPrefix: 'common' })}
+            {t('reset', { keyPrefix: 'common' })}
           </YBButton>
           <YBButton
-            disabled={!ldapEnabled}
+            disabled={!ldapEnabled || !isDirty}
             variant="primary"
             size="large"
             onClick={() => {

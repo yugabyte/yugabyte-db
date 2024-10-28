@@ -37,7 +37,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -62,14 +61,8 @@ public class UniverseResp {
     // Universe UUID to AllowedTasks object map.
     Map<UUID, AllowedTasks> allowedTasks =
         getAllowedTasksOnFailure(Collections.singletonList(universe));
-    RollMaxBatchSize rollMaxBatchSize = null;
-    boolean isK8s =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType
-            == Common.CloudType.kubernetes;
-    boolean batchRollEnabled =
-        isK8s
-            ? confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollK8sEnabled)
-            : confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollEnabled);
+    RollMaxBatchSize rollMaxBatchSize = new RollMaxBatchSize();
+    boolean batchRollEnabled = UpgradeTaskBase.isBatchRollEnabled(universe, confGetter);
     if (batchRollEnabled) {
       rollMaxBatchSize = UpgradeTaskBase.getMaxNodesToRoll(universe);
     }
@@ -126,7 +119,6 @@ public class UniverseResp {
     Map<UUID, UUID> placementModificationTaskUuids =
         universes.stream()
             .filter(u -> u.getUniverseDetails().placementModificationTaskUuid != null)
-            .filter(Objects::nonNull)
             .collect(
                 Collectors.toMap(
                     u -> u.getUniverseDetails().placementModificationTaskUuid,
@@ -134,6 +126,7 @@ public class UniverseResp {
                     (u1, u2) -> u2));
     // Fetch all the task info records in one shot for performance.
     return TaskInfo.find(placementModificationTaskUuids.keySet()).stream()
+        .filter(t -> placementModificationTaskUuids.containsKey(t.getUuid()))
         .collect(
             Collectors.toMap(
                 t -> placementModificationTaskUuids.get(t.getUuid()),

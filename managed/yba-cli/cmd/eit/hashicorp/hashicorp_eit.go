@@ -13,8 +13,8 @@ import (
 
 // HashicorpVaultEITCmd represents the eit command
 var HashicorpVaultEITCmd = &cobra.Command{
-	Use:     "hashicorp",
-	Aliases: []string{"hashicorp-vault", "hcv"},
+	Use:     "hashicorp-vault",
+	Aliases: []string{"hashicorp", "hcv"},
 	GroupID: "type",
 	Short: "Manage a YugabyteDB Anywhere Hashicorp Vault encryption " +
 		"in transit (EIT) certificate configuration",

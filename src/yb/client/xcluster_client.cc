@@ -737,4 +737,57 @@ Status XClusterClient::AddNamespaceToDbScopedUniverseReplication(
   return Status::OK();
 }
 
+Status XClusterClient::WaitForReplicationDrain(
+    const xrepl::StreamId& stream_id, MicrosecondsInt64 target_time, CoarseTimePoint deadline) {
+  master::WaitForReplicationDrainRequestPB req;
+  req.set_target_time(target_time);
+  req.add_stream_ids(stream_id.ToString());
+
+  master::WaitForReplicationDrainResponsePB resp;
+  RETURN_NOT_OK(yb_client_.data_->SyncLeaderMasterRpc(
+      deadline, req, &resp, "WaitForReplicationDrain",
+      &master::MasterReplicationProxy::WaitForReplicationDrainAsync));
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  return Status::OK();
+}
+
+Result<std::vector<xrepl::StreamId>> XClusterClient::GetXClusterStreams(const TableId& table_id) {
+  master::ListCDCStreamsRequestPB req;
+  req.set_id_type(yb::master::IdTypePB::TABLE_ID);
+  req.set_table_id(table_id);
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(ListCDCStreams, req);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  std::vector<xrepl::StreamId> stream_ids;
+  for (const auto& stream : resp.streams()) {
+    stream_ids.emplace_back(VERIFY_RESULT(xrepl::StreamId::FromString(stream.stream_id())));
+  }
+  return stream_ids;
+}
+
+Status XClusterClient::InsertPackedSchemaForXClusterTarget(
+    const TableId& table_id, const SchemaPB& packed_schema_to_insert,
+    uint32_t current_schema_version) {
+  SCHECK(!table_id.empty(), InvalidArgument, "Table id is required.");
+
+  master::InsertPackedSchemaForXClusterTargetRequestPB req;
+  req.set_table_id(table_id);
+  req.mutable_packed_schema()->CopyFrom(packed_schema_to_insert);
+  req.set_current_schema_version(current_schema_version);
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(InsertPackedSchemaForXClusterTarget, req);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
 }  // namespace yb::client

@@ -10,6 +10,13 @@ Update an Azure provider in YugabyteDB Anywhere
 yba provider azure update [flags]
 ```
 
+### Examples
+
+```
+yba provider azure update --name <provider-name> \
+	--hosted-zone-id <hosted-zone-id>
+```
+
 ### Options
 
 ```

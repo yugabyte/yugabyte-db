@@ -10,6 +10,12 @@ Delete a K8s Cert Manager encryption in transit configuration in YugabyteDB Anyw
 yba eit k8s-cert-manager delete [flags]
 ```
 
+### Examples
+
+```
+yba eit k8s-cert-manager delete --name <config-name>
+```
+
 ### Options
 
 ```

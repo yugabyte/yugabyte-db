@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include "yb/vector/graph_repr_defs.h"
+#include "yb/vector_index/graph_repr_defs.h"
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/key_bounds.h"
@@ -31,7 +31,7 @@ class VectorIndexStorage : public VectorIndexFetcher<CoordinateType> {
 
   Result<IndexedVector> GetVector(
       const ReadOperationData& read_operation_data, VertexId id) override;
-  Result<vectorindex::VectorNodeNeighbors> GetNeighbors(
+  Result<vector_index::VectorNodeNeighbors> GetNeighbors(
       const ReadOperationData& read_operation_data, VertexId id, VectorIndexLevel level) override;
  private:
   const DocDB doc_db_;

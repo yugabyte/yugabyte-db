@@ -22,6 +22,9 @@ var createAWSEARCmd = &cobra.Command{
 	Aliases: []string{"add"},
 	Short:   "Create a YugabyteDB Anywhere AWS encryption at rest configuration",
 	Long:    "Create an AWS encryption at rest configuration in YugabyteDB Anywhere",
+	Example: `yba ear aws create --name <config-name> \
+	--access-key-id <access-key-id> --secret-access-key <secret-access-key>\
+	--region <region> --cmk-id <cmk-id> --endpoint <endpoint>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		earutil.CreateEARValidation(cmd)
 		isIAM, err := cmd.Flags().GetBool("use-iam-instance-profile")
@@ -116,18 +119,15 @@ var createAWSEARCmd = &cobra.Command{
 			}
 		}
 
-		rCreate, response, err := authAPI.CreateKMSConfig(util.AWSEARType).
+		rTask, response, err := authAPI.CreateKMSConfig(util.AWSEARType).
 			KMSConfig(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "EAR: AWS", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		configUUID := rCreate.GetResourceUUID()
-		taskUUID := rCreate.GetTaskUUID()
-
 		earutil.WaitForCreateEARTask(authAPI,
-			configName, configUUID, util.AWSEARType, taskUUID)
+			configName, rTask, util.AWSEARType)
 
 	},
 }

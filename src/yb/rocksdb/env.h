@@ -257,6 +257,8 @@ class Env {
   virtual Status GetChildren(const std::string& dir,
                              std::vector<std::string>* result) = 0;
 
+  yb::Result<std::vector<std::string>> GetChildren(const std::string& dir);
+
   void GetChildrenWarnNotOk(const std::string& dir,
                             std::vector<std::string>* result);
 
@@ -282,6 +284,8 @@ class Env {
   // Creates directory if missing. Return Ok if it exists, or successful in
   // Creating.
   virtual Status CreateDirIfMissing(const std::string& dirname) = 0;
+
+  Status CreateDirs(const std::string& dirname);
 
   // Delete the specified directory.
   virtual Status DeleteDir(const std::string& dirname) = 0;

@@ -9263,7 +9263,7 @@
       "refId" : "E"
     }, {
       "hide" : false,
-      "legendFormat" : "node_exporter",
+      "legendFormat" : "Node Exporter",
       "expr" : "avg(max_over_time(yb_process_open_files{node_prefix=~\"$dbcluster\", process=\"node_exporter\"}[300s])) by (process)",
       "refId" : "F"
     } ],
@@ -19349,13 +19349,13 @@
     "id" : 192,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "Idle/Pending",
-      "expr" : "sum(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"ysql_conn_mgr_idle_or_pending_clients\"}[300s])) by (saved_name)",
+      "legendFormat" : "Queued",
+      "expr" : "sum(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"ysql_conn_mgr_queued_clients\"}[300s])) by (saved_name)",
       "refId" : "A"
     }, {
       "hide" : false,
-      "legendFormat" : "Queued",
-      "expr" : "sum(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"ysql_conn_mgr_queued_clients\"}[300s])) by (saved_name)",
+      "legendFormat" : "Idle/Pending",
+      "expr" : "sum(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"ysql_conn_mgr_waiting_clients\"}[300s])) by (saved_name)",
       "refId" : "B"
     }, {
       "hide" : false,

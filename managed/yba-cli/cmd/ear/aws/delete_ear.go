@@ -12,9 +12,11 @@ import (
 
 // deleteAWSEARCmd represents the ear command
 var deleteAWSEARCmd = &cobra.Command{
-	Use:   "delete",
-	Short: "Delete a YugabyteDB Anywhere AWS encryption at rest configuration",
-	Long:  "Delete an AWS encryption at rest configuration in YugabyteDB Anywhere",
+	Use:     "delete",
+	Aliases: []string{"remove", "rm"},
+	Short:   "Delete a YugabyteDB Anywhere AWS encryption at rest configuration",
+	Long:    "Delete an AWS encryption at rest configuration in YugabyteDB Anywhere",
+	Example: `yba ear aws delete --name <config-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		earutil.DeleteEARValidation(cmd)
 	},

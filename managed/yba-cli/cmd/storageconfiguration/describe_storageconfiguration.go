@@ -11,10 +11,11 @@ import (
 
 var describeStorageConfigurationCmd = &cobra.Command{
 	Use:     "describe",
-	GroupID: "action",
 	Aliases: []string{"get"},
+	GroupID: "action",
 	Short:   "Describe a YugabyteDB Anywhere storage configuration",
 	Long:    "Describe a storage configuration in YugabyteDB Anywhere",
+	Example: `yba storage-config describe --name <storage-configuration-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		storageconfigurationutil.DescribeStorageConfigurationValidation(cmd)
 	},

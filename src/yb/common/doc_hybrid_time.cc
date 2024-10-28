@@ -28,7 +28,6 @@
 using std::string;
 
 using yb::FastEncodeDescendingSignedVarInt;
-using yb::FastDecodeDescendingSignedVarIntUnsafe;
 
 using strings::SubstituteAndAppend;
 
@@ -119,19 +118,19 @@ Result<DocHybridTime> DocHybridTime::DecodeFrom(Slice *slice) {
   const size_t previous_size = slice->size();
   {
     // Currently we just ignore the generation number as it should always be 0.
-    RETURN_NOT_OK(FastDecodeDescendingSignedVarIntUnsafe(slice));
+    RETURN_NOT_OK(FastDecodeDescendingSignedVarInt(slice));
     int64_t decoded_micros =
-        kYugaByteMicrosecondEpoch + VERIFY_RESULT(FastDecodeDescendingSignedVarIntUnsafe(slice));
+        kYugaByteMicrosecondEpoch + VERIFY_RESULT(FastDecodeDescendingSignedVarInt(slice));
 
     auto decoded_logical = VERIFY_RESULT(checked_narrow_cast<LogicalTimeComponent>(
-        VERIFY_RESULT(FastDecodeDescendingSignedVarIntUnsafe(slice))));
+        VERIFY_RESULT(FastDecodeDescendingSignedVarInt(slice))));
 
     result.hybrid_time_ = HybridTime::FromMicrosecondsAndLogicalValue(
         decoded_micros, decoded_logical);
   }
 
   const auto ptr_before_decoding_write_id = slice->data();
-  int64_t decoded_shifted_write_id = VERIFY_RESULT(FastDecodeDescendingSignedVarIntUnsafe(slice));
+  int64_t decoded_shifted_write_id = VERIFY_RESULT(FastDecodeDescendingSignedVarInt(slice));
 
   if (decoded_shifted_write_id < 0) {
     return STATUS_SUBSTITUTE(

@@ -5,6 +5,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
+import org.yb.util.BuildTypeUtil;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -54,8 +55,10 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
         try (Statement lstmt = connections[0].createStatement()) {
           while (!stopped.get() && !errorsDetected.get()) {
             barrier.await();
-            lstmt.execute("ALTER TABLE t DROP COLUMN IF EXISTS v");
-            lstmt.execute("ALTER TABLE t ADD COLUMN v INT DEFAULT 100");
+            for (int i = 0; i < 20; ++i) {
+              lstmt.execute("ALTER TABLE t DROP COLUMN IF EXISTS v");
+              lstmt.execute("ALTER TABLE t ADD COLUMN v INT DEFAULT 100");
+            }
           }
         } catch (SQLException e) {
           LOG.error("Unexpected exception", e);
@@ -85,7 +88,8 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
                 if (e.getSQLState().equals(SERIALIZATION_FAILURE_PSQL_STATE) ||
                     msg.contains("Catalog Version Mismatch") ||
                     msg.contains("Restart read required") ||
-                    msg.contains("schema version mismatch")) {
+                    msg.contains("schema version mismatch") ||
+                    msg.contains("marked for deletion in table")) {
                     expectedExceptionsCount.incrementAndGet();
                 } else if (msg.contains("Invalid column number")) {
                   // TODO(dmitry): In spite of the fact system catalog is being read in consistent
@@ -93,6 +97,7 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
                   // an error like 'Invalid argument: Invalid column number 8' might be raised by
                   // the next statement. Github issue #8096 is created for the problem.
                   LOG.warn("Invalid column number error detected", e);
+                  expectedExceptionsCount.incrementAndGet();
                 } else {
                   LOG.error("Unexpected exception", e);
                   errorsDetected.set(true);
@@ -109,7 +114,8 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
       }
       Arrays.stream(threads).forEach(t -> t.start());
       final long startTimeMs = System.currentTimeMillis();
-      while (System.currentTimeMillis() - startTimeMs < 10000 && !errorsDetected.get()) {
+      while (System.currentTimeMillis() - startTimeMs < BuildTypeUtil.adjustTimeout(100000) &&
+             !errorsDetected.get()) {
         Thread.sleep(1000);
       }
       stopped.set(true);

@@ -65,8 +65,7 @@ SET yb_use_hash_splitting_by_default = false;
 
 CREATE TABLE like_hash_default_table(like multi_index_hash_default including all);
 
--- Duplicate indexes (indexes on the same key) will not have been created, but existing indexes should have
--- the same sort order
+-- Indexes should have the same sort order
 SELECT * FROM get_table_indexes('like_hash_default_table');
 
 -- Will be recreated again later
@@ -121,8 +120,7 @@ SET yb_use_hash_splitting_by_default = true;
 
 CREATE TABLE like_asc_default_table(like multi_index_asc_default including all);
 
--- Duplicate indexes (indexes on the same key) will not have been created, but existing indexes should have
--- the same sort order
+-- Indexes should have the same sort order
 SELECT * FROM get_table_indexes('like_asc_default_table');
 
 SET yb_use_hash_splitting_by_default = false;

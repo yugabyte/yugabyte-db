@@ -11,11 +11,13 @@ import (
 )
 
 var listAzureEARCmd = &cobra.Command{
-	Use: "list",
+	Use:     "list",
+	Aliases: []string{"ls"},
 	Short: "List Azure YugabyteDB Anywhere Encryption In Transit" +
 		" (EAR) configurations",
 	Long: "List Azure YugabyteDB Anywhere Encryption In Transit" +
 		" (EAR) configurations",
+	Example: `yba ear azure list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		earutil.ListEARUtil(cmd, "Azure", util.AzureEARType)
 	},

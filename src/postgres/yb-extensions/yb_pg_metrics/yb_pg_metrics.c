@@ -619,74 +619,67 @@ ws_sigterm_handler(SIGNAL_ARGS)
 void
 webserver_worker_main(Datum unused)
 {
-  YBCInitThreading();
-  /*
-   * We call YBCInit here so that HandleYBStatus can correctly report potential error.
-   */
-  HandleYBStatus(YBCInit(NULL /* argv[0] */, palloc, NULL /* cstring_to_text_with_len_fn */));
+	YBCInitThreading();
+	/*
+	* We call YBCInit here so that HandleYBStatus can correctly report potential error.
+	*/
+	HandleYBStatus(YBCInit(NULL /* argv[0] */, palloc, NULL /* cstring_to_text_with_len_fn */));
 
-  backendStatusArray = getBackendStatusArray();
+	backendStatusArray = getBackendStatusArray();
 
-  BackgroundWorkerUnblockSignals();
+	BackgroundWorkerUnblockSignals();
 
-  /*
-   * Assert that shared memory is allocated to backendStatusArray before this webserver
-   * is started.
-  */
-  if (!backendStatusArray)
-    ereport(FATAL,
-            (errcode(ERRCODE_INTERNAL_ERROR),
-             errmsg("Shared memory not allocated to BackendStatusArray before starting YSQL webserver")));
+	/*
+	* Assert that shared memory is allocated to backendStatusArray before this webserver
+	* is started.
+	*/
+	if (!backendStatusArray)
+		ereport(FATAL,
+			(errcode(ERRCODE_INTERNAL_ERROR),
+			 errmsg("Shared memory not allocated to BackendStatusArray before starting YSQL webserver")));
 
-  webserver = CreateWebserver(ListenAddresses, port);
+	webserver = CreateWebserver(ListenAddresses, port);
 
-  RegisterMetrics(ybpgm_table, num_entries, metric_node_name);
+	RegisterMetrics(ybpgm_table, num_entries, metric_node_name);
 
-  postgresCallbacks callbacks;
-  callbacks.pullRpczEntries      = pullRpczEntries;
-  callbacks.freeRpczEntries      = freeRpczEntries;
-  callbacks.getTimestampTz       = GetCurrentTimestamp;
-  callbacks.getTimestampTzDiffMs = getElapsedMs;
-  callbacks.getTimestampTzToStr  = timestamptz_to_str;
+	postgresCallbacks callbacks;
+	callbacks.pullRpczEntries      = pullRpczEntries;
+	callbacks.freeRpczEntries      = freeRpczEntries;
+	callbacks.getTimestampTz       = GetCurrentTimestamp;
+	callbacks.getTimestampTzDiffMs = getElapsedMs;
+	callbacks.getTimestampTzToStr  = timestamptz_to_str;
 
-  YbConnectionMetrics conn_metrics;
-  conn_metrics.max_conn = &MaxConnections;
-  conn_metrics.too_many_conn = yb_too_many_conn;
-  conn_metrics.new_conn = yb_new_conn;
+	YbConnectionMetrics conn_metrics;
+	conn_metrics.max_conn = &MaxConnections;
+	conn_metrics.too_many_conn = yb_too_many_conn;
+	conn_metrics.new_conn = yb_new_conn;
 
-  RegisterRpczEntries(&callbacks, &num_backends, &rpcz, &conn_metrics);
-  HandleYBStatus(StartWebserver(webserver));
+	RegisterRpczEntries(&callbacks, &num_backends, &rpcz, &conn_metrics);
+	HandleYBStatus(StartWebserver(webserver));
 
 	pqsignal(SIGHUP, ws_sighup_handler);
 	pqsignal(SIGTERM, ws_sigterm_handler);
 
-  SetWebserverConfig(webserver, log_accesses, log_tcmalloc_stats,
-                     webserver_profiler_sample_freq_bytes);
+	SetWebserverConfig(webserver, log_accesses, log_tcmalloc_stats,
+					   webserver_profiler_sample_freq_bytes);
 
-  int rc;
-  while (!got_SIGTERM)
-  {
-    rc = WaitLatch(MyLatch, WL_LATCH_SET | WL_POSTMASTER_DEATH, -1, PG_WAIT_EXTENSION);
-    ResetLatch(MyLatch);
+	int rc;
+	while (!got_SIGTERM)
+	{
+		rc = WaitLatch(MyLatch, WL_LATCH_SET | WL_POSTMASTER_DEATH, -1, PG_WAIT_EXTENSION);
+		ResetLatch(MyLatch);
 
-		if (rc & WL_POSTMASTER_DEATH)
-			break;
+			if (rc & WL_POSTMASTER_DEATH)
+				break;
 
-    if (got_SIGHUP)
-    {
-      got_SIGHUP = false;
-      ProcessConfigFile(PGC_SIGHUP);
-      SetWebserverConfig(webserver, log_accesses, log_tcmalloc_stats,
-                         webserver_profiler_sample_freq_bytes);
-    }
-  }
-
-  if (rpcz != NULL && ybrpczMemoryContext != NULL)
-  {
-    MemoryContext oldcontext = MemoryContextSwitchTo(ybrpczMemoryContext);
-    pfree(rpcz);
-    MemoryContextSwitchTo(oldcontext);
-  }
+		if (got_SIGHUP)
+		{
+			got_SIGHUP = false;
+			ProcessConfigFile(PGC_SIGHUP);
+			SetWebserverConfig(webserver, log_accesses, log_tcmalloc_stats,
+							   webserver_profiler_sample_freq_bytes);
+		}
+	}
 
 	if (webserver)
 	{
@@ -694,10 +687,17 @@ webserver_worker_main(Datum unused)
 		webserver = NULL;
 	}
 
-  if (rc & WL_POSTMASTER_DEATH)
-      proc_exit(1);
+	if (rpcz != NULL && ybrpczMemoryContext != NULL)
+	{
+		MemoryContext oldcontext = MemoryContextSwitchTo(ybrpczMemoryContext);
+		pfree(rpcz);
+		MemoryContextSwitchTo(oldcontext);
+	}
 
-  proc_exit(0);
+	if (rc & WL_POSTMASTER_DEATH)
+		proc_exit(1);
+
+	proc_exit(0);
 }
 
 /*

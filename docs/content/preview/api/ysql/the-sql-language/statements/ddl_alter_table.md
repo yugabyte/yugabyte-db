@@ -4,7 +4,7 @@ headerTitle: ALTER TABLE
 linkTitle: ALTER TABLE
 description: Use the `ALTER TABLE` statement to change the definition of a table.
 menu:
-  preview:
+  preview_api:
     identifier: ddl_alter_table
     parent: statements
 aliases:

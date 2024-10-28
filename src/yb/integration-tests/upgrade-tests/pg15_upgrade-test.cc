@@ -261,4 +261,149 @@ TEST_F(Pg15UpgradeTest, Schemas) {
   }
 }
 
+TEST_F(Pg15UpgradeTest, Sequences) {
+  ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_sequence_cache_minval", "1"));
+  // As documented in the daemon->AddExtraFlag call, a restart is required to apply the flag.
+  // We must Shutdown before we can Restart.
+  cluster_->Shutdown();
+  ASSERT_OK(cluster_->Restart());
+
+  const auto kSelectNextVal = "SELECT nextval('$0')";
+  const auto kSequencePg11 = "seq_pg11";
+  const auto kSequencePg15 = "seq_pg15";
+  int seq_val_pg11 = 1;
+  int seq_val_pg15 = 1;
+
+  ASSERT_OK(ExecuteStatement(Format("CREATE SEQUENCE $0", kSequencePg11)));
+
+  auto take_3_values = [&kSelectNextVal](pgwrapper::PGConn& conn, const std::string& sequence,
+                                         int& seq_val) {
+    for (int i = 0; i < 3; i++) {
+      const auto result = ASSERT_RESULT(
+          conn.FetchRow<pgwrapper::PGUint64>(Format(kSelectNextVal, sequence)));
+      ASSERT_EQ(seq_val++, result);
+    }
+  };
+
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_NO_FATALS(take_3_values(conn, kSequencePg11, seq_val_pg11));
+  }
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg15));
+    ASSERT_NO_FATALS(take_3_values(conn, kSequencePg11, seq_val_pg11));
+  }
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg11));
+    ASSERT_NO_FATALS(take_3_values(conn, kSequencePg11, seq_val_pg11));
+  }
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  // Take three values from a random tserver
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_NO_FATALS(take_3_values(conn, kSequencePg11, seq_val_pg11));
+  }
+
+  ASSERT_OK(ExecuteStatement(Format("CREATE SEQUENCE $0 CACHE 1", kSequencePg15)));
+
+  // Take three values from a random tserver, twice (to validate caching on the new sequence)
+  for (int i = 0; i < 2; i++) {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_NO_FATALS(take_3_values(conn, kSequencePg11, seq_val_pg11));
+    ASSERT_NO_FATALS(take_3_values(conn, kSequencePg15, seq_val_pg15));
+  }
+}
+
+TEST_F(Pg15UpgradeTest, MultipleDatabases) {
+  ASSERT_OK(ExecuteStatement("CREATE DATABASE userdb"));
+
+  auto create_table_with_row = [this](const std::string& db_name, const int value) {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB(db_name));
+    ASSERT_OK(conn.Execute(Format("CREATE TABLE t (v INT)")));
+    ASSERT_OK(conn.Execute(Format("INSERT INTO t VALUES ($0)", value)));
+  };
+  ASSERT_NO_FATALS(create_table_with_row("system_platform", 1));
+  ASSERT_NO_FATALS(create_table_with_row("postgres", 10));
+  ASSERT_NO_FATALS(create_table_with_row("userdb", 100));
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  auto add_row_check_rows = [this](const std::string& db_name, const size_t tserver,
+                                   const int value, const std::vector<int>& expected) {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB(db_name, tserver));
+    ASSERT_OK(conn.Execute(Format("INSERT INTO t VALUES ($0)", value)));
+    auto result = ASSERT_RESULT(conn.FetchRows<int>("SELECT v FROM t ORDER BY v"));
+    ASSERT_EQ(result, expected);
+  };
+  ASSERT_NO_FATALS(add_row_check_rows("system_platform", kMixedModeTserverPg15, 2, {1, 2}));
+  ASSERT_NO_FATALS(add_row_check_rows("postgres", kMixedModeTserverPg15, 20, {10, 20}));
+  ASSERT_NO_FATALS(add_row_check_rows("userdb", kMixedModeTserverPg15, 200, {100, 200}));
+
+  ASSERT_NO_FATALS(add_row_check_rows("system_platform", kMixedModeTserverPg11, 3, {1, 2, 3}));
+  ASSERT_NO_FATALS(add_row_check_rows("postgres", kMixedModeTserverPg11, 30, {10, 20, 30}));
+  ASSERT_NO_FATALS(add_row_check_rows("userdb", kMixedModeTserverPg11, 300, {100, 200, 300}));
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  ASSERT_NO_FATALS(add_row_check_rows("system_platform", 0, 4, {1, 2, 3, 4}));
+  ASSERT_NO_FATALS(add_row_check_rows("postgres", 0, 40, {10, 20, 30, 40}));
+  ASSERT_NO_FATALS(add_row_check_rows("userdb", 0, 400, {100, 200, 300, 400}));
+}
+
+TEST_F(Pg15UpgradeTest, Template1) {
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB("template1"));
+    ASSERT_OK(conn.Execute("CREATE FUNCTION template_function() "
+                           "RETURNS INT AS $$ SELECT 11 $$ LANGUAGE sql;"));
+  }
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  auto check_function = [this](const std::string& db_name, const size_t tserver) {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB(db_name, tserver));
+    auto result = ASSERT_RESULT(conn.FetchRows<int>("SELECT template_function()"));
+    ASSERT_EQ(result, std::vector<int>({11}));
+  };
+  ASSERT_NO_FATALS(check_function("template1", kMixedModeTserverPg15));
+  ASSERT_NO_FATALS(check_function("template1", kMixedModeTserverPg11));
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  ASSERT_OK(ExecuteStatement("CREATE DATABASE testdb"));
+  ASSERT_NO_FATALS(check_function("template1", 0));
+  ASSERT_NO_FATALS(check_function("testdb", 0));
+}
+
+TEST_F(Pg15UpgradeTest, FunctionWithSemicolons) {
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_OK(conn.Execute(R"(CREATE FUNCTION pg11_function() RETURNS text AS $$
+                              BEGIN
+                                  RETURN 'Hello from pg11';
+                              END;
+                              $$ LANGUAGE plpgsql;)"));
+  }
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  auto check_function = [this](const size_t tserver) {
+    auto conn = ASSERT_RESULT(CreateConnToTs(tserver));
+    auto result = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT pg11_function()"));
+    ASSERT_EQ(result, "Hello from pg11");
+  };
+  ASSERT_NO_FATALS(check_function(kMixedModeTserverPg15));
+  ASSERT_NO_FATALS(check_function(kMixedModeTserverPg11));
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    auto result = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT pg11_function()"));
+    ASSERT_EQ(result, "Hello from pg11");
+  }
+}
+
 }  // namespace yb

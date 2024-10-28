@@ -24,6 +24,7 @@
 #include "access/table.h"
 #include "access/tableam.h"
 #include "access/transam.h"
+#include "access/yb_scan.h"
 #include "access/xlog.h"
 #include "catalog/catalog.h"
 #include "catalog/heap.h"
@@ -1002,13 +1003,19 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 	 */
 	if (IsYBRelation(rel))
 	{
-		*pages = rel->rd_rel->relpages;
-		*tuples = rel->rd_rel->reltuples;
-		*allvisfrac = 0;
-		return;
-	}
+		if (rel->rd_rel->reltuples < 0)
+		{
+			*tuples = YBC_DEFAULT_NUM_ROWS;
+		}
+		else
+		{
+			*tuples = rel->rd_rel->reltuples;
+		}
 
-	if (RELKIND_HAS_TABLE_AM(rel->rd_rel->relkind))
+		*pages = rel->rd_rel->relpages;
+		*allvisfrac = 0;
+	}
+	else if (RELKIND_HAS_TABLE_AM(rel->rd_rel->relkind))
 	{
 		table_relation_estimate_size(rel, attr_widths, pages, tuples,
 									 allvisfrac);

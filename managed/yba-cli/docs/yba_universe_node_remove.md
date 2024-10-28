@@ -11,6 +11,12 @@ The same instance is not expected to be used for this cluster again.
 yba universe node remove [flags]
 ```
 
+### Examples
+
+```
+yba universe node remove --name <universe-name> --node-name <node-name>
+```
+
 ### Options
 
 ```

@@ -60,6 +60,39 @@ ALTER TABLE TMP_TBL SET SCHEMA S2;
 
 DROP TABLE TMP_TBL;
 
+-- Test ALTER SEQUENCE [IF EXISTS].. SET SCHEMA..
+CREATE SEQUENCE S1.TEST_SEQ;
+SELECT nextval('S1.TEST_SEQ');
+\d S1.TEST_SEQ;
+
+select c.relname as name, n.nspname as schema, r.rolname as owner
+from pg_class as c
+     inner join pg_namespace as n on c.relnamespace = n.oid
+     inner join pg_roles as r on c.relowner = r.oid
+where c.relname ~ 'test_seq';
+
+ALTER SEQUENCE S1.TEST_SEQ SET SCHEMA S2;
+SELECT nextval('S1.TEST_SEQ');
+SELECT nextval('S2.TEST_SEQ');
+\d S1.TEST_SEQ;
+\d S2.TEST_SEQ;
+
+ALTER SEQUENCE S2.TEST_SEQ OWNER TO CURRENT_USER;
+ALTER SEQUENCE S2.TEST_SEQ OWNER TO SESSION_USER;
+ALTER SEQUENCE S2.TEST_SEQ OWNER TO postgres;
+
+select c.relname as name, n.nspname as schema, r.rolname as owner
+from pg_class as c
+     inner join pg_namespace as n on c.relnamespace = n.oid
+     inner join pg_roles as r on c.relowner = r.oid
+where c.relname ~ 'test_seq';
+
+DROP SEQUENCE S2.TEST_SEQ;
+SELECT * FROM S2.TEST_SEQ;
+
+ALTER TABLE S2.TEST_SEQ SET SCHEMA S1;            -- the sequence was deleted
+ALTER TABLE IF EXISTS S2.TEST_SEQ SET SCHEMA S1;  -- OK
+
 -- verify yb_db_admin role can manage schemas like a superuser
 CREATE SCHEMA test_ns_schema_other;
 CREATE ROLE test_regress_user1;

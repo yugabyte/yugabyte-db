@@ -10,6 +10,8 @@ menu:
     identifier: yugabyte-cloud
     parent: yugabytedb-managed
     weight: 1
+    params:
+      classes: separator
 type: indexpage
 breadcrumbDisable: true
 resourcesIntro: Quick Links

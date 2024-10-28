@@ -98,7 +98,35 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
   }, [data, search, selectedAck]);
 
   const filteredPaginatedData = useMemo(() => {
-    return filteredData?.slice(page * perPage, page * perPage + perPage);
+    const startIndex = page * perPage;
+    const endIndex = startIndex + perPage;
+
+    // Tracks number of sql statements counted
+    var count = 0;
+
+    // Paginate based on sql statements
+    var paginatedData: (typeof filteredData) = [];
+    for (var i = 0; i < filteredData.length; i++) {
+      var tempSqlStatements: string[] = [];
+      var tempReasons: string[] = [];
+      for (var j = 0; j < filteredData[i].sqlStatements.length; j++) {
+        if (count >= endIndex) break;
+        if (count >= startIndex) {
+          tempSqlStatements.push(filteredData[i].sqlStatements[j]);
+          tempReasons.push(filteredData[i].reasons[j])
+        }
+        count++;
+      }
+      if (tempSqlStatements.length > 0) {
+        paginatedData.push({
+          groupKey: filteredData[i].groupKey,
+          sqlStatements: tempSqlStatements,
+          reasons: tempReasons,
+        });
+      }
+      if (count >= endIndex) break;
+    }
+    return paginatedData;
   }, [filteredData, page, perPage]);
 
   const totalItemCount = filteredData?.reduce((acc, obj) => acc + obj.sqlStatements.length, 0);
@@ -191,7 +219,7 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
             <Box ml="auto">
               <TablePagination
                 component="div"
-                count={filteredData?.length || 0}
+                count={filteredData?.reduce((acc, obj) => acc + obj.sqlStatements.length, 0) || 0}
                 page={page}
                 onPageChange={(_, newPage) => setPage(newPage)}
                 rowsPerPageOptions={[5, 10, 20]}

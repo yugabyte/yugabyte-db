@@ -157,6 +157,11 @@ DEFINE_test_flag(bool, dump_docdb_after_tablet_bootstrap, false,
 DEFINE_test_flag(bool, play_pending_uncommitted_entries, false,
                  "Play all the pending entries present in the log even if they are uncommitted.");
 
+DEFINE_NON_RUNTIME_bool(skip_wal_replay_from_beginning_with_cdc, true,
+                        "If true, only replay WAL entries that are not flushed, similar to the "
+                        "non-CDC case. If false, read all the WAL segments starting from the "
+                        "beginning.");
+
 DECLARE_bool(enable_flush_retryable_requests);
 
 namespace yb {
@@ -1414,6 +1419,7 @@ class TabletBootstrap {
         // requests where last_op_id_in_retryable_requests=OpId::Max().
         // If the first segment is unclosed, it needs read all entries to build footer anyways, so
         // it's also unnecessary to get the starting offset to start replaying.
+        // If any cdc stream is active for this tablet, we will skip the below optimisation.
         const auto first_segment = *iter;
         const auto current_segment_may_contain_unflushed_change_metadata_op =
             is_lazy_superblock_flush_enabled &&
@@ -1533,9 +1539,11 @@ class TabletBootstrap {
     log::SegmentSequence segments;
     RETURN_NOT_OK(log_->GetSegmentsSnapshot(&segments));
 
-    // If any cdc stream is active for this tablet, we do not want to skip flushed entries.
+    // If any cdc stream is active for this tablet, we do not want to skip flushed entries when
+    // FLAGS_skip_wal_replay_from_beginning_with_cdc is set to false.
     bool should_skip_flushed_entries = FLAGS_skip_flushed_entries;
-    if (should_skip_flushed_entries && tablet_->transaction_participant()) {
+    if (!GetAtomicFlag(&FLAGS_skip_wal_replay_from_beginning_with_cdc) &&
+        should_skip_flushed_entries && tablet_->transaction_participant()) {
       if (tablet_->transaction_participant()->GetRetainOpId() != OpId::Invalid()) {
         should_skip_flushed_entries = false;
         LOG_WITH_PREFIX(WARNING) << "Ignoring skip_flushed_entries even though it is set, because "

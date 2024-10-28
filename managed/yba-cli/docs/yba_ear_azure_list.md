@@ -10,6 +10,12 @@ List Azure YugabyteDB Anywhere Encryption In Transit (EAR) configurations
 yba ear azure list [flags]
 ```
 
+### Examples
+
+```
+yba ear azure list
+```
+
 ### Options
 
 ```

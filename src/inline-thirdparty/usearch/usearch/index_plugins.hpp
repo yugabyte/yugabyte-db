@@ -796,9 +796,9 @@ class aligned_allocator_gt {
         std::size_t alignment = alignment_ak;
 #if defined(USEARCH_DEFINED_WINDOWS)
         return (pointer)_aligned_malloc(length_bytes, alignment);
-#elif defined(USEARCH_DEFINED_APPLE)
+#elif defined(USEARCH_DEFINED_APPLE) || defined(USEARCH_DEFINED_ANDROID)
         // Apple Clang keeps complaining that `aligned_alloc` is only available
-        // with macOS 10.15 and newer, so let's use `posix_memalign` there.
+        // with macOS 10.15 and newer or Android API >= 28, so let's use `posix_memalign` there.
         void* result = nullptr;
         int status = posix_memalign(&result, alignment, length_bytes);
         return status == 0 ? (pointer)result : nullptr;
@@ -2669,7 +2669,7 @@ class flat_hash_multi_set_gt {
 } // namespace unum
 
 // This file is part of the usearch inline third-party dependency of YugabyteDB.
-// Git repo: https://github.com/unum-cloud/usearch
-// Git commit: 191d9bb46fe5e2a44d1505ce7563ed51c7e55868
+// Git repo: https://github.com/yugabyte/usearch
+// Git tag: v2.15.3-yb-2
 //
 // See also src/inline-thirdparty/README.md.

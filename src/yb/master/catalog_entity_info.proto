@@ -690,7 +690,10 @@ message SysCloneStatePB {
   optional uint32 clone_request_seq_no = 3;
 
   // Used for debugging.
+  optional YQLDatabase database_type = 8;
   optional string target_namespace_name = 4;
+  optional string target_namespace_id = 7;
+  optional string source_namespace_name = 9;
   optional fixed64 restore_time = 5;
 
   // A reason for why the clone was aborted.

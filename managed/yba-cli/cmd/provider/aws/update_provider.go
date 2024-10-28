@@ -21,9 +21,12 @@ import (
 
 // updateAWSProviderCmd represents the provider command
 var updateAWSProviderCmd = &cobra.Command{
-	Use:   "update",
-	Short: "Update an AWS YugabyteDB Anywhere provider",
-	Long:  "Update an AWS provider in YugabyteDB Anywhere",
+	Use:     "update",
+	Aliases: []string{"edit"},
+	Short:   "Update an AWS YugabyteDB Anywhere provider",
+	Long:    "Update an AWS provider in YugabyteDB Anywhere",
+	Example: `yba provider aws update --name <provider-name> \
+	--remove-region <region-1> --remove-region <region-2>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -285,18 +288,15 @@ var updateAWSProviderCmd = &cobra.Command{
 
 		// End of Updating Image Bundles
 
-		rUpdate, response, err := authAPI.EditProvider(provider.GetUuid()).
+		rTask, response, err := authAPI.EditProvider(provider.GetUuid()).
 			EditProviderRequest(provider).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Provider: AWS", "Update")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		providerUUID := rUpdate.GetResourceUUID()
-		taskUUID := rUpdate.GetTaskUUID()
-
 		providerutil.WaitForUpdateProviderTask(
-			authAPI, providerName, providerUUID, providerCode, taskUUID)
+			authAPI, providerName, rTask, providerCode)
 	},
 }
 
@@ -407,7 +407,7 @@ func init() {
 			"\"image-bundle-name=<image-bundle-name>,region-name=<region-name>,"+
 			"machine-image=<machine-image>\". "+
 			formatter.Colorize(
-				"All are required key-value pairs.",
+				"Image bundle name and region name are required key-value pairs.",
 				formatter.GreenColor)+" Each --image-bundle definition "+
 			"must have atleast one corresponding --image-bundle-region-override "+
 			"definition for every region added."+
@@ -432,7 +432,7 @@ func init() {
 			"\"image-bundle-uuid=<image-bundle-uuid>,region-name=<region-name>,"+
 			"machine-image=<machine-image>\". "+
 			formatter.Colorize(
-				"All are required key-value pairs.",
+				"Image bundle UUID and region name are required key-value pairs.",
 				formatter.GreenColor)+
 			" Each image bundle can be added using separate --image-bundle-region-override flag. "+
 			"Example: --edit-image-bundle-region-override <image-bundle-uuid>=<uuid>,"+
@@ -799,7 +799,7 @@ func addAWSImageBundles(
 
 		if len(regionOverrides) < numberOfRegions {
 			logrus.Fatalf(formatter.Colorize(
-				"Machine Image must be provided for every region added.\n",
+				"Overrides must be provided for every region added.\n",
 				formatter.RedColor,
 			))
 		}

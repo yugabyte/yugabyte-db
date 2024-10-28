@@ -38,16 +38,15 @@ import jakarta.persistence.Id;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
@@ -262,14 +261,13 @@ public class TaskInfo extends Model {
     return taskInfo;
   }
 
-  public static List<TaskInfo> find(Collection<UUID> taskUUIDs) {
+  public static List<TaskInfo> find(Set<UUID> taskUUIDs) {
     // Return the instance details object.
     if (CollectionUtils.isEmpty(taskUUIDs)) {
       return Collections.emptyList();
     }
-    Set<UUID> uniqueTaskUUIDs = new HashSet<>(taskUUIDs);
     ExpressionList<TaskInfo> query = find.query().where();
-    appendInClause(query, "uuid", uniqueTaskUUIDs);
+    appendInClause(query, "uuid", taskUUIDs);
     return query.findList();
   }
 
@@ -296,7 +294,20 @@ public class TaskInfo extends Model {
     return query.findList();
   }
 
-  // Returns  partial object
+  // Returns partial TaskInfo object.
+  public static Map<UUID, List<TaskInfo>> getSubTasks(Set<UUID> parentTaskUuids) {
+    if (CollectionUtils.isEmpty(parentTaskUuids)) {
+      return Collections.emptyMap();
+    }
+    ExpressionList<TaskInfo> query =
+        find.query().select(GET_SUBTASKS_FG).where().isNotNull("parent_uuid");
+    query =
+        appendInClause(query, "parent_uuid", parentTaskUuids).orderBy("parent_uuid, position asc");
+    // Ordered by the encounter order within each group.
+    return query.findList().stream().collect(Collectors.groupingBy(TaskInfo::getParentUuid));
+  }
+
+  // Returns partial TaskInfo object.
   @JsonIgnore
   public List<TaskInfo> getSubTasks() {
     ExpressionList<TaskInfo> subTaskQuery =
@@ -327,11 +338,6 @@ public class TaskInfo extends Model {
     return sb.toString();
   }
 
-  @JsonIgnore
-  public UserTaskDetails getUserTaskDetails() {
-    return getUserTaskDetails(null);
-  }
-
   /**
    * Retrieve the UserTaskDetails for the task mapped to this TaskInfo object. Should only be called
    * on the user-level parent task, since only that task will have subtasks. Nothing will break if
@@ -343,12 +349,11 @@ public class TaskInfo extends Model {
    *     subTaskGroups.
    */
   @JsonIgnore
-  public UserTaskDetails getUserTaskDetails(TaskCache taskCache) {
+  public UserTaskDetails getUserTaskDetails(List<TaskInfo> subTaskInfos, TaskCache taskCache) {
     UserTaskDetails taskDetails = new UserTaskDetails();
-    List<TaskInfo> result = getSubTasks();
     Map<SubTaskGroupType, SubTaskDetails> userTasksMap = new HashMap<>();
     SubTaskGroupType lastGroupType = SubTaskGroupType.Invalid;
-    for (TaskInfo taskInfo : result) {
+    for (TaskInfo taskInfo : subTaskInfos) {
       SubTaskGroupType subTaskGroupType = taskInfo.getSubTaskGroupType();
       if (subTaskGroupType == SubTaskGroupType.Invalid) {
         continue;

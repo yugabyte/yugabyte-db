@@ -76,23 +76,49 @@ Postgres' SQL grammar was slightly extended to make writing migrations easier. I
     * Reloption `use_initdb_acl=<bool>`, if true, will set the ACL (permissions) as if the view was
       created by initdb using `yb_system_views.sql`.
 
-* Both of the above were changed to imitate what initdb is doing - e.g. dependencies recorded would
-  be different than you'd normally expect.
+(Both of the above were changed to imitate what initdb is doing - e.g. dependencies recorded would
+  be different than you'd normally expect.)
 
-For use cases other than `CREATE TABLE` and `CREATE VIEW` - e.g. for adding a function -
-explicit `INSERT INTO` should be used. For that, `INSERT` is allowed to specify oid column,
-and `ON CONFLICT DO NOTHING` clause. If an explicit oid value is not available, use `pg_nextoid()`
-in the `INSERT`.
+* `INSERT INTO`: For other use cases - e.g. for adding a function -
+explicit `INSERT INTO` should be used.
+    * `INSERT` is allowed to specify `ON CONFLICT DO NOTHING` clause.
+    * Sometimes, `INSERT ON CONFLICT DO NOTHING` alone is not enough - e.g. `pg_depend` has no
+    sensible primary key to cause conflict, and `pg_amop` has auto-generated OIDs. In such cases,
+    use `DO` procedure block to check for rows being present already. See `V4__5408__jsonb_path.sql`
+    for an example of both.
+    * See the two following related notes.
+---
+**Note on pinned objects**
 
-When oid is not specified  explicity (for `CREATE VIEW`, or `INSERT` with `pg_nextoid()`), it's
-auto-generated sequentially in `[FirstUnpinnedObjectId; FirstNormalObjectId)` range starting at
-where initdb left off. Naturally, the created object will be unpinned (droppable). If this is
-not desired, explicitly specifiy an oid (< `FirstUnpinnedObjectId`) during the `INSERT`.
+Pinned objects are never allowed to be dropped as the system itself depends on them. Objects with
+oid < `FirstUnpinnedObjectId` (12000) are considered to be pinned in PG15.2-based YugabyteDB.
 
-Sometimes, `INSERT ON CONFLICT DO NOTHING` alone is not enough - e.g.
-`pg_depend` has no sensible primary key to cause conflict, and `pg_amop` has auto-generated OIDs. In
-such cases, use `DO` procedure block to check for rows being present already.
-See `V3__5408__jsonb_path.sql` for an example of both.
+If the object being created by `INSERT` needs to be:
+* pinned: use an explicit value (< `FirstUnpinnedObjectId`) for the oid column.
+* unpinned: use `pg_nextoid()` as the value for the oid column. This will auto-generate an oid in
+the range of `[FirstUnpinnedObjectId; FirstNormalObjectId)`, sequentially, starting at where initdb
+left off.
+
+---
+---
+**Note on backporting to PG11.2 based branches**
+
+YugabyteDB's master branch is currently based off Postgres 15.2. But we may need to backport a
+migration script to an older version that is based off Postgres 11.2. There are two key differences
+in Postgres 11.2 as compared to v15.2 from the perspective of migration scripts:
+* pinned objects are explicitly stored in pg_depend/pg_shdepend, unlike the range-based test in
+v15.2 as described above.
+* `oid` is a special column in 11.2. `INSERT` is extended to optionally take value for oid column.
+
+For such backports, if the object being created by `INSERT` needs to be:
+* pinned: use an explicit value (< `FirstNormalObjectId`) for the oid column. Also, insert an
+entry in pg_depend/pg_shdepnd. For example, see `V58__23542__yb_servers_metrics.sql`, which is the
+last script based off PG11.2 in the master branch.
+* unpinned: skip specifying the oid column. This will auto-generate an oid in the
+range of `[10000; 16384)`, sequentially, starting at where initdb left off. For example, see
+`V15__1979__text_search_configuration` in the master branch.
+
+---
 
 You should use modifications other than `CREATE TABLE`, `CREATE VIEW`, `CREATE EXTENSION`, `INSERT`
 and `UPDATE` with great care, as they weren't tested to work as expected. Also, don't forget to

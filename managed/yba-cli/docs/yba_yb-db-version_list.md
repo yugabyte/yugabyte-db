@@ -10,6 +10,12 @@ List YugabyteDB version releases
 yba yb-db-version list [flags]
 ```
 
+### Examples
+
+```
+yba yb-db-version list
+```
+
 ### Options
 
 ```

@@ -1355,7 +1355,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "If this flag is enabled, user will be able to enable/disable connection pooling on"
               + " universes.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> xClusterSyncSchedulerInterval =
       new ConfKeyInfo<>(
           "yb.xcluster.xcluster_sync_scheduler_interval",
@@ -1500,5 +1500,31 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "On YBA startup, retry tasks automatically that were aborted due to YBA shutdown if time"
               + " window is non-zero",
           ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<String> metricScrapeIntervalStandby =
+      new ConfKeyInfo<>(
+          "yb.metrics.scrape_interval_standby",
+          ScopeType.GLOBAL,
+          "Standby Prometheus scrape interval",
+          "Need to increase it in case federation metrics request takes more time "
+              + " than main Prometheus scrape period to complete",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> oidcGroupClaim =
+      new ConfKeyInfo<>(
+          "yb.security.oidc_group_claim",
+          ScopeType.GLOBAL,
+          "OIDC Group Claim",
+          "Claim in the ID token containing the list of groups. Default value: \"groups\"",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Boolean> disableV1APIToken =
+      new ConfKeyInfo<>(
+          "yb.user.disable_v1_api_token",
+          ScopeType.GLOBAL,
+          "Disable V1 API Token",
+          "Disable support for V1 API Token",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

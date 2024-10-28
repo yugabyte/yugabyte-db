@@ -201,10 +201,6 @@ void AddUnDefOkAndSetFlag(
   flag_list.emplace_back(Format("--$0=$1", flag_name, flag_value));
 }
 
-void AddAllowedPreviewFlag(std::vector<std::string>& flag_list, const std::string& flag_name) {
-  AddFlagToCsvFlag(flag_list, "allowed_preview_flags_csv", flag_name);
-}
-
 void WaitForAutoFlagApply() { SleepFor(FLAGS_auto_flags_apply_delay_ms * 1ms + 3s); }
 
 Status SetYsqlMajorUpgradeFlagOnMasters(ExternalMiniCluster& cluster, bool enable) {
@@ -224,9 +220,10 @@ UpgradeTestBase::UpgradeTestBase(const std::string& from_version)
 }
 
 void UpgradeTestBase::SetUp() {
-  if (old_version_info_.version != kBuild_2_20_2_4) {
+  // TODO: Convert this to a minimum version check with a <
+  if (old_version_info_.version != kBuild_2024_2_0_0) {
     test_skipped_ = true;
-    GTEST_SKIP() << "PG15 upgrade is only supported from version " << kBuild_2_20_2_4;
+    GTEST_SKIP() << "PG15 upgrade is only supported from version " << kBuild_2024_2_0_0;
   }
 
   if (IsSanitizer()) {
@@ -272,15 +269,6 @@ Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOption
   AddUnDefOkAndSetFlag(
       opts.extra_tserver_flags, "TEST_always_return_consensus_info_for_succeeded_rpc", "false");
 
-  // YB_TODO: Enable ysql_enable_db_catalog_version_mode since it is not major version upgrade
-  // safe.
-  if (old_version_info_.version == kBuild_2_20_2_4) {
-    AddAllowedPreviewFlag(opts.extra_master_flags, "ysql_enable_db_catalog_version_mode");
-    AddUnDefOkAndSetFlag(opts.extra_master_flags, "ysql_enable_db_catalog_version_mode", "true");
-    AddAllowedPreviewFlag(opts.extra_tserver_flags, "ysql_enable_db_catalog_version_mode");
-    AddUnDefOkAndSetFlag(opts.extra_tserver_flags, "ysql_enable_db_catalog_version_mode", "true");
-  }
-
   LOG(INFO) << "Starting cluster in version: " << old_version_info_.version;
 
   RETURN_NOT_OK(ExternalMiniClusterITestBase::StartCluster(opts));
@@ -307,14 +295,6 @@ Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOption
   if (IsYsqlMajorVersionUpgrade()) {
     // YB_TODO: Remove when support for expression pushdown in mixed mode is implemented.
     RETURN_NOT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_enable_expression_pushdown", "false"));
-  }
-
-  if (old_version_info_.version == kBuild_2_20_2_4) {
-    // YB_TODO: Remove when the min upgrade-from version is 2024.1+.
-    auto conn = VERIFY_RESULT(cluster_->ConnectToDB());
-    RETURN_NOT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=true"));
-    RETURN_NOT_OK(conn.Fetch("SELECT yb_fix_catalog_version_table(true)"));
-    RETURN_NOT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=false"));
   }
 
   return Status::OK();
@@ -532,7 +512,8 @@ Status UpgradeTestBase::RollbackYsqlMajorVersion() {
   master::RollbackYsqlMajorVersionUpgradeRequestPB req;
   master::RollbackYsqlMajorVersionUpgradeResponsePB resp;
   rpc::RpcController rpc;
-  rpc.set_timeout(kTimeout);
+  // Rollback RPC is synchronous and can take a while.
+  rpc.set_timeout(3min);
   RETURN_NOT_OK(
       cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>().RollbackYsqlMajorVersionUpgrade(
           req, &resp, &rpc));
@@ -635,16 +616,6 @@ Status UpgradeTestBase::RestartAllTServersInOldVersion(MonoDelta delay_between_n
 Status UpgradeTestBase::RestartTServerInOldVersion(
     ExternalTabletServer& ts, bool wait_for_cluster_to_stabilize) {
   LOG(INFO) << "Restarting yb-tserver " << ts.id() << " in old version";
-
-  if (is_ysql_major_version_upgrade_ && old_version_info_.version == kBuild_2_20_2_4) {
-    // YB_TODO: Remove this once we switch to a newer version.
-    // 2.20 does not have the pg_data symlink changes so we need to manually delete the pg_data
-    // folder and use the pg_data_11.
-    auto env = Env::Default();
-    const auto pg_data_dir = JoinPathSegments(ts.GetRootDir(), "pg_data");
-    RETURN_NOT_OK(env->DeleteRecursively(pg_data_dir));
-    RETURN_NOT_OK(env->RenameFile(JoinPathSegments(ts.GetRootDir(), "pg_data_11"), pg_data_dir));
-  }
 
   RETURN_NOT_OK(RestartDaemonInVersion(ts, old_version_tserver_bin_path_));
 

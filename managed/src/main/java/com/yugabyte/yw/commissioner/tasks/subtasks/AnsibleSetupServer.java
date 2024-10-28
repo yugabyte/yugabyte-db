@@ -51,6 +51,13 @@ public class AnsibleSetupServer extends NodeTaskBase {
     public int cgroupSize = 0;
     // Setup Audit Log Config for the node
     public AuditLogConfig auditLogConfig = null;
+    /*
+     Reboot node for applying the ulimits, needed for 3 flows.
+     1. Create Universe.
+     2. Edit Cluster (Add Node).
+     3. VM Image Upgrade.
+    */
+    public boolean rebootNodeAllowed = false;
   }
 
   @Override

@@ -55,6 +55,11 @@ export const alertList: AlertListItem[] = [
     key: "version mismatch",
     status: BadgeVariant.Warning,
     hideConfiguration: true
+  },
+  {
+    name: "Leverage AWS Time Sync Service",
+    key: "clockbound",
+    status: BadgeVariant.Warning,
   }
 ];
 

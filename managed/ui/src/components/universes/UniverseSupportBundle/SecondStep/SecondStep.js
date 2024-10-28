@@ -83,9 +83,7 @@ const getBackDateBeforeDate = (amount, type, date) => {
 const PrometheusMetricsProps = {
   promDumpStartDate: getBackDate(15, 'minutes'),
   promDumpEndDate: new Date(),
-  prometheusMetricsOptionsValue: prometheusMetricsOptions.map((_, index) =>
-    index === 3 ? false : true
-  ),
+  prometheusMetricsOptionsValue: prometheusMetricsOptions.map(() => true),
   isPromDumpDateTypeCustom: false,
   promDumpDateType: filterTypePromDump[0]
 };
@@ -176,7 +174,7 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse, universeStatus }) =
   );
   const [prometheusMetricsOptionsValue, setPrometheusMetricsOptionsValue] = useState(
     // prometheus export is not required by default
-    prometheusMetricsOptions.map((_, index) => (index === 3 ? false : true))
+    prometheusMetricsOptions.map(() => true)
   );
   const [coreFileParams, setCoreFileParams] = useState(CoreFilesProps);
   const [prometheusMetricsParams, setPrometheusMetricsParams] = useState(PrometheusMetricsProps);

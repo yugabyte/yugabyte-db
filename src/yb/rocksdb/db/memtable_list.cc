@@ -371,7 +371,7 @@ Status MemTableList::InstallMemtableFlushResults(
   mu->AssertHeld();
 
   // flush was successful
-  std::unique_ptr<UserFrontiers> frontiers;
+  UserFrontiersPtr frontiers;
   for (size_t i = 0; i < mems.size(); ++i) {
     // All the edits are associated with the first memtable of this batch.
     DCHECK(i == 0 || mems[i]->GetEdits()->NumEntries() == 0);
@@ -379,11 +379,7 @@ Status MemTableList::InstallMemtableFlushResults(
     mems[i]->flush_completed_ = true;
     auto temp_range = mems[i]->Frontiers();
     if (temp_range) {
-      if (frontiers) {
-        frontiers->MergeFrontiers(*temp_range);
-      } else {
-        frontiers = temp_range->Clone();
-      }
+      UpdateFrontiers(frontiers, *temp_range);
     }
     mems[i]->file_number_holder_ = file_number_holder;
     mems[i]->file_number_ = file_number;

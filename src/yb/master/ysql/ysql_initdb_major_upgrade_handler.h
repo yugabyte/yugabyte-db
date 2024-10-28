@@ -59,6 +59,10 @@ class YsqlInitDBAndMajorUpgradeHandler {
 
   void RunMajorVersionUpgrade(const LeaderEpoch& epoch);
 
+  Status RunMajorVersionUpgradeImpl(const LeaderEpoch& epoch);
+
+  Status UpdateCatalogVersions(const LeaderEpoch& epoch);
+
   Status RunMajorVersionCatalogUpgrade(const LeaderEpoch& epoch);
 
   // Runs the initdb process to create the initial ysql sys catalog and snapshot the sys_catalog if

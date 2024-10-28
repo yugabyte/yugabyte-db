@@ -320,6 +320,7 @@ public class ReleaseArtifact extends Model {
     // Because both md5 and sha1 are not good for checking the validity of the file, we will just
     // return null instead
     if (sha256 == null
+        || sha256.isEmpty()
         || sha256.toLowerCase().startsWith("md5:")
         || sha256.toLowerCase().startsWith("sha1:")) {
       return null;

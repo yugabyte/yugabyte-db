@@ -231,11 +231,11 @@ func calculateComplexity(databaseObjectList []DatabaseObject, issuesList []SqlIs
 
     var complexity string
     if totalComplexity >= 0 && totalComplexity <= 4 {
-        complexity = "EASY"
+        complexity = "LOW"
     } else if totalComplexity > 5 && totalComplexity <= 10 {
         complexity = "MEDIUM"
     } else {
-        complexity = "HARD"
+        complexity = "HIGH"
     }
     return complexity
 }

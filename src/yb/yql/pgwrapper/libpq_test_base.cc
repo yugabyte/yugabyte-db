@@ -67,6 +67,15 @@ Result<PGConn> LibPqTestBase::ConnectUsingString(
     conn_str, deadline, simple_query_protocol, std::string() /* conn_str_for_log */);
 }
 
+Result<PGConn> LibPqTestBase::ConnectToDBWithReplication(const std::string& db_name) {
+  return PGConnBuilder({
+    .host = pg_ts->bind_host(),
+    .port = pg_ts->pgsql_rpc_port(),
+    .dbname = db_name,
+    .replication = "database"
+  }).Connect(true /* simple_query_protocol */);
+}
+
 bool LibPqTestBase::TransactionalFailure(const Status& status) {
   const uint8_t* pgerr = status.ErrorData(PgsqlErrorTag::kCategory);
   if (pgerr == nullptr) {
@@ -81,11 +90,23 @@ Result<PgOid> GetDatabaseOid(PGConn* conn, const std::string& db_name) {
       Format("SELECT oid FROM pg_database WHERE datname = '$0'", db_name));
 }
 
-void LibPqTestBase::BumpCatalogVersion(int num_versions, PGConn* conn) {
+void LibPqTestBase::BumpCatalogVersion(int num_versions, PGConn* conn,
+                                       const std::string& alter_value) {
   LOG(INFO) << "Do " << num_versions << " breaking catalog version bumps";
-  for (int i = 0; i < num_versions; ++i) {
-    ASSERT_OK(conn->Execute("ALTER ROLE yugabyte SUPERUSER"));
+  if (alter_value.empty()) {
+    for (int i = 0; i < num_versions; ++i) {
+      ASSERT_OK(IncrementAllDBCatalogVersions(
+          *conn, IsBreakingCatalogVersionChange::kTrue /* is_breaking */));
+      // Here we call increment_all_db_catalog_versions to bump the catalog version.
+      // Add a sleep for the new catalog version to propagate to avoid catalog version
+      // mismatch error when we have back-to-back calls to increment_all_db_catalog_versions.
+      SleepFor(2s);
+    }
+    return;
   }
+  // Some tests cannot tolerate the added sleep if using increment_all_db_catalog_versions.
+  ASSERT_EQ(num_versions, 1);
+  ASSERT_OK(conn->ExecuteFormat("ALTER ROLE yugabyte $0", alter_value));
 }
 
 Result<std::string> GetPGVersionString(PGConn* conn) {

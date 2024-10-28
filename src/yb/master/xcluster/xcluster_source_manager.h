@@ -70,7 +70,8 @@ class XClusterSourceManager {
 
   Result<xrepl::StreamId> CreateNewXClusterStreamForTable(
       const TableId& table_id, cdc::StreamModeTransactional transactional,
-      const std::optional<SysCDCStreamEntryPB::State>& initial_state, const LeaderEpoch& epoch);
+      const std::optional<SysCDCStreamEntryPB::State>& initial_state, const LeaderEpoch& epoch,
+      StdStatusCallback callback);
 
  protected:
   XClusterSourceManager(
@@ -202,6 +203,8 @@ class XClusterSourceManager {
 
   Result<std::unique_ptr<XClusterCreateStreamsContext>> CreateStreamsForDbScoped(
       const std::vector<TableId>& table_ids, const LeaderEpoch& epoch);
+  Result<xrepl::StreamId> CreateNonTxnStreamForNewTable(
+      const TableId& table_id, const LeaderEpoch& epoch, StdStatusCallback callback);
 
   Result<std::unique_ptr<XClusterCreateStreamsContext>> CreateStreamsInternal(
       const std::vector<TableId>& table_ids, SysCDCStreamEntryPB::State state,

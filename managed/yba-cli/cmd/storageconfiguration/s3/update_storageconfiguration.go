@@ -20,9 +20,12 @@ import (
 
 // updateS3StorageConfigurationCmd represents the storage config command
 var updateS3StorageConfigurationCmd = &cobra.Command{
-	Use:   "update",
-	Short: "Update an S3 YugabyteDB Anywhere storage configuration",
-	Long:  "Update an S3 storage configuration in YugabyteDB Anywhere",
+	Use:     "update",
+	Aliases: []string{"edit"},
+	Short:   "Update an S3 YugabyteDB Anywhere storage configuration",
+	Long:    "Update an S3 storage configuration in YugabyteDB Anywhere",
+	Example: `yba storage-config s3 update --name <storage-configuration-name> \
+	--new-name <new-storage-configuration-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		storageNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {

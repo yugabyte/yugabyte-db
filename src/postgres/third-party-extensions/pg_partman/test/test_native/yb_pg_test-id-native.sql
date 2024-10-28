@@ -10,7 +10,7 @@
 -- BEGIN; YB: Transactional DDL not supported
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(98); -- YB: decreased number of tests
+SELECT plan(99); -- YB: decreased number of tests
 CREATE SCHEMA partman_test;
 CREATE SCHEMA partman_retention_test;
 CREATE ROLE partman_basic;
@@ -62,7 +62,7 @@ SELECT has_table('partman_test', 'id_taptest_table_p3000000010', 'Check id_tapte
 SELECT has_table('partman_test', 'id_taptest_table_p3000000020', 'Check id_taptest_table_p3000000020 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p3000000030', 'Check id_taptest_table_p3000000030 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p3000000040', 'Check id_taptest_table_p3000000040 exists');
---SELECT has_table('partman_test', 'id_taptest_table_default', 'Check id_taptest_table_default exists');
+SELECT hasnt_table('partman_test', 'id_taptest_table_default', 'Check id_taptest_table_default exists'); -- YB: disable default partition creation
 SELECT hasnt_table('partman_test', 'id_taptest_table_p3000000050', 'Check id_taptest_table_p3000000050 doesn''t exists yet');
 SELECT col_is_pk('partman_test', 'id_taptest_table_p3000000000', ARRAY['col1'], 'Check for primary key in id_taptest_table_p3000000000');
 SELECT col_is_pk('partman_test', 'id_taptest_table_p3000000010', ARRAY['col1'], 'Check for primary key in id_taptest_table_p3000000010');

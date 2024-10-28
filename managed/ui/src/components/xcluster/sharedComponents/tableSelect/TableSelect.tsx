@@ -24,7 +24,7 @@ import {
   formatUuidForXCluster,
   getNamespaceIdentifierToNamespaceUuidMap,
   getNamespaceIdentifier,
-  getInConfigTableUuidsToTableDetailsMap
+  getInConfigTableUuid
 } from '../../ReplicationUtils';
 import {
   XClusterConfigAction,
@@ -470,6 +470,7 @@ export const TableSelect = (props: TableSelectProps) => {
           placeholder={t('tablesSearchBarPlaceholder')}
         />
         {props.configAction === XClusterConfigAction.MANAGE_TABLE &&
+          xClusterConfigType !== XClusterConfigType.DB_SCOPED &&
           tableType === TableType.PGSQL_TABLE_TYPE && (
             <YBButton
               variant="primary"
@@ -822,10 +823,8 @@ const getXClusterTableEligibilityDetails = (
   currentXClusterConfigUUID?: string
 ): EligibilityDetails => {
   for (const xClusterConfig of sharedXClusterConfigs) {
-    const tableUuidToTableDetails = getInConfigTableUuidsToTableDetailsMap(
-      xClusterConfig.tableDetails
-    );
-    if (tableUuidToTableDetails.has(sourceTable.tableID)) {
+    const inConfigTableUuids = new Set<string>(getInConfigTableUuid(xClusterConfig.tableDetails));
+    if (inConfigTableUuids.has(sourceTable.tableID)) {
       return {
         status:
           xClusterConfig.uuid === currentXClusterConfigUUID

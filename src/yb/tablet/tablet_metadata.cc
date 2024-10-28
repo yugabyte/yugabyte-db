@@ -1312,6 +1312,30 @@ void RaftGroupMetadata::SetSchemaUnlocked(const Schema& schema,
   OnChangeMetadataOperationAppliedUnlocked(op_id);
 }
 
+void RaftGroupMetadata::InsertPackedSchemaForXClusterTarget(
+    const Schema& schema, const qlexpr::IndexMap& index_map, const SchemaVersion version,
+    const OpId& op_id, const TableId& table_id) {
+  std::lock_guard lock(data_mutex_);
+  TableId target_table_id = table_id.empty() ? primary_table_id_ : table_id;
+  auto table_info_ptr = FindOrNull(kv_store_.tables, target_table_id);
+  CHECK(table_info_ptr);
+
+  // First insert the packed schema with schema_version - 1.
+  // Don't drop any columns as part of inserting the packed schema.
+  auto dropped_cols = std::vector<DeletedColumn>();
+  auto temp_table_info =
+      std::make_shared<TableInfo>(**table_info_ptr, schema, index_map, dropped_cols, version - 1);
+
+  // Then re-insert the original schema with the new schema_version.
+  auto new_table_info = std::make_shared<TableInfo>(
+      *temp_table_info, (*table_info_ptr)->schema(), index_map, dropped_cols, version);
+
+  // TODO(#22318) handle colocated tables later.
+  table_info_ptr->swap(new_table_info);
+
+  OnChangeMetadataOperationAppliedUnlocked(op_id);
+}
+
 void RaftGroupMetadata::SetPartitionSchema(const dockv::PartitionSchema& partition_schema) {
   std::lock_guard lock(data_mutex_);
   auto& tables = kv_store_.tables;

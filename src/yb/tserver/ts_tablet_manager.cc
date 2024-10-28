@@ -386,6 +386,10 @@ METRIC_DEFINE_gauge_int64(server, ts_supportable_tablet_peers,
     "Number of tablet peers that this TServer can support based on available RAM and cores or -1 "
     "if no tablet limit in effect.");
 
+METRIC_DEFINE_gauge_uint64(server, num_tablet_peers_undergoing_rbs,
+    "Number of Tablet Peers on the TServer undergoing remote bootstrap", MetricUnit::kUnits,
+    "Number of Tablet Peers on the TServer undergoing remote bootstrap i.e actively RBSing peers.");
+
 THREAD_POOL_METRICS_DEFINE(server, admin_triggered_compaction_pool,
     "Thread pool for admin-triggered tablet compaction jobs.");
 
@@ -582,6 +586,8 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
   ts_open_metadata_time_us_ =
       METRIC_ts_open_metadata_time_us.Instantiate(server_->metric_entity(), 0);
   ts_data_size_metrics_ = std::make_unique<TsDataSizeMetrics>(this);
+  num_tablet_peers_undergoing_rbs_ = METRIC_num_tablet_peers_undergoing_rbs.Instantiate(
+      server->metric_entity(), 0);
 
   mem_manager_ = std::make_shared<TabletMemoryManager>(
       &tablet_options_,
@@ -1299,6 +1305,10 @@ Status TSTabletManager::DoApplyCloneTablet(
     committed_raft_config =
         VERIFY_RESULT(tablet_peer->GetRaftConsensus())->CommittedConfigUnlocked();
   }
+  // Set op_id of the raft config to the same as we would for a fresh tablet. This is required
+  // because a change config will use the current op id of 0 (since the tablet has no data). If the
+  // committed config has a higher op id, the change config fails.
+  committed_raft_config->set_opid_index(consensus::kInvalidOpIdIndex);
 
   // State transition for clone target could be already registered because it is remote
   // bootstrapping from an existing quorum. We would ideally avoid this by passing
@@ -1337,8 +1347,8 @@ Status TSTabletManager::DoApplyCloneTablet(
   });
 
   std::unique_ptr<ConsensusMetadata> cmeta = VERIFY_RESULT(ConsensusMetadata::Create(
-      fs_manager_, target_tablet_id, fs_manager_->uuid(), committed_raft_config.value(),
-      clone_op_id.term));
+      fs_manager_, target_tablet_id, fs_manager_->uuid(), *committed_raft_config,
+      consensus::kMinimumTerm /* current_term */));
   cmeta->set_clone_source_info(request->clone_request_seq_no(), source_tablet_id);
   RETURN_NOT_OK(cmeta->Flush());
 
@@ -1454,8 +1464,8 @@ Status TSTabletManager::ApplyCloneTablet(
   }
 
   LOG(INFO) << Format(
-      "Starting apply of clone op with seq_no $0 on tablet $1", clone_request_seq_no,
-      source_tablet_id);
+      "Starting apply of clone op with seq_no $0 on source tablet $1 to target tablet $2",
+      clone_request_seq_no, source_tablet_id, operation->request()->target_tablet_id());
   auto status = DoApplyCloneTablet(operation, raft_log, committed_raft_config);
   if (!status.ok()) {
     if (FLAGS_TEST_expect_clone_apply_failure) {
@@ -1559,8 +1569,10 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   // populates bootstrap_source_addresses_ before looking up the tablet. Define this
   // ScopeExit before calling RegisterRemoteClientAndLookupTablet so that if it fails,
   // we cleanup as expected.
+  num_tablet_peers_undergoing_rbs_->Increment();
   auto decrement_num_session = ScopeExit([this, &private_addr]() {
     DecrementRemoteSessionCount(private_addr, &remote_bootstrap_clients_);
+    num_tablet_peers_undergoing_rbs_->Decrement();
   });
   TabletPeerPtr old_tablet_peer = VERIFY_RESULT(RegisterRemoteClientAndLookupTablet(
       tablet_id, private_addr, kLogPrefix, &remote_bootstrap_clients_,

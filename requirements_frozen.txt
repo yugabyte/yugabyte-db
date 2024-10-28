@@ -20,7 +20,7 @@ exceptiongroup==1.2.1
 idna==3.7
 iniconfig==2.0.0
 jmespath==1.0.1
-llvm-installer==1.4.3
+llvm-installer==1.4.9
 mypy-extensions==1.0.0
 mypy==1.10.0
 overrides==7.7.0

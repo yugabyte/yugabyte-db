@@ -98,7 +98,7 @@ static void FetchParams(YbQueryDiagnosticsParams *params, FunctionCallInfo fcinf
 static void ConstructDiagnosticsPath(YbQueryDiagnosticsMetadata *metadata);
 static void FormatParams(StringInfo buf, const ParamListInfo params);
 static int DumpToFile(const char *path, const char *file_name, const char *data, char *description);
-static void RemoveExpiredEntries();
+static void FlushAndCleanBundles();
 static void AccumulateBindVariables(YbQueryDiagnosticsEntry *entry,
 									const double totaltime_ms, const ParamListInfo params);
 static void AccumulateExplain(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *entry,
@@ -120,7 +120,12 @@ static inline int CircularBufferMaxEntries(void);
 static void PgssToString(int64 query_id, char *pgss_str, YbQueryDiagnosticsPgss pgss,
 						 const char *queryString);
 static void AccumulatePgss(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *result);
-static void RemoveBundleInfo(int64 query_id, int status, const char *description);
+static void RemoveBundleInfo(int64 query_id);
+static int MakeDirectory(const char *path, char *description);
+static void FinishBundleProcessing(YbQueryDiagnosticsMetadata *metadata,
+								  int status, const char *description);
+static int DumpBufferIfHalfFull(char *buffer, size_t max_len, const char *file_name,
+								 const char *folder_path, char *description, slock_t *mutex);
 
 void
 YbQueryDiagnosticsInstallHook(void)
@@ -542,7 +547,7 @@ YbQueryDiagnostics_ExecutorStart(QueryDesc *queryDesc, int eflags)
 
 	/* Enable per-node instrumentation iff explain_analyze is required. */
 	if (current_query_sampled &&
-	    (entry->metadata.params.explain_analyze && (eflags & EXEC_FLAG_EXPLAIN_ONLY) == 0))
+		(entry->metadata.params.explain_analyze && (eflags & EXEC_FLAG_EXPLAIN_ONLY) == 0))
 		queryDesc->instrument_options |= INSTRUMENT_ALL;
 
 	LWLockRelease(bundles_in_progress_lock);
@@ -598,8 +603,6 @@ static void
 AccumulateBindVariables(YbQueryDiagnosticsEntry *entry, const double totaltime_ms,
 						const ParamListInfo params)
 {
-	/* TODO(GH#22153): Handle the case when entry->bind_vars overflows */
-
 	/* Check if the bind_vars is already full */
 	SpinLockAcquire(&entry->mutex);
 	bool is_full = strlen(entry->bind_vars) == YB_QD_MAX_BIND_VARS_LEN - 1;
@@ -614,8 +617,12 @@ AccumulateBindVariables(YbQueryDiagnosticsEntry *entry, const double totaltime_m
 	appendStringInfo(&buf, "%lf\n", totaltime_ms);
 
 	SpinLockAcquire(&entry->mutex);
-	if (strlen(entry->bind_vars) + buf.len < YB_QD_MAX_BIND_VARS_LEN)
-		memcpy(entry->bind_vars + strlen(entry->bind_vars), buf.data, buf.len);
+	size_t		current_len = strlen(entry->bind_vars);
+	if (current_len + buf.len <= YB_QD_MAX_BIND_VARS_LEN - 1)
+	{
+		memcpy(entry->bind_vars + current_len, buf.data, buf.len);
+		entry->bind_vars[current_len + buf.len] = '\0'; /* Ensure null termination */
+	}
 	SpinLockRelease(&entry->mutex);
 
 	pfree(buf.data);
@@ -678,8 +685,6 @@ AccumulatePgss(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *entry)
 static void
 PgssToString(int64 query_id, char *pgss_str, YbQueryDiagnosticsPgss pgss, const char *query_str)
 {
-	/* TODO(GH#22153): Handle the case when pgss_str overflows */
-
 	if (!query_str)
 		query_str = "";
 
@@ -797,6 +802,7 @@ InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata)
 	if (!found)
 	{
 		entry->metadata = *metadata;
+		entry->metadata.directory_created = false;
 		MemSet(entry->bind_vars, 0, YB_QD_MAX_BIND_VARS_LEN);
 		MemSet(entry->explain_plan, 0, YB_QD_MAX_EXPLAIN_PLAN_LEN);
 		SpinLockInit(&entry->mutex);
@@ -840,167 +846,318 @@ AppendToDescription(char *description, const char *format, ...)
 	va_end(args);
 }
 
+/*
+ * FlushAndCleanBundles
+ * 		This function is invoked every yb_query_diagnostics_bg_worker_interval_ms and is
+ * 		responsible for cleaning up expired query diagnostic bundles and flushing their
+ * 		data to disk.
+ *
+ * The function performs the following tasks:
+ * 1. Scans the hash table of in-progress bundles
+ * 2. For expired bundles:
+ *    - Dumps data to disk
+ *    - Removes the bundle from the in-progress table
+ * 3. For non-expired bundles:
+ *    - Performs intermediate flushing of explain plans and bind variables if they
+ *      are filled more than 50%
+ * Note:
+ * It's safe to acquire the entry-level lock here without holding the hash table lock.
+ * This is because only this background worker is responsible for removing entries,
+ * so we can be certain that the entry won't be removed while we're accessing it.
+ * Other threads may still modify the entry's contents, which is why we need entry level lock.
+ */
 static void
-RemoveExpiredEntries()
+FlushAndCleanBundles()
 {
 	/* TODO(GH#22447): Do this in O(1) */
 	TimestampTz current_time = GetCurrentTimestamp();
 	HASH_SEQ_STATUS status;
 	YbQueryDiagnosticsEntry *entry;
 
+	/* Doing a hash_seq_search requires a shared lock on the hash table */
 	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
+
 	/* Initialize the hash table scan */
 	hash_seq_init(&status, bundles_in_progress);
 
 	/* Scan the hash table */
 	while ((entry = hash_seq_search(&status)) != NULL)
 	{
+		/* Release the shared lock before flushing to disk */
+		LWLockRelease(bundles_in_progress_lock);
+
+		/*
+		 * It is fine to read entry's metadata without holding the entry level lock
+		 * because that is set only once, when the bundle is created.
+		 */
 		TimestampTz stop_time = BundleEndTime(entry);
-		if (current_time >= stop_time)
+		char	   *folder_path = entry->metadata.path;
+		int			status = DIAGNOSTICS_SUCCESS;
+		bool		has_expired = current_time >= stop_time;
+
+		/* Description of the warnings/errors that occurred */
+		char		description[YB_QD_DESCRIPTION_LEN];
+		description[0] = '\0';
+
+		/* Since only the background worker accesses this variable, no lock is needed */
+		if (!entry->metadata.directory_created)
 		{
-			/*
+			/* creates the directory structure recursively for this bundle */
+			if (MakeDirectory(folder_path, description) == DIAGNOSTICS_ERROR)
+			{
+				FinishBundleProcessing(&entry->metadata, DIAGNOSTICS_ERROR, description);
+				continue;
+			}
+
+			entry->metadata.directory_created = true;
+		}
+
+		if (has_expired)
+		{
+			/* Bundle has expired, process and remove it.
+			 *
 			 * To avoid holding the lock while flushing to disk, we create a copy of the data
 			 * that is to be dumped, this protects us from potential overwriting of the entry
 			 * during the flushing process.
 			 */
-			SpinLockAcquire(&entry->mutex);
-
 			char		bind_var_copy[YB_QD_MAX_BIND_VARS_LEN];
-			char		description[YB_QD_DESCRIPTION_LEN];
-			int			status = DIAGNOSTICS_SUCCESS;
 			char		explain_plan_copy[YB_QD_MAX_EXPLAIN_PLAN_LEN];
 			YbQueryDiagnosticsMetadata metadata_copy = entry->metadata;
+
+			SpinLockAcquire(&entry->mutex);
+
 			YbQueryDiagnosticsPgss pgss_copy = entry->pgss;
 
 			memcpy(bind_var_copy, entry->bind_vars, YB_QD_MAX_BIND_VARS_LEN);
 			memcpy(&metadata_copy, &entry->metadata, sizeof(YbQueryDiagnosticsMetadata));
 			memcpy(explain_plan_copy, entry->explain_plan, YB_QD_MAX_EXPLAIN_PLAN_LEN);
-			description[0] = '\0';
 
 			SpinLockRelease(&entry->mutex);
 
-			/* release the shared lock before flushing to disk */
-			LWLockRelease(bundles_in_progress_lock);
+			int			query_len = Min(pgss_copy.query_len, YB_QD_MAX_PGSS_QUERY_LEN);
+			char		query_str[query_len + 1]; /* +1 for '\0' */
 
-			/* creates the directory structure recursively for this bundle */
-			if (pg_mkdir_p((char *)metadata_copy.path, pg_dir_create_mode) == -1
-				&& errno != EEXIST)
+			/* No queries were executed that needed to be bundled */
+			if (query_len == 0)
 			{
-				snprintf(description, YB_QD_DESCRIPTION_LEN,
-						 "Failed to create query diagnostics directory, %s;", strerror(errno));
-
-				status = DIAGNOSTICS_ERROR;
-				goto remove_entry;
+				AppendToDescription(description, "No query executed;");
+				status = DIAGNOSTICS_SUCCESS;
+				goto end_of_loop;
 			}
+
+			/* Dump bind variables */
+			status = DumpToFile(metadata_copy.path, BIND_VAR_FILE,
+								bind_var_copy, description);
+
+			if (status == DIAGNOSTICS_ERROR)
+				goto end_of_loop;
+
+			/* Get pgss normalized query string */
+			query_str[0] = '\0';
+
+			/*
+			 * Ensure that pg_stat_statements was not reset in the bundle duration
+			 *
+			 * Note that there are separate checks for pg_stat_statements reset and
+			 * pgss_copy.query_len == 0. This is because resetting pgss does not automatically
+			 * set pgss_copy.query_len to 0. The query_len is only updated when a new query
+			 * is executed. Therefore, even after a pgss reset, pgss_copy.query_len
+			 * may still hold a non-zero garbage value until a new query is run
+			 * and query_len is updated.
+			 */
+			if (*yb_pgss_last_reset_time >= metadata_copy.start_time)
+				AppendToDescription(description,
+									"pg_stat_statements was reset, " \
+									"query string not available;");
 			else
 			{
-				/* No queries were executed that needed to be bundled */
-				if (pgss_copy.query_len == 0)
+				if (yb_get_normalized_query)
 				{
-					AppendToDescription(description, "No query executed;");
-					goto remove_entry;
-				}
+					/* Extract query string from pgss_query_texts.stat file */
+					yb_get_normalized_query(pgss_copy.query_offset, query_len, query_str);
 
-				/* Dump bind variables */
-				status = DumpToFile(metadata_copy.path, BIND_VAR_FILE,
-									bind_var_copy, description);
-
-				if (status == DIAGNOSTICS_ERROR)
-					goto remove_entry;
-
-				/* Get pgss normalized query string */
-				char query_str[pgss_copy.query_len + 1];
-				query_str[0] = '\0';
-
-				/*
-				 * Ensure that pg_stat_statements was not reset in the bundle duration
-				 *
-				 * Note that there are separate checks for pg_stat_statements reset and
-				 * pgss_copy.query_len == 0. This is because resetting pgss does not automatically
-				 * set pgss_copy.query_len to 0. The query_len is only updated when a new query
-				 * is executed. Therefore, even after a pgss reset, pgss_copy.query_len
-				 * may still hold a non-zero garbage value until a new query is run
-				 * and query_len is updated.
-				 */
-				if (*yb_pgss_last_reset_time >= metadata_copy.start_time)
-					AppendToDescription(description, "pg_stat_statements was reset, " \
-															 "query string not available;");
-				else
-				{
-					if (yb_get_normalized_query)
-					{
-						/* Extract query string from pgss_query_texts.stat file */
-						yb_get_normalized_query(pgss_copy.query_offset, pgss_copy.query_len, query_str);
-
-						if (query_str[0] == '\0')
-							AppendToDescription(description, "Error fetching pg_stat_statements normalized query string;");
-					}
-				}
-
-				char		pgss_str[YB_QD_MAX_PGSS_LEN];
-				PgssToString(entry->metadata.params.query_id, pgss_str, pgss_copy, query_str);
-
-				/* Dump pg_stat_statements */
-				status = DumpToFile(metadata_copy.path, PGSS_FILE,
-									pgss_str, description);
-
-				if (status == DIAGNOSTICS_ERROR)
-					goto remove_entry;
-
-				/* Dump explain plan */
-				status = DumpToFile(metadata_copy.path, EXPLAIN_PLAN_FILE,
-									explain_plan_copy, description);
-
-				if (status == DIAGNOSTICS_ERROR)
-					goto remove_entry;
-
-				/* Dump ASH */
-				if (yb_ash_enable_infra)
-				{
-					Assert(yb_enable_ash);
-
-					StringInfoData ash_buffer;
-					initStringInfo(&ash_buffer);
-
-					GetAshDataForQueryDiagnosticsBundle(metadata_copy.start_time, stop_time,
-														metadata_copy.params.query_id,
-														&ash_buffer, description);
-
-					status = DumpToFile(metadata_copy.path, ASH_FILE,
-										ash_buffer.data, description);
-
-					pfree(ash_buffer.data);
+					if (query_str[0] == '\0')
+						AppendToDescription(description,
+											"Error fetching pg_stat_statements normalized query string;");
 				}
 			}
 
-remove_entry:
-			InsertCompletedBundleInfo(&metadata_copy, status, description);
-			RemoveBundleInfo(metadata_copy.params.query_id, status, description);
-			LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
+			/* Convert pg_stat_statements data to string format */
+			char		pgss_str[YB_QD_MAX_PGSS_LEN];
+			PgssToString(metadata_copy.params.query_id, pgss_str, pgss_copy, query_str);
+
+			/* Dump pg_stat_statements */
+			status = DumpToFile(metadata_copy.path, PGSS_FILE,
+								pgss_str, description);
+
+			if (status == DIAGNOSTICS_ERROR)
+				goto end_of_loop;
+
+			/* Dump explain plan */
+			status = DumpToFile(metadata_copy.path, EXPLAIN_PLAN_FILE,
+								explain_plan_copy, description);
+
+			if (status == DIAGNOSTICS_ERROR)
+				goto end_of_loop;
+
+			/* Dump ASH */
+			if (yb_ash_enable_infra)
+			{
+				Assert(yb_enable_ash);
+
+				StringInfoData ash_buffer;
+				initStringInfo(&ash_buffer);
+
+				GetAshDataForQueryDiagnosticsBundle(metadata_copy.start_time, stop_time,
+													metadata_copy.params.query_id,
+													&ash_buffer, description);
+
+				status = DumpToFile(metadata_copy.path, ASH_FILE,
+									ash_buffer.data, description);
+
+				pfree(ash_buffer.data);
+
+				if (status == DIAGNOSTICS_ERROR)
+					goto end_of_loop;
+			}
 		}
+		else
+		{
+			/*
+			 * Bundle has not expired, perform intermediate flushing if necessary.
+			 *
+			 * We dump the explain plan and bind variables if they are filled more than
+			 * 50% of the maximum allowed size. This is done to ensure no data is lost
+			 * while flushing to disk.
+			 */
+			status = DumpBufferIfHalfFull(entry->bind_vars, YB_QD_MAX_BIND_VARS_LEN,
+										  BIND_VAR_FILE, folder_path, description,
+										  &entry->mutex);
+
+			if (status == DIAGNOSTICS_ERROR)
+			{
+				/* Expire the bundle as we are not able to dump */
+				has_expired = true;
+				goto end_of_loop;
+			}
+
+			status = DumpBufferIfHalfFull(entry->explain_plan, YB_QD_MAX_EXPLAIN_PLAN_LEN,
+										  EXPLAIN_PLAN_FILE, folder_path, description,
+										  &entry->mutex);
+
+			if (status == DIAGNOSTICS_ERROR)
+			{
+				/* Expire the bundle as we are not able to dump */
+				has_expired = true;
+				goto end_of_loop;
+			}
+		}
+
+end_of_loop:
+		if (has_expired)
+			FinishBundleProcessing(&entry->metadata, status, description);
+
+		/* Re-acquire the shared lock before continuing the loop */
+		LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
 	}
+	/* Release the shared lock after the loop */
 	LWLockRelease(bundles_in_progress_lock);
 }
 
-static void
-RemoveBundleInfo(int64 query_id, int status, const char *description)
+/*
+ * DumpBufferIfHalfFull
+ *      Checks if the buffer is at least half full, and if so, dumps it to a file.
+ *
+ * Returns:
+ * DIAGNOSTICS_SUCCESS if successful, DIAGNOSTICS_ERROR otherwise
+ */
+static int
+DumpBufferIfHalfFull(char *buffer, size_t max_len, const char *file_name, const char *folder_path,
+					 char *description, slock_t *mutex)
 {
+	int			status = DIAGNOSTICS_SUCCESS;
+
+	SpinLockAcquire(mutex);
+
+	int buffer_len = strlen(buffer);
+	if (buffer_len >= max_len / 2)
+	{
+		char	   *buffer_copy = palloc(buffer_len + 1);
+
+		memcpy(buffer_copy, buffer, buffer_len + 1);
+		buffer[0] = '\0'; /* Reset the buffer */
+
+		SpinLockRelease(mutex);
+
+		status = DumpToFile(folder_path, file_name, buffer_copy, description);
+
+		pfree(buffer_copy);
+	}
+	else
+		SpinLockRelease(mutex);
+
+	return status;
+}
+
+/*
+ * FinishBundleProcessing
+ *		Stops the bundle processing by removing the entry from the bundles_in_progress hash table,
+ *		and inserting the completed bundle info into the bundles_completed circular buffer.
+ */
+static void
+FinishBundleProcessing(YbQueryDiagnosticsMetadata *metadata, int status, const char *description)
+{
+	/* Insert the completed bundle info into the bundles_completed circular buffer */
+	InsertCompletedBundleInfo(metadata, status, description);
+
+	/* Remove the entry from the bundles_in_progress hash table */
+	RemoveBundleInfo(metadata->params.query_id);
+}
+
+/*
+ * RemoveBundleInfo
+ *		Removes the entry from the bundles_in_progress hash table.
+ */
+static void
+RemoveBundleInfo(int64 query_id)
+{
+	/*
+	 * Acquire the exclusive lock on the bundles_in_progress hash table.
+	 * This is necessary to prevent other background workers from
+	 * accessing the hash table while we are removing the entry.
+	 */
 	LWLockAcquire(bundles_in_progress_lock, LW_EXCLUSIVE);
 
-	hash_search(bundles_in_progress, &query_id,
-				HASH_REMOVE, NULL);
+	hash_search(bundles_in_progress, &query_id, HASH_REMOVE, NULL);
 
 	LWLockRelease(bundles_in_progress_lock);
 }
 
 /*
+ * MakeDirectory
+ *		Creates the directory structure recursively for storing the diagnostics data.
+ */
+static int
+MakeDirectory(const char *path, char *description)
+{
+	if (pg_mkdir_p((char *)path, pg_dir_create_mode) == -1)
+	{
+		snprintf(description, YB_QD_DESCRIPTION_LEN,
+				 "Failed to create query diagnostics directory, %s;", strerror(errno));
+		return DIAGNOSTICS_ERROR;
+	}
+	return DIAGNOSTICS_SUCCESS;
+}
+
+/*
  * DumpToFile
- *		Creates the file (/path/file_name) and writes the data to it.
+ *		Creates the file (/folder_path/file_name) and writes the data to it.
  * Returns:
  *		DIAGNOSTICS_SUCCESS if the file was successfully written, DIAGNOSTICS_ERROR otherwise.
  */
 static int
-DumpToFile(const char *path, const char *file_name, const char *data, char *description)
+DumpToFile(const char *folder_path, const char *file_name, const char *data,
+		   char *description)
 {
 	bool		ok = false;
 	File		file = 0;
@@ -1014,7 +1171,7 @@ DumpToFile(const char *path, const char *file_name, const char *data, char *desc
 #ifdef WIN32
 	snprintf(file_path, file_path_len, "%s\\%s", path, file_name);
 #else
-	snprintf(file_path, file_path_len, "%s/%s", path, file_name);
+	snprintf(file_path, file_path_len, "%s/%s", folder_path, file_name);
 #endif
 
 	/*
@@ -1024,13 +1181,14 @@ DumpToFile(const char *path, const char *file_name, const char *data, char *desc
 	PG_TRY();
 	{
 		if ((file = PathNameOpenFile(file_path,
-									 O_RDWR | O_CREAT | O_TRUNC)) < 0)
+									 O_RDWR | O_CREAT | O_APPEND)) < 0)
 			snprintf(description, YB_QD_DESCRIPTION_LEN,
-					 "out of file descriptors: %m; release and retry");
+					 "out of file descriptors: %s; release and retry", strerror(errno));
 
-		else if(FileWrite(file, (char *)data, strlen(data), 0,
+		else if(FileWrite(file, (char *)data, strlen(data), FileSize(file),
 						  WAIT_EVENT_DATA_FILE_WRITE) < 0)
-			snprintf(description, YB_QD_DESCRIPTION_LEN, "Error writing to file; %m");
+			snprintf(description, YB_QD_DESCRIPTION_LEN, "Error writing to file; %s",
+					 strerror(errno));
 
 		else
 			ok = true;
@@ -1090,7 +1248,7 @@ YbQueryDiagnosticsMain(Datum main_arg)
 		rc = WaitLatch(MyLatch,
 					   WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
 					   yb_query_diagnostics_bg_worker_interval_ms,
-					   YB_WAIT_EVENT_QUERY_DIAGNOSTICS_MAIN);
+					   WAIT_EVENT_YB_QUERY_DIAGNOSTICS_MAIN);
 		ResetLatch(MyLatch);
 
 		/* Bailout if postmaster has died */
@@ -1108,7 +1266,7 @@ YbQueryDiagnosticsMain(Datum main_arg)
 		}
 
 		/* Check for expired entries within the shared hash table */
-		RemoveExpiredEntries();
+		FlushAndCleanBundles();
 	}
 	proc_exit(0);
 }
@@ -1123,12 +1281,12 @@ YbQueryDiagnosticsMain(Datum main_arg)
 static void
 ConstructDiagnosticsPath(YbQueryDiagnosticsMetadata *metadata)
 {
-	int		rand_num = DatumGetUInt32(hash_any((unsigned char*)&metadata->start_time,
+	uint32		rand_num =DatumGetUInt32(hash_any((unsigned char*)&metadata->start_time,
 										   sizeof(metadata->start_time)));
 #ifdef WIN32
-	const char *format = "%s\\%s\\%ld\\%d\\";
+	const char *format = "%s\\%s\\%ld\\%ud\\";
 #else
-	const char *format = "%s/%s/%ld/%d/";
+	const char *format = "%s/%s/%ld/%ud/";
 #endif
 	if (snprintf(metadata->path, MAXPGPATH, format,
 				 DataDir, "query-diagnostics", metadata->params.query_id, rand_num) >= MAXPGPATH)

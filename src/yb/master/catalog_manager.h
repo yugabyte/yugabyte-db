@@ -409,12 +409,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                                      const LeaderEpoch& epoch);
 
   void AcquireObjectLocks(
-      LeaderEpoch epoch, const tserver::AcquireObjectLockRequestPB* req,
-      tserver::AcquireObjectLockResponsePB* resp, rpc::RpcContext rpc);
+      const tserver::AcquireObjectLockRequestPB* req, tserver::AcquireObjectLockResponsePB* resp,
+      rpc::RpcContext rpc);
   void ReleaseObjectLocks(
-      LeaderEpoch epoch, const tserver::ReleaseObjectLockRequestPB* req,
-      tserver::ReleaseObjectLockResponsePB* resp, rpc::RpcContext rpc);
-  void ExportObjectLockInfo(tserver::DdlLockEntriesPB* resp);
+      const tserver::ReleaseObjectLockRequestPB* req, tserver::ReleaseObjectLockResponsePB* resp,
+      rpc::RpcContext rpc);
+  void ExportObjectLockInfo(const std::string& tserver_uuid, tserver::DdlLockEntriesPB* resp);
+  ObjectLockInfoManager* object_lock_info_manager() { return object_lock_info_manager_.get(); }
 
   // Gets the progress of ongoing index backfills.
   Status GetIndexBackfillProgress(const GetIndexBackfillProgressRequestPB* req,
@@ -661,7 +662,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   void DeleteYsqlDatabaseAsync(scoped_refptr<NamespaceInfo> database, const LeaderEpoch& epoch);
 
   // Delete all tables in YSQL database.
-  Status DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& database, const LeaderEpoch& epoch);
+  Status DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& database,
+                            const bool is_for_ysql_major_upgrade,
+                            const LeaderEpoch& epoch);
 
   // List all the current namespaces.
   Status ListNamespaces(const ListNamespacesRequestPB* req,
@@ -1063,6 +1066,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   void AssertLeaderLockAcquiredForReading() const override {
     leader_lock_.AssertAcquiredForReading();
+  }
+
+  void AssertLeaderLockAcquiredForWriting() const {
+    leader_lock_.AssertAcquiredForWriting();
   }
 
   std::string GenerateId() override {

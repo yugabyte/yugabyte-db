@@ -31,6 +31,8 @@
 
 #include "yb/tools/yb-admin_client.h"
 
+#include "yb/tserver/tserver_service.pb.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
@@ -327,6 +329,52 @@ TEST_F_EX(LoadBalancerTest, TableWithNullPartitionInfo, LoadBalancerManyTabletsT
       ASSERT_FALSE(replicas[3].contains(tablet_id));
     }
   }
+}
+
+TEST_F(LoadBalancerManyTabletsTest, LimitRbsToUnresponsiveNode) {
+  // Test that when a tserver fails to heartbeat to the master leader, we don't overwhelm it with
+  // RBS. See issue #23487 where these nodes would be reported as UNKNOWN which would not count
+  // towards our RBS limits.
+  const int kNumConcurrentRBS = 3;
+  ASSERT_OK(external_mini_cluster()->SetFlagOnMasters(
+      "load_balancer_max_concurrent_tablet_remote_bootstraps_per_table",
+      ToString(kNumConcurrentRBS)));
+  ASSERT_OK(external_mini_cluster()->SetFlagOnMasters(
+      "load_balancer_max_concurrent_tablet_remote_bootstraps", ToString(kNumConcurrentRBS)));
+  // Don't set a limit on overreplication, we want RBS to be the limiting factor.
+  ASSERT_OK(external_mini_cluster()->SetFlagOnMasters(
+      "load_balancer_max_over_replicated_tablets", "100"));
+
+  ASSERT_OK(yb_admin_client_->SetLoadBalancerEnabled(false));
+
+  // Add a new node. Pause heartbeats to master and pause completion of RBS for it.
+  ASSERT_OK(external_mini_cluster()->AddTabletServer(true));
+  ASSERT_OK(
+      external_mini_cluster()->WaitForTabletServerCount(num_tablet_servers() + 1, kDefaultTimeout));
+  auto new_node = external_mini_cluster()->tablet_server(num_tablet_servers());
+
+  ASSERT_OK(external_mini_cluster()->SetFlag(new_node, "TEST_tserver_disable_heartbeat", "true"));
+  ASSERT_OK(
+      external_mini_cluster()->SetFlag(new_node, "TEST_pause_rbs_before_download_wal", "true"));
+
+  ASSERT_OK(yb_admin_client_->SetLoadBalancerEnabled(true));
+
+  // Allow the LB to do a number of passes. It should try to add kNumConcurrentRBS to this new node,
+  // and then get stuck waiting for these RBSs to complete.
+  SleepFor(MonoDelta::FromSeconds(5));
+  ASSERT_FALSE(ASSERT_RESULT(client_->IsLoadBalancerIdle()));
+
+  // Check the number of added tablets on the new node.
+  auto new_node_tablets = ASSERT_RESULT(external_mini_cluster()->GetTablets(new_node));
+  ASSERT_EQ(new_node_tablets.size(), kNumConcurrentRBS);
+  for (const auto& tablet : new_node_tablets) {
+    ASSERT_EQ(tablet.state(), tablet::RaftGroupStatePB::NOT_STARTED);
+  }
+
+  // Resume RBS on the new node. LB should be able to complete now, even with no heartbeats.
+  ASSERT_OK(
+      external_mini_cluster()->SetFlag(new_node, "TEST_pause_rbs_before_download_wal", "false"));
+  WaitForLoadBalanceCompletion();
 }
 
 } // namespace integration_tests

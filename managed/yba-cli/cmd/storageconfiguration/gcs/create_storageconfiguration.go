@@ -20,9 +20,12 @@ import (
 
 // createGCSStorageConfigurationCmd represents the storage config command
 var createGCSStorageConfigurationCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create a GCS YugabyteDB Anywhere storage configuration",
-	Long:  "Create a GCS storage configuration in YugabyteDB Anywhere",
+	Use:     "create",
+	Aliases: []string{"add"},
+	Short:   "Create a GCS YugabyteDB Anywhere storage configuration",
+	Long:    "Create a GCS storage configuration in YugabyteDB Anywhere",
+	Example: `yba storage-config gcs create --name <storage-configuration-name> \
+	--backup-location <backup-location> --use-gcp-iam`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		storageNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {

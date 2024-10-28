@@ -1396,4 +1396,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Allow node agent and SSH communications to nodes at the same time for the universe.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> nodeAgentEnablerReinstallCooldown =
+      new ConfKeyInfo<>(
+          "yb.node_agent.enabler.reinstall_cooldown",
+          ScopeType.UNIVERSE,
+          "Node Agent Enabler Reinstallation Cooldown Period",
+          "Node agent enabler reinstallation cooldown period for the universe",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

@@ -13,7 +13,7 @@ type: indexpage
 
 ## Synopsis
 
-The following functions are primarily helpful while implementing [Row-level geo-partitioning](../../../../explore/multi-region-deployments/row-level-geo-partitioning/), as they can significantly simplify inserting rows from user's server and selecting rows from the local partition.
+The following functions are primarily helpful while implementing [Row-level geo-partitioning](../../../../explore/multi-region-deployments/row-level-geo-partitioning/), as they make it easier to insert rows from a user's server and select rows from the local partition.
 
 | Function | Return Type |Description |
 |-----------|------------|-------------|

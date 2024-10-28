@@ -20,9 +20,10 @@ import (
 
 // createK8sProviderCmd represents the provider command
 var createK8sProviderCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create a Kubernetes YugabyteDB Anywhere provider",
-	Long:  "Create a Kubernetes provider in YugabyteDB Anywhere",
+	Use:     "create",
+	Aliases: []string{"add"},
+	Short:   "Create a Kubernetes YugabyteDB Anywhere provider",
+	Long:    "Create a Kubernetes provider in YugabyteDB Anywhere",
 	Example: `yba provider k8s create -n <provider-name> --type gke \
 	--pull-secret-file <pull-secret-file-path> \
 	--region region-name=us-west1 \
@@ -133,7 +134,7 @@ var createK8sProviderCmd = &cobra.Command{
 			},
 		}
 
-		rCreate, response, err := authAPI.CreateProvider().
+		rTask, response, err := authAPI.CreateProvider().
 			CreateProviderRequest(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
@@ -144,11 +145,8 @@ var createK8sProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		providerUUID := rCreate.GetResourceUUID()
-		taskUUID := rCreate.GetTaskUUID()
-
-		providerutil.WaitForCreateProviderTask(authAPI,
-			providerName, providerUUID, providerCode, taskUUID)
+		providerutil.WaitForCreateProviderTask(
+			authAPI, providerName, rTask, providerCode)
 	},
 }
 

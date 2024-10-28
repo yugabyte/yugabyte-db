@@ -134,6 +134,7 @@ set(MASTER_SRCS
   ts_manager.cc
   universe_key_registry_service.cc
   util/yql_vtable_helpers.cc
+  xcluster/add_index_to_bidirectional_xcluster_target_task.cc
   xcluster/add_table_to_xcluster_source_task.cc
   xcluster/add_table_to_xcluster_target_task.cc
   xcluster/master_xcluster_util.cc

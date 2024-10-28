@@ -21,7 +21,7 @@ This page demonstrates how to deploy a GraphQL application on Hasura Cloud and Y
 
 The example has the following prerequisites:
 
-* You have created a cluster on YugabyteDB Aeon. For instructions, refer to [Create your cluster](../../cloud-basics/create-clusters/).
+* You have created a cluster on YugabyteDB Aeon. For instructions, refer to [Create your cluster](/preview/yugabyte-cloud/cloud-basics/create-clusters/).
 * You have created a Hasura project and connected it to your cluster. For instructions, refer to [Connect Hasura Cloud to YugabyteDB Aeon](../hasura-cloud/).
 
   You will also need the **Admin Secret** of your Hasura project.

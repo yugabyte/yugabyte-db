@@ -16,13 +16,13 @@ This section covers basic topics including how to connect to your cluster using 
 
 ## YSQL shell
 
-Use the [ysqlsh shell](../../../admin/ysqlsh/) to interact with a Yugabyte database cluster using the [YSQL API](../../../api/ysql/). Because `ysqlsh` is derived from the PostgreSQL shell `psql` code base, all `psql` commands work as is in `ysqlsh`. Some default settings such as the database default port and the output format of some of the schema commands have been modified for YugabyteDB.
+Use the [ysqlsh shell](../../../api/ysqlsh/) to interact with a Yugabyte database cluster using the [YSQL API](../../../api/ysql/). Because `ysqlsh` is derived from the PostgreSQL shell `psql` code base, all `psql` commands work as is in `ysqlsh`. Some default settings such as the database default port and the output format of some of the schema commands have been modified for YugabyteDB.
 
 Using `ysqlsh`, you can:
 
 - interactively enter SQL queries and see the query results
 - input from a file or the command line
-- use [meta-commands](../../../admin/ysqlsh-meta-commands/) for scripting and administration
+- use [meta-commands](../../../api/ysqlsh-meta-commands/) for scripting and administration
 
 `ysqlsh` is installed with YugabyteDB and is located in the `bin` directory of the YugabyteDB home directory.
 

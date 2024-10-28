@@ -95,10 +95,11 @@ void SetupRaftPeer(consensus::PeerMemberType member_type, std::string az,
   cloud_info->set_placement_zone(az);
 }
 
-void SetupClusterConfig(std::vector<std::string> azs, ReplicationInfoPB* replication_info) {
-
+void SetupClusterConfig(
+    std::vector<std::string> azs, ReplicationInfoPB* replication_info,
+    int num_replicas = kDefaultNumReplicas) {
   PlacementInfoPB* placement_info = replication_info->mutable_live_replicas();
-  placement_info->set_num_replicas(kDefaultNumReplicas);
+  placement_info->set_num_replicas(num_replicas);
   for (const std::string& az : azs) {
     auto pb = placement_info->add_placement_blocks();
     pb->mutable_cloud_info()->set_placement_cloud(default_cloud);

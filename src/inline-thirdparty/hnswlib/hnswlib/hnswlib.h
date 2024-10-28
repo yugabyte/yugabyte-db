@@ -196,6 +196,9 @@ class AlgorithmInterface {
         searchKnnCloserFirst(const void* query_data, size_t k, BaseFilterFunctor* isIdAllowed = nullptr) const;
 
     virtual void saveIndex(const std::string &location) = 0;
+
+    virtual int getMaxLevel() const = 0;
+
     virtual ~AlgorithmInterface(){
     }
 };
@@ -228,7 +231,7 @@ AlgorithmInterface<dist_t>::searchKnnCloserFirst(const void* query_data, size_t 
 #include "hnswalg.h"
 
 // This file is part of the hnswlib inline third-party dependency of YugabyteDB.
-// Git repo: https://github.com/nmslib/hnswlib
-// Git commit: 2142dc6f4dd08e64ab727a7bbd93be7f732e80b0
+// Git repo: https://github.com/yugabyte/hnswlib
+// Git tag: vc1b9b79a-yb-1
 //
 // See also src/inline-thirdparty/README.md.

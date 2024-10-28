@@ -22,6 +22,10 @@ var createGCPEARCmd = &cobra.Command{
 	Aliases: []string{"add"},
 	Short:   "Create a YugabyteDB Anywhere GCP encryption at rest configuration",
 	Long:    "Create a GCP encryption at rest configuration in YugabyteDB Anywhere",
+	Example: `yba ear gcp create --name <config-name> \
+	--credentials-file-path <credentials-file-path> \
+	--key-ring-name <key-ring-name> --crypto-key-name <crypto-key-name> \
+	--protection-level <protection-level>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		earutil.CreateEARValidation(cmd)
 	},
@@ -95,18 +99,15 @@ var createGCPEARCmd = &cobra.Command{
 			requestBody[util.GCPProtectionLevelField] = protectionLevel
 		}
 
-		rCreate, response, err := authAPI.CreateKMSConfig(util.GCPEARType).
+		rTask, response, err := authAPI.CreateKMSConfig(util.GCPEARType).
 			KMSConfig(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "EAR: GCP", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		configUUID := rCreate.GetResourceUUID()
-		taskUUID := rCreate.GetTaskUUID()
-
 		earutil.WaitForCreateEARTask(authAPI,
-			configName, configUUID, util.GCPEARType, taskUUID)
+			configName, rTask, util.GCPEARType)
 
 	},
 }

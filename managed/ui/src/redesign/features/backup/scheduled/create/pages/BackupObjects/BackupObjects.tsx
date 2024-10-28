@@ -18,7 +18,7 @@ import { Control, FieldValues, useForm } from 'react-hook-form';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { yupResolver } from '@hookform/resolvers/yup';
-import { groupBy, sortBy, uniqBy, values } from 'lodash';
+import { groupBy, intersectionWith, sortBy, uniqBy, values } from 'lodash';
 
 import { makeStyles, Typography } from '@material-ui/core';
 import { BackupObjectsModel } from '../../models/IBackupObjects';
@@ -129,7 +129,7 @@ const BackupObjects = forwardRef<PageRef>((_, forwardRef) => {
 
   const groupByTableType = groupBy(
     [
-      ...Default_Keyspace_database_options,
+      ... intersectionWith(Default_Keyspace_database_options, tablesInUniverse, (a, b) => a.tableType === b.tableType),
       ...uniqBy(tablesInUniverse, (table: ITable) => table.keySpace)
     ],
     (t) => t.tableType
@@ -188,7 +188,7 @@ const BackupObjects = forwardRef<PageRef>((_, forwardRef) => {
       )}
       {selectedKeyspace?.tableType === BACKUP_API_TYPES.YCQL && (
         <SelectTables
-          control={control as unknown as Control<FieldValues>}
+          control={(control as unknown) as Control<FieldValues>}
           tablesInSelectedKeyspace={
             selectedKeyspace?.isDefaultOption
               ? []

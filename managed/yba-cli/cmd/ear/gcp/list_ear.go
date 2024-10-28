@@ -11,11 +11,13 @@ import (
 )
 
 var listGCPEARCmd = &cobra.Command{
-	Use: "list",
+	Use:     "list",
+	Aliases: []string{"ls"},
 	Short: "List GCP YugabyteDB Anywhere Encryption In Transit" +
 		" (EAR) configurations",
 	Long: "List GCP YugabyteDB Anywhere Encryption In Transit" +
 		" (EAR) configurations",
+	Example: `yba ear gcp list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		earutil.ListEARUtil(cmd, "GCP", util.GCPEARType)
 	},

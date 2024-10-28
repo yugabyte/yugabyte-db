@@ -42,6 +42,7 @@
       "learnMore": "Learn more",
       "clear": "Clear",
       "reminder": "Reminder",
+      "reset": "Reset",
       "duration": {
         "seconds": "Seconds",
         "minutes": "Minutes",
@@ -170,18 +171,26 @@
       "masterFailover": {
         "warning": {
           "title": "Potential master failure detected",
-          "threshold": "Auto master failover threshold will be attempted to remediate in {{duration}} unless user fixes it manually",
+          "threshold": "Auto master failover will attempt to remediate in {{duration}}. ",
           "snoozeBtnText": "Snooze for 1 hour",
-          "disable": "To disable auto master failover schedule temporarily, click 'Snooze for 1 hour'",
-          "runtimeConfigMsg": "Auto master failover can be permanently disabled by setting the universe scoped runtime config yb.auto_master_failover.enabled to false"
+          "runtimeConfigMsg": "Auto master failover can be permanently disabled through the runtime config yb.auto_master_failover.enabled. "
         }
       },
       "postFailover": {
         "warning": {
-          "title": "Post auto master failover actions will be attempted in {{duration}}",
-          "disable": "To disable post failover actions temporarily, click 'Snooze for 1 hour'",
+          "title": "Post auto master failover actions pending",
+          "threshold": "Post auto master failover actions will be attempted in {{duration}}. ",
+          "manualCleanup": "Any underlying node failures need to be addressed manually through the Replace Node action.",
           "snoozeBtnText": "Snooze for 1 hour"
         }
+      },
+      "helmOverrides": {
+        "title": "Kubernetes Overrides",
+        "rollingUpgradeLabel": "Rolling upgrade (upgrade pods one at a time)",
+        "upgradeDelayLabel": "Upgrade delay between Pods:",
+        "addAvailabilityZone": "Add Availability Zone",
+        "forceUpgrade": "Force Upgrade",
+        "forceApply": "Force Apply"
       },
       "dbRollbackUpgrade": {
         "modalTitle": "Upgrade Database",
@@ -591,10 +600,12 @@
         "pods": "pods",
         "cores": "CPU cores",
         "memory": "Memory(Gib)",
+        "numVolumes": "Number of volumes",
         "volumeSize": "Volume Size(Gib)",
         "readReplicas": "Read Replicas",
         "scaleUp": "Scale Up",
-        "scaleDown": "Scale Down"
+        "scaleDown": "Scale Down",
+        "publicNetworkAccess": "Public Network Access"
       },
       "fullMoveModal": {
         "modalTitle": "Confirm Full Move Update",
@@ -630,7 +641,8 @@
         "tpServiceUrlLabel": "Troubleshooting Platform Service URL",
         "ybPlatformServiceUrlLabel": "Yugabyte Platform Service URL",
         "ybPlatformMetricsUrlLabel": "Yugabyte Platform Metrics URL",
-        "apiTokenLabel": "API Token",
+        "apiTokenLabel": "YBA API Token",
+        "tpApiTokenLabel": "TP API Token",
         "metricsScrapePeriodSecLabel": "Metrics Scrape Period (in seconds)",
         "metricsScrapePeriodSecRequired": "Metrics Scrape Period is required",
         "registerButton": "Register",
@@ -1173,10 +1185,23 @@
             "Bootstrapping": "Bootstrapping",
             "UnableToFetch": "Unable to Fetch",
             "Dropped": "Dropped from DB",
-            "ExtraTableOnSource": "Extra Table On Source",
-            "ExtraTableOnTarget": "Extra Table on Target",
-            "DroppedFromSource": "Dropped From Source",
-            "DroppedFromTarget": "Dropped From Target",
+            "TableInfoMissing": "Table Info Missing",
+            "ExtraTableOnSource": {
+              "label": "Extra Table On Source",
+              "tooltip": "This table is present on the {{sourceUniverseTerm}} but is not being replicated. Did you mean to add this to the set of tables in replication?"
+            },
+            "ExtraTableOnTarget": {
+              "label": "Extra Table on Target",
+              "tooltip": "This table is present on the {{targetUniverseTerm}} but is not being replicated. Did you mean to add this to the set of tables in replication?"
+            },
+            "DroppedFromSource": {
+              "label": "Dropped From Source",
+              "tooltip": "This table is included in the {{xClusterOffering}} configuration but is missing on the {{sourceUniverseTerm}}. It needs to be dropped and removed from the {{xClusterOffering}} configuration."
+            },
+            "DroppedFromTarget": {
+              "label": "Dropped From Target",
+              "tooltip": "This table is included in the {{xClusterOffering}} configuration but is missing on the DR {{targetUniverseTerm}}. It needs to be dropped and removed from the {{sourceUniverseTerm}} configuration."
+            },
             "ReplicationError": "Replication Error"
           }
         },
@@ -1237,6 +1262,9 @@
           }
         },
         "shared": {
+          "banner": {
+            "mismatchedTables": "<bold>Warning!</bold> Database schema does not match across {{sourceUniverseTerm}} and the {{targetUniverseTerm}}. See the Tables tab for the list of problematic tables. DDL operations must be performed in a <ddlChangeStepsDocsLink>specified order</ddlChangeStepsDocsLink>."
+          },
           "confirmAlert": {
             "instruction": "Confirm alert threshold for acceptable replication lag",
             "infoText": {
@@ -1907,7 +1935,7 @@
           "search": "Search by user email",
           "table": {
             "email": "Username/Email",
-            "role": "Role",
+            "role": "Roles as of last login",
             "moreRoles": "+ {{count}} More",
             "connectOnly": "Connect Only (Default)",
             "createdAt": "Created At",
@@ -1966,7 +1994,7 @@
           "authProvider": "Group Authentication Provider",
           "groupName": "Group DN (Name)",
           "groupNameLDAPPlaceholder": "Example:  cn = eng , ou = backend, dc = Yugabyte, dc = com",
-          "groupNamePlaceholder":"Group Name",
+          "groupNamePlaceholder": "Group Name",
           "groupRolesTitle": "Group Roles",
           "authProviderDisabled": "You need to first configure {{auth_provider}} before you can add its user groups.",
           "configureLDAPRoleSettings": "<b>Note!</b> You need to <a>configure LDAP role settings for membership lookup</a> before adding its user groups.",
@@ -2342,8 +2370,8 @@
       "header": "Database Audit Log",
       "enableDatabaseLog": "Enable Database Audit Logging",
       "emptyMsg1": "Capture session database audit logs to comply with government, financial, or ISO certification.",
-      "emptyMsg2": "Additionally, export the logs to a 3rd party monitoring tool or download them usingthe API.",
-      "learnMoreLog": "Learn more about <1>datbase audit logging</1> and exporting audit log",
+      "emptyMsg2": "Additionally, export the logs to a 3rd party monitoring tool or download them using the API.",
+      "learnMoreLog": "Learn more about <1>database audit logging</1> and exporting audit log",
       "learnMore": "Learn more about ",
       "auditLogLink": "datbase audit logging",
       "exportLink": "exporting audit log",
@@ -2464,8 +2492,10 @@
         "scope": "Scope",
         "emailAttribute": "Email Attribute",
         "refreshTokenURL": "Refresh Token URL",
+        "groupClaim":"Groups Claim",
         "displayJWTToken": "Display JWT token on login",
         "oidcProviderConfig": "Add OIDC Provider configuration ",
+        "oidcUseRoleMapping": "Map YugabyteDB Anywhere roles to your existing OIDC groups",
         "roles": {
           "title": "Role Settings",
           "userRoleSettings": "User Role Settings",
@@ -2496,6 +2526,7 @@
           "emailAttribute": "Scope containing email ID of the user",
           "refreshTokenURL": "Provide the endpoint that will be used for re-fetching the access token",
           "connectOnly": "Users with ConnectOnly role cannot see any information other than their own profile information",
+          "groupClaim":"The claim in the ID token containing a list of groups the user is a member of",
           "jwtTokenURL": "Option to display button to retrieve the JWT token"
         }
       },
@@ -2520,6 +2551,7 @@
         "groupSearchBaseDN": "Group Search Base DN",
         "ldapGroupSearchScope": "Select Scope",
         "addServiceAccountDetails": "Add Service Account Details",
+        "ldapUseRoleMapping": "Map YugabyteDB Anywhere built-in roles to your existing LDAP groups",
         "infos": {
           "ldapEnabled": "Enable or Disable LDAP Authentication",
           "ldapURL": "LDAP URL must be a valid URL with port number, Ex:- 0.0.0.0:0000",
@@ -2584,7 +2616,8 @@
       "scheduled": {
         "empty": {
           "createSchduledPolicy": "Create Scheduled Backup Policy",
-          "subText": "Currently there are no Scheduled Backup Policies to show"
+          "subText": "Currently there are no Scheduled Backup Policies to show",
+          "noTablesOrPermission":"This universe does not have any tables to backup or backup/universe is disabled"
         },
         "create": {
           "title": "Create Scheduled Backup Policy",
@@ -2677,7 +2710,7 @@
             "wontExpire": "Won't expire",
             "backupWillStart": "<b>Note:</b> The next scheduled backup will start shortly following the creation of this policy",
             "helpText": "We recommend performing an on-demand backup prior to executing any DDL changes between backup intervals to prevent data loss.<br/><a>Learn more</a>",
-            "successMsg": "Scheduled backup policy created. A backup will begin shortly.",
+            "successMsg": "Scheduled backup policy is being created. A backup will begin shortly.",
             "errorMsg": "Unable to created scheduled backup policy"
           },
           "loadingMsg": {
@@ -2711,11 +2744,13 @@
           "deletePolicy": "Delete Policy",
           "enabled": "Enabled",
           "disabled": "Disabled",
+          "creating": "Policy creation is in progress...",
           "deleteMsg": "scheduled backup policy is being deleted",
           "editModal": {
             "title": "Edit Scheduled Backup Policy",
             "backupStrategy": "Backup Strategy",
-            "success": "Scheduled backup policy is being updated"
+            "success": "Scheduled backup policy is being updated",
+              "noFieldsChanged": "No values changed"
           },
           "deleteModal": {
             "deleteMsg": "Are you sure you want to delete this schedule policy?"
@@ -2760,7 +2795,7 @@
           "date": "Date",
           "time": "Time",
           "secs": "Second",
-          "helpText": "<b>Note:</b> if a DDL change occurred in any keyspaces(s) from this backup, choose a timestamp between the time of the DDL change and {{to}}. <a>Learn more</a>"
+          "helpText": "<b>Note:</b> if a DDL change occurred in any keyspaces(s) from this backup, choose a timestamp between the time of the DDL change and <to/>. <a>Learn more</a>"
         },
         "target": {
           "selectUniverse": "Select a universe to restore to",

@@ -15,10 +15,10 @@
 
 #include <functional> // For std::function
 #include <memory>
+#include <mutex>
 
-#include <boost/atomic.hpp>
-
-#include "yb/util/status_fwd.h"
+#include "yb/util/locks.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
@@ -52,6 +52,9 @@ class MockClock : public PhysicalClock {
 
   void Set(const PhysicalTime& value);
 
+  // Set this to return an error in Now().
+  void Set(Status status);
+
   // Constructs PhysicalClockPtr from this object.
   PhysicalClockPtr AsClock();
 
@@ -61,7 +64,9 @@ class MockClock : public PhysicalClock {
  private:
   // Set by calls to SetMockClockWallTimeForTests().
   // For testing purposes only.
-  boost::atomic<PhysicalTime> value_{{0, 0}};
+  std::atomic<PhysicalTime> value_{{0, 0}};
+  Status mock_status_ GUARDED_BY(status_mutex_);
+  simple_spinlock status_mutex_;
 };
 
 const PhysicalClockPtr& WallClock();

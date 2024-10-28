@@ -120,4 +120,12 @@ void UpdateUserValues(
   }
 }
 
+void UpdateFrontiers(UserFrontiersPtr& frontiers, const UserFrontiers& update) {
+  if (frontiers) {
+    frontiers->MergeFrontiers(update);
+  } else {
+    frontiers = update.Clone();
+  }
+}
+
 } // namespace rocksdb

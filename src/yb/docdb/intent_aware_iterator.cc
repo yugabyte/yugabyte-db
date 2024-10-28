@@ -58,8 +58,7 @@ DEFINE_RUNTIME_uint64(max_next_calls_while_skipping_future_records, 3,
                       "After number of next calls is reached this limit, use seek to find non "
                       "future record.");
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 using dockv::KeyBytes;
 using dockv::KeyEntryType;
@@ -70,6 +69,51 @@ namespace {
 
 const char kKeyEntryTypeMaxByte = dockv::KeyEntryTypeAsChar::kMaxByte;
 const char kKeyEntryTypeMinByte = dockv::KeyEntryTypeAsChar::kLowest;
+
+const char kStrongWriteTail[] = {
+    KeyEntryTypeAsChar::kIntentTypeSet,
+    static_cast<char>(dockv::IntentTypeSet({dockv::IntentType::kStrongWrite}).ToUIntPtr()) };
+
+const Slice kStrongWriteTailSlice = Slice(kStrongWriteTail, sizeof(kStrongWriteTail));
+
+char kEmptyKeyStrongWriteTail[] = {
+    KeyEntryTypeAsChar::kGroupEnd,
+    KeyEntryTypeAsChar::kIntentTypeSet,
+    static_cast<char>(dockv::IntentTypeSet({dockv::IntentType::kStrongWrite}).ToUIntPtr()) };
+
+const Slice kEmptyKeyStrongWriteTailSlice =
+    Slice(kEmptyKeyStrongWriteTail, sizeof(kEmptyKeyStrongWriteTail));
+
+const char kMaxIntentTypeTail[] = {
+    KeyEntryTypeAsChar::kIntentTypeSet,
+    KeyEntryTypeAsChar::kMaxByte };
+
+const Slice kMaxIntentTypeTailSlice = Slice(kMaxIntentTypeTail, sizeof(kMaxIntentTypeTail));
+
+const char kEmptyKeyMaxIntentTypeTail[] = {
+    KeyEntryTypeAsChar::kGroupEnd,
+    KeyEntryTypeAsChar::kIntentTypeSet,
+    KeyEntryTypeAsChar::kMaxByte };
+
+const Slice kEmptyKeyMaxIntentTypeTailSlice =
+    Slice(kEmptyKeyMaxIntentTypeTail, sizeof(kEmptyKeyMaxIntentTypeTail));
+
+inline Slice StrongWriteSuffix(Slice key) {
+  return key.empty() ? kEmptyKeyStrongWriteTailSlice : kStrongWriteTailSlice;
+}
+
+inline Slice StrongWriteSuffix(const dockv::KeyBytes& key) {
+  return StrongWriteSuffix(key.AsSlice());
+}
+
+inline Slice MaxIntentTypeSuffix(const dockv::KeyBytes& key) {
+  return key.empty() ? kEmptyKeyMaxIntentTypeTailSlice : kMaxIntentTypeTailSlice;
+}
+
+inline Slice AppendMaxIntentTypeSuffix(KeyBytes& key) {
+  key.AppendRawBytes(MaxIntentTypeSuffix(key));
+  return key.AsSlice();
+}
 
 void AppendEncodedDocHt(const EncodedDocHybridTime& encoded_doc_ht, KeyBuffer* buffer) {
   buffer->PushBack(KeyEntryTypeAsChar::kHybridTime);
@@ -130,18 +174,6 @@ inline bool IsKeyOrderedBefore(Slice key, Slice other_key) {
   } else {
     return other_key.compare(key) < 0;
   }
-}
-
-inline size_t PrepareIntentSeekBackward(dockv::KeyBytes& key_bytes) {
-  const auto prefix_len = key_bytes.size();
-  key_bytes.AppendRawBytes(StrongWriteSuffix(key_bytes.AsSlice()));
-
-  // Provided key is the key whose latest record we need to point. Thus it is required to add
-  // kMaxByte to correctly position to the desired key as `docdb::SeekBackward()` seeks to
-  // a key, which is previous to the provided key.
-  key_bytes.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
-
-  return prefix_len;
 }
 
 rocksdb::Statistics* GetIntentsDBStatistics(const DocDBStatistics* statistics) {
@@ -580,8 +612,15 @@ void IntentAwareIterator::SeekBackward(dockv::KeyBytes& key_bytes) {
   key_bytes.RemoveLastByte();
 
   if (intent_iter_.Initialized()) {
-    const auto prefix_len = PrepareIntentSeekBackward(key_bytes);
-    IntentSeekBackward(key_bytes);
+    const auto prefix_len = key_bytes.size();
+
+    // It is not possible to use backward seek to kStrongWrite intent type directly as backward
+    // seek expects an upper bound of the target key, but intent type set is a bitset and hence
+    // intent's type could be a subset of several values (including kStrongWrite). That's why
+    // it is required to use kMaxByte (via AppendMaxIntentTypeSuffix), and subsequent call to
+    // SeekToSuitableIntent() will consider only required intents, with kStrongWrite set.
+    IntentSeekBackward(AppendMaxIntentTypeSuffix(key_bytes));
+
     key_bytes.Truncate(prefix_len);
   }
 
@@ -1328,5 +1367,8 @@ void IntentAwareIterator::DebugSeekTriggered() {
 }
 #endif
 
-}  // namespace docdb
-}  // namespace yb
+void AppendStrongWrite(KeyBytes* out) {
+  out->AppendRawBytes(StrongWriteSuffix(*out));
+}
+
+}  // namespace yb::docdb

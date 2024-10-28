@@ -469,7 +469,9 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
       onSubmit={formMethods.handleSubmit(onSubmit)}
       submitTestId={`${MODAL_NAME}-SubmitButton`}
       isSubmitting={formMethods.formState.isSubmitting}
-      showSubmitSpinner={currentFormStep === FormStep.SELECT_TABLES}
+      showSubmitSpinner={
+        currentFormStep === FormStep.SELECT_TABLES || currentFormStep === FormStep.CONFIRM_ALERT
+      }
       maxWidth="xl"
       size={
         ([

@@ -167,7 +167,7 @@ SELECT * FROM settings;
  cursor_tuple_fraction          | 0.1       | Query Tuning / Other Planner Options
  default_statistics_target      | 100       | Query Tuning / Other Planner Options
  from_collapse_limit            | 8         | Query Tuning / Other Planner Options
- jit                            | on        | Query Tuning / Other Planner Options
+ jit                            | off       | Query Tuning / Other Planner Options
  join_collapse_limit            | 8         | Query Tuning / Other Planner Options
  plan_cache_mode                | auto      | Query Tuning / Other Planner Options
  recursive_worktable_factor     | 10        | Query Tuning / Other Planner Options

@@ -19,6 +19,7 @@ var releaseNodeCmd = &cobra.Command{
 	Short: "Release a node instance from YugabyteDB Anywhere universe",
 	Long: "Release a node instance from YugabyteDB Anywhere universe.\n" +
 		"Release the instance to the IaaS/provider. Only for stopped/removed nodes.",
+	Example: `yba universe node release --name <universe-name> --node-name <node-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {

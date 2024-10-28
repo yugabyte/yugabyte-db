@@ -121,18 +121,19 @@ ERROR:  SPLIT AT option is not yet supported for hash partitioned tables
 -- Confirm that create table like creates the same sort order even after toggling yb_use_hash_splitting_by_default
 SET yb_use_hash_splitting_by_default = false;
 CREATE TABLE like_hash_default_table(like multi_index_hash_default including all);
--- Duplicate indexes (indexes on the same key) will not have been created, but existing indexes should have
--- the same sort order
+-- Indexes should have the same sort order
 SELECT * FROM get_table_indexes('like_hash_default_table');
               relname              | indisprimary | indisunique |                                                 indexdef                                                 |   constraintdef
 -----------------------------------+--------------+-------------+----------------------------------------------------------------------------------------------------------+--------------------
  like_hash_default_table_pkey      | t            | t           | CREATE UNIQUE INDEX like_hash_default_table_pkey ON like_hash_default_table USING lsm (a HASH, b ASC)    | PRIMARY KEY (a, b)
+ like_hash_default_table_a_b_idx   | f            | f           | CREATE INDEX like_hash_default_table_a_b_idx ON like_hash_default_table USING lsm (a HASH, b ASC)        |
  like_hash_default_table_a_c_b_idx | f            | f           | CREATE INDEX like_hash_default_table_a_c_b_idx ON like_hash_default_table USING lsm ((a, c) HASH, b ASC) |
  like_hash_default_table_a_c_idx   | f            | f           | CREATE INDEX like_hash_default_table_a_c_idx ON like_hash_default_table USING lsm ((a, c) HASH)          |
  like_hash_default_table_b_c_idx   | f            | f           | CREATE INDEX like_hash_default_table_b_c_idx ON like_hash_default_table USING lsm (b HASH, c ASC)        |
  like_hash_default_table_b_idx     | f            | f           | CREATE INDEX like_hash_default_table_b_idx ON like_hash_default_table USING lsm (b HASH)                 |
+ like_hash_default_table_b_idx1    | f            | f           | CREATE INDEX like_hash_default_table_b_idx1 ON like_hash_default_table USING lsm (b HASH)                |
  like_hash_default_table_c_idx     | f            | f           | CREATE INDEX like_hash_default_table_c_idx ON like_hash_default_table USING lsm (c ASC)                  |
-(6 rows)
+(8 rows)
 
 -- Will be recreated again later
 DROP TABLE mixed_hash_with_asc;
@@ -245,19 +246,19 @@ SELECT * FROM get_table_indexes('split_table');
 -- Confirm that create table like creates the same sort order even after toggling yb_use_hash_splitting_by_default
 SET yb_use_hash_splitting_by_default = true;
 CREATE TABLE like_asc_default_table(like multi_index_asc_default including all);
--- Duplicate indexes (indexes on the same key) will not have been created, but existing indexes should have
--- the same sort order
+-- Indexes should have the same sort order
 SELECT * FROM get_table_indexes('like_asc_default_table');
              relname              | indisprimary | indisunique |                                                indexdef                                                |   constraintdef
 ----------------------------------+--------------+-------------+--------------------------------------------------------------------------------------------------------+--------------------
  like_asc_default_table_pkey      | t            | t           | CREATE UNIQUE INDEX like_asc_default_table_pkey ON like_asc_default_table USING lsm (a ASC, b ASC)     | PRIMARY KEY (a, b)
+ like_asc_default_table_a_b_idx   | f            | f           | CREATE INDEX like_asc_default_table_a_b_idx ON like_asc_default_table USING lsm (a ASC, b ASC)         |
  like_asc_default_table_a_c_b_idx | f            | f           | CREATE INDEX like_asc_default_table_a_c_b_idx ON like_asc_default_table USING lsm ((a, c) HASH, b ASC) |
  like_asc_default_table_a_c_idx   | f            | f           | CREATE INDEX like_asc_default_table_a_c_idx ON like_asc_default_table USING lsm ((a, c) HASH)          |
  like_asc_default_table_b_c_idx   | f            | f           | CREATE INDEX like_asc_default_table_b_c_idx ON like_asc_default_table USING lsm (b ASC, c ASC)         |
  like_asc_default_table_b_idx     | f            | f           | CREATE INDEX like_asc_default_table_b_idx ON like_asc_default_table USING lsm (b ASC)                  |
  like_asc_default_table_b_idx1    | f            | f           | CREATE INDEX like_asc_default_table_b_idx1 ON like_asc_default_table USING lsm (b HASH)                |
  like_asc_default_table_c_idx     | f            | f           | CREATE INDEX like_asc_default_table_c_idx ON like_asc_default_table USING lsm (c ASC)                  |
-(7 rows)
+(8 rows)
 
 SET yb_use_hash_splitting_by_default = false;
 -- Partitioned table

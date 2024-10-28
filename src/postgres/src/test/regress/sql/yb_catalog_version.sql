@@ -405,3 +405,48 @@ SELECT min(t), max(t) FROM analyze_table2;
 -- Verify catalog version only bumps once.
 ANALYZE;
 :display_catalog_version;
+
+-- Verify no-op ALTER ROLE
+CREATE ROLE test_role;
+:display_catalog_version;
+-- The next ALTER ROLE should increment current_version.
+ALTER ROLE test_role CONNECTION LIMIT 1;
+:display_catalog_version;
+-- The next ALTER ROLE should increment current_version.
+ALTER ROLE test_role CONNECTION LIMIT -1;
+:display_catalog_version;
+-- The next ALTER ROLE should not increment current_version.
+ALTER ROLE test_role CONNECTION LIMIT -1;
+:display_catalog_version;
+-- The next ALTER ROLE should not increment current_version.
+-- Note that password change does not increment current_version because a new
+-- password only affects new connections, not existing ones.
+ALTER ROLE test_role PASSWORD '123';
+:display_catalog_version;
+-- The next ALTER ROLE should not increment current_version.
+ALTER ROLE test_role PASSWORD NULL;
+:display_catalog_version;
+-- The next ALTER ROLE should increment current_version.
+ALTER ROLE test_role VALID UNTIL 'May 4 12:00:00 2015 +1';
+:display_catalog_version;
+-- The next ALTER ROLE should not increment current_version.
+ALTER ROLE test_role VALID UNTIL 'May 4 12:00:00 2015 +1';
+:display_catalog_version;
+-- The next ALTER ROLE should increment current_version.
+ALTER ROLE test_role VALID UNTIL 'infinity';
+:display_catalog_version;
+-- The next ALTER ROLE should not increment current_version.
+ALTER ROLE test_role VALID UNTIL 'infinity';
+:display_catalog_version;
+-- The next ALTER ROLE should increment current_version.
+ALTER ROLE test_role CREATEROLE;
+:display_catalog_version;
+-- The next ALTER ROLE should increment current_version.
+ALTER ROLE test_role CREATEDB;
+:display_catalog_version;
+-- The next ALTER ROLE should not increment current_version.
+ALTER ROLE test_role CREATEROLE CREATEDB;
+:display_catalog_version;
+-- The next ALTER ROLE should not increment current_version.
+ALTER ROLE test_role;
+:display_catalog_version;

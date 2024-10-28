@@ -26,3 +26,16 @@ It correctly bundles React in production mode and optimizes the build for the be
 
 The build is minified and the filenames include the hashes.<br>
 Your app is ready to be deployed!
+
+### Generating Map Tiles and uploading to S3
+
+The maps in Yugaware are generated using TileMill and mbTiles project and uploaded to S3, from where they are downloaded into /public folder during the build process.
+To generate your own Map tiles, do the following -
+
+1. Download TileMill or build from source https://tilemill-project.github.io/tilemill/
+2. Create Outline World Map , customize styles using CartoCSS http://tilemill-project.github.io/tilemill/docs/manual/carto/
+3. Export to .mbTiles file (choose zoom level, center, tile quality etc. all of which will affect the size of your output)
+4. Use mbutil to generate base map pngs.
+5. git clone git://github.com/mapbox/mbutil.git
+6. mb-util <our-filename-here>.mbtiles <destination-folder-name>
+7. Upload to S3 bucket, make sure permissions are open, set content/type to "image/png"

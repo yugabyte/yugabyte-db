@@ -38,7 +38,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
-import org.yb.client.ListMastersResponse;
+import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.YBClient;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -92,12 +92,12 @@ public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
 
     mockClient = mock(YBClient.class);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
-    ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
+    ListMasterRaftPeersResponse listMastersResponse = mock(ListMasterRaftPeersResponse.class);
+    when(listMastersResponse.getPeersList()).thenReturn(Collections.emptyList());
     try {
-      when(mockClient.listMasters()).thenReturn(listMastersResponse);
+      when(mockClient.listMasterRaftPeers()).thenReturn(listMastersResponse);
     } catch (Exception e) {
     }
-    when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {

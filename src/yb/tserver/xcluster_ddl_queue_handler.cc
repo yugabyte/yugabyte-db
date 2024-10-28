@@ -38,6 +38,10 @@ DEFINE_test_flag(bool, xcluster_ddl_queue_handler_fail_at_end, false,
     "Whether the ddl_queue handler should fail at the end of processing (this will cause it "
     "to reprocess the current batch in a loop).");
 
+DEFINE_test_flag(bool, xcluster_ddl_queue_handler_fail_at_start, false,
+    "Whether the ddl_queue handler should fail at the start of processing (this will cause it "
+    "to reprocess the current batch in a loop).");
+
 #define VALIDATE_MEMBER(doc, member_name, expected_type) \
   SCHECK( \
       doc.HasMember(member_name), NotFound, \
@@ -79,7 +83,9 @@ const std::unordered_set<std::string> kSupportedCommandTags{
     "CREATE TABLE",
     "CREATE INDEX",
     "DROP TABLE",
-    "DROP INDEX"};
+    "DROP INDEX",
+    "ALTER TABLE",
+    "ALTER INDEX"};
 
 Result<rapidjson::Document> ParseSerializedJson(const std::string& raw_json_data) {
   SCHECK(!raw_json_data.empty(), InvalidArgument, "Received empty json to parse.");
@@ -130,6 +136,10 @@ Status XClusterDDLQueueHandler::ProcessDDLQueueTable(const XClusterOutputClientR
     LOG_WITH_PREFIX(WARNING) << "Received invalid safe time " << target_safe_ht;
     return Status::OK();
   }
+
+  SCHECK(
+      !FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start, InternalError,
+      "Failing due to xcluster_ddl_queue_handler_fail_at_start");
 
   // TODO(#20928): Make these calls async.
   HybridTime safe_time_ht = VERIFY_RESULT(GetXClusterSafeTimeForNamespace());

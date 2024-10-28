@@ -49,10 +49,10 @@ Conversely, if you are using EPCM on a universe, you cannot set any of the featu
 | Cost-based optimizer | [yb_enable_base_scans_cost_model](../../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) | 2024.1 | |
 | Batch nested loop join | [yb_enable_batchednl](../../../reference/configuration/yb-tserver/#yb-enable-batchednl) | 2.20 | 2024.1 |
 | Ascending indexing by default | [yb_use_hash_splitting_by_default](../../../reference/configuration/yb-tserver/#yb-use-hash-splitting-by-default) | 2024.1 | |
+| YugabyteDB bitmap scan | [yb_enable_bitmapscan](../../../reference/configuration/yb-tserver/#yb-enable-bitmapscan) | 2024.1.3 | 2024.2 |
 
 | Planned Feature | Flag/Configuration Parameter | EA |
 | :--- | :--- | :--- |
-| YugabyteDB bitmap scan | [yb_enable_bitmapscan](../../../reference/configuration/yb-tserver/#yb-enable-bitmapscan) | 2024.1.3 |
 | Efficient communication<br>between PostgreSQL and DocDB | [pg_client_use_shared_memory](../../../reference/configuration/yb-tserver/#pg-client-use-shared-memory) | 2024.2 |
 | Parallel query | | Planned |
 
@@ -67,7 +67,7 @@ Flag: `yb_enable_read_committed_isolation=true`
 Read Committed isolation level handles serialization errors and avoids the need to retry errors in the application logic. Read Committed provides feature compatibility, and is the default isolation level in PostgreSQL. When migrating applications from PostgreSQL to YugabyteDB, read committed is the preferred isolation level.
 
 {{<lead link="../../../architecture/transactions/read-committed/">}}
-To learn more about read committed isolation, see [Read Committed](../../../architecture/transactions/read-committed/).
+To learn about read committed isolation, see [Read Committed](../../../architecture/transactions/read-committed/).
 {{</lead>}}
 
 #### Cost-based optimizer
@@ -87,7 +87,7 @@ Flag: `enable_wait_queues=true`
 Enables use of wait queues so that conflicting transactions can wait for the completion of other dependent transactions, helping to improve P99 latencies. Wait-on-conflict concurrency control provides feature compatibility, and uses the same semantics as PostgreSQL.
 
 {{<lead link="../../../architecture/transactions/concurrency-control/">}}
-To learn more about concurrency control in YugabyteDB, see [Concurrency control](../../../architecture/transactions/concurrency-control/).
+To learn about concurrency control in YugabyteDB, see [Concurrency control](../../../architecture/transactions/concurrency-control/).
 {{</lead>}}
 
 #### Batched nested loop join
@@ -97,7 +97,7 @@ Configuration parameter: `yb_enable_batchednl=true`
 Batched nested loop join (BNLJ) is a join execution strategy that improves on nested loop joins by batching the tuples from the outer table into a single request to the inner table. By using batched execution, BNLJ helps reduce the latency for query plans that previously used nested loop joins. BNLJ provides improved performance parity.
 
 {{<lead link="../join-strategies/">}}
-To learn more about join strategies in YugabyteDB, see [Join strategies](../../../architecture/transactions/concurrency-control/).
+To learn about join strategies in YugabyteDB, see [Join strategies](../../../architecture/transactions/concurrency-control/).
 {{</lead>}}
 
 #### Default ascending indexing
@@ -110,15 +110,15 @@ Also enables retrieving data in sorted order, which can eliminate the need to so
 
 Default ascending indexing provides feature compatibility and is the default in PostgreSQL.
 
-### Planned
-
-The following features are planned for EPCM in future releases.
-
 #### YugabyteDB bitmap scan
 
 Configuration parameter: `yb_enable_bitmapscan=true`
 
 Bitmap scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Bitmap scans can improve the performance of queries containing AND and OR conditions across several index scans. YugabyteDB bitmap scan provides feature compatibility and improved performance parity. For YugabyteDB relations to use a bitmap scan, the PostgreSQL parameter `enable_bitmapscan` must also be true (the default).
+
+### Planned
+
+The following features are planned for EPCM in future releases.
 
 #### Efficient communication between PostgreSQL and DocDB
 

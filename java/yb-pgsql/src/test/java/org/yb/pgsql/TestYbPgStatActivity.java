@@ -101,7 +101,7 @@ public class TestYbPgStatActivity extends BasePgSQLTest {
   private void forceCatalogCacheRefresh() throws Exception {
     Connection connection = getConnectionBuilder().withTServer(0).connect();
     Statement stmt = connection.createStatement();
-    stmt.execute("ALTER ROLE yugabyte SUPERUSER");
+    getSystemTableRowsList(stmt, "SELECT yb_increment_all_db_catalog_versions(true)");
     waitForTServerHeartbeat();
   }
 

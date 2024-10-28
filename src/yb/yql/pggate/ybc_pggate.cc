@@ -46,6 +46,7 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/server/clockbound_clock.h"
 #include "yb/server/skewed_clock.h"
 
 #include "yb/util/atomic.h"
@@ -106,6 +107,9 @@ DEFINE_test_flag(string, ysql_conn_mgr_dowarmup_all_pools_mode, "random",
   "manager process. This flag will create max(ysql_conn_mgr_min_conns_per_db, "
   "3) number of server connections in any pool whenever there is a requirement to create the "
   "first backend process in that particular pool.");
+
+DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_superuser_sticky, true,
+  "If enabled, make superuser connections sticky in Ysql Connection Manager.");
 
 // This gflag should be deprecated but kept to avoid breaking some customer
 // clusters using it. Use ysql_catalog_preload_additional_table_list if possible.
@@ -227,8 +231,8 @@ Status InitPgGateImpl(const YBCPgTypeEntity* data_type_table,
   auto opt_session_id = session_id ? std::optional(*session_id) : std::nullopt;
   return WithMaskedYsqlSignals(
     [data_type_table, count, &pg_callbacks, opt_session_id, &ash_config] {
-    YBCInitPgGateEx(data_type_table, count, pg_callbacks, nullptr /* context */, opt_session_id,
-                    ash_config);
+    YBCInitPgGateEx(
+        data_type_table, count, pg_callbacks, nullptr /* context */, opt_session_id, ash_config);
     return static_cast<Status>(Status::OK());
   });
 }
@@ -471,6 +475,7 @@ void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallba
   // However, this is added to allow simulating and testing of some known bugs until we remove
   // HybridClock usage.
   server::SkewedClock::Register();
+  server::RegisterClockboundClockProvider();
 
   InitThreading();
 
@@ -485,10 +490,10 @@ void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallba
   pgapi_shutdown_done.exchange(false);
   if (context) {
     pgapi = new pggate::PgApiImpl(
-      std::move(*context), data_type_table, count, pg_callbacks, session_id, ash_config);
+        std::move(*context), data_type_table, count, pg_callbacks, session_id, *ash_config);
   } else {
-    pgapi = new pggate::PgApiImpl(PgApiContext(), data_type_table, count, pg_callbacks, session_id,
-                                  ash_config);
+    pgapi = new pggate::PgApiImpl(
+        PgApiContext(), data_type_table, count, pg_callbacks, session_id, *ash_config);
   }
 
   VLOG(1) << "PgGate open";
@@ -1408,18 +1413,13 @@ YBCStatus YBCPgBuildYBTupleId(const YBCPgYBTupleIdDescriptor *source, uint64_t *
   });
 }
 
-YBCStatus YBCPgNewSample(const YBCPgOid database_oid,
-                         const YBCPgOid table_relfilenode_oid,
-                         int targrows,
-                         bool is_region_local,
-                         YBCPgStatement *handle) {
-  const PgObjectId table_id(database_oid, table_relfilenode_oid);
-  return ToYBCStatus(pgapi->NewSample(table_id, targrows, is_region_local, handle));
-}
-
-YBCStatus YBCPgInitRandomState(
-    YBCPgStatement handle, double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1) {
-  return ToYBCStatus(pgapi->InitRandomState(handle, rstate_w, rand_state_s0, rand_state_s1));
+YBCStatus YBCPgNewSample(
+    const YBCPgOid database_oid, const YBCPgOid table_relfilenode_oid, bool is_region_local,
+    int targrows, double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1,
+    YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewSample(
+      {database_oid, table_relfilenode_oid}, is_region_local,
+      targrows, {.w = rstate_w, .s0 = rand_state_s0, .s1 = rand_state_s1}, handle));
 }
 
 YBCStatus YBCPgSampleNextBlock(YBCPgStatement handle, bool *has_more) {
@@ -1999,6 +1999,7 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
           FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode.c_str(),
       .TEST_ysql_enable_db_logical_client_version_mode =
           &FLAGS_TEST_ysql_enable_db_logical_client_version_mode,
+      .ysql_conn_mgr_superuser_sticky = &FLAGS_ysql_conn_mgr_superuser_sticky,
   };
   // clang-format on
   return &accessor;
@@ -2707,7 +2708,49 @@ YBCStatus YBCServersMetrics(YBCPgServerMetricsInfo** servers_metrics_info, size_
   return YBCStatusOK();
 }
 
+YBCStatus YBCDatabaseClones(YBCPgDatabaseCloneInfo** database_clones, size_t* count) {
+  const auto result = pgapi->GetDatabaseClones();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  const auto& tserver_clone_entries = result.get().database_clones();
+  *count = tserver_clone_entries.size();
+  if (!tserver_clone_entries.empty()) {
+    *database_clones = static_cast<YBCPgDatabaseCloneInfo*>(
+        YBCPAlloc(sizeof(YBCPgDatabaseCloneInfo) * tserver_clone_entries.size()));
+    YBCPgDatabaseCloneInfo* cur_clone = *database_clones;
+    for (const auto& tserver_clone_entry : tserver_clone_entries) {
+      new (cur_clone) YBCPgDatabaseCloneInfo{
+          .db_id = tserver_clone_entry.db_id(),
+          .db_name = YBCPAllocStdString(tserver_clone_entry.db_name()),
+          .parent_db_id = tserver_clone_entry.parent_db_id(),
+          .parent_db_name = YBCPAllocStdString(tserver_clone_entry.parent_db_name()),
+          .state = YBCPAllocStdString(tserver_clone_entry.state()),
+          .as_of_time = YBCGetPgCallbacks()->UnixEpochToPostgresEpoch(static_cast<int64_t>(
+              HybridTime(tserver_clone_entry.as_of_time()).GetPhysicalValueMicros())),
+          .failure_reason = YBCPAllocStdString(tserver_clone_entry.failure_reason()),
+      };
+      ++cur_clone;
+    }
+  }
+  return YBCStatusOK();
+}
+
 bool YBCIsCronLeader() { return pgapi->IsCronLeader(); }
+
+YBCStatus YBCSetCronLastMinute(int64_t last_minute) {
+  return ToYBCStatus(pgapi->SetCronLastMinute(last_minute));
+}
+
+YBCStatus YBCGetCronLastMinute(int64_t* last_minute) {
+  const auto result = pgapi->GetCronLastMinute();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  *last_minute = result.get();
+
+  return YBCStatusOK();
+}
 
 uint64_t YBCPgGetCurrentReadTimePoint() {
   return pgapi->GetCurrentReadTimePoint();

@@ -12,6 +12,8 @@
  */
 #include "postgres.h"
 
+#include <assert.h>
+
 #include "access/genam.h"
 #include "access/htup_details.h"
 #include "access/table.h"
@@ -486,6 +488,63 @@ CreateRole(ParseState *pstate, CreateRoleStmt *stmt)
 	return roleid;
 }
 
+/*
+ * This function must be kept in sync with the struct FormData_pg_authid.
+ * C provides no language facilities to do struct equality check so we
+ * compare each structure member by member.
+ */
+static bool
+YbIsPgAuthTupleEqual(TupleDesc pg_authid_dsc,
+					 HeapTuple auth_tup1,
+					 HeapTuple auth_tup2)
+{
+	static_assert(sizeof(*(Form_pg_authid)0) == 80, "size mismatch");
+	Form_pg_authid authform1 = (Form_pg_authid) GETSTRUCT(auth_tup1);
+	Form_pg_authid authform2 = (Form_pg_authid) GETSTRUCT(auth_tup2);
+	/* All these struct members have a not null constraint. */
+	if (authform1->oid != authform2->oid ||
+		authform1->rolsuper != authform2->rolsuper ||
+		authform1->rolinherit != authform2->rolinherit ||
+		authform1->rolcreaterole != authform2->rolcreaterole ||
+		authform1->rolcreatedb != authform2->rolcreatedb ||
+		authform1->rolcanlogin != authform2->rolcanlogin ||
+		authform1->rolreplication != authform2->rolreplication ||
+		authform1->rolbypassrls != authform2->rolbypassrls ||
+		authform1->rolconnlimit != authform2->rolconnlimit)
+		return false;
+	if (strcmp(NameStr(authform1->rolname), NameStr(authform2->rolname)))
+		return false;
+#ifdef CATALOG_VARLEN
+#error "need to compare extra members"
+#endif
+	Datum datum1, datum2;
+	bool isnull1, isnull2;
+
+	/* Check rolpassword (SQL type text), can be null. */
+	datum1 = heap_getattr(auth_tup1, Anum_pg_authid_rolpassword,
+						  pg_authid_dsc, &isnull1);
+	datum2 = heap_getattr(auth_tup2, Anum_pg_authid_rolpassword,
+						  pg_authid_dsc, &isnull2);
+	if (isnull1 != isnull2)
+		return false;
+	if (!isnull1 &&
+		strcmp(TextDatumGetCString(datum1), TextDatumGetCString(datum2)))
+		return false;
+
+	/*
+	 * Check rolvaliduntil (SQL type timestamp with time zone, can be null.
+	 */
+	datum1 = heap_getattr(auth_tup1, Anum_pg_authid_rolvaliduntil,
+						  pg_authid_dsc, &isnull1);
+	datum2 = heap_getattr(auth_tup2, Anum_pg_authid_rolvaliduntil,
+						  pg_authid_dsc, &isnull2);
+	if (isnull1 != isnull2)
+		return false;
+	if (!isnull1 && DatumGetTimestampTz(datum1) != DatumGetTimestampTz(datum2))
+		return false;
+	return true;
+}
+
 
 /*
  * ALTER ROLE
@@ -859,7 +918,19 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 
 	new_tuple = heap_modify_tuple(tuple, pg_authid_dsc, new_record,
 								  new_record_nulls, new_record_repl);
-	CatalogTupleUpdate(pg_authid_rel, &tuple->t_self, new_tuple);
+	/*
+	 * The new_record_repl means which attribute of the tuple this ALTER ROLE
+	 * statement has provided a value, new_record_repl[i] is true does not mean
+	 * the provided value is different from the current value. Also sometimes
+	 * PG just sets new_record_repl[i] to true to indicate that an attribute as
+	 * changed even if it no value is provided in the ALTER ROLE statement
+	 * (e.g., for Anum_pg_authid_rolvaliduntil). So we do the deep comparison
+	 * to check whether there is any real change in new_tuple.
+	 */
+	if (!IsYugaByteEnabled() ||
+		!yb_enable_nop_alter_role_optimization ||
+		!YbIsPgAuthTupleEqual(pg_authid_dsc, tuple, new_tuple))
+		CatalogTupleUpdate(pg_authid_rel, &tuple->t_self, new_tuple);
 
 	InvokeObjectPostAlterHook(AuthIdRelationId, roleid, 0);
 

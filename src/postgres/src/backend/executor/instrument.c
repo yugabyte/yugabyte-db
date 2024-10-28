@@ -164,6 +164,15 @@ InstrEndLoop(Instrumentation *instr)
 	instr->tuplecount = 0;
 }
 
+/* aggregate instrumentation information held in a YbRpcStats structure */
+static void
+InstrAggYbPgRpcStats(YbPgRpcStats *dst, YbPgRpcStats *add)
+{
+	dst->count += add->count;
+	dst->rows_scanned += add->rows_scanned;
+	dst->wait_time += add->wait_time;
+}
+
 /* aggregate instrumentation information */
 void
 InstrAggNode(Instrumentation *dst, Instrumentation *add)
@@ -193,6 +202,31 @@ InstrAggNode(Instrumentation *dst, Instrumentation *add)
 
 	if (dst->need_walusage)
 		WalUsageAdd(&dst->walusage, &add->walusage);
+
+	/* Add Yugabyte specific instrumentation information */
+	InstrAggYbPgRpcStats(&dst->yb_instr.tbl_reads, &add->yb_instr.tbl_reads);
+	InstrAggYbPgRpcStats(&dst->yb_instr.index_reads, &add->yb_instr.index_reads);
+	InstrAggYbPgRpcStats(&dst->yb_instr.catalog_reads, &add->yb_instr.catalog_reads);
+	InstrAggYbPgRpcStats(&dst->yb_instr.write_flushes, &add->yb_instr.write_flushes);
+	dst->yb_instr.tbl_writes += add->yb_instr.tbl_writes;
+	dst->yb_instr.index_writes += add->yb_instr.index_writes;
+	dst->yb_instr.catalog_writes += add->yb_instr.catalog_writes;
+
+	/* Aggregate metrics */
+	if (add->yb_instr.storage_metrics_version == 0)
+		return;
+	dst->yb_instr.storage_metrics_version += add->yb_instr.storage_metrics_version;
+	for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; i++)
+		dst->yb_instr.storage_gauge_metrics[i] += add->yb_instr.storage_gauge_metrics[i];
+	for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; i++)
+		dst->yb_instr.storage_counter_metrics[i] += add->yb_instr.storage_counter_metrics[i];
+	for (int i = 0; i < YB_STORAGE_EVENT_COUNT; i++)
+	{
+		YbPgEventMetric *dst_event = &dst->yb_instr.storage_event_metrics[i];
+		YbPgEventMetric *add_event = &add->yb_instr.storage_event_metrics[i];
+		dst_event->sum += add_event->sum;
+		dst_event->count += add_event->count;
+	}
 }
 
 /* note current values during parallel executor startup */

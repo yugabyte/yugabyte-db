@@ -2,6 +2,7 @@ package ybactlstate
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
@@ -96,12 +97,16 @@ func (s *State) TransitionStatus(next status) error {
 	return nil
 }
 
+// Returns sorted list of all schema version defined in migrations map (except default)
 func allSchemaSlice() []int {
-	ret := make([]int, getSchemaVersion())
-	start := 1
-	for i := range getSchemaVersion() {
-		ret[i] = start
-		start++
+	migrations := getMigrations()
+	var schemas []int
+	for key := range migrations {
+		if key == defaultMigratorValue {
+			continue
+		}
+		schemas = append(schemas, key)
 	}
-	return ret
+	sort.Ints(schemas)
+	return schemas
 }

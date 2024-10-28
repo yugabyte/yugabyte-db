@@ -541,8 +541,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::atomic<yb::server::RpcAndWebServerBase*> cql_server_{nullptr};
   std::atomic<yb::server::YCQLStatementStatsProvider*> cql_stmt_provider_{nullptr};
 
-  std::unique_ptr<stateful_service::PgCronLeaderService> pg_cron_leader_service_;
-
   // Lock Manager to maintain table/object locking activity in memory.
   std::unique_ptr<tablet::TSLocalLockManager> ts_local_lock_manager_;
 

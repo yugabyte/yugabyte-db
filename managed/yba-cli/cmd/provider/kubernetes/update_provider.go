@@ -19,9 +19,12 @@ import (
 
 // updateK8sProviderCmd represents the provider command
 var updateK8sProviderCmd = &cobra.Command{
-	Use:   "update",
-	Short: "Update a Kubernetes YugabyteDB Anywhere provider",
-	Long:  "Update a Kubernetes provider in YugabyteDB Anywhere",
+	Use:     "update",
+	Aliases: []string{"edit"},
+	Short:   "Update a Kubernetes YugabyteDB Anywhere provider",
+	Long:    "Update a Kubernetes provider in YugabyteDB Anywhere",
+	Example: `yba provider kuberenetes update --name <provider-name> \
+	--image-registry <image-registry>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -203,7 +206,7 @@ var updateK8sProviderCmd = &cobra.Command{
 		provider.SetRegions(providerRegions)
 		// End of Updating Regions
 
-		rUpdate, response, err := authAPI.EditProvider(provider.GetUuid()).
+		rTask, response, err := authAPI.EditProvider(provider.GetUuid()).
 			EditProviderRequest(provider).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
@@ -214,11 +217,8 @@ var updateK8sProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		providerUUID := rUpdate.GetResourceUUID()
-		taskUUID := rUpdate.GetTaskUUID()
-
 		providerutil.WaitForUpdateProviderTask(authAPI,
-			providerName, providerUUID, providerCode, taskUUID)
+			providerName, rTask, providerCode)
 	},
 }
 

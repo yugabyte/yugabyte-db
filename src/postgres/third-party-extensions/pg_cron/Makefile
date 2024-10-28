@@ -16,7 +16,7 @@ ifeq ($(CC),gcc)
 else
     PG_CPPFLAGS = -std=c99 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-implicit-fallthrough -Wno-unused-function -Iinclude -I$(libpq_srcdir)
 endif
-SHLIB_LINK = $(libpq) -L$(YB_BUILD_ROOT)/lib -lyb_pggate $(filter -lintl,$(LIBS))
+SHLIB_LINK = $(libpq) -L$(YB_BUILD_ROOT)/lib -lyb_pggate -lyb_pggate_util $(filter -lintl,$(LIBS))
 EXTRA_CLEAN += $(addprefix src/,*.gcno *.gcda) # clean up after profiling runs
 
 ifdef USE_PGXS

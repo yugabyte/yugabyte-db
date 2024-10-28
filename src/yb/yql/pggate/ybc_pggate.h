@@ -123,6 +123,8 @@ YBCStatus YBCFetchFromUrl(const char *url, char **buf);
 
 // Is this node acting as the pg_cron leader?
 bool YBCIsCronLeader();
+YBCStatus YBCSetCronLastMinute(int64_t last_minute);
+YBCStatus YBCGetCronLastMinute(int64_t* last_minute);
 
 //--------------------------------------------------------------------------------------------------
 // YB Bitmap Scan Operations
@@ -566,12 +568,12 @@ YBCStatus YBCPgFlushBufferedOperations();
 
 YBCStatus YBCPgNewSample(const YBCPgOid database_oid,
                          const YBCPgOid table_relfilenode_oid,
-                         int targrows,
                          bool is_region_local,
+                         int targrows,
+                         double rstate_w,
+                         uint64_t rand_state_s0,
+                         uint64_t rand_state_s1,
                          YBCPgStatement *handle);
-
-YBCStatus YBCPgInitRandomState(
-    YBCPgStatement handle, double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1);
 
 YBCStatus YBCPgSampleNextBlock(YBCPgStatement handle, bool *has_more);
 
@@ -911,6 +913,8 @@ void YBCStoreTServerAshSamples(
 YBCStatus YBCLocalTablets(YBCPgTabletsDescriptor** tablets, size_t* count);
 
 YBCStatus YBCServersMetrics(YBCPgServerMetricsInfo** serverMetricsInfo, size_t* count);
+
+YBCStatus YBCDatabaseClones(YBCPgDatabaseCloneInfo** databaseClones, size_t* count);
 
 uint64_t YBCPgGetCurrentReadTimePoint();
 YBCStatus YBCRestoreReadTimePoint(uint64_t read_time_point_handle);

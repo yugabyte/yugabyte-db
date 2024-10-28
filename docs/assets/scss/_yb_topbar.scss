@@ -1,0 +1,152 @@
+body > header:has(.info-topbar) + .container-fluid .td-main {
+  transition: padding-top 350ms ease;
+
+  aside.td-sidebar{
+    transition: top 350ms ease, max-height 350ms ease;
+  }
+}
+
+body > header:not(:has(.info-topbar.closed)) + .container-fluid .td-main {
+  @media (min-width: 992px) {
+    padding-top: 50px;
+
+    aside.td-sidebar {
+      top: 184px;
+      max-height: calc(100vh - 184px);
+    }
+  }
+
+  @media (min-width: 1550px) {
+    padding-top: 80px;
+
+    aside.td-sidebar {
+      top: 214px;
+      max-height: calc(100vh - 214px);
+    }
+  }
+}
+
+.info-topbar {
+  position: relative;
+  background: #000;
+  margin: -16px -16px 16px;
+  overflow: hidden;
+  height: 80px;
+  transition: all 350ms ease;
+
+  &.closed {
+    margin-top: -96px;
+  }
+
+  @media (max-width: 1549px) {
+    height: 50px;
+
+    &.closed {
+      margin-top: -66px;
+    }
+  }
+
+  @media (max-width: 991px) {
+    display: none;
+  }
+
+  .loop-animation {
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    display: flex;
+    height: 80px;
+
+    @media (max-width: 1549px) {
+      height: 50px;
+    }
+
+    .loop-txt {
+      z-index: 2;
+      background: #ff5f3b;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 16px;
+      margin: 0;
+      display: flex;
+      position: relative;
+      height: 80px;
+
+      @media (max-width: 1549px) {
+        height: 50px;
+      }
+
+      &:after,
+      &:before {
+        content: "";
+        width: 80px;
+        height: 80px;
+        display: block;
+        background-image: url(/images/topbar/yugabytedb-launch-violator-orange.svg);
+        background-size: auto 100%;
+        position: absolute;
+        top: 0;
+        @media (max-width: 1549px) {
+          height: 50px;
+        }
+      }
+
+      &:before {
+        background-position: top left;
+        left: -80px;
+      }
+
+      &:after {
+        background-position: top right;
+        right: -80px;
+      }
+    }
+
+    video {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      z-index: 1;
+    }
+  }
+
+  .info-topbar-close {
+    width: 20px;
+    height: 20px;
+    position: absolute;
+    right: 50px;
+    cursor: pointer;
+    opacity: 0;
+    z-index: 3;
+    transition: .25s;
+    top: 28px;
+
+    &:after,
+    &:before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      border-left: 1px solid #fff;
+      transform: rotate(45deg);
+      width: 1px;
+      height: 100%;
+    }
+
+    &:after {
+      transform: rotate(-45deg);
+    }
+
+    @media (max-width: 1549px) {
+      top: 14px;
+    }
+  }
+
+  &:hover {
+    .info-topbar-close {
+      opacity: 1;
+    }
+  }
+}

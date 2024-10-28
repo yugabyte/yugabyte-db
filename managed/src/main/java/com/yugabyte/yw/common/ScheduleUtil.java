@@ -18,6 +18,7 @@ import java.util.Date;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
@@ -103,10 +104,10 @@ public class ScheduleUtil {
     }
 
     // check if calculated increment backup time is after current time
-    do {
+    while (Util.isTimeExpired(nextIncrementScheduleTaskTime, currentTime)) {
       nextIncrementScheduleTaskTime =
           new Date(nextIncrementScheduleTaskTime.getTime() + incrementFrequency);
-    } while (currentTime.after(nextIncrementScheduleTaskTime));
+    }
 
     return nextIncrementScheduleTaskTime;
   }
@@ -159,7 +160,7 @@ public class ScheduleUtil {
    *
    * @param universeUUID
    * @param scheduleParams
-   * @param scheduleToBeDeleted
+   * @param deleteScheduleUUID
    * @param bufferHistoryRetention
    * @return 0 if no change required to the retention value.
    *     <li>Duration of -1 if required to unset after delete if there are no PIT backup schedules
@@ -169,18 +170,20 @@ public class ScheduleUtil {
   public static Duration getFinalHistoryRetentionUniverseForPITRestore(
       UUID universeUUID,
       BackupRequestParams scheduleParams,
-      boolean scheduleToBeDeleted,
+      @Nullable UUID deleteScheduleUUID,
       Duration bufferHistoryRetention) {
     Duration currentMaxFrequency =
         Schedule.getMaxBackupIntervalInUniverseForPITRestore(
-            universeUUID, false /* includeIntermediate */);
+            universeUUID,
+            false /* includeIntermediate */,
+            deleteScheduleUUID /* excludeScheduleUUID */);
     Duration scheduleFrequency = ScheduleUtil.getBackupIntervalForPITRestore(scheduleParams);
 
     if (currentMaxFrequency.compareTo(scheduleFrequency) > 0) {
       // If no change required return 0
       return Duration.ofSeconds(0);
     }
-    if (scheduleToBeDeleted) {
+    if (deleteScheduleUUID != null) {
       // If no PIT based schedules left, return default retention
       // Else return current max + buffer time
       return currentMaxFrequency.isZero()

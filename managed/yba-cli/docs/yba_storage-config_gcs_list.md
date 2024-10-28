@@ -10,6 +10,12 @@ List GCS YugabyteDB Anywhere storage-configurations
 yba storage-config gcs list [flags]
 ```
 
+### Examples
+
+```
+yba storage-config gcs list
+```
+
 ### Options
 
 ```
