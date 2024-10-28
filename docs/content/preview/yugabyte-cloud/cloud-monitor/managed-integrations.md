@@ -163,7 +163,7 @@ To create an export configuration, do the following:
 The Dynatrace integration requires the following:
 
 - Publically-accessible endpoint URL of your Dynatrace instance. The endpoint URL is the URL of your Dynatrace instance.
-- Dynatrace Access Token. The access token needs to have ingest metrics, ingest logs, ingest OpenTelemetry traces, and read API tokens scope in Manage > Access Tokens.
+- [Dynatrace Access Token](https://docs.dynatrace.com/docs/manage/identity-access-management/access-tokens-and-oauth-clients/access-tokens#create-api-token). The access token needs to have ingest metrics, ingest logs, ingest OpenTelemetry traces, and read API tokens [scope](https://docs.dynatrace.com/docs/manage/identity-access-management/access-tokens-and-oauth-clients/access-tokens#scopes).
 
 To create an export configuration, do the following:
 
