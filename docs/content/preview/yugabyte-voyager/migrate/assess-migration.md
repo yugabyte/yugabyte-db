@@ -35,7 +35,7 @@ Voyager then generates a report that includes:
 
 - The recommendations are based on testing using a [RF3](../../../architecture/docdb-replication/replication/#replication-factor) YugabyteDB cluster on instance types with 4GiB memory per core and running v2024.1.
 
-- For unsupported query construct detection, ensure [pg_stat_statements extension](../../explore/ysql-language-features/pg-extensions/extension-pgstatstatements/) is properly installed and enabled on source.
+- For unsupported query construct detection, ensure [pg_stat_statements extension](../../../explore/ysql-language-features/pg-extensions/extension-pgstatstatements/) is properly installed and enabled on source.
 
 - To disable this feature, set the environment variable, `REPORT_UNSUPPORTED_QUERY_CONSTRUCTS=false`.
 

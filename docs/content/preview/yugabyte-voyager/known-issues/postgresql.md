@@ -1046,7 +1046,7 @@ CREATE TABLE public.locations (
 
 **GitHub**: [Issue 1731](https://github.com/yugabyte/yb-voyager/issues/1731)
 
-**Description**: For live migration, if your source datatabase has any of these datatypes on the columns - `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, or `CIRCLE`, it will be skipped during the migration.
+**Description**: For live migration, if your source database has any of these datatypes on the columns - `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, or `CIRCLE`, it will be skipped during the migration.
 
 For live migration with fall-forward/fall-back, if your source database has any of these datatypes on the columns - `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `TSVECTOR`, `TSQUERY`, `CIRCLE`, or `ARRAY OF ENUMS`, it will be skipped during the migration.
 
