@@ -54,7 +54,7 @@ CREATE TABLE users (
 );
 ```
 
-Let us add some specific data to this data so that we can corelate to it during analysis.
+Let us add some specific data to this table so that we can corelate to it during analysis.
 
 ```sql
 -- set seed for random to be repeatable
@@ -79,8 +79,6 @@ SELECT
     END AS name
 FROM generate_series(1, 10000) AS id;
 ```
-
-The above statement inserts 40% NULL values and
 
 Run analyze to gather statistics on the column values of the table as:
 
