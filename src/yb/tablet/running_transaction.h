@@ -150,6 +150,10 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   const TabletId& status_tablet() const;
 
+  void SetTxnLoadedWithCDC();
+
+  bool IsTxnLoadedWithCDC() const;
+
  private:
   static boost::optional<TransactionStatus> GetStatusAt(
       HybridTime time,
@@ -211,12 +215,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   std::vector<TransactionStatusCallback> abort_waiters_;
 
   TransactionApplyData apply_data_;
-  // Applied transactions loaded during tablet bootstrap do not have an apply OpID.
-  // However, these transactions may still be needed by CDC (if enabled). To prevent
-  // unintended cleanup of intents for such transactions when CDC is active, the default
-  // is set to OpId::Max. Once CDC stream these txns, their intents will be cleaned up by the intent
-  // SST file cleanup codepath.
-  OpId apply_record_op_id_ = OpId::Max();
+  OpId apply_record_op_id_;
   docdb::ApplyTransactionState apply_state_;
   // Atomic that reflects active state, required to provide concurrent access to ProcessingApply.
   std::atomic<bool> processing_apply_{false};
@@ -231,6 +230,10 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   // Number of outstanding status request rpcs.
   std::atomic<int64_t> outstanding_status_requests_{0};
+
+  // Identification marker for transactions that are loaded on tablet bootstrap with CDC
+  // enbled.
+  bool is_txn_loaded_with_cdc_ = false;
 };
 
 Status MakeAbortedStatus(const TransactionId& id);
