@@ -41,7 +41,7 @@ PROMETHEUS_VERSION ?= 2.53.1
 
 # https://github.com/yugabyte/yba-pg-build/releases/tag/2023-10-10-23-40
 POSTGRES_VERSION ?= 14.13
-PG_BINARY_NAME ?= postgres-linux-${POSTGRES_VERSION}.tar.gz
+PG_BINARY_NAME ?= postgres-linux-${POSTGRES_VERSION}-centos7.tar.gz
 PG_BINARY_URL := https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/yba-pg-build/${PG_BINARY_NAME}
 
 # https://adoptium.net/temurin/releases/
