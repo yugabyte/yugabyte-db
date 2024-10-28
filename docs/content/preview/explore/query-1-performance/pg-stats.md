@@ -70,10 +70,12 @@ SELECT
         -- 60% non-null names with skewed distribution
         ELSE (
             CASE
-                -- 60% concentration of 2 names
-                WHEN random() < 0.6 THEN (ARRAY['John', ''])[floor(random() * 4 + 1)::int]
-                -- Remaining 16 names for 40% of names
-                ELSE (ARRAY['Sam', 'Kim', 'Pat', 'Lee', 'Morgan', 'Taylor', 'Jordan', 'Casey', 'Jamie'])[floor(random() * 9 + 1)::int]
+                -- 30% concentration of empty string
+                WHEN random() < 0.5 THEN ''
+                -- 9 names for the remaining 30%
+                ELSE (ARRAY['Sam', 'Kim', 'Pat', 'Lee', 'Morgan',
+                            'Taylor', 'Jordan', 'Casey', 'Jamie']
+                )[floor(random() * 9 + 1)::int]
             END
         )
     END AS name
@@ -105,24 +107,24 @@ SELECT attname, null_frac, n_distinct, most_common_vals, most_common_freqs
 You should get an output similar to:
 
 ```caddyfile{.nocopy}
--[ RECORD 1 ]-----+-------------------------------------------------------------------------------
+-[ RECORD 1 ]-----+------------------------------------------------------------------------
 attname           | name
-null_frac         | 0.5784
-n_distinct        | 11
-most_common_vals  | {"",John,Casey,Jamie,Jordan,Pat,Taylor,Kim,Sam,Morgan,Lee}
-most_common_freqs | {0.0948,0.0903,0.0283,0.0278,0.0273,0.0266,0.0264,0.0256,0.0254,0.0253,0.0238}
+null_frac         | 0.4042
+n_distinct        | 10
+most_common_vals  | {"",Jordan,Jamie,Morgan,Taylor,Kim,Pat,Casey,Sam,Lee}
+most_common_freqs | {0.2963,0.0352,0.0346,0.0342,0.0339,0.0334,0.0333,0.0328,0.0313,0.0308}
 ```
 
 The above output says that,
 
-- **null_frac** shows that the fraction of null values is about 57.8%. (_Remember_, we tried to insert about 60% NULL values)
-- **n_distinct** shows that there are about 11 distinct values in the name column
+- **null_frac** shows that the fraction of null values is about 40%. (_Remember_, we tried to insert about 40% NULL values)
+- **n_distinct** shows that there are about 10 distinct values in the name column
 - **most_common_vals** shows the most commonly occuring values (other than NULL)
-- **most_common_freqs** shows the frequency in which the most common values occur. For example, Empty value occurs at 9.4%, John occurs at 9.0% and so on.
+- **most_common_freqs** shows the frequency in which the most common values occur. For example, Empty value occurs at 29.6%, John occurs at 3.0% and so on.
 
 ## Partial indexes
 
-Now when we try to create an index on the column `name`, the index could be unevenly distributed. This is due to 60% of the dataset consisting of NULL values and 10% consisting of empty values. Only 40% consist valid values. If we know that our queries will not lookup NULL or empty values, we can create partial index as,
+Now when we try to create an index on the column `name`, the index could be unevenly distributed. This is due to 40% of the dataset consisting of NULL values and 30% consisting of empty values. Only 30% consist valid values. If we know that our queries will not lookup NULL or empty values, we can create partial index as,
 
 ```sql
 CREATE INDEX idx_users_name_nonempty
@@ -134,8 +136,8 @@ The above index will have just the valid values and the index will not be skewed
 
 ## Cardinality
 
-Given that there are only 11 distinct values (via **n_distinct**) in the `name` column, on an index with HASH distribution, even if there are more nodes in the cluster, the index will end up being only on a maximum of 11 nodes. This is because each value is hashed to determine the tablet in which it should be stored and there will be only 11 distinct hashes. This is the reason why is not advisable to create indexes on low cardinality columns like Booleans (2), Days of week(7) etc.
+Given that there are only 9 (via **n_distinct**) distinct valid (without empty string) values in the `name` column, on an index with HASH distribution, even if there are more nodes in the cluster, the index will end up being only on a maximum of 9 nodes. This is because each value is hashed to determine the tablet in which it should be stored and there will be only 9 distinct hashes. This is the reason why is not advisable to create indexes on low cardinality columns like Booleans (2), Days of week(7) etc.
 
 ## Skewed data
 
-It is always advisable for your index/table to be reasonably distributed so that all nodes in your cluster handle a reasonably equal share of queries. In the above data set, it is easy to see that each `John` and `Casey` account for 10% of the total data set (via **most_common_vals, most_common_freqs**) and about 25% of the valid values. This means that on an even distribution of queries across all names, about 50% of the queries will be handled maximum of just tablets (the ones that contain `John` and `Casey`). It would be worse if they happen to be on the same tablet.
+It is always advisable for your index/table to be reasonably distributed so that all nodes in your cluster handle a reasonably equal share of queries. In the above data set, it is easy to see that together `NULL` and empty values account for 70% of the total data set (via **most_common_vals, null_frac**). And the valid names constitute only 30% of the dataset. If an index was created will all these values then all queries to the index will be handled only by about 30% of the nodes in the cluster as 70% of data would not be queried against.
