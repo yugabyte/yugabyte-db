@@ -73,12 +73,8 @@ class YBBackupTestColocatedTablesWithTablespaces : public YBBackupTest {
     YBBackupTest::UpdateMiniClusterOptions(options);
     options->replication_factor = 3;
     options->extra_master_flags.emplace_back(
-        "--allowed_preview_flags_csv=ysql_enable_colocated_tables_with_tablespaces");
-    options->extra_master_flags.emplace_back(
         "--ysql_enable_colocated_tables_with_tablespaces=true");
 
-    options->extra_tserver_flags.emplace_back(
-        "--allowed_preview_flags_csv=ysql_enable_colocated_tables_with_tablespaces");
     options->extra_tserver_flags.emplace_back(
         "--ysql_enable_colocated_tables_with_tablespaces=true");
   }

@@ -90,7 +90,7 @@ DEFINE_NON_RUNTIME_uint32(master_ts_ysql_catalog_lease_ms, 10000, // 10s
 TAG_FLAG(master_ts_ysql_catalog_lease_ms, advanced);
 TAG_FLAG(master_ts_ysql_catalog_lease_ms, hidden);
 
-DEFINE_NON_RUNTIME_PREVIEW_bool(
+DEFINE_NON_RUNTIME_bool(
     ysql_enable_colocated_tables_with_tablespaces, false,
     "Enable creation of colocated tables with a specified placement policy via a tablespace."
     "If true, creating a colocated table  will colocate the table on an implicit "
