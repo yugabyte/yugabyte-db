@@ -57,8 +57,6 @@ DEFINE_RUNTIME_int32(cdc_snapshot_batch_size, 250, "Batch size for the snapshot 
 
 DEFINE_RUNTIME_bool(stream_truncate_record, false, "Enable streaming of TRUNCATE record");
 
-DECLARE_int64(cdc_intent_retention_ms);
-
 DEFINE_RUNTIME_bool(
     enable_single_record_update, true,
     "Enable packing updates corresponding to a row in single CDC record");

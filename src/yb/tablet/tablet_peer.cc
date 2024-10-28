@@ -129,7 +129,7 @@ DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
 DECLARE_bool(cdc_immediate_transaction_cleanup);
 
-DECLARE_int64(cdc_intent_retention_ms);
+DECLARE_uint64(cdc_intent_retention_ms);
 
 DECLARE_bool(enable_flush_retryable_requests);
 
