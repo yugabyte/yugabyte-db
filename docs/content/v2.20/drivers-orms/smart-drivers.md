@@ -185,11 +185,11 @@ If no servers are available, the request may return with a failure.
 
 ### Order of node selection for new connections
 
-Consider a cluster with three primary nodes across three zones (zoneA, zoneB, and zoneC); and three read replica nodes in zoneB, zoneC, and zoneD.
+Consider a hypothetical setup where a YugabyteDB cluster has nodes in a single region _region1_ of cloud _cloud1_ with three primary nodes across three zones (_zoneA_, _zoneB_, and _zoneC_); and three read replica nodes across zones _zoneB_, _zoneC_, and _zoneD_.
 
 The following shows how nodes are selected for new connections, depending on the load balance and topology key settings.
 
-Note that the property names use the Java convention, and property names for other smart drivers may be slightly different.
+Note that the property names used below are applicable for the JDBC smart driver. To know these names for a specific language smart driver, refer to its documentation page.
 
 Also, the property `fallback-to-topology-keys-only` is ignored when either the `topology-keys` is empty or when `load-balance` is set to `prefer-primary` or `prefer-rr`.
 
@@ -207,7 +207,7 @@ When `topology-keys` is not specified, nodes are selected as follows.
 
 #### Topology keys
 
-When `topology-keys` is specified as `zoneA:1,zoneB:2`, nodes are selected as follows.
+When `topology-keys` is specified as `cloud1.region1.zoneA:1,cloud1.region1.zoneB:2`, nodes are selected as follows.
 
 {{<tabpane text=true >}}
 {{% tab header="No fallback" lang="fallback-false" %}}

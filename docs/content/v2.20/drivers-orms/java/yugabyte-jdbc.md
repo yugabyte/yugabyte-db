@@ -81,7 +81,7 @@ If you are using [Maven](https://maven.apache.org/guides/development/guide-build
 <dependency>
   <groupId>com.zaxxer</groupId>
   <artifactId>HikariCP</artifactId>
-  <version>4.0.3</version>
+  <version>5.0.1</version>
 </dependency>
 ```
 
@@ -95,7 +95,7 @@ If you are using [Gradle](https://docs.gradle.org/current/samples/sample_buildin
 
 ```java
 implementation 'com.yugabyte:jdbc-yugabytedb:42.7.3-yb-1'
-implementation 'com.zaxxer:HikariCP:4.0.3'
+implementation 'com.zaxxer:HikariCP:5.0.1'
 ```
 
 ### Step 2: Set up the database connection
