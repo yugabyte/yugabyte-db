@@ -1,6 +1,6 @@
 ---
-title: Colocated tables
-headerTitle: Colocated tables
+title: Colocating tables and databases
+headerTitle: Colocating tables
 linkTitle: Colocation
 description: Learn how colocated tables aggregate data into a single tablet.
 menu:
@@ -131,7 +131,7 @@ CREATE TABLE <name> (columns) WITH (colocated = <true|false>)
 
 {{< /warning >}}
 
-To check if a table is colocated or not, you can use the [`\d`](../../api/ysqlsh-meta-commands/#d-s-pattern-patterns) meta-command in [ysqlsh](../../api/ysqlsh). You can also retrieve the same information using the `yb_table_properties` function as follows:
+To check if a table is colocated or not, you can use the [\d](../../api/ysqlsh-meta-commands/#d-s-pattern-patterns) meta-command in [ysqlsh](../../api/ysqlsh/). You can also retrieve the same information using the `yb_table_properties()` function as follows:
 
 ```sql
 select is_colocated from yb_table_properties('table_name'::regclass);
@@ -147,10 +147,10 @@ You should see an output similar to the following:
 
 #### Change table colocation
 
-To remove a single table from a colocation (for example, if it increases beyond a certain size), you can create a copy of the table using `CREATE TABLE AS SELECT` with colocation set to false. Do the following:
+To remove a single table from a colocation (for example, if it increases beyond a certain size), you can create a copy of the table using CREATE TABLE AS SELECT with colocation set to false. Do the following:
 
 1. Rename your colocated table to ensure no further changes modify the table or its contents.
-1. Create a new non-colocated table from the original colocated table using `CREATE TABLE AS SELECT`. You can choose to use the same name as the original table.
+1. Create a new non-colocated table from the original colocated table using CREATE TABLE AS SELECT. You can choose to use the same name as the original table.
 1. Optionally, drop the original colocated table after confirming reads and writes on the new, non-colocated table.
 
 You can use the same process to add a non-colocated table to colocation in a colocated database.
@@ -175,6 +175,7 @@ To view metrics such as table size, use the name of the parent colocation table.
 ### Semantic differences between colocated and non-colocated tables
 
 Concurrent DML and DDL on different tables in the same colocated database will abort the DML. This is not the case for distributed, non-colocated tables.
+
 For a colocated table, a TRUNCATE / DROP operation may abort due to conflicts if another session is holding row-level locks on the table.
 
 ## xCluster and colocation

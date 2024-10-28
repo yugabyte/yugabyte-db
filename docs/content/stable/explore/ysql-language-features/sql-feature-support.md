@@ -1,17 +1,17 @@
 ---
 title: SQL feature support
-linkTitle: SQL feature support
+linkTitle: SQL compatibility
 description: Summary of YugabyteDB's conformance to the SQL standard
-headcontent: YugabyteDB supports most standard SQL features.
+headcontent: YugabyteDB supports most standard SQL features
 menu:
   stable:
     identifier: explore-ysql-language-feature-support
     parent: explore-ysql-language-features
-    weight: 50
+    weight: 1100
 type: docs
 ---
 
-This page highlights the important differences in feature support between YSQL and SQL.
+YugabyteDB is a distributed SQL database that implements many [standard SQL](https://en.wikipedia.org/wiki/SQL) features while introducing some unique capabilities due to its distributed nature. The following provides an overview of SQL features that are fully supported, partially supported, and features that are currently work in progress. Whether you're designing new applications or migrating existing workloads, this guide will help you understand how YugabyteDB's SQL capabilities compare to other SQL-based systems, ensuring smooth adoption and development.
 
 ### Data types
 
@@ -22,7 +22,7 @@ This page highlights the important differences in feature support between YSQL a
 | {{<icon/yes>}} | `BIT`,`BYTES`                                                             |                                                                                            |
 | {{<icon/yes>}} | `BOOLEAN`                                                                 | [Boolean data types](../../../api/ysql/datatypes/type_bool/)                               |
 | {{<icon/yes>}} | `CHAR`, `VARCHAR`, `TEXT`                                                 | [Character data types](../../../api/ysql/datatypes/type_character/)                        |
-| {{<icon/yes>}} | `COLLATE`                                                                 | [Collations](../../ysql-language-features/advanced-features/collations/#root)              |
+| {{<icon/yes>}} | `COLLATE`                                                                 | [Collations](../../ysql-language-features/advanced-features/collations/)                   |
 | {{<icon/yes>}} | `DATE`, `TIME`, `TIMESTAMP`, `INTERVAL`                                   | [Date and time data types](../../../api/ysql/datatypes/type_datetime/)                     |
 | {{<icon/yes>}} | `DEC`, `DECIMAL`, `NUMERIC`                                               | [Fixed point numbers](../../../api/ysql/datatypes/type_numeric/#fixed-point-numbers)       |
 | {{<icon/yes>}} | `ENUM`                                                                    | [Enumerations](../../ysql-language-features/data-types/#enumerations-enum-type)            |
@@ -47,8 +47,8 @@ This page highlights the important differences in feature support between YSQL a
 |   {{<icon/yes>}}   | Altering a column's name          |                                                                                                                                      |
 |   {{<icon/yes>}}   | Altering a column's default value |                                                                                                                                      |
 | {{<icon/partial>}} | Altering a column's data type     |                                                                                                                                      |
-|   {{<icon/yes>}}   | Adding columns                    | [ADD COLUMN](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#add-column-column-name-data-type-constraint-constraints) |
-|   {{<icon/yes>}}   | Removing columns                  | [DROP COLUMN](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#drop-column-column-name-restrict-cascade)               |
+|   {{<icon/yes>}}   | Adding columns                    | [ADD COLUMN](../../../api/ysql/the-sql-language/statements/ddl_alter_table/)                                                         |
+|   {{<icon/yes>}}   | Removing columns                  | [DROP COLUMN](../../../api/ysql/the-sql-language/statements/ddl_alter_table/)                                                        |
 |   {{<icon/yes>}}   | Adding constraints                | [ADD CONSTRAINT](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#add-alter-table-constraint-constraints)              |
 |   {{<icon/yes>}}   | Removing constraints              | [DROP CONSTRAINT](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#drop-constraint-constraint-name-restrict-cascade)   |
 |   {{<icon/no>}}    | Altering indexes                  |                                                                                                                                      |
@@ -66,11 +66,11 @@ This page highlights the important differences in feature support between YSQL a
 
 |                    |                    Feature                    |                                      Documentation                                      |
 | :----------------: | :-------------------------------------------- | :-------------------------------------------------------------------------------------- |
-|   {{<icon/yes>}}   | Check                                         | [Check constraint](../indexes-constraints/other-constraints/#check-constraint)       |
-|   {{<icon/yes>}}   | Unique                                        | [Unique constraint](../indexes-constraints/other-constraints/#unique-constraint)     |
-|   {{<icon/yes>}}   | Not Null                                      | [Not Null constraint](../indexes-constraints/other-constraints/#not-null-constraint) |
+|   {{<icon/yes>}}   | Check                                         | [Check constraint](../data-manipulation/#check-constraint)       |
+|   {{<icon/yes>}}   | Unique                                        | [Unique constraint](../data-manipulation/#unique-constraint)     |
+|   {{<icon/yes>}}   | Not Null                                      | [Not Null constraint](../data-manipulation/#not-null-constraint) |
 |   {{<icon/yes>}}   | Primary Key                                   | [Primary keys](../indexes-constraints/primary-key-ysql/)                             |
-|   {{<icon/yes>}}   | Foreign Key                                   | [Foreign keys](../indexes-constraints/foreign-key-ysql/)                             |
+|   {{<icon/yes>}}   | Foreign Key                                   | [Foreign keys](../data-manipulation/#foreign-key-constraint/)                             |
 | {{<icon/partial>}} | Default Value                                 |                                                                                         |
 | {{<icon/partial>}} | Deferrable Foreign Key constraints            |                                                                                         |
 |   {{<icon/no>}}    | Deferrable Primary Key and Unique constraints |                                                                                         |
@@ -134,7 +134,7 @@ This page highlights the important differences in feature support between YSQL a
 
 |                |                      Component                       |                                      Details                                       |
 | :------------: | :--------------------------------------------------- | :--------------------------------------------------------------------------------- |
-| {{<icon/yes>}} | Stored procedures                                    | [Stored procedures](../stored-procedures/)                                         |
+| {{<icon/yes>}} | Stored procedures                                    | [Stored procedures](../advanced-features/stored-procedures/)                                         |
 | {{<icon/yes>}} | User-defined functions                               | [Functions](../../../api/ysql/user-defined-subprograms-and-anon-blocks/#functions) |
 | {{<icon/yes>}} | Cursors                                              | [Cursors](../advanced-features/cursor/)                                            |
 | {{<icon/yes>}} | Row-level triggers (BEFORE, AFTER, INSTEAD OF)       |                                                                                    |

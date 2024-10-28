@@ -9,7 +9,7 @@ menu:
   stable:
     identifier: pg-extensions
     parent: explore-ysql-language-features
-    weight: 4400
+    weight: 1000
 showRightNav: true
 type: indexpage
 ---
