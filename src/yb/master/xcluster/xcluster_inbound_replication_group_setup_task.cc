@@ -287,8 +287,10 @@ Status XClusterInboundReplicationGroupSetupTask::FirstStep() {
     RETURN_NOT_OK(GetAutoFlagConfigVersionIfCompatible());
   }
 
-  if (automatic_ddl_mode_ && FLAGS_TEST_xcluster_enable_sequence_replication) {
+  if (automatic_ddl_mode_ && FLAGS_TEST_xcluster_enable_sequence_replication &&
+      !is_alter_replication_) {
     // Ensure sequences_data table has been created.
+    // Skip for alter replication as the table should already have been created on initial setup.
     auto local_client = master_.client_future();
     RETURN_NOT_OK(tserver::CreateSequencesDataTable(
         local_client.get(), CoarseMonoClock::now() +
