@@ -155,6 +155,12 @@ int od_reset(od_server_t *server)
 			server->reset_timeout = true;
 	}
 
+	if (server->is_transaction) {
+		od_log(&instance->logger, "reset", server->client,
+			       server, "still in active transaction after reset, closing the backend");
+		goto drop;
+	}
+
 	/* ready */
 	return 1;
 drop:
