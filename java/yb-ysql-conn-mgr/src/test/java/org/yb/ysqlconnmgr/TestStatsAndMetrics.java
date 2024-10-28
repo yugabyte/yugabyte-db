@@ -147,7 +147,9 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
 
     testStatsFields();
 
-    testNumPhysicalConnections("control_connection", "control_connection", 1);
+    // The physical connection is created only for authentication purposes and
+    // closed after it.
+    testNumPhysicalConnections("control_connection", "control_connection", 0);
     testNumLogicalConnections("control_connection", "control_connection", 0);
 
     testNumPhysicalConnections("yugabyte", "yugabyte",
@@ -175,7 +177,9 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
         Thread.sleep(2 * STATS_UPDATE_INTERVAL * 1000);
         testStatsFields();
 
-        testNumPhysicalConnections("control_connection", "control_connection", 1);
+        // The physical connection is created only for authentication purposes and
+        // closed after it.
+        testNumPhysicalConnections("control_connection", "control_connection", 0);
         testNumLogicalConnections("control_connection", "control_connection", 0);
 
         testNumPhysicalConnections("yugabyte", "yugabyte",
