@@ -24,6 +24,7 @@ Currently, you can export data to the following tools:
 - [Sumo Logic](https://www.sumologic.com)
 - [Prometheus](https://prometheus.io/docs/introduction/overview/) {{<tags/feature/tp>}}
 - [VictoriaMetrics](https://docs.victoriametrics.com/) {{<tags/feature/tp>}}
+- [Dynatrace](https://www.dynatrace.com/)
 
 Exporting cluster metrics and logs counts against your data transfer allowance. This may incur additional costs for network transfer, especially for cross-region and internet-based transfers, if usage exceeds your cluster allowance. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
 
@@ -77,25 +78,6 @@ To create an export configuration, do the following:
 1. Enter your Grafana Cloud [Access policy token](#grafana-cloud).
 1. Enter your Grafana Cloud instance ID and zone. Obtain these by navigating to the Grafana Cloud portal, selecting your stack, and on the Grafana tile, clicking **Details**. They are displayed under **Instance Details**.
 1. Optionally, click **Download** to download the Grafana Cloud dashboard template. You can [import this JSON format template](https://grafana.com/docs/grafana-cloud/visualizations/dashboards/manage-dashboards/#export-and-import-dashboards) into your Grafana account and use it as a starting point for visualizing your cluster data in Grafana. The dashboard is also available from the [Grafana Dashboards](https://grafana.com/grafana/dashboards/19887-yugabytedb-managed-clusters/) page.
-1. Click **Test Configuration** to make sure your connection is working.
-1. Click **Create Configuration**.
-
-  {{% /tab %}}
-
-  {{% tab header="Sumo Logic" lang="sumo" %}}
-
-The Sumo Logic integration requires the following:
-
-- Create an [access ID and access key](https://help.sumologic.com/docs/manage/security/access-keys/) on the **Preferences** page under your profile name.
-- [Installation token](https://help.sumologic.com/docs/manage/security/installation-tokens/). These are available under **Administration > Security > Installation Tokens**.
-- To use the dashboard template, [install the YugabyteDB app](https://help.sumologic.com/docs/get-started/apps-integrations/) (coming soon) in your Sumo Logic account.
-
-To create an export configuration, do the following:
-
-1. On the **Integrations** page, click **Configure** for the Sumo Logic provider or, if a configuration is already available, **Add Configuration**.
-1. Enter a name for the configuration.
-1. Enter your installation token, access ID, and access key.
-1. Optionally, click **Download** to download the Sumo Logic dashboard template. After you install the [YugabyteDB app](https://help.sumologic.com/docs/get-started/apps-integrations/) (coming soon) in your Sumo Logic account, you can import this JSON format template and use it as a starting point for visualizing your cluster data.
 1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
 
@@ -172,6 +154,25 @@ To create an export configuration, do the following:
     http://<victoria-metrics-endpoint-host-address>/opentelemetry
     ```
 
+1. Click **Create Configuration**.
+
+  {{% /tab %}}
+
+  {{% tab header="Dynatrace" lang="dyna" %}}
+
+The Dynatrace integration requires the following:
+
+- Publically-accessible endpoint URL of your Dynatrace instance. The endpoint URL is the URL of your Dynatrace instance.
+- Dynatrace Access Token. The access token needs to have ingest metrics, ingest logs, ingest OpenTelemetry traces, and read API tokens scope in Manage > Access Tokens.
+
+To create an export configuration, do the following:
+
+1. On the **Integrations** page, click **Configure** for the Dynatrace provider or, if a configuration is already available, **Add Configuration**.
+1. Enter a name for the configuration.
+1. Enter the Dynatrace Endpoint URL.
+1. Enter your Dynatrace Access Token.
+1. Optionally, click **Download** to download the Dynatrace dashboard template. You can import this template in your Dynatrace account and use it as a starting point for visualizing your cluster data.
+1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
 
   {{% /tab %}}
