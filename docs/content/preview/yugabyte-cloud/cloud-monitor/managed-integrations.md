@@ -37,6 +37,7 @@ Currently, you can export data to the following tools.
 | [Prometheus](https://prometheus.io/docs/introduction/overview/) {{<tags/feature/tp>}} | | Yes |
 | [VictoriaMetrics](https://docs.victoriametrics.com/) {{<tags/feature/tp>}} | | Yes |
 | [Google Cloud Storage](https://cloud.google.com/storage) (GCS) | Database audit logs | |
+| [Dynatrace](https://www.dynatrace.com) | | Yes |
 
 ## Configure integrations
 
@@ -199,6 +200,25 @@ To create an export configuration, do the following:
 1. On the **Integrations** page, click **Configure** for the **Google Cloud Storage** integration or, if a configuration is already available, **Add Configuration**.
 1. Enter a name for the configuration.
 1. Upload the JSON key file.
+1. Click **Test Configuration** to make sure your connection is working.
+1. Click **Create Configuration**.
+
+  {{% /tab %}}
+
+  {{% tab header="Dynatrace" lang="dyna" %}}
+
+The Dynatrace integration requires the following:
+
+- Publically-accessible endpoint URL of your Dynatrace instance. The endpoint URL is the URL of your Dynatrace instance.
+- [Dynatrace Access Token](https://docs.dynatrace.com/docs/manage/identity-access-management/access-tokens-and-oauth-clients/access-tokens#create-api-token). The access token needs to have ingest metrics, ingest logs, ingest OpenTelemetry traces, and read API tokens [scope](https://docs.dynatrace.com/docs/manage/identity-access-management/access-tokens-and-oauth-clients/access-tokens#scopes).
+
+To create an export configuration, do the following:
+
+1. On the **Integrations** page, click **Configure** for the Dynatrace provider or, if a configuration is already available, **Add Configuration**.
+1. Enter a name for the configuration.
+1. Enter the Dynatrace Endpoint URL.
+1. Enter your Dynatrace Access Token.
+1. Optionally, click **Download** to download the Dynatrace dashboard template. You can import this template in your Dynatrace account and use it as a starting point for visualizing your cluster data.
 1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
 
