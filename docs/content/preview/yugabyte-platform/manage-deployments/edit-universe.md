@@ -50,7 +50,7 @@ To change the number of nodes of universes created with an on-premises cloud pro
 
 ## Smart resize
 
-Normally when resizing a universe, YugabyteDB moves the data from the old nodes to the new nodes. However, if the universe is deployed on AWS, GCP, or Azure using a cloud provider configuration, you can change the instance type and increase the volume size without migrating the data. This is referred to as smart resize, and can be significantly faster than a full copy of the data.
+Normally when resizing a universe, YugabyteDB moves the data from the old nodes to the new nodes. However, if the universe is deployed on AWS, GCP, or Azure using a [cloud provider configuration](../../configure-yugabyte-platform/aws/), you can change the instance type and increase the volume size without migrating the data. This is referred to as smart resize, and can be significantly faster than a full copy of the data.
 
 Smart resize is available for the following operations:
 
