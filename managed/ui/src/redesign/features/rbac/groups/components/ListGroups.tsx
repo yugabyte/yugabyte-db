@@ -265,7 +265,7 @@ const ListGroups = () => {
                 setCurrentGroup(null);
                 setCurrentPage(Pages.CREATE_GROUP);
               }}
-              data-testid={`rbac-resource-create-role`}
+              data-testid={`create-group-button`}
             >
               {t('createGroup')}
             </YBButton>

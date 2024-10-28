@@ -1925,7 +1925,7 @@
           "search": "Search by user email",
           "table": {
             "email": "Username/Email",
-            "role": "Role",
+            "role": "Roles as of last login",
             "moreRoles": "+ {{count}} More",
             "connectOnly": "Connect Only (Default)",
             "createdAt": "Created At",

@@ -28,7 +28,7 @@ import {
 } from '../../../components';
 import OIDCMetadataModal from '../../../../components/users/UserAuth/OIDCMetadataModal';
 import { DisableAuthProviderModal } from '../DisableAuthProvider';
-import { YBErrorIndicator, YBLoadingCircleIcon } from '../../../../components/common/indicators';
+import { YBLoadingCircleIcon } from '../../../../components/common/indicators';
 import { setShowJWTTokenInfo, setSSO } from '../../../../config';
 import { isRbacEnabled } from '../../rbac/common/RbacUtils';
 import { RbacValidator } from '../../rbac/common/RbacApiPermValidator';
@@ -128,7 +128,9 @@ const useStyles = makeStyles((theme) => ({
     marginLeft: '-12px'
   },
   mapGroupRoles: {
-    marginBottom: '16px'
+    marginBottom: '16px',
+    display: 'flex',
+    flexDirection: 'column'
   }
 }));
 
@@ -183,6 +185,7 @@ export const OIDCAuthNew = () => {
     watch,
     getValues,
     handleSubmit,
+    clearErrors,
     formState: { isDirty }
   } = useForm<OIDCFormProps>({
     defaultValues: {
@@ -219,7 +222,7 @@ export const OIDCAuthNew = () => {
 
   const queryClient = useQueryClient();
 
-  const { isLoading, isError } = useQuery(
+  const { isLoading } = useQuery(
     [OIDC_RUNTIME_CONFIGS_QUERY_KEY],
     () => api.fetchRunTimeConfigs(true),
     {
@@ -261,13 +264,20 @@ export const OIDCAuthNew = () => {
         );
       }
     });
+    if (promiseArr.length > 0) {
+      promiseArr.push(
+        setRunTimeConfig({
+          key: `${OIDC_PATH}.type`,
+          value: 'OIDC'
+        })
+      );
+    }
     return promiseArr;
   };
 
   const enableRoleMapping = watch('oidc_enable_auto_create_users');
 
   if (isLoading) return <YBLoadingCircleIcon />;
-  if (isError) return <YBErrorIndicator />;
 
   const UserDefaultRole = [
     {
@@ -506,6 +516,7 @@ export const OIDCAuthNew = () => {
             variant="primary"
             size="large"
             onClick={() => {
+              clearErrors();
               queryClient.invalidateQueries(OIDC_RUNTIME_CONFIGS_QUERY_KEY);
             }}
             data-testid="cancel"
@@ -540,7 +551,7 @@ export const OIDCAuthNew = () => {
             toggleMetadataModal(false);
           }}
           onSubmit={(value: string) => {
-            setValue('oidcProviderMetadata', value);
+            setValue('oidcProviderMetadata', value, { shouldDirty: true });
             toggleMetadataModal(false);
           }}
         ></OIDCMetadataModal>
