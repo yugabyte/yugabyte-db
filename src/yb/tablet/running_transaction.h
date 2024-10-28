@@ -150,6 +150,10 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   const TabletId& status_tablet() const;
 
+  void SetTxnLoadedWithCDC();
+
+  bool IsTxnLoadedWithCDC() const;
+
  private:
   static boost::optional<TransactionStatus> GetStatusAt(
       HybridTime time,
@@ -226,6 +230,10 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   // Number of outstanding status request rpcs.
   std::atomic<int64_t> outstanding_status_requests_{0};
+
+  // Identification marker for transactions that are loaded on tablet bootstrap with CDC
+  // enbled.
+  bool is_txn_loaded_with_cdc_ = false;
 };
 
 Status MakeAbortedStatus(const TransactionId& id);

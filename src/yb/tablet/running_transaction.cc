@@ -651,5 +651,13 @@ void RunningTransaction::UpdateAbortCheckHT(HybridTime now, UpdateAbortCheckHTMo
   abort_check_ht_ = now.AddDelta(1ms * delta_ms);
 }
 
+void RunningTransaction::SetTxnLoadedWithCDC() {
+  is_txn_loaded_with_cdc_ = true;
+}
+
+bool RunningTransaction::IsTxnLoadedWithCDC() const {
+  return is_txn_loaded_with_cdc_;
+}
+
 } // namespace tablet
 } // namespace yb
