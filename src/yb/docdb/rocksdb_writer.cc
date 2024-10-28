@@ -675,6 +675,14 @@ Status FrontierSchemaVersionUpdater::UpdateSchemaVersion(Slice key, Slice value)
   if (VERIFY_RESULT(decoder.DecodeCotableId(&cotable_id))) {
     schema_version_colocation_id_ = 0;
     if (cotable_id != schema_version_table_) {
+      Status s = schema_packing_provider_->CheckCotablePacking(
+          cotable_id, schema_version, HybridTime::kMax);
+      if (PREDICT_FALSE(!s.ok())) {
+        LOG_WITH_FUNC(DFATAL)
+            << Format("Check cotable packing for cotable $0 with schema version $1 failed: $2",
+                      cotable_id, schema_version, s);
+        return s;
+      }
       FlushSchemaVersion();
       schema_version_table_ = cotable_id;
     }
@@ -682,6 +690,14 @@ Status FrontierSchemaVersionUpdater::UpdateSchemaVersion(Slice key, Slice value)
     ColocationId colocation_id = 0;
     if (VERIFY_RESULT(decoder.DecodeColocationId(&colocation_id))) {
       if (colocation_id != schema_version_colocation_id_) {
+        Status s = schema_packing_provider_->CheckColocationPacking(
+            colocation_id, schema_version, HybridTime::kMax);
+        if (PREDICT_FALSE(!s.ok())) {
+          LOG_WITH_FUNC(DFATAL)
+            << Format("Check colocation packing for colocation $0 with schema version $1"
+                      "failed: $2",
+                      colocation_id, schema_version, s);
+        }
         FlushSchemaVersion();
         cotable_id = VERIFY_RESULT(schema_packing_provider_->ColocationPacking(
             colocation_id, kLatestSchemaVersion, HybridTime::kMax)).cotable_id;

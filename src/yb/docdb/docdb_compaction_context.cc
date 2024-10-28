@@ -154,8 +154,7 @@ class PackedRowData {
 
   // Handle packed row that was forwarded to underlying feed w/o changes.
   Status ProcessForwardedPackedRow(Slice value) {
-    UsedSchemaVersion(VERIFY_RESULT(ParseValueHeader(&value)).second);
-    return Status::OK();
+    return UsedSchemaVersion(VERIFY_RESULT(ParseValueHeader(&value)).second);
   }
 
   Status ProcessPackedRow(
@@ -169,7 +168,7 @@ class PackedRowData {
         "Double packed rows: $0, $1", key_.AsSlice().ToDebugHexString(),
         internal_key.ToDebugHexString()));
 
-    UsedSchemaVersion(new_packing_.schema_version);
+    RETURN_NOT_OK(UsedSchemaVersion(new_packing_.schema_version));
 
     InitKey(internal_key, doc_key_size, new_doc_key_serial);
     control_fields_size_ = control_fields_size;
@@ -190,7 +189,7 @@ class PackedRowData {
       const Slice& internal_key, size_t doc_key_size,
       const EncodedDocHybridTime& encoded_doc_ht,
       size_t new_doc_key_serial) {
-    UsedSchemaVersion(new_packing_.schema_version);
+    RETURN_NOT_OK(UsedSchemaVersion(new_packing_.schema_version));
 
     InitKey(internal_key, doc_key_size, new_doc_key_serial);
     control_fields_size_ = 0;
@@ -412,7 +411,15 @@ class PackedRowData {
     return Status::OK();
   }
 
-  void UsedSchemaVersion(SchemaVersion version) {
+  Status UsedSchemaVersion(SchemaVersion version) {
+    Status s = schema_packing_provider_->CheckCotablePacking(
+        new_packing_.cotable_id, version, HybridTime::kMax);
+    if (PREDICT_FALSE(!s.ok())) {
+      LOG_WITH_FUNC(DFATAL)
+          << Format("Check cotable packing for cotable $0 with schema version $1 failed: $2",
+                    new_packing_.cotable_id, version, s);
+      return s;
+    }
     if (used_schema_versions_it_ == used_schema_versions_.end()) {
       used_schema_versions_it_ = used_schema_versions_.emplace(
           new_packing_.cotable_id, std::make_pair(version, version)).first;
@@ -424,6 +431,7 @@ class PackedRowData {
     }
     old_packing_.schema_version = kLatestSchemaVersion;
     packer_.reset();
+    return Status::OK();
   }
 
   // Updates current coprefix. Coprefix is located at start of the key and identifies cotable or

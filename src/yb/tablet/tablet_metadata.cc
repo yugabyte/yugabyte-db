@@ -101,6 +101,10 @@ DEFINE_NON_RUNTIME_bool(lazily_flush_superblock, true,
     "Flushes the superblock lazily on metadata update. Only used for colocated table creation "
     "currently.");
 
+DEFINE_RUNTIME_bool(enable_schema_version_check, yb::kIsDebug,
+    "Whether to check existence of given schema version in CheckCotablePacking and "
+    "CheckColocationPacking. If it's off, always return Status::OK().");
+
 using std::string;
 
 using strings::Substitute;
@@ -1916,6 +1920,30 @@ Result<docdb::CompactionSchemaInfo> RaftGroupMetadata::ColocationPacking(
       << "Colocation id mismatch: " << colocation_id << " vs "
       << table_info->schema().colocation_id();
   return TableInfo::Packing(table_info, schema_version, history_cutoff);
+}
+
+Status RaftGroupMetadata::CheckCotablePacking(
+    const Uuid& cotable_id, uint32_t schema_version, HybridTime history_cutoff) {
+  if (!FLAGS_enable_schema_version_check) {
+    return Status::OK();
+  }
+  const auto packing = CotablePacking(cotable_id, schema_version, history_cutoff);
+  if (packing.ok() || packing.status().IsNotFound()) {
+    return Status::OK();
+  }
+  return packing.status();
+}
+
+Status RaftGroupMetadata::CheckColocationPacking(
+    ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) {
+  if (!FLAGS_enable_schema_version_check) {
+    return Status::OK();
+  }
+  const auto packing = ColocationPacking(colocation_id, schema_version, history_cutoff);
+  if (packing.ok() || packing.status().IsNotFound()) {
+    return Status::OK();
+  }
+  return packing.status();
 }
 
 std::string RaftGroupMetadata::GetSubRaftGroupWalDir(const RaftGroupId& raft_group_id) const {
