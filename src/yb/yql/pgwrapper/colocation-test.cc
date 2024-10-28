@@ -55,12 +55,8 @@ class ColocatedTablesWithTablespacesTest : public ColocatedDBTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     ColocatedDBTest::UpdateMiniClusterOptions(options);
     options->extra_master_flags.emplace_back(
-        "--allowed_preview_flags_csv=ysql_enable_colocated_tables_with_tablespaces");
-    options->extra_master_flags.emplace_back(
         "--ysql_enable_colocated_tables_with_tablespaces=true");
 
-    options->extra_tserver_flags.emplace_back(
-        "--allowed_preview_flags_csv=ysql_enable_colocated_tables_with_tablespaces");
     options->extra_tserver_flags.emplace_back(
         "--ysql_enable_colocated_tables_with_tablespaces=true");
   }
