@@ -201,6 +201,12 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
     const auto& ts_uuid = replica_it.first;
     const auto& replica = replica_it.second;
 
+    // Fill out leader info even if we are skipping this replica. Useful for under-replication to
+    // know if we have any leader for this tablet, even if outside of our cluster.
+    if (replica.role == PeerRole::LEADER) {
+      tablet_meta.leader_uuid = ts_uuid;
+    }
+
     if (ShouldSkipReplica(replica)) {
       continue;
     }
@@ -214,8 +220,7 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
     // getting the heartbeats from a certain tablet server, but we anticipate that to be a
     // temporary matter. We should monitor error logs for this and see that it never actually
     // becomes a problem!
-    VLOG(3) << "Obtained replica " << replica.ToString() << " for tablet "
-            << tablet_id;
+    VLOG(3) << "Obtained replica " << replica.ToString() << " for tablet " << tablet_id;
     if (per_ts_meta_.find(ts_uuid) == per_ts_meta_.end()) {
       return STATUS_SUBSTITUTE(LeaderNotReadyToServe, "Master leader has not yet received "
           "heartbeat from ts $0, either master just became leader or a network partition.",
@@ -246,7 +251,6 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
 
     // Fill leader info.
     if (replica.role == PeerRole::LEADER) {
-      tablet_meta.leader_uuid = ts_uuid;
       RETURN_NOT_OK(AddLeaderTablet(tablet_id, ts_uuid, replica.fs_data_dir));
     }
 
