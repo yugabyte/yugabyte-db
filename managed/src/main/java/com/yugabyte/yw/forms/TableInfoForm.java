@@ -25,6 +25,7 @@ public class TableInfoForm {
   @ApiModel(description = "Table information response")
   @Builder
   @Jacksonized
+  @ToString
   public static class TableInfoResp {
 
     @ApiModelProperty(value = "Table ID", accessMode = READ_ONLY)
