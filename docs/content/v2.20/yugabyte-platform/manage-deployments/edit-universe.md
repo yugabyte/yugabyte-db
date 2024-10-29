@@ -14,11 +14,11 @@ type: docs
 
 YugabyteDB Anywhere supports both horizontal and vertical scaling of your universe. If your workloads have increased, you can change to more powerful instance types or add nodes to improve latency, throughput, and memory. Likewise, if your cluster is over-scaled, you can reduce nodes to reduce costs.
 
-- For information on changing configuration flags, refer to [Edit configuration flags](../edit-config-flags/).
+-> For information on changing configuration flags, refer to [Edit configuration flags](../edit-config-flags/).
 
-- For information on changing user tags, refer to [Create and edit instance tags](../instance-tags/).
+-> For information on changing user tags, refer to [Create and edit instance tags](../instance-tags/).
 
-- For information on changing Kubernetes overrides, refer to [Edit Kubernetes overrides](../edit-helm-overrides/).
+-> For information on changing Kubernetes overrides, refer to [Edit Kubernetes overrides](../edit-helm-overrides/).
 
 ## Edit a universe
 
@@ -36,7 +36,10 @@ To change the configuration of a universe, do the following:
         - **Regions** - Select any region configured in the provider used to deploy the universe.
         - [Master Placement](../../create-deployments/dedicated-master/).
         - **Total Nodes** and **Availability Zones** - As you add nodes, they are automatically distributed among the availability zones; you can also add, configure, and remove availability zones.
-    - **Instance Configuration** - change instance type and volume size as configured in the provider. In some cases, these operations are available as a [smart resize](#smart-resize).
+    - **Instance Configuration** - change instance type and storage volume size as configured in the provider. In some cases, these operations are available as a [smart resize](#smart-resize).
+
+        For cloud providers, you can also change the storage volume count and type. On AWS, you can additionally change throughput and IOPS.
+
     - [User Tags](../instance-tags/). Changing tags doesn't require any node restarts or data migration.
 
     Note that you can't change the replication factor of a universe.
@@ -59,7 +62,7 @@ Smart resize is available for the following operations:
 
 - Increase the Volume disk size.
 
-    Note that smart resize is not available with Azure ultra disks, or when decreasing the size.
+    Note that smart resize is not available with Azure ultra disks, or when decreasing the volume size.
 
 - Both together.
 
