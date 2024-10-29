@@ -1462,7 +1462,6 @@
 
         frame-ancestors 'self'
             https://*.yugabyte.com/
-            https://deploy-preview-12849--infallible-bardeen-164bc9.netlify.app/
             https://yugabyte.thinkific.com/
         ;
 
