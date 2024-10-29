@@ -20,7 +20,7 @@ This guide provides a comprehensive overview of query tuning techniques for dist
 
 ## Identify slow queries
 
-The pg_stat_statements extension provides a comprehensive view of query performance, essential for database administrators and developers aiming to enhance database efficiency. You can use the pg_stat_statements extension to get statistics on past queries. It collects detailed statistics on query execution, including the number of executions, total execution time, and resource usage metrics like block hits and reads. This data can help ypu identify performance bottlenecks and optimize query performance.
+The pg_stat_statements extension provides a comprehensive view of query performance, and is essential for database administrators and developers aiming to enhance database efficiency. You can use the pg_stat_statements extension to get statistics on past queries. It collects detailed statistics on query execution, including the number of executions, total execution time, and resource usage metrics like block hits and reads. This data can help ypu identify performance bottlenecks and optimize query performance.
 
 {{<lead link="./pg-stat-statements/">}}
 Learn how to fetch query statistics and improve performance using [pg_stat_statements](./pg-stat-statements/).
@@ -52,6 +52,7 @@ To learn more, see [Optimizing YSQL queries using pg_hint_plan](./pg-hint-plan/)
 
 ## Log all slow queries
 
+You can set the `--ysql_log_min_duration_statement` flag to help track down slow queries. When configured, YugabyteDB logs the duration of each completed SQL statement that runs the specified duration (in milliseconds) or longer. (Setting the value to 0 prints all statement durations.)
 You can set the `--ysql_log_min_duration_statement` flag to help track down slow queries. When configured, YugabyteDB logs the duration of each completed SQL statement that runs the specified duration (in milliseconds) or longer. (Setting the value to 0 prints all statement durations.)
 
 ```sh
