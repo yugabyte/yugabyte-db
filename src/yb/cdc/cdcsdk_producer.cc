@@ -88,7 +88,7 @@ DEFINE_RUNTIME_bool(
 DEFINE_NON_RUNTIME_int64(
     cdc_resolve_intent_lag_threshold_ms, 5 * 60 * 1000,
     "The lag threshold in milli seconds between the hybrid time returned by "
-    "GetMinStartTimeAmongAllRunningTransactions and LeaderSafeTime, when we decide the "
+    "GetMinStartHTRunningTxnsForCDCProducer and LeaderSafeTime, when we decide the "
     "ConsistentStreamSafeTime for CDCSDK by resolving all committed intetns");
 
 DEFINE_RUNTIME_bool(cdc_read_wal_segment_by_segment,
@@ -2263,11 +2263,7 @@ Result<uint64_t> GetConsistentStreamSafeTime(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const tablet::TabletPtr& tablet_ptr,
     const HybridTime& leader_safe_time, const int64_t& safe_hybrid_time_req,
     const CoarseTimePoint& deadline) {
-  HybridTime consistent_stream_safe_time = HybridTime::kInvalid;
-  if (tablet_ptr->transaction_participant()) {
-    consistent_stream_safe_time =
-        tablet_ptr->transaction_participant()->GetMinStartTimeAmongAllRunningTransactions();
-  }
+  HybridTime consistent_stream_safe_time = tablet_ptr->GetMinStartHTRunningTxnsForCDCProducer();
   consistent_stream_safe_time = consistent_stream_safe_time == HybridTime::kInvalid
                                     ? leader_safe_time
                                     : consistent_stream_safe_time;
@@ -2280,7 +2276,7 @@ Result<uint64_t> GetConsistentStreamSafeTime(
 
   if (!consistent_stream_safe_time.is_valid()) {
     VLOG_WITH_FUNC(3) << "We'll use the leader_safe_time as the consistent_stream_safe_time, since "
-                         "GetMinStartTimeAmongAllRunningTransactions returned an invalid "
+                         "GetMinStartHTRunningTxnsForCDCProducer returned an invalid "
                          "value";
     return leader_safe_time.ToUint64();
   } else if (

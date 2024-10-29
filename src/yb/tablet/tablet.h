@@ -765,6 +765,10 @@ class Tablet : public AbstractTablet,
 
   HybridTime GetMinStartHTCDCUnstreamedTxns(log::Log* log) const;
 
+  HybridTime GetMinStartHTRunningTxnsForCDCProducer() const;
+
+  HybridTime GetMinStartHTRunningTxnsForCDCLogCallback() const;
+
   //------------------------------------------------------------------------------------------------
 
   // Allows us to add tablet-specific information that will get deref'd when the tablet does.
@@ -974,8 +978,6 @@ class Tablet : public AbstractTablet,
   MonoTime cdcsdk_block_barrier_revision_start_time = MonoTime::Now();
 
   void CleanupIntentFiles();
-
-  HybridTime GetMinStartHTRunningTxnsOrLeaderSafeTime();
 
  private:
   friend class Iterator;
