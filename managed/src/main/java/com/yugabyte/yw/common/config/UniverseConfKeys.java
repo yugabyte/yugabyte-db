@@ -1187,7 +1187,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable Automated Master Failover",
           "Enable Automated Master Failover for universes in background process",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> autoMasterFailoverFollowerLagSoftThreshold =
       new ConfKeyInfo<>(
           "yb.auto_master_failover.master_follower_lag_soft_threshold",
@@ -1195,7 +1195,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Master Follower Lag Soft Threshold",
           "Master follower lag soft threshold for potential master failure",
           ConfDataType.DurationType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> autoMasterFailoverFollowerLagHardThreshold =
       new ConfKeyInfo<>(
           "yb.auto_master_failover.master_follower_lag_hard_threshold",
@@ -1203,7 +1203,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Master Follower Lag Hard Threshold",
           "Master follower lag hard threshold for definite master failure",
           ConfDataType.DurationType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> autoMasterFailoverFollowerLagThresholdError =
       new ConfKeyInfo<>(
           "yb.auto_master_failover.master_follower_lag_threshold_error",
@@ -1251,7 +1251,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Automated Master Failover Detection Interval",
           "Automated master failover detection interval for a universe in background process",
           ConfDataType.DurationType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> autoSyncMasterAddrsTaskDelay =
       new ConfKeyInfo<>(
           "yb.auto_master_failover.sync_master_addrs_task_delay",
@@ -1260,7 +1260,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Automated sync master addresses task submission delay for a universe in background"
               + " process",
           ConfDataType.DurationType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> nodeAgentNodeActionUseJavaClient =
       new ConfKeyInfo<>(
           "yb.node_agent.node_action.use_java_client",

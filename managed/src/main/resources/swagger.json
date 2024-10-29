@@ -8489,6 +8489,7 @@
         "detailsJson" : {
           "description" : "Node details (as a JSON object)",
           "example" : "{\"ip\":\"1.1.1.1\",\"sshUser\":\"centos\"}",
+          "readOnly" : true,
           "type" : "string"
         },
         "inUse" : {
@@ -8506,8 +8507,8 @@
           "type" : "string"
         },
         "nodeName" : {
-          "description" : "The node's name",
-          "example" : "India node",
+          "description" : "The node's name in a universe",
+          "example" : "universe_node1",
           "readOnly" : true,
           "type" : "string"
         },
@@ -8559,8 +8560,9 @@
           "uniqueItems" : true
         },
         "nodeName" : {
-          "description" : "Node name",
-          "example" : "India node",
+          "description" : "Node name in a universe",
+          "example" : "universe_node1",
+          "readOnly" : true,
           "type" : "string"
         },
         "region" : {
@@ -16590,14 +16592,17 @@
     "YBAError" : {
       "properties" : {
         "code" : {
+          "description" : "Error code",
           "enum" : [ "UNKNOWN_ERROR", "INTERNAL_ERROR", "PLATFORM_SHUTDOWN", "PLATFORM_RESTARTED", "INSTALLATION_ERROR", "SERVICE_START_ERROR", "CONNECTION_ERROR" ],
+          "readOnly" : true,
           "type" : "string"
         },
         "message" : {
+          "description" : "Error message",
+          "readOnly" : true,
           "type" : "string"
         }
       },
-      "required" : [ "code", "message" ],
       "type" : "object"
     },
     "YBPCreateSuccess" : {
