@@ -36,7 +36,7 @@ To change the configuration of a universe, do the following:
         - **Regions** - Select any region configured in the provider used to deploy the universe.
         - [Master Placement](../../create-deployments/dedicated-master/).
         - **Total Nodes** and **Availability Zones** - As you add nodes, they are automatically distributed among the availability zones; you can also add, configure, and remove availability zones.
-    - **Instance Configuration** - change instance type and storage volume size as configured in the provider. In some cases, these operations are available as a [smart resize](#smart-resize).
+    - **Instance Configuration** - Change instance type and storage volume size as configured in the provider. In some cases, these operations are available as a [smart resize](#smart-resize).
 
         For cloud providers, you can also change the storage volume count and type. On AWS, you can additionally change throughput and IOPS.
 
