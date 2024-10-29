@@ -13,6 +13,7 @@ tags:
   feature: tech-preview
 type: docs
 ---
+
 The Voyager Migration Assessment feature streamlines database migration from PostgreSQL and Oracle to YugabyteDB. It analyzes the source database, captures essential metadata, and generates a report with recommended migration strategies and cluster configurations for optimal performance with YugabyteDB.
 
 ## Overview
@@ -23,14 +24,21 @@ When you run an assessment, Voyager gathers key metadata and metrics from the so
 
 Voyager then generates a report that includes:
 
-- **Recommended schema changes:** Analyzes compatibility with YugabyteDB, highlighting unsupported features and data types.
+- **Recommended schema changes:** Analyzes compatibility with YugabyteDB, highlighting unsupported features and data types. Also, analyzes the schema for any caveats to ensure smooth migration.
 - **Recommended cluster sizing:** Estimates the resources needed for the target environment based on table sizes, number of tables, and throughput requirements.
 - **Recommended data distribution:** Suggests effective sharding strategies for tables and indexes.
 - **Performance metrics:** Analyzes workload characteristics to recommend optimizations in YugabyteDB.
 - **Migration time estimate:** Provides an estimated time for data import into YugabyteDB based on experimental data.
+- **Unsupported query constructs:** Identifies SQL features and constructs not supported by YugabyteDB, such as advisory locks, system columns, and XML functions, and provides a list of queries containing these constructs.
 
 {{< warning title="Note" >}}
-The recommendations are based on testing using a [RF3](../../../architecture/docdb-replication/replication/#replication-factor) YugabyteDB cluster on instance types with 4GiB memory per core and running v2024.1.
+
+- The recommendations are based on testing using a [RF3](../../../architecture/docdb-replication/replication/#replication-factor) YugabyteDB cluster on instance types with 4GiB memory per core and running v2024.1.
+
+- For unsupported query construct detection, ensure the [pg_stat_statements extension](../../../explore/ysql-language-features/pg-extensions/extension-pgstatstatements/) is properly installed and enabled on source.
+
+- To disable this feature, set the environment variable `REPORT_UNSUPPORTED_QUERY_CONSTRUCTS=false`.
+
 {{< /warning >}}
 
 The following table describes the type of data that is collected during a migration assessment.
