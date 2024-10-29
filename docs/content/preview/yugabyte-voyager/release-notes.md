@@ -35,7 +35,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 - Fixed [import data](../reference/data-migration/import-data/) and `import data file` commands to ensure batches created from data files don't exceed the default batch size limit (200MB), preventing "RPC message too long" errors with large rows. Also, added an immediate check to error out for single row size over 200MB.
 - Fixed an issue in `analyze-schema` where partitioned tables were incorrectly reported as having insufficient columns in the primary key constraint due to a regex misidentifying the CONSTRAINT clause before primary key definition.
-- Fixed the object names in the schema summary of `assess-migration` and `analyze-schema` reports for OPERATOR names and to uniquely identify the INDEX, TRIGGER, and POLICY objects by adding table name to it.
+- Fixed the OPERATOR object names in the schema summary of `assess-migration` and `analyze-schema` reports, and renamed the INDEX, TRIGGER, and POLICY objects by appending the table name to the objects for unique identification (using the format `<object_name> ON <table_name>`).
 
 ## v1.8.3 - October 15, 2024
 
