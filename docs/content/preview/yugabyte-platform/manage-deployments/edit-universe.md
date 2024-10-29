@@ -16,11 +16,11 @@ type: docs
 
 YugabyteDB Anywhere supports both horizontal and vertical scaling of your universe. If your workloads have increased, you can change to more powerful instance types or add nodes to improve latency, throughput, and memory. Likewise, if your cluster is over-scaled, you can reduce nodes to reduce costs.
 
-- For information on changing configuration flags, refer to [Edit configuration flags](../edit-config-flags/).
+-> For information on changing configuration flags, refer to [Edit configuration flags](../edit-config-flags/).
 
-- For information on changing user tags, refer to [Create and edit instance tags](../instance-tags/).
+-> For information on changing user tags, refer to [Create and edit instance tags](../instance-tags/).
 
-- For information on changing Kubernetes overrides, refer to [Edit Kubernetes overrides](../edit-helm-overrides/).
+-> For information on changing Kubernetes overrides, refer to [Edit Kubernetes overrides](../edit-helm-overrides/).
 
 ## Edit a universe
 
@@ -34,11 +34,12 @@ To change the configuration of a universe, do the following:
 
     Using the **Edit Universe** page, you can modify the following:
 
-    - **Regions** - you can select any region configured in the provider used to deploy the universe.
-    - [Master Placement](../../create-deployments/dedicated-master/).
-    - **Total Nodes** and **Availability Zones** - as you add nodes, they are automatically distributed among the availability zones; you can also add, configure, and remove availability zones.
+    - **Cloud Configuration**
+        - **Regions** - Select any region configured in the provider used to deploy the universe.
+        - [Master Placement](../../create-deployments/dedicated-master/).
+        - **Total Nodes** and **Availability Zones** - As you add nodes, they are automatically distributed among the availability zones; you can also add, configure, and remove availability zones.
     - **Instance Configuration** - change instance type and volume size as configured in the provider. In some cases, these operations are available as a [smart resize](#smart-resize).
-    - [User tags](../instance-tags/).
+    - [User Tags](../instance-tags/). Changing tags doesn't require any node restarts or data migration.
 
     Note that you can't change the replication factor of a universe.
 
@@ -50,7 +51,7 @@ To change the number of nodes of universes created with an on-premises cloud pro
 
 ## Smart resize
 
-Normally when resizing a universe, YugabyteDB moves the data from the old nodes to the new nodes. However, if the universe is deployed on AWS, GCP, or Azure using a [cloud provider configuration](../../configure-yugabyte-platform/aws/), you can change the instance type and increase the volume size without migrating the data. This is referred to as smart resize, and can be significantly faster than a full copy of the data.
+Normally when resizing a universe, YugabyteDB moves the data from the old nodes to the new nodes. However, if the universe is deployed on AWS, GCP, or Azure using a [cloud provider configuration](../../configure-yugabyte-platform/aws/), you can perform some resizing operations without migrating the data. This is referred to as smart resize, and can be significantly faster than a full copy of the data.
 
 Smart resize is available for the following operations:
 
