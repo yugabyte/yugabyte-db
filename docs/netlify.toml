@@ -1377,6 +1377,7 @@
             https://80f647c7c1f545fc97ff43f8b602dc86.us-west-2.aws.found.io/
             https://api.rudderstack.com/
             https://api.segment.io/
+            https://app.clearbit.com/
             https://cdn.segment.com/
             https://ingesteer.services-prod.nsvcs.net/rum_collection
             https://ka-f.fontawesome.com/releases/
@@ -1395,6 +1396,7 @@
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
+            https://app.clearbit.com/
             https://cdn.jsdelivr.net/
             https://cdn.madkudu.com/
             https://cdn.rudderlabs.com/
@@ -1408,6 +1410,7 @@
             https://metrics.kapa.ai/
             https://netlify-cdp-loader.netlify.app/
             https://netlify-rum.netlify.app
+            https://tag.clearbitscripts.com/
             https://umbcujcbe8-1.algolianet.com/
             https://umbcujcbe8-2.algolianet.com/
             https://umbcujcbe8-3.algolianet.com/
@@ -1417,6 +1420,7 @@
             https://www.google.com/recaptcha/
             https://www.googletagmanager.com/
             https://www.gstatic.com/recaptcha/
+            https://x.clearbitjs.com/
         ;
 
         style-src 'self' 'unsafe-inline'
