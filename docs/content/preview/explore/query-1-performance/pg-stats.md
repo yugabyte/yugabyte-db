@@ -141,3 +141,48 @@ Given that there are only 9 (via **n_distinct**) distinct valid (without empty s
 ## Skewed data
 
 It is always advisable for your index/table to be reasonably distributed so that all nodes in your cluster process a similar amount of queries. In the above data set, `NULL` and empty values make up 70% of the total dataset (via **most_common_vals, null_frac**), with valid names only accounting for 30%.  If you create an index on this data, only approximately 30% of the nodes will handle most of the queries, as 70% of the data is not queried.
+
+## Composition of arrays
+
+Just like how pg_stats reports common values, it also reports commonly occuring elements and their respective frequencies within array data types in the `most_common_elems` column. For example consider a table that stores the labels that movies are tagged with as:
+
+```sql
+CREATE TABLE labels (
+    id SERIAL PRIMARY KEY,
+    tags TEXT[]
+);
+
+INSERT INTO labels (tags) VALUES
+    (ARRAY['romance', 'comedy', 'action']),
+    (ARRAY['romance', 'action']),
+    (ARRAY['romance', 'thriller']),
+    (ARRAY['comedy', 'thriller']),
+    (ARRAY['action', 'thriller']);
+```
+
+Now, run ANALYZE on the above table as,
+
+```sql
+ANALYZE labels;
+```
+
+You can fetch the stats for the elements as:
+
+```sql
+SELECT attname, most_common_elems, most_common_elem_freqs FROM pg_stats WHERE tablename = 'labels' AND attname = 'tags';
+```
+
+You should see an output similar to:
+
+```caddyfile{.nocopy}
+-[ RECORD 1 ]----------+---------------------------------
+attname                | tags
+most_common_elems      | {action,comedy,romance,thriller}
+most_common_elem_freqs | {0.6,0.4,0.6,0.6,0.4,0.6,0}
+```
+
+The above numbers show that `action` occurs in 60% of the records (3 in this scenario) and `comedy` occurs in 40% of the records (2 in this scenario). These values are veryful to understand the distribution of your data.
+
+## Learn more
+
+- [Cost Based Optimizer](https://www.yugabyte.com/blog/yugabytedb-cost-based-optimizer/)
