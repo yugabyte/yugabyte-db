@@ -35,6 +35,7 @@ import {
   GetGroupContext,
   getIsLDAPEnabled,
   getIsOIDCEnabled,
+  getIsRbacGroupMappingEnabled,
   OIDC_RUNTIME_CONFIGS_QUERY_KEY,
   WrapDisabledElements
 } from './GroupUtils';
@@ -268,6 +269,7 @@ export const CreateEditGroup: FC = (_) => {
 
   const isLDAPEnabled = getIsLDAPEnabled(runtimeConfig);
   const isOIDCEnabled = getIsOIDCEnabled(runtimeConfig);
+  const isRBACGroupMappingEnabled = getIsRbacGroupMappingEnabled(runtimeConfig);
 
   const isEditMode = currentGroup !== null;
 
@@ -418,7 +420,8 @@ export const CreateEditGroup: FC = (_) => {
           <FormProvider {...rbacResourceMethods}>
             <RolesAndResourceMapping
               customTitle={t('groupRolesTitle')}
-              hideCustomRoles={!rbacEnabled}
+              hideCustomRoles={!rbacEnabled || !isRBACGroupMappingEnabled}
+              hideConnectOnlyHelpText={true}
             />
             {roleMappingErros.roleResourceDefinitions?.message && (
               <FormHelperText required error>

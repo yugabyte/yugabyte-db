@@ -229,6 +229,7 @@ export const LDAPAuthNew = () => {
     watch,
     getValues,
     handleSubmit,
+    clearErrors,
     formState: { isDirty }
   } = useForm<LDAPFormProps>({
     resolver: yupResolver(getLDAPValidationSchema(t))
@@ -267,7 +268,7 @@ export const LDAPAuthNew = () => {
   const [groupSettingsExpanded, setGroupSettingsExpanded] = useToggle(true);
   const queryClient = useQueryClient();
 
-  const { isLoading, isError } = useQuery(
+  const { isLoading } = useQuery(
     [LDAP_RUNTIME_CONFIGS_QUERY_KEY],
     () => api.fetchRunTimeConfigs(true),
     {
@@ -321,7 +322,6 @@ export const LDAPAuthNew = () => {
   }, [ldapUseGroupMapping]);
 
   if (isLoading) return <YBLoadingCircleIcon />;
-  if (isError) return <YBErrorIndicator />;
 
   const UserDefaultRole = [
     {
@@ -680,6 +680,7 @@ export const LDAPAuthNew = () => {
             variant="primary"
             size="large"
             onClick={() => {
+              clearErrors();
               queryClient.invalidateQueries(LDAP_RUNTIME_CONFIGS_QUERY_KEY);
             }}
             data-testid="ldap-cancel"

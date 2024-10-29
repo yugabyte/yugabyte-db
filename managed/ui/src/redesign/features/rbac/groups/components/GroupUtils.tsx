@@ -24,6 +24,7 @@ export const LDAP_PATH = 'yb.security.ldap';
 
 const OIDC_CONFIG_KEY = `${OIDC_PATH}.use_oauth`;
 const LDAP_CONFIG_KEY = `${LDAP_PATH}.use_ldap`;
+const RBAC_GROUP_MAPPING_CONFIG_KEY = `yb.security.group_mapping_rbac_support`;
 
 const isEnabled = (runtimeConfigs: RunTimeConfig, configKey: string) => {
   return find(runtimeConfigs.configEntries, (config) => config.key === configKey)?.value === 'true';
@@ -35,6 +36,10 @@ export const getIsOIDCEnabled = (runtimeConfigs: RunTimeConfig) => {
 
 export const getIsLDAPEnabled = (runtimeConfigs: RunTimeConfig) => {
   return isEnabled(runtimeConfigs, LDAP_CONFIG_KEY);
+};
+
+export const getIsRbacGroupMappingEnabled = (runtimeConfigs: RunTimeConfig) => {
+  return isEnabled(runtimeConfigs, RBAC_GROUP_MAPPING_CONFIG_KEY);
 };
 
 export const WrapDisabledElements = (children: JSX.Element, disabled: boolean, title: string) => {
