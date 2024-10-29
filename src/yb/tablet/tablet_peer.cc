@@ -1248,7 +1248,7 @@ HybridTime TabletPeer::GetMinStartHTRunningTxnsOrLeaderSafeTime() {
         << "Tablet not found, so setting minimum start hybrid time for running txns to kInitial.";
     return HybridTime::kInitial;
   }
-  return (*tablet_result)->GetMinStartHTRunningTxnsOrLeaderSafeTime();
+  return (*tablet_result)->GetMinStartHTRunningTxnsForCDCLogCallback();
 }
 
 Status TabletPeer::SetCDCSDKRetainOpIdAndTime(

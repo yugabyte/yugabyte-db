@@ -1107,33 +1107,61 @@ void Tablet::CleanupIntentFiles() {
       "Submit cleanup intent files failed");
 }
 
-// Calls GetMinStartTimeAmongAllRunningTransactions() on transaction participant. If the result
-// obtained is invalid then returns leader safe time.
-HybridTime Tablet::GetMinStartHTRunningTxnsOrLeaderSafeTime() {
+HybridTime Tablet::GetMinStartHTRunningTxnsForCDCProducer() const {
   HybridTime min_start_ht_running_txns = HybridTime::kInvalid;
   if (transaction_participant()) {
-    min_start_ht_running_txns =
-        transaction_participant()->GetMinStartTimeAmongAllRunningTransactions();
+    min_start_ht_running_txns = transaction_participant()->MinRunningHybridTime();
     VLOG_WITH_PREFIX(2) << "min_start_ht_running_txns from txn participant: "
                         << min_start_ht_running_txns;
   }
 
-  if (min_start_ht_running_txns != HybridTime::kInvalid) {
+  if (min_start_ht_running_txns.is_valid() && min_start_ht_running_txns != HybridTime::kMax) {
+    VLOG_WITH_PREFIX(2) << "min_start_ht_running_txns after parsing: " << min_start_ht_running_txns;
     return min_start_ht_running_txns;
   }
 
-  auto safe_time_result = SafeTime();
-  if (safe_time_result.ok() && *safe_time_result != HybridTime::kInvalid) {
-    min_start_ht_running_txns = *safe_time_result;
-    VLOG_WITH_PREFIX(2) << "min_start_ht_running_txns from tablet leader safe time: "
+  // For the following two cases, return kInvalid so that CDC Producer uses leader safe time for
+  // streaming.
+  // 1. If loading of transactions is not yet completed, identified by start_ht being kInvalid.
+  // 2. If there are no running transactions, identified by start_ht being kMax.
+  min_start_ht_running_txns = HybridTime::kInvalid;
+  VLOG_WITH_PREFIX(2) << "min_start_ht_running_txns after parsing: " << min_start_ht_running_txns;
+  return min_start_ht_running_txns;
+}
+
+HybridTime Tablet::GetMinStartHTRunningTxnsForCDCLogCallback() const {
+  HybridTime min_start_ht_running_txns = HybridTime::kMax;
+  if (transaction_participant()) {
+    min_start_ht_running_txns = transaction_participant()->MinRunningHybridTime();
+    VLOG_WITH_PREFIX(2) << "min_start_ht_running_txns from txn participant: "
                         << min_start_ht_running_txns;
+  }
+
+  // Indicates loading of transactions is not yet completed.
+  if (!min_start_ht_running_txns.is_valid()) {
+    min_start_ht_running_txns = HybridTime::kInitial;
+    VLOG_WITH_PREFIX(2) << "min_start_ht_running_txns after parsing: " << min_start_ht_running_txns;
     return min_start_ht_running_txns;
   }
 
-  LOG_WITH_PREFIX(WARNING) << "Could not retrive a valid safe time so setting minimum start time "
-                              "of running txns to kInitial.";
+  // Indicates no running transactions.
+  if (min_start_ht_running_txns == HybridTime::kMax) {
+    auto safe_time_result = SafeTime();
+    if (safe_time_result.ok() && *safe_time_result != HybridTime::kInvalid) {
+      min_start_ht_running_txns = *safe_time_result;
+      VLOG_WITH_PREFIX(2)
+          << "No running transactions. min_start_ht_running_txns from tablet leader safe time: "
+          << min_start_ht_running_txns;
+      return min_start_ht_running_txns;
+    }
 
-  return HybridTime::kInitial;
+    LOG_WITH_PREFIX(WARNING) << "Could not retrive a valid safe time so setting minimum start time "
+                                "of running txns to kInitial.";
+    return HybridTime::kInitial;
+  }
+
+  VLOG_WITH_PREFIX(2) << "min_start_ht_running_txns after parsing: " << min_start_ht_running_txns;
+  return min_start_ht_running_txns;
 }
 
 void Tablet::DoCleanupIntentFiles() {
