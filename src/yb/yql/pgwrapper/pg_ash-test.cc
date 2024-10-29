@@ -290,7 +290,6 @@ TEST_F(PgAshTest, YB_DISABLE_TEST_IN_TSAN(NoMemoryLeaks)) {
 }
 
 TEST_F_EX(PgWaitEventAuxTest, NewDatabaseRPCs, PgNewDatabaseWaitEventAux) {
-  GTEST_SKIP() << "Skipping this test until #24582 is done";
   ASSERT_OK(conn_->Execute("CREATE DATABASE db1"));
   ASSERT_OK(conn_->Execute("ALTER DATABASE db1 RENAME TO db2"));
   ASSERT_OK(conn_->Execute("DROP DATABASE db2"));
