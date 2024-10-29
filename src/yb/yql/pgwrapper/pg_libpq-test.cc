@@ -3905,8 +3905,8 @@ TEST_F(PgLibPqTest, TempTableViewFileCountTest) {
 
   // Check that only one file is present in this database and that corresponds to temp table foo.
   auto query = Format(
-      "SELECT pg_ls_dir('$0/pg_data/' || substring(pg_relation_filepath('$1') from '.*/')) = 't1_' "
-      "|| '$1'::regclass::oid::text;",
+      "SELECT pg_ls_dir('$0/pg_data/' || substring(pg_relation_filepath('$1') from '.*/')) ~  "
+      "('t[0-9]_' || '$1'::regclass::oid::text)",
       pg_ts->GetRootDir(), kTableName);
   auto values = ASSERT_RESULT(conn.FetchRows<bool>(query));
   ASSERT_EQ(values, decltype(values){true});

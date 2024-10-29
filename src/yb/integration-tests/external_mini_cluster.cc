@@ -2180,6 +2180,15 @@ Status ExternalMiniCluster::MoveTabletLeader(
   return itest::WaitUntilLeader(new_leader_ts, tablet_id, timeout);
 }
 
+void ExternalMiniCluster::SetMaxGracefulShutdownWaitSec(int max_graceful_shutdown_wait_sec) {
+  for (auto& master : masters_) {
+    master->SetMaxGracefulShutdownWaitSec(max_graceful_shutdown_wait_sec);
+  }
+  for (auto& tserver : tablet_servers_) {
+    tserver->SetMaxGracefulShutdownWaitSec(max_graceful_shutdown_wait_sec);
+  }
+}
+
 LogWaiter::LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait) :
     daemon_(daemon), string_to_wait_(string_to_wait) {
   daemon_->SetLogListener(this);

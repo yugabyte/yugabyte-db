@@ -208,10 +208,27 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
     return res;
   }
 
+  Result<PGConn> Connect() const override {
+    ++num_connections_created_;
+    return PgMiniTestBase::Connect();
+  }
+
+  Result<PGConn> ConnectToDB(const std::string& dbname, size_t timeout = 0) const override {
+    ++num_connections_created_;
+    return PgMiniTestBase::ConnectToDB(dbname, timeout);
+  }
+
+  // ASH collector fires a master RPC, which is only counted by the metrics_ object
+  // when a DB connection is made.
+  uint32_t ASHCollectorRPCCount() const {
+    return static_cast<uint32_t>(num_connections_created_ == 1);
+  }
+
   std::optional<MetricWatcher<MetricCountersDescriber>> metrics_;
 
  private:
   virtual Configuration GetConfig() const = 0;
+  mutable size_t num_connections_created_ = 0;
 };
 
 class PgCatalogPerfBasicTest : public PgCatalogPerfTestBase {
@@ -377,7 +394,7 @@ Status WaitForAllClientConnectionsClosure(const HostPort& pg_host_port) {
 //       Number of RPCs in all the tests are not the constants and they can be changed in future.
 TEST_F(PgCatalogPerfTest, StartupRPCCount) {
   const auto first_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
-  ASSERT_EQ(first_connect_rpc_count, kFirstConnectionRPCCountDefault);
+  ASSERT_EQ(first_connect_rpc_count, kFirstConnectionRPCCountDefault + ASHCollectorRPCCount());
   const auto subsequent_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
   ASSERT_EQ(subsequent_connect_rpc_count, kSubsequentConnectionRPCCount);
 }
@@ -603,28 +620,28 @@ TEST_F_EX(PgCatalogPerfTest,
           PgPreloadAdditionalCatListTest) {
   // No failures even there are invalid PG catalog on the flag list.
   const auto rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
-  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithAdditionalTables);
+  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithAdditionalTables + ASHCollectorRPCCount());
 }
 
 TEST_F_EX(PgCatalogPerfTest,
           RPCCountOnStartupAdditionalCatTablesPreload,
           PgPreloadAdditionalCatTablesTest) {
   const auto rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
-  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithAdditionalTables);
+  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithAdditionalTables + ASHCollectorRPCCount());
 }
 
 TEST_F_EX(PgCatalogPerfTest,
           RPCCountOnStartupAdditionalCatBothPreload,
           PgPreloadAdditionalCatBothTest) {
   const auto rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
-  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithAdditionalTables);
+  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithAdditionalTables + ASHCollectorRPCCount());
 }
 
 TEST_F_EX(PgCatalogPerfTest,
           RPCCountOnStartupSmallPreload,
           PgSmallPreloadTest) {
   const auto rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
-  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithSmallPreload);
+  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithSmallPreload + ASHCollectorRPCCount());
 }
 
 // Test checks that response cache is DB specific.
@@ -641,7 +658,8 @@ TEST_F_EX(PgCatalogPerfTest, ResponseCacheIsDBSpecific, PgCatalogWithUnlimitedCa
     for (auto expected_rpc_count : {kFirstConnectionRPCCountWithAdditionalTables,
                                     kSubsequentConnectionRPCCount}) {
       const auto rpc_count = VERIFY_RESULT(RPCCountOnStartUp(db_name));
-      SCHECK_EQ(rpc_count, expected_rpc_count, IllegalState, "Unexpected rpc count");
+      SCHECK_EQ(rpc_count, expected_rpc_count + ASHCollectorRPCCount(), IllegalState,
+          "Unexpected rpc count");
     }
     return Status::OK();
   };
@@ -655,7 +673,8 @@ TEST_F_EX(PgCatalogPerfTest,
           RPCCountOnStartupPredictableMemoryUsage,
           PgPredictableMemoryUsageTest) {
   const auto first_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
-  ASSERT_EQ(first_connect_rpc_count, kFirstConnectionRPCCountNoRelcacheFile);
+  ASSERT_EQ(first_connect_rpc_count, kFirstConnectionRPCCountNoRelcacheFile +
+      ASHCollectorRPCCount());
   const auto subsequent_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
   ASSERT_EQ(subsequent_connect_rpc_count, kSubsequentConnectionRPCCount);
 }

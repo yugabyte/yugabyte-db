@@ -2577,7 +2577,7 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"yb_test_fail_next_ddl", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("When set, the next DDL will fail right before "
-					     "commit."),
+						 "commit."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
@@ -2742,7 +2742,7 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
-    {
+	{
 		{"yb_enable_upsert_mode", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the boolean flag to enable or disable upsert mode for writes."),
 			NULL
@@ -2848,7 +2848,7 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"yb_enable_base_scans_cost_model", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables YB cost model for Sequential and Index scans. "
-			              "This feature is currently in preview."),
+						 "This feature is currently in preview."),
 			NULL
 		},
 		&yb_enable_base_scans_cost_model,
@@ -2947,7 +2947,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_ash_enable_infra,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -2960,7 +2960,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_ash,
-		false,
+		true,
 		yb_enable_ash_check_hook, NULL, NULL
 	},
 
@@ -15065,7 +15065,7 @@ check_transaction_priority_lower_bound(double *newval, void **extra, GucSource s
 {
 	if (*newval > yb_transaction_priority_upper_bound) {
 		GUC_check_errdetail("must be less than or equal to yb_transaction_priority_upper_bound (%f).",
-		                    yb_transaction_priority_upper_bound);
+							yb_transaction_priority_upper_bound);
 		return false;
 	}
 
@@ -15086,7 +15086,7 @@ check_transaction_priority_upper_bound(double *newval, void **extra, GucSource s
 {
 	if (*newval < yb_transaction_priority_lower_bound) {
 		GUC_check_errdetail("must be greater than or equal to yb_transaction_priority_lower_bound (%f).",
-		                    yb_transaction_priority_lower_bound);
+							yb_transaction_priority_lower_bound);
 		return false;
 	}
 

@@ -42,15 +42,19 @@ public class TestYbAsh extends BasePgSQLTest {
   private static final int ASH_SAMPLE_SIZE = 500;
   private static final String ASH_VIEW = "yb_active_session_history";
 
+  private Map<String, String> getTServerFlagMapWithPreviewFlags() throws Exception {
+    Map<String, String> flagMap = super.getTServerFlags();
+    StringBuilder builder = new StringBuilder("ysql_yb_ash_enable_infra,ysql_yb_enable_ash");
+    if (isTestRunningWithConnectionManager()) {
+      builder.append(",enable_ysql_conn_mgr");
+    }
+    flagMap.put("allowed_preview_flags_csv", builder.toString());
+    return flagMap;
+  }
+
   private void setAshConfigAndRestartCluster(
       int sampling_interval, int sample_size, int circular_buffer_size) throws Exception {
-    Map<String, String> flagMap = super.getTServerFlags();
-    if (isTestRunningWithConnectionManager()) {
-      flagMap.put("allowed_preview_flags_csv",
-         "ysql_yb_ash_enable_infra,ysql_yb_enable_ash,enable_ysql_conn_mgr");
-    } else {
-      flagMap.put("allowed_preview_flags_csv", "ysql_yb_ash_enable_infra,ysql_yb_enable_ash");
-    }
+    Map<String, String> flagMap = getTServerFlagMapWithPreviewFlags();
     flagMap.put("ysql_yb_ash_enable_infra", "true");
     flagMap.put("ysql_yb_enable_ash", "true");
     flagMap.put("ysql_yb_ash_sampling_interval_ms", String.valueOf(sampling_interval));
@@ -60,6 +64,13 @@ public class TestYbAsh extends BasePgSQLTest {
     }
     Map<String, String> masterFlagMap = super.getMasterFlags();
     restartClusterWithFlags(masterFlagMap, flagMap);
+  }
+
+  private void resetAshConfigAndRestartCluster() throws Exception {
+    Map<String, String> flagMap = getTServerFlagMapWithPreviewFlags();
+    flagMap.put("ysql_yb_ash_enable_infra", "false");
+    flagMap.put("ysql_yb_enable_ash", "false");
+    restartClusterWithFlags(Collections.emptyMap(), flagMap);
   }
 
   private void setAshConfigAndRestartCluster(
@@ -95,8 +106,7 @@ public class TestYbAsh extends BasePgSQLTest {
    */
   @Test
   public void testAshViewWithoutEnablingAsh() throws Exception {
-    // We need to restart the cluster because ASH may already have been enabled
-    restartCluster();
+    resetAshConfigAndRestartCluster();
     try (Statement statement = connection.createStatement()) {
       runInvalidQuery(statement, "SELECT * FROM " + ASH_VIEW,
           "ysql_yb_ash_enable_infra gflag must be enabled");

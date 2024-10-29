@@ -228,6 +228,7 @@ class PgMiniPgClientServiceCleanupTest : public PgMiniTestSingleNode {
 
 TEST_F_EX(PgMiniTest, VerifyPgClientServiceCleanupQueue, PgMiniPgClientServiceCleanupTest) {
   constexpr size_t kTotalConnections = 30;
+  constexpr size_t kAshConnection = 1;
   std::vector<PGConn> connections;
   connections.reserve(kTotalConnections);
   for (size_t i = 0; i < kTotalConnections; ++i) {
@@ -235,10 +236,10 @@ TEST_F_EX(PgMiniTest, VerifyPgClientServiceCleanupQueue, PgMiniPgClientServiceCl
   }
   auto* client_service =
       cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientService();
-  ASSERT_EQ(connections.size(), client_service->TEST_SessionsCount());
+  ASSERT_EQ(connections.size() + kAshConnection, client_service->TEST_SessionsCount());
 
   connections.erase(connections.begin() + connections.size() / 2, connections.end());
-  ASSERT_OK(WaitFor([client_service, expected_count = connections.size()]() {
+  ASSERT_OK(WaitFor([client_service, expected_count = connections.size() + kAshConnection]() {
     return client_service->TEST_SessionsCount() == expected_count;
   }, 4 * FLAGS_pg_client_session_expiration_ms * 1ms, "client session cleanup", 1s));
 }
@@ -2454,11 +2455,12 @@ Status MockAbortFailure(
     yb::tserver::PgFinishTransactionResponsePB* resp, yb::rpc::RpcContext* context) {
   LOG(INFO) << "FinishTransaction called for session: " << req->session_id();
 
-  if (req->session_id() == 1) {
+  // ASH collector takes session id 1, the subsequent connections take 2 and 3
+  if (req->session_id() == 2) {
     context->CloseConnection();
     // The return status should not matter here.
     return Status::OK();
-  } else if (req->session_id() == 2) {
+  } else if (req->session_id() == 3) {
     return STATUS(NetworkError, "Mocking network failure on FinishTransaction");
   }
 

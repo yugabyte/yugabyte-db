@@ -576,6 +576,8 @@ class ExternalMiniCluster : public MiniClusterBase {
       const TabletId& tablet_id, std::optional<size_t> new_leader_idx = std::nullopt,
       MonoDelta timeout = MonoDelta::kMin);
 
+  void SetMaxGracefulShutdownWaitSec(int max_graceful_shutdown_wait_sec);
+
  protected:
   friend class UpgradeTestBase;
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);

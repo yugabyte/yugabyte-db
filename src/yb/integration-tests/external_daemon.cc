@@ -478,7 +478,8 @@ void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown, RequireExitCode0 requi
     }
 
     if (safe_shutdown) {
-      constexpr auto max_graceful_shutdown_wait = 1min * kTimeMultiplier;
+      const auto max_graceful_shutdown_wait =
+          max_graceful_shutdown_wait_sec_ * 1s * kTimeMultiplier;
       // We put 'SIGTERM' in quotes because an unquoted one would be treated as a test failure
       // by our regular expressions in common-test-env.sh.
       LOG_WITH_PREFIX(INFO) << "Terminating " << process_name_and_pid << " using 'SIGTERM' signal";
