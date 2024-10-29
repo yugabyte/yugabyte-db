@@ -817,15 +817,22 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   n ->
                       n.masterState == MasterState.ToStart
                           || n.masterState == MasterState.Configured)
-              .peek(n -> log.info("Found candidate master node: {}.", n.getNodeName()))
+              .peek(
+                  n ->
+                      log.info(
+                          "Found candidate master node {} in universe {}",
+                          n.getNodeName(),
+                          universe.getUniverseUUID()))
               .collect(Collectors.toList());
       if (markedNodes.size() > 1) {
         String errMsg =
             String.format(
-                "Multiple nodes %s are marked to start master. Only one node must be marked",
+                "Multiple nodes %s are marked to start master in universe %s. Only one node must be"
+                    + " marked",
                 markedNodes.stream()
                     .map(NodeDetails::getNodeName)
-                    .collect(Collectors.joining(", ")));
+                    .collect(Collectors.joining(", ")),
+                universe.getUniverseUUID());
         log.error(errMsg);
         throw new IllegalStateException(errMsg);
       }
@@ -834,12 +841,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         if (pickNewNode) {
           String errMsg =
               String.format(
-                  "Node %s is already marked to start master against picking a new node",
-                  selectedNode.getNodeName());
+                  "Node %s in universe %s is already marked to start master against picking a new"
+                      + " node",
+                  selectedNode.getNodeName(), universe.getUniverseUUID());
           log.error(errMsg);
           throw new IllegalStateException(errMsg);
         }
-        log.info("Found replacement node {}", selectedNode.getNodeName());
+        log.info(
+            "Found replacement node {} in universe {}",
+            selectedNode.getNodeName(),
+            universe.getUniverseUUID());
         if (selectedNode.masterState == MasterState.ToStart) {
           ensureRemoteProcessState(universe, selectedNode, "yb-master", false);
         }
@@ -853,11 +864,19 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             candidates.stream()
                 .filter(n -> NodeState.Live.equals(n.state) && !n.isMaster)
                 .filter(n -> liveTserverNodes.contains(n))
-                .peek(n -> log.info("Found candidate master node: {}.", n.getNodeName()))
+                .peek(
+                    n ->
+                        log.info(
+                            "Found candidate master node {} in universe {}",
+                            n.getNodeName(),
+                            universe.getUniverseUUID()))
                 .findFirst();
         if (optional.isPresent()) {
           selectedNode = optional.get();
-          log.info("Found replacement node {}", selectedNode.getNodeName());
+          log.info(
+              "Found replacement node {} in universe {}",
+              selectedNode.getNodeName(),
+              universe.getUniverseUUID());
           ensureRemoteProcessState(universe, selectedNode, "yb-master", false);
           return selectedNode.getNodeName();
         }

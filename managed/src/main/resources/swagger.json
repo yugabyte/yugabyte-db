@@ -8489,6 +8489,7 @@
         "detailsJson" : {
           "description" : "Node details (as a JSON object)",
           "example" : "{\"ip\":\"1.1.1.1\",\"sshUser\":\"centos\"}",
+          "readOnly" : true,
           "type" : "string"
         },
         "inUse" : {
@@ -8561,6 +8562,7 @@
         "nodeName" : {
           "description" : "Node name",
           "example" : "India node",
+          "readOnly" : true,
           "type" : "string"
         },
         "region" : {
@@ -16590,11 +16592,13 @@
     "YBAError" : {
       "properties" : {
         "code" : {
+          "description" : "Error code",
           "enum" : [ "UNKNOWN_ERROR", "INTERNAL_ERROR", "PLATFORM_SHUTDOWN", "PLATFORM_RESTARTED", "INSTALLATION_ERROR", "SERVICE_START_ERROR", "CONNECTION_ERROR" ],
           "readOnly" : true,
           "type" : "string"
         },
         "message" : {
+          "description" : "Error message",
           "readOnly" : true,
           "type" : "string"
         }
