@@ -11,14 +11,14 @@ menu:
 type: docs
 ---
 
-[pg_stats](../../../architecture/system-catalog#data-statistics) is a system view that provides statistical information about columns in tables. It’s useful for understanding data distributions of column values, which can help in query optimization and tuning. These statistics are generated on running the [ANALYZE](../../../api/ysql/the-sql-language/statements/cmd_analyze/) command.
+[pg_stats](../../../architecture/system-catalog/#data-statistics) is a system view that provides statistical information about columns in tables. It's useful for understanding data distributions of column values, which can help in query optimization and tuning. You can run the [ANALYZE](../../../api/ysql/the-sql-language/statements/cmd_analyze/) command to generate the statistics.
 
 ## Key statistics
 
-pg_stats contains information like:
+pg_stats contains information such as the following:
 
 - **null_frac**: Fraction of NULL values in a column.
-- **avg_width**: Average width (in bytes) of a column’s entries.
+- **avg_width**: Average width (in bytes) of a column's entries.
 - **n_distinct**: Estimated number of distinct values in a column. Positive values are direct counts, while negative values indicate that the distinct count is a fraction of the total row count.
 - **most_common_vals**: Most frequently occurring values in a column.
 - **most_common_freqs**: Frequencies of the most common values.
@@ -54,7 +54,7 @@ CREATE TABLE users (
 );
 ```
 
-Let us add some specific data to this table so that we can corelate to it during analysis.
+Add some specific data to this table to corelate to it during analysis.
 
 ```sql
 -- set seed for random to be repeatable
@@ -82,13 +82,13 @@ SELECT
 FROM generate_series(1, 10000) AS id;
 ```
 
-Run analyze to gather statistics on the column values of the table as:
+Run ANALYZE to gather statistics on the column values of the table as follows:
 
 ```sql
 ANALYZE users;
 ```
 
-Also turn ON extended display for better readability as:
+Also, turn ON extended display for better readability as follows:
 
 ```sh
 @yugabyte=> \x ON
@@ -96,7 +96,7 @@ Also turn ON extended display for better readability as:
 
 ## Fetching the statistics
 
-Once the ANALYZE command is run, the `pg_statistic` command is populated with the statistics of the data. These stats are made easily readbable via the pg_stats view. For example, you can view the statistics of the `name` column in the `users` table as,
+After the ANALYZE command is run, the pg_statistic command is populated with the statistics of the data. These statistics are made easily readbable via the pg_stats view. For example, you can view the statistics of the `name` column in the `users` table as follows:
 
 ```sql
 SELECT attname, null_frac, n_distinct, most_common_vals, most_common_freqs
@@ -104,7 +104,7 @@ SELECT attname, null_frac, n_distinct, most_common_vals, most_common_freqs
     WHERE tablename='users' AND attname='name';
 ```
 
-You should get an output similar to:
+You should get an output similar to the following:
 
 ```caddyfile{.nocopy}
 -[ RECORD 1 ]-----+------------------------------------------------------------------------
@@ -115,7 +115,7 @@ most_common_vals  | {"",Jordan,Jamie,Morgan,Taylor,Kim,Pat,Casey,Sam,Lee}
 most_common_freqs | {0.2963,0.0352,0.0346,0.0342,0.0339,0.0334,0.0333,0.0328,0.0313,0.0308}
 ```
 
-The above output says that,
+From the above output,
 
 - **null_frac** shows that the fraction of null values is about 40%. (_Remember_, we tried to insert about 40% NULL values)
 - **n_distinct** shows that there are about 10 distinct values in the name column
@@ -124,7 +124,7 @@ The above output says that,
 
 ## Partial indexes
 
-Now when we try to create an index on the column `name`, the index could be unevenly distributed. This is due to 40% of the dataset consisting of NULL values and 30% consisting of empty values. Only 30% consist valid values. If we know that our queries will not lookup NULL or empty values, we can create partial index as,
+Next, when you try to create an index on the column `name`, the index could be unevenly distributed. This is due to 40% of the dataset consisting of NULL values, and 30% consisting of empty values. Only 30% consist valid values. If you know that your queries will not lookup NULL or empty values, you can create a partial index as follows:
 
 ```sql
 CREATE INDEX idx_users_name_nonempty
@@ -136,8 +136,8 @@ The above index will have just the valid values and the index will not be skewed
 
 ## Cardinality
 
-Given that there are only 9 (via **n_distinct**) distinct valid (without empty string) values in the `name` column, on an index with HASH distribution, even if there are more nodes in the cluster, the index will end up being only on a maximum of 9 nodes. This is because each value is hashed to determine the tablet in which it should be stored and there will be only 9 distinct hashes. This is the reason why is not advisable to create indexes on low cardinality columns like Booleans (2), Days of week(7) etc.
+Given that there are only 9 (via **n_distinct**) distinct valid (without empty string) values in the `name` column, and the index uses HASH distribution,  it will be distributed across a maximum of 9 nodes, regardless of how many nodes are in the cluster. This is because each value is hashed to determine the tablet it is stored in, leading to only 9 distinct hashes. This is why creating indexes on columns with low cardinality, like Booleans (2 values) or Days of the week (7 values), and so on is not recommended.
 
 ## Skewed data
 
-It is always advisable for your index/table to be reasonably distributed so that all nodes in your cluster handle a reasonably equal share of queries. In the above data set, it is easy to see that together `NULL` and empty values account for 70% of the total data set (via **most_common_vals, null_frac**). And the valid names constitute only 30% of the dataset. If an index was created will all these values then all queries to the index will be handled only by about 30% of the nodes in the cluster as 70% of data would not be queried against.
+It is always advisable for your index/table to be reasonably distributed so that all nodes in your cluster process a similar amount of queries. In the above data set, `NULL` and empty values make up 70% of the total dataset (via **most_common_vals, null_frac**), with valid names only accounting for 30%.  If you create an index on this data, only approximately 30% of the nodes will handle most of the queries, as 70% of the data is not queried.
