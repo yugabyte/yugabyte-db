@@ -412,6 +412,7 @@ public class UniverseTest extends FakeDBApplication {
     UserIntent ui = u.getUniverseDetails().getPrimaryCluster().userIntent;
     ui.provider =
         Provider.get(defaultCustomer.getUuid(), CloudType.aws).get(0).getUuid().toString();
+    ui.providerType = CloudType.aws;
     u.getUniverseDetails().upsertPrimaryCluster(ui, null);
 
     JsonNode universeJson = Json.toJson(new UniverseResp(u, null));
@@ -475,6 +476,7 @@ public class UniverseTest extends FakeDBApplication {
     UserIntent ui = u.getUniverseDetails().getPrimaryCluster().userIntent;
     ui.provider =
         Provider.get(defaultCustomer.getUuid(), CloudType.aws).get(0).getUuid().toString();
+    ui.providerType = CloudType.aws;
     u.getUniverseDetails().upsertPrimaryCluster(ui, null);
 
     JsonNode universeJson = Json.toJson(new UniverseResp(u, null));
