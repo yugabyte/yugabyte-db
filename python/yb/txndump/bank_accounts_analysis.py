@@ -12,9 +12,9 @@ script.
 import sys
 
 from time import monotonic
-from typing import NamedTuple, List
+from typing import NamedTuple, List, Union
 from uuid import UUID
-from yb.txndump.model import DocHybridTime, HybridTime, SubDocKey
+from yb.txndump.model import DocHybridTime, HybridTime, SubDocKey, Tombstone
 from yb.txndump.parser import AnalyzerBase, DumpProcessor, TransactionBase, Update
 
 kValueColumn = 1
@@ -40,14 +40,25 @@ class BankAccountTransaction(TransactionBase):
         return result + " }"
 
 
+def tombstone_to_zero(value: Union[int, Tombstone]) -> int:
+    if isinstance(value, Tombstone):
+        return 0
+    return value
+
+
 class BankAccountsAnalyzer(AnalyzerBase[int, int]):
     def __init__(self):
         super().__init__()
         self.log = []
 
     def extract_key(self, tablet: str, key: SubDocKey):
-        if key.sub_keys[0] == kValueColumn:
-            return key.hash_components[0]
+        if key.sub_keys and key.sub_keys[0] == kValueColumn:
+            return key.hash_components[0] if key.hash_components else key.range_components[0]
+        if not key.sub_keys:
+            if len(key.hash_components) == 1:
+                return key.hash_components[0]
+            if len(key.range_components) == 1:
+                return key.range_components[0]
         return None
 
     def create_transaction(self, txn_id: UUID):
@@ -69,8 +80,14 @@ class BankAccountsAnalyzer(AnalyzerBase[int, int]):
     def initial_value(self, key: int):
         return 100 if key == 0 else 0
 
-    def analyze_update(self, key: int, update: Update[int], old_balance: int) -> int:
-        new_balance = update.value
+    def analyze_update(
+            self, key: int, update: Update[Union[int, Tombstone]],
+            old_balance_or_tombstone: Union[int, Tombstone]) -> Union[int, Tombstone]:
+        if update.value is None:
+            return old_balance_or_tombstone
+        new_balance = tombstone_to_zero(update.value)
+        old_balance = tombstone_to_zero(old_balance_or_tombstone)
+
         hybrid_time = update.doc_ht.hybrid_time
         txn = self.txns[update.txn_id]
         if old_balance is not None:
@@ -93,16 +110,21 @@ class BankAccountsAnalyzer(AnalyzerBase[int, int]):
             if old_delta is None:
                 txn.delta = abs(delta)
             elif old_delta != abs(delta):
-                err_fmt = "Delta mismatch update: {}, key: {}, delta: {}"
-                self.error(hybrid_time, txn.id, err_fmt.format(txn, key, delta))
+                err_fmt = "Delta mismatch update: {}, key: {}, delta: {} / {} {}"
+                self.error(hybrid_time, txn.id,
+                           err_fmt.format(txn, key, delta, old_balance_or_tombstone, update.value))
 
-            if duplicate:
-                err_fmt = "Duplicate update: {}, key: {}, balance: {}"
-                self.error(hybrid_time, txn.id, err_fmt.format(txn, key, new_balance))
+            if duplicate and \
+                    update.value is not Tombstone.kTombstone and \
+                    old_balance_or_tombstone is not Tombstone.kTombstone:
+                err_fmt = "Duplicate update: {}, key: {}, balance: {} / {} {}"
+                self.error(hybrid_time, txn.id,
+                           err_fmt.format(txn, key, new_balance, old_balance_or_tombstone,
+                                          update.value))
 
             if txn.key1 is not None and txn.key2 is not None:
                 self.log.append((hybrid_time, 'w', txn))
-        return new_balance
+        return update.value
 
     def check_transaction(self, txn: BankAccountTransaction):
         cnt_keys = (1 if txn.key1 is not None else 0) + (1 if txn.key2 is not None else 0)

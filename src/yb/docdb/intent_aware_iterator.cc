@@ -699,16 +699,16 @@ Result<const FetchedEntry&> IntentAwareIterator::Fetch() {
             << ", kind: " << (result.same_transaction ? 'S' : (IsEntryRegular() ? 'R' : 'I'))
             << ", with time: " << result.write_time.ToString()
             << ", while read bounds are: " << read_time_;
+
+    YB_TRANSACTION_DUMP(
+        Read, txn_op_context_ ? txn_op_context_.txn_status_manager->tablet_id() : TabletId(),
+        txn_op_context_ ? txn_op_context_.transaction_id : TransactionId::Nil(),
+        read_time_, CHECK_RESULT(result.write_time.Decode()), result.same_transaction,
+        result.key.size(), result.key, result.value.size(), result.value);
   } else {
     DCHECK(entry_source_ == nullptr);
     VLOG(4) << "Fetched key <INVALID>";
   }
-
-  YB_TRANSACTION_DUMP(
-      Read, txn_op_context_ ? txn_op_context_.txn_status_manager->tablet_id() : TabletId(),
-      txn_op_context_ ? txn_op_context_.transaction_id : TransactionId::Nil(),
-      read_time_, CHECK_RESULT(result.write_time.Decode()), result.same_transaction,
-      result.key.size(), result.key, result.value.size(), result.value);
 
   return &result;
 }

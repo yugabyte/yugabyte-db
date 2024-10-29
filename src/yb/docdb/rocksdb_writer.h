@@ -215,6 +215,7 @@ class FrontierSchemaVersionUpdater {
 class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVersionUpdater {
  public:
   ApplyIntentsContext(
+      const TabletId& tablet_id,
       const TransactionId& transaction_id,
       const ApplyTransactionState* apply_state,
       const SubtxnSet& aborted,
@@ -236,6 +237,7 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
  private:
   Result<bool> StoreApplyState(const Slice& key, rocksdb::DirectWriteHandler* handler);
 
+  const TabletId& tablet_id_;
   const ApplyTransactionState* apply_state_;
   const SubtxnSet& aborted_;
   HybridTime commit_ht_;

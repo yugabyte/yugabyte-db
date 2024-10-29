@@ -154,6 +154,7 @@ class ValueType(Enum):
     kGroupEnd = 33
     kHybridTime = 35
     kNullLow = 36
+    kColocationId = 48
     kUInt16Hash = 71
     kInt32 = 72
     kInt64 = 73
@@ -176,6 +177,21 @@ def decode_key_entry(inp: BinaryIO, value_type: ValueType):
         barr = bytearray(inp.read(4))
         barr[0] ^= 0x80
         return int.from_bytes(barr, "big", signed=True)
+    if value_type == ValueType.kInt64:
+        barr = bytearray(inp.read(8))
+        barr[0] ^= 0x80
+        return int.from_bytes(barr, "big", signed=True)
+    if value_type == ValueType.kString:
+        chars = []
+        while True:
+            x = inp.read(1)
+            if x == b'\x00':
+                x = inp.read(1)
+            if x == b'\x00':
+                break
+            chars.append(x)
+        return b''.join(chars)
+
     if value_type == ValueType.kSystemColumnId or value_type == ValueType.kColumnId:
         return inp.read_key_varint()
     raise Exception('Not supported key value type: {}'.format(value_type))
@@ -190,18 +206,24 @@ class SubDocKey(NamedTuple):
     @staticmethod
     def decode(key: bytes, has_hybrid_time: bool):
         inp = BinaryIO(BytesIO(key))
-        value_type = ValueType.read(inp)
-        if value_type != ValueType.kUInt16Hash:
-            raise Exception('Missing key hash in {}, {}'.format(key, value_type))
-        inp.read_int16()
         hash_components = []
         range_components = []
-        for out in (hash_components, range_components):
+        value_type = ValueType.read(inp)
+        if value_type == ValueType.kColocationId:
+            inp.read_int32()
+            value_type = ValueType.read(inp)
+        if value_type == ValueType.kUInt16Hash:
+            inp.read_int16()
             while True:
                 value_type = ValueType.read(inp)
                 if value_type == ValueType.kGroupEnd:
                     break
-                out.append(decode_key_entry(inp, value_type))
+                hash_components.append(decode_key_entry(inp, value_type))
+        while True:
+            if value_type == ValueType.kGroupEnd:
+                break
+            range_components.append(decode_key_entry(inp, value_type))
+            value_type = ValueType.read(inp)
         sub_keys = []
         while True:
             value_type = ValueType.read(inp)
@@ -209,7 +231,7 @@ class SubDocKey(NamedTuple):
                 if value_type == ValueType.kHybridTime:
                     break
             else:
-                if value_type is None:
+                if value_type is None or value_type == ValueType.kGroupEnd:
                     break
             sub_keys.append(decode_key_entry(inp, value_type))
         doc_ht = None
