@@ -39,7 +39,6 @@ import { Action } from '../../rbac';
 import { getOIDCValidationSchema } from './OIDCValidationSchema';
 import { OIDC_PATH, OIDC_RUNTIME_CONFIGS_QUERY_KEY } from '../../rbac/groups/components/GroupUtils';
 import { OIDC_FIELDS, OIDCFormProps } from './OIDCConstants';
-import { ReactComponent as User } from '../../../../redesign/assets/user-outline.svg';
 import { ReactComponent as BulbIcon } from '../../../../redesign/assets/bulb.svg';
 
 const useStyles = makeStyles((theme) => ({
@@ -85,12 +84,15 @@ const useStyles = makeStyles((theme) => ({
   roleSettings: {
     display: 'flex',
     gap: '56px',
-    marginTop: '8px',
     alignItems: 'center',
-    marginBottom: '16px'
+    marginBottom: '32px',
+    marginTop: '32px'
   },
   alert: {
     background: theme.palette.primary[200],
+    marginTop: '32px'
+  },
+  groupOverrideWarning: {
     marginTop: '32px'
   },
   link: {
@@ -130,7 +132,18 @@ const useStyles = makeStyles((theme) => ({
   mapGroupRoles: {
     marginBottom: '16px',
     display: 'flex',
-    flexDirection: 'column'
+    flexDirection: 'column',
+    border: `1px solid ${theme.palette.ybacolors.backgroundGrayDark}`,
+    borderRadius: '8px',
+    padding: '24px',
+    '&>h6': {
+      marginLeft: '50px',
+      color: theme.palette.ybacolors.textDarkGray
+    }
+  },
+  defaultRoleLabel: {
+    display: 'flex',
+    alignItems: 'center'
   }
 }));
 
@@ -279,21 +292,6 @@ export const OIDCAuthNew = () => {
 
   if (isLoading) return <YBLoadingCircleIcon />;
 
-  const UserDefaultRole = [
-    {
-      label: t('roles.readOnly'),
-      value: UserDefaultRoleOptions.ReadOnly
-    },
-    {
-      label: t('roles.connectOnly'),
-      value: UserDefaultRoleOptions.ConnectOnly
-    }
-  ];
-
-  const oauthEnabled = watch('use_oauth');
-
-  const { oidcProviderMetadata } = getValues();
-
   const toolTip = (content: string) => {
     return (
       <YBTooltip title={content} placement="top">
@@ -301,6 +299,31 @@ export const OIDCAuthNew = () => {
       </YBTooltip>
     );
   };
+
+  const UserDefaultRole = [
+    {
+      label: (
+        <>
+          {t('roles.readOnly')}
+          {toolTip(t('infos.readOnly'))}
+        </>
+      ),
+      value: UserDefaultRoleOptions.ReadOnly
+    },
+    {
+      label: (
+        <>
+          {t('roles.connectOnly')}
+          {toolTip(t('infos.connectOnly'))}
+        </>
+      ),
+      value: UserDefaultRoleOptions.ConnectOnly
+    }
+  ];
+
+  const oauthEnabled = watch('use_oauth');
+
+  const { oidcProviderMetadata } = getValues();
 
   return (
     <RbacValidator
@@ -450,40 +473,8 @@ export const OIDCAuthNew = () => {
             label={t('oidcUseRoleMapping')}
             disabled={!oauthEnabled}
           />
-        </div>
-        <Collapse in={enableRoleMapping}>
-          <div className={classes.roleConfigurations}>
-            <div className={classes.roleSettingsHeader}>
-              <User />
-              <Typography variant="body1">{t('roles.userRoleSettings')}</Typography>
-            </div>
-            <div className={classes.roleSettings}>
-              <Typography variant="body2">{t('roles.userDefaultRole')}</Typography>
-              <div className={classes.roleField}>
-                <YBRadioGroupField
-                  name="oidc_default_role"
-                  options={UserDefaultRole}
-                  control={control}
-                  orientation="horizontal"
-                  isDisabled={!oauthEnabled}
-                  data-testid="oidc_default_role"
-                />
-                {toolTip(t('infos.connectOnly'))}
-              </div>
-            </div>
-            <YBInputField
-              control={control}
-              name="oidc_group_claim"
-              label={
-                <>
-                  {t('groupClaim')}
-                  {toolTip(t('infos.groupClaim'))}
-                </>
-              }
-              fullWidth
-              disabled={!oauthEnabled}
-              data-testid="oidcGroupClaim"
-            />
+          <Typography variant="subtitle1">{t('infos.defaultRoleHelpText')}</Typography>
+          {enableRoleMapping ? (
             <YBAlert
               variant={AlertVariant.Info}
               open
@@ -508,6 +499,54 @@ export const OIDCAuthNew = () => {
                 />
               }
               className={classes.alert}
+            />
+          ) : (
+            <YBAlert
+              open={true}
+              className={classes.groupOverrideWarning}
+              text={
+                <Trans
+                  i18nKey="userAuth.OIDC.roles.groupOverrideWarning"
+                  components={{ b: <b /> }}
+                />
+              }
+              variant={AlertVariant.Warning}
+            />
+          )}
+        </div>
+        <Collapse in={enableRoleMapping}>
+          <div className={classes.roleConfigurations}>
+            <div className={classes.roleSettingsHeader}>
+              <Typography variant="body1">{t('roles.userRoleSettings')}</Typography>
+            </div>
+            <div className={classes.roleSettings}>
+              <span className={classes.defaultRoleLabel}>
+                <Typography variant="body2">{t('roles.userDefaultRole')}</Typography>
+                {toolTip(t('infos.defaultRole'))}
+              </span>
+              <div className={classes.roleField}>
+                <YBRadioGroupField
+                  name="oidc_default_role"
+                  options={UserDefaultRole}
+                  control={control}
+                  orientation="horizontal"
+                  isDisabled={!oauthEnabled}
+                  data-testid="oidc_default_role"
+                />
+              </div>
+            </div>
+            <YBInputField
+              control={control}
+              name="oidc_group_claim"
+              label={
+                <>
+                  {t('groupClaim')}
+                  {toolTip(t('infos.groupClaim'))}
+                </>
+              }
+              fullWidth
+              disabled={!oauthEnabled}
+              data-testid="oidcGroupClaim"
             />
           </div>
         </Collapse>
