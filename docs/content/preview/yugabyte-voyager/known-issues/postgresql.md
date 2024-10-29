@@ -1023,7 +1023,7 @@ Suggested changes to the schema can be done using the following steps:
 
 **GitHub**: [Issue 11323](https://github.com/yugabyte/yugabyte-db/issues/11323), [Issue 1731](https://github.com/yugabyte/yb-voyager/issues/1731)
 
-**Description**: If your source database has any of these datatypes on the columns - `GEOMETRY`, `GEOGRAPHY`, `BOX2D`, `BOX3D`, `TOPOGEOMETRY`, `RASTER`, `PG_LSN`, or `TXID_SNAPSHOT`, it will be skipped during the migration.
+**Description**: The migration skips databases that have the following data types on any column: `GEOMETRY`, `GEOGRAPHY`, `BOX2D`, `BOX3D`, `TOPOGEOMETRY`, `RASTER`, `PG_LSN`, or `TXID_SNAPSHOT`.
 
 **Workaround**: None.
 
@@ -1046,9 +1046,9 @@ CREATE TABLE public.locations (
 
 **GitHub**: [Issue 1731](https://github.com/yugabyte/yb-voyager/issues/1731)
 
-**Description**: For live migration, if your source database has any of these datatypes on the columns - `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, or `CIRCLE`, it will be skipped during the migration.
+**Description**: For live migration, the migration skips databases that have the following data types on any column: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, or `CIRCLE`.
 
-For live migration with fall-forward/fall-back, if your source database has any of these datatypes on the columns - `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `TSVECTOR`, `TSQUERY`, `CIRCLE`, or `ARRAY OF ENUMS`, it will be skipped during the migration.
+For live migration with fall-forward/fall-back, the migration skips databases that have the following data types on any column: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `TSVECTOR`, `TSQUERY`, `CIRCLE`, or `ARRAY OF ENUMS`.
 
 **Workaround**: None.
 

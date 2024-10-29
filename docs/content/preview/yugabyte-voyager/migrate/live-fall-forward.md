@@ -393,7 +393,7 @@ You can use only one of the following arguments to connect to your Oracle instan
     CREATE USER ybvoyager PASSWORD 'password';
     ```
 
-1. Grant permissions for migration. Use the `yb-voyager-pg-grant-migration-permissions.sql` script (which can be found at `/opt/yb-voyager/guardrails-scripts`. For brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
+1. Grant permissions for migration. Use the `yb-voyager-pg-grant-migration-permissions.sql` script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows::
 
    ```sql
    psql -h <host> \
@@ -404,7 +404,7 @@ You can use only one of the following arguments to connect to your Oracle instan
         -v is_live_migration=1 \
         -v is_live_migration_fall_back=0 \
         -v replication_group='<replication_group>' \
-        -v original_owner_of_tables='<original_owner_of_tables>'
+        -v original_owner_of_tables='<original_owner_of_tables>' \
         -f <path_to_the_script>
    ```
 
@@ -441,7 +441,7 @@ You can use only one of the following arguments to connect to your Oracle instan
         -v is_live_migration=1 \
         -v is_live_migration_fall_back=0 \
         -v replication_group='<replication_group>' \
-        -v original_owner_of_tables='<original_owner_of_tables>'
+        -v original_owner_of_tables='<original_owner_of_tables>' \
         -f <path_to_the_script>
    ```
 
