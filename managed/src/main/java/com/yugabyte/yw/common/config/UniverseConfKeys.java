@@ -1219,7 +1219,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Stop multiple nodes in az simultaneously during upgrade",
           "Stop multiple nodes in az simultaneously during upgrade",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> upgradeBatchRollK8sEnabled =
       new ConfKeyInfo<>(
           "yb.task.upgrade.batch_roll_enabled_k8s",
@@ -1227,23 +1227,23 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Stop multiple nodes in az simultaneously during upgrade (in k8s)",
           "Stop multiple nodes in az simultaneously during upgrade (in k8s)",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> upgradeBatchRollAutoPercent =
       new ConfKeyInfo<>(
           "yb.task.upgrade.batch_roll_auto_percent",
           ScopeType.UNIVERSE,
-          "Percent of nodes to roll simultaneously during upgrade",
-          "Percent of nodes to roll simultaneously during upgrade",
+          "Max percent of nodes to roll simultaneously during upgrade",
+          "Max percent of nodes to roll simultaneously during upgrade",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> upgradeBatchRollAutoNumber =
       new ConfKeyInfo<>(
           "yb.task.upgrade.batch_roll_auto_number",
           ScopeType.UNIVERSE,
-          "Number of nodes to roll simultaneously during upgrade",
-          "Number of nodes to roll simultaneously during upgrade",
+          "Max number of nodes to roll simultaneously during upgrade",
+          "Max number of nodes to roll simultaneously during upgrade",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> autoMasterFailoverDetectionInterval =
       new ConfKeyInfo<>(
           "yb.auto_master_failover.detect_interval",
