@@ -654,7 +654,7 @@ TEST_F(MasterTest, TestReRegisterRemovedUUID) {
 }
 
 TEST_F(MasterTest, TestRegistrationThroughHeartbeatPersisted) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_persist_tserver_registry) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
   TSToMasterCommonPB common;
   TSRegistrationPB registration;
   const std::string kUUID = "uuid";
@@ -675,7 +675,7 @@ TEST_F(MasterTest, TestRegistrationThroughHeartbeatPersisted) {
 }
 
 TEST_F(MasterTest, TestUnresponsiveMarkingPersisted) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_persist_tserver_registry) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 3000;
   TSToMasterCommonPB common;
   TSRegistrationPB registration;
@@ -700,7 +700,7 @@ TEST_F(MasterTest, TestUnresponsiveMarkingPersisted) {
 }
 
 TEST_F(MasterTest, TestHeartbeatFromRegisteredTSPersisted) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_persist_tserver_registry) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 3000;
   TSToMasterCommonPB common;
   TSRegistrationPB registration;

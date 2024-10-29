@@ -14,9 +14,7 @@ aliases:
 type: docs
 ---
 
-Partial indexes allow you to improve query performance by reducing the index size. A smaller index is faster to scan, easier to maintain, and requires less storage.
-
-Partial indexing works by specifying the rows defined by a conditional expression (called the predicate of the partial index), typically in the `WHERE` clause of the table.
+Partial indexes allow you to improve query performance by reducing the index size. A smaller index is faster to scan, easier to maintain, and requires less storage. Partial indexing works by specifying the rows defined by a conditional expression (called the predicate of the partial index), typically in the WHERE clause of the table.
 
 ## Syntax
 
@@ -24,13 +22,28 @@ Partial indexing works by specifying the rows defined by a conditional expressio
 CREATE INDEX index_name ON table_name(column_list) WHERE condition;
 ```
 
-The `WHERE` clause specifies which rows need to be added to the index.
+The WHERE clause specifies which rows need to be added to the index.
 
-## Example
+## Setup
 
-{{% explore-setup-single %}}
+The examples run on any YugabyteDB universe.
 
-This example uses the `customers` table from the [Northwind sample database](../../../../sample-data/northwind/#install-the-northwind-sample-database).
+<!-- begin: nav tabs -->
+{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
+
+{{<nav/panels>}}
+{{<nav/panel name="local" active="true">}}
+<!-- local cluster setup instructions -->
+{{<setup/local numnodes="1" rf="1" >}}
+
+{{</nav/panel>}}
+
+{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
+{{<nav/panel name="cloud">}}{{<setup/cloud>}}{{</nav/panel>}}
+{{</nav/panels>}}
+<!-- end: nav tabs -->
+
+The example uses the `customers` table from the [Northwind sample database](../../../../sample-data/northwind/#install-the-northwind-sample-database).
 
 View the contents of the `customers` table:
 
@@ -38,7 +51,7 @@ View the contents of the `customers` table:
 SELECT * FROM customers LIMIT 3;
 ```
 
-```output
+```caddyfile{.nocopy}
  customer_id |       company_name        |  contact_name  |    contact_title    |           address           |   city    | region | postal_code | country |     phone      |      fax
 -------------+---------------------------+----------------+---------------------+-----------------------------+-----------+--------+-------------+---------+----------------+----------------
  FAMIA       | Familia Arquibaldo        | Aria Cruz      | Marketing Assistant | Rua Orós, 92                | Sao Paulo | SP     | 05442-030   | Brazil  | (11) 555-9857  |
@@ -47,13 +60,13 @@ SELECT * FROM customers LIMIT 3;
 (3 rows)
 ```
 
-Suppose you want to query the subset of customers who are Sales Managers in the USA. The query plan using the `EXPLAIN` statement would look like the following:
+Suppose you want to query the subset of customers who are Sales Managers in the USA. The query plan using the EXPLAIN statement would look like the following:
 
 ```sql
 northwind=# EXPLAIN SELECT * FROM customers where (country = 'USA' and contact_title = 'Sales Manager');
 ```
 
-```output
+```yaml{.nocopy}
                                     QUERY PLAN
 -----------------------------------------------------------------------------------------------
  Seq Scan on customers  (cost=0.00..105.00 rows=1000 width=738)
@@ -61,7 +74,7 @@ northwind=# EXPLAIN SELECT * FROM customers where (country = 'USA' and contact_t
 (2 rows)
 ```
 
-Without creating a partial index, querying the `customers` table with the `WHERE` clause scans all the rows sequentially. Creating a partial index limits the number of rows to be scanned for the same query.
+Without creating a partial index, querying the `customers` table using the WHERE clause scans all the rows sequentially. Creating a partial index limits the number of rows to be scanned for the same query.
 
 Create a partial index on the columns `country` and `city` from the `customers` table as follows:
 
@@ -69,13 +82,13 @@ Create a partial index on the columns `country` and `city` from the `customers` 
 northwind=# CREATE INDEX index_country ON customers(country) WHERE(contact_title = 'Sales Manager');
 ```
 
-Verify with the `EXPLAIN` statement that the number of rows is significantly less compared to the original query plan.
+Using the EXPLAIN statement, verify that the number of rows is significantly less compared to the original query plan.
 
 ```sql
 northwind=# EXPLAIN SELECT * FROM customers where (country = 'USA' and contact_title = 'Sales Manager');
 ```
 
-```output
+```yaml{.nocopy}
                                   QUERY PLAN
 ---------------------------------------------------------------------------------
  Index Scan using index_country on customers  (cost=0.00..5.00 rows=10 width=738)

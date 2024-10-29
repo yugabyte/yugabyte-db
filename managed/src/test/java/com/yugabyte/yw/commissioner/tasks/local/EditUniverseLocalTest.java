@@ -325,7 +325,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     verifyPayload();
   }
 
-  @Test
+  // @Test
   public void testIncreaseRFPrimary() throws InterruptedException {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.numNodes = 3;

@@ -17,6 +17,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pg_util.h"
 
@@ -63,7 +64,7 @@ DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_dowarmup, false,
   "Enable precreation of server connections in Ysql Connection Manager. If set false, "
   "the server connections are created lazily (on-demand) in Ysql Connection Manager.");
 
-DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_stats_interval, 10,
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_stats_interval, 1,
   "Interval (in secs) at which the stats for Ysql Connection Manager will be updated.");
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_min_conns_per_db, 1,
@@ -75,6 +76,47 @@ DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_unix_conn, true,
     "For pg_backend to accept unix socket connection by Ysql Connection Manager add "
     "'local all yugabyte trust' in hba.conf (set ysql_hba_conf_csv as 'local all yugabyte trust')."
     );
+
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_server_lifetime, 3600,
+    "Specifies the maximum duration (in seconds) that a backend PostgreSQL connection "
+    "managed by Ysql Connection Manager can remain open after its creation. Once this time "
+    "is reached, the connection is automatically closed, regardless of activity, ensuring that "
+    "fresh backend connections are regularly maintained.");
+
+DEFINE_NON_RUNTIME_string(ysql_conn_mgr_log_settings, "",
+    "Comma-separated list of log settings for Ysql Connection Manger, which may include "
+    "'log_debug', 'log_config', 'log_session', 'log_query', and 'log_stats'. Only the "
+    "log settings present in this string will be enabled. Omitted settings will remain disabled.");
+namespace {
+
+bool ValidateLogSettings(const char* flag_name, const std::string& value) {
+  const std::unordered_set<std::string> valid_settings = {
+    "log_debug", "log_config", "log_session", "log_query", "log_stats"
+  };
+
+  std::stringstream ss(value);
+  std::string setting;
+  std::unordered_set<std::string> seen_settings;
+
+  while (std::getline(ss, setting, ',')) {
+    setting = yb::util::TrimStr(setting);
+
+    if (setting.empty()) {
+      continue;
+    }
+    if (valid_settings.find(setting) == valid_settings.end()) {
+      LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+          << "Invalid log setting '" << setting << "'. Valid options are: "
+          << "'log_debug', 'log_config', 'log_session', 'log_query', and 'log_stats'.";
+      return false;
+    }
+  }
+  return true;
+}
+
+} // namespace
+
+DEFINE_validator(ysql_conn_mgr_log_settings, &ValidateLogSettings);
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {

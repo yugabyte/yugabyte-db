@@ -16,15 +16,26 @@ A covering index is an index that includes all the columns required by a query, 
 
 A covering index is an efficient way to perform [index-only](https://wiki.postgresql.org/wiki/Index-only_scans) scans, where you don't need to scan the table, just the index, to satisfy the query.
 
-## Syntax
+## Setup
 
-```sql
-CREATE INDEX columnA_columnB_index_name ON table_name(columnA, columnB) INCLUDE (columnC);
-```
+The examples run on any YugabyteDB universe.
 
-## Example
+<!-- begin: nav tabs -->
+{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
 
-{{% explore-setup-single %}}
+{{<nav/panels>}}
+{{<nav/panel name="local" active="true">}}
+<!-- local cluster setup instructions -->
+{{<setup/local numnodes="1" rf="1" >}}
+
+{{</nav/panel>}}
+
+{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
+{{<nav/panel name="cloud">}}{{<setup/cloud>}}{{</nav/panel>}}
+{{</nav/panels>}}
+<!-- end: nav tabs -->
+
+## Index-Only scan
 
 The following exercise demonstrates how to perform an index-only scan on an [expression (functional) index](../expression-index-ysql/), and further optimize the query performance using a covering index.
 
@@ -44,7 +55,7 @@ The following exercise demonstrates how to perform an index-only scan on an [exp
     SELECT * FROM demo WHERE username='Number42';
     ```
 
-    ```output
+    ```caddyfile{.nocopy}
      id | username
     ----+----------
      66 | Number42
@@ -57,7 +68,7 @@ The following exercise demonstrates how to perform an index-only scan on an [exp
     EXPLAIN ANALYZE SELECT * FROM demo WHERE upper(username)='NUMBER42';
     ```
 
-    ```output
+    ```yaml{.nocopy}
                                                       QUERY PLAN
     ------------------------------------------------------------------------------------------------------
      Seq Scan on demo  (cost=0.00..105.00 rows=1000 width=40) (actual time=15.279..15.880 rows=1 loops=1)
@@ -79,7 +90,7 @@ The following exercise demonstrates how to perform an index-only scan on an [exp
     EXPLAIN ANALYZE SELECT upper(username) FROM demo WHERE upper(username)='NUMBER42';
     ```
 
-    ```output
+    ```yaml{.nocopy}
                                                            QUERY PLAN
     -------------------------------------------------------------------------------------------------------------------
      Index Scan using demo_upper on demo  (cost=0.00..5.28 rows=10 width=32) (actual time=1.939..1.942 rows=1 loops=1)
@@ -106,7 +117,7 @@ The following exercise demonstrates how to perform an index-only scan on an [exp
     EXPLAIN ANALYZE SELECT upper(username) FROM demo WHERE upper(username)='NUMBER42';
     ```
 
-    ```output
+    ```yaml{.nocopy}
                                                                    QUERY PLAN
     ---------------------------------------------------------------------------------------------------------------------
      Index Only Scan using demo_upper_covering on demo  (cost=0.00..5.18 rows=10 width=32) (actual time=1.650..1.653 rows=1     loops=1)

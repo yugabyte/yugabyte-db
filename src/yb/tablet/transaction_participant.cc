@@ -122,8 +122,6 @@ DEFINE_test_flag(bool, no_schedule_remove_intents, false,
 
 DECLARE_int64(transaction_abort_check_timeout_ms);
 
-DECLARE_int64(cdc_intent_retention_ms);
-
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(clear_deadlocked_txns_info_older_than_heartbeats);
 
@@ -661,25 +659,16 @@ class TransactionParticipant::Impl
 
       if (it != transactions_.end() && !(**it).ProcessingApply()) {
         OpId op_id = (**it).GetApplyOpId();
-
-        if (op_id <= checkpoint_op_id) {
-          if (PREDICT_TRUE(!GetAtomicFlag(&FLAGS_TEST_no_schedule_remove_intents))) {
-            (**it).ScheduleRemoveIntents(*it, front.reason);
-          }
-        } else if (op_id != OpId::Max()) {
-          // Adding post apply metadata entry will be skipped for applied transactions that are
-          // loaded on bootstrap.
-          if (!GetAtomicFlag(&FLAGS_cdc_write_post_apply_metadata) ||
-              !GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
-            break;
-          }
-          post_apply_metadatas.push_back({
-            .transaction_id = id,
-            .apply_op_id = op_id,
-            .commit_ht = (**it).GetCommitHybridTime(),
-            .log_ht = (**it).GetApplyHybridTime(),
-          });
+        auto result = HandleTransactionCleanup(it, front.reason, checkpoint_op_id);
+        if(!result.should_remove_transaction) {
+          break;
         }
+
+        if (result.post_apply_metadata_entry.has_value()) {
+          DCHECK_EQ(result.should_remove_transaction, true);
+          post_apply_metadatas.push_back(std::move(result.post_apply_metadata_entry.value()));
+        }
+
         VLOG_WITH_PREFIX(2) << "Cleaning txn apply opid is: " << op_id.ToString()
                             << " checkpoint opid is: " << checkpoint_op_id.ToString()
                             << " txn id: " << id;
@@ -1745,6 +1734,47 @@ class TransactionParticipant::Impl
     return RemoveUnlocked(it, reason, min_running_notifier);
   }
 
+  struct TransactionMetaCleanupResult {
+    bool should_remove_transaction;
+    std::optional<PostApplyTransactionMetadata> post_apply_metadata_entry;
+  };
+
+  TransactionMetaCleanupResult HandleTransactionCleanup(
+      const Transactions::iterator& it, RemoveReason reason, const OpId& checkpoint_op_id)
+      REQUIRES(mutex_) {
+    bool should_remove_transaction = true;
+    std::optional<PostApplyTransactionMetadata> post_apply_metadata_entry;
+    bool is_txn_loaded_with_cdc = (**it).IsTxnLoadedWithCDC();
+    // Skip checking for intent removal or addition of post apply metadata entry for loaded txns
+    // if CDC is enabled on the tablet. Intents of such txns will be deleted by the intent SST
+    // file cleanup codepath after CDC streams them.
+    if (is_txn_loaded_with_cdc) {
+      return {should_remove_transaction, post_apply_metadata_entry};
+    }
+
+    const TransactionId& txn_id = (**it).id();
+    const OpId& op_id = (**it).GetApplyOpId();
+    if (op_id <= checkpoint_op_id) {
+      if (PREDICT_TRUE(!GetAtomicFlag(&FLAGS_TEST_no_schedule_remove_intents))) {
+        (**it).ScheduleRemoveIntents(*it, reason);
+      }
+    } else {
+      if (!GetAtomicFlag(&FLAGS_cdc_write_post_apply_metadata) ||
+          !GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
+        should_remove_transaction = false;
+        return {should_remove_transaction, post_apply_metadata_entry};
+      }
+      post_apply_metadata_entry = PostApplyTransactionMetadata{
+          .transaction_id = txn_id,
+          .apply_op_id = op_id,
+          .commit_ht = (**it).GetCommitHybridTime(),
+          .log_ht = (**it).GetApplyHybridTime(),
+      };
+    }
+
+    return {should_remove_transaction, post_apply_metadata_entry};
+  }
+
   bool RemoveUnlocked(
       const Transactions::iterator& it, RemoveReason reason,
       MinRunningNotifier* min_running_notifier,
@@ -1754,30 +1784,14 @@ class TransactionParticipant::Impl
     OpId op_id = (**it).GetApplyOpId();
 
     if (running_requests_.empty()) {
-      bool remove_transaction = true;
+      auto result = HandleTransactionCleanup(it, reason, checkpoint_op_id);
 
-      if (op_id <= checkpoint_op_id) {
-        if (PREDICT_TRUE(!GetAtomicFlag(&FLAGS_TEST_no_schedule_remove_intents))) {
-          (**it).ScheduleRemoveIntents(*it, reason);
-        }
-      } else if (op_id != OpId::Max()) {
-        // Adding post apply metadata entry will be skipped for applied transactions that are
-        // loaded on bootstrap.
-        if (!GetAtomicFlag(&FLAGS_cdc_write_post_apply_metadata) ||
-            !GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
-          remove_transaction = false;
-        } else {
-          std::vector<PostApplyTransactionMetadata> rewrite = {{
-            .transaction_id = txn_id,
-            .apply_op_id = op_id,
-            .commit_ht = (**it).GetCommitHybridTime(),
-            .log_ht = (**it).GetApplyHybridTime(),
-          }};
-          QueueWritePostApplyMetadata(std::move(rewrite));
-        }
+      if (result.post_apply_metadata_entry.has_value()) {
+        DCHECK_EQ(result.should_remove_transaction, true);
+        QueueWritePostApplyMetadata({std::move(result.post_apply_metadata_entry.value())});
       }
 
-      if (remove_transaction) {
+      if (result.should_remove_transaction) {
         RemoveTransaction(it, reason, min_running_notifier, expected_deadlock_status);
         VLOG_WITH_PREFIX(2) << "Cleaned transaction: " << txn_id << ", reason: " << reason
                             << " , apply record op_id: " << op_id
@@ -1905,6 +1919,15 @@ class TransactionParticipant::Impl
                           << pending_apply->ToString();
       txn->SetLocalCommitData(pending_apply->commit_ht, pending_apply->state.aborted);
       txn->SetApplyData(pending_apply->state);
+    }
+    // All transactions loaded during tablet bootstrap do not have an apply OpID. However, these
+    // transactions may still be needed by CDC (if enabled). To prevent unintended cleanup of
+    // intents for such transactions when CDC is active, we set an indentification marker which will
+    // be checked when we remove the txn from 'transactions_' and trigger cleanup of intents. Once
+    // CDC stream these txns, their intents will be cleaned up by the intent SST file cleanup
+    // codepath.
+    if (GetLatestCheckPointUnlocked() != OpId::Max()) {
+      txn->SetTxnLoadedWithCDC();
     }
     transactions_.insert(txn);
     mem_tracker_->Consume(kRunningTransactionSize);

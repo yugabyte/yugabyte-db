@@ -14,7 +14,11 @@ menu:
 type: docs
 ---
 
-You can add a new index to an existing table using the YSQL [CREATE INDEX](../../../../api/ysql/the-sql-language/statements/ddl_create_index/#semantics) statement. YugabyteDB supports [online index backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md), which is enabled by default. Using this feature, you can build indexes on tables that already have data, without affecting other concurrent writes. YugabyteDB also supports the [CREATE INDEX NONCONCURRENTLY](../../../../api/ysql/the-sql-language/statements/ddl_create_index/#nonconcurrently) statement to disable online index backfill.
+YugabyteDB supports [online index backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md), that allows you to build indexes on tables that already have data, without affecting other concurrent writes. YugabyteDB also supports the [CREATE INDEX NONCONCURRENTLY](../../../../api/ysql/the-sql-language/statements/ddl_create_index/#nonconcurrently) statement to disable online index backfill.
+
+{{<note>}}
+Online index backfill is enabled by default.
+{{</note>}}
 
 ## Tracking index creation
 
@@ -26,17 +30,28 @@ The `pg_stat_progress_create_index` view can provide the following details:
 - The current phase of the command is either `initializing` or `backfilling`.
 - Index progress report for all the different configurations of an index or index build such as non-concurrent index builds, GIN indexes, partial indexes, and include indexes.
 
-{{<note>}}
-Columns such as lockers_total, lockers_done, current_locker_pid, blocks_total, and blocks_done in the `pg_stat_progress_create_index` view do not apply to YugabyteDB and always have null values.
-{{</note>}}
+Columns such as `lockers_total`, `lockers_done`, `current_locker_pid`, `blocks_total`, and `blocks_done` in the `pg_stat_progress_create_index` view do not apply to YugabyteDB and always have null values.
 
-## Example
+## Setup
 
-The following example demonstrates the possible phases (initializing, backfilling) for the CREATE INDEX operation using the `pg_stat_progress_create_index` view.
+The examples run on any YugabyteDB universe.
 
-{{% explore-setup-single %}}
+<!-- begin: nav tabs -->
+{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
 
-1. From your local YugabyteDB installation directory, connect to the [YSQL](../../../../api/ysqlsh create an index on an existing table as follows:
+{{<nav/panels>}}
+{{<nav/panel name="local" active="true">}}
+<!-- local cluster setup instructions -->
+{{<setup/local numnodes="1" rf="1" >}}
+
+{{</nav/panel>}}
+
+{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
+{{<nav/panel name="cloud">}}{{<setup/cloud>}}{{</nav/panel>}}
+{{</nav/panels>}}
+<!-- end: nav tabs -->
+
+1. From your local YugabyteDB installation directory, create an index on an existing table as follows:
 
     ```sql
     CREATE TABLE test(id int);
@@ -61,7 +76,7 @@ The following example demonstrates the possible phases (initializing, backfillin
 
     Initially, you will see an empty output like this.
 
-    ```output
+    ```caddyfile{.nocopy}
        tblname | indexname | command | phase | tuples_total | tuples_done
       ---------+-----------+---------+-------+--------------+-------------
     ```
@@ -74,7 +89,7 @@ The following example demonstrates the possible phases (initializing, backfillin
 
 1. On the other terminal, you will see the progress on the index creation first with the first phase, `initializing` as:
 
-    ```tablegen
+    ```caddyfile{.nocopy}
      tblname | indexname |          command          |    phase     | tuples_total | tuples_done
     ---------+-----------+---------------------------+--------------+--------------+-------------
      test    | idx_id    | CREATE INDEX CONCURRENTLY | initializing |            0 |           0
@@ -82,15 +97,15 @@ The following example demonstrates the possible phases (initializing, backfillin
 
     And then you will see the index backfilling happen as:
 
-    ```tablegen
+    ```caddyfile{.nocopy}
       tblname | indexname |          command          |    phase    | tuples_total | tuples_done
      ---------+-----------+---------------------------+-------------+--------------+-------------
       test    | idx_id    | CREATE INDEX CONCURRENTLY | backfilling |            0 |           0
     ```
 
-    You will see the tuples_done count increasing as the backfilling progresses. When the backfilling is done, you will see the `tuples_done` count to be updated correctly.
+    You will see the `tuples_done` count increasing as the backfilling progresses. When the backfilling is done, you will see the `tuples_done` count to be updated correctly.
 
-    ```tablegen
+    ```caddyfile{.nocopy}
       tblname | indexname |          command          |    phase    | tuples_total | tuples_done
      ---------+-----------+---------------------------+-------------+--------------+-------------
       test    | idx_id    | CREATE INDEX CONCURRENTLY | backfilling |            0 |     1000000
@@ -98,7 +113,7 @@ The following example demonstrates the possible phases (initializing, backfillin
 
 ## Memory usage
 
-Backfilling consumes some amount of memory. The memory consumption is directly proportional to the data size per-row, the number of write operations batched together, and the number of parallel backfills. You can view the approximate memory usage by executing the following SQL statement via `ysqlsh`.
+Backfilling consumes some amount of memory. The memory consumption is directly proportional to the data size per-row, the number of write operations batched together, and the number of parallel backfills. You can view the approximate memory usage by executing the following SQL statement:
 
 ```sql
 SELECT
@@ -119,13 +134,13 @@ SELECT
 
 This should give you an output similar to the following when an index is being backfilled.
 
-```tablegen
+```caddyfile{.nocopy}
  indexname | tablet  |     started     |  mem  |  rss
 -----------+---------+-----------------+-------+-------
  idx_id    | x'aaaa' | 00:00:04.895382 | 27 MB | 25 MB
 ```
 
-## Caveats
+## Limitations
 
 - In YugabyteDB, the `pg_stat_progress_create_index` view is local; it only has entries for CREATE INDEX commands issued by local YSQL clients.
 

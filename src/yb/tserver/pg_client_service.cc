@@ -193,8 +193,9 @@ class LockablePgClientSession : public PgClientSession {
         lifetime_(lifetime), expiration_(NewExpiration()) {
   }
 
-  void StartExchange(const std::string& instance_id) {
-    exchange_.emplace(instance_id, id(), Create::kTrue, [this](size_t size) {
+  Status StartExchange(const std::string& instance_id) {
+    auto exchange = VERIFY_RESULT(SharedExchange::Make(instance_id, id(), Create::kTrue));
+    exchange_.emplace(std::move(exchange), [this](size_t size) {
       Touch();
       std::shared_ptr<CountDownLatch> latch;
       {
@@ -205,6 +206,7 @@ class LockablePgClientSession : public PgClientSession {
         latch->Wait();
       }
     });
+    return Status::OK();
   }
 
   void StartShutdown() override {
@@ -497,7 +499,7 @@ class PgClientServiceImpl::Impl {
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
       resp->set_instance_id(instance_id_);
-      session_info->session().StartExchange(instance_id_);
+      RETURN_NOT_OK(session_info->session().StartExchange(instance_id_));
     }
 
     std::lock_guard lock(mutex_);

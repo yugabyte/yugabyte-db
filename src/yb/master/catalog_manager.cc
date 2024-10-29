@@ -1489,7 +1489,8 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
 
   RETURN_NOT_OK(xcluster_manager_->RunLoaders(hidden_tablets_));
   RETURN_NOT_OK(master_->clone_state_manager().ClearAndRunLoaders(state->epoch));
-  RETURN_NOT_OK(master_->ts_manager()->RunLoader());
+  RETURN_NOT_OK(
+      master_->ts_manager()->RunLoader(master_->MakeCloudInfoPB(), &master_->proxy_cache()));
 
   return Status::OK();
 }

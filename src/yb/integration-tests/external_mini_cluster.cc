@@ -66,6 +66,7 @@
 
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_cluster_client.h"
 #include "yb/master/master_rpc.h"
 #include "yb/master/sys_catalog.h"
 
@@ -1453,6 +1454,56 @@ Status ExternalMiniCluster::AddTabletServer(
     RETURN_NOT_OK(AddYbControllerServer(ts));
   }
 
+  return Status::OK();
+}
+
+Status ExternalMiniCluster::RemoveTabletServer(const std::string& ts_uuid, MonoTime deadline) {
+  return RemoveTabletServers({ts_uuid}, deadline);
+}
+
+Status ExternalMiniCluster::RemoveTabletServers(
+    const std::vector<std::reference_wrapper<const std::string>>& ts_uuids, MonoTime deadline) {
+  std::vector<HostPortPB> hps;
+  for (const auto& ts_uuid : ts_uuids) {
+    auto ts = tablet_server_by_uuid(ts_uuid);
+    if (ts == nullptr) {
+      return STATUS_FORMAT(InvalidArgument, "Cannot find tserver with uuid $0", ts_uuid);
+    }
+    hps.push_back(HostPortToPB(ts->bound_rpc_addr()));
+    ts->Shutdown();
+  }
+  auto leader_master = GetLeaderMaster();
+  auto cluster_client = master::MasterClusterClient(
+      master::MasterClusterProxy(proxy_cache_.get(), leader_master->bound_rpc_addr()));
+  for (const auto& hp : hps) {
+    RETURN_NOT_OK(cluster_client.BlacklistHost(HostPortPB(hp)));
+  }
+  auto original_flag_value =
+      VERIFY_RESULT(leader_master->GetFlag("tserver_unresponsive_timeout_ms"));
+  RETURN_NOT_OK(SetFlag(leader_master, "tserver_unresponsive_timeout_ms", "3000"));
+  std::vector<std::reference_wrapper<const std::string>> ts_to_remove;
+  for (const auto& ts_uuid : ts_uuids) {
+    ts_to_remove.push_back(ts_uuid);
+  }
+  RETURN_NOT_OK(Wait([&cluster_client, &ts_to_remove]() -> Result<bool> {
+        for (auto it = ts_to_remove.begin(); it != ts_to_remove.end();) {
+          auto s = cluster_client.RemoveTabletServer(std::string(*it));
+          if (!s.ok()) {
+            if (s.IsInvalidArgument()) {
+              return false;
+            }
+            return s;
+          }
+          it = ts_to_remove.erase(it);
+        }
+        return true;
+      }, deadline, Format("Timed out trying to remove tablet servers from the cluster")));
+
+  RETURN_NOT_OK(SetFlag(leader_master, "tserver_unresponsive_timeout_ms", original_flag_value));
+  for (const auto& hp : hps) {
+    RETURN_NOT_OK(cluster_client.UnBlacklistHost(hp));
+  }
+  // ExternalTabletServer* tablet_server_by_uuid(const std::string& uuid) const;
   return Status::OK();
 }
 

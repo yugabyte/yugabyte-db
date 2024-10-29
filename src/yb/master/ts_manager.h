@@ -55,7 +55,7 @@
 #include "yb/util/net/net_util.h"
 
 DECLARE_int32(tserver_unresponsive_timeout_ms);
-DECLARE_bool(TEST_persist_tserver_registry);
+DECLARE_bool(persist_tserver_registry);
 
 namespace yb {
 
@@ -160,7 +160,7 @@ class TSManager {
   // Transition all such TServers into the UNRESPONSIVE state.
   Status MarkUnresponsiveTServers(const LeaderEpoch& epoch);
 
-  Status RunLoader();
+  Status RunLoader(const CloudInfoPB& cloud_info, rpc::ProxyCache* proxy_cache);
 
   Status RemoveTabletServer(
       const std::string& permanent_uuid, const BlacklistSet& blacklist,

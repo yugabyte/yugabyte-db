@@ -1508,6 +1508,7 @@ Result<TSDescriptorPtr> MasterHeartbeatServiceImpl::UpdateAndReturnTSDescriptorO
     return std::move(*desc_result);
   }
   auto status = std::move(desc_result.status());
+  // todo(zdrudi): be more precise about the error code here.
   if (status.IsNotFound()) {
     LOG(INFO) << Format(
         "Failed to lookup tablet server { $0 } as $1; Asking this server to re-register. Status "

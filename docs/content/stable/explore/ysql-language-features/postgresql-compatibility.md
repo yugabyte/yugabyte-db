@@ -6,7 +6,7 @@ menu:
   stable:
     identifier: explore-ysql-postgresql-compatibility
     parent: explore-ysql-language-features
-    weight: 70
+    weight: 1200
 type: docs
 rightNav:
   hideH4: true
@@ -96,8 +96,8 @@ Configuration parameter: `yb_enable_batchednl=true`
 
 Batched nested loop join (BNLJ) is a join execution strategy that improves on nested loop joins by batching the tuples from the outer table into a single request to the inner table. By using batched execution, BNLJ helps reduce the latency for query plans that previously used nested loop joins. BNLJ provides improved performance parity.
 
-{{<lead link="../join-strategies/">}}
-To learn about join strategies in YugabyteDB, see [Join strategies](../../../architecture/transactions/concurrency-control/).
+{{<lead link="../../../architecture/query-layer/join-strategies/">}}
+To learn about join strategies in YugabyteDB, see [Join strategies](../../../architecture/query-layer/join-strategies/).
 {{</lead>}}
 
 #### Default ascending indexing

@@ -887,7 +887,7 @@ set(YB_SUBDIR_NAMES
     tools
     tserver
     util
-    vector
+    vector_index
     yql
    )
 

@@ -11048,18 +11048,16 @@ TEST_F(CDCSDKYsqlTest, TestIntentsAreDeletedOnTableRemovalFromCDCStream) {
       "Timed out waiting for cleanup of intent entries & intent SST files after CDC consumption"));
 }
 
-TEST_F(CDCSDKYsqlTest, TestGetChangesOnTabletBootstrap) {
+TEST_F(CDCSDKYsqlTest, TestGetChangesAfterMultipleTabletBootstrap) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
-  // Lower write buffer to generate higher number of intent SST files.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 10000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 5000;
   // Delay the trigger for compaction of SST files.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 100;
 
-  int num_tservers = 1;
+  constexpr int num_tservers = 1;
   ASSERT_OK(SetUpWithParams(num_tservers, /* num_masters */ 1, false));
 
-  auto num_tablets = 1;
+  constexpr auto num_tablets = 1;
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(
@@ -11069,69 +11067,81 @@ TEST_F(CDCSDKYsqlTest, TestGetChangesOnTabletBootstrap) {
 
   const auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
   const auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  const auto& tablet_id = tablets.Get(0).tablet_id();
 
-  int num_txns = 500;
-  int num_inserts_per_txn = 2;
-  for (int i = 0; i < num_txns; i++) {
-    ASSERT_OK(WriteRowsHelper(
-        i * num_inserts_per_txn /* start */,
-        (i * num_inserts_per_txn) + num_inserts_per_txn /* end */, &test_cluster_, true));
-  }
+  constexpr int num_txns = 100;
+  constexpr int num_inserts_per_txn = 2;
+  constexpr int inserts_and_restart = 3;
+  int curr_idx = 0;
+  while (curr_idx < inserts_and_restart) {
+    LOG(INFO) << "Starting inserts & restart";
+    for (int i = curr_idx * num_txns; i < (curr_idx + 1) * num_txns; i++) {
+      ASSERT_OK(WriteRowsHelper(
+          i * num_inserts_per_txn /* start */,
+          (i * num_inserts_per_txn) + num_inserts_per_txn /* end */, &test_cluster_, true));
+    }
 
-  ASSERT_OK(WaitForFlushTables(
+    ASSERT_OK(WaitForFlushTables(
         {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 100,
         /* is_compaction = */ false));
 
-  const auto& tablet_id = tablets.Get(0).tablet_id();
-  // Get the intent entries & intent SST files in each peer.
-  std::unordered_map<std::string, std::pair<int64_t, int64_t>>
-      initial_intents_and_intent_sst_file_count;
-  ASSERT_OK(GetIntentEntriesAndSSTFileCountForTablet(
-      tablet_id, &initial_intents_and_intent_sst_file_count));
-  for (const auto& [_, intents] : initial_intents_and_intent_sst_file_count) {
-    auto intent_entries = intents.first;
-    auto intent_sst_files = intents.second;
-    ASSERT_GT(intent_entries, 0);
-    ASSERT_GT(intent_sst_files, 0);
+    // Get the intent entries & intent SST files in each peer.
+    std::unordered_map<std::string, std::pair<int64_t, int64_t>>
+        initial_intents_and_intent_sst_file_count;
+    LOG(INFO) << "Intent count before restart";
+    ASSERT_OK(GetIntentEntriesAndSSTFileCountForTablet(
+        tablet_id, &initial_intents_and_intent_sst_file_count));
+
+    // Restart all the nodes.
+    ASSERT_OK(test_cluster()->RestartSync());
+    LOG(INFO) << "All nodes restarted";
+    ASSERT_OK(test_cluster()->WaitForAllTabletServers());
+
+    // On bootstrap, some txns will be loaded in memory which are already applied. These will be
+    // removed once their txn status is checked. Intent count once all such 'loaded' txns are
+    // removed should still be equal to the count before the restart as CDC has not consumed
+    // anything.
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          for (const auto& peer : test_cluster()->GetTabletPeers(num_tservers - 1)) {
+            if (peer->tablet_id() != tablet_id) {
+              continue;
+            }
+            auto tablet = VERIFY_RESULT(peer->shared_tablet_safe());
+            auto running_txns = tablet->transaction_participant()->GetNumRunningTransactions();
+            if (running_txns != 0) {
+              LOG(INFO) << "Running txns on tablet " << tablet_id
+                        << " after restart: " << running_txns;
+              return false;
+            }
+          }
+          return true;
+        },
+        MonoDelta::FromSeconds(60), "Timed out waiting for running txns to reduce to 0"));
+
+    LOG(INFO) << "Intent count after restart";
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          std::unordered_map<std::string, std::pair<int64_t, int64_t>>
+              final_intents_and_intent_sst_file_count;
+          RETURN_NOT_OK(GetIntentEntriesAndSSTFileCountForTablet(
+              tablet_id, &final_intents_and_intent_sst_file_count));
+          for (const auto& [peer, intents] : final_intents_and_intent_sst_file_count) {
+            auto intent_entries = intents.first;
+            auto intent_sst_files = intents.second;
+            if (intent_entries != initial_intents_and_intent_sst_file_count[peer].first ||
+                intent_sst_files != initial_intents_and_intent_sst_file_count[peer].second) {
+              return false;
+            }
+          }
+          return true;
+        },
+        MonoDelta::FromSeconds(60),
+        "Timed out verifying intent entries & intent SST files after restart"));
+    curr_idx++;
   }
 
-  // Restart all the nodes.
-  ASSERT_OK(test_cluster()->RestartSync());
-  LOG(INFO) << "All nodes restarted";
-  ASSERT_OK(test_cluster()->WaitForAllTabletServers());
-
-  // On bootstrap, some txns will be loaded in memory which are already applied. These will be
-  // removed once their txn status is checked. Intent count once all txns are removed should still
-  // be equal to the count before the restart as CDC has not consumed anything.
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        for (const auto& peer : test_cluster()->GetTabletPeers(num_tservers - 1)) {
-          if (peer->tablet_id() != tablet_id) {
-            continue;
-          }
-          auto tablet = VERIFY_RESULT(peer->shared_tablet_safe());
-          auto running_txns = tablet->transaction_participant()->GetNumRunningTransactions();
-          if (running_txns != 0) {
-            LOG(INFO) << "Running txns: " << running_txns;
-            return false;
-          }
-        }
-        return true;
-      },
-      MonoDelta::FromSeconds(60), "Timed out waiting for running txns to reduce to 0"));
-
-  std::unordered_map<std::string, std::pair<int64_t, int64_t>>
-      intents_and_intent_sst_file_count_after_restart;
-  ASSERT_OK(GetIntentEntriesAndSSTFileCountForTablet(
-      tablet_id, &intents_and_intent_sst_file_count_after_restart));
-  for (const auto& [peer, intents] : intents_and_intent_sst_file_count_after_restart) {
-    auto intent_entries = intents.first;
-    auto intent_sst_files = intents.second;
-    ASSERT_EQ(intent_entries, initial_intents_and_intent_sst_file_count[peer].first);
-    ASSERT_EQ(intent_sst_files, initial_intents_and_intent_sst_file_count[peer].second);
-  }
-
-  int expected_records_size = num_txns * num_inserts_per_txn;
+  int expected_records_size = num_txns * num_inserts_per_txn * inserts_and_restart;
   std::map<TabletId, CDCSDKCheckpointPB> tablet_to_checkpoint;
   auto received_records = ASSERT_RESULT(GetChangeRecordCount(
       stream_id, table, tablets, tablet_to_checkpoint, expected_records_size, true));

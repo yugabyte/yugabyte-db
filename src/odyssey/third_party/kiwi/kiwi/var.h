@@ -304,6 +304,27 @@ static inline int kiwi_vars_update(kiwi_vars_t *vars, char *name, int name_len,
 	return 0;
 }
 
+static inline int yb_kiwi_vars_set_if_not_exists(kiwi_vars_t *vars, char *name,
+				   int name_len, char *value, int value_len)
+{
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
+	kiwi_var_type_t type;
+	type = kiwi_vars_find(vars, name, name_len);
+	if (type == KIWI_VAR_UNDEF)
+		return -1;
+	if (type == KIWI_VAR_IS_HOT_STANDBY) {
+		// skip volatile params caching
+		return 0;
+	}
+	kiwi_vars_set(vars, type, value, value_len);
+#else
+	kiwi_var_t *var = yb_kiwi_vars_get(vars, name);
+	if (var == NULL)
+		yb_kiwi_var_push(vars, name, name_len, value, value_len);
+#endif
+	return 0;
+}
+
 static inline int kiwi_vars_update_both(kiwi_vars_t *a, kiwi_vars_t *b,
 					char *name, int name_len, char *value,
 					int value_len)

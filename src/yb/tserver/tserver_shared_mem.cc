@@ -372,17 +372,29 @@ class SharedExchange::Impl {
   bool failed_previous_request_ = false;
 };
 
-SharedExchange::SharedExchange(const std::string& instance_id, uint64_t session_id, Create create) {
+Result<SharedExchange> SharedExchange::Make(
+      const std::string& instance_id, uint64_t session_id, Create create) {
   try {
+    std::unique_ptr<Impl> impl;
     if (create) {
-      impl_ = std::make_unique<Impl>(boost::interprocess::create_only, instance_id, session_id);
+      impl = std::make_unique<Impl>(boost::interprocess::create_only, instance_id, session_id);
     } else {
-      impl_ = std::make_unique<Impl>(boost::interprocess::open_only, instance_id, session_id);
+      impl = std::make_unique<Impl>(boost::interprocess::open_only, instance_id, session_id);
     }
+    return SharedExchange(std::move(impl));
   } catch (boost::interprocess::interprocess_exception& exc) {
-    LOG(FATAL) << "Failed to create shared exchange for " << instance_id << "/" << session_id
-               << ", mode: " << create << ", error: " << exc.what();
+    auto result = STATUS_FORMAT(
+        RuntimeError, "Failed to create shared exchange for $0/$1, mode: $2, error: $3",
+        instance_id, session_id, create, exc.what());
+    LOG(DFATAL) << result;
+    return result;
   }
+}
+
+SharedExchange::SharedExchange(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {
+}
+
+SharedExchange::SharedExchange(SharedExchange&& rhs) : impl_(std::move(rhs.impl_)) {
 }
 
 SharedExchange::~SharedExchange() = default;
@@ -446,12 +458,11 @@ uint64_t SharedExchange::session_id() const {
 }
 
 SharedExchangeThread::SharedExchangeThread(
-    const std::string& instance_id, uint64_t session_id, Create create,
+    SharedExchange exchange,
     const SharedExchangeListener& listener)
-    : exchange_(instance_id, session_id, create) {
+    : exchange_(std::move(exchange)) {
   CHECK_OK(Thread::Create(
-      "shared_exchange", Format("sh_xchng_$0", session_id), [this, listener] {
-    CDSAttacher cdc_attacher;
+      "shared_exchange", Format("sh_xchng_$0", exchange_.session_id()), [this, listener] {
     for (;;) {
       auto query_size = exchange_.Poll();
       if (!query_size.ok()) {

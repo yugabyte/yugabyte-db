@@ -169,6 +169,20 @@ void SetProxyAddresses() {
     << "Bad pgsql_proxy_bind_address " << FLAGS_pgsql_proxy_bind_address << ": " << status;
     for (const auto& addr : bind_addresses) {
       if (addr.port() == PgProcessConf::kDefaultPort && addr.port() == FLAGS_ysql_conn_mgr_port) {
+        uint16_t preferred_port = 6433;
+        if (addr.port() != preferred_port) {
+          LOG(INFO) << "The connection manager and backend db ports are conflicting on "
+                << addr.port() << ". Trying port " << preferred_port << " for backend db.";
+          Endpoint preferred_sock_addr(boost::asio::ip::address_v4::loopback(), preferred_port);
+          Socket preferred_sock;
+          Status preferred_status = preferred_sock.Init(0);
+          if (preferred_status.ok() && preferred_sock.Bind(preferred_sock_addr, false).ok()) {
+            LOG(INFO) << "Successfully bound to port " << preferred_port << " for backend db.";
+            SetProxyAddress(&FLAGS_pgsql_proxy_bind_address, "YSQL", preferred_port, true);
+            break;
+          }
+        }
+
         LOG(INFO) << "The connection manager and backend db ports are conflicting on "
         << addr.port() << ". Assigning a random available port: " << freeport <<
         " to backend db and " << PgProcessConf::kDefaultPort << " to the connection manager";
