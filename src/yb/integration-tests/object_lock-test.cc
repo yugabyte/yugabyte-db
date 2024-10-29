@@ -39,6 +39,8 @@
 using namespace std::chrono_literals;
 
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(TEST_tserver_disable_heartbeat);
+DECLARE_bool(persist_tserver_registry);
 DECLARE_int32(retrying_ts_rpc_max_delay_ms);
 DECLARE_int32(retrying_rpc_max_jitter_ms);
 
@@ -91,6 +93,8 @@ class ObjectLockTest : public YBMiniClusterTestBase<MiniCluster> {
   const std::string& TSUuid(size_t ts_idx) const {
     return cluster_->mini_tablet_server(ts_idx)->server()->permanent_uuid();
   }
+
+  void testAcquireObjectLockWaitsOnTServer(bool do_master_failover);
 
  private:
   std::unique_ptr<rpc::Messenger> client_messenger_;
@@ -179,20 +183,40 @@ TEST_F(ObjectLockTest, ReleaseObjectLocks) {
   ASSERT_OK(ReleaseLockAt(&master_proxy, kSessionHostUuid, kSessionId, kDatabaseID, kObjectId));
 }
 
-TEST_F(ObjectLockTest, AcquireObjectLocksWaitsOnTServer) {
+void ObjectLockTest::testAcquireObjectLockWaitsOnTServer(bool do_master_failover) {
   const auto& kSessionHostUuid = TSUuid(0);
   // Acquire lock on TServer-0
   auto* tserver0 = cluster_->mini_tablet_server(0);
   auto tserver0_proxy = TServerProxy(0);
+  LOG(INFO) << "Taking DML lock on TServer-0";
   ASSERT_OK(AcquireLockAt(
       &tserver0_proxy, kSessionHostUuid, kSessionId, kDatabaseID, kObjectId,
       TableLockType::ACCESS_SHARE));
 
   ASSERT_EQ(tserver0->server()->ts_local_lock_manager()->TEST_WaitingLocksSize(), 0);
+
+  if (do_master_failover) {
+    // Disable heartbeats. This is to ensure that the new master will have to rely on
+    // the persisted registration information, and not the heartbeat to know about tserver-0
+    LOG(INFO) << "Disabling heartbeats from TServers";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = true;
+    auto old_master_id = CHECK_RESULT(cluster_->GetLeaderMiniMaster())->ToString();
+    LOG(INFO) << "Doing master_failover. Old master was " << old_master_id;
+    CHECK_RESULT(cluster_->StepDownMasterLeader());
+    ASSERT_OK(LoggedWaitFor(
+        [old_master_id, this]() -> Result<bool> {
+          auto new_master_id = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->ToString();
+          LOG(INFO) << "Current master UUID: " << new_master_id;
+          return old_master_id != new_master_id;
+        },
+        MonoDelta::FromMilliseconds(kTimeoutMs), "wait for new master leader"));
+  }
   CountDownLatch ddl_latch(1);
   auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
   tserver::AcquireObjectLockResponsePB resp;
   auto controller = RpcController();
+  LOG(INFO) << "Requesting DDL lock at master : "
+            << ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->ToString();
   AcquireLockAsyncAt(
       &master_proxy, &controller, kSessionHostUuid, kSessionId2, kDatabaseID, kObjectId,
       TableLockType::ACCESS_EXCLUSIVE, ddl_latch.CountDownCallback(), &resp);
@@ -203,13 +227,25 @@ TEST_F(ObjectLockTest, AcquireObjectLocksWaitsOnTServer) {
         return tserver0->server()->ts_local_lock_manager()->TEST_WaitingLocksSize() > 0;
       },
       MonoDelta::FromMilliseconds(kTimeoutMs), "wait for blocking on TServer0"));
+  ASSERT_GT(ddl_latch.count(), 0);
+
+  if (do_master_failover) {
+    // Cluster verify in TearDown requires heartbeats to be enabled.
+    LOG(INFO) << "Re-enabling heartbeats from TServers";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = false;
+  }
 
   // Release lock at TServer-0
+  LOG(INFO) << "Releasing DML lock at TServer-0";
   ASSERT_OK(ReleaseLockAt(&tserver0_proxy, kSessionHostUuid, kSessionId, kDatabaseID, kObjectId));
 
   // Verify that lock acquistion at master is successful.
   ASSERT_TRUE(ddl_latch.WaitFor(MonoDelta::FromMilliseconds(kTimeoutMs)));
   ASSERT_EQ(tserver0->server()->ts_local_lock_manager()->TEST_WaitingLocksSize(), 0);
+}
+
+TEST_F(ObjectLockTest, AcquireObjectLocksWaitsOnTServer) {
+  testAcquireObjectLockWaitsOnTServer(false);
 }
 
 TEST_F(ObjectLockTest, AcquireAndReleaseDDLLock) {
@@ -450,7 +486,18 @@ class MultiMasterObjectLockTest : public ObjectLockTest {
   int num_masters() override {
     return 3;
   }
+
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
+    ObjectLockTest::SetUp();
+  }
 };
+
+TEST_F_EX(
+    ObjectLockTest, AcquireObjectLocksWaitsOnTServerAcrossMasterFailover,
+    MultiMasterObjectLockTest) {
+  testAcquireObjectLockWaitsOnTServer(true);
+}
 
 TEST_F_EX(ObjectLockTest, AcquireAndReleaseDDLLockAcrossMasterFailover, MultiMasterObjectLockTest) {
   const auto& kSessionHostUuid = TSUuid(0);
