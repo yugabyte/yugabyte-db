@@ -29,15 +29,15 @@ Voyager then generates a report that includes:
 - **Recommended data distribution:** Suggests effective sharding strategies for tables and indexes.
 - **Performance metrics:** Analyzes workload characteristics to recommend optimizations in YugabyteDB.
 - **Migration time estimate:** Provides an estimated time for data import into YugabyteDB based on experimental data.
-- **Unsupported query constructs:** Identifies SQL features and constructs not supported by YugabyteDB, such as advisory locks, system columns and XML functions, and provides a list of queries containing these constructs.
+- **Unsupported query constructs:** Identifies SQL features and constructs not supported by YugabyteDB, such as advisory locks, system columns, and XML functions, and provides a list of queries containing these constructs.
 
 {{< warning title="Note" >}}
 
 - The recommendations are based on testing using a [RF3](../../../architecture/docdb-replication/replication/#replication-factor) YugabyteDB cluster on instance types with 4GiB memory per core and running v2024.1.
 
-- For unsupported query construct detection, ensure [pg_stat_statements extension](../../../explore/ysql-language-features/pg-extensions/extension-pgstatstatements/) is properly installed and enabled on source.
+- For unsupported query construct detection, ensure the [pg_stat_statements extension](../../../explore/ysql-language-features/pg-extensions/extension-pgstatstatements/) is properly installed and enabled on source.
 
-- To disable this feature, set the environment variable, `REPORT_UNSUPPORTED_QUERY_CONSTRUCTS=false`.
+- To disable this feature, set the environment variable `REPORT_UNSUPPORTED_QUERY_CONSTRUCTS=false`.
 
 {{< /warning >}}
 

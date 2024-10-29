@@ -12,7 +12,7 @@ Create a database user and provide the user with READ access to all the resource
    CREATE USER ybvoyager PASSWORD 'password';
    ```
 
-1. Grant permissions for migration. Use the `yb-voyager-pg-grant-migration-permissions.sql` script (which can be found at `/opt/yb-voyager/guardrails-scripts`. For brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
+1. Grant permissions for migration. Use the `yb-voyager-pg-grant-migration-permissions.sql` script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
 
    ```sql
    psql -h <host> \
