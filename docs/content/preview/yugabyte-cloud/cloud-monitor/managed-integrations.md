@@ -34,12 +34,12 @@ Currently, you can export data to the following tools.
 | [Datadog](https://docs.datadoghq.com/) | Database query logs<br>Database audit logs | [Yes](https://docs.datadoghq.com/integrations/yugabytedb_managed/#data-collected) |
 | [Grafana Cloud](https://grafana.com/docs/grafana-cloud/) | | [Yes](https://grafana.com/grafana/dashboards/12620-yugabytedb/) |
 | [Sumo Logic](https://www.sumologic.com) | | Yes |
-| [Prometheus](https://prometheus.io/docs/introduction/overview/) {{<tags/feature/tp>}} | | Yes |
+| [Prometheus](https://prometheus.io/docs/introduction/overview/) | | Yes |
 | [VictoriaMetrics](https://docs.victoriametrics.com/) {{<tags/feature/tp>}} | | Yes |
 | [Google Cloud Storage](https://cloud.google.com/storage) (GCS) | Database audit logs | |
 | [Dynatrace](https://www.dynatrace.com) | | Yes |
 
-## Configure integrations
+## Manage integrations
 
 Create and manage export configurations on the **Integrations** page.
 
@@ -47,15 +47,24 @@ Create and manage export configurations on the **Integrations** page.
 
 The page lists the configured and available third-party integrations.
 
+To view the configured integrations, click the **View** button for the integration.
+
+To delete a configuration, click **View**, click the three dots, and choose **Delete configuration**. You can't delete a configuration that is assigned to a cluster.
+
+Note that you can't modify an existing integration configuration. If you need to change an integration (for example, to replace or update an API key) for a particular tool, do the following:
+
+1. Create a new configuration for the integration with the updated information.
+1. Assign the new configuration to your clusters.
+1. Unassign the old configuration from clusters.
+1. Delete the old configuration.
+
 Exporting cluster metrics and logs counts against your data transfer allowance. This may incur additional costs for network transfer, especially for cross-region and internet-based transfers, if usage exceeds your cluster allowance. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
 
-### Manage integrations
+## Configure integrations
 
 You can add and delete export configurations for the following tools. You can't delete a configuration that is assigned to a cluster.
 
-{{< tabpane text=true >}}
-
-  {{% tab header="Datadog" lang="datadog" %}}
+### Datadog
 
 The Datadog integration requires the following:
 
@@ -72,9 +81,7 @@ To create an export configuration, do the following:
 1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
 
-  {{% /tab %}}
-
-  {{% tab header="Grafana Cloud" lang="grafana" %}}
+### Grafana Cloud
 
 The Grafana Cloud integration requires the following:
 
@@ -92,9 +99,7 @@ To create an export configuration, do the following:
 1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
 
-  {{% /tab %}}
-
-  {{% tab header="Sumo Logic" lang="sumo" %}}
+### Sumo Logic
 
 The Sumo Logic integration requires the following:
 
@@ -111,18 +116,16 @@ To create an export configuration, do the following:
 1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
 
-  {{% /tab %}}
+### Prometheus
 
-  {{% tab header="Prometheus" lang="prometheus" %}}
-
-Prometheus integration is {{<tags/feature/tp>}} and only available for clusters deployed on AWS.
+Prometheus integration is only available for clusters deployed on AWS or GCP.
 
 The Prometheus integration requires the following:
 
 - Prometheus instance
-  - deployed in a VPC on AWS
+  - deployed in a VPC on AWS or GCP
   - [OLTP Receiver](https://prometheus.io/docs/prometheus/latest/querying/api/#otlp-receiver) feature flag enabled
-  - publically-accessible endpoint URL that resolves to the private IP of the Prometheus instance; the DNS for the endpoint must be in a public hosted zone in AWS.
+  - publicly-accessible endpoint URL that resolves to the private IP of the Prometheus instance; the DNS for the endpoint must be in a publicly accessible DNS record, allowing it to resolve globally. This typically involves adding the URL to a public DNS zone. For example, in AWS, this would mean adding the URL to a Public Hosted Zone in Route 53. To confirm that the address is publicly resolvable, you can use a tool like nslookup.
   - VPC hosting the Prometheus instance has the following Inbound Security Group rules:
     - Allow HTTP inbound traffic on port 80 for Prometheus endpoint URL (HTTP)
     - Allow HTTPS inbound traffic on port 443 for Prometheus endpoint URL (HTTPS)
@@ -130,10 +133,10 @@ The Prometheus integration requires the following:
     See [Control traffic to your AWS resources using security groups](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html) in the AWS documentation.
 
 - YugabyteDB Aeon cluster from which you want to export metrics
-  - the cluster is [deployed in VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc/) on AWS
+  - the cluster is [deployed in VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc/) on AWS, or a VPC in GCP.
   - each region VPC is peered with the VPC hosting Prometheus. See [Peer VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc-aws/).
 
-  As each region of a cluster deployed in AWS has its own VPC, make sure that all the VPCs are peered and allow inbound access from Prometheus; this also applies to regions you add or change after deployment, and to read replicas. For information on VPC networking in YugabyteDB Aeon, see [VPC network overview](../../cloud-basics/cloud-vpcs/cloud-vpc-intro/).
+  As each region of a cluster deployed in AWS has its own VPC, make sure that all the VPCs are peered and allow inbound access from Prometheus; this also applies to regions you add or change after deployment, and to read replicas. In GCP, clusters are deployed in a single VPC. For information on VPC networking in YugabyteDB Aeon, see [VPC network overview](../../cloud-basics/cloud-vpcs/cloud-vpc-intro/).
 
 To create an export configuration, do the following:
 
@@ -149,9 +152,7 @@ To create an export configuration, do the following:
 
 1. Click **Create Configuration**.
 
-  {{% /tab %}}
-
-  {{% tab header="VictoriaMetrics" lang="victoria" %}}
+### VictoriaMetrics
 
 VictoriaMetrics integration is {{<tags/feature/tp>}} and only available for clusters deployed on AWS.
 
@@ -186,9 +187,7 @@ To create an export configuration, do the following:
 
 1. Click **Create Configuration**.
 
-  {{% /tab %}}
-
-  {{% tab header="GCS" lang="gcs" %}}
+### Google Cloud Storage
 
 The Google Cloud Storage (GCS) integration requires the following:
 
@@ -203,9 +202,7 @@ To create an export configuration, do the following:
 1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
 
-  {{% /tab %}}
-
-  {{% tab header="Dynatrace" lang="dyna" %}}
+### Dynatrace
 
 The Dynatrace integration requires the following:
 
@@ -221,21 +218,6 @@ To create an export configuration, do the following:
 1. Optionally, click **Download** to download the Dynatrace dashboard template. You can import this template in your Dynatrace account and use it as a starting point for visualizing your cluster data.
 1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
-
-  {{% /tab %}}
-
-{{< /tabpane >}}
-
-To view the configurations, click the **View** button for the integration.
-
-To delete a configuration, click **View** and choose **Delete**.
-
-Note that you can't modify an existing integration configuration. If you need to change an integration (for example, to replace or update an API key) for a particular tool, do the following:
-
-1. Create a new configuration for the integration with the updated information.
-1. Assign the new configuration to your clusters.
-1. Unassign the old configuration from clusters.
-1. Delete the old configuration.
 
 ## Next steps
 
