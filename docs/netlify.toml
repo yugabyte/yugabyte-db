@@ -15,7 +15,6 @@
   HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
-  SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
   RUDDERSTACK_API_KEY = "Mmo5Zmp5M1lONWFLM2xYS044N3k5cGhic3R4"
 
 [context.branch-deploy.environment]
@@ -23,7 +22,6 @@
   HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
-  SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
   RUDDERSTACK_API_KEY = "Mmo5Zmp5M1lONWFLM2xYS044N3k5cGhic3R4"
 
 [context.production.environment]
@@ -31,7 +29,6 @@
   HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
-  SEGMENT_API_KEY = "WFp1RWk3dUVBbjM2NmpncnNnbzBMZUpIVXB1ZVRvTHg="
   RUDDERSTACK_API_KEY = "Mmo5Y252MjZ6R290ZjhPa3BROUx4cFl6VFVK"
 
 ################ REDIRECTS ################
@@ -1380,9 +1377,7 @@
         connect-src 'self'
             https://80f647c7c1f545fc97ff43f8b602dc86.us-west-2.aws.found.io/
             https://api.rudderstack.com/
-            https://api.segment.io/
             https://app.clearbit.com/
-            https://cdn.segment.com/
             https://ingesteer.services-prod.nsvcs.net/rum_collection
             https://ka-f.fontawesome.com/releases/
             https://kapa-widget-proxy-la7dkmplpq-uc.a.run.app
@@ -1404,7 +1399,6 @@
             https://cdn.jsdelivr.net/
             https://cdn.madkudu.com/
             https://cdn.rudderlabs.com/
-            https://cdn.segment.com/
             https://cdnjs.cloudflare.com
             https://code.jquery.com/jquery-3.7.1.min.js
             https://d2wy8f7a9ursnm.cloudfront.net/v6/bugsnag.min.js
