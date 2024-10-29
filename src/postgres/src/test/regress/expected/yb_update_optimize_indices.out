@@ -1311,12 +1311,13 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE text_table SET v4 = 'abcde'::char(8) |
          Storage Table Read Requests: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
-         Storage Index Write Requests: 1
+         Storage Index Write Requests: 2
+         Storage Flush Requests: 1
  Storage Read Requests: 1
  Storage Rows Scanned: 1
- Storage Write Requests: 2
- Storage Flush Requests: 1
-(11 rows)
+ Storage Write Requests: 3
+ Storage Flush Requests: 2
+(12 rows)
 
 SELECT * FROM text_table;
  h | v1 |    v2     |    v3    |    v4
@@ -1452,12 +1453,13 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1.v1 = (c1).v2 + 
          Storage Table Read Requests: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
-         Storage Index Write Requests: 1
+         Storage Index Write Requests: 2
+         Storage Flush Requests: 1
  Storage Read Requests: 1
  Storage Rows Scanned: 1
- Storage Write Requests: 2
- Storage Flush Requests: 1
-(11 rows)
+ Storage Write Requests: 3
+ Storage Flush Requests: 2
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET v = v + 1, c1.v3 = 'some-text' WHERE h = 1;
                                        QUERY PLAN
@@ -1500,12 +1502,13 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1.v2 = 123.451, c
          Storage Table Read Requests: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
-         Storage Index Write Requests: 1
+         Storage Index Write Requests: 2
+         Storage Flush Requests: 1
  Storage Read Requests: 1
  Storage Rows Scanned: 1
- Storage Write Requests: 2
- Storage Flush Requests: 1
-(11 rows)
+ Storage Write Requests: 3
+ Storage Flush Requests: 2
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1 = ROW((v) + 100, (c1).v1 + 123.45, 'someother-text', '{"a": 2, "b": 1}'::jsonb, '{"d": 4, "c": 3}'::bytea) WHERE h = 1;
                                        QUERY PLAN
@@ -1516,12 +1519,13 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1 = ROW((v) + 100
          Storage Table Read Requests: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
-         Storage Index Write Requests: 1
+         Storage Index Write Requests: 2
+         Storage Flush Requests: 1
  Storage Read Requests: 1
  Storage Rows Scanned: 1
- Storage Write Requests: 2
- Storage Flush Requests: 1
-(11 rows)
+ Storage Write Requests: 3
+ Storage Flush Requests: 2
+(12 rows)
 
 SELECT * FROM composite_table;
  h | v |                                            c1
