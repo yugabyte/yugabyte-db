@@ -795,7 +795,7 @@ public class XClusterLocalTest extends XClusterLocalTestBase {
             source,
             YUGABYTE_DB,
             String.format(
-                "CREATE TABLE %s (id int PRIMARY KEY, name text)",
+                "CREATE TABLE %s (id int, name text, age int, PRIMARY KEY(id, name))",
                 tableIdToName.get(tableToDropId)),
             10);
     assertTrue(ysqlResponse.isSuccess());
