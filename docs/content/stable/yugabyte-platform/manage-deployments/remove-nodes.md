@@ -91,7 +91,7 @@ In general, you shouldn't stop more than one node at a time. For example, two st
 You can restart the node's processes by navigating to **Universes**, selecting your universe, then selecting **Nodes**, and then clicking **Actions > Start Processes** corresponding to the node. This returns the node to the Live state.
 
 {{< warning title="Prevent back up failure due to NFS unmount on cloud VM restart" >}}
-To avoid potential backup and restore errors, make sure the NFS mount is added to `/etc/fstab`. When a cloud VM is restarted, the NFS mount may get unmounted if its entry is not in `/etc/fstab`. This can lead to backup failures, and errors during [backup](../../back-up-restore-universes/back-up-universe-data/) or [restore](../../back-up-restore-universes/restore-universe-data/).
+If the universe uses NFS for backup storage, make sure the NFS mount is added to `/etc/fstab` on the nodes of universes. When a cloud VM is restarted, the NFS mount may get unmounted if its entry is not in `/etc/fstab`. This can lead to backup failures, and errors during [backup](../../back-up-restore-universes/back-up-universe-data/) or [restore](../../back-up-restore-universes/restore-universe-data/).
 {{< /warning >}}
 
 ## Remove node
