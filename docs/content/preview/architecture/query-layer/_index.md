@@ -58,9 +58,13 @@ Views are realized during this phase. Whenever a query against a view (that is, 
 
 ### Planner
 
-The YugabyteDB query planner plays a crucial role in efficiently executing SQL queries across multiple nodes. It extends the capabilities of the traditional single node query planner to handle distributed data and execution. The planner first analyzes different ways a query can be executed based on the available data and indexes. It considers various strategies like scanning tables sequentially or using indexes to quickly locate specific data.
+The YugabyteDB query planner plays a crucial role in efficiently executing SQL queries across multiple nodes. It extends the capabilities of the traditional single node query planner to handle distributed data and execution.
 
-After the optimal plan is determined, the planner generates a detailed execution plan with all the necessary steps, such as scanning tables, joining data, filtering rows, sorting, and computing expressions. This execution plan is then passed to the query executor component, which carries out the plan and returns the final query results.
+The planner first analyzes different ways a query can be executed based on the available data and indexes. It considers various strategies like scanning tables sequentially or using indexes to quickly locate specific data.
+
+After determining the optimal plan, the planner generates a detailed execution plan with all the necessary steps, such as scanning tables, joining data, filtering rows, sorting, and computing expressions.
+
+The execution plan is then passed to the query executor component, which carries out the plan and returns the final query results.
 
 {{<lead link="./planner-optimizer/">}}
 To learn how the query planner decides the optimal path for query execution, see [Query Planner](./planner-optimizer/)
