@@ -344,29 +344,34 @@ static inline od_frontend_status_t od_frontend_setup_params(od_client_t *client)
 
 	/* ensure route has cached server parameters */
 	int rc;
-#ifndef YB_SUPPORT_FOUND
-	rc = kiwi_params_lock_count(&route->params);
-	if (rc == 0) {
-		kiwi_params_t route_params;
-		kiwi_params_init(&route_params);
+	/*
+	 * YB NOTE: use the cached server parameters if we are using
+	 * auth-passthrough.
+	 */
+	if (!instance->config.yb_use_auth_backend)
+	{
+		rc = kiwi_params_lock_count(&route->params);
+		if (rc == 0) {
+			kiwi_params_t route_params;
+			kiwi_params_init(&route_params);
 
-		od_frontend_status_t status;
-		status = od_frontend_attach(client, "setup", &route_params);
-		if (status != OD_OK) {
-			kiwi_params_free(&route_params);
-			return status;
+			od_frontend_status_t status;
+			status = od_frontend_attach(client, "setup", &route_params);
+			if (status != OD_OK) {
+				kiwi_params_free(&route_params);
+				return status;
+			}
+
+			// close backend connection
+			od_router_close(router, client);
+
+			/* There is possible race here, so we will discard our
+			 * attempt if params are already set */
+			rc = kiwi_params_lock_set_once(&route->params, &route_params);
+			if (!rc)
+				kiwi_params_free(&route_params);
 		}
-
-		// close backend connection
-		od_router_close(router, client);
-
-		/* There is possible race here, so we will discard our
-		 * attempt if params are already set */
-		rc = kiwi_params_lock_set_once(&route->params, &route_params);
-		if (!rc)
-			kiwi_params_free(&route_params);
 	}
-#endif
 
 	od_debug(&instance->logger, "setup", client, NULL, "sending params:");
 
@@ -377,76 +382,80 @@ static inline od_frontend_status_t od_frontend_setup_params(od_client_t *client)
 	if (stream == NULL)
 		return OD_EOOM;
 
-#ifndef YB_SUPPORT_FOUND
-	while (param) {
+	if (!instance->config.yb_use_auth_backend) {
+		while (param) {
 #ifndef YB_GUC_SUPPORT_VIA_SHMEM
-		kiwi_var_t *var;
-		var = yb_kiwi_vars_get(&client->vars, kiwi_param_name(param));
+			kiwi_var_t *var;
+			var = yb_kiwi_vars_get(&client->vars, kiwi_param_name(param));
 #else
-		kiwi_var_type_t type;
-		type = kiwi_vars_find(&client->vars, kiwi_param_name(param),
-				      param->name_len);
-		kiwi_var_t *var;
-		var = kiwi_vars_get(&client->vars, type);
+			kiwi_var_type_t type;
+			type = kiwi_vars_find(&client->vars, kiwi_param_name(param),
+								  param->name_len);
+			kiwi_var_t *var;
+			var = kiwi_vars_get(&client->vars, type);
 #endif
 
-		machine_msg_t *msg;
-		if (var) {
+			machine_msg_t *msg;
+			if (var) {
+				msg = kiwi_be_write_parameter_status(stream, var->name,
+									var->name_len,
+									var->value,
+									var->value_len);
+
+				od_debug(&instance->logger, "setup", client, NULL,
+					" %.*s = %.*s", var->name_len, var->name,
+					var->value_len, var->value);
+			} else {
+				msg = kiwi_be_write_parameter_status(
+					stream, kiwi_param_name(param), param->name_len,
+					kiwi_param_value(param), param->value_len);
+
+				od_debug(&instance->logger, "setup", client, NULL,
+					" %.*s = %.*s", param->name_len,
+					kiwi_param_name(param), param->value_len,
+					kiwi_param_value(param));
+			}
+			if (msg == NULL) {
+				machine_msg_free(stream);
+				return OD_EOOM;
+			}
+
+			param = param->next;
+		}
+	} else {
+		/*
+		 * Send the client vars which also includes the values received from the
+		 * auth-backend to the client.
+		 */
+		kiwi_var_t *var = NULL;
+		size_t num_vars = client->vars.size, i = 0;
+		while (i < num_vars)
+		{
+			machine_msg_t *msg;
+
+			var = &client->vars.vars[i];
+			if (var == NULL) {
+				od_debug(&instance->logger, "setup", client, NULL,
+					"unexpected NULL value in client->vars");
+
+				i++;
+				continue;
+			}
+
 			msg = kiwi_be_write_parameter_status(stream, var->name,
-							     var->name_len,
-							     var->value,
-							     var->value_len);
+								var->name_len, var->value,
+								var->value_len);
+			if (msg == NULL) {
+				machine_msg_free(stream);
+				return OD_EOOM;
+			}
 
 			od_debug(&instance->logger, "setup", client, NULL,
-				 " %.*s = %.*s", var->name_len, var->name,
-				 var->value_len, var->value);
-		} else {
-			msg = kiwi_be_write_parameter_status(
-				stream, kiwi_param_name(param), param->name_len,
-				kiwi_param_value(param), param->value_len);
+				" %.*s = %.*s", var->name_len, var->name,
+				var->value_len, var->value);
 
-			od_debug(&instance->logger, "setup", client, NULL,
-				 " %.*s = %.*s", param->name_len,
-				 kiwi_param_name(param), param->value_len,
-				 kiwi_param_value(param));
-		}
-		if (msg == NULL) {
-			machine_msg_free(stream);
-			return OD_EOOM;
-		}
-
-		param = param->next;
-	}
-#endif
-
-	kiwi_var_t *var = NULL;
-	size_t num_vars = client->vars.size, i = 0;
-	while (i < num_vars)
-	{
-		machine_msg_t *msg;
-
-		var = &client->vars.vars[i];
-		if (var == NULL) {
-			od_debug(&instance->logger, "setup", client, NULL,
-				"unexpected NULL value in client->vars");
-			
 			i++;
-			continue;
 		}
-
-		msg = kiwi_be_write_parameter_status(stream, var->name,
-						     var->name_len, var->value,
-						     var->value_len);
-		if (msg == NULL) {
-			machine_msg_free(stream);
-			return OD_EOOM;
-		}
-
-		od_debug(&instance->logger, "setup", client, NULL,
-			 " %.*s = %.*s", var->name_len, var->name,
-			 var->value_len, var->value);
-
-		i++;
 	}
 
 	rc = od_write(&client->io, stream);
@@ -2308,8 +2317,6 @@ void od_frontend(void *arg)
 			"ip '%s' user '%s.%s': host based authentication rejected",
 			client_ip, client->startup.database.value,
 			client->startup.user.value);
-		od_frontend_error(client, KIWI_INVALID_PASSWORD,
-				  "host based authentication rejected");
 
 		/* rc == -1
 		 * here we ignore module retcode because auth already failed
@@ -2321,6 +2328,7 @@ void od_frontend(void *arg)
 			module = od_container_of(i, od_module_t, link);
 			module->auth_complete_cb(client, rc);
 		}
+		od_atomic_u32_dec(&router->clients_routing);
 		goto cleanup;
 	}
 
@@ -2598,12 +2606,13 @@ int yb_execute_on_control_connection(od_client_t *client,
 
 	/*
 	 * close the backend connection as we don't want to reuse machines in this
-	 * pool.
+	 * pool if auth-backend is enabled.
 	 */
-	server->offline = true;
+	if (instance->config.yb_use_auth_backend)
+		server->offline = true;
 	od_router_detach(router, control_conn_client);
 	od_router_unroute(router, control_conn_client);
-	if (control_conn_client->io.io) {
+	if (instance->config.yb_use_auth_backend && control_conn_client->io.io) {
 		machine_close(control_conn_client->io.io);
 		machine_io_free(control_conn_client->io.io);
 	}
@@ -2650,6 +2659,8 @@ int yb_auth_via_auth_backend(od_client_t *client)
 	kiwi_var_t *user = &client->startup.user;
 	od_instance_t *instance = global->instance;
 	od_router_t *router = global->router;
+
+	assert(instance->config.yb_use_auth_backend);
 
 	od_debug(
 		&instance->logger, "auth backend",
