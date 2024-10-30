@@ -93,6 +93,16 @@ SELECT * FROM tab_range_nonkey_noco;
 DELETE FROM tab_range_nonkey_noco WHERE a > 3;
 SELECT * FROM tab_range_nonkey_noco;
 
+create table p_out(a int);
+insert into p_out values (1), (2), (3), (4);
+create index on p_out(a asc);
+
+create table p_in(a int, primary key(a asc));
+insert into p_in values (4);
+/*+Set(yb_prefer_bnl false) IndexScan(p_out) NestLoop(p_out p_in) Leading((p_out p_in))*/ explain (analyze, costs off, summary off, timing off, dist) select * from p_out, p_in where p_out.a = p_in.a limit 1;
+drop table p_out;
+drop table p_in;
+
 -- more tables and indexes
 CREATE TABLE tab_range_nonkey_noco2 (a INT, b INT, PRIMARY KEY (a ASC)) WITH (colocation = false);
 CREATE INDEX idx_range3 ON tab_range_nonkey_noco2 (a);

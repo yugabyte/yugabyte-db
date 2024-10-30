@@ -259,6 +259,28 @@ SELECT * FROM tab_range_nonkey_noco;
  3 | 3
 (4 rows)
 
+create table p_out(a int);
+insert into p_out values (1), (2), (3), (4);
+create index on p_out(a asc);
+create table p_in(a int, primary key(a asc));
+insert into p_in values (4);
+/*+Set(yb_prefer_bnl false) IndexScan(p_out) NestLoop(p_out p_in) Leading((p_out p_in))*/ explain (analyze, costs off, summary off, timing off, dist) select * from p_out, p_in where p_out.a = p_in.a limit 1;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Limit (actual rows=1 loops=1)
+   ->  Nested Loop (actual rows=1 loops=1)
+         ->  Index Scan using p_out_a_idx on p_out (actual rows=4 loops=1)
+               Storage Table Rows Scanned: 4
+               Storage Index Read Requests: 2
+               Storage Index Rows Scanned: 4
+         ->  Index Scan using p_in_pkey on p_in (actual rows=0 loops=4)
+               Index Cond: (a = p_out.a)
+               Storage Table Read Requests: 1
+               Storage Table Rows Scanned: 0
+(10 rows)
+
+drop table p_out;
+drop table p_in;
 -- more tables and indexes
 CREATE TABLE tab_range_nonkey_noco2 (a INT, b INT, PRIMARY KEY (a ASC)) WITH (colocation = false);
 CREATE INDEX idx_range3 ON tab_range_nonkey_noco2 (a);
