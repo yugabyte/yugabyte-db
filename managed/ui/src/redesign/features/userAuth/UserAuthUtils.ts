@@ -11,6 +11,8 @@ import { trimEnd, trimStart } from 'lodash';
 
 export const TOAST_OPTIONS = { autoClose: 1750 };
 
+export const OIDC_FEATURE_ENHANCEMENT_KEY = 'yb.security.oidc_feature_enhancements';
+
 export const UserDefaultRoleOptions = {
   ReadOnly: 'ReadOnly',
   ConnectOnly: 'ConnectOnly'

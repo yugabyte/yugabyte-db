@@ -33,7 +33,12 @@ import { YBLoadingCircleIcon } from '../../../../components/common/indicators';
 import { setShowJWTTokenInfo, setSSO } from '../../../../config';
 import { isRbacEnabled } from '../../rbac/common/RbacUtils';
 import { RbacValidator } from '../../rbac/common/RbacApiPermValidator';
-import { escapeStr, TOAST_OPTIONS, UserDefaultRoleOptions } from '../UserAuthUtils';
+import {
+  escapeStr,
+  OIDC_FEATURE_ENHANCEMENT_KEY,
+  TOAST_OPTIONS,
+  UserDefaultRoleOptions
+} from '../UserAuthUtils';
 import { RunTimeConfigEntry } from '../../universe/universe-form/utils/dto';
 import { api } from '../../universe/universe-form/utils/api';
 import { Action } from '../../rbac';
@@ -236,6 +241,7 @@ export const OIDCAuthNew = () => {
   const [showMetadataModel, toggleMetadataModal] = useToggle(false);
   const [showOIDCDisableModal, toggleOIDCDisableModal] = useToggle(false);
   const [initialData, setInitialData] = useState<Partial<OIDCFormProps>>({});
+  const [showDisplayJWTToken, toggleDisplayJWTToken] = useToggle(false);
 
   const queryClient = useQueryClient();
 
@@ -249,6 +255,10 @@ export const OIDCAuthNew = () => {
         Object.entries(formData).forEach(([key, value]) => {
           setValue((key as unknown) as keyof OIDCFormProps, value, { shouldValidate: false });
         });
+        toggleDisplayJWTToken(
+          data?.configEntries?.find((config) => config.key === OIDC_FEATURE_ENHANCEMENT_KEY)
+            ?.value === 'true'
+        );
       }
     }
   );
@@ -443,18 +453,20 @@ export const OIDCAuthNew = () => {
             disabled={!oauthEnabled}
             data-testid="oidcRefreshTokenEndpoint"
           />
-          <YBToggleField
-            control={control}
-            name="showJWTInfoOnLogin"
-            label={
-              <>
-                {t('displayJWTToken')}
-                {toolTip(t('infos.jwtTokenURL'))}
-              </>
-            }
-            disabled={!oauthEnabled}
-            data-testid="showJWTInfoOnLogin"
-          />
+          {showDisplayJWTToken && (
+            <YBToggleField
+              control={control}
+              name="showJWTInfoOnLogin"
+              label={
+                <>
+                  {t('displayJWTToken')}
+                  {toolTip(t('infos.jwtTokenURL'))}
+                </>
+              }
+              disabled={!oauthEnabled}
+              data-testid="showJWTInfoOnLogin"
+            />
+          )}
           <YBButton
             variant="secondary"
             className={classes.oidcProviderConfig}
