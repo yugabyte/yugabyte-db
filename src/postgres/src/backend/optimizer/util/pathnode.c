@@ -4918,13 +4918,13 @@ yb_create_distinct_index_path(PlannerInfo *root,
 		prefixExprs = lappend(prefixExprs, tle->expr);
 		i++;
 	}
-
+	pathnode->path.rows = clamp_row_est(pathnode->path.rows);
 	numDistinctRows = estimate_num_groups(root,
 										  prefixExprs,
 										  pathnode->path.rows,
 										  NULL,
 										  NULL);
-	selectivity = ((Cost) numDistinctRows + 1) / ((Cost) pathnode->path.rows + 1);
+	selectivity = ((Cost) numDistinctRows) / ((Cost) pathnode->path.rows);
 
 	run_cost = pathnode->path.total_cost - pathnode->path.startup_cost;
 	run_cost *= selectivity;
