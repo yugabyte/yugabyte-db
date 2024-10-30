@@ -8,6 +8,7 @@
  */
 
 import { FC } from 'react';
+import { useSelector } from 'react-redux';
 import { makeStyles, Typography } from '@material-ui/core';
 import { AlertVariant, YBAlert, YBButton } from '../../../../components';
 import { Trans, useTranslation } from 'react-i18next';
@@ -55,6 +56,8 @@ export const GroupEmpty: FC<GroupEmptyProps> = ({ noAuthProviderConfigured = fal
     keyPrefix: 'rbac.groups.empty'
   });
 
+  const isNewAuthMappingEnabled = useSelector((state: any) => state.featureFlags.test.enableNewAuthAndMappings);
+
   return (
     <div className={classes.wrapper}>
       <div className={classes.root}>
@@ -88,7 +91,7 @@ export const GroupEmpty: FC<GroupEmptyProps> = ({ noAuthProviderConfigured = fal
                   a: (
                     <a
                       className={classes.link}
-                      href="/admin/rbac?tab=user-auth"
+                      href={`/admin/rbac?tab=user-auth${isNewAuthMappingEnabled ? '-new' : ''}`}
                       rel="noreferrer"
                       target="_blank"
                     ></a>
