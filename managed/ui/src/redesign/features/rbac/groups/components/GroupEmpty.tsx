@@ -15,6 +15,7 @@ import { Trans, useTranslation } from 'react-i18next';
 import { Add } from '@material-ui/icons';
 import { Pages } from './GroupContext';
 import { GetGroupContext } from './GroupUtils';
+import { isRbacEnabled } from '../../common/RbacUtils';
 import { ReactComponent as UserGroupsIcon } from '../../../../assets/user-group.svg';
 import { ReactComponent as AnnouncementIcon } from '../../../../assets/announcement.svg';
 
@@ -56,7 +57,6 @@ export const GroupEmpty: FC<GroupEmptyProps> = ({ noAuthProviderConfigured = fal
     keyPrefix: 'rbac.groups.empty'
   });
 
-  const isNewAuthMappingEnabled = useSelector((state: any) => state.featureFlags.test.enableNewAuthAndMappings);
 
   return (
     <div className={classes.wrapper}>
@@ -91,7 +91,11 @@ export const GroupEmpty: FC<GroupEmptyProps> = ({ noAuthProviderConfigured = fal
                   a: (
                     <a
                       className={classes.link}
-                      href={`/admin/rbac?tab=user-auth${isNewAuthMappingEnabled ? '-new' : ''}`}
+                      href={
+                        isRbacEnabled()
+                          ? `/admin/rbac?tab=user-auth-new`
+                          : '/admin/user-management/user-auth-new'
+                      }
                       rel="noreferrer"
                       target="_blank"
                     ></a>
