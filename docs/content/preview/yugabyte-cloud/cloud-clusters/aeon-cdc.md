@@ -37,6 +37,8 @@ For more information, refer to [How the connector works](../../../explore/change
 ## Prerequisites
 
 - Cluster running YugabyteDB v2024.1.1 or later.
+  - If you have a new cluster running v2024.1.1 or later, CDC is available automatically.
+  - If you have a cluster that was upgraded to v2024.1.1 or later and want to use CDC, contact {{% support-cloud %}}.
 
 - Kafka environment. This can be a [Self-managed Kafka](../../../explore/change-data-capture/using-logical-replication/get-started/#get-started-with-yugabytedb-connector), or a managed service such as [Confluent Cloud](https://www.confluent.io/confluent-cloud/) or [AWS MSK Connect](https://aws.amazon.com/msk/features/msk-connect/).
 
@@ -246,6 +248,6 @@ To do this, [connect to your cluster](../../cloud-connect/connect-client-shell/)
     replication=database"
 ```
 
-## Remove CDC
+### Remove CDC
 
 ## FAQ
