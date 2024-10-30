@@ -12,6 +12,8 @@
 //
 package org.yb.pgsql;
 
+import static org.junit.Assume.assumeFalse;
+
 import java.io.File;
 import java.util.Map;
 import org.junit.Test;
@@ -46,6 +48,7 @@ public class TestPgRegressThirdPartyExtensionsPgCron extends BasePgRegressTest {
 
   @Test
   public void schedule() throws Exception {
+    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
     runPgRegressTest(
         new File(TestUtils.getBuildRootDir(), "postgres_build/third-party-extensions/pg_cron"),
         "yb_schedule");

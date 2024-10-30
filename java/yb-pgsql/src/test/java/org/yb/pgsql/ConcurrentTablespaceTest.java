@@ -37,6 +37,7 @@ import org.yb.master.MasterDdlOuterClass;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBClusterBuilder;
 
+import static org.junit.Assume.assumeFalse;
 import static org.yb.AssertionWrappers.*;
 
 @RunWith(value = YBTestRunner.class)
@@ -190,6 +191,7 @@ public class ConcurrentTablespaceTest extends BaseTablespaceTest {
 
   @Test
   public void testAlterTableSetTablespace() throws Exception {
+    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
     connections = setupConnections();
     List<Thread> threads =
         setupConcurrentDdlDmlThreads("ALTER TABLE concurrent_test_tbl SET TABLESPACE %s");

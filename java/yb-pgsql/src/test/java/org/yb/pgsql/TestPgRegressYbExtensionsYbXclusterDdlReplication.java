@@ -17,6 +17,8 @@ import org.junit.runner.RunWith;
 import org.yb.client.TestUtils;
 import org.yb.YBTestRunner;
 
+import static org.junit.Assume.assumeFalse;
+
 import java.io.File;
 
 @RunWith(value=YBTestRunner.class)
@@ -28,6 +30,7 @@ public class TestPgRegressYbExtensionsYbXclusterDdlReplication extends BasePgReg
 
   @Test
   public void schedule() throws Exception {
+    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
     runPgRegressTest(new File(TestUtils.getBuildRootDir(),
                               "postgres_build/yb-extensions/yb_xcluster_ddl_replication"),
                      "yb_schedule");

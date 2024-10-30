@@ -5,6 +5,8 @@ import org.junit.runner.RunWith;
 import org.yb.client.TestUtils;
 import org.yb.YBTestRunner;
 
+import static org.junit.Assume.assumeFalse;
+
 import java.io.File;
 import java.sql.Statement;
 
@@ -19,6 +21,7 @@ public class TestPgRegressPgStatStatements extends BasePgRegressTest {
 
   @Test
   public void schedule() throws Exception {
+    assumeFalse(BasePgSQLTest.DISABLING_TEST_WITH_CONN_MGR, isTestRunningWithConnectionManager());
     runPgRegressTest(new File(TestUtils.getBuildRootDir(),
                               "postgres_build/contrib/pg_stat_statements"),
                      "yb_schedule");
