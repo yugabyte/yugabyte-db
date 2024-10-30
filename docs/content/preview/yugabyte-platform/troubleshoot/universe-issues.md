@@ -244,9 +244,9 @@ Note that YBA will only collect files if you have sufficient permissions to requ
   - Statefulsets.yaml
   - Persistentvolumeclaims.yaml
 
-#### Promdump collection
+#### Prometheus metrics
 
-This component collects Prometheus metrics for a given universe. You can select the duration of collection and the metrics to collect from the Support Bundle UI for Prometheus metrics.
+This component collects Prometheus metrics (Promdump collection) for a given universe. You can select the duration of collection and the metrics to collect from the Support Bundle UI for Prometheus metrics.
 
 A brief description of each metric is as follows:
 
@@ -258,7 +258,7 @@ A brief description of each metric is as follows:
 - YSQL Export: Enables or disables collection of the metrics for the Postgres-compatible YSQL query layer.
 - YCQL Export: Enables or disables collection of the metrics for the Cassandra-compatible YCQL query layer.
 
-The prom dumps are stored in JSON files in the `support_bundle/YBA/promdump` directory.
+The Prometheus dumps are stored in JSON files in the `support_bundle/YBA/promdump` directory.
 
 </details>
 
