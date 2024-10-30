@@ -58,24 +58,13 @@ Views are realized during this phase. Whenever a query against a view (that is, 
 
 ### Planner
 
-YugabyteDB needs to determine the most efficient way to execute a query and return the results. This process is handled by the query planner/optimizer component.
+The query planner plays a crucial role in efficiently executing SQL queries across multiple nodes. It extends the capabilities of the traditional single node query planner to handle distributed data and execution. The planner first analyzes different ways a query can be executed based on the available data and indexes. It considers various strategies like scanning tables sequentially or using indexes to quickly locate specific data.
 
-The planner first analyzes different ways a query can be executed based on the available data and indexes. It considers various strategies like scanning tables sequentially or using indexes to quickly locate specific data.
+After the optimal plan is determined, the planner generates a detailed execution plan with all the necessary steps, such as scanning tables, joining data, filtering rows, sorting, and computing expressions. This execution plan is then passed to the query executor component, which carries out the plan and returns the final query results.
 
-If the query involves joining multiple tables, the planner evaluates different techniques to combine the data:
-
-- Nested loop join: Scanning one table for each row in the other table. This can be efficient if one table is small or has a good index.
-- Merge join: Sorting both tables by the join columns and then merging them in parallel. This works well when the tables are already sorted or can be efficiently sorted.
-- Hash join: Building a hash table from one table and then scanning the other table to find matches in the hash table.
-For queries involving more than two tables, the planner considers different sequences of joining the tables to find the most efficient approach.
-
-The planner estimates the cost of each possible execution plan and chooses the one expected to be the fastest, taking into account factors like table sizes, indexes, sorting requirements, and so on.
-
-After the optimal plan is determined, YugabyteDB generates a detailed execution plan with all the necessary steps, such as scanning tables, joining data, filtering rows, sorting, and computing expressions. This execution plan is then passed to the query executor component, which carries out the plan and returns the final query results.
-
-{{<note>}}
-The execution plans are cached for prepared statements to avoid overheads associated with repeated parsing of statements.
-{{</note>}}
+{{<lead link="./planner-optimizer/">}}
+To know how exactly the query planner decides the optimal path for query execution, see [Query Planner](./planner-optimizer/)
+{{</lead>}}
 
 ### Executor
 

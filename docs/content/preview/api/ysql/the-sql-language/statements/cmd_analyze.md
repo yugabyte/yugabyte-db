@@ -14,9 +14,9 @@ type: docs
 
 ## Synopsis
 
-ANALYZE collects statistics about the contents of tables in the database, and stores the results in the `pg_statistic` system catalog. These statistics help the query planner to determine the most efficient execution plans for queries.
+ANALYZE collects statistics about the contents of tables in the database, and stores the results in the [pg_statistic](../../../../../architecture/system-catalog/#data-statistics), [pg_class](../../../../../architecture/system-catalog/#schema), and [pg_stat_all_tables](../../../../../architecture/system-catalog/#table-activity) system catalogs. These statistics help the query planner to determine the most efficient execution plans for queries.
 
-The statistics are also used by the YugabyteDB [cost-based optimizer](../../../../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) (CBO) to create optimal execution plans for queries. When run on up-to-date statistics, CBO provides performance improvements and can reduce or eliminate the need to use hints or modify queries to optimize query execution.
+The statistics are also used by the YugabyteDB [cost-based optimizer](../../../../../architecture/query-layer/planner-optimizer) (CBO) to create optimal execution plans for queries. When run on up-to-date statistics, CBO provides performance improvements and can reduce or eliminate the need to use hints or modify queries to optimize query execution.
 
 {{< warning title="Run ANALYZE manually" >}}
 Currently, YugabyteDB doesn't run a background job like PostgreSQL autovacuum to analyze the tables. To collect or update statistics, run the ANALYZE command manually.

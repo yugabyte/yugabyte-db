@@ -12,11 +12,11 @@ menu:
 type: docs
 ---
 
-A log-structured merge-tree (LSM tree) is a data structure and storage architecture used by [RocksDB](http://rocksdb.org/), the underlying key-value store of DocDB. LSM trees strike a balance between write and read performance, making them suitable for workloads that involve both frequent writes and efficient reads.
+A [log-structured merge-tree (LSM tree)](https://en.wikipedia.org/wiki/Log-structured_merge-tree) is a data structure and storage architecture used by [RocksDB](http://rocksdb.org/), the underlying key-value store of DocDB. LSM trees strike a balance between write and read performance, making them suitable for workloads that involve both frequent writes and efficient reads.
 
 The core idea behind an LSM tree is to separate the write and read paths, allowing writes to be sequential and buffered in memory making them faster than random writes, while reads can still access data efficiently through a hierarchical structure of sorted files on disk.
 
-An LSM tree has 2 primary components - Memtable and SSTs. Let's look into each of them in detail and understand how they work during writes and reads.
+An LSM tree has 2 primary components - [Memtable](#memtable) and [SSTs](#sst). Let's look into each of them in detail and understand how they work during writes and reads.
 
 {{<note>}}
 Typically in LSMs there is a third component - WAL (Write ahead log). DocDB uses the Raft logs for this purpose. For more details, see [Raft log vs LSM WAL](../performance/#raft-vs-rocksdb-wal-logs).
@@ -33,7 +33,9 @@ Most traditional databases (for example, MySQL, PostgreSQL, Oracle) have a [B-tr
 
 All new write operations (inserts, updates, and deletes) are written as key-value pairs to an in-memory data structure called a Memtable, which is essentially a sorted map or tree. The key-value pairs are stored in sorted order based on the keys. When the Memtable reaches a certain size, it is made immutable, which means no new writes can be accepted into that Memtable.
 
-The immutable Memtable is then flushed to disk as an SST (Sorted String Table) file. This process involves writing the key-value pairs from the Memtable to disk in a sorted order, creating an SST file. DocDB maintains one active Memtable, and utmost one immutable Memtable at any point in time. This ensures that write operations can continue to be processed in the active Memtable, when the immutable memtable is being flushed to disk.
+## Flush to SST
+
+The immutable [Memtable](#memtable) is then flushed to disk as an [SST (Sorted String Table)](#sst) file. This process involves writing the key-value pairs from the Memtable to disk in a sorted order, creating an SST file. DocDB maintains one active Memtable, and utmost one immutable Memtable at any point in time. This ensures that write operations can continue to be processed in the active Memtable, when the immutable memtable is being flushed to disk.
 
 ## SST
 
@@ -45,6 +47,20 @@ Each SST file contains a bloom filter, which is a space-efficient data structure
 Most LSMs organize SSTS into multiple levels, where each level contains one or more SST files. But DocDB maintains files in only one level (level0).
 {{</note>}}
 
+There are 3 core low-level operations that are used to iterate through the data in SST files.
+
+### Seek
+
+The **seek** operation is used to locate a specific key or position in an [SST](#sst) file or [Memtable](#memtable). When a seek operation is performed, the system attempts to jump directly to the position of the specified key. If the exact key is not found, seek will position the iterator at the closest key that is greater than or equal to the specified key, enabling efficient range scans or prefix matching.
+
+### Next
+
+The **next** operation moves the iterator to the following key in sorted order. It is typically used for sequential reads or scans, where a query iterates over multiple keys, such as retrieving a range of rows. After a [seek](#seek), a sequence of `next` operations can scan through keys in ascending order.
+
+### Previous
+
+The **previous** operation moves the iterator to the preceding key in sorted order. It is useful for reverse scans or for reading records in descending order. This is important for cases where backward traversal is required, such as reverse range queries. For example, after [seeking](#seek) to a key near the end of a range, `previous` can be used to iterate through keys in descending order, often needed in order-by-descending queries.
+
 ## Write path
 
 When new data is written to the LSM system, it is first inserted into the active Memtable. As the Memtable fills up, it is made immutable and written to disk as an SST file. Each SST file is sorted by key and contains a series of key-value pairs organized into data blocks, along with index and filter blocks for efficient lookups.
@@ -53,9 +69,15 @@ When new data is written to the LSM system, it is first inserted into the active
 
 To read a key, the LSM tree first checks the Memtable for the most recent value. If not found, it checks the SST files and finds the key or determines that it doesn't exist. During this process, LSM uses the index and filter blocks in the SST files to efficiently locate the relevant data blocks containing the key-value pairs.
 
+## Delete path
+
+Rather than immediately removing the key from SSTs, the delete operations marks a key as deleted using a tombstone marker, indicating that the key should be ignored in future reads. The actual deletion happens during [compaction](#compaction) when tombstones are removed along with the data they mark as deleted.
+
 ## Compaction
 
 As data accumulates in SSTs, a process called compaction merges and sorts the SST files with overlapping key ranges producing a new set of SST files. The merge process during compaction helps to organize and sort the data, maintaining a consistent on-disk format and reclaiming space from obsolete data versions.
+
+The [YB-TServer](../../yb-tserver/) manages multiple [compaction queues](../../yb-tserver/#compaction-queues) and enforces [throttling](../../yb-tserver/#throttled-compactions) to avoid compaction storms. Although full compactions can be [scheduled](../../yb-tserver/#scheduled-full-compactions), they can also be triggered [manually](../../yb-tserver/#manual-compactions). Full compactions are also triggered automatically if the system detects [tombstones and obsolete keys affecting read performance](../../yb-tserver/#statistics-based-full-compactions-to-improve-read-performance).
 
 ## Learn more
 
