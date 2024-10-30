@@ -1725,7 +1725,7 @@ ReportOperatorExpressonSyntaxError(const char *fieldA, bson_iter_t *fieldBIter, 
 {
 	if (bson_iter_key_len(fieldBIter) == 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
 							"FieldPath cannot be constructed with empty string.")));
 	}
 
@@ -1734,7 +1734,7 @@ ReportOperatorExpressonSyntaxError(const char *fieldA, bson_iter_t *fieldBIter, 
 	if (!performOperatorCheck || (bson_iter_key_len(fieldBIter) > 1 && bson_iter_key(
 									  fieldBIter)[0] == '$'))
 	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40181), errmsg(
 							"an expression operator specification must contain exactly one field, found 2 fields '%s' and '%s'.",
 							fieldA,
 							bson_iter_key(fieldBIter))));
@@ -3258,7 +3258,7 @@ ParseDocumentAggregationExpressionData(const bson_value_t *value,
 
 		if (bson_iter_next(&docIter))
 		{
-			ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40181), errmsg(
 								"an expression operator specification must contain exactly one field, found 2 fields '%s' and '%s'.",
 								operatorKey,
 								bson_iter_key(&docIter))));

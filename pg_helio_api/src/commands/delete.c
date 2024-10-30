@@ -281,7 +281,7 @@ BuildBatchDeletionSpec(bson_iter_t *deleteCommandIter, pgbsonsequence *deleteDoc
 		{
 			if (!BSON_ITER_HOLDS_UTF8(deleteCommandIter))
 			{
-				ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg("collection name has invalid type %s",
 									   BsonIterTypeName(deleteCommandIter))));
 			}
@@ -320,7 +320,7 @@ BuildBatchDeletionSpec(bson_iter_t *deleteCommandIter, pgbsonsequence *deleteDoc
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD),
 							errmsg("BSON field 'delete.%s' is an unknown field",
 								   field)));
 		}
@@ -328,7 +328,7 @@ BuildBatchDeletionSpec(bson_iter_t *deleteCommandIter, pgbsonsequence *deleteDoc
 
 	if (collectionName == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40414),
 						errmsg("BSON field 'delete.delete' is missing but "
 							   "a required field")));
 	}
@@ -340,7 +340,7 @@ BuildBatchDeletionSpec(bson_iter_t *deleteCommandIter, pgbsonsequence *deleteDoc
 
 	if (!hasDeletes)
 	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40414),
 						errmsg("BSON field 'delete.deletes' is missing but "
 							   "a required field")));
 	}
@@ -407,7 +407,7 @@ PostProcessDeleteBatchSpec(BatchDeletionSpec *spec)
 	int deletionCount = list_length(spec->deletionsProcessed);
 	if (deletionCount == 0 || deletionCount > MaxWriteBatchSize)
 	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDLENGTH),
 						errmsg("Write batch sizes must be between 1 and %d. "
 							   "Got %d operations.", MaxWriteBatchSize, deletionCount)));
 	}
@@ -470,7 +470,7 @@ BuildDeletionSpec(bson_iter_t *deletionIter)
 				limit = bson_iter_as_int64(deletionIter);
 				if (limit != 0 && limit != 1)
 				{
-					ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 									errmsg("The limit field in delete objects must be 0 "
 										   "or 1. Got " INT64_FORMAT, limit)));
 				}
@@ -478,25 +478,25 @@ BuildDeletionSpec(bson_iter_t *deletionIter)
 		}
 		else if (strcmp(field, "collation") == 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg("BSON field 'delete.deletes.collation' is not yet "
 								   "supported")));
 		}
 		else if (strcmp(field, "hint") == 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg("BSON field 'delete.deletes.hint' is not yet "
 								   "supported")));
 		}
 		else if (strcmp(field, "comment") == 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg("BSON field 'delete.deletes.comment' is not yet "
 								   "supported")));
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD),
 							errmsg("BSON field 'delete.deletes.%s' is an unknown field",
 								   field)));
 		}
@@ -504,14 +504,14 @@ BuildDeletionSpec(bson_iter_t *deletionIter)
 
 	if (query == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40414),
 						errmsg("BSON field 'delete.deletes.q' is missing but "
 							   "a required field")));
 	}
 
 	if (limit == -1)
 	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40414),
 						errmsg("BSON field 'delete.deletes.limit' is missing but "
 							   "a required field")));
 	}

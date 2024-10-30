@@ -151,6 +151,7 @@ SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [[1],[2],3]}', '
 SELECT helio_api_internal.bson_update_document('{"_id": 5, "a": [1,2] }', '{ "": { "$inc": { "a": 30 } } }', '{}');
 SELECT helio_api_internal.bson_update_document('{"_id": 5, "a": {"x":1} }', '{ "": { "$inc": { "a": 30 } } }', '{}');
 SELECT helio_api_internal.bson_update_document('{"_id": 5, "a": "b" }', '{ "": { "$inc": { "a": 30 } } }', '{}');
+SELECT helio_api_internal.bson_update_document('{"_id": 5, "a": 5 }', '{ "": { "$inc": { "a": "strings" } } }', '{}');
 
 -- update scenario negative tests: $addToSet
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "colors": "blue, green, red" }', '{ "": { "$addToSet": { "colors": "mauve" } }}', '{}');

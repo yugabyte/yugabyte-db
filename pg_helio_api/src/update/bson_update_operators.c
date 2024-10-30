@@ -206,7 +206,7 @@ HandleUpdateDollarInc(const bson_value_t *existingValue,
 {
 	if (!BsonTypeIsNumber(updateValue->value_type))
 	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 						errmsg("Increment should be numeric")));
 	}
 
@@ -215,7 +215,7 @@ HandleUpdateDollarInc(const bson_value_t *existingValue,
 	 * */
 	if (!BsonValueIsNumberOrBool(updateValue))
 	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 						errmsg("Cannot increment with non-numeric argument")));
 	}
 

@@ -518,7 +518,7 @@ DetermineUpdateType(pgbson *updateSpec)
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH), errmsg(
 							"Update should be a document or an array")));
 	}
 }
