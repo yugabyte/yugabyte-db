@@ -46,7 +46,7 @@ Use YugabyteDB Anywhere to automate the deployment and management of YugabyteDB 
 
   {{< sections/3-box-card
     title="Create providers"
-    description="Configure YugabyteDB Anywhere for deploying universes on various cloud providers."
+    description="Create the provider configurations that you will use to deploy universes."
     buttonText="Learn more"
     buttonUrl="configure-yugabyte-platform/"
   >}}
