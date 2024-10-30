@@ -258,7 +258,7 @@ $ pip3 install psycopg2-binary
 
 [aiopg](https://aiopg.readthedocs.io/en/stable/) is a library for accessing a PostgreSQL database using the asyncio (PEP-3156/tulip) framework. It wraps asynchronous features of the [Psycopg](https://www.psycopg.org/) database driver. For details on using aiopg, see [aiopg documentation](https://aiopg.readthedocs.io/en/stable/).
 
-For a tutorial on building a sample Python application that uses aiopg, see [YSQL Aiopg](../../../integrations/aiopg/).
+For a tutorial on building a sample Python application that uses aiopg, see [YSQL Aiopg](/preview/integrations/aiopg/).
 
 #### Install
 

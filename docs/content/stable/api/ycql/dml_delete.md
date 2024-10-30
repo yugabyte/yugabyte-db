@@ -4,7 +4,7 @@ headerTitle: DELETE
 linkTitle: DELETE
 description: Use the DELETE statement to remove rows from a specified table that meet a given condition.
 menu:
-  stable:
+  stable_api:
     parent: api-cassandra
     weight: 1330
 type: docs
@@ -44,6 +44,7 @@ Where
 - **Note**: You should either use the `USING TIMESTAMP` clause in all of your statements or none of
    them. Using a mix of statements where some have `USING TIMESTAMP` and others do not will lead to
    very confusing results.
+- `DELETE` is always done at `QUORUM` consistency level irrespective of setting.
 
 ### WHERE Clause
 

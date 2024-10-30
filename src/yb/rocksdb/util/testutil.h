@@ -810,7 +810,7 @@ class TestUserFrontiers : public rocksdb::UserFrontiersBase<TestUserFrontier> {
     Largest().SetValue(max);
   }
 
-  std::unique_ptr<UserFrontiers> Clone() const {
+  UserFrontiersPtr Clone() const {
     return std::make_unique<TestUserFrontiers>(*this);
   }
 };

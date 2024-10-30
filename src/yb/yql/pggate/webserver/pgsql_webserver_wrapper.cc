@@ -91,35 +91,40 @@ void emitConnectionMetrics(PrometheusWriter *pwriter) {
   }
 
   std::ostringstream errMsg;
-  errMsg << "Cannot publish connection metric to Promethesu-metrics endpoint";
+  errMsg << "Cannot publish connection metric to Prometheus-metrics endpoint";
 
   WARN_NOT_OK(
       pwriter->WriteSingleEntryNonTable(
-          prometheus_attr, PSQL_SERVER_ACTIVE_CONNECTION_TOTAL, tot_active_connections),
+          prometheus_attr, PSQL_SERVER_ACTIVE_CONNECTION_TOTAL, tot_active_connections, "gauge",
+          "Total number of active YSQL connections"),
       errMsg.str());
 
   WARN_NOT_OK(
       pwriter->WriteSingleEntryNonTable(
-          prometheus_attr, PSQL_SERVER_CONNECTION_TOTAL, tot_connections),
+          prometheus_attr, PSQL_SERVER_CONNECTION_TOTAL, tot_connections, "gauge",
+          "Total number of YSQL connections"),
       errMsg.str());
 
   if (conn_metrics) {
     if (conn_metrics->max_conn) {
       WARN_NOT_OK(
           pwriter->WriteSingleEntryNonTable(
-              prometheus_attr, PSQL_SERVER_MAX_CONNECTION_TOTAL, *conn_metrics->max_conn),
+              prometheus_attr, PSQL_SERVER_MAX_CONNECTION_TOTAL, *conn_metrics->max_conn, "gauge",
+              "Maximum number of YSQL connections"),
           errMsg.str());
     }
     if (conn_metrics->too_many_conn) {
       WARN_NOT_OK(
           pwriter->WriteSingleEntryNonTable(
-              prometheus_attr, PSQL_SERVER_CONNECTION_OVER_LIMIT, *conn_metrics->too_many_conn),
+              prometheus_attr, PSQL_SERVER_CONNECTION_OVER_LIMIT, *conn_metrics->too_many_conn,
+              "gauge", "Number of YSQL connections rejected due to connection limits"),
           errMsg.str());
     }
     if (conn_metrics->new_conn) {
       WARN_NOT_OK(
           pwriter->WriteSingleEntryNonTable(
-              prometheus_attr, PSQL_SERVER_NEW_CONNECTION_TOTAL, *conn_metrics->new_conn),
+              prometheus_attr, PSQL_SERVER_NEW_CONNECTION_TOTAL, *conn_metrics->new_conn, "counter",
+              "Number of YSQL connections established since start of postmaster"),
           errMsg.str());
     }
   }
@@ -174,7 +179,7 @@ static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats,
 }
 
 void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
-  std::vector <std::pair<std::string, uint64_t>> ysql_conn_mgr_metrics;
+  std::vector<YsqlConnMgrMetric> ysql_conn_mgr_metrics;
   std::vector<ConnectionStats> stats_list;
   uint64_t num_pools = 0, last_updated_timestamp = 0;
 
@@ -186,39 +191,58 @@ void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
 
   // Publish the count for number of pools.
   WARN_NOT_OK(
-    pwriter->WriteSingleEntry(
-      ysql_conn_mgr_prometheus_attr, "ysql_conn_mgr_num_pools", num_pools,
-      AggregationFunction::kSum, kServerLevel),
-        "Cannot publish Ysql Connection Manager metric to Prometheus-metrics endpoint");
+      pwriter->WriteSingleEntry(
+          ysql_conn_mgr_prometheus_attr, "ysql_conn_mgr_num_pools", num_pools,
+          AggregationFunction::kSum, kServerLevel, "gauge",
+          "Number of YSQL Connection Manager pools"),
+      "Cannot publish Ysql Connection Manager metric to Prometheus-metrics endpoint");
 
   // Publish the last time ysql conn mgr metrics are emitted.
   WARN_NOT_OK(
-    pwriter->WriteSingleEntry(
-      ysql_conn_mgr_prometheus_attr, "ysql_conn_mgr_last_updated_timestamp",
-      last_updated_timestamp, AggregationFunction::kSum, kServerLevel),
+      pwriter->WriteSingleEntry(
+          ysql_conn_mgr_prometheus_attr, "ysql_conn_mgr_last_updated_timestamp",
+          last_updated_timestamp, AggregationFunction::kSum, kServerLevel, "gauge",
+          "Timestamp of last update to YSQL Connection Manager metrics"),
       "Cannot publish Ysql Connection Manager metric to Promotheus-metircs endpoint");
 
   // Iterate over stats collected for each DB (pool), publish them iteratively.
   for (ConnectionStats stats : stats_list) {
-    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_active_clients", stats.active_clients});
-    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_queued_clients", stats.queued_clients});
-    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_idle_or_pending_clients",
-            stats.idle_or_pending_clients});
-    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_active_servers", stats.active_servers});
-    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_idle_servers", stats.idle_servers});
-    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_query_rate", stats.query_rate});
-    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_transaction_rate", stats.transaction_rate});
-    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_avg_wait_time_ns", stats.avg_wait_time_ns});
+    ysql_conn_mgr_metrics.push_back(
+        {"ysql_conn_mgr_active_clients", stats.active_clients, "gauge",
+         "Number of active logical connections"});
+    ysql_conn_mgr_metrics.push_back(
+        {"ysql_conn_mgr_queued_clients", stats.queued_clients, "gauge",
+         "Number of logical connections waiting in the queue for a physical connection"});
+    ysql_conn_mgr_metrics.push_back(
+        {"ysql_conn_mgr_waiting_clients", stats.waiting_clients, "gauge",
+         "Number of logical connections that are either idle (i.e. no ongoing transaction) or "
+         "waiting for the worker thread to be processed"});
+    ysql_conn_mgr_metrics.push_back(
+        {"ysql_conn_mgr_active_servers", stats.active_servers, "gauge",
+         "Number of physical connections that are currently attached to a logical connection."});
+    ysql_conn_mgr_metrics.push_back(
+        {"ysql_conn_mgr_idle_servers", stats.idle_servers, "gauge",
+         "Number of physical connections that are not attached to any logical connection"});
+    ysql_conn_mgr_metrics.push_back(
+        {"ysql_conn_mgr_query_rate", stats.query_rate, "gauge",
+         "Query rate for last <stats_interval> (set in odyssey config) period of time."});
+    ysql_conn_mgr_metrics.push_back(
+        {"ysql_conn_mgr_transaction_rate", stats.transaction_rate, "gauge",
+         "Transaction rate for last <stats_interval> (set in odyssey config) period of time"});
+    ysql_conn_mgr_metrics.push_back(
+        {"ysql_conn_mgr_avg_wait_time_ns", stats.avg_wait_time_ns, "gauge",
+         "Avg wait time (in nanoseconds) for a logical connection to be attached to a physical "
+         "connection"});
     ysql_conn_mgr_prometheus_attr[DATABASE] = stats.database_name;
     ysql_conn_mgr_prometheus_attr[USER] = stats.user_name;
 
     // Publish collected metrics for the current pool.
     for (auto entry : ysql_conn_mgr_metrics) {
       WARN_NOT_OK(
-        pwriter->WriteSingleEntry(
-            ysql_conn_mgr_prometheus_attr, entry.first, entry.second,
-            AggregationFunction::kSum, kServerLevel),
-        "Cannot publish Ysql Connection Manager metric to Prometheus-metrics endpoint");
+          pwriter->WriteSingleEntry(
+              ysql_conn_mgr_prometheus_attr, entry.name, entry.value, AggregationFunction::kSum,
+              kServerLevel, entry.type, entry.help),
+          "Cannot publish Ysql Connection Manager metric to Prometheus-metrics endpoint");
     }
     // Clear the collected metrics for the metrics collected for the next pool.
     ysql_conn_mgr_metrics.clear();
@@ -252,68 +276,16 @@ static void PgMetricsHandler(const Webserver::WebRequest &req, Webserver::WebRes
     writer.Int64(entry->total_time);
     writer.String("rows");
     writer.Int64(entry->rows);
+    if (strlen(entry->table_name) > 0) {
+      writer.String("table_name");
+      writer.String(entry->table_name);
+    }
     writer.EndObject();
   }
 
   writer.EndArray();
   writer.EndObject();
   writer.EndArray();
-}
-
-static void DoWriteStatArrayElemToJson(JsonWriter *writer, YsqlStatementStat *stat) {
-  writer->String("userid");
-  writer->Int64(stat->userid);
-
-  writer->String("dbid");
-  writer->Int64(stat->dbid);
-
-  writer->String("query_id");
-  // Use Int64 for this uint64 field to keep consistent output with PG.
-  writer->Int64(stat->query_id);
-
-  writer->String("query");
-  writer->String(stat->query);
-
-  writer->String("calls");
-  writer->Int64(stat->calls);
-
-  writer->String("total_time");
-  writer->Double(stat->total_time);
-
-  writer->String("min_time");
-  writer->Double(stat->min_time);
-
-  writer->String("max_time");
-  writer->Double(stat->max_time);
-
-  writer->String("mean_time");
-  writer->Double(stat->mean_time);
-
-  writer->String("stddev_time");
-  // Based on logic in pg_stat_monitor_internal().
-  double stddev = (stat->calls > 1) ? (sqrt(stat->sum_var_time / stat->calls)) : 0.0;
-  writer->Double(stddev);
-
-  writer->String("rows");
-  writer->Int64(stat->rows);
-
-  writer->String("local_blks_hit");
-  writer->Int64(stat->local_blks_hit);
-
-  writer->String("local_blks_read");
-  writer->Int64(stat->local_blks_read);
-
-  writer->String("local_blks_dirtied");
-  writer->Int64(stat->local_blks_dirtied);
-
-  writer->String("local_blks_written");
-  writer->Int64(stat->local_blks_written);
-
-  writer->String("temp_blks_read");
-  writer->Int64(stat->temp_blks_read);
-
-  writer->String("temp_blks_written");
-  writer->Int64(stat->temp_blks_written);
 }
 
 static void PgStatStatementsHandler(
@@ -478,8 +450,8 @@ static void PgLogicalRpczHandler(const Webserver::WebRequest &req, Webserver::We
 
     // Number of logical connections which are either idle (i.e. no ongoing transaction) or waiting
     // for the worker thread to be processed (i.e. waiting for od_router_attach to be called).
-    writer.String("idle_or_pending_logical_connections");
-    writer.Int64(stat.idle_or_pending_clients);
+    writer.String("waiting_logical_connections");
+    writer.Int64(stat.waiting_clients);
 
     // Number of physical connections which currently attached to a logical connection.
     writer.String("active_physical_connections");
@@ -513,16 +485,31 @@ static void PgPrometheusMetricsHandler(
     const Webserver::WebRequest &req, Webserver::WebResponse *resp) {
   std::stringstream *output = &resp->output;
   MetricPrometheusOptions opts;
+  opts.export_help_and_type = ExportHelpAndType::kTrue;
+  ParseRequestOptions(req, &opts);
   PrometheusWriter writer(output, opts);
 
   for (int i = 0; i < ybpgm_num_entries; ++i) {
-    std::string name = ybpgm_table[i].name;
-    WARN_NOT_OK(writer.WriteSingleEntry(prometheus_attr, name + "_count",
-        ybpgm_table[i].calls, AggregationFunction::kSum, kServerLevel),
-            "Couldn't write text metrics for Prometheus");
-    WARN_NOT_OK(writer.WriteSingleEntry(prometheus_attr, name + "_sum",
-        ybpgm_table[i].total_time, AggregationFunction::kSum, kServerLevel),
-            "Couldn't write text metrics for Prometheus");
+    std::string metric_name = ybpgm_table[i].name;
+    std::string table_name = ybpgm_table[i].table_name;
+    if (!table_name.empty()) {
+      prometheus_attr["table_name"] = table_name;
+    }
+    WARN_NOT_OK(
+        writer.WriteSingleEntry(
+            prometheus_attr, metric_name + "_count", ybpgm_table[i].calls,
+            AggregationFunction::kSum, kServerLevel, "counter", ybpgm_table[i].count_help),
+        "Couldn't write text metrics for Prometheus");
+
+    // Skip over empty metrics.
+    if (strcmp(ybpgm_table[i].sum_help, "Not applicable") != 0) {
+      WARN_NOT_OK(
+          writer.WriteSingleEntry(
+              prometheus_attr, metric_name + "_sum", ybpgm_table[i].total_time,
+              AggregationFunction::kSum, kServerLevel, "counter", ybpgm_table[i].sum_help),
+          "Couldn't write text metrics for Prometheus");
+    }
+    prometheus_attr.erase("table_name");
   }
 
   // Publish sql server connection related metrics
@@ -538,11 +525,42 @@ void WriteStartObjectToJson(void *p1) {
   writer->StartObject();
 }
 
-void WriteStatArrayElemToJson(void *p1, void *p2) {
+void WriteStringToJson(void *p1, const char* key, const char* value) {
   JsonWriter *writer = static_cast<JsonWriter *>(p1);
-  YsqlStatementStat *stat = static_cast<YsqlStatementStat *>(p2);
+  writer->String(key);
+  writer->String(value);
+}
 
-  DoWriteStatArrayElemToJson(writer, stat);
+void WriteIntToJson(void *p1, const char* key, const int64_t value) {
+  JsonWriter *writer = static_cast<JsonWriter *>(p1);
+  writer->String(key);
+  writer->Int64(value);
+}
+
+void WriteDoubleToJson(void *p1, const char* key, const double value) {
+  JsonWriter *writer = static_cast<JsonWriter *>(p1);
+  writer->String(key);
+  writer->Double(value);
+}
+
+void WriteIntArrayToJson(void *p1, const char *key, const int64 *values, const size_t size) {
+  JsonWriter *writer = static_cast<JsonWriter *>(p1);
+  writer->String(key);
+  writer->StartArray();
+  for (size_t i = 0; i < size; ++i) {
+    writer->Int64(values[i]);
+  }
+  writer->EndArray();
+}
+
+void WriteDoubleArrayToJson(void *p1, const char *key, const double *values, const size_t size) {
+  JsonWriter *writer = static_cast<JsonWriter *>(p1);
+  writer->String(key);
+  writer->StartArray();
+  for (size_t i = 0; i < size; ++i) {
+    writer->Double(values[i]);
+  }
+  writer->EndArray();
 }
 
 void WriteHistArrayBeginToJson(void *p1) {
@@ -551,7 +569,13 @@ void WriteHistArrayBeginToJson(void *p1) {
   writer->StartArray();
 }
 
-void WriteHistElemToJson(void *p1, void *p2, void *p3) {
+void WriteArrayBeginToJson(void *p1, const char* key) {
+  JsonWriter *writer = static_cast<JsonWriter *>(p1);
+  writer->String(key);
+  writer->StartArray();
+}
+
+void WriteIntValueObjectToJson(void *p1, void *p2, void *p3) {
   JsonWriter *writer = static_cast<JsonWriter *>(p1);
   char *key = static_cast<char*>(p2);
   int64_t *value = static_cast<int64_t *>(p3);
@@ -561,7 +585,7 @@ void WriteHistElemToJson(void *p1, void *p2, void *p3) {
   writer->EndObject();
 }
 
-void WriteHistArrayEndToJson(void* p1) {
+void WriteArrayEndToJson(void* p1) {
   JsonWriter *writer = static_cast<JsonWriter *>(p1);
   writer->EndArray();
 }

@@ -3,8 +3,6 @@ title: View COPY status with pg_stat_progress_copy
 linkTitle: Data transfer status
 description: Use pg_stat_progress_copy to get the COPY command status, number of tuples processed, and other COPY progress reports.
 headerTitle: View COPY status with pg_stat_progress_copy
-aliases:
-  - /explore/query-1-performance/pg-stat-progress-copy/
 menu:
   stable:
     identifier: pg-stat-progress-copy
@@ -84,7 +82,7 @@ The following examples demonstrate the possible stages (IN PROGRESS, ERROR, SUCC
     done
     ```
 
-- From your local YugabyteDB installation directory, connect to the [YSQL](../../../admin/ysqlsh/) shell, and create a table using the following schema:
+- From your local YugabyteDB installation directory, connect to the [YSQL](../../../api/ysqlsh/) shell, and create a table using the following schema:
 
     ```sql
     create table test_copy ( h1 int, r1 int, v1 int, primary key (h1, r1));

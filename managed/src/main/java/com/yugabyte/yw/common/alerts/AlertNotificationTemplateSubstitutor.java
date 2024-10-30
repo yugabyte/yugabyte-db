@@ -38,8 +38,6 @@ public class AlertNotificationTemplateSubstitutor {
 
   private final boolean json;
 
-  private final PlaceholderSubstitutor jsonStringSubstitutor;
-
   private final PlaceholderSubstitutor placeholderSubstitutor;
 
   private final JsonStringEncoder jsonStringEncoder;
@@ -58,18 +56,16 @@ public class AlertNotificationTemplateSubstitutor {
     this.json = json;
     this.escapeHtml = escapeHtml;
     jsonStringEncoder = JsonStringEncoder.getInstance();
-    jsonStringSubstitutor =
-        new PlaceholderSubstitutor("\"{{", "}}\"", key -> getPlaceholderValue(key, true));
     placeholderSubstitutor =
-        new PlaceholderSubstitutor("{{", "}}", key -> getPlaceholderValue(key, false));
+        new PlaceholderSubstitutor("{{", "}}", key -> getPlaceholderValue(key));
   }
 
-  private String getPlaceholderValue(String key, boolean jsonString) {
+  private String getPlaceholderValue(String key) {
     if (key.equals(AlertTemplateSystemVariable.YUGABYTE_ALERT_UUID.getPlaceholderValue())) {
-      return processValue(alert.getUuid().toString(), jsonString);
+      return processValue(alert.getUuid().toString(), json);
     }
     if (key.equals(AlertTemplateSystemVariable.YUGABYTE_ALERT_CHANNEL_NAME.getPlaceholderValue())) {
-      return processValue(alertChannel.getName(), jsonString);
+      return processValue(alertChannel.getName(), json);
     }
     if (key.equals(AlertTemplateSystemVariable.YUGABYTE_ALERT_LABELS_JSON.getPlaceholderValue())) {
       Map<String, String> labels =
@@ -78,15 +74,15 @@ public class AlertNotificationTemplateSubstitutor {
       return Json.stringify(Json.toJson(labels));
     }
     if (key.equals(AlertTemplateSystemVariable.YUGABYTE_ALERT_START_TIME.getPlaceholderValue())) {
-      return processValue(DATE_FORMAT.format(alert.getCreateTime()), jsonString);
+      return processValue(DATE_FORMAT.format(alert.getCreateTime()), json);
     }
     if (key.equals(AlertTemplateSystemVariable.YUGABYTE_ALERT_END_TIME.getPlaceholderValue())) {
       String endTime =
           alert.getResolvedTime() != null ? DATE_FORMAT.format(alert.getResolvedTime()) : null;
-      return processValue(endTime, jsonString);
+      return processValue(endTime, json);
     }
     if (key.equals(AlertTemplateSystemVariable.YUGABYTE_ALERT_STATUS.getPlaceholderValue())) {
-      return processValue(alert.getState().getAction(), jsonString);
+      return processValue(alert.getState().getAction(), json);
     }
     if (key.startsWith(LABELS_PREFIX)) {
       String labelName = key.replace(LABELS_PREFIX, "");
@@ -94,11 +90,11 @@ public class AlertNotificationTemplateSubstitutor {
       if (labelValue == null) {
         labelValue = placeholderDefaultValues.get(labelName);
       }
-      return processValue(labelValue, jsonString);
+      return processValue(labelValue, json);
     }
     if (key.startsWith(ANNOTATIONS_PREFIX)) {
       String annotationName = key.replace(ANNOTATIONS_PREFIX, "");
-      return processValue(alert.getAnnotationValue(annotationName), jsonString);
+      return processValue(alert.getAnnotationValue(annotationName), json);
     }
     // Possibly some prometheus expression, which can also contain {{ something }} placeholders
     return "{{ " + key + " }}";
@@ -106,22 +102,24 @@ public class AlertNotificationTemplateSubstitutor {
 
   public String replace(String templateStr) {
     String result = templateStr;
-    if (json) {
-      result = jsonStringSubstitutor.replace(result);
-    }
     result = placeholderSubstitutor.replace(result);
+    if (json) {
+      // As quotes are part of template, and we can't use placeholder substitutor to handle that -
+      // we have to handle special case for null values here.
+      result = result.replaceAll("\"null\"", "null");
+    }
     return result;
   }
 
-  public String processValue(String value, boolean jsonString) {
+  public String processValue(String value, boolean json) {
     if (value != null) {
       if (escapeHtml) {
         value = StringEscapeUtils.escapeHtml4(value);
       }
-      if (jsonString) {
+      if (json) {
         value = new String(jsonStringEncoder.quoteAsString(value));
       }
-      return jsonString ? "\"" + value + "\"" : value;
+      return value;
     }
     if (json) {
       return "null";

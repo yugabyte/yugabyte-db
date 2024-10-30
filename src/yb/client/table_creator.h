@@ -79,6 +79,8 @@ class YBTableCreator {
 
   YBTableCreator& is_truncate(bool is_truncate);
 
+  YBTableCreator& xcluster_source_table_id(const TableId& source_table_id);
+
   // Sets the schema with which to create the table. Must remain valid for
   // the lifetime of the builder. Required.
   YBTableCreator& schema(const YBSchema* schema);
@@ -237,6 +239,9 @@ class YBTableCreator {
 
   // Set to true when the table is being re-written as part of a TRUNCATE operation.
   boost::optional<bool> is_truncate_;
+
+  // Set by DDL Replication to link the table to the original table in the source cluster.
+  TableId xcluster_source_table_id_;
 
   const TransactionMetadata* txn_ = nullptr;
 

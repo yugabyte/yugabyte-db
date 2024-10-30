@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.models.Universe;
@@ -13,6 +14,8 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@ITask.Retryable
+@ITask.Abortable
 public class ReprovisionNode extends UniverseDefinitionTaskBase {
 
   @Inject
@@ -23,6 +26,39 @@ public class ReprovisionNode extends UniverseDefinitionTaskBase {
   @Override
   protected NodeTaskParams taskParams() {
     return (NodeTaskParams) taskParams;
+  }
+
+  private void runBasicChecks(Universe universe) {
+    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+    if (currentNode == null) {
+      String msg = "No node " + taskParams().nodeName + " in universe " + universe.getName();
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
+    if (currentNode.isMaster || currentNode.isTserver) {
+      String msg = "Cannot reprovision " + taskParams().nodeName + " while it is not stopped";
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
+    taskParams().azUuid = currentNode.azUuid;
+    taskParams().placementUuid = currentNode.placementUuid;
+  }
+
+  @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    runBasicChecks(getUniverse());
+  }
+
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    // Check again after locking.
+    runBasicChecks(getUniverse());
+    if (!instanceExists(taskParams())) {
+      String msg = "No instance exists for " + taskParams().nodeName;
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
   }
 
   @Override
@@ -41,25 +77,9 @@ public class ReprovisionNode extends UniverseDefinitionTaskBase {
               taskParams().expectedUniverseVersion, null /* Txn callback */);
 
       NodeDetails currentNode = universe.getNode(taskParams().nodeName);
-      if (currentNode == null) {
-        String msg = "No node " + taskParams().nodeName + " in universe " + universe.getName();
-        log.error(msg);
-        throw new RuntimeException(msg);
-      }
 
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
-      if (!instanceExists(taskParams())) {
-        String msg = "No instance exists for " + taskParams().nodeName;
-        log.error(msg);
-        throw new RuntimeException(msg);
-      }
-
-      if (currentNode.isMaster || currentNode.isTserver) {
-        String msg = "Cannot reprovision " + taskParams().nodeName + " while it is not stopped";
-        log.error(msg);
-        throw new RuntimeException(msg);
-      }
 
       preTaskActions();
 

@@ -2,7 +2,7 @@
 title: ybm CLI role resource
 headerTitle: ybm role
 linkTitle: role
-description: YugabyteDB Managed CLI reference Role resource.
+description: YugabyteDB Aeon CLI reference Role resource.
 headcontent: Manage roles
 menu:
   preview_yugabyte-cloud:
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Use the `role` resource to create and manage YugabyteDB Managed account [roles](../../../../managed-security/managed-roles/).
+Use the `role` resource to create and manage YugabyteDB Aeon account [roles](../../../../managed-security/managed-roles/).
 
 ## Syntax
 
@@ -22,7 +22,7 @@ Usage: ybm role [command] [flags]
 
 ## Examples
 
-List roles in YugabyteDB Managed:
+List roles in YugabyteDB Aeon:
 
 ```sh
 ybm role list
@@ -74,7 +74,7 @@ Fetch detailed information about a specified role, including its permissions (na
 
 ### list
 
-List the roles in your YugabyteDB Managed account.
+List the roles in your YugabyteDB Aeon account.
 
 | Flag | Description |
 | :--- | :--- |

@@ -950,7 +950,7 @@ class ApplyPatch {
             frontier.set_history_cutoff_information(
                 { HybridTime::FromMicros(kYugaByteMicrosecondEpoch),
                   HybridTime::FromMicros(kYugaByteMicrosecondEpoch) });
-            RETURN_NOT_OK(patcher.ModifyFlushedFrontier(frontier));
+            RETURN_NOT_OK(patcher.ModifyFlushedFrontier(frontier, docdb::CotableIdsMap()));
           } else {
             LOG(INFO) << "We did not see RocksDB CURRENT or MANIFEST-... files in "
                        << dir << ", skipping applying " << patched_path;

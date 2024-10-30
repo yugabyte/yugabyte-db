@@ -1,3 +1,5 @@
+// Copyright (c) YugaByte, Inc.
+
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import static com.yugabyte.yw.models.helpers.ExternalScriptHelper.EXT_SCRIPT_CONTENT_CONF_PATH;

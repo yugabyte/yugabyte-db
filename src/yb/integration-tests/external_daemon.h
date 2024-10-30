@@ -135,6 +135,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   std::vector<std::string> GetDataDirs() const { return data_dirs_; }
 
   const std::string& exe() const { return exe_; }
+  void SetExe(const std::string& new_exe) { exe_ = new_exe; }
 
   const std::string& GetRootDir() const { return root_dir_; }
 
@@ -275,7 +276,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   const std::string daemon_id_;
   rpc::Messenger* messenger_;
   rpc::ProxyCache* proxy_cache_;
-  const std::string exe_;
+  std::string exe_;
   const std::string root_dir_;
   std::vector<std::string> data_dirs_;
   std::vector<std::string> extra_flags_;

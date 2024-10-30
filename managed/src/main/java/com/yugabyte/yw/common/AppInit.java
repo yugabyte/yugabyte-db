@@ -8,12 +8,14 @@ import static com.yugabyte.yw.models.MetricConfig.METRICS_CONFIG_PATH;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.google.inject.name.Named;
+import com.jayway.jsonpath.JsonPath;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
-import com.yugabyte.yw.commissioner.AutomatedMasterFailover;
+import com.yugabyte.yw.commissioner.AutoMasterFailoverScheduler;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
+import com.yugabyte.yw.commissioner.NodeAgentEnabler;
 import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.commissioner.PerfAdvisorGarbageCollector;
 import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
@@ -22,9 +24,9 @@ import com.yugabyte.yw.commissioner.RefreshKmsService;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
+import com.yugabyte.yw.commissioner.UpdateProviderMetadata;
+import com.yugabyte.yw.commissioner.XClusterScheduler;
 import com.yugabyte.yw.commissioner.YbcUpgrade;
-import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup;
-import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
@@ -43,19 +45,23 @@ import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExtraMigration;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
-import com.yugabyte.yw.models.ImageBundle;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.MetricConfig;
-import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Principal;
+import com.yugabyte.yw.models.Release;
+import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.scheduler.JobScheduler;
 import com.yugabyte.yw.scheduler.Scheduler;
+import db.migration.default_.common.R__Sync_System_Roles;
 import io.ebean.DB;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Gauge;
 import io.prometheus.client.hotspot.DefaultExports;
-import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import play.Application;
 import play.Environment;
@@ -71,6 +77,8 @@ public class AppInit {
       Gauge.build("yba_init_time_seconds", "Last YBA startup time in seconds.")
           .register(CollectorRegistry.defaultRegistry);
 
+  private static final AtomicBoolean IS_H2_DB = new AtomicBoolean(false);
+
   @Inject
   public AppInit(
       Environment environment,
@@ -83,7 +91,7 @@ public class AppInit {
       YamlWrapper yaml,
       ExtraMigrationManager extraMigrationManager,
       PitrConfigPoller pitrConfigPoller,
-      AutomatedMasterFailover automatedMasterFailover,
+      AutoMasterFailoverScheduler autoMasterFailoverScheduler,
       TaskGarbageCollector taskGC,
       SetUniverseKey setUniverseKey,
       RefreshKmsService refreshKmsService,
@@ -106,20 +114,29 @@ public class AppInit {
       SupportBundleCleanup supportBundleCleanup,
       NodeAgentPoller nodeAgentPoller,
       YbcUpgrade ybcUpgrade,
+      XClusterScheduler xClusterScheduler,
       PerfAdvisorGarbageCollector perfRecGC,
       SnapshotCleanup snapshotCleanup,
       FileDataService fileDataService,
       KubernetesOperator kubernetesOperator,
       RuntimeConfGetter confGetter,
       PrometheusConfigManager prometheusConfigManager,
-      ImageBundleUtil imageBundleUtil,
+      UpdateProviderMetadata updateProviderMetadata,
       @Named("AppStartupTimeMs") Long startupTime,
-      ReleasesUtils releasesUtils)
+      ReleasesUtils releasesUtils,
+      JobScheduler jobScheduler,
+      NodeAgentEnabler nodeAgentEnabler)
       throws ReflectiveOperationException {
     try {
       log.info("Yugaware Application has started");
-
-      if (!environment.isTest()) {
+      setYbaVersion(ConfigHelper.getCurrentVersion(environment));
+      if (environment.isTest()) {
+        String dbDriverKey = "db.default.driver";
+        if (config.hasPath(dbDriverKey)) {
+          String driver = config.getString(dbDriverKey);
+          IS_H2_DB.set(driver.contains("org.h2.Driver"));
+        }
+      } else {
         // only start thread dump collection for YBM at this time
         if (config.getBoolean("yb.cloud.enabled")) {
           threadDumpPublisher.start();
@@ -135,6 +152,16 @@ public class AppInit {
           Customer customer = Customer.getAll().get(0);
           alertDestinationService.createDefaultDestination(customer.getUuid());
           alertConfigurationService.createDefaultConfigs(customer);
+          // Create system roles for the newly created customer.
+          R__Sync_System_Roles.syncSystemRoles();
+          // Principal entry for newly created users.
+          for (Users user : Users.find.all()) {
+            Principal principal = Principal.get(user.getUuid());
+            if (principal == null) {
+              log.info("Adding Principal entry for user with email: " + user.getEmail());
+              new Principal(user).save();
+            }
+          }
         }
 
         String storagePath = AppConfigHelper.getStoragePath();
@@ -144,6 +171,8 @@ public class AppInit {
           fileDataService.fixUpPaths(storagePath);
           releaseManager.fixFilePaths();
         }
+        // yb.fixPaths has a specific, limited use case. This should run always.
+        releasesUtils.releaseUploadPathFixup();
 
         boolean ywFileDataSynced =
             Boolean.parseBoolean(
@@ -162,78 +191,6 @@ public class AppInit {
           throw new RuntimeException(("yb.storage.path is not set in application.conf"));
         }
 
-        boolean vmOsPatchingEnabled = confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
-        Map<String, Object> defaultYbaOsVersion =
-            configHelper.getConfig(ConfigHelper.ConfigType.YBADefaultAMI);
-
-        // temporarily revert due to PLAT-2434
-        // LogUtil.updateApplicationLoggingFromConfig(sConfigFactory, config);
-        // LogUtil.updateAuditLoggingFromConfig(sConfigFactory, config);
-
-        // Initialize AWS if any of its instance types have an empty volumeDetailsList
-        List<Provider> providerList = Provider.find.query().where().findList();
-        for (Provider provider : providerList) {
-          if (provider.getCode().equals("aws")) {
-            for (InstanceType instanceType : InstanceType.findByProvider(provider, confGetter)) {
-              if (instanceType.getInstanceTypeDetails() != null
-                  && (instanceType.getInstanceTypeDetails().volumeDetailsList == null
-                      || (instanceType.getInstanceTypeDetails().arch == null
-                          && vmOsPatchingEnabled))) {
-                // We started persisting all the instance types for a provider now, given that we
-                // can manage multiple architecture via image bundle. This will ensure that we
-                // have all the instance_types populated for the AWS providers.
-                awsInitializer.initialize(provider.getCustomerUUID(), provider.getUuid());
-                break;
-              }
-            }
-
-            if (vmOsPatchingEnabled) {
-              // If there still exists instance types with arch as null, those will be
-              // the custom added instance. Need to populate arch for those as well.
-              List<InstanceType> instancesWithoutArch =
-                  InstanceType.getInstanceTypesWithoutArch(provider.getUuid());
-              List<ImageBundle> defaultImageBundles =
-                  ImageBundle.getDefaultForProvider(provider.getUuid());
-              if (instancesWithoutArch.size() > 0 && defaultImageBundles.size() > 0) {
-                for (InstanceType instance : instancesWithoutArch) {
-                  if (instance.getInstanceTypeDetails() == null) {
-                    instance.setInstanceTypeDetails(new InstanceTypeDetails());
-                  }
-
-                  if (defaultImageBundles.get(0).getDetails() != null) {
-                    instance.getInstanceTypeDetails().arch =
-                        defaultImageBundles.get(0).getDetails().getArch();
-                  }
-
-                  instance.save();
-                }
-              }
-            }
-          }
-          if (vmOsPatchingEnabled) {
-            String providerCode = provider.getCode();
-            Map<String, String> currOSVersionDBMap = null;
-            if (defaultYbaOsVersion != null && defaultYbaOsVersion.containsKey(providerCode)) {
-              currOSVersionDBMap = (Map<String, String>) defaultYbaOsVersion.get(providerCode);
-            }
-            if (imageBundleUtil.migrateYBADefaultBundles(currOSVersionDBMap, provider)) {
-              // In case defaultYbaAmiVersion is not null & not equal to version specified in
-              // CloudImageBundleSetup.YBA_AMI_VERSION, we will check in the provider bundles
-              // & migrate all the YBA_DEFAULT -> YBA_DEPRECATED, & at the same time generating
-              // new bundle with the latest AMIs. This will only hold in case the provider
-              // does not have CUSTOM bundles.
-              imageBundleUtil.migrateImageBundlesForProviders(provider);
-            }
-          }
-        }
-
-        if (vmOsPatchingEnabled) {
-          // Store the latest YBA_AMI_VERSION in the yugaware_roperty.
-          Map<String, Object> defaultYbaOsVersionMap =
-              new HashMap<>(CloudImageBundleSetup.CLOUD_OS_MAP);
-          configHelper.loadConfigToDB(ConfigType.YBADefaultAMI, defaultYbaOsVersionMap);
-        }
-
         // Load metrics configurations.
         Map<String, Object> configs =
             yaml.load(environment.resourceAsStream(METRICS_CONFIG_PATH), application.classloader());
@@ -248,7 +205,6 @@ public class AppInit {
         for (ExtraMigration m : ExtraMigration.getAll()) {
           m.run(extraMigrationManager);
         }
-
         // Import new local releases into release metadata
         releaseManager.importLocalReleases();
         releaseManager.updateCurrentReleases();
@@ -263,19 +219,26 @@ public class AppInit {
                   }
                 });
         // Background thread to query for latest ARM release version.
-        Thread armReleaseThread =
-            new Thread(
-                () -> {
-                  try {
-                    log.info("Attempting to query latest ARM release link.");
-                    releaseManager.findLatestArmRelease(
-                        ConfigHelper.getCurrentVersion(environment));
-                    log.info("Imported ARM release download link.");
-                  } catch (Exception e) {
-                    log.warn("Error importing ARM release download link", e);
-                  }
-                });
-        armReleaseThread.start();
+        // Only run for non-cloud deployments, as YBM will add any necessary releases on their own.
+        if (!config.getBoolean("yb.cloud.enabled")) {
+          Thread armReleaseThread =
+              new Thread(
+                  () -> {
+                    try {
+                      log.info("Attempting to query latest ARM release link.");
+                      releaseManager.findLatestArmRelease(
+                          ConfigHelper.getCurrentVersion(environment));
+                      log.info("Imported ARM release download link.");
+                    } catch (Exception e) {
+                      log.warn("Error importing ARM release download link", e);
+                    }
+                  });
+          armReleaseThread.start();
+        } else {
+          log.debug("skipping fetch latest arm build for cloud enabled deployment");
+        }
+
+        updateSensitiveGflagsforRedaction(gFlagsValidation);
 
         // initialize prometheus exports
         DefaultExports.initialize();
@@ -283,6 +246,8 @@ public class AppInit {
         // Handle incomplete tasks
         taskManager.handleAllPendingTasks();
         taskManager.updateUniverseSoftwareUpgradeStateSet();
+        taskManager.handlePendingConsistencyTasks();
+        taskManager.handleAutoRetryAbortedTasks();
 
         // Fail all incomplete support bundle creations.
         supportBundleCleanup.markAllRunningSupportBundlesFailed();
@@ -317,15 +282,20 @@ public class AppInit {
         replicationManager.init();
 
         scheduler.init();
+        jobScheduler.init();
         callHome.start();
         queryAlerts.start();
         healthChecker.initialize();
         shellLogsManager.startLogsGC();
         nodeAgentPoller.init();
         pitrConfigPoller.start();
-        automatedMasterFailover.start();
+        autoMasterFailoverScheduler.init();
+        // Update the provider metadata in case YBA updates the managed AMIs.
+        updateProviderMetadata.start();
+        xClusterScheduler.start();
 
         ybcUpgrade.start();
+        nodeAgentEnabler.init();
 
         prometheusConfigManager.updateK8sScrapeConfigs();
 
@@ -349,8 +319,6 @@ public class AppInit {
           log.info("Completed initialization in " + elapsedStr + " seconds.");
         }
 
-        setYbaVersion(ConfigHelper.getCurrentVersion(environment));
-
         // Fix up DB paths again to handle any new files (ybc) that moved during AppInit.
         if (config.getBoolean("yb.fixPaths")) {
           log.debug("Fixing up file paths a second time.");
@@ -364,5 +332,25 @@ public class AppInit {
       log.error("caught error during app init ", t);
       throw t;
     }
+  }
+
+  // Workaround for some tests with H2 database.
+  public static boolean isH2Db() {
+    return IS_H2_DB.get();
+  }
+
+  private void updateSensitiveGflagsforRedaction(GFlagsValidation gFlagsValidation) {
+    Set<String> sensitiveGflags = new HashSet<>();
+    for (Release release : Release.getAll()) {
+      // Extract sensitive flags and cache in DB for later use.
+      if (release.getSensitiveGflags() == null) {
+        release.setSensitiveGflags(
+            gFlagsValidation.getSensitiveJsonPathsForVersion(release.getVersion()));
+        release.save();
+      }
+      sensitiveGflags.addAll(release.getSensitiveGflags());
+    }
+    RedactingService.SECRET_JSON_PATHS_LOGS.addAll(
+        sensitiveGflags.stream().map(JsonPath::compile).collect(Collectors.toList()));
   }
 }

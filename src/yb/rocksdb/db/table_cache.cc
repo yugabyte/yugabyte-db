@@ -256,7 +256,7 @@ Status TableCache::DoGetTableReaderForIterator(
     bool skip_filters) {
   const bool create_new_table_reader =
       (for_compaction && ioptions_.new_table_reader_for_compaction_inputs);
-  if (create_new_table_reader) {
+  if (create_new_table_reader || options.query_id == kNoCacheQueryId) {
     unique_ptr<TableReader> table_reader_unique_ptr;
     Status s = DoGetTableReader(
         env_options, icomparator, fd, /* sequential mode */ true,
@@ -265,13 +265,14 @@ Status TableCache::DoGetTableReaderForIterator(
       return s;
     }
     trwh->table_reader = table_reader_unique_ptr.release();
+    trwh->created_new = true;
   } else {
     *trwh = VERIFY_RESULT(GetTableReader(
         env_options, icomparator, fd, options.query_id,
         /* no_io =*/ options.read_tier == kBlockCacheTier, file_read_hist, skip_filters,
         options.statistics));
+    trwh->created_new = false;
   }
-  trwh->created_new = create_new_table_reader;
   return Status::OK();
 }
 

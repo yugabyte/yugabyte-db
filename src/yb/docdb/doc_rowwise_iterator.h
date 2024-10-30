@@ -21,6 +21,7 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/schema.h"
 
+#include "yb/docdb/deadline_info.h"
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_read_context.h"
@@ -58,16 +59,14 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
                      const TransactionOperationContext& txn_op_context,
                      const DocDB& doc_db,
                      const ReadOperationData& read_operation_data,
-                     std::reference_wrapper<const ScopedRWOperation> pending_op,
-                     const DocDBStatistics* statistics = nullptr);
+                     std::reference_wrapper<const ScopedRWOperation> pending_op);
 
   DocRowwiseIterator(const dockv::ReaderProjection& projection,
                      std::shared_ptr<DocReadContext> doc_read_context,
                      const TransactionOperationContext& txn_op_context,
                      const DocDB& doc_db,
                      const ReadOperationData& read_operation_data,
-                     ScopedRWOperation&& pending_op,
-                     const DocDBStatistics* statistics = nullptr);
+                     ScopedRWOperation&& pending_op);
 
   ~DocRowwiseIterator() override;
 
@@ -161,7 +160,7 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
 
   bool use_fast_backward_scan_ = false;
 
-  const DocDBStatistics* statistics_;
+  DeadlineInfo deadline_info_;
 };
 
 }  // namespace docdb

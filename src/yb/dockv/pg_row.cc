@@ -34,7 +34,13 @@ namespace yb::dockv {
 
 namespace {
 
-YB_DEFINE_ENUM(ColumnStrategy, (kRegular)(kLast)(kSkip));
+YB_DEFINE_ENUM(ColumnStrategy, (kRegular)(kSkipPackedColumn)(kSkipProjectionColumn));
+
+template <ColumnStrategy kStrategy>
+inline constexpr bool kIsSkip = std::conditional_t<
+    kStrategy == ColumnStrategy::kSkipPackedColumn ||
+    kStrategy == ColumnStrategy::kSkipProjectionColumn,
+    std::true_type, std::false_type>::value;
 
 size_t FixedSize(DataType data_type) {
   switch (data_type) {
@@ -365,7 +371,7 @@ struct PrimitiveValueDecoder {
 
   template <ColumnStrategy kStrategy>
   const uint8_t* V2(const uint8_t* body, size_t projection_index, PgTableRow* row) const {
-    if (kStrategy != ColumnStrategy::kSkip) {
+    if (!kIsSkip<kStrategy>) {
       PgValueDatum value = 0;
     #ifdef IS_LITTLE_ENDIAN
       memcpy(&value, body, sizeof(T));
@@ -397,7 +403,7 @@ struct PrimitiveValueDecoder<bool> {
 
   template <ColumnStrategy kStrategy>
   const uint8_t* V2(const uint8_t* body, size_t projection_index, PgTableRow* row) const {
-    if (kStrategy != ColumnStrategy::kSkip) {
+    if (!kIsSkip<kStrategy>) {
       row->SetDatum(projection_index, *body);
     }
     return body + sizeof(bool);
@@ -421,7 +427,7 @@ struct BinaryValueDecoder {
   const uint8_t* V2(const uint8_t* body, size_t projection_index, PgTableRow* row) const {
     auto [len, start] = DecodeFieldLength(body);
     auto value = Slice(start, len);
-    if (kStrategy != ColumnStrategy::kSkip) {
+    if (!kIsSkip<kStrategy>) {
       row->SetBinary(projection_index, value, kAppendZero);
     }
     return value.end();
@@ -474,26 +480,32 @@ UnsafeStatus DecodePackedColumnV1(
       data, projection_index, chain, column_value);
 }
 
-template <class Decoder, bool kCheckNull, ColumnStrategy kStrategy>
+template <class Decoder, bool kCheckNull, bool kLast, ColumnStrategy kStrategy>
 UnsafeStatus DecodeColumnValueV2(
-    const uint8_t* header, const uint8_t* body, void* context, size_t projection_index,
+    PackedColumnDecoderDataV2* data, const uint8_t* body, size_t projection_index,
+    const dockv::PackedColumnDecoderArgsUnion& decoder_args,
     const PackedColumnDecoderEntry* chain) {
-  auto idx = chain->decoder_args.packed_index;
-  auto* row = static_cast<PgTableRow*>(context);
-  constexpr auto kLast = kStrategy == ColumnStrategy::kLast;
-  constexpr auto kIncrementProjectionIndex = kStrategy != ColumnStrategy::kSkip;
-  if (kCheckNull && PREDICT_FALSE(PackedRowDecoderV2::IsNull(header, idx))) {
-    row->SetNull(projection_index);
+  auto idx = decoder_args.packed_index;
+  auto* row = static_cast<PgTableRow*>(data->context);
+  constexpr auto kIncrementProjectionIndex = kStrategy != ColumnStrategy::kSkipPackedColumn;
+  if (kCheckNull && PREDICT_FALSE(PackedRowDecoderV2::IsNull(data->header, idx))) {
+    // It is not possible to understand if row's column was ever set, and it would be an error
+    // to call any getter until any setter would have been called. But it should be safe to not
+    // trigger SetNull() for the given index if we're in kSkipProjectionColumn strategy, because
+    // the row has been updated already.
+    if constexpr (kStrategy != ColumnStrategy::kSkipProjectionColumn) {
+      row->SetNull(projection_index);
+    }
     return CallNextDecoderV2<kCheckNull, kLast, kIncrementProjectionIndex>(
-        header, body, context, projection_index, chain);
+        data, body, projection_index, chain);
   }
   Decoder decoder;
   return CallNextDecoderV2<kCheckNull, kLast, kIncrementProjectionIndex>(
-      header, decoder.template V2<kStrategy>(body, projection_index, row), context,
+      data, decoder.template V2<kStrategy>(body, projection_index, row),
       projection_index, chain);
 }
 
-template <bool kCheckNull, ColumnStrategy kStrategy>
+template <bool kCheckNull, bool kLast, ColumnStrategy kStrategy>
 struct GetPackedColumnDecoderVisitorV2 {
   template <class T>
   PackedColumnDecoderV2 Primitive() const {
@@ -515,11 +527,11 @@ struct GetPackedColumnDecoderVisitorV2 {
  private:
   template<class Decoder>
   PackedColumnDecoderV2 Apply() const {
-    return DecodeColumnValueV2<Decoder, kCheckNull, kStrategy>;
+    return DecodeColumnValueV2<Decoder, kCheckNull, kLast, kStrategy>;
   }
 };
 
-template <ColumnStrategy kStrategy>
+template <bool kLast, ColumnStrategy kStrategy>
 struct GetPackedColumnDecoderVisitorV1 {
   template <class T>
   PackedColumnDecoderV1 Primitive() const {
@@ -541,36 +553,49 @@ struct GetPackedColumnDecoderVisitorV1 {
  private:
   template<class Decoder>
   PackedColumnDecoderV1 Apply() const {
-    return DecodePackedColumnV1<kStrategy == ColumnStrategy::kLast, Decoder>;
+    DCHECK(kStrategy == ColumnStrategy::kRegular);
+    return DecodePackedColumnV1<kLast, Decoder>;
   }
 };
 
-template <template <ColumnStrategy> class Visitor>
-auto GetPackedColumnDecoder(ColumnStrategy strategy, DataType data_type) {
+template <template <bool, ColumnStrategy> class Visitor>
+auto GetPackedColumnDecoder(bool last, ColumnStrategy strategy, DataType data_type) {
   switch (strategy) {
     case ColumnStrategy::kRegular:
-      return VisitDataType(data_type, Visitor<ColumnStrategy::kRegular>());
-    case ColumnStrategy::kLast:
-      return VisitDataType(data_type, Visitor<ColumnStrategy::kLast>());
-    case ColumnStrategy::kSkip:
-      return VisitDataType(data_type, Visitor<ColumnStrategy::kSkip>());
+      if (last) {
+        return VisitDataType(data_type, Visitor<true, ColumnStrategy::kRegular>());
+      } else {
+        return VisitDataType(data_type, Visitor<false, ColumnStrategy::kRegular>());
+      }
+    case ColumnStrategy::kSkipPackedColumn:
+      if (last) {
+        return VisitDataType(data_type, Visitor<true, ColumnStrategy::kSkipPackedColumn>());
+      } else {
+        return VisitDataType(data_type, Visitor<false, ColumnStrategy::kSkipPackedColumn>());
+      }
+    case ColumnStrategy::kSkipProjectionColumn:
+      if (last) {
+        return VisitDataType(data_type, Visitor<true, ColumnStrategy::kSkipProjectionColumn>());
+      } else {
+        return VisitDataType(data_type, Visitor<false, ColumnStrategy::kSkipProjectionColumn>());
+      }
   }
   FATAL_INVALID_ENUM_VALUE(ColumnStrategy, strategy);
 }
 
-template <ColumnStrategy kStrategy>
-using WithNullsVisitorV2 = GetPackedColumnDecoderVisitorV2<true, kStrategy>;
+template <bool kLast, ColumnStrategy kStrategy>
+using WithNullsVisitorV2 = GetPackedColumnDecoderVisitorV2<true, kLast, kStrategy>;
 
-template <ColumnStrategy kStrategy>
-using NoNullsVisitorV2 = GetPackedColumnDecoderVisitorV2<false, kStrategy>;
+template <bool kLast, ColumnStrategy kStrategy>
+using NoNullsVisitorV2 = GetPackedColumnDecoderVisitorV2<false, kLast, kStrategy>;
 
 PackedColumnDecoderEntry GetPackedColumnDecoderEntryV2(
-    ColumnStrategy strategy, DataType data_type, ssize_t packed_index) {
+    bool last, ColumnStrategy strategy, DataType data_type, ssize_t packed_index) {
   return PackedColumnDecoderEntry {
     .decoder = {
       .v2 = {
-        .with_nulls = GetPackedColumnDecoder<WithNullsVisitorV2>(strategy, data_type),
-        .no_nulls = GetPackedColumnDecoder<NoNullsVisitorV2>(strategy, data_type),
+        .with_nulls = GetPackedColumnDecoder<WithNullsVisitorV2>(last, strategy, data_type),
+        .no_nulls = GetPackedColumnDecoder<NoNullsVisitorV2>(last, strategy, data_type),
       },
     },
     .decoder_args = { .packed_index = make_unsigned(packed_index) }
@@ -862,10 +887,10 @@ void PgTableRow::SetBinary(size_t column_idx, Slice value, bool append_zero) {
 
 PackedColumnDecoderEntry PgTableRow::GetPackedColumnDecoderV1(
     bool last, DataType data_type, ssize_t packed_index) {
-  auto strategy = last ? ColumnStrategy::kLast : ColumnStrategy::kRegular;
   return PackedColumnDecoderEntry {
     .decoder = {
-      .v1 = GetPackedColumnDecoder<GetPackedColumnDecoderVisitorV1>(strategy, data_type),
+      .v1 = GetPackedColumnDecoder<GetPackedColumnDecoderVisitorV1>(
+          last, ColumnStrategy::kRegular, data_type)
     },
     .decoder_args = { .packed_index = make_unsigned(packed_index) }
   };
@@ -873,13 +898,14 @@ PackedColumnDecoderEntry PgTableRow::GetPackedColumnDecoderV1(
 
 PackedColumnDecoderEntry PgTableRow::GetPackedColumnDecoderV2(
     bool last, DataType data_type, ssize_t packed_index) {
-  auto strategy = last ? ColumnStrategy::kLast : ColumnStrategy::kRegular;
-  return GetPackedColumnDecoderEntryV2(strategy, data_type, packed_index);
+  return GetPackedColumnDecoderEntryV2(last, ColumnStrategy::kRegular, data_type, packed_index);
 }
 
 PackedColumnDecoderEntry PgTableRow::GetPackedColumnSkipperV2(
-    DataType data_type, ssize_t packed_index) {
-  return GetPackedColumnDecoderEntryV2(ColumnStrategy::kSkip, data_type, packed_index);
+    bool last, bool skip_projection_column, DataType data_type, ssize_t packed_index) {
+  auto strategy = skip_projection_column ? ColumnStrategy::kSkipProjectionColumn
+                                         : ColumnStrategy::kSkipPackedColumn;
+  return GetPackedColumnDecoderEntryV2(last, strategy, data_type, packed_index);
 }
 
 }  // namespace yb::dockv

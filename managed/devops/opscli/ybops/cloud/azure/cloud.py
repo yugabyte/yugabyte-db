@@ -237,6 +237,10 @@ class AzureCloud(AbstractCloud):
     def delete_dns_record_set(self, dns_zone_id, domain_name_prefix):
         return self.get_admin().delete_dns_record_set(dns_zone_id, domain_name_prefix)
 
+    def delete_volumes(self, args):
+        tags = json.loads(args.instance_tags) if args.instance_tags is not None else {}
+        return self.get_admin().delete_disks(tags)
+
     def modify_tags(self, args):
         instance = self.get_host_info(args)
         if not instance:

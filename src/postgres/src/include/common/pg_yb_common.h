@@ -135,6 +135,8 @@ extern bool YBIsCollationEnabled();
  */
 extern int YBGetMaxClockSkewUsec();
 
+extern int YBGetHeartbeatIntervalMs();
+
 extern int YBGetYsqlOutputBufferSize();
 
 /**
@@ -149,5 +151,22 @@ extern const bool kTestOnlyUseOSDefaultCollation;
  * Returns whether colocation is enabled by default for each database.
  */
 extern bool YBColocateDatabaseByDefault();
+
+/**
+ * Returns whether we're doing an online upgrade from PG11 to PG15.
+ */
+extern bool YBIsTestOnlinePg11ToPg15Upgrade();
+
+/**
+ * Returns the OID for database_name from the environment, if it exists and is
+ * valid. Otherwise, returns InvalidOid.
+ * Used for online upgrades.
+ */
+Oid YBGetDatabaseOidFromEnv(const char *database_name);
+
+/**
+ * Returns whether the query diagnostics feature is enabled. 
+ */
+extern bool YBIsQueryDiagnosticsEnabled();
 
 #endif /* PG_YB_COMMON_H */

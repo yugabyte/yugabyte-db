@@ -83,6 +83,7 @@
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/snapshot_coordinator.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_state_manager.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_snapshots.h"
@@ -135,6 +136,9 @@ DEFINE_RUNTIME_bool(skip_flushed_entries_in_first_replayed_segment, true,
             "If applicable, only replay entries that are not flushed to RocksDB or necessary "
             "to bootstrap retryable requests in the first replayed wal segment.");
 
+DEFINE_RUNTIME_bool(use_bootstrap_intent_ht_filter, true,
+                    "Use min replay txn start time filter for bootstrap.");
+
 DECLARE_int32(retryable_request_timeout_secs);
 
 DEFINE_UNKNOWN_uint64(transaction_status_tablet_log_segment_size_bytes, 4_MB,
@@ -152,6 +156,10 @@ DEFINE_test_flag(bool, dump_docdb_after_tablet_bootstrap, false,
 
 DEFINE_test_flag(bool, play_pending_uncommitted_entries, false,
                  "Play all the pending entries present in the log even if they are uncommitted.");
+
+DEFINE_NON_RUNTIME_bool(skip_wal_replay_from_beginning_with_cdc, true,
+                        "If false, read all the WAL segments starting from the "
+                        "beginning instead of starting post the flushed entries.");
 
 DECLARE_bool(enable_flush_retryable_requests);
 
@@ -501,25 +509,35 @@ class TabletBootstrap {
       VLOG_WITH_PREFIX(1) << "Tablet Metadata: " << super_block.DebugString();
     }
 
-    const bool has_blocks = VERIFY_RESULT(OpenTablet());
+    std::optional<consensus::TabletBootstrapStatePB> bootstrap_state_pb = std::nullopt;
+    HybridTime min_replay_txn_start_ht = HybridTime::kInvalid;
+    if (GetAtomicFlag(&FLAGS_enable_flush_retryable_requests) && data_.bootstrap_state_manager) {
+      auto result = data_.bootstrap_state_manager->LoadFromDisk();
+      if (result.ok()) {
+        bootstrap_state_pb = std::move(*result);
 
-    if (data_.retryable_requests_manager) {
+        if (GetAtomicFlag(&FLAGS_use_bootstrap_intent_ht_filter)) {
+          const auto& bootstrap_state = data_.bootstrap_state_manager->bootstrap_state();
+          min_replay_txn_start_ht = bootstrap_state.GetMinReplayTxnStartTime();
+        }
+      } else if (!result.status().IsNotFound()) {
+        return result.status();
+      }
+    }
+
+    const bool has_blocks = VERIFY_RESULT(OpenTablet(min_replay_txn_start_ht));
+
+    if (data_.retryable_requests) {
       const auto retryable_request_timeout_secs = meta_->IsSysCatalog()
           ? client::SysCatalogRetryableRequestTimeoutSecs()
           : client::RetryableRequestTimeoutSecs(tablet_->table_type());
-      data_.retryable_requests_manager->retryable_requests().SetRequestTimeout(
-          retryable_request_timeout_secs);
-      data_.retryable_requests_manager->retryable_requests().SetMetricEntity(
-          tablet_->GetTabletMetricsEntity());
+      data_.retryable_requests->SetRequestTimeout(retryable_request_timeout_secs);
+      data_.retryable_requests->SetMetricEntity(tablet_->GetTabletMetricsEntity());
     }
 
     // Load retryable requests after metrics entity has been instantiated.
-    if (GetAtomicFlag(&FLAGS_enable_flush_retryable_requests) &&
-          data_.bootstrap_retryable_requests && data_.retryable_requests_manager) {
-      Status load_status = data_.retryable_requests_manager->LoadFromDisk();
-      if (!load_status.ok() && !load_status.IsNotFound()) {
-        RETURN_NOT_OK(load_status);
-      }
+    if (bootstrap_state_pb && data_.bootstrap_retryable_requests && data_.retryable_requests) {
+      data_.retryable_requests->FromPB(*bootstrap_state_pb);
     }
 
     if (FLAGS_TEST_dump_docdb_before_tablet_bootstrap) {
@@ -609,7 +627,7 @@ class TabletBootstrap {
   }
 
   // Sets result to true if there was any data on disk for this tablet.
-  Result<bool> OpenTablet() {
+  Result<bool> OpenTablet(HybridTime min_replay_txn_start_ht) {
     CleanupSnapshots();
     // Use operator new instead of make_shared for creating the shared_ptr. That way, we would have
     // the shared_ptr's control block hold a raw pointer to the Tablet object as opposed to the
@@ -620,6 +638,12 @@ class TabletBootstrap {
     // reference count drops to 0. With make_shared, there's a risk of a leaked weak_ptr holding up
     // the object's memory even after all shared_ptrs go out of scope.
     std::shared_ptr<Tablet> tablet(new Tablet(data_.tablet_init_data));
+
+    auto participant = tablet->transaction_participant();
+    if (participant) {
+      participant->SetMinReplayTxnStartTimeLowerBound(min_replay_txn_start_ht);
+    }
+
     // Doing nothing for now except opening a tablet locally.
     LOG_TIMING_PREFIX(INFO, LogPrefix(), "opening tablet") {
       RETURN_NOT_OK(tablet->Open());
@@ -833,17 +857,17 @@ class TabletBootstrap {
         metadata.wal_dir(),
         metadata.fs_manager()->uuid(),
         *tablet_->schema(),
-        metadata.schema_version(),
+        metadata.primary_table_schema_version(),
         tablet_->GetTableMetricsEntity(),
         tablet_->GetTabletMetricsEntity(),
         append_pool_,
         allocation_pool_,
         log_sync_pool_,
-        metadata.cdc_min_replicated_index(),
         &log_,
         data_.pre_log_rollover_callback,
         new_segment_allocation_callback,
-        create_new_segment));
+        create_new_segment,
+        data_.min_start_ht_running_txns_callback));
     // Disable sync temporarily in order to speed up appends during the bootstrap process.
     log_->DisableSync();
     return Status::OK();
@@ -1079,8 +1103,8 @@ class TabletBootstrap {
     if (!replicate.has_write())
       return;
 
-    if (data_.bootstrap_retryable_requests && data_.retryable_requests_manager) {
-      data_.retryable_requests_manager->retryable_requests().Bootstrap(replicate, entry_time);
+    if (data_.bootstrap_retryable_requests && data_.retryable_requests) {
+      data_.retryable_requests->Bootstrap(replicate, entry_time);
     }
 
     // In a test, we might not have data_.retryable_requests, but we still want to tell the test
@@ -1268,12 +1292,12 @@ class TabletBootstrap {
 
     // OpId::Max() can avoid bootstrapping the retryable requests.
     OpId last_op_id_in_retryable_requests = OpId::Max();
-    if (data_.bootstrap_retryable_requests && data_.retryable_requests_manager) {
+    if (data_.bootstrap_retryable_requests && data_.retryable_requests) {
       // If it is required, bootstrap the retryable requests starting from max replicated op id
       // in the structure.
       // If it's OpId::Min(), then should replay all data in last retryable_requests_timeout_secs.
       last_op_id_in_retryable_requests =
-          data_.retryable_requests_manager->retryable_requests().GetMaxReplicatedOpId();
+          data_.retryable_requests->GetMaxReplicatedOpId();
     }
 
     SegmentSequence& segments = *segments_ptr;
@@ -1283,9 +1307,9 @@ class TabletBootstrap {
     boost::optional<RestartSafeCoarseTimePoint> retryable_requests_replay_from_this_or_earlier_time;
 
     RestartSafeCoarseDuration retryable_requests_retain_interval =
-        data_.bootstrap_retryable_requests && data_.retryable_requests_manager
+        data_.bootstrap_retryable_requests && data_.retryable_requests
             ? std::chrono::seconds(
-                  data_.retryable_requests_manager->retryable_requests().request_timeout_secs())
+                  data_.retryable_requests->request_timeout_secs())
             : 0s;
     // If retryable_requests_retain_interval is 0s, set last_op_id_in_retryable_requests to
     // OpId::Max() to avoid replaying logs from last_op_id_in_retryable_requests if
@@ -1513,9 +1537,11 @@ class TabletBootstrap {
     log::SegmentSequence segments;
     RETURN_NOT_OK(log_->GetSegmentsSnapshot(&segments));
 
-    // If any cdc stream is active for this tablet, we do not want to skip flushed entries.
+    // If any cdc stream is active for this tablet, we will read WAL from beginning when
+    // FLAGS_skip_wal_replay_from_beginning_with_cdc is set to false.
     bool should_skip_flushed_entries = FLAGS_skip_flushed_entries;
-    if (should_skip_flushed_entries && tablet_->transaction_participant()) {
+    if (!GetAtomicFlag(&FLAGS_skip_wal_replay_from_beginning_with_cdc) &&
+        should_skip_flushed_entries && tablet_->transaction_participant()) {
       if (tablet_->transaction_participant()->GetRetainOpId() != OpId::Invalid()) {
         should_skip_flushed_entries = false;
         LOG_WITH_PREFIX(WARNING) << "Ignoring skip_flushed_entries even though it is set, because "
@@ -1530,8 +1556,8 @@ class TabletBootstrap {
     OpId last_read_entry_op_id;
     // All ops covered by retryable requests file are committed.
     OpId last_op_id_in_retryable_requests =
-        data_.bootstrap_retryable_requests && data_.retryable_requests_manager
-            ? data_.retryable_requests_manager->retryable_requests().GetMaxReplicatedOpId()
+        data_.bootstrap_retryable_requests && data_.retryable_requests
+            ? data_.retryable_requests->GetMaxReplicatedOpId()
             : OpId::Min();
     RestartSafeCoarseTimePoint last_entry_time;
 
@@ -1661,8 +1687,8 @@ class TabletBootstrap {
     consensus_info->last_id = MakeOpIdPB(replay_state_->prev_op_id);
     consensus_info->last_committed_id = MakeOpIdPB(replay_state_->committed_op_id);
 
-    if (data_.retryable_requests_manager) {
-      data_.retryable_requests_manager->retryable_requests().Clock().Adjust(last_entry_time);
+    if (data_.retryable_requests) {
+      data_.retryable_requests->Clock().Adjust(last_entry_time);
     }
 
     // Update last_flushed_change_metadata_op_id if invalid so that next tablet bootstrap
@@ -1822,6 +1848,9 @@ class TabletBootstrap {
     auto* req = replicate_msg->mutable_truncate();
 
     TruncateOperation operation(tablet_, req);
+
+    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
+    operation.set_hybrid_time(HybridTime::FromPB(replicate_msg->hybrid_time()));
 
     Status s = tablet_->Truncate(&operation);
 

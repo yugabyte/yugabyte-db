@@ -37,7 +37,7 @@ public class TestOneOrTwoAdmins extends BasePgSQLTest {
     // This test expects one of two conflicting transactions to be killed immediately in each
     // iteration. Therefore, we run it in fail-on-conflict concurrency control.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
-    flagMap.putAll(FailOnConflictTestGflags);
+    setFailOnConflictFlags(flagMap);
     return flagMap;
   }
 
@@ -68,6 +68,7 @@ public class TestOneOrTwoAdmins extends BasePgSQLTest {
   private static boolean isYBTxnException(PSQLException ex) {
     String msg = ex.getMessage();
     return msg.contains("could not serialize access due to concurrent update") ||
+           msg.contains("current transaction is expired or aborted") ||
            msg.contains("Transaction aborted:") ||
            msg.contains("Unknown transaction, could be recently aborted:");
   }

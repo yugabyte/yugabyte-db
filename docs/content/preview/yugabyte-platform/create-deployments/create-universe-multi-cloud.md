@@ -65,7 +65,7 @@ To deploy a multi-cloud universe, you first need to create an on-premises provid
 
 ### Set up the cloud provider
 
-Navigate to **Configs > On-Premises Datacenters** and click **Create Config**. Complete the following fields:
+Navigate to **Integrations > On-Premises Datacenters** and click **Create Config**. Complete the following fields:
 
 * **Provider Name**, for example, `multi-cloud-demo`.
 * **SSH User** is the user which will run YugabyteDB Anywhere on the node (yugabyte in this case).
@@ -149,4 +149,4 @@ To run the TPC-C benchmark on your universe, use commands similar to the followi
     --warehouses 50
 ```
 
-Refer to [Running TPC-C on Yugabyte](../../../benchmark/tpcc-ysql/) for details.
+Refer to [Running TPC-C on Yugabyte](../../../benchmark/tpcc/) for details.

@@ -21,6 +21,7 @@ import "yb/cdc/xcluster_producer.proto";
 import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
+import "yb/common/transaction.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
 import "yb/master/master_types.proto";
@@ -213,6 +214,10 @@ message SysTablesEntryPB {
 
   // Time when an admin compaction was last requested. Raw representation of a HybridTime.
   optional fixed64 last_full_compaction_request_time = 41;
+
+  // Set by DDL Replication to link the table to the original table in the source cluster.
+  // Cleared after table creation completes.
+  optional bytes xcluster_source_table_id = 42;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -339,6 +344,30 @@ message SysNamespaceEntryPB {
 
   optional State state = 5 [ default = UNKNOWN ];
 
+  // During a YSQL major version upgrade, for example from PG11 to PG15, we use the existing
+  // namespace entry for both the old and new versions' namespace. However, PG's upgrade process is
+  // normally run on a clean unused system, and it does DROP DATABASE and CREATE DATABASE there in
+  // order to fully restore the properties of the database. In YB, we simulate PG's environment, by
+  // using a separate state for the new major version.
+  // NEXT_VER_RUNNING is the initial state.
+  // NEXT_VER_RUNNING -> NEXT_VER_DELETING  - deletion requested.
+  // NEXT_VER_DELETING -> NEXT_VER_DELETED  - happy path of deletion.
+  // NEXT_VER_DELETING -> NEXT_VER_FAILED   - unhappy path of deletion.
+  // NEXT_VER_DELETED -> NEXT_VER_RUNNING   - re-populated.
+  //
+  // TODO: Change the initial state to something other than NEXT_VER_RUNNING. Be sure it makes sense
+  // for multiple upgrades (e.g., a system that went from PG11 -> PG15 -> PG17). Therefore it may
+  // need to be changed from NEXT_VER_RUNNING at some point after the upgrade.
+  enum YsqlNextMajorVersionState {
+    NEXT_VER_UNKNOWN = 0;
+    NEXT_VER_FAILED = 1;
+    NEXT_VER_RUNNING = 2;
+    NEXT_VER_DELETING = 3;
+    NEXT_VER_DELETED = 4;
+  }
+  optional YsqlNextMajorVersionState ysql_next_major_version_state = 8
+      [ default = NEXT_VER_RUNNING ];
+
   optional uint32 clone_request_seq_no = 7;
 }
 
@@ -388,6 +417,28 @@ message SysClusterConfigEntryPB {
   optional string universe_uuid = 8;
 }
 
+message SysObjectLockEntryPB {
+  message LockTypesPB { repeated TableLockType lock_type = 1; }
+  message ObjectLocksMapPB {
+    // object_id -> Locks taken
+    map<uint64, LockTypesPB> objects = 1;
+  }
+  message DBObjectsMapPB {
+    // db_id -> map of objects/locks-taken
+    map<uint64, ObjectLocksMapPB> dbs = 1;
+  }
+  message SessionDBMapPB {
+    // session_id -> DB ...
+    map<uint64, DBObjectsMapPB> sessions = 1;
+  }
+
+  // host_uid is part of the key. Thus not stored
+  // explicitly in this proto again.
+
+  // incarnation id -> Session ...
+  map<uint64, SessionDBMapPB> incarnations = 1;
+}
+
 message SysXClusterConfigEntryPB {
   optional uint32 version = 1;
   optional xcluster.ProducerRegistryPB xcluster_producer_registry = 2;
@@ -435,6 +486,16 @@ message SysYSQLCatalogConfigEntryPB {
 
   // If this is set, initdb has failed.
   optional string initdb_error = 5;
+
+  message YsqlMajorUpgradeInfoPB {
+    // This is true if the master ran initdb during a ysql major version upgrade and it finished,
+    // successfully or not.
+    optional bool next_ver_initdb_done = 1;
+
+    // If this is set, initdb during a ysql major version upgrade has failed.
+    optional MasterErrorPB next_ver_initdb_error = 2;
+  }
+  optional YsqlMajorUpgradeInfoPB ysql_major_upgrade_info = 7;
 
   // true if transactional system catalogs have been enabled on this cluster. This means all
   // YSQL system catalog tables have been made transactional, both in their schema and in the tablet
@@ -535,6 +596,15 @@ message SysCDCStreamEntryPB {
   map<string, PgReplicaIdentity> replica_identity_map = 9;
 
   optional string cdcsdk_ysql_replication_slot_plugin_name = 10;
+
+  // Dynamic tables are the tables which are created after the creation of the stream.
+  // This field controls if dynamic tables should automatically be added to the CDC stream or not.
+  // If set to true, dynamic table wont get added to the CDC stream.
+  optional bool cdcsdk_disable_dynamic_table_addition = 11;
+
+  // This field stores the list of user created tables that have been removed from CDCSDK
+  // stream.
+  repeated bytes unqualified_table_id = 12;
 }
 
 
@@ -601,13 +671,16 @@ message SysCloneStatePB {
   //     ImportSnapshot (YCQL). Clone tablet RPCs are scheduled for all tablets.
   // CREATING --> RESTORING: All tablets in clone namespace are created and in a running
   // state. Restore snapshot is issued.
-  // RESTORING --> RESTORED: Restore snapshot completed.
+  // RESTORING --> COMPLETE (YCQL): Restore snapshot completed and DB is ready to be accessed.
+  // RESTORING --> RESTORED (YSQL): Restore snapshot completed.
+  // RESTORED --> COMPLETE (YSQL): DB is ready to be accessed.
   enum State {
     CLONE_SCHEMA_STARTED = 1;
     CREATING = 2;
     RESTORING = 3;
     RESTORED = 4;
     ABORTED = 5;
+    COMPLETE = 6;
   }
 
   optional State aggregate_state = 1;
@@ -617,7 +690,10 @@ message SysCloneStatePB {
   optional uint32 clone_request_seq_no = 3;
 
   // Used for debugging.
+  optional YQLDatabase database_type = 8;
   optional string target_namespace_name = 4;
+  optional string target_namespace_id = 7;
+  optional string source_namespace_name = 9;
   optional fixed64 restore_time = 5;
 
   // A reason for why the clone was aborted.
@@ -679,13 +755,11 @@ message SysUniverseReplicationEntryPB {
   // producer table ID -> producer CDC stream ID map.
   map<string, string> table_streams = 6;
 
-  // Namespace-level replication setup.
-  optional bool is_ns_replication = 7 [default = false];
-  optional NamespaceIdentifierPB producer_namespace = 8;
-  optional NamespaceIdentifierPB consumer_namespace = 9;
+  // 7, 8, and 9 were used by Namespace-level replication but never populated in
+  // production so they are valid for reuse.
 
-  // Mapping from Producer Table ID to Producer->Consumer schema version mappings
-  map<string, SchemaVersionMappingEntryPB> schema_version_mappings = 10;
+  // DEPRECATED schema_version_mappings
+  reserved 10;
 
   // Set when consistent transactions are enabled for a replication group.
   optional bool transactional = 11; // [default = false]
@@ -694,12 +768,15 @@ message SysUniverseReplicationEntryPB {
 
   // DB Scoped repication.
   message DBScopeInfo {
+    optional bool automatic_ddl_mode = 1; // [default = false]
+
     message NamespaceInfo {
       required string consumer_namespace_id = 1;
       required string producer_namespace_id = 2;
     }
     repeated NamespaceInfo namespace_infos = 13;
   }
+
   optional DBScopeInfo db_scoped_info = 13;
 }
 
@@ -867,4 +944,46 @@ message SysXClusterOutboundReplicationGroupEntryPB {
     DELETED = 1;
   }
   optional State state = 3 [ default = READY ];
+
+  optional bool automatic_ddl_mode = 4; // [default = false]
+}
+
+message SysTabletServerEntryPB {
+  enum State {
+    // Proto best practices are to include a sentinel as the first enum value.
+    // See https://protobuf.dev/programming-guides/dos-donts/#unspecified-enum
+    UNSPECIFIED = 0;
+    // A heartbeat from the TServer has been ACK'd recently.
+    LIVE = 1;
+    // No heartbeat from the TServer has been ACK'd within at least tserver_unresponsive_timeout_ms.
+    UNRESPONSIVE = 2;
+    // Another tserver which started more recently has registered with a conflicting
+    // address. Heartbeats from this TServer will be ignored until it restarts with a greater
+    // instance_seqno.
+    //
+    // This is currently used to deal with TServers rebooted after a disk wipe. In this case the new
+    // TServer process generates a new UUID and is recognized as a new TServer by the master
+    // leader. The old TServer entry is put into this state when the new TServer process registers.
+    REPLACED = 3;
+    // The tserver has been removed from the cluster. This state is not persisted to raft, instead
+    // the entry is deleted. This state signals to code that holds on to a shared_ptr<TSDescriptor>
+    // that the object representing the tablet server is stale and should not be used.
+    REMOVED = 4;
+  }
+
+  // The instance_seqno of a tserver is chosen at process start and is constant throughout the
+  // process lifetime. It must be monotonically increased across process restarts for a given UUID.
+  optional int64 instance_seqno = 1;
+  optional State state = 2;
+  // Contains ip addresses, ports, cloud info, and placement_uuid.
+  optional ServerRegistrationPB registration = 3;
+  // DEPRECATED unresponsive_last_heartbeat_ht
+  reserved 4;
+  // The resources (cpu & memory) available at the tserver. Used by the tablet limits machinery.
+  optional ResourcesPB resources = 5;
+  // If true, this entry has been written to the sys catalog. Because the flag that enables writing
+  // these entries to the sys catalog is a runtime flag, this field is used to force tservers which
+  // registered in memory before persistence was enabled to re-register and have their entry
+  // persisted.
+  optional bool persisted = 6;
 }

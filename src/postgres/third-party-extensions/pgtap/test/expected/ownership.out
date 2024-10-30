@@ -1,0 +1,413 @@
+\unset ECHO
+1..411
+ok 1 - db_owner_is(db, user, desc) should pass
+ok 2 - db_owner_is(db, user, desc) should have the proper description
+ok 3 - db_owner_is(db, user, desc) should have the proper diagnostics
+ok 4 - db_owner_is(db, user) should pass
+ok 5 - db_owner_is(db, user) should have the proper description
+ok 6 - db_owner_is(db, user) should have the proper diagnostics
+ok 7 - db_owner_is(non-db, user) should fail
+ok 8 - db_owner_is(non-db, user) should have the proper description
+ok 9 - db_owner_is(non-db, user) should have the proper diagnostics
+ok 10 - db_owner_is(db, non-user) should fail
+ok 11 - db_owner_is(db, non-user) should have the proper description
+ok 12 - db_owner_is(db, non-user) should have the proper diagnostics
+ok 13 - schema_owner_is(schema, user, desc) should pass
+ok 14 - schema_owner_is(schema, user, desc) should have the proper description
+ok 15 - schema_owner_is(schema, user, desc) should have the proper diagnostics
+ok 16 - schema_owner_is(schema, user) should pass
+ok 17 - schema_owner_is(schema, user) should have the proper description
+ok 18 - schema_owner_is(schema, user) should have the proper diagnostics
+ok 19 - schema_owner_is(non-schema, user) should fail
+ok 20 - schema_owner_is(non-schema, user) should have the proper description
+ok 21 - schema_owner_is(non-schema, user) should have the proper diagnostics
+ok 22 - schema_owner_is(schema, non-user) should fail
+ok 23 - schema_owner_is(schema, non-user) should have the proper description
+ok 24 - schema_owner_is(schema, non-user) should have the proper diagnostics
+ok 25 - relation_owner_is(sch, tab, user, desc) should pass
+ok 26 - relation_owner_is(sch, tab, user, desc) should have the proper description
+ok 27 - relation_owner_is(sch, tab, user, desc) should have the proper diagnostics
+ok 28 - relation_owner_is(sch, tab, user) should pass
+ok 29 - relation_owner_is(sch, tab, user) should have the proper description
+ok 30 - relation_owner_is(sch, tab, user) should have the proper diagnostics
+ok 31 - relation_owner_is(non-sch, tab, user) should fail
+ok 32 - relation_owner_is(non-sch, tab, user) should have the proper description
+ok 33 - relation_owner_is(non-sch, tab, user) should have the proper diagnostics
+ok 34 - relation_owner_is(sch, non-tab, user) should fail
+ok 35 - relation_owner_is(sch, non-tab, user) should have the proper description
+ok 36 - relation_owner_is(sch, non-tab, user) should have the proper diagnostics
+ok 37 - relation_owner_is(tab, user, desc) should pass
+ok 38 - relation_owner_is(tab, user, desc) should have the proper description
+ok 39 - relation_owner_is(tab, user, desc) should have the proper diagnostics
+ok 40 - relation_owner_is(tab, user) should pass
+ok 41 - relation_owner_is(tab, user) should have the proper description
+ok 42 - relation_owner_is(tab, user) should have the proper diagnostics
+ok 43 - relation_owner_is(non-tab, user) should fail
+ok 44 - relation_owner_is(non-tab, user) should have the proper description
+ok 45 - relation_owner_is(non-tab, user) should have the proper diagnostics
+ok 46 - relation_owner_is(sch, part, user, desc) should pass
+ok 47 - relation_owner_is(sch, part, user, desc) should have the proper description
+ok 48 - relation_owner_is(sch, part, user, desc) should have the proper diagnostics
+ok 49 - relation_owner_is(sch, part, user) should pass
+ok 50 - relation_owner_is(sch, part, user) should have the proper description
+ok 51 - relation_owner_is(sch, part, user) should have the proper diagnostics
+ok 52 - relation_owner_is(non-sch, part, user) should fail
+ok 53 - relation_owner_is(non-sch, part, user) should have the proper description
+ok 54 - relation_owner_is(non-sch, part, user) should have the proper diagnostics
+ok 55 - relation_owner_is(sch, non-part, user) should fail
+ok 56 - relation_owner_is(sch, non-part, user) should have the proper description
+ok 57 - relation_owner_is(sch, non-part, user) should have the proper diagnostics
+ok 58 - relation_owner_is(part, user, desc) should pass
+ok 59 - relation_owner_is(part, user, desc) should have the proper description
+ok 60 - relation_owner_is(part, user, desc) should have the proper diagnostics
+ok 61 - relation_owner_is(part, user) should pass
+ok 62 - relation_owner_is(part, user) should have the proper description
+ok 63 - relation_owner_is(part, user) should have the proper diagnostics
+ok 64 - relation_owner_is(non-part, user) should fail
+ok 65 - relation_owner_is(non-part, user) should have the proper description
+ok 66 - relation_owner_is(non-part, user) should have the proper diagnostics
+ok 67 - relation_owner_is(sch, seq, user, desc) should pass
+ok 68 - relation_owner_is(sch, seq, user, desc) should have the proper description
+ok 69 - relation_owner_is(sch, seq, user, desc) should have the proper diagnostics
+ok 70 - relation_owner_is(sch, seq, user) should pass
+ok 71 - relation_owner_is(sch, seq, user) should have the proper description
+ok 72 - relation_owner_is(sch, seq, user) should have the proper diagnostics
+ok 73 - relation_owner_is(non-sch, seq, user) should fail
+ok 74 - relation_owner_is(non-sch, seq, user) should have the proper description
+ok 75 - relation_owner_is(non-sch, seq, user) should have the proper diagnostics
+ok 76 - relation_owner_is(sch, non-seq, user) should fail
+ok 77 - relation_owner_is(sch, non-seq, user) should have the proper description
+ok 78 - relation_owner_is(sch, non-seq, user) should have the proper diagnostics
+ok 79 - relation_owner_is(seq, user, desc) should pass
+ok 80 - relation_owner_is(seq, user, desc) should have the proper description
+ok 81 - relation_owner_is(seq, user, desc) should have the proper diagnostics
+ok 82 - relation_owner_is(seq, user) should pass
+ok 83 - relation_owner_is(seq, user) should have the proper description
+ok 84 - relation_owner_is(seq, user) should have the proper diagnostics
+ok 85 - relation_owner_is(non-seq, user) should fail
+ok 86 - relation_owner_is(non-seq, user) should have the proper description
+ok 87 - relation_owner_is(non-seq, user) should have the proper diagnostics
+ok 88 - table_owner_is(sch, tab, user, desc) should pass
+ok 89 - table_owner_is(sch, tab, user, desc) should have the proper description
+ok 90 - table_owner_is(sch, tab, user, desc) should have the proper diagnostics
+ok 91 - table_owner_is(sch, tab, user) should pass
+ok 92 - table_owner_is(sch, tab, user) should have the proper description
+ok 93 - table_owner_is(sch, tab, user) should have the proper diagnostics
+ok 94 - table_owner_is(non-sch, tab, user) should fail
+ok 95 - table_owner_is(non-sch, tab, user) should have the proper description
+ok 96 - table_owner_is(non-sch, tab, user) should have the proper diagnostics
+ok 97 - table_owner_is(sch, non-tab, user) should fail
+ok 98 - table_owner_is(sch, non-tab, user) should have the proper description
+ok 99 - table_owner_is(sch, non-tab, user) should have the proper diagnostics
+ok 100 - table_owner_is(tab, user, desc) should pass
+ok 101 - table_owner_is(tab, user, desc) should have the proper description
+ok 102 - table_owner_is(tab, user, desc) should have the proper diagnostics
+ok 103 - table_owner_is(tab, user) should pass
+ok 104 - table_owner_is(tab, user) should have the proper description
+ok 105 - table_owner_is(tab, user) should have the proper diagnostics
+ok 106 - table_owner_is(non-tab, user) should fail
+ok 107 - table_owner_is(non-tab, user) should have the proper description
+ok 108 - table_owner_is(non-tab, user) should have the proper diagnostics
+ok 109 - table_owner_is(sch, seq, user, desc) should fail
+ok 110 - table_owner_is(sch, seq, user, desc) should have the proper description
+ok 111 - table_owner_is(sch, seq, user, desc) should have the proper diagnostics
+ok 112 - table_owner_is(seq, user, desc) should fail
+ok 113 - table_owner_is(seq, user, desc) should have the proper description
+ok 114 - table_owner_is(seq, user, desc) should have the proper diagnostics
+ok 115 - table_owner_is(sch, part, user, desc) should pass
+ok 116 - table_owner_is(sch, part, user, desc) should have the proper description
+ok 117 - table_owner_is(sch, part, user, desc) should have the proper diagnostics
+ok 118 - table_owner_is(part, user, desc) should pass
+ok 119 - table_owner_is(part, user, desc) should have the proper description
+ok 120 - table_owner_is(part, user, desc) should have the proper diagnostics
+ok 121 - view_owner_is(sch, view, user, desc) should pass
+ok 122 - view_owner_is(sch, view, user, desc) should have the proper description
+ok 123 - view_owner_is(sch, view, user, desc) should have the proper diagnostics
+ok 124 - view_owner_is(sch, view, user) should pass
+ok 125 - view_owner_is(sch, view, user) should have the proper description
+ok 126 - view_owner_is(sch, view, user) should have the proper diagnostics
+ok 127 - view_owner_is(non-sch, view, user) should fail
+ok 128 - view_owner_is(non-sch, view, user) should have the proper description
+ok 129 - view_owner_is(non-sch, view, user) should have the proper diagnostics
+ok 130 - view_owner_is(sch, non-view, user) should fail
+ok 131 - view_owner_is(sch, non-view, user) should have the proper description
+ok 132 - view_owner_is(sch, non-view, user) should have the proper diagnostics
+ok 133 - view_owner_is(view, user, desc) should pass
+ok 134 - view_owner_is(view, user, desc) should have the proper description
+ok 135 - view_owner_is(view, user, desc) should have the proper diagnostics
+ok 136 - view_owner_is(view, user) should pass
+ok 137 - view_owner_is(view, user) should have the proper description
+ok 138 - view_owner_is(view, user) should have the proper diagnostics
+ok 139 - view_owner_is(non-view, user) should fail
+ok 140 - view_owner_is(non-view, user) should have the proper description
+ok 141 - view_owner_is(non-view, user) should have the proper diagnostics
+ok 142 - view_owner_is(sch, seq, user, desc) should fail
+ok 143 - view_owner_is(sch, seq, user, desc) should have the proper description
+ok 144 - view_owner_is(sch, seq, user, desc) should have the proper diagnostics
+ok 145 - view_owner_is(seq, user, desc) should fail
+ok 146 - view_owner_is(seq, user, desc) should have the proper description
+ok 147 - view_owner_is(seq, user, desc) should have the proper diagnostics
+ok 148 - sequence_owner_is(sch, sequence, user, desc) should pass
+ok 149 - sequence_owner_is(sch, sequence, user, desc) should have the proper description
+ok 150 - sequence_owner_is(sch, sequence, user, desc) should have the proper diagnostics
+ok 151 - sequence_owner_is(sch, sequence, user) should pass
+ok 152 - sequence_owner_is(sch, sequence, user) should have the proper description
+ok 153 - sequence_owner_is(sch, sequence, user) should have the proper diagnostics
+ok 154 - sequence_owner_is(non-sch, sequence, user) should fail
+ok 155 - sequence_owner_is(non-sch, sequence, user) should have the proper description
+ok 156 - sequence_owner_is(non-sch, sequence, user) should have the proper diagnostics
+ok 157 - sequence_owner_is(sch, non-sequence, user) should fail
+ok 158 - sequence_owner_is(sch, non-sequence, user) should have the proper description
+ok 159 - sequence_owner_is(sch, non-sequence, user) should have the proper diagnostics
+ok 160 - sequence_owner_is(sequence, user, desc) should pass
+ok 161 - sequence_owner_is(sequence, user, desc) should have the proper description
+ok 162 - sequence_owner_is(sequence, user, desc) should have the proper diagnostics
+ok 163 - sequence_owner_is(sequence, user) should pass
+ok 164 - sequence_owner_is(sequence, user) should have the proper description
+ok 165 - sequence_owner_is(sequence, user) should have the proper diagnostics
+ok 166 - sequence_owner_is(non-sequence, user) should fail
+ok 167 - sequence_owner_is(non-sequence, user) should have the proper description
+ok 168 - sequence_owner_is(non-sequence, user) should have the proper diagnostics
+ok 169 - sequence_owner_is(sch, view, user, desc) should fail
+ok 170 - sequence_owner_is(sch, view, user, desc) should have the proper description
+ok 171 - sequence_owner_is(sch, view, user, desc) should have the proper diagnostics
+ok 172 - sequence_owner_is(view, user, desc) should fail
+ok 173 - sequence_owner_is(view, user, desc) should have the proper description
+ok 174 - sequence_owner_is(view, user, desc) should have the proper diagnostics
+ok 175 - composite_owner_is(sch, composite, user, desc) should pass
+ok 176 - composite_owner_is(sch, composite, user, desc) should have the proper description
+ok 177 - composite_owner_is(sch, composite, user, desc) should have the proper diagnostics
+ok 178 - composite_owner_is(sch, composite, user) should pass
+ok 179 - composite_owner_is(sch, composite, user) should have the proper description
+ok 180 - composite_owner_is(sch, composite, user) should have the proper diagnostics
+ok 181 - composite_owner_is(non-sch, composite, user) should fail
+ok 182 - composite_owner_is(non-sch, composite, user) should have the proper description
+ok 183 - composite_owner_is(non-sch, composite, user) should have the proper diagnostics
+ok 184 - composite_owner_is(sch, non-composite, user) should fail
+ok 185 - composite_owner_is(sch, non-composite, user) should have the proper description
+ok 186 - composite_owner_is(sch, non-composite, user) should have the proper diagnostics
+ok 187 - composite_owner_is(composite, user, desc) should pass
+ok 188 - composite_owner_is(composite, user, desc) should have the proper description
+ok 189 - composite_owner_is(composite, user, desc) should have the proper diagnostics
+ok 190 - composite_owner_is(composite, user) should pass
+ok 191 - composite_owner_is(composite, user) should have the proper description
+ok 192 - composite_owner_is(composite, user) should have the proper diagnostics
+ok 193 - composite_owner_is(non-composite, user) should fail
+ok 194 - composite_owner_is(non-composite, user) should have the proper description
+ok 195 - composite_owner_is(non-composite, user) should have the proper diagnostics
+ok 196 - composite_owner_is(sch, view, user, desc) should fail
+ok 197 - composite_owner_is(sch, view, user, desc) should have the proper description
+ok 198 - composite_owner_is(sch, view, user, desc) should have the proper diagnostics
+ok 199 - composite_owner_is(view, user, desc) should fail
+ok 200 - composite_owner_is(view, user, desc) should have the proper description
+ok 201 - composite_owner_is(view, user, desc) should have the proper diagnostics
+ok 202 - foreign_table_owner_is(sch, tab, user, desc) should pass
+ok 203 - foreign_table_owner_is(sch, tab, user, desc) should have the proper description
+ok 204 - foreign_table_owner_is(sch, tab, user, desc) should have the proper diagnostics
+ok 205 - foreign_table_owner_is(sch, tab, user) should pass
+ok 206 - foreign_table_owner_is(sch, tab, user) should have the proper description
+ok 207 - foreign_table_owner_is(sch, tab, user) should have the proper diagnostics
+ok 208 - foreign_table_owner_is(non-sch, tab, user) should fail
+ok 209 - foreign_table_owner_is(non-sch, tab, user) should have the proper description
+ok 210 - foreign_table_owner_is(non-sch, tab, user) should have the proper diagnostics
+ok 211 - foreign_table_owner_is(sch, non-tab, user) should fail
+ok 212 - foreign_table_owner_is(sch, non-tab, user) should have the proper description
+ok 213 - foreign_table_owner_is(sch, non-tab, user) should have the proper diagnostics
+ok 214 - foreign_table_owner_is(tab, user, desc) should pass
+ok 215 - foreign_table_owner_is(tab, user, desc) should have the proper description
+ok 216 - foreign_table_owner_is(tab, user, desc) should have the proper diagnostics
+ok 217 - foreign_table_owner_is(tab, user) should pass
+ok 218 - foreign_table_owner_is(tab, user) should have the proper description
+ok 219 - foreign_table_owner_is(tab, user) should have the proper diagnostics
+ok 220 - foreign_table_owner_is(non-tab, user) should fail
+ok 221 - foreign_table_owner_is(non-tab, user) should have the proper description
+ok 222 - foreign_table_owner_is(non-tab, user) should have the proper diagnostics
+ok 223 - foreign_table_owner_is(sch, tab, user, desc) should fail
+ok 224 - foreign_table_owner_is(sch, tab, user, desc) should have the proper description
+ok 225 - foreign_table_owner_is(sch, tab, user, desc) should have the proper diagnostics
+ok 226 - foreign_table_owner_is(tab, user, desc) should fail
+ok 227 - foreign_table_owner_is(tab, user, desc) should have the proper description
+ok 228 - foreign_table_owner_is(tab, user, desc) should have the proper diagnostics
+ok 229 - function_owner_is(sch, function, args[integer], user, desc) should pass
+ok 230 - function_owner_is(sch, function, args[integer], user, desc) should have the proper description
+ok 231 - function_owner_is(sch, function, args[integer], user, desc) should have the proper diagnostics
+ok 232 - function_owner_is(sch, function, args[integer], user) should pass
+ok 233 - function_owner_is(sch, function, args[integer], user) should have the proper description
+ok 234 - function_owner_is(sch, function, args[integer], user) should have the proper diagnostics
+ok 235 - function_owner_is(sch, function, args[], user, desc) should pass
+ok 236 - function_owner_is(sch, function, args[], user, desc) should have the proper description
+ok 237 - function_owner_is(sch, function, args[], user, desc) should have the proper diagnostics
+ok 238 - function_owner_is(sch, function, args[], user) should pass
+ok 239 - function_owner_is(sch, function, args[], user) should have the proper description
+ok 240 - function_owner_is(sch, function, args[], user) should have the proper diagnostics
+ok 241 - function_owner_is(function, args[integer], user, desc) should pass
+ok 242 - function_owner_is(function, args[integer], user, desc) should have the proper description
+ok 243 - function_owner_is(function, args[integer], user, desc) should have the proper diagnostics
+ok 244 - function_owner_is(function, args[integer], user) should pass
+ok 245 - function_owner_is(function, args[integer], user) should have the proper description
+ok 246 - function_owner_is(function, args[integer], user) should have the proper diagnostics
+ok 247 - function_owner_is(function, args[], user, desc) should pass
+ok 248 - function_owner_is(function, args[], user, desc) should have the proper description
+ok 249 - function_owner_is(function, args[], user, desc) should have the proper diagnostics
+ok 250 - function_owner_is(function, args[], user) should pass
+ok 251 - function_owner_is(function, args[], user) should have the proper description
+ok 252 - function_owner_is(function, args[], user) should have the proper diagnostics
+ok 253 - function_owner_is(sch, non-function, args[integer], user, desc) should fail
+ok 254 - function_owner_is(sch, non-function, args[integer], user, desc) should have the proper description
+ok 255 - function_owner_is(sch, non-function, args[integer], user, desc) should have the proper diagnostics
+ok 256 - function_owner_is(non-sch, function, args[integer], user, desc) should fail
+ok 257 - function_owner_is(non-sch, function, args[integer], user, desc) should have the proper description
+ok 258 - function_owner_is(non-sch, function, args[integer], user, desc) should have the proper diagnostics
+ok 259 - function_owner_is(non-function, args[integer], user, desc) should fail
+ok 260 - function_owner_is(non-function, args[integer], user, desc) should have the proper description
+ok 261 - function_owner_is(non-function, args[integer], user, desc) should have the proper diagnostics
+ok 262 - function_owner_is(sch, function, args[integer], non-user, desc) should fail
+ok 263 - function_owner_is(sch, function, args[integer], non-user, desc) should have the proper description
+ok 264 - function_owner_is(sch, function, args[integer], non-user, desc) should have the proper diagnostics
+ok 265 - function_owner_is(function, args[integer], non-user, desc) should fail
+ok 266 - function_owner_is(function, args[integer], non-user, desc) should have the proper description
+ok 267 - function_owner_is(function, args[integer], non-user, desc) should have the proper diagnostics
+ok 268 - tablespace_owner_is(tablespace, user, desc) should pass
+ok 269 - tablespace_owner_is(tablespace, user, desc) should have the proper description
+ok 270 - tablespace_owner_is(tablespace, user, desc) should have the proper diagnostics
+ok 271 - tablespace_owner_is(tablespace, user) should pass
+ok 272 - tablespace_owner_is(tablespace, user) should have the proper description
+ok 273 - tablespace_owner_is(tablespace, user) should have the proper diagnostics
+ok 274 - tablespace_owner_is(non-tablespace, user) should fail
+ok 275 - tablespace_owner_is(non-tablespace, user) should have the proper description
+ok 276 - tablespace_owner_is(non-tablespace, user) should have the proper diagnostics
+ok 277 - tablespace_owner_is(tablespace, non-user) should fail
+ok 278 - tablespace_owner_is(tablespace, non-user) should have the proper description
+ok 279 - tablespace_owner_is(tablespace, non-user) should have the proper diagnostics
+ok 280 - index_owner_is(schema, table, index, user, desc) should pass
+ok 281 - index_owner_is(schema, table, index, user, desc) should have the proper description
+ok 282 - index_owner_is(schema, table, index, user, desc) should have the proper diagnostics
+ok 283 - index_owner_is(schema, table, index, user) should pass
+ok 284 - index_owner_is(schema, table, index, user) should have the proper description
+ok 285 - index_owner_is(schema, table, index, user) should have the proper diagnostics
+ok 286 - index_owner_is(schema, table, non-index, user, desc) should fail
+ok 287 - index_owner_is(schema, table, non-index, user, desc) should have the proper description
+ok 288 - index_owner_is(schema, table, non-index, user, desc) should have the proper diagnostics
+ok 289 - index_owner_is(schema, non-table, index, user, desc) should fail
+ok 290 - index_owner_is(schema, non-table, index, user, desc) should have the proper description
+ok 291 - index_owner_is(schema, non-table, index, user, desc) should have the proper diagnostics
+ok 292 - index_owner_is(non-schema, table, index, user, desc) should fail
+ok 293 - index_owner_is(non-schema, table, index, user, desc) should have the proper description
+ok 294 - index_owner_is(non-schema, table, index, user, desc) should have the proper diagnostics
+ok 295 - index_owner_is(schema, table, index, non-user, desc) should fail
+ok 296 - index_owner_is(schema, table, index, non-user, desc) should have the proper description
+ok 297 - index_owner_is(schema, table, index, non-user, desc) should have the proper diagnostics
+ok 298 - index_owner_is(invisible-table, index, user, desc) should fail
+ok 299 - index_owner_is(invisible-table, index, user, desc) should have the proper description
+ok 300 - index_owner_is(invisible-table, index, user, desc) should have the proper diagnostics
+ok 301 - index_owner_is(table, index, user, desc) should pass
+ok 302 - index_owner_is(table, index, user, desc) should have the proper description
+ok 303 - index_owner_is(table, index, user, desc) should have the proper diagnostics
+ok 304 - index_owner_is(table, index, user) should pass
+ok 305 - index_owner_is(table, index, user) should have the proper description
+ok 306 - index_owner_is(table, index, user) should have the proper diagnostics
+ok 307 - index_owner_is(non-table, index, user) should fail
+ok 308 - index_owner_is(non-table, index, user) should have the proper description
+ok 309 - index_owner_is(non-table, index, user) should have the proper diagnostics
+ok 310 - index_owner_is(table, non-index, user) should fail
+ok 311 - index_owner_is(table, non-index, user) should have the proper description
+ok 312 - index_owner_is(table, non-index, user) should have the proper diagnostics
+ok 313 - index_owner_is(table, index, non-user) should fail
+ok 314 - index_owner_is(table, index, non-user) should have the proper description
+ok 315 - index_owner_is(table, index, non-user) should have the proper diagnostics
+ok 316 - language_owner_is(language, user, desc) should pass
+ok 317 - language_owner_is(language, user, desc) should have the proper description
+ok 318 - language_owner_is(language, user, desc) should have the proper diagnostics
+ok 319 - language_owner_is(language, user) should pass
+ok 320 - language_owner_is(language, user) should have the proper description
+ok 321 - language_owner_is(language, user) should have the proper diagnostics
+ok 322 - language_owner_is(non-language, user) should fail
+ok 323 - language_owner_is(non-language, user) should have the proper description
+ok 324 - language_owner_is(non-language, user) should have the proper diagnostics
+ok 325 - language_owner_is(language, non-user) should fail
+ok 326 - language_owner_is(language, non-user) should have the proper description
+ok 327 - language_owner_is(language, non-user) should have the proper diagnostics
+ok 328 - opclass_owner_is(schema, opclass, user, desc) should pass
+ok 329 - opclass_owner_is(schema, opclass, user, desc) should have the proper description
+ok 330 - opclass_owner_is(schema, opclass, user, desc) should have the proper diagnostics
+ok 331 - opclass_owner_is(schema, opclass, user) should pass
+ok 332 - opclass_owner_is(schema, opclass, user) should have the proper description
+ok 333 - opclass_owner_is(schema, opclass, user) should have the proper diagnostics
+ok 334 - opclass_owner_is(non-schema, opclass, user, desc) should fail
+ok 335 - opclass_owner_is(non-schema, opclass, user, desc) should have the proper description
+ok 336 - opclass_owner_is(non-schema, opclass, user, desc) should have the proper diagnostics
+ok 337 - opclass_owner_is(schema, not-opclass, user, desc) should fail
+ok 338 - opclass_owner_is(schema, not-opclass, user, desc) should have the proper description
+ok 339 - opclass_owner_is(schema, not-opclass, user, desc) should have the proper diagnostics
+ok 340 - opclass_owner_is(schema, opclass, non-user, desc) should fail
+ok 341 - opclass_owner_is(schema, opclass, non-user, desc) should have the proper description
+ok 342 - opclass_owner_is(schema, opclass, non-user, desc) should have the proper diagnostics
+ok 343 - opclass_owner_is(opclass, user, desc) should pass
+ok 344 - opclass_owner_is(opclass, user, desc) should have the proper description
+ok 345 - opclass_owner_is(opclass, user, desc) should have the proper diagnostics
+ok 346 - opclass_owner_is(opclass, user) should pass
+ok 347 - opclass_owner_is(opclass, user) should have the proper description
+ok 348 - opclass_owner_is(opclass, user) should have the proper diagnostics
+ok 349 - opclass_owner_is(non-opclass, user, desc) should fail
+ok 350 - opclass_owner_is(non-opclass, user, desc) should have the proper description
+ok 351 - opclass_owner_is(non-opclass, user, desc) should have the proper diagnostics
+ok 352 - opclass_owner_is(opclass, non-user, desc) should fail
+ok 353 - opclass_owner_is(opclass, non-user, desc) should have the proper description
+ok 354 - opclass_owner_is(opclass, non-user, desc) should have the proper diagnostics
+ok 355 - type_owner_is(schema, type, user, desc) should pass
+ok 356 - type_owner_is(schema, type, user, desc) should have the proper description
+ok 357 - type_owner_is(schema, type, user, desc) should have the proper diagnostics
+ok 358 - type_owner_is(schema, type, user) should pass
+ok 359 - type_owner_is(schema, type, user) should have the proper description
+ok 360 - type_owner_is(schema, type, user) should have the proper diagnostics
+ok 361 - type_owner_is(non-schema, type, user, desc) should fail
+ok 362 - type_owner_is(non-schema, type, user, desc) should have the proper description
+ok 363 - type_owner_is(non-schema, type, user, desc) should have the proper diagnostics
+ok 364 - type_owner_is(schema, non-type, user, desc) should fail
+ok 365 - type_owner_is(schema, non-type, user, desc) should have the proper description
+ok 366 - type_owner_is(schema, non-type, user, desc) should have the proper diagnostics
+ok 367 - type_owner_is(schema, type, non-user, desc) should fail
+ok 368 - type_owner_is(schema, type, non-user, desc) should have the proper description
+ok 369 - type_owner_is(schema, type, non-user, desc) should have the proper diagnostics
+ok 370 - type_owner_is( invisible-type, user, desc) should fail
+ok 371 - type_owner_is( invisible-type, user, desc) should have the proper description
+ok 372 - type_owner_is( invisible-type, user, desc) should have the proper diagnostics
+ok 373 - type_owner_is(type, user, desc) should pass
+ok 374 - type_owner_is(type, user, desc) should have the proper description
+ok 375 - type_owner_is(type, user, desc) should have the proper diagnostics
+ok 376 - type_owner_is(type, user) should pass
+ok 377 - type_owner_is(type, user) should have the proper description
+ok 378 - type_owner_is(type, user) should have the proper diagnostics
+ok 379 - type_owner_is(non-type, user, desc) should fail
+ok 380 - type_owner_is(non-type, user, desc) should have the proper description
+ok 381 - type_owner_is(non-type, user, desc) should have the proper diagnostics
+ok 382 - type_owner_is(type, non-user, desc) should fail
+ok 383 - type_owner_is(type, non-user, desc) should have the proper description
+ok 384 - type_owner_is(type, non-user, desc) should have the proper diagnostics
+ok 385 - materialized_view_owner_is(sch, materialized_view, user, desc) should pass
+ok 386 - materialized_view_owner_is(sch, materialized_view, user, desc) should have the proper description
+ok 387 - materialized_view_owner_is(sch, materialized_view, user, desc) should have the proper diagnostics
+ok 388 - materialized_view_owner_is(sch, materialized_view, user) should pass
+ok 389 - materialized_view_owner_is(sch, materialized_view, user) should have the proper description
+ok 390 - materialized_view_owner_is(sch, materialized_view, user) should have the proper diagnostics
+ok 391 - materialized_view_owner_is(non-sch, materialized_view, user) should fail
+ok 392 - materialized_view_owner_is(non-sch, materialized_view, user) should have the proper description
+ok 393 - materialized_view_owner_is(non-sch, materialized_view, user) should have the proper diagnostics
+ok 394 - materialized_view_owner_is(sch, non-materialized_view, user) should fail
+ok 395 - materialized_view_owner_is(sch, non-materialized_view, user) should have the proper description
+ok 396 - materialized_view_owner_is(sch, non-materialized_view, user) should have the proper diagnostics
+ok 397 - materialized_view_owner_is(materialized_view, user, desc) should pass
+ok 398 - materialized_view_owner_is(materialized_view, user, desc) should have the proper description
+ok 399 - materialized_view_owner_is(materialized_view, user, desc) should have the proper diagnostics
+ok 400 - materialized_view_owner_is(view, user) should pass
+ok 401 - materialized_view_owner_is(view, user) should have the proper description
+ok 402 - materialized_view_owner_is(view, user) should have the proper diagnostics
+ok 403 - materialized_view_owner_is(non-materialized_view, user) should fail
+ok 404 - materialized_view_owner_is(non-materialized_view, user) should have the proper description
+ok 405 - materialized_view_owner_is(non-materialized_view, user) should have the proper diagnostics
+ok 406 - materialized_view_owner_is(sch, seq, user, desc) should fail
+ok 407 - materialized_view_owner_is(sch, seq, user, desc) should have the proper description
+ok 408 - materialized_view_owner_is(sch, seq, user, desc) should have the proper diagnostics
+ok 409 - materialized_view_owner_is(seq, user, desc) should fail
+ok 410 - materialized_view_owner_is(seq, user, desc) should have the proper description
+ok 411 - materialized_view_owner_is(seq, user, desc) should have the proper diagnostics

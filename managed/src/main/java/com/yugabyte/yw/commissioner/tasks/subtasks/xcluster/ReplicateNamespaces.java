@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -49,25 +50,39 @@ public class ReplicateNamespaces extends XClusterConfigTaskBase {
 
   @Override
   public void run() {
-    XClusterConfig xClusterConfig = taskParams().getXClusterConfig();
+    log.info("Running {}", getName());
+
+    XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
-
     try {
       Set<String> sourceNamespaces = KubernetesUtil.getUniverseNamespaces(sourceUniverse);
       log.debug("Namespaces from source universe: {}", sourceNamespaces);
-
       Set<String> targetNamespaces = KubernetesUtil.getUniverseNamespaces(targetUniverse);
       log.debug("Namespaces from target universe: {}", targetNamespaces);
-
-      createNamespaces(targetNamespaces, sourceUniverse);
-      createNamespaces(sourceNamespaces, targetUniverse);
+      Set<String> targetNamespacesNotExistOnSourceUniverse =
+          targetNamespaces.stream()
+              .filter(namespace -> !sourceNamespaces.contains(namespace))
+              .collect(Collectors.toSet());
+      Set<String> sourceNamespacesNotExistOnTargetUniverse =
+          sourceNamespaces.stream()
+              .filter(namespace -> !targetNamespaces.contains(namespace))
+              .collect(Collectors.toSet());
+      if (!targetNamespacesNotExistOnSourceUniverse.isEmpty()) {
+        createNamespaces(targetNamespacesNotExistOnSourceUniverse, sourceUniverse);
+      }
+      if (!sourceNamespacesNotExistOnTargetUniverse.isEmpty()) {
+        createNamespaces(sourceNamespacesNotExistOnTargetUniverse, targetUniverse);
+      }
     } catch (Exception e) {
-      log.debug("Ignoring error: {}", e.getMessage());
+      log.error("{} hit error : {}", getName(), e.getMessage());
     }
+
+    log.info("Completed {}", getName());
   }
 
   private void createNamespaces(Set<String> namespaces, Universe universe) {
+    log.info("Creating namespaces: {} on universe: {}", namespaces, universe);
     Set<UUID> visitedProviderUUIDS = new HashSet<>();
     KubernetesManager kubernetesManager = kubernetesManagerFactory.getManager();
     for (Cluster cluster : universe.getUniverseDetails().clusters) {

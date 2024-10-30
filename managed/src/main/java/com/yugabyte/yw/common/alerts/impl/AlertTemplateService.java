@@ -10,14 +10,12 @@
 package com.yugabyte.yw.common.alerts.impl;
 
 import com.yugabyte.yw.common.AlertTemplate;
+import com.yugabyte.yw.common.config.ConfKeyInfo;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
 import com.yugabyte.yw.models.AlertConfiguration.TargetType;
-import com.yugabyte.yw.models.AlertConfigurationThreshold;
-import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
@@ -96,9 +94,13 @@ public class AlertTemplateService {
     TestAlertSettings testAlertSettings = new TestAlertSettings();
     Map<String, String> labels = new HashMap<>();
     Map<String, String> annotations = new HashMap<>();
+    Map<String, String> parameters = new HashMap<>();
 
     public String getQueryWithThreshold(
-        AlertDefinition definition, AlertConfigurationThreshold threshold) {
+        AlertConfiguration configuration,
+        AlertDefinition definition,
+        Severity severity,
+        RuntimeConfGetter confGetter) {
       String query =
           queryTemplate.replaceAll("__customerUuid__", definition.getCustomerUUID().toString());
       String universeUuid = definition.getLabelValue(KnownAlertLabels.UNIVERSE_UUID);
@@ -111,22 +113,53 @@ public class AlertTemplateService {
         }
         if (query.contains("__systemMountPoints__")) {
           Universe universe = Universe.getOrBadRequest(UUID.fromString(universeUuid));
-          RuntimeConfGetter confGetter =
-              StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
           query =
               query.replaceAll(
                   "__systemMountPoints__",
                   MetricQueryHelper.getOtherMountPoints(confGetter, universe));
         }
       }
-      return replaceThresholdAndCondition(query, threshold);
+      return replaceThresholdAndCondition(
+          this, configuration, definition, severity, query, confGetter);
     }
 
     public static String replaceThresholdAndCondition(
-        String pattern, AlertConfigurationThreshold threshold) {
-      return pattern
-          .replace(QUERY_THRESHOLD_PLACEHOLDER, THRESHOLD_FORMAT.format(threshold.getThreshold()))
-          .replace(QUERY_CONDITION_PLACEHOLDER, threshold.getCondition().getValue());
+        AlertTemplateDescription templateDescription,
+        AlertConfiguration configuration,
+        AlertDefinition definition,
+        Severity severity,
+        String pattern,
+        RuntimeConfGetter runtimeConfGetter) {
+      AlertConfigurationThreshold threshold = configuration.getThresholds().get(severity);
+      String result =
+          pattern
+              .replace(
+                  QUERY_THRESHOLD_PLACEHOLDER, THRESHOLD_FORMAT.format(threshold.getThreshold()))
+              .replace(QUERY_CONDITION_PLACEHOLDER, threshold.getCondition().getValue());
+      for (Map.Entry<String, String> params : templateDescription.getParameters().entrySet()) {
+        String placeholder = "{{ " + params.getKey() + " }}";
+        ConfKeyInfo<String> keyInfo =
+            runtimeConfGetter.getConfKeyInfo(params.getValue(), String.class);
+        String universeUuid = definition.getLabelValue(KnownAlertLabels.UNIVERSE_UUID);
+        if (universeUuid != null) {
+          Optional<Universe> universe = Universe.maybeGet(UUID.fromString(universeUuid));
+          if (universe.isPresent()) {
+            result =
+                result.replace(
+                    placeholder,
+                    String.valueOf(runtimeConfGetter.getConfForScope(universe.get(), keyInfo)));
+            continue;
+          }
+        }
+        String customerUuid = definition.getLabelValue(KnownAlertLabels.CUSTOMER_UUID);
+        result =
+            result.replace(
+                placeholder,
+                String.valueOf(
+                    runtimeConfGetter.getConfForScope(
+                        Customer.get(UUID.fromString(customerUuid)), keyInfo)));
+      }
+      return result;
     }
   }
 

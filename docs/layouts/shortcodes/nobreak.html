@@ -1,5 +1,2 @@
 {{- $text := .Get 0 -}}
-{{- $text = replace $text " " "&nbsp;" -}}
-{{- $text = replace $text ":" "&#58;" -}}
-{{- $text = replace $text "-" "&#45;" -}}
-{{- $text | htmlUnescape -}}
+<span style="white-space: nowrap;">{{$text}}</span>

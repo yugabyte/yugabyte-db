@@ -58,7 +58,7 @@ When finished, note down the universe-uuids of the `source` and `target` univers
 After the GCP universe has been set up, you need to populate the data from your AWS universe. This is typically referred to as **Bootstrapping**.
 
 {{<tip title="More Details">}}
-For detailed instructions, see [Bootstrap a target universe](../../../deploy/multi-dc/async-replication/#bootstrap-a-target-universe).
+For detailed instructions, see [Bootstrap a target universe](../../../deploy/multi-dc/async-replication/async-deployment/#bootstrap-a-target-universe).
 {{</tip>}}
 
 The basic flow of bootstrapping is as follows:
@@ -79,7 +79,7 @@ This ensures that the current data in your AWS universe is correctly copied over
 After your data has been pre-populated from the AWS universe to the GCP universe, you need to set up the replication stream from the AWS to the GCP universe.
 
 {{<tip title="More Details">}}
-For detailed instructions on how to set up replication, see [Set up unidirectional replication](../../../deploy/multi-dc/async-replication/#set-up-unidirectional-replication).
+For detailed instructions on how to set up replication, see [Set up unidirectional replication](../../../deploy/multi-dc/async-replication/async-deployment/#set-up-unidirectional-replication).
 {{</tip>}}
 
 A simple way to set up replication is as follows:
@@ -99,7 +99,7 @@ Any data changes to the AWS universe are automatically applied to the GCP univer
 After the new universe has caught up with the data from the old universe, you can switch over to the new universe.
 
 {{<tip title="More Details">}}
-For detailed instructions on how to do planned switchover, see [Planned switchover](../../../deploy/multi-dc/async-replication-transactional/#switchover-planned-failover).
+For detailed instructions on how to do planned switchover, see [Planned switchover](../../../deploy/multi-dc/async-replication/async-transactional-switchover/#switchover-planned-failover).
 {{</tip>}}
 
 The basic flow of switchover is as follows:

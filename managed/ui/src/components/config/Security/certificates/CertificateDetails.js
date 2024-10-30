@@ -25,7 +25,7 @@ export const CertificateDetails = ({ certificate, visible, onHide }) => {
         <div>{certExpiry}</div>
       </li>
       <li>
-        <label>Certificate</label>
+        <label>{certificate.type === 'CustomCertHostPath' ? "Root CA Certificate" : "Certificate"}</label>
         <div>{certificate.certificate}</div>
       </li>
       {certificate.privateKey && (
@@ -58,6 +58,28 @@ export const CertificateDetails = ({ certificate, visible, onHide }) => {
           </li>
         </Fragment>
       )}
+      {
+        certificate.type === 'CustomCertHostPath' && (
+          <>
+            <li>
+              <label>Database Node Certificate Path</label>
+              <div>{certificate.customCertInfo?.nodeCertPath ?? '-'}</div>
+            </li>
+            <li>
+              <label>Database Node Certificate Private Key</label>
+              <div>{certificate.customCertInfo?.nodeKeyPath ?? '-'}</div>
+            </li>
+            <li>
+              <label>Client Certificate</label>
+              <div>{certificate.customCertInfo?.clientCertPath ?? '-'}</div>
+            </li>
+            <li>
+              <label>Client Certificate Private Key</label>
+              <div>{certificate.customCertInfo?.clientKeyPath ?? '-'}</div>
+            </li>
+          </>
+        )
+      }
     </>
   );
 

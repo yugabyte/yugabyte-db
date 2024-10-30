@@ -6,7 +6,6 @@
     "configure-cluster-server.yml",
     "destroy-instance.yml",
     "python3_requirements_frozen.txt",
-    "python*_modules.tar.gz",
     "preprovision.yml",
     "use_custom_ssh_port.yml",
     "yb-otel-collector.yml",
@@ -42,6 +41,7 @@
     "bin/edit_universe_details.py",
     "bin/filtered_logs.sh",
     "bin/node_utils.sh",
+    "bin/yb_netprob.py",
     "bin/yb_attach_detach.py"
   ],
   "filter_plugins": [

@@ -6,6 +6,7 @@ import static com.yugabyte.yw.metrics.MetricQueryHelper.NAMESPACE_ID;
 import static com.yugabyte.yw.metrics.MetricQueryHelper.NAMESPACE_NAME;
 import static com.yugabyte.yw.metrics.MetricQueryHelper.TABLE_ID;
 import static com.yugabyte.yw.metrics.MetricQueryHelper.TABLE_NAME;
+import static com.yugabyte.yw.metrics.MetricQueryHelper.YBA_INSTANCE_ADDRESS;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -76,11 +77,14 @@ public class MetricQueryResponse {
       MetricGraphData metricGraphData = new MetricGraphData();
       ObjectNode metricInfo = (ObjectNode) objNode.get("metric");
 
+      metricGraphData.metricName = metricName;
       metricGraphData.instanceName = getAndRemoveLabelValue(metricInfo, EXPORTED_INSTANCE);
       metricGraphData.tableId = getAndRemoveLabelValue(metricInfo, TABLE_ID);
       metricGraphData.tableName = getAndRemoveLabelValue(metricInfo, TABLE_NAME);
       metricGraphData.namespaceName = getAndRemoveLabelValue(metricInfo, NAMESPACE_NAME);
       metricGraphData.namespaceId = getAndRemoveLabelValue(metricInfo, NAMESPACE_ID);
+      metricGraphData.ybaInstanceAddress = getAndRemoveLabelValue(metricInfo, YBA_INSTANCE_ADDRESS);
+
       if (metricInfo.has("node_prefix")) {
         metricGraphData.name = metricInfo.get("node_prefix").asText();
       } else if (metricInfo.size() == 1) {

@@ -34,7 +34,7 @@ Open the YSQL shell (ysqlsh), specifying the `yugabyte` user and prompting for t
 When prompted for the password, enter the yugabyte password. You should be able to log in and see a response similar to the following:
 
 ```output
-ysqlsh (11.2-YB-2.5.0.0-b0)
+ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help.
 yugabyte=#
 ```

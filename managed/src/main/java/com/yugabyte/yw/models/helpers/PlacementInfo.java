@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -106,6 +107,11 @@ public class PlacementInfo {
     return cloudList.stream()
         .flatMap(cloud -> cloud.regionList.stream())
         .flatMap(region -> region.azList.stream());
+  }
+
+  @JsonIgnore
+  public PlacementAZ findByAZUUID(UUID azUUID) {
+    return azStream().filter(az -> Objects.equals(azUUID, az.uuid)).findFirst().orElse(null);
   }
 
   @Override

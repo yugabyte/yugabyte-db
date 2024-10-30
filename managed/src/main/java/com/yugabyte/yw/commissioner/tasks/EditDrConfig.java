@@ -3,7 +3,9 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
 import com.yugabyte.yw.common.DrConfigStates.State;
+import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.DrConfigTaskParams;
 import com.yugabyte.yw.models.DrConfig;
@@ -114,9 +116,9 @@ public class EditDrConfig extends CreateXClusterConfig {
       log.info(
           "Setting the dr config state of xCluster config {} to {} from {}",
           newXClusterConfig.getUuid(),
-          State.Error,
+          State.Failed,
           drConfig.getState());
-      drConfig.setState(State.Error);
+      drConfig.setState(State.Failed);
       drConfig.update();
 
       // Set backup and restore status to failed and alter load balanced.
@@ -154,23 +156,40 @@ public class EditDrConfig extends CreateXClusterConfig {
         currentXClusterConfig,
         false /* keepEntry */,
         forceDeleteCurrentXClusterConfig,
-        true /* deletePitrConfig */);
+        false /* deleteSourcePitrConfigs */,
+        true /* deleteTargetPitrConfigs */);
 
     createPromoteSecondaryConfigToMainConfigTask(newXClusterConfig);
 
     createXClusterConfigSetStatusTask(newXClusterConfig, XClusterConfigStatusType.Updating);
 
-    createXClusterConfigSetStatusForTablesTask(
-        newXClusterConfig,
-        getTableIds(taskParams().getTableInfoList()),
-        XClusterTableConfig.Status.Updating);
+    if (newXClusterConfig.getType() == XClusterConfig.ConfigType.Db) {
+      addSubtasksToCreateXClusterConfig(
+          newXClusterConfig, taskParams().getDbs(), taskParams().getPitrParams());
+    } else {
+      createXClusterConfigSetStatusForTablesTask(
+          newXClusterConfig,
+          getTableIds(taskParams().getTableInfoList()),
+          XClusterTableConfig.Status.Updating);
 
-    addSubtasksToCreateXClusterConfig(
-        newXClusterConfig,
-        taskParams().getTableInfoList(),
-        taskParams().getMainTableIndexTablesMap(),
-        taskParams().getSourceTableIdsWithNoTableOnTargetUniverse(),
-        taskParams().getPitrParams());
+      addSubtasksToCreateXClusterConfig(
+          newXClusterConfig,
+          taskParams().getTableInfoList(),
+          taskParams().getMainTableIndexTablesMap(),
+          taskParams().getSourceTableIdsWithNoTableOnTargetUniverse(),
+          taskParams().getPitrParams());
+    }
+
+    // After all the other subtasks are done, set the DR states to show replication is happening.
+    if (newXClusterConfig.isUsedForDr()) {
+      createSetDrStatesTask(
+              newXClusterConfig,
+              State.Replicating,
+              SourceUniverseState.ReplicatingData,
+              TargetUniverseState.ReceivingData,
+              null /* keyspacePending */)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+    }
 
     createXClusterConfigSetStatusTask(newXClusterConfig, XClusterConfigStatusType.Running)
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);

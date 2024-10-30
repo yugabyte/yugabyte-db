@@ -1,20 +1,17 @@
 import React, { FC } from "react";
-import { Box, Divider, makeStyles, Paper, Typography, useTheme } from "@material-ui/core";
+import { Box, Divider } from "@material-ui/core";
 import type { Migration } from "./MigrationOverview";
 import { MigrationTiles } from "./MigrationTiles";
 import { MigrationStep } from "./MigrationStep";
-
-const useStyles = makeStyles((theme) => ({
-  heading: {
-    margin: theme.spacing(0, 0, 3.5, 0),
-  },
-}));
+import { YBButton } from "@app/components";
+import { useTranslation } from "react-i18next";
 
 interface MigrationDetailsProps {
   steps: string[];
-  migration: Migration;
+  migration: Migration | undefined;
   onRefetch: () => void;
   isFetching?: boolean;
+  isNewMigration?: boolean;
 }
 
 export const MigrationDetails: FC<MigrationDetailsProps> = ({
@@ -22,48 +19,69 @@ export const MigrationDetails: FC<MigrationDetailsProps> = ({
   migration,
   onRefetch,
   isFetching = false,
+  isNewMigration = false,
 }) => {
-  const theme = useTheme();
-  const classes = useStyles();
-
-  const [selectedStep, setSelectedStep] = React.useState<number>(migration.landing_step);
+  const [selectedStep, setSelectedStep] = React.useState<number>(migration?.landing_step ?? 0);
   React.useEffect(() => {
-    setSelectedStep(migration.landing_step);
-  }, [migration.landing_step]);
+    setSelectedStep(migration?.landing_step ?? 0);
+  }, [migration?.landing_step]);
+
+  const { t } = useTranslation();
 
   return (
-    <Box mt={1}>
-      <Paper>
-        <Box p={4}>
-          <Typography variant="h4" className={classes.heading}>
-            {migration.database_name}
-          </Typography>
-          <Box display="flex" gridGap={theme.spacing(5)}>
-            <Box width={300} flexShrink={0}>
-              <MigrationTiles
-                steps={steps}
-                currentStep={selectedStep}
-                onStepChange={setSelectedStep}
-                phase={migration.migration_phase}
-                migration={migration}
-                isFetching={isFetching}
-              />
-            </Box>
-            <Box>
-              <Divider orientation="vertical" />
-            </Box>
-            <Box flex={1} minWidth={0}>
-              <MigrationStep
-                steps={steps}
-                migration={migration}
-                step={selectedStep}
-                onRefetch={onRefetch}
-                isFetching={isFetching}
-              />
-            </Box>
+    <Box ml={-2} pt={2}>
+      <Divider orientation="horizontal" />
+      <Box display="flex" flexDirection="column">
+        <Box flexShrink={0} >
+          <MigrationTiles
+            steps={steps}
+            currentStep={selectedStep}
+            onStepChange={setSelectedStep}
+            phase={migration?.migration_phase}
+            migration={migration}
+            isFetching={isFetching}
+            isNewMigration={isNewMigration}
+          />
+        </Box>
+        <Box mr={2}>
+          <Divider orientation="horizontal" />
+        </Box>
+        <Box ml={4} mt={3} minWidth={0}>
+          <MigrationStep
+            steps={steps}
+            migration={migration}
+            step={selectedStep}
+            onRefetch={onRefetch}
+            isFetching={isFetching}
+            isNewMigration={isNewMigration}
+          />
+          <Box justifyContent="between" gridGap={2} display="flex" mt={2}>
+            {selectedStep > 0 && (
+              <YBButton
+                variant="secondary"
+                onClick={() => {
+                  setSelectedStep(selectedStep - 1);
+                }}
+              >
+                {t("clusterDetail.voyager.previous")}
+              </YBButton>
+            )}
+            {selectedStep < steps.length - 1 && (
+              <Box ml="auto">
+                <YBButton
+                  variant="primary"
+                  onClick={() => {
+                    setSelectedStep(selectedStep + 1);
+                  }}
+                  disabled={selectedStep === steps.length - 2}
+                >
+                  {t("clusterDetail.voyager.nextStep", { step: steps[selectedStep + 1] })}
+                </YBButton>
+              </Box>
+            )}
           </Box>
         </Box>
-      </Paper>
+      </Box>
     </Box>
   );
 };

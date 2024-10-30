@@ -18,9 +18,11 @@ import (
 
 // listInstanceTypesCmd represents the provider command
 var listInstanceTypesCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List instance types of a YugabyteDB Anywhere on-premises provider",
-	Long:  "List instance types of a YugabyteDB Anywhere on-premises provider",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List instance types of a YugabyteDB Anywhere on-premises provider",
+	Long:    "List instance types of a YugabyteDB Anywhere on-premises provider",
+	Example: `yba provider onprem instance-type list --name <provider-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -65,14 +67,15 @@ var listInstanceTypesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		instanceTypesCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: instancetypes.NewInstanceTypesFormat(viper.GetString("output")),
+			Command: "list",
+			Output:  os.Stdout,
+			Format:  instancetypes.NewInstanceTypesFormat(viper.GetString("output")),
 		}
 		if len(rList) < 1 {
-			if util.IsOutputType("table") {
+			if util.IsOutputType(formatter.TableFormatKey) {
 				logrus.Infoln("No instance types found\n")
 			} else {
-				logrus.Infoln("{}\n")
+				logrus.Infoln("[]\n")
 			}
 			return
 		}

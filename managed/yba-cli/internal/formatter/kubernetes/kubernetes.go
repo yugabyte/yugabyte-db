@@ -74,7 +74,7 @@ type ZoneContext struct {
 // NewProviderFormat for formatting output
 func NewProviderFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := Provider1
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -85,7 +85,7 @@ func NewProviderFormat(source string) formatter.Format {
 // NewRegionFormat for formatting output
 func NewRegionFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := Region1
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -96,7 +96,7 @@ func NewRegionFormat(source string) formatter.Format {
 // NewZoneFormat for formatting output
 func NewZoneFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := Region1
 		return formatter.Format(format)
 	default: // custom format or json or pretty

@@ -126,11 +126,11 @@ class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
     ASSERT_OK(admin_client_->Init());
   }
 
-  void SetUpCluster(ExternalMiniClusterOptions* opts) override {
-    ASSERT_NO_FATALS(ExternalMiniClusterITestBase::SetUpCluster(opts));
+  void SetUpOptions(ExternalMiniClusterOptions& opts) override {
+    ASSERT_NO_FATALS(ExternalMiniClusterITestBase::SetUpOptions(opts));
 
-    opts->bind_to_unique_loopback_addresses = true;
-    opts->use_same_ts_ports = true;
+    opts.bind_to_unique_loopback_addresses = true;
+    opts.use_same_ts_ports = true;
   }
 
   void TearDown() override {

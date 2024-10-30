@@ -5,7 +5,7 @@ linkTitle: Scaling reads
 description: Scaling reads in YugabyteDB.
 headcontent: Read performance when scaling horizontally
 aliases:
-- /preview/architecture/core-functions/read-path
+  - /preview/architecture/core-functions/read-path
 menu:
   preview:
     identifier: scaling-reads
@@ -30,7 +30,7 @@ Multiple applications can connect to any node and the reads will be redirected c
 
 ## Sysbench workload
 
-The following chart shows how reads scale horizontally in YugabyteDB using a [Sysbench](../../../benchmark/sysbench-ysql/) workload of basic selects. The cluster consisted of m6i.4xlarge instances and had 1024 connections. All requests had a latency of less than 3ms.
+The following chart shows how reads scale horizontally in YugabyteDB using a [Sysbench](../../../benchmark/sysbench-ysql/) workload of basic selects. The cluster consisted of {{<inst "m6i.4xlarge">}} instances and had 1024 connections. All requests had a latency of less than 3ms.
 
 ![Scaling with Sysbench](/images/explore/scalability/scaling-reads-sysbench.png)
 

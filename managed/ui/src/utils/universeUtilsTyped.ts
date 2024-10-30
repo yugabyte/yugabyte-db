@@ -45,7 +45,7 @@ export const getReadOnlyClusters = (clusters: Cluster[]) => {
  * `
  * ```
  */
-const YBSoftwareVersion = {
+export const YBSoftwareVersion = {
   REGEX: /^((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*))(?:-(b([1-9]+\d*)|\S+))?$/,
   GroupIndex: {
     VERSION_CORE: 1,
@@ -61,13 +61,6 @@ const YBSoftwareVersion = {
 interface compareYBSoftwareVersionsParams {
   versionA: string;
   versionB: string;
-  options?: { suppressFormatError?: boolean; requireOrdering?: boolean };
-}
-
-interface compareYBSoftwareVersionsWithReleaseTrackParams {
-  version: string;
-  stableVersion: string;
-  previewVersion: string;
   options?: { suppressFormatError?: boolean; requireOrdering?: boolean };
 }
 
@@ -169,6 +162,13 @@ export const compareYBSoftwareVersions = ({
   }
   return 0;
 };
+
+interface compareYBSoftwareVersionsWithReleaseTrackParams {
+  version: string;
+  stableVersion: string;
+  previewVersion: string;
+  options?: { suppressFormatError?: boolean; requireOrdering?: boolean };
+}
 
 /**
  * Compares YB software versions with the corresponding release track.

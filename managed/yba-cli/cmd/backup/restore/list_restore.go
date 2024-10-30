@@ -1,7 +1,6 @@
 package restore
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
@@ -17,15 +16,15 @@ import (
 
 // listRestoreCmd represents the list restore command
 var listRestoreCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List YugabyteDB Anywhere restores",
-	Long:  "List restores in YugabyteDB Anywhere",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List YugabyteDB Anywhere restores",
+	Long:    "List restores in YugabyteDB Anywhere",
+	Example: `yba backup restore list --universe-uuids <universe-uuid-1>,<universe-uuid-2> \
+	--universe-names <universe-name-1>,<universe-name-2>`,
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
+		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
 		universeUUIDs, err := cmd.Flags().GetString("universe-uuids")
 		if err != nil {
@@ -37,14 +36,16 @@ var listRestoreCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		restoreCtx := *restore.NewRestoreContext()
-		restoreCtx.Output = os.Stdout
-		restoreCtx.Format = restore.NewRestoreFormat(viper.GetString("output"))
+		restoreCtx := formatter.Context{
+			Command: "list",
+			Output:  os.Stdout,
+			Format:  restore.NewRestoreFormat(viper.GetString("output")),
+		}
 
 		var limit int32 = 10
 		var offset int32 = 0
-		restoreApiDirection := "DESC"
-		restoreApiSort := "createTime"
+		restoreAPIDirection := "DESC"
+		restoreAPISort := "createTime"
 
 		universeNamesList := []string{}
 		universeUUIDsList := []string{}
@@ -55,73 +56,74 @@ var listRestoreCmd = &cobra.Command{
 		if (len(strings.TrimSpace(universeUUIDs))) > 0 {
 			universeUUIDsList = strings.Split(universeUUIDs, ",")
 		}
-		restoreApiFilter := ybaclient.RestoreApiFilter{
+		restoreAPIFilter := ybaclient.RestoreApiFilter{
 			UniverseNameList: universeNamesList,
 			UniverseUUIDList: universeUUIDsList,
 		}
 
-		restoreApiQuery := ybaclient.RestorePagedApiQuery{
-			Filter:    restoreApiFilter,
-			Direction: restoreApiDirection,
+		restoreAPIQuery := ybaclient.RestorePagedApiQuery{
+			Filter:    restoreAPIFilter,
+			Direction: restoreAPIDirection,
 			Limit:     limit,
 			Offset:    offset,
-			SortBy:    restoreApiSort,
+			SortBy:    restoreAPISort,
 		}
 
-		restoreListRequest := authAPI.ListRestores().PageRestoresRequest(restoreApiQuery)
-
+		restoreListRequest := authAPI.ListRestores().PageRestoresRequest(restoreAPIQuery)
+		restores := make([]ybaclient.RestoreResp, 0)
+		force := viper.GetBool("force")
 		for {
 			// Execute backup list request
 			r, response, err := restoreListRequest.Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err, "Restore", "List Restore")
+				errMessage := util.ErrorFromHTTPResponse(response, err, "Restore", "List")
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 			}
 
 			// Check if backups found
 			if len(r.GetEntities()) < 1 {
-				if util.IsOutputType("table") {
-					logrus.Infoln("No restores found\n")
+				if util.IsOutputType(formatter.TableFormatKey) {
+					logrus.Info("No restores found\n")
 				} else {
-					logrus.Infoln("{}\n")
+					logrus.Info("[]\n")
 				}
 				return
 			}
 
 			// Write restore entities
-			for index, value := range r.GetEntities() {
-				restoreCtx.SetRestore(value)
-				restoreCtx.Write(index + int(offset))
+			if force {
+				restores = append(restores, r.GetEntities()...)
+			} else {
+				restore.Write(restoreCtx, r.GetEntities())
 			}
 
 			// Check if there are more pages
 			hasNext := r.GetHasNext()
 			if !hasNext {
-				logrus.Infoln("No more restores present\n")
+				if util.IsOutputType(formatter.TableFormatKey) && !force {
+					logrus.Info("No more restores present\n")
+				}
 				break
 			}
 
-			// Prompt user for more entries
-			if !promptForMoreEntries() {
-				break
+			err = util.ConfirmCommand(
+				"List more entries",
+				force)
+			if err != nil {
+				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 
 			offset += int32(len(r.GetEntities()))
 
 			// Prepare next page request
-			restoreApiQuery.Offset = offset
-			restoreListRequest = authAPI.ListRestores().PageRestoresRequest(restoreApiQuery)
+			restoreAPIQuery.Offset = offset
+			restoreListRequest = authAPI.ListRestores().PageRestoresRequest(restoreAPIQuery)
+		}
+		if force {
+			restore.Write(restoreCtx, restores)
 		}
 
 	},
-}
-
-// Function to prompt user for more entries
-func promptForMoreEntries() bool {
-	var input string
-	fmt.Print("More entries? (yes/no): ")
-	fmt.Scanln(&input)
-	return strings.ToLower(input) == "yes"
 }
 
 func init() {
@@ -130,4 +132,6 @@ func init() {
 		"[Optional] Comma separated list of universe uuids")
 	listRestoreCmd.Flags().String("universe-names", "",
 		"[Optional] Comma separated list of universe names")
+	listRestoreCmd.Flags().BoolP("force", "f", false,
+		"[Optional] Bypass the prompt for non-interactive usage.")
 }

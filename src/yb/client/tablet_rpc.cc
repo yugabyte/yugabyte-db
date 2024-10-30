@@ -57,13 +57,13 @@ DEFINE_test_flag(int32, assert_failed_replicas_less_than, 0,
                  "If greater than 0, this process will crash if the number of failed replicas for "
                  "a RemoteTabletServer is greater than the specified number.");
 DEFINE_test_flag(
-    bool, always_return_consensus_info_for_succeeded_rpc, false,
+    bool, always_return_consensus_info_for_succeeded_rpc, yb::kIsDebug,
     "If set to true, we will always pass a stale raft_config_opid_index to the request when it is "
     "possible for the request. This is turned on in debug mode to test that our metacache "
     "will always be refreshed when a successful Write/Read/TransactionStatus/GetChanges RPC "
     "responds.");
 DEFINE_RUNTIME_bool(
-    enable_metacache_partial_refresh, false,
+    enable_metacache_partial_refresh, true,
     "If set, we will attempt to refresh the tablet metadata cache with a TabletConsensusInfoPB in "
     "the tablet invoker.");
 

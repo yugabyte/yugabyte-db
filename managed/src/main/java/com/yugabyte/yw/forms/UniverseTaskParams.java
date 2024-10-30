@@ -2,9 +2,11 @@
 
 package com.yugabyte.yw.forms;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
@@ -12,6 +14,7 @@ import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -68,6 +71,9 @@ public class UniverseTaskParams extends AbstractTaskParams {
     @ApiModelProperty(value = "YSQL RPC port")
     public int ysqlServerRpcPort;
 
+    @ApiModelProperty(value = "Internal YSQL RPC port")
+    public int internalYsqlServerRpcPort;
+
     @ApiModelProperty(value = "Node exporter port")
     public int nodeExporterPort;
 
@@ -96,6 +102,7 @@ public class UniverseTaskParams extends AbstractTaskParams {
       portsObj.yqlServerRpcPort = node.yqlServerRpcPort;
       portsObj.ysqlServerHttpPort = node.ysqlServerHttpPort;
       portsObj.ysqlServerRpcPort = node.ysqlServerRpcPort;
+      portsObj.internalYsqlServerRpcPort = node.internalYsqlServerRpcPort;
       portsObj.nodeExporterPort = node.nodeExporterPort;
       portsObj.otelCollectorMetricsPort = node.otelCollectorMetricsPort;
 
@@ -115,6 +122,7 @@ public class UniverseTaskParams extends AbstractTaskParams {
       node.yqlServerRpcPort = ports.yqlServerRpcPort;
       node.ysqlServerHttpPort = ports.ysqlServerHttpPort;
       node.ysqlServerRpcPort = ports.ysqlServerRpcPort;
+      node.internalYsqlServerRpcPort = ports.internalYsqlServerRpcPort;
       node.nodeExporterPort = ports.nodeExporterPort;
       node.otelCollectorMetricsPort = ports.otelCollectorMetricsPort;
     }
@@ -123,8 +131,84 @@ public class UniverseTaskParams extends AbstractTaskParams {
         CommunicationPorts ports, ConfigureDBApiParams params) {
       ports.ysqlServerHttpPort = params.communicationPorts.ysqlServerHttpPort;
       ports.ysqlServerRpcPort = params.communicationPorts.ysqlServerRpcPort;
+      ports.internalYsqlServerRpcPort = params.communicationPorts.internalYsqlServerRpcPort;
       ports.yqlServerHttpPort = params.communicationPorts.yqlServerHttpPort;
       ports.yqlServerRpcPort = params.communicationPorts.yqlServerRpcPort;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) return true;
+      if (o == null || getClass() != o.getClass()) return false;
+      CommunicationPorts ports = (CommunicationPorts) o;
+      return masterHttpPort == ports.masterHttpPort
+          && masterRpcPort == ports.masterRpcPort
+          && tserverHttpPort == ports.tserverHttpPort
+          && tserverRpcPort == ports.tserverRpcPort
+          && ybControllerHttpPort == ports.ybControllerHttpPort
+          && ybControllerrRpcPort == ports.ybControllerrRpcPort
+          && redisServerHttpPort == ports.redisServerHttpPort
+          && redisServerRpcPort == ports.redisServerRpcPort
+          && yqlServerHttpPort == ports.yqlServerHttpPort
+          && yqlServerRpcPort == ports.yqlServerRpcPort
+          && ysqlServerHttpPort == ports.ysqlServerHttpPort
+          && ysqlServerRpcPort == ports.ysqlServerRpcPort
+          && internalYsqlServerRpcPort == ports.internalYsqlServerRpcPort
+          && nodeExporterPort == ports.nodeExporterPort
+          && otelCollectorMetricsPort == ports.otelCollectorMetricsPort;
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(
+          masterHttpPort,
+          masterRpcPort,
+          tserverHttpPort,
+          tserverRpcPort,
+          ybControllerHttpPort,
+          ybControllerrRpcPort,
+          redisServerHttpPort,
+          redisServerRpcPort,
+          yqlServerHttpPort,
+          yqlServerRpcPort,
+          ysqlServerHttpPort,
+          ysqlServerRpcPort,
+          nodeExporterPort,
+          otelCollectorMetricsPort);
+    }
+
+    @Override
+    public String toString() {
+      return "CommunicationPorts{"
+          + "masterHttpPort="
+          + masterHttpPort
+          + ", masterRpcPort="
+          + masterRpcPort
+          + ", tserverHttpPort="
+          + tserverHttpPort
+          + ", tserverRpcPort="
+          + tserverRpcPort
+          + ", ybControllerHttpPort="
+          + ybControllerHttpPort
+          + ", ybControllerrRpcPort="
+          + ybControllerrRpcPort
+          + ", redisServerHttpPort="
+          + redisServerHttpPort
+          + ", redisServerRpcPort="
+          + redisServerRpcPort
+          + ", yqlServerHttpPort="
+          + yqlServerHttpPort
+          + ", yqlServerRpcPort="
+          + yqlServerRpcPort
+          + ", ysqlServerHttpPort="
+          + ysqlServerHttpPort
+          + ", ysqlServerRpcPort="
+          + ysqlServerRpcPort
+          + ", nodeExporterPort="
+          + nodeExporterPort
+          + ", otelCollectorMetricsPort="
+          + otelCollectorMetricsPort
+          + '}';
     }
   }
 
@@ -230,4 +314,13 @@ public class UniverseTaskParams extends AbstractTaskParams {
   public Users creatingUser;
 
   public String platformUrl;
+
+  @ApiModelProperty(value = "YbaApi Internal. Run only prechecks during task run")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
+  public Boolean runOnlyPrechecks = false;
+
+  @JsonIgnore
+  public boolean isRunOnlyPrechecks() {
+    return runOnlyPrechecks;
+  }
 }

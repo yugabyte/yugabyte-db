@@ -19,7 +19,7 @@ The following projects can be used to implement Java applications using the Yuga
 
 | Driver | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | ------- | ------------------------ | ------------------------ | ---------------------|
-| YugabyteDB JDBC Driver [Recommended] | [Documentation](yugabyte-jdbc/)<br />[Blog](https://dev.to/yugabyte/yugabytedb-jdbc-smart-driver-for-proxyless-halb-2k8a/)<br />[Reference](../../reference/drivers/java/yugabyte-jdbc-reference/) | [42.3.5-yb-1](https://mvnrepository.com/artifact/com.yugabyte/jdbc-yugabytedb/42.3.5-yb-1) | 2.8 and above
+| YugabyteDB JDBC Driver [Recommended] | [Documentation](yugabyte-jdbc/)<br />[Blog](https://dev.to/yugabyte/yugabytedb-jdbc-smart-driver-for-proxyless-halb-2k8a/)<br />[Reference](../../reference/drivers/java/yugabyte-jdbc-reference/) | [42.7.3-yb-1](https://mvnrepository.com/artifact/com.yugabyte/jdbc-yugabytedb/42.7.3-yb-1) | 2.8 and above
 | PostgreSQL JDBC Driver | [Documentation](postgres-jdbc/)<br /> [Reference](../../reference/drivers/java/postgres-jdbc-reference/) | [42.3.4](https://mvnrepository.com/artifact/org.postgresql/postgresql/42.3.4) | 2.4 and above
 | Vert.x Pg Client | [Documentation](ysql-vertx-pg-client/) | [4.3.2](https://mvnrepository.com/artifact/io.vertx/vertx-core/4.3.2) |
 | YugabyteDB YCQL (3.10) Driver | [Documentation](ycql)<br />[Reference](../../reference/drivers/ycql-client-drivers/#yugabyte-java-driver-for-ycql-3-10) | [3.10.3-yb-2](https://mvnrepository.com/artifact/com.yugabyte/cassandra-driver-core/3.10.3-yb-2) | |
@@ -28,9 +28,9 @@ The following projects can be used to implement Java applications using the Yuga
 | Projects | Documentation and Guides | Example Apps |
 | ------- | ------------------------ | ------------ |
 | Hibernate ORM | [Documentation](hibernate/)<br />[Hello World](../orms/java/ysql-hibernate/)<br />[Blog](https://www.yugabyte.com/blog/run-the-rest-version-of-spring-petclinic-with-angular-and-distributed-sql-on-gke/)<br /> | [Hibernate ORM App](https://github.com/yugabyte/orm-examples/tree/master/java/hibernate/)
-| Spring Data JPA | [Documentation](../../integrations/spring-framework/sd-jpa/)<br />[Hello World](../orms/java/ysql-spring-data/)<br />[Blog](https://www.yugabyte.com/blog/run-the-rest-version-of-spring-petclinic-with-angular-and-distributed-sql-on-gke/) | [Spring Data JPA App](https://github.com/yugabyte/orm-examples/tree/master/java/spring/)
+| Spring Data JPA | [Documentation](/preview/integrations/spring-framework/sd-jpa/)<br />[Hello World](../orms/java/ysql-spring-data/)<br />[Blog](https://www.yugabyte.com/blog/run-the-rest-version-of-spring-petclinic-with-angular-and-distributed-sql-on-gke/) | [Spring Data JPA App](https://github.com/yugabyte/orm-examples/tree/master/java/spring/)
 | Ebean ORM | [Documentation](ebean/)<br /> [Hello World](../orms/java/ysql-ebean/)<br /> [Blog](https://www.yugabyte.com/blog/ebean-orm-yugabytedb/)| [Ebean ORM App](https://github.com/yugabyte/orm-examples/tree/master/java/ebean/)
-| Spring Data YugabyteDB | [Documentation](../../integrations/spring-framework/sdyb/)<br/>[Blog](https://www.yugabyte.com/blog/spring-data-yugabytedb-getting-started/) | [Spring Data YugabyteDB Sample App](https://github.com/yugabyte/spring-data-yugabytedb-example/)
+| Spring Data YugabyteDB | [Documentation](/preview/integrations/spring-framework/sdyb/)<br/>[Blog](https://www.yugabyte.com/blog/spring-data-yugabytedb-getting-started/) | [Spring Data YugabyteDB Sample App](https://github.com/yugabyte/spring-data-yugabytedb-example/)
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations by referring to [Connect an app](yugabyte-jdbc/) or [Use an ORM](hibernate/).
 
@@ -81,7 +81,7 @@ To develop Java driver applications for YugabyteDB, you need the following:
         ```
 
 - **YugabyteDB cluster**
-  - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/managed/). Refer to [Use a cloud cluster](../../quick-start-yugabytedb-managed/). Note that YugabyteDB Managed requires SSL.
+  - Create a free cluster on YugabyteDB Aeon. Refer to [Use a cloud cluster](../../quick-start-yugabytedb-managed/). Note that YugabyteDB Aeon requires SSL.
   - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](../../quick-start/).
 
 ## Next step

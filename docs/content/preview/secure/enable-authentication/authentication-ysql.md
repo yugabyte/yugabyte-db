@@ -57,7 +57,7 @@ $ ./bin/yugabyted start --ysql_enable_auth=true
 
 ### Start YB-TServer services
 
-To enable YSQL authentication in deployable YugabyteDB clusters, you need to start your `yb-tserver` services using the [--ysql_enable_auth](../../../reference/configuration/yb-tserver/#ysql-enable-auth) flag. Your command should look similar to the following:
+To enable YSQL authentication in deployable YugabyteDB clusters, you need to start your yb-tserver services using the [--ysql_enable_auth](../../../reference/configuration/yb-tserver/#ysql-enable-auth) flag. Your command should look similar to the following:
 
 ```sh
 ./bin/yb-tserver \
@@ -71,7 +71,7 @@ You can also enable YSQL authentication by adding the `--ysql_enable_auth=true` 
 
 ## Open the YSQL shell (ysqlsh)
 
-A YugabyteDB cluster with authentication enabled starts with the default admin user of `yugabyte` and the default database of `yugabyte`. You can connect to the cluster and use the [YSQL shell](../../../admin/ysqlsh/) by running the following `ysqlsh` command from the YugabyteDB home directory:
+A YugabyteDB cluster with authentication enabled starts with the default admin user of `yugabyte` and the default database of `yugabyte`. You can connect to the cluster and use the [YSQL shell](../../../api/ysqlsh/) by running the following `ysqlsh` command from the YugabyteDB home directory:
 
 ```sh
 $ ./bin/ysqlsh -U yugabyte
@@ -80,7 +80,7 @@ $ ./bin/ysqlsh -U yugabyte
 You are prompted to enter the password. After logging in, you should see the following output:
 
 ```output
-ysqlsh (11.2-YB-2.7.0.0-b0)
+ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#
@@ -172,7 +172,7 @@ You should see a table output similar to the following:
 
 In this table, you can see that `postgres`, `admin`, and `yugabyte` users can log in and have `SUPERUSER` status.
 
-As an easier alternative, you can run the `\du` [meta-command](../../../admin/ysqlsh-meta-commands/) to see this information in a simpler format:
+As an easier alternative, you can run the `\du` [meta-command](../../../api/ysqlsh-meta-commands/) to see this information in a simpler format:
 
 ```sql
 yugabyte=# \du

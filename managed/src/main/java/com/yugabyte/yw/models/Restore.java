@@ -134,6 +134,9 @@ public class Restore extends Model {
   @Column(unique = true)
   private UUID taskUUID;
 
+  @Column(nullable = false)
+  private boolean hidden = false;
+
   @Column private long restoreSizeInBytes = 0L;
 
   @Column(nullable = false)
@@ -164,6 +167,11 @@ public class Restore extends Model {
           .build();
 
   public static Restore create(UUID taskUUID, RestoreBackupParams taskDetails) {
+    LOG.debug("Creating new restore object");
+    LOG.debug("restore uuid {}", taskDetails.prefixUUID);
+    LOG.debug("restore universe {}", taskDetails.getUniverseUUID());
+    LOG.debug("restore customer uuid {}", taskDetails.customerUUID);
+    LOG.debug("restore task UUID {}", taskDetails.customerUUID);
     Restore restore = new Restore();
     restore.setRestoreUUID(taskDetails.prefixUUID);
     restore.setUniverseUUID(taskDetails.getUniverseUUID());
@@ -269,6 +277,15 @@ public class Restore extends Model {
     return Optional.of(restore);
   }
 
+  public static Optional<Restore> maybeGet(UUID restoreUuid) {
+    Restore restore = find.byId(restoreUuid);
+    if (Objects.isNull(restore)) {
+      LOG.info("Cannot find Restore object with uuid {}", restoreUuid);
+      return Optional.empty();
+    }
+    return Optional.of(restore);
+  }
+
   public static RestoreResp toRestoreResp(Restore restore) {
     String targetUniverseName =
         BackupUtil.checkIfUniverseExists(restore.getUniverseUUID())
@@ -342,6 +359,9 @@ public class Restore extends Model {
     }
     if (!CollectionUtils.isEmpty(filter.getStates())) {
       appendInClause(query, "state", filter.getStates());
+    }
+    if (!filter.isShowHidden()) {
+      query.eq("hidden", false);
     }
     if (filter.isOnlyShowDeletedSourceUniverses()) {
       String sourceUniverseNotExists =

@@ -144,36 +144,6 @@ Status RemoteBootstrapSession::SetInitialCommittedState() {
   return Status::OK();
 }
 
-Result<google::protobuf::RepeatedPtrField<tablet::FilePB>> ListFiles(const std::string& dir) {
-  std::vector<std::string> files;
-  auto env = Env::Default();
-  auto status = env->GetChildren(dir, ExcludeDots::kTrue, &files);
-  if (!status.ok()) {
-    return STATUS(IllegalState, Substitute("Unable to get RocksDB files in dir $0: $1", dir,
-                                           status.ToString()));
-  }
-
-  google::protobuf::RepeatedPtrField<tablet::FilePB> result;
-  result.Reserve(narrow_cast<int>(files.size()));
-  for (const auto& file : files) {
-    auto full_path = JoinPathSegments(dir, file);
-    if (VERIFY_RESULT(env->IsDirectory(full_path))) {
-      auto sub_files = VERIFY_RESULT(ListFiles(full_path));
-      for (auto& subfile : sub_files) {
-        subfile.set_name(JoinPathSegments(file, subfile.name()));
-        *result.Add() = std::move(subfile);
-      }
-      continue;
-    }
-    auto file_pb = result.Add();
-    file_pb->set_name(file);
-    file_pb->set_size_bytes(VERIFY_RESULT(env->GetFileSize(full_path)));
-    file_pb->set_inode(VERIFY_RESULT(env->GetFileINode(full_path)));
-  }
-
-  return result;
-}
-
 const std::string RemoteBootstrapSession::kCheckpointsDir = "checkpoints";
 
 Status RemoteBootstrapSession::InitSnapshotTransferSession() {
@@ -231,7 +201,7 @@ Result<OpId> RemoteBootstrapSession::CreateSnapshot(int retry) {
       }
     }
 
-    *kv_store->mutable_rocksdb_files() = VERIFY_RESULT(ListFiles(checkpoint_dir_));
+    *kv_store->mutable_rocksdb_files() = VERIFY_RESULT(tablet::ListFiles(checkpoint_dir_));
   } else if (!status.IsNotSupported()) {
     RETURN_NOT_OK(status);
   }
@@ -270,10 +240,10 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
   std::optional<OpId> min_synced_op_id;
   // Copy the retryable requests if it exists.
   if (GetAtomicFlag(&FLAGS_enable_flush_retryable_requests)) {
-    Status s = tablet_peer_->FlushRetryableRequests();
+    Status s = tablet_peer_->FlushBootstrapState();
     if (s.ok() || s.IsAlreadyPresent()) {
       retryable_requests_filepath_ = JoinPathSegments(checkpoint_dir_, kRetryableRequestsFileName);
-      auto copy_result = tablet_peer_->CopyRetryableRequestsTo(*retryable_requests_filepath_);
+      auto copy_result = tablet_peer_->CopyBootstrapStateTo(*retryable_requests_filepath_);
       if (!copy_result.ok()) {
         LOG(WARNING) << "Copy retryable requests failed: " << s;
         retryable_requests_filepath_.reset();
@@ -672,7 +642,7 @@ void RemoteBootstrapSession::EnsureRateLimiterIsInitialized() {
 
 Status RemoteBootstrapSession::RefreshRemoteLogAnchorSessionAsync() {
   if (rbs_anchor_client_ && rbs_anchor_session_created_) {
-    RETURN_NOT_OK(rbs_anchor_client_->KeepLogAnchorAliveAsync());
+    RETURN_NOT_OK(rbs_anchor_client_->KeepLogAnchorAliveAsync(Succeeded()));
   }
   return Status::OK();
 }
@@ -706,8 +676,8 @@ void RemoteBootstrapSession::InitRateLimiter() {
 Status RemoteBootstrapSession::RegisterRemoteLogAnchorUnlocked() {
   if (rbs_anchor_client_) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "index=" << remote_log_anchor_index_;
-    RETURN_NOT_OK(rbs_anchor_client_->RegisterLogAnchor(tablet_peer_->tablet_id(),
-                                                        remote_log_anchor_index_));
+    RETURN_NOT_OK(rbs_anchor_client_->RegisterLogAnchor(
+        tablet_peer_->tablet_id(), remote_log_anchor_index_, succeeded_));
     rbs_anchor_session_created_ = true;
   }
   return Status::OK();
@@ -716,7 +686,7 @@ Status RemoteBootstrapSession::RegisterRemoteLogAnchorUnlocked() {
 Status RemoteBootstrapSession::UpdateRemoteLogAnchorUnlocked() {
   if (rbs_anchor_client_) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "index=" << remote_log_anchor_index_;
-    RETURN_NOT_OK(rbs_anchor_client_->UpdateLogAnchorAsync(remote_log_anchor_index_));
+    RETURN_NOT_OK(rbs_anchor_client_->UpdateLogAnchorAsync(remote_log_anchor_index_, succeeded_));
   }
   return Status::OK();
 }

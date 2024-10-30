@@ -7,7 +7,7 @@
  * we need two sets of code.  Ought to look at trying to unify the cases.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -129,7 +129,19 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	 * Initialize scan slot and type (needed by ExecAssignScanProjectionInfo)
 	 */
 	ExecInitScanTupleSlot(estate, &subquerystate->ss,
-						  ExecGetResultType(subquerystate->subplan));
+						  ExecGetResultType(subquerystate->subplan),
+						  ExecGetResultSlotOps(subquerystate->subplan, NULL));
+
+	/*
+	 * The slot used as the scantuple isn't the slot above (outside of EPQ),
+	 * but the one from the node below.
+	 */
+	subquerystate->ss.ps.scanopsset = true;
+	subquerystate->ss.ps.scanops = ExecGetResultSlotOps(subquerystate->subplan,
+														&subquerystate->ss.ps.scanopsfixed);
+	subquerystate->ss.ps.resultopsset = true;
+	subquerystate->ss.ps.resultops = subquerystate->ss.ps.scanops;
+	subquerystate->ss.ps.resultopsfixed = subquerystate->ss.ps.scanopsfixed;
 
 	/*
 	 * Initialize result type and projection.

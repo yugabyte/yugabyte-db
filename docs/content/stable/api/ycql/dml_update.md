@@ -4,7 +4,7 @@ headerTitle: UPDATE
 linkTitle: UPDATE
 description: Use the UPDATE statement to update one or more column values for a row in table.
 menu:
-  stable:
+  stable_api:
     parent: api-cassandra
     weight: 1320
 type: docs
@@ -71,6 +71,7 @@ Where
   very confusing results.
 - Updating rows `USING TTL` is not supported on tables with [transactions enabled](./../ddl_create_table#table-properties-1).
 - You cannot update the columns in the primary key. As a workaround, you have to delete the row and insert a new row.
+- `UPDATE` is always done at `QUORUM` consistency level irrespective of setting.
 
 ### `WHERE` clause
 

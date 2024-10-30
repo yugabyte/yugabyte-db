@@ -15,6 +15,8 @@
 
 #include "yb/common/read_hybrid_time.h"
 
+#include "yb/docdb/docdb_fwd.h"
+
 #include "yb/util/tostring.h"
 
 namespace yb::docdb {
@@ -23,6 +25,7 @@ namespace yb::docdb {
 struct ReadOperationData {
   CoarseTimePoint deadline = CoarseTimePoint::max();
   ReadHybridTime read_time = ReadHybridTime::Max();
+  const DocDBStatistics* statistics = nullptr;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(deadline, read_time);
@@ -31,6 +34,12 @@ struct ReadOperationData {
   ReadOperationData WithAlteredReadTime(const ReadHybridTime& read_time_) const {
     auto result = *this;
     result.read_time = read_time_;
+    return result;
+  }
+
+  ReadOperationData WithStatistics(const DocDBStatistics* statistics_) const {
+    auto result = *this;
+    result.statistics = statistics_;
     return result;
   }
 

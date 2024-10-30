@@ -211,17 +211,17 @@ show temp_file_limit;
 
 SELECT * FROM generate_series(0, 1234567);
 ERROR:  temporary file size exceeds temp_file_limit (0kB)
-SELECT databasename, termination_reason, query_text FROM yb_terminated_queries;
+SELECT databasename, termination_reason, query_text FROM yb_terminated_queries ORDER BY databasename;
     databasename    |                   termination_reason                    |                                                         query_text
 --------------------+---------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------
- yugabyte           | temporary file size exceeds temp_file_limit (0kB)       | SELECT * FROM generate_series(0, 1000000);
- yugabyte           | temporary file size exceeds temp_file_limit (0kB)       | SELECT 'bob' FROM generate_series(0, 1000000);
- yugabyte           | temporary file size exceeds temp_file_limit (1048576kB) | SELECT * FROM generate_series(0, 100000002);
  db2                | temporary file size exceeds temp_file_limit (0kB)       | SELECT * FROM generate_series(0, 1000001);
  db2                | temporary file size exceeds temp_file_limit (0kB)       | SELECT 'We were taught in this modern age that science and mathematics is the pinnacle of human achievement.'             +
                     |                                                         | 'Yet, in our complacency, we began to neglect the very thing which our ancestors had once done: to challenge the process.'+
                     |                                                         | 'We need to stand back
  test_user_database | temporary file size exceeds temp_file_limit (0kB)       | SELECT * FROM generate_series(0, 1234567);
+ yugabyte           | temporary file size exceeds temp_file_limit (0kB)       | SELECT * FROM generate_series(0, 1000000);
+ yugabyte           | temporary file size exceeds temp_file_limit (0kB)       | SELECT 'bob' FROM generate_series(0, 1000000);
+ yugabyte           | temporary file size exceeds temp_file_limit (1048576kB) | SELECT * FROM generate_series(0, 100000002);
 (6 rows)
 
 -- Drop the superuser privilege as we want to see if we would only see the terminated query

@@ -3,7 +3,7 @@
  * hashsearch.c
  *	  search code for postgres hash tables
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -18,17 +18,17 @@
 #include "access/relscan.h"
 #include "miscadmin.h"
 #include "pgstat.h"
-#include "utils/rel.h"
 #include "storage/predicate.h"
+#include "utils/rel.h"
 
 static bool _hash_readpage(IndexScanDesc scan, Buffer *bufP,
-			   ScanDirection dir);
-static int _hash_load_qualified_items(IndexScanDesc scan, Page page,
-						   OffsetNumber offnum, ScanDirection dir);
+						   ScanDirection dir);
+static int	_hash_load_qualified_items(IndexScanDesc scan, Page page,
+									   OffsetNumber offnum, ScanDirection dir);
 static inline void _hash_saveitem(HashScanOpaque so, int itemIndex,
-			   OffsetNumber offnum, IndexTuple itup);
+								  OffsetNumber offnum, IndexTuple itup);
 static void _hash_readnext(IndexScanDesc scan, Buffer *bufp,
-			   Page *pagep, HashPageOpaque *opaquep);
+						   Page *pagep, HashPageOpaque *opaquep);
 
 /*
  *	_hash_next() -- Get the next item in a scan.
@@ -119,7 +119,7 @@ _hash_next(IndexScanDesc scan, ScanDirection dir)
 
 	/* OK, itemIndex says what to return */
 	currItem = &so->currPos.items[so->currPos.itemIndex];
-	scan->xs_ctup.t_self = currItem->heapTid;
+	scan->xs_heaptid = currItem->heapTid;
 
 	return true;
 }
@@ -187,7 +187,7 @@ _hash_readnext(IndexScanDesc scan,
 	{
 		*pagep = BufferGetPage(*bufp);
 		TestForOldSnapshot(scan->xs_snapshot, rel, *pagep);
-		*opaquep = (HashPageOpaque) PageGetSpecialPointer(*pagep);
+		*opaquep = HashPageGetOpaque(*pagep);
 	}
 }
 
@@ -233,7 +233,7 @@ _hash_readprev(IndexScanDesc scan,
 							 LH_BUCKET_PAGE | LH_OVERFLOW_PAGE);
 		*pagep = BufferGetPage(*bufp);
 		TestForOldSnapshot(scan->xs_snapshot, rel, *pagep);
-		*opaquep = (HashPageOpaque) PageGetSpecialPointer(*pagep);
+		*opaquep = HashPageGetOpaque(*pagep);
 
 		/*
 		 * We always maintain the pin on bucket page for whole scan operation,
@@ -258,7 +258,7 @@ _hash_readprev(IndexScanDesc scan,
 
 		LockBuffer(*bufp, BUFFER_LOCK_SHARE);
 		*pagep = BufferGetPage(*bufp);
-		*opaquep = (HashPageOpaque) PageGetSpecialPointer(*pagep);
+		*opaquep = HashPageGetOpaque(*pagep);
 
 		/* move to the end of bucket chain */
 		while (BlockNumberIsValid((*opaquep)->hasho_nextblkno))
@@ -352,7 +352,7 @@ _hash_first(IndexScanDesc scan, ScanDirection dir)
 	PredicateLockPage(rel, BufferGetBlockNumber(buf), scan->xs_snapshot);
 	page = BufferGetPage(buf);
 	TestForOldSnapshot(scan->xs_snapshot, rel, page);
-	opaque = (HashPageOpaque) PageGetSpecialPointer(page);
+	opaque = HashPageGetOpaque(page);
 	bucket = opaque->hasho_bucket;
 
 	so->hashso_bucket_buf = buf;
@@ -398,7 +398,7 @@ _hash_first(IndexScanDesc scan, ScanDirection dir)
 
 		LockBuffer(buf, BUFFER_LOCK_SHARE);
 		page = BufferGetPage(buf);
-		opaque = (HashPageOpaque) PageGetSpecialPointer(page);
+		opaque = HashPageGetOpaque(page);
 		Assert(opaque->hasho_bucket == bucket);
 
 		if (H_BUCKET_BEING_POPULATED(opaque))
@@ -432,7 +432,7 @@ _hash_first(IndexScanDesc scan, ScanDirection dir)
 
 	/* OK, itemIndex says what to return */
 	currItem = &so->currPos.items[so->currPos.itemIndex];
-	scan->xs_ctup.t_self = currItem->heapTid;
+	scan->xs_heaptid = currItem->heapTid;
 
 	/* if we're here, _hash_readpage found a valid tuples */
 	return true;
@@ -463,7 +463,7 @@ _hash_readpage(IndexScanDesc scan, Buffer *bufP, ScanDirection dir)
 	Assert(BufferIsValid(buf));
 	_hash_checkpage(rel, buf, LH_BUCKET_PAGE | LH_OVERFLOW_PAGE);
 	page = BufferGetPage(buf);
-	opaque = (HashPageOpaque) PageGetSpecialPointer(page);
+	opaque = HashPageGetOpaque(page);
 
 	so->currPos.buf = buf;
 	so->currPos.currPage = BufferGetBlockNumber(buf);

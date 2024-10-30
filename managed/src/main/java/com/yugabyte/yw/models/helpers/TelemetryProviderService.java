@@ -12,6 +12,7 @@ package com.yugabyte.yw.models.helpers;
 import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -44,6 +45,11 @@ public class TelemetryProviderService {
   public TelemetryProviderService(BeanValidator beanValidator, RuntimeConfGetter confGetter) {
     this.beanValidator = beanValidator;
     this.confGetter = confGetter;
+  }
+
+  @VisibleForTesting
+  public TelemetryProviderService() {
+    this(new BeanValidator(null), null);
   }
 
   @Transactional
@@ -131,8 +137,12 @@ public class TelemetryProviderService {
     appendInClause(TelemetryProvider.createQuery(), "uuid", uuidsToDelete).delete();
   }
 
-  public void validate(TelemetryProvider provider) {
+  public void validateBean(TelemetryProvider provider) {
     beanValidator.validate(provider);
+  }
+
+  public void validate(TelemetryProvider provider) {
+    validateBean(provider);
 
     TelemetryProvider providerWithSameName = get(provider.getCustomerUUID(), provider.getName());
     if ((providerWithSameName != null)
@@ -176,5 +186,9 @@ public class TelemetryProviderService {
       }
     }
     return false;
+  }
+
+  public void validateTelemetryProvider(TelemetryProvider provider) {
+    provider.getConfig().validate();
   }
 }

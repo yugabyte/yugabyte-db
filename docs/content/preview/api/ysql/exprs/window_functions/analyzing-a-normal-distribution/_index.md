@@ -8,7 +8,7 @@ headerTitle: >
 description: Case study to compare and contrast the window functions percent_rank(), cume_dist(), and ntile() on large sets of normally distributed values.
 image: /images/section_icons/api/subsection.png
 menu:
-  preview:
+  preview_api:
     identifier: analyzing-a-normal-distribution
     parent: window-functions
     weight: 40

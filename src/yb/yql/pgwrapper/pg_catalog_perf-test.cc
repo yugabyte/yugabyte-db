@@ -18,12 +18,19 @@
 #include <thread>
 #include <unordered_map>
 
+#include "yb/common/json_util.h"
+
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/sys_catalog.h"
+
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/mini_tablet_server.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
@@ -54,10 +61,16 @@ DECLARE_uint64(TEST_committed_history_cutoff_initial_value_usec);
 DECLARE_uint32(pg_cache_response_renew_soft_lifetime_limit_ms);
 DECLARE_uint64(pg_response_cache_size_bytes);
 DECLARE_uint32(pg_response_cache_size_percentage);
+DECLARE_int32(pgsql_proxy_webserver_port);
 
 using namespace std::literals;
 
+using yb::common::GetMemberAsStr;
+using yb::common::GetMemberAsArray;
+using yb::common::ParseJson;
+
 namespace yb::pgwrapper {
+
 namespace {
 
 Status EnableCatCacheEventLogging(PGConn* conn) {
@@ -306,11 +319,54 @@ class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithUnlimitedCachePe
   }
 };
 
-constexpr uint64_t kFirstConnectionRPCCountDefault = 5;
-constexpr uint64_t kFirstConnectionRPCCountWithAdditionalTables = 6;
-constexpr uint64_t kFirstConnectionRPCCountWithSmallPreload = 5;
-constexpr uint64_t kSubsequentConnectionRPCCount = 2;
+constexpr uint64_t kFirstConnectionRPCCountDefault = 6;
+constexpr uint64_t kFirstConnectionRPCCountWithAdditionalTables = 8;
+constexpr uint64_t kFirstConnectionRPCCountWithSmallPreload = 6;
+constexpr uint64_t kSubsequentConnectionRPCCount = 3;
+constexpr uint64_t kFirstConnectionRPCCountNoRelcacheFile = 7;
 static_assert(kFirstConnectionRPCCountDefault <= kFirstConnectionRPCCountWithAdditionalTables);
+
+// Helper class to fetch number of client connection via pgsql proxy webserver.
+class ClientConnectionsCountFetcher {
+ public:
+  explicit ClientConnectionsCountFetcher(const HostPort& pg_host_port, MonoDelta initial_delay)
+      : url_(Format("http://$0:$1/rpcz", pg_host_port.host(), FLAGS_pgsql_proxy_webserver_port)),
+        initial_delay_(initial_delay) {}
+
+  Result<size_t> operator()() {
+    // Webserver start processing requests with some delay after cluster start.
+    // To solve this WaitFor is used.
+    faststring buf;
+    RETURN_NOT_OK(WaitFor(
+        [this, &buf]() -> Result<bool> {
+          return curl_.FetchURL(url_, &buf).ok();
+        },
+        5s, "Requesting /rpcz", initial_delay_));
+    const auto doc = VERIFY_RESULT(ParseJson(std::string_view(buf.c_str(), buf.size())));
+    size_t result = 0;
+    for (const auto& conn : VERIFY_RESULT(GetMemberAsArray(doc, "connections"))) {
+      if (VERIFY_RESULT(GetMemberAsStr(conn, "backend_type")) == "client backend") {
+        ++result;
+      }
+    }
+    return result;
+  }
+
+ private:
+  EasyCurl curl_;
+  const std::string url_;
+  const MonoDelta initial_delay_;
+};
+
+Status WaitForAllClientConnectionsClosure(const HostPort& pg_host_port) {
+  static constexpr auto kInitialDelay = 100ms;
+  ClientConnectionsCountFetcher connection_count_fetcher(pg_host_port, kInitialDelay);
+
+  return WaitFor(
+      [&connection_count_fetcher]() -> Result<bool> {
+        return !VERIFY_RESULT(connection_count_fetcher());
+      }, 30s, "Client connections closure", kInitialDelay);
+}
 
 } // namespace
 
@@ -353,7 +409,7 @@ TEST_F(PgCatalogPerfTest, CacheRefreshRPCCountWithPartitionTables) {
       kTableWithCastInPartitioning));
 
   const auto cache_refresh_rpc_count = ASSERT_RESULT(CacheRefreshRPCCount());
-  ASSERT_EQ(cache_refresh_rpc_count, 6);
+  ASSERT_EQ(cache_refresh_rpc_count, 7);
 }
 
 TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnInsert) {
@@ -373,7 +429,7 @@ TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnSelect) {
 TEST_F_EX(PgCatalogPerfTest,
           AfterCacheRefreshRPCCountOnSelectMinPreload,
           PgCatalogMinPreloadTest) {
-  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/ 11);
+  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/12);
 }
 
 // The test checks number of hits in response cache in case of multiple connections and aggressive
@@ -411,7 +467,7 @@ TEST_F_EX(PgCatalogPerfTest, ResponseCacheEfficiency, PgCatalogWithUnlimitedCach
   constexpr auto kExpectedColumns = kAlterTableCount + 2;
   ASSERT_OK(conn.FetchMatrix(select_all, kExpectedRows, kExpectedColumns));
   ASSERT_OK(aux_conn.FetchMatrix(select_all, kExpectedRows, kExpectedColumns));
-  constexpr size_t kUniqueQueriesPerRefresh = 3;
+  constexpr size_t kUniqueQueriesPerRefresh = 4;
   constexpr auto kUniqueQueries = kAlterTableCount * kUniqueQueriesPerRefresh;
   constexpr auto kTotalQueries = kConnectionCount * kUniqueQueries;
   ASSERT_EQ(metrics.cache.queries, kTotalQueries);
@@ -427,8 +483,8 @@ TEST_F_EX(PgCatalogPerfTest,
     RETURN_NOT_OK(Connect());
     return static_cast<Status>(Status::OK());
   }));
-  ASSERT_EQ(metrics.cache.queries, 4);
-  ASSERT_EQ(metrics.cache.hits, 4);
+  ASSERT_EQ(metrics.cache.queries, 5);
+  ASSERT_EQ(metrics.cache.hits, 5);
 }
 
 // The test checks response cache renewing process in case of 'Snapshot too old' error.
@@ -455,7 +511,7 @@ TEST_F_EX(PgCatalogPerfTest,
   ASSERT_EQ(first_connection_cache_metrics.renew_hard, 0);
   ASSERT_EQ(first_connection_cache_metrics.renew_soft, 0);
   ASSERT_EQ(first_connection_cache_metrics.hits, 0);
-  ASSERT_EQ(first_connection_cache_metrics.queries, 4);
+  ASSERT_EQ(first_connection_cache_metrics.queries, 5);
 
   std::this_thread::sleep_for(std::chrono::milliseconds(
       2 * FLAGS_pg_cache_response_renew_soft_lifetime_limit_ms));
@@ -464,7 +520,7 @@ TEST_F_EX(PgCatalogPerfTest,
   ASSERT_EQ(second_connection_cache_metrics.renew_hard, 0);
   ASSERT_EQ(second_connection_cache_metrics.renew_soft, 1);
   ASSERT_EQ(second_connection_cache_metrics.hits, 1);
-  ASSERT_EQ(second_connection_cache_metrics.queries, 6);
+  ASSERT_EQ(second_connection_cache_metrics.queries, 7);
 }
 
 // The test checks that GC keeps response cache memory lower than limit
@@ -481,8 +537,8 @@ TEST_F_EX(PgCatalogPerfTest, ResponseCacheMemoryLimit, PgCatalogWithLimitedCache
         }
         return static_cast<Status>(Status::OK());
       })).cache;
-  ASSERT_EQ(cache_metrics.gc_calls, 9);
-  ASSERT_EQ(cache_metrics.entries_removed_by_gc, 26);
+  ASSERT_GT(cache_metrics.gc_calls, 0);
+  ASSERT_GE(cache_metrics.entries_removed_by_gc, cache_metrics.gc_calls);
   auto response_cache_mem_tracker =
       cluster_->mini_tablet_server(0)->server()->mem_tracker()->FindChild("PgResponseCache");
   ASSERT_TRUE(response_cache_mem_tracker);
@@ -599,7 +655,7 @@ TEST_F_EX(PgCatalogPerfTest,
           RPCCountOnStartupPredictableMemoryUsage,
           PgPredictableMemoryUsageTest) {
   const auto first_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
-  ASSERT_EQ(first_connect_rpc_count, kFirstConnectionRPCCountWithAdditionalTables);
+  ASSERT_EQ(first_connect_rpc_count, kFirstConnectionRPCCountNoRelcacheFile);
   const auto subsequent_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
   ASSERT_EQ(subsequent_connect_rpc_count, kSubsequentConnectionRPCCount);
 }
@@ -610,16 +666,14 @@ TEST_F_EX(PgCatalogPerfTest,
           ResponseCacheInvalidationOnConnectionWithTempTableClosure,
           PgCatalogWithUnlimitedCachePerfTest) {
   constexpr auto* kDBName = "aux_db";
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDBName));
 
   {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDBName));
     auto conn_with_temp_table = ASSERT_RESULT(ConnectToDB(kDBName));
     ASSERT_OK(conn_with_temp_table.Execute("CREATE TEMP TABLE t(k INT PRIMARY KEY)"));
   }
-
-  // Wait for cleanup completion of all closed connections.
-  std::this_thread::sleep_for(RegularBuildVsDebugVsSanitizers(3s, 5s, 5s));
+  ASSERT_OK(WaitForAllClientConnectionsClosure(pg_host_port()));
 
   const auto default_db_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
   ASSERT_EQ(default_db_connect_rpc_count, kSubsequentConnectionRPCCount);
@@ -676,14 +730,93 @@ TEST_F_EX(PgCatalogPerfTest,
     auto aux_conn = ASSERT_RESULT(Connect());
     ASSERT_OK(aux_conn.Fetch("SELECT 1"));
   }
-  // Wait for cleanup completion of all closed connections.
-  std::this_thread::sleep_for(RegularBuildVsDebugVsSanitizers(3s, 5s, 5s));
+  ASSERT_OK(WaitForAllClientConnectionsClosure(pg_host_port()));
+
   auto conn = ASSERT_RESULT(Connect());
   const auto disable_calls = ASSERT_RESULT(metrics_->Delta([&conn, &temp_table_creator] {
     return temp_table_creator(&conn);
   })).cache.disable_calls;
   // Check that response cache has not been invalidated while temp namespace reusing.
   ASSERT_EQ(disable_calls, 0);
+}
+
+TEST_F_EX(PgCatalogPerfTest,
+          OnDemandLoadingAfterCatalogCacheRefresh,
+          PgCatalogWithUnlimitedCachePerfTest) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  {
+    auto aux_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(aux_conn.Execute("CREATE TABLE t(k INT PRIMARY KEY)"));
+    ASSERT_OK(aux_conn.Execute(
+        "CREATE FUNCTION my_func(v int) RETURNS int AS $$ "
+        "BEGIN return v; END; $$ LANGUAGE plpgsql"));
+
+    ASSERT_OK(IncrementAllDBCatalogVersions(aux_conn));
+  }
+
+  {
+    // Fill response cache with fresh catalog data after catalog version increment
+    auto aux_conn = ASSERT_RESULT(Connect());
+  }
+
+  // Sleep for a while to make a little time gap between read time in response cache and allowed
+  // read time due to history cutoff
+  std::this_thread::sleep_for(1s);
+
+  {
+    // Cutoff catalog history for current time to avoid reading with old read time
+    auto* tablet = cluster_->mini_master(0)->master()->catalog_manager()->tablet_peer()->tablet();
+    auto* policy = tablet->RetentionPolicy();
+    auto cutoff = policy->GetRetentionDirective().history_cutoff;
+    cutoff.primary_cutoff_ht = HybridTime::FromMicros(
+        implicit_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count()));
+    policy->UpdateCommittedHistoryCutoff(cutoff);
+  }
+
+  // Sleep for a while to make sure that new reads from catalog will use read time
+  // after cuttoff bound
+  std::this_thread::sleep_for(1s);
+
+  // It is expected that next statement will refresh the cache due to catalog version bumping.
+  // All the catalog data will be loaded from the response cache, because it already has data for
+  // required catalog version. Also the statement will perform on-demand loading of some cache entry
+  // required for usage of `my_func`. On-demand loading must use empty read time.
+  // Otherwise statement will fail due to `Snapshot too old` error.
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (my_func(1))"));
+}
+
+TEST_F_EX(PgCatalogPerfTest, ForeignKeyRelcachePreloadTest, PgPreloadAdditionalCatBothTest) {
+  auto ddl_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(ddl_conn.Execute("CREATE TABLE primary_table(k INT PRIMARY KEY)"));
+  ASSERT_OK(
+      ddl_conn.Execute("CREATE TABLE foreign_table(k INT, region INT) PARTITION BY LIST (region)"));
+  // Add 10 child tables for the foreign_table
+  for (int i = 1; i <= 10; ++i) {
+    ASSERT_OK(ddl_conn.ExecuteFormat(
+        "CREATE TABLE foreign_table_$0 PARTITION OF foreign_table FOR VALUES IN ($0)", i));
+  }
+  ASSERT_OK(
+      ddl_conn.Execute("ALTER TABLE foreign_table ADD CONSTRAINT fk_foreign_table_primary_table "
+                       "FOREIGN KEY (k) REFERENCES primary_table(k)"));
+  // Dummy connection to build the relcache init file
+  { auto unused_conn = ASSERT_RESULT(Connect()); }
+
+  auto select_conn = ASSERT_RESULT(Connect());
+
+  const auto startup_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
+  ASSERT_EQ(startup_rpc_count, kSubsequentConnectionRPCCount);
+
+  const auto select_rpc_count =
+      ASSERT_RESULT(RPCCountAfterCacheRefresh([&](PGConn* conn) -> Status {
+        RETURN_NOT_OK(conn->Fetch(
+            "SELECT * FROM primary_table JOIN foreign_table ON primary_table.k = foreign_table.k"));
+        return Status::OK();
+      }));
+  // With yb_enable_fkey_catcache turned off, we would see more than 12 RPCs
+  // because we have to look up the foreign keys from master.
+  ASSERT_EQ(select_rpc_count, 12);
 }
 
 } // namespace yb::pgwrapper

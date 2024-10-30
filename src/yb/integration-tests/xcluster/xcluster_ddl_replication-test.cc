@@ -14,20 +14,19 @@
 #include "yb/cdc/xcluster_types.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
+#include "yb/common/colocated_util.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
-#include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
-#include "yb/master/master_replication.proxy.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
-#include "yb/tserver/mini_tablet_server.h"
-#include "yb/util/backoff_waiter.h"
+#include "yb/util/logging_test_util.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
 
-DECLARE_bool(enable_xcluster_api_v2);
-DECLARE_bool(TEST_xcluster_enable_ddl_replication);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
-DECLARE_bool(TEST_xcluster_ddl_queue_handler_log_queries);
+DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
 
 using namespace std::chrono_literals;
 
@@ -35,111 +34,48 @@ namespace yb {
 
 const MonoDelta kTimeout = 60s * kTimeMultiplier;
 
-class XClusterDDLReplicationTest : public XClusterYsqlTestBase {
- public:
-  struct SetupParams {
-    // By default start with no consumer or producer tables.
-    std::vector<uint32_t> num_consumer_tablets = {};
-    std::vector<uint32_t> num_producer_tablets = {};
-    uint32_t replication_factor = 3;
-    uint32_t num_masters = 1;
-    bool ranged_partitioned = false;
-  };
+class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {};
 
-  XClusterDDLReplicationTest() = default;
-  ~XClusterDDLReplicationTest() = default;
+// In automatic mode, sequences_data should have been created on both universe.
+TEST_F(XClusterDDLReplicationTest, CheckSequenceDataTable) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
 
-  virtual void SetUp() override {
-    XClusterYsqlTestBase::SetUp();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_xcluster_api_v2) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_enable_ddl_replication) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_log_queries) = true;
-  }
-
-  Status SetUpClusters() {
-    static const SetupParams kDefaultParams;
-    return SetUpClusters(kDefaultParams);
-  }
-
-  Status SetUpClusters(const SetupParams& params) {
-    return XClusterYsqlTestBase::SetUpWithParams(
-        params.num_consumer_tablets, params.num_producer_tablets, params.replication_factor,
-        params.num_masters, params.ranged_partitioned);
-  }
-
-  Status EnableDDLReplicationExtension() {
-    // TODO(#19184): This will be done as part of creating the replication groups.
-    auto p_conn = VERIFY_RESULT(producer_cluster_.Connect());
-    RETURN_NOT_OK(p_conn.ExecuteFormat("CREATE EXTENSION $0", xcluster::kDDLQueuePgSchemaName));
-    RETURN_NOT_OK(p_conn.ExecuteFormat(
-        "ALTER DATABASE $0 SET $1.replication_role = SOURCE", namespace_name,
-        xcluster::kDDLQueuePgSchemaName));
-    auto c_conn = VERIFY_RESULT(consumer_cluster_.Connect());
-    RETURN_NOT_OK(c_conn.ExecuteFormat("CREATE EXTENSION $0", xcluster::kDDLQueuePgSchemaName));
-    RETURN_NOT_OK(c_conn.ExecuteFormat(
-        "ALTER DATABASE $0 SET $1.replication_role = TARGET", namespace_name,
-        xcluster::kDDLQueuePgSchemaName));
-
-    // Ensure that tables are properly created with only one tablet each.
-    RETURN_NOT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
-      for (const auto& table_name :
-           {xcluster::kDDLQueueTableName, xcluster::kDDLReplicatedTableName}) {
-        auto yb_table_name = VERIFY_RESULT(
-            GetYsqlTable(cluster, namespace_name, xcluster::kDDLQueuePgSchemaName, table_name));
-        std::shared_ptr<client::YBTable> table;
-        RETURN_NOT_OK(producer_client()->OpenTable(yb_table_name, &table));
-        SCHECK_EQ(table->GetPartitionCount(), 1, IllegalState, "Expected 1 tablet");
-      }
-      return Status::OK();
-    }));
+  ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
+    auto table_info = VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMiniMaster())
+                          ->catalog_manager_impl()
+                          .GetTableInfo(kPgSequencesDataTableId);
+    SCHECK_NOTNULL(table_info);
     return Status::OK();
-  }
+  }));
+}
 
-  Result<std::shared_ptr<client::YBTable>> GetProducerTable(
-      const client::YBTableName& producer_table_name) {
-    std::shared_ptr<client::YBTable> producer_table;
-    RETURN_NOT_OK(producer_client()->OpenTable(producer_table_name, &producer_table));
-    return producer_table;
-  }
+TEST_F(XClusterDDLReplicationTest, CheckExtensionTableTabletCount) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
 
-  Result<std::shared_ptr<client::YBTable>> GetConsumerTable(
-      const client::YBTableName& producer_table_name) {
-    auto consumer_table_name = VERIFY_RESULT(GetYsqlTable(
-        &consumer_cluster_, producer_table_name.namespace_name(),
-        producer_table_name.pgschema_name(), producer_table_name.table_name()));
-    std::shared_ptr<client::YBTable> consumer_table;
-    RETURN_NOT_OK(consumer_client()->OpenTable(consumer_table_name, &consumer_table));
-    return consumer_table;
-  }
-
-  void InsertRowsIntoProducerTableAndVerifyConsumer(
-      const client::YBTableName& producer_table_name) {
-    std::shared_ptr<client::YBTable> producer_table =
-        ASSERT_RESULT(GetProducerTable(producer_table_name));
-    ASSERT_OK(InsertRowsInProducer(0, 50, producer_table));
-
-    // Once the safe time advances, the target should have the new table and its rows.
-    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
-
-    std::shared_ptr<client::YBTable> consumer_table =
-        ASSERT_RESULT(GetConsumerTable(producer_table_name));
-
-    // Verify that universe was setup on consumer.
-    master::GetUniverseReplicationResponsePB resp;
-    ASSERT_OK(VerifyUniverseReplication(&resp));
-    ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
-    ASSERT_TRUE(std::any_of(
-        resp.entry().tables().begin(), resp.entry().tables().end(),
-        [&](const std::string& table) { return table == producer_table_name.table_id(); }));
-
-    ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
-  }
-};
+  // Ensure that tables are properly created with only one tablet each.
+  ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
+    for (const auto& table_name :
+         {xcluster::kDDLQueueTableName, xcluster::kDDLReplicatedTableName}) {
+      auto yb_table_name = VERIFY_RESULT(
+          GetYsqlTable(cluster, namespace_name, xcluster::kDDLQueuePgSchemaName, table_name));
+      std::shared_ptr<client::YBTable> table;
+      RETURN_NOT_OK(cluster->client_->OpenTable(yb_table_name, &table));
+      SCHECK_EQ(table->GetPartitionCount(), 1, IllegalState, "Expected 1 tablet");
+    }
+    return Status::OK();
+  }));
+}
 
 TEST_F(XClusterDDLReplicationTest, DisableSplitting) {
   // Ensure that splitting of xCluster DDL Replication tables is disabled on both sides.
   ASSERT_OK(SetUpClusters());
-  ASSERT_OK(EnableDDLReplicationExtension());
+
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
 
   for (auto* cluster : {&producer_cluster_, &consumer_cluster_}) {
     for (const auto& table : {xcluster::kDDLQueueTableName, xcluster::kDDLReplicatedTableName}) {
@@ -157,9 +93,36 @@ TEST_F(XClusterDDLReplicationTest, DisableSplitting) {
   }
 }
 
+TEST_F(XClusterDDLReplicationTest, DDLReplicationTablesNotColocated) {
+  // Ensure that xCluster DDL Replication system tables are not colocated.
+
+  ASSERT_OK(SetUpClusters(/* is_colocated */ true));
+  // Create a colocated table so that we can run xCluster setup.
+  ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
+    RETURN_NOT_OK(CreateYsqlTable(
+        /*idx=*/1, /*num_tablets=*/1, cluster, /*tablegroup_name=*/{}, /*colocated=*/true));
+    return Status::OK();
+  }));
+
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  for (auto* cluster : {&producer_cluster_, &consumer_cluster_}) {
+    for (const auto& table : {xcluster::kDDLQueueTableName, xcluster::kDDLReplicatedTableName}) {
+      auto yb_table_name = ASSERT_RESULT(
+          GetYsqlTable(cluster, namespace_name, xcluster::kDDLQueuePgSchemaName, table));
+
+      google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+      ASSERT_OK(cluster->client_->GetTabletsFromTableId(yb_table_name.table_id(), 0, &tablets));
+
+      ASSERT_EQ(tablets.size(), 1);
+      ASSERT_FALSE(IsColocationParentTableId(tablets[0].table_id()));
+    }
+  }
+}
+
 TEST_F(XClusterDDLReplicationTest, CreateTable) {
   ASSERT_OK(SetUpClusters());
-  ASSERT_OK(EnableDDLReplicationExtension());
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
@@ -194,6 +157,8 @@ TEST_F(XClusterDDLReplicationTest, CreateTable) {
   ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
     auto conn = VERIFY_RESULT(cluster->Connect());
     RETURN_NOT_OK(conn.ExecuteFormat("CREATE USER $0 WITH PASSWORD '123'", kNewUserName));
+    RETURN_NOT_OK(conn.Execute("SET yb_xcluster_ddl_replication.enable_manual_ddl_replication=1"));
+    RETURN_NOT_OK(conn.ExecuteFormat("GRANT CREATE ON SCHEMA public TO $0", kNewUserName));
     return Status::OK();
   }));
   {
@@ -216,7 +181,6 @@ TEST_F(XClusterDDLReplicationTest, CreateTable) {
 
 TEST_F(XClusterDDLReplicationTest, BlockMultistatementQuery) {
   ASSERT_OK(SetUpClusters());
-  ASSERT_OK(EnableDDLReplicationExtension());
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
@@ -255,7 +219,6 @@ TEST_F(XClusterDDLReplicationTest, BlockMultistatementQuery) {
 
 TEST_F(XClusterDDLReplicationTest, CreateIndex) {
   ASSERT_OK(SetUpClusters());
-  ASSERT_OK(EnableDDLReplicationExtension());
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
@@ -293,7 +256,7 @@ TEST_F(XClusterDDLReplicationTest, CreateIndex) {
   {
     master::GetUniverseReplicationResponsePB resp;
     ASSERT_OK(VerifyUniverseReplication(&resp));
-    ASSERT_EQ(resp.entry().tables_size(), 3);  // ddl_queue + base_table + index
+    EXPECT_EQ(resp.entry().tables_size(), 4);  // ddl_queue + base_table + index + sequences_data
   }
   ASSERT_TRUE(ASSERT_RESULT(c_conn.HasIndexScan(kCol2CountStmt)));
 
@@ -318,7 +281,6 @@ TEST_F(XClusterDDLReplicationTest, ExactlyOnceReplication) {
   const int kNumTablets = 3;
 
   ASSERT_OK(SetUpClusters());
-  ASSERT_OK(EnableDDLReplicationExtension());
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
@@ -351,6 +313,280 @@ TEST_F(XClusterDDLReplicationTest, ExactlyOnceReplication) {
 
   for (int i = 0; i < kNumTables; ++i) {
     InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_names[i]);
+  }
+}
+
+TEST_F(XClusterDDLReplicationTest, DuplicateTableNames) {
+  // Test that when there are multiple tables with the same name, we are able to correctly link the
+  // target tables to the correct source tables.
+
+  const int kNumTablets = 3;
+  const int kNumRowsTable1 = 10;
+  const int kNumRowsTable2 = 3 * kNumRowsTable1;
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  // Pause replication.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, false /* is_enabled */));
+
+  // Create a table on the producer.
+  auto producer_table_name = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/1, kNumTablets, &producer_cluster_));
+  // Insert some rows into the first table.
+  auto producer_table = ASSERT_RESULT(GetProducerTable(producer_table_name));
+  ASSERT_OK(InsertRowsInProducer(0, kNumRowsTable1, producer_table));
+
+  // Drop the table, it should move to HIDDEN state.
+  auto producer_conn = ASSERT_RESULT(producer_cluster_.Connect());
+  ASSERT_OK(producer_conn.ExecuteFormat("DROP TABLE $0", producer_table_name.table_name()));
+
+  // Create a new table with the same name.
+  auto producer_table_name2 = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/1, kNumTablets, &producer_cluster_));
+  // Insert a different number of rows into the second table.
+  auto producer_table2 = ASSERT_RESULT(GetProducerTable(producer_table_name2));
+  ASSERT_OK(InsertRowsInProducer(100, 100 + kNumRowsTable2, producer_table2));
+
+  // Resume replication.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, true /* is_enabled */));
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Verify that we only see the second table, and that it has the right number of rows.
+  ASSERT_OK(WaitForRowCount(producer_table_name2, kNumRowsTable2, &consumer_cluster_));
+
+  // Ensure that we can write more rows to this table still.
+  InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_name2);
+}
+
+TEST_F(XClusterDDLReplicationTest, RepeatedCreateAndDropTable) {
+  // Test when a table is created and dropped multiple times.
+  const int kNumIterations = 10;
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  // Pause replication.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, false /* is_enabled */));
+
+  auto producer_conn = ASSERT_RESULT(producer_cluster_.Connect());
+  for (int i = 0; i < kNumIterations; i++) {
+    ASSERT_OK(producer_conn.Execute("DROP TABLE IF EXISTS live_die_repeat"));
+    ASSERT_OK(producer_conn.Execute("CREATE TABLE live_die_repeat(a int)"));
+    ASSERT_OK(producer_conn.ExecuteFormat("INSERT INTO live_die_repeat VALUES($0)", i + 1));
+  }
+
+  // Resume replication.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, true /* is_enabled */));
+  propagation_timeout_ = propagation_timeout_ * 2;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Ensure table has the correct row at the end.
+  auto consumer_conn = ASSERT_RESULT(consumer_cluster_.Connect());
+  ASSERT_EQ(
+      ASSERT_RESULT(consumer_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM live_die_repeat")), 1);
+  ASSERT_EQ(
+      ASSERT_RESULT(consumer_conn.FetchRow<int32>("SELECT * FROM live_die_repeat")),
+      kNumIterations);
+}
+
+TEST_F(XClusterDDLReplicationTest, AddRenamedTable) {
+  // Test that when a table is renamed, the new table is correctly linked to the source table.
+  const std::string kTableNewName = "renamed_table";
+
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  // Pause replication.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, false /* is_enabled */));
+
+  // Create a table on the producer.
+  auto producer_table_name_original = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/1, /*num_tablets=*/3, &producer_cluster_));
+  // Insert some rows into the table.
+  auto producer_table = ASSERT_RESULT(GetProducerTable(producer_table_name_original));
+  ASSERT_OK(InsertRowsInProducer(0, 10, producer_table));
+
+  // Rename the table.
+  // TODO(#23951) remove manual flag once we support ALTERs.
+  auto producer_conn = ASSERT_RESULT(producer_cluster_.Connect());
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "SET yb_xcluster_ddl_replication.enable_manual_ddl_replication=1"));
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "ALTER TABLE $0 RENAME TO $1", producer_table_name_original.table_name(), kTableNewName));
+
+  // Insert some more rows into the table.
+  auto producer_table_name_renamed = producer_table_name_original;
+  producer_table_name_renamed.set_table_name(kTableNewName);
+  producer_table = ASSERT_RESULT(GetProducerTable(producer_table_name_renamed));
+  ASSERT_OK(InsertRowsInProducer(10, 30, producer_table));
+
+  // Resume replication.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, true /* is_enabled */));
+
+  // TODO(#23951) need to wait for create and manually run the DDL on the target side for now.
+  ASSERT_OK(StringWaiterLogSink("Successfully processed entry").WaitFor(kTimeout));
+  auto consumer_conn = ASSERT_RESULT(consumer_cluster_.Connect());
+  ASSERT_OK(consumer_conn.ExecuteFormat(
+      "SET yb_xcluster_ddl_replication.enable_manual_ddl_replication=1"));
+  ASSERT_OK(consumer_conn.ExecuteFormat(
+      "ALTER TABLE $0 RENAME TO $1", producer_table_name_original.table_name(), kTableNewName));
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Verify row counts.
+  auto consumer_table = ASSERT_RESULT(GetConsumerTable(producer_table_name_renamed));
+  ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
+}
+
+class XClusterDDLReplicationAddDropColumnTest : public XClusterDDLReplicationTest {
+ public:
+  void SetUp() override {
+    YB_SKIP_TEST_IN_TSAN();
+    XClusterDDLReplicationTest::SetUp();
+    ASSERT_OK(SetUpClusters());
+    ASSERT_OK(CheckpointReplicationGroup());
+    ASSERT_OK(CreateReplicationFromCheckpoint());
+    producer_conn_ =
+        std::make_unique<pgwrapper::PGConn>(ASSERT_RESULT(producer_cluster_.Connect()));
+    consumer_conn_ =
+        std::make_unique<pgwrapper::PGConn>(ASSERT_RESULT(consumer_cluster_.Connect()));
+  }
+
+  Status PerformStep(size_t step) {
+    // Step 0 is initial table creation.
+    if (step == 0) {
+      RETURN_NOT_OK(producer_conn_->ExecuteFormat(
+          "CREATE TABLE IF NOT EXISTS $0($1 int)", kTableName, kColumnNames[0]));
+      return producer_conn_->ExecuteFormat(
+          "INSERT INTO $0($1) values ($2)", kTableName, kColumnNames[0], 0);
+    }
+    // Odd steps are add column, even steps are drop column.
+    if (step % 2) {
+      LOG(INFO) << "STARTING STEP " << step << ": ADD COLUMN " << kColumnNames[step / 2 + 1];
+      RETURN_NOT_OK(producer_conn_->ExecuteFormat(
+          "ALTER TABLE $0 ADD COLUMN $1 int", kTableName, kColumnNames[step / 2 + 1]));
+      RETURN_NOT_OK(producer_conn_->ExecuteFormat(
+          "INSERT INTO $0($1,$2) values ($3,$3)", kTableName, kColumnNames[0],
+          kColumnNames[step / 2 + 1], step));
+    } else {
+      LOG(INFO) << "STARTING STEP " << step << ": DROP COLUMN " << kColumnNames[step / 2];
+      RETURN_NOT_OK(producer_conn_->ExecuteFormat(
+          "ALTER TABLE $0 DROP COLUMN $1", kTableName, kColumnNames[step / 2]));
+      RETURN_NOT_OK(producer_conn_->ExecuteFormat(
+          "INSERT INTO $0($1) values ($2)", kTableName, kColumnNames[0], step));
+    }
+    return Status::OK();
+  }
+
+  Status VerifyTargetData(bool is_paused) {
+    if (!is_paused) {
+      // Tables should have the same schema and data.
+      for (const auto& query :
+           {Format(kDataQueryStr, kTableName, kColumnNames[0]),
+            Format(kSchemaQueryStr, kTableName)}) {
+        auto producer_output = VERIFY_RESULT(producer_conn_->FetchAllAsString(query));
+        auto consumer_output = VERIFY_RESULT(consumer_conn_->FetchAllAsString(query));
+        SCHECK_EQ(producer_output, consumer_output, IllegalState, "Data mismatch");
+      }
+      return Status::OK();
+    }
+
+    // Capture the expected output at the pause step.
+    if (paused_expected_data_output_.empty()) {
+      paused_expected_data_output_ = VERIFY_RESULT(
+          producer_conn_->FetchAllAsString(Format(kDataQueryStr, kTableName, kColumnNames[0])));
+      paused_expected_schema_output_ =
+          VERIFY_RESULT(producer_conn_->FetchAllAsString(Format(kSchemaQueryStr, kTableName)));
+      LOG(INFO) << "Paused expected data output: " << paused_expected_data_output_;
+      LOG(INFO) << "Paused expected schema output: " << paused_expected_schema_output_;
+    }
+
+    // Consumer should be stuck on paused step.
+    auto consumer_output = VERIFY_RESULT(
+        consumer_conn_->FetchAllAsString(Format(kDataQueryStr, kTableName, kColumnNames[0])));
+    SCHECK_EQ(paused_expected_data_output_, consumer_output, IllegalState, "Data mismatch");
+    auto consumer_schema_output =
+        VERIFY_RESULT(consumer_conn_->FetchAllAsString(Format(kSchemaQueryStr, kTableName)));
+    SCHECK_EQ(
+        paused_expected_schema_output_, consumer_schema_output, IllegalState, "Schema mismatch");
+
+    return Status::OK();
+  }
+
+  Status WaitForDDLReplication(bool is_paused) {
+    if (!is_paused) {
+      return WaitForSafeTimeToAdvanceToNow();
+    }
+    // Other pollers asides from ddl_queue should still be able to advance.
+    return WaitForSafeTimeToAdvanceToNowWithoutDDLQueue();
+  }
+
+  Status RunTest(size_t step_to_pause_on) {
+    bool is_paused = false;
+    for (size_t step = 0; step <= kNumSteps; ++step) {
+      RETURN_NOT_OK(PerformStep(step));
+      RETURN_NOT_OK(WaitForDDLReplication(is_paused));
+
+      if (step == step_to_pause_on) {
+        is_paused = true;
+        LOG(INFO) << "STARTING STEP " << kNumSteps + 1 << ": PAUSING";
+        ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = is_paused;
+      }
+
+      RETURN_NOT_OK(VerifyTargetData(is_paused));
+    }
+
+    // Unpause and verify that the consumer catches up.
+    LOG(INFO) << "STARTING STEP " << kNumSteps + 1 << ": UNPAUSE";
+    is_paused = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = is_paused;
+    RETURN_NOT_OK(WaitForDDLReplication(is_paused));
+    RETURN_NOT_OK(VerifyTargetData(is_paused));
+
+    // Reset state.
+    LOG(INFO) << "STARTING STEP " << kNumSteps + 2 << ": RESET";
+    RETURN_NOT_OK(producer_conn_->ExecuteFormat("DELETE FROM $0", kTableName));
+    RETURN_NOT_OK(WaitForDDLReplication(is_paused));
+    RETURN_NOT_OK(VerifyTargetData(is_paused));
+    paused_expected_data_output_.clear();
+    paused_expected_schema_output_.clear();
+
+    return Status::OK();
+  }
+
+ protected:
+  const std::vector<std::string> kColumnNames = {"a", "b", "c"};
+  const size_t kNumSteps = (kColumnNames.size() - 1) * 2;
+  const std::string kTableName = "add_drop_column_table";
+  const std::string kDataQueryStr = "SELECT * FROM $0 ORDER BY $1";
+  const std::string kSchemaQueryStr =
+      "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '$0' ORDER "
+      "BY column_name";
+
+  std::unique_ptr<pgwrapper::PGConn> producer_conn_;
+  std::unique_ptr<pgwrapper::PGConn> consumer_conn_;
+
+  std::string paused_expected_data_output_;
+  std::string paused_expected_schema_output_;
+};
+
+TEST_F(XClusterDDLReplicationAddDropColumnTest, AddDropColumns) {
+  // Repeatedly add/drop columns while inserting data. Run the test multiple times with a pause
+  // after each add/drop. Ensure that the consumer is able to still read older data if paused even
+  // as other streams are making progress.
+  for (size_t i = 0; i < kNumSteps; ++i) {
+    LOG(INFO) << "Running test with pause on step " << i;
+    ASSERT_OK(RunTest(i));
+    LOG(INFO) << "Finished running test with pause on step " << i;
   }
 }
 

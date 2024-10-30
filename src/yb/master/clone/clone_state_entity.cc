@@ -38,6 +38,16 @@ void CloneStateInfo::AddTabletData(TabletData tablet_data) {
   tablet_data_.push_back(std::move(tablet_data));
 }
 
+LeaderEpoch CloneStateInfo::Epoch() {
+  std::lock_guard l(mutex_);
+  return epoch_;
+}
+
+void CloneStateInfo::SetEpoch(const LeaderEpoch& epoch) {
+  std::lock_guard l(mutex_);
+  epoch_ = epoch;
+}
+
 const TxnSnapshotId& CloneStateInfo::SourceSnapshotId() {
   std::lock_guard l(mutex_);
   return source_snapshot_id_;
@@ -66,6 +76,14 @@ const TxnSnapshotRestorationId& CloneStateInfo::RestorationId() {
 void CloneStateInfo::SetRestorationId(const TxnSnapshotRestorationId& restoration_id) {
   std::lock_guard l(mutex_);
   restoration_id_ = restoration_id;
+}
+
+std::shared_ptr<CountDownLatch> CloneStateInfo::NumTserversWithStaleMetacache() {
+  return num_tservers_with_stale_metacache;
+}
+
+void CloneStateInfo::SetNumTserversWithStaleMetacache(uint64_t count) {
+  num_tservers_with_stale_metacache = std::make_shared<CountDownLatch>(count);
 }
 
 }  // namespace yb::master

@@ -18,7 +18,7 @@ Sometimes you may need to move a YugabyteDB universe deployed on a set of nodes 
 - updating the instance images on a regular basis (for example, AMI rehydration in AWS).
 - moving to a different set of zones, regions, or data centers.
 
-This page describes how to change a cluster's configuration, including setting up new servers, moving the data from the old servers, and shutting down the old servers. This tutorial assumes that you are familiar with the [YugabyteDB architecture](../../architecture/concepts/universe/).
+This page describes how to change a cluster's configuration, including setting up new servers, moving the data from the old servers, and shutting down the old servers. This tutorial assumes that you are familiar with the [YugabyteDB architecture](../../architecture/).
 
 ## Example scenario
 
@@ -43,7 +43,7 @@ And you are moving to the following configuration:
 
 To ensure you don't inadvertently cause any further under replication on top of ongoing failures, verify the following:
 
-- All YB-Master servers are running and able to talk to each other. This can be verified by checking the master UI (at *http://`node1`:7000/*) and ensure the `Masters` tab shows all three with one in the `LEADER` for `RAFT Role`.
+- All YB-Master servers are running and able to talk to each other. This can be verified by checking the master UI (at *http://`node1`:7000/*) and ensure the `Masters` tab shows all three with one in the `LEADER` for `Raft Role`.
 - All the YB-TServer servers are running and heartbeating to the master leader. This can be verified by checking the master UI (at *http://`node1`:7000/tablet-servers*), which lists all the tablet servers in an `ALIVE` state.
 
 ### Ensure new machines are ready

@@ -59,7 +59,7 @@ func DescribeStorageConfigurationUtil(cmd *cobra.Command, commandCall string) {
 
 	r = storageConfigs
 
-	if len(r) > 0 && util.IsOutputType("table") {
+	if len(r) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 		fullStorageConfigurationContext := *storageconfiguration.NewFullStorageConfigContext()
 		fullStorageConfigurationContext.Output = os.Stdout
 		fullStorageConfigurationContext.Format = storageconfiguration.
@@ -79,8 +79,9 @@ func DescribeStorageConfigurationUtil(cmd *cobra.Command, commandCall string) {
 	}
 
 	storageConfigCtx := formatter.Context{
-		Output: os.Stdout,
-		Format: storageconfiguration.NewStorageConfigFormat(viper.GetString("output")),
+		Command: "describe",
+		Output:  os.Stdout,
+		Format:  storageconfiguration.NewStorageConfigFormat(viper.GetString("output")),
 	}
 	storageconfiguration.Write(storageConfigCtx, r)
 

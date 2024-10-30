@@ -14,7 +14,7 @@ type: docs
 
 To enhance the security of your database, you can enable login profiles to lock accounts after a specified number of login attempts. This prevents brute force exploits.
 
-When enabled, database administrators with superuser (or in YugabyteDB Managed, `yb_db_admin`) privileges can create login profiles and assign roles to the profiles.
+When enabled, database administrators with superuser (or in YugabyteDB Aeon, `yb_db_admin`) privileges can create login profiles and assign roles to the profiles.
 
 There is no default profile for roles; you must explicitly assign all roles with login privileges to the profile if you want the policy to apply to all users. Users not associated with a profile continue to have unlimited login attempts.
 
@@ -189,7 +189,7 @@ The following table describes the columns and their values:
 | `rolprffailedloginattempts` | int | 0 | Number of failed attempts by this role.
 | `rolprflockeduntil` | timestamptz | Null | If `rolprfstatus` is `t`, the duration that the role is locked. Otherwise, the value is NULL and not used.
 
-<!-- When login profiles are enabled, you can display these columns in the `pg_roles` table by running the following [meta-command](../../../admin/ysqlsh-meta-commands/):
+<!-- When login profiles are enabled, you can display these columns in the `pg_roles` table by running the following [meta-command](../../../api/ysqlsh-meta-commands/):
 
 ```sql
 yugabyte=# \dgP

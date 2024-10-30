@@ -40,6 +40,7 @@
 #include "yb/rocksdb/universal_compaction.h"
 
 #include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
 
 #ifdef max
 #undef max
@@ -301,6 +302,10 @@ struct ColumnFamilyOptions {
   //
   // Dynamically changeable through SetOptions() API
   int max_write_buffer_number;
+
+  // The limit for the number of bytes in immutable mem tables.
+  // After reaching this limit new writes are blocked.
+  size_t max_flushing_bytes = std::numeric_limits<size_t>::max();
 
   // The minimum number of write buffers that will be merged together
   // before writing to storage.  If set to 1, then
@@ -1434,6 +1439,8 @@ class TableAwareReadFileFilter {
   virtual ~TableAwareReadFileFilter() = default;
 };
 
+YB_STRONGLY_TYPED_BOOL(CacheRestartBlockKeys);
+
 // Options that control read operations
 struct ReadOptions {
   // If true, all data read from underlying storage will be
@@ -1541,6 +1548,9 @@ struct ReadOptions {
 
   // Statistics object to use instead of the DB statistics object (default).
   Statistics* statistics = nullptr;
+
+  // Whether entry keys to be cached per a restart block during iteration over that block.
+  CacheRestartBlockKeys cache_restart_block_keys = CacheRestartBlockKeys::kFalse;
 
   static const ReadOptions kDefault;
 

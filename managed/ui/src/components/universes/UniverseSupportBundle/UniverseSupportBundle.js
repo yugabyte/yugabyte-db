@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import { connect, useDispatch, useSelector } from 'react-redux';
+import { toast } from 'react-toastify';
 import { FirstStep } from './FirstStep/FirstStep';
 import { SecondStep, updateOptions } from './SecondStep/SecondStep';
 import { ThirdStep } from './ThirdStep/ThirdStep';
@@ -21,6 +22,8 @@ import './UniverseSupportBundle.scss';
 import { filterTypes } from '../../metrics/MetricsComparisonModal/ComparisonFilterContextProvider';
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { getUniverseStatus } from '../helpers/universeHelpers';
+import { RBAC_ERR_MSG_NO_PERM } from '../../../redesign/features/rbac/common/validator/ValidatorUtils';
+import { createErrorMessage } from '../../../utils/ObjectUtils';
 
 const stepsObj = {
   firstStep: 'firstStep',
@@ -28,7 +31,7 @@ const stepsObj = {
   thirdStep: 'thirdStep'
 };
 
-const POLLING_INTERVAL = 3000; // ten seconds
+const POLLING_INTERVAL = 10000; // ten seconds
 
 export const UniverseSupportBundle = (props) => {
   const {
@@ -39,8 +42,8 @@ export const UniverseSupportBundle = (props) => {
   } = props;
   const [steps, setSteps] = useState(stepsObj.firstStep);
   const defaultOptions = updateOptions(
-    filterTypes[0].value,
-    [true, true, true, true, true, true, true, true, true, true],
+    filterTypes[0],
+    [true, true, true, true, true, true, true, true, true, true, true],
     () => {}
   );
   const [payload, setPayload] = useState(defaultOptions);
@@ -91,7 +94,12 @@ export const UniverseSupportBundle = (props) => {
   }, [supportBundles, listSupportBundle, universeDetails.universeUUID]);
 
   const saveSupportBundle = (universeUUID) => {
-    dispatch(crateSupportBundle(universeUUID, payload)).then(() => {
+    dispatch(crateSupportBundle(universeUUID, payload)).then((response) => {
+      if (response.error) {
+        if (response?.payload?.response?.status === 403)
+          toast.error(RBAC_ERR_MSG_NO_PERM, { autoClose: 3000 });
+        else toast.error(createErrorMessage(response.payload));
+      }
       handleStepChange(stepsObj.thirdStep);
       listSupportBundle(universeUUID);
       setPayload(defaultOptions);

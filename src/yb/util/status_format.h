@@ -68,19 +68,28 @@
   } while (0)
 
 #define SCHECK_EQ(var1, var2, status_type, msg) \
-  SCHECK_OP_FUNC(var1, yb::std_util::cmp_equal, var2, status_type, msg)
+  SCHECK_OP_FUNC(var1, ::yb::cmp_equal, var2, status_type, msg)
 #define SCHECK_NE(var1, var2, status_type, msg) SCHECK_OP(var1, !=, var2, status_type, msg)
 #define SCHECK_GT(var1, var2, status_type, msg) \
-  SCHECK_OP_FUNC(var1, yb::std_util::cmp_greater, var2, status_type, msg)
+  SCHECK_OP_FUNC(var1, ::yb::cmp_greater, var2, status_type, msg)
 #define SCHECK_GE(var1, var2, status_type, msg) SCHECK_OP(var1, >=, var2, status_type, msg)
 #define SCHECK_LT(var1, var2, status_type, msg) \
-  SCHECK_OP_FUNC(var1, yb::std_util::cmp_less, var2, status_type, msg)
+  SCHECK_OP_FUNC(var1, ::yb::cmp_less, var2, status_type, msg)
 #define SCHECK_LE(var1, var2, status_type, msg) SCHECK_OP(var1, <=, var2, status_type, msg)
 #define SCHECK_BOUNDS(var1, lbound, rbound, status_type, msg) \
     do { \
       SCHECK_GE(var1, lbound, status_type, msg); \
       SCHECK_LE(var1, rbound, status_type, msg); \
     } while(false)
+
+#define SCHECK_STR_CONTAINS(str, substr) \
+  SCHECK_NE( \
+      str.find((substr)), std::string::npos, NotFound, \
+      Format("'$0' does not contain '$1'", str, (substr)))
+
+#define SCHECK_STR_NOT_CONTAINS(str, substr) \
+  SCHECK_EQ( \
+      str.find(substr), std::string::npos, IllegalState, Format("'$0' contain '$1'", str, substr))
 
 #ifndef NDEBUG
 

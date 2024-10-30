@@ -4,12 +4,15 @@ package scheduler
 
 import (
 	"context"
+	"node-agent/app/executor"
 	"testing"
 	"time"
 )
 
 func TestScheduler(t *testing.T) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
+	executor.Init(ctx)
+	Init(ctx)
 	instance := GetInstance()
 	ch := make(chan int, 1)
 	start := time.Now()

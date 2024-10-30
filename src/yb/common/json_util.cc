@@ -23,16 +23,21 @@
 #include "yb/util/status_format.h"
 #include "yb/util/string_case.h"
 
-using std::string;
+namespace yb::common {
 
-namespace yb {
-namespace common {
+namespace {
+
+inline Status BadTypeStatus(const rapidjson::Value& value) {
+  return STATUS_FORMAT(InvalidArgument, "Unexpected value type $0", value.GetType());
+}
+
+} // namespace
 
 Status ConvertQLValuePBToRapidJson(const QLValuePB& ql_value_pb,
                                    rapidjson::Value* rapidjson_value,
                                    rapidjson::Document::AllocatorType* alloc) {
   auto is_nan_or_inf = [](double number) -> bool {
-    const string str = SimpleDtoa(number);
+    const auto str = SimpleDtoa(number);
     return str == "nan"|| str == "-nan"|| str == "inf" || str == "-inf";
   };
 
@@ -157,7 +162,7 @@ Status ConvertQLValuePBToRapidJson(const QLValuePB& ql_value_pb,
         // Quote the key if the key is not a string OR
         // if the key string contains characters in upper-case.
         if (!map_key.IsString() || ContainsUpperCase(map_key.GetString())) {
-          string map_key_str = WriteRapidJsonToString(map_key);
+          auto map_key_str = WriteRapidJsonToString(map_key);
           map_key.Swap(rapidjson::Value().SetString(map_key_str.c_str(), *alloc));
         }
 
@@ -190,5 +195,57 @@ std::string PrettyWriteRapidJsonToString(const rapidjson::Value& document) {
   return std::string(buffer.GetString());
 }
 
-} // namespace common
-} // namespace yb
+Result<rapidjson::Document> ParseJson(const std::string_view& raw) {
+  rapidjson::Document result;
+  SCHECK(!result.Parse(raw.data(), raw.length()).HasParseError(),
+         InvalidArgument,
+         Format("Failed to parse json output $0: $1", result.GetParseError(), raw));
+  return result;
+}
+
+Result<const rapidjson::Value&> GetMember(const rapidjson::Value& root, const char* name) {
+  const auto it = root.FindMember(name);
+  SCHECK(it != root.MemberEnd(), NotFound, "Member '$0' not found", name);
+  return it->value;
+}
+
+template <typename T>
+Result<T> GetMemberAsType(
+    const rapidjson::Value& root, const char* name,
+    std::function<bool(const rapidjson::Value&)> is_valid_type_func,
+    std::function<T(const rapidjson::Value&)> extract_value_func) {
+  const auto& member = VERIFY_RESULT_REF(GetMember(root, name));
+  if (!is_valid_type_func(member)) {
+    return BadTypeStatus(member);
+  }
+  return extract_value_func(member);
+}
+
+Result<uint32_t> GetMemberAsUint(rapidjson::Value& document, const char* element_name) {
+  return GetMemberAsType<uint32_t>(
+      document, element_name, [](const auto& value) { return value.IsUint(); },
+      [](const auto& value) { return value.GetUint(); });
+}
+
+Result<uint64_t> GetMemberAsUint64(rapidjson::Document& document, const char* element_name) {
+  return GetMemberAsType<uint64_t>(
+      document, element_name, [](const auto& value) { return value.IsUint64(); },
+      [](const auto& value) { return value.GetUint64(); });
+}
+
+Result<std::string_view> GetMemberAsStr(const rapidjson::Value& root, const char* name) {
+  return GetMemberAsType<std::string_view>(
+      root, name, [](const auto& member) { return member.IsString(); },
+      [](const auto& member) {
+        return std::string_view(member.GetString(), member.GetStringLength());
+      });
+}
+
+Result<rapidjson::Value::ConstArray> GetMemberAsArray(
+    const rapidjson::Value& root, const char* name) {
+  return GetMemberAsType<rapidjson::Value::ConstArray>(
+      root, name, [](const auto& member) { return member.IsArray(); },
+      [](const auto& member) { return member.GetArray(); });
+}
+
+} // namespace yb::common

@@ -53,25 +53,29 @@ public class RestoreBackup extends UniverseTaskBase {
 
         if (isFirstTry()) {
           backupHelper.validateRestoreOverwrites(taskParams().backupStorageInfoList, universe);
-          if (universe.isYbcEnabled()
-              && !universe
-                  .getUniverseDetails()
-                  .getYbcSoftwareVersion()
-                  .equals(ybcManager.getStableYbcVersion())) {
-
-            if (universe
+          if (universe.isYbcEnabled()) {
+            if (!universe
                 .getUniverseDetails()
-                .getPrimaryCluster()
-                .userIntent
-                .providerType
-                .equals(Common.CloudType.kubernetes)) {
-              createUpgradeYbcTaskOnK8s(
-                      taskParams().getUniverseUUID(), ybcManager.getStableYbcVersion())
-                  .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+                .getYbcSoftwareVersion()
+                .equals(ybcManager.getStableYbcVersion())) {
+              if (universe
+                  .getUniverseDetails()
+                  .getPrimaryCluster()
+                  .userIntent
+                  .providerType
+                  .equals(Common.CloudType.kubernetes)) {
+                createUpgradeYbcTaskOnK8s(
+                        taskParams().getUniverseUUID(), ybcManager.getStableYbcVersion())
+                    .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+              } else {
+                createUpgradeYbcTask(
+                        taskParams().getUniverseUUID(), ybcManager.getStableYbcVersion(), true)
+                    .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+              }
             } else {
-              createUpgradeYbcTask(
-                      taskParams().getUniverseUUID(), ybcManager.getStableYbcVersion(), true)
-                  .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+              // Try re-install ybc if ping check fails
+              // Skip upgrade case, since upgrade will anyway re-configure it
+              handleUnavailableYbcServers(universe, ybcManager);
             }
           }
         }
@@ -90,26 +94,27 @@ public class RestoreBackup extends UniverseTaskBase {
           restore.update(getTaskUUID(), Restore.State.Completed);
         }
       } catch (CancellationException ce) {
-        unlockUniverseForUpdate(false);
+        unlockUniverseForUpdate();
         isAbort = true;
         // Aborted
         if (restore != null) {
           restore.update(getTaskUUID(), Restore.State.Aborted);
           RestoreKeyspace.update(restore, TaskInfo.State.Aborted);
         }
-        kubernetesStatus.updateRestoreJobStatus("Aborted Restore task", getUserTaskUUID());
+        kubernetesStatus.updateRestoreJobStatus(
+            "Aborted Restore task", getUserTaskUUID(), universe);
         throw ce;
       }
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       handleFailedBackupAndRestore(
           null, Arrays.asList(restore), isAbort, taskParams().alterLoadBalancer);
-      kubernetesStatus.updateRestoreJobStatus("Failed Restore task", getUserTaskUUID());
+      kubernetesStatus.updateRestoreJobStatus("Failed Restore task", getUserTaskUUID(), universe);
       throw t;
     } finally {
       unlockUniverseForUpdate();
     }
-    kubernetesStatus.updateRestoreJobStatus("Finished Restore", getUserTaskUUID());
+    kubernetesStatus.updateRestoreJobStatus("Finished Restore", getUserTaskUUID(), universe);
     log.info("Finished {} task.", getName());
   }
 }

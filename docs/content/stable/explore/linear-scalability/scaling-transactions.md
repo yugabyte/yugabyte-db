@@ -24,9 +24,9 @@ In the following illustration, you can see that as the connection is to `NODE-2`
 
 ![How does a transaction work](/images/explore/scalability/scaling-transactions-working.png)
 
-{{<tip>}}
+{{<lead link="../../../architecture/transactions/transactional-io-path/">}}
 To understand how transactions work in detail, see [Transactional I/O path](../../../architecture/transactions/transactional-io-path/).
-{{</tip>}}
+{{</lead>}}
 
 ## OLTP benchmark
 

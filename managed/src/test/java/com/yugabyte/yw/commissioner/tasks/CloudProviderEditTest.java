@@ -845,7 +845,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     providerEditRestrictionManager.onTaskCreated(backupTaskUUID, createBackup, params);
     TaskInfo backupTaskInfo = new TaskInfo(TaskType.BackupUniverse, null);
     backupTaskInfo.setTaskState(TaskInfo.State.Running);
-    backupTaskInfo.setTaskUUID(backupTaskUUID);
+    backupTaskInfo.setUuid(backupTaskUUID);
     backupTaskInfo.setTaskParams(Json.newObject());
     backupTaskInfo.setOwner("Myself");
     backupTaskInfo.save();
@@ -878,7 +878,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     providerEditRestrictionManager.onTaskCreated(backupTaskUUID, createBackup, params);
     TaskInfo backupTaskInfo = new TaskInfo(TaskType.BackupUniverse, null);
     backupTaskInfo.setTaskState(TaskInfo.State.Running);
-    backupTaskInfo.setTaskUUID(backupTaskUUID);
+    backupTaskInfo.setUuid(backupTaskUUID);
     backupTaskInfo.setTaskParams(Json.newObject());
     backupTaskInfo.setOwner("Myself");
     backupTaskInfo.save();

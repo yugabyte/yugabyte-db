@@ -63,4 +63,4 @@ YugabyteDB provides the following web endpoints where the current state of each 
 | YCQL Metrics | `<node-ip>:12000/metrics` |
 | YSQL Metrics | `<node-ip>:13000/metrics` |
 
-When running `yb-ctl` locally with default values, three local IP addresses are created: `127.0.0.1`, `127.0.0.2`, and `127.0.0.3`, one for each YugabyteDB node.
+When running yb-ctl locally with default values, three local IP addresses are created: `127.0.0.1`, `127.0.0.2`, and `127.0.0.3`, one for each YugabyteDB node.

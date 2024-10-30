@@ -26,11 +26,11 @@ You can upgrade YBA using the following methods:
 
 If you are upgrading a YBA installation with high availability enabled, follow the instructions provided in [Upgrade instances](../administer-yugabyte-platform/high-availability/#upgrade-instances).
 
-If you have upgraded YBA to version 2.12 or later and [xCluster replication](../../explore/multi-region-deployments/asynchronous-replication-ysql/) for your universe was set up via yb-admin instead of the UI, follow the instructions provided in [Synchronize replication after upgrade](upgrade-yp-xcluster-ybadmin/).
+If you have upgraded YBA to version 2.12 or later and [xCluster replication](../../explore/going-beyond-sql/asynchronous-replication-ysql/) for your universe was set up via yb-admin instead of the UI, follow the instructions provided in [Synchronize replication after upgrade](upgrade-yp-xcluster-ybadmin/).
 
 {{< note title="Upgrading YBA on deprecated operating systems" >}}
 
-If you are running YBA v2.20 on a [deprecated OS](../../reference/configuration/operating-systems/), you will need to update your OS before you can upgrade YBA to the next major release.
+If you are running YBA on a [deprecated OS](../../reference/configuration/operating-systems/), you will need to update your OS before you can upgrade YBA to the next major release.
 
 {{< /note >}}
 

@@ -376,7 +376,7 @@ class PackedRowData {
            column_id));
         return CheckPackOldValueResult(
             column_id, std::visit([column_id, missing_value](auto& packer) {
-          return packer.AddValue(column_id, missing_value);
+          return packer.AddValue(column_id, missing_value, kUnlimitedTail);
         }, *packer_));
       }
       return DoPackOldValue(column_id, decoder.FetchValue(decoder.GetPackedIndex(column_id)));
@@ -951,7 +951,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     if (key_type == dockv::KeyEntryType::kColumnId ||
         key_type == dockv::KeyEntryType::kSystemColumnId) {
       Slice column_id_slice = key.WithoutPrefix(doc_key_size + 1);
-      auto column_id_as_int64 = VERIFY_RESULT(FastDecodeSignedVarIntUnsafe(&column_id_slice));
+      auto column_id_as_int64 = VERIFY_RESULT(FastDecodeSignedVarInt(&column_id_slice));
       ColumnId column_id;
       RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id));
 

@@ -1,17 +1,23 @@
 title: ClusterNetworkingSpec
-description: Networking specification that is used for nodes in this cluster. Part of ClusterSpec.
+description: The network settings configured at top-level are uniform settings for both tserver and master nodes. Granular settings for tserver and master (honoured if dedicated_nodes is true or this is k8s cluster) are available for certain network settings. Granular settings can also be overridden per Availability Zone. Part of ClusterSpec.
 type: object
-properties:
-  enable_exposing_service:
-    description: Whether to create a load balancer service for this cluster. Defaults to NONE.
-    type: string
-    default: NONE
-    enum:
-      - NONE
-      - EXPOSED
-      - UNEXPOSED
-  enable_lb:
-    description: Create target groups if enabled. Used by YBM.
-    type: boolean
-    example: false
-    x-yba-api-visibility: internal
+allOf:
+  - $ref: "./AvailabilityZoneNetworking.yaml"
+  - properties:
+      enable_exposing_service:
+        description: Whether to create a load balancer service for this cluster. Defaults to NONE.
+        type: string
+        default: NONE
+        enum:
+          - NONE
+          - EXPOSED
+          - UNEXPOSED
+      enable_lb:
+        description: Create target groups if enabled. Used by YBM.
+        type: boolean
+        example: false
+        x-yba-api-visibility: internal
+      az_networking:
+        description: Granular network settings overridden per Availability Zone identified by AZ uuid.
+        additionalProperties:
+          $ref: "./AvailabilityZoneNetworking.yaml"

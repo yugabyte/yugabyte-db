@@ -1341,6 +1341,14 @@ spark_available() {
   return 1  # false
 }
 
+# Build archive that is sent to workers, but don't run any tests.
+# The archive should be automatically re-used by run_tests_on_spark()
+prep_spark_archive() {
+  touch "${BUILD_ROOT}/empty_test_list"
+  "$YB_SCRIPT_PATH_RUN_TESTS_ON_SPARK" --build-root "$BUILD_ROOT" --send_archive_to_workers \
+     --java --cpp --test_list "${BUILD_ROOT}/empty_test_list"
+}
+
 run_tests_on_spark() {
   if ! spark_available; then
     fatal "Spark is not available, can't run tests on Spark"
@@ -1876,7 +1884,7 @@ run_python_doctest() {
     if [[ $python_file == managed/* ||
           $python_file == cloud/* ||
           $python_file == src/postgres/src/test/locale/sort-test.py ||
-          $python_file == src/postgres/third-party-extensions/postgresql_anonymizer/* ||
+          $python_file == src/postgres/third-party-extensions/* ||
           $python_file == bin/test_bsopt.py ||
           $python_file == thirdparty/* ]]; then
       continue
@@ -2086,6 +2094,28 @@ run_cmake_unit_tests() {
     log "Validated ${#cmake_files[@]} CMake files using light-weight grep checks"
   fi
   cd "$old_dir"
+}
+
+prep_ybc_testing() {
+  # YBC is supported only on linux.
+  if is_linux; then
+    ybc_dest="$YB_SRC_ROOT/build/ybc"
+    if [[ -d "${ybc_dest}" ]]; then
+      log "Found existing $ybc_dest directory, skipping YBC prep."
+    else
+      ybc_tarball_dir="/opt/yb-build/ybc"
+      config_file="$YB_SRC_ROOT/managed/src/main/resources/reference.conf"
+      # check that current version is downloaded
+      "$YB_SRC_ROOT"/managed/download_ybc.sh -i -c "$config_file" -d "$ybc_tarball_dir"
+      # Extract version the same way as download_ybc.sh does.
+      ybc_version=$(grep ybc -A2 "${config_file}" |
+                    awk -F '= ' '/stable_version/ {print $2}' | tr -d \")
+      ybc_tar=$(compgen -G "${ybc_tarball_dir}/ybc-${ybc_version}-*-${YB_TARGET_ARCH}.tar.gz")
+      log "Unpacking ${ybc_tar} bin/ binaries to ${ybc_dest}/"
+      mkdir -p "${ybc_dest}"
+      tar -x -f "${ybc_tar}" -C "${ybc_dest}" --strip-components=2 --wildcards 'yb*/bin/*'
+    fi
+  fi
 }
 
 # -------------------------------------------------------------------------------------------------

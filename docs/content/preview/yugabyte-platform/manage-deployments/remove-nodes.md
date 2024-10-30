@@ -38,7 +38,7 @@ For on-premises universes, clean up of existing data directories and running pro
 On-premises nodes have three states: In use, Free, and Decommissioned as described in the following illustration.
 
 ![Decommissioned node workflow](/images/ee/on-prem-replace-workflow.png)
-To check the state of an on-premises node, navigate to **Configs > Infrastructure > On-Premises Datacenters**, select the associated on-premises configuration, and click **Instances**.
+To check the state of an on-premises node, navigate to **Integrations > Infrastructure > On-Premises Datacenters**, select the associated on-premises configuration, and click **Instances**.
 
 ### Recommission a decommissioned on-premises node
 
@@ -46,7 +46,7 @@ You can return a Decommissioned node to the on-premises provider Free pool after
 
 Perform the following steps to recommission a node:
 
-1. Navigate to **Configs > Infrastructure > On-Premises Datacenters**, select the associated on-premises configuration, and click **Instances**.
+1. Navigate to **Integrations > Infrastructure > On-Premises Datacenters**, select the associated on-premises configuration, and click **Instances**.
 
 1. Under Instances, for the decommissioned node, click **Actions > Recommission Node**. YBA will now re-attempt to clean up existing data directories and processes on this node.
 
@@ -58,7 +58,7 @@ YugabyteDB Anywhere (YBA) starts the node recommissioning process, and you can v
 
 ## Eliminate an unresponsive node
 
-If a virtual machine or a physical server in a universe reaches its end of life and has unrecoverable hardware or other system issues (such as problems with its operating system, disk, and so on) it is detected and displayed in the YugabyteDB Anywhere UI as an unreachable node, as per the following illustration:
+If a virtual machine or a physical server in a universe reaches its end of life and has unrecoverable hardware or other system issues (such as problems with its operating system, disk, and so on) it is detected and displayed in YugabyteDB Anywhere as an unreachable node, as per the following illustration:
 
 ![Unreachable Node Actions](/images/ee/node-actions-unreachable.png)
 
@@ -79,6 +79,10 @@ A node status displayed in the UI is not always entirely indicative of the node'
 {{< /note >}}
 
 ## Start and stop node processes
+
+{{< warning title="Prevent back up failure due to NFS unmount on cloud VM restart" >}}
+If the universe uses NFS for backup storage, make sure the NFS mount is added to `/etc/fstab` on the node. When a cloud VM is restarted, the NFS mount may get unmounted if its entry is not in `/etc/fstab`. This can lead to backup failures, and errors during [backup](../../back-up-restore-universes/back-up-universe-data/) or [restore](../../back-up-restore-universes/restore-universe-data/).
+{{< /warning >}}
 
 ### Stop a process
 
@@ -147,6 +151,15 @@ A typical universe has an RF of 3 or 5. At the end of the [node removal](#remove
 1. Adds the new Master to the existing Master quorum.
 
 1. Updates the Master addresses flag on all other nodes to inform them of the new Master.
+
+## Fix a lagging master process
+
+If a master process is down for more than its [WAL log retention period](../../../reference/configuration/yb-master/#log-min-seconds-to-retain) (defaults to 2 hrs) and then becomes healthy, it will be unable to catch up to its peers. In this scenario, the **Nodes** tab shows that the master is in a healthy state but YugabyteDB Anywhere generates an "under-replicated masters" alert. To fix this situation, do the following:
+
+1. Identify the lagging master.  Navigate to **Universes**, select your universe, open the **Metrics** tab, and select **Master > Master Follower Lag** metric.
+1. On the **Nodes** page, click the [**Actions > Stop Processes**](#stop-a-process) action on the node with the lagging master. As part of the execution of this action, a new master process might be started on a different node in the same Availability Zone (if possible).
+1. When the "Stop Processes" task completes, click the [**Actions > Start Processes**](#start-a-process) action on the same node.
+1. Verify that the cluster has an [RF](../../../architecture/key-concepts/#replication-factor-rf) count of healthy masters.
 
 ## Release node instance
 

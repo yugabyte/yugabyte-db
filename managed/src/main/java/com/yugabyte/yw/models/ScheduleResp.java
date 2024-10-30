@@ -47,5 +47,6 @@ public class ScheduleResp {
     boolean useTablespaces;
     TimeUnit expiryTimeUnit;
     long parallelism;
+    boolean pointInTimeRestoreEnabled;
   }
 }

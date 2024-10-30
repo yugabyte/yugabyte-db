@@ -45,6 +45,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -84,7 +85,7 @@ public class GCPUtil implements CloudUtil {
   private static final String GS_PROTOCOL_PREFIX = "gs://";
   private static final String HTTPS_PROTOCOL_PREFIX = "https://storage.googleapis.com/";
   private static final String PRICING_JSON_URL =
-      "https://cloudpricingcalculator.appspot.com/static/data/pricelist.json";
+      "https://downloads.yugabyte.com/gcp_price_list/pricelist_gcp.json";
 
   public static final String YBC_GOOGLE_APPLICATION_CREDENTIALS_FIELDNAME =
       "GOOGLE_APPLICATION_CREDENTIALS";
@@ -163,6 +164,10 @@ public class GCPUtil implements CloudUtil {
     }
 
     return storageOptions.build().getService();
+  }
+
+  public boolean uploadYbaBackup(CustomerConfigData configData, File backup, String backupDir) {
+    return false;
   }
 
   @Override
@@ -775,7 +780,7 @@ public class GCPUtil implements CloudUtil {
       }
       return false;
     } catch (Exception e) {
-      e.printStackTrace();
+      log.error("Failed to fetch interruptions status for GCP instance", e);
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           "Fetch interruptions status for GCP instance failed with " + e.getMessage());

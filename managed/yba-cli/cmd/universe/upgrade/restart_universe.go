@@ -17,9 +17,10 @@ import (
 
 // RestartCmd represents the universe upgrade restart command
 var RestartCmd = &cobra.Command{
-	Use:   "restart",
-	Short: "Restart a YugabyteDB Anywhere Universe",
-	Long:  "Restart a YugabyteDB Anywhere Universe",
+	Use:     "restart",
+	Short:   "Restart a YugabyteDB Anywhere Universe",
+	Long:    "Restart a YugabyteDB Anywhere Universe",
+	Example: "yba universe restart --name <universe-name>",
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		universeName, err := cmd.Flags().GetString("name")
@@ -38,7 +39,7 @@ var RestartCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if !skipValidations {
-			_, _, err := UpgradeValidations(cmd, util.UpgradeOperation)
+			_, _, err := Validations(cmd, util.UpgradeOperation)
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
@@ -53,7 +54,7 @@ var RestartCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 
-		authAPI, universe, err := UpgradeValidations(cmd, util.UpgradeOperation)
+		authAPI, universe, err := Validations(cmd, util.UpgradeOperation)
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -92,12 +93,11 @@ var RestartCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		taskUUID := rUpgrade.GetTaskUUID()
 		logrus.Info(
 			fmt.Sprintf("Restarting universe %s\n",
 				formatter.Colorize(universeName, formatter.GreenColor)))
 
-		waitForUpgradeUniverseTask(authAPI, universeName, universeUUID, taskUUID)
+		WaitForUpgradeUniverseTask(authAPI, universeName, rUpgrade)
 	},
 }
 

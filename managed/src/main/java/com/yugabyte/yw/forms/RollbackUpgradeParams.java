@@ -55,6 +55,11 @@ public class RollbackUpgradeParams extends UpgradeTaskParams {
   public void verifyParams(Universe universe, boolean isFirstTry) {
     super.verifyParams(universe, isFirstTry);
 
+    if (upgradeOption == UpgradeOption.NON_RESTART_UPGRADE) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Rollback upgrade does not support non-restart upgrade option.");
+    }
+
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     if (!ALLOWED_UNIVERSE_ROLLBACK_UPGRADE_STATE_SET.contains(
         universeDetails.softwareUpgradeState)) {

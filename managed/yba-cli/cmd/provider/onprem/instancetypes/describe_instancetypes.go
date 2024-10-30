@@ -23,6 +23,8 @@ var describeInstanceTypesCmd = &cobra.Command{
 	Aliases: []string{"get"},
 	Short:   "Describe instance type of a YugabyteDB Anywhere on-premises provider",
 	Long:    "Describe instance types of a YugabyteDB Anywhere on-premises provider",
+	Example: `yba provider onprem instance-type describe \
+	--name <provider-name> --instance-type-name <instance-type-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -95,7 +97,7 @@ var describeInstanceTypesCmd = &cobra.Command{
 		instanceTypeList = append(instanceTypeList, rDescribe)
 
 		if rDescribe.GetActive() {
-			if len(instanceTypeList) > 0 && util.IsOutputType("table") {
+			if len(instanceTypeList) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 				fullInstanceTypesContext := *instancetypes.NewFullInstanceTypesContext()
 				fullInstanceTypesContext.Output = os.Stdout
 				fullInstanceTypesContext.Format = instancetypes.NewFullInstanceTypesFormat(
@@ -106,8 +108,9 @@ var describeInstanceTypesCmd = &cobra.Command{
 			}
 
 			instanceTypesCtx := formatter.Context{
-				Output: os.Stdout,
-				Format: instancetypes.NewInstanceTypesFormat(viper.GetString("output")),
+				Command: "describe",
+				Output:  os.Stdout,
+				Format:  instancetypes.NewInstanceTypesFormat(viper.GetString("output")),
 			}
 			instancetypes.Write(instanceTypesCtx, instanceTypeList)
 		} else {

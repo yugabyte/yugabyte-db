@@ -20,8 +20,11 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import io.swagger.annotations.ApiModelProperty.AccessMode;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.LinkedHashSet;
@@ -82,6 +85,13 @@ public class NodeDetails {
 
   @ApiModelProperty(value = "True if this a custom YB AMI")
   public boolean ybPrebuiltAmi;
+
+  // This field is persistent across tasks until the master is not stopped.
+  @ApiModelProperty(
+      value = "WARNING: This is a preview API that could change. Used by auto master failover",
+      accessMode = AccessMode.READ_ONLY)
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.3.0.0")
+  public boolean autoSyncMasterAddrs;
 
   // Possible states in which this node can exist.
   public enum NodeState {
@@ -255,6 +265,9 @@ public class NodeDetails {
   @ApiModelProperty(value = "YSQL RPC port")
   public int ysqlServerRpcPort = 5433;
 
+  @ApiModelProperty(value = "Internal YSQL RPC port")
+  public int internalYsqlServerRpcPort = 6433;
+
   // Which port node_exporter is running on.
   @ApiModelProperty(value = "Node exporter port")
   public int nodeExporterPort = 9300;
@@ -340,6 +353,8 @@ public class NodeDetails {
     StringBuilder sb = new StringBuilder();
     sb.append("{name: ")
         .append(nodeName)
+        .append(", nodeUuid: ")
+        .append(nodeUuid)
         .append(", ")
         .append(cloudInfo.toString())
         .append(", isMaster: ")

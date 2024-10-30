@@ -11,4 +11,8 @@ public class DrConfigEditForm {
   @Valid
   @ApiModelProperty("Parameters used to do Backup/restore")
   public XClusterConfigRestartFormData.RestartBootstrapParams bootstrapParams;
+
+  @Valid
+  @ApiModelProperty("Parameters used to do PITR")
+  public DrConfigCreateForm.PitrParams pitrParams;
 }

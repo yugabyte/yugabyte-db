@@ -6,7 +6,7 @@
  *	  message integrity and endpoint authentication.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -32,16 +32,17 @@
 #include "libpq/libpq.h"
 #include "miscadmin.h"
 #include "pgstat.h"
-#include "tcop/tcopprot.h"
-#include "utils/memutils.h"
 #include "storage/ipc.h"
 #include "storage/proc.h"
+#include "tcop/tcopprot.h"
+#include "utils/memutils.h"
 
-
+char	   *ssl_library;
 char	   *ssl_cert_file;
 char	   *ssl_key_file;
 char	   *ssl_ca_file;
 char	   *ssl_crl_file;
+char	   *ssl_crl_dir;
 char	   *ssl_dh_params_file;
 char	   *ssl_passphrase_command;
 bool		ssl_passphrase_command_supports_reload;
@@ -119,8 +120,9 @@ secure_open_server(Port *port)
 	r = be_tls_open_server(port);
 
 	ereport(DEBUG2,
-			(errmsg("SSL connection from \"%s\"",
-					port->peer_cn ? port->peer_cn : "(anonymous)")));
+			(errmsg_internal("SSL connection from DN:\"%s\" CN:\"%s\"",
+							 port->peer_dn ? port->peer_dn : "(anonymous)",
+							 port->peer_cn ? port->peer_cn : "(anonymous)")));
 #endif
 
 	return r;
@@ -159,6 +161,14 @@ retry:
 	}
 	else
 #endif
+#ifdef ENABLE_GSS
+	if (port->gss && port->gss->enc)
+	{
+		n = be_gssapi_read(port, ptr, len);
+		waitfor = WL_SOCKET_READABLE;
+	}
+	else
+#endif
 	{
 		n = secure_raw_read(port, ptr, len);
 		waitfor = WL_SOCKET_READABLE;
@@ -171,7 +181,7 @@ retry:
 
 		Assert(waitfor);
 
-		ModifyWaitEvent(FeBeWaitSet, 0, waitfor, NULL);
+		ModifyWaitEvent(FeBeWaitSet, FeBeWaitSetSocketPos, waitfor, NULL);
 
 		WaitEventSetWait(FeBeWaitSet, -1 /* no timeout */ , &event, 1,
 						 WAIT_EVENT_CLIENT_READ);
@@ -179,7 +189,7 @@ retry:
 		/*
 		 * If the postmaster has died, it's not safe to continue running,
 		 * because it is the postmaster's job to kill us if some other backend
-		 * exists uncleanly.  Moreover, we won't run very well in this state;
+		 * exits uncleanly.  Moreover, we won't run very well in this state;
 		 * helper processes like walwriter and the bgwriter will exit, so
 		 * performance may be poor.  Finally, if we don't exit, pg_ctl will be
 		 * unable to restart the postmaster without manual intervention, so no
@@ -264,6 +274,14 @@ retry:
 	}
 	else
 #endif
+#ifdef ENABLE_GSS
+	if (port->gss && port->gss->enc)
+	{
+		n = be_gssapi_write(port, ptr, len);
+		waitfor = WL_SOCKET_WRITEABLE;
+	}
+	else
+#endif
 	{
 		n = secure_raw_write(port, ptr, len);
 		waitfor = WL_SOCKET_WRITEABLE;
@@ -275,7 +293,7 @@ retry:
 
 		Assert(waitfor);
 
-		ModifyWaitEvent(FeBeWaitSet, 0, waitfor, NULL);
+		ModifyWaitEvent(FeBeWaitSet, FeBeWaitSetSocketPos, waitfor, NULL);
 
 		WaitEventSetWait(FeBeWaitSet, -1 /* no timeout */ , &event, 1,
 						 WAIT_EVENT_CLIENT_WRITE);

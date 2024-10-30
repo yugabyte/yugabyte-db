@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
+import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
@@ -34,6 +35,8 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
 
   @Inject private RuntimeConfGetter confGetter;
 
+  private String replacementMasterName;
+
   @Inject
   protected StopNodeInUniverse(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
@@ -44,10 +47,11 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
     return (NodeTaskParams) taskParams;
   }
 
-  protected NodeDetails findNewMasterIfApplicable(Universe universe, NodeDetails currentNode) {
+  protected String findReplacementMasterIfApplicable(
+      Universe universe, NodeDetails currentNode, boolean pickNewNode) {
     boolean startMasterOnStopNode = confGetter.getGlobalConf(GlobalConfKeys.startMasterOnStopNode);
     if (startMasterOnStopNode && NodeActionFormData.startMasterOnStopNode) {
-      return super.findReplacementMaster(universe, currentNode);
+      return super.findReplacementMaster(universe, currentNode, pickNewNode);
     }
     return null;
   }
@@ -81,9 +85,15 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
           null);
     } else {
       createCheckNodesAreSafeToTakeDownTask(
-          Collections.singletonList(currentNode), Collections.emptyList(), null);
+          Collections.singletonList(
+              new UpgradeTaskBase.MastersAndTservers(
+                  Collections.singletonList(currentNode), Collections.emptyList())),
+          null,
+          false);
     }
     addBasicPrecheckTasks();
+    // Pick new only on first try.
+    replacementMasterName = findReplacementMasterIfApplicable(universe, currentNode, isFirstTry());
   }
 
   private void freezeUniverseInTxn(Universe universe) {
@@ -94,9 +104,11 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
       throw new RuntimeException(msg);
     }
     if (node.isMaster) {
-      NodeDetails newMasterNode = findNewMasterIfApplicable(universe, node);
-      if (newMasterNode != null && newMasterNode.masterState == null) {
-        newMasterNode.masterState = MasterState.ToStart;
+      if (replacementMasterName != null) {
+        NodeDetails replacementMaster = universe.getNode(replacementMasterName);
+        if (replacementMaster.masterState == null) {
+          replacementMaster.masterState = MasterState.ToStart;
+        }
       }
       node.masterState = MasterState.ToStop;
     }
@@ -104,6 +116,9 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
+    if (maybeRunOnlyPrechecks()) {
+      return;
+    }
     log.info(
         "Stop Node with name {} from universe uuid={}",
         taskParams().nodeName,
@@ -131,8 +146,8 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
       boolean instanceExists = instanceExists(taskParams());
       if (instanceExists) {
         if (currentNode.isTserver) {
-          stopProcessesOnNode(
-              currentNode,
+          stopProcessesOnNodes(
+              Collections.singletonList(currentNode),
               EnumSet.of(ServerType.TSERVER),
               false /* remove master from quorum */,
               true /* deconfigure */,
@@ -156,7 +171,7 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
       createMasterReplacementTasks(
           universe,
           currentNode,
-          () -> findNewMasterIfApplicable(universe, currentNode),
+          () -> replacementMasterName == null ? null : universe.getNode(replacementMasterName),
           instanceExists,
           false /* ignore stop error */);
 

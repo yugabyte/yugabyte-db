@@ -28,6 +28,7 @@ import {
   NTPSetupType,
   ProviderCode,
   ProviderOperation,
+  SshPrivateKeyInputType,
   VPCSetupType
 } from '../../constants';
 import { FieldGroup } from '../components/FieldGroup';
@@ -59,9 +60,8 @@ import {
 } from '../utils';
 import { EditProvider } from '../ProviderEditView';
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
-import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { VersionWarningBanner } from '../components/VersionWarningBanner';
-import { ACCEPTABLE_CHARS } from '../../../../config/constants';
+import { ACCEPTABLE_CHARS, RG_REGEX, UUID_REGEX } from '../../../../config/constants';
 import { NTP_SERVER_REGEX } from '../constants';
 import { UniverseItem } from '../../providerView/providerDetails/UniverseTable';
 import { RuntimeConfigKey } from '../../../../../redesign/helpers/constants';
@@ -92,6 +92,7 @@ import { CloudType } from '../../../../../redesign/helpers/dtos';
 import { getYBAHost } from '../../utils';
 import { hostInfoQueryKey } from '../../../../../redesign/helpers/api';
 import { AZURE_FORM_MAPPERS } from './constants';
+import { SshPrivateKeyFormField } from '../../components/SshPrivateKeyField';
 
 interface AZUProviderEditFormProps {
   editProvider: EditProvider;
@@ -123,6 +124,8 @@ export interface AZUProviderEditFormFieldValues {
   sshKeypairManagement: KeyPairManagement;
   sshKeypairName: string;
   sshPort: number | null;
+  sshPrivateKeyInputType: SshPrivateKeyInputType;
+  sshPrivateKeyContentText: string;
   sshPrivateKeyContent: File;
   sshUser: string;
   version: number;
@@ -137,7 +140,12 @@ const VALIDATION_SCHEMA = object().shape({
       ACCEPTABLE_CHARS,
       'Provider name cannot contain special characters other than "-", and "_"'
     ),
-  azuClientId: string().required('Azure Client ID is required.'),
+  azuClientId: string()
+    .required('Azure Client ID is required.')
+    .matches(
+      UUID_REGEX,
+      'UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)'
+    ),
   azuClientSecret: mixed().test({
     test: (value, context) => {
       if (
@@ -151,9 +159,24 @@ const VALIDATION_SCHEMA = object().shape({
     },
     message: 'Azure Client Secret is required.'
   }),
-  azuRG: string().required('Azure Resource Group is required.'),
-  azuSubscriptionId: string().required('Azure Subscription ID is required.'),
-  azuTenantId: string().required('Azure Tenant ID is required.'),
+  azuRG: string()
+    .required('Azure Resource Group is required.')
+    .matches(
+      RG_REGEX,
+      'Resource group names can only include alphanumeric, underscore, parentheses, hyphen, period (except at end)'
+    ),
+  azuSubscriptionId: string()
+    .required('Azure Subscription ID is required.')
+    .matches(
+      UUID_REGEX,
+      'UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)'
+    ),
+  azuTenantId: string()
+    .required('Azure Tenant ID is required.')
+    .matches(
+      UUID_REGEX,
+      'UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)'
+    ),
   sshKeypairManagement: mixed().when('editSSHKeypair', {
     is: true,
     then: mixed().oneOf(
@@ -161,11 +184,26 @@ const VALIDATION_SCHEMA = object().shape({
       'SSH Keypair management choice is required.'
     )
   }),
-  sshPrivateKeyContent: mixed().when(['editSSHKeypair', 'sshKeypairManagement'], {
-    is: (editSSHKeypair, sshKeypairManagement) =>
-      editSSHKeypair && sshKeypairManagement === KeyPairManagement.SELF_MANAGED,
-    then: mixed().required('SSH private key is required.')
-  }),
+  sshPrivateKeyContent: mixed().when(
+    ['editSSHKeypair', 'sshKeypairManagement', 'sshPrivateKeyInputType'],
+    {
+      is: (editSSHKeypair, sshKeypairManagement, sshPrivateKeyInputType) =>
+        editSSHKeypair &&
+        sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
+        sshPrivateKeyInputType === SshPrivateKeyInputType.UPLOAD_KEY,
+      then: mixed().required('SSH private key is required.')
+    }
+  ),
+  sshPrivateKeyContentText: string().when(
+    ['editSSHKeypair', 'sshKeypairManagement', 'sshPrivateKeyInputType'],
+    {
+      is: (editSSHKeypair, sshKeypairManagement, sshPrivateKeyInputType) =>
+        editSSHKeypair &&
+        sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
+        sshPrivateKeyInputType === SshPrivateKeyInputType.PASTE_KEY,
+      then: string().required('SSH private key is required.')
+    }
+  ),
   hostedZoneId: string().when('enableHostedZone', {
     is: true,
     then: string().required('Route 53 zone id is required.')
@@ -180,7 +218,17 @@ const VALIDATION_SCHEMA = object().shape({
       )
     )
   }),
-  regions: array().min(1, 'Provider configurations must contain at least one region.')
+  regions: array().min(1, 'Provider configurations must contain at least one region.'),
+  azuNetworkRG: string().matches(RG_REGEX, {
+    message:
+      'Resource group names can only include alphanumeric, underscore, parentheses, hyphen, period (except at end)',
+    excludeEmptyString: true
+  }),
+  azuNetworkSubscriptionId: string().matches(UUID_REGEX, {
+    message:
+      'UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)',
+    excludeEmptyString: true
+  })
 });
 
 const FORM_NAME = 'AZUProviderEditForm';
@@ -347,7 +395,7 @@ export const AZUProviderEditForm = ({
   const inUseZones = getInUseAzs(providerConfig.uuid, linkedUniverses, regionSelection?.code);
   const isEditInUseProviderEnabled = runtimeConfigEntries.some(
     (config: any) =>
-      config.key === RuntimeConfigKey.EDIT_IN_USE_PORIVDER_UI_FEATURE_FLAG &&
+      config.key === RuntimeConfigKey.EDIT_IN_USE_PROVIDER_UI_FEATURE_FLAG &&
       config.value === 'true'
   );
 
@@ -698,22 +746,11 @@ export const AZUProviderEditForm = ({
                           fullWidth
                         />
                       </FormField>
-                      <FormField>
-                        <FieldLabel>SSH Private Key Content</FieldLabel>
-                        <YBDropZoneField
-                          name="sshPrivateKeyContent"
-                          control={formMethods.control}
-                          actionButtonText="Upload SSH Key PEM File"
-                          multipleFiles={false}
-                          showHelpText={false}
-                          disabled={getIsFieldDisabled(
-                            ProviderCode.AZU,
-                            'sshPrivateKeyContent',
-                            isFormDisabled,
-                            isProviderInUse
-                          )}
-                        />
-                      </FormField>
+                      <SshPrivateKeyFormField
+                        isFormDisabled={isFormDisabled}
+                        isProviderInUse={isProviderInUse}
+                        providerCode={ProviderCode.AZU}
+                      />
                     </>
                   )}
                 </>
@@ -852,9 +889,12 @@ const constructDefaultFormValues = (
     vnet: region.details.cloudInfo.azu.vnet,
     securityGroupId: region.details.cloudInfo.azu.securityGroupId,
     ybImage: region.details.cloudInfo.azu.ybImage ?? '',
+    azuNetworkRGOverride: region.details.cloudInfo.azu.azuNetworkRGOverride ?? '',
+    azuRGOverride: region.details.cloudInfo.azu.azuRGOverride ?? '',
     zones: region.zones
   })),
   sshKeypairManagement: getLatestAccessKey(providerConfig.allAccessKeys)?.keyInfo.managementState,
+  sshPrivateKeyInputType: SshPrivateKeyInputType.UPLOAD_KEY,
   sshPort: providerConfig.details.sshPort ?? null,
   sshUser: providerConfig.details.sshUser ?? '',
   version: providerConfig.version,
@@ -869,12 +909,16 @@ const constructProviderPayload = async (
   providerConfig: AZUProvider
 ): Promise<YBProviderMutation> => {
   let sshPrivateKeyContent = '';
-  try {
-    sshPrivateKeyContent = formValues.sshPrivateKeyContent
-      ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
-      : '';
-  } catch (error) {
-    throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
+  if (formValues.sshPrivateKeyInputType === SshPrivateKeyInputType.UPLOAD_KEY) {
+    try {
+      sshPrivateKeyContent = formValues.sshPrivateKeyContent
+        ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
+        : '';
+    } catch (error) {
+      throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
+    }
+  } else {
+    sshPrivateKeyContent = formValues.sshPrivateKeyContentText;
   }
 
   const imageBundles = constructImageBundlePayload(formValues);
@@ -948,6 +992,12 @@ const constructProviderPayload = async (
                 }),
                 ...(regionFormValues.ybImage && {
                   ybImage: regionFormValues.ybImage
+                }),
+                ...(regionFormValues.azuNetworkRGOverride && {
+                  azuNetworkRGOverride: regionFormValues.azuNetworkRGOverride
+                }),
+                ...(regionFormValues.azuRGOverride && {
+                  azuRGOverride: regionFormValues.azuRGOverride
                 })
               }
             }

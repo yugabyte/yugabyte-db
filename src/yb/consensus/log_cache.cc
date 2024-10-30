@@ -37,6 +37,8 @@
 #include <mutex>
 #include <vector>
 
+#include "yb/common/hybrid_time.h"
+
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log.h"
@@ -295,6 +297,40 @@ int64_t LogCache::earliest_op_index() const {
   return ret;
 }
 
+Result<log::ReadableLogSegmentPtr> CheckHasFooter(
+    const Result<log::ReadableLogSegmentPtr>& segment) {
+  RETURN_NOT_OK(segment);
+  if (!(*segment)->HasFooter()) {
+    return STATUS_FORMAT(
+        NotFound, "Footer for segment $0 not found", (*segment)->header().sequence_number());
+  }
+  return *segment;
+}
+
+Result<HybridTime> LogCache::GetMinStartTimeRunningTxnsFromSegmentFooter(
+    int64_t segment_number) const {
+  const auto segment = VERIFY_RESULT(
+      CheckHasFooter(log_->GetLogReader()->GetSegmentBySequenceNumber(segment_number)));
+
+  // Segments from older DB versions will have a footer without min_start_time_running_txns
+  // stored in it. For such segments, return HybridTime::kInitial. This is to preserve the semantics
+  // that min_start_time_running_txns of a closed segment will always hold a valid HT value.
+  return segment->footer().has_min_start_time_running_txns()
+             ? HybridTime(segment->footer().min_start_time_running_txns())
+             : HybridTime::kInitial;
+}
+
+Result<int64_t> LogCache::GetMaxReplicateIndexFromSegmentFooter(int64_t segment_number) const {
+  const auto segment = VERIFY_RESULT(
+      CheckHasFooter(log_->GetLogReader()->GetSegmentBySequenceNumber(segment_number)));
+
+  return segment->footer().has_max_replicate_index() ? segment->footer().max_replicate_index() : 0;
+}
+
+int64_t LogCache::GetActiveSegmentNumber() const {
+  return log_->active_segment_sequence_number();
+}
+
 bool LogCache::HasOpBeenWritten(int64_t index) const {
   std::lock_guard l(lock_);
   return index < next_sequential_op_index_;
@@ -321,6 +357,10 @@ Result<yb::OpId> LogCache::LookupOpId(int64_t op_index) const {
 
   // If it misses, read from the log.
   return log_->GetLogReader()->LookupOpId(op_index);
+}
+
+Result<int64_t> LogCache::LookupOpWalSegmentNumber(int64_t op_index) const {
+  return log_->GetLogReader()->LookupOpWalSegmentNumber(op_index);
 }
 
 namespace {

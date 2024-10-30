@@ -37,6 +37,7 @@
 #include "yb/common/entity_ids_types.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/master/leader_epoch.h"
+#include "yb/master/master_fwd.h"
 #include "yb/util/condition_variable.h"
 #include "yb/util/metrics.h"
 #include "yb/util/mutex.h"
@@ -52,7 +53,7 @@ class CatalogManager;
 
 class CatalogManagerBgTasks final {
  public:
-  explicit CatalogManagerBgTasks(CatalogManager *catalog_manager);
+  explicit CatalogManagerBgTasks(Master* master);
 
   ~CatalogManagerBgTasks() {}
 
@@ -74,7 +75,8 @@ class CatalogManagerBgTasks final {
   mutable Mutex lock_;
   ConditionVariable cond_;
   scoped_refptr<yb::Thread> thread_;
-  CatalogManager *catalog_manager_;
+  Master* master_;
+  CatalogManager* catalog_manager_;
   bool was_leader_ = false;
   scoped_refptr<EventStats> load_balancer_duration_;
 };

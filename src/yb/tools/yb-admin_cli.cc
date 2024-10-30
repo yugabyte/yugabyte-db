@@ -38,10 +38,11 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
 
-#include "yb/cdc/xcluster_util.h"
+#include "yb/common/xcluster_util.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/json_util.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/util.h"
@@ -55,6 +56,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
+#include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -214,17 +216,6 @@ Status ListSnapshots(ClusterAdminClient* client, const EnumBitSet<ListSnapshotsF
 
   rapidjson::Document document(rapidjson::kObjectType);
   bool json = flags.Test(ListSnapshotsFlag::JSON);
-
-  if (snapshot_response.has_current_snapshot_id()) {
-    if (json) {
-      AddStringField(
-          "current_snapshot_id", SnapshotIdToString(snapshot_response.current_snapshot_id()),
-          &document, &document.GetAllocator());
-    } else {
-      std::cout << "Current snapshot id: "
-                << SnapshotIdToString(snapshot_response.current_snapshot_id()) << std::endl;
-    }
-  }
 
   rapidjson::Value json_snapshots(rapidjson::kArrayType);
   if (!json) {
@@ -498,9 +489,10 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
   return RunCommand(command, command_args, args[0]);
 }
 
-void ClusterAdminCli::Register(string&& cmd_name, const std::string& cmd_args, Action&& action) {
+void ClusterAdminCli::Register(
+    string&& cmd_name, const std::string& cmd_args, Action&& action, bool hidden) {
   command_indexes_[cmd_name] = commands_.size();
-  commands_.push_back({std::move(cmd_name), cmd_args, std::move(action)});
+  commands_.push_back({std::move(cmd_name), cmd_args, std::move(action), hidden});
 }
 
 void ClusterAdminCli::SetUsage(const string& prog_name) {
@@ -511,9 +503,12 @@ void ClusterAdminCli::SetUsage(const string& prog_name) {
       << "<operation> must be one of:" << endl;
 
   for (size_t i = 0; i < commands_.size(); ++i) {
-    str << ' ' << i + 1 << ". " << commands_[i].name_
-        << (commands_[i].usage_arguments_.empty() ? "" : " ") << commands_[i].usage_arguments_
-        << endl;
+    const auto& command = commands_[i];
+    if (command.hidden_) {
+      continue;
+    }
+    str << ' ' << i + 1 << ". " << command.name_ << (command.usage_arguments_.empty() ? "" : " ")
+        << command.usage_arguments_ << endl;
   }
 
   str << endl;
@@ -921,6 +916,13 @@ Status list_all_tablet_servers_action(
   return Status::OK();
 }
 
+const auto remove_tablet_server_args = "<ts_uuid>";
+Status remove_tablet_server_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 1, 1));
+  return client->RemoveTabletServer(args[0]);
+}
+
 const auto list_all_masters_args = "";
 Status list_all_masters_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
@@ -956,6 +958,9 @@ Status change_master_config_action(
   return Status::OK();
 }
 
+// Dump subset of info stored on yb-master in a user friendly format.
+// Requires yb-master and CatalogManager to be running and healthy.
+// Use `dump_sys_catalog_entries` to get on-disk data, or if master is unhealthy.
 const auto dump_masters_state_args = "[CONSOLE]";
 Status dump_masters_state_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
@@ -1197,6 +1202,27 @@ Status upgrade_ysql_action(const ClusterAdminCli::CLIArguments& args, ClusterAdm
 
   RETURN_NOT_OK_PREPEND(
       client->UpgradeYsql(use_single_connection), "Unable to upgrade YSQL cluster");
+  return Status::OK();
+}
+
+// Takes a long time to run. Set `timeout_ms` to at least 5 minutes when calling.
+const auto ysql_major_version_catalog_upgrade_args = "";
+Status ysql_major_version_catalog_upgrade_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 0, 0));
+  RETURN_NOT_OK_PREPEND(
+      client->StartYsqlMajorVersionUpgradeInitdb(), "Unable to run ysql major version upgrade");
+  RETURN_NOT_OK(client->WaitForYsqlMajorVersionUpgradeInitdb());
+  return Status::OK();
+}
+
+// May take a while to run. Set `timeout_ms` to at least 5 minutes when calling.
+const auto rollback_ysql_major_version_upgrade_args = "";
+Status rollback_ysql_major_version_upgrade_action(const ClusterAdminCli::CLIArguments& args,
+                                                  ClusterAdminClient* client) {
+  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 0, 0));
+  RETURN_NOT_OK_PREPEND(client->RollbackYsqlMajorVersionUpgrade(),
+                        "Unable to roll back ysql major version upgrade");
   return Status::OK();
 }
 
@@ -1596,12 +1622,13 @@ Status create_keyspace_snapshot_action(
   return Status::OK();
 }
 
-const auto create_database_snapshot_args = "[ysql.]<database_name> [retention_duration_hours] "
-    "(set a <= 0 value to retain the snapshot forever. If not specified "
+const auto create_database_snapshot_args =
+    "[ysql.]<database_name> [retention_duration_hours] "
+    "(set retention_duration_hours to 0 to retain the snapshot forever. If not specified "
     "then takes the default value controlled by gflag default_retention_hours)";
 Status create_database_snapshot_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() != 1) {
+  if (args.size() < 1 && args.size() > 2) {
     return ClusterAdminCli::kInvalidArguments;
   }
 
@@ -1804,7 +1831,8 @@ Status write_universe_key_to_file_action(
 }
 
 const auto create_change_data_stream_args =
-   "<namespace> [<checkpoint_type>] [<record_type>] [<consistent_snapshot_option>]";
+    "<namespace> [<checkpoint_type>] [<record_type>] [<consistent_snapshot_option>] "
+    "[<dynamic_tables_option>] (default DYNAMIC_TABLES_ENABLED)";
 Status create_change_data_stream_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() < 1) {
@@ -1814,9 +1842,11 @@ Status create_change_data_stream_action(
   std::string checkpoint_type = yb::ToString("EXPLICIT");
   cdc::CDCRecordType record_type_pb = cdc::CDCRecordType::CHANGE;
   std::string consistent_snapshot_option = "USE_SNAPSHOT";
+  std::string dynamic_tables_option = "DYNAMIC_TABLES_ENABLED";
   std::string uppercase_checkpoint_type;
   std::string uppercase_record_type;
   std::string uppercase_consistent_snapshot_option;
+  std::string uppercase_dynamic_tables_option;
 
 
   if (args.size() > 1) {
@@ -1844,12 +1874,22 @@ Status create_change_data_stream_action(
     consistent_snapshot_option = uppercase_consistent_snapshot_option;
   }
 
+  if (args.size() > 4) {
+    ToUpperCase(args[4], &uppercase_dynamic_tables_option);
+    if (uppercase_dynamic_tables_option != "DYNAMIC_TABLES_ENABLED" &&
+        uppercase_dynamic_tables_option != "DYNAMIC_TABLES_DISABLED") {
+      return ClusterAdminCli::kInvalidArguments;
+    }
+    dynamic_tables_option = uppercase_dynamic_tables_option;
+  }
+
   const string namespace_name = args[0];
   const TypedNamespaceName database = VERIFY_RESULT(ParseNamespaceName(args[0]));
 
   RETURN_NOT_OK_PREPEND(
       client->CreateCDCSDKDBStream(
-          database, checkpoint_type, record_type_pb, consistent_snapshot_option),
+          database, checkpoint_type, record_type_pb, consistent_snapshot_option,
+          dynamic_tables_option == "DYNAMIC_TABLES_ENABLED"),
       Format("Unable to create CDC stream for database $0", namespace_name));
   return Status::OK();
 }
@@ -1945,6 +1985,50 @@ Status ysql_backfill_change_data_stream_with_replication_slot_action(
   return Status::OK();
 }
 
+const auto disable_dynamic_table_addition_on_change_data_stream_args = "<stream_id>";
+Status disable_dynamic_table_addition_on_change_data_stream_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  const string stream_id = args[0];
+  string msg = Format("Failed to disable dynamic table addition on CDC stream $0", stream_id);
+
+  RETURN_NOT_OK_PREPEND(client->DisableDynamicTableAdditionOnCDCSDKStream(stream_id), msg);
+  return Status::OK();
+}
+
+const auto remove_user_table_from_change_data_stream_args = "<stream_id> <table_id>";
+Status remove_user_table_from_change_data_stream_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  const string stream_id = args[0];
+  const string table_id = args[1];
+  string msg = Format("Failed to remove table $0 from CDC stream $1", table_id, stream_id);
+
+  RETURN_NOT_OK_PREPEND(client->RemoveUserTableFromCDCSDKStream(stream_id, table_id), msg);
+  return Status::OK();
+}
+
+const auto validate_and_sync_cdc_state_table_entries_on_change_data_stream_args = "<stream_id>";
+Status validate_and_sync_cdc_state_table_entries_on_change_data_stream_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  const string stream_id = args[0];
+  string msg =
+      Format("Failed to validate and sync cdc state table entries for CDC stream $0", stream_id);
+
+  RETURN_NOT_OK_PREPEND(client->ValidateAndSyncCDCStateEntriesForCDCSDKStream(stream_id), msg);
+  return Status::OK();
+}
+
 const auto setup_universe_replication_args =
     "<producer_universe_uuid> <producer_master_addresses> "
     "<comma_separated_list_of_table_ids> [<comma_separated_list_of_producer_bootstrap_ids>] "
@@ -2016,7 +2100,6 @@ const auto alter_universe_replication_args =
     "add_table [<comma_separated_list_of_table_ids>] "
     "[<comma_separated_list_of_producer_bootstrap_ids>] | "
     "remove_table [<comma_separated_list_of_table_ids>] [ignore-errors] | "
-    "rename_id <new_producer_universe_id> | "
     "remove_namespace <source_namespace_id>)";
 Status alter_universe_replication_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
@@ -2032,7 +2115,6 @@ Status alter_universe_replication_action(
   vector<string> add_tables;
   vector<string> remove_tables;
   vector<string> bootstrap_ids_to_add;
-  string new_replication_group_id = "";
   bool remove_table_ignore_errors = false;
   NamespaceId source_namespace_to_remove;
 
@@ -2046,9 +2128,6 @@ Status alter_universe_replication_action(
     if (args.size() == 4 && args[3] == "ignore-errors") {
       remove_table_ignore_errors = true;
     }
-  } else if (args[1] == "rename_id") {
-    lst = nullptr;
-    new_replication_group_id = args[2];
   } else if (args[1] == "remove_namespace") {
     lst = nullptr;
     source_namespace_to_remove = args[2];
@@ -2068,7 +2147,7 @@ Status alter_universe_replication_action(
   RETURN_NOT_OK_PREPEND(
       client->AlterUniverseReplication(
           replication_group_id, master_addresses, add_tables, remove_tables, bootstrap_ids_to_add,
-          new_replication_group_id, source_namespace_to_remove, remove_table_ignore_errors),
+          source_namespace_to_remove, remove_table_ignore_errors),
       Format("Unable to alter replication for universe $0", replication_group_id));
 
   return Status::OK();
@@ -2169,57 +2248,6 @@ Status wait_for_replication_drain_action(
   }
 
   return client->WaitForReplicationDrain(stream_ids, target_time);
-}
-
-const auto setup_namespace_universe_replication_args =
-    "<producer_universe_uuid> <producer_master_addresses> <namespace> [bootstrap] [transactional]";
-Status setup_namespace_universe_replication_action(
-    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 3, 5));
-  const string replication_group_id = args[0];
-  vector<string> producer_addresses;
-  boost::split(producer_addresses, args[1], boost::is_any_of(","));
-  TypedNamespaceName producer_namespace = VERIFY_RESULT(ParseNamespaceName(args[2]));
-
-  bool bootstrap = false;
-  bool transactional = false;
-  if (args.size() > 3) {
-    switch (args.size()) {
-      case 4:
-        if (IsEqCaseInsensitive(args[3], "bootstrap")) {
-          bootstrap = true;
-        } else if (IsEqCaseInsensitive(args[3], "transactional")) {
-          transactional = true;
-        }
-        break;
-      case 5: {
-        if (IsEqCaseInsensitive(args[3], "bootstrap") &&
-            IsEqCaseInsensitive(args[4], "transactional")) {
-          transactional = true;
-          bootstrap = true;
-        } else {
-          return ClusterAdminCli::kInvalidArguments;
-        }
-        break;
-      }
-      default:
-        return ClusterAdminCli::kInvalidArguments;
-    }
-  }
-
-  if (bootstrap) {
-    RETURN_NOT_OK_PREPEND(
-        client->SetupNamespaceReplicationWithBootstrap(
-            replication_group_id, producer_addresses, producer_namespace, transactional),
-        Format("Unable to setup replication from universe $0", replication_group_id));
-  } else {
-    RETURN_NOT_OK_PREPEND(
-        client->SetupNSUniverseReplication(
-            replication_group_id, producer_addresses, producer_namespace),
-        Format("Unable to setup namespace replication from universe $0", replication_group_id));
-  }
-
-  return Status::OK();
 }
 
 const auto get_replication_status_args = "[<producer_universe_uuid>]";
@@ -2611,7 +2639,10 @@ Status get_universe_replication_info_action(
   if (group_info.replication_type == XClusterReplicationType::XCLUSTER_YSQL_DB_SCOPED) {
     std::cout << std::endl
               << "DB Scoped info(s):" << std::endl
+              << "DDL mode: " << (group_info.automatic_ddl_mode ? "Automatic" : "Semi-automatic")
+              << std::endl
               << "Namespace name\t\tTarget Namespace ID\t\tSource Namespace ID" << std::endl;
+
     for (const auto& [target_namespace_id, source_namespace_id] :
          group_info.db_scope_namespace_id_map) {
       auto* namespace_info = FindOrNull(namespace_map, target_namespace_id);
@@ -2629,6 +2660,99 @@ Status get_universe_replication_info_action(
   }
 
   return Status::OK();
+}
+
+// Dump on-disk Catalog Entry infos stored in sys_catalog tablet of yb-master.
+// This can be used even when CatalogManager is unhealthy or completely turned off (yb-master
+// --emergency_repair_mode).
+//
+// If no entry_id is provided all entries of the given type will be dumped
+// out. entry_id can be an empty string. Ex:
+// ./bin/yb-admin -master_addresses 127.0.0.1.9:7100 dump_sys_catalog_entries
+//    UNIVERSE_REPLICATION  /tmp/catalog_dump "rg1"
+//
+// ./bin/yb-admin -master_addresses 127.0.0.1.9:7100 dump_sys_catalog_entries
+//    CLUSTER_CONFIG /tmp/catalog_dump ""
+const auto dump_sys_catalog_entries_args = "<entry_type> <folder_path> [entry_id]";
+Status dump_sys_catalog_entries_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() < 2 || args.size() > 3) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  master::SysRowEntryType entry_type;
+  SCHECK(
+      master::SysRowEntryType_Parse(args[0], &entry_type), InvalidArgument, "Invalid entry type");
+  SCHECK_NE(entry_type, master::SysRowEntryType::UNKNOWN, InvalidArgument, "Invalid entry type");
+
+  std::string folder_path = args[1];
+
+  std::string entry_id_filter;
+  if (args.size() > 2) {
+    entry_id_filter = args[2];
+  }
+
+  return client->DumpSysCatalogEntriesAction(entry_type, /*folder_path=*/args[1], entry_id_filter);
+}
+
+namespace {
+Result<master::WriteSysCatalogEntryRequestPB::WriteOp> ToCatalogEntryWriteOp(
+    const std::string& operation) {
+  if (IsEqCaseInsensitive(operation, "insert")) {
+    return master::WriteSysCatalogEntryRequestPB::SYS_CATALOG_INSERT;
+  }
+  if (IsEqCaseInsensitive(operation, "update")) {
+    return master::WriteSysCatalogEntryRequestPB::SYS_CATALOG_UPDATE;
+  }
+  if (IsEqCaseInsensitive(operation, "delete")) {
+    return master::WriteSysCatalogEntryRequestPB::SYS_CATALOG_DELETE;
+  }
+
+  return STATUS(InvalidArgument, "Invalid operation", operation);
+}
+
+}  // namespace
+// WARNING!! Use with caution! Incorrect usage may result in unavailability, data loss, and/or
+// corruption.
+// - yb-master must be in --emergency_repair_mode.
+//
+// - entry_id can be an empty string. This is because singleton catalog_entity types like
+//   CLUSTER_CONFIG, and XCLUSTER_CONFIG use empty strings as ids.
+// - file_path is not required for DELETE operation.
+// - force will bypass the confirmation prompt.
+// Ex:
+// ./bin/yb-admin -master_addresses 127.0.0.1.9:7100 write_sys_catalog_entry INSERT
+//    UNIVERSE_REPLICATION "rg1" /tmp/catalog_dump/UNIVERSE_REPLICATION-rg1
+//
+// ./bin/yb-admin -master_addresses 127.0.0.1.9:7100 write_sys_catalog_entry DELETE
+//    XCLUSTER_CONFIG ""
+//
+// ./bin/yb-admin -master_addresses 127.0.0.1.9:7100 write_sys_catalog_entry UPDATE
+//    UNIVERSE_REPLICATION "rg1" /tmp/catalog_dump/UNIVERSE_REPLICATION-rg1
+const auto write_sys_catalog_entry_args =
+    "<insert/update/delete> <entry_type> <entry_id> [file_path] [force]";
+Status write_sys_catalog_entry_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() < 3 || args.size() > 5) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  auto operation = VERIFY_RESULT(ToCatalogEntryWriteOp(args[0]));
+  if (operation != master::WriteSysCatalogEntryRequestPB::SYS_CATALOG_DELETE && args.size() < 4) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  master::SysRowEntryType entry_type;
+  SCHECK(
+      master::SysRowEntryType_Parse(args[1], &entry_type), InvalidArgument, "Invalid entry type");
+  SCHECK_NE(entry_type, master::SysRowEntryType::UNKNOWN, InvalidArgument, "Invalid entry type");
+
+  std::string entry_id = args[2];
+
+  bool force = (args.size() > 3 && IsEqCaseInsensitive(args[args.size() - 1], "force"));
+
+  return client->WriteSysCatalogEntryAction(
+      operation, entry_type, /*entry_id=*/args[2], /*file_path=*/args[3], force);
 }
 
 }  // namespace
@@ -2663,6 +2787,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(compact_table_by_id);
   REGISTER_COMMAND(compaction_status);
   REGISTER_COMMAND(list_all_tablet_servers);
+  REGISTER_COMMAND(remove_tablet_server);
   REGISTER_COMMAND(list_all_masters);
   REGISTER_COMMAND(change_master_config);
   REGISTER_COMMAND(dump_masters_state);
@@ -2731,6 +2856,9 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(list_change_data_streams);
   REGISTER_COMMAND(get_change_data_stream_info);
   REGISTER_COMMAND(ysql_backfill_change_data_stream_with_replication_slot);
+  REGISTER_COMMAND(disable_dynamic_table_addition_on_change_data_stream);
+  REGISTER_COMMAND(remove_user_table_from_change_data_stream);
+  REGISTER_COMMAND(validate_and_sync_cdc_state_table_entries_on_change_data_stream);
   // xCluster Source commands
   REGISTER_COMMAND(bootstrap_cdc_producer);
   REGISTER_COMMAND(list_cdc_streams);
@@ -2741,7 +2869,6 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(setup_universe_replication);
   REGISTER_COMMAND(delete_universe_replication);
   REGISTER_COMMAND(alter_universe_replication);
-  REGISTER_COMMAND(setup_namespace_universe_replication);
   REGISTER_COMMAND(set_universe_replication_enabled);
   REGISTER_COMMAND(get_replication_status);
   REGISTER_COMMAND(get_xcluster_safe_time);
@@ -2762,6 +2889,14 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(repair_xcluster_outbound_replication_remove_table);
   REGISTER_COMMAND(list_xcluster_outbound_replication_groups);
   REGISTER_COMMAND(get_xcluster_outbound_replication_group_info);
+
+  // PG11 -> PG15 upgrade commands
+  REGISTER_COMMAND(ysql_major_version_catalog_upgrade);
+  REGISTER_COMMAND(rollback_ysql_major_version_upgrade);
+
+  // SysCatalog util commands
+  REGISTER_COMMAND(dump_sys_catalog_entries);
+  REGISTER_COMMAND(write_sys_catalog_entry);
 }
 
 Result<std::vector<client::YBTableName>> ResolveTableNames(

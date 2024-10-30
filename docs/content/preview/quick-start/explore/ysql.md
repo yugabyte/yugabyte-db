@@ -48,29 +48,29 @@ The examples in this tutorial use two tables, representing departments and emplo
 
 ### Open the YSQL shell
 
-Using the YugabyteDB SQL shell, [ysqlsh](../../../admin/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
+Using the YugabyteDB SQL shell, [ysqlsh](../../../api/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#macos" class="nav-link active" id="macos-tab" data-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
+    <a href="#macos" class="nav-link active" id="macos-tab" data-bs-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
   <li>
-    <a href="#linux" class="nav-link" id="linux-tab" data-toggle="tab" role="tab" aria-controls="linux" aria-selected="false">
+    <a href="#linux" class="nav-link" id="linux-tab" data-bs-toggle="tab" role="tab" aria-controls="linux" aria-selected="false">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
   <li>
-    <a href="#docker" class="nav-link" id="docker-tab" data-toggle="tab" role="tab" aria-controls="docker" aria-selected="false">
+    <a href="#docker" class="nav-link" id="docker-tab" data-bs-toggle="tab" role="tab" aria-controls="docker" aria-selected="false">
       <i class="fa-brands fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
   <li >
-    <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-toggle="tab" role="tab" aria-controls="kubernetes" aria-selected="false">
+    <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-bs-toggle="tab" role="tab" aria-controls="kubernetes" aria-selected="false">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
@@ -249,7 +249,7 @@ UPDATE emp SET sal=sal+100
 
 ### Join
 
-A self-join is a regular [join](../../../explore/ysql-language-features/queries/#joining-columns) where the table is joined with itself. The following statement matches employees with their manager and filters those that are earning more than their manager.
+A self-join is a regular [join](../../../explore/ysql-language-features/queries/#join-columns) where the table is joined with itself. The following statement matches employees with their manager and filters those that are earning more than their manager.
 
 ```sql
 SELECT
@@ -518,7 +518,7 @@ SELECT * FROM emp_evaluation_period e1
 
 ### Cross table pivots
 
-Use a cross table to show the sum of salary per job, by department. The shell [\crosstabview](../../../admin/ysqlsh-meta-commands/#crosstabview-colv-colh-cold-sortcolh) meta-command displays rows as columns. The following statement sums the salaries across jobs and departments and displays them as a cross table:
+Use a cross table to show the sum of salary per job, by department. The shell [\crosstabview](../../../api/ysqlsh-meta-commands/#crosstabview-colv-colh-cold-sortcolh) meta-command displays rows as columns. The following statement sums the salaries across jobs and departments and displays them as a cross table:
 
 ```sql
 SELECT job, dname, sum(sal)
@@ -620,7 +620,7 @@ Thanks to the GIN index, this search doesn't need to read all rows and text.
 
 ### Stored procedures
 
-A [stored procedure](../../../explore/ysql-language-features/stored-procedures/) encapsulates procedural logic into an atomic operation. Use stored procedures to encapsulate transactions with error handling. The following example creates a procedure in PL/pgSQL, named "commission_transfer", that transfers a commission "amount" from `empno1` to `empno2`.
+A [stored procedure](../../../architecture/query-layer/join-strategies/#batched-nested-loop-join-bnl) encapsulates procedural logic into an atomic operation. Use stored procedures to encapsulate transactions with error handling. The following example creates a procedure in PL/pgSQL, named "commission_transfer", that transfers a commission "amount" from `empno1` to `empno2`.
 
 1. Create the procedure for the commission transfer between employees. The procedure has two SQL operations: decrease from `empno1` and add to `empno2`. It also adds error checking to raise a custom exception if `empno1` doesn't have sufficient funds to transfer.
 

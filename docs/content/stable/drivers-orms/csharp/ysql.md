@@ -5,9 +5,9 @@ linkTitle: Connect an app
 description: Connect a C# application using Npgsql Smart Driver
 menu:
   stable:
-    identifier: csharp-driver-ysql
+    identifier: csharp-1-driver-ysql
     parent: csharp-drivers
-    weight: 400
+    weight: 500
 type: docs
 ---
 
@@ -44,9 +44,9 @@ type: docs
 
 The [Yugabyte Npgsql smart driver](https://github.com/yugabyte/npgsql) is a .NET driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL Npgsql driver](https://github.com/npgsql/npgsql/tree/main/src/Npgsql), with additional [connection load balancing](../../smart-drivers/) features.
 
-{{< note title="YugabyteDB Managed" >}}
+{{< note title="YugabyteDB Aeon" >}}
 
-To use smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from outside the VPC network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from outside the VPC network fall back to the upstream driver behaviour automatically. For more information, refer to [Using smart drivers with YugabyteDB Managed](../../smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
+To use smart driver load balancing features when connecting to clusters in YugabyteDB Aeon, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from outside the VPC network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from outside the VPC network fall back to the upstream driver behaviour automatically. For more information, refer to [Using smart drivers with YugabyteDB Aeon](../../smart-drivers/#using-smart-drivers-with-yugabytedb-aeon).
 
 {{< /note >}}
 
@@ -86,9 +86,9 @@ The following table describes the connection parameters required to connect, inc
 | Database  | Database name | yugabyte
 | Username  | User connecting to the database | yugabyte
 | Password  | Password for the user | yugabyte
-| Load Balance Hosts | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | False |
+| Load Balance Hosts | [Uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | False |
 | YB Servers Refresh Interval | If Load Balance Hosts is true, the interval in seconds to refresh the servers list | 300 |
-| Topology Keys | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | Null |
+| Topology Keys | [Topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing) | Null |
 
 {{< note title ="Note" >}}
 The behaviour of `Load Balance Hosts` is different in YugabyteDB Npgsql Smart Driver as compared to the upstream driver. The upstream driver balances connections on the list of hosts provided in the `Host` property, whereas the smart driver balances the connections on the list of servers returned by the `yb_servers()` function.
@@ -204,5 +204,3 @@ John  35   CSharp
 
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
-- [YugabyteDB Npgsql Smart Driver reference](../../../reference/drivers/csharp/yb-npgsql-reference/)
-- Build C# applications using [Entity Framework ORM](../entityframework)

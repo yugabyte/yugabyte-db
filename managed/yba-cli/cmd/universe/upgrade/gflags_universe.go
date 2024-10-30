@@ -21,6 +21,8 @@ var upgradeGflagsCmd = &cobra.Command{
 	Use:   "gflags",
 	Short: "Gflags upgrade for a YugabyteDB Anywhere Universe",
 	Long:  "Gflags upgrade for a YugabyteDB Anywhere Universe",
+	Example: `yba universe upgrade gflags --name <universe-name> \
+	--add-master-gflags "<key-1>"="<value-1>","key-2"="<value-2>","key-3"="<value-3>"`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		universeName, err := cmd.Flags().GetString("name")
@@ -39,7 +41,7 @@ var upgradeGflagsCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if !skipValidations {
-			_, _, err := UpgradeValidations(cmd, util.UpgradeOperation)
+			_, _, err := Validations(cmd, util.UpgradeOperation)
 			if err != nil {
 				logrus.Fatalf(
 					formatter.Colorize(err.Error()+"\n", formatter.RedColor),
@@ -56,7 +58,7 @@ var upgradeGflagsCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, universe, err := UpgradeValidations(cmd, util.UpgradeOperation)
+		authAPI, universe, err := Validations(cmd, util.UpgradeOperation)
 		if err != nil {
 			logrus.Fatalf(
 				formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -161,14 +163,13 @@ var upgradeGflagsCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		taskUUID := rUpgrade.GetTaskUUID()
 		logrus.Info(
 			fmt.Sprintf("Upgrading universe %s (%s) gflags\n",
 				formatter.Colorize(universeName, formatter.GreenColor),
 				universeUUID,
 			))
 
-		waitForUpgradeUniverseTask(authAPI, universeName, universeUUID, taskUUID)
+		WaitForUpgradeUniverseTask(authAPI, universeName, rUpgrade)
 	},
 }
 
@@ -180,13 +181,13 @@ func init() {
 			"Provide comma-separated key-value pairs for the primary "+
 			"cluster in the following format: "+
 			"\"--add-master-gflags master-gflag-key-1=master-gflag-value-1,"+
-			"master-gflag-key-2=master-gflag-key2\".")
+			"master-gflag-key-2=master-gflag-value-2\".")
 	upgradeGflagsCmd.Flags().String("edit-master-gflags", "",
 		"[Optional] Edit Master GFlags in existing list. "+
 			"Provide comma-separated key-value pairs for the primary "+
 			"cluster in the following format: "+
 			"\"--edit-master-gflags master-gflag-key-1=master-gflag-value-1,"+
-			"master-gflag-key-2=master-gflag-key2\".")
+			"master-gflag-key-2=master-gflag-value-2\".")
 	upgradeGflagsCmd.Flags().String("remove-master-gflags", "",
 		"[Optional] Remove Master GFlags from existing list. "+
 			"Provide comma-separated values for the primary "+
@@ -200,17 +201,17 @@ func init() {
 		"[Optional] Add TServer GFlags to primary cluster. Provide comma-separated key-value"+
 			" pairs in the following format: "+
 			"\"--add-primary-tserver-gflags tserver-gflag-key-1-for-primary-cluster="+
-			"tserver-gflag-value-1,tserver-gflag-key-2-for-primary-cluster=tserver-gflag-key2\"."+
+			"tserver-gflag-value-1,tserver-gflag-key-2-for-primary-cluster=tserver-gflag-value-2\"."+
 			" If no-of-clusters = 2 "+
-			"and apply-to-read-replica is set to true, "+
+			"and inherit-from-primary is set to true, "+
 			"these gflags are copied to the read replica cluster.")
 	upgradeGflagsCmd.Flags().String("edit-primary-tserver-gflags", "",
 		"[Optional] Edit TServer GFlags in primary cluster. Provide comma-separated key-value"+
 			" pairs in the following format: "+
 			"\"--edit-primary-tserver-gflags tserver-gflag-key-1-for-primary-cluster="+
-			"tserver-gflag-value-1,tserver-gflag-key-2-for-primary-cluster=tserver-gflag-key2\"."+
+			"tserver-gflag-value-1,tserver-gflag-key-2-for-primary-cluster=tserver-gflag-value-2\"."+
 			" If no-of-clusters = 2 "+
-			"and apply-to-read-replica is set to true, these gflag "+
+			"and inherit-from-primary is set to true, these gflag "+
 			"values are copied to the read replica cluster.")
 	upgradeGflagsCmd.Flags().String("remove-primary-tserver-gflags", "",
 		"[Optional] Remove TServer GFlags from primary cluster. Provide comma-separated keys"+
@@ -218,27 +219,27 @@ func init() {
 			"\"--remove-primary-tserver-gflags tserver-gflag-key-1-for-primary-cluster"+
 			",tserver-gflag-key-2-for-primary-cluster\"."+
 			" If no-of-clusters = 2 "+
-			"and apply-to-read-replica is set to true, these gflag "+
+			"and inherit-from-primary is set to true, these gflag "+
 			"keys are removed from the read replica cluster.")
 
 	upgradeGflagsCmd.Flags().String("add-rr-tserver-gflags", "",
 		"[Optional] Add TServer GFlags to Read Replica cluster. Provide comma-separated key-value"+
 			" pairs in the following format: "+
 			"\"--add-rr-tserver-gflags tserver-gflag-key-1-for-rr-cluster="+
-			"tserver-gflag-value-1,tserver-gflag-key-2-for-rr-cluster=tserver-gflag-key2\"."+
-			" Ignored if apply-to-read-replica is set to true.")
+			"tserver-gflag-value-1,tserver-gflag-key-2-for-rr-cluster=tserver-gflag-value-2\"."+
+			" Ignored if inherit-from-primary is set to true.")
 	upgradeGflagsCmd.Flags().String("edit-rr-tserver-gflags", "",
 		"[Optional] Edit TServer GFlags in Read replica cluster. Provide comma-separated key-value"+
 			" pairs in the following format: "+
 			"\"--edit-rr-tserver-gflags tserver-gflag-key-1-for-rr-cluster="+
-			"tserver-gflag-value-1,tserver-gflag-key-2-for-rr-cluster=tserver-gflag-key2\"."+
-			" Ignored if apply-to-read-replica is set to true.")
+			"tserver-gflag-value-1,tserver-gflag-key-2-for-rr-cluster=tserver-gflag-value-2\"."+
+			" Ignored if inherit-from-primary is set to true.")
 	upgradeGflagsCmd.Flags().String("remove-rr-tserver-gflags", "",
 		"[Optional] Remove TServer GFlags from Read replica cluster. Provide comma-separated keys"+
 			" in the following format: "+
 			"\"--remove-rr-tserver-gflags tserver-gflag-key-1-for-rr-cluster"+
 			",tserver-gflag-key-2-for-rr-cluster\"."+
-			" Ignored if apply-to-read-replica is set to true.")
+			" Ignored if inherit-from-primary is set to true.")
 
 	upgradeGflagsCmd.Flags().String("upgrade-option", "Rolling",
 		"[Optional] Upgrade Options, defaults to Rolling. "+

@@ -23,6 +23,9 @@ func New() *YbaCtlComponent {
 // Setup will create the base install directory needed for initialization.
 func (yc *YbaCtlComponent) Setup() error {
 	common.Version = yc.Version()
+	if !common.HasSudoAccess() {
+		common.SystemdDir = filepath.Join(common.GetUserHomeDir(), ".config/systemd/user")
+	}
 	err := common.MkdirAll(common.YbactlInstallDir(), common.DirMode)
 	return err
 }

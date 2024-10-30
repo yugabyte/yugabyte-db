@@ -13,16 +13,16 @@ type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../oidc-authentication/" class="nav-link">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
-      OIDC
-    </a>
-  </li>
   <li>
     <a href="../ldap-authentication/" class="nav-link active">
       <i class="fa-solid fa-cubes"></i>
       LDAP
+    </a>
+  </li>
+  <li >
+    <a href="../oidc-authentication/" class="nav-link">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      OIDC
     </a>
   </li>
 
@@ -36,7 +36,7 @@ LDAP provides means for querying directory services. A directory typically store
 
 LDAP authentication is similar to a direct password authentication, except that it employs the LDAP protocol to verify the password. This means that only users who already exist in the database and have appropriate permissions can be authenticated via LDAP.
 
-Because YugabyteDB Anywhere and the LDAP server are synchronized when signing in, YugabyteDB Anywhere always uses the up-to-date credentials and roles information (such as role and password changes), as well as removal of users deleted in the LDAP server.
+Because YugabyteDB Anywhere and the LDAP server are synchronized during sign in, YugabyteDB Anywhere always uses the up-to-date credentials and roles information (such as role and password changes), as well as removal of users deleted in the LDAP server.
 
 If configured by the LDAP server, YugabyteDB Anywhere can prevent the user from being able to change their password.
 

@@ -6,9 +6,11 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.models.TaskInfo;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 
 @ApiModel(value = "CustomerTaskData", description = "Customer task data")
@@ -60,4 +62,10 @@ public class CustomerTaskFormData {
 
   @ApiModelProperty(value = "Customer Email", accessMode = READ_ONLY)
   public String userEmail;
+
+  @ApiModelProperty(value = "Task info", hidden = true)
+  public TaskInfo taskInfo;
+
+  @ApiModelProperty(value = "Subtask infos", hidden = true)
+  public List<TaskInfo> subtaskInfos;
 }

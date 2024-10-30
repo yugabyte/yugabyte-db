@@ -30,9 +30,9 @@ This ensures that the reads and writes are in the same region, with the expected
 
 ## Multi-master
 
-You can eliminate the possibility of data loss by setting up another cluster in a different region, say `us-east`, using [xCluster](../../../explore/multi-region-deployments/asynchronous-replication-ysql/#configure-bidirectional-replication).
+You can eliminate the possibility of data loss by setting up another cluster in a different region, say `us-east`, using [xCluster](../../../explore/going-beyond-sql/asynchronous-replication-ysql/#configure-bidirectional-replication).
 
-![Active-Active Multi-Master](/images/develop/global-apps/aa-multi-master-setup.png)
+![Active-Active Multi-Master](/images/architecture/replication/active-active-deployment-new.png)
 
 The `us-east` cluster is independent of the primary cluster in `us-west` and the data is populated by **asynchronous replication**. This means that the read and write latencies of each cluster are not affected by the other, but at the same time, the data in each cluster is not immediately consistent with the other. You can use this pattern to reduce latencies for local users.
 
@@ -59,5 +59,5 @@ The replication happens at the DocDB layer, bypassing the query layer, and some 
 ## Learn more
 
 - [xCluster architecture](../../../architecture/docdb-replication/async-replication)
-- [xCluster deployment](../../../explore/multi-region-deployments/asynchronous-replication-ysql/)
+- [xCluster deployment](../../../explore/going-beyond-sql/asynchronous-replication-ysql/)
 - [Raft consensus protocol](../../../architecture/docdb-replication/replication)

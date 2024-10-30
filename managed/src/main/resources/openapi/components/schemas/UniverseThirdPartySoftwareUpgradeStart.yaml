@@ -1,0 +1,14 @@
+title: UniverseThirdPartyUpgradeStart
+description: |
+  UniverseThirdPartyUpgradeStart
+
+  Payload to start a third party software upgrade on a Universe. Part of 
+  UniverseThirdPartyUpgradeReq
+allOf:
+  - $ref: "./SleepAfterRestartSchema.yaml"
+  - type: object
+    properties:
+      force_all:
+        description: force all thirdparty softwares to be upgraded.
+        type: boolean
+        default: false

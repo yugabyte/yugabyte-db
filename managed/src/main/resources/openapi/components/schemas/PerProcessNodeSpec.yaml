@@ -1,0 +1,10 @@
+title: PerProcessNodeSpec
+description: 'Instance settings for each node in the cluster. The instances can be onprem nodes, VMs in GCP/AWS/Azure, or pods in k8s. Part of AvailabilityZoneNodeSpec and ClusterNodeSpec.'
+type: object
+properties:
+  instance_type:
+    description: Instance type for tserver/master nodes of cluster that determines the cpu and memory resources.
+    type: string
+    example: c5.xlarge
+  storage_spec:
+    $ref: "./ClusterStorageSpec.yaml"

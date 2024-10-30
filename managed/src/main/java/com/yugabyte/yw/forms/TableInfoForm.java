@@ -6,6 +6,7 @@ import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -24,6 +25,7 @@ public class TableInfoForm {
   @ApiModel(description = "Table information response")
   @Builder
   @Jacksonized
+  @ToString
   public static class TableInfoResp {
 
     @ApiModelProperty(value = "Table ID", accessMode = READ_ONLY)
@@ -88,6 +90,11 @@ public class TableInfoForm {
       }
       return false;
     }
+
+    @JsonIgnore
+    public String getTableId() {
+      return tableID;
+    }
   }
 
   @ApiModel(description = "Namespace information response")
@@ -121,6 +128,11 @@ public class TableInfoForm {
                       .get(namespace.getDatabaseType()))
               .name(namespace.getName());
       return builder;
+    }
+
+    @JsonIgnore
+    public String getNamespaceId() {
+      return Util.getIdRepresentation(namespaceUUID);
     }
   }
 

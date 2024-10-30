@@ -42,7 +42,7 @@ class AnsibleProcess(object):
         self.connection_type = self.DEFAULT_SSH_CONNECTION_TYPE
         self.connection_target = "localhost"
         self.sensitive_data_keywords = ["KEY", "SECRET", "CREDENTIALS", "API", "POLICY",
-                                        "NODE_AGENT_AUTH_TOKEN"]
+                                        "NODE_AGENT_AUTH_TOKEN", "YCQL_LDAP", "YSQL_HBA_CONF"]
 
     def set_connection_params(self, conn_type, target):
         self.connection_type = conn_type
@@ -61,6 +61,8 @@ class AnsibleProcess(object):
         for key, value in playbook_args.items():
             if self.is_sensitive(key.upper()):
                 playbook_args[key] = self.REDACT_STRING
+            elif isinstance(value, dict):
+                playbook_args[key] = self.redact_sensitive_data(value)
         return playbook_args
 
     def run(self, filename, extra_vars=None, host_info=None, print_output=True,
@@ -100,14 +102,15 @@ class AnsibleProcess(object):
         node_agent_cert_path = vars.pop("node_agent_cert_path", None)
         node_agent_auth_token = vars.pop("node_agent_auth_token", None)
         offload = vars.pop("offload_ansible", False) and not disable_offloading
-        ssh_key_type = parse_private_key(ssh_key_file)
+        if ssh_key_file is not None:
+            ssh_key_type = parse_private_key(ssh_key_file)
         remote_tmp_dir = vars.get("remote_tmp_dir", "/tmp")
         env = os.environ.copy()
         if env.get('APPLICATION_CONSOLE_LOG_LEVEL') != 'INFO':
             env['PROFILE_TASKS_TASK_OUTPUT_LIMIT'] = '30'
 
         playbook_args.update(vars)
-        if self.can_ssh:
+        if self.can_ssh and ssh_key_file is not None:
             playbook_args.update({
                 "ssh_user": ssh_user,
                 "yb_server_ssh_user": ssh_user,
@@ -246,7 +249,8 @@ class AnsibleProcess(object):
             remote_shell_args = {"async": True}
             remote_shell = RemoteShell(extra_vars)
             try:
-                rc, stdout, stderr = remote_shell.exec_command(process_args, **remote_shell_args)
+                rc, stdout_str, stderr_str = remote_shell.exec_command(process_args,
+                                                                       **remote_shell_args)
             finally:
                 delete_files = []
                 if vars_file is not None:
@@ -262,13 +266,15 @@ class AnsibleProcess(object):
                                  env=env)
             stdout, stderr = p.communicate()
             rc = p.returncode
+            stdout_str = stdout.decode('utf-8')
+            stderr_str = stderr.decode('utf-8') if rc != 0 else ""
         if print_output:
-            logging.info(stdout.decode('utf-8'))
+            logging.info(stdout_str)
 
         if rc != 0:
             errmsg = f"Playbook run of {filename} against {inventory_target} with args " \
                      f"{redacted_process_args} failed with return code {rc} " \
-                     f"and error '{stderr.decode('utf-8')}'"
+                     f"and error '{stderr_str}'"
 
             if rc == 4:  # host unreachable
                 raise YBOpsRecoverableError(errmsg)

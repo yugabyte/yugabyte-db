@@ -295,10 +295,21 @@ decltype(auto) AsString(const T&... t) {
 #define YB_FIELD_TO_STRING_NAME(elem) \
     BOOST_PP_IF(BOOST_PP_IS_BEGIN_PARENS(elem), BOOST_PP_TUPLE_ELEM(2, 0, elem), elem)
 
+// Fake expander to make compiler happy.
+// Actually we should not get here if elem starts with (.
+// But compiler always tries to expand both argument to BOOST_PP_IF.
+#define YB_FIELD_TO_STRING_VALUE_HELPER(elem, data) \
+    BOOST_PP_CAT(                                   \
+        BOOST_PP_IF(                                \
+            BOOST_PP_IS_BEGIN_PARENS(elem),         \
+            BOOST_PP_TUPLE_ELEM(2, 0, elem),        \
+            elem),                                  \
+        BOOST_PP_APPLY(data))
+
 #define YB_FIELD_TO_STRING_VALUE(elem, data)     \
     BOOST_PP_IF(BOOST_PP_IS_BEGIN_PARENS(elem),  \
                 (BOOST_PP_TUPLE_ELEM(2, 1, elem)), \
-                ::yb::AsString(BOOST_PP_CAT(elem, BOOST_PP_APPLY(data))))
+                ::yb::AsString(YB_FIELD_TO_STRING_VALUE_HELPER(elem, data)))
 
 #define YB_FIELD_TO_STRING(r, data, elem) \
     " " BOOST_PP_STRINGIZE(YB_FIELD_TO_STRING_NAME(elem)) ": " + \

@@ -18,7 +18,7 @@ Currently, in a multi-node setup, you need to install the extension on _every_ n
 
 In a read replica setup, install extensions on the primary instance, not on the read replica. Once installed, the extension replicates to the read replica.
 
-You cannot install new extensions in YugabyteDB Managed. If you need a database extension that is not pre-bundled with YugabyteDB added to a YugabyteDB Managed cluster, contact {{% support-cloud %}} with the names of the cluster and extension, or [reach out on Slack](https://yugabyte-db.slack.com/).
+You cannot install new extensions in YugabyteDB Aeon. If you need a database extension that is not pre-bundled with YugabyteDB added to a YugabyteDB Aeon cluster, contact {{% support-cloud %}} with the names of the cluster and extension, or [reach out on Slack](https://yugabyte-db.slack.com/).
 
 ## Install an extension
 
@@ -72,7 +72,7 @@ Ideally, use the same version of the PostgreSQL extension as that used by Yugaby
 ```
 
 ```output
-psql (PostgreSQL) 11.2-YB-2.11.2.0-b0
+psql (PostgreSQL) 11.2-YB-{{<yb-version version="preview">}}-b0
 ```
 
 If you already have PostgreSQL (use version `11.2` for best YSQL compatibility) with the extension installed, you can find the extension's files as follows:

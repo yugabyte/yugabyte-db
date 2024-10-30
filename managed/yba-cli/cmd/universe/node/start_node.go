@@ -20,6 +20,7 @@ var startNodeCmd = &cobra.Command{
 	Long: "Start a node instance in YugabyteDB Anywhere universe.\n" +
 		"Start the server processes on a previously stopped node.\n" +
 		"Ideally it is added back very soon.",
+	Example: `yba universe node start --name <universe-name> --node-name <node-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {

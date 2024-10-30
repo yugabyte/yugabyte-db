@@ -28,7 +28,10 @@
 
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/master/catalog_manager.h"
+#include "yb/master/leader_epoch.h"
 #include "yb/master/master.h"
+#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/ts_manager.h"
 
 #include "yb/util/decimal.h"
@@ -1591,7 +1594,7 @@ TEST_F(TestQLQuery, TestInvalidPeerTableEntries) {
   auto row_block = processor->row_block();
   ASSERT_EQ(num_tservers - 1, row_block->row_count()) << row_block->ToString();
 
-  auto ts_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->ts_manager();
+  auto* leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
   NodeInstancePB instance;
   instance.set_permanent_uuid("test");
   instance.set_instance_seqno(0);
@@ -1603,7 +1606,12 @@ TEST_F(TestQLQuery, TestInvalidPeerTableEntries) {
   hostport_pb->set_host(invalid_host);
   hostport_pb->set_port(123);
 
-  ASSERT_OK(ts_manager->RegisterTS(instance, registration, CloudInfoPB(), nullptr));
+  master::TSHeartbeatRequestPB heartbeat_request;
+  *heartbeat_request.mutable_common()->mutable_ts_instance() = instance;
+  *heartbeat_request.mutable_registration() = registration;
+  ASSERT_OK(leader_master->ts_manager()->RegisterFromHeartbeat(
+      heartbeat_request, leader_master->catalog_manager_impl()->GetLeaderEpochInternal(),
+      CloudInfoPB(), nullptr));
 
   // Verify the peers table and ensure the invalid host is not present.
   ASSERT_OK(processor->Run("SELECT * FROM system.peers"));

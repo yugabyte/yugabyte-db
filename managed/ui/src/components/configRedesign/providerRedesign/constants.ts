@@ -8,7 +8,8 @@ export const ConfigTabKey = {
   BACKUP: 'backup',
   BACKUP_NEW: 'newBackupConfig',
   SECURITY: 'security',
-  TROUBLESHOOT: 'troubleshoot'
+  TROUBLESHOOT: 'troubleshoot',
+  LOG: 'log'
 } as const;
 export type ConfigTabKey = typeof ConfigTabKey[keyof typeof ConfigTabKey];
 
@@ -109,6 +110,12 @@ export const KeyPairManagement = {
   UNKNOWN: 'Unknown'
 } as const;
 export type KeyPairManagement = typeof KeyPairManagement[keyof typeof KeyPairManagement];
+
+export const SshPrivateKeyInputType = {
+  UPLOAD_KEY: 'uploadKey',
+  PASTE_KEY: 'pasteKey'
+} as const;
+export type SshPrivateKeyInputType = typeof SshPrivateKeyInputType[keyof typeof SshPrivateKeyInputType];
 
 export const KEY_PAIR_MANAGEMENT_OPTIONS: OptionProps[] = [
   {

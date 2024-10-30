@@ -45,7 +45,7 @@ If a node has experienced a permanent failure on a YB-TServer, you should start 
 ## Master failure
 
 If a new YB-Master needs to be started to replace a failed one, the master quorum needs to be updated.
-Suppose, the original YB-Masters were n1, n2, n3. And n3 needs to be replaced with a new YB-Master n4. Then you need to use the `yb-admin` subcommand `change_master_config`, as follows:
+Suppose, the original YB-Masters were n1, n2, n3. And n3 needs to be replaced with a new YB-Master n4. Then you need to use the yb-admin subcommand `change_master_config`, as follows:
 
 ```sh
 ./bin/yb-admin -master_addresses n1:7100,n2:7100 change_master_config REMOVE_SERVER n3 7100
@@ -56,7 +56,7 @@ The YB-TServer's in-memory state automatically learns of the new master after th
 
 You should update the configuration file of all YB-TServer processes which specifies the master addresses to reflect the new quorum of n1, n2, n4.
 
-This is to handle the case if the `yb-tserver` restarts at some point in the future.
+This is to handle the case if the yb-tserver restarts at some point in the future.
 
 ## Planned cluster changes
 

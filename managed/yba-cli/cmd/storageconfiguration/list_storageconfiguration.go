@@ -13,9 +13,11 @@ import (
 
 var listStorageConfigurationCmd = &cobra.Command{
 	Use:     "list",
+	Aliases: []string{"ls"},
 	GroupID: "action",
 	Short:   "List YugabyteDB Anywhere storage-configurations",
 	Long:    "List YugabyteDB Anywhere storage-configurations",
+	Example: `yba storage-config list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		storageCode, err := cmd.Flags().GetString("code")
 		if err != nil {

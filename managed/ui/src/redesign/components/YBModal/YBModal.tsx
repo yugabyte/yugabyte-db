@@ -22,7 +22,6 @@ export interface OverrideButtonProps {
 
 export interface YBModalProps extends DialogProps {
   onClose: () => void;
-
   title?: string;
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'fit';
   overrideHeight?: string | number;
@@ -45,6 +44,7 @@ export interface YBModalProps extends DialogProps {
   dialogContentProps?: DialogContentProps;
   titleContentProps?: string;
   isSubmitting?: boolean;
+  showSubmitSpinner?: boolean;
 }
 
 export const SlideTransition = React.forwardRef(
@@ -89,7 +89,7 @@ const useStyles = makeStyles<Theme, Partial<YBModalProps>>((theme) => ({
     minHeight: '100%'
   },
   sidePanel: {
-    width: 736,
+    width: ({ overrideWidth }) => overrideWidth ?? '736',
     height: '100%',
     maxHeight: '100%',
     margin: '0 0 0 auto',
@@ -115,7 +115,9 @@ const useStyles = makeStyles<Theme, Partial<YBModalProps>>((theme) => ({
     lineHeight: '26px'
   },
   footerAccessory: {
-    marginRight: 'auto'
+    display: 'flex',
+    flexShrink: 1,
+    width: '100%'
   },
   title: {
     display: 'flex'
@@ -130,6 +132,9 @@ const useStyles = makeStyles<Theme, Partial<YBModalProps>>((theme) => ({
   text: {
     marginLeft: theme.spacing(1),
     whiteSpace: 'nowrap'
+  },
+  submitButton: {
+    flexShrink: 0
   }
 }));
 
@@ -155,6 +160,7 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
     submitButtonTooltip,
     cancelButtonTooltip,
     isSubmitting,
+    showSubmitSpinner = true,
     dialogContentProps = { dividers: true },
     titleContentProps,
     ...dialogProps
@@ -246,10 +252,11 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
       <YBButton
         variant="primary"
         onClick={handleSubmit}
+        className={classes.submitButton}
         {...submitBtnProps}
         type="submit"
         autoFocus
-        showSpinner={isSubmitting}
+        showSpinner={isSubmitting && showSubmitSpinner}
         data-testid={submitTestId ?? 'YBModal-SubmitButton'}
       >
         {submitLabel}

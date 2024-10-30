@@ -295,6 +295,8 @@ class HybridScanChoices : public ScanChoices {
   // Sets an entire group to a particular logical option index.
   void SetGroup(size_t opt_list_idx, size_t opt_index);
 
+  std::string DebugDumpCurrentScanTarget() const;
+
   const bool is_forward_scan_;
   dockv::KeyBytes current_scan_target_;
   bool finished_ = false;

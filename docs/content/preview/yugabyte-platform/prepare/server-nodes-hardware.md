@@ -1,9 +1,9 @@
 ---
-title: YugabyteDB Anywhere networking requirements
+title: YugabyteDB Anywhere hardware requirements
 headerTitle: Hardware requirements for nodes
 linkTitle: Hardware requirements
-description: Prerequisites for installing YugabyteDB Anywhere.
-headContent: Prepare a VM for deployment in a universe
+description: Hardware prerequisites for cluster nodes.
+headContent: CPU, memory, disk, and instance types required for YugabyteDB
 menu:
   preview_yugabyte-platform:
     identifier: server-nodes-hardware
@@ -14,35 +14,35 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
-    <a href="#onprem" class="nav-link active" id="onprem-tab" data-toggle="tab"
+    <a href="#onprem" class="nav-link active" id="onprem-tab" data-bs-toggle="tab"
       role="tab" aria-controls="onprem" aria-selected="true">
       <i class="fa-solid fa-building"></i>
       On-premises
     </a>
   </li>
   <li>
-    <a href="#aws" class="nav-link" id="aws-tab" data-toggle="tab"
+    <a href="#aws" class="nav-link" id="aws-tab" data-bs-toggle="tab"
       role="tab" aria-controls="aws" aria-selected="false">
       <i class="fa-brands fa-aws"></i>
       AWS
     </a>
   </li>
   <li>
-    <a href="#gcp" class="nav-link" id="gcp-tab" data-toggle="tab"
+    <a href="#gcp" class="nav-link" id="gcp-tab" data-bs-toggle="tab"
       role="tab" aria-controls="gcp" aria-selected="false">
       <i class="fa-brands fa-google"></i>
       GCP
     </a>
   </li>
   <li>
-    <a href="#azure" class="nav-link" id="azure-tab" data-toggle="tab"
+    <a href="#azure" class="nav-link" id="azure-tab" data-bs-toggle="tab"
       role="tab" aria-controls="azure" aria-selected="false">
       <i class="fa-brands fa-microsoft"></i>
       Azure
     </a>
   </li>
   <li>
-    <a href="#k8s" class="nav-link" id="k8s-tab" data-toggle="tab"
+    <a href="#k8s" class="nav-link" id="k8s-tab" data-bs-toggle="tab"
       role="tab" aria-controls="k8s" aria-selected="false">
       <i class="fa-regular fa-dharmachakra"></i>
       Kubernetes
@@ -53,7 +53,7 @@ type: docs
 <div class="tab-content">
   <div id="onprem" class="tab-pane fade show active" role="tabpanel" aria-labelledby="onprem-tab">
 
-Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirements) for database cluster node hardware requirements. In particular, note the following sections:
+Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirements) for database cluster nodes. In particular, note the following sections:
 
 - [CPU and RAM](../../../deploy/checklist/#cpu-and-ram)
 - [Verify support for SSE2 and SSE4.2](../../../deploy/checklist/#verify-support-for-sse2-and-sse4-2)
@@ -65,40 +65,40 @@ It is recommended to use separate disks for the Linux OS and for the data.
 
   <div id="aws" class="tab-pane fade" role="tabpanel" aria-labelledby="aws-tab">
 
-Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirements) for database cluster node hardware requirements. In particular, note the following sections:
+Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirements) for database cluster nodes. In particular, note the following sections:
 
 - [CPU and RAM](../../../deploy/checklist/#cpu-and-ram)
 - [Verify support for SSE2 and SSE4.2](../../../deploy/checklist/#verify-support-for-sse2-and-sse4-2)
 - [Disks](../../../deploy/checklist/#disks)
 - [Amazon Web Services instance type and volume recommendations](../../../deploy/checklist/#amazon-web-services-aws)
 
-  **Note**: The ephemeral disk-based instances (such as i3) in this list come with certain restrictions for Day 2 YBA operations. Instances with EBS attached storage are recommended.
+  **Note**: The ephemeral disk-based instances (such as i3) in this list come with certain restrictions for Day 2 YugabyteDB Anywhere operations. Instances with EBS attached storage are recommended.
 
   </div>
 
   <div id="gcp" class="tab-pane fade" role="tabpanel" aria-labelledby="gcp-tab">
 
-Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirements) for database cluster node hardware requirements. In particular, note the following sections:
+Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirements) for database cluster nodes. In particular, note the following sections:
 
 - [CPU and RAM](../../../deploy/checklist/#cpu-and-ram)
 - [Verify support for SSE2 and SSE4.2](../../../deploy/checklist/#verify-support-for-sse2-and-sse4-2)
 - [Disks](../../../deploy/checklist/#disks)
 - [Google Cloud instance type and volume type recommendations](../../../deploy/checklist/#google-cloud)
 
-  Note that using local disks comes with certain restrictions for Day 2 YBA operations. For YBA, remote disks are recommended.
+  Note that using local disks comes with certain restrictions for Day 2 YugabyteDB Anywhere operations. For YugabyteDB Anywhere, remote disks are recommended.
 
   </div>
 
   <div id="azure" class="tab-pane fade" role="tabpanel" aria-labelledby="azure-tab">
 
-Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirements) for database cluster node hardware requirements. In particular, note the following sections:
+Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirements) for database cluster nodes. In particular, note the following sections:
 
 - [CPU and RAM](../../../deploy/checklist/#cpu-and-ram)
 - [Verify support for SSE2 and SSE4.2](../../../deploy/checklist/#verify-support-for-sse2-and-sse4-2)
 - [Disks](../../../deploy/checklist/#disks)
 - [Azure instance type and disk type recommendations](../../../deploy/checklist/#azure)
 
-YBA does not support using ephemeral OS disks for Azure DB clusters.
+YugabyteDB Anywhere does not support using ephemeral OS disks for Azure DB clusters.
 
   </div>
 
@@ -117,9 +117,9 @@ However, to estimate the exact resources needed, see [CPU and RAM](../../../depl
 
 **Storage requirements**
 
-An appropriate storage class has to be specified both during YBA installation and when creating the Kubernetes provider configuration. The type of volume provisioned for YugabyteDB depends on the Kubernetes storage class being used. Consider the following recommendations when selecting or creating a storage class:
+An appropriate storage class has to be specified both during YugabyteDB Anywhere installation and when creating the Kubernetes provider configuration. The type of volume provisioned for YugabyteDB depends on the Kubernetes storage class being used. Consider the following recommendations when selecting or creating a storage class:
 
-- _Use [dynamically provisioned volumes](https://kubernetes.io/docs/concepts/storage/dynamic-provisioning/)_ for YBA and YBDB cluster pods. Set [volume binding mode](https://kubernetes.io/docs/concepts/storage/storage-classes/#volume-binding-mode) on a storage class to `WaitForFirstConsumer` for such volumes. This delays provisioning until a pod using the persistent volume claim (PVC) is created. The pod topology or scheduling constraints are respected.
+- _Use [dynamically provisioned volumes](https://kubernetes.io/docs/concepts/storage/dynamic-provisioning/)_ for YugabyteDB Anywhere and YugabyteDB cluster pods. Set [volume binding mode](https://kubernetes.io/docs/concepts/storage/storage-classes/#volume-binding-mode) on a storage class to `WaitForFirstConsumer` for such volumes. This delays provisioning until a pod using the persistent volume claim (PVC) is created. The pod topology or scheduling constraints are respected.
 
   Scheduling might fail if the storage volume is not accessible from all the nodes in a cluster and the default volume binding mode is set to `Immediate` for certain regional cloud deployments. The volume may be created in a location or zone that is not accessible to the pod, causing the failure.
 

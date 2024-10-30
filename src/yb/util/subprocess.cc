@@ -581,15 +581,22 @@ Status Subprocess::Call(const vector<string>& argv) {
       retcode));
 }
 
-Status Subprocess::Call(const vector<string>& argv, string* output, StdFdTypes read_fds) {
+Status Subprocess::Call(const vector<string>& argv, string* output, string* error) {
   Subprocess p(argv[0], argv);
-  return p.Call(output, read_fds);
+  return p.Call(output, error);
 }
 
-Status Subprocess::Call(string* output, StdFdTypes read_fds) {
-  if (read_fds.Test(StdFdType::kIn)) {
-    return STATUS(InvalidArgument, "Cannot read from child stdin");
+Status Subprocess::Call(string* output, string* error) {
+  StdFdTypes read_fds;
+  if (output) {
+    read_fds.Set(StdFdType::kOut);
+    output->clear();
   }
+  if (error) {
+    read_fds.Set(StdFdType::kErr);
+    error->clear();
+  }
+
   for (const auto fd_type : read_fds) {
     SetFdShared(to_underlying(fd_type), SubprocessStreamMode::kPiped);
   }
@@ -600,28 +607,19 @@ Status Subprocess::Call(string* output, StdFdTypes read_fds) {
     return STATUS(IOError, "Unable to close child process stdin", Errno(errno));
   }
 
-  output->clear();
   char buf[1024];
-  boost::container::small_vector<int, 2> fds;
+  ssize_t n;
   for (const auto fd_type : read_fds) {
-    fds.push_back(CheckAndOffer(to_underlying(fd_type)));
-  }
-
-  while (!fds.empty()) {
-    auto it = fds.end();
-    while (it != fds.begin()) {
-      auto fd = *--it;
-      ssize_t n = read(fd, buf, arraysize(buf));
+    int fd = CheckAndOffer(to_underlying(fd_type));
+    auto* stream = (fd_type == StdFdType::kOut) ? output : error;
+    do {
+      n = read(fd, buf, arraysize(buf));
       if (n < 0) {
         if (errno == EINTR) continue;
         return STATUS(IOError, "IO error reading from " + argv_[0], Errno(errno));
       }
-      if (n == 0) {
-        fds.erase(it);
-        continue;
-      }
-      output->append(buf, n);
-    }
+      stream->append(buf, n);
+    } while (n != 0);
   }
 
   int retcode = 0;

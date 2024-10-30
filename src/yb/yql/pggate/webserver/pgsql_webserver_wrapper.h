@@ -33,8 +33,15 @@ extern "C" {
 
 struct WebserverWrapper;
 
+#define YB_PG_METRIC_NAME_LEN 120
+
+#define YB_PG_METRIC_NAME_LEN 120
+
 typedef struct ybpgmEntry {
-  char name[100];
+  char name[YB_PG_METRIC_NAME_LEN];
+  char table_name[YB_PG_METRIC_NAME_LEN];
+  char count_help[YB_PG_METRIC_NAME_LEN];
+  char sum_help[YB_PG_METRIC_NAME_LEN];
   YB_ATOMIC_ULLONG calls;
   YB_ATOMIC_ULLONG total_time;
   YB_ATOMIC_ULLONG rows;
@@ -56,29 +63,6 @@ typedef struct rpczEntry {
   char *port;
 } rpczEntry;
 
-typedef struct YsqlStatementStat {
-  char *query;
-
-  // Prefix of Counters in pg_stat_monitor.c
-
-  int64 userid;       /* OID of user who executed the statement */
-  int64 dbid;         /* OID of database in which the statement was executed */
-  int64 calls;         /* # of times executed */
-  double total_time;   /* total execution time, in msec */
-  double min_time;     /* minimum execution time in msec */
-  double max_time;     /* maximum execution time in msec */
-  double mean_time;    /* mean execution time in msec */
-  double sum_var_time; /* sum of variances in execution time in msec */
-  int64 rows;          /* total # of retrieved or affected rows */
-  int64 query_id;     /* query id of the pgssHashKey for the query */
-  int64 local_blks_hit; /* Number of local buffer hits */
-  int64 local_blks_read; /* Number of local disk blocks read */
-  int64 local_blks_dirtied; /* Number of local disk blocks dirtied */
-  int64 local_blks_written; /* Number of local disk blocks written */
-  int64 temp_blks_read; /* Number of temp blocks read */
-  int64 temp_blks_written; /* Number of temp blocks written */
-} YsqlStatementStat;
-
 typedef struct {
   void (*pullRpczEntries)();
   void (*freeRpczEntries)();
@@ -98,6 +82,13 @@ typedef struct {
   uint64_t *new_conn;
 } YbConnectionMetrics;
 
+typedef struct {
+  const char* name;
+  uint64_t value;
+  const char* type;
+  const char* help;
+} YsqlConnMgrMetric;
+
 struct WebserverWrapper *CreateWebserver(char *listen_addresses, int port);
 void DestroyWebserver(struct WebserverWrapper *webserver);
 void RegisterMetrics(ybpgmEntry *tab, int num_entries, char *metric_node_name);
@@ -111,13 +102,20 @@ void SetWebserverConfig(
     int webserver_profiler_sample_freq_bytes);
 void RegisterGetYsqlStatStatements(void (*getYsqlStatementStats)(void *));
 void RegisterResetYsqlStatStatements(void (*fn)());
-void WriteStatArrayElemToJson(void *p1, void *p2);
 void WriteStartObjectToJson(void *p1); /* Takes void *cb_arg argument */
-void WriteHistArrayBeginToJson(void *p1); /* Takes void *cb_arg argument */
+void WriteArrayBeginToJson(void *p1, const char* key);
 /* Takes void *cb_arg, char *buf, int64_t *count arguments */
-void WriteHistElemToJson(void *p1, void *p2, void *p3);
-void WriteHistArrayEndToJson(void* p1); /* Takes void *cb_arg argument */
+void WriteIntValueObjectToJson(void *p1, void *p2, void *p3);
+void WriteArrayEndToJson(void* p1); /* Takes void *cb_arg argument */
 void WriteEndObjectToJson(void *p1); /* Takes void *cb_arg argument */
+void WriteStringToJson(void *p1, const char* key, const char* value);
+// TODO: Add functions for writing primitve types, objects and nested arrays into Json
+// arrays as required. Current set of functions are bare minimum
+// required for current usecase and writing arrays of primitive types.
+void WriteIntToJson(void *p1, const char* key, const int64_t value);
+void WriteDoubleToJson(void *p1, const char* key, const double value);
+void WriteIntArrayToJson(void *p1, const char *key, const int64 *values, const size_t size);
+void WriteDoubleArrayToJson(void *p1, const char *key, const double *values, const size_t size);
 
 #ifdef __cplusplus
 }  // extern "C"

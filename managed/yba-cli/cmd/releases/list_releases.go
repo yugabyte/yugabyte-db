@@ -18,9 +18,11 @@ import (
 )
 
 var listReleasesCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List YugabyteDB version releases",
-	Long:  "List YugabyteDB version releases",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List YugabyteDB version releases",
+	Long:    "List YugabyteDB version releases",
+	Example: `yba yb-db-version list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
@@ -34,14 +36,15 @@ var listReleasesCmd = &cobra.Command{
 
 		sortedReleases := SortReleasesWithMetadata(r)
 		releasesCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: releases.NewReleasesFormat(viper.GetString("output")),
+			Command: "list",
+			Output:  os.Stdout,
+			Format:  releases.NewReleasesFormat(viper.GetString("output")),
 		}
 		if len(r) < 1 {
-			if util.IsOutputType("table") {
+			if util.IsOutputType(formatter.TableFormatKey) {
 				logrus.Infoln("No releases found\n")
 			} else {
-				logrus.Infoln("{}\n")
+				logrus.Infoln("[]\n")
 			}
 			return
 		}

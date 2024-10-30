@@ -4,6 +4,7 @@
 
 CREATE TABLE test_yb (col int);
 INSERT INTO test_yb VALUES (null);
+CREATE UNLOGGED MATERIALIZED VIEW unlogged_mv_yb AS SELECT * FROM test_yb; -- not supported
 CREATE MATERIALIZED VIEW mtest_yb AS SELECT * FROM test_yb;
 CREATE UNIQUE INDEX ON mtest_yb(col);
 REFRESH MATERIALIZED VIEW NONCONCURRENTLY mtest_yb;

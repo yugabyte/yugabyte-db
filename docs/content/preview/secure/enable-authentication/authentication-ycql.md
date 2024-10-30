@@ -29,7 +29,7 @@ $ ./bin/yugabyted start --use_cassandra_authentication=true
 
 ### Start YB-TServer services
 
-To enable YCQL authentication in deployable YugabyteDB clusters, start the `yb-tserver` processes with the [--use_cassandra_authentication](../../../reference/configuration/yb-tserver/#use-cassandra-authentication) flag. Your command should look similar to the following:
+To enable YCQL authentication in deployable YugabyteDB clusters, start the yb-tserver processes with the [--use_cassandra_authentication](../../../reference/configuration/yb-tserver/#use-cassandra-authentication) flag. Your command should look similar to the following:
 
 ```sh
 ./bin/yb-tserver \

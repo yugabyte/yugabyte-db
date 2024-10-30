@@ -34,7 +34,7 @@ The source for the application can be found in the [Using ORMs with YugabyteDB](
 
 This tutorial assumes that you have:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/quick-start/).
 - [.NET SDK 6.0](https://dotnet.microsoft.com/en-us/download) or later.
 
 ### Clone the "orm-examples" repository
@@ -103,7 +103,7 @@ $ curl \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/products
 ```
 
-Verify the `userId` and `productId` from the database using the following YSQL commands from your [ysqlsh](../../../../admin/ysqlsh/#starting-ysqlsh) shell.
+Verify the `userId` and `productId` from the database using the following YSQL commands from your [ysqlsh](../../../../api/ysqlsh/#starting-ysqlsh) shell.
 
 ```sql
 yugabyte=# SELECT * FROM users;

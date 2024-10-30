@@ -4,7 +4,7 @@ headerTitle: The PL/pgSQL exception section
 linkTitle: Exception section
 description: Describes the syntax and semantics of the PL/pgSQL exception section. [YSQL].
 menu:
-  stable:
+  stable_api:
     identifier: exception-section
     parent: plpgsql-syntax-and-semantics
     weight: 30
@@ -573,7 +573,6 @@ This is the result:
 ```
 
 Notice that _t_c2_nn_, which _is_ listed, is defined as a _table_ constraint rather than as a _column_ constraint.
-
 
 **4. Next, cause another error:**
 

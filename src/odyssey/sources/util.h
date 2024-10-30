@@ -98,4 +98,13 @@ static inline long od_memtol(char *data, size_t data_size, char **end_ptr,
 	return result;
 }
 
+static inline bool yb_od_streq(const char *s1, size_t s1_len,
+							   const char *s2, size_t s2_len)
+{
+	if (s1_len != s2_len)
+		return false;
+
+	return strncmp(s1, s2, s1_len) == 0;
+}
+
 #endif /* ODYSSEY_UTIL_H */

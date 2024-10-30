@@ -105,7 +105,7 @@ conn = psycopg2.connect("host=<hostname> port=5433 dbname=yugabyte user=<usernam
 | sslmode | SSL mode | prefer |
 | sslrootcert | path to the root certificate on your computer | ~/.postgresql/ |
 
-If you have created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/), [follow the steps](/preview/yugabyte-cloud/cloud-connect/connect-applications/) to obtain the cluster connection parameters and SSL Root certificate.
+If you have created a cluster on YugabyteDB Managed, [follow the steps](/preview/yugabyte-cloud/cloud-connect/connect-applications/) to obtain the cluster connection parameters and SSL Root certificate.
 
 ### Step 3: Query the YugabyteDB cluster from your application
 

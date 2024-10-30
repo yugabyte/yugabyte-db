@@ -20,7 +20,7 @@ Before starting the migration, ensure that you have the following:
 
 - Access to the MySQL database that is a subject of migration.
 
-- [ysqlsh](/preview/admin/ysqlsh/) command-line connectivity to a running YugabyteDB cluster that is a target of migration.
+- [ysqlsh](/preview/api/ysqlsh/) command-line connectivity to a running YugabyteDB cluster that is a target of migration.
 
 - A target database on the YugabyteDB cluster, with the database name matching the name of the MySQL database. You can create the YugabyteDB database as follows:
 
@@ -75,7 +75,7 @@ Before starting the migration, ensure that you have the following:
 
     If, after completing the preceding steps, you encounter "Failed to connect" error message, check the access permissions with your MySQL DBA:
 
-  - Verify that YSQL Loader instance can reach the target YugabyeDB cluster and communicate with one of the YugabyteDB nodes across port 5433, as follows:
+  - Verify that YSQL Loader instance can reach the target YugabyteDB cluster and communicate with one of the YugabyteDB nodes across port 5433, as follows:
 
     ```sh
     telnet <YugabyteDB_node_ip> 5433
@@ -195,7 +195,7 @@ You can modify the DDL by performing the following steps:
      max parallel create index=1, dumpddl only;
    ```
 
-1. Modify the `ddl.sql` DDL file and run it using the [ysqlsh](/preview/admin/ysqlsh/) command-line tool.
+1. Modify the `ddl.sql` DDL file and run it using the [ysqlsh](/preview/api/ysqlsh/) command-line tool.
 
 1. Provide the DDL file using a command file similar to the following:
 

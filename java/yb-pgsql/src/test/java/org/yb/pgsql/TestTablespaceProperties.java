@@ -283,11 +283,36 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
       // Verify that tablespace cannot be set for an index during creation.
       String errorMsg = "TABLESPACE is not supported for indexes on colocated tables.";
       executeAndAssertErrorThrown("CREATE INDEX t_idx2 ON t(b) " + tablespaceClause, errorMsg);
+    }
+  }
 
-      // Verify that tablespace cannot be set for an index during alter.
+  @Test
+  public void allowTableSpaceForIndexOnColocatedTables() throws Exception {
+    markClusterNeedsRecreation();
+
+    // Set the flags to enable colocation with tablespaces.
+    YBClient client = miniCluster.getClient();
+
+    // Set required YB-Master flags.
+    for (HostAndPort hp : miniCluster.getMasters().keySet()) {
+      assertTrue(client.setFlag(hp, "enable_ysql_tablespaces_for_placement", "true"));
+    }
+
+    final String tablespaceClause = "TABLESPACE " + tablespaceName;
+    final String defaultTablespaceClause = "TABLESPACE " + tablespaceName;
+    try (Statement setupStatement = connection.createStatement()) {
+
+      setupStatement.execute("CREATE TABLE t (a INT, b FLOAT) " + tablespaceClause);
+
+      // Verify that tablespace can be set for an index during creation.
+      setupStatement.execute("CREATE INDEX t_idx2 ON t(b) " + tablespaceClause);
+
+      // Verify that tablespace can be set for an index, independent of the base
+      setupStatement.execute("CREATE INDEX t_idx3 ON t(b) " + defaultTablespaceClause);
+
+      // Verify that tablespace can be set for an index during alter.
       setupStatement.execute("CREATE INDEX t_idx1 ON t(a)");
-      errorMsg = "cannot move colocated table to a different tablespace";
-      executeAndAssertErrorThrown("ALTER INDEX t_idx1 SET " + tablespaceClause, errorMsg);
+      setupStatement.execute("ALTER INDEX t_idx1 SET " + tablespaceClause);
     }
   }
 

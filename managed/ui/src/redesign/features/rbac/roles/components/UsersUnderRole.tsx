@@ -8,11 +8,12 @@
  */
 
 import { forwardRef, useContext, useImperativeHandle } from 'react';
+import clsx from 'clsx';
 import { useQuery } from 'react-query';
 import Cookies from 'js-cookie';
-import { flattenDeep, values } from 'lodash';
+import { flattenDeep, uniqBy, values } from 'lodash';
 import { useTranslation } from 'react-i18next';
-import { Typography, makeStyles } from '@material-ui/core';
+import { Divider, Typography, makeStyles } from '@material-ui/core';
 import { getRoleBindingsForAllUsers } from '../../api';
 import { Pages, RoleContextMethods, RoleViewContext } from '../RoleContext';
 import { UsersTab } from '../../common/rbac_constants';
@@ -39,6 +40,13 @@ const useStyles = makeStyles((theme) => ({
     textDecoration: 'underline',
     color: theme.palette.grey[900],
     cursor: 'pointer'
+  },
+  groupItem: {
+    textDecoration: 'none',
+    cursor: 'default'
+  },
+  divider: {
+    margin: '24px 0px'
   }
 }));
 
@@ -61,8 +69,12 @@ export const UsersUnderRole = forwardRef((_, forwardRef) => {
   });
 
   const usersWithThisRole = flattenDeep(values(roleBindings ?? [])).filter(
-    (bindings) => bindings.role.roleUUID === currentRole?.roleUUID
+    (bindings) => bindings.role.roleUUID === currentRole?.roleUUID && !bindings.groupInfo
   );
+
+  const groupsWithThisRole = uniqBy(flattenDeep(values(roleBindings ?? [])).filter(
+    (bindings) => bindings.role.roleUUID === currentRole?.roleUUID && bindings.groupInfo
+  ), 'groupInfo.identifier');
 
   const onCancel = () => {
     setCurrentRole(null);
@@ -99,6 +111,28 @@ export const UsersUnderRole = forwardRef((_, forwardRef) => {
           ))}
         </div>
       )}
+      {
+        groupsWithThisRole?.length > 0 && (
+          <>
+            <Divider className={classes.divider} />
+            <Typography variant="body1" className={classes.header}>
+              {t('assignedGroups')}
+            </Typography>
+            {
+              groupsWithThisRole.map((group) => (
+                <div className={classes.userArea}>
+                  <Typography
+                    variant="body2"
+                    className={clsx(classes.userItem, classes.groupItem)}
+                  >
+                    {group.groupInfo?.identifier}
+                  </Typography>
+                </div>
+              )
+              )}
+          </>
+        )
+      }
     </div>
   );
 });

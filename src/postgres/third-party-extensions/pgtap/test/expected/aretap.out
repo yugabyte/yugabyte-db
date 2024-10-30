@@ -1,0 +1,461 @@
+\unset ECHO
+1..459
+ok 1 - tablespaces_are(tablespaces, desc) should pass
+ok 2 - tablespaces_are(tablespaces, desc) should have the proper description
+ok 3 - tablespaces_are(tablespaces, desc) should have the proper diagnostics
+ok 4 - tablespaces_are(tablespaces) should pass
+ok 5 - tablespaces_are(tablespaces) should have the proper description
+ok 6 - tablespaces_are(tablespaces) should have the proper diagnostics
+ok 7 - tablespaces_are(tablespaces, desc) missing should fail
+ok 8 - tablespaces_are(tablespaces, desc) missing should have the proper description
+ok 9 - tablespaces_are(tablespaces, desc) missing should have the proper diagnostics
+ok 10 - tablespaces_are(tablespaces, desc) extra should fail
+ok 11 - tablespaces_are(tablespaces, desc) extra should have the proper description
+ok 12 - tablespaces_are(tablespaces, desc) extra should have the proper diagnostics
+ok 13 - tablespaces_are(tablespaces, desc) extras and missing should fail
+ok 14 - tablespaces_are(tablespaces, desc) extras and missing should have the proper description
+ok 15 - tablespaces_are(tablespaces, desc) extras and missing should have the proper diagnostics
+ok 16 - schemas_are(schemas, desc) should pass
+ok 17 - schemas_are(schemas, desc) should have the proper description
+ok 18 - schemas_are(schemas, desc) should have the proper diagnostics
+ok 19 - schemas_are(schemas) should pass
+ok 20 - schemas_are(schemas) should have the proper description
+ok 21 - schemas_are(schemas) should have the proper diagnostics
+ok 22 - schemas_are(schemas, desc) missing should fail
+ok 23 - schemas_are(schemas, desc) missing should have the proper description
+ok 24 - schemas_are(schemas, desc) missing should have the proper diagnostics
+ok 25 - schemas_are(schemas, desc) extras should fail
+ok 26 - schemas_are(schemas, desc) extras should have the proper description
+ok 27 - schemas_are(schemas, desc) extras should have the proper diagnostics
+ok 28 - schemas_are(schemas, desc) missing and extras should fail
+ok 29 - schemas_are(schemas, desc) missing and extras should have the proper description
+ok 30 - schemas_are(schemas, desc) missing and extras should have the proper diagnostics
+ok 31 - tables_are(schema, tables, desc) should pass
+ok 32 - tables_are(schema, tables, desc) should have the proper description
+ok 33 - tables_are(schema, tables, desc) should have the proper diagnostics
+ok 34 - tables_are(schema, tables) should pass
+ok 35 - tables_are(schema, tables) should have the proper description
+ok 36 - tables_are(schema, tables) should have the proper diagnostics
+ok 37 - tables_are(tables) should pass
+ok 38 - tables_are(tables) should have the proper description
+ok 39 - tables_are(tables) should have the proper diagnostics
+ok 40 - tables_are(tables, desc) should pass
+ok 41 - tables_are(tables, desc) should have the proper description
+ok 42 - tables_are(tables, desc) should have the proper diagnostics
+ok 43 - tables_are(schema, tables) missing should fail
+ok 44 - tables_are(schema, tables) missing should have the proper description
+ok 45 - tables_are(schema, tables) missing should have the proper diagnostics
+ok 46 - tables_are(tables) missing should fail
+ok 47 - tables_are(tables) missing should have the proper description
+ok 48 - tables_are(tables) missing should have the proper diagnostics
+ok 49 - tables_are(schema, tables) extra should fail
+ok 50 - tables_are(schema, tables) extra should have the proper description
+ok 51 - tables_are(schema, tables) extra should have the proper diagnostics
+ok 52 - tables_are(tables) extra should fail
+ok 53 - tables_are(tables) extra should have the proper description
+ok 54 - tables_are(tables) extra should have the proper diagnostics
+ok 55 - tables_are(schema, tables) extra and missing should fail
+ok 56 - tables_are(schema, tables) extra and missing should have the proper description
+ok 57 - tables_are(schema, tables) extra and missing should have the proper diagnostics
+ok 58 - tables_are(tables) extra and missing should fail
+ok 59 - tables_are(tables) extra and missing should have the proper description
+ok 60 - tables_are(tables) extra and missing should have the proper diagnostics
+ok 61 - views_are(schema, views, desc) should pass
+ok 62 - views_are(schema, views, desc) should have the proper description
+ok 63 - views_are(schema, views, desc) should have the proper diagnostics
+ok 64 - views_are(schema, views) should pass
+ok 65 - views_are(schema, views) should have the proper description
+ok 66 - views_are(schema, views) should have the proper diagnostics
+ok 67 - views_are(views) should pass
+ok 68 - views_are(views) should have the proper description
+ok 69 - views_are(views) should have the proper diagnostics
+ok 70 - views_are(views, desc) should pass
+ok 71 - views_are(views, desc) should have the proper description
+ok 72 - views_are(views, desc) should have the proper diagnostics
+ok 73 - views_are(schema, views) missing should fail
+ok 74 - views_are(schema, views) missing should have the proper description
+ok 75 - views_are(schema, views) missing should have the proper diagnostics
+ok 76 - views_are(views) missing should fail
+ok 77 - views_are(views) missing should have the proper description
+ok 78 - views_are(views) missing should have the proper diagnostics
+ok 79 - views_are(schema, views) extra should fail
+ok 80 - views_are(schema, views) extra should have the proper description
+ok 81 - views_are(schema, views) extra should have the proper diagnostics
+ok 82 - views_are(views) extra should fail
+ok 83 - views_are(views) extra should have the proper description
+ok 84 - views_are(views) extra should have the proper diagnostics
+ok 85 - views_are(schema, views) extra and missing should fail
+ok 86 - views_are(schema, views) extra and missing should have the proper description
+ok 87 - views_are(schema, views) extra and missing should have the proper diagnostics
+ok 88 - views_are(views) extra and missing should fail
+ok 89 - views_are(views) extra and missing should have the proper description
+ok 90 - views_are(views) extra and missing should have the proper diagnostics
+ok 91 - sequences_are(schema, sequences, desc) should pass
+ok 92 - sequences_are(schema, sequences, desc) should have the proper description
+ok 93 - sequences_are(schema, sequences, desc) should have the proper diagnostics
+ok 94 - sequences_are(schema, sequences) should pass
+ok 95 - sequences_are(schema, sequences) should have the proper description
+ok 96 - sequences_are(schema, sequences) should have the proper diagnostics
+ok 97 - sequences_are(sequences) should pass
+ok 98 - sequences_are(sequences) should have the proper description
+ok 99 - sequences_are(sequences) should have the proper diagnostics
+ok 100 - sequences_are(sequences, desc) should pass
+ok 101 - sequences_are(sequences, desc) should have the proper description
+ok 102 - sequences_are(sequences, desc) should have the proper diagnostics
+ok 103 - sequences_are(schema, sequences) missing should fail
+ok 104 - sequences_are(schema, sequences) missing should have the proper description
+ok 105 - sequences_are(schema, sequences) missing should have the proper diagnostics
+ok 106 - sequences_are(sequences) missing should fail
+ok 107 - sequences_are(sequences) missing should have the proper description
+ok 108 - sequences_are(sequences) missing should have the proper diagnostics
+ok 109 - sequences_are(schema, sequences) extra should fail
+ok 110 - sequences_are(schema, sequences) extra should have the proper description
+ok 111 - sequences_are(schema, sequences) extra should have the proper diagnostics
+ok 112 - sequences_are(sequences) extra should fail
+ok 113 - sequences_are(sequences) extra should have the proper description
+ok 114 - sequences_are(sequences) extra should have the proper diagnostics
+ok 115 - sequences_are(schema, sequences) extra and missing should fail
+ok 116 - sequences_are(schema, sequences) extra and missing should have the proper description
+ok 117 - sequences_are(schema, sequences) extra and missing should have the proper diagnostics
+ok 118 - sequences_are(sequences) extra and missing should fail
+ok 119 - sequences_are(sequences) extra and missing should have the proper description
+ok 120 - sequences_are(sequences) extra and missing should have the proper diagnostics
+ok 121 - functions_are(schema, functions, desc) should pass
+ok 122 - functions_are(schema, functions, desc) should have the proper description
+ok 123 - functions_are(schema, functions, desc) should have the proper diagnostics
+ok 124 - functions_are(schema, functions) should pass
+ok 125 - functions_are(schema, functions) should have the proper description
+ok 126 - functions_are(schema, functions, desc) + missing should fail
+ok 127 - functions_are(schema, functions, desc) + missing should have the proper description
+ok 128 - functions_are(schema, functions, desc) + missing should have the proper diagnostics
+ok 129 - functions_are(schema, functions, desc) + extra should fail
+ok 130 - functions_are(schema, functions, desc) + extra should have the proper description
+ok 131 - functions_are(schema, functions, desc) + extra should have the proper diagnostics
+ok 132 - functions_are(schema, functions, desc) + extra & missing should fail
+ok 133 - functions_are(schema, functions, desc) + extra & missing should have the proper description
+ok 134 - functions_are(schema, functions, desc) + extra & missing should have the proper diagnostics
+ok 135 - functions_are(functions, desc) should pass
+ok 136 - functions_are(functions, desc) should have the proper description
+ok 137 - functions_are(functions, desc) should have the proper diagnostics
+ok 138 - functions_are(functions) should pass
+ok 139 - functions_are(functions) should have the proper description
+ok 140 - functions_are(functions) should have the proper diagnostics
+ok 141 - functions_are(functions, desc) + missing should fail
+ok 142 - functions_are(functions, desc) + missing should have the proper description
+ok 143 - functions_are(functions, desc) + missing should have the proper diagnostics
+ok 144 - functions_are(functions, desc) + extra should fail
+ok 145 - functions_are(functions, desc) + extra should have the proper description
+ok 146 - functions_are(functions, desc) + extra should have the proper diagnostics
+ok 147 - functions_are(functions, desc) + extra & missing should fail
+ok 148 - functions_are(functions, desc) + extra & missing should have the proper description
+ok 149 - functions_are(functions, desc) + extra & missing should have the proper diagnostics
+ok 150 - indexes_are(schema, table, indexes, desc) should pass
+ok 151 - indexes_are(schema, table, indexes, desc) should have the proper description
+ok 152 - indexes_are(schema, table, indexes, desc) should have the proper diagnostics
+ok 153 - indexes_are(schema, table, indexes) should pass
+ok 154 - indexes_are(schema, table, indexes) should have the proper description
+ok 155 - indexes_are(schema, table, indexes) should have the proper diagnostics
+ok 156 - indexes_are(schema, table, indexes) + extra should fail
+ok 157 - indexes_are(schema, table, indexes) + extra should have the proper description
+ok 158 - indexes_are(schema, table, indexes) + extra should have the proper diagnostics
+ok 159 - indexes_are(schema, table, indexes) + missing should fail
+ok 160 - indexes_are(schema, table, indexes) + missing should have the proper description
+ok 161 - indexes_are(schema, table, indexes) + missing should have the proper diagnostics
+ok 162 - indexes_are(schema, table, indexes) + extra & missing should fail
+ok 163 - indexes_are(schema, table, indexes) + extra & missing should have the proper description
+ok 164 - indexes_are(schema, table, indexes) + extra & missing should have the proper diagnostics
+ok 165 - indexes_are(table, indexes, desc) should pass
+ok 166 - indexes_are(table, indexes, desc) should have the proper description
+ok 167 - indexes_are(table, indexes, desc) should have the proper diagnostics
+ok 168 - indexes_are(table, indexes) should pass
+ok 169 - indexes_are(table, indexes) should have the proper description
+ok 170 - indexes_are(table, indexes) should have the proper diagnostics
+ok 171 - indexes_are(table, indexes) + extra should fail
+ok 172 - indexes_are(table, indexes) + extra should have the proper description
+ok 173 - indexes_are(table, indexes) + extra should have the proper diagnostics
+ok 174 - indexes_are(table, indexes) + missing should fail
+ok 175 - indexes_are(table, indexes) + missing should have the proper description
+ok 176 - indexes_are(table, indexes) + missing should have the proper diagnostics
+ok 177 - indexes_are(table, indexes) + extra & missing should fail
+ok 178 - indexes_are(table, indexes) + extra & missing should have the proper description
+ok 179 - indexes_are(table, indexes) + extra & missing should have the proper diagnostics
+ok 180 - users_are(users, desc) should pass
+ok 181 - users_are(users, desc) should have the proper description
+ok 182 - users_are(users, desc) should have the proper diagnostics
+ok 183 - users_are(users) should pass
+ok 184 - users_are(users) should have the proper description
+ok 185 - users_are(users) should have the proper diagnostics
+ok 186 - users_are(users, desc) missing should fail
+ok 187 - users_are(users, desc) missing should have the proper description
+ok 188 - users_are(users, desc) missing should have the proper diagnostics
+ok 189 - users_are(users, desc) extras should fail
+ok 190 - users_are(users, desc) extras should have the proper description
+ok 191 - users_are(users, desc) extras should have the proper diagnostics
+ok 192 - users_are(users, desc) missing and extras should fail
+ok 193 - users_are(users, desc) missing and extras should have the proper description
+ok 194 - users_are(users, desc) missing and extras should have the proper diagnostics
+ok 195 - groups_are(groups, desc) should pass
+ok 196 - groups_are(groups, desc) should have the proper description
+ok 197 - groups_are(groups, desc) should have the proper diagnostics
+ok 198 - groups_are(groups) should pass
+ok 199 - groups_are(groups) should have the proper description
+ok 200 - groups_are(groups) should have the proper diagnostics
+ok 201 - groups_are(groups, desc) missing should fail
+ok 202 - groups_are(groups, desc) missing should have the proper description
+ok 203 - groups_are(groups, desc) missing should have the proper diagnostics
+ok 204 - groups_are(groups, desc) extras should fail
+ok 205 - groups_are(groups, desc) extras should have the proper description
+ok 206 - groups_are(groups, desc) extras should have the proper diagnostics
+ok 207 - groups_are(groups, desc) missing and extras should fail
+ok 208 - groups_are(groups, desc) missing and extras should have the proper description
+ok 209 - groups_are(groups, desc) missing and extras should have the proper diagnostics
+ok 210 - languages_are(languages, desc) should pass
+ok 211 - languages_are(languages, desc) should have the proper description
+ok 212 - languages_are(languages, desc) should have the proper diagnostics
+ok 213 - languages_are(languages) should pass
+ok 214 - languages_are(languages) should have the proper description
+ok 215 - languages_are(languages) should have the proper diagnostics
+ok 216 - languages_are(languages, desc) missing should fail
+ok 217 - languages_are(languages, desc) missing should have the proper description
+ok 218 - languages_are(languages, desc) missing should have the proper diagnostics
+ok 219 - languages_are(languages, desc) extras should fail
+ok 220 - languages_are(languages, desc) extras should have the proper description
+ok 221 - languages_are(languages, desc) extras should have the proper diagnostics
+ok 222 - languages_are(languages, desc) missing and extras should fail
+ok 223 - languages_are(languages, desc) missing and extras should have the proper description
+ok 224 - languages_are(languages, desc) missing and extras should have the proper diagnostics
+ok 225 - opclasses_are(schema, opclasses, desc) should pass
+ok 226 - opclasses_are(schema, opclasses, desc) should have the proper description
+ok 227 - opclasses_are(schema, opclasses, desc) should have the proper diagnostics
+ok 228 - opclasses_are(schema, opclasses) should pass
+ok 229 - opclasses_are(schema, opclasses) should have the proper description
+ok 230 - opclasses_are(schema, opclasses, desc) + missing should fail
+ok 231 - opclasses_are(schema, opclasses, desc) + missing should have the proper description
+ok 232 - opclasses_are(schema, opclasses, desc) + missing should have the proper diagnostics
+ok 233 - opclasses_are(schema, opclasses, desc) + extra should fail
+ok 234 - opclasses_are(schema, opclasses, desc) + extra should have the proper description
+ok 235 - opclasses_are(schema, opclasses, desc) + extra should have the proper diagnostics
+ok 236 - opclasses_are(schema, opclasses, desc) + extra & missing should fail
+ok 237 - opclasses_are(schema, opclasses, desc) + extra & missing should have the proper description
+ok 238 - opclasses_are(schema, opclasses, desc) + extra & missing should have the proper diagnostics
+ok 239 - opclasses_are(opclasses) should pass
+ok 240 - opclasses_are(opclasses) should have the proper description
+ok 241 - opclasses_are(opclasses) should have the proper diagnostics
+ok 242 - opclasses_are(opclasses, desc) + missing should fail
+ok 243 - opclasses_are(opclasses, desc) + missing should have the proper description
+ok 244 - opclasses_are(opclasses, desc) + missing should have the proper diagnostics
+ok 245 - opclasses_are(opclasses, desc) + extra should fail
+ok 246 - opclasses_are(opclasses, desc) + extra should have the proper description
+ok 247 - opclasses_are(opclasses, desc) + extra should have the proper diagnostics
+ok 248 - opclasses_are(opclasses, desc) + extra & missing should fail
+ok 249 - opclasses_are(opclasses, desc) + extra & missing should have the proper description
+ok 250 - opclasses_are(opclasses, desc) + extra & missing should have the proper diagnostics
+ok 251 - rules_are(schema, table, rules, desc) should pass
+ok 252 - rules_are(schema, table, rules, desc) should have the proper description
+ok 253 - rules_are(schema, table, rules, desc) should have the proper diagnostics
+ok 254 - rules_are(schema, table, rules) should pass
+ok 255 - rules_are(schema, table, rules) should have the proper description
+ok 256 - rules_are(schema, table, rules) should have the proper diagnostics
+ok 257 - rules_are(schema, table, rules) + extra should fail
+ok 258 - rules_are(schema, table, rules) + extra should have the proper description
+ok 259 - rules_are(schema, table, rules) + extra should have the proper diagnostics
+ok 260 - rules_are(schema, table, rules) + missing should fail
+ok 261 - rules_are(schema, table, rules) + missing should have the proper description
+ok 262 - rules_are(schema, table, rules) + missing should have the proper diagnostics
+ok 263 - rules_are(schema, table, rules) + extra & missing should fail
+ok 264 - rules_are(schema, table, rules) + extra & missing should have the proper description
+ok 265 - rules_are(schema, table, rules) + extra & missing should have the proper diagnostics
+ok 266 - rules_are(table, rules, desc) should pass
+ok 267 - rules_are(table, rules, desc) should have the proper description
+ok 268 - rules_are(table, rules, desc) should have the proper diagnostics
+ok 269 - rules_are(table, rules) should pass
+ok 270 - rules_are(table, rules) should have the proper description
+ok 271 - rules_are(table, rules) should have the proper diagnostics
+ok 272 - rules_are(table, rules) + extra should fail
+ok 273 - rules_are(table, rules) + extra should have the proper description
+ok 274 - rules_are(table, rules) + extra should have the proper diagnostics
+ok 275 - rules_are(table, rules) + missing should fail
+ok 276 - rules_are(table, rules) + missing should have the proper description
+ok 277 - rules_are(table, rules) + missing should have the proper diagnostics
+ok 278 - rules_are(table, rules) + extra & missing should fail
+ok 279 - rules_are(table, rules) + extra & missing should have the proper description
+ok 280 - rules_are(table, rules) + extra & missing should have the proper diagnostics
+ok 281 - types_are(schema, types, desc) should pass
+ok 282 - types_are(schema, types, desc) should have the proper description
+ok 283 - types_are(schema, types, desc) should have the proper diagnostics
+ok 284 - types_are(schema, types) should pass
+ok 285 - types_are(schema, types) should have the proper description
+ok 286 - types_are(schema, types, desc) + missing should fail
+ok 287 - types_are(schema, types, desc) + missing should have the proper description
+ok 288 - types_are(schema, types, desc) + missing should have the proper diagnostics
+ok 289 - types_are(schema, types, desc) + extra should fail
+ok 290 - types_are(schema, types, desc) + extra should have the proper description
+ok 291 - types_are(schema, types, desc) + extra should have the proper diagnostics
+ok 292 - types_are(schema, types, desc) + extra & missing should fail
+ok 293 - types_are(schema, types, desc) + extra & missing should have the proper description
+ok 294 - types_are(schema, types, desc) + extra & missing should have the proper diagnostics
+ok 295 - types_are(types) should pass
+ok 296 - types_are(types) should have the proper description
+ok 297 - types_are(types) should have the proper diagnostics
+ok 298 - types_are(types, desc) + missing should fail
+ok 299 - types_are(types, desc) + missing should have the proper description
+ok 300 - types_are(types, desc) + missing should have the proper diagnostics
+ok 301 - types_are(types, desc) + extra should fail
+ok 302 - types_are(types, desc) + extra should have the proper description
+ok 303 - types_are(types, desc) + extra should have the proper diagnostics
+ok 304 - types_are(types, desc) + extra & missing should fail
+ok 305 - types_are(types, desc) + extra & missing should have the proper description
+ok 306 - types_are(types, desc) + extra & missing should have the proper diagnostics
+ok 307 - domains_are(schema, domains, desc) should pass
+ok 308 - domains_are(schema, domains, desc) should have the proper description
+ok 309 - domains_are(schema, domains, desc) should have the proper diagnostics
+ok 310 - domains_are(schema, domains) should pass
+ok 311 - domains_are(schema, domains) should have the proper description
+ok 312 - domains_are(schema, domains) should have the proper diagnostics
+ok 313 - domains_are(schema, domains, desc) fail should fail
+ok 314 - domains_are(schema, domains, desc) fail should have the proper description
+ok 315 - domains_are(schema, domains, desc) fail should have the proper diagnostics
+ok 316 - domains_are(schema, domains) fail should fail
+ok 317 - domains_are(schema, domains) fail should have the proper description
+ok 318 - domains_are(schema, domains) fail should have the proper diagnostics
+ok 319 - domains_are(domains, desc) should pass
+ok 320 - domains_are(domains, desc) should have the proper description
+ok 321 - domains_are(domains, desc) should have the proper diagnostics
+ok 322 - domains_are(domains) should pass
+ok 323 - domains_are(domains) should have the proper description
+ok 324 - domains_are(domains) should have the proper diagnostics
+ok 325 - domains_are(domains, desc) fail should fail
+ok 326 - domains_are(domains, desc) fail should have the proper description
+ok 327 - domains_are(domains, desc) fail should have the proper diagnostics
+ok 328 - domains_are(domains) fail should fail
+ok 329 - domains_are(domains) fail should have the proper description
+ok 330 - domains_are(domains) fail should have the proper diagnostics
+ok 331 - casts_are(casts, desc) should pass
+ok 332 - casts_are(casts, desc) should have the proper description
+ok 333 - casts_are(casts, desc) should have the proper diagnostics
+ok 334 - casts_are(casts) should pass
+ok 335 - casts_are(casts) should have the proper description
+ok 336 - casts_are(casts) should have the proper diagnostics
+ok 337 - casts_are(casts, desc) missing should fail
+ok 338 - casts_are(casts, desc) missing should have the proper description
+ok 339 - casts_are(casts, desc) missing should have the proper diagnostics
+ok 340 - casts_are(casts, desc) extra should fail
+ok 341 - casts_are(casts, desc) extra should have the proper description
+ok 342 - casts_are(casts, desc) extra should have the proper diagnostics
+ok 343 - casts_are(casts, desc) extras and missing should fail
+ok 344 - casts_are(casts, desc) extras and missing should have the proper description
+ok 345 - casts_are(casts, desc) extras and missing should have the proper diagnostics
+ok 346 - operators_are(schema, operators, desc) should pass
+ok 347 - operators_are(schema, operators, desc) should have the proper description
+ok 348 - operators_are(schema, operators, desc) should have the proper diagnostics
+ok 349 - operators_are(schema, operators) should pass
+ok 350 - operators_are(schema, operators) should have the proper description
+ok 351 - operators_are(schema, operators) should have the proper diagnostics
+ok 352 - operators_are(schema, operators, desc) fail should fail
+ok 353 - operators_are(schema, operators, desc) fail should have the proper description
+ok 354 - operators_are(schema, operators, desc) fail should have the proper diagnostics
+ok 355 - operators_are(schema, operators) fail should fail
+ok 356 - operators_are(schema, operators) fail should have the proper description
+ok 357 - operators_are(schema, operators) fail should have the proper diagnostics
+ok 358 - operators_are(operators, desc) should pass
+ok 359 - operators_are(operators, desc) should have the proper description
+ok 360 - operators_are(operators, desc) should have the proper diagnostics
+ok 361 - operators_are(operators) should pass
+ok 362 - operators_are(operators) should have the proper description
+ok 363 - operators_are(operators) should have the proper diagnostics
+ok 364 - operators_are(operators, desc) fail should fail
+ok 365 - operators_are(operators, desc) fail should have the proper description
+ok 366 - operators_are(operators, desc) fail should have the proper diagnostics
+ok 367 - operators_are(operators) fail should fail
+ok 368 - operators_are(operators) fail should have the proper description
+ok 369 - operators_are(operators) fail should have the proper diagnostics
+ok 370 - columns_are(schema, table, columns, desc) should pass
+ok 371 - columns_are(schema, table, columns, desc) should have the proper description
+ok 372 - columns_are(schema, table, columns, desc) should have the proper diagnostics
+ok 373 - columns_are(schema, table, columns) should pass
+ok 374 - columns_are(schema, table, columns) should have the proper description
+ok 375 - columns_are(schema, table, columns) should have the proper diagnostics
+ok 376 - columns_are(schema, table, columns) + extra should fail
+ok 377 - columns_are(schema, table, columns) + extra should have the proper description
+ok 378 - columns_are(schema, table, columns) + extra should have the proper diagnostics
+ok 379 - columns_are(schema, table, columns) + missing should fail
+ok 380 - columns_are(schema, table, columns) + missing should have the proper description
+ok 381 - columns_are(schema, table, columns) + missing should have the proper diagnostics
+ok 382 - columns_are(schema, table, columns) + extra & missing should fail
+ok 383 - columns_are(schema, table, columns) + extra & missing should have the proper description
+ok 384 - columns_are(schema, table, columns) + extra & missing should have the proper diagnostics
+ok 385 - columns_are(table, columns, desc) should pass
+ok 386 - columns_are(table, columns, desc) should have the proper description
+ok 387 - columns_are(table, columns, desc) should have the proper diagnostics
+ok 388 - columns_are(table, columns) should pass
+ok 389 - columns_are(table, columns) should have the proper description
+ok 390 - columns_are(table, columns) should have the proper diagnostics
+ok 391 - columns_are(table, columns) + extra should fail
+ok 392 - columns_are(table, columns) + extra should have the proper description
+ok 393 - columns_are(table, columns) + extra should have the proper diagnostics
+ok 394 - columns_are(table, columns) + missing should fail
+ok 395 - columns_are(table, columns) + missing should have the proper description
+ok 396 - columns_are(table, columns) + missing should have the proper diagnostics
+ok 397 - columns_are(table, columns) + extra & missing should fail
+ok 398 - columns_are(table, columns) + extra & missing should have the proper description
+ok 399 - columns_are(table, columns) + extra & missing should have the proper diagnostics
+ok 400 - materialized_views_are(schema, materialized_views, desc) should pass
+ok 401 - materialized_views_are(schema, materialized_views, desc) should have the proper description
+ok 402 - materialized_views_are(schema, materialized_views, desc) should have the proper diagnostics
+ok 403 - materialized_views_are(schema, materialized_views) should pass
+ok 404 - materialized_views_are(schema, materialized_views) should have the proper description
+ok 405 - materialized_views_are(schema, materialized_views) should have the proper diagnostics
+ok 406 - materialized_views_are(views) should pass
+ok 407 - materialized_views_are(views) should have the proper description
+ok 408 - materialized_views_are(views) should have the proper diagnostics
+ok 409 - materialized_views_are(views, desc) should pass
+ok 410 - materialized_views_are(views, desc) should have the proper description
+ok 411 - materialized_views_are(views, desc) should have the proper diagnostics
+ok 412 - materialized_views_are(schema, materialized_views) missing should fail
+ok 413 - materialized_views_are(schema, materialized_views) missing should have the proper description
+ok 414 - materialized_views_are(schema, materialized_views) missing should have the proper diagnostics
+ok 415 - materialized_views_are(materialized_views) missing should fail
+ok 416 - materialized_views_are(materialized_views) missing should have the proper description
+ok 417 - materialized_views_are(materialized_views) missing should have the proper diagnostics
+ok 418 - materialized_views_are(schema, materialized_views) extra should fail
+ok 419 - materialized_views_are(schema, materialized_views) extra should have the proper description
+ok 420 - materialized_views_are(schema, materialized_views) extra should have the proper diagnostics
+ok 421 - materialized_views_are(materialized_views) extra should fail
+ok 422 - materialized_views_are(materialized_views) extra should have the proper description
+ok 423 - materialized_views_are(materialized_views) extra should have the proper diagnostics
+ok 424 - materialized_views_are(schema, materialized_views) extra and missing should fail
+ok 425 - materialized_views_are(schema, materialized_views) extra and missing should have the proper description
+ok 426 - materialized_views_are(schema, materialized_views) extra and missing should have the proper diagnostics
+ok 427 - materialized_views_are(materialized_views) extra and missing should fail
+ok 428 - materialized_views_are(materialized_views) extra and missing should have the proper description
+ok 429 - materialized_views_are(materialized_views) extra and missing should have the proper diagnostics
+ok 430 - foreign_tables_are(schema, tables, desc) should pass
+ok 431 - foreign_tables_are(schema, tables, desc) should have the proper description
+ok 432 - foreign_tables_are(schema, tables, desc) should have the proper diagnostics
+ok 433 - foreign_tables_are(tables, desc) should pass
+ok 434 - foreign_tables_are(tables, desc) should have the proper description
+ok 435 - foreign_tables_are(tables, desc) should have the proper diagnostics
+ok 436 - foreign_tables_are(schema, tables) should pass
+ok 437 - foreign_tables_are(schema, tables) should have the proper description
+ok 438 - foreign_tables_are(schema, tables) should have the proper diagnostics
+ok 439 - foreign_tables_are(tables) should pass
+ok 440 - foreign_tables_are(tables) should have the proper description
+ok 441 - foreign_tables_are(tables) should have the proper diagnostics
+ok 442 - foreign_tables_are(schema, tables) missing should fail
+ok 443 - foreign_tables_are(schema, tables) missing should have the proper description
+ok 444 - foreign_tables_are(schema, tables) missing should have the proper diagnostics
+ok 445 - foreign_tables_are(tables) missing should fail
+ok 446 - foreign_tables_are(tables) missing should have the proper description
+ok 447 - foreign_tables_are(tables) missing should have the proper diagnostics
+ok 448 - foreign_tables_are(schema, tables) extra should fail
+ok 449 - foreign_tables_are(schema, tables) extra should have the proper description
+ok 450 - foreign_tables_are(schema, tables) extra should have the proper diagnostics
+ok 451 - foreign_tables_are(tables) extra should fail
+ok 452 - foreign_tables_are(tables) extra should have the proper description
+ok 453 - foreign_tables_are(tables) extra should have the proper diagnostics
+ok 454 - foreign_tables_are(schema, tables) extra and missing should fail
+ok 455 - foreign_tables_are(schema, tables) extra and missing should have the proper description
+ok 456 - foreign_tables_are(schema, tables) extra and missing should have the proper diagnostics
+ok 457 - foreign_tables_are(tables) extra and missing should fail
+ok 458 - foreign_tables_are(tables) extra and missing should have the proper description
+ok 459 - foreign_tables_are(tables) extra and missing should have the proper diagnostics

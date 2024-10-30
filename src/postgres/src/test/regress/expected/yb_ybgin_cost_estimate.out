@@ -151,10 +151,10 @@ DROP INDEX idx_partial;
 -- GIN_SEARCH_MODE_ALL
 \set query 'SELECT * FROM jsonbs WHERE j @? ''$.aaa[*] ? (@ > 2)'''
 :run;
-                   QUERY PLAN
--------------------------------------------------
+                       QUERY PLAN
+---------------------------------------------------------
  Seq Scan on jsonbs
-   Filter: (j @? '$."aaa"[*]?(@ > 2)'::jsonpath)
+   Storage Filter: (j @? '$."aaa"[*]?(@ > 2)'::jsonpath)
 (2 rows)
 
                      QUERY PLAN

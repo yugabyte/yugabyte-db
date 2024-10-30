@@ -7,7 +7,7 @@
  * contains definition that have to (indirectly) be available when included by
  * FRONTEND code.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/lockdefs.h
@@ -45,11 +45,15 @@ typedef int LOCKMODE;
 #define AccessExclusiveLock		8	/* ALTER TABLE, DROP TABLE, VACUUM FULL,
 									 * and unqualified LOCK TABLE */
 
+#define MaxLockMode				8	/* highest standard lock mode */
+
+
+/* WAL representation of an AccessExclusiveLock on a table */
 typedef struct xl_standby_lock
 {
 	TransactionId xid;			/* xid of holder of AccessExclusiveLock */
-	Oid			dbOid;
-	Oid			relOid;
+	Oid			dbOid;			/* DB containing table */
+	Oid			relOid;			/* OID of table */
 } xl_standby_lock;
 
-#endif							/* LOCKDEF_H_ */
+#endif							/* LOCKDEFS_H_ */

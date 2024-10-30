@@ -30,7 +30,7 @@ The following table lists different types of indexes and their support in YCQL.
 | {{<icon/yes>}} | [Covering index](covering-index-ycql/) | Store other columns in the index for faster retrieval |
 | {{<icon/no>}}  | Expression index | Index based on a functional operation on columns |
 | {{<icon/no>}}  | GIN index | Generalized inverted index for fast text search |
-| {{<icon/no>}}  | GIST Index | For spatial search. |
+| {{<icon/no>}}  | GIST Index | For spatial search. Tracked - {{<issue 1337>}} |
 
 ## Learn more
 
@@ -40,36 +40,36 @@ The following table lists different types of indexes and their support in YCQL.
     title="Primary keys"
     body="Explore the use of primary keys in YCQL."
     href="primary-key-ycql/"
-    icon="fa-solid fa-bars">}}
+    icon="fa-thin fa-bars">}}
 
   {{<index/item
     title="Secondary and multi-column indexes"
     body="Explore indexes to optimize your database performance with examples."
     href="secondary-indexes-ycql/"
-    icon="fa-solid fa-list-ol">}}
+    icon="fa-thin fa-list-ol">}}
 
   {{<index/item
     title="Unique indexes"
     body="Explore unique indexes in YCQL with examples."
     href="unique-index-ycql/"
-    icon="fa-solid fa-bars-staggered">}}
+    icon="fa-thin fa-bars-staggered">}}
 
   {{<index/item
     title="Partial indexes"
     body="Explore partial indexes in YCQL with examples."
     href="partial-index-ycql/"
-    icon="fa-solid fa-list-check">}}
+    icon="fa-thin fa-list-check">}}
 
    {{<index/item
     title="Covering indexes"
     body="Explore Covering indexes in YCQL with examples."
     href="covering-index-ycql/"
-    icon="fa-solid fa-table-list">}}
+    icon="fa-thin fa-table-list">}}
 
   {{<index/item
     title="Secondary indexes with JSONB"
     body="Create covering and partial indexes with JSONB columns."
     href="secondary-indexes-with-jsonb-ycql/"
-    icon="fa-solid fa-list-ol">}}
+    icon="fa-thin fa-list-ol">}}
 
 {{</index/block>}}

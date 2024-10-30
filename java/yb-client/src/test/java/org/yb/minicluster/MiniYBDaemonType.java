@@ -39,6 +39,18 @@ public enum MiniYBDaemonType {
     public String humanReadableName() {
       return "yb controller server";
     }
+  },
+  YUGABYTED {
+
+    @Override
+    public String shortStr() {
+        return "ybd";
+    }
+
+    @Override
+    public String humanReadableName() {
+        return "yugabyted";
+    }
   };
 
   abstract String shortStr();

@@ -26,8 +26,8 @@ For more details, see [Build global applications](../build-global-apps).
 
 Colocated tables optimize latency and performance for data access by reducing the need for additional trips across the network for small tables. Additionally, it reduces the overhead of creating a tablet for every relation (tables, indexes, and so on) and their storage per node.
 
-{{<lead link="../../architecture/docdb-sharding/colocated-tables/">}}
-For more details, see [colocation](../../architecture/docdb-sharding/colocated-tables/).
+{{<lead link="../../explore/colocation/">}}
+For more details, see [Colocation](../../explore/colocation/).
 {{</lead>}}
 
 ## Faster reads with covering indexes
@@ -184,7 +184,7 @@ For more information, see [Connection pooling](../../drivers-orms/smart-drivers/
 
 ## Use YSQL Connection Manager
 
-YugabyteDB includes a built-in connection pooler, YSQL Connection Manager {{<badge/tp>}}, which provides the same connection pooling advantages as other external pooling solutions, but without many of their limitations. As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
+YugabyteDB includes a built-in connection pooler, YSQL Connection Manager {{<tags/feature/tp>}}, which provides the same connection pooling advantages as other external pooling solutions, but without many of their limitations. As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
 
 {{<tip>}}
 For more information, refer to the following:
@@ -266,7 +266,7 @@ Each table and index consists of several tablets based on the [`--ysql_num_shard
 
 You can try one of the following methods to reduce the number of tablets:
 
-- Use [colocation](../../architecture/docdb-sharding/colocated-tables/) to group small tables into 1 tablet.
+- Use [colocation](../../explore/colocation/) to group small tables into 1 tablet.
 - Reduce number of tablets-per-table using [`--ysql_num_shards_per_tserver`](../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) flag.
 - Use [`SPLIT INTO`](../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause when creating a table.
 - Start with few tablets and use [automatic tablet splitting](../../architecture/docdb-sharding/tablet-splitting/).

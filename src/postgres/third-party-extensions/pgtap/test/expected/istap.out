@@ -1,0 +1,49 @@
+\unset ECHO
+1..47
+ok 1 - is(1, 1) should pass
+ok 2 - is(1, 1) should have the proper description
+ok 3 - is(1, 1) should have the proper diagnostics
+ok 4 - is('x', 'x') should pass
+ok 5 - is('x', 'x') should have the proper description
+ok 6 - is('x', 'x') should have the proper diagnostics
+ok 7 - is(1.1, 1.10) should pass
+ok 8 - is(1.1, 1.10) should have the proper description
+ok 9 - is(1.1, 1.10) should have the proper diagnostics
+ok 10 - is(true, true) should pass
+ok 11 - is(true, true) should have the proper description
+ok 12 - is(true, true) should have the proper diagnostics
+ok 13 - is(false, false) should pass
+ok 14 - is(false, false) should have the proper description
+ok 15 - is(false, false) should have the proper diagnostics
+ok 16 - is(1, 1, desc) should pass
+ok 17 - is(1, 1, desc) should have the proper description
+ok 18 - is(1, 1, desc) should have the proper diagnostics
+ok 19 - is(1, 2) should fail
+ok 20 - is(1, 2) should have the proper description
+ok 21 - is(1, 2) should have the proper diagnostics
+ok 22 - isnt(1, 2) should pass
+ok 23 - isnt(1, 2) should have the proper description
+ok 24 - isnt(1, 2) should have the proper diagnostics
+ok 25 - isnt(1, 1) should fail
+ok 26 - isnt(1, 1) should have the proper description
+ok 27 - isnt(1, 1) should have the proper diagnostics
+ok 28 - is() should work with psql variables
+ok 29 - is(NULL, NULL) should pass
+ok 30 - is(NULL, NULL) should have the proper description
+ok 31 - is(NULL, NULL) should have the proper diagnostics
+ok 32 - is(NULL, foo) should fail
+ok 33 - is(NULL, foo) should have the proper description
+ok 34 - is(NULL, foo) should have the proper diagnostics
+ok 35 - is(foo, NULL) should fail
+ok 36 - is(foo, NULL) should have the proper description
+ok 37 - is(foo, NULL) should have the proper diagnostics
+ok 38 - with records!
+ok 39 - is(mumble, row) fail should fail
+ok 40 - is(mumble, row) fail should have the proper description
+ok 41 - is(mumble, row) fail should have the proper diagnostics
+ok 42 - is(mumble, row) fail with NULL should fail
+ok 43 - is(mumble, row) fail with NULL should have the proper description
+ok 44 - is(mumble, row) fail with NULL should have the proper diagnostics
+ok 45 - is(mumble, NULL) should fail
+ok 46 - is(mumble, NULL) should have the proper description
+ok 47 - is(mumble, NULL) should have the proper diagnostics

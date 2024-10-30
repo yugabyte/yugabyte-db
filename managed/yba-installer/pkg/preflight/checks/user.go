@@ -34,11 +34,25 @@ func (u userCheck) Execute() Result {
 		Check:  u.name,
 		Status: StatusPassed,
 	}
+	uname := viper.GetString("service_username")
+
+	// In the non-root case, just validate the the configured user is the same as the current user
 	if !common.HasSudoAccess() {
-		log.Debug("Skip user preflight check, we do not use an additional user as non-root")
+		curr, err := osuser.Current()
+		if err != nil {
+			res.Status = StatusCritical
+			res.Error = err
+			return res
+		}
+		if uname != curr.Username {
+			res.Status = StatusCritical
+			res.Error = fmt.Errorf("nonroot install run as user '%s' cannot install for user '%s'. "+
+				"Please update the config or log in as the currect user", curr.Username, uname)
+			return res
+		}
 		return res
 	}
-	uname := viper.GetString("service_username")
+	// Check for root case
 	log.Debug("Checking user " + uname + " exists")
 	_, err := osuser.Lookup(uname)
 	if err == nil {

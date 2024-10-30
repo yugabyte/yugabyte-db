@@ -11,13 +11,13 @@ menu:
 type: docs
 ---
 
-The `yb-admin` utility, located in the `bin` directory of YugabyteDB home, provides a command line interface for administering clusters.
+The yb-admin utility, located in the `bin` directory of YugabyteDB home, provides a command line interface for administering clusters.
 
-It invokes the [`yb-master`](../../reference/configuration/yb-master/) and [`yb-tserver`](../../reference/configuration/yb-tserver/) servers to perform the necessary administration.
+It invokes the [yb-master](../../reference/configuration/yb-master/) and [yb-tserver](../../reference/configuration/yb-tserver/) servers to perform the necessary administration.
 
 ## Syntax
 
-To use the `yb-admin` utility from the YugabyteDB home directory, run `./bin/yb-admin` using the following syntax.
+To use yb-admin from the YugabyteDB home directory, run `./bin/yb-admin` using the following syntax.
 
 ```sh
 yb-admin \
@@ -285,7 +285,9 @@ yb-admin \
 Splits the specified hash-sharded tablet and computes the split point as the middle of tablet's sharding range.
 
 ```sh
-split_tablet -master_addresses <master-addresses> <tablet_id_to_split>
+yb-admin \
+    -master_addresses <master-addresses> \
+    split_tablet -master_addresses <master-addresses> <tablet_id_to_split>
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
@@ -1131,16 +1133,24 @@ yb-admin create_snapshot_schedule \
 * *retention-time*: The number of minutes to keep a snapshot before deleting it.
 * *filter-expression*: The set of objects to include in the snapshot.
 
-The filter expression is a list of acceptable objects, which can be either raw tables, or keyspaces (YCQL) or databases (YSQL). For proper consistency guarantees, **it is recommended to set this up on a per-keyspace (YCQL) or per-database (YSQL) level**.
+The filter expression is a list of acceptable objects, which can be either raw tables, keyspaces (YCQL) in the format `keyspace_name`, or databases (YSQL) in the format `ysql.database_name`. For proper consistency guarantees, set this up _per-keyspace_ (YCQL) or _per-database_ (YSQL).
 
 **Example**
 
-Take a snapshot of the `ysql.yugabyte` database once per minute, and retain each snapshot for 10 minutes:
+Take a snapshot of the YSQL database `yugabyte` once per minute, and retain each snapshot for 10 minutes:
 
 ```sh
 ./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     create_snapshot_schedule 1 10 ysql.yugabyte
+```
+
+The equivalent command for the YCQL keyspace `yugabyte` would be the following:
+
+```sh
+./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    create_snapshot_schedule 1 10 yugabyte
 ```
 
 ```output.json
@@ -1368,7 +1378,7 @@ Having all tablet leaders reside in a single region reduces the number of networ
 
 * Tablespaces don't inherit cluster-level placement information, leader preference, or read replica configurations.
 
-* If the client application uses a smart driver, set the [topology keys](../../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing) to target the preferred zones.
+* If the client application uses a smart driver, set the [topology keys](../../drivers-orms/smart-drivers/#topology-aware-load-balancing) to target the preferred zones.
 
 {{< /note >}}
 
@@ -1592,7 +1602,7 @@ yb-admin \
 
 {{< note title="Note" >}}
 
-After adding the universe keys to all YB-Master nodes, you can verify the keys exist using the `yb-admin` [`all_masters_have_universe_key_in_memory`](#all-masters-have-universe-key-in-memory) command and enable encryption using the [`rotate_universe_key_in_memory`](#rotate-universe-key-in-memory) command.
+After adding the universe keys to all YB-Master nodes, you can verify the keys exist using the [`all_masters_have_universe_key_in_memory`](#all-masters-have-universe-key-in-memory) command and enable encryption using the [`rotate_universe_key_in_memory`](#rotate-universe-key-in-memory) command.
 
 {{< /note >}}
 
@@ -1700,7 +1710,7 @@ For example:
 ##### Creating a stream for Transactional CDC
 
 Create a change data capture (CDC) DB stream for the specified namespace that can be used for Transactional CDC using the following command.
-This feature is {{<badge/tp>}}. Use the [yb_enable_cdc_consistent_snapshot_streams](../../reference/configuration/yb-tserver/#yb-enable-cdc-consistent-snapshot-streams) flag to enable the feature.
+This feature is {{<tags/feature/tp>}}. Use the [yb_enable_cdc_consistent_snapshot_streams](../../reference/configuration/yb-tserver/#yb-enable-cdc-consistent-snapshot-streams) flag to enable the feature.
 
 **Syntax**
 
@@ -1733,13 +1743,13 @@ To create a change data capture (CDC) DB stream which also supports sending the 
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    create_change_data_stream ysql.<namespace_name> IMPLICIT ALL
+    create_change_data_stream ysql.<namespace_name> EXPLICIT <before_image_mode>
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *namespace_name*: The namespace on which the DB stream ID is to be created.
-* `IMPLICIT`: Checkpointing type on the server.
-* `ALL`: Record type indicating to the server that the stream should send the before image too.
+* `EXPLICIT`: Checkpointing type on the server.
+* *before_image_mode*: Record type indicating the stream should include the before image.
 
 A successful operation of the above command returns a message with a DB stream ID:
 
@@ -2606,7 +2616,7 @@ A successful upgrade returns the following message:
 YSQL successfully upgraded to the latest version
 ```
 
-In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is the default timeout value for `yb-admin`. To account for that, run the command with a higher timeout value:
+In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is the default timeout value for yb-admin. To account for that, run the command with a higher timeout value:
 
 ```sh
 ./bin/yb-admin \

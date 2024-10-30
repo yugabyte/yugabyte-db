@@ -21,7 +21,6 @@
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb_compaction_context.h"
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/dockv/doc_path.h"
 
 #include "yb/master/master_replication.pb.h"

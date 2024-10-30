@@ -34,27 +34,27 @@ INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 30 eons ago');
 
 -- test interval operators
 
-SELECT '' AS ten, * FROM INTERVAL_TBL;
+SELECT * FROM INTERVAL_TBL;
 
-SELECT '' AS nine, * FROM INTERVAL_TBL
+SELECT * FROM INTERVAL_TBL
    WHERE INTERVAL_TBL.f1 <> interval '@ 10 days';
 
-SELECT '' AS three, * FROM INTERVAL_TBL
+SELECT * FROM INTERVAL_TBL
    WHERE INTERVAL_TBL.f1 <= interval '@ 5 hours';
 
-SELECT '' AS three, * FROM INTERVAL_TBL
+SELECT * FROM INTERVAL_TBL
    WHERE INTERVAL_TBL.f1 < interval '@ 1 day';
 
-SELECT '' AS one, * FROM INTERVAL_TBL
+SELECT * FROM INTERVAL_TBL
    WHERE INTERVAL_TBL.f1 = interval '@ 34 years';
 
-SELECT '' AS five, * FROM INTERVAL_TBL
+SELECT * FROM INTERVAL_TBL
    WHERE INTERVAL_TBL.f1 >= interval '@ 1 month';
 
-SELECT '' AS nine, * FROM INTERVAL_TBL
+SELECT * FROM INTERVAL_TBL
    WHERE INTERVAL_TBL.f1 > interval '@ 3 seconds ago';
 
-SELECT '' AS fortyfive, r1.*, r2.*
+SELECT r1.*, r2.*
    FROM INTERVAL_TBL r1, INTERVAL_TBL r2
    WHERE r1.f1 > r2.f1
    ORDER BY r1.f1, r2.f1;
@@ -72,6 +72,9 @@ INSERT INTO INTERVAL_TBL_OF (f1) VALUES ('2147483648 days');
 INSERT INTO INTERVAL_TBL_OF (f1) VALUES ('-2147483649 days');
 INSERT INTO INTERVAL_TBL_OF (f1) VALUES ('2147483647 years');
 INSERT INTO INTERVAL_TBL_OF (f1) VALUES ('-2147483648 years');
+
+-- Test edge-case overflow detection in interval multiplication
+select extract(epoch from '256 microseconds'::interval * (2^55)::float8);
 
 SELECT r1.*, r2.*
    FROM INTERVAL_TBL_OF r1, INTERVAL_TBL_OF r2
@@ -124,7 +127,7 @@ DROP TABLE INTERVAL_MULDIV_TBL;
 SET DATESTYLE = 'postgres';
 SET IntervalStyle to postgres_verbose;
 
-SELECT '' AS ten, * FROM INTERVAL_TBL;
+SELECT * FROM INTERVAL_TBL;
 
 -- test avg(interval), which is somewhat fragile since people have been
 -- known to change the allowed input syntax for type interval without
@@ -146,9 +149,21 @@ select '100000000y 10mon -1000000000d -100000h -10min -10.000001s ago'::interval
 SELECT justify_hours(interval '6 months 3 days 52 hours 3 minutes 2 seconds') as "6 mons 5 days 4 hours 3 mins 2 seconds";
 SELECT justify_days(interval '6 months 36 days 5 hours 4 minutes 3 seconds') as "7 mons 6 days 5 hours 4 mins 3 seconds";
 
+SELECT justify_hours(interval '2147483647 days 24 hrs');
+SELECT justify_days(interval '2147483647 months 30 days');
+
 -- test justify_interval()
 
 SELECT justify_interval(interval '1 month -1 hour') as "1 month -1 hour";
+
+SELECT justify_interval(interval '2147483647 days 24 hrs');
+SELECT justify_interval(interval '-2147483648 days -24 hrs');
+SELECT justify_interval(interval '2147483647 months 30 days');
+SELECT justify_interval(interval '-2147483648 months -30 days');
+SELECT justify_interval(interval '2147483647 months 30 days -24 hrs');
+SELECT justify_interval(interval '-2147483648 months -30 days 24 hrs');
+SELECT justify_interval(interval '2147483647 months -30 days 1440 hrs');
+SELECT justify_interval(interval '-2147483648 months 30 days -1440 hrs');
 
 -- test fractional second input, and detection of duplicate units
 SET DATESTYLE = 'ISO';
@@ -243,12 +258,24 @@ SELECT  interval '+1 -1:00:00',
         interval '+1-2 -3 +4:05:06.789',
         interval '-1-2 +3 -4:05:06.789';
 
+-- cases that trigger sign-matching rules in the sql style
+SELECT  interval '-23 hours 45 min 12.34 sec',
+        interval '-1 day 23 hours 45 min 12.34 sec',
+        interval '-1 year 2 months 1 day 23 hours 45 min 12.34 sec',
+        interval '-1 year 2 months 1 day 23 hours 45 min +12.34 sec';
+
 -- test output of couple non-standard interval values in the sql style
 SET IntervalStyle TO sql_standard;
 SELECT  interval '1 day -1 hours',
         interval '-1 days +1 hours',
         interval '1 years 2 months -3 days 4 hours 5 minutes 6.789 seconds',
         - interval '1 years 2 months -3 days 4 hours 5 minutes 6.789 seconds';
+
+-- cases that trigger sign-matching rules in the sql style
+SELECT  interval '-23 hours 45 min 12.34 sec',
+        interval '-1 day 23 hours 45 min 12.34 sec',
+        interval '-1 year 2 months 1 day 23 hours 45 min 12.34 sec',
+        interval '-1 year 2 months 1 day 23 hours 45 min +12.34 sec';
 
 -- test outputting iso8601 intervals
 SET IntervalStyle to iso_8601;
@@ -285,11 +312,203 @@ select  interval 'P0002'                  AS "year only",
         interval 'PT10'                   AS "hour only",
         interval 'PT10:30'                AS "hour minute";
 
+-- Check handling of fractional fields in ISO8601 format.
+select interval 'P1Y0M3DT4H5M6S';
+select interval 'P1.0Y0M3DT4H5M6S';
+select interval 'P1.1Y0M3DT4H5M6S';
+select interval 'P1.Y0M3DT4H5M6S';
+select interval 'P.1Y0M3DT4H5M6S';
+select interval 'P.Y0M3DT4H5M6S';  -- error
+
 -- test a couple rounding cases that changed since 8.3 w/ HAVE_INT64_TIMESTAMP.
 SET IntervalStyle to postgres_verbose;
 select interval '-10 mons -3 days +03:55:06.70';
 select interval '1 year 2 mons 3 days 04:05:06.699999';
 select interval '0:0:0.7', interval '@ 0.70 secs', interval '0.7 seconds';
+
+-- test time fields using entire 64 bit microseconds range
+select interval '2562047788.01521550194 hours';
+select interval '-2562047788.01521550222 hours';
+select interval '153722867280.912930117 minutes';
+select interval '-153722867280.912930133 minutes';
+select interval '9223372036854.775807 seconds';
+select interval '-9223372036854.775808 seconds';
+select interval '9223372036854775.807 milliseconds';
+select interval '-9223372036854775.808 milliseconds';
+select interval '9223372036854775807 microseconds';
+select interval '-9223372036854775808 microseconds';
+
+select interval 'PT2562047788H54.775807S';
+select interval 'PT-2562047788H-54.775808S';
+
+select interval 'PT2562047788:00:54.775807';
+
+select interval 'PT2562047788.0152155019444';
+select interval 'PT-2562047788.0152155022222';
+
+-- overflow each date/time field
+select interval '2147483648 years';
+select interval '-2147483649 years';
+select interval '2147483648 months';
+select interval '-2147483649 months';
+select interval '2147483648 days';
+select interval '-2147483649 days';
+select interval '2562047789 hours';
+select interval '-2562047789 hours';
+select interval '153722867281 minutes';
+select interval '-153722867281 minutes';
+select interval '9223372036855 seconds';
+select interval '-9223372036855 seconds';
+select interval '9223372036854777 millisecond';
+select interval '-9223372036854777 millisecond';
+select interval '9223372036854775808 microsecond';
+select interval '-9223372036854775809 microsecond';
+
+select interval 'P2147483648';
+select interval 'P-2147483649';
+select interval 'P1-2147483647-2147483647';
+select interval 'PT2562047789';
+select interval 'PT-2562047789';
+
+-- overflow with date/time unit aliases
+select interval '2147483647 weeks';
+select interval '-2147483648 weeks';
+select interval '2147483647 decades';
+select interval '-2147483648 decades';
+select interval '2147483647 centuries';
+select interval '-2147483648 centuries';
+select interval '2147483647 millennium';
+select interval '-2147483648 millennium';
+
+select interval '1 week 2147483647 days';
+select interval '-1 week -2147483648 days';
+select interval '2147483647 days 1 week';
+select interval '-2147483648 days -1 week';
+
+select interval 'P1W2147483647D';
+select interval 'P-1W-2147483648D';
+select interval 'P2147483647D1W';
+select interval 'P-2147483648D-1W';
+
+select interval '1 decade 2147483647 years';
+select interval '1 century 2147483647 years';
+select interval '1 millennium 2147483647 years';
+select interval '-1 decade -2147483648 years';
+select interval '-1 century -2147483648 years';
+select interval '-1 millennium -2147483648 years';
+
+select interval '2147483647 years 1 decade';
+select interval '2147483647 years 1 century';
+select interval '2147483647 years 1 millennium';
+select interval '-2147483648 years -1 decade';
+select interval '-2147483648 years -1 century';
+select interval '-2147483648 years -1 millennium';
+
+-- overflowing with fractional fields - postgres format
+select interval '0.1 millennium 2147483647 months';
+select interval '0.1 centuries 2147483647 months';
+select interval '0.1 decades 2147483647 months';
+select interval '0.1 yrs 2147483647 months';
+select interval '-0.1 millennium -2147483648 months';
+select interval '-0.1 centuries -2147483648 months';
+select interval '-0.1 decades -2147483648 months';
+select interval '-0.1 yrs -2147483648 months';
+
+select interval '2147483647 months 0.1 millennium';
+select interval '2147483647 months 0.1 centuries';
+select interval '2147483647 months 0.1 decades';
+select interval '2147483647 months 0.1 yrs';
+select interval '-2147483648 months -0.1 millennium';
+select interval '-2147483648 months -0.1 centuries';
+select interval '-2147483648 months -0.1 decades';
+select interval '-2147483648 months -0.1 yrs';
+
+select interval '0.1 months 2147483647 days';
+select interval '-0.1 months -2147483648 days';
+select interval '2147483647 days 0.1 months';
+select interval '-2147483648 days -0.1 months';
+
+select interval '0.5 weeks 2147483647 days';
+select interval '-0.5 weeks -2147483648 days';
+select interval '2147483647 days 0.5 weeks';
+select interval '-2147483648 days -0.5 weeks';
+
+select interval '0.01 months 9223372036854775807 microseconds';
+select interval '-0.01 months -9223372036854775808 microseconds';
+select interval '9223372036854775807 microseconds 0.01 months';
+select interval '-9223372036854775808 microseconds -0.01 months';
+
+select interval '0.1 weeks 9223372036854775807 microseconds';
+select interval '-0.1 weeks -9223372036854775808 microseconds';
+select interval '9223372036854775807 microseconds 0.1 weeks';
+select interval '-9223372036854775808 microseconds -0.1 weeks';
+
+select interval '0.1 days 9223372036854775807 microseconds';
+select interval '-0.1 days -9223372036854775808 microseconds';
+select interval '9223372036854775807 microseconds 0.1 days';
+select interval '-9223372036854775808 microseconds -0.1 days';
+
+-- overflowing with fractional fields - ISO8601 format
+select interval 'P0.1Y2147483647M';
+select interval 'P-0.1Y-2147483648M';
+select interval 'P2147483647M0.1Y';
+select interval 'P-2147483648M-0.1Y';
+
+select interval 'P0.1M2147483647D';
+select interval 'P-0.1M-2147483648D';
+select interval 'P2147483647D0.1M';
+select interval 'P-2147483648D-0.1M';
+
+select interval 'P0.5W2147483647D';
+select interval 'P-0.5W-2147483648D';
+select interval 'P2147483647D0.5W';
+select interval 'P-2147483648D-0.5W';
+
+select interval 'P0.01MT2562047788H54.775807S';
+select interval 'P-0.01MT-2562047788H-54.775808S';
+
+select interval 'P0.1DT2562047788H54.775807S';
+select interval 'P-0.1DT-2562047788H-54.775808S';
+
+select interval 'PT2562047788.1H54.775807S';
+select interval 'PT-2562047788.1H-54.775808S';
+
+select interval 'PT2562047788H0.1M54.775807S';
+select interval 'PT-2562047788H-0.1M-54.775808S';
+
+-- overflowing with fractional fields - ISO8601 alternative format
+select interval 'P0.1-2147483647-00';
+select interval 'P00-0.1-2147483647';
+select interval 'P00-0.01-00T2562047788:00:54.775807';
+select interval 'P00-00-0.1T2562047788:00:54.775807';
+select interval 'PT2562047788.1:00:54.775807';
+select interval 'PT2562047788:01.:54.775807';
+
+-- overflowing with fractional fields - SQL standard format
+select interval '0.1 2562047788:0:54.775807';
+select interval '0.1 2562047788:0:54.775808 ago';
+
+select interval '2562047788.1:0:54.775807';
+select interval '2562047788.1:0:54.775808 ago';
+
+select interval '2562047788:0.1:54.775807';
+select interval '2562047788:0.1:54.775808 ago';
+
+-- overflowing using AGO with INT_MIN
+select interval '-2147483648 months ago';
+select interval '-2147483648 days ago';
+select interval '-9223372036854775808 microseconds ago';
+select interval '-2147483648 months -2147483648 days -9223372036854775808 microseconds ago';
+
+-- test that INT_MIN number is formatted properly
+SET IntervalStyle to postgres;
+select interval '-2147483648 months -2147483648 days -9223372036854775808 us';
+SET IntervalStyle to sql_standard;
+select interval '-2147483648 months -2147483648 days -9223372036854775808 us';
+SET IntervalStyle to iso_8601;
+select interval '-2147483648 months -2147483648 days -9223372036854775808 us';
+SET IntervalStyle to postgres_verbose;
+select interval '-2147483648 months -2147483648 days -9223372036854775808 us';
 
 -- check that '30 days' equals '1 month' according to the hash function
 select '30 days'::interval = '1 month'::interval as t;
@@ -308,3 +527,47 @@ select make_interval(months := 'NaN'::float::int);
 select make_interval(secs := 'inf');
 select make_interval(secs := 'NaN');
 select make_interval(secs := 7e12);
+
+--
+-- test EXTRACT
+--
+SELECT f1,
+    EXTRACT(MICROSECOND FROM f1) AS MICROSECOND,
+    EXTRACT(MILLISECOND FROM f1) AS MILLISECOND,
+    EXTRACT(SECOND FROM f1) AS SECOND,
+    EXTRACT(MINUTE FROM f1) AS MINUTE,
+    EXTRACT(HOUR FROM f1) AS HOUR,
+    EXTRACT(DAY FROM f1) AS DAY,
+    EXTRACT(MONTH FROM f1) AS MONTH,
+    EXTRACT(QUARTER FROM f1) AS QUARTER,
+    EXTRACT(YEAR FROM f1) AS YEAR,
+    EXTRACT(DECADE FROM f1) AS DECADE,
+    EXTRACT(CENTURY FROM f1) AS CENTURY,
+    EXTRACT(MILLENNIUM FROM f1) AS MILLENNIUM,
+    EXTRACT(EPOCH FROM f1) AS EPOCH
+    FROM INTERVAL_TBL;
+
+SELECT EXTRACT(FORTNIGHT FROM INTERVAL '2 days');  -- error
+SELECT EXTRACT(TIMEZONE FROM INTERVAL '2 days');  -- error
+
+SELECT EXTRACT(DECADE FROM INTERVAL '100 y');
+SELECT EXTRACT(DECADE FROM INTERVAL '99 y');
+SELECT EXTRACT(DECADE FROM INTERVAL '-99 y');
+SELECT EXTRACT(DECADE FROM INTERVAL '-100 y');
+
+SELECT EXTRACT(CENTURY FROM INTERVAL '100 y');
+SELECT EXTRACT(CENTURY FROM INTERVAL '99 y');
+SELECT EXTRACT(CENTURY FROM INTERVAL '-99 y');
+SELECT EXTRACT(CENTURY FROM INTERVAL '-100 y');
+
+-- date_part implementation is mostly the same as extract, so only
+-- test a few cases for additional coverage.
+SELECT f1,
+    date_part('microsecond', f1) AS microsecond,
+    date_part('millisecond', f1) AS millisecond,
+    date_part('second', f1) AS second,
+    date_part('epoch', f1) AS epoch
+    FROM INTERVAL_TBL;
+
+-- internal overflow test case
+SELECT extract(epoch from interval '1000000000 days');

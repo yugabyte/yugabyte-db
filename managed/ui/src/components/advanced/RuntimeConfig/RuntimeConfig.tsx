@@ -18,7 +18,7 @@ interface RuntimeConfigProps {
   activeTab: string;
   defaultTab: string;
   routePrefix: string;
-  configTagFilter: string[];
+  getRuntimeConfig: (key: string, scope?: string) => void;
   fetchRuntimeConfigs: () => void;
   setRuntimeConfig: (key: string, value: string, scope?: string) => void;
   deleteRunTimeConfig: (key: string, scope?: string) => void;
@@ -29,7 +29,7 @@ export const RuntimeConfig: FC<RuntimeConfigProps> = ({
   activeTab,
   defaultTab,
   routePrefix,
-  configTagFilter,
+  getRuntimeConfig,
   fetchRuntimeConfigs,
   setRuntimeConfig,
   deleteRunTimeConfig,
@@ -56,11 +56,11 @@ export const RuntimeConfig: FC<RuntimeConfigProps> = ({
             overrideStyle={{ marginTop: '150px' }}
           >
             <GlobalRuntimeConfig
+              getRuntimeConfig={getRuntimeConfig}
               setRuntimeConfig={setRuntimeConfig}
               deleteRunTimeConfig={deleteRunTimeConfig}
               fetchRuntimeConfigs={fetchRuntimeConfigs}
               resetRuntimeConfigs={resetRuntimeConfigs}
-              configTagFilter={configTagFilter}
             />
           </RbacValidator>
         </Tab>
@@ -75,11 +75,11 @@ export const RuntimeConfig: FC<RuntimeConfigProps> = ({
             overrideStyle={{ marginTop: '50px' }}
           >
             <CustomerRuntimeConfig
+              getRuntimeConfig={getRuntimeConfig}
               setRuntimeConfig={setRuntimeConfig}
               deleteRunTimeConfig={deleteRunTimeConfig}
               fetchRuntimeConfigs={fetchRuntimeConfigs}
               resetRuntimeConfigs={resetRuntimeConfigs}
-              configTagFilter={configTagFilter}
             />
           </RbacValidator>
         </Tab>
@@ -96,11 +96,11 @@ export const RuntimeConfig: FC<RuntimeConfigProps> = ({
             overrideStyle={{ marginTop: '150px' }}
           >
             <UniverseRuntimeConfig
+              getRuntimeConfig={getRuntimeConfig}
               setRuntimeConfig={setRuntimeConfig}
               deleteRunTimeConfig={deleteRunTimeConfig}
               fetchRuntimeConfigs={fetchRuntimeConfigs}
               resetRuntimeConfigs={resetRuntimeConfigs}
-              configTagFilter={configTagFilter}
             />
           </RbacValidator>
         </Tab>
@@ -115,11 +115,11 @@ export const RuntimeConfig: FC<RuntimeConfigProps> = ({
             overrideStyle={{ marginTop: '150px' }}
           >
             <ProviderRuntimeConfig
+              getRuntimeConfig={getRuntimeConfig}
               setRuntimeConfig={setRuntimeConfig}
               deleteRunTimeConfig={deleteRunTimeConfig}
               fetchRuntimeConfigs={fetchRuntimeConfigs}
               resetRuntimeConfigs={resetRuntimeConfigs}
-              configTagFilter={configTagFilter}
             />
           </RbacValidator>
         </Tab>

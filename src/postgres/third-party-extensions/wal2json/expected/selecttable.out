@@ -1,0 +1,156 @@
+\set VERBOSITY terse
+-- predictability
+SET synchronous_commit = on;
+DROP TABLE IF EXISTS select_table_1;
+NOTICE:  table "select_table_1" does not exist, skipping
+DROP TABLE IF EXISTS select_table_2;
+NOTICE:  table "select_table_2" does not exist, skipping
+DROP TABLE IF EXISTS select_table_3;
+NOTICE:  table "select_table_3" does not exist, skipping
+DROP SCHEMA IF EXISTS select_schema_1 CASCADE;
+NOTICE:  schema "select_schema_1" does not exist, skipping
+DROP SCHEMA IF EXISTS select_schema_2 CASCADE;
+NOTICE:  schema "select_schema_2" does not exist, skipping
+CREATE SCHEMA select_schema_1;
+CREATE SCHEMA select_schema_2;
+CREATE TABLE select_table_1 (a integer, b text, primary key(a));
+CREATE TABLE select_schema_1.select_table_1 (a integer, b text, primary key(a));
+CREATE TABLE select_schema_1.select_table_2 (a integer, b text, primary key(a));
+CREATE TABLE select_schema_2.select_table_1 (a integer, b text, primary key(a));
+CREATE TABLE select_schema_2.select_table_2 (a integer, b text, primary key(a));
+CREATE TABLE select_schema_2.select_table_3 (a integer, b text, primary key(a));
+CREATE TABLE select_table_2 (a integer, b text, primary key(a));
+CREATE TABLE select_table_3 (a integer, b text, primary key(a));
+SELECT 'init' FROM pg_create_logical_replication_slot('regression_slot', 'wal2json');
+ ?column? 
+----------
+ init
+(1 row)
+
+INSERT INTO select_table_1 (a, b) VALUES(1, 'public.select_table_1');
+INSERT INTO select_schema_1.select_table_1 (a, b) VALUES(1, 'select_schema_1.select_table_1');
+INSERT INTO select_schema_1.select_table_2 (a, b) VALUES(1, 'select_schema_1.select_table_2');
+INSERT INTO select_schema_2.select_table_1 (a, b) VALUES(1, 'select_schema_2.select_table_1');
+INSERT INTO select_schema_2.select_table_2 (a, b) VALUES(1, 'select_schema_2.select_table_2');
+INSERT INTO select_schema_2.select_table_3 (a, b) VALUES(1, 'select_schema_2.select_table_3');
+INSERT INTO select_table_2 (a, b) VALUES(1, 'public.select_table_2');
+INSERT INTO select_table_3 (a, b) VALUES(1, 'public.select_table_3');
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '1', 'pretty-print', '1', 'add-tables', '   foo.bar,*.select_table_1  ,select_schema_2.* , public.select_table_3  ');
+                                     data                                      
+-------------------------------------------------------------------------------
+ {                                                                            +
+         "change": [                                                          +
+                 {                                                            +
+                         "kind": "insert",                                    +
+                         "schema": "public",                                  +
+                         "table": "select_table_1",                           +
+                         "columnnames": ["a", "b"],                           +
+                         "columntypes": ["integer", "text"],                  +
+                         "columnvalues": [1, "public.select_table_1"]         +
+                 }                                                            +
+         ]                                                                    +
+ }
+ {                                                                            +
+         "change": [                                                          +
+                 {                                                            +
+                         "kind": "insert",                                    +
+                         "schema": "select_schema_1",                         +
+                         "table": "select_table_1",                           +
+                         "columnnames": ["a", "b"],                           +
+                         "columntypes": ["integer", "text"],                  +
+                         "columnvalues": [1, "select_schema_1.select_table_1"]+
+                 }                                                            +
+         ]                                                                    +
+ }
+ {                                                                            +
+         "change": [                                                          +
+         ]                                                                    +
+ }
+ {                                                                            +
+         "change": [                                                          +
+                 {                                                            +
+                         "kind": "insert",                                    +
+                         "schema": "select_schema_2",                         +
+                         "table": "select_table_1",                           +
+                         "columnnames": ["a", "b"],                           +
+                         "columntypes": ["integer", "text"],                  +
+                         "columnvalues": [1, "select_schema_2.select_table_1"]+
+                 }                                                            +
+         ]                                                                    +
+ }
+ {                                                                            +
+         "change": [                                                          +
+                 {                                                            +
+                         "kind": "insert",                                    +
+                         "schema": "select_schema_2",                         +
+                         "table": "select_table_2",                           +
+                         "columnnames": ["a", "b"],                           +
+                         "columntypes": ["integer", "text"],                  +
+                         "columnvalues": [1, "select_schema_2.select_table_2"]+
+                 }                                                            +
+         ]                                                                    +
+ }
+ {                                                                            +
+         "change": [                                                          +
+                 {                                                            +
+                         "kind": "insert",                                    +
+                         "schema": "select_schema_2",                         +
+                         "table": "select_table_3",                           +
+                         "columnnames": ["a", "b"],                           +
+                         "columntypes": ["integer", "text"],                  +
+                         "columnvalues": [1, "select_schema_2.select_table_3"]+
+                 }                                                            +
+         ]                                                                    +
+ }
+ {                                                                            +
+         "change": [                                                          +
+         ]                                                                    +
+ }
+ {                                                                            +
+         "change": [                                                          +
+                 {                                                            +
+                         "kind": "insert",                                    +
+                         "schema": "public",                                  +
+                         "table": "select_table_3",                           +
+                         "columnnames": ["a", "b"],                           +
+                         "columntypes": ["integer", "text"],                  +
+                         "columnvalues": [1, "public.select_table_3"]         +
+                 }                                                            +
+         ]                                                                    +
+ }
+(8 rows)
+
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '2', 'add-tables', '   foo.bar,*.select_table_1  ,select_schema_2.* , public.select_table_3  ');
+                                                                                            data                                                                                            
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"action":"B"}
+ {"action":"I","schema":"public","table":"select_table_1","columns":[{"name":"a","type":"integer","value":1},{"name":"b","type":"text","value":"public.select_table_1"}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"I","schema":"select_schema_1","table":"select_table_1","columns":[{"name":"a","type":"integer","value":1},{"name":"b","type":"text","value":"select_schema_1.select_table_1"}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"I","schema":"select_schema_2","table":"select_table_1","columns":[{"name":"a","type":"integer","value":1},{"name":"b","type":"text","value":"select_schema_2.select_table_1"}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"I","schema":"select_schema_2","table":"select_table_2","columns":[{"name":"a","type":"integer","value":1},{"name":"b","type":"text","value":"select_schema_2.select_table_2"}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"I","schema":"select_schema_2","table":"select_table_3","columns":[{"name":"a","type":"integer","value":1},{"name":"b","type":"text","value":"select_schema_2.select_table_3"}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"I","schema":"public","table":"select_table_3","columns":[{"name":"a","type":"integer","value":1},{"name":"b","type":"text","value":"public.select_table_3"}]}
+ {"action":"C"}
+(22 rows)
+
+SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
+ ?column? 
+----------
+ stop
+(1 row)
+
+   

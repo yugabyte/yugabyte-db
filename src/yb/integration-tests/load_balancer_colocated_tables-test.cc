@@ -160,7 +160,8 @@ class LoadBalancerColocatedTablesTest : public YBTableTestBase {
         kDefaultTimeout));
 
     // Wait for load balancing to complete.
-    WaitForLoadBalanceCompletion();
+    auto base_timeout = MonoDelta::FromMilliseconds(kDefaultLoadBalanceTimeoutMs);
+    WaitForLoadBalanceCompletion(yb::IsTsan() ? base_timeout * 5 : base_timeout);
 
     // Assert that each table is balanced, and that we are globally balanced (Before global load
     // balancing, colocated parent tablets would not move) - Each colocated database or tablegroup

@@ -1,0 +1,78 @@
+# LANGUAGE message translation file for pg_hint_plan errors.
+# Copyright (C) 2012-2023, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+# This file is distributed under the same license as the pg_hint_plan
+# package.
+# Julien Rouhaud <rjuju123@gmail.com>, 2023.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: pg_hint_plan \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2023-03-14 16:08+0800\n"
+"PO-Revision-Date: 2023-03-14 16:08+0800\n"
+"Last-Translator: Julien Rouhaud <rjuju123@gmail.com>\n"
+"Language: ja\n"
+"Language-Team: ja <LL@li.org>\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.12.1\n"
+
+#: ../../errors.md:1 e8084bcb28054ad3a89ca6d6b940e3b4
+msgid "Errors"
+msgstr ""
+
+#: ../../errors.md:3 da64bc0ef4af481f8dcb444f1e30608c
+msgid ""
+"`pg_hint_plan` stops parsing on any error and uses hints already parsed "
+"on the most cases. Following are the typical errors."
+msgstr ""
+
+#: ../../errors.md:6 d1b5e21f2fee455cb48c0c675820aa2e
+msgid "Syntax errors"
+msgstr ""
+
+#: ../../errors.md:8 661711bb3037474a966dc5f79114e5f3
+msgid ""
+"Any syntactical errors or wrong hint names are reported as a syntax "
+"error. These errors are reported in the server log with the message level"
+" specified by `pg_hint_plan.message_level` if `pg_hint_plan.debug_print` "
+"is on and above."
+msgstr ""
+
+#: ../../errors.md:12 1b66e4a4ee1d4092bf9b60316ea5fde0
+msgid "Object misspecifications"
+msgstr ""
+
+#: ../../errors.md:14 00514154bea44ec4be4494b4585650ab
+msgid ""
+"Object misspecifications result in silent ignorance of the hints. This "
+"kind of error is reported as \"not used hints\" in the server log by the "
+"same condition as syntax errors."
+msgstr ""
+
+#: ../../errors.md:18 58830d316aa8419ea400c5c2e987baac
+msgid "Redundant or conflicting hints"
+msgstr ""
+
+#: ../../errors.md:20 8dfb10a676f145d6936cbcc3bdf4d8eb
+msgid ""
+"The last hint will be active when redundant hints or hints conflicting "
+"with each other. This kind of error is reported as \"duplication hints\" "
+"in the server log by the same condition to syntax errors."
+msgstr ""
+
+#: ../../errors.md:24 3e950fa501ee465c848be48d99b5256d
+msgid "Nested comments"
+msgstr ""
+
+#: ../../errors.md:26 ce0443c0e8a74399bf519665e6122bf6
+msgid ""
+"Hint comment cannot include another block comment within. If "
+"`pg_hint_plan` finds it, differently from other erros, it stops parsing "
+"and abandans all hints already parsed. This kind of error is reported in "
+"the same manner as other errors."
+msgstr ""
+

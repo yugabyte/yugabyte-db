@@ -3,7 +3,7 @@
  * blcost.c
  *		Cost estimate function for bloom indexes.
  *
- * Copyright (c) 2016-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/bloom/blcost.c
@@ -12,11 +12,9 @@
  */
 #include "postgres.h"
 
-#include "fmgr.h"
-#include "optimizer/cost.h"
-#include "utils/selfuncs.h"
-
 #include "bloom.h"
+#include "fmgr.h"
+#include "utils/selfuncs.h"
 
 /*
  * Estimate cost of bloom index scan.
@@ -28,11 +26,7 @@ blcostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 			   double *indexPages)
 {
 	IndexOptInfo *index = path->indexinfo;
-	List	   *qinfos;
 	GenericCosts costs;
-
-	/* Do preliminary analysis of indexquals */
-	qinfos = deconstruct_indexquals(path);
 
 	MemSet(&costs, 0, sizeof(costs));
 
@@ -40,7 +34,7 @@ blcostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 	costs.numIndexTuples = index->tuples;
 
 	/* Use generic estimate */
-	genericcostestimate(root, path, loop_count, qinfos, &costs);
+	genericcostestimate(root, path, loop_count, &costs);
 
 	*indexStartupCost = costs.indexStartupCost;
 	*indexTotalCost = costs.indexTotalCost;

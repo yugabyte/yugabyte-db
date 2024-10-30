@@ -40,6 +40,7 @@ import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
 import "yb/common/transaction.proto";
 import "yb/common/wire_protocol.proto";
+import "yb/rpc/service.proto";
 import "yb/tablet/tablet_types.proto";
 import "yb/tablet/operations.proto";
 import "yb/tserver/tserver.proto";
@@ -125,7 +126,21 @@ service TabletServerService {
   rpc ClearAllMetaCachesOnServer(ClearAllMetaCachesOnServerRequestPB)
       returns (ClearAllMetaCachesOnServerResponsePB);
 
+  // Clear metacache entries (tables and tablets) that belong to the provided namespace.
+  rpc ClearMetacache(ClearMetacacheRequestPB)
+      returns (ClearMetacacheResponsePB);
+
   rpc ClearUniverseUuid(ClearUniverseUuidRequestPB) returns (ClearUniverseUuidResponsePB);
+
+  rpc AcquireObjectLocks(AcquireObjectLockRequestPB)
+      returns (AcquireObjectLockResponsePB);
+  rpc ReleaseObjectLocks(ReleaseObjectLockRequestPB)
+      returns (ReleaseObjectLockResponsePB);
+
+  rpc GetMetrics(GetMetricsRequestPB) returns (GetMetricsResponsePB);
+
+  rpc AdminExecutePgsql(AdminExecutePgsqlRequestPB)
+      returns (AdminExecutePgsqlResponsePB);
 }
 
 // Note: Either among transactions_by_tablet or transaction_ids should be set. Both the fields
@@ -170,6 +185,15 @@ message GetLockStatusResponsePB {
   optional fixed64 propagated_hybrid_time = 3;
 
   repeated TabletLockInfoPB tablet_lock_infos = 4;
+}
+
+message GetMetricsRequestPB {
+
+}
+
+message GetMetricsResponsePB {
+  repeated TserverMetricsInfoPB metrics  = 1;
+  optional TabletServerErrorPB error = 2;
 }
 
 message GetLogLocationRequestPB {
@@ -529,5 +553,15 @@ message StartRemoteSnapshotTransferRequestPB {
 }
 
 message StartRemoteSnapshotTransferResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
+message AdminExecutePgsqlRequestPB {
+  required string database_name = 1;
+  // The list of SQL statements to execute. Execution will stop at the first error.
+  repeated string pgsql_statements = 2;
+}
+
+message AdminExecutePgsqlResponsePB {
   optional TabletServerErrorPB error = 1;
 }

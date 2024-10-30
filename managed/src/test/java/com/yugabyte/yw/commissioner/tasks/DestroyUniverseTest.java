@@ -15,6 +15,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
@@ -161,10 +162,11 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
       mockLocaleCheckResponse(mockNodeUniverseManager);
       doAnswer(inv -> Json.newObject())
           .when(mockYsqlQueryExecutor)
-          .executeQueryInNodeShell(any(), any(), any(), anyBoolean());
+          .executeQueryInNodeShell(any(), any(), any(), anyBoolean(), anyBoolean(), anyInt());
       ShellResponse successResponse = new ShellResponse();
       successResponse.message = "Command output:\nCREATE TABLE";
-      when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), (any())))
+      when(mockNodeUniverseManager.runYsqlCommand(
+              any(), any(), any(), (any()), anyBoolean(), anyInt()))
           .thenReturn(successResponse);
       when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
@@ -277,7 +279,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     taskParams.isDeleteAssociatedCerts = Boolean.FALSE;
     TaskInfo taskInfo = submitTask(taskParams, 4);
     assertEquals(Success, taskInfo.getTaskState());
-    b.setTaskUUID(taskInfo.getTaskUUID());
+    b.setTaskUUID(taskInfo.getUuid());
     b.save();
 
     Backup backup = Backup.get(defaultCustomer.getUuid(), b.getBackupUUID());
@@ -329,7 +331,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     doNothing().when(mockBackupHelper).validateStorageConfigOnBackup(any());
     TaskInfo taskInfo = submitTask(taskParams, 4);
     assertEquals(Success, taskInfo.getTaskState());
-    b.setTaskUUID(taskInfo.getTaskUUID());
+    b.setTaskUUID(taskInfo.getUuid());
     b.save();
 
     Backup backup = Backup.get(defaultCustomer.getUuid(), b.getBackupUUID());

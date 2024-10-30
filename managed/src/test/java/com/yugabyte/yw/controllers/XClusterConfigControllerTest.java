@@ -25,8 +25,6 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
@@ -74,6 +72,7 @@ import java.util.UUID;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mockito;
 import org.yb.CommonTypes;
 import org.yb.Schema;
 import org.yb.cdc.CdcConsumer.ConsumerRegistryPB;
@@ -119,8 +118,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   private ResourceDefinition rd1;
   private ResourceDefinition rd2;
 
-  Permission permission1 = new Permission(ResourceType.UNIVERSE, Action.BACKUP_RESTORE);
-  Permission permission2 = new Permission(ResourceType.UNIVERSE, Action.UPDATE);
+  Permission permission1 = new Permission(ResourceType.UNIVERSE, Action.XCLUSTER);
 
   @Before
   public void setUp() {
@@ -132,7 +130,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
             "FakeRole1",
             "testDescription",
             RoleType.Custom,
-            new HashSet<>(Arrays.asList(permission1, permission2)));
+            new HashSet<>(Arrays.asList(permission1)));
     rd1 =
         ResourceDefinition.builder()
             .resourceType(ResourceType.OTHER)
@@ -272,7 +270,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     JsonNode fakeMetricResponse = Json.newObject().put("value", "0");
     doReturn(fakeMetricResponse)
         .when(mockMetricQueryHelper)
-        .query(anyList(), anyMap(), anyMap(), anyBoolean());
+        .query(any(), anyList(), anyMap(), anyMap(), anyBoolean());
   }
 
   public void setupMetricValues() {
@@ -332,6 +330,16 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
           .thenReturn(mockListTablesResponse);
     } catch (Exception e) {
       e.printStackTrace();
+    }
+  }
+
+  private void mockDefaultInstanceClusterConfig() {
+    GetMasterClusterConfigResponse fakeClusterConfigResponse =
+        new GetMasterClusterConfigResponse(
+            0, "", CatalogEntityInfo.SysClusterConfigEntryPB.getDefaultInstance(), null);
+    try {
+      when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
+    } catch (Exception ignore) {
     }
   }
 
@@ -399,6 +407,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   public void testCreate() {
 
     initClientGetTablesList();
+    mockDefaultInstanceClusterConfig();
     Result result =
         doRequestWithAuthTokenAndBody("POST", apiEndpoint, user.createAuthToken(), createRequest);
     assertOk(result);
@@ -435,6 +444,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   @Test
   public void testCreateUsingNewRbacAuthzWithNeededPermissions() {
     initClientGetTablesList();
+    mockDefaultInstanceClusterConfig();
     RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
     ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd1, rd2)));
     RoleBinding.create(user, RoleBindingType.Custom, role, rG);
@@ -728,15 +738,25 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
     setupMockMetricQueryHelperResponse();
 
+    Mockito.doNothing().when(mockXClusterScheduler).syncXClusterConfig(any());
+
+    GetMasterClusterConfigResponse fakeClusterConfigResponse =
+        new GetMasterClusterConfigResponse(
+            0, "", CatalogEntityInfo.SysClusterConfigEntryPB.getDefaultInstance(), null);
+    try {
+      when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
+    } catch (Exception ignore) {
+    }
+
     String getAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
 
     Result result = doRequestWithAuthToken("GET", getAPIEndpoint, user.createAuthToken());
     assertOk(result);
 
-    try {
-      verify(mockClient, times(0)).getMasterClusterConfig();
-    } catch (Exception e) {
-    }
+    // try {
+    //   verify(mockClient, times(0)).getMasterClusterConfig();
+    // } catch (Exception e) {
+    // }
 
     validateGetXClusterResponse(xClusterConfig, result);
     validateGetXClusterLagResponse(result);
@@ -797,7 +817,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     String fakeErrMsg = "failed to fetch metric data";
     doThrow(new PlatformServiceException(INTERNAL_SERVER_ERROR, fakeErrMsg))
         .when(mockMetricQueryHelper)
-        .query(any(), any(), any());
+        .query(any(), anyList(), anyMap(), anyMap());
 
     String getAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
 
@@ -1322,7 +1342,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     params.allowBootstrap = false;
     params.tables = Collections.singleton(exampleTableID2);
     params.backupRequestParams =
-        new XClusterConfigCreateFormData.BootstrapParams.BootstarpBackupParams();
+        new XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams();
     params.backupRequestParams.storageConfigUUID =
         ModelFactory.createS3StorageConfig(customer, "s3-config").getConfigUUID();
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();

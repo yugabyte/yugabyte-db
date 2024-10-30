@@ -44,9 +44,7 @@ To view the latency and throughput on the universe while the workload is running
 
 Stop one of the nodes to simulate the loss of a zone, as follows:
 
-```sh
-./bin/yugabyted stop --base_dir=/tmp/ybd2
-```
+{{%cluster/cmd op="stop" nodes="2" %}}
 
 ## Observe workload remains available
 

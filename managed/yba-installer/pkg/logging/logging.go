@@ -1,7 +1,9 @@
 package logging
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"runtime"
 
@@ -58,6 +60,9 @@ func Trace(msg string) {
 func AddOutputFile(logfile string) {
 	logFile, err := os.OpenFile(logfile, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0666)
 	if err != nil {
+		if errors.Is(err, fs.ErrPermission) {
+			log.Fatalln("Must run yba-ctl as root or service user.")
+		}
 		log.Fatalln("Unable to create log file " + logfile)
 	}
 

@@ -4,7 +4,7 @@ headerTitle: CREATE TABLE
 linkTitle: CREATE TABLE
 description: Use the CREATE TABLE statement to create a table in a database.
 menu:
-  stable:
+  stable_api:
     identifier: ddl_create_table
     parent: statements
 type: docs
@@ -53,7 +53,7 @@ If the primary key specification is `PRIMARY KEY(a, b)`, then column `a` is used
 
 {{<note title="Tables always have a primary key">}}
 
-PostgreSQL's table storage is heap-oriented—so a table with no primary key is viable. However YugabyteDB's table storage is index-oriented (see [DocDB Persistence](../../../../../architecture/docdb/persistence/)), so a table isn't viable without a primary key.
+PostgreSQL's table storage is heap-oriented—so a table with no primary key is viable. However YugabyteDB's table storage is index-oriented (see [DocDB Persistence](../../../../../architecture/docdb)), so a table isn't viable without a primary key.
 
 Therefore, if you don't specify a primary key at table-creation time, YugabyteDB will use the internal `ybrowid` column as `PRIMARY KEY` and the table will be sharded on `ybrowid HASH`.
 
@@ -89,29 +89,29 @@ Constraints marked as `INITIALLY DEFERRED` will be checked at the end of the tra
 
 ### IDENTITY columns
 
-Create the column as an identity column. 
+Create the column as an identity column.
 
 An implicit sequence will be created, attached to it, and new rows will automatically have values assigned from the sequence. IDENTITY columns are implicitly `NOT NULL`.
 
 `ALWAYS` and `BY DEFAULT` will determine how user-provided values are handled in `INSERT` and `UPDATE` statements.
 
 On an `INSERT` statement:
-- when `ALWAYS` is used, a user-provided value is only accepted if the `INSERT` statement uses `OVERRIDING SYSTEM VALUE`. 
+- when `ALWAYS` is used, a user-provided value is only accepted if the `INSERT` statement uses `OVERRIDING SYSTEM VALUE`.
 - when `BY DEFAULT` is used, then the user-provided value takes precedence. See [INSERT statement](../dml_insert/) for reference. (In the `COPY` statement, user-supplied values are always used regardless of this setting.)
 
 On an `UPDATE` statement:
 - when `ALWAYS` is used, a column update to a value other than `DEFAULT` will be rejected.
 - when `BY DEFAULT` is used, the column can be updated normally. (`OVERRIDING` clause cannot be used for the UPDATE statement)
 
-The `sequence_options` optional clause can be used to override the options of the generated sequence. 
+The `sequence_options` optional clause can be used to override the options of the generated sequence.
 
 See [CREATE SEQUENCE](../ddl_create_sequence) for reference.
 
 #### Multiple Identity Columns
 
-PostgreSQL and YugabyteDB allow a table to have more than one identity column. The SQL standard specifies that a table can have at most one identity column. 
+PostgreSQL and YugabyteDB allow a table to have more than one identity column. The SQL standard specifies that a table can have at most one identity column.
 
-This relaxation primarily aims to provide increased flexibility for carrying out schema modifications or migrations. 
+This relaxation primarily aims to provide increased flexibility for carrying out schema modifications or migrations.
 
 Note that the [INSERT](../dml_insert/) command can only accommodate one override clause for an entire statement. As a result, having several identity columns, each exhibiting distinct behaviours, is not effectively supported.
 
@@ -122,7 +122,7 @@ Using this qualifier will create a temporary table. Temporary tables are visible
 
 ### TABLESPACE
 
-Specify the name of the [tablespace](../../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/) that describes the placement configuration for this table. By default, tables are placed in the `pg_default` tablespace, which spreads the tablets of the table evenly across the cluster.
+Specify the name of the [tablespace](../../../../../explore/going-beyond-sql/tablespaces/) that describes the placement configuration for this table. By default, tables are placed in the `pg_default` tablespace, which spreads the tablets of the table evenly across the cluster.
 
 ### SPLIT INTO
 
@@ -174,7 +174,7 @@ CREATE TABLE <name> (columns) WITH (COLOCATION = false);
 This ensures that the table is not stored on the same tablet as the rest of the tables for this database, but instead has its own set of tablets. Use this option for large tables that need to be scaled out.
 
 {{<note>}}
-Setting `COLOCATION = true` has no effect if the database that the table is part of is not colocated, as currently colocation is supported only at the database level. See [Colocated tables](../../../../../architecture/docdb-sharding/colocated-tables/) for more details.
+Setting `COLOCATION = true` has no effect if the database that the table is part of is not colocated, as currently colocation is supported only at the database level. See [Colocated tables](../../../../../explore/colocation/) for more details.
 {{</note>}}
 
 ### Storage parameters

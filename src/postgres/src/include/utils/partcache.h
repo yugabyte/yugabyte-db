@@ -2,7 +2,7 @@
  *
  * partcache.h
  *
- * Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * src/include/utils/partcache.h
  *
@@ -26,9 +26,9 @@ typedef struct PartitionKeyData
 	char		strategy;		/* partitioning strategy */
 	int16		partnatts;		/* number of columns in the partition key */
 	AttrNumber *partattrs;		/* attribute numbers of columns in the
-								 * partition key */
+								 * partition key or 0 if it's an expr */
 	List	   *partexprs;		/* list of expressions in the partitioning
-								 * key, or NIL */
+								 * key, one for each zero-valued partattrs */
 
 	Oid		   *partopfamily;	/* OIDs of operator families */
 	Oid		   *partopcintype;	/* OIDs of opclass declared input data types */
@@ -46,8 +46,8 @@ typedef struct PartitionKeyData
 	Oid		   *parttypcoll;
 }			PartitionKeyData;
 
-extern void RelationBuildPartitionKey(Relation relation);
-extern void RelationBuildPartitionDesc(Relation rel);
+
+extern PartitionKey RelationGetPartitionKey(Relation rel);
 extern List *RelationGetPartitionQual(Relation rel);
 extern Expr *get_partition_qual_relid(Oid relid);
 
@@ -92,5 +92,14 @@ get_partition_col_typmod(PartitionKey key, int col)
 {
 	return key->parttypmod[col];
 }
+
+static inline Oid
+get_partition_col_collation(PartitionKey key, int col)
+{
+	return key->partcollation[col];
+}
+
+/* Yugabyte: Change partitioning functions from static to extern for yb modules */
+extern void RelationBuildPartitionKey(Relation relation);
 
 #endif							/* PARTCACHE_H */

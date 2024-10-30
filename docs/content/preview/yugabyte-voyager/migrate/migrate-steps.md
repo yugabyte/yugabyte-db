@@ -23,7 +23,7 @@ The following page describes the steps to perform and verify a successful offlin
 | Phase | Step | Description |
 |:---- |:--- | :---|
 | PREPARE | [Install voyager](../../install-yb-voyager/#install-yb-voyager) | yb-voyager supports RHEL, CentOS, Ubuntu, and macOS, as well as airgapped and Docker-based installations. |
-| | [Prepare&nbsp;source DB](#prepare-the-source-database) | Create a new database user with READ access to all the resources to be migrated. |
+| | [Prepare source DB](#prepare-the-source-database) | Create a new database user with READ access to all the resources to be migrated. |
 | | [Prepare target DB](#prepare-the-target-database) | Deploy a YugabyteDB database and create a user with superuser privileges. |
 | EXPORT | [Export schema](#export-schema) | Convert the database schema to PostgreSQL format using the `yb-voyager export schema` command. |
 | |[Analyze schema](#analyze-schema) | Generate a *Schema&nbsp;Analysis&nbsp;Report* using the `yb-voyager analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB. |
@@ -31,7 +31,7 @@ The following page describes the steps to perform and verify a successful offlin
 | |[Export data](#export-data) | Dump the source database to the target machine (where yb-voyager is installed), using the `yb-voyager export data` command. |
 | IMPORT | [Import schema](#import-schema) | Import the modified schema to the target YugabyteDB database using the `yb-voyager import schema` command. |
 | | [Import data](#import-data) | Import the data to the target YugabyteDB database using the `yb-voyager import data` command. |
-| | [Import indexes and triggers](#import-indexes-and-triggers) | Import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-snapshot-import` flag. |
+| | [Refresh&nbsp;materialized&nbsp;views](#refresh-materialized-views) | Refresh materialized views (if any) in the target YugabyteDB database using the `yb-voyager import schema` command with additional flags `--post-snapshot-import` and `--refresh-mviews` . |
 | |[Verify](#verify-migration) | Check if the offline migration is successful. |
 | END |[End migration](#end-migration) | Clean up the migration information stored in the export directory and databases (source and target). |
 
@@ -39,7 +39,7 @@ Before proceeding with migration, ensure that you have completed the following s
 
 - [Install yb-voyager](../../install-yb-voyager/#install-yb-voyager).
 - Review the [guidelines for your migration](../../known-issues/).
-- Review [data modeling](../../../develop/learn/data-modeling-ysql) strategies.
+- Review [data modeling](../../../develop/data-modeling/) strategies.
 - [Prepare the source database](#prepare-the-source-database).
 - [Prepare the target database](#prepare-the-target-database).
 
@@ -49,19 +49,19 @@ Create a new database user, and assign the necessary user permissions.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#postgresql" class="nav-link active" id="postgresql-tab" data-toggle="tab" role="tab" aria-controls="postgresql" aria-selected="true">
+    <a href="#postgresql" class="nav-link active" id="postgresql-tab" data-bs-toggle="tab" role="tab" aria-controls="postgresql" aria-selected="true">
       <i class="icon-postgres" aria-hidden="true"></i>
       PostgreSQL
     </a>
   </li>
   <li>
-    <a href="#mysql" class="nav-link" id="mysql-tab" data-toggle="tab" role="tab" aria-controls="mysql" aria-selected="true">
+    <a href="#mysql" class="nav-link" id="mysql-tab" data-bs-toggle="tab" role="tab" aria-controls="mysql" aria-selected="true">
       <i class="icon-mysql" aria-hidden="true"></i>
       MySQL
     </a>
   </li>
   <li>
-    <a href="#oracle" class="nav-link" id="oracle-tab" data-toggle="tab" role="tab" aria-controls="oracle" aria-selected="true">
+    <a href="#oracle" class="nav-link" id="oracle-tab" data-bs-toggle="tab" role="tab" aria-controls="oracle" aria-selected="true">
       <i class="icon-oracle" aria-hidden="true"></i>
       Oracle
     </a>
@@ -102,7 +102,7 @@ Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/d
      CREATE USER ybvoyager SUPERUSER PASSWORD 'password';
      ```
 
-- For YugabyteDB Managed, create a user with [`yb_superuser`](../../../yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role using the following command:
+- For YugabyteDB Aeon, create a user with [`yb_superuser`](../../../yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role using the following command:
 
      ```sql
      CREATE USER ybvoyager PASSWORD 'password';
@@ -208,7 +208,7 @@ Fix all the issues listed in the generated schema analysis report by manually ed
 
 After making the manual changes, re-run the `yb-voyager analyze-schema` command. This generates a fresh report using your changes. Repeat these steps until the generated report contains no issues.
 
-To learn more about modelling strategies using YugabyteDB, refer to [Data modeling](../../reference/data-modeling/).
+To learn more about modelling strategies using YugabyteDB, refer to [Data modeling](../../../develop/data-modeling/).
 
 {{< note title="Manual schema changes" >}}
 
@@ -233,6 +233,10 @@ yb-voyager export data --export-dir <EXPORT_DIR> \
         --source-db-schema <SOURCE_DB_SCHEMA> # Not applicable for MySQL
 ```
 
+{{< note title="PostgreSQL and parallel jobs" >}}
+For PostgreSQL, make sure that no other processes are running on the source database that can try to take locks; with more than one parallel job, Voyager will not be able to take locks to dump the data.
+{{< /note >}}
+
 Note that the `source-db-schema` argument is required for PostgreSQL and Oracle, and is _not_ applicable for MySQL.
 Refer to [export data](../../reference/data-migration/export-data) for details about the arguments.
 
@@ -247,6 +251,10 @@ Note that there are some special cases involving sequences such as the following
 - In MySQL, auto-increment column is migrated to YugbayteDB as a normal column with a sequence attached to it.
 - For PostgreSQL, `SERIAL` datatype and `GENERATED AS IDENTITY` columns use sequence object internally, so resume values for them are also generated during data export.
 
+{{< /note >}}
+
+{{< note title= "Migrating source databases with large row sizes" >}}
+If a table's row size on the source database is too large, and exceeds the default [RPC message size](../../../reference/configuration/all-flags-yb-master/#rpc-max-message-size), import data will fail with the error `ERROR: Sending too long RPC message..`. So, you need to migrate those tables separately after removing the large rows.
 {{< /note >}}
 
 #### Export data status
@@ -294,12 +302,6 @@ Refer to [import schema](../../reference/schema-migration/import-schema/) for de
 
 yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target YugabyteDB database. If yb-voyager terminates before it imports the entire schema, you can rerun it by adding the `--ignore-exist` option.
 
-{{< note title="Importing indexes and triggers" >}}
-
-Because the presence of indexes and triggers can slow down the rate at which data is imported, by default `import schema` does not import indexes and triggers (with the exception of UNIQUE indexes, to avoid any issues during import of schema because of foreign key dependencies on the index). You should complete the data import without creating indexes and triggers. After data import is complete, create indexes and triggers using the `import schema` command with an additional `--post-snapshot-import` flag.
-
-{{< /note >}}
-
 ### Import data
 
 After you have successfully exported the source data and imported the schema in the target YugabyteDB database, you can import the data using the `yb-voyager import data` command with required arguments as follows:
@@ -329,15 +331,24 @@ If the `yb-voyager import data` command terminates before completing the data in
 
 {{< /tip >}}
 
+{{< note title= "Migrating source databases with large row sizes" >}}
+When exporting data using the `BETA_FAST_DATA_EXPORT` flag, the import data process has a default row size limit of 32MB. If a row exceeds this limit but is smaller than the `batch-size * max-row-size`, you can increase the limit for the import data process by setting the following an environment variable to handle such rows:
+
+```sh
+export CSV_READER_MAX_BUFFER_SIZE_BYTES = <MAX_ROW_SIZE_IN_BYTES>
+```
+
+{{< /note >}}
+
 #### Import data status
 
 Run the `yb-voyager import data status --export-dir <EXPORT_DIR>` command to get an overall progress of the data import operation.
 
 Refer to [import data status](../../reference/data-migration/import-data/#import-data-status) for details about the arguments.
 
-### Import indexes and triggers
+### Refresh materialized views
 
-Import indexes and triggers using the `import schema` command with an additional `--post-snapshot-import` flag as follows:
+If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the target YugabyteDB, you can refresh them using the following command:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -347,7 +358,8 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
         --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
         --target-db-name <TARGET_DB_NAME> \
         --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
-        --post-snapshot-import true
+        --post-snapshot-import true \
+        --refresh-mviews true
 ```
 
 Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.

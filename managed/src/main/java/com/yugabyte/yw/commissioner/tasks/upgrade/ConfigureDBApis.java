@@ -57,6 +57,12 @@ public class ConfigureDBApis extends UpgradeTaskBase {
         () -> {
           Universe universe = getUniverse();
 
+          // Drop system_platform tables while disabling YSQL.
+          if (!taskParams().enableYSQL
+              && universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL) {
+            createDropSystemPlatformDBTablesTask(universe, getTaskSubGroupType());
+          }
+
           // Reset password to default before disable.
           createResetAPIPasswordTask(taskParams(), getTaskSubGroupType());
 
@@ -69,6 +75,7 @@ public class ConfigureDBApis extends UpgradeTaskBase {
           createUpdateDBApiDetailsTask(
                   taskParams().enableYSQL,
                   taskParams().enableYSQLAuth,
+                  taskParams().enableConnectionPooling,
                   taskParams().enableYCQL,
                   taskParams().enableYCQLAuth)
               .setSubTaskGroupType(getTaskSubGroupType());
@@ -86,6 +93,7 @@ public class ConfigureDBApis extends UpgradeTaskBase {
       UserIntent userIntent = currentCluster.userIntent.clone();
       userIntent.enableYSQL = taskParams().enableYSQL;
       userIntent.enableYSQLAuth = taskParams().enableYSQLAuth;
+      userIntent.enableConnectionPooling = taskParams().enableConnectionPooling;
       userIntent.enableYCQL = taskParams().enableYCQL;
       userIntent.enableYCQLAuth = taskParams().enableYCQLAuth;
       List<NodeDetails> masterNodes =
@@ -96,6 +104,9 @@ public class ConfigureDBApis extends UpgradeTaskBase {
           universe.getTServers().stream()
               .filter(n -> n.placementUuid.equals(currentCluster.uuid))
               .collect(Collectors.toList());
+      Universe targetUniverseState = getUniverse();
+      targetUniverseState.getUniverseDetails().getClusterByUuid(currentCluster.uuid).userIntent =
+          userIntent;
       createRollingUpgradeTaskFlow(
           (nodes, processTypes) -> {
             // In case of rolling restart, we only deal with one node at a time.
@@ -113,6 +124,9 @@ public class ConfigureDBApis extends UpgradeTaskBase {
             node.isYsqlServer = taskParams().enableYSQL;
             CommunicationPorts.setCommunicationPorts(taskParams().communicationPorts, node);
             createNodeDetailsUpdateTask(node, false);
+            // Also updating targetUniverseState
+            CommunicationPorts.setCommunicationPorts(
+                taskParams().communicationPorts, targetUniverseState.getNode(node.getNodeName()));
           },
           masterNodes,
           tserverNodes,
@@ -124,8 +138,7 @@ public class ConfigureDBApis extends UpgradeTaskBase {
           // waitForServer(YSQL sevrver check) in params.
           UpgradeContext.builder()
               .runBeforeStopping(true)
-              .userIntent(userIntent)
-              .communicationPorts(taskParams().communicationPorts)
+              .targetUniverseState(targetUniverseState)
               .build(),
           universe.isYbcEnabled());
     }

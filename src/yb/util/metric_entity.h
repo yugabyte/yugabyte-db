@@ -161,7 +161,8 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
                      const MetricJsonOptions& opts) const;
 
   Status WriteForPrometheus(PrometheusWriter* writer,
-                            const MetricPrometheusOptions& opts);
+                            const MetricPrometheusOptions& opts,
+                            std::vector<MetricMap>* owned_metric_map_holder = nullptr);
 
   const MetricMap& UnsafeMetricsMapForTests() const { return metric_map_; }
 
@@ -193,7 +194,9 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
 
   void Remove(const MetricPrototype* proto);
 
-  bool TEST_ContainMetricName(const std::string& metric_name) const;
+  bool TEST_ContainsMetricName(const std::string& metric_name) const;
+
+  Result<std::string> TEST_GetAttributeFromMap(const std::string& key) const;
 
  private:
   friend class MetricRegistry;

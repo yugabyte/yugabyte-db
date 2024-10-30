@@ -51,9 +51,10 @@ You should allocate adequate CPU and RAM. YugabyteDB has adequate defaults for r
 
 **Production requirement**
 
-- 16+ cores
-- 32GB+ RAM
-- Add more CPU (compared to adding more RAM) to improve performance.
+- YCQL - 16+ cores and 32GB+ RAM
+- YSQL - 16+ cores and 64GB+ RAM
+
+Add more CPU (compared to adding more RAM) to improve performance.
 
 **Additional considerations**
 
@@ -157,9 +158,9 @@ YugabyteDB can run on a number of public clouds.
 
 ### Amazon Web Services (AWS)
 
-- Use the C5 or I3 instance families.
-- Recommended types are i3.4xlarge, i3.8xlarge, c5.4xlarge, c5.8xlarge, and c6g.4xlarge/8xlarge. Use the higher CPU instance types especially for large YSQL workloads.
-- For the C5 instance family, use gp3 EBS (SSD) disks that are at least 250GB in size, larger if more IOPS are needed:
+- Use the M [instance family](https://aws.amazon.com/ec2/instance-types/).
+- Recommended type is M6i. Use the higher CPU instance types especially for large YSQL workloads.
+- Use gp3 EBS (SSD) disks that are at least 250GB in size, larger if more IOPS are needed.
   - Scale up the IOPS as you scale up the size of the disk.
   - In YugabyteDB testing, gp3 EBS SSDs provide the best performance for a given cost among the various EBS disk options.
 - Avoid running on [T2 instance types](https://aws.amazon.com/ec2/instance-types/t2/). The T2 instance types are burstable instance types. Their baseline performance and ability to burst are governed by CPU credits, which makes it hard to get steady performance.

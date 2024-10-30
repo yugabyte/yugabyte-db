@@ -3,11 +3,13 @@ title: YugabyteDB R2DBC Smart Driver
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Java application using YugabyteDB R2DBC Smart Driver for YSQL
+tags:
+  other: ysql
 menu:
   preview:
-    identifier: r2dbc-driver
+    identifier: java-driver-2-r2dbc
     parent: java-drivers
-    weight: 600
+    weight: 500
 type: docs
 ---
 
@@ -57,9 +59,9 @@ type: docs
 
 The [YugabyteDB R2DBC Smart Driver](https://github.com/yugabyte/r2dbc-postgresql) is an asynchronous Java driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL R2DBC driver](https://github.com/pgjdbc/r2dbc-postgresql), with additional [connection load balancing](../../smart-drivers/) features.
 
-{{< note title="YugabyteDB Managed" >}}
+{{< note title="YugabyteDB Aeon" >}}
 
-To use smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from outside the VPC network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from outside the VPC network fall back to the upstream driver behaviour automatically. For more information, refer to [Using smart drivers with YugabyteDB Managed](../../smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
+To use smart driver load balancing features when connecting to clusters in YugabyteDB Aeon, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from outside the VPC network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from outside the VPC network fall back to the upstream driver behaviour automatically. For more information, refer to [Using smart drivers with YugabyteDB Aeon](../../smart-drivers/#using-smart-drivers-with-yugabytedb-aeon).
 
 {{< /note >}}
 
@@ -96,8 +98,8 @@ The following table describes the connection parameters required to connect, inc
 | database | Database name | yugabyte |
 | username | User connecting to the database | yugabyte |
 | password | User password | yugabyte |
-| `loadBalanceHosts` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true' |
-| `topologyKeys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `loadBalanceHosts` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
+| `loadBalanceHosts` | [Uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | Defaults to upstream driver behavior unless set to 'true' |
+| `topologyKeys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing) | If `loadBalanceHosts` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
 | `ybServersRefreshInterval` | If loadBalanceHosts is true, the interval in seconds to refresh the servers list | 300 |
 
 You can provide the connection details in one of the following ways:
@@ -230,6 +232,6 @@ ID: 3, Name: John, Age: 38, Language: JAVA
 
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
-- [Develop Spring Boot applications using the YugabyteDB JDBC Driver](../../../integrations/spring-framework/sdyb/)
+- [Develop Spring Boot applications using the YugabyteDB JDBC Driver](/preview/integrations/spring-framework/sdyb/)
 - Build Java applications using [Hibernate ORM](../hibernate/)
 - Build Java applications using [Ebean ORM](../ebean/)

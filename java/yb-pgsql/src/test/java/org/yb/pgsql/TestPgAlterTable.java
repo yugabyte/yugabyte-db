@@ -37,22 +37,10 @@ public class TestPgAlterTable extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgAlterTable.class);
 
   @Override
-  protected Map<String, String> getMasterFlags() {
-    Map<String, String> flagMap = super.getMasterFlags();
-    flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_replica_identity");
-    flagMap.put("ysql_yb_enable_replica_identity", "true");
-    return flagMap;
-  }
-
-  @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     if (isTestRunningWithConnectionManager())
-      flagMap.put("allowed_preview_flags_csv",
-        "ysql_yb_enable_replica_identity,enable_ysql_conn_mgr");
-    else
-      flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_replica_identity");
-    flagMap.put("ysql_yb_enable_replica_identity", "true");
+      flagMap.put("allowed_preview_flags_csv", "enable_ysql_conn_mgr");
     return flagMap;
   }
 
@@ -149,13 +137,13 @@ public class TestPgAlterTable extends BasePgSQLTest {
       runInvalidQuery(
           statement,
           "INSERT INTO test_table(id, b) VALUES(1, 3)",
-          "null value in column \"a\" violates not-null constraint"
+          "null value in column \"a\" of relation \"test_table\" violates not-null constraint"
       );
 
       runInvalidQuery(
           statement,
           "ALTER TABLE test_table ADD c int NOT NULL",
-          "column \"c\" contains null values"
+          "column \"c\" of relation \"test_table\" contains null values"
       );
     }
   }
@@ -215,7 +203,8 @@ public class TestPgAlterTable extends BasePgSQLTest {
       runInvalidQuery(
           statement,
           "ALTER TABLE test_table ADD b int CHECK (b IS NOT NULL)",
-          "check constraint \"test_table_b_check\" is violated by some row"
+          ("check constraint \"test_table_b_check\" of relation \"test_table\" " +
+           "is violated by some row")
       );
     }
   }
@@ -441,46 +430,6 @@ public class TestPgAlterTable extends BasePgSQLTest {
       assertQuery(statement, "SELECT a,b FROM test_table WHERE id = 2", new Row(11, 0));
       statement.execute("INSERT INTO test_table(id, a) values (3, 22)");
       assertQuery(statement, "SELECT a,b FROM test_table WHERE id = 3", new Row(22, null));
-    }
-  }
-
-  @Test
-  public void testAddColumnWithUnsupportedConstraint() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE TABLE test_table(id int)");
-      statement.execute("CREATE TABLE test_table_ref(id int)");
-
-      // Constrained variants of UNIQUE fail.
-      for (String addCol : Arrays.asList(
-          "ADD COLUMN",
-          "ADD",
-          "ADD COLUMN IF NOT EXISTS",
-          "ADD IF NOT EXISTS")) {
-        for (String constr : Arrays.asList(
-            "DEFAULT 5",
-            "DEFAULT NOW()",
-            "CHECK (id > 0)",
-            "CHECK (a > 0)",
-            "REFERENCES test_table_ref(id)")) {
-          runInvalidQuery(statement,
-              "ALTER TABLE test_table " + addCol + " a int UNIQUE " + constr,
-              "This ALTER TABLE command is not yet supported");
-        }
-      }
-
-      // GENERATED fails.
-      runInvalidQuery(
-          statement,
-          "ALTER TABLE test_table ADD gac int GENERATED ALWAYS AS IDENTITY",
-          "This ALTER TABLE command is not yet supported"
-      );
-
-      // No columns were added.
-      assertQuery(
-          statement,
-          selectAttributesQuery("test_table"),
-          new Row("id", "int4")
-      );
     }
   }
 

@@ -4,7 +4,7 @@
  * Utilities for Ysql Connection Manager/Yugabyte (Postgres layer) integration
  * that have to be defined on the PostgreSQL side.
  *
- * Copyright (c) YugaByteDB, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -67,7 +67,9 @@
  */
 #define YB_CREATE_SHMEM_FLAG 0666 | IPC_EXCL | IPC_CREAT
 
+bool yb_is_auth_backend = false;
 bool yb_is_client_ysqlconnmgr = false;
+bool yb_is_parallel_worker = false;
 
 enum SESSION_PARAMETER_UPDATE_RST
 {
@@ -89,10 +91,12 @@ attach_shmem(int shmem_id, char **shmem_ptr)
 	*shmem_ptr = shmat(shmem_id, NULL, 0);
 	if (*shmem_ptr == (void *) -1)
 	{
+		int			save_errno = errno;
+
 		ereport(WARNING, (errmsg("Error at shmat for shared memory segment with "
 							   "id '%d'. "
 							   "%s",
-							   shmem_id, strerror(errno))));
+							   shmem_id, strerror(save_errno))));
 		return -1;
 	}
 	return 0;
@@ -103,10 +107,12 @@ detach_shmem(int shmem_id, void *shmem_ptr)
 {
 	if (shmdt(shmem_ptr) == -1)
 	{
+		int			save_errno = errno;
+
 		ereport(WARNING, (errmsg("Error at shmdt for shared memory segment with "
 							   "id '%d'. "
 							   "%s",
-							   shmem_id, strerror(errno))));
+							   shmem_id, strerror(save_errno))));
 		return -1;
 	}
 	return 0;
@@ -239,9 +245,11 @@ yb_shmem_resize(const key_t shmem_id, const long new_array_size)
 	int result = shmctl(shmem_id, IPC_STAT, &buf);
 	if (result < 0)
 	{
+		int			save_errno = errno;
+
 		ereport(WARNING, (errmsg("Error at shmctl for shared memory with key "
 							   "'%d', while resizing the shared memory. %s",
-							   shmem_id, strerror(errno))));
+							   shmem_id, strerror(save_errno))));
 		return -1;
 	}
 
@@ -249,9 +257,11 @@ yb_shmem_resize(const key_t shmem_id, const long new_array_size)
 	result = shmctl(shmem_id, IPC_SET, &buf);
 	if (result < 0)
 	{
+		int			save_errno = errno;
+
 		ereport(WARNING, (errmsg("Error at shmctl for shared memory with key "
 							   "'%d', while resizing the shared memory. %s",
-							   shmem_id, strerror(errno))));
+							   shmem_id, strerror(save_errno))));
 		return -1;
 	}
 
@@ -319,9 +329,11 @@ resize_shmem_if_needed(const key_t shmem_id)
 
 	if (resize_needed > 0 && (yb_shmem_resize(shmem_id, resize_needed) == -1))
 	{
+		int			save_errno = errno;
+
 		ereport(WARNING, (errmsg("Error while resizing the shared memory segment "
 							   "with key %d (%s).",
-							   shmem_id, strerror(errno))));
+							   shmem_id, strerror(save_errno))));
 		return -1;
 	}
 
@@ -588,17 +600,21 @@ SetSessionParameterFromSharedMemory(key_t client_shmem_key)
 void
 DeleteSharedMemory(int client_shmem_key)
 {
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
 	elog(DEBUG5, "Deleting the shared memory with key %d", client_shmem_key);
 
 	/* Shared memory related to the client id will be removed */
 	if (shmctl(client_shmem_key, IPC_RMID, NULL) == -1)
 	{
+		int			save_errno = errno;
+
 		ereport(WARNING, (errmsg("Error at shmctl while trying to delete the "
 							   "shared memory segment, %s",
-							   strerror(errno))));
+							   strerror(save_errno))));
 	}
 
 	yb_logical_client_shmem_key = -1;
+#endif
 }
 
 void
@@ -664,7 +680,7 @@ SetLogicalClientUserDetailsIfValid(const char *rolename, bool *is_superuser,
 
 	/* TODO(janand) GH #19951 Do we need support for initializing via OID */
 	rform = (Form_pg_authid) GETSTRUCT(roleTup);
-	*roleid = HeapTupleGetOid(roleTup);
+	*roleid = rform->oid;
 	rname = NameStr(rform->rolname);
 	*is_superuser = rform->rolsuper;
 
@@ -693,15 +709,17 @@ SetLogicalClientUserDetailsIfValid(const char *rolename, bool *is_superuser,
 	uint32_t yb_num_logical_conn = 0,
 				 yb_num_physical_conn_from_ysqlconnmgr = 0;
 
-		yb_net_client_connections = CountUserBackends(*roleid);
+	yb_net_client_connections = CountUserBackends(*roleid);
 
-		if (IsYugaByteEnabled() &&
-		YbGetNumYsqlConnMgrConnections(NULL, rname, &yb_num_logical_conn,
-									   &yb_num_physical_conn_from_ysqlconnmgr)) {
-			yb_net_client_connections +=
-			yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
-		
-		}
+	if (IsYugaByteEnabled() &&
+	YbGetNumYsqlConnMgrConnections(NULL, rname, &yb_num_logical_conn,
+									&yb_num_physical_conn_from_ysqlconnmgr)) {
+		yb_net_client_connections +=
+		yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
+
+		if (YbIsYsqlConnMgrWarmupModeEnabled())
+			yb_net_client_connections = yb_num_logical_conn;
+	}
 	
 	if (rform->rolconnlimit >= 0 &&
 			!rform->rolsuper &&
@@ -737,6 +755,39 @@ send_oid_info(const char oid_type, const int oid)
 	CHECK_FOR_INTERRUPTS();
 }
 
+static void
+YbSendDatabaseOidAndSetupSharedMemory(Oid database_oid, Oid user, bool is_superuser)
+{
+	/* Send back the database oid */
+	send_oid_info('d', database_oid);
+	if (database_oid == InvalidOid)
+	{
+		YbSendFatalForLogicalConnectionPacket();
+		ereport(WARNING,
+				(errmsg("database \"%s\" does not exist",
+						MyProcPort->database_name)));
+		return;
+	}
+
+	/*
+	 * Create a shared memory block for a client connection if YB_GUC_SUPPORT_VIA_SHMEM
+	 * is enabled. Otherwise send 1 for every logical client and disable the code to delete the
+	 * shared memory block in DeleteSharedMemory() based on YB_GUC_SUPPORT_VIA_SHMEM.
+	 * TODO (mkumar) GH #24350 Don't send errhint packet if YB_GUC_SUPPORT_VIA_SHMEM
+	 * 			mode is not enabled.
+	 */
+	int new_client_id =
+	#ifdef YB_GUC_SUPPORT_VIA_SHMEM
+		yb_shmem_get(user, MyProcPort->user_name, is_superuser, database);
+	#else
+		1;
+	#endif
+	if (new_client_id > 0)
+		ereport(WARNING, (errhint("shmkey=%d", new_client_id)));
+	else
+		ereport(FATAL, (errmsg("Unable to create the shared memory block")));
+}
+
 void
 YbCreateClientId(void)
 {
@@ -747,28 +798,31 @@ YbCreateClientId(void)
 	/* This feature is only for Ysql Connection Manager */
 	Assert(yb_is_client_ysqlconnmgr);
 
-	if (SetLogicalClientUserDetailsIfValid(MyProcPort->user_name, &is_superuser, &user) < 0)
+	if (SetLogicalClientUserDetailsIfValid(MyProcPort->user_name, &is_superuser,
+										   &user) < 0)
 		return;
 
 	database = get_database_oid(MyProcPort->database_name, true);
 
-	/* Send back the database oid */
-	send_oid_info('d', database);
-	if (database == InvalidOid)
-	{
-		YbSendFatalForLogicalConnectionPacket();
-		ereport(WARNING,
-				(errmsg("database \"%s\" does not exist",
-						MyProcPort->database_name)));
-		return;
-	}
+	YbSendDatabaseOidAndSetupSharedMemory(database, user, is_superuser);
+}
 
-	/* Create a shared memory block for a client connection */
-	int new_client_id = yb_shmem_get(user, MyProcPort->user_name, is_superuser, database);
-	if (new_client_id > 0)
-		ereport(WARNING, (errhint("shmkey=%d", new_client_id)));
-	else
-		ereport(FATAL, (errmsg("Unable to create the shared memory block")));
+void
+YbCreateClientIdWithDatabaseOid(Oid database_oid)
+{
+	bool		is_superuser;
+	Oid			user;
+
+	Assert(database_oid != InvalidOid);
+
+	/* This feature is only for Ysql Connection Manager */
+	Assert(yb_is_client_ysqlconnmgr);
+
+	if (SetLogicalClientUserDetailsIfValid(MyProcPort->user_name, &is_superuser,
+										   &user) < 0)
+		return;
+
+	YbSendDatabaseOidAndSetupSharedMemory(database_oid, user, is_superuser);
 }
 
 /*
@@ -795,14 +849,28 @@ yb_is_client_ysqlconnmgr_check_hook(bool *newval, void **extra,
 									GucSource source)
 {
 	/* Allow setting yb_is_client_ysqlconnmgr as false */
-	if (!(*newval))
+	/*
+	 * Parallel workers are created and maintained by postmaster. So physical
+	 * connections can never be of parallel worker type, therefore it makes no
+	 * sense to restore or even do check/assign hooks for ysql connection
+	 * manager specific guc variables on parallel worker process.
+	 *
+	 * Connection manager will also be the client in case the backend is an
+	 * auth-backend. These checks are redundant because the auth method won't be
+	 * tserver-key and the even though the connection is via the unix socket, we
+	 * override the value of SOCKET in case of auth-backend. So we don't need
+	 * either of the checks.
+	 */
+	if (!(*newval) || yb_is_parallel_worker || yb_is_auth_backend)
 		return true;
 
 	/* Client needs to be connected on unix domain socket */
-	if (!IS_AF_UNIX(MyProcPort->raddr.addr.ss_family))
+	if (MyProcPort->raddr.addr.ss_family != AF_UNIX && !yb_is_auth_backend)
 		ereport(FATAL, (errcode(ERRCODE_PROTOCOL_VIOLATION),
 						errmsg("yb_is_client_ysqlconnmgr can only be set "
-							   "if the connection is made over unix domain socket")));
+							   "if the connection is made over unix domain "
+							   "socket or if the backend is an authentication "
+							   "backend")));
 
 	/* Authentication method needs to be yb-tserver-key */
 	if (!MyProcPort->yb_is_tserver_auth_method)
@@ -819,7 +887,16 @@ yb_is_client_ysqlconnmgr_assign_hook(bool newval, void *extras)
 {
 	yb_is_client_ysqlconnmgr = newval;
 
-	if (yb_is_client_ysqlconnmgr == true)
+	/*
+	 * Parallel workers are created and maintained by postmaster. So physical
+	 * connections can never be of parallel worker type, therefore it makes no
+	 * sense to perform any ysql connection manager specific operations on it.
+	 *
+	 * For the auth-backend, we already send the database_oid information to the
+	 * client when initializing the shared memory. So we can skip it here.
+	 */
+	if (yb_is_client_ysqlconnmgr && !yb_is_parallel_worker &&
+		!yb_is_auth_backend)
 		send_oid_info('d', get_database_oid(MyProcPort->database_name, false));
 }
 
@@ -848,9 +925,11 @@ YbGetNumYsqlConnMgrConnections(const char *db_name, const char *user_name,
 	const int32_t shmid = shmget((key_t) atoi(stats_shm_key), 0, 0666);
 	if (shmid == -1)
 	{
+		int			save_errno = errno;
+
 		elog(WARNING,
 			 "Unable to attach to the shared memory segment %d, errno: %d",
-			 shmid, errno);
+			 shmid, save_errno);
 		return false;
 	}
 
@@ -858,9 +937,11 @@ YbGetNumYsqlConnMgrConnections(const char *db_name, const char *user_name,
 	shmp = (struct ConnectionStats *) shmat(shmid, NULL, 0);
 	if (shmp == NULL)
 	{
+		int			save_errno = errno;
+
 		elog(WARNING,
 			 "Unable to read the shared memory segment %d, errno: %d",
-			 shmid, errno);
+			 shmid, save_errno);
 		return false;
 	}
 
@@ -887,7 +968,7 @@ YbGetNumYsqlConnMgrConnections(const char *db_name, const char *user_name,
 		 * can get changed while reading the shared memory segment.
 		 */
 		*num_logical_conn += shmp[itr].active_clients +
-							 shmp[itr].idle_or_pending_clients +
+							 shmp[itr].waiting_clients +
 							 shmp[itr].queued_clients;
 		*num_physical_conn += shmp[itr].active_servers + shmp[itr].idle_servers;
 	}

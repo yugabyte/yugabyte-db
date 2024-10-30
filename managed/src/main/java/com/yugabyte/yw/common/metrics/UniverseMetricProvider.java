@@ -78,7 +78,8 @@ public class UniverseMetricProvider implements MetricsProvider {
           PlatformMetrics.UNIVERSE_REPLICATION_FACTOR,
           PlatformMetrics.UNIVERSE_NODE_PROVISIONED_IOPS,
           PlatformMetrics.UNIVERSE_NODE_PROVISIONED_THROUGHPUT,
-          PlatformMetrics.UNIVERSE_RELEASE_FILES_STATUS);
+          PlatformMetrics.UNIVERSE_RELEASE_FILES_STATUS,
+          PlatformMetrics.UNIVERSE_ACTIVE_TASK_CODE);
 
   @Override
   public List<MetricSaveGroup> getMetricGroups() throws Exception {
@@ -127,14 +128,19 @@ public class UniverseMetricProvider implements MetricsProvider {
                   : null;
           String dbVersion =
               universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-          universeGroup.metric(
+          Metric activeTaskCodeMetric =
               createUniverseMetric(
                       customer,
                       universe,
                       PlatformMetrics.UNIVERSE_ACTIVE_TASK_CODE,
                       taskType != null ? taskType.getCode() : 0)
                   .setLabel(KnownAlertLabels.YBA_VERSION, ybaVersion)
-                  .setLabel(KnownAlertLabels.DB_VERSION, dbVersion));
+                  .setLabel(KnownAlertLabels.DB_VERSION, dbVersion);
+          if (activeTaskCodeMetric.getValue() > 0) {
+            UUID taskUuid = universe.getUniverseDetails().updatingTaskUUID;
+            activeTaskCodeMetric.setKeyLabel(KnownAlertLabels.TASK_UUID, taskUuid.toString());
+          }
+          universeGroup.metric(activeTaskCodeMetric);
           universeGroup.metric(
               createUniverseMetric(
                   customer,
@@ -195,12 +201,14 @@ public class UniverseMetricProvider implements MetricsProvider {
                 }
               }
 
-              universeGroup.metric(
-                  createUniverseMetric(
-                      customer,
-                      universe,
-                      PlatformMetrics.UNIVERSE_OS_UPDATE_REQUIRED,
-                      universeOSUpdateRequired));
+              if (universeOSUpdateRequired > 0) {
+                universeGroup.metric(
+                    createUniverseMetric(
+                        customer,
+                        universe,
+                        PlatformMetrics.UNIVERSE_OS_UPDATE_REQUIRED,
+                        universeOSUpdateRequired));
+              }
             }
           }
           ReleaseContainer releaseContainer = releaseContainers.get(dbVersion);

@@ -6,6 +6,7 @@ import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckNumPod.
 import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.APPLY_SECRET;
 import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.CREATE_NAMESPACE;
 import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.HELM_INSTALL;
+import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.HELM_UPGRADE;
 import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.POD_INFO;
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
@@ -17,6 +18,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -344,7 +346,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       when(mockClient.createRedisTable(any(), anyBoolean())).thenReturn(mockTable);
     } catch (Exception e) {
     }
-    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any(), anyBoolean(), anyInt()))
         .thenReturn(
             ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, "Command output: CREATE TABLE"));
     // WaitForServer mock.
@@ -362,12 +364,15 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.InstallingThirdPartySoftware,
           TaskType.WaitForServer,
           TaskType.WaitForMasterLeader,
+          TaskType.KubernetesCommandExecutor,
+          TaskType.WaitForDuration,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForTServerHeartBeats,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.CreateAlertDefinitions,
           TaskType.CreateTable,
           TaskType.CreateTable,
+          TaskType.UpdateConsistencyCheck,
           TaskType.UniverseUpdateSucceeded);
 
   private static final ImmutableMap<String, String> EXPECTED_RESULT_FOR_CREATE_TABLE_TASK =
@@ -385,11 +390,14 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("removeFile", false)),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(EXPECTED_RESULT_FOR_CREATE_TABLE_TASK),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()));
   }
@@ -403,7 +411,25 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
   private List<Integer> getTaskCountPerPosition(int namespaceTasks, int parallelTasks) {
     return ImmutableList.of(
-        1, namespaceTasks, parallelTasks, parallelTasks, 0, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1);
+        1,
+        namespaceTasks,
+        parallelTasks,
+        parallelTasks,
+        0,
+        1,
+        1,
+        3,
+        1,
+        parallelTasks,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1);
   }
 
   private void assertTaskSequence(
@@ -730,7 +756,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
                 + "yb-master-0.%s.svc.cluster.local:7100,"
                 + "yb-master-0.%s.svc.cluster.local:7100",
             ns1, ns2, ns3);
-    verify(mockYBClient, times(7)).getClient(masters, null);
+    verify(mockYBClient, times(8)).getClient(masters, null);
 
     long timeout = 300000;
     verify(mockClient, times(1))

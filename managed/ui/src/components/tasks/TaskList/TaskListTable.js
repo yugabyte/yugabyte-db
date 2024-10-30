@@ -7,13 +7,14 @@ import { Link } from 'react-router';
 import { toast } from 'react-toastify';
 import { YBPanelItem } from '../../panels';
 import { timeFormatter, successStringFormatter } from '../../../utils/TableFormatters';
-import { YBConfirmModal } from '../../modals';
 import {
   hasNecessaryPerm,
   RbacValidator
 } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { TaskDetailDrawer } from '../../../redesign/features/tasks';
 import { SoftwareUpgradeTaskType } from '../../universes/helpers/universeHelpers';
+import { YBConfirmModal } from '../../modals';
 import './TasksList.scss';
 
 export default class TaskListTable extends Component {
@@ -25,15 +26,20 @@ export default class TaskListTable extends Component {
     overrideContent: PropTypes.object
   };
 
+  state = {
+    selectedTaskUUID: undefined
+  }
+
   render() {
-    const { taskList, title, visibleModal, hideTaskAbortModal, showTaskAbortModal } = this.props;
+    const { taskList, title, visibleModal, hideTaskAbortModal, showTaskAbortModal, featureFlags } = this.props;
+    const isNewTaskDetailsUIEnabled = featureFlags?.test?.newTaskDetailsUI || featureFlags?.released?.newTaskDetailsUI;
 
     function nameFormatter(cell, row) {
       return <span>{row.title.replace(/.*:\s*/, '')}</span>;
     }
 
     function typeFormatter(cell, row) {
-      return row.correlationId && hasNecessaryPerm(ApiPermissionMap.GET_LOGS) ? (
+      return row.correlationId && hasNecessaryPerm(ApiPermissionMap.GET_LOGS) && !isNewTaskDetailsUIEnabled ? (
         <Link to={`/logs/?queryRegex=${row.correlationId}&startDate=${row.createTime}`}>
           {row.typeName} {row.target}
         </Link>
@@ -105,9 +111,18 @@ export default class TaskListTable extends Component {
         return <span />;
       }
     };
+
+
     const tableBodyContainer = { marginBottom: '1%', paddingBottom: '1%' };
     return (
-      <RbacValidator accessRequiredOn={ApiPermissionMap.GET_TASKS_LIST}>
+      <RbacValidator
+        accessRequiredOn={ApiPermissionMap.GET_TASKS_LIST}
+      >
+        <TaskDetailDrawer taskUUID={this.state.selectedTaskUUID} visible={this.state.selectedTaskUUID !== undefined} onClose={() => {
+          this.setState({
+            selectedTaskUUID: undefined
+          });
+        }} />
         <YBPanelItem
           header={<h2 className="task-list-header content-title">{title}</h2>}
           body={
@@ -118,6 +133,10 @@ export default class TaskListTable extends Component {
               search
               multiColumnSearch
               searchPlaceholder="Search by Name or Type"
+              options={{
+                onRowClick: (task) => isNewTaskDetailsUIEnabled && this.setState({ selectedTaskUUID: task.id })
+              }}
+              trStyle={isNewTaskDetailsUIEnabled && { cursor: 'pointer' }}
             >
               <TableHeaderColumn dataField="id" isKey={true} hidden={true} />
               <TableHeaderColumn
@@ -135,7 +154,7 @@ export default class TaskListTable extends Component {
                 columnClassName="no-border name-column"
                 className="no-border"
               >
-                Name
+                {isNewTaskDetailsUIEnabled ? 'Target' : 'Name'}
               </TableHeaderColumn>
               <TableHeaderColumn
                 dataField="percentComplete"
@@ -173,9 +192,13 @@ export default class TaskListTable extends Component {
               >
                 End Time
               </TableHeaderColumn>
-              <TableHeaderColumn dataField="id" dataFormat={taskDetailLinkFormatter} dataSort>
-                Notes
-              </TableHeaderColumn>
+              {
+                !isNewTaskDetailsUIEnabled && (
+                  <TableHeaderColumn dataField="id" dataFormat={taskDetailLinkFormatter} dataSort>
+                    Notes
+                  </TableHeaderColumn>
+                )
+              }
             </BootstrapTable>
           }
         />

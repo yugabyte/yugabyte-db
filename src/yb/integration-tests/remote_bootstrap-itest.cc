@@ -63,9 +63,11 @@
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
-#include "yb/master/catalog_manager_if.h"
-#include "yb/master/mini_master.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_cluster_client.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/mini_master.h"
 
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -316,14 +318,10 @@ void RemoteBootstrapITest::CrashTestSetUp(YBTableType table_type) {
   LOG(INFO) << "Started cluster";
   // We'll do a config change to remote bootstrap a replica here later. For
   // now, shut it down.
-  LOG(INFO) << "Shutting down TS " << cluster_->tablet_server(crash_test_tserver_index_)->uuid();
-  cluster_->tablet_server(crash_test_tserver_index_)->Shutdown();
-
-  // Bounce the Master so it gets new tablet reports and doesn't try to assign
-  // a replica to the dead TS.
-  cluster_->master()->Shutdown();
-  ASSERT_OK(cluster_->master()->Restart());
-  ASSERT_OK(cluster_->WaitForTabletServerCount(4, crash_test_timeout_));
+  auto crash_test_ts_uuid = cluster_->tablet_server(crash_test_tserver_index_)->uuid();
+  LOG(INFO) << "Shutting down TS " << crash_test_ts_uuid;
+  ASSERT_OK(cluster_->RemoveTabletServer(
+      crash_test_ts_uuid, MonoTime::Now() + MonoDelta::FromSeconds(20)));
 
   // Start a workload on the cluster, and run it for a little while.
   crash_test_workload_.reset(new TestWorkload(cluster_.get()));
@@ -718,20 +716,14 @@ void RemoteBootstrapITest::LongBootstrapTestSetUpAndVerify(
 
   // We'll do a config change to remote bootstrap a replica here later. For now, shut it down.
   vector<TServerDetails*> new_ts_list;
+  std::vector<std::reference_wrapper<const std::string>> uuids_to_remove;
   for (auto i = 0; i < num_concurrent_ts_changes; i++) {
     LOG(INFO) << "Shutting down TS " << cluster_->tablet_server(i)->uuid();
-    cluster_->tablet_server(i)->Shutdown();
+    uuids_to_remove.push_back(cluster_->tablet_server(i)->uuid());
     new_ts_list.push_back(ts_map_[cluster_->tablet_server(i)->uuid()].get());
   }
-
-  // Bounce the Master so it gets new tablet reports and doesn't try to assign a replica to the
-  // dead TS.
   const auto timeout = MonoDelta::FromSeconds(40);
-  cluster_->master()->Shutdown();
-  LOG(INFO) << "Restarting master " << cluster_->master()->uuid();
-  ASSERT_OK(cluster_->master()->Restart());
-  ASSERT_OK(
-      cluster_->WaitForTabletServerCount(num_tablet_servers - num_concurrent_ts_changes, timeout));
+  ASSERT_OK(cluster_->RemoveTabletServers(uuids_to_remove, MonoTime::Now() + timeout));
 
   // Populate a tablet with some data.
   LOG(INFO) << "Starting workload";
@@ -804,7 +796,8 @@ TEST_F(RemoteBootstrapITest, IncompleteWALDownloadDoesntCauseCrash) {
       "--use_preelection=false"s,
       "--memstore_size_mb=1"s,
       "--TEST_download_partial_wal_segments=true"s,
-      "--remote_bootstrap_idle_timeout_ms="s + std::to_string(kBootstrapIdleTimeoutMs)
+      Format("--remote_bootstrap_idle_timeout_ms=$0", kBootstrapIdleTimeoutMs),
+      Format("--remote_bootstrap_successful_session_idle_timeout_ms=$0", kBootstrapIdleTimeoutMs),
   };
 
   const int kNumTabletServers = 3;
@@ -1971,6 +1964,9 @@ TEST_F(RemoteBootstrapITest, TestRBSWithLazySuperblockFlush) {
   ts_flags.push_back("--log_min_segments_to_retain=1");
   ts_flags.push_back("--log_min_seconds_to_retain=0");
 
+  // Prevent the flag validator from failing when FLAGS_log_min_seconds_to_retain is also set to 0
+  ts_flags.push_back("--xcluster_checkpoint_max_staleness_secs=0");
+
   // Minimize log replay.
   ts_flags.push_back("--retryable_request_timeout_secs=0");
 
@@ -2024,10 +2020,10 @@ class RemoteBootstrapMiniClusterITest: public YBMiniClusterTestBase<MiniCluster>
     return STATUS(NotFound, "No tablets found");
   }
 
-  Result<scoped_refptr<master::TabletInfo>> GetSingleTestTabletInfo(
+  Result<master::TabletInfoPtr> GetSingleTestTabletInfo(
       master::CatalogManagerIf* catalog_mgr) {
-    auto tablet_infos = catalog_mgr->GetTableInfo(table_handle_.table()->id())->GetTablets();
-
+    auto tablet_infos =
+        VERIFY_RESULT(catalog_mgr->GetTableInfo(table_handle_.table()->id())->GetTablets());
     SCHECK_EQ(tablet_infos.size(), 1U, IllegalState, "Expect test table to have only 1 tablet");
     return tablet_infos.front();
   }
@@ -2153,7 +2149,7 @@ TEST_F(PersistRetryableRequestsRBSITest, TestRetryableWrite) {
   // Rollover the log and should trigger flushing retryable requests.
   ASSERT_OK(leader_peer->log()->AllocateSegmentAndRollOver());
   ASSERT_OK(WaitFor([&] {
-    return leader_peer->TEST_HasRetryableRequestsOnDisk();
+    return leader_peer->TEST_HasBootstrapStateOnDisk();
   }, 10s, "retryable requests flushed to disk"));
 
   ASSERT_OK(leader_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));

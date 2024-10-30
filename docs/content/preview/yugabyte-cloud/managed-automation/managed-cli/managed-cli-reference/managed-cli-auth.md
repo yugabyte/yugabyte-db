@@ -2,7 +2,7 @@
 title: ybm CLI authenticate resource
 headerTitle: ybm auth
 linkTitle: auth
-description: YugabyteDB Managed CLI reference auth resource.
+description: YugabyteDB Aeon CLI reference auth resource.
 headcontent: Authenticate ybm CLI
 menu:
   preview_yugabyte-cloud:

@@ -110,15 +110,16 @@ DEFINE_UNKNOWN_bool(require_durable_wal_write, false, "Whether durable WAL write
     "the system will soft downgrade the durable_wal_write flag.");
 TAG_FLAG(require_durable_wal_write, stable);
 
-#ifdef NDEBUG
-DEFINE_RUNTIME_AUTO_bool(save_index_into_wal_segments, kLocalPersisted, false, true,
-#else
+// The target value in the release build is true.
 // We set it to false in debug builds to keep testing the old approach in auto tests.
-DEFINE_RUNTIME_bool(save_index_into_wal_segments, false,
-#endif
+constexpr bool kSaveIndexIntoWalSegmentTargetVal = !yb::kIsDebug;
+DEFINE_RUNTIME_AUTO_bool(save_index_into_wal_segments, kLocalPersisted,
+    !kSaveIndexIntoWalSegmentTargetVal, kSaveIndexIntoWalSegmentTargetVal,
     "Whether to save log index into WAL segments.");
 TAG_FLAG(save_index_into_wal_segments, hidden);
 TAG_FLAG(save_index_into_wal_segments, advanced);
+
+DECLARE_bool(store_min_start_ht_running_txns);
 
 namespace yb {
 namespace log {
@@ -312,6 +313,12 @@ Status ReadableLogSegment::RestoreFooterBuilderAndLogIndex(LogSegmentFooterPB* f
     }
   }
 
+  // As this is an active segment, set the min_start_time_running_txns as kInvalid since we want CDC
+  // to stream records from this segment based on the tablet leader safe time.
+  if (GetAtomicFlag(&FLAGS_store_min_start_ht_running_txns)) {
+    footer_builder->set_min_start_time_running_txns(HybridTime::kInvalid.ToUint64());
+  }
+
   UpdateReadableToOffset(read_entries.end_offset);
   return Status::OK();
 }
@@ -388,7 +395,7 @@ Status ReadableLogSegment::CopyTo(
   }
   footer.set_num_entries(num_entries);
   if (latest_ht > 0) {
-    footer_.set_close_timestamp_micros(HybridTime(latest_ht).GetPhysicalValueMicros());
+    footer.set_close_timestamp_micros(HybridTime(latest_ht).GetPhysicalValueMicros());
   }
   // Note: log_index created here might have holes, because specific WAL segment can have holes due
   // to WAL rewriting. For example, we can have segment with op_ids: { 3.25, 4.26, 5.21 } and footer

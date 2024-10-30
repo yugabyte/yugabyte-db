@@ -25,6 +25,7 @@
  *-------------------------------------------------------------------------
  */
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -187,6 +188,15 @@ int YBGetMaxClockSkewUsec() {
 	return kDefaultClockSkewUsec;
 }
 
+int YBGetHeartbeatIntervalMs() {
+	const int kDefaultHeartbeatIntervalMs = 1000;  // from heartbeater.cc
+	const char *yb_heartbeat_interval_ms_str = getenv("FLAGS_heartbeat_interval_ms");
+	if (yb_heartbeat_interval_ms_str) {
+		return atoi(yb_heartbeat_interval_ms_str);
+	}
+	return kDefaultHeartbeatIntervalMs;
+}
+
 int YBGetYsqlOutputBufferSize() {
 	const char *output_buffer_size_str = getenv("FLAGS_ysql_output_buffer_size");
 	if (output_buffer_size_str) {
@@ -226,6 +236,43 @@ YBColocateDatabaseByDefault()
 	{
 		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_ysql_colocate_database_by_default",
 												  false /* default_value */);
+	}
+	return cached_value;
+}
+
+bool
+YBIsTestOnlinePg11ToPg15Upgrade()
+{
+	return YBCIsEnvVarTrue("FLAGS_TEST_online_pg11_to_pg15_upgrade");
+}
+
+Oid YBGetDatabaseOidFromEnv(const char *database_name)
+{
+	char *env_var = psprintf("YB_DATABASE_OID_%s", database_name);
+	const char *database_oid_str = getenv(env_var);
+	pfree(env_var);
+	if (database_oid_str)
+	{
+		unsigned long full_oid = strtoul(database_oid_str, NULL, 10);
+		if (full_oid <= OID_MAX)
+			return (Oid) full_oid;
+	}
+	return InvalidOid;
+}
+
+/*
+ * Note: This function is used for the test flag only. 
+ * Once the associated feature is fully developed and stable, this function will be removed.
+ * The flag is defined this way and not in ybc_pggate.cc because it is used in the ipic.c file,
+ * which is initialized before the pggate api.
+ */
+bool
+YBIsQueryDiagnosticsEnabled()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = YBCIsEnvVarTrue("FLAGS_TEST_yb_enable_query_diagnostics");
 	}
 	return cached_value;
 }

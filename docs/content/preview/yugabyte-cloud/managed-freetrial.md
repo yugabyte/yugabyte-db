@@ -1,8 +1,8 @@
 ---
 title: Start a free trial
 linkTitle: Start a free trial
-description: Start a free trial of YugabyteDB Managed to conduct POCs and performance testing.
-headcontent: Explore all YugabyteDB Managed features
+description: Start a free trial of YugabyteDB Aeon to conduct POCs and performance testing.
+headcontent: Explore all YugabyteDB Aeon features
 menu:
   preview_yugabyte-cloud:
     identifier: managed-freetrial
@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-To go beyond the capabilities of the [Sandbox cluster](../cloud-basics/create-clusters/create-clusters-free/), start a free trial to receive free credits towards creating [Dedicated clusters](../cloud-basics/) and exploring other features in YugabyteDB Managed.
+To go beyond the capabilities of the [Sandbox cluster](../cloud-basics/create-clusters/create-clusters-free/), start a free trial to receive free credits towards creating [Dedicated clusters](../cloud-basics/) and exploring other features in YugabyteDB Aeon.
 
 To start a free trial:
 
@@ -34,10 +34,7 @@ After the free trial begins, you can use your credits to create dedicated cluste
 - Partition by region
 - Read replicas
 
-<!--[Choose a plan](https://www.yugabyte.com/yugabyte-cloud-standard-price-list/) any time. You won't be charged until your credits are used.-->
-Add a payment method any time. You won't be charged until your credits are used.
-
-## Limitations
+Choose a plan any time. You won't be charged until your credits are used.
 
 - Only one free trial can be applied to an account.
 - The free trial features the Professional plan. Enterprise plan features are not included.

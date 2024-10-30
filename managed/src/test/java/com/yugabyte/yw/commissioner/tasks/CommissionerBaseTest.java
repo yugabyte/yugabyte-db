@@ -21,6 +21,7 @@ import static play.inject.Bindings.bind;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.net.HostAndPort;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
@@ -31,6 +32,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.TaskExecutor;
+import com.yugabyte.yw.commissioner.tasks.local.LocalProviderUniverseTestBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckFollowerLag;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
@@ -83,6 +85,8 @@ import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -101,6 +105,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -115,8 +120,10 @@ import org.pac4j.play.store.PlaySessionStore;
 import org.slf4j.LoggerFactory;
 import org.yb.client.AreNodesSafeToTakeDownResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.ListLiveTabletServersResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
+import org.yb.util.TabletServerInfo;
 import play.Application;
 import play.Environment;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -124,7 +131,7 @@ import play.libs.Json;
 
 @Slf4j
 public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseTest {
-  protected static final int MAX_RETRY_COUNT = 4000;
+  protected static final int MAX_RETRY_COUNT = 10000;
   protected static final String ENABLE_CUSTOM_HOOKS_PATH =
       "yb.security.custom_hooks.enable_custom_hooks";
   protected static final String ENABLE_SUDO_PATH = "yb.security.custom_hooks.enable_sudo";
@@ -218,6 +225,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     confGetter = app.injector().instanceOf(RuntimeConfGetter.class);
     factory.globalRuntimeConf().setValue(ENABLE_CUSTOM_HOOKS_PATH, "true");
     factory.globalRuntimeConf().setValue(ENABLE_SUDO_PATH, "true");
+    factory.globalRuntimeConf().setValue("yb.universe.consistency_check_enabled", "true");
 
     when(mockBaseTaskDependencies.getApplication()).thenReturn(app);
     when(mockBaseTaskDependencies.getConfig()).thenReturn(mockConfig);
@@ -241,6 +249,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getCommissioner()).thenReturn(commissioner);
     when(mockBaseTaskDependencies.getNodeUIApiHelper()).thenReturn(mockNodeUIApiHelper);
     when(mockBaseTaskDependencies.getReleaseManager()).thenReturn(mockReleaseManager);
+    when(mockBaseTaskDependencies.getYsqlQueryExecutor()).thenReturn(mockYsqlQueryExecutor);
+    when(mockBaseTaskDependencies.getGFlagsValidation()).thenReturn(mockGFlagsValidation);
+    when(mockBaseTaskDependencies.getNodeUniverseManager()).thenReturn(mockNodeUniverseManager);
     releaseMetadata = ReleaseManager.ReleaseMetadata.create("1.0.0.0-b1");
     releaseContainer =
         new ReleaseContainer(releaseMetadata, mockCloudUtilFactory, mockConfig, mockReleasesUtils);
@@ -626,6 +637,10 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         commissioner.resumeTask(taskUuid);
         // Wait for the task to abort.
         TaskInfo taskInfo = waitForTask(taskUuid);
+        if (taskInfo.getTaskState() == State.Failure) {
+          throw new IllegalStateException(
+              "Task failed " + LocalProviderUniverseTestBase.getAllErrorsStr(taskInfo));
+        }
         if (pendingSubTaskCount <= 1) {
           assertEquals(State.Success, taskInfo.getTaskState());
         } else {
@@ -727,7 +742,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   public void setUnderReplicatedTabletsMock() {
     ObjectNode underReplicatedTabletsJson = Json.newObject();
     underReplicatedTabletsJson.put("underreplicated_tablets", Json.newArray());
-    when(mockNodeUIApiHelper.getRequest(endsWith(CheckUnderReplicatedTablets.URL_SUFFIX)))
+    lenient()
+        .when(mockNodeUIApiHelper.getRequest(endsWith(CheckUnderReplicatedTablets.URL_SUFFIX)))
         .thenReturn(underReplicatedTabletsJson);
   }
 
@@ -840,5 +856,39 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                     + "    Root dispersion : 0.000101734 seconds\n"
                     + "    Update interval : 32.3 seconds\n"
                     + "    Leap status     : Normal"));
+  }
+
+  protected void setMockLiveTabletServers(YBClient mockClient, Universe universe) {
+    try {
+      List<TabletServerInfo> tabletServerInfoList = new ArrayList<>();
+
+      // Loop through both Primary cluster and RR nodes.
+      for (Cluster cluster : universe.getUniverseDetails().clusters) {
+        UUID clusterUuid = cluster.uuid;
+        Set<NodeDetails> nodesInCluster = new HashSet<>(universe.getNodesByCluster(cluster.uuid));
+        for (NodeDetails curNode : nodesInCluster) {
+          TabletServerInfo.CloudInfo cloudInfo = new TabletServerInfo.CloudInfo();
+          cloudInfo.setCloud(curNode.cloudInfo.cloud);
+          cloudInfo.setRegion(curNode.cloudInfo.region);
+          cloudInfo.setZone(curNode.cloudInfo.az);
+
+          TabletServerInfo tserverInfo = new TabletServerInfo();
+          tserverInfo.setCloudInfo(cloudInfo);
+          tserverInfo.setUuid(UUID.randomUUID());
+          tserverInfo.setInPrimaryCluster(cluster.clusterType.equals(ClusterType.PRIMARY));
+          tserverInfo.setPlacementUuid(clusterUuid);
+          tserverInfo.setPrivateRpcAddress(
+              HostAndPort.fromParts(curNode.cloudInfo.private_ip, curNode.tserverRpcPort));
+
+          tabletServerInfoList.add(tserverInfo);
+        }
+      }
+      ListLiveTabletServersResponse listLiveTabletServersResponse =
+          mock(ListLiveTabletServersResponse.class);
+      when(listLiveTabletServersResponse.getTabletServers()).thenReturn(tabletServerInfoList);
+      when(mockClient.listLiveTabletServers()).thenReturn(listLiveTabletServersResponse);
+    } catch (Exception e) {
+      fail();
+    }
   }
 }

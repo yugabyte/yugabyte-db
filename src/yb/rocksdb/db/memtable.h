@@ -357,11 +357,7 @@ class MemTable {
 
   void UpdateFrontiers(const UserFrontiers& value) {
     std::lock_guard l(frontiers_mutex_);
-    if (frontiers_) {
-      frontiers_->MergeFrontiers(value);
-    } else {
-      frontiers_ = value.Clone();
-    }
+    rocksdb::UpdateFrontiers(frontiers_, value);
   }
 
   // Frontiers accessors might return stale frontiers if invoked after records have been written to
@@ -375,6 +371,10 @@ class MemTable {
   bool FullyErased() const {
     return num_entries_.load(std::memory_order_acquire) ==
            num_erased_.load(std::memory_order_acquire);
+  }
+
+  uint64_t data_size() const {
+    return data_size_.load(std::memory_order_relaxed);
   }
 
  private:
@@ -432,7 +432,7 @@ class MemTable {
   Env* env_;
 
   mutable SpinMutex frontiers_mutex_;
-  std::unique_ptr<UserFrontiers> frontiers_;
+  UserFrontiersPtr frontiers_;
 
   // Returns a heuristic flush decision
   bool ShouldFlushNow() const;

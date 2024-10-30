@@ -71,6 +71,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
     setCloudNodeUuids(universe);
     // Update on-prem node UUIDs.
     updateOnPremNodeUuidsOnTaskParams(true /* commit changes */);
+    setCommunicationPortsForNodes(true);
     // Set the prepared data to universe in-memory.
     updateUniverseNodesAndSettings(universe, taskParams(), false);
     for (Cluster cluster : taskParams().clusters) {
@@ -156,13 +157,18 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Create preflight node check tasks for on-prem nodes.
       createPreflightNodeCheckTasks(universe, taskParams().clusters);
 
+      // Create certificate config check tasks for on-prem nodes.
+      createCheckCertificateConfigTask(universe, taskParams().clusters);
+
       // Provision the nodes.
       // State checking is enabled because the subtasks are not idempotent.
       createProvisionNodeTasks(
           universe,
           taskParams().nodeDetailsSet,
           false /* ignore node status check */,
-          null /* setup server param customizer */,
+          setupServerParams -> {
+            setupServerParams.rebootNodeAllowed = true;
+          },
           null /* install software param customizer */,
           gFlagsParams -> {
             gFlagsParams.resetMasterState = true;
@@ -200,7 +206,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
-      createConfigureUniverseTasks(primaryCluster, newMasters);
+      createConfigureUniverseTasks(primaryCluster, newMasters, null /* gflagsUpgradeSubtasks */);
 
       // Create Load Balancer map to add nodes to load balancer
       Map<LoadBalancerPlacement, LoadBalancerConfig> loadBalancerMap =

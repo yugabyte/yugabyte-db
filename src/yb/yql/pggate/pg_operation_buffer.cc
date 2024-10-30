@@ -39,11 +39,11 @@
 #include "yb/util/status.h"
 
 #include "yb/yql/pggate/pg_doc_metrics.h"
+#include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 
 namespace yb::pggate {
-
 namespace {
 
 dockv::KeyEntryValue NullValue(SortingType sorting) {
@@ -145,15 +145,10 @@ inline bool IsTableUsedByRequest(const LWPgsqlReadRequestPB& request, const Slic
 
 using RowKeys = std::unordered_set<RowIdentifier, boost::hash<RowIdentifier>>;
 
-struct MetricContext {
-  PgDocMetrics& metrics;
-  PgWaitEventWatcher::Starter wait_starter;
-};
-
 class FlushFuture {
  public:
-  FlushFuture(PerformFuture&& future, MetricContext* context)
-      : future_(std::move(future)), context_(context) {}
+  FlushFuture(PgOperationBuffer::PerformFutureEx&& future, PgDocMetrics* metrics)
+      : future_(std::move(future.first)), session_(future.second), metrics_(metrics) {}
 
   bool Ready() const {
     return future_.Ready();
@@ -161,37 +156,34 @@ class FlushFuture {
 
   Status EnsureCompleted() {
     uint64_t duration = 0;
-    auto& metrics = context_->metrics;
     {
-      PgWaitEventWatcher watcher(context_->wait_starter,
-                                 ash::WaitStateCode::kStorageFlush);
-      RETURN_NOT_OK(metrics.CallWithDuration(
-          [&future = future_] { return future.Get(); }, &duration));
+      auto watcher = session_->StartWaitEvent(ash::WaitStateCode::kStorageFlush);
+      RETURN_NOT_OK(metrics_->CallWithDuration(
+          [this] { return future_.Get(*session_); }, &duration));
     }
-    metrics.FlushRequest(duration);
+    metrics_->FlushRequest(duration);
     return Status::OK();
   }
 
  private:
   PerformFuture future_;
-  MetricContext* context_;
+  PgSession* session_;
+  PgDocMetrics* metrics_;
 };
 
 class Flusher {
  public:
   Flusher(
-      PgOperationBuffer::OperationsFlusher&& ops_flusher, PgDocMetrics* metrics,
-      PgWaitEventWatcher::Starter wait_starter)
-      : ops_flusher_(std::move(ops_flusher)),
-        context_{*metrics, wait_starter} {}
+      PgOperationBuffer::OperationsFlusher&& ops_flusher, PgDocMetrics& metrics)
+      : ops_flusher_(std::move(ops_flusher)), metrics_(metrics) {}
 
   Result<FlushFuture> Flush(BufferableOperations&& ops, bool transactional) {
-    return FlushFuture{VERIFY_RESULT(ops_flusher_(std::move(ops), transactional)), &context_};
+    return FlushFuture{VERIFY_RESULT(ops_flusher_(std::move(ops), transactional)), &metrics_};
   }
 
  private:
   PgOperationBuffer::OperationsFlusher ops_flusher_;
-  MetricContext context_;
+  PgDocMetrics& metrics_;
 };
 
 struct InFlightOperation {
@@ -220,40 +212,45 @@ void EnsureCapacity(InFlightOps* in_flight_ops, BufferingSettings buffering_sett
 
 } // namespace
 
-void BufferableOperations::Add(PgsqlOpPtr op, const PgObjectId& relation) {
-  operations.push_back(std::move(op));
-  relations.push_back(relation);
+void BufferableOperations::Add(PgsqlOpPtr&& op, const PgTableDesc& table) {
+  operations_.push_back(std::move(op));
+  relations_.push_back(table.pg_table_id());
 }
 
 void BufferableOperations::Swap(BufferableOperations* rhs) {
-  operations.swap(rhs->operations);
-  relations.swap(rhs->relations);
+  operations_.swap(rhs->operations_);
+  relations_.swap(rhs->relations_);
 }
 
 void BufferableOperations::Clear() {
-  operations.clear();
-  relations.clear();
+  operations_.clear();
+  relations_.clear();
 }
 
 void BufferableOperations::Reserve(size_t capacity) {
-  operations.reserve(capacity);
-  relations.reserve(capacity);
+  operations_.reserve(capacity);
+  relations_.reserve(capacity);
 }
 
-bool BufferableOperations::empty() const {
-  return operations.empty();
+bool BufferableOperations::Empty() const {
+  return operations_.empty();
 }
 
-size_t BufferableOperations::size() const {
-  return operations.size();
+size_t BufferableOperations::Size() const {
+  return operations_.size();
+}
+
+void BufferableOperations::MoveTo(PgsqlOps& operations, PgObjectIds& relations) && {
+  operations = std::move(operations_);
+  relations = std::move(relations_);
 }
 
 class PgOperationBuffer::Impl {
  public:
   Impl(
-      OperationsFlusher&& ops_flusher, PgDocMetrics* metrics,
-      PgWaitEventWatcher::Starter wait_starter, const BufferingSettings& buffering_settings)
-      : flusher_(std::move(ops_flusher), metrics, wait_starter),
+      OperationsFlusher&& ops_flusher, PgDocMetrics& metrics,
+      const BufferingSettings& buffering_settings)
+      : flusher_(std::move(ops_flusher), metrics),
         buffering_settings_(buffering_settings) {}
 
   Status Add(const PgTableDesc& table, PgsqlWriteOpPtr op, bool transactional) {
@@ -307,20 +304,21 @@ class PgOperationBuffer::Impl {
     // Multiple operations on same row must be performed in context of different RPC.
     // Flush is required in this case.
     auto& target = transactional ? txn_ops_ : ops_;
-    if (target.empty()) {
+    if (target.Empty()) {
       target.Reserve(buffering_settings_.max_batch_size);
     }
 
     const auto& write_request = op->write_request();
     const auto& packed_rows = write_request.packed_rows();
+    const auto& table_relfilenode_id = table.relfilenode_id();
     if (!packed_rows.empty()) {
       // Optimistically assume that we don't have conflicts with existing operations.
       bool has_conflict = false;
       for (auto it = packed_rows.begin(); it != packed_rows.end(); it += 2) {
-        if (PREDICT_FALSE(!keys_.insert(RowIdentifier(table.relfilenode_id(), *it)).second)) {
+        if (PREDICT_FALSE(!keys_.insert(RowIdentifier(table_relfilenode_id, *it)).second)) {
           while (it != packed_rows.begin()) {
             it -= 2;
-            keys_.erase(RowIdentifier(table.relfilenode_id(), *it));
+            keys_.erase(RowIdentifier(table_relfilenode_id, *it));
           }
           // Have to flush because already have operations for the same key.
           has_conflict = true;
@@ -330,12 +328,12 @@ class PgOperationBuffer::Impl {
       if (has_conflict) {
         RETURN_NOT_OK(Flush());
         for (auto it = packed_rows.begin(); it != packed_rows.end(); it += 2) {
-          SCHECK(keys_.insert(RowIdentifier(table.relfilenode_id(), *it)).second, IllegalState,
+          SCHECK(keys_.insert(RowIdentifier(table_relfilenode_id, *it)).second, IllegalState,
                  "Unable to insert key: $0", packed_rows);
         }
       }
     } else {
-      RowIdentifier row_id(table.relfilenode_id(), table.schema(), write_request);
+      RowIdentifier row_id(table_relfilenode_id, table.schema(), write_request);
       if (PREDICT_FALSE(!keys_.insert(row_id).second)) {
         RETURN_NOT_OK(Flush());
         keys_.insert(row_id);
@@ -349,10 +347,8 @@ class PgOperationBuffer::Impl {
         }
       }
     }
-    target.Add(std::move(op), table.relfilenode_id());
-    return keys_.size() >= buffering_settings_.max_batch_size
-      ? SendBuffer()
-      : Status::OK();
+    target.Add(std::move(op), table);
+    return keys_.size() >= buffering_settings_.max_batch_size ? SendBuffer() : Status::OK();
   }
 
   Status DoFlush() {
@@ -436,7 +432,7 @@ class PgOperationBuffer::Impl {
                               BufferableOperations ops,
                               bool transactional,
                               size_t ops_count) {
-    if (!ops.empty() && !(interceptor && (*interceptor)(&ops, transactional))) {
+    if (!ops.Empty() && !(interceptor && (*interceptor)(&ops, transactional))) {
       EnsureCapacity(&in_flight_ops_, buffering_settings_);
       // In case max_in_flight_operations < max_batch_size, the number of in-flight operations will
       // be equal to max_batch_size after sending single buffer. So use max of these values for
@@ -483,9 +479,9 @@ class PgOperationBuffer::Impl {
 };
 
 PgOperationBuffer::PgOperationBuffer(
-    OperationsFlusher&& ops_flusher, PgDocMetrics* metrics,
-    PgWaitEventWatcher::Starter wait_starter, const BufferingSettings& buffering_settings)
-    : impl_(new Impl(std::move(ops_flusher), metrics, wait_starter, buffering_settings)) {}
+    OperationsFlusher&& ops_flusher, PgDocMetrics& metrics,
+    const BufferingSettings& buffering_settings)
+    : impl_(new Impl(std::move(ops_flusher), metrics, buffering_settings)) {}
 
 PgOperationBuffer::~PgOperationBuffer() = default;
 

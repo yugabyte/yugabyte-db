@@ -167,8 +167,8 @@ yb_test(YbGateTestCase case_no)
 								 "6. %lld - max long long integer\n"
 								 "7. %lld - min long long integer\n"
 								 "8. %llu - max unsigned long long integer\n"
-								 "9. %.1Le - max long double\n"
-								 "10. %.1Le - min long double\n";
+								 "9. %.1e - max double\n"
+								 "10. %.1e - min double\n";
 			ereport(ERROR,
 					(errmsg(format, 17000, -1,			/* 1 */
 							42,							/* 2 */
@@ -178,8 +178,8 @@ yb_test(YbGateTestCase case_no)
 							9223372036854775807LL,		/* 6 */
 							-9223372036854775807LL,		/* 7 */
 							18446744073709551615ULL,	/* 8 */
-							2.3E-308L,					/* 9 */
-							1.7E308L					/* 10 */)));
+							2.3E-308,					/* 9 */
+							1.7E308						/* 10 */)));
 			break;
 		}
 		case YBGATE_TEST_ELOG_FORMAT_ERRNO:
@@ -312,7 +312,7 @@ yb_test(YbGateTestCase case_no)
 			{
 				MemoryContext	ctx;
 				ErrorData	   *edata;
-				ctx = CreateThreadLocalMemoryContext(NULL, "test context");
+				ctx = CreateThreadLocalCurrentMemoryContext(NULL, "test context");
 				SetThreadLocalCurrentMemoryContext(ctx);
 				edata = CopyErrorData();
 				FlushErrorState();
@@ -352,7 +352,7 @@ void YbgTestNoReporting(YbGateTestCase case_no)
 }
 
 bool YbTypeDetailsTest(
-	unsigned int elmtype, int *elmlen, bool *elmbyval, char *elmalign)
+	unsigned int elmtype, int16_t *elmlen, bool *elmbyval, char *elmalign)
 {
 	return YbTypeDetails(elmtype, elmlen, elmbyval, elmalign);
 }

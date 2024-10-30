@@ -35,6 +35,7 @@
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
+#include "yb/util/stack_trace.h"
 #include "yb/util/thread.h"
 
 #include "yb/yql/pggate/util/ybc-internal.h"
@@ -484,6 +485,41 @@ const char* YBCGetWaitEventType(uint32_t wait_event_info) {
 
 uint8_t YBCGetQueryIdForCatalogRequests() {
   return static_cast<uint8_t>(ash::FixedQueryId::kQueryIdForCatalogRequests);
+}
+
+uint32_t YBCWaitEventForWaitingOnTServer() {
+  return to_underlying(ash::WaitStateCode::kWaitingOnTServer);
+}
+
+// Get a random integer between a and b
+int YBCGetRandomUniformInt(int a, int b) {
+  return RandomUniformInt<int>(a, b);
+}
+
+YBCWaitEventDescriptor YBCGetWaitEventDescription(size_t index) {
+  static const auto desc = ash::WaitStateInfo::GetWaitStatesDescription();
+  if (index < desc.size()) {
+    // Fill up the component bits with non-zero value so that when YBCGetWaitEventClass
+    // is called later from yb_wait_event_desc, it doesn't report YSQLQuery as the class
+    // for most cases. It's fine because we don't use the component bits here for
+    // anything else.
+    uint32_t code = (((1 << YB_ASH_COMPONENT_BITS) - 1) << YB_ASH_COMPONENT_POSITION) |
+        static_cast<uint32_t>(desc[index].code);
+    return { code, desc[index].description.c_str() };
+  }
+  return { 0, nullptr };
+}
+
+int YBCGetCircularBufferSizeInKiBs() {
+  return ash::WaitStateInfo::GetCircularBufferSizeInKiBs();
+}
+
+const char* YBCGetPggateRPCName(uint32_t pggate_rpc_enum_value) {
+  return NoPrefixName(static_cast<ash::PggateRPC>(pggate_rpc_enum_value));
+}
+
+int YBCGetCallStackFrames(void** result, int max_depth, int skip_count) {
+  return google::GetStackTrace(result, max_depth, skip_count);
 }
 
 } // extern "C"

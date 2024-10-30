@@ -19,6 +19,8 @@
 
 #include "yb/tserver/backup.pb.h"
 
+DECLARE_bool(TEST_pause_issuing_tserver_snapshot_requests);
+
 namespace yb {
 namespace master {
 

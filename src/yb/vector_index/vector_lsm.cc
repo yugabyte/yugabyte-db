@@ -1,0 +1,784 @@
+// Copyright (c) YugabyteDB, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+
+#include "yb/vector_index/vector_lsm.h"
+
+#include <queue>
+#include <thread>
+
+#include <boost/intrusive/list.hpp>
+
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/metadata.h"
+
+#include "yb/rpc/thread_pool.h"
+
+#include "yb/util/countdown_latch.h"
+#include "yb/util/flags.h"
+#include "yb/util/file_util.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/unique_lock.h"
+
+#include "yb/vector_index/vector_lsm_metadata.h"
+
+using namespace std::literals;
+
+DEFINE_RUNTIME_uint64(vector_index_task_size, 16,
+                      "Number of vectors in a single insert subtask for vector index. "
+                      "When the number of elements in the batch is more than this times the task "
+                      "size multiple tasks will be used to insert batch.");
+
+DEFINE_RUNTIME_uint64(vector_index_max_insert_tasks, 1000,
+                      "Limit for number of insert subtask for vector index. "
+                      "When this limit is reached, new inserts are blocked until necessary amount "
+                      "of tasks is released.");
+
+DEFINE_RUNTIME_uint64(vector_index_task_pool_size, 1000,
+                      "Pool size of insert subtasks for vector index. "
+                      "Pool is just used to avoid memory allocations and does not limit the total "
+                      "number of tasks.");
+
+DEFINE_test_flag(bool, vector_index_skip_update_metadata_during_shutdown, false,
+                 "Whether VectorLSM metadata update should be skipped after shutdown has been "
+                 "initiated");
+
+DEFINE_test_flag(uint64, vector_index_delay_saving_first_chunk_ms, 0,
+                 "Delay saving the first chunk in VectorLSM for specified amount of milliseconds");
+
+namespace yb::vector_index {
+
+namespace bi = boost::intrusive;
+
+namespace {
+
+YB_DEFINE_ENUM(ImmutableChunkState, (kInMemory)(kOnDisk)(kInManifest));
+
+// While mutable chunk is running, this value is added to num_tasks.
+// During stop, we decrease num_tasks by this value. So zero num_tasks means that mutable chunk
+// is stopped.
+constexpr size_t kRunningMark = 1e18;
+
+std::string GetChunkPath(const std::string& storage_dir, size_t chunk_serial_no) {
+  return JoinPathSegments(storage_dir, Format("vectorindex_$0", chunk_serial_no));
+}
+
+} // namespace
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+class VectorLSMInsertTask :
+    public rpc::ThreadPoolTask,
+    public bi::list_base_hook<bi::link_mode<bi::normal_link>> {
+ public:
+  using Types = VectorLSMTypes<Vector, DistanceResult>;
+  using InsertRegistry = typename Types::InsertRegistry;
+  using VertexWithDistance = typename Types::VertexWithDistance;
+  using SearchHeap = std::priority_queue<VertexWithDistance>;
+  using LSM = VectorLSM<Vector, DistanceResult>;
+  using MutableChunk = typename LSM::MutableChunk;
+
+  explicit VectorLSMInsertTask(LSM& lsm) : lsm_(lsm) {}
+
+  void Bind(const std::shared_ptr<MutableChunk>& chunk) {
+    DCHECK(!chunk_);
+    chunk_ = chunk;
+  }
+
+  void Add(VertexId vertex_id, Vector vector) {
+    vectors_.emplace_back(vertex_id, std::move(vector));
+  }
+
+  void Run() override {
+    for (const auto& [vertex_id, vector] : vectors_) {
+      lsm_.CheckFailure(chunk_->index->Insert(vertex_id, vector));
+    }
+    auto new_tasks = --chunk_->num_tasks;
+    if (new_tasks == 0) {
+      chunk_->save_callback();
+      chunk_->save_callback = {};
+    }
+  }
+
+  void Search(SearchHeap& heap, const Vector& query_vector, size_t max_num_results) const {
+    SharedLock lock(mutex_);
+    for (const auto& [id, vector] : vectors_) {
+      auto distance = chunk_->index->Distance(query_vector, vector);
+      VertexWithDistance vertex(id, distance);
+      if (heap.size() < max_num_results) {
+        heap.push(vertex);
+      } else if (heap.top() > vertex) {
+        heap.pop();
+        heap.push(vertex);
+      }
+    }
+  }
+
+  void Done(const Status& status) override;
+ private:
+  mutable rw_spinlock mutex_;
+  LSM& lsm_;
+  std::shared_ptr<MutableChunk> chunk_;
+  std::vector<std::pair<VertexId, Vector>> vectors_;
+};
+
+// Registry for all active Vector LSM insert subtasks.
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+class VectorLSMInsertRegistry {
+ public:
+  using Types = VectorLSMTypes<Vector, DistanceResult>;
+  using LSM = VectorLSM<Vector, DistanceResult>;
+  using VectorIndex = typename Types::VectorIndex;
+  using VertexWithDistance = typename Types::VertexWithDistance;
+  using InsertTask = VectorLSMInsertTask<Vector, DistanceResult>;
+  using InsertTaskList = boost::intrusive::list<InsertTask>;
+  using InsertTaskPtr = std::unique_ptr<InsertTask>;
+
+  using MutableChunk = typename VectorLSM<Vector, DistanceResult>::MutableChunk;
+
+  explicit VectorLSMInsertRegistry(rpc::ThreadPool& thread_pool)
+      : thread_pool_(thread_pool) {}
+
+  void Shutdown() {
+    for (;;) {
+      {
+        SharedLock lock(mutex_);
+        if (active_tasks_.empty()) {
+          break;
+        }
+      }
+      YB_LOG_EVERY_N_SECS(INFO, 1) << "Waiting for vector insertion tasks to finish";
+      std::this_thread::sleep_for(100ms);
+    }
+  }
+
+  InsertTaskList AllocateTasks(
+      LSM& lsm, const std::shared_ptr<MutableChunk>& chunk, size_t num_tasks) EXCLUDES(mutex_) {
+    InsertTaskList result;
+    {
+      UniqueLock lock(mutex_);
+      while (allocated_tasks_ + num_tasks >= FLAGS_vector_index_max_insert_tasks) {
+        // TODO(lsm) Pass timeout here.
+        allocated_tasks_cond_.wait(GetLockForCondition(lock));
+      }
+      allocated_tasks_ += num_tasks;
+      for (size_t left = num_tasks; left-- > 0;) {
+        InsertTaskPtr task;
+        if (task_pool_.empty()) {
+          task = std::make_unique<InsertTask>(lsm);
+        } else {
+          task = std::move(task_pool_.back());
+          task_pool_.pop_back();
+        }
+        task->Bind(chunk);
+        result.push_back(*task.release());
+      }
+    }
+    return result;
+  }
+
+  void ExecuteTasks(InsertTaskList& list) EXCLUDES(mutex_) {
+    for (auto& task : list) {
+      thread_pool_.Enqueue(&task);
+    }
+    std::lock_guard lock(mutex_);
+    active_tasks_.splice(active_tasks_.end(), list);
+  }
+
+  void TaskDone(InsertTask* raw_task) EXCLUDES(mutex_) {
+    InsertTaskPtr task(raw_task);
+    std::lock_guard lock(mutex_);
+    --allocated_tasks_;
+    allocated_tasks_cond_.notify_all();
+    active_tasks_.erase(active_tasks_.iterator_to(*raw_task));
+    if (task_pool_.size() < FLAGS_vector_index_task_pool_size) {
+      task_pool_.push_back(std::move(task));
+    }
+  }
+
+  typename VectorIndex::SearchResult Search(const Vector& query_vector, size_t max_num_results) {
+    typename InsertTask::SearchHeap heap;
+    {
+      SharedLock lock(mutex_);
+      for (const auto& task : active_tasks_) {
+        task.Search(heap, query_vector, max_num_results);
+      }
+    }
+    return ReverseHeapToVector(heap);
+  }
+
+  bool HasRunningTasks() {
+    SharedLock lock(mutex_);
+    return !active_tasks_.empty();
+  }
+
+ private:
+  rpc::ThreadPool& thread_pool_;
+  std::shared_mutex mutex_;
+  std::condition_variable_any allocated_tasks_cond_;
+  size_t allocated_tasks_ GUARDED_BY(mutex_) = 0;
+  InsertTaskList active_tasks_ GUARDED_BY(mutex_);
+  std::vector<InsertTaskPtr> task_pool_ GUARDED_BY(mutex_);
+};
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+void VectorLSMInsertTask<Vector, DistanceResult>::Done(const Status& status) {
+  {
+    std::lock_guard lock(mutex_);
+    chunk_ = nullptr;
+    vectors_.clear();
+  }
+  lsm_.insert_registry_->TaskDone(this);
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+struct VectorLSM<Vector, DistanceResult>::MutableChunk {
+  VectorIndexPtr index;
+  size_t num_entries = 0;
+  // See comments for kRunningMark.
+  std::atomic<size_t> num_tasks = kRunningMark;
+  std::function<void()> save_callback;
+  rocksdb::UserFrontiersPtr user_frontiers;
+
+  // Returns true if registration was successful. Otherwise, new mutable chunk should be allocated.
+  // Invoked when owning VectorLSM holds the mutex.
+  bool RegisterInsert(
+      const std::vector<InsertEntry>& entries, const Options& options, size_t new_tasks,
+      const rocksdb::UserFrontiers& frontiers) {
+    // TODO(lsm) Handle size of entries greater than points_per_chunk.
+    if (num_entries && num_entries + entries.size() > options.points_per_chunk) {
+      return false;
+    }
+    num_entries += entries.size();
+    num_tasks += new_tasks;
+    rocksdb::UpdateFrontiers(user_frontiers, frontiers);
+    return true;
+  }
+
+  void Insert(VectorLSM& lsm, VertexId vertex_id, const Vector& vector) {
+    lsm.CheckFailure(index->Insert(vertex_id, vector));
+  }
+};
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
+  // Chunk serial no, used in file name and never changes.
+  size_t serial_no = 0;
+
+  // In memory order for chunk. All chunks in immutable chunks are ordered using it.
+  // Could be changed between application runs.
+  size_t order_no = 0;
+
+  ImmutableChunkState state = ImmutableChunkState::kInMemory;
+  VectorIndexPtr index;
+  rocksdb::UserFrontiersPtr user_frontiers;
+  std::promise<Status>* flush_promise = nullptr;
+};
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+VectorLSM<Vector, DistanceResult>::VectorLSM()
+    : env_(rocksdb::Env::Default()) {
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+VectorLSM<Vector, DistanceResult>::~VectorLSM() {
+  StartShutdown();
+  CompleteShutdown();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+void VectorLSM<Vector, DistanceResult>::StartShutdown() {
+  std::lock_guard lock(mutex_);
+  stopping_ = true;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+void VectorLSM<Vector, DistanceResult>::CompleteShutdown() {
+  insert_registry_->Shutdown();
+  auto start_time = CoarseMonoClock::now();
+  auto last_warning_time = start_time;
+  MonoDelta report_interval = 1s;
+  for (;;) {
+    size_t chunks_left;
+    {
+      std::lock_guard lock(mutex_);
+      chunks_left = updates_queue_.size();
+      if (chunks_left == 0) {
+        break;
+      }
+    }
+    auto now = CoarseMonoClock::now();
+    if (now > last_warning_time + report_interval) {
+      LOG(WARNING) << "Long wait to save chunks: " << MonoDelta(now - start_time)
+                   << ", chunks left: " << chunks_left;
+      last_warning_time = now;
+      report_interval = std::min<MonoDelta>(report_interval * 2, 30s);
+    }
+    std::this_thread::sleep_for(10ms);
+  }
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+inline void VectorLSM<Vector, DistanceResult>::CheckFailure(const Status& status) {
+  if (status.ok()) {
+    return;
+  }
+  Status existing_status;
+  {
+    std::lock_guard lock(mutex_);
+    if (failed_status_.ok()) {
+      failed_status_ = status;
+      return;
+    }
+    existing_status = failed_status_;
+  }
+  YB_LOG_EVERY_N_SECS(WARNING, 1)
+      << "Vector LSM already in failed state: " << existing_status
+      << ", while trying to set new failed state: " << status;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
+  std::lock_guard lock(mutex_);
+
+  options_ = std::move(options);
+  insert_registry_ = std::make_unique<InsertRegistry>(*options_.thread_pool);
+
+  RETURN_NOT_OK(env_->CreateDirs(options_.storage_dir));
+  auto load_result = VERIFY_RESULT(VectorLSMMetadataLoad(env_, options_.storage_dir));
+  metadata_file_no_ = load_result.next_free_file_no;
+  std::unordered_map<size_t, const VectorLSMChunkPB*> chunks;
+  for (const auto& update : load_result.updates) {
+    for (const auto& chunk : update.add_chunks()) {
+      chunks.emplace(chunk.serial_no(), &chunk);
+    }
+    for (const auto& chunk_no : update.remove_chunks()) {
+      if (!chunks.erase(chunk_no)) {
+        return STATUS_FORMAT(Corruption, "Attempt to remove non existing chunk: $0", chunk_no);
+      }
+    }
+  }
+
+  for (const auto& [_, chunk_pb] : chunks) {
+    auto index = options_.vector_index_factory();
+    auto user_frontiers = options_.frontiers_factory();
+    RETURN_NOT_OK(user_frontiers->Smallest().FromPB(chunk_pb->smallest().user_frontier()));
+    RETURN_NOT_OK(user_frontiers->Largest().FromPB(chunk_pb->largest().user_frontier()));
+    immutable_chunks_.push_back(std::make_shared<ImmutableChunk>(ImmutableChunk {
+      .serial_no = chunk_pb->serial_no(),
+      .order_no = chunk_pb->order_no(),
+      .state = ImmutableChunkState::kInManifest,
+      .index = index,
+      .user_frontiers = std::move(user_frontiers),
+      .flush_promise = nullptr,
+    }));
+
+    current_chunk_serial_no_ = std::max<size_t>(current_chunk_serial_no_, chunk_pb->serial_no());
+  }
+
+  CountDownLatch latch(immutable_chunks_.size());
+  for (size_t i = 0; i != immutable_chunks_.size(); ++i) {
+    options_.thread_pool->EnqueueFunctor([this, &latch, &chunk = immutable_chunks_[i]] {
+      CheckFailure(chunk->index->LoadFromFile(
+          GetChunkPath(options_.storage_dir, chunk->serial_no)));
+      latch.CountDown();
+    });
+  }
+  latch.Wait();
+
+  std::sort(
+      immutable_chunks_.begin(), immutable_chunks_.end(), [](const auto& lhs, const auto& rhs) {
+    return lhs->order_no < rhs->order_no;
+  });
+
+  return Status::OK();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Status VectorLSM<Vector, DistanceResult>::Insert(
+    std::vector<InsertEntry> entries, HybridTime write_time,
+    const rocksdb::UserFrontiers& frontiers) {
+  std::shared_ptr<MutableChunk> chunk;
+  size_t num_tasks = ceil_div<size_t>(entries.size(), FLAGS_vector_index_task_size);
+  {
+    std::lock_guard lock(mutex_);
+    RETURN_NOT_OK(failed_status_);
+
+    if (!mutable_chunk_) {
+      RETURN_NOT_OK(CreateNewMutableChunk());
+    }
+    if (!mutable_chunk_->RegisterInsert(entries, options_, num_tasks, frontiers)) {
+      RETURN_NOT_OK(RollChunk());
+      RSTATUS_DCHECK(mutable_chunk_->RegisterInsert(entries, options_, num_tasks, frontiers),
+                     RuntimeError, "Failed to register insert into a new mutable chunk");
+    }
+    chunk = mutable_chunk_;
+  }
+
+  size_t entries_per_task = ceil_div(entries.size(), num_tasks);
+
+  auto tasks = insert_registry_->AllocateTasks(*this, chunk, num_tasks);
+  auto tasks_it = tasks.begin();
+  size_t index_in_task = 0;
+  BaseTableKeysBatch keys_batch;
+  for (auto& [vertex_id, base_table_key, v] : entries) {
+    if (index_in_task++ >= entries_per_task) {
+      ++tasks_it;
+      index_in_task = 0;
+    }
+    tasks_it->Add(vertex_id, std::move(v));
+    keys_batch.emplace_back(vertex_id, base_table_key.AsSlice());
+  }
+  RETURN_NOT_OK(options_.key_value_storage->StoreBaseTableKeys(keys_batch, write_time));
+  insert_registry_->ExecuteTasks(tasks);
+
+  return Status::OK();
+}
+
+// Merges results from multiple chunks.
+// results_with_chunk - already merged results from chunks on previous steps.
+// chunk_results - results from a new chunk - chunk_index.
+// max_num_results - limit for number of results.
+// Expects that results_with_chunk and chunk_results already ordered by distance.
+template<ValidDistanceResultType DistanceResult>
+void MergeChunkResults(
+    std::vector<VertexWithDistance<DistanceResult>>& combined_results,
+    std::vector<VertexWithDistance<DistanceResult>>& chunk_results,
+    size_t max_num_results) {
+  // Store the current size of the existing results.
+  auto old_size = std::min(combined_results.size(), max_num_results);
+
+
+  // Because of concurrency we could get the same vertex from different sources.
+  // So remove duplicates from chunk_results before merging.
+  {
+    // It could happen that results were not sorted by vertex id, when distances are equal.
+    std::sort(chunk_results.begin(), chunk_results.end());
+    auto it = combined_results.begin();
+    auto end = combined_results.end();
+    std::erase_if(chunk_results, [&it, end](const auto& entry) {
+      while (it != end) {
+        if (entry > *it) {
+          ++it;
+        } else if (entry.vertex_id == it->vertex_id) {
+          return true;
+        } else {
+          break;
+        }
+      }
+      return false;
+    });
+  }
+
+  // Calculate the combined size of the existing and new chunk results.
+  auto sum_size = old_size + chunk_results.size();
+
+  // Resize the results vector to hold the merged results, but cap it at max_num_results.
+  combined_results.resize(std::min(sum_size, max_num_results));
+
+  // Initialize iterators for traversing both results:
+  // lhi: left-hand iterator for the existing results, starting from the end.
+  // rhi: right-hand iterator for the new chunk results, starting from the end.
+  auto lhi = make_signed(old_size) - 1;
+  auto rhi = make_signed(chunk_results.size()) - 1;
+
+  // out_index: keeps track of where to insert the next result in the merged vector.
+  auto out_index = sum_size;
+
+  // Merge the results from both vectors while both have elements left.
+  while (lhi >= 0 && rhi >= 0) {
+    --out_index;
+
+    // Compare elements from both sides, insert the larger one at the correct position.
+    if (combined_results[lhi] <= chunk_results[rhi]) {
+      if (out_index < combined_results.size()) {
+        // Insert the new chunk result and associate it with the current chunk index.
+        combined_results[out_index] = chunk_results[rhi];
+      }
+      --rhi;  // Move to the next element in the new chunk results.
+    } else {
+      if (out_index < combined_results.size()) {
+        // Otherwise, move the element from the existing results.
+        combined_results[out_index] = combined_results[lhi];
+      }
+      --lhi;  // Move to the next element in the existing results.
+    }
+  }
+
+  // If any elements remain in the new chunk results, insert them.
+  while (rhi >= 0) {
+    --out_index;
+    combined_results[out_index] = chunk_results[rhi];
+    --rhi;
+  }
+
+  // At this point, the existing results don't need further processing
+  // because they were already sorted in the correct position or ignored.
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+auto VectorLSM<Vector, DistanceResult>::Search(
+    const Vector& query_vector, const SearchOptions& options) const ->
+    Result<typename VectorLSM<Vector, DistanceResult>::SearchResults> {
+  if (options.max_num_results == 0) {
+    return SearchResults();
+  }
+
+  // TODO(lsm) Optimize memory allocation.
+  std::vector<VectorIndexPtr> indexes;
+  {
+    SharedLock lock(mutex_);
+    RETURN_NOT_OK(failed_status_);
+
+    indexes.reserve(1 + immutable_chunks_.size());
+    if (mutable_chunk_) {
+      indexes.push_back(mutable_chunk_->index);
+    }
+    for (const auto& chunk : immutable_chunks_) {
+      indexes.push_back(chunk->index);
+    }
+  }
+
+  auto intermediate_results = insert_registry_->Search(query_vector, options.max_num_results);
+
+  for (const auto& index : indexes) {
+    auto chunk_results = index->Search(query_vector, options.max_num_results);
+    MergeChunkResults(intermediate_results, chunk_results, options.max_num_results);
+  }
+
+  SearchResults final_results;
+  final_results.reserve(intermediate_results.size());
+  for (const auto& [vertex_id, distance] : intermediate_results) {
+    auto base_table_key = VERIFY_RESULT(options_.key_value_storage->ReadBaseTableKey(vertex_id));
+    final_results.push_back({
+      .distance = distance,
+      .base_table_key = std::move(base_table_key)
+    });
+  }
+
+  return final_results;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& chunk) {
+  const auto chunk_path = GetChunkPath(options_.storage_dir, chunk->serial_no);
+  if (chunk->serial_no == 1 && FLAGS_TEST_vector_index_delay_saving_first_chunk_ms != 0) {
+    std::this_thread::sleep_for(FLAGS_TEST_vector_index_delay_saving_first_chunk_ms * 1ms);
+  }
+  RETURN_NOT_OK(chunk->index->SaveToFile(chunk_path));
+
+  rocksdb::WritableFile* metadata_file = nullptr;
+  ImmutableChunkPtr writing_chunk;
+  {
+    std::lock_guard lock(mutex_);
+    chunk->state = ImmutableChunkState::kOnDisk;
+    if (stopping_ && FLAGS_TEST_vector_index_skip_update_metadata_during_shutdown) {
+      for (auto it = updates_queue_.begin(); it != updates_queue_.end();) {
+        if (it->second->state == ImmutableChunkState::kOnDisk) {
+          it = updates_queue_.erase(it);
+        } else {
+          ++it;
+        }
+      }
+      return Status::OK();
+    }
+    if (writing_update_) {
+      return Status::OK();
+    }
+    auto it = updates_queue_.find(chunk->order_no);
+    RSTATUS_DCHECK(
+        it != updates_queue_.end(), RuntimeError,
+        "Missing chunk in updates queue: $0", chunk->order_no);
+    for (;;) {
+      if (it->second->state != ImmutableChunkState::kOnDisk) {
+        return Status::OK();
+      }
+      if (it == updates_queue_.begin()) {
+        break;
+      }
+      --it;
+    }
+    writing_update_ = true;
+    if (!metadata_file_) {
+      metadata_file_ = VERIFY_RESULT(VectorLSMMetadataOpenFile(
+         env_, options_.storage_dir, metadata_file_no_));
+    }
+    metadata_file = metadata_file_.get();
+    writing_chunk = updates_queue_.begin()->second;
+  }
+
+  return UpdateManifest(metadata_file, std::move(writing_chunk));
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Status VectorLSM<Vector, DistanceResult>::UpdateManifest(
+    rocksdb::WritableFile* metadata_file, ImmutableChunkPtr chunk) {
+  for (;;) {
+    VectorLSMUpdatePB update;
+    auto& added_chunk = *update.mutable_add_chunks()->Add();
+    added_chunk.set_serial_no(chunk->serial_no);
+    added_chunk.set_order_no(chunk->order_no);
+    auto& user_frontiers = *chunk->user_frontiers;
+    user_frontiers.Smallest().ToPB(added_chunk.mutable_smallest()->mutable_user_frontier());
+    user_frontiers.Largest().ToPB(added_chunk.mutable_largest()->mutable_user_frontier());
+    RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*metadata_file, update));
+
+    std::lock_guard lock(mutex_);
+    chunk->state = ImmutableChunkState::kInManifest;
+    if (chunk->flush_promise) {
+      chunk->flush_promise->set_value(Status::OK());
+      chunk->flush_promise = nullptr;
+    }
+
+    auto num_erased = updates_queue_.erase(chunk->order_no);
+    RSTATUS_DCHECK_EQ(
+        num_erased, 1, RuntimeError, "Failed to remove written chunk from updates queue");
+    if (updates_queue_.empty() ||
+        updates_queue_.begin()->second->state != ImmutableChunkState::kOnDisk) {
+      writing_update_ = false;
+      break;
+    }
+    chunk = updates_queue_.begin()->second;
+  }
+
+  return Status::OK();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+void VectorLSM<Vector, DistanceResult>::SaveChunk(const ImmutableChunkPtr& chunk) {
+  auto status = DoSaveChunk(chunk);
+  if (!status.ok()) {
+    if (chunk->flush_promise) {
+      chunk->flush_promise->set_value(status);
+      chunk->flush_promise = nullptr;
+    }
+    LOG(DFATAL) << "Save chunk failed: " << status;
+    std::lock_guard lock(mutex_);
+    auto erased = updates_queue_.erase(chunk->order_no);
+    LOG_IF(DFATAL, !erased) << "Chunk is not present in updates queue: " << chunk->order_no;
+    if (failed_status_.ok()) {
+      failed_status_ = status;
+    }
+  }
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Status VectorLSM<Vector, DistanceResult>::DoFlush(std::promise<Status>* promise) {
+  auto chunk_serial_no = ++current_chunk_serial_no_;
+
+  immutable_chunks_.push_back(std::make_shared<ImmutableChunk>(ImmutableChunk {
+    .serial_no = chunk_serial_no,
+    .order_no = immutable_chunks_.empty() ? 0 : immutable_chunks_.back()->order_no + 1,
+    .state = ImmutableChunkState::kInMemory,
+    .index = mutable_chunk_->index,
+    .user_frontiers = std::move(mutable_chunk_->user_frontiers),
+    .flush_promise = promise,
+  }));
+  auto chunk = immutable_chunks_.back();
+  updates_queue_.emplace(chunk->order_no, chunk);
+
+  mutable_chunk_->save_callback = [this, chunk]() {
+    SaveChunk(chunk);
+  };
+  auto tasks = mutable_chunk_->num_tasks -= kRunningMark;
+  RSTATUS_DCHECK_LT(tasks, kRunningMark, RuntimeError, "Wrong value for num_tasks");
+  if (tasks == 0) {
+    options_.thread_pool->EnqueueFunctor(mutable_chunk_->save_callback);
+    // TODO(lsm) Optimize memory allocation related to save callback
+    mutable_chunk_->save_callback = {};
+  }
+  return Status::OK();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Status VectorLSM<Vector, DistanceResult>::RollChunk() {
+  RETURN_NOT_OK(DoFlush(/* promise=*/ nullptr));
+  return CreateNewMutableChunk();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Status VectorLSM<Vector, DistanceResult>::CreateNewMutableChunk() {
+  auto index = options_.vector_index_factory();
+  RETURN_NOT_OK(index->Reserve(options_.points_per_chunk));
+
+  mutable_chunk_ = std::make_shared<MutableChunk>();
+  mutable_chunk_->index = std::move(index);
+  return Status::OK();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Status VectorLSM<Vector, DistanceResult>::Flush() {
+  std::promise<Status> promise;
+  {
+    std::lock_guard lock(mutex_);
+    if (!mutable_chunk_) {
+      return Status::OK();
+    }
+    auto status = DoFlush(&promise);
+    if (!status.ok()) {
+      promise.set_value(status);
+    }
+  }
+
+  return promise.get_future().get();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+rocksdb::UserFrontierPtr VectorLSM<Vector, DistanceResult>::GetFlushedFrontier() {
+  rocksdb::UserFrontierPtr result;
+  std::lock_guard lock(mutex_);
+
+  for (const auto& chunk : immutable_chunks_) {
+    if (chunk->state != ImmutableChunkState::kInManifest) {
+      continue;
+    }
+    rocksdb::UserFrontier::Update(
+        &chunk->user_frontiers->Largest(), rocksdb::UpdateUserValueType::kLargest, &result);
+  }
+  return result;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+size_t VectorLSM<Vector, DistanceResult>::TEST_num_immutable_chunks() const {
+  SharedLock lock(mutex_);
+  return immutable_chunks_.size();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+bool VectorLSM<Vector, DistanceResult>::TEST_HasBackgroundInserts() const {
+  return insert_registry_->HasRunningTasks();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+DistanceResult VectorLSM<Vector, DistanceResult>::TEST_Distance(
+    const Vector& lhs, const Vector& rhs) const {
+  VectorIndexPtr index;
+  {
+    std::lock_guard lock(mutex_);
+    if (mutable_chunk_) {
+      index = mutable_chunk_->index;
+    } else if (!immutable_chunks_.empty()) {
+      index = immutable_chunks_.front()->index;
+    } else {
+      index = options_.vector_index_factory();
+    }
+  }
+  return index->Distance(lhs, rhs);
+}
+
+YB_INSTANTIATE_TEMPLATE_FOR_ALL_VECTOR_AND_DISTANCE_RESULT_TYPES(VectorLSM);
+
+template void MergeChunkResults<float>(
+    std::vector<VertexWithDistance<float>>& combined_results,
+    std::vector<VertexWithDistance<float>>& chunk_results,
+    size_t max_num_results);
+
+}  // namespace yb::vector_index

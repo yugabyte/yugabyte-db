@@ -34,3 +34,6 @@ WITH (colocation_id='123456');
 CREATE TABLE htest_1 PARTITION OF htest
 FOR VALUES WITH (modulus 2, remainder 0)
 WITH (colocation_id='234567');
+
+-- UNIQUE constraint
+CREATE TABLE tbl5 (k INT, v INT UNIQUE);

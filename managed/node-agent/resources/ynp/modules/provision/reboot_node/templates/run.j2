@@ -1,0 +1,93 @@
+# Function to check if the OS is based on el7
+# (CentOS 7, RHEL 7, Oracle Linux 7, Amazon Linux 7, etc.)
+#
+check_os() {
+    if ! command -v rpm &> /dev/null
+    then
+      echo "rpm command does not exist"
+      return 1
+    else
+      echo "rpm command exists, testing operating system version"
+      rhel_version=$(rpm -E %{rhel})
+      if [[ "$rhel_version" == "7" ]]; then
+          echo "Operating system is based on el7"
+          return 0
+      else
+          echo "Operating system is NOT based on el7."
+          return 1
+      fi
+    fi
+}
+
+
+# Needs to be done at root level in centos 7 like systems.
+# Main function to set up the systemd service and scripts
+setup_reboot_process() {
+    # Define file paths
+    SCHEDULE_REBOOT_SCRIPT_PATH="/usr/local/bin/schedule-reboot.sh"
+    CLEAR_REBOOT_SCRIPT_PATH="/usr/local/bin/clear-reboot-required.sh"
+    SERVICE_FILE_PATH="/etc/systemd/system/clear-reboot-required.service"
+
+    # Create the schedule reboot script
+    cat > "$SCHEDULE_REBOOT_SCRIPT_PATH" << 'EOF'
+#!/bin/bash
+
+MARKER_FILE="{{tmp_directory}}/.reboot-required"
+
+if [ -f "$MARKER_FILE" ]; then
+    echo "Reboot is already scheduled."
+else
+    echo "Scheduling a reboot by creating the marker"
+    touch "$MARKER_FILE"
+fi
+EOF
+
+    # Create the clear reboot flag script
+    cat > "$CLEAR_REBOOT_SCRIPT_PATH" << 'EOF'
+#!/bin/bash
+
+MARKER_FILE="{{tmp_directory}}/.reboot-required"
+
+if [ -f "$MARKER_FILE" ]; then
+    echo "Removing reboot-required flag..."
+    rm -f "$MARKER_FILE"
+else
+    echo "No reboot-required flag found."
+fi
+EOF
+
+    # Make the scripts executable
+    chmod +x "$SCHEDULE_REBOOT_SCRIPT_PATH"
+    chmod +x "$CLEAR_REBOOT_SCRIPT_PATH"
+
+    # Create the systemd service file
+    cat > "$SERVICE_FILE_PATH" << EOF
+[Unit]
+Description=Clear the reboot-required flag at boot
+DefaultDependencies=no
+After=local-fs.target
+Before=basic.target
+
+[Service]
+Type=oneshot
+ExecStart=$CLEAR_REBOOT_SCRIPT_PATH
+
+[Install]
+WantedBy=basic.target
+EOF
+
+    # Reload systemd to recognize the new service
+    systemctl daemon-reload
+
+    # Enable the systemd service to start at boot
+    systemctl enable clear-reboot-required.service
+
+    echo "Setup complete. The service will clear the reboot marker on the next boot."
+}
+
+# Check if the operating system is a CentOS 7 derivative
+if check_os; then
+    setup_reboot_process
+else
+    echo "This script is intended for CentOS 7 derivatives only."
+fi

@@ -24,7 +24,7 @@ When performing a database upgrade, do the following:
 
 1. [Upgrade YugabyteDB Anywhere](../../upgrade/). You cannot upgrade a universe to a version of YugabyteDB that is later than the version of YugabyteDB Anywhere.
 
-    For information on which versions of YugabyteDB are compatible with your version of YugabyteDB Anywhere, refer to [Compatibility with YugabyteDB](../../../releases/yba-releases/#compatibility-with-yugabytedb).
+    For information on which versions of YugabyteDB are compatible with your version of YugabyteDB Anywhere, refer to [Compatibility with YugabyteDB](/preview/releases/yba-releases/#compatibility-with-yugabytedb).
 
 1. [Prepare to upgrade a universe](../upgrade-software-prepare/). Depending on the upgrade you are planning, you may need to make changes to your automation or upgrade your Linux operating system.
 

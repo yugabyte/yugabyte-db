@@ -7,6 +7,7 @@ package azu
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -20,10 +21,11 @@ import (
 
 // createAzureProviderCmd represents the provider command
 var createAzureProviderCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create an Azure YugabyteDB Anywhere provider",
-	Long:  "Create an Azure provider in YugabyteDB Anywhere",
-	Example: `./yba provider azure create -n <provider-name> \
+	Use:     "create",
+	Aliases: []string{"add"},
+	Short:   "Create an Azure YugabyteDB Anywhere provider",
+	Long:    "Create an Azure provider in YugabyteDB Anywhere",
+	Example: `yba provider azure create -n <provider-name> \
 	--region region-name=westus2,vnet=<vnet> --zone zone-name=westus2-1,region-name=westus2,subnet=<subnet> \
 	--rg=<az-resource-group> \
 	--client-id=<az-client-id> \
@@ -178,9 +180,15 @@ var createAzureProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
+		imageBundles, err := cmd.Flags().GetStringArray("image-bundle")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
 		requestBody := ybaclient.Provider{
 			Code:          util.GetStringPointer(providerCode),
 			AllAccessKeys: &allAccessKeys,
+			ImageBundles:  buildAzureImageBundles(imageBundles),
 			Name:          util.GetStringPointer(providerName),
 			Regions:       buildAzureRegions(regions, zones),
 			Details: &ybaclient.ProviderDetails{
@@ -194,18 +202,15 @@ var createAzureProviderCmd = &cobra.Command{
 			},
 		}
 
-		rCreate, response, err := authAPI.CreateProvider().
+		rTask, response, err := authAPI.CreateProvider().
 			CreateProviderRequest(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Provider: Azure", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		providerUUID := rCreate.GetResourceUUID()
-		taskUUID := rCreate.GetTaskUUID()
-
-		providerutil.WaitForCreateProviderTask(authAPI,
-			providerName, providerUUID, providerCode, taskUUID)
+		providerutil.WaitForCreateProviderTask(
+			authAPI, providerName, rTask, providerCode)
 	},
 }
 
@@ -240,11 +245,12 @@ func init() {
 	createAzureProviderCmd.Flags().StringArray("region", []string{},
 		"[Required] Region associated with the Azure provider. Minimum number of required "+
 			"regions = 1. Provide the following comma separated fields as key-value pairs:"+
-			"\"region-name=<region-name>,"+
-			"vnet=<virtual-network>,sg-id=<security-group-id>,yb-image=<custom-ami>\". "+
+			"\"region-name=<region-name>,vnet=<virtual-network>,sg-id=<security-group-id>,"+
+			"rg=<resource-group>,network-rg=<network-resource-group>\". "+
 			formatter.Colorize("Region name and Virtual network are required key-values.",
 				formatter.GreenColor)+
-			" Security Group ID and YB Image (AMI) are optional. "+
+			" Security Group ID, Resource Group (override for this region) and Network "+
+			"Resource Group (override for this region) are optional. "+
 			"Each region needs to be added using a separate --region flag. "+
 			"Example: --region region-name=westus2,vnet=<vnet-id>")
 	createAzureProviderCmd.Flags().StringArray("zone", []string{},
@@ -259,10 +265,26 @@ func init() {
 			"Each zone needs to be added using a separate --zone flag. "+
 			"Example: --zone zone-name=westus2-1,region-name=westus2,subnet=<subnet-id>")
 
+	createAzureProviderCmd.Flags().StringArray("image-bundle", []string{},
+		"[Optional] Intel x86_64 image bundles associated with Azure provider. "+
+			"Provide the following comma separated fields as key-value pairs: "+
+			"\"image-bundle-name=<image-bundle-name>,machine-image=<custom-ami>,"+
+			"ssh-user=<ssh-user>,ssh-port=<ssh-port>,default=<true/false>\". "+
+			formatter.Colorize(
+				"Image bundle name, machine image and SSH user are required key-value pairs.",
+				formatter.GreenColor)+
+			" The default SSH Port is 22. Default marks the image bundle as default for the provider. "+
+			"Each image bundle can be added using separate --image-bundle flag. "+
+			"Example: --image-bundle <image-bundle-name>=<image-bundle>,machine-image=<custom-ami>,"+
+			"<ssh-user>=<ssh-user>,<ssh-port>=22")
+
 	createAzureProviderCmd.Flags().String("ssh-user", "centos",
 		"[Optional] SSH User to access the YugabyteDB nodes.")
 	createAzureProviderCmd.Flags().Int("ssh-port", 22,
 		"[Optional] SSH Port to access the YugabyteDB nodes.")
+	createAzureProviderCmd.Flags().MarkDeprecated("ssh-port", "Use --image-bundle instead.")
+	createAzureProviderCmd.Flags().MarkDeprecated("ssh-user", "Use --image-bundle instead.")
+
 	createAzureProviderCmd.Flags().String("custom-ssh-keypair-name", "",
 		"[Optional] Provide custom key pair name to access YugabyteDB nodes. "+
 			"If left empty, "+
@@ -305,9 +327,10 @@ func buildAzureRegions(regionStrings, zoneStrings []string) (res []ybaclient.Reg
 			Details: &ybaclient.RegionDetails{
 				CloudInfo: &ybaclient.RegionCloudInfo{
 					Azu: &ybaclient.AzureRegionCloudInfo{
-						SecurityGroupId: util.GetStringPointer(region["sg-id"]),
-						Vnet:            util.GetStringPointer(region["vnet"]),
-						YbImage:         util.GetStringPointer(region["yb-image"]),
+						SecurityGroupId:      util.GetStringPointer(region["sg-id"]),
+						Vnet:                 util.GetStringPointer(region["vnet"]),
+						AzuNetworkRGOverride: util.GetStringPointer(region["network-rg"]),
+						AzuRGOverride:        util.GetStringPointer(region["rg"]),
 					},
 				},
 			},
@@ -342,6 +365,62 @@ func buildAzureZones(zoneStrings []string, regionName string) (res []ybaclient.A
 		logrus.Fatalln(
 			formatter.Colorize("Atleast one zone is required per region.\n",
 				formatter.RedColor))
+	}
+	return res
+}
+
+func buildAzureImageBundles(imageBundles []string) []ybaclient.ImageBundle {
+	imageBundleLen := len(imageBundles)
+	res := make([]ybaclient.ImageBundle, 0)
+	for _, i := range imageBundles {
+		bundle := providerutil.BuildImageBundleMapFromString(i, "add")
+		bundle = providerutil.DefaultImageBundleValues(bundle)
+
+		if _, ok := bundle["ssh-user"]; !ok {
+			logrus.Fatalln(
+				formatter.Colorize(
+					"SSH User not specified in image bundle.\n",
+					formatter.RedColor))
+		}
+
+		if _, ok := bundle["machine-image"]; !ok {
+			logrus.Fatalln(
+				formatter.Colorize("Machine Image not specified in image bundle.\n",
+					formatter.RedColor))
+		}
+
+		sshPort, err := strconv.ParseInt(bundle["ssh-port"], 10, 64)
+		if err != nil {
+			errMessage := err.Error() + " Using SSH Port as 22\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			sshPort = 22
+		}
+
+		defaultBundle, err := strconv.ParseBool(bundle["default"])
+		if err != nil {
+			errMessage := err.Error() + " Setting default as false\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			defaultBundle = false
+		}
+		if imageBundleLen == 1 && !defaultBundle {
+			defaultBundle = true
+		}
+
+		imageBundle := ybaclient.ImageBundle{
+			Name:         util.GetStringPointer(bundle["name"]),
+			UseAsDefault: util.GetBoolPointer(defaultBundle),
+			Details: &ybaclient.ImageBundleDetails{
+				Arch:          util.GetStringPointer(bundle["arch"]),
+				GlobalYbImage: util.GetStringPointer(bundle["machine-image"]),
+				SshUser:       util.GetStringPointer(bundle["ssh-user"]),
+				SshPort:       util.GetInt32Pointer(int32(sshPort)),
+			},
+		}
+		res = append(res, imageBundle)
 	}
 	return res
 }

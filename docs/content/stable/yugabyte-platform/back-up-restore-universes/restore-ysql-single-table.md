@@ -15,7 +15,7 @@ type: docs
 Currently, YugabyteDB Anywhere supports backing up and restoring entire YSQL databases only. However, by performing some manual steps, you can restore single tables to a YSQL database using the following tools:
 
 - [ysql_dump](../../../manage/backup-restore/export-import-data/) - exports data from a YSQL database into a SQL script file.
-- [ysqlsh](../../../admin/ysqlsh/) - YugabyteDB SQL shell for interacting with YugabyteDB using YSQL.
+- [ysqlsh](../../../api/ysqlsh/) - YugabyteDB SQL shell for interacting with YugabyteDB using YSQL.
 
 Suppose you have a problem with a single table in a database called source_db, and you want to restore the table from a backup taken previously. You would perform the following steps:
 
@@ -105,7 +105,7 @@ Do the following to drop a table from the source database source_db:
 
     ```output
              List of relations
-     Schema |  Name   | Type  |  Owner   
+     Schema |  Name   | Type  |  Owner
     --------+---------+-------+----------
      public | table_1 | table | yugabyte
      public | table_2 | table | yugabyte

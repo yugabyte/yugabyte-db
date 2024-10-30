@@ -30,6 +30,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread_restrictions.h"
+#include "yb/util/trace.h"
 
 #include "yb/yql/cql/ql/parser/parser.h"
 
@@ -463,6 +464,7 @@ void QLProcessor::RunAsyncDone(const string& stmt, const StatementParameters& pa
   // callback may not be executed in the RPC worker thread. Also, rescheduling gives other calls a
   // chance to execute first before we do.
   if (s.IsQLError() && GetErrorCode(s) == ErrorCode::STALE_METADATA && !parse_tree->reparsed()) {
+    TRACE("Rescheduling the task due to $0", s.ToString());
     return Reschedule(&run_async_task_.Bind(this, stmt, params, std::move(cb)));
   }
   cb.Run(s, result);

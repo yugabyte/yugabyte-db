@@ -17,6 +17,7 @@
     name: "{{ item }}"
     state: latest
     update_cache: yes
+    lock_timeout: 600
   with_items: "{{ yum_packages }}"
 
 - name: Download-itest | Install awscli
@@ -56,4 +57,5 @@
   yum:
     name: "{{ item }}"
     state: absent
+    lock_timeout: 600
   with_items: "{{ yum_packages }}"

@@ -64,6 +64,7 @@
 #include "yb/util/threadpool.h"
 
 DECLARE_int32(raft_heartbeat_interval_ms);
+DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_bool(enable_leader_failure_detection);
 
 METRIC_DECLARE_entity(table);
@@ -148,7 +149,6 @@ class RaftConsensusQuorumTest : public YBTest {
                               log_thread_pool_.get(),
                               log_thread_pool_.get(),
                               log_thread_pool_.get(),
-                              std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
                               &log));
       logs_.push_back(log.get());
       fs_managers_.push_back(fs_manager.release());
@@ -194,13 +194,11 @@ class RaftConsensusQuorumTest : public YBTest {
           pool_token.get(),
           nullptr);
 
-      RetryableRequestsManager retryable_requests_manager(
-          options_.tablet_id,
-          fs_managers_[i],
-          fs_managers_[i]->GetWalRootDirs()[0],
+      consensus::RetryableRequests retryable_requests(
           parent_mem_trackers_[i],
           "");
-      Status s = retryable_requests_manager.Init(clock_);
+      retryable_requests.SetServerClock(clock_);
+      retryable_requests.SetRequestTimeout(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
 
       shared_ptr<RaftConsensus> peer(new RaftConsensus(
           options_,
@@ -218,7 +216,7 @@ class RaftConsensusQuorumTest : public YBTest {
           parent_mem_trackers_[i],
           Bind(&DoNothing),
           DEFAULT_TABLE_TYPE,
-          &retryable_requests_manager));
+          &retryable_requests));
 
       operation_factory->SetConsensus(peer.get());
       operation_factories_.emplace_back(operation_factory);

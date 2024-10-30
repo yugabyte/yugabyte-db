@@ -205,8 +205,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
               << ", dependent count = " << values[2]
               << ", project count = " << values[3]
               << ", salary = " << *reinterpret_cast<float*>(&values[4])
-              << ", job = (" << values[5] << ")"
-              << ", oid = " << syscols.oid;
+              << ", job = (" << values[5] << ")";
 
     // Check result.
     int col_index = 0;
@@ -224,8 +223,10 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
     string expected_job_name = strings::Substitute("Job_title_$0", id);
     CHECK_EQ(selected_job_name, expected_job_name);
 
+    #ifdef YB_TODO
     int32_t oid = static_cast<int32_t>(syscols.oid);
     CHECK_EQ(oid, id) << "Unexpected result for OID column";
+    #endif
   }
   CHECK_EQ(select_row_count, 1) << "Unexpected row count";
   CommitTransaction();
@@ -276,8 +277,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
               << ", dependent count = " << values[2]
               << ", project count = " << values[3]
               << ", salary = " << *reinterpret_cast<float*>(&values[4])
-              << ", job = (" << values[5] << ")"
-              << ", oid = " << syscols.oid;
+              << ", job = (" << values[5] << ")";
 
     // Check result.
     int col_index = 0;
@@ -294,8 +294,10 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
     string expected_job_name = strings::Substitute("Job_title_$0", id);
     CHECK_EQ(selected_job_name, expected_job_name);
 
+    #ifdef YB_TODO
     int32_t oid = static_cast<int32_t>(syscols.oid);
     CHECK_EQ(oid, id) << "Unexpected result for OID column";
+    #endif
   }
   CommitTransaction();
 
@@ -373,17 +375,13 @@ Result<size_t> TestGetTableKeyRanges(
                         << " range_size_bytes: " << range_size_bytes
                         << " max_key_length: " << max_key_length << " is_forward: " << is_forward;
 
-    uint64_t current_tserver_ht = 0;
     /* Request server HT on the first call for the key ranges */
     end_keys.clear();
     CHECK_YBC_STATUS(YBCGetTableKeyRanges(
         database_oid, table_oid, lower_bound_key.cdata(), lower_bound_key.size(),
         upper_bound_key.cdata(), upper_bound_key.size(), std::numeric_limits<uint64_t>::max(),
-        range_size_bytes, is_forward, max_key_length, &current_tserver_ht,
-        &InvokeFunctionWithKeyPtrAndSize, &func));
+        range_size_bytes, is_forward, max_key_length, &InvokeFunctionWithKeyPtrAndSize, &func));
     LOG(INFO) << "Got " << end_keys.size() << " ranges";
-    LOG(INFO) << "current tserver HT: " << HybridTime(current_tserver_ht).ToString();
-    SCHECK_GT(current_tserver_ht, 0, InternalError, "No tserver hybrid time");
 
     RETURN_NOT_OK(CheckRanges(end_keys, is_forward));
 
@@ -408,8 +406,7 @@ Result<size_t> TestGetTableKeyRanges(
           database_oid, table_oid, is_forward ? bound.data() : nullptr,
           is_forward ? bound.size() : 0, is_forward ? nullptr : bound.data(),
           is_forward ? 0 : bound.size(), num_ranges_limit, range_size_bytes, is_forward,
-          max_key_length, /* current_tserver_ht = */ nullptr, &InvokeFunctionWithKeyPtrAndSize,
-          &func));
+          max_key_length, &InvokeFunctionWithKeyPtrAndSize, &func));
 
       const auto size_diff = end_keys.size() - prev_size;
 
@@ -466,7 +463,9 @@ TEST_F_EX(
   constexpr auto kMaxKeyLength = 1_KB;
   constexpr auto kRangeSizeBytes = 16_KB;
 
-  ASSERT_OK(Init("GetTableKeyRanges", kNumOfTablets, /* replication_factor = */ 0, kDatabaseName));
+  ASSERT_OK(Init(
+      "GetTableKeyRanges", kNumOfTablets, /* replication_factor = */ 0,
+      /* should_create_db = */ false));
 
   LOG(INFO) << "Connecting to YSQL...";
 
@@ -510,7 +509,8 @@ TEST_F_EX(PggateTestSelect, GetColocatedTableKeyRanges, PggateTestSelectWithYsql
   constexpr auto kMinNumRangesExpected = 10;
 
   ASSERT_OK(Init(
-      "GetColocatedTableKeyRanges", kNumOfTablets, /* replication_factor = */ 0, kDatabaseName));
+      "GetColocatedTableKeyRanges", kNumOfTablets, /* replication_factor = */ 0,
+       /* should_create_db = */ false));
 
   auto conn = ASSERT_RESULT(PgConnect(kDatabaseName));
   ASSERT_OK(

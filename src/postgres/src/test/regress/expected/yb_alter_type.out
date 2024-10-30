@@ -132,8 +132,13 @@ DROP TYPE new_name;  -- fail
 ERROR:  cannot drop type new_name because other objects depend on it
 DETAIL:  column happiness_level of table holidays depends on type new_name
 HINT:  Use DROP ... CASCADE to drop the dependent objects too.
-DROP TYPE new_name CASCADE;
+DROP TYPE new_name CASCADE; -- requires table rewrite (happiness_level is a key column)
 NOTICE:  drop cascades to column happiness_level of table holidays
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ALTER TABLE holidays DROP CONSTRAINT holidays_pkey; -- fail
+ERROR:  constraint "holidays_pkey" for table "holidays" does not exist
 \d holidays
                Table "public.holidays"
   Column   |  Type   | Collation | Nullable | Default

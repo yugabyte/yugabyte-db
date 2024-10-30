@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,8 +16,10 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 #include "yb/client/tablet_server.h"
 
@@ -120,7 +122,7 @@ class PgApiImpl {
  public:
   PgApiImpl(PgApiContext context, const YBCPgTypeEntity *YBCDataTypeTable, int count,
             YBCPgCallbacks pg_callbacks, std::optional<uint64_t> session_id,
-            const YBCPgAshConfig* ash_config);
+            const YBCPgAshConfig& ash_config);
   ~PgApiImpl();
 
   const YBCPgCallbacks* pg_callbacks() {
@@ -133,11 +135,8 @@ class PgApiImpl {
   void Interrupt();
   void ResetCatalogReadTime();
 
-  uint64_t GetSessionId();
-
   // Initialize a session to process statements that come from the same client connection.
-  // If database_name is empty, a session is created without connecting to any database.
-  Status InitSession(const std::string& database_name, YBCPgExecStatsState* session_stats);
+  Status InitSession(YBCPgExecStatsState& session_stats, bool is_binary_upgrade);
 
   uint64_t GetSessionID() const;
 
@@ -171,6 +170,7 @@ class PgApiImpl {
   Result<bool> CatalogVersionTableInPerdbMode();
   uint64_t GetSharedAuthKey() const;
   const unsigned char *GetLocalTserverUuid() const;
+  pid_t GetLocalTServerPid() const;
 
   Status NewTupleExpr(
     YBCPgStatement stmt, const YBCPgTypeEntity *tuple_type_entity,
@@ -230,9 +230,6 @@ class PgApiImpl {
   const YBCPgTypeEntity *FindTypeEntity(int type_oid);
 
   //------------------------------------------------------------------------------------------------
-  // Connect database. Switch the connected database to the given "database_name".
-  Status ConnectDatabase(const char *database_name);
-
   // Determine whether the given database is colocated.
   Status IsDatabaseColocated(const PgOid database_oid, bool *colocated,
                              bool *legacy_colocated_database);
@@ -241,10 +238,9 @@ class PgApiImpl {
   Status NewCreateDatabase(const char *database_name,
                            PgOid database_oid,
                            PgOid source_database_oid,
-                           const char *source_database_name,
                            PgOid next_oid,
                            const bool colocated,
-                           const int64_t clone_time,
+                           YbCloneInfo *yb_clone_info,
                            PgStatement **handle);
   Status ExecCreateDatabase(PgStatement *handle);
 
@@ -349,6 +345,8 @@ class PgApiImpl {
 
   Status AlterTableSetTableId(PgStatement* handle, const PgObjectId& table_id);
 
+  Status AlterTableSetSchema(PgStatement *handle, const char *schema_name);
+
   Status ExecAlterTable(PgStatement *handle);
 
   Status AlterTableInvalidateTableCacheEntry(PgStatement *handle);
@@ -364,6 +362,8 @@ class PgApiImpl {
 
   Status GetTableDesc(const PgObjectId& table_id,
                       PgTableDesc **handle);
+
+  Result<tserver::PgListClonesResponsePB> GetDatabaseClones();
 
   Result<YBCPgColumnInfo> GetColumnInfo(YBCPgTableDesc table_desc,
                                         int16_t attr_number);
@@ -438,8 +438,6 @@ class PgApiImpl {
   // All DML statements
   Status DmlAppendTarget(PgStatement *handle, PgExpr *expr);
 
-  Result<bool> DmlHasSystemTargets(PgStatement *handle);
-
   Status DmlAppendQual(PgStatement *handle, PgExpr *expr, bool is_primary);
 
   Status DmlAppendColumnRef(PgStatement *handle, PgColumnRef *colref, bool is_primary);
@@ -475,7 +473,7 @@ class PgApiImpl {
   Status DmlBindColumnCondIsNotNull(PgStatement *handle, int attr_num);
   Status DmlBindRow(YBCPgStatement handle, uint64_t ybctid, YBCBindColumn* columns, int count);
 
-  Status DmlBindHashCode(
+  void DmlBindHashCode(
       PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end);
 
   Status DmlBindRange(YBCPgStatement handle,
@@ -544,8 +542,7 @@ class PgApiImpl {
                    bool is_region_local,
                    PgStatement **handle,
                    YBCPgTransactionSetting transaction_setting =
-                       YBCPgTransactionSetting::YB_TRANSACTIONAL,
-                   PgStatement *block_insert_handle = nullptr);
+                       YBCPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecInsert(PgStatement *handle);
 
@@ -589,11 +586,9 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Select.
-  Status NewSelect(const PgObjectId& table_id,
-                   const PgObjectId& index_id,
-                   const PgPrepareParameters *prepare_params,
-                   bool is_region_local,
-                   PgStatement **handle);
+  Status NewSelect(
+      const PgObjectId& table_id, const PgObjectId& index_id,
+      const PgPrepareParameters* prepare_params, bool is_region_local, PgStatement** handle);
 
   Status SetForwardScan(PgStatement *handle, bool is_forward_scan);
 
@@ -608,7 +603,7 @@ class PgApiImpl {
   Status FetchRequestedYbctids(PgStatement *handle, const PgExecParameters *exec_params,
                                ConstSliceVector ybctids);
 
-  Status DmlANNBindVector(PgStatement *handle, PgExpr *vector);
+  Status DmlANNBindVector(PgStatement *handle, int vec_att_no, PgExpr *vector);
 
   Status DmlANNSetPrefetchSize(PgStatement *handle, int prefetch_size);
 
@@ -619,11 +614,11 @@ class PgApiImpl {
   Status NewSRF(PgFunction **handle, PgFunctionDataProcessor processor);
 
   Status AddFunctionParam(
-      PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity,
+      PgFunction *handle, const std::string& name, const YBCPgTypeEntity *type_entity,
       uint64_t datum, bool is_null);
 
   Status AddFunctionTarget(
-      PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity,
+      PgFunction *handle, const std::string& name, const YBCPgTypeEntity *type_entity,
       const YBCPgTypeAttrs type_attrs);
 
   Status FinalizeFunctionTargets(PgFunction *handle);
@@ -634,18 +629,15 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Analyze.
-  Status NewSample(const PgObjectId& table_id,
-                   const int targrows,
-                   bool is_region_local,
-                   PgStatement **handle);
+  Status NewSample(
+      const PgObjectId& table_id, bool is_region_local, int targrows,
+      const SampleRandomState& rand_state, PgStatement **handle);
 
-  Status InitRandomState(PgStatement *handle, double rstate_w, uint64 rand_state);
-
-  Status SampleNextBlock(PgStatement *handle, bool *has_more);
+  Result<bool> SampleNextBlock(PgStatement* handle);
 
   Status ExecSample(PgStatement *handle);
 
-  Status GetEstimatedRowCount(PgStatement *handle, double *liverows, double *deadrows);
+  Result<EstimatedRowCount> GetEstimatedRowCount(PgStatement* handle);
 
   //------------------------------------------------------------------------------------------------
   // Transaction control.
@@ -653,6 +645,7 @@ class PgApiImpl {
   Status RecreateTransaction();
   Status RestartTransaction();
   Status ResetTransactionReadPoint();
+  Status EnsureReadPoint();
   Status RestartReadPoint();
   bool IsRestartReadPointRequested();
   Status CommitPlainTransaction();
@@ -663,7 +656,7 @@ class PgApiImpl {
   Status SetInTxnBlock(bool in_txn_blk);
   Status SetReadOnlyStmt(bool read_only_stmt);
   Status SetEnableTracing(bool tracing);
-  Status EnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms);
+  Status UpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness_ms);
   Status EnterSeparateDdlTxnMode();
   bool HasWriteOperationsInDdlTxnMode() const;
   Status ExitSeparateDdlTxnMode(PgOid db_oid, bool is_silent_modification);
@@ -723,8 +716,9 @@ class PgApiImpl {
 
   Status AddExplicitRowLockIntent(
       const PgObjectId& table_id, const Slice& ybctid,
-      const PgExplicitRowLockParams& params, bool is_region_local);
-  Status FlushExplicitRowLockIntents();
+      const PgExplicitRowLockParams& params, bool is_region_local,
+      PgExplicitRowLockErrorInfo& error_info);
+  Status FlushExplicitRowLockIntents(PgExplicitRowLockErrorInfo& error_info);
 
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
@@ -751,24 +745,17 @@ class PgApiImpl {
 
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
 
-  Result<TableKeyRangesWithHt> GetTableKeyRanges(
+  Result<TableKeyRanges> GetTableKeyRanges(
       const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
       uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length);
 
-  MemTracker &GetMemTracker() { return *mem_tracker_; }
+  MemTracker& GetMemTracker() { return *mem_tracker_; }
 
-  MemTracker &GetRootMemTracker() { return *MemTracker::GetRootTracker(); }
+  MemTracker& GetRootMemTracker() { return *MemTracker::GetRootTracker(); }
 
-  // Using this function instead of GetRootMemTracker allows us to avoid copying a shared_pointer
-  int64_t GetRootMemTrackerConsumption() { return MemTracker::GetRootTrackerConsumption(); }
+  void DumpSessionState(YBCPgSessionState* session_data);
 
-  uint64_t GetReadTimeSerialNo();
-
-  uint64_t GetTxnSerialNo();
-
-  SubTransactionId GetActiveSubTransactionId();
-
-  void RestoreSessionParallelData(const YBCPgSessionParallelData* session_data);
+  void RestoreSessionState(const YBCPgSessionState& session_data);
 
   //------------------------------------------------------------------------------------------------
   // Replication Slots Functions.
@@ -811,7 +798,14 @@ class PgApiImpl {
 
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
 
+  Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
+
   bool IsCronLeader() const;
+  Status SetCronLastMinute(int64_t last_minute);
+  Result<int64_t> GetCronLastMinute();
+
+  [[nodiscard]] uint64_t GetCurrentReadTimePoint() const;
+  Status RestoreReadTimePoint(uint64_t read_time_point_handle);
 
  private:
   void ClearSessionState();
@@ -842,6 +836,10 @@ class PgApiImpl {
 
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 
+  YBCPgCallbacks pg_callbacks_;
+
+  const WaitEventWatcher wait_event_watcher_;
+
   // TODO Rename to client_ when YBClient is removed.
   PgClient pg_client_;
 
@@ -849,8 +847,6 @@ class PgApiImpl {
 
   // Local tablet-server shared memory segment handle.
   tserver::TServerSharedObject tserver_shared_object_;
-
-  YBCPgCallbacks pg_callbacks_;
 
   scoped_refptr<PgTxnManager> pg_txn_manager_;
 

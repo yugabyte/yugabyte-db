@@ -39,18 +39,27 @@ Follow the [setup instructions](../../../../explore#tabs-00-00) to start a singl
 
 ## Automatic retries
 
-YugabyteDB retries failed transactions automatically on the server side whenever possible without client intervention as per the [concurrency control policies](../../../../architecture/transactions/concurrency-control/#best-effort-internal-retries-for-first-statement-in-a-transaction). This is the case even for single statements, which are implicitly considered transactions. In [Read Committed](../../../../explore/transactions/isolation-levels/#read-committed-isolation) isolation mode, the server retries indefinitely.
+YugabyteDB retries failed transactions automatically on the server side whenever possible without client intervention as per the [concurrency control policies](../../../../architecture/transactions/concurrency-control/#best-effort-internal-retries-for-first-statement-in-a-transaction). This is the case even for single statements, which are implicitly considered transactions.
 
 In some scenarios, a server-side retry is not suitable. For example, the retry limit has been reached or the transaction is not in a valid state. In these cases, it is the client's responsibility to retry the transaction at the application layer.
 
 ## Client-side retry
 
-Most transaction errors that happen due to conflicts and deadlocks can be restarted by the client. The following scenarios describe the causes for failures, and the required methods to be handled by the applications.
+Most transaction errors that happen due to conflicts and deadlocks can be restarted by the client.
+
+{{<warning title="Scenarios where retries should be avoided">}}
+Retries should only be performed when they are deemed safe, and should be avoided in the following situations:
+
+- For unfamiliar errors, such as internal errors, to prevent potential data corruption.
+- For commit or auto-commit statements, as it's unclear whether the failure occurred before or after the commit.
+{{</warning>}}
+
+The following scenarios describe the causes for failures, and the required methods to be handled by the applications.
 
 Execute the transaction in a `try..catch` block in a loop. When a re-tryable failure happens, issue [ROLLBACK](../../../../api/ysql/the-sql-language/statements/txn_rollback/) and then retry the transaction. To avoid overloading the server and ending up in an indefinite loop, wait for some time between retries and limit the number of retries. The following illustrates a typical client-side retry implementation:
 
 ```python
-max_attempts = 10   # max no.of retries
+max_attempts = 10   # max number of retries
 sleep_time = 0.002  # 2 ms - base sleep time
 backoff = 2         # exponential multiplier
 
@@ -61,7 +70,7 @@ while attempt < max_attempts:
         cursor = cxn.cursor()
         cursor.execute("BEGIN");
 
-        # Execute Transaction Statments here
+        # Execute transaction statments here
 
         cursor.execute("COMMIT");
         break
@@ -76,19 +85,11 @@ If the `COMMIT` is successful, the program exits the loop. `attempt < max_attemp
 
 ##### 40001 - SerializationFailure
 
-SerializationFailure errors happen when multiple transactions are updating the same set of keys (conflict) or when transactions are waiting on each other (deadlock). The error messages could be one of the following types:
+SerializationFailure errors happen when multiple transactions are updating the same set of keys (conflict). During a conflict, certain transactions are retried.
 
-- During a conflict, certain transactions are retried. However, after the retry limit is reached, an error occurs as follows:
-
-    ```output
-    ERROR:  40001: All transparent retries exhausted.
-    ```
-
-- All transactions are given a dynamic priority. When a deadlock is detected, the transaction with lower priority is automatically killed. For this scenario, the client might receive a message similar to the following:
-
-    ```output
-    ERROR:  40001: Operation expired: Heartbeat: Transaction XXXX expired or aborted by a conflict
-    ```
+```output
+ERROR:  could not serialize access due to concurrent update (...)
+```
 
 The correct way to handle this error is with a retry loop with exponential backoff, as described in [Client-side retry](#client-side-retry). When the [UPDATE](../../../../api/ysql/the-sql-language/statements/dml_update/) or [COMMIT](../../../../api/ysql/the-sql-language/statements/txn_commit/) fails because of `SerializationFailure`, the code retries after waiting for `sleep_time` seconds, up to `max_attempts`.
 
@@ -97,6 +98,17 @@ In read committed isolation level, as the server retries internally, the client 
 {{</tip>}}
 
 Another way to handle these failures is would be to rollback to a checkpoint before the failed statement and proceed further as described in [Savepoints](#savepoints).
+
+##### 40001 - Deadlock detected
+
+This error occurs when two or more transactions wait on each other to form a deadlock cycle. One or more of the transactions in the cycle are aborted
+and they fail with the following error:
+
+```output
+ERROR:  deadlock detected (...)
+```
+
+Retries to handle this error are similar to serialization errors (40001).
 
 ## Savepoints
 
@@ -227,6 +239,14 @@ Time: 17.074 ms
 ```
 
 The only valid statements at this point would be [ROLLBACK](../../../../api/ysql/the-sql-language/statements/txn_rollback/) or [COMMIT](../../../../api/ysql/the-sql-language/statements/txn_commit/).
+
+##### 42XXX - Syntax errors
+
+Error codes starting with 42 typically relate to issues with SQL syntax, invalid references, or access permissions. Retrying these errors will likely have no effect unless the respective issue is fixed.
+
+{{<lead link="../transactions-errorcodes-ysql/#42xxx-syntax-error-or-access-rule-violation">}}
+For the list of errors in the class 42 category, see [Syntax Error or Access Rule Violation](../transactions-errorcodes-ysql/#42xxx-syntax-error-or-access-rule-violation)
+{{</lead>}}
 
 ## Learn more
 

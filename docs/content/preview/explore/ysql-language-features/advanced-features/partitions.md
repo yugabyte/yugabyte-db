@@ -48,7 +48,7 @@ CREATE TABLE order_changes (
 
 *change_date* represents the date when any type of change occurred on the order record. This date might be required when generating monthly reports. Assuming that typically only the last month's data is queried often, then the data older than one year is removed from the table every month. To simplify this process, you can partition the `order_changes` table. You start by specifying bounds corresponding to the partitioning method and partition key of the `order_changes` table. This means you create partitions as regular tables and YSQL generates partition constraints automatically based on the partition bound specification every time they have to be referenced.
 
-You can declare partitioning on a table by creating it as a partitioned table: you specify the `PARTITION BY` clause which you supply with the partitioning method, such as `RANGE`, and a list of columns as a partition key, as shown in the following example:
+You can declare partitioning on a table by creating it as a partitioned table: you specify the PARTITION BY clause which you supply with the partitioning method, such as RANGE, and a list of columns as a partition key, as shown in the following example:
 
 ```sql
 CREATE TABLE order_changes (
@@ -88,7 +88,7 @@ CREATE TABLE order_changes_2021_01 PARTITION OF order_changes
   FOR VALUES FROM ('2021-01-01') TO ('2021-02-01');
 ```
 
-Partitioning ranges are inclusive at the lower ( `FROM` ) bound and exclusive at the upper ( `TO` ) bound. Each month range in the preceding examples includes the start of the month, but does not include the start of the following month.
+Partitioning ranges are inclusive at the lower FROM bound and exclusive at the upper TO bound. Each month range in the preceding examples includes the start of the month, but does not include the start of the following month.
 
 To create a new partition that contains only the rows that don't match the specified partitions, add a default partition as follows:
 
@@ -183,7 +183,7 @@ SELECT count(*) FROM order_changes WHERE change_date >= DATE '2020-01-01';
 
 If the `order_changes` table is partitioned by `change_date`, there is a big chance that only a subset of partitions needs to be queried. When enabled, both partition pruning and constraint exclusion can provide significant performance improvements for such queries by filtering out partitions that do not satisfy the criteria.
 
-Even though partition pruning and constraint exclusion target the same goal, the underlying mechanisms are different. Specifically, constraint exclusion is applied during query planning, and therefore only works if the `WHERE` clause contains constants or externally supplied parameters. For example, a comparison against a non-immutable function such as `CURRENT_TIMESTAMP` cannot be optimized, because the planner cannot know which child table the function's value might fall into at run time. On the other hand, partition pruning is applied during query execution, and therefore can be more flexible. However, it is only used for `SELECT` queries. Updates can only benefit from constraint exclusion.
+Even though partition pruning and constraint exclusion target the same goal, the underlying mechanisms are different. Specifically, constraint exclusion is applied during query planning, and therefore only works if the WHERE clause contains constants or externally supplied parameters. For example, a comparison against a non-immutable function such as CURRENT_TIMESTAMP cannot be optimized, because the planner cannot know which child table the function's value might fall into at run time. On the other hand, partition pruning is applied during query execution, and therefore can be more flexible. However, it is only used for SELECT queries. Updates can only benefit from constraint exclusion.
 
 Both optimizations are enabled by default, which is the recommended setting for the majority of cases. However, if you know for certain that one of your queries will have to scan all the partitions, you can consider disabling the optimizations for that query:
 

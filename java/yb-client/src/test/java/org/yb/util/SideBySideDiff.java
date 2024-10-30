@@ -33,7 +33,7 @@ public class SideBySideDiff {
     // you're in a terminal with 8-column tab stops, this causes the RHS to begin at a tab stop
     // which will make the LHS and the RHS identical when the input files have embedded tabs.
     // Embedded tabs aren't expanded even with the --expand-tabs flag.
-    String diffCmd = String.format("sdiff --width=157 --expand-tabs '%s' '%s'", f1, f2);
+    String diffCmd = String.format("sdiff -Z --width=157 --expand-tabs '%s' '%s'", f1, f2);
     CommandResult commandResult = CommandUtil.runShellCommand(diffCmd);
     List<String> stdoutLines = commandResult.getStdoutLines();
     return StringUtil.joinLinesForLoggingNoPrefix(stdoutLines);

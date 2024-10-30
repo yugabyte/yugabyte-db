@@ -898,6 +898,51 @@ struct PointerHash {
 template <class Value>
 using UnorderedStringMap = std::unordered_map<std::string, Value, StringHash, std::equal_to<void>>;
 
+// Define a concept that ensures Container's value_type is T
+template<typename Container, typename T>
+concept ContainerOf = requires {
+  typename Container::value_type;
+} && std::same_as<typename Container::value_type, T>;
+
+// A unified way to insert values into supported containers
+
+// Overload for std::set
+template <typename Element, typename Compare, typename Allocator>
+void InsertIntoContainer(
+    std::set<Element, Compare, Allocator>& container,
+    const Element& value) {
+  container.insert(value);
+}
+
+template <typename Element, typename Compare, typename Allocator>
+void InsertIntoContainer(
+    std::set<Element, Compare, Allocator>& container,
+    Element&& value) {
+  container.insert(std::move(value));
+}
+
+// Overload for std::vector
+template <typename Element, typename Allocator>
+void InsertIntoContainer(
+    std::vector<Element, Allocator>& container,
+    const Element& value) {
+  container.push_back(value);
+}
+
+template <typename Element, typename Allocator>
+void InsertIntoContainer(
+    std::vector<Element, Allocator>& container,
+    Element&& value) {
+  container.push_back(std::move(value));
+}
+
+// Fallback to generate a compile-time error for unsupported containers
+template <typename Container, typename Element>
+void InsertIntoContainer(Container&, const Element&) {
+  static_assert(sizeof(Container) == 0,
+                "InsertIntoContainer is not supported for this container type.");
+}
+
 } // namespace yb
 
 // For backward compatibility

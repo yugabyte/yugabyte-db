@@ -2,6 +2,8 @@
 -- CREATE_INDEX
 -- Create ancillary data structures (i.e. indices)
 --
+-- directory paths are passed to us in environment variables
+\getenv abs_srcdir PG_ABS_SRCDIR
 --
 -- BTREE
 --
@@ -51,12 +53,31 @@ NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
 CREATE INDEX onek2_stu1_prtl ON onek2 USING btree(stringu1 name_ops ASC)
 	where onek2.stringu1 >= 'J' and onek2.stringu1 < 'K';
 NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+CREATE TABLE slow_emp4000 (
+	home_base	 box
+);
+CREATE TABLE fast_emp4000 (
+	home_base	 box
+);
+\set filename :abs_srcdir '/data/rect.data'
+COPY slow_emp4000 FROM :'filename';
+INSERT INTO fast_emp4000 SELECT * FROM slow_emp4000;
+ANALYZE slow_emp4000;
+ANALYZE fast_emp4000;
 --
 -- GIN over int[] and text[]
 --
 -- Note: GIN currently supports only bitmap scans, not plain indexscans
 -- YB Note: ybgin uses plain indexscans, not bitmap scans
 --
+CREATE TABLE array_index_op_test (
+	seqno		int4,
+	i			int4[],
+	t			text[]
+);
+\set filename :abs_srcdir '/data/array.data'
+COPY array_index_op_test FROM :'filename';
+ANALYZE array_index_op_test;
 SET enable_seqscan = OFF;
 SET enable_indexscan = OFF;
 SET enable_bitmapscan = ON;
@@ -151,6 +172,71 @@ ERROR:  REINDEX TABLE not supported yet
 LINE 1: REINDEX TABLE concur_heap;
                 ^
 HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+--
+-- Test ADD CONSTRAINT USING INDEX
+--
+CREATE TABLE cwi_test( a int , b varchar(10), c char);
+-- add some data so that all tests have something to work with.
+INSERT INTO cwi_test VALUES(1, 2), (3, 4), (5, 6);
+CREATE UNIQUE INDEX cwi_uniq_idx ON cwi_test(a , b);
+ALTER TABLE cwi_test ADD primary key USING INDEX cwi_uniq_idx;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+\d cwi_test
+                     Table "public.cwi_test"
+ Column |         Type          | Collation | Nullable | Default
+--------+-----------------------+-----------+----------+---------
+ a      | integer               |           | not null |
+ b      | character varying(10) |           | not null |
+ c      | character(1)          |           |          |
+Indexes:
+    "cwi_uniq_idx" PRIMARY KEY, lsm (a ASC, b ASC)
+
+\d cwi_uniq_idx
+            Index "public.cwi_uniq_idx"
+ Column |         Type          | Key? | Definition
+--------+-----------------------+------+------------
+ a      | integer               | yes  | a
+ b      | character varying(10) | yes  | b
+primary key, lsm, for table "public.cwi_test"
+
+CREATE UNIQUE INDEX cwi_uniq2_idx ON cwi_test(b , a);
+ALTER TABLE cwi_test DROP CONSTRAINT cwi_uniq_idx,
+	ADD CONSTRAINT cwi_replaced_pkey PRIMARY KEY
+		USING INDEX cwi_uniq2_idx;
+NOTICE:  ALTER TABLE / ADD CONSTRAINT USING INDEX will rename index "cwi_uniq2_idx" to "cwi_replaced_pkey"
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+\d cwi_test
+                     Table "public.cwi_test"
+ Column |         Type          | Collation | Nullable | Default
+--------+-----------------------+-----------+----------+---------
+ a      | integer               |           | not null |
+ b      | character varying(10) |           | not null |
+ c      | character(1)          |           |          |
+Indexes:
+    "cwi_replaced_pkey" PRIMARY KEY, lsm (b ASC, a ASC)
+
+\d cwi_replaced_pkey
+          Index "public.cwi_replaced_pkey"
+ Column |         Type          | Key? | Definition
+--------+-----------------------+------+------------
+ b      | character varying(10) | yes  | b
+ a      | integer               | yes  | a
+primary key, lsm, for table "public.cwi_test"
+
+DROP INDEX cwi_replaced_pkey;	-- Should fail; a constraint depends on it
+ERROR:  cannot drop index cwi_replaced_pkey because constraint cwi_replaced_pkey on table cwi_test requires it
+HINT:  You can drop constraint cwi_replaced_pkey on table cwi_test instead.
+DROP TABLE cwi_test;
+-- ADD CONSTRAINT USING INDEX is forbidden on partitioned tables
+CREATE TABLE cwi_test(a int) PARTITION BY hash (a);
+create unique index on cwi_test (a);
+alter table cwi_test add primary key using index cwi_test_a_idx ;
+ERROR:  ALTER TABLE / ADD CONSTRAINT USING INDEX is not supported on partitioned tables
+DROP TABLE cwi_test;
 --
 -- REINDEX (VERBOSE)
 --

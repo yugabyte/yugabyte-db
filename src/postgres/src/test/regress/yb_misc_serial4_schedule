@@ -6,3 +6,4 @@
 test: yb_explicit_row_lock_planning
 test: yb_explicit_row_lock_batching
 test: yb_pg_fast_default
+test: yb_with

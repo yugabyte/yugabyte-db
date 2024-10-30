@@ -31,4 +31,9 @@
  */
 bool ProcessSourceEventTriggerDDLCommands(JsonbParseState *state);
 
+/*
+ * Same as above but for pg_catalog.pg_event_trigger_dropped_objects().
+ */
+bool ProcessSourceEventTriggerDroppedObjects();
+
 #endif

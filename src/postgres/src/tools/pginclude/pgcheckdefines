@@ -1,4 +1,6 @@
-#! /usr/bin/perl -w
+#! /usr/bin/perl
+
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 #
 # This script looks for symbols that are referenced in #ifdef or defined()
@@ -21,6 +23,7 @@
 #
 
 use strict;
+use warnings;
 
 use Cwd;
 use File::Basename;

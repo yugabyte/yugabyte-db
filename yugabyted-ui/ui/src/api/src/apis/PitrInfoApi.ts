@@ -20,7 +20,7 @@ import type { AxiosInstance } from 'axios';
 // @ts-ignore
 import type {
   ApiError,
-  InlineResponse200,
+  PITRScheduleResponse,
 } from '../models';
 
 
@@ -32,7 +32,7 @@ import type {
 export const getPITRSchedulesAxiosRequest = (
   customAxiosInstance?: AxiosInstance
 ) => {
-  return Axios<InlineResponse200>(
+  return Axios<PITRScheduleResponse>(
     {
       url: '/pitr',
       method: 'GET',
@@ -52,9 +52,9 @@ export const getPITRSchedulesQueryKey = (
 ];
 
 
-export const useGetPITRSchedulesInfiniteQuery = <T = InlineResponse200, Error = ApiError>(
+export const useGetPITRSchedulesInfiniteQuery = <T = PITRScheduleResponse, Error = ApiError>(
   options?: {
-    query?: UseInfiniteQueryOptions<InlineResponse200, Error, T>;
+    query?: UseInfiniteQueryOptions<PITRScheduleResponse, Error, T>;
     customAxiosInstance?: AxiosInstance;
   },
   pageParam = -1,
@@ -63,7 +63,7 @@ export const useGetPITRSchedulesInfiniteQuery = <T = InlineResponse200, Error = 
   const queryKey = getPITRSchedulesQueryKey(pageParam, version);
   const { query: queryOptions, customAxiosInstance } = options ?? {};
 
-  const query = useInfiniteQuery<InlineResponse200, Error, T>(
+  const query = useInfiniteQuery<PITRScheduleResponse, Error, T>(
     queryKey,
     () => getPITRSchedulesAxiosRequest(customAxiosInstance),
     queryOptions
@@ -75,9 +75,9 @@ export const useGetPITRSchedulesInfiniteQuery = <T = InlineResponse200, Error = 
   };
 };
 
-export const useGetPITRSchedulesQuery = <T = InlineResponse200, Error = ApiError>(
+export const useGetPITRSchedulesQuery = <T = PITRScheduleResponse, Error = ApiError>(
   options?: {
-    query?: UseQueryOptions<InlineResponse200, Error, T>;
+    query?: UseQueryOptions<PITRScheduleResponse, Error, T>;
     customAxiosInstance?: AxiosInstance;
   },
   version = 1,
@@ -85,7 +85,7 @@ export const useGetPITRSchedulesQuery = <T = InlineResponse200, Error = ApiError
   const queryKey = getPITRSchedulesQueryKey(version);
   const { query: queryOptions, customAxiosInstance } = options ?? {};
 
-  const query = useQuery<InlineResponse200, Error, T>(
+  const query = useQuery<PITRScheduleResponse, Error, T>(
     queryKey,
     () => getPITRSchedulesAxiosRequest(customAxiosInstance),
     queryOptions

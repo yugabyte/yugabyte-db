@@ -36,6 +36,7 @@
 
 #include "access/relscan.h"
 #include "access/xact.h"
+#include "access/yb_scan.h"
 #include "executor/execdebug.h"
 #include "executor/nodeYbSeqscan.h"
 #include "utils/rel.h"
@@ -56,7 +57,7 @@ static TupleTableSlot *YbSeqNext(YbSeqScanState *node);
 static TupleTableSlot *
 YbSeqNext(YbSeqScanState *node)
 {
-	HeapScanDesc scandesc;
+	TableScanDesc tsdesc;
 	EState	   *estate;
 	TupleTableSlot *slot;
 	ExprContext *econtext;
@@ -66,7 +67,7 @@ YbSeqNext(YbSeqScanState *node)
 	/*
 	 * get information from the estate and scan state
 	 */
-	scandesc = node->ss.ss_currentScanDesc;
+	tsdesc = node->ss.ss_currentScanDesc;
 	estate = node->ss.ps.state;
 	econtext = node->ss.ps.ps_ExprContext;
 	slot = node->ss.ss_ScanTupleSlot;
@@ -76,7 +77,7 @@ YbSeqNext(YbSeqScanState *node)
 	 * The scan only needs its ybscan field, so eventually we may use it
 	 * directly and ignore the ss_currentScanDesc.
 	 */
-	if (scandesc == NULL)
+	if (tsdesc == NULL)
 	{
 		if (node->aggrefs)
 		{
@@ -84,13 +85,11 @@ YbSeqNext(YbSeqScanState *node)
 			 * For aggregate pushdown, we read just the aggregates from DocDB
 			 * and pass that up to the aggregate node (agg pushdown wouldn't be
 			 * enabled if we needed to read more than that).  Set up a dummy
-			 * scan slot to hold that as many attributes as there are pushed
+			 * scan slot to hold as many attributes as there are pushed
 			 * aggregates.
 			 */
-			TupleDesc tupdesc =
-				CreateTemplateTupleDesc(list_length(node->aggrefs),
-										false /* hasoid */);
-			ExecInitScanTupleSlot(estate, &node->ss, tupdesc);
+			TupleDesc tupdesc = CreateTemplateTupleDesc(list_length(node->aggrefs));
+			ExecInitScanTupleSlot(estate, &node->ss, tupdesc, &TTSOpsVirtual);
 			/* Refresh the local pointer. */
 			slot = node->ss.ss_ScanTupleSlot;
 		}
@@ -112,14 +111,12 @@ YbSeqNext(YbSeqScanState *node)
 										 false /* is_internal_scan */,
 										 false /* fetch_ybctids_only */);
 		ybScan->pscan = node->pscan;
-		scandesc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
-		scandesc->rs_rd = node->ss.ss_currentRelation;
-		scandesc->rs_snapshot = estate->es_snapshot;
-		scandesc->rs_temp_snap = false;
-		scandesc->rs_cblock = InvalidBlockNumber;
-		scandesc->ybscan = ybScan;
 
-		node->ss.ss_currentScanDesc = scandesc;
+		tsdesc = (TableScanDesc) ybScan;
+		tsdesc->rs_snapshot = estate->es_snapshot;
+		tsdesc->rs_flags = SO_TYPE_SEQSCAN;
+
+		node->ss.ss_currentScanDesc = tsdesc;
 	}
 
 	/*
@@ -133,25 +130,36 @@ YbSeqNext(YbSeqScanState *node)
 		 * predicate. So, we set the rowmark on all read requests sent to
 		 * tserver instead of locking each tuple one by one in LockRows node.
 		 */
-		ListCell   *l;
-		foreach(l, estate->es_rowMarks)
+		for (int i = 0; estate->es_rowmarks && i < estate->es_range_table_size;
+			 i++)
 		{
-			ExecRowMark *erm = (ExecRowMark *) lfirst(l);
+			ExecRowMark *erm = estate->es_rowmarks[i];
+			/*
+			 * YB_TODO: This block of code is broken on master (GH #20704). With
+			 * PG commit f9eb7c14b08d2cc5eda62ffaf37a356c05e89b93,
+			 * estate->es_rowmarks is an array with
+			 * potentially NULL elements (previously, it was a list). As a
+			 * temporary fix till #20704 is addressed, ignore any NULL element
+			 * in es_rowmarks.
+			 */
+			if (!erm)
+				continue;
 			/* Do not propagate non-row-locking row marks. */
 			if (erm->markType != ROW_MARK_REFERENCE &&
 				erm->markType != ROW_MARK_COPY)
 			{
-				scandesc->ybscan->exec_params->rowmark = erm->markType;
-				scandesc->ybscan->exec_params->pg_wait_policy = erm->waitPolicy;
-				YBSetRowLockPolicy(
-					&scandesc->ybscan->exec_params->docdb_wait_policy,
-					erm->waitPolicy);
+				/* YB_TODO(jason): move ybScan = (YbScanDesc)tsdesc; higher. */
+				YbScanDesc ybScan = (YbScanDesc) tsdesc;
+
+				ybScan->exec_params->rowmark = erm->markType;
+				ybScan->exec_params->pg_wait_policy = erm->waitPolicy;
+				ybScan->exec_params->docdb_wait_policy =
+					YBGetDocDBWaitPolicy(erm->waitPolicy);
 			}
-			break;
 		}
 	}
 
-	ybScan = scandesc->ybscan;
+	ybScan = (YbScanDesc)tsdesc;
 	/*
 	 * In the case of parallel scan we need to obtain boundaries from the pscan
 	 * before the scan is executed. Also empty row from parallel range scan does
@@ -298,7 +306,8 @@ ExecInitYbSeqScan(YbSeqScan *node, EState *estate, int eflags)
 
 	/* and create slot with the appropriate rowtype */
 	ExecInitScanTupleSlot(estate, &scanstate->ss,
-						  RelationGetDescr(scanstate->ss.ss_currentRelation));
+						  RelationGetDescr(scanstate->ss.ss_currentRelation),
+						  &TTSOpsVirtual);
 
 	/*
 	 * Initialize result type and projection.
@@ -324,14 +333,12 @@ ExecInitYbSeqScan(YbSeqScan *node, EState *estate, int eflags)
 void
 ExecEndYbSeqScan(YbSeqScanState *node)
 {
-	Relation	relation;
-	HeapScanDesc scanDesc;
+	TableScanDesc tsdesc;
 
 	/*
 	 * get information from node
 	 */
-	relation = node->ss.ss_currentRelation;
-	scanDesc = node->ss.ss_currentScanDesc;
+	tsdesc = node->ss.ss_currentScanDesc;
 
 	/*
 	 * Free the exprcontext
@@ -348,13 +355,8 @@ ExecEndYbSeqScan(YbSeqScanState *node)
 	/*
 	 * close heap scan
 	 */
-	if (scanDesc != NULL)
-		ybc_heap_endscan(scanDesc);
-
-	/*
-	 * close the heap relation.
-	 */
-	ExecCloseScanRelation(relation);
+	if (tsdesc != NULL)
+		ybc_heap_endscan(tsdesc);
 }
 
 /* ----------------------------------------------------------------
@@ -371,15 +373,15 @@ ExecEndYbSeqScan(YbSeqScanState *node)
 void
 ExecReScanYbSeqScan(YbSeqScanState *node)
 {
-	HeapScanDesc scanDesc;
+	TableScanDesc tsdesc;
 
 	/*
 	 * End previous YB scan to reinit it upon the next fetch.
 	 */
-	scanDesc = node->ss.ss_currentScanDesc;
-	if (scanDesc != NULL)
+	tsdesc = node->ss.ss_currentScanDesc;
+	if (tsdesc != NULL)
 	{
-		ybc_heap_endscan(scanDesc);
+		ybc_heap_endscan(tsdesc);
 		node->ss.ss_currentScanDesc = NULL;
 	}
 

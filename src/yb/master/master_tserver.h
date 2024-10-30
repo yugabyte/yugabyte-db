@@ -17,6 +17,7 @@
 
 #include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/tserver/tablet_server_interface.h"
+#include "yb/tserver/ts_local_lock_manager.h"
 
 namespace yb {
 namespace master {
@@ -32,6 +33,7 @@ class MasterTabletServer : public tserver::TabletServerIf,
   MasterTabletServer(Master* master, scoped_refptr<MetricEntity> metric_entity);
   tserver::TSTabletManager* tablet_manager() override;
   tserver::TabletPeerLookupIf* tablet_peer_lookup() override;
+  tablet::TSLocalLockManager* ts_local_lock_manager() override { return nullptr; }
 
   server::Clock* Clock() override;
   const scoped_refptr<MetricEntity>& MetricEnt() const override;
@@ -98,12 +100,19 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   void ClearAllMetaCachesOnServer() override;
 
+  Status ClearMetacache(const std::string& namespace_id) override;
+
   Status YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
       tserver::PgYCQLStatementStatsResponsePB* resp) const override;
 
   virtual Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;
 
+  virtual Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const override;
+
  private:
+  Result<pgwrapper::PGConn> CreateInternalPGConn(
+      const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) override;
+
   Master* master_ = nullptr;
   scoped_refptr<MetricEntity> metric_entity_;
 };

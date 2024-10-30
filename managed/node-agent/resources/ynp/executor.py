@@ -1,5 +1,6 @@
 from commands.provision_command import ProvisionCommand
 
+
 class Executor:
     def __init__(self, config, args):
         self.config = config
@@ -13,4 +14,10 @@ class Executor:
         if not command_class:
             raise ValueError(f"Unsupported command: {self.args.command}")
         command_instance = command_class(self.config)
-        command_instance.execute()
+        # Need to validate only in case of onprem nodes.
+        if self.args.extra_vars is None:
+            command_instance.validate()
+        if self.args.preflight_check:
+            command_instance.run_preflight_checks()
+        else:
+            command_instance.execute()

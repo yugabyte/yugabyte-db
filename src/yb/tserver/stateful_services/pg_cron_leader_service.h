@@ -16,14 +16,26 @@
 #include <shared_mutex>
 
 #include "yb/tserver/stateful_services/stateful_service_base.h"
+#include "yb/tserver/stateful_services/pg_cron_leader_service.service.h"
 
 namespace yb {
+
+class PgCronTest;
+
 namespace stateful_service {
-class PgCronLeaderService : public StatefulServiceBase {
+
+constexpr char kPgCronIdColName[] = "id";
+constexpr char kPgCronDataColName[] = "data";
+const uint64_t kPgCronDataKey = 1;
+
+class PgCronLeaderService : public StatefulRpcServiceBase<PgCronLeaderServiceIf> {
  public:
   PgCronLeaderService(
       std::function<void(MonoTime)> set_cron_leader_lease_fn,
+      const scoped_refptr<MetricEntity>& metric_entity,
       const std::shared_future<client::YBClient*>& client_future);
+
+  STATEFUL_SERVICE_IMPL_METHODS(PgCronSetLastMinute, PgCronGetLastMinute);
 
  protected:
   void Activate() override;
@@ -33,7 +45,13 @@ class PgCronLeaderService : public StatefulServiceBase {
   void DrainForDeactivation() override {}
 
  private:
+  friend class ::yb::PgCronTest;
   void RefreshLeaderLease() EXCLUDES(mutex_);
+
+  Status SetLastMinute(int64_t last_minute, CoarseTimePoint deadline);
+  Result<int64_t> GetLastMinute(CoarseTimePoint deadline);
+
+  static Result<int64_t> ExtractLastMinute(const QLValue& column_value);
 
   std::function<void(MonoTime)> set_cron_leader_lease_fn_;
 

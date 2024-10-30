@@ -1,3 +1,6 @@
+
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+
 #  src/pl/plperl/plc_trusted.pl
 
 #<<< protect next line from perltidy so perlcritic annotation works

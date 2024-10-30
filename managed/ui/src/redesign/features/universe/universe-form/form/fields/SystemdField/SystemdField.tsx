@@ -18,18 +18,18 @@ export const SystemDField = ({ disabled }: SystemDFieldProps): ReactElement => {
 
   return (
     <Box display="flex" width="100%" data-testid="SystemDField-Container">
-      <YBLabel dataTestId="SystemDField-Label" className={classes.advancedConfigLabel}>
-        {t('universeForm.advancedConfig.enableSystemD')}
-      </YBLabel>
+      <YBToggleField
+        name={SYSTEMD_FIELD}
+        inputProps={{
+          'data-testid': 'SystemDField-Toggle'
+        }}
+        control={control}
+        disabled={disabled}
+      />
       <Box flex={1}>
-        <YBToggleField
-          name={SYSTEMD_FIELD}
-          inputProps={{
-            'data-testid': 'SystemDField-Toggle'
-          }}
-          control={control}
-          disabled={disabled}
-        />
+        <YBLabel dataTestId="SystemDField-Label" className={classes.advancedConfigLabel}>
+          {t('universeForm.advancedConfig.enableSystemD')}
+        </YBLabel>
       </Box>
     </Box>
   );

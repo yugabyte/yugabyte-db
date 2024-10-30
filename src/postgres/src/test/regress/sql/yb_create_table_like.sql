@@ -83,7 +83,7 @@ UNION
 SELECT 'index' AS object_type, relname AS obj_name, obj_description(oid) AS comments FROM pg_class WHERE oid IN (SELECT indexrelid FROM pg_index WHERE indrelid=$1::regclass::oid)
 UNION
 SELECT 'constraint' AS object_type, conname AS obj_name, obj_description(oid) AS comments FROM pg_constraint WHERE conrelid=$1::regclass::oid
-ORDER BY obj_name
+ORDER BY obj_name, object_type
 $$ LANGUAGE SQL;
 
 -- Without specifying INCLUDING COMMENTS, comments are not copied.
@@ -145,17 +145,18 @@ CREATE TABLE hash_k_test (LIKE hash_k INCLUDING ALL) with (colocation = false);
 \c yugabyte
 DROP DATABASE colocation_test;
 
--- When using LIKE clause on a source table with indexes, the target table has indexes deduplicated.
-CREATE TABLE test_dedupe_idx (hashkey int, asckey text, desckey text);
-CREATE INDEX h1 ON test_dedupe_idx(hashkey);
-CREATE INDEX h2 ON test_dedupe_idx(hashkey);
-CREATE INDEX a1 ON test_dedupe_idx(asckey ASC);
-CREATE INDEX a2 ON test_dedupe_idx(asckey ASC);
-CREATE INDEX d1 ON test_dedupe_idx(desckey DESC);
-CREATE INDEX d2 ON test_dedupe_idx(desckey DESC);
-CREATE TABLE test_dedupe_idx_like (LIKE test_dedupe_idx INCLUDING ALL);
-\d test_dedupe_idx_like
-DROP TABLE test_dedupe_idx;
+-- When using LIKE clause on a source table with duplicate indexes, the target table has duplicate
+-- indexes as well.
+CREATE TABLE test_dupe_idx (hashkey int, asckey text, desckey text);
+CREATE INDEX h1 ON test_dupe_idx(hashkey);
+CREATE INDEX h2 ON test_dupe_idx(hashkey);
+CREATE INDEX a1 ON test_dupe_idx(asckey ASC);
+CREATE INDEX a2 ON test_dupe_idx(asckey ASC);
+CREATE INDEX d1 ON test_dupe_idx(desckey DESC);
+CREATE INDEX d2 ON test_dupe_idx(desckey DESC);
+CREATE TABLE test_dupe_idx_like (LIKE test_dupe_idx INCLUDING ALL);
+\d test_dupe_idx_like
+DROP TABLE test_dupe_idx;
 
 -- LIKE clause with temp tables.
 -- Test using LIKE clause where the source table is a temp table.

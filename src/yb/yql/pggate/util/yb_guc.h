@@ -85,6 +85,14 @@ extern int ysql_max_in_flight_ops;
 extern bool yb_binary_restore;
 
 /*
+ * Guc variable for ignoring requests to set pg_class oids when yb_binary_restore is set.
+ *
+ * If true then calls to pg_catalog.binary_upgrade_set_next_{heap|index}_pg_class_oid will have no
+ * effect.
+ */
+extern bool yb_ignore_pg_class_oids;
+
+/*
  * Set to true only for runs with EXPLAIN ANALYZE
  */
 extern bool yb_run_with_explain_analyze;
@@ -161,6 +169,13 @@ extern int yb_locks_txn_locks_per_tablet;
  * changes from the CDC service in case the last received response was non-empty.
  */
 extern int yb_walsender_poll_sleep_duration_nonempty_ms;
+
+/*
+ * GUC flag: Specifies the maximum number of changes kept in memory per transaction in reorder
+ * buffer, which is used in streaming changes via logical replication. After that changes are
+ * spooled to disk.
+ */
+extern int yb_reorderbuffer_max_changes_in_memory;
 
 /*
  * GUC flag:  Time in milliseconds for which Walsender waits before fetching the next batch of

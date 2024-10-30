@@ -22,18 +22,13 @@ import (
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
 )
 
 // Install performs the installation procedures common to
 // all services.
 func Install(version string) error {
 	log.Info("Starting Common install")
-	// Hidden file written on first install (.installCompleted) at the end of the install,
-	// if the file already exists then it means that an installation has already taken place,
-	// and that future installs are prohibited.
-	if _, err := os.Stat(YbaInstalledMarker()); err == nil {
-		log.Fatal("Install of YBA already completed, cannot perform reinstall without clean.")
-	}
 
 	// Change into the dir we are in so that we can specify paths relative to ourselves
 	// TODO(minor): probably not a good idea in the long run
@@ -50,9 +45,20 @@ func Install(version string) error {
 		return err
 	}
 
-	if err := createInstallDirs(); err != nil {
+	// Set ownership of yba-ctl.yml and yba-ctl.log
+	user := viper.GetString("service_username")
+	if err := Chown(InputFile(), user, user, false); err != nil {
+		return fmt.Errorf("could not set ownership of %s: %v", InputFile(), err)
+	}
+
+	if err := Chown(YbactlLogFile(), user, user, false); err != nil {
+		return fmt.Errorf("could not set ownership of %s: %v", YbactlLogFile(), err)
+	}
+
+	if err := createSoftwareInstallDirs(); err != nil {
 		return err
 	}
+
 	if err := copyBits(version); err != nil {
 		return err
 	}
@@ -69,19 +75,87 @@ func Install(version string) error {
 	if err := setJDKEnvironmentVariable(); err != nil {
 		return err
 	}
+	if !HasSudoAccess() {
+		log.Info("setup systemd --user for long running services")
+		if err := systemd.LingerEnable(); err != nil {
+			return err
+		}
+		// Create a link to network online target for user services, which otherwise cannot depend on it
+		if err := systemd.Link("/usr/lib/systemd/system/network-online.target"); err != nil {
+			return err
+		}
+		fp := fmt.Sprintf("/home/%s/.bashrc", viper.GetString("service_username"))
+		bashrc, err := os.OpenFile(fp, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+		if err != nil {
+			return fmt.Errorf("could not open /home/%s/bashrc: %w",
+				viper.GetString("service_username"), err)
+		}
+		defer bashrc.Close()
+		if _, err := bashrc.WriteString("export XDG_RUNTIME_DIR=/run/user/$(id -u)\n"); err != nil {
+			return fmt.Errorf("could not write XDG_RUNTIME_DIR to bashrc: %w", err)
+		}
+	}
 	return nil
 }
 
-func createInstallDirs() error {
-	createDirs := []string{
+// Initialize creates does setup of the common data directories.
+func Initialize() error {
+	if err := createDataInstallDirs(); err != nil {
+		return err
+	}
+
+	// Validate or create the data version file.
+	if err := CheckOrCreateDataVersionFile(); err != nil {
+		return err
+	}
+
+	// Generate certs if required.
+	var serverCertPath, serverKeyPath string
+	if len(viper.GetString("server_cert_path")) == 0 {
+		log.Info("Generating self-signed server certificates")
+		serverCertPath, serverKeyPath = GenerateSelfSignedCerts()
+		if err := SetYamlValue(InputFile(), "server_cert_path", serverCertPath); err != nil {
+			return err
+		}
+		if err := SetYamlValue(InputFile(), "server_key_path", serverKeyPath); err != nil {
+			return err
+		}
+		InitViper()
+	}
+	return nil
+}
+
+func createSoftwareInstallDirs() error {
+	dirs := []string{
 		GetSoftwareRoot(),
 		dm.WorkingDirectory(),
-		filepath.Join(GetBaseInstall(), "data"),
-		filepath.Join(GetBaseInstall(), "data/logs"),
 		GetInstallerSoftwareDir(),
 		GetBaseInstall(),
 	}
+	if err := CreateDirs(dirs); err != nil {
+		return err
+	}
+	// Remove the symlink if one exists
+	SetActiveInstallSymlink()
+	return nil
+}
 
+func createDataInstallDirs() error {
+	dirs := []string{
+		filepath.Join(GetBaseInstall(), "data"),
+		filepath.Join(GetBaseInstall(), "data/logs"),
+	}
+	return CreateDirs(dirs)
+}
+
+func createUpgradeDirs() error {
+	dirs := []string{
+		GetInstallerSoftwareDir(),
+	}
+	return CreateDirs(dirs)
+}
+
+func CreateDirs(createDirs []string) error {
 	for _, dir := range createDirs {
 		_, err := os.Stat(dir)
 		if os.IsNotExist(err) {
@@ -99,31 +173,35 @@ func createInstallDirs() error {
 			}
 		}
 	}
-
-	// Remove the symlink if one exists
-	SetActiveInstallSymlink()
 	return nil
 }
 
-func createUpgradeDirs() error {
-	createDirs := []string{
-		GetInstallerSoftwareDir(),
+// CheckOrCreateDataVersionFile checks if the YBA Version is older than the data version file. This is not
+// supported as an older YBA cannot run with newer data due to PG migrations. If the file does not
+// exist, it will instead create it with the current version
+func CheckOrCreateDataVersionFile() error {
+	_, err := os.Stat(DataVersionFile())
+	if os.IsNotExist(err) {
+		return os.WriteFile(DataVersionFile(), []byte(Version), 0644)
 	}
+	return CheckDataVersionFile()
+}
 
-	for _, dir := range createDirs {
-		if err := MkdirAll(dir, DirMode); err != nil {
-			return fmt.Errorf("failed creating directory %s: %s", dir, err.Error())
+// CheckDataVersionFile checks if the YBA Version is older than the data version file. This is not
+// supported as an older YBA cannot run with newer data due to PG migrations
+func CheckDataVersionFile() error {
+	buf, err := os.ReadFile(DataVersionFile())
+	if !os.IsNotExist(err) {
+		if err != nil {
+			return fmt.Errorf("could not open data version file: %w", err)
 		}
-		if HasSudoAccess() {
-			err := Chown(dir, viper.GetString("service_username"), viper.GetString("service_username"),
-				true)
-			if err != nil {
-				return fmt.Errorf("failed to change ownership of " + dir + " to " +
-				viper.GetString("service_username") + ": " + err.Error())
-			}
+		dataVersion := strings.TrimSpace(string(buf))
+		if LessVersions(Version, dataVersion) {
+			return fmt.Errorf("YBA version %s is older than data version %s", Version, dataVersion)
 		}
 	}
-	return nil
+	// Update to the latest version.
+	return os.WriteFile(DataVersionFile(), []byte(Version), 0644)
 }
 
 // Copies over necessary files for all services from yba_installer_full to the GetSoftwareRoot()
@@ -148,14 +226,6 @@ func copyBits(vers string) error {
 		log.Debug("skipping template file copy, already exists")
 	}
 
-	cronDest := path.Join(GetInstallerSoftwareDir(), CronDir)
-	if _, err := os.Stat(cronDest); errors.Is(err, os.ErrNotExist) {
-		if err := Copy(GetCronDir(), cronDest, true, false); err != nil {
-			return fmt.Errorf("failed to copy cron scripts: " + err.Error())
-		}
-	} else {
-		log.Debug("skipping cron directory copy, already exists")
-	}
 	return nil
 }
 
@@ -194,7 +264,14 @@ func Upgrade(version string) error {
 	if err := os.Chdir(GetBinaryDir()); err != nil {
 		return err
 	}
-
+	// Change ownership as part of upgrade to allow non-root commands
+	user := viper.GetString("service_username")
+	if err := Chown(InputFile(), user, user, false); err != nil {
+		return fmt.Errorf("could not set ownership of %s: %v", InputFile(), err)
+	}
+	if err := Chown(YbactlLogFile(), user, user, false); err != nil {
+		return fmt.Errorf("could not set ownership of %s: %v", YbactlLogFile(), err)
+	}
 	if err := createUpgradeDirs(); err != nil {
 		return err
 	}
@@ -447,19 +524,6 @@ func FixConfigValues() error {
 		InitViper()
 	}
 
-	var serverCertPath, serverKeyPath string
-	if len(viper.GetString("server_cert_path")) == 0 {
-		log.Info("Generating self-signed server certificates")
-		serverCertPath, serverKeyPath = GenerateSelfSignedCerts()
-		if err := SetYamlValue(InputFile(), "server_cert_path", serverCertPath); err != nil {
-			return err
-		}
-		if err := SetYamlValue(InputFile(), "server_key_path", serverKeyPath); err != nil {
-			return err
-		}
-		InitViper()
-	}
-
 	if viper.GetBool("postgres.install.enabled") &&
 		len(viper.GetString("postgres.install.password")) == 0 {
 		log.Info("Generating default password for postgres")
@@ -507,6 +571,10 @@ func GenerateSelfSignedCerts() (string, string) {
 	err := MkdirAll(certsDir, DirMode)
 	if err != nil && !os.IsExist(err) {
 		log.Fatal(fmt.Sprintf("Unable to create dir %s", certsDir))
+	}
+	username := viper.GetString("service_username")
+	if err := Chown(certsDir, username, username, true); err != nil {
+		log.Fatal(fmt.Sprintf("Unable to chown dir %s", certsDir))
 	}
 	log.Debug("Created dir " + certsDir)
 
@@ -566,17 +634,22 @@ func WaitForYBAReady(version string) error {
 
 		var resp *http.Response
 		var err error
-		// Check YBA version every 10 seconds
-		retriesCount := 20
 
-		for i := 0; i < retriesCount; i++ {
+		waitSecs := viper.GetInt("wait_for_yba_ready_secs")
+		endTime := time.Now().Add(time.Duration(waitSecs) * time.Second)
+		success := false
+		for time.Now().Before(endTime) {
 			resp, err = http.Get(url)
 			if err != nil {
 				log.Info(fmt.Sprintf("YBA at %s not ready. Checking again in 10 seconds.", url))
 				time.Sleep(10 * time.Second)
 			} else {
+				success = true
 				break
 			}
+		}
+		if !success {
+			return fmt.Errorf("YBA at %s not ready after %d minutes", url, waitSecs/60)
 		}
 
 		if resp != nil {

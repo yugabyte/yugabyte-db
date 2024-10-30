@@ -8,3 +8,9 @@ properties:
   vnet:
     description: Azure vnet
     type: string
+  azu_network_rg_override:
+    description: Azure network resource group overriden at region level
+    type: string
+  rg_override:
+    description: Azure resource group overriden at region level
+    type: string

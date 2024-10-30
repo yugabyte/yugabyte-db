@@ -104,7 +104,7 @@ docker ps
 
 ```output
 CONTAINER ID   IMAGE                               COMMAND                  CREATED         STATUS         PORTS                                                                                                                                                                                               NAMES
-c1c98c29149b   yugabytedb/yugabyte:{{< yb-version version="stable" format="build">}}   "/sbin/tini -- bin/y…"   7 seconds ago   Up 5 seconds   0.0.0.0:5433->5433/tcp, 6379/tcp, 7100/tcp, 0.0.0.0:7000->7000/tcp, 0.0.0.0:9000->9000/tcp, 7200/tcp, 9100/tcp, 10100/tcp, 11000/tcp, 0.0.0.0:9042->9042/tcp, 0.0.0.0:15433->15433/tcp, 12000/tcp   yugabyte
+c1c98c29149b   yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}}   "/sbin/tini -- bin/y…"   7 seconds ago   Up 5 seconds   0.0.0.0:5433->5433/tcp, 6379/tcp, 7100/tcp, 0.0.0.0:7000->7000/tcp, 0.0.0.0:9000->9000/tcp, 7200/tcp, 9100/tcp, 10100/tcp, 11000/tcp, 0.0.0.0:9042->9042/tcp, 0.0.0.0:15433->15433/tcp, 12000/tcp   yugabyte
 ```
 
 Run the following command to check the cluster status:
@@ -159,7 +159,7 @@ The cluster you have created consists of two processes:
 - [YB-Master](../../architecture/yb-master/) keeps track of various metadata (list of tables, users, roles, permissions, and so on).
 - [YB-TServer](../../architecture/yb-tserver/) is responsible for the actual end user requests for data updates and queries.
 
-Using the YugabyteDB SQL shell, [ysqlsh](../../admin/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
+Using the YugabyteDB SQL shell, [ysqlsh](../../api/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
 
 To open the YSQL shell, run `ysqlsh`.
 
@@ -232,7 +232,7 @@ Perform the following to create a sample Java project:
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>jdbc-yugabytedb</artifactId>
-      <version>42.3.0</version>
+      <version>42.7.3-yb-1</version>
     </dependency>
 
     <!-- https://mvnrepository.com/artifact/com.zaxxer/HikariCP -->

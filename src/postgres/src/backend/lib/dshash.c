@@ -20,7 +20,7 @@
  * Future versions may support iterators and incremental resizing; for now
  * the implementation is minimalist.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -31,11 +31,11 @@
 
 #include "postgres.h"
 
+#include "common/hashfn.h"
 #include "lib/dshash.h"
 #include "storage/ipc.h"
 #include "storage/lwlock.h"
 #include "utils/dsa.h"
-#include "utils/hsearch.h"
 #include "utils/memutils.h"
 
 /*
@@ -110,8 +110,6 @@ struct dshash_table
 	dshash_table_control *control;	/* Control object in DSM. */
 	dsa_pointer *buckets;		/* Current bucket pointers in DSM. */
 	size_t		size_log2;		/* log2(number of buckets) */
-	bool		find_locked;	/* Is any partition lock held by 'find'? */
-	bool		find_exclusively_locked;	/* ... exclusively? */
 };
 
 /* Given a pointer to an item, find the entry (user data) it holds. */
@@ -126,6 +124,10 @@ struct dshash_table
 /* How many resize operations (bucket splits) have there been? */
 #define NUM_SPLITS(size_log2)					\
 	(size_log2 - DSHASH_NUM_PARTITIONS_LOG2)
+
+/* How many buckets are there in a given size? */
+#define NUM_BUCKETS(size_log2)		\
+	(((size_t) 1) << (size_log2))
 
 /* How many buckets are there in each partition at a given size? */
 #define BUCKETS_PER_PARTITION(size_log2)		\
@@ -153,6 +155,10 @@ struct dshash_table
 #define BUCKET_INDEX_FOR_PARTITION(partition, size_log2)	\
 	((partition) << NUM_SPLITS(size_log2))
 
+/* Choose partition based on bucket index. */
+#define PARTITION_FOR_BUCKET_INDEX(bucket_idx, size_log2)				\
+	((bucket_idx) >> NUM_SPLITS(size_log2))
+
 /* The head of the active bucket for a given hash value (lvalue). */
 #define BUCKET_FOR_HASH(hash_table, hash)								\
 	(hash_table->buckets[												\
@@ -160,31 +166,35 @@ struct dshash_table
 									   hash_table->size_log2)])
 
 static void delete_item(dshash_table *hash_table,
-			dshash_table_item *item);
+						dshash_table_item *item);
 static void resize(dshash_table *hash_table, size_t new_size);
 static inline void ensure_valid_bucket_pointers(dshash_table *hash_table);
 static inline dshash_table_item *find_in_bucket(dshash_table *hash_table,
-			   const void *key,
-			   dsa_pointer item_pointer);
+												const void *key,
+												dsa_pointer item_pointer);
 static void insert_item_into_bucket(dshash_table *hash_table,
-						dsa_pointer item_pointer,
-						dshash_table_item *item,
-						dsa_pointer *bucket);
+									dsa_pointer item_pointer,
+									dshash_table_item *item,
+									dsa_pointer *bucket);
 static dshash_table_item *insert_into_bucket(dshash_table *hash_table,
-				   const void *key,
-				   dsa_pointer *bucket);
+											 const void *key,
+											 dsa_pointer *bucket);
 static bool delete_key_from_bucket(dshash_table *hash_table,
-					   const void *key,
-					   dsa_pointer *bucket_head);
+								   const void *key,
+								   dsa_pointer *bucket_head);
 static bool delete_item_from_bucket(dshash_table *hash_table,
-						dshash_table_item *item,
-						dsa_pointer *bucket_head);
+									dshash_table_item *item,
+									dsa_pointer *bucket_head);
 static inline dshash_hash hash_key(dshash_table *hash_table, const void *key);
 static inline bool equal_keys(dshash_table *hash_table,
-		   const void *a, const void *b);
+							  const void *a, const void *b);
 
 #define PARTITION_LOCK(hash_table, i)			\
 	(&(hash_table)->control->partitions[(i)].lock)
+
+#define ASSERT_NO_PARTITION_LOCKS_HELD_BY_ME(hash_table) \
+	Assert(!LWLockAnyHeldByMe(&(hash_table)->control->partitions[0].lock, \
+		   DSHASH_NUM_PARTITIONS, sizeof(dshash_partition)))
 
 /*
  * Create a new hash table backed by the given dynamic shared area, with the
@@ -225,9 +235,6 @@ dshash_create(dsa_area *area, const dshash_parameters *params, void *arg)
 			partitions[i].count = 0;
 		}
 	}
-
-	hash_table->find_locked = false;
-	hash_table->find_exclusively_locked = false;
 
 	/*
 	 * Set up the initial array of buckets.  Our initial size is the same as
@@ -277,8 +284,6 @@ dshash_attach(dsa_area *area, const dshash_parameters *params,
 	hash_table->params = *params;
 	hash_table->arg = arg;
 	hash_table->control = dsa_get_address(area, control);
-	hash_table->find_locked = false;
-	hash_table->find_exclusively_locked = false;
 	Assert(hash_table->control->magic == DSHASH_MAGIC);
 
 	/*
@@ -301,7 +306,7 @@ dshash_attach(dsa_area *area, const dshash_parameters *params,
 void
 dshash_detach(dshash_table *hash_table)
 {
-	Assert(!hash_table->find_locked);
+	ASSERT_NO_PARTITION_LOCKS_HELD_BY_ME(hash_table);
 
 	/* The hash table may have been destroyed.  Just free local memory. */
 	pfree(hash_table);
@@ -324,7 +329,7 @@ dshash_destroy(dshash_table *hash_table)
 	ensure_valid_bucket_pointers(hash_table);
 
 	/* Free all the entries. */
-	size = ((size_t) 1) << hash_table->size_log2;
+	size = NUM_BUCKETS(hash_table->size_log2);
 	for (i = 0; i < size; ++i)
 	{
 		dsa_pointer item_pointer = hash_table->buckets[i];
@@ -375,7 +380,7 @@ dshash_get_hash_table_handle(dshash_table *hash_table)
  * the caller must take care to ensure that the entry is not left corrupted.
  * The lock mode is either shared or exclusive depending on 'exclusive'.
  *
- * The caller must not lock a lock already.
+ * The caller must not hold a lock already.
  *
  * Note that the lock held is in fact an LWLock, so interrupts will be held on
  * return from this function, and not resumed until dshash_release_lock is
@@ -392,7 +397,7 @@ dshash_find(dshash_table *hash_table, const void *key, bool exclusive)
 	partition = PARTITION_FOR_HASH(hash);
 
 	Assert(hash_table->control->magic == DSHASH_MAGIC);
-	Assert(!hash_table->find_locked);
+	ASSERT_NO_PARTITION_LOCKS_HELD_BY_ME(hash_table);
 
 	LWLockAcquire(PARTITION_LOCK(hash_table, partition),
 				  exclusive ? LW_EXCLUSIVE : LW_SHARED);
@@ -409,9 +414,7 @@ dshash_find(dshash_table *hash_table, const void *key, bool exclusive)
 	}
 	else
 	{
-		/* The caller will free the lock by calling dshash_release. */
-		hash_table->find_locked = true;
-		hash_table->find_exclusively_locked = exclusive;
+		/* The caller will free the lock by calling dshash_release_lock. */
 		return ENTRY_FROM_ITEM(item);
 	}
 }
@@ -441,7 +444,7 @@ dshash_find_or_insert(dshash_table *hash_table,
 	partition = &hash_table->control->partitions[partition_index];
 
 	Assert(hash_table->control->magic == DSHASH_MAGIC);
-	Assert(!hash_table->find_locked);
+	ASSERT_NO_PARTITION_LOCKS_HELD_BY_ME(hash_table);
 
 restart:
 	LWLockAcquire(PARTITION_LOCK(hash_table, partition_index),
@@ -486,8 +489,6 @@ restart:
 	}
 
 	/* The caller must release the lock with dshash_release_lock. */
-	hash_table->find_locked = true;
-	hash_table->find_exclusively_locked = true;
 	return ENTRY_FROM_ITEM(item);
 }
 
@@ -506,7 +507,7 @@ dshash_delete_key(dshash_table *hash_table, const void *key)
 	bool		found;
 
 	Assert(hash_table->control->magic == DSHASH_MAGIC);
-	Assert(!hash_table->find_locked);
+	ASSERT_NO_PARTITION_LOCKS_HELD_BY_ME(hash_table);
 
 	hash = hash_key(hash_table, key);
 	partition = PARTITION_FOR_HASH(hash);
@@ -543,14 +544,10 @@ dshash_delete_entry(dshash_table *hash_table, void *entry)
 	size_t		partition = PARTITION_FOR_HASH(item->hash);
 
 	Assert(hash_table->control->magic == DSHASH_MAGIC);
-	Assert(hash_table->find_locked);
-	Assert(hash_table->find_exclusively_locked);
 	Assert(LWLockHeldByMeInMode(PARTITION_LOCK(hash_table, partition),
 								LW_EXCLUSIVE));
 
 	delete_item(hash_table, item);
-	hash_table->find_locked = false;
-	hash_table->find_exclusively_locked = false;
 	LWLockRelease(PARTITION_LOCK(hash_table, partition));
 }
 
@@ -564,13 +561,7 @@ dshash_release_lock(dshash_table *hash_table, void *entry)
 	size_t		partition_index = PARTITION_FOR_HASH(item->hash);
 
 	Assert(hash_table->control->magic == DSHASH_MAGIC);
-	Assert(hash_table->find_locked);
-	Assert(LWLockHeldByMeInMode(PARTITION_LOCK(hash_table, partition_index),
-								hash_table->find_exclusively_locked
-								? LW_EXCLUSIVE : LW_SHARED));
 
-	hash_table->find_locked = false;
-	hash_table->find_exclusively_locked = false;
 	LWLockRelease(PARTITION_LOCK(hash_table, partition_index));
 }
 
@@ -593,6 +584,150 @@ dshash_memhash(const void *v, size_t size, void *arg)
 }
 
 /*
+ * Sequentially scan through dshash table and return all the elements one by
+ * one, return NULL when all elements have been returned.
+ *
+ * dshash_seq_term needs to be called when a scan finished.  The caller may
+ * delete returned elements midst of a scan by using dshash_delete_current()
+ * if exclusive = true.
+ */
+void
+dshash_seq_init(dshash_seq_status *status, dshash_table *hash_table,
+				bool exclusive)
+{
+	status->hash_table = hash_table;
+	status->curbucket = 0;
+	status->nbuckets = 0;
+	status->curitem = NULL;
+	status->pnextitem = InvalidDsaPointer;
+	status->curpartition = -1;
+	status->exclusive = exclusive;
+}
+
+/*
+ * Returns the next element.
+ *
+ * Returned elements are locked and the caller may not release the lock. It is
+ * released by future calls to dshash_seq_next() or dshash_seq_term().
+ */
+void *
+dshash_seq_next(dshash_seq_status *status)
+{
+	dsa_pointer next_item_pointer;
+
+	/*
+	 * Not yet holding any partition locks. Need to determine the size of the
+	 * hash table, it could have been resized since we were looking last.
+	 * Since we iterate in partition order, we can start by unconditionally
+	 * lock partition 0.
+	 *
+	 * Once we hold the lock, no resizing can happen until the scan ends. So
+	 * we don't need to repeatedly call ensure_valid_bucket_pointers().
+	 */
+	if (status->curpartition == -1)
+	{
+		Assert(status->curbucket == 0);
+		ASSERT_NO_PARTITION_LOCKS_HELD_BY_ME(status->hash_table);
+
+		status->curpartition = 0;
+
+		LWLockAcquire(PARTITION_LOCK(status->hash_table,
+									 status->curpartition),
+					  status->exclusive ? LW_EXCLUSIVE : LW_SHARED);
+
+		ensure_valid_bucket_pointers(status->hash_table);
+
+		status->nbuckets =
+			NUM_BUCKETS(status->hash_table->control->size_log2);
+		next_item_pointer = status->hash_table->buckets[status->curbucket];
+	}
+	else
+		next_item_pointer = status->pnextitem;
+
+	Assert(LWLockHeldByMeInMode(PARTITION_LOCK(status->hash_table,
+											   status->curpartition),
+								status->exclusive ? LW_EXCLUSIVE : LW_SHARED));
+
+	/* Move to the next bucket if we finished the current bucket */
+	while (!DsaPointerIsValid(next_item_pointer))
+	{
+		int			next_partition;
+
+		if (++status->curbucket >= status->nbuckets)
+		{
+			/* all buckets have been scanned. finish. */
+			return NULL;
+		}
+
+		/* Check if move to the next partition */
+		next_partition =
+			PARTITION_FOR_BUCKET_INDEX(status->curbucket,
+									   status->hash_table->size_log2);
+
+		if (status->curpartition != next_partition)
+		{
+			/*
+			 * Move to the next partition. Lock the next partition then
+			 * release the current, not in the reverse order to avoid
+			 * concurrent resizing.  Avoid dead lock by taking lock in the
+			 * same order with resize().
+			 */
+			LWLockAcquire(PARTITION_LOCK(status->hash_table,
+										 next_partition),
+						  status->exclusive ? LW_EXCLUSIVE : LW_SHARED);
+			LWLockRelease(PARTITION_LOCK(status->hash_table,
+										 status->curpartition));
+			status->curpartition = next_partition;
+		}
+
+		next_item_pointer = status->hash_table->buckets[status->curbucket];
+	}
+
+	status->curitem =
+		dsa_get_address(status->hash_table->area, next_item_pointer);
+
+	/*
+	 * The caller may delete the item. Store the next item in case of
+	 * deletion.
+	 */
+	status->pnextitem = status->curitem->next;
+
+	return ENTRY_FROM_ITEM(status->curitem);
+}
+
+/*
+ * Terminates the seqscan and release all locks.
+ *
+ * Needs to be called after finishing or when exiting a seqscan.
+ */
+void
+dshash_seq_term(dshash_seq_status *status)
+{
+	if (status->curpartition >= 0)
+		LWLockRelease(PARTITION_LOCK(status->hash_table, status->curpartition));
+}
+
+/*
+ * Remove the current entry of the seq scan.
+ */
+void
+dshash_delete_current(dshash_seq_status *status)
+{
+	dshash_table *hash_table = status->hash_table;
+	dshash_table_item *item = status->curitem;
+	size_t		partition PG_USED_FOR_ASSERTS_ONLY;
+
+	partition = PARTITION_FOR_HASH(item->hash);
+
+	Assert(status->exclusive);
+	Assert(hash_table->control->magic == DSHASH_MAGIC);
+	Assert(LWLockHeldByMeInMode(PARTITION_LOCK(hash_table, partition),
+								LW_EXCLUSIVE));
+
+	delete_item(hash_table, item);
+}
+
+/*
  * Print debugging information about the internal state of the hash table to
  * stderr.  The caller must hold no partition locks.
  */
@@ -603,7 +738,7 @@ dshash_dump(dshash_table *hash_table)
 	size_t		j;
 
 	Assert(hash_table->control->magic == DSHASH_MAGIC);
-	Assert(!hash_table->find_locked);
+	ASSERT_NO_PARTITION_LOCKS_HELD_BY_ME(hash_table);
 
 	for (i = 0; i < DSHASH_NUM_PARTITIONS; ++i)
 	{

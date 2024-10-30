@@ -37,7 +37,7 @@ public class TestPgForeignKey extends BasePgSQLTest {
     Map<String, String> flagMap = super.getTServerFlags();
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
-    flagMap.putAll(FailOnConflictTestGflags);
+    setFailOnConflictFlags(flagMap);
     return flagMap;
   }
 
@@ -256,9 +256,9 @@ public class TestPgForeignKey extends BasePgSQLTest {
       extraStmt.execute("BEGIN");
       extraStmt.execute("SELECT * FROM parent WHERE k = 1 FOR UPDATE");
 
-      runInvalidQuery(stmt, "INSERT INTO child VALUES(1, 1)", true,
+      runInvalidQuery(stmt, "INSERT INTO child VALUES(1, 1)", false,
         "could not serialize access due to concurrent update",
-        "conflicts with higher priority transaction");
+        "current transaction is expired or aborted");
       extraStmt.execute("ROLLBACK");
       assertNoRows(stmt, "SELECT * FROM child");
 
@@ -311,4 +311,42 @@ public class TestPgForeignKey extends BasePgSQLTest {
     testInsertConcurrency(Connection.TRANSACTION_SERIALIZABLE);
   }
 
+  @Test
+  public void testAddForeignKeyConcurrent() throws Exception {
+    try (Statement stmt = connection.createStatement();
+         Connection ddlConnection = getConnectionBuilder().connect();
+         Statement ddlStmt = ddlConnection.createStatement()) {
+      // Create two tables
+      ddlStmt.execute("CREATE TABLE parent(k int PRIMARY KEY)");
+      ddlStmt.execute("CREATE TABLE child(k int)");
+
+      // Insert data into parent table
+      stmt.execute("INSERT INTO parent VALUES (1), (2), (3)");
+
+      // Start inserting data into child table
+      stmt.execute("INSERT INTO child VALUES (1)");
+      stmt.execute("INSERT INTO child VALUES (2)");
+
+      // On DDL connection, add foreign key constraint
+      ddlStmt.execute("ALTER TABLE child ADD CONSTRAINT fk_child_parent " +
+                      "FOREIGN KEY (k) REFERENCES parent(k)");
+
+      // Try inserting a valid row on DML connection
+      stmt.execute("INSERT INTO child VALUES (3)");
+
+      // Try inserting an invalid row on DML connection
+      runInvalidQuery(stmt,
+        "INSERT INTO child VALUES (4)",
+        "violates foreign key constraint \"fk_child_parent\"");
+
+      // Try inserting an invalid row on the DDL connection
+      runInvalidQuery(ddlStmt,
+        "INSERT INTO child VALUES (4)",
+        "violates foreign key constraint \"fk_child_parent\"");
+
+      // Verify the data
+      assertQuery(stmt, "SELECT k FROM child ORDER BY k",
+          new Row(1), new Row(2), new Row(3));
+    }
+  }
 }

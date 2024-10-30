@@ -64,11 +64,11 @@ METRIC_DEFINE_gauge_int64(server, hybrid_clock_skew,
                            yb::MetricUnit::kMicroseconds,
                            "Server clock skew.");
 
-DEFINE_UNKNOWN_string(time_source, "",
-              "The clock source that HybridClock should use (for tests only). "
-              "Leave empty for WallClock, other values depend on added clock providers and "
+DEFINE_NON_RUNTIME_string(time_source, "",
+              "The clock source that HybridClock should use. "
+              "Leave empty for WallClock, clockbound for ClockboundClock, "
+              "and other values depend on added clock providers and "
               "specific for appropriate tests, that adds them.");
-TAG_FLAG(time_source, hidden);
 
 DEFINE_UNKNOWN_bool(fail_on_out_of_range_clock_skew, true,
             "In case transactional tables are present, crash the process if clock skew greater "
@@ -165,9 +165,13 @@ void HybridClock::NowWithError(HybridTime *hybrid_time, uint64_t *max_error_usec
 
   if (now->time_point < current_components.last_usec) {
     auto delta_us = current_components.last_usec - now->time_point;
-    if (delta_us > FLAGS_max_clock_skew_usec) {
+    // Propagated hybrid time cannot be higher than the global limit.
+    auto max_global_time = clock_->MaxGlobalTime(*now);
+    if (delta_us > FLAGS_max_clock_skew_usec ||
+        current_components.last_usec > max_global_time) {
       auto delta = MonoDelta::FromMicroseconds(delta_us);
-      auto max_allowed = MonoDelta::FromMicroseconds(FLAGS_max_clock_skew_usec);
+      auto max_allowed = MonoDelta::FromMicroseconds(
+          std::min(FLAGS_max_clock_skew_usec, max_global_time - now->time_point));
       if ((ANNOTATE_UNPROTECTED_READ(FLAGS_fail_on_out_of_range_clock_skew) ||
            (ANNOTATE_UNPROTECTED_READ(FLAGS_clock_skew_force_crash_bound_usec) > 0 &&
             delta_us > ANNOTATE_UNPROTECTED_READ(FLAGS_clock_skew_force_crash_bound_usec))) &&

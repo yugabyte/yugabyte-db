@@ -66,6 +66,14 @@ message ListLiveTabletServersResponsePB {
   repeated Entry servers = 2;
 }
 
+message RemoveTabletServerRequestPB {
+  optional bytes permanent_uuid = 1;
+}
+
+message RemoveTabletServerResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 // ListMastersRequest/Response: get information about all of the known
 // master servers, including this node from the in-memory options.
 message ListMastersRequestPB {
@@ -338,6 +346,7 @@ service MasterCluster {
   rpc ListTabletServers(ListTabletServersRequestPB) returns (ListTabletServersResponsePB);
   rpc ListLiveTabletServers(ListLiveTabletServersRequestPB)
       returns (ListLiveTabletServersResponsePB);
+  rpc RemoveTabletServer(RemoveTabletServerRequestPB) returns (RemoveTabletServerResponsePB);
   rpc ListMasters(ListMastersRequestPB) returns (ListMastersResponsePB);
   rpc ListMasterRaftPeers(ListMasterRaftPeersRequestPB) returns (ListMasterRaftPeersResponsePB);
   rpc GetMasterRegistration(GetMasterRegistrationRequestPB)

@@ -1,0 +1,163 @@
+check_ulimit() {
+    local resource=$1
+    local expected_value=$2
+    local current_value
+
+    # Get the current ulimit value for the resource
+    current_value=$(ulimit -a | grep "$resource" | awk '{print $NF}')
+
+    # Use a large number for comparison if the value is 'unlimited'
+    local unlimited_value=1000000000
+
+    if [ "$expected_value" == "unlimited" ]; then
+        expected_value=$unlimited_value
+    fi
+
+    if [ "$current_value" == "unlimited" ]; then
+        current_value=$unlimited_value
+    fi
+
+    # Check if current value is greater than or equal to the expected value
+    if [ "$current_value" -ge "$expected_value" ]; then
+        echo "[PASS] $resource is set to $current_value (expected: $expected_value or higher)"
+        add_result "$resource" "PASS" "$resource is set to $current_value (expected: $expected_value or higher)"
+    else
+        echo "[FAIL] $resource is set to $current_value (expected: $expected_value or higher)"
+        add_result "$resource" "FAIL" "$resource is set to $current_value (expected: $expected_value or higher)"
+    fi
+}
+
+is_subdirectory() {
+  local dir="$1"
+  local parent="$2"
+
+  # Resolve the absolute canonical paths
+  dir=$(realpath -m "$dir")
+  parent=$(realpath -m "$parent")
+
+  # Append a trailing slash to the parent directory for accurate matching
+  case "$dir/" in
+    "$parent/"* ) return 0 ;;  # dir is inside parent
+    * ) return 1 ;;            # dir is not inside parent
+  esac
+}
+
+
+verify_systemd_conf() {
+    local file=$1
+    local setting=$2
+    if grep -q "$setting" "$file"; then
+        echo "[PASS] $setting is set in $file"
+        add_result "$setting in $file" "PASS" "$setting is set in $file"
+    else
+        echo "[FAIL] $setting is not set in $file"
+        add_result "$setting in $file" "FAIL" "$setting is not set in $file"
+    fi
+}
+
+
+verify_sysctl() {
+    local param=$1
+    local expected_value=$2
+    local current_value
+
+    current_value=$(sysctl -n "$param")
+
+    if [ "$current_value" -eq "$expected_value" ]; then
+        echo "[PASS] $param is set to $current_value (expected: $expected_value)"
+        add_result "$param" "PASS" "$param is set to $current_value (expected: $expected_value)"
+    else
+        echo "[FAIL] $param is set to $current_value (expected: $expected_value)"
+        add_result "$param" "FAIL" "$param is set to $current_value (expected: $expected_value)"
+    fi
+}
+
+# Verify ulimit settings
+for key in "${!limits[@]}"; do
+    local key_name="$key"
+    check_ulimit "$key_name" "${limits[$key]}"
+done
+
+# Determine the PLATFORM_ID
+platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"')
+
+if [[ "$platform_id" == "platform:el8" ]]; then
+    # Verify DefaultLimitNOFILE in systemd configuration files
+    verify_systemd_conf /etc/systemd/system.conf "DefaultLimitNOFILE={{ fd_limit }}"
+    verify_systemd_conf /etc/systemd/user.conf "DefaultLimitNOFILE={{ fd_limit }}"
+fi
+
+# Verify sysctl settings
+verify_sysctl "vm.swappiness" "{{ vm_swappiness }}"
+verify_sysctl "vm.max_map_count" "{{ vm_max_map_count }}"
+
+# Verify kernel core pattern
+kernel_core_pattern_value=$(sysctl -n kernel.core_pattern)
+if [ "$kernel_core_pattern_value" == "{{ kernel_core_pattern }}" ]; then
+    echo "[PASS] kernel.core_pattern is set to $kernel_core_pattern_value"
+    add_result "kernel.core_pattern" "PASS" "kernel.core_pattern is set to $kernel_core_pattern_value"
+else
+    echo "[FAIL] kernel.core_pattern is set to $kernel_core_pattern_value \
+          (expected: {{ kernel_core_pattern }})"
+    add_result "kernel.core_pattern" "FAIL" "kernel.core_pattern is set to $kernel_core_pattern_value (expected: {{ kernel_core_pattern }})"
+fi
+
+yb_home_dir={{ yb_home_dir }}
+threshold=49 #Gigabytes
+# Convert the space-separated string to an array in bash
+mount_points="{{ mount_points | default('') | trim }}"
+IFS=' ' read -ra mount_points_array <<< "$mount_points"
+# Verify each mount point
+for mount_point in "${mount_points_array[@]}"; do
+    if is_subdirectory "$mount_point" "$yb_home_dir"; then
+      message="Mountpoint $mount_point is inside home directory $yb_home_dir"
+      add_result "home directory check" "FAIL" "$message"
+    fi
+    if [ -d "$mount_point" ]; then
+        if su - {{ yb_user }} -c "test -w \"$mount_point\""; then
+            result="PASS"
+            message="Directory $mount_point exists and is writable by {{ yb_user }}."
+            echo "[PASS] $message"
+        else
+            result="FAIL"
+            message="Directory $mount_point exists but is not {{ yb_user }} writable."
+            echo "[FAIL] $message"
+            any_fail=1
+        fi
+    else
+        result="FAIL"
+        message="Directory $mount_point does not exist."
+        echo "[FAIL] $message"
+        any_fail=1
+    fi
+    add_result "$mount_point Check" "$result" "$message"
+
+    if [ -d "$mount_point" ]; then
+        # Get the available disk space in gigabytes.
+        free_space_gb=$(df -BG --output=avail "$mount_point" | tail -n 1 | tr -d 'G ')
+        if [ "$free_space_gb" -gt "$threshold" ]; then
+            result="PASS"
+            message="Sufficient disk space available: ${free_space_gb}G"
+            echo "[PASS] $message"
+        else
+            result="FAIL"
+            message="Insufficient disk space: ${free_space_gb}G available, ${threshold}G required"
+            echo "[FAIL] $message"
+            any_fail=1
+        fi
+        add_result "$mount_point Free space check" "$result" "$message"
+    fi
+done
+
+platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"')
+if [[ "$platform_id" == "platform:el8" ]]; then
+    # Check if selinux module can be imported
+    /usr/bin/python3 -c "import selinux" 2>/dev/null
+    if [ $? -eq 0 ]; then
+        echo "libselinux bindings are correctly working for the system's default Python."
+        add_result "python libselinux check" "PASS" ""
+    else
+        echo "libselinux bindings are NOT installed or working for the system's default Python."
+        add_result "python libselinux check" "FAIL" "cannot import selinux in system python3"
+    fi
+fi

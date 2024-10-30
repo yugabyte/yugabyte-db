@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Using indexes enhances database performance by enabling the database server to find rows faster. You can create, drop, and list indexes, as well as use indexes on expressions.
+Using indexes enhances database performance by enabling the database server to find rows faster. You can create, drop, and list indexes.
 
 ## Create indexes
 
@@ -28,13 +28,13 @@ For more information, see [CREATE INDEX](../../../../api/ycql/ddl_create_index/)
 
 ## List indexes and verify the query plan
 
-You can use the [DESCRIBE INDEX](../../../../admin/ycqlsh/#describe) command to check the indexes as follows:
+You can use the [DESCRIBE INDEX](../../../../api/ycqlsh/#describe) command to check the indexes as follows:
 
 ```cql
 DESCRIBE INDEX <index_name>
 ```
 
-For more information, see [DESCRIBE INDEX](../../../../admin/ycqlsh/#describe).
+For more information, see [DESCRIBE INDEX](../../../../api/ycqlsh/#describe).
 
 You can also use the `EXPLAIN` statement to check if a query uses an index and determine the query plan before execution.
 

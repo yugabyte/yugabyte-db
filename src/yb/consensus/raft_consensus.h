@@ -121,7 +121,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     TableType table_type,
     ThreadPool* raft_pool,
     rpc::ThreadPool* raft_notifications_pool,
-    RetryableRequestsManager* retryable_requests_manager,
+    RetryableRequests* retryable_requests,
     MultiRaftManager* multi_raft_manager);
 
   // Creates RaftConsensus.
@@ -141,7 +141,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     std::shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
-    RetryableRequestsManager* retryable_requests_manager);
+    RetryableRequests* retryable_requests);
 
   virtual ~RaftConsensus();
 
@@ -280,6 +280,21 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
       const bool fetch_single_entry = false) override;
 
+  Result<ReadOpsResult> ReadReplicatedMessagesForConsistentCDC(
+      OpId from,
+      uint64_t stream_safe_time,
+      CoarseTimePoint deadline,
+      bool fetch_single_entry = false,
+      int64_t* last_replicated_opid_index = nullptr) override;
+
+  // Read all the messages in a segment for CDC producer.
+  Result<ReadOpsResult> ReadReplicatedMessagesInSegmentForCDC(
+      const OpId& from_op_id,
+      CoarseTimePoint deadline,
+      bool fetch_single_entry = false,
+      int64_t* last_committed_index = nullptr,
+      HybridTime* consistent_stream_safe_time_footer = nullptr);
+
   void UpdateCDCConsumerOpId(const yb::OpId& op_id) override;
 
   // Start memory tracking of following operation in case it is still present in our caches.
@@ -304,13 +319,12 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
       ConsensusRound* round, const StdStatusCallback& client_cb, const Status& status);
 
   Result<RetryableRequests> GetRetryableRequests() const;
-  Status FlushRetryableRequests();
-  Status CopyRetryableRequestsTo(const std::string& dest_path);
+  Result<std::unique_ptr<RetryableRequests>> TakeSnapshotOfRetryableRequests();
   OpId GetLastFlushedOpIdInRetryableRequests();
+  Status SetLastFlushedOpIdInRetryableRequests(const OpId& op_id);
 
   int64_t follower_lag_ms() const;
 
-  bool TEST_HasRetryableRequestsOnDisk() const;
   int TEST_RetryableRequestTimeoutSecs() const;
 
  protected:

@@ -52,6 +52,9 @@ char *DDLQueuePrimaryKeyQueryId = NULL;
 /* Util functions. */
 static bool IsInIgnoreList(EventTriggerData *trig_data);
 
+/* Per DDL Variables. */
+static bool should_replicate_ddl = false;
+
 /*
  * _PG_init gets called when the extension is loaded.
  */
@@ -109,6 +112,20 @@ _PG_init(void)
 		NULL, NULL, NULL);
 }
 
+bool
+IsReplicationSource()
+{
+	return ReplicationRole == REPLICATION_ROLE_SOURCE ||
+		   ReplicationRole == REPLICATION_ROLE_BIDIRECTIONAL;
+}
+
+bool
+IsReplicationTarget()
+{
+	return ReplicationRole == REPLICATION_ROLE_TARGET ||
+		   ReplicationRole == REPLICATION_ROLE_BIDIRECTIONAL;
+}
+
 void
 InsertIntoTable(const char *table_name, int64 start_time, int64 query_id,
 				Jsonb *yb_data)
@@ -164,7 +181,7 @@ InsertIntoDDLQueue(Jsonb *yb_data)
  *   individual DDL (eg setting oids).
  */
 void
-DisallowMultiStatementQueries(const char *command_tag)
+DisallowMultiStatementQueries(CommandTag command_tag)
 {
 	List *parse_tree = pg_parse_query(debug_query_string);
 	ListCell *lc;
@@ -173,7 +190,7 @@ DisallowMultiStatementQueries(const char *command_tag)
 	{
 		++count;
 		RawStmt *stmt = (RawStmt *) lfirst(lc);
-		const char *stmt_command_tag = CreateCommandTag(stmt->stmt);
+		CommandTag stmt_command_tag = CreateCommandTag(stmt->stmt);
 
 		if (count > 1 || command_tag != stmt_command_tag)
 			elog(ERROR,
@@ -200,42 +217,37 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
 	(void) AddNumericJsonEntry(state, "version", 1);
 	(void) AddStringJsonEntry(state, "query", debug_query_string);
-	(void) AddStringJsonEntry(state, "command_tag", trig_data->tag);
+	(void) AddStringJsonEntry(state, "command_tag",
+							  GetCommandTagName(trig_data->tag));
 
 	const char *current_user = GetUserNameFromId(save_userid, false);
 	if (current_user)
 		(void) AddStringJsonEntry(state, "user", current_user);
 
-	FunctionCallInfoData fcinfo;
-	InitFunctionCallInfoData(fcinfo, NULL, 0, InvalidOid, NULL, NULL);
-	const char *cur_schema = DatumGetCString(current_schema(&fcinfo));
+	LOCAL_FCINFO(fcinfo, 0);
+	InitFunctionCallInfoData(*fcinfo, NULL, 0, InvalidOid, NULL, NULL);
+	const char *cur_schema = DatumGetCString(current_schema(fcinfo));
 	if (cur_schema)
 		(void) AddStringJsonEntry(state, "schema", cur_schema);
 
-	/*
-	 * TODO(jhe): Need a better way of handling all these DDL types. Perhaps can
-	 * mimic CreateCommandTag and return a custom enum instead, thus allowing
-	 * for switch cases here.
-	 */
 	if (EnableManualDDLReplication)
 	{
 		(void) AddBoolJsonEntry(state, "manual_replication", true);
 	}
 	else
 	{
-		DisallowMultiStatementQueries(trig_data->tag);
-		bool should_replicate_ddl = ProcessSourceEventTriggerDDLCommands(state);
-		if (!should_replicate_ddl)
-			goto exit;
+		should_replicate_ddl |= ProcessSourceEventTriggerDDLCommands(state);
 	}
 
-	// Construct the jsonb and insert completed row into ddl_queue table.
-	JsonbValue *jsonb_val = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
-	Jsonb *jsonb = JsonbValueToJsonb(jsonb_val);
+	if (should_replicate_ddl)
+	{
+		// Construct the jsonb and insert completed row into ddl_queue table.
+		JsonbValue *jsonb_val = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+		Jsonb *jsonb = JsonbValueToJsonb(jsonb_val);
 
-	InsertIntoDDLQueue(jsonb);
+		InsertIntoDDLQueue(jsonb);
+	}
 
-exit:
 	CLOSE_MEM_CONTEXT_AND_SPI;
 }
 
@@ -273,28 +285,82 @@ HandleTargetDDLEnd(EventTriggerData *trig_data)
 	CLOSE_MEM_CONTEXT_AND_SPI;
 }
 
+void
+HandleSourceSQLDrop(EventTriggerData *trig_data)
+{
+	if (EnableManualDDLReplication)
+		return;
+
+	// Create memory context for handling query execution.
+	MemoryContext context_new, context_old;
+	Oid save_userid;
+	int save_sec_context;
+	INIT_MEM_CONTEXT_AND_SPI_CONNECT(
+      "yb_xcluster_ddl_replication.HandleSourceSQLDrop context");
+
+	should_replicate_ddl |= ProcessSourceEventTriggerDroppedObjects();
+
+	CLOSE_MEM_CONTEXT_AND_SPI;
+}
+
+PG_FUNCTION_INFO_V1(handle_ddl_start);
+Datum
+handle_ddl_start(PG_FUNCTION_ARGS)
+{
+	if (!CALLED_AS_EVENT_TRIGGER(fcinfo)) /* internal error */
+		elog(ERROR, "not fired by event trigger manager");
+
+	if (ReplicationRole == REPLICATION_ROLE_DISABLED)
+		PG_RETURN_NULL();
+
+	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
+	if (IsInIgnoreList(trig_data))
+		PG_RETURN_NULL();
+
+	if (IsReplicationSource())
+	{
+		/*
+		 * Do some initial checks here before the source query runs.
+		 * Also reset should_replicate_ddl for this new DDL.
+		 */
+		if (EnableManualDDLReplication)
+		{
+			/*
+			 * Always replicate manual DDLs regardless of what they are.
+			 * Will show up on the target with a manual_replication field set.
+			 */
+			should_replicate_ddl = true;
+		}
+		else
+		{
+			DisallowMultiStatementQueries(trig_data->tag);
+			should_replicate_ddl = false;
+		}
+	}
+
+	PG_RETURN_NULL();
+}
+
 PG_FUNCTION_INFO_V1(handle_ddl_end);
 Datum
 handle_ddl_end(PG_FUNCTION_ARGS)
 {
-	if (ReplicationRole == REPLICATION_ROLE_DISABLED)
-		PG_RETURN_NULL();
-
 	if (!CALLED_AS_EVENT_TRIGGER(fcinfo)) /* internal error */
 		elog(ERROR, "not fired by event trigger manager");
+
+	if (ReplicationRole == REPLICATION_ROLE_DISABLED)
+		PG_RETURN_NULL();
 
 	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
 
 	if (IsInIgnoreList(trig_data))
 		PG_RETURN_NULL();
 
-	if (ReplicationRole == REPLICATION_ROLE_SOURCE ||
-		ReplicationRole == REPLICATION_ROLE_BIDIRECTIONAL)
+	if (IsReplicationSource())
 	{
 		HandleSourceDDLEnd(trig_data);
 	}
-	if (ReplicationRole == REPLICATION_ROLE_TARGET ||
-		ReplicationRole == REPLICATION_ROLE_BIDIRECTIONAL)
+	if (IsReplicationTarget())
 	{
 		HandleTargetDDLEnd(trig_data);
 	}
@@ -302,12 +368,37 @@ handle_ddl_end(PG_FUNCTION_ARGS)
 	PG_RETURN_NULL();
 }
 
+PG_FUNCTION_INFO_V1(handle_sql_drop);
+Datum
+handle_sql_drop(PG_FUNCTION_ARGS)
+{
+	if (!CALLED_AS_EVENT_TRIGGER(fcinfo)) /* internal error */
+		elog(ERROR, "not fired by event trigger manager");
+
+	if (ReplicationRole == REPLICATION_ROLE_DISABLED)
+		PG_RETURN_NULL();
+
+	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
+
+	if (IsInIgnoreList(trig_data))
+		PG_RETURN_NULL();
+
+	if (IsReplicationSource())
+	{
+		HandleSourceSQLDrop(trig_data);
+	}
+
+	/* HandleTargetDDLEnd will be handled in handle_ddl_end. */
+
+	PG_RETURN_NULL();
+}
+
 static bool
 IsInIgnoreList(EventTriggerData *trig_data)
 {
-	if (strncmp(trig_data->tag, "CREATE EXTENSION", 16) == 0 ||
-		strncmp(trig_data->tag, "DROP EXTENSION", 14) == 0 ||
-		strncmp(trig_data->tag, "ALTER EXTENSION", 15) == 0)
+	if (trig_data->tag == CMDTAG_CREATE_EXTENSION ||
+		trig_data->tag == CMDTAG_DROP_EXTENSION ||
+		trig_data->tag == CMDTAG_ALTER_EXTENSION)
 	{
 		return true;
 	}

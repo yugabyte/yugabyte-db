@@ -27,6 +27,7 @@ import java.io.InputStream;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -55,7 +56,9 @@ public class ReleasesUtils {
   @Inject private ConfigHelper configHelper;
   @Inject private RuntimeConfGetter confGetter;
 
-  public final String RELEASE_PATH_CONFKEY = "yb.releases.artifacts.upload_path";
+  public final String RELEASE_PATH_CONFKEY = "yb.releases.artifacts.relative_upload_path";
+  public final String STORAGE_PATH_CONFKEY = "yb.storage.path";
+  public final String OLD_RELEASE_STORAGE_PATH_CONFKEY = "yb.releases.artifacts.upload_path";
 
   public final String YB_PACKAGE_REGEX =
       "yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz";
@@ -137,20 +140,29 @@ public class ReleasesUtils {
   }
 
   public ExtractedMetadata versionMetadataFromURL(URL url) {
+    // Best effort to get sha256 from url
+    // The current url is sha1, not sha256. When we get a .sha256 file, we can use that.
+    String sha256 = null;
+    ExtractedMetadata em = new ExtractedMetadata();
     try {
       if (isHelmChart(url.getFile())) {
         try (BufferedInputStream stream = new BufferedInputStream(url.openStream())) {
-          return metadataFromHelmChart(stream);
+          em = metadataFromHelmChart(stream);
+          em.sha256 = sha256;
+          return em;
         }
       }
       try (BufferedInputStream stream = new BufferedInputStream(url.openStream())) {
-        return versionMetadataFromInputStream(stream);
+        em = versionMetadataFromInputStream(stream);
+        em.sha256 = sha256;
+        return em;
       }
     } catch (MetadataParseException e) {
       // Fallback to file name validation
       log.warn("falling back to file name metadata parsing for url " + url.toString(), e);
-      ExtractedMetadata em = metadataFromName(url.getFile());
+      em = metadataFromName(url.getFile());
       em.releaseTag = tagFromName(url.toString());
+      em.sha256 = sha256;
       return em;
     } catch (IOException e) {
       log.error("failed to open url " + url.toString());
@@ -172,7 +184,9 @@ public class ReleasesUtils {
           // oneshot
           byte[] fileContent = new byte[(int) entry.getSize()];
           tarInput.read(fileContent, 0, fileContent.length);
-          log.trace("read version_metadata.json string: {}", new String(fileContent));
+          if (log.isTraceEnabled()) {
+            log.trace("read version_metadata.json string: {}", new String(fileContent));
+          }
           JsonNode node = Json.parse(fileContent);
           metadata.minimumYbaVersion = getAndValidateYbaMinimumVersion(node);
           metadata.yb_type = Release.YbType.YBDB;
@@ -253,7 +267,7 @@ public class ReleasesUtils {
 
   // Cleanup all untracked uploads that do not have a related "release local file"
   public void cleanupUntracked() {
-    String dir = appConfig.getString(RELEASE_PATH_CONFKEY);
+    String dir = getUploadStoragePath();
     File uploadDir = new File(dir);
     if (!uploadDir.exists()) {
       if (!uploadDir.mkdirs()) {
@@ -439,6 +453,9 @@ public class ReleasesUtils {
   }
 
   public void validateVersionAgainstCurrentYBA(String version) {
+    if (confGetter.getGlobalConf(GlobalConfKeys.allowDbVersionMoreThanYbaVersion)) {
+      return;
+    }
     if (confGetter.getGlobalConf(GlobalConfKeys.skipVersionChecks)) {
       return;
     }
@@ -472,6 +489,60 @@ public class ReleasesUtils {
                         .map(u -> Universe.getOrBadRequest(UUID.fromString(u)))
                         .collect(Collectors.toList())));
     return mapUniVersion;
+  }
+
+  public String getUploadStoragePath() {
+    return Paths.get(
+            appConfig.getString(STORAGE_PATH_CONFKEY), appConfig.getString(RELEASE_PATH_CONFKEY))
+        .toString();
+  }
+
+  public void releaseUploadPathFixup() {
+    // If the old and new paths are equal, no fixup needed.
+    String oldStoragePath = appConfig.getString(OLD_RELEASE_STORAGE_PATH_CONFKEY);
+    if (oldStoragePath.equals(getUploadStoragePath())) {
+      log.debug("Skipping release upload path fixup");
+      return;
+    }
+
+    // Transfer all release local files to the new upload directory if needed
+    ReleaseLocalFile.getUploadedFiles()
+        .forEach(
+            rlf -> {
+              if (rlf.getLocalFilePath().startsWith(oldStoragePath)) {
+                Path oldPath = Paths.get(rlf.getLocalFilePath());
+                Path targetPath =
+                    Paths.get(
+                        getUploadStoragePath(),
+                        rlf.getFileUUID().toString(),
+                        oldPath.getFileName().toString());
+                // If the old path exists, move the file to the new upload directory
+                if (Files.exists(oldPath)) {
+                  log.debug(
+                      "attempting to move uploaded release artifact from {} to {}",
+                      oldPath,
+                      targetPath);
+                  if (!targetPath.getParent().toFile().mkdirs()) {
+                    log.error("failed to make parent directory {}", targetPath.getParent());
+                    return;
+                  }
+                  try {
+                    FileUtils.moveFile(oldPath, targetPath);
+                  } catch (IOException e) {
+                    log.error("failed to move file from {} to {}: {}", oldPath, targetPath, e);
+                    return;
+                  }
+                  rlf.setLocalFilePath(targetPath.toString());
+                  // If the old path does not exist, check to see if it is in the new location
+                  // already, and
+                  // update the Release Local File if it is.
+                } else if (Files.exists(targetPath)) {
+                  log.debug(
+                      "updating release local file({}) path to {}", rlf.getFileUUID(), targetPath);
+                  rlf.setLocalFilePath(targetPath.toString());
+                }
+              }
+            });
   }
 
   private String getAndValidateYbaMinimumVersion(JsonNode node) {

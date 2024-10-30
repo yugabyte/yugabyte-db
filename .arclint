@@ -8,7 +8,7 @@
      "([.]sql$)",
      "([.]txt$)",
      "(^src/odyssey/.*$)",
-     "(^src/postgres/.*$)",
+     "(^src/yb/integration-tests/upgrade-tests/builds.xml$)",
      "(^[.]gitmodules$)",
      "(^managed/src/main/resources/alert/alert_templates[.]yml$)",
      "(^managed/src/main/resources/alert/.*[.]template$)",
@@ -45,12 +45,25 @@
      "(^troubleshoot/backend/.*/application[.]properties)",
      "(^troubleshoot/backend/src/main/resources/.*)",
      "(^troubleshoot/backend/src/test/resources/.*)",
+     "(^managed/src/main/resources/gflag_groups/)",
      "(^managed/src/main/resources/openapi/)",
      "(^managed/src/main/resources/openapi_templates/)",
      "(^yb_release_manifest.json$)",
      "(^managed/client/java/.*/pom.xml)"
   ],
   "linters": {
+    "go-files": {
+         "type": "golint",
+         "include": "(^managed/yba-cli/.*[.]go$)"
+     },
+     "go-files-length": {
+         "type": "text",
+         "text.max-line-length": 100,
+         "include": "(^managed/yba-cli/.*[.]go$)",
+         "severity": {
+             "2": "disabled"
+         }
+     },
     "script-and-regex.script": {
       "type": "script-and-regex",
       "include": "(^managed/.*[.]java$)",
@@ -63,6 +76,7 @@
       "type": "text",
       "text.max-line-length": 100,
       "exclude": [
+        "(^pg15_tests/.*[.](sh|tsv)$)",
         "(^managed/.*[.]go$)",
         "(^managed/.*/go[.]mod)",
         "(^managed/.*/go[.]sum)",
@@ -72,6 +86,7 @@
         "(^yugabyted-ui/.*/go[.]mod)",
         "(^yugabyted-ui/.*/go[.]sum)",
         "(^yugabyted-ui/ui/src/api/)",
+        "(^yugabyted-ui/ui/src/assets/)",
         "(^yugabyted-ui/ui/src/translations/)",
         "(^thirdparty/thirdparty_src_checksums[.]txt$)",
         "(^java/yb-client/src/test/java/org/yb/client/TestYBClient[.]java$)",
@@ -85,19 +100,25 @@
         "(^docs/.*[.]md$)",
         "(^[.]fossa[.]yml$)",
         "(^managed/.*[.]conf)",
+        "(^src/postgres/)",
         "(^[.]gitignore$)"
       ]
     },
     "pycodestyle": {
       "type": "pep8",
       "include": "([.]py$)",
-      "exclude": "(^thirdparty/|^[.]ycm_extra_conf[.]py$)",
+      "exclude": [
+        "(^[.]ycm_extra_conf[.]py$)",
+        "(^src/postgres/)",
+        "(^thirdparty/)"
+      ],
       "bin": "pycodestyle",
       "flags": ["--max-line-length=100"]
     },
     "googlecpplint": {
       "type": "googlecpplint",
       "exclude": [
+        "(^src/postgres/)",
         "(^src/yb/yql/cql/ql/kwlist[.]h$)",
         "(^src/yb/gutil/linux_syscall_support[.]h$)",
         "(^src/yb/gutil/cycleclock-inl[.]h$)",
@@ -124,6 +145,19 @@
         "(^build/c[+][+]11$)": "disabled",
         "(.*)": "error"
       }
+    },
+    "postgres": {
+      "type": "script-and-regex",
+      "exclude": [
+        "(^src/yb/)"
+      ],
+      "include": [
+        "([.]c$)",
+        "([.]h$)"
+      ],
+      "script-and-regex.script": "src/postgres/ybsimplelint.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<message>\\w+):(?P<line>\\d+):(?P<original>.*)/m"
     }
   }
 }

@@ -37,6 +37,7 @@ DECLARE_bool(TEST_fail_abort_request_with_try_again);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(TEST_skip_returning_old_transactions);
 DECLARE_uint64(force_single_shard_waiter_retry_ms);
+DECLARE_int32(tserver_unresponsive_timeout_ms);
 
 using namespace std::literals;
 using std::string;
@@ -483,6 +484,11 @@ TEST_F(PgGetLockStatusTest, TestGetWaitStart) {
   ASSERT_OK(blocker.StartTransaction(IsolationLevel::READ_COMMITTED));
   ASSERT_OK(blocker.FetchFormat("SELECT * FROM $0 WHERE k=$1 FOR UPDATE", table, locked_key));
 
+  yb::SyncPoint::GetInstance()->LoadDependency({
+    {"WaitQueue::Impl::SetupWaiterUnlocked:1", "PgGetLockStatusTest::TestGetWaitStart"}});
+  yb::SyncPoint::GetInstance()->ClearTrace();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+
   std::atomic<bool> txn_finished = false;
   std::thread th([&session, &table, &locked_key, &txn_finished] {
     ASSERT_OK(session.conn->FetchFormat(
@@ -490,8 +496,7 @@ TEST_F(PgGetLockStatusTest, TestGetWaitStart) {
     txn_finished.store(true);
   });
 
-  SleepFor(1ms * kTimeMultiplier);
-
+  TEST_SYNC_POINT("PgGetLockStatusTest::TestGetWaitStart");
   auto res = ASSERT_RESULT(blocker.FetchRow<int64_t>(
     "SELECT COUNT(*) FROM yb_lock_status(null, null) WHERE waitstart IS NOT NULL"));
   // The statement above acquires two locks --
@@ -960,10 +965,17 @@ TEST_F(PgGetLockStatusTestRF3, TestLocksOfSingleShardWaiters) {
   ASSERT_EQ(waiter1_start_time, ASSERT_RESULT(setup_conn.FetchRow<MonoDelta>(
       "SELECT DISTINCT(waitstart) FROM pg_locks WHERE fastpath"
   )));
-  // Wait for kSingleShardWaiterRetryMs and check that the start time of the
-  // single shard waiter remains consistent.
+  // Wait for both the fast path waiters to re-enter the wait-queue post timing out after waiting
+  // for kSingleShardWaiterRetryMs. Check that the start time of fast path waiter remains the same.
+  std::atomic<int> refreshed_fastpath_waiters{0};
   yb::SyncPoint::GetInstance()->LoadDependency({
-    {"WaitQueue::Impl::SetupWaiterUnlocked:1", "TestLocksOfSingleShardWaiters"}});
+    {"ConflictResolver::OnConflictingTransactionsFound", "TestLocksOfSingleShardWaiters"}});
+  yb::SyncPoint::GetInstance()->SetCallBack(
+      "ConflictResolver::OnConflictingTransactionsFound",
+      [&](void* arg) {
+        refreshed_fastpath_waiters++;
+        while (refreshed_fastpath_waiters.load() < 2) {}
+      });
   yb::SyncPoint::GetInstance()->ClearTrace();
   yb::SyncPoint::GetInstance()->EnableProcessing();
 
@@ -1061,13 +1073,15 @@ TEST_F(PgGetLockStatusTest, TestPgLocksOutputAfterNodeOperations) {
   // invoved in the master <-> tserver heartbeats.
   cluster_->mini_tablet_server(1)->server()->Shutdown();
   ASSERT_OK(cluster_->mini_master()->Restart());
+  // Reduce the window needed for the leader master to mark the tserver as dead.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 3000;
   ASSERT_OK(WaitFor([&] {
     std::vector<master::TSInformationPB> tservers;
     if (!mini_ts_1->server()->GetLiveTServers(&tservers).ok()) {
       return false;
     }
     return tservers.size() == num_tservers;
-  }, 5s * kTimeMultiplier, "Failed to learn about removed tserver from master"));
+  }, 10s * kTimeMultiplier, "Failed to learn about removed tserver from master"));
 
   // Assert that the pg_locks query returns correct results after the remove node operation.
   ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchRow<int64>(kPgLocksQuery)), 2);

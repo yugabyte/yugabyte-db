@@ -3,6 +3,7 @@ import { FC, ReactElement, useState } from 'react';
 import { Col, Grid, Row } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import moment from 'moment-timezone';
+import { useQuery } from 'react-query';
 
 import { YBButton } from '../../common/forms/fields';
 import { useLoadHAConfiguration } from '../hooks/useLoadHAConfiguration';
@@ -13,11 +14,18 @@ import { PromoteInstanceModal } from '../modals/PromoteInstanceModal';
 import { BadgeInstanceType } from '../compounds/BadgeInstanceType';
 import { AddStandbyInstanceModal } from '../modals/AddStandbyInstanceModal';
 import { formatDuration } from '../../../utils/Formatters';
+import { HAInstanceStatelabel } from '../compounds/HAInstanceStateLabel';
+import { ReactComponent as PrometheusIcon } from '../../../redesign/assets/prometheus-icon.svg';
+import { YBTooltip } from '../../../redesign/components';
+import { Box, Typography, useTheme } from '@material-ui/core';
+import { getPrometheusBaseUrl } from '../../../redesign/features/metrics/utils';
+import { PROMETHEUS_URL_QUERY_KEY } from '../../../redesign/helpers/api';
+import { getPrometheusHostInfo } from '../../../v2/api/metrics/metrics';
 
 import { HaInstanceState, HaPlatformInstance } from '../dtos';
 
+import { useIconStyles } from '../../../redesign/styles/styles';
 import './HAInstances.scss';
-import { HAInstanceStatelabel } from '../compounds/HAInstanceStateLabel';
 
 interface HAInstancesProps {
   // Dispatch
@@ -26,13 +34,6 @@ interface HAInstancesProps {
   // State
   runtimeConfigs: any;
 }
-
-const renderAddress = (cell: any, row: HaPlatformInstance): ReactElement => (
-  <a href={row.address} target="_blank" rel="noopener noreferrer">
-    {row.address}
-    {row.is_local && <span className="badge badge-orange">Current</span>}
-  </a>
-);
 
 const renderInstanceType = (cell: HaPlatformInstance['is_leader']): ReactElement => (
   <BadgeInstanceType isActive={cell} />
@@ -53,6 +54,9 @@ export const HAInstances: FC<HAInstancesProps> = ({
     loadSchedule: false,
     autoRefresh: true
   });
+  const iconClasses = useIconStyles();
+  const theme = useTheme();
+  const prometheusUrlQuery = useQuery(PROMETHEUS_URL_QUERY_KEY, () => getPrometheusHostInfo());
 
   const showAddInstancesModal = () => setAddInstancesModalVisible(true);
   const hideAddInstancesModal = () => setAddInstancesModalVisible(false);
@@ -62,6 +66,42 @@ export const HAInstances: FC<HAInstancesProps> = ({
   const hidePromoteModal = () => setInstanceToPromote(undefined);
 
   const currentInstance = config?.instances.find((item) => item.is_local);
+
+  const renderAddress = (_: any, platformInstance: HaPlatformInstance): ReactElement => {
+    const prometheusBaseUrl = prometheusUrlQuery.data
+      ? getPrometheusBaseUrl(
+          prometheusUrlQuery.data.prometheus_url,
+          prometheusUrlQuery.data.use_browser_fqdn
+        )
+      : '';
+
+    const prometheusFederateMetricsJobUrl = prometheusBaseUrl
+      ? `${prometheusBaseUrl}/targets?search=federate`
+      : '';
+    // Only local standby YBA instances will have the federate metrics job link as we are building the
+    // Prometheus link using the metrics URL provided by the current YBA's config values.
+    const showPrometheusIcon =
+      !platformInstance.is_leader && platformInstance.is_local && prometheusFederateMetricsJobUrl;
+    return (
+      <Box display="flex" gridGap={theme.spacing(1)} alignItems="center">
+        <a href={platformInstance.address} target="_blank" rel="noopener noreferrer">
+          {platformInstance.address}
+        </a>
+        {platformInstance.is_local && <span className="badge badge-orange">Current</span>}
+        {showPrometheusIcon && (
+          <YBTooltip
+            title={
+              <Typography variant="body2">View metrics federation job on prometheus</Typography>
+            }
+          >
+            <a target="_blank" rel="noopener noreferrer" href={prometheusFederateMetricsJobUrl}>
+              <PrometheusIcon className={iconClasses.interactiveIcon} />
+            </a>
+          </YBTooltip>
+        )}
+      </Box>
+    );
+  };
 
   const renderActions = (cell: any, row: HaPlatformInstance): ReactElement => {
     if (currentInstance?.is_leader) {

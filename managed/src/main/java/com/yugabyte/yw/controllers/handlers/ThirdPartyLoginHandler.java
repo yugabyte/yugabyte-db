@@ -24,7 +24,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.OidcGroupToYbaRoles;
+import com.yugabyte.yw.models.GroupMappingInfo;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.UserType;
 import com.yugabyte.yw.models.rbac.Role;
@@ -107,7 +107,8 @@ public class ThirdPartyLoginHandler {
           BAD_REQUEST, "SSO login not supported on multi tenant environment");
     }
     UUID custUUID = Customer.find.query().findOne().getUuid();
-    Set<UUID> rolesSet = getRolesFromGroupMemberships(request, custUUID);
+    Set<UUID> groupMemberships = new HashSet<>();
+    Set<UUID> rolesSet = getRolesFromGroupMemberships(request, groupMemberships, custUUID);
     Users.Role userRole = null;
 
     // calculate final system role to be assigned to user
@@ -136,6 +137,7 @@ public class ThirdPartyLoginHandler {
       roleBindingUtil.createRoleBindingsForSystemRole(user);
     }
 
+    user.setGroupMemberships(groupMemberships);
     user.save();
     return user;
   }
@@ -145,7 +147,8 @@ public class ThirdPartyLoginHandler {
    *
    * @return List of role UUIDs
    */
-  private Set<UUID> getRolesFromGroupMemberships(Request request, UUID custUUID) {
+  private Set<UUID> getRolesFromGroupMemberships(
+      Request request, Set<UUID> groupMemberships, UUID custUUID) {
     Set<UUID> roles = new HashSet<>();
     try {
       OidcProfile profile = (OidcProfile) getProfile(request);
@@ -160,7 +163,10 @@ public class ThirdPartyLoginHandler {
                 idToken.getJWTClaimsSet().getStringClaim("oid"),
                 profile.getAccessToken().toAuthorizationHeader());
       } else {
-        groups = idToken.getJWTClaimsSet().getStringListClaim("groups");
+        groups =
+            idToken
+                .getJWTClaimsSet()
+                .getStringListClaim(confGetter.getGlobalConf(GlobalConfKeys.oidcGroupClaim));
       }
       // return if groups claim not found in token
       if (groups == null) {
@@ -169,15 +175,17 @@ public class ThirdPartyLoginHandler {
       log.info("List of user's groups = {}", groups.toString());
 
       for (String group : groups) {
-        OidcGroupToYbaRoles entity =
-            OidcGroupToYbaRoles.find
+        GroupMappingInfo entity =
+            GroupMappingInfo.find
                 .query()
                 .where()
                 .eq("customer_uuid", custUUID)
-                .eq("group_name", group.toLowerCase())
+                .eq("type", "OIDC")
+                .ieq("identifier", group)
                 .findOne();
         if (entity != null) {
-          roles.addAll(entity.getYbaRoles());
+          roles.add(entity.getRoleUUID());
+          groupMemberships.add(entity.getGroupUUID());
         }
       }
     } catch (Exception e) {
@@ -204,7 +212,9 @@ public class ThirdPartyLoginHandler {
     headers.put("Authorization", authHeader);
     JsonNode result = apiHelper.getRequest(url, headers);
     List<String> groups = new ArrayList<>();
-    log.trace("Result from microsoft endpoint = {}", result.toPrettyString());
+    if (log.isTraceEnabled()) {
+      log.trace("Result from microsoft endpoint = {}", result.toPrettyString());
+    }
     if (result.has("error")) {
       log.error(
           "Fetching group membership from MicroSoft failed with the following error: {}\n"

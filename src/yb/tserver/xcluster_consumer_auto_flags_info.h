@@ -54,7 +54,7 @@ class AutoFlagVersionInfo : public AutoFlagsCompatibleVersion {
 // the yb-master. This will ensure that each version per replication group is reported only once.
 class AutoFlagsVersionHandler {
  public:
-  explicit AutoFlagsVersionHandler(std::shared_ptr<client::YBClient> client);
+  explicit AutoFlagsVersionHandler(client::YBClient* client);
   virtual ~AutoFlagsVersionHandler() = default;
 
   void InsertOrUpdate(
@@ -75,7 +75,7 @@ class AutoFlagsVersionHandler {
       const xcluster::ReplicationGroupId& replication_group_id, uint32 new_version) const;
 
  private:
-  std::shared_ptr<client::YBClient> client_;
+  client::YBClient* client_;
 
   mutable std::shared_mutex mutex_;
   std::unordered_map<xcluster::ReplicationGroupId, std::shared_ptr<AutoFlagVersionInfo>>

@@ -12,7 +12,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -46,15 +45,8 @@ public class NodeActionRunner {
    */
   public ShellResponse runCommand(
       NodeAgent nodeAgent, List<String> command, ShellProcessContext context) {
-    List<String> shellCommand = new ArrayList<>();
-    shellCommand.add("bash");
-    shellCommand.add("-c");
-    // Same join as in rpc.py of node agent.
-    shellCommand.add(
-        command.stream()
-            .map(part -> part.contains(" ") ? "'" + part + "'" : part)
-            .collect(Collectors.joining(" ")));
-    ShellResponse response = nodeAgentClient.executeCommand(nodeAgent, shellCommand, context);
+    ShellResponse response =
+        nodeAgentClient.executeCommand(nodeAgent, command, context, true /* use bash */);
     if (response.getCode() == 0) {
       // Prefix is added to make the output same as that of run_node_action.py.
       response.message = ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + response.message;
@@ -103,7 +95,7 @@ public class NodeActionRunner {
       String ybHomeDir,
       String targetLocalFile,
       ShellProcessContext context) {
-    String user = context.getSshUserOrDefault();
+    String user = context.getSshUser();
     Duration timeout = context.getTimeout();
     String tarFilename = node.getNodeName() + "-support_package.tar.gz";
     List<String> command = new ArrayList<>();
@@ -146,7 +138,7 @@ public class NodeActionRunner {
       String fileListFilepath,
       String targetLocalFile,
       ShellProcessContext context) {
-    String user = context.getSshUserOrDefault();
+    String user = context.getSshUser();
     Duration timeout = context.getTimeout();
     String tarFilename = String.format("%s-%s.tar.gz", node.getNodeName(), UUID.randomUUID());
     String targetNodeFilesPath = fileListFilepath;
@@ -222,11 +214,6 @@ public class NodeActionRunner {
       ShellProcessContext context) {
     int perm = StringUtils.isBlank(permissions) ? 0 : Integer.parseInt(permissions.trim(), 8);
     nodeAgentClient.uploadFile(
-        nodeAgent,
-        sourceFile,
-        targetFile,
-        context.getSshUserOrDefault(),
-        perm,
-        context.getTimeout());
+        nodeAgent, sourceFile, targetFile, context.getSshUser(), perm, context.getTimeout());
   }
 }

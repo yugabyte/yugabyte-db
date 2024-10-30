@@ -85,7 +85,7 @@ For more information, see [Kubernetes: Specify a CPU request that is too big for
 
 **Resolution**
 
-- Ensure that you have enough resources in the Kubernetes cluster to schedule the YugabyteDB Anywhere pods. For more information, see [Prerequisites - Kubernetes](../../../install-yugabyte-platform/prerequisites/kubernetes/#hardware-requirements).
+- Ensure that you have enough resources in the Kubernetes cluster to schedule the YugabyteDB Anywhere pods. For more information, see [Hardware requirements (Kubernetes)](../../../prepare/server-nodes-hardware).
 - Modify the YugabyteDB Anywhere pods resources configuration. For more information, see [Modify resources](../../../install-yugabyte-platform/install-software/kubernetes/#modify-resources).
 
 ### Mismatch in node selector, affinity, taints, tolerations
@@ -248,7 +248,7 @@ Events:
 **Resolution**
 
 - To resolve the Bad pull secret, No pull secret, Bad pull secret name errors, enable the pull secret to fetch the images from the YugabyteDB Quay.io registry and ensure that you have applied the same in the namespace that will be used to install YugabyteDB Anywhere. By default, search for a secret with name `yugabyte-k8s-pull-secret` is performed. For more information, see the [`values.yaml` file`](https://github.com/yugabyte/charts/blob/24a8dcf3a4c33153477e3e3ba82f9f4b6e2967a5/stable/yugaware/values.yaml#L16).
-- To resolve the Unable to pull image error, ensure that the Kubernetes nodes can connect to Quay.io or you have images in the local registry. For more information, see [Pull and push YugabyteDB docker images to private container registry](../../../install-yugabyte-platform/prepare-environment/kubernetes/#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
+- To resolve the Unable to pull image error, ensure that the Kubernetes nodes can connect to Quay.io or you have images in the local registry. For more information, see [Pull and push YugabyteDB docker images to private container registry](../../../prepare/server-nodes-software/software-kubernetes/#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
 
 ### CrashLoopBackOff error
 

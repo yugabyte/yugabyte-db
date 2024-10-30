@@ -256,6 +256,7 @@ set(UTIL_SRCS
   ysql_binary_runner.cc
   zlib.cc
   callsite_profiling.cc
+  thread_holder.cc
   )
 
 set(UTIL_LIBS
@@ -301,13 +302,18 @@ ADD_YB_LIBRARY(yb_util
 
 add_dependencies(yb_util gen_version_info)
 
+configure_file(
+  ${CMAKE_SOURCE_DIR}/src/yb/gflag_allowlist.txt
+  ${CMAKE_BINARY_DIR}/gflag_allowlist.txt
+  COPYONLY)
+
 #######################################
 # yb_test_util
 #######################################
 
 ADD_YB_TEST_LIBRARY(
   yb_test_util
-  SRCS logging_test_util.cc memory/memory_usage_test_util.cc test_util.cc test_thread_holder.cc
+  SRCS logging_test_util.cc memory/memory_usage_test_util.cc test_util.cc
        multi_drive_test_env.cc
   DEPS gflags glog gmock gtest yb_util)
 
@@ -352,6 +358,7 @@ ADD_YB_TEST(fast_varint-test)
 ADD_YB_TEST(flags/auto_flags-test)
 ADD_YB_TEST(flags/flag_tags-test)
 ADD_YB_TEST(flags/flags-test)
+ADD_YB_TEST(flags/flag_validators-test)
 ADD_YB_TEST(flags/flags_callback-test)
 ADD_YB_TEST(format-test RUN_SERIAL true)
 ADD_YB_TEST(hash_util-test)
@@ -428,6 +435,7 @@ ADD_YB_TEST(user-test)
 ADD_YB_TEST(uuid-test)
 ADD_YB_TEST(varint-test)
 ADD_YB_TEST(write_buffer-test)
+ADD_YB_TEST(enums-test)
 
 #######################################
 # jsonwriter_test_proto

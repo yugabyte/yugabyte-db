@@ -14,6 +14,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
 const minFreeDiskInstall uint64 = 200 * 1024 * 1024 * 1024 // 200 GB
@@ -45,7 +46,7 @@ func (r diskAvailCheck) Execute() Result {
 		Status: StatusPassed,
 	}
 
-	baseDir := common.GetBaseInstall()
+	baseDir := common.GetDataRoot()
 	bytesAvail, err := getFreeBytes(baseDir)
 	if err != nil {
 		res.Error = err
@@ -54,8 +55,13 @@ func (r diskAvailCheck) Execute() Result {
 	}
 
 	minDiskReq := minFreeDiskInstall
-	_, err = os.Stat(common.YbaInstalledMarker())
-	if err == nil {
+	state, err := ybactlstate.Initialize()
+	if err != nil {
+		if _, err := os.Stat(common.YbaInstalledMarker()); err != nil {
+			// upgrade
+			minDiskReq = minFreeDiskUpgrade
+		}
+	} else if state.CurrentStatus == ybactlstate.UpgradingStatus {
 		// upgrade
 		minDiskReq = minFreeDiskUpgrade
 	}

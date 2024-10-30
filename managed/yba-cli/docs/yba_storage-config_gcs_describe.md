@@ -10,6 +10,12 @@ Describe a GCS storage configuration in YugabyteDB Anywhere
 yba storage-config gcs describe [flags]
 ```
 
+### Examples
+
+```
+yba storage-config gcs describe --name <storage-configuration-name>
+```
+
 ### Options
 
 ```

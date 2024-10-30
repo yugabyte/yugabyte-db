@@ -17,8 +17,11 @@
 #include "yb/dockv/intent.h"
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
+#include "yb/docdb/doc_ql_filefilter.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/iter_util.h"
+
+#include "yb/rocksdb/options.h"
 
 #include "yb/tablet/transaction_status_resolver.h"
 
@@ -51,11 +54,13 @@ namespace tablet {
 
 namespace {
 
-docdb::BoundedRocksDbIterator CreateFullScanIterator(rocksdb::DB* db) {
+docdb::BoundedRocksDbIterator CreateFullScanIterator(
+    rocksdb::DB* db, std::shared_ptr<rocksdb::ReadFileFilter> filter) {
   return docdb::BoundedRocksDbIterator(docdb::CreateRocksDBIterator(
       db, &docdb::KeyBounds::kNoBounds,
       docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
-      /* user_key_for_filter= */ boost::none, rocksdb::kDefaultQueryId));
+      /* user_key_for_filter= */ boost::none, rocksdb::kDefaultQueryId, filter,
+      /* iterate_upper_bound = */ nullptr, rocksdb::CacheRestartBlockKeys::kFalse));
 }
 
 } // namespace
@@ -75,8 +80,11 @@ class TransactionLoader::Executor {
     if (!scoped_pending_operation_.ok()) {
       return false;
     }
-    regular_iterator_ = CreateFullScanIterator(db.regular);
-    intents_iterator_ = CreateFullScanIterator(db.intents);
+    auto min_replay_txn_start_ht = context().MinReplayTxnStartTime();
+    VLOG_WITH_PREFIX(1) << "TransactionLoader min_replay_txn_start_ht: " << min_replay_txn_start_ht;
+    regular_iterator_ = CreateFullScanIterator(db.regular, nullptr /* filter */);
+    intents_iterator_ = CreateFullScanIterator(db.intents,
+        docdb::CreateIntentHybridTimeFileFilter(min_replay_txn_start_ht));
     loader_.state_.store(TransactionLoaderState::kLoading, std::memory_order_release);
     CHECK_OK(yb::Thread::Create(
         "transaction_loader", "loader", &Executor::Execute, this, &loader_.load_thread_))
@@ -90,6 +98,10 @@ class TransactionLoader::Executor {
     Status status;
 
     auto se = ScopeExit([this, &status] {
+      regular_iterator_.Reset();
+      intents_iterator_.Reset();
+      scoped_pending_operation_.Reset();
+
       loader_.FinishLoad(status);
       // Destroy this executor object. Must be the last statement before we return from the Execute
       // function.
@@ -279,6 +291,7 @@ class TransactionLoader::Executor {
       TransactionalBatchData* last_batch_data,
       OneWayBitmap* replicated_batches) {
     current_key_.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
+    // TODO: rocksdb::Iterator shoud have ability to set cache_restart_block_keys dynamically.
     intents_iterator_.Seek(current_key_.AsSlice());
     if (intents_iterator_.Valid()) {
       intents_iterator_.Prev();

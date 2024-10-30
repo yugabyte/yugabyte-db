@@ -517,15 +517,21 @@ public class TestUtils {
   }
 
   /**
+   * See
+   * https://docs.google.com/document/d/1aGD37sMIkkGFyvm7QEe2jtru1G-qGHIObu7IyoaUPS4
+   * for more context and steps to use YB Controller in UTs locally.
+   *
    * @return true if YB_TEST_YB_CONTROLLER env variable is set.
    */
   public static boolean useYbController() {
+    boolean value = false;
     String env = System.getenv("YB_TEST_YB_CONTROLLER");
     if (env != null &&
         (env.equals("1") || env.equalsIgnoreCase("true"))) {
-      return true;
+      value = true;
     }
-    return false;
+    LOG.info("YB_TEST_YB_CONTROLLER = " + value);
+    return value;
   }
 
 }

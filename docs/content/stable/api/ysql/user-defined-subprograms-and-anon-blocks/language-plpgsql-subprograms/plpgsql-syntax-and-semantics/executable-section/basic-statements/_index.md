@@ -5,7 +5,7 @@ linkTitle: Basic statements
 description: Describes the syntax and semantics of the basic PL/pgSQL executable statements. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
-  stable:
+  stable_api:
     identifier: basic-statements
     parent: executable-section
     weight: 10

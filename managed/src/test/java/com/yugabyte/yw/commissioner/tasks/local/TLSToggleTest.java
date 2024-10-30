@@ -10,7 +10,6 @@ import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeApiHelper;
-import com.yugabyte.yw.common.LocalNodeManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
@@ -19,6 +18,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
@@ -87,7 +87,7 @@ public class TLSToggleTest extends LocalProviderUniverseTestBase {
         localNodeUniverseManager.runYsqlCommand(
             details, universe, YUGABYTE_DB, "select count(*) from some_table", 10);
     assertTrue(ysqlResponse.isSuccess());
-    assertEquals("5", LocalNodeManager.getRawCommandOutput(ysqlResponse.getMessage()));
+    assertEquals("5", CommonUtils.extractJsonisedSqlResponse(ysqlResponse).trim());
   }
 
   // @Test
@@ -133,6 +133,6 @@ public class TLSToggleTest extends LocalProviderUniverseTestBase {
         localNodeUniverseManager.runYsqlCommand(
             details, universe, YUGABYTE_DB, "select count(*) from some_table", 10);
     assertTrue(ysqlResponse.isSuccess());
-    assertEquals("5", LocalNodeManager.getRawCommandOutput(ysqlResponse.getMessage()));
+    assertEquals("5", CommonUtils.extractJsonisedSqlResponse(ysqlResponse).trim());
   }
 }

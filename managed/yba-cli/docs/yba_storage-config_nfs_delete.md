@@ -10,6 +10,12 @@ Delete a NFS storage configuration in YugabyteDB Anywhere
 yba storage-config nfs delete [flags]
 ```
 
+### Examples
+
+```
+yba storage-config nfs delete --name <storage-configuration-name>
+```
+
 ### Options
 
 ```

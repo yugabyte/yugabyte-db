@@ -4,7 +4,6 @@ headerTitle: Observability
 linkTitle: Observability
 description: Observability in YugabyteDB.
 headcontent: Monitoring, alerting, and analyzing metrics
-image: /images/section_icons/secure/authorization.png
 aliases:
   - /preview/explore/observability-docker/macos
   - /preview/explore/observability-docker/linux
@@ -39,25 +38,39 @@ YugabyteDB exports various [metrics](../../launch-and-manage/monitor-and-alert/m
 
 ## Alerting and monitoring
 
-Monitoring involves continuously checking the system's health and performance and notifying stakeholders if any issues arise. For this, you can set up automated alerts based on predefined thresholds or conditions. All metrics exposed by YugabyteDB are exportable to third-party monitoring tools like [Prometheus](./prometheus-integration/macos/) and [Grafana](./grafana-dashboard/grafana/) which provide industry-standard alerting functionalities.
+Monitoring involves continuously checking the system's health and performance and notifying stakeholders if any issues arise. For this, you can set up automated alerts based on predefined thresholds or conditions. All metrics exposed by YugabyteDB are exportable to third-party monitoring tools like [Prometheus](./prometheus-integration/) and [Grafana](./grafana-dashboard/grafana/) which provide industry-standard alerting functionalities.
 
 {{<tip>}}
-Both [YugabyteDB Anywhere](../../yugabyte-platform/alerts-monitoring/) and [YugabyteDB Managed](../../yugabyte-cloud/cloud-monitor/cloud-alerts/) provide a full suite of alerting capabilities for monitoring.
+Both [YugabyteDB Anywhere](../../yugabyte-platform/alerts-monitoring/) and [YugabyteDB Aeon](../../yugabyte-cloud/cloud-monitor/cloud-alerts/) provide a full suite of alerting capabilities for monitoring.
 {{</tip>}}
 
 ## Visualization and analysis
 
 YugabyteDB provides dashboards that include charts, graphs, and other visual representations of the system's state and performance. [yugabyted](../../reference/configuration/yugabyted/) starts a web-UI on port 15433 that displays different charts for various metrics.
 
-You can also export the metrics provided by YugabyteDB onto third-party visualization tools like [Prometheus](./prometheus-integration/macos/) and [Grafana](./grafana-dashboard/grafana/) as per the needs of your organization.
+You can also export the metrics provided by YugabyteDB onto third-party visualization tools like [Prometheus](./prometheus-integration/) and [Grafana](./grafana-dashboard/grafana/) as per the needs of your organization.
 
 {{<tip>}}
-Both [YugabyteDB Anywhere](../../yugabyte-platform/alerts-monitoring/anywhere-metrics/) and [YugabyteDB Managed](../../yugabyte-cloud/cloud-monitor/overview/) come with a full suite of visualizations to help you monitor your cluster and troubleshoot issues.
+Both [YugabyteDB Anywhere](../../yugabyte-platform/alerts-monitoring/anywhere-metrics/) and [YugabyteDB Aeon](../../yugabyte-cloud/cloud-monitor/overview/) come with a full suite of visualizations to help you monitor your cluster and troubleshoot issues.
 {{</tip>}}
+
+## Use cases
+
+### Operational monitoring
+
+You can build an application health dashboard for your critical applications using key operational signals that are constantly monitored. Add alerts for DevOps or SRE teams so they can act quickly in case of an event to ensure business continuity. The application health dashboard collects signals, metrics from YugabyteDB, and other systems that power your application, such as APIs, web app, SDK, and so on.
+
+### Performance troubleshooting
+
+Database administrators and application developers need to be able to troubleshoot issues, perform root cause analysis, and issue fixes. You can create a dashboard to monitor an observed issue causing temporal, gradual, or systemic performance degradation, or application failure. To conduct root cause analysis, issue-dependent deep observability metrics in a specific area are typically used. These metrics are consumed at the time of root cause analysis and operating teams fall back to a health dashboard after the issue is identified, the fix is monitored, and the issue is resolved.
+
+### Object monitoring
+
+Monitor specific parts of application behavior continuously after a new feature launch, during maintenance windows, during application upgrades, and more. The metrics can be system-wide or specific to the object of interest, such as a YugabyteDB cluster, node, tablet, geography, users, tenant, and more.
 
 ## Logging
 
-Logs from different services, such as the [YB-TServer](../../troubleshoot/nodes/check-logs/#yb-tserver-logs) and [YB-Master](../../troubleshoot/nodes/check-logs/#yb-master-logs) provide a historical record of what has happened and can be very helpful in debugging and troubleshooting. These logs are rotated regularly, based on their size as configured. See [Logs management](../../troubleshoot/nodes/check-logs#logs-management).
+Logs from different services, such as the [YB-TServer](/preview/troubleshoot/nodes/check-logs/#yb-tserver-logs) and [YB-Master](/preview/troubleshoot/nodes/check-logs/#yb-master-logs) provide a historical record of what has happened and can be very helpful in debugging and troubleshooting. These logs are rotated regularly, based on their size as configured. See [Logs management](/preview/troubleshoot/nodes/check-logs#logs-management).
 
 ## Query-level metrics
 
@@ -65,11 +78,12 @@ The following table describes views in YSQL you can use to monitor and tune quer
 
 | View | Description |
 | :--- | :---------- |
+| [pg_stat_statements](../query-1-performance/pg-stat-statements) | Get query statistics (such as the _time spent by a query_) |
 | [pg_stat_activity](./pg-stat-activity) | View and analyze live queries |
+| [yb_local_tablets](./yb-local-tablets) | Get YSQL/YCQL and tablet metadata details |
 | [yb_terminated_queries](./yb-pg-stat-get-queries/) | Identify terminated queries |
 | [pg_stat_progress_copy](./pg-stat-progress-copy) | Get the status of a COPY command execution |
 | [pg_locks](./pg-locks) | Get information on locks held by a transaction |
-| [pg_stat_statements](../query-1-performance/pg-stat-statements) | Get query statistics (such as the _time spent by a query_) |
 
 To get more details about the various steps of a query execution, use the [Explain Analyze](../query-1-performance/explain-analyze) command.
 
@@ -83,49 +97,55 @@ To get more details about the various steps of a query execution, use the [Expla
   {{<index/item
       title="Prometheus integration"
       body="Export YugabyteDB metrics into Prometheus to inspect various metrics."
-      href="./prometheus-integration/macos/"
-      icon="fa-solid fa-chart-line">}}
+      href="./prometheus-integration/"
+      icon="fa-thin fa-monitor-waveform">}}
 
   {{<index/item
       title="Grafana dashboard"
       body="Create dashboards using Prometheus metrics to understand the health and performance of YugabyteDB clusters."
       href="./grafana-dashboard/grafana/"
-      icon="fa-solid fa-chart-bar">}}
+      icon="fa-thin fa-diagram-lean-canvas">}}
 
   {{<index/item
       title="View live queries with pg_stat_activity"
       body="Troubleshoot problems and identify long-running queries with the activity view."
       href="./pg-stat-activity/"
-      icon="/images/section_icons/manage/diagnostics.png">}}
+      icon="fa-thin fa-wave-pulse">}}
+
+  {{<index/item
+      title="View YQL and tablet metadata with yb_local_tablets"
+      body="See metadata about the YSQL and YCQL statements, and system tablets of a node."
+      href="./yb-local-tablets/"
+      icon="fa-thin fa-tablets">}}
 
   {{<index/item
       title="View terminated queries with yb_terminated_queries"
       body="Identify terminated queries with the get queries function."
       href="./yb-pg-stat-get-queries/"
-      icon="/images/section_icons/explore/monitoring.png">}}
+      icon="fa-thin fa-traffic-light-stop">}}
 
   {{<index/item
       title="View COPY status with pg_stat_progress_copy"
       body="Get the COPY command status, number of tuples processed, and other COPY progress reports with this view."
       href="./pg-stat-progress-copy/"
-      icon="/images/section_icons/explore/json_documents.png">}}
+      icon="fa-thin fa-copy">}}
 
   {{<index/item
       title="Get lock information insights with pg_locks"
       body="Get lock information about current transactions, diagnose and resolve any contention issues in YugabyteDB"
       href="./pg-locks/"
-      icon="/images/section_icons/explore/secure.png">}}
+      icon="fa-thin fa-lock">}}
 
   {{<index/item
       title="Query statistics using pg_stat_statements"
       body="Track planning and execution metrics for SQL statements"
       href="../query-1-performance/pg-stat-statements"
-      icon="fa-solid fa-signal">}}
+      icon="fa-thin fa-signal">}}
 
   {{<index/item
       title="Monitor clusters using key metrics"
       body="Understand the different metrics in YugabyteDB to monitor your cluster"
       href="../../launch-and-manage/monitor-and-alert/metrics"
-      icon="fa-solid fa-bell">}}
+      icon="fa-thin fa-eyes">}}
 
 {{</index/block>}}

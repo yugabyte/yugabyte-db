@@ -88,11 +88,11 @@ YbCallSQLIncrementCatalogVersions(Oid functionId, bool is_breaking_change,
 								  const char *command_tag)
 {
 	FmgrInfo    flinfo;
-	FunctionCallInfoData fcinfo;
+	LOCAL_FCINFO(fcinfo, 1);
 	fmgr_info(functionId, &flinfo);
-	InitFunctionCallInfoData(fcinfo, &flinfo, 1, InvalidOid, NULL, NULL);
-	fcinfo.arg[0] = BoolGetDatum(is_breaking_change);
-	fcinfo.argnull[0] = false;
+	InitFunctionCallInfoData(*fcinfo, &flinfo, 1, InvalidOid, NULL, NULL);
+	fcinfo->args[0].value = BoolGetDatum(is_breaking_change);
+	fcinfo->args[0].isnull = false;
 
 	// Save old values and set new values to enable the call.
 	bool saved = yb_non_ddl_txn_for_sys_tables_allowed;
@@ -121,7 +121,7 @@ YbCallSQLIncrementCatalogVersions(Oid functionId, bool is_breaking_change,
 
 	PG_TRY();
 	{
-		FunctionCallInvoke(&fcinfo);
+		FunctionCallInvoke(fcinfo);
 		/* Restore old values. */
 		yb_non_ddl_txn_for_sys_tables_allowed = saved;
 		SetUserIdAndSecContext(save_userid, save_sec_context);
@@ -140,7 +140,7 @@ YbCallSQLIncrementCatalogVersions(Oid functionId, bool is_breaking_change,
 	PG_END_TRY();
 }
 
-static Oid
+Oid
 YbGetSQLIncrementCatalogVersionsFunctionOid() {
 	List* names =
 		list_make2(makeString("pg_catalog"),
@@ -151,6 +151,7 @@ YbGetSQLIncrementCatalogVersionsFunctionOid() {
 		NIL /* argnames */,
 		false /* expand_variadic */,
 		false /* expand_defaults */,
+		false /* include_out_arguments */,
 		false /* missing_ok */);
 	/* We expect exactly one candidate. */
 	if (clist && clist->next == NULL)
@@ -224,7 +225,7 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(
 	YBCPgExpr yb_expr;
 
 	/* The table pg_yb_catalog_version is in template1. */
-	HandleYBStatus(YBCPgNewUpdate(TemplateDbOid,
+	HandleYBStatus(YBCPgNewUpdate(Template1DbOid,
 								  YBCatalogVersionRelationId,
 								  false /* is_region_local */,
 								  &update_stmt,
@@ -329,10 +330,10 @@ bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
 	if (YbGetCatalogVersionType() != CATALOG_VERSION_CATALOG_TABLE)
 		return false;
 	/*
-	 * TemplateDbOid row is for global catalog version when not in per-db mode.
+	 * Template1DbOid row is for global catalog version when not in per-db mode.
 	 */
 	YbIncrementMasterDBCatalogVersionTableEntryImpl(
-		YBIsDBCatalogVersionMode() ? MyDatabaseId : TemplateDbOid,
+		YBIsDBCatalogVersionMode() ? MyDatabaseId : Template1DbOid,
 		is_breaking_change, is_global_ddl, command_tag);
 
 	if (yb_test_fail_next_inc_catalog_version)
@@ -393,7 +394,7 @@ void YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid)
 	 * the row for db_oid.
 	 */
 	YBCPgStatement insert_stmt = NULL;
-	HandleYBStatus(YBCPgNewInsert(TemplateDbOid,
+	HandleYBStatus(YBCPgNewInsert(Template1DbOid,
 								  YBCatalogVersionRelationId,
 								  false /* is_region_local */,
 								  &insert_stmt,
@@ -443,7 +444,7 @@ void YbDeleteMasterDBCatalogVersionTableEntry(Oid db_oid)
 	 * the row for db_oid.
 	 */
 	YBCPgStatement delete_stmt = NULL;
-	HandleYBStatus(YBCPgNewDelete(TemplateDbOid,
+	HandleYBStatus(YBCPgNewDelete(Template1DbOid,
 								  YBCatalogVersionRelationId,
 								  false /* is_region_local */,
 								  &delete_stmt,
@@ -482,7 +483,7 @@ YbCatalogVersionType YbGetCatalogVersionType()
 	{
 		bool catalog_version_table_exists = false;
 		HandleYBStatus(YBCPgTableExists(
-			TemplateDbOid, YBCatalogVersionRelationId,
+			Template1DbOid, YBCatalogVersionRelationId,
 			&catalog_version_table_exists));
 		yb_catalog_version_type = catalog_version_table_exists
 		    ? CATALOG_VERSION_CATALOG_TABLE
@@ -517,7 +518,7 @@ bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version)
 
 	YBCPgStatement ybc_stmt;
 
-	HandleYBStatus(YBCPgNewSelect(TemplateDbOid,
+	HandleYBStatus(YBCPgNewSelect(Template1DbOid,
 	                              YBCatalogVersionRelationId,
 	                              NULL /* prepare_params */,
 	                              false /* is_region_local */,
@@ -624,31 +625,31 @@ Datum YbGetMasterCatalogVersionTableEntryYbctid(Relation catalog_version_rel,
 												Oid db_oid)
 {
 	/*
-	 * Construct HeapTuple (db_oid, null, null) for computing ybctid using
-	 * YBCGetYBTupleIdFromTuple which requires a tuple. Note that db_oid
-	 * is the primary key so we can use null for other columns for simplicity.
+	 * Construct virtual slot (db_oid, null, null) for computing ybctid using
+	 * YBCComputeYBTupleIdFromSlot. Note that db_oid is the primary key so we
+	 * can use null for other columns for simplicity.
 	 */
-	Datum		values[3];
-	bool		nulls[3];
+	TupleTableSlot *slot = MakeSingleTupleTableSlot(
+		RelationGetDescr(catalog_version_rel), &TTSOpsVirtual);
 
-	values[0] = db_oid;
-	nulls[0] = false;
-	values[1] = 0;
-	nulls[1] = true;
-	values[2] = 0;
-	nulls[2] = true;
+	slot->tts_values[0] = db_oid;
+	slot->tts_isnull[0] = false;
+	slot->tts_values[1] = 0;
+	slot->tts_isnull[1] = true;
+	slot->tts_values[2] = 0;
+	slot->tts_isnull[2] = true;
+	slot->tts_nvalid = 3;
 
-	HeapTuple tuple = heap_form_tuple(RelationGetDescr(catalog_version_rel),
-									  values, nulls);
-	return YBCGetYBTupleIdFromTuple(catalog_version_rel, tuple,
-									RelationGetDescr(catalog_version_rel));
+	Datum ybctid = YBCComputeYBTupleIdFromSlot(catalog_version_rel, slot);
+	ExecDropSingleTupleTableSlot(slot);
+	return ybctid;
 }
 
 Oid YbMasterCatalogVersionTableDBOid()
 {
 	/*
 	 * MyDatabaseId is 0 during connection setup time before
-	 * MyDatabaseId is resolved. In per-db mode, we use TemplateDbOid
+	 * MyDatabaseId is resolved. In per-db mode, we use Template1DbOid
 	 * during this period to find the catalog version in order to load
 	 * initial catalog cache (needed for resolving MyDatabaseId, auth
 	 * check etc.). Once MyDatabaseId is resolved from then on we'll
@@ -656,5 +657,5 @@ Oid YbMasterCatalogVersionTableDBOid()
 	 */
 
 	return YBIsDBCatalogVersionMode() && OidIsValid(MyDatabaseId)
-		? MyDatabaseId : TemplateDbOid;
+		? MyDatabaseId : Template1DbOid;
 }

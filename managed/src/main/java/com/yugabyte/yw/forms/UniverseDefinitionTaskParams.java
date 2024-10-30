@@ -78,7 +78,9 @@ import play.libs.Json;
 public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   private static final Set<String> AWS_INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY =
-      ImmutableSet.of("i3.", "c5d.", "c6gd.");
+      ImmutableSet.of(
+          "g5.", "g6.", "g6e.", "gr6.", "i3.", "i3en.", "i4g.", "i4i.", "im4gn.", "is4gen.", "p5.",
+          "p5e.", "trn1.", "trn1n.", "x1.", "x1e.");
 
   public static final String UPDATING_TASK_UUID_FIELD = "updatingTaskUUID";
   public static final String PLACEMENT_MODIFICATION_TASK_UUID_FIELD =
@@ -221,6 +223,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @ApiModelProperty(hidden = true)
   public boolean overridePrebuiltAmiDBVersion = false;
 
+  // local value for sequence number
+  @ApiModelProperty(hidden = true)
+  public int sequenceNumber = -1;
+
   // if we want to use a different SSH_USER instead of  what is defined in the accessKey
   // Use imagebundle to overwrite the sshPort
   @Nullable @ApiModelProperty @Deprecated public String sshUserOverride;
@@ -294,6 +300,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
   public boolean skipMatchWithUserIntent = false;
 
+  @ApiModelProperty(value = "YbaApi Internal. Install node agent in background if it is true")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.2.1.0")
+  public boolean installNodeAgent = false;
+
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
   @Slf4j
@@ -322,6 +332,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     public List<Region> regions;
+
+    @Setter
+    @Getter
+    @ApiModelProperty(
+        hidden = true,
+        value = "YbaApi Internal. Kubernetes per AZ statefulset gflags checksum map")
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
+    private Map<UUID, Map<ServerType, String>> perAZServerTypeGflagsChecksumMap = new HashMap<>();
 
     /** Default to PRIMARY. */
     private Cluster() {
@@ -353,6 +371,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
       Cluster other = (Cluster) obj;
       return uuid.equals(other.uuid);
+    }
+
+    @JsonIgnore
+    public int getExpectedNumberOfNodes() {
+      return userIntent.dedicatedNodes
+          ? userIntent.numNodes + userIntent.replicationFactor
+          : userIntent.numNodes;
     }
 
     /**
@@ -535,6 +560,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     if (providerType == CloudType.aws && instanceType != null) {
       for (String prefix : AWS_INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY) {
         if (instanceType.startsWith(prefix)) {
+          return true;
+        }
+        String[] typeParts = instanceType.split("\\.");
+        // AWS has a convention of using 'd' in the instance type for most local storage
+        // instance types. Ideally, we can figure this out from the pricing data instead
+        // so we don't have to hack this way.
+        if (typeParts.length >= 1 && typeParts[0].contains("d")) {
           return true;
         }
       }
@@ -806,6 +838,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty() public boolean enableYSQL = true;
 
+    @ApiModelProperty() public boolean enableConnectionPooling = false;
+
     @ApiModelProperty(notes = "default: true")
     public boolean enableYEDIS = true;
 
@@ -828,6 +862,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // Setting at user intent level since it can be unique across types of clusters.
     @ApiModelProperty(notes = "default: NONE")
     public ExposingServiceState enableExposingService = ExposingServiceState.NONE;
+
+    @ApiModelProperty(
+        hidden = true,
+        value = "YbaApi Internal. Default service scope for Kubernetes universes")
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
+    public boolean defaultServiceScopeAZ = true;
 
     @ApiModelProperty public String awsArnString;
 
@@ -971,6 +1011,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.tserverGFlags = new HashMap<>(tserverGFlags);
       newUserIntent.useTimeSync = useTimeSync;
       newUserIntent.enableYSQL = enableYSQL;
+      newUserIntent.enableConnectionPooling = enableConnectionPooling;
       newUserIntent.enableYCQL = enableYCQL;
       newUserIntent.enableYSQLAuth = enableYSQLAuth;
       newUserIntent.enableYCQLAuth = enableYCQLAuth;
@@ -1513,13 +1554,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @Override
     public T convert(T taskParams) {
-      // If there is universe level communication port set then push it down to node level
-      if (taskParams.communicationPorts != null && taskParams.nodeDetailsSet != null) {
-        taskParams.nodeDetailsSet.forEach(
-            nodeDetails ->
-                CommunicationPorts.setCommunicationPorts(
-                    taskParams.communicationPorts, nodeDetails));
-      }
       if (taskParams.expectedUniverseVersion == null) {
         taskParams.expectedUniverseVersion = -1;
       }
@@ -1607,15 +1641,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         GFlagsUtil.getBaseGFlags(
             UniverseTaskBase.ServerType.TSERVER, getPrimaryCluster(), clusters);
     String gflagValueOnMasters =
-        masterGflags.get(XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
+        masterGflags.get(XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG);
     String gflagValueOnTServers =
-        tserverGflags.get(XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
+        tserverGflags.get(XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG);
     if (gflagValueOnMasters != null || gflagValueOnTServers != null) {
       if (!Objects.equals(gflagValueOnMasters, gflagValueOnTServers)) {
         throw new IllegalStateException(
             String.format(
                 "%s gflag is different on masters (%s) and tservers (%s)",
-                XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
+                XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
                 gflagValueOnMasters,
                 gflagValueOnTServers));
       }

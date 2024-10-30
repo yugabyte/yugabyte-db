@@ -7,11 +7,16 @@ cascade:
   unversioned: true
 description: YugabyteDB Voyager is a powerful open-source data migration engine that helps you migrate your database to YugabyteDB quickly and securely.
 type: indexpage
+aliases:
+  - /preview/voyager/
+  - /preview/tools/voyager/
 menu:
   preview_yugabyte-voyager:
     identifier: yugabyte-voyager
     parent: yugabytedb-voyager
     weight: 99
+    params:
+      classes: separator
 breadcrumbDisable: true
 resourcesIntro: Quick Links
 resources:
@@ -23,7 +28,7 @@ resources:
     url: https://www.yugabyte.com/voyager/
 ---
 
-Use YugabyteDB Voyager to manage end-to-end database migration, including cluster preparation, schema migration, and data migration. Voyager safely migrates data from PostgreSQL, MySQL, and Oracle databases to YugabyteDB Managed, YugabyteDB Anywhere, and the core open source database, YugabyteDB.
+Use YugabyteDB Voyager to manage end-to-end database migration, including cluster preparation, schema migration, and data migration. Voyager safely migrates data from PostgreSQL, MySQL, and Oracle databases to YugabyteDB Aeon, YugabyteDB Anywhere, and the core open source database, YugabyteDB.
 
 {{< sections/text-with-right-image
   title="Get Started"

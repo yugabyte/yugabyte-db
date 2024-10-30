@@ -6,6 +6,7 @@ package aws
 
 import (
 	"fmt"
+	"strconv"
 
 	"strings"
 
@@ -20,9 +21,12 @@ import (
 
 // updateAWSProviderCmd represents the provider command
 var updateAWSProviderCmd = &cobra.Command{
-	Use:   "update",
-	Short: "Update an AWS YugabyteDB Anywhere provider",
-	Long:  "Update an AWS provider in YugabyteDB Anywhere",
+	Use:     "update",
+	Aliases: []string{"edit"},
+	Short:   "Update an AWS YugabyteDB Anywhere provider",
+	Long:    "Update an AWS provider in YugabyteDB Anywhere",
+	Example: `yba provider aws update --name <provider-name> \
+	--remove-region <region-1> --remove-region <region-2>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -96,6 +100,8 @@ var updateAWSProviderCmd = &cobra.Command{
 		details := provider.GetDetails()
 		cloudInfo := details.GetCloudInfo()
 		awsCloudInfo := cloudInfo.GetAws()
+
+		providerImageBundles := provider.GetImageBundles()
 
 		newProviderName, err := cmd.Flags().GetString("new-name")
 		if err != nil {
@@ -235,18 +241,62 @@ var updateAWSProviderCmd = &cobra.Command{
 		provider.SetRegions(providerRegions)
 		// End of Updating Regions
 
-		rUpdate, response, err := authAPI.EditProvider(provider.GetUuid()).
+		// Update Image Bundles
+
+		addImageBundles, err := cmd.Flags().GetStringArray("add-image-bundle")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		editImageBundles, err := cmd.Flags().GetStringArray("edit-image-bundle")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		removeImageBundles, err := cmd.Flags().GetStringArray("remove-image-bundle")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		editImageBundleRegionOverride, err := cmd.Flags().GetStringArray(
+			"edit-image-bundle-region-override")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		addImageBundleRegionOverride, err := cmd.Flags().GetStringArray(
+			"add-image-bundle-region-override")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		providerImageBundles = removeAWSImageBundles(removeImageBundles, providerImageBundles)
+
+		providerImageBundles = editAWSImageBundles(
+			editImageBundles,
+			editImageBundleRegionOverride,
+			providerImageBundles)
+
+		providerImageBundles = addAWSImageBundles(
+			addImageBundles,
+			addImageBundleRegionOverride,
+			providerImageBundles,
+			len(providerRegions),
+		)
+
+		provider.SetImageBundles(providerImageBundles)
+
+		// End of Updating Image Bundles
+
+		rTask, response, err := authAPI.EditProvider(provider.GetUuid()).
 			EditProviderRequest(provider).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Provider: AWS", "Update")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		providerUUID := rUpdate.GetResourceUUID()
-		taskUUID := rUpdate.GetTaskUUID()
-
 		providerutil.WaitForUpdateProviderTask(
-			authAPI, providerName, providerUUID, providerCode, taskUUID)
+			authAPI, providerName, rTask, providerCode)
 	},
 }
 
@@ -280,10 +330,10 @@ func init() {
 		"[Optional] Add region associated with the AWS provider. "+
 			"Provide the following comma separated fields as key-value pairs:"+
 			"\"region-name=<region-name>,"+
-			"vpc-id=<vpc-id>,sg-id=<security-group-id>,arch=<architecture>\". "+
+			"vpc-id=<vpc-id>,sg-id=<security-group-id>\". "+
 			formatter.Colorize("Region name is required key-value.",
 				formatter.GreenColor)+
-			" VPC ID, Security Group ID and Architecture are optional. "+
+			" VPC ID and Security Group ID are optional. "+
 			"Each region needs to be added using a separate --add-region flag.")
 	updateAWSProviderCmd.Flags().StringArray("add-zone", []string{},
 		"[Optional] Zone associated to the AWS Region defined. "+
@@ -329,10 +379,78 @@ func init() {
 			"Subnet IDs and Secondary subnet ID is optional. "+
 			"Each zone needs to be modified using a separate --edit-zone flag.")
 
+	// updateAWSProviderCmd.Flags().Bool("add-x86-default-image-bundle", false,
+	// 	"[Optional] Include Linux versions that are chosen and managed by"+
+	// 		" YugabyteDB Anywhere in the catalog. (default false)")
+	// updateAWSProviderCmd.Flags().Bool("add-aarch6-default-image-bundle", false,
+	// 	"[Optional] Include Linux versions that are chosen and managed by"+
+	// 		" YugabyteDB Anywhere in the catalog. (default false)")
+
+	updateAWSProviderCmd.Flags().StringArray("add-image-bundle", []string{},
+		"[Optional] Add Image bundles associated with the provider. "+
+			"Provide the following comma separated fields as key-value pairs: "+
+			"\"image-bundle-name=<image-bundle-name>,arch=<architecture>,"+
+			"ssh-user=<ssh-user>,ssh-port=<ssh-port>,imdsv2=<true/false>,default=<true/false>\". "+
+			formatter.Colorize(
+				"Image bundle name, architecture and SSH user are required key-value pairs.",
+				formatter.GreenColor)+
+			" The default for SSH Port is 22, IMDSv2 ("+
+			"This should be true if the Image bundle requires Instance Metadata Service v2)"+
+			" is false. Default marks the image bundle as default for the provider. "+
+			"Allowed values for architecture are x86_64 and arm64."+
+			"Each image bundle can be added using separate --image-bundle flag. "+
+			"Example: --add-image-bundle <image-bundle-name>=<name>,"+
+			"<ssh-user>=<ssh-user>,<ssh-port>=22")
+	updateAWSProviderCmd.Flags().StringArray("add-image-bundle-region-override", []string{},
+		"[Optional] Add Image bundle region overrides associated with the provider. "+
+			"Provide the following comma separated fields as key-value pairs: "+
+			"\"image-bundle-name=<image-bundle-name>,region-name=<region-name>,"+
+			"machine-image=<machine-image>\". "+
+			formatter.Colorize(
+				"Image bundle name and region name are required key-value pairs.",
+				formatter.GreenColor)+" Each --image-bundle definition "+
+			"must have atleast one corresponding --image-bundle-region-override "+
+			"definition for every region added."+
+			" Each override can be added using separate --image-bundle-region-override flag. "+
+			"Example: --add-image-bundle-region-override <image-bundle-name>=<name>,"+
+			"<region-name>=<region-name>,<machine-image>=<machine-image>")
+
+	updateAWSProviderCmd.Flags().StringArray("edit-image-bundle", []string{},
+		"[Optional] Edit Image bundles associated with the provider. "+
+			"Provide the following comma separated fields as key-value pairs: "+
+			"\"image-bundle-uuid=<image-bundle-uuid>,"+
+			"ssh-user=<ssh-user>,ssh-port=<ssh-port>,imdsv2=<true/false>,default=<true/false>\". "+
+			formatter.Colorize(
+				"Image bundle UUID is a required key-value pair.",
+				formatter.GreenColor)+
+			" Each image bundle can be edited using separate --image-bundle flag. "+
+			"Example: --edit-image-bundle <image-bundle-uuid>=<uuid>,"+
+			"<ssh-user>=<ssh-user>,<ssh-port>=22")
+	updateAWSProviderCmd.Flags().StringArray("edit-image-bundle-region-override", []string{},
+		"[Optional] Edit overrides of the region associated with the provider. "+
+			"Provide the following comma separated fields as key-value pairs: "+
+			"\"image-bundle-uuid=<image-bundle-uuid>,region-name=<region-name>,"+
+			"machine-image=<machine-image>\". "+
+			formatter.Colorize(
+				"Image bundle UUID and region name are required key-value pairs.",
+				formatter.GreenColor)+
+			" Each image bundle can be added using separate --image-bundle-region-override flag. "+
+			"Example: --edit-image-bundle-region-override <image-bundle-uuid>=<uuid>,"+
+			"<region-name>=<region-name>,<machine-image>=<machine-image>")
+
+	updateAWSProviderCmd.Flags().StringArray("remove-image-bundle", []string{},
+		"[Optional] Image bundle UUID to be removed from the provider. "+
+			"Each bundle to be removed needs to be provided using a separate "+
+			"--remove-image-bundle definition. "+
+			"Removing a image bundle removes the corresponding region overrides.")
+
 	updateAWSProviderCmd.Flags().String("ssh-user", "",
 		"[Optional] Updating SSH User to access the YugabyteDB nodes.")
 	updateAWSProviderCmd.Flags().Int("ssh-port", 0,
 		"[Optional] Updating SSH Port to access the YugabyteDB nodes.")
+
+	updateAWSProviderCmd.Flags().MarkDeprecated("ssh-port", "Use --edit-image-bundle instead.")
+	updateAWSProviderCmd.Flags().MarkDeprecated("ssh-user", "Use --edit-image-bundle instead.")
 
 	updateAWSProviderCmd.Flags().Bool("airgap-install", false,
 		"[Optional] Are YugabyteDB nodes installed in an air-gapped environment,"+
@@ -420,8 +538,6 @@ func addAWSRegions(
 			Details: &ybaclient.RegionDetails{
 				CloudInfo: &ybaclient.RegionCloudInfo{
 					Aws: &ybaclient.AWSRegionCloudInfo{
-						YbImage:         util.GetStringPointer(region["yb-image"]),
-						Arch:            util.GetStringPointer(region["arch"]),
 						SecurityGroupId: util.GetStringPointer(region["sg-id"]),
 						Vnet:            util.GetStringPointer(region["vpc-id"]),
 					},
@@ -546,4 +662,187 @@ func addAWSZones(
 	}
 
 	return zones
+}
+
+func removeAWSImageBundles(
+	removeImageBundles []string,
+	providerImageBundles []ybaclient.ImageBundle) []ybaclient.ImageBundle {
+	if len(removeImageBundles) == 0 {
+		return providerImageBundles
+	}
+
+	for _, ib := range removeImageBundles {
+		for i, pIb := range providerImageBundles {
+			if strings.Compare(pIb.GetUuid(), ib) == 0 {
+				providerImageBundles = util.RemoveComponentFromSlice(
+					providerImageBundles, i,
+				).([]ybaclient.ImageBundle)
+			}
+		}
+	}
+
+	return providerImageBundles
+}
+
+func editAWSImageBundles(
+	editImageBundles, editImageBundlesRegionOverrides []string,
+	providerImageBundles []ybaclient.ImageBundle,
+) []ybaclient.ImageBundle {
+
+	for i, ib := range providerImageBundles {
+		bundleUUID := ib.GetUuid()
+		details := ib.GetDetails()
+		imageBundleRegionOverrides := details.GetRegions()
+		imageBundleRegionOverrides = editAWSImageBundleRegionOverrides(
+			bundleUUID,
+			editImageBundlesRegionOverrides,
+			imageBundleRegionOverrides)
+		details.SetRegions(imageBundleRegionOverrides)
+		if len(editImageBundles) != 0 {
+			for _, imageBundleString := range editImageBundles {
+				imageBundle := providerutil.BuildImageBundleMapFromString(
+					imageBundleString,
+					"edit",
+				)
+
+				if strings.Compare(imageBundle["uuid"], bundleUUID) == 0 {
+
+					if len(imageBundle["ssh-user"]) != 0 {
+						details.SetSshUser(imageBundle["ssh-user"])
+					}
+					if len(imageBundle["ssh-port"]) != 0 {
+						sshPort, err := strconv.ParseInt(imageBundle["ssh-port"], 10, 64)
+						if err != nil {
+							errMessage := err.Error() + " Using SSH Port as 22\n"
+							logrus.Errorln(
+								formatter.Colorize(errMessage, formatter.YellowColor),
+							)
+							sshPort = 22
+						}
+						details.SetSshPort(int32(sshPort))
+					}
+					if len(imageBundle["imdsv2"]) != 0 {
+						useIMDSv2, err := strconv.ParseBool(imageBundle["imdsv2"])
+						if err != nil {
+							errMessage := err.Error() + " Setting default as false\n"
+							logrus.Errorln(
+								formatter.Colorize(errMessage, formatter.YellowColor),
+							)
+							useIMDSv2 = false
+						}
+						details.SetUseIMDSv2(useIMDSv2)
+					}
+					ib.SetDetails(details)
+
+					if len(imageBundle["default"]) != 0 {
+						defaultBundle, err := strconv.ParseBool(imageBundle["default"])
+						if err != nil {
+							errMessage := err.Error() + " Setting default as false\n"
+							logrus.Errorln(
+								formatter.Colorize(errMessage, formatter.YellowColor),
+							)
+							defaultBundle = false
+						}
+						ib.SetUseAsDefault(defaultBundle)
+					}
+
+				}
+
+			}
+		}
+		providerImageBundles[i] = ib
+	}
+	return providerImageBundles
+}
+
+func editAWSImageBundleRegionOverrides(
+	bundleUUID string,
+	editImageBundleRegionOverrides []string,
+	imageBundleRegionOverrides map[string]ybaclient.BundleInfo,
+) map[string]ybaclient.BundleInfo {
+
+	if len(editImageBundleRegionOverrides) == 0 {
+		return imageBundleRegionOverrides
+	}
+
+	for _, imageBundleString := range editImageBundleRegionOverrides {
+		override := providerutil.BuildImageBundleRegionOverrideMapFromString(imageBundleString, "edit")
+		if strings.Compare(override["uuid"], bundleUUID) == 0 {
+			for k, v := range override {
+				if _, ok := imageBundleRegionOverrides[k]; ok {
+					imageBundleRegionOverrides[k] = ybaclient.BundleInfo{
+						YbImage: util.GetStringPointer(v),
+					}
+				}
+			}
+		}
+
+	}
+
+	return imageBundleRegionOverrides
+}
+
+func addAWSImageBundles(
+	addImageBundles,
+	addImageBundleRegionOverrides []string,
+	providerImageBundles []ybaclient.ImageBundle,
+	numberOfRegions int) []ybaclient.ImageBundle {
+	if len(addImageBundles) == 0 {
+		return providerImageBundles
+	}
+	for _, i := range addImageBundles {
+		bundle := providerutil.BuildImageBundleMapFromString(i, "add")
+
+		regionOverrides := buildAWSImageBundleRegionOverrides(
+			addImageBundleRegionOverrides,
+			bundle["name"])
+
+		if len(regionOverrides) < numberOfRegions {
+			logrus.Fatalf(formatter.Colorize(
+				"Overrides must be provided for every region added.\n",
+				formatter.RedColor,
+			))
+		}
+
+		sshPort, err := strconv.ParseInt(bundle["ssh-port"], 10, 64)
+		if err != nil {
+			errMessage := err.Error() + " Using SSH Port as 22\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			sshPort = 22
+		}
+
+		defaultBundle, err := strconv.ParseBool(bundle["default"])
+		if err != nil {
+			errMessage := err.Error() + " Setting default as false\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			defaultBundle = false
+		}
+
+		useIMDSv2, err := strconv.ParseBool(bundle["imdsv2"])
+		if err != nil {
+			errMessage := err.Error() + " Setting default as false\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			useIMDSv2 = false
+		}
+
+		imageBundle := ybaclient.ImageBundle{
+			Name:         util.GetStringPointer(bundle["name"]),
+			UseAsDefault: util.GetBoolPointer(defaultBundle),
+			Details: &ybaclient.ImageBundleDetails{
+				Arch:      util.GetStringPointer(bundle["arch"]),
+				SshUser:   util.GetStringPointer(bundle["ssh-user"]),
+				SshPort:   util.GetInt32Pointer(int32(sshPort)),
+				UseIMDSv2: util.GetBoolPointer(useIMDSv2),
+				Regions:   &regionOverrides,
+			},
+		}
+		providerImageBundles = append(providerImageBundles, imageBundle)
+	}
+	return providerImageBundles
 }

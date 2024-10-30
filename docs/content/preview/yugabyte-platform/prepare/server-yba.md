@@ -28,7 +28,7 @@ rightNav:
 
 </ul>
 
-When installing YBA on-premises or on a public cloud (AWS, GCP, and Azure), you install YBA onto a virtual machine server with a Linux operating system (OS).
+When installing YugabyteDB Anywhere (YBA) on-premises or on a public cloud (AWS, GCP, and Azure), you install YBA onto a virtual machine server with a Linux operating system (OS).
 
 To meet the hardware and software prerequisites for YBA, create a VM that satisfies the following requirements.
 
@@ -117,7 +117,7 @@ If your sudo permissions are limited, add the following commands to the sudoers 
 <path-to-yba-ctl>/yba-ctl version
 ```
 
-Where path-to-yb-ctl is the location where you will [install YBA Installer](../../install-yugabyte-platform/install-software/installer/#download-yba-installer).
+Where path-to-yba-ctl is the location where you will [install YBA Installer](../../install-yugabyte-platform/install-software/installer/#download-yba-installer).
 
 ### High availability deployments
 

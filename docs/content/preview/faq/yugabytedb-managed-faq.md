@@ -1,7 +1,7 @@
 ---
-title: YugabyteDB Managed FAQ
-linkTitle: YugabyteDB Managed FAQ
-description: YugabyteDB Managed frequently asked questions.
+title: YugabyteDB Aeon FAQ
+linkTitle: YugabyteDB Aeon FAQ
+description: YugabyteDB Aeon frequently asked questions.
 aliases:
   - /preview/yugabyte-cloud/cloud-faq/
 menu:
@@ -16,76 +16,39 @@ rightNav:
   hideH4: true
 ---
 
-### Contents
+## YugabyteDB Aeon
 
-##### YugabyteDB Managed
+### What is YugabyteDB Aeon?
 
-- [What is YugabyteDB Managed?](#what-is-yugabytedb-managed)
-- [How is YugabyteDB Managed priced?](#how-is-yugabytedb-managed-priced)
-- [What regions are available?](#what-regions-are-available)
+[YugabyteDB Aeon](https://www.yugabyte.com/blog/introducing-yugabytedb-aeon/) (previously known as YugabyteDB Managed) is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP).
 
-##### Clusters
+You access your YugabyteDB Aeon clusters via [YSQL](../../api/ysql/) and [YCQL](../../api/ycql/) client APIs, and administer your clusters using the [YugabyteDB Aeon UI](https://cloud.yugabyte.com/login).
 
-- [What are the differences between Sandbox and Dedicated clusters?](#what-are-the-differences-between-sandbox-and-dedicated-clusters)
-- [What can I do if I run out of resources on my Sandbox cluster?](#what-can-i-do-if-i-run-out-of-resources-on-my-sandbox-cluster)
-- [Can I migrate my Sandbox to a Dedicated cluster?](#can-i-migrate-my-sandbox-to-a-dedicated-cluster)
-- [What is the upgrade policy for clusters?](#what-is-the-upgrade-policy-for-clusters)
+YugabyteDB Aeon runs on top of [YugabyteDB Anywhere](../../yugabyte-platform/).
 
-##### YugabyteDB
-
-- [What version of YugabyteDB does my cluster run on?](#what-version-of-yugabytedb-does-my-cluster-run-on)
-- [Can I test YugabyteDB locally?](#can-i-test-yugabytedb-locally)
-
-##### Support
-
-- [Is support included in the base price?](#is-support-included-in-the-base-price)
-- [Where can I find the support policy and SLA?](#where-can-i-find-the-support-policy-and-sla)
-- [How do I check the status of YugabyteDB Managed?](#how-do-i-check-the-status-of-yugabytedb-managed)
-
-##### Security
-
-- [How secure is my cluster?](#how-secure-is-my-cluster)
-
-##### Cluster management
-
-- [What cluster configurations can I create?](#what-cluster-configurations-can-i-create)
-- [How do I connect to my cluster?](#how-do-i-connect-to-my-cluster)
-- [Why is my Sandbox cluster paused?](#why-is-my-sandbox-cluster-paused)
-- [How do I keep my Sandbox cluster from being paused or deleted?](#how-do-i-keep-my-sandbox-cluster-from-being-paused-or-deleted)
-- [What qualifies as activity on a cluster?](#what-qualifies-as-activity-on-a-cluster)
-
-##### Backups
-
-- [How are clusters backed up?](#how-are-clusters-backed-up)
-- [Can I download backups?](#can-i-download-backups)
-
-## YugabyteDB Managed
-
-### What is YugabyteDB Managed?
-
-YugabyteDB Managed is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP).
-
-You access your YugabyteDB Managed clusters via [YSQL](../../api/ysql/) and [YCQL](../../api/ycql/) client APIs, and administer your clusters using [YugabyteDB Managed](https://cloud.yugabyte.com/login).
-
-See also [YugabyteDB Managed](https://www.yugabyte.com/cloud/) at yugabyte.com.
-
-YugabyteDB Managed runs on top of [YugabyteDB Anywhere](../../yugabyte-platform/).
-
-### How is YugabyteDB Managed priced?
+### How is YugabyteDB Aeon priced?
 
 Yugabyte bills for its services as follows:
 
-- Charges by the minute for your YugabyteDB Managed clusters.
+- Charges by the minute for your YugabyteDB Aeon clusters, based on your pricing plan.
 - Tabulates costs daily.
 - Displays your current monthly costs under **Invoices** on the **Usage & Billing** tab.
 
-For information on YugabyteDB Managed pricing, refer to the [YugabyteDB Managed Standard Price List](https://www.yugabyte.com/yugabyte-cloud-standard-price-list/). For a description of how cluster configurations are costed, refer to [Cluster costs](../../yugabyte-cloud/cloud-admin/cloud-billing-costs/).
+{{<lead link="https://www.yugabyte.com/pricing/">}}
+YugabyteDB Aeon Pricing
+{{</lead>}}
+
+{{<lead link="/preview/yugabyte-cloud/cloud-admin/cloud-billing-costs/">}}
+For a description of how cluster configurations are costed, refer to [Cluster costs](/preview/yugabyte-cloud/cloud-admin/cloud-billing-costs/).
+{{</lead>}}
 
 ### What regions are available?
 
-Refer to [Cloud provider regions](../../yugabyte-cloud/cloud-basics/create-clusters-overview/#cloud-provider-regions) for a list currently supported regions.
+YugabyteDB Aeon supports all the regions that have robust infrastructure and sufficient demand from customers. If there are regions you would like added, reach out to {{% support-cloud %}}.
 
-YugabyteDB Managed supports all the regions that have robust infrastructure and sufficient demand from customers. If there are regions you would like added, reach out to {{% support-cloud %}}.
+{{<lead link="../../yugabyte-cloud/cloud-basics/create-clusters-overview/#cloud-provider-regions">}}
+Refer to [Cloud provider regions](../../yugabyte-cloud/cloud-basics/create-clusters-overview/#cloud-provider-regions) for a list currently supported regions.
+{{</lead>}}
 
 ## Clusters
 
@@ -95,7 +58,7 @@ Use the free Sandbox cluster to get started with YugabyteDB. The Sandbox cluster
 
 Dedicated clusters can have unlimited nodes and storage and are suitable for production workloads. They also support horizontal and vertical scaling - nodes and storage can be added or removed to suit your production loads. Dedicated clusters also support VPC networking, and scheduled and manual backups. By default, Dedicated clusters are provisioned using a [stable release](#what-version-of-yugabytedb-does-my-cluster-run-on).
 
-A YugabyteDB Managed account is limited to a single Sandbox cluster; you can add as many Dedicated clusters as you need.
+A YugabyteDB Aeon account is limited to a single Sandbox cluster; you can add as many Dedicated clusters as you need.
 
 | Feature | Sandbox | Dedicated |
 | :------ | :------ | :-------- |
@@ -108,8 +71,8 @@ A YugabyteDB Managed account is limited to a single Sandbox cluster; you can add
 | [Connections](../../yugabyte-cloud/cloud-basics/create-clusters-overview/#sizing) | Up to 15 simultaneous connections | 15 per vCPU per node |
 | [Scaling](../../yugabyte-cloud/cloud-clusters/configure-clusters/) | None | Horizontal and Vertical |
 | [Backups](../../yugabyte-cloud/cloud-clusters/backup-clusters/) | None | Scheduled and on-demand |
-| [YugabyteDB version](#what-version-of-yugabytedb-does-my-cluster-run-on) | Innovation<br>Preview | Production<br>Innovation |
-| Price | Free | [Pay-as-you-go and subscription](#how-is-yugabytedb-managed-priced)<br>[Free trial available](../../yugabyte-cloud/managed-freetrial/) |
+| [YugabyteDB version](#what-version-of-yugabytedb-does-my-cluster-run-on) | Innovation<br>Preview<br>Early Access | Production<br>Innovation<br>Early Access |
+| Price | Free | [Pay-as-you-go and subscription](#how-is-yugabytedb-aeon-priced)<br>[Free trial available](../../yugabyte-cloud/managed-freetrial/) |
 | Support | Slack Community | Enterprise Support |
 
 ### What can I do if I run out of resources on my Sandbox cluster?
@@ -128,54 +91,65 @@ Currently self-service migration is not supported. Contact {{% support-cloud %}}
 
 Upgrades are automatically handled by Yugabyte. There are two types of upgrades:
 
-#### YugabyteDB Managed
+#### YugabyteDB Aeon
 
-During a [maintenance window](../../yugabyte-cloud/cloud-clusters/cloud-maintenance/), YugabyteDB Managed may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. Yugabyte will notify you in advance of the maintenance schedule.
+During a [maintenance window](../../yugabyte-cloud/cloud-clusters/cloud-maintenance/), YugabyteDB Aeon may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. Yugabyte will notify you in advance of the maintenance schedule.
 
 #### Cluster (YugabyteDB) version upgrade
 
-To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte upgrades your cluster database to the [latest version](#what-version-of-yugabytedb-does-my-cluster-run-on). The database is upgraded to the latest release in the [release track](#what-version-of-yugabytedb-does-my-cluster-run-on) that was selected when the cluster was created (Innovation or Production for dedicated clusters, or Innovation or Preview for Sandbox clusters). Sandbox clusters are always in the preview track.
+To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte upgrades your cluster database to the [latest version](#what-version-of-yugabytedb-does-my-cluster-run-on). The database is upgraded to the latest release in the [release track](#what-version-of-yugabytedb-does-my-cluster-run-on) that was selected when the cluster was created.
 
 Yugabyte only upgrades clusters during scheduled maintenance windows. Yugabyte notifies you in advance of any upcoming upgrade via email.
 
 Updates to fault-tolerant clusters are done on a rolling basis to avoid any downtime.
 
-For more information, refer to [Maintenance windows](../../yugabyte-cloud/cloud-clusters/cloud-maintenance/).
+{{<lead link="../../yugabyte-cloud/cloud-clusters/cloud-maintenance/">}}
+Manage cluster maintenance windows and set exclusion periods
+{{</lead>}}
 
 ## YugabyteDB
 
 ### What version of YugabyteDB does my cluster run on?
 
-Dedicated clusters are provisioned with a **stable** release, from a YugabyteDB [stable release](/preview/releases/versioning/#release-versioning-convention-for-stable-releases) series. When creating a dedicated cluster, you can choose one of the following tracks:
+Dedicated clusters are provisioned with a **stable** release, from a YugabyteDB [stable release](/preview/releases/versioning/#stable-releases) series. When creating a dedicated cluster, you can choose one of the following tracks:
 
-- Innovation, which has more frequent updates for faster access to new features.
-- Production, which has a slower update cadence and features only select stable release builds.
+- Production - Has less frequent updates, using select stable builds that have been tested longer in YugabyteDB Aeon.
+- Innovation - Updated more frequently, providing quicker access to new features.
+- Early Access - Updated more frequently, providing access to the most recent stable YugabyteDB release.
 
-In addition to the Innovation track, Sandbox clusters can be provisioned with a **preview** release, from the YugabyteDB [preview release](/preview/releases/versioning/#release-versioning-convention-for-preview-releases) series.
+In addition to the Innovation and Early Access tracks, Sandbox clusters can be provisioned with a **preview** release, from the YugabyteDB [preview release](/preview/releases/versioning/#preview-releases) series.
 
-Once a cluster is created, it is upgraded with releases from the track that was assigned at creation (that is, either Innovation or Production for dedicated clusters, or Innovation or Preview for Sandbox clusters).
+Once a cluster is created, it is upgraded with releases from the track that was assigned at creation.
 
 To view the database version running on a particular cluster, navigate to the **Clusters** page; the database version is displayed next to the cluster name; hover over the version to see the release track.
 
+### Why does the database admin user not have superuser privileges?
+
+For security reasons, in YugabyteDB Aeon you can't use the yugabyte or postgres users that are available in open-source YugabyteDB, and the cluster database admin user does not have YSQL superuser privileges. Instead, the admin is a member of yb_superuser, a role specific to YugabyteDB Aeon clusters.
+
+{{<lead link="../../yugabyte-cloud/cloud-secure-clusters/cloud-users/">}}
+Default YugabyteDB users and roles in YugabyteDB Aeon clusters
+{{</lead>}}
+
 ### Can I test YugabyteDB locally?
 
-To test locally, download and install YugabyteDB on a local machine. Refer to [Quick Start](../../quick-start/). For accurate comparison with cloud, be sure to download the version that is running on YugabyteDB Managed.
+To test locally, download and install YugabyteDB on a local machine. Refer to [Quick Start](../../quick-start/). For accurate comparison with cloud, be sure to download the version that is running on YugabyteDB Aeon.
 
 ## Support
 
 ### Is support included in the base price?
 
-Enterprise Support is included in the base price for Dedicated clusters. Refer to the [YugabyteDB Managed Support Services Terms and Conditions](https://www.yugabyte.com/yugabyte-cloud-support-services-terms-and-conditions/).
+Enterprise Support is included in the base price for Dedicated clusters. Refer to the [YugabyteDB Aeon Support Services Terms and Conditions](https://www.yugabyte.com/yugabyte-cloud-support-services-terms-and-conditions/).
 
 Sandbox and Dedicated cluster customers can also use the [YugabyteDB Slack community]({{<slack-invite>}}).
 
 ### Where can I find the support policy and SLA?
 
-The YugabyteDB Managed Service Level Agreement (SLA), terms of service, acceptable use policy, and more can be found on the [Yugabyte Legal](https://www.yugabyte.com/legal/) page.
+The YugabyteDB Aeon Service Level Agreement (SLA), terms of service, acceptable use policy, and more can be found on the [Yugabyte Legal](https://www.yugabyte.com/legal/) page.
 
-### How do I check the status of YugabyteDB Managed?
+### How do I check the status of YugabyteDB Aeon?
 
-The [YugabyteDB Managed Status](https://status.yugabyte.cloud/) page displays the current uptime status of YugabyteDB Managed, customer clusters, and the [Yugabyte Support Portal](https://support.yugabyte.com/).
+The [YugabyteDB Aeon Status](https://status.yugabyte.cloud/) page displays the current uptime status of YugabyteDB Aeon, customer clusters, and the [Yugabyte Support Portal](https://support.yugabyte.com/).
 
 The status page also provides notices of scheduled maintenance, current incidents and incident history, and historical uptime.
 
@@ -185,19 +159,23 @@ Subscribe to the status page by clicking **Subscribe to Updates**. Email notific
 
 ### How secure is my cluster?
 
-Your data is processed at the YugabyteDB Managed account level, and each account is a single tenant, meaning it runs its components for only one customer. Clusters in your account are isolated from each other in a separate VPC, and access is limited to the IP addresses you specify in allow lists assigned to each cluster. Resources are not shared between clusters.
+Your data is processed at the YugabyteDB Aeon account level, and each account is a single tenant, meaning it runs its components for only one customer. Clusters in your account are isolated from each other in a separate VPC, and access is limited to the IP addresses you specify in allow lists assigned to each cluster. Resources are not shared between clusters.
 
-YugabyteDB Managed uses both encryption in transit and encryption at rest to protect clusters and cloud infrastructure. YugabyteDB Managed also provides DDoS and application layer protection, and automatically blocks network protocol and volumetric DDoS attacks.
+YugabyteDB Aeon uses both encryption in transit and encryption at rest to protect clusters and cloud infrastructure. YugabyteDB Aeon also provides DDoS and application layer protection, and automatically blocks network protocol and volumetric DDoS attacks.
 
-YugabyteDB Managed uses a shared responsibility model for security. For more information on YugabyteDB Managed security, refer to [Security architecture](../../yugabyte-cloud/cloud-security/).
+YugabyteDB Aeon uses a shared responsibility model for security.
+
+{{<lead link="../../yugabyte-cloud/cloud-security/">}}
+Security architecture
+{{</lead>}}
 
 ## Cluster management
 
 ### What cluster configurations can I create?
 
-Using YugabyteDB Managed, you can create single- and multi-region clusters that can be deployed across multiple and single availability zones.
+Using YugabyteDB Aeon, you can create single- and multi-region clusters that can be deployed across multiple and single availability zones.
 
-The Fault Tolerance of a cluster determines how resilient the cluster is to failures and, by extension, the cluster configuration. You can configure clusters with the following fault tolerances in YugabyteDB Managed:
+The Fault Tolerance of a cluster determines how resilient the cluster is to failures and, by extension, the cluster configuration. You can configure clusters with the following fault tolerances in YugabyteDB Aeon:
 
 - **Region Level** - a minimum of 3 nodes spread across 3 regions with a [replication factor](../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of an region failure. This configuration provides the maximum protection for a region failure. For horizontal scaling, nodes are scaled in increments of 3.
 - **Availability Zone Level** - a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of an availability zone failure. This configuration provides the protection for a data center failure. For horizontal scaling, nodes are scaled in increments of 3.
@@ -206,7 +184,11 @@ The Fault Tolerance of a cluster determines how resilient the cluster is to fail
 
 For production clusters, a minimum of Availability Zone Level is recommended. Whether you choose Region or Availability Zone Level depends on your application architecture, design, and latency requirements.
 
-For multi-region deployments, you can deploy a variety of topologies, including synchronously replicated, geo-level partitioned, and read replicas. For more information, refer to [Topologies](../../yugabyte-cloud/cloud-basics/create-clusters-topology/).
+For multi-region deployments, you can deploy a variety of topologies, including synchronously replicated, geo-level partitioned, and read replicas.
+
+{{<lead link="../../yugabyte-cloud/cloud-basics/create-clusters-topology/">}}
+Topologies
+{{</lead>}}
 
 Sandbox clusters are limited to a single node in a single region.
 
@@ -218,7 +200,7 @@ You can connect to clusters in the following ways:
 
   {{% tab header="Cloud Shell" lang="Cloud Shell" %}}
 
-Run the [ysqlsh](../../admin/ysqlsh/) or [ycqlsh](../../admin/ycqlsh/) shell from your browser to connect to and interact with your YugabyteDB database. Cloud Shell does not require a CA certificate or any special network access configured.
+Run the [ysqlsh](../../api/ysqlsh/) or [ycqlsh](../../api/ycqlsh/) shell from your browser to connect to and interact with your YugabyteDB database. Cloud Shell does not require a CA certificate or any special network access configured.
 
 When you connect using Cloud Shell with the YSQL API, the shell window also incorporates a [Quick Start Guide](../../yugabyte-cloud/cloud-quickstart/), with a series of pre-built queries for you to run.
 
@@ -226,21 +208,9 @@ When you connect using Cloud Shell with the YSQL API, the shell window also inco
 
   {{% tab header="Client Shell" lang="Client Shell" %}}
 
-Connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../admin/ysqlsh/) and [ycqlsh](../../admin/ycqlsh/) client shells installed on your computer.
+Connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../api/ysqlsh/) and [ycqlsh](../../api/ycqlsh/) client shells installed on your computer.
 
 Before you can connect using a client shell, you need to add your computer to the cluster IP allow list. Refer to [Assign IP Allow Lists](../../yugabyte-cloud/cloud-secure-clusters/add-connections/).
-
-You must be running the latest versions of the client shells (Yugabyte Client 2.6 or later), which you can download using the following command on Linux or macOS:
-
-```sh
-$ curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
-```
-
-Windows client shells require Docker:
-
-```sh
-docker run -it yugabytedb/yugabyte-client ysqlsh -h <hostname> -p <port>
-```
 
   {{% /tab %}}
 
@@ -255,13 +225,13 @@ psql --host=<HOST_ADDRESS> --port=5433 --username=<DB USER> \
 --set=sslrootcert=<ROOT_CERT_PATH>
 ```
 
-For detailed steps for configuring other popular third party tools, see [Third party tools](../../tools/).
+For detailed steps for configuring other popular third party tools, see [GUI clients](/preview/integrations/tools/).
 
   {{% /tab %}}
 
   {{% tab header="Applications" lang="Applications" %}}
 
-Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver and configure it with the required connection parameters. You can also connect to YugabyteDB Managed clusters using smart drivers.
+Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver and configure it with the required connection parameters. You can also connect to YugabyteDB Aeon clusters using smart drivers.
 
 For information on drivers supported by YugabyteDB, refer to [Drivers and ORMs](../../drivers-orms/). For sample applications using popular drivers, refer to [Build an application](../../tutorials/build-apps/).
 
@@ -269,25 +239,29 @@ For information on obtaining the connection parameters for your cluster, refer t
 
 Clusters have SSL ([encryption in-transit](../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/)) enabled so make sure your driver details include SSL parameters.
 
-Before you can connect, your application has to be able to reach your YugabyteDB Managed. To add inbound network access from your application environment to YugabyteDB Managed, add the public IP addresses to the [cluster IP allow list](../../yugabyte-cloud/cloud-secure-clusters/add-connections/), or use [VPC networking](../../yugabyte-cloud/cloud-basics/cloud-vpcs/) to add private IP addresses.
+Before you can connect, your application has to be able to reach your YugabyteDB Aeon. To add inbound network access from your application environment to YugabyteDB Aeon, add the public IP addresses to the [cluster IP allow list](../../yugabyte-cloud/cloud-secure-clusters/add-connections/), or use [VPC networking](../../yugabyte-cloud/cloud-basics/cloud-vpcs/) to add private IP addresses.
 
   {{% /tab %}}
 
 {{< /tabpane >}}
 
-For more details, refer to [Connect to clusters](../../yugabyte-cloud/cloud-connect/).
+{{<lead link="../../yugabyte-cloud/cloud-connect/">}}
+Connect to clusters
+{{</lead>}}
 
 ### Why is my Sandbox cluster paused?
 
 Sandbox clusters are paused after 10 days of [inactivity](#what-qualifies-as-activity-on-a-cluster).
 
-For more details, refer to [Inactive Sandbox clusters](../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/#inactive-sandbox-clusters).
+{{<lead link="../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/#inactive-sandbox-clusters">}}
+Inactive Sandbox clusters
+{{</lead>}}
 
 ### How do I keep my Sandbox cluster from being paused or deleted?
 
 Sandbox clusters are paused after 10 days of inactivity. To keep a cluster from being paused, perform an action as described in [What qualifies as activity on a cluster?](#what-qualifies-as-activity-on-a-cluster)
 
-To keep a paused cluster from being deleted, sign in to YugabyteDB Managed, select the cluster on the **Clusters** page, and click **Resume**.
+To keep a paused cluster from being deleted, sign in to YugabyteDB Aeon, select the cluster on the **Clusters** page, and click **Resume**.
 
 ### What qualifies as activity on a cluster?
 
@@ -299,7 +273,7 @@ Sandbox clusters are paused after 10 days of inactivity. To keep your cluster fr
 
 - Add or remove IP allow lists.
 
-- If the cluster is already paused, resume the cluster by signing in to YugabyteDB Managed, selecting the cluster on the **Clusters** page, and clicking **Resume**.
+- If the cluster is already paused, resume the cluster by signing in to YugabyteDB Aeon, selecting the cluster on the **Clusters** page, and clicking **Resume**.
 
 ## Backups
 
@@ -307,14 +281,20 @@ Sandbox clusters are paused after 10 days of inactivity. To keep your cluster fr
 
 By default, every cluster is backed up automatically every 24 hours, and these automatic backups are retained for 8 days. The first automatic backup is triggered 24 hours after creating a table, and is scheduled every 24 hours thereafter. You can change the default backup intervals by adjusting the backup policy settings.
 
-YugabyteDB Managed runs full backups, not incremental.
-
-Backups are retained in the same region as the cluster.
+YugabyteDB Aeon supports full backups, and incremental backups.
 
 Backups for AWS clusters are encrypted using AWS S3 server-side encryption. Backups for GCP clusters are encrypted using Google-managed server-side encryption keys. Backups for Azure clusters are encrypted using Azure-managed server-side encryption keys and client-side encryption is done using [GCM mode with AES](https://learn.microsoft.com/en-us/azure/storage/common/storage-service-encryption#client-side-encryption-for-blobs-and-queues).
 
-Currently, YugabyteDB Managed does not support backups of Sandbox clusters.
+Currently, YugabyteDB Aeon does not support backups of Sandbox clusters.
+
+### Where are clusters backed up?
+
+Backups are located in cloud storage of the provider where the cluster is deployed. The storage is located is the same region as the cluster.
+
+For [Replicate across region](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/) clusters, the backup is stored in one of the cluster regions, as determined automatically by Aeon when the cluster is created.
+
+For [Partition by region](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-geopartition/) clusters, the database schema and tablet details are stored in the primary region, and the regional tablespace data is stored in its respective region to preserve data residency.
 
 ### Can I download backups?
 
-Currently, YugabyteDB Managed does not support self-service backup downloads. Contact {{% support-cloud %}} for assistance.
+Currently, YugabyteDB Aeon does not support self-service backup downloads. Contact {{% support-cloud %}} for assistance.

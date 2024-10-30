@@ -400,7 +400,7 @@ public class CertificateHelperTest extends FakeDBApplication {
     try {
       rootCA =
           CertificateHelper.uploadRootCA(
-              "test", c.getUuid(), "/tmp", certContent, null, type, null, null);
+              "test", c.getUuid(), "/tmp", certContent, null, type, null, null, false);
     } catch (Exception e) {
       fail(e.getMessage());
     }
@@ -426,7 +426,7 @@ public class CertificateHelperTest extends FakeDBApplication {
 
     try {
       CertificateHelper.uploadRootCA(
-          "test", c.getUuid(), "/tmp", certContent, null, type, null, customServerCertData);
+          "test", c.getUuid(), "/tmp", certContent, null, type, null, customServerCertData, true);
     } catch (Exception e) {
 
       assertEquals(
@@ -442,13 +442,32 @@ public class CertificateHelperTest extends FakeDBApplication {
           "test",
           c.getUuid(),
           "/tmp",
-          "invalid_cert",
+          "invalid_cert\n",
           null,
           CertConfigType.CustomCertHostPath,
           null,
-          null);
+          null,
+          true);
     } catch (Exception e) {
       assertEquals("Unable to get cert Objects", e.getMessage());
+    }
+  }
+
+  @Test
+  public void testUploadRootCAWithoutNewLine() {
+    try {
+      CertificateHelper.uploadRootCA(
+          "test",
+          c.getUuid(),
+          "/tmp",
+          "no_new_line_cert",
+          null,
+          CertConfigType.CustomCertHostPath,
+          null,
+          null,
+          true);
+    } catch (Exception e) {
+      assertEquals("Certificate must end with a newline", e.getMessage());
     }
   }
 
@@ -458,9 +477,9 @@ public class CertificateHelperTest extends FakeDBApplication {
     String cert_content = getCertContent();
     try {
       CertificateHelper.uploadRootCA(
-          "test", c.getUuid(), "/tmp", cert_content, "test_key", type, null, null);
+          "test", c.getUuid(), "/tmp", cert_content, "test_key", type, null, null, true);
     } catch (Exception e) {
-      assertEquals("Certificate and key don't match.", e.getMessage());
+      assertEquals("Certificate CN=TestCA is missing CA=true extension", e.getMessage());
     }
   }
 
@@ -470,7 +489,7 @@ public class CertificateHelperTest extends FakeDBApplication {
     String cert_content = getIncorrectCertContent();
     try {
       CertificateHelper.uploadRootCA(
-          "test", c.getUuid(), "/tmp", cert_content, "test_key", type, null, null);
+          "test", c.getUuid(), "/tmp", cert_content, "test_key", type, null, null, true);
     } catch (Exception e) {
       assertEquals(
           "Certificate with CN = Cloud Intermediate has no associated root", e.getMessage());

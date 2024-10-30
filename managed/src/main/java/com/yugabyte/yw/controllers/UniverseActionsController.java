@@ -17,7 +17,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UpdateLoadBalancerConfig;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
 import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -41,6 +41,8 @@ import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
 import com.yugabyte.yw.rbac.annotations.Resource;
 import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.io.IOException;
@@ -57,7 +59,7 @@ import play.mvc.Result;
 @Slf4j
 public class UniverseActionsController extends AuthenticatedController {
   @Inject private UniverseActionsHandler universeActionsHandler;
-  @Inject private RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private RuntimeConfGetter confGetter;
 
   @ApiOperation(
       notes =
@@ -178,6 +180,12 @@ public class UniverseActionsController extends AuthenticatedController {
       value = "Set a universe's key",
       nickname = "setUniverseKey",
       response = UniverseResp.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "SetUniverseKeyRequest",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.EncryptionAtRestConfig",
+          required = true))
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.2.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -205,8 +213,7 @@ public class UniverseActionsController extends AuthenticatedController {
             universeUUID.toString(),
             Audit.ActionType.SetUniverseKey,
             taskUUID);
-    UniverseResp resp =
-        UniverseResp.create(universe, taskUUID, runtimeConfigFactory.globalRuntimeConf());
+    UniverseResp resp = UniverseResp.create(universe, taskUUID, confGetter);
     return PlatformResults.withData(resp);
   }
 

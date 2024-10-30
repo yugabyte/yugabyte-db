@@ -17,6 +17,7 @@
 #include "yb/util/string_util.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 using std::string;
 
@@ -48,6 +49,13 @@ class PgCatalogVersionTest : public LibPqTestBase {
         "--allowed_preview_flags_csv=ysql_enable_db_catalog_version_mode");
   }
 
+  Result<int64_t> GetCatalogVersion(PGConn* conn) {
+    const auto db_oid = VERIFY_RESULT(conn->FetchRow<PGOid>(Format(
+        "SELECT oid FROM pg_database WHERE datname = '$0'", PQdb(conn->get()))));
+    return conn->FetchRow<PGUint64>(
+        Format("SELECT current_version FROM pg_yb_catalog_version where db_oid = $0", db_oid));
+  }
+
   // Prepare the table pg_yb_catalog_version according to 'per_database_mode':
   // * if 'per_database_mode' is true, we prepare table pg_yb_catalog_version
   //   for per-database catalog version mode by updating the table to have one
@@ -61,11 +69,10 @@ class PgCatalogVersionTest : public LibPqTestBase {
     } else {
       LOG(INFO) << "Preparing pg_yb_catalog_version to only have one row for template1";
     }
-    RETURN_NOT_OK(conn->Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
+    RETURN_NOT_OK(SetNonDDLTxnAllowedForSysTableWrite(*conn, true));
     VERIFY_RESULT(conn->FetchFormat(
         "SELECT yb_fix_catalog_version_table($0)", per_database_mode ? "true" : "false"));
-    RETURN_NOT_OK(conn->Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
-    return Status::OK();
+    return SetNonDDLTxnAllowedForSysTableWrite(*conn, false);
   }
 
   void RestartClusterSetDBCatalogVersionMode(
@@ -429,12 +436,6 @@ class PgCatalogVersionTest : public LibPqTestBase {
       ASSERT_STR_CONTAINS(status.ToString(), "permission denied for table t5");
     }
   }
-  static void IncrementAllDBCatalogVersions(PGConn* conn, bool breaking) {
-    ASSERT_OK(conn->Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
-    ASSERT_OK(conn->FetchFormat(
-        "SELECT yb_increment_all_db_catalog_versions($0)", breaking ? "true" : "false"));
-    ASSERT_OK(conn->Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
-  }
   static size_t CountRelCacheInitFiles(const string& dirpath) {
     auto CloseDir = [](DIR* d) { closedir(d); };
     std::unique_ptr<DIR, decltype(CloseDir)> d(opendir(dirpath.c_str()),
@@ -687,11 +688,11 @@ TEST_F(PgCatalogVersionTest, DBCatalogVersionPrematureOn) {
   ASSERT_GT(num_initial_databases, 1);
   // We should not see master CHECK failure if we try to get duplicate
   // db_oid into the same request.
-  ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
+  ASSERT_OK(SetNonDDLTxnAllowedForSysTableWrite(conn, true));
   auto status = conn.Execute(
       "INSERT INTO pg_catalog.pg_yb_catalog_version VALUES "
       "(16384, 1, 1), (16384, 2, 2)");
-  ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
+  ASSERT_OK(SetNonDDLTxnAllowedForSysTableWrite(conn, false));
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(),
                       "duplicate key value violates unique constraint");
@@ -723,7 +724,7 @@ TEST_F(PgCatalogVersionTest, IncrementAllDBCatalogVersions) {
   ASSERT_OK(CheckMatch(expected_versions, ASSERT_RESULT(GetShmCatalogVersionMap())));
 
   constexpr CatalogVersion kSecondCatalogVersion{2, 1};
-  IncrementAllDBCatalogVersions(&conn_yugabyte, false);
+  ASSERT_OK(IncrementAllDBCatalogVersions(conn_yugabyte, IsBreakingCatalogVersionChange::kFalse));
   WaitForCatalogVersionToPropagate();
   expected_versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
   for (const auto& entry : expected_versions) {
@@ -732,7 +733,7 @@ TEST_F(PgCatalogVersionTest, IncrementAllDBCatalogVersions) {
   ASSERT_OK(CheckMatch(expected_versions, ASSERT_RESULT(GetShmCatalogVersionMap())));
 
   constexpr CatalogVersion kThirdCatalogVersion{3, 3};
-  IncrementAllDBCatalogVersions(&conn_yugabyte, true);
+  ASSERT_OK(IncrementAllDBCatalogVersions(conn_yugabyte));
   WaitForCatalogVersionToPropagate();
   expected_versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
   for (const auto& entry : expected_versions) {
@@ -744,7 +745,7 @@ TEST_F(PgCatalogVersionTest, IncrementAllDBCatalogVersions) {
   // to fail.
   ASSERT_OK(conn_yugabyte.Execute("SET yb_enable_replication_commands = true"));
   ASSERT_OK(conn_yugabyte.Execute("CREATE PUBLICATION testpub_foralltables FOR ALL TABLES"));
-  IncrementAllDBCatalogVersions(&conn_yugabyte, true);
+  ASSERT_OK(IncrementAllDBCatalogVersions(conn_yugabyte));
 
   // Ensure that in global catalog version mode, by turning on
   // yb_non_ddl_txn_for_sys_tables_allowed, we can perform both update and
@@ -755,7 +756,7 @@ TEST_F(PgCatalogVersionTest, IncrementAllDBCatalogVersions) {
   // This involves deleting all rows except for template1 from pg_yb_catalog_version.
   ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte, false));
   // Update the row for template1 to increment catalog version.
-  IncrementAllDBCatalogVersions(&conn_yugabyte, false);
+  ASSERT_OK(IncrementAllDBCatalogVersions(conn_yugabyte, IsBreakingCatalogVersionChange::kFalse));
 }
 
 // Test yb_fix_catalog_version_table, that will sync up pg_yb_catalog_version
@@ -772,6 +773,7 @@ TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   const auto max_oid = ASSERT_RESULT(
       conn_template1.FetchRow<PGOid>("SELECT max(oid) FROM pg_database"));
   // Delete the row with max_oid from pg_catalog.pg_yb_catalog_version.
+  ASSERT_OK(SetNonDDLTxnAllowedForSysTableWrite(conn_template1, true));
   ASSERT_OK(conn_template1.ExecuteFormat(
       "DELETE FROM pg_catalog.pg_yb_catalog_version WHERE db_oid = $0", max_oid));
   // Add an extra row to pg_catalog.pg_yb_catalog_version.
@@ -823,7 +825,7 @@ TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   CHECK_EQ(versions.size(), 1);
   ASSERT_OK(CheckMatch(versions.begin()->second, kCurrentCatalogVersion));
   // A global-impact DDL statement that increments catalog version still works.
-  ASSERT_OK(conn_yugabyte.Execute("ALTER ROLE yugabyte SUPERUSER"));
+  ASSERT_OK(conn_yugabyte.Execute("ALTER ROLE yugabyte NOSUPERUSER"));
   constexpr CatalogVersion kNewCatalogVersion{2, 2};
   versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
   CHECK_EQ(versions.size(), 1);
@@ -886,18 +888,18 @@ TEST_F(PgCatalogVersionTest, RecycleManyDatabases) {
       ss << Format(i == 0 ? "($0, 1, 1)" : ", ($0, 1, 1)", db_oid++);
     }
     LOG(INFO) << "Inserting " << kNumRows << " rows";
-    ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
+    ASSERT_OK(SetNonDDLTxnAllowedForSysTableWrite(conn, true));
     ASSERT_OK(conn.Execute(ss.str()));
-    ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
+    ASSERT_OK(SetNonDDLTxnAllowedForSysTableWrite(conn, false));
     WaitForCatalogVersionToPropagate();
     auto count = ASSERT_RESULT(conn.FetchRow<PGUint64>(
         "SELECT COUNT(*) FROM pg_yb_catalog_version"));
     CHECK_EQ(count, kNumRows + initial_count);
     LOG(INFO) << "Deleting the newly inserted " << kNumRows << " rows";
-    ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
+    ASSERT_OK(SetNonDDLTxnAllowedForSysTableWrite(conn, true));
     ASSERT_OK(conn.ExecuteFormat(
         "DELETE FROM pg_yb_catalog_version WHERE db_oid >= $0", kPgFirstNormalObjectId));
-    ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
+    ASSERT_OK(SetNonDDLTxnAllowedForSysTableWrite(conn, false));
     WaitForCatalogVersionToPropagate();
     count = ASSERT_RESULT(conn.FetchRow<PGUint64>(
         "SELECT COUNT(*) FROM pg_yb_catalog_version"));
@@ -1155,7 +1157,7 @@ TEST_F(PgCatalogVersionTest, ResetIsGlobalDdlState) {
   ASSERT_OK(conn_yugabyte.Execute("SET yb_test_fail_next_inc_catalog_version=true"));
   // The following ALTER ROLE is a global impact DDL statement. It will
   // fail due to yb_test_fail_next_inc_catalog_version=true.
-  auto status = conn_yugabyte.Execute("ALTER ROLE yugabyte SUPERUSER");
+  auto status = conn_yugabyte.Execute("ALTER ROLE yugabyte NOSUPERUSER");
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(), "Failed increment catalog version as requested");
 
@@ -1436,7 +1438,9 @@ TEST_F(PgCatalogVersionTest, SqlCrossDBLoadWithDDL) {
 
   for (const auto& db_name : db_names) {
     // On each database, create the tables.
-    auto conn_test = ASSERT_RESULT(ConnectToDBAsUser(db_name, kTestUser));
+    auto conn = ASSERT_RESULT(ConnectToDB(db_name));
+    ASSERT_OK(conn.ExecuteFormat("GRANT ALL ON SCHEMA public TO $0", kTestUser));
+    ASSERT_OK(conn.ExecuteFormat("SET SESSION AUTHORIZATION $0", kTestUser));
     for (const auto& table_name : tableList) {
       auto query = Format(
           "CREATE TABLE IF NOT EXISTS $0 "
@@ -1449,7 +1453,7 @@ TEST_F(PgCatalogVersionTest, SqlCrossDBLoadWithDDL) {
           "v26 integer, v27 money, v28 JSONB, v29 TIMESTAMP, v30 bool)",
         table_name);
       LOG(INFO) << db_name << ":" << query;
-      ASSERT_OK(conn_test.Execute(query));
+      ASSERT_OK(conn.Execute(query));
     }
   }
   TestThreadHolder thread_holder;
@@ -1467,11 +1471,13 @@ TEST_F(PgCatalogVersionTest, SqlCrossDBLoadWithDDL) {
             const auto max_index = static_cast<int>(ddlLists.size() - 1);
             const size_t random_index = RandomUniformInt(0, max_index);
             // Run the DDLs in the current randomly selected DDL list.
+            int k = 0;
             for (const auto& query : ddlLists[random_index]) {
               auto ddlQuery = Format(query, table_name);
-              LOG(INFO) << "Executing (" << i << "," << j << ") "
+              LOG(INFO) << "Executing (" << i << "," << j << "," << k << ") "
                         << db_name << ":" << table_name << " ddl: " << ddlQuery;
               ASSERT_OK(conn_test.Execute(ddlQuery));
+              ++k;
             }
           }
         }
@@ -1526,6 +1532,166 @@ TEST_F(PgCatalogVersionTest, NonBreakingDDLMode) {
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(), msg);
   ASSERT_OK(conn1.Execute("ABORT"));
+}
+
+TEST_F(PgCatalogVersionTest, NonIncrementingDDLMode) {
+  const string kDatabaseName = "yugabyte";
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  ASSERT_OK(conn.Execute("GRANT CREATE ON SCHEMA public TO yb_db_admin"));
+  ASSERT_OK(conn.Execute("SET ROLE yb_db_admin"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t1(a int)"));
+  auto version = ASSERT_RESULT(GetCatalogVersion(&conn));
+
+  // REVOKE bumps up the catalog version by 1.
+  ASSERT_OK(conn.Execute("REVOKE SELECT ON t1 FROM public"));
+  auto new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
+  ASSERT_EQ(new_version, version + 1);
+  version = new_version;
+
+  // GRANT bumps up the catalog version by 1.
+  ASSERT_OK(conn.Execute("GRANT SELECT ON t1 TO public"));
+  new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
+  ASSERT_EQ(new_version, version + 1);
+  version = new_version;
+
+  ASSERT_OK(conn.Execute("CREATE INDEX idx1 ON t1(a)"));
+  new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
+  // By default CREATE INDEX runs concurrently and its algorithm requires to bump up catalog
+  // version 3 times.
+  ASSERT_EQ(new_version, version + 3);
+  version = new_version;
+
+  // CREATE INDEX CONCURRENTLY bumps up catalog version by 1.
+  ASSERT_OK(conn.Execute("CREATE INDEX NONCONCURRENTLY idx2 ON t1(a)"));
+  new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
+  ASSERT_EQ(new_version, version + 1);
+  version = new_version;
+
+  // Let's start over, but this time use yb_make_next_ddl_statement_nonincrementing to suppress
+  // incrementing catalog version.
+  ASSERT_OK(conn.Execute("SET yb_make_next_ddl_statement_nonincrementing TO TRUE"));
+  ASSERT_OK(conn.Execute("REVOKE SELECT ON t1 FROM public"));
+  new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
+  ASSERT_EQ(new_version, version);
+
+  ASSERT_OK(conn.Execute("SET yb_make_next_ddl_statement_nonincrementing TO TRUE"));
+  ASSERT_OK(conn.Execute("GRANT SELECT ON t1 TO public"));
+  new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
+  ASSERT_EQ(new_version, version);
+
+  ASSERT_OK(conn.Execute("SET yb_make_next_ddl_statement_nonincrementing TO TRUE"));
+  ASSERT_OK(conn.Execute("CREATE INDEX idx3 ON t1(a)"));
+  new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
+  // By default CREATE INDEX runs concurrently and its algorithm requires to bump up catalog
+  // version 3 times, only the first bump is suppressed.
+  ASSERT_EQ(new_version, version + 2);
+  version = new_version;
+
+  ASSERT_OK(conn.Execute("SET yb_make_next_ddl_statement_nonincrementing TO TRUE"));
+  ASSERT_OK(conn.Execute("CREATE INDEX NONCONCURRENTLY idx4 ON t1(a)"));
+  new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
+  ASSERT_EQ(new_version, version);
+
+  // Verify that the session variable yb_make_next_ddl_statement_nonbreaking auto-resets to false.
+  ASSERT_OK(conn.Execute("REVOKE SELECT ON t1 FROM public"));
+  new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
+  ASSERT_EQ(new_version, version + 1);
+  version = new_version;
+
+  // Since yb_make_next_ddl_statement_nonbreaking auto-resets to false, we should see catalog
+  // version gets bumped up as before.
+  ASSERT_OK(conn.Execute("GRANT SELECT ON t1 TO public"));
+  new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
+  ASSERT_EQ(new_version, version + 1);
+  version = new_version;
+
+  ASSERT_OK(conn.Execute("CREATE INDEX idx5 ON t1(a)"));
+  new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
+  ASSERT_EQ(new_version, version + 3);
+  version = new_version;
+
+  ASSERT_OK(conn.Execute("CREATE INDEX NONCONCURRENTLY idx6 ON t1(a)"));
+  new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
+  ASSERT_EQ(new_version, version + 1);
+  version = new_version;
+
+  // Now test the scenario where we create a new table, followed by create index nonconcurrently
+  // on the new table. Use yb_make_next_ddl_statement_nonbreaking to suppress catalog version
+  // increment on the create index statement.
+  // First create a second connection conn2.
+  auto conn2 = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE demo (a INT, b INT)"));
+  ASSERT_OK(conn.Execute("SET yb_make_next_ddl_statement_nonincrementing TO TRUE"));
+  ASSERT_OK(conn.Execute("CREATE INDEX NONCONCURRENTLY a_idx ON demo (a)"));
+  new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
+  ASSERT_EQ(new_version, version);
+
+  // Sanity test on conn2 write, count, select and delete on the new table created on conn.
+  ASSERT_OK(conn2.Execute("INSERT INTO demo SELECT n, n FROM generate_series(1,100) n"));
+  auto row_count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM demo"));
+  ASSERT_EQ(row_count, 100);
+  std::tuple<int32_t, int32_t> expected_row = {50, 50};
+  auto row = ASSERT_RESULT((conn2.FetchRow<int32_t, int32_t>("SELECT * FROM demo WHERE a = 50")));
+  ASSERT_EQ(row, expected_row);
+  ASSERT_OK(conn2.Execute("DELETE FROM demo WHERE a = 50"));
+  row_count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM demo"));
+  ASSERT_EQ(row_count, 99);
+}
+
+TEST_F(PgCatalogVersionTest, SimulateRollingUpgrade) {
+  // Manually switch back to non-per-db catalog version mode.
+  RestartClusterWithoutDBCatalogVersionMode();
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(PrepareDBCatalogVersion(&conn, false));
+
+  // Test setup.
+  ASSERT_OK(conn.Execute("CREATE USER u1"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t(id int)"));
+  ASSERT_OK(conn.Execute("GRANT ALL ON t TO public"));
+
+  // Make a connection to the first node.
+  pg_ts = cluster_->tablet_server(0);
+  auto conn1 = ASSERT_RESULT(Connect());
+
+  // Make a connection to the second node as user u1.
+  pg_ts = cluster_->tablet_server(1);
+  auto conn2 = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "u1"));
+
+  // On the second connection, u1 should have permission to access table t
+  ASSERT_OK(conn2.Fetch("SELECT * FROM t"));
+
+  // Simulate rolling upgrade where masters are upgraded to a new version which has
+  // --ysql_enable_db_catalog_version_mode enabled.
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "ysql_enable_db_catalog_version_mode", "true"));
+  // Execute a DDL statement on the first connection to bumps up the catalog version
+  ASSERT_OK(conn1.Execute("REVOKE ALL ON t FROM public"));
+  WaitForCatalogVersionToPropagate();
+
+  // On conn2 we should see permission denied error because of the previous REVOKE.
+  auto status = ResultToStatus(conn2.Fetch("SELECT * FROM t"));
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  const string msg = "permission denied for table t";
+  ASSERT_STR_CONTAINS(status.ToString(), msg);
+}
+
+// This test that ALTER ROLE statement will increment catalog version
+// if --FLAGS_ysql_yb_enable_nop_alter_role_optimization=false.
+TEST_F(PgCatalogVersionTest, DisableNopAlterRoleOptimization) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto v1 = ASSERT_RESULT(GetCatalogVersion(&conn));
+  // This ALTER ROLE should be a nop DDL.
+  ASSERT_OK(conn.Execute("ALTER ROLE yugabyte SUPERUSER"));
+  auto v2 = ASSERT_RESULT(GetCatalogVersion(&conn));
+  ASSERT_EQ(v2, v1);
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "ysql_yb_enable_nop_alter_role_optimization", "false"));
+  // This ALTER ROLE is not a nop DDL because the nop alter role optimization is disabled.
+  ASSERT_OK(conn.Execute("ALTER ROLE yugabyte SUPERUSER"));
+  auto v3 = ASSERT_RESULT(GetCatalogVersion(&conn));
+  ASSERT_EQ(v3, v2 + 1);
 }
 
 } // namespace pgwrapper

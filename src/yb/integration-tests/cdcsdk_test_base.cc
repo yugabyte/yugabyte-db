@@ -55,6 +55,7 @@
 using std::string;
 
 DECLARE_bool(ysql_enable_pack_full_row_update);
+DECLARE_string(pgsql_proxy_bind_address);
 
 namespace yb {
 using client::YBClient;
@@ -114,11 +115,35 @@ Status CDCSDKTestBase::InitPostgres(PostgresMiniCluster* cluster) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) =
       cluster->mini_cluster_->AllocateFreePort();
 
-  LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses
-            << ":" << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
+  LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses << ":"
+            << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
             << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
-  cluster->pg_supervisor_ = std::make_unique<pgwrapper::PgSupervisor>(
-      pg_process_conf, nullptr /* tserver */);
+  cluster->pg_supervisor_ =
+      std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, nullptr /* tserver */);
+  RETURN_NOT_OK(cluster->pg_supervisor_->Start());
+
+  cluster->pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
+  return Status::OK();
+}
+
+Status CDCSDKTestBase::InitPostgres(
+    PostgresMiniCluster* cluster, const size_t pg_ts_idx, uint16_t pg_port) {
+  auto pg_ts = cluster->mini_cluster_->mini_tablet_server(pg_ts_idx);
+  pgwrapper::PgProcessConf pg_process_conf =
+      VERIFY_RESULT(pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
+          AsString(Endpoint(pg_ts->bound_rpc_addr().address(), pg_port)),
+          pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
+          pg_ts->server()->GetSharedMemoryFd()));
+  pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
+  pg_process_conf.force_disable_log_file = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) =
+      cluster->mini_cluster_->AllocateFreePort();
+
+  LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses << ":"
+            << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
+            << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
+  cluster->pg_supervisor_ =
+      std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, nullptr /* tserver */);
   RETURN_NOT_OK(cluster->pg_supervisor_->Start());
 
   cluster->pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
@@ -128,7 +153,7 @@ Status CDCSDKTestBase::InitPostgres(PostgresMiniCluster* cluster) {
 // Set up a cluster with the specified parameters.
 Status CDCSDKTestBase::SetUpWithParams(
     uint32_t replication_factor, uint32_t num_masters, bool colocated,
-    bool cdc_populate_safepoint_record) {
+    bool cdc_populate_safepoint_record, bool set_pgsql_proxy_bind_address) {
   master::SetDefaultInitialSysCatalogSnapshotFlags();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = true;
@@ -148,11 +173,27 @@ Status CDCSDKTestBase::SetUpWithParams(
 
   test_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(opts);
 
+  size_t pg_ts_idx = 0;
+  uint16_t pg_port = 0;
+  if (set_pgsql_proxy_bind_address) {
+    // Randomly select the tserver index that will serve the postgres proxy.
+    pg_ts_idx = RandomUniformInt<size_t>(0, opts.num_tablet_servers - 1);
+    const std::string pg_addr = server::TEST_RpcAddress(pg_ts_idx + 1, server::Private::kTrue);
+    // The 'pgsql_proxy_bind_address' flag must be set before starting the cluster. Each
+    // tserver will store this address when it starts.
+    pg_port = test_cluster_.mini_cluster_->AllocateFreePort();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address) = Format("$0:$1", pg_addr, pg_port);
+  }
+
   RETURN_NOT_OK(test_cluster()->StartSync());
   RETURN_NOT_OK(test_cluster()->WaitForTabletServerCount(replication_factor));
   RETURN_NOT_OK(WaitForInitDb(test_cluster()));
   test_cluster_.client_ = VERIFY_RESULT(test_cluster()->CreateClient());
-  RETURN_NOT_OK(InitPostgres(&test_cluster_));
+  if (set_pgsql_proxy_bind_address) {
+    RETURN_NOT_OK(InitPostgres(&test_cluster_, pg_ts_idx, pg_port));
+  } else {
+    RETURN_NOT_OK(InitPostgres(&test_cluster_));
+  }
   RETURN_NOT_OK(CreateDatabase(&test_cluster_, kNamespaceName, colocated));
 
   cdc_proxy_ = GetCdcProxy();
@@ -361,24 +402,29 @@ void CDCSDKTestBase::InitCreateStreamRequest(
     CreateCDCStreamRequestPB* create_req,
     const CDCCheckpointType& checkpoint_type,
     const CDCRecordType& record_type,
-    const std::string& namespace_name) {
+    const std::string& namespace_name,
+    CDCSDKDynamicTablesOption dynamic_tables_option) {
   create_req->set_namespace_name(namespace_name);
   create_req->set_checkpoint_type(checkpoint_type);
   create_req->set_record_type(record_type);
   create_req->set_record_format(CDCRecordFormat::PROTO);
   create_req->set_source_type(CDCSDK);
+  create_req->mutable_cdcsdk_stream_create_options()->set_cdcsdk_dynamic_tables_option(
+      dynamic_tables_option);
 }
 
 // This creates a DB stream on the database kNamespaceName by default.
 Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStream(
-    CDCCheckpointType checkpoint_type, CDCRecordType record_type) {
+    CDCCheckpointType checkpoint_type, CDCRecordType record_type, std::string namespace_name,
+    CDCSDKDynamicTablesOption dynamic_tables_option) {
   CreateCDCStreamRequestPB req;
   CreateCDCStreamResponsePB resp;
 
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
 
-  InitCreateStreamRequest(&req, checkpoint_type, record_type);
+  InitCreateStreamRequest(
+      &req, checkpoint_type, record_type, namespace_name, dynamic_tables_option);
 
   RETURN_NOT_OK(cdc_proxy_->CreateCDCStream(req, &resp, &rpc));
   if (resp.has_error()) {
@@ -411,8 +457,8 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
 
 Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplicationSlot(
     const std::string& slot_name,
-    CDCSDKSnapshotOption snapshot_option, bool verify_snapshot_name) {
-  auto repl_conn = VERIFY_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
+    CDCSDKSnapshotOption snapshot_option, bool verify_snapshot_name, std::string namespace_name) {
+  auto repl_conn = VERIFY_RESULT(test_cluster_.ConnectToDBWithReplication(namespace_name));
 
   std::string snapshot_action;
   switch (snapshot_option) {
@@ -461,14 +507,15 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplic
 Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStream(
     CDCSDKSnapshotOption snapshot_option,
     CDCCheckpointType checkpoint_type,
-    CDCRecordType record_type) {
+    CDCRecordType record_type,
+    std::string namespace_name) {
   CreateCDCStreamRequestPB req;
   CreateCDCStreamResponsePB resp;
 
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
 
-  InitCreateStreamRequest(&req, checkpoint_type, record_type);
+  InitCreateStreamRequest(&req, checkpoint_type, record_type, namespace_name);
   req.set_cdcsdk_consistent_snapshot_option(snapshot_option);
 
   RETURN_NOT_OK(cdc_proxy_->CreateCDCStream(req, &resp, &rpc));

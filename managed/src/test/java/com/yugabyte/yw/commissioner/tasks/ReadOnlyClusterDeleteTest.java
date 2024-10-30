@@ -149,6 +149,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
 
   private void assertClusterDeleteSequence(Map<Integer, List<TaskInfo>> subTasksByPosition) {

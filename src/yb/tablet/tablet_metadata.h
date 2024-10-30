@@ -275,6 +275,7 @@ struct RaftGroupMetadataData {
   bool colocated = false;
   std::vector<SnapshotScheduleId> snapshot_schedules;
   std::unordered_set<StatefulServiceKind> hosted_services;
+  std::vector<TableInfoPtr> colocated_tables_infos = {};
 };
 
 // At startup, the TSTabletManager will load a RaftGroupMetadata for each
@@ -313,6 +314,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   Result<TableInfoPtr> GetTableInfo(ColocationId colocation_id) const;
   Result<TableInfoPtr> GetTableInfoUnlocked(ColocationId colocation_id) const REQUIRES(data_mutex_);
 
+  std::vector<TableInfoPtr> GetColocatedTableInfos() const;
+
   const RaftGroupId& raft_group_id() const {
     DCHECK_NE(state_, kNotLoadedYet);
     return raft_group_id_;
@@ -348,8 +351,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   std::shared_ptr<qlexpr::IndexMap> index_map(const TableId& table_id = "") const;
 
+  SchemaVersion primary_table_schema_version() const;
+
+  // Non-colocated tables should use primary_table_schema_version().
   [[deprecated]]
-  SchemaVersion schema_version(const TableId& table_id = "") const;
+  SchemaVersion schema_version(const TableId& table_id) const;
 
   Result<SchemaVersion> schema_version(ColocationId colocation_id) const;
 
@@ -397,6 +403,13 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   Status set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_min_checkpoint_op_id);
 
   Status set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_time = HybridTime::kInvalid);
+
+  Status set_all_cdc_retention_barriers(int64 cdc_min_replicated_index,
+                                        bool set_cdc_min_replicated_index_check,
+                                        const OpId& cdc_min_checkpoint_op_id,
+                                        bool set_cdc_min_checkpoint_op_id_check,
+                                        const HybridTime& cdc_sdk_safe_time,
+                                        bool set_cdc_sdk_safe_time_check);
 
   int64_t cdc_min_replicated_index() const;
 
@@ -483,6 +496,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
                  const SchemaVersion version,
                  const OpId& op_id,
                  const TableId& table_id = "") REQUIRES(data_mutex_);
+
+  void InsertPackedSchemaForXClusterTarget(
+      const Schema& schema, const qlexpr::IndexMap& index_map, const SchemaVersion version,
+      const OpId& op_id, const TableId& table_id);
 
   void SetPartitionSchema(const dockv::PartitionSchema& partition_schema);
 

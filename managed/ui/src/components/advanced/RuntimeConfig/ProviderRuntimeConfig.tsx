@@ -10,7 +10,7 @@ import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import '../AdvancedConfig.scss';
 
 export const ProviderRuntimeConfig: FC<RuntimeConfigScopeProps> = ({
-  configTagFilter,
+  getRuntimeConfig,
   fetchRuntimeConfigs,
   setRuntimeConfig,
   deleteRunTimeConfig,
@@ -84,11 +84,11 @@ export const ProviderRuntimeConfig: FC<RuntimeConfigScopeProps> = ({
         </Dropdown>
       </div>
       <ConfigData
+        getRuntimeConfig={getRuntimeConfig}
         setRuntimeConfig={setRuntimeConfig}
         deleteRunTimeConfig={deleteRunTimeConfig}
         scope={RunTimeConfigScope.PROVIDER}
         providerUUID={providerUUID}
-        configTagFilter={configTagFilter}
       />
     </div>
   );

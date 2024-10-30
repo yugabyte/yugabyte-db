@@ -19,6 +19,7 @@ import static org.yb.AssertionWrappers.assertGreaterThan;
 import static org.yb.AssertionWrappers.assertLessThan;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
+import static org.junit.Assume.*;
 
 import java.io.File;
 import java.sql.Connection;
@@ -116,7 +117,7 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Override
   public int getTestMethodTimeoutSec() {
-    return 600; // Usual time for a test ~90 seconds. But can be much more on Jenkins.
+    return 900; // Usual time for a test ~90 seconds. But can be much more on Jenkins.
   }
 
   @Override
@@ -798,7 +799,7 @@ public class TestYbBackup extends BasePgSQLTest {
 
       runInvalidQuery(
           stmt, "INSERT INTO test_tbl(id, b) VALUES(3, 6)",
-          "null value in column \"a\" violates not-null constraint");
+          "null value in column \"a\" of relation \"test_tbl\" violates not-null constraint");
 
       String backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
@@ -1456,6 +1457,12 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testGeoPartitioningRestoringIntoExisting() throws Exception {
+    // The test fails with Connection Manager as it is expected that a new
+    // session would latch onto a new physical connection. Instead, two logical
+    // connections use the same physical connection, leading to unexpected
+    // results as per the expectations of the test.
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
+
     if (disableGeoPartitionedTests()) {
       return;
     }
@@ -1488,6 +1495,12 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testGeoPartitioningRestoringIntoExistingWithTablespaces() throws Exception {
+    // The test fails with Connection Manager as it is expected that a new
+    // session would latch onto a new physical connection. Instead, two logical
+    // connections use the same physical connection, leading to unexpected
+    // results as per the expectations of the test.
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
+
     if (disableGeoPartitionedTests()) {
       return;
     }
@@ -2084,9 +2097,8 @@ public class TestYbBackup extends BasePgSQLTest {
     try (Statement stmt = connection.createStatement()) {
       // Create orafce extension.
       stmt.execute("CREATE EXTENSION orafce");
-      // Test orafce function created in pg_catalog schema.
-      assertQuery(stmt, "SELECT pg_catalog.to_char(100)", new Row("100"));
-      // Test function in other schema.
+      // Test functions created in oracle schema.
+      assertQuery(stmt, "SELECT oracle.to_char(100)", new Row("100"));
       assertQuery(stmt, "SELECT oracle.substr('abcdef', 3)", new Row("cdef"));
       // Test operator.
       stmt.execute("SET search_path TO oracle, \"$user\", public");
@@ -2120,9 +2132,8 @@ public class TestYbBackup extends BasePgSQLTest {
     try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
          Statement stmt = connection2.createStatement()) {
       // Test orafce after restore.
-      // Test orafce function created in pg_catalog schema.
-      assertQuery(stmt, "SELECT pg_catalog.to_char(100)", new Row("100"));
-      // Test function in other schema.
+      // Test functions created in oracle schema.
+      assertQuery(stmt, "SELECT oracle.to_char(100)", new Row("100"));
       assertQuery(stmt, "SELECT oracle.substr('abcdef', 3)", new Row("cdef"));
       // Test operator.
       stmt.execute("SET search_path TO oracle, \"$user\", public");

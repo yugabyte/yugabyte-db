@@ -1,90 +1,126 @@
-sha: f4226c3d4b913bbc150e4767b80603b2b82fb568
+sha: 0470ebd2684b8e38d6b6214e25cc08390b16f8e8
 archives:
 
   - os_type: almalinux8
     architecture: x86_64
     compiler_type: clang17
-    tag: v20240522042651-f4226c3d4b-almalinux8-x86_64-clang17
+    tag: v20241014144502-0470ebd268-almalinux8-x86_64-clang17
+
+  - os_type: almalinux8
+    architecture: x86_64
+    compiler_type: clang18
+    tag: v20241014144502-0470ebd268-almalinux8-x86_64-clang18
 
   - os_type: almalinux8
     architecture: x86_64
     compiler_type: gcc11
-    tag: v20240522042655-f4226c3d4b-almalinux8-x86_64-gcc11
+    tag: v20241014144504-0470ebd268-almalinux8-x86_64-gcc11
+
+  - os_type: almalinux8
+    architecture: x86_64
+    compiler_type: gcc12
+    tag: v20241014144502-0470ebd268-almalinux8-x86_64-gcc12
+
+  - os_type: almalinux8
+    architecture: x86_64
+    compiler_type: gcc13
+    tag: v20241014144503-0470ebd268-almalinux8-x86_64-gcc13
 
   - os_type: almalinux9
     architecture: x86_64
     compiler_type: clang17
-    tag: v20240522042705-f4226c3d4b-almalinux9-x86_64-clang17
+    tag: v20241014144513-0470ebd268-almalinux9-x86_64-clang17
 
   - os_type: almalinux9
     architecture: x86_64
     compiler_type: gcc12
-    tag: v20240522042655-f4226c3d4b-almalinux9-x86_64-gcc12
+    tag: v20241014144512-0470ebd268-almalinux9-x86_64-gcc12
 
-  - os_type: centos7
-    architecture: aarch64
-    compiler_type: clang16
-    tag: v20240522042832-f4226c3d4b-centos7-aarch64-clang16
+  - os_type: almalinux9
+    architecture: x86_64
+    compiler_type: gcc13
+    tag: v20241014144512-0470ebd268-almalinux9-x86_64-gcc13
 
-  - os_type: centos7
-    architecture: aarch64
-    compiler_type: clang16
-    lto_type: full
-    tag: v20240522042834-f4226c3d4b-centos7-aarch64-clang16-full-lto
-
-  - os_type: centos7
+  - os_type: amzn2
     architecture: aarch64
     compiler_type: clang17
-    tag: v20240522042842-f4226c3d4b-centos7-aarch64-clang17
+    tag: v20241014144836-0470ebd268-amzn2-aarch64-clang17
 
-  - os_type: centos7
+  - os_type: amzn2
     architecture: aarch64
     compiler_type: clang17
     lto_type: full
-    tag: v20240522042834-f4226c3d4b-centos7-aarch64-clang17-full-lto
+    tag: v20241014144844-0470ebd268-amzn2-aarch64-clang17-full-lto
 
-  - os_type: centos7
+  - os_type: amzn2
+    architecture: aarch64
+    compiler_type: clang18
+    tag: v20241014144844-0470ebd268-amzn2-aarch64-clang18
+
+  - os_type: amzn2
+    architecture: aarch64
+    compiler_type: clang18
+    lto_type: full
+    tag: v20241014144853-0470ebd268-amzn2-aarch64-clang18-full-lto
+
+  - os_type: amzn2
     architecture: x86_64
     compiler_type: clang17
-    tag: v20240522042652-f4226c3d4b-centos7-x86_64-clang17
+    tag: v20241014144510-0470ebd268-amzn2-x86_64-clang17
 
-  - os_type: centos7
+  - os_type: amzn2
     architecture: x86_64
     compiler_type: clang17
     lto_type: full
-    tag: v20240522042654-f4226c3d4b-centos7-x86_64-clang17-full-lto
+    tag: v20241014144512-0470ebd268-amzn2-x86_64-clang17-full-lto
 
-  - os_type: centos7
+  - os_type: amzn2
     architecture: x86_64
-    compiler_type: gcc11
-    tag: v20240522042647-f4226c3d4b-centos7-x86_64-gcc11
+    compiler_type: clang18
+    tag: v20241014144511-0470ebd268-amzn2-x86_64-clang18
+
+  - os_type: amzn2
+    architecture: x86_64
+    compiler_type: clang18
+    lto_type: full
+    tag: v20241014144507-0470ebd268-amzn2-x86_64-clang18-full-lto
 
   - os_type: macos
     architecture: arm64
     compiler_type: clang
-    tag: v20240522051921-f4226c3d4b-macos-arm64
+    tag: v20241014144257-0470ebd268-macos-arm64
 
   - os_type: macos
     architecture: x86_64
     compiler_type: clang
-    tag: v20240522042711-f4226c3d4b-macos-x86_64
+    tag: v20241014144655-0470ebd268-macos-x86_64
 
   - os_type: ubuntu20.04
     architecture: x86_64
     compiler_type: clang16
-    tag: v20240522042651-f4226c3d4b-ubuntu2004-x86_64-clang16
+    tag: v20241014144453-0470ebd268-ubuntu2004-x86_64-clang16
 
   - os_type: ubuntu22.04
     architecture: x86_64
     compiler_type: clang17
-    tag: v20240522042648-f4226c3d4b-ubuntu2204-x86_64-clang17
+    tag: v20241014144442-0470ebd268-ubuntu2204-x86_64-clang17
 
   - os_type: ubuntu22.04
     architecture: x86_64
     compiler_type: gcc11
-    tag: v20240522042644-f4226c3d4b-ubuntu2204-x86_64-gcc11
+    tag: v20241014144447-0470ebd268-ubuntu2204-x86_64-gcc11
 
-  - os_type: ubuntu23.04
+  - os_type: ubuntu22.04
+    architecture: x86_64
+    compiler_type: gcc12
+    tag: v20241014144438-0470ebd268-ubuntu2204-x86_64-gcc12
+
+  - os_type: ubuntu24.04
+    architecture: x86_64
+    compiler_type: clang17
+    tag: v20241014144502-0470ebd268-ubuntu2404-x86_64-clang17
+
+  - os_type: ubuntu24.04
     architecture: x86_64
     compiler_type: gcc13
-    tag: v20240522042646-f4226c3d4b-ubuntu2304-x86_64-gcc13
+    tag: v20241014144457-0470ebd268-ubuntu2404-x86_64-gcc13

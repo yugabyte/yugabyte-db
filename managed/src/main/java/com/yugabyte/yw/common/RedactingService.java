@@ -6,12 +6,17 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.jayway.jsonpath.DocumentContext;
 import com.jayway.jsonpath.JsonPath;
+import com.jayway.jsonpath.PathNotFoundException;
 import com.yugabyte.yw.common.audit.AuditService;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
 
 @Singleton
+@Slf4j
 public class RedactingService {
 
   public static final String SECRET_REPLACEMENT = "REDACTED";
@@ -29,6 +34,9 @@ public class RedactingService {
           "$..ysqlCurrentPassword",
           "$..sshPrivateKeyContent");
 
+  public static final List<String> SECRET_QUERY_PARAMS_FOR_LOGS =
+      ImmutableList.of(/* SAS Token */ "sig");
+
   public static final List<String> SECRET_PATHS_FOR_LOGS =
       ImmutableList.<String>builder()
           .addAll(SECRET_PATHS_FOR_APIS)
@@ -38,11 +46,17 @@ public class RedactingService {
           .add("$..currentPassword")
           .add("$..['config.AWS_ACCESS_KEY_ID']")
           .add("$..['config.AWS_SECRET_ACCESS_KEY']")
+          // Datadog API key
+          .add("$..config.apiKey")
           // GCP private key
           .add("$..['config.config_file_contents.private_key_id']")
           .add("$..['config.config_file_contents.private_key']")
+          .add("$..config_file_contents.private_key")
+          .add("$..config_file_contents.private_key_id")
           .add("$..config.private_key_id")
           .add("$..config.private_key")
+          .add("$..credentials.private_key_id")
+          .add("$..credentials.private_key")
           .add("$..GCP_CONFIG.private_key_id")
           .add("$..GCP_CONFIG.private_key")
           .add("$..gceApplicationCredentialsPath")
@@ -88,6 +102,8 @@ public class RedactingService {
           // LDAP - DB Universe Sync
           .add("$..dbuserPassword")
           .add("$..ldapBindPassword")
+          // HA Config
+          .add("$..cluster_key")
           .build();
 
   // List of json paths to any secret fields we want to redact.
@@ -95,8 +111,9 @@ public class RedactingService {
   public static final List<JsonPath> SECRET_JSON_PATHS_APIS =
       SECRET_PATHS_FOR_APIS.stream().map(JsonPath::compile).collect(Collectors.toList());
 
-  public static final List<JsonPath> SECRET_JSON_PATHS_LOGS =
-      SECRET_PATHS_FOR_LOGS.stream().map(JsonPath::compile).collect(Collectors.toList());
+  public static Set<JsonPath> SECRET_JSON_PATHS_LOGS =
+      new CopyOnWriteArraySet<>(
+          SECRET_PATHS_FOR_LOGS.stream().map(JsonPath::compile).collect(Collectors.toList()));
 
   public static JsonNode filterSecretFields(JsonNode input, RedactionTarget target) {
     if (input == null) {
@@ -107,10 +124,24 @@ public class RedactingService {
 
     switch (target) {
       case APIS:
-        SECRET_JSON_PATHS_APIS.forEach(path -> context.set(path, SECRET_REPLACEMENT));
+        SECRET_JSON_PATHS_APIS.forEach(
+            path -> {
+              try {
+                context.set(path, SECRET_REPLACEMENT);
+              } catch (PathNotFoundException e) {
+                log.trace("skip redacting secret path {} - not present", path.getPath());
+              }
+            });
         break;
       case LOGS:
-        SECRET_JSON_PATHS_LOGS.forEach(path -> context.set(path, SECRET_REPLACEMENT));
+        SECRET_JSON_PATHS_LOGS.forEach(
+            path -> {
+              try {
+                context.set(path, SECRET_REPLACEMENT);
+              } catch (PathNotFoundException e) {
+                log.trace("skip redacting secret path {} - not present", path.getPath());
+              }
+            });
         break;
       default:
         throw new IllegalArgumentException("Target " + target.name() + " is not supported");
@@ -123,6 +154,16 @@ public class RedactingService {
     String length = ((Integer) input.length()).toString();
     String regex = "(.){" + length + "}";
     String output = input.replaceAll(regex, SECRET_REPLACEMENT);
+    return output;
+  }
+
+  public static String redactQueryParams(String input) {
+    String output = input;
+    for (String param : SECRET_QUERY_PARAMS_FOR_LOGS) {
+      String regex = "([?&]" + param + "=)([^&]+)";
+      String replacement = "$1" + SECRET_REPLACEMENT;
+      output = output.replaceAll(regex, replacement);
+    }
     return output;
   }
 

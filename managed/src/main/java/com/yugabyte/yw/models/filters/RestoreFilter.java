@@ -22,4 +22,5 @@ public class RestoreFilter {
   Set<UUID> restoreUUIDList;
   UUID customerUUID;
   boolean onlyShowDeletedSourceUniverses;
+  boolean showHidden;
 }

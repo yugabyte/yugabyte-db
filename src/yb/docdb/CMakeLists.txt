@@ -17,10 +17,9 @@ set(YB_PCH_PREFIX docdb)
 
 YRPC_GENERATE(
         DOCDB_PROTO_SRCS DOCDB_PROTO_HDRS DOCDB_PROTO_TGTS
-        MESSAGES TRUE
         SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
         BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-        NO_SERVICE_PROTO_FILES docdb.proto)
+        NO_SERVICE_MESSAGES_PROTO_FILES docdb.proto)
 
 ADD_YB_LIBRARY(docdb_proto
         SRCS ${DOCDB_PROTO_SRCS}
@@ -78,6 +77,9 @@ set(DOCDB_SRCS
         transaction_dump.cc
         transaction_status_cache.cc
         local_waiting_txn_registry.cc
+        vector_index.cc
+        vector_index_read.cc
+        vector_index_update.cc
         wait_queue.cc
         )
 
@@ -94,6 +96,7 @@ set(DOCDB_DEPS
         yb_pggate_util
         yb_pggate
         ql_util
+        vector_index
         yb_pgbackend
         )
 
@@ -143,6 +146,7 @@ ADD_YB_TEST(shared_lock_manager-test)
 ADD_YB_TEST(consensus_frontier-test)
 ADD_YB_TEST(compaction_file_filter-test)
 ADD_YB_TEST(usearch_vector_index-test)
+ADD_YB_TEST(vector_index_docdb-test)
 
 if(YB_BUILD_FUZZ_TARGETS)
   # A library with common code shared between DocDB fuzz tests.

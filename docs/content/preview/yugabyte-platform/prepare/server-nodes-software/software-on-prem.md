@@ -3,7 +3,7 @@ title: YugabyteDB Anywhere node software requirements
 headerTitle: Software requirements for on-premises nodes
 linkTitle: On-premises provider
 description: Software requirements for on-premises provider nodes.
-headContent: Prepare a VM for deployment in a universe
+headContent: Prepare a VM for deploying universes on-premises
 menu:
   preview_yugabyte-platform:
     identifier: software-on-prem
@@ -11,6 +11,10 @@ menu:
     weight: 20
 type: docs
 ---
+
+{{<tip title="v2.20 and earlier">}}
+For instructions on preparing nodes for on-premises configurations in v2.20 and earlier, see [Create on-premises provider configuration](/v2.20/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
+{{</tip>}}
 
 When deploying database clusters using an on-premises provider, YugabyteDB Anywhere (YBA) relies on you to manually create the VMs and provide these pre-created VMs to YBA.
 

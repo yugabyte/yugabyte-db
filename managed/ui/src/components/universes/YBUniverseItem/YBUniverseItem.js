@@ -14,6 +14,7 @@ import { UniverseStatusContainer } from '..';
 import { CellLocationPanel } from './CellLocationPanel';
 import { CellResourcesPanel } from './CellResourcePanel';
 import { timeFormatter } from '../../../utils/TableFormatters';
+import { useIsTaskNewUIEnabled } from '../../../redesign/features/tasks/TaskUtils';
 
 export const YBUniverseItem = (props) => {
   const {
@@ -23,11 +24,11 @@ export const YBUniverseItem = (props) => {
   } = props;
   const isPricingKnown = universe.resources?.pricingKnown;
   const primaryCluster = getPrimaryCluster(universe?.universeDetails?.clusters);
-
+  const isNewTaskDetailsUIEnabled = useIsTaskNewUIEnabled();
   return (
     <div>
       <Link to={`/universes/${universe.universeUUID}`}>
-        <div className="universe-list-item-name-status universe-list-flex">
+        <div className={`universe-list-item-name-status universe-list-flex ${isNewTaskDetailsUIEnabled && 'new-task-details'}`}>
           <Row>
             <Col sm={6}>
               <div className="universe-name-cell">{universe.name}</div>
@@ -52,6 +53,7 @@ export const YBUniverseItem = (props) => {
               refreshUniverseData={props.fetchUniverseMetadata}
               shouldDisplayTaskButton={false}
               showAlertsBadge={true}
+              showTaskDetails={true}
             />
           </div>
         </div>

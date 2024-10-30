@@ -1,11 +1,16 @@
 package cmd
 
 import (
-	"log"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight/checks"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
 var startCmd = &cobra.Command{
@@ -27,6 +32,60 @@ var startCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		state, err := ybactlstate.Initialize()
+		if err != nil {
+			log.Fatal("unable to load yba installer state: " + err.Error())
+		}
+		if state.CurrentStatus != ybactlstate.InstalledStatus {
+			log.Fatal("cannot start services - need installed state got " +
+				state.CurrentStatus.String())
+		}
+
+		// Initialize if it has not already happened. Do this instead of normal start workflow
+		if !state.Initialized {
+			// Run preflight check for data directory size if we have to initialize.
+			results := preflight.Run([]preflight.Check{checks.DiskAvail}, skippedPreflightChecks...)
+			preflight.PrintPreflightResults(results)
+			if preflight.ShouldFail(results) {
+				log.Fatal("preflight failed")
+			}
+			userName := viper.GetString("service_username")
+			if err := common.Chown(common.GetDataRoot(), userName, userName, true); err != nil {
+				log.Fatal("Failed to change ownership of data directory: " + err.Error())
+			}
+			log.Info("Initializing YBA before starting services")
+			if err := common.Initialize(); err != nil {
+				log.Fatal("Failed to initialize common components: " + err.Error())
+			}
+			for _, name := range serviceOrder {
+				if name == "yb-platform" {
+					log.Info("Generating yb-platform config with fixPaths set to true")
+					plat := services[name].(Platform)
+					plat.FixPaths = true
+					config.GenerateTemplate(plat)
+				}
+				if err := services[name].Initialize(); err != nil {
+					log.Fatal("Failed to initialize " + name + ": " + err.Error())
+				}
+			}
+			state.Initialized = true
+			if err := ybactlstate.StoreState(state); err != nil {
+				log.Fatal("failed to update state: " + err.Error())
+			}
+			if err := common.WaitForYBAReady(ybaCtl.Version()); err != nil {
+				log.Fatal("failed to wait for yba ready: " + err.Error())
+			}
+			getAndPrintStatus()
+			// We can exit early, as initialize will also start the services
+			return
+		}
+
+		if err := common.CheckDataVersionFile(); err != nil {
+			log.Fatal("Failed to validate data version: " + err.Error())
+		}
+		if err := common.SetAllPermissions(); err != nil {
+			log.Fatal("error updating permissions for data and software directories: " + err.Error())
+		}
 		if len(args) == 1 {
 			if err := services[args[0]].Start(); err != nil {
 				log.Fatal("Failed to start " + args[0] + ": " + err.Error())
@@ -60,6 +119,14 @@ var stopCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		state, err := ybactlstate.Initialize()
+		if err != nil {
+			log.Fatal("unable to load yba installer state: " + err.Error())
+		}
+		if state.CurrentStatus != ybactlstate.InstalledStatus {
+			log.Fatal("cannot stop services - need installed state got " +
+				state.CurrentStatus.String())
+		}
 		if len(args) == 1 {
 			if err := services[args[0]].Stop(); err != nil {
 				log.Fatal("Failed to stop " + args[0] + ": " + err.Error())
@@ -93,6 +160,14 @@ var restartCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		state, err := ybactlstate.Initialize()
+		if err != nil {
+			log.Fatal("unable to load yba installer state: " + err.Error())
+		}
+		if state.CurrentStatus != ybactlstate.InstalledStatus {
+			log.Fatal("cannot restart services - need installed state got " +
+				state.CurrentStatus.String())
+		}
 		if len(args) == 1 {
 			if err := services[args[0]].Restart(); err != nil {
 				log.Fatal("Failed to restart " + args[0] + ": " + err.Error())
@@ -109,4 +184,6 @@ var restartCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(startCmd, stopCmd, restartCmd)
+	startCmd.Flags().StringSliceVarP(&skippedPreflightChecks, "skip_preflight", "s",
+		[]string{}, "Preflight checks to skip by name")
 }

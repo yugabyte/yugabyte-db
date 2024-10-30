@@ -3,22 +3,27 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
-import com.yugabyte.yw.common.utils.Pair;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -30,8 +35,8 @@ import org.yb.client.YBClient;
 @Slf4j
 public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
 
-  private static final int INITIAL_DELAY_MS = 10;
-  private static final int MAX_DELAY_MS = 5000;
+  private static final int INITIAL_DELAY_MS = 500;
+  private static final int MAX_DELAY_MS = 16000;
 
   private static final int MAX_ERRORS_TO_IGNORE = 5;
 
@@ -41,11 +46,9 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
   }
 
   public static class Params extends ServerSubTaskParams {
-    public Collection<NodeDetails> masters;
-    public Collection<NodeDetails> tservers;
-    // whether we need to check nodes one-by-one or all the nodes simultaneously
-    public boolean isRolling = true;
     public String targetSoftwareVersion;
+    public Collection<UpgradeTaskBase.MastersAndTservers> nodesToCheck;
+    public boolean fallbackToSingleSplits;
   }
 
   @Override
@@ -69,28 +72,17 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
       log.debug("API is not supported for target version {}", taskParams().targetSoftwareVersion);
       return;
     }
-
-    Set<NodeDetails> allNodes = new HashSet<>(taskParams().masters);
-    allNodes.addAll(taskParams().tservers);
-    for (NodeDetails node : allNodes) {
-      NodeDetails nodeInUniverse = universe.getNode(node.nodeName);
-      UniverseDefinitionTaskParams.Cluster cluster =
-          universe.getCluster(nodeInUniverse.placementUuid);
-      if (!isApiSupported(cluster.userIntent.ybSoftwareVersion)) {
-        log.debug(
-            "API is not supported for current version {}", cluster.userIntent.ybSoftwareVersion);
-        return;
-      }
+    if (taskParams().nodesToCheck.isEmpty()) {
+      return;
     }
 
-    // Max threshold for follower lag.
-    long maxAcceptableFollowerLagMs =
-        confGetter.getConfForScope(universe, UniverseConfKeys.followerLagMaxThreshold).toMillis();
-
-    long maxTimeoutMs =
-        confGetter
-            .getConfForScope(universe, UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout)
-            .toMillis();
+    if (!isApiSupported(
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)) {
+      log.debug(
+          "API is not supported for current version {}",
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+      return;
+    }
 
     boolean cloudEnabled =
         confGetter.getConfForScope(
@@ -101,55 +93,36 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
       return;
     }
 
-    try (YBClient ybClient = getClient()) {
-      AtomicInteger errorCnt = new AtomicInteger();
-      List<String> lastErrors = new ArrayList<>();
-      List<Pair<Collection<String>, Collection<String>>> ipsList = splitIps(universe, cloudEnabled);
-      boolean result =
-          doWithExponentialTimeout(
-              INITIAL_DELAY_MS,
-              MAX_DELAY_MS,
-              maxTimeoutMs,
-              () -> {
-                try {
-                  lastErrors.clear();
-                  for (Pair<Collection<String>, Collection<String>> ips : ipsList) {
-                    String currentNodes = "";
-                    if (!ips.getFirst().isEmpty()) {
-                      currentNodes += "MASTERS: " + ips.getFirst();
-                    }
-                    if (!ips.getSecond().isEmpty()) {
-                      currentNodes += "TSERVERS: " + ips.getSecond();
-                    }
-                    try {
-                      AreNodesSafeToTakeDownResponse resp =
-                          ybClient.areNodesSafeToTakeDown(
-                              new HashSet<>(ips.getFirst()),
-                              new HashSet<>(ips.getSecond()),
-                              maxAcceptableFollowerLagMs);
+    int maxSplit =
+        taskParams().nodesToCheck.stream()
+            .mapToInt(mt -> Math.max(mt.tserversList.size(), mt.mastersList.size()))
+            .max()
+            .getAsInt();
 
-                      if (!resp.isSucessful()) {
-                        lastErrors.add(currentNodes + " have a problem: " + resp.getErrorMessage());
-                      }
-                    } catch (MasterErrorException me) {
-                      lastErrors.add(currentNodes + " have a problem: " + me.getMessage());
-                    }
-                  }
-                  log.debug("Last errors: {}", lastErrors);
-                  return lastErrors.isEmpty();
-                } catch (Exception e) {
-                  if (e.getMessage().contains("invalid method name")) {
-                    log.error("This db version doesn't support method AreNodesSafeToTakeDown");
-                    return true;
-                  }
-                  if (errorCnt.incrementAndGet() > MAX_ERRORS_TO_IGNORE) {
-                    throw new RuntimeException(
-                        "Exceeded max errors (" + MAX_ERRORS_TO_IGNORE + ")", e);
-                  }
-                  log.debug("Error count {}", errorCnt.get());
-                  return false;
-                }
-              });
+    Collection<UpgradeTaskBase.MastersAndTservers> singleSplits =
+        toSingleSplits(taskParams().nodesToCheck);
+
+    Integer maxPoolSize =
+        confGetter.getConfForScope(universe, UniverseConfKeys.nodesAreSafeToTakeDownParallelism);
+
+    int poolSize = Math.min(maxPoolSize, taskParams().nodesToCheck.size());
+
+    ScheduledExecutorService executor = Executors.newScheduledThreadPool(poolSize);
+
+    try (YBClient ybClient = getClient()) {
+      List<String> lastErrors = new ArrayList<>();
+      boolean result =
+          checkNodes(
+              ybClient, universe, taskParams().nodesToCheck, lastErrors, cloudEnabled, executor);
+      if (!result
+          && taskParams().fallbackToSingleSplits
+          && singleSplits.size() > taskParams().nodesToCheck.size()) {
+        log.debug(
+            "Failed are nodes safe pre-check with batch size {}, switching to single", maxSplit);
+        lastErrors.clear();
+        getTaskCache().putObject(UpgradeTaskBase.SPLIT_FALLBACK, new RollMaxBatchSize());
+        result = checkNodes(ybClient, universe, singleSplits, lastErrors, cloudEnabled, executor);
+      }
       if (!result) {
         String runtimeConfigInfo =
             "If temporary unavailability is acceptable, you can briefly "
@@ -157,52 +130,176 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
                 + UniverseConfKeys.useNodesAreSafeToTakeDown.getKey()
                 + " and retry this operation.";
         if (!lastErrors.isEmpty()) {
-          throw new RuntimeException(
+          fail(
               "Aborting because this operation can potentially take down"
                   + " a majority of copies of some tablets (CheckNodesAreSafeToTakeDown). "
                   + runtimeConfigInfo
                   + " Error details: "
-                  + lastErrors.stream().collect(Collectors.joining(",")));
+                  + String.join(",", lastErrors));
         } else {
-          throw new RuntimeException(
+          fail(
               "Failed to execute availability check (CheckNodesAreSafeToTakeDown). "
                   + runtimeConfigInfo);
         }
       }
-
     } catch (Exception e) {
       throw new RuntimeException(e);
+    } finally {
+      executor.shutdownNow();
     }
   }
 
-  private List<Pair<Collection<String>, Collection<String>>> splitIps(
-      Universe universe, boolean cloudEnabled) {
-    List<Pair<Collection<String>, Collection<String>>> result = new ArrayList<>();
-    if (!taskParams().isRolling) {
-      result.add(
-          new Pair<>(
-              extractIps(universe, taskParams().masters, cloudEnabled),
-              extractIps(universe, taskParams().tservers, cloudEnabled)));
-    } else {
-      for (NodeDetails master : taskParams().masters) {
-        result.add(
-            new Pair<>(
-                Collections.singletonList(getIp(universe, master, cloudEnabled)),
-                Collections.emptyList()));
-      }
-      for (NodeDetails tserver : taskParams().tservers) {
-        result.add(
-            new Pair<>(
-                Collections.emptyList(),
-                Collections.singletonList(getIp(universe, tserver, cloudEnabled))));
-      }
-    }
-    return result;
+  private Collection<UpgradeTaskBase.MastersAndTservers> toSingleSplits(
+      Collection<UpgradeTaskBase.MastersAndTservers> nodesToCheck) {
+    return nodesToCheck.stream()
+        .flatMap(mnt -> mnt.splitToSingle().stream())
+        .collect(Collectors.toList());
   }
 
-  private Collection<String> extractIps(
+  private boolean checkNodes(
+      YBClient ybClient,
+      Universe universe,
+      Collection<UpgradeTaskBase.MastersAndTservers> nodesToCheck,
+      List<String> lastErrors,
+      boolean cloudEnabled,
+      ScheduledExecutorService executor) {
+    // Max threshold for follower lag.
+    long maxAcceptableFollowerLagMs =
+        confGetter.getConfForScope(universe, UniverseConfKeys.followerLagMaxThreshold).toMillis();
+
+    long maxTimeoutMs =
+        confGetter
+            .getConfForScope(universe, UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout)
+            .toMillis();
+
+    List<CheckBatch> checkBatches =
+        nodesToCheck.stream()
+            .map(mnt -> new CheckBatch(universe, mnt, cloudEnabled))
+            .collect(Collectors.toList());
+
+    AtomicInteger errorCnt = new AtomicInteger();
+    CountDownLatch countDownLatch = new CountDownLatch(checkBatches.size());
+    long startTime = System.currentTimeMillis();
+    try {
+      Map<CheckBatch, Runnable> runnableRefs = new ConcurrentHashMap<>();
+      for (CheckBatch checkBatch : checkBatches) {
+        Runnable runnable =
+            () -> {
+              if (errorCnt.get() >= MAX_ERRORS_TO_IGNORE) {
+                log.debug("Already has {} errors, skipping", errorCnt.get());
+                countDownLatch.countDown();
+                return;
+              }
+              boolean reschedule = false;
+              try {
+                doCheck(ybClient, checkBatch, maxAcceptableFollowerLagMs);
+                reschedule = checkBatch.errorStr != null;
+              } catch (Exception e) {
+                if (errorCnt.incrementAndGet() >= MAX_ERRORS_TO_IGNORE) {
+                  log.debug("Too many errors: {}, failing ", errorCnt.get());
+                  checkBatch.errorStr =
+                      String.format(
+                          "Too many errors: %d. Last error: %s", errorCnt.get(), e.getMessage());
+                } else {
+                  reschedule = true;
+                }
+              }
+              reschedule = reschedule && !taskParams().isRunOnlyPrechecks();
+              if (reschedule) {
+                long delay =
+                    Util.getExponentialBackoffDelayMs(
+                        INITIAL_DELAY_MS, MAX_DELAY_MS, checkBatch.iterationNumber.get());
+                if (System.currentTimeMillis() + delay < startTime + maxTimeoutMs) {
+                  executor.schedule(runnableRefs.get(checkBatch), delay, TimeUnit.MILLISECONDS);
+                } else {
+                  reschedule = false;
+                }
+              }
+              if (!reschedule) {
+                log.debug("countdown for {}, error {}", checkBatch.nodesStr, checkBatch.errorStr);
+                countDownLatch.countDown();
+              }
+              log.debug("{}/{} checks remaining", countDownLatch.getCount(), checkBatches.size());
+            };
+        runnableRefs.put(checkBatch, runnable);
+        executor.schedule(
+            runnable, (long) (Math.random() * INITIAL_DELAY_MS), TimeUnit.MILLISECONDS);
+      }
+      countDownLatch.await(maxTimeoutMs + TimeUnit.MINUTES.toMillis(1), TimeUnit.MILLISECONDS);
+    } catch (InterruptedException e) {
+      log.error("Interrupted", e);
+    }
+    if (countDownLatch.getCount() > 0) {
+      throw new RuntimeException("Timeouted while waiting for checks to complete");
+    }
+    for (CheckBatch checkBatch : checkBatches) {
+      if (checkBatch.errorStr != null) {
+        lastErrors.add(checkBatch.errorStr);
+      }
+    }
+    return lastErrors.isEmpty() && errorCnt.get() < MAX_ERRORS_TO_IGNORE;
+  }
+
+  private void doCheck(YBClient ybClient, CheckBatch checkBatch, long maxAcceptableFollowerLagMs) {
+    String errorStr = null;
+    try {
+      AreNodesSafeToTakeDownResponse resp =
+          ybClient.areNodesSafeToTakeDown(
+              checkBatch.masterIps, checkBatch.tserverIps, maxAcceptableFollowerLagMs);
+      if (!resp.isSucessful()) {
+        errorStr = checkBatch.nodesStr + " have a problem: " + resp.getErrorMessage();
+      }
+    } catch (Exception e) {
+      if (e.getMessage().contains("invalid method name")) {
+        log.error("This db version doesn't support method AreNodesSafeToTakeDown");
+        errorStr = null;
+      } else if (e instanceof MasterErrorException) {
+        errorStr = checkBatch.nodesStr + " have a problem: " + e.getMessage();
+      } else {
+        throw new RuntimeException(e);
+      }
+    }
+    checkBatch.errorStr = errorStr;
+    checkBatch.iterationNumber.incrementAndGet();
+  }
+
+  private class CheckBatch {
+    final Set<String> masterIps;
+    final Set<String> tserverIps;
+    final String nodesStr;
+    AtomicInteger iterationNumber = new AtomicInteger();
+    volatile String errorStr;
+
+    private CheckBatch(
+        Universe universe, UpgradeTaskBase.MastersAndTservers target, boolean cloudEnabled) {
+      masterIps = extractIps(universe, target.mastersList, cloudEnabled);
+      tserverIps = extractIps(universe, target.tserversList, cloudEnabled);
+      String currentNodes = "";
+      if (!masterIps.isEmpty()) {
+        currentNodes += "MASTERS: " + masterIps;
+      }
+      if (!tserverIps.isEmpty()) {
+        if (!currentNodes.isEmpty()) {
+          currentNodes += ",";
+        }
+        currentNodes += "TSERVERS: " + tserverIps;
+      }
+      nodesStr = currentNodes;
+    }
+  }
+
+  private void fail(String message) {
+    message +=
+        ". This check could be disabled by 'yb.checks.nodes_safe_to_take_down.enabled' config";
+    throw new RuntimeException(message);
+  }
+
+  private Set<String> extractIps(
       Universe universe, Collection<NodeDetails> nodes, boolean cloudEnabled) {
-    return nodes.stream().map(n -> getIp(universe, n, cloudEnabled)).collect(Collectors.toList());
+    return nodes.stream()
+        .map(n -> Util.getIpToUse(universe, n.getNodeName(), cloudEnabled))
+        .filter(ip -> ip != null)
+        .collect(Collectors.toSet());
   }
 
   private String getIp(Universe universe, NodeDetails nodeDetails, boolean cloudEnabled) {

@@ -92,19 +92,6 @@ static void YBCAddSysCatalogColumns(YBCPgStatement yb_stmt,
 									IndexStmt *pkey_idx,
 									const bool key)
 {
-	if (tupdesc->tdhasoid)
-	{
-		/* Add the OID column if the table was declared with OIDs. */
-		YBCAddSysCatalogColumn(yb_stmt,
-							   pkey_idx,
-							   "oid",
-							   ObjectIdAttributeNumber,
-							   OIDOID,
-							   0,
-							   key);
-	}
-
-	/* Add the rest of the columns. */
 	for (int attno = 0; attno < tupdesc->natts; attno++)
 	{
 		Form_pg_attribute attr = TupleDescAttr(tupdesc, attno);
@@ -136,7 +123,7 @@ void YBCCreateSysCatalogTable(const char *table_name,
 	HandleYBStatus(YBCPgNewCreateTable(db_name,
 	                                   schema_name,
 	                                   table_name,
-	                                   TemplateDbOid,
+	                                   Template1DbOid,
 	                                   table_oid,
 	                                   is_shared_relation,
 	                                   true /* is_sys_catalog_table */,

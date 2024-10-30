@@ -28,7 +28,6 @@ public class RestoreBackupYb extends AbstractTaskBase {
   public void run() {
     RestoreKeyspace restoreKeyspace = null;
     try {
-
       log.info("Creating entry for restore keyspace: {}", getTaskUUID());
       restoreKeyspace = RestoreKeyspace.create(getTaskUUID(), taskParams());
 

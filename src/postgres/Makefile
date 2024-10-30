@@ -17,8 +17,14 @@ all:
 
 all check install installdirs installcheck installcheck-parallel uninstall clean distclean maintainer-clean dist distcheck world check-world install-world installcheck-world:
 	@if [ ! -f GNUmakefile ] ; then \
+	   if [ -f INSTALL ] ; then \
+	     INSTRUCTIONS="INSTALL"; \
+	   else \
+	     INSTRUCTIONS="README.git"; \
+	   fi; \
 	   echo "You need to run the 'configure' program first. See the file"; \
-	   echo "'INSTALL' for installation instructions." ; \
+	   echo "'$$INSTRUCTIONS' for installation instructions, or visit: " ; \
+	   echo "<https://www.postgresql.org/docs/devel/installation.html>" ; \
 	   false ; \
 	 fi
 	@IFS=':' ; \
@@ -33,7 +39,7 @@ all check install installdirs installcheck installcheck-parallel uninstall clean
 	\
 	 if [ x"$${GMAKE+set}" = xset ]; then \
 	   echo "Using GNU make found at $${GMAKE}"; \
-	   unset MAKEFLAGS; unset MAKELEVEL; \
+	   unset MAKELEVEL; \
 	   $${GMAKE} $@ ; \
 	 else \
 	   echo "You must use GNU make to build PostgreSQL." ; \

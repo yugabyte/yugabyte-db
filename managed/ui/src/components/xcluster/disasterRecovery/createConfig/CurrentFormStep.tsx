@@ -5,10 +5,11 @@ import { assertUnreachableCase } from '../../../../utils/errorHandlingUtils';
 import { YBBanner, YBBannerVariant } from '../../../common/descriptors';
 
 import { TableSelect, TableSelectProps } from '../../sharedComponents/tableSelect/TableSelect';
-import { ConfirmAlertStep } from './ConfirmAlertStep';
+import { ConfirmAlertStep } from '../../sharedComponents/ConfirmAlertStep';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
 import { FormStep } from './CreateConfigModal';
 import { SelectTargetUniverseStep } from './SelectTargetUniverseStep';
+import { ConfigurePitrStep } from './ConfigurePitrStep';
 
 interface CurrentFormStepProps {
   currentFormStep: FormStep;
@@ -71,8 +72,10 @@ export const CurrentFormStep = ({
       );
     case FormStep.CONFIGURE_BOOTSTRAP:
       return <ConfigureBootstrapStep isFormDisabled={isFormDisabled} />;
+    case FormStep.CONFIGURE_PITR:
+      return <ConfigurePitrStep isFormDisabled={isFormDisabled} />;
     case FormStep.CONFIRM_ALERT:
-      return <ConfirmAlertStep isFormDisabled={isFormDisabled} sourceUniverse={sourceUniverse} />;
+      return <ConfirmAlertStep isDrInterface={true} sourceUniverse={sourceUniverse} />;
     default:
       return assertUnreachableCase(currentFormStep);
   }

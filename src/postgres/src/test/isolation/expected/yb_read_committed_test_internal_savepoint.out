@@ -7,8 +7,10 @@ step update_k2_in_s1: update test set v=20 where k=2; <waiting ...>
 step c2: commit;
 step update_k2_in_s1: <... completed>
 step select: select * from test;
-k              v
+k| v
+-+--
+1|10
+2|20
+(2 rows)
 
-1              10
-2              20
 step c1: commit;

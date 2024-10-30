@@ -13,7 +13,7 @@
  * cutoff value computed from the selection probability by BeginSampleScan.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -24,17 +24,13 @@
 
 #include "postgres.h"
 
-#ifdef _MSC_VER
-#include <float.h>				/* for _isnan */
-#endif
 #include <math.h>
 
-#include "access/hash.h"
 #include "access/relscan.h"
 #include "access/tsmapi.h"
 #include "catalog/pg_type.h"
-#include "optimizer/clauses.h"
-#include "optimizer/cost.h"
+#include "common/hashfn.h"
+#include "optimizer/optimizer.h"
 #include "utils/builtins.h"
 
 
@@ -49,20 +45,20 @@ typedef struct
 
 
 static void system_samplescangetsamplesize(PlannerInfo *root,
-							   RelOptInfo *baserel,
-							   List *paramexprs,
-							   BlockNumber *pages,
-							   double *tuples);
+										   RelOptInfo *baserel,
+										   List *paramexprs,
+										   BlockNumber *pages,
+										   double *tuples);
 static void system_initsamplescan(SampleScanState *node,
-					  int eflags);
+								  int eflags);
 static void system_beginsamplescan(SampleScanState *node,
-					   Datum *params,
-					   int nparams,
-					   uint32 seed);
-static BlockNumber system_nextsampleblock(SampleScanState *node);
+								   Datum *params,
+								   int nparams,
+								   uint32 seed);
+static BlockNumber system_nextsampleblock(SampleScanState *node, BlockNumber nblocks);
 static OffsetNumber system_nextsampletuple(SampleScanState *node,
-					   BlockNumber blockno,
-					   OffsetNumber maxoffset);
+										   BlockNumber blockno,
+										   OffsetNumber maxoffset);
 
 
 /*
@@ -180,10 +176,9 @@ system_beginsamplescan(SampleScanState *node,
  * Select next block to sample.
  */
 static BlockNumber
-system_nextsampleblock(SampleScanState *node)
+system_nextsampleblock(SampleScanState *node, BlockNumber nblocks)
 {
 	SystemSamplerData *sampler = (SystemSamplerData *) node->tsm_state;
-	HeapScanDesc scan = node->ss.ss_currentScanDesc;
 	BlockNumber nextblock = sampler->nextblock;
 	uint32		hashinput[2];
 
@@ -202,7 +197,7 @@ system_nextsampleblock(SampleScanState *node)
 	 * Loop over block numbers until finding suitable block or reaching end of
 	 * relation.
 	 */
-	for (; nextblock < scan->rs_nblocks; nextblock++)
+	for (; nextblock < nblocks; nextblock++)
 	{
 		uint32		hash;
 
@@ -214,7 +209,7 @@ system_nextsampleblock(SampleScanState *node)
 			break;
 	}
 
-	if (nextblock < scan->rs_nblocks)
+	if (nextblock < nblocks)
 	{
 		/* Found a suitable block; remember where we should start next time */
 		sampler->nextblock = nextblock + 1;

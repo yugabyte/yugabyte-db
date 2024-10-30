@@ -160,6 +160,8 @@ export default class RollingUpgradeForm extends Component {
         payload.taskType = 'kubernetes_overrides';
         payload.universeOverrides = values.universeOverrides;
         payload.azOverrides = values.azOverrides;
+        payload.upgradeOption = values.rollingUpgrade ? 'Rolling' : 'Non-Rolling';
+
         break;
       default:
         return;
@@ -258,15 +260,17 @@ export default class RollingUpgradeForm extends Component {
     )?.value;
     // By default skipVersionChecks is false
     // If runtime config flag is not accessible, assign false to the variable
-    const skipVersionChecks = (skipVersionChecksValue === undefined || skipVersionChecksValue === 'false') ? false : true;
+    const skipVersionChecks =
+      skipVersionChecksValue === undefined || skipVersionChecksValue === 'false' ? false : true;
     const currentVersion = this.getCurrentVersion();
     const isCurrentVersionStable = isVersionStable(currentVersion);
     const submitAction = handleSubmit(this.setRollingUpgradeProperties);
     let softwareVersionOptions = [];
     if (getPromiseState(supportedReleases).isSuccess()) {
       let filteredReleases;
-      const sortedStableDbReleases = (supportedReleases?.data || [])?.filter(
-        (release) => isVersionStable(release))?.sort((versionA, versionB) =>
+      const sortedStableDbReleases = (supportedReleases?.data || [])
+        ?.filter((release) => isVersionStable(release))
+        ?.sort((versionA, versionB) =>
           compareYBSoftwareVersions({
             versionA: versionB,
             versionB: versionA,
@@ -274,10 +278,11 @@ export default class RollingUpgradeForm extends Component {
               suppressFormatError: true,
               requireOrdering: true
             }
-          }
-          ));
-      const sortedPreviewDbReleases = (supportedReleases?.data || [])?.filter(
-        (release) => !isVersionStable(release))?.sort((versionA, versionB) =>
+          })
+        );
+      const sortedPreviewDbReleases = (supportedReleases?.data || [])
+        ?.filter((release) => !isVersionStable(release))
+        ?.sort((versionA, versionB) =>
           compareYBSoftwareVersions({
             versionA: versionB,
             versionB: versionA,
@@ -285,8 +290,8 @@ export default class RollingUpgradeForm extends Component {
               suppressFormatError: true,
               requireOrdering: true
             }
-          }
-          ));
+          })
+        );
       if (!skipVersionChecks) {
         if (isCurrentVersionStable) {
           filteredReleases = sortedStableDbReleases;
@@ -297,13 +302,12 @@ export default class RollingUpgradeForm extends Component {
         // Print stable versions before preview versions
         filteredReleases = sortedStableDbReleases.concat(sortedPreviewDbReleases);
       }
-      softwareVersionOptions = filteredReleases
-        .map((item, idx) => (
-          // eslint-disable-next-line react/no-array-index-key
-          <option key={idx} disabled={item === currentVersion} value={item}>
-            {item}
-          </option>
-        ));
+      softwareVersionOptions = filteredReleases.map((item, idx) => (
+        // eslint-disable-next-line react/no-array-index-key
+        <option key={idx} disabled={item === currentVersion} value={item}>
+          {item}
+        </option>
+      ));
     }
 
     const tlsCertificateOptions = certificates.map((item) => (
@@ -437,6 +441,8 @@ export default class RollingUpgradeForm extends Component {
             setHelmOverridesData={(helmYaml) => {
               this.props.change('universeOverrides', helmYaml.universeOverrides);
               this.props.change('azOverrides', helmYaml.azOverrides);
+              this.props.change('rollingUpgrade', helmYaml.rollingUpgrade);
+              this.props.change('timeDelay', helmYaml.timeDelay);
               submitAction();
             }}
             editValues={editValues}
@@ -462,9 +468,10 @@ export default class RollingUpgradeForm extends Component {
             value: 'Non-Restart',
             label:
               'Apply all changes which do not require a restart immediately;' +
-              `${isNotRuntime
-                ? 'apply remaining changes the next time the database is restarted'
-                : ''
+              `${
+                isNotRuntime
+                  ? 'apply remaining changes the next time the database is restarted'
+                  : ''
               }`
           }
         ];
@@ -545,7 +552,7 @@ export default class RollingUpgradeForm extends Component {
           );
         }
         const universeHasXClusterConfig = hasLinkedXClusterConfig([universe.currentUniverse.data]);
-        
+
         return (
           <YBModal
             className={getPromiseState(universe.rollingUpgrade).isError() ? 'modal-shake' : ''}
@@ -559,7 +566,7 @@ export default class RollingUpgradeForm extends Component {
             error={error}
             footerAccessory={
               formValues.tlsCertificate !==
-                universe.currentUniverse?.data?.universeDetails?.rootCA ? (
+              universe.currentUniverse?.data?.universeDetails?.rootCA ? (
                 <YBCheckBox
                   label="Confirm TLS Changes"
                   input={{
@@ -568,14 +575,19 @@ export default class RollingUpgradeForm extends Component {
                   }}
                 />
               ) : (
-                <span>Select new CA signed cert from the list</span>
+                <span>Select a new certificate from the list</span>
               )
             }
             asyncValidating={
               !this.state.formConfirmed ||
               formValues.tlsCertificate === universe.currentUniverse?.data?.universeDetails?.rootCA
             }
-            disableSubmit={!hasNecessaryPerm({ ...ApiPermissionMap.MODIFY_UNIVERSE_TLS, onResource: universe.currentUniverse?.data?.universeUUID })}
+            disableSubmit={
+              !hasNecessaryPerm({
+                ...ApiPermissionMap.MODIFY_UNIVERSE_TLS,
+                onResource: universe.currentUniverse?.data?.universeUUID
+              })
+            }
           >
             {universeHasXClusterConfig && isKubernetesUniverse(universe.currentUniverse.data) && (
               <YBBanner variant={YBBannerVariant.WARNING} showBannerIcon={false}>

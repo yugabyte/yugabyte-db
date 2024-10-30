@@ -18,7 +18,6 @@ import static org.yb.AssertionWrappers.*;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -46,6 +45,7 @@ public class TestYsqlDump extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYsqlDump.class);
 
   private static enum IncludeYbMetadata { ON, OFF }
+  private static enum NoTableSpaces { ON, OFF }
 
   @Override
   public int getTestMethodTimeoutSec() {
@@ -97,7 +97,8 @@ public class TestYsqlDump extends BasePgSQLTest {
         "expected/yb_ysql_dump_describe.out" /* expectedDescribeFileRelativePath */,
         "results/yb_ysql_dump.out" /* outputFileRelativePath */,
         "results/yb_ysql_dump_describe.out" /* outputDescribeFileRelativePath */,
-        IncludeYbMetadata.ON);
+        IncludeYbMetadata.ON,
+        NoTableSpaces.OFF);
   }
 
   @Test
@@ -112,7 +113,8 @@ public class TestYsqlDump extends BasePgSQLTest {
         "expected/yb_ysql_dumpall_describe.out" /* expectedDescribeFileRelativePath */,
         "results/yb_ysql_dumpall.out" /* outputFileRelativePath */,
         "results/yb_ysql_dumpall_describe.out" /* outputDescribeFileRelativePath */,
-        IncludeYbMetadata.ON);
+        IncludeYbMetadata.ON,
+        NoTableSpaces.OFF);
   }
 
   @Test
@@ -128,7 +130,8 @@ public class TestYsqlDump extends BasePgSQLTest {
         "results/yb_ysql_dump_without_ybmetadata.out" /* outputFileRelativePath */,
         "results/yb_ysql_dump_without_ybmetadata_describe.out"
         /* outputDescribeFileRelativePath */,
-        IncludeYbMetadata.OFF);
+        IncludeYbMetadata.OFF,
+        NoTableSpaces.OFF);
   }
 
   @Test
@@ -144,7 +147,8 @@ public class TestYsqlDump extends BasePgSQLTest {
         "results/yb_ysql_dumpall_without_ybmetadata.out" /* outputFileRelativePath */,
         "results/yb_ysql_dumpall_without_ybmetadata_describe.out"
         /* outputDescribeFileRelativePath */,
-        IncludeYbMetadata.OFF);
+        IncludeYbMetadata.OFF,
+        NoTableSpaces.OFF);
   }
 
   @Test
@@ -159,7 +163,41 @@ public class TestYsqlDump extends BasePgSQLTest {
         /* expectedDescribeFileRelativePath */,
         "results/yb_ysql_dump_colocated_database.out" /* outputFileRelativePath */,
         "results/yb_ysql_dump_describe_colocated_database.out" /* outputDescribeFileRelativePath */,
-        IncludeYbMetadata.ON);
+        IncludeYbMetadata.ON,
+        NoTableSpaces.OFF);
+  }
+
+  @Test
+  public void ysqlDumpColocatedTablesWithTablespaces() throws Exception {
+    markClusterNeedsRecreation();
+    restartClusterWithClusterBuilder(cb -> {
+      cb.addCommonFlag("allowed_preview_flags_csv", "enable_ysql_conn_mgr");
+      cb.addCommonFlag("ysql_enable_colocated_tables_with_tablespaces", "true");
+      cb.addCommonTServerFlag("placement_cloud", "testCloud");
+      cb.addCommonTServerFlag("placement_region", "testRegion");
+      cb.perTServerFlags(Arrays.asList(
+          Collections.singletonMap("placement_zone", "testZone1"),
+          Collections.singletonMap("placement_zone", "testZone2"),
+          Collections.singletonMap("placement_zone", "testZone3")));
+    });
+    LOG.info("created mini cluster");
+    ysqlDumpTester(
+        "ysql_dump" /* binaryName */,
+        "colo_tables" /* dumpedDatabaseName */,
+        "sql/yb_ysql_dump_colocated_tables_with_tablespaces.sql"
+        /* inputFileRelativePath */,
+        "sql/yb_ysql_dump_describe_colocated_tables_with_tablespaces.sql"
+        /* inputDescribeFileRelativePath */,
+        "data/yb_ysql_dump_colocated_tables_with_tablespaces.data.sql"
+        /* expectedDumpRelativePath */,
+        "expected/yb_ysql_dump_describe_colocated_tables_with_tablespaces.out"
+        /* expectedDescribeFileRelativePath */,
+        "results/yb_ysql_dump_colocated_tables_with_tablespaces.out"
+        /* outputFileRelativePath */,
+        "results/yb_ysql_dump_describe_colocated_tables_with_tablespaces.out"
+        /* outputDescribeFileRelativePath */,
+        IncludeYbMetadata.ON,
+        NoTableSpaces.ON);
   }
 
   @Test
@@ -181,7 +219,8 @@ public class TestYsqlDump extends BasePgSQLTest {
         "results/yb_ysql_dump_legacy_colocated_database.out" /* outputFileRelativePath */,
         "results/yb_ysql_dump_describe_legacy_colocated_database.out"
         /* outputDescribeFileRelativePath */,
-        IncludeYbMetadata.ON);
+        IncludeYbMetadata.ON,
+        NoTableSpaces.OFF);
   }
 
   void ysqlDumpTester(final String binaryName,
@@ -192,7 +231,8 @@ public class TestYsqlDump extends BasePgSQLTest {
                       final String expectedDescribeFileRelativePath,
                       final String outputFileRelativePath,
                       final String outputDescribeFileRelativePath,
-                      final IncludeYbMetadata includeYbMetadata) throws Exception {
+                      final IncludeYbMetadata includeYbMetadata,
+                      final NoTableSpaces noTableSpaces) throws Exception {
     // Location of Postgres regression tests
     File pgRegressDir = PgRegressBuilder.PG_REGRESS_DIR;
 
@@ -225,6 +265,9 @@ public class TestYsqlDump extends BasePgSQLTest {
     ));
     if (includeYbMetadata == IncludeYbMetadata.ON) {
       args.add("--include-yb-metadata");
+    }
+    if (noTableSpaces == NoTableSpaces.ON) {
+      args.add("--no-tablespaces");
     }
     if (!dumpedDatabaseName.isEmpty()) {
       Collections.addAll(args, "-d", dumpedDatabaseName);

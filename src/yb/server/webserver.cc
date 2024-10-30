@@ -136,9 +136,6 @@ class Webserver::Impl {
 
   Status GetInputHostPort(HostPort* hp) const;
 
-  bool access_logging_enabled = false;
-  bool tcmalloc_logging_enabled = false;
-
   void RegisterPathHandler(const std::string& path, const std::string& alias,
                                    const PathHandlerCallback& callback,
                                    bool is_styled = true,
@@ -149,9 +146,18 @@ class Webserver::Impl {
 
   bool IsSecure() const;
 
-  void SetAutoFlags(std::unordered_set<std::string>&& flags);
+  void SetAutoFlags(std::unordered_set<std::string>&& flags) EXCLUDES(flags_mutex_);
 
-  bool ContainsAutoFlag(const std::string& flag) const;
+  bool ContainsAutoFlag(const std::string& flag) const EXCLUDES(flags_mutex_);
+
+  void SetFlags(std::unordered_set<std::string>&& flags) EXCLUDES(flags_mutex_);
+
+  bool ContainsFlag(const std::string& flag) const EXCLUDES(flags_mutex_);
+
+  void SetLogging(bool enable_access_logging, bool enable_tcmalloc_logging) {
+    access_logging_enabled_.store(enable_access_logging, std::memory_order_release);
+    tcmalloc_logging_enabled_.store(enable_tcmalloc_logging, std::memory_order_release);
+  }
 
  private:
   // Container class for a list of path handler callbacks for a single URL.
@@ -257,11 +263,15 @@ class Webserver::Impl {
   // Variable to notify handlers to stop serving requests.
   std::atomic<bool> stop_initiated = false;
 
-  mutable std::mutex auto_flags_mutex_;
-  // The AutoFlags that are associated with this particular server. In LTO builds we use the same
-  // process for both yb-master and yb-tserver, so the process may have more AutoFlags than this
-  // server needs. This is used to filter out the AutoFlags that are shown in the varz path.
-  std::unordered_set<std::string> auto_flags_;
+  mutable std::mutex flags_mutex_;
+  // The flags that are associated with this particular server. In LTO builds we use the same
+  // process for both yb-master and yb-tserver, so the running process may have more flags than
+  // this server needs. This is used to filter out the flags that are shown in the varz UI.
+  std::unordered_set<std::string> auto_flags_ GUARDED_BY(flags_mutex_);
+  std::unordered_set<std::string> process_flags_ GUARDED_BY(flags_mutex_);
+
+  std::atomic<bool> access_logging_enabled_ = false;
+  std::atomic<bool> tcmalloc_logging_enabled_ = false;
 };
 
 Webserver::Impl::Impl(const WebserverOptions& opts, const std::string& server_name)
@@ -301,13 +311,23 @@ bool Webserver::Impl::IsSecure() const {
 }
 
 void Webserver::Impl::SetAutoFlags(std::unordered_set<std::string>&& flags) {
-  std::lock_guard l(auto_flags_mutex_);
+  std::lock_guard l(flags_mutex_);
   auto_flags_ = std::move(flags);
 }
 
 bool Webserver::Impl::ContainsAutoFlag(const std::string& flag) const {
-  std::lock_guard l(auto_flags_mutex_);
+  std::lock_guard l(flags_mutex_);
   return auto_flags_.contains(flag);
+}
+
+void Webserver::Impl::SetFlags(std::unordered_set<std::string>&& flags) {
+  std::lock_guard l(flags_mutex_);
+  process_flags_ = std::move(flags);
+}
+
+bool Webserver::Impl::ContainsFlag(const std::string& flag) const {
+  std::lock_guard l(flags_mutex_);
+  return process_flags_.contains(flag);
 }
 
 Status Webserver::Impl::BuildListenSpec(string* spec) const {
@@ -336,6 +356,10 @@ Status Webserver::Impl::BuildListenSpec(string* spec) const {
 
 Status Webserver::Impl::Start() {
   LOG(INFO) << "Starting webserver on " << http_address_;
+
+  // Mini-cluster tests can restart the webserver by calling Stop() and Start() on the same instance
+  // of the webserver. To support this, reset the state that was set during the previous shutdown.
+  stop_initiated = false;
 
   vector<const char*> options;
 
@@ -570,7 +594,7 @@ sq_callback_result_t Webserver::Impl::BeginRequestCallback(struct sq_connection*
     handler = it->second;
   }
 
-  if (access_logging_enabled) {
+  if (access_logging_enabled_.load(std::memory_order_acquire)) {
     string params = request_info->query_string ? Format("?$0", request_info->query_string) : "";
     LOG(INFO) << "webserver request: " << request_info->uri << params;
   }
@@ -579,7 +603,7 @@ sq_callback_result_t Webserver::Impl::BeginRequestCallback(struct sq_connection*
   MemTracker::GcTcmallocIfNeeded();
 
 #if YB_TCMALLOC_ENABLED
-  if (tcmalloc_logging_enabled)
+  if (tcmalloc_logging_enabled_.load(std::memory_order_acquire))
     LOG(INFO) << "webserver tcmalloc stats:"
               << " heap size bytes: " << GetTCMallocPhysicalBytesUsed()
               << ", total physical bytes: " << GetTCMallocCurrentHeapSizeBytes()
@@ -848,8 +872,7 @@ Status Webserver::GetInputHostPort(HostPort* hp) const {
 }
 
 void Webserver::SetLogging(bool enable_access_logging, bool enable_tcmalloc_logging) {
-  impl_->access_logging_enabled = enable_access_logging;
-  impl_->tcmalloc_logging_enabled = enable_tcmalloc_logging;
+  impl_->SetLogging(enable_access_logging, enable_tcmalloc_logging);
 }
 
 void Webserver::RegisterPathHandler(const std::string& path,
@@ -876,4 +899,10 @@ void Webserver::SetAutoFlags(std::unordered_set<std::string>&& flags) {
 bool Webserver::ContainsAutoFlag(const std::string& flag) const {
   return impl_->ContainsAutoFlag(flag);
 }
+
+void Webserver::SetFlags(std::unordered_set<std::string>&& flags) {
+  impl_->SetFlags(std::move(flags));
+}
+
+bool Webserver::ContainsFlag(const std::string& flag) const { return impl_->ContainsFlag(flag); }
 } // namespace yb

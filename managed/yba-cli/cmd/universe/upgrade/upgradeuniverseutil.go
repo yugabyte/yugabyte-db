@@ -19,15 +19,20 @@ import (
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	universeFormatter "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/universe"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ybatask"
 	"gopkg.in/yaml.v2"
 )
 
-func waitForUpgradeUniverseTask(
-	authAPI *ybaAuthClient.AuthAPIClient, universeName, universeUUID, taskUUID string) {
+// WaitForUpgradeUniverseTask waits for the upgrade task to complete
+func WaitForUpgradeUniverseTask(
+	authAPI *ybaAuthClient.AuthAPIClient, universeName string, rTask ybaclient.YBPTask) {
 
 	var universeData []ybaclient.UniverseResp
 	var response *http.Response
 	var err error
+
+	universeUUID := rTask.GetResourceUUID()
+	taskUUID := rTask.GetTaskUUID()
 
 	msg := fmt.Sprintf("The universe %s (%s) is being upgraded",
 		formatter.Colorize(universeName, formatter.GreenColor), universeUUID)
@@ -50,20 +55,26 @@ func waitForUpgradeUniverseTask(
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		universesCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: universeFormatter.NewUniverseFormat(viper.GetString("output")),
+			Command: "upgrade",
+			Output:  os.Stdout,
+			Format:  universeFormatter.NewUniverseFormat(viper.GetString("output")),
 		}
 
 		universeFormatter.Write(universesCtx, universeData)
-
-	} else {
-		logrus.Infoln(msg + "\n")
+		return
 	}
+	logrus.Infoln(msg + "\n")
+	taskCtx := formatter.Context{
+		Command: "upgrade",
+		Output:  os.Stdout,
+		Format:  ybatask.NewTaskFormat(viper.GetString("output")),
+	}
+	ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
 
 }
 
-// UpgradeValidations to ensure that the universe being accessed exists
-func UpgradeValidations(cmd *cobra.Command, operation string) (
+// Validations to ensure that the universe being accessed exists
+func Validations(cmd *cobra.Command, operation string) (
 	*ybaAuthClient.AuthAPIClient,
 	ybaclient.UniverseResp,
 	error,
@@ -92,6 +103,7 @@ func UpgradeValidations(cmd *cobra.Command, operation string) (
 	return authAPI, r[0], nil
 }
 
+// FetchMasterGFlags is to fetch list of master gflags
 func FetchMasterGFlags(masterGFlagsString string) map[string]string {
 	masterGFlags := make(map[string]interface{}, 0)
 	if len(strings.TrimSpace(masterGFlagsString)) != 0 {
@@ -108,6 +120,7 @@ func FetchMasterGFlags(masterGFlagsString string) map[string]string {
 	return *util.StringMap(masterGFlags)
 }
 
+// FetchTServerGFlags is to fetch list of tserver gflags
 func FetchTServerGFlags(
 	tserverGFlagsStringList []string,
 	noOfClusters int,
@@ -167,6 +180,7 @@ func ProcessMasterGflagsYAMLString(yamlData string) map[string]string {
 	return singleMap
 }
 
+// ProcessTServerGFlagsFromString takes in a string and returns it as a map
 func ProcessTServerGFlagsFromString(input string, data interface{}) error {
 	if err := json.Unmarshal([]byte(input), data); err == nil {
 		logrus.Debug("Tserver GFlags from JSON string: ", data)
@@ -181,6 +195,7 @@ func ProcessTServerGFlagsFromString(input string, data interface{}) error {
 	return fmt.Errorf("TServer GFlags is neither valid JSON nor valid YAML")
 }
 
+// ProcessTServerGFlagsFromConfig takes in a map from config file and returns it as a map
 func ProcessTServerGFlagsFromConfig(input map[string]interface{}) map[string]map[string]string {
 	data := make(map[string]map[string]string, 0)
 	for k, v := range input {

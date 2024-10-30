@@ -92,7 +92,7 @@ SET temp_file_limit TO 0;
 show temp_file_limit;
 
 SELECT * FROM generate_series(0, 1234567);
-SELECT databasename, termination_reason, query_text FROM yb_terminated_queries;
+SELECT databasename, termination_reason, query_text FROM yb_terminated_queries ORDER BY databasename;
 
 -- Drop the superuser privilege as we want to see if we would only see the terminated query
 -- of our created database only.

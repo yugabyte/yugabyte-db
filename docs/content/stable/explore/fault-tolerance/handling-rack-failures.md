@@ -3,7 +3,7 @@ title: Handling rack failures
 headerTitle: Handling rack failures
 linkTitle: Rack failures
 description: Racks can be treated as fault zones
-headcontent: Server rack-awareness in YugabyeDB
+headcontent: Server rack-awareness in YugabyteDB
 menu:
   stable:
     identifier: handling-rack-failures
@@ -48,6 +48,14 @@ For example, to start machine prod-node-01 (located in Rack-A), you can run the 
 yugabyted start --advertise_address=192.168.0.1 --cloud_location=dc1.newyork.rack-a
 ```
 
+<!-- begin: nav tabs -->
+{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
+
+{{<nav/panels>}}
+{{<nav/panel name="local" active="true">}}
+<!-- local cluster setup instructions -->
+{{<collapse title="Setup a local cluster">}}
+
 To simulate a local cluster with 3 racks, you can write a basic bash script:
 
 ```bash
@@ -60,7 +68,7 @@ for rack in a b c ; do
         then
            JOIN="--join=127.0.0.1"
         fi
-        yugabyted start ${JOIN} --advertise_address=127.0.0.${server} --cloud_location=dc1.newyork.rack-${rack} --base_dir=/tmp/data{server}
+        yugabyted start ${JOIN} --advertise_address=127.0.0.${server} --cloud_location=dc1.newyork.rack-${rack} --base_dir=${HOME}/var/node{server}
     done
 done
 ```
@@ -84,6 +92,19 @@ SELECT host, cloud, region, zone FROM yb_servers() ORDER BY host;
  127.0.0.8 | dc1    | newyork | rack-c
  127.0.0.9 | dc1    | newyork | rack-c
  ```
+
+{{</collapse>}}
+{{</nav/panel>}}
+
+{{<nav/panel name="anywhere">}} {{<note>}}
+To configure racks as zones in YugabyteDB Anywhere, set the racks as zones in your [on-prem provider settings](../../../yugabyte-platform/configure-yugabyte-platform/on-premises-provider/#provider-settings)
+{{</note>}}
+{{</nav/panel>}}
+{{<nav/panel name="cloud">}}
+{{<warning>}} Currently, you can't configure racks as fault domains in YugabyteDB Aeon {{</warning>}}
+{{</nav/panel>}}
+{{</nav/panels>}}
+<!-- end: nav tabs -->
 
 By default, the replication factor is 3, and the fault tolerance is configured to zone-level resilience. This ensures that YugabyteDB automatically replicates data and places it across the three racks. Because an RF 3 system can handle the failure of one fault domain, this setup can handle the outage (planned or unplanned) of any one rack.
 

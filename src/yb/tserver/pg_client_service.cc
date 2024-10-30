@@ -25,10 +25,10 @@
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_state_table.h"
 
-#include "yb/server/async_client_initializer.h"
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
+#include "yb/client/stateful_services/pg_cron_leader_service_client.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_info.h"
@@ -42,6 +42,7 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog_constants.h"
@@ -61,6 +62,7 @@
 #include "yb/tserver/pg_create_table.h"
 #include "yb/tserver/pg_response_cache.h"
 #include "yb/tserver/pg_sequence_cache.h"
+#include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_service.pb.h"
@@ -69,6 +71,7 @@
 #include "yb/util/debug.h"
 #include "yb/util/flags.h"
 #include "yb/util/flags/flag_tags.h"
+#include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/random_util.h"
@@ -81,12 +84,13 @@
 #include "yb/util/thread.h"
 #include "yb/util/yb_pg_errcodes.h"
 
+
 using namespace std::literals;
 
 DEFINE_UNKNOWN_uint64(pg_client_session_expiration_ms, 60000,
                       "Pg client session expiration time in milliseconds.");
 
-DEFINE_RUNTIME_bool(pg_client_use_shared_memory, yb::kIsDebug,
+DEFINE_RUNTIME_bool(pg_client_use_shared_memory, !yb::kIsDebug && !yb::kIsMac,
                     "Use shared memory for executing read and write pg client queries");
 
 DEFINE_RUNTIME_int32(get_locks_status_max_retry_attempts, 2,
@@ -126,6 +130,11 @@ DEFINE_RUNTIME_int32(
     "Interval at which pg object id allocators are checked for dropped databases.");
 TAG_FLAG(check_pg_object_id_allocators_interval_secs, advanced);
 
+
+METRIC_DEFINE_event_stats(
+    server, pg_client_exchange_response_size,
+    "The size of PgClient exchange response in bytes", yb::MetricUnit::kBytes,
+    "The size of PgClient exchange response in bytes");
 
 namespace yb::tserver {
 namespace {
@@ -184,8 +193,9 @@ class LockablePgClientSession : public PgClientSession {
         lifetime_(lifetime), expiration_(NewExpiration()) {
   }
 
-  void StartExchange(const std::string& instance_id) {
-    exchange_.emplace(instance_id, id(), Create::kTrue, [this](size_t size) {
+  Status StartExchange(const std::string& instance_id) {
+    auto exchange = VERIFY_RESULT(SharedExchange::Make(instance_id, id(), Create::kTrue));
+    exchange_.emplace(std::move(exchange), [this](size_t size) {
       Touch();
       std::shared_ptr<CountDownLatch> latch;
       {
@@ -196,6 +206,21 @@ class LockablePgClientSession : public PgClientSession {
         latch->Wait();
       }
     });
+    return Status::OK();
+  }
+
+  void StartShutdown() override {
+    if (exchange_) {
+      exchange_->StartShutdown();
+    }
+    PgClientSession::StartShutdown();
+  }
+
+  void CompleteShutdown() override {
+    if (exchange_) {
+      exchange_->CompleteShutdown();
+    }
+    PgClientSession::CompleteShutdown();
   }
 
   CoarseTimePoint expiration() const {
@@ -404,12 +429,13 @@ class PgClientServiceImpl::Impl {
       const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
       rpc::Messenger* messenger, const TserverXClusterContextIf* xcluster_context,
       PgMutationCounter* pg_node_level_mutation_counter, MetricEntity* metric_entity,
-      const std::shared_ptr<MemTracker>& parent_mem_tracker, const std::string& permanent_uuid,
+      const MemTrackerPtr& parent_mem_tracker, const std::string& permanent_uuid,
       const server::ServerBaseOptions* tablet_server_opts)
       : tablet_server_(tablet_server.get()),
         client_future_(client_future),
         clock_(clock),
         transaction_pool_provider_(std::move(transaction_pool_provider)),
+        messenger_(*messenger),
         table_cache_(client_future),
         check_expired_sessions_(&messenger->scheduler()),
         check_object_id_allocators_(&messenger->scheduler()),
@@ -417,25 +443,38 @@ class PgClientServiceImpl::Impl {
         pg_node_level_mutation_counter_(pg_node_level_mutation_counter),
         response_cache_(parent_mem_tracker, metric_entity),
         instance_id_(permanent_uuid),
+        shared_mem_pool_(parent_mem_tracker, instance_id_),
+        stats_exchange_response_size_(
+            METRIC_pg_client_exchange_response_size.Instantiate(metric_entity)),
         transaction_builder_([this](auto&&... args) {
           return BuildTransaction(std::forward<decltype(args)>(args)...);
         }) {
     DCHECK(!permanent_uuid.empty());
     ScheduleCheckExpiredSessions(CoarseMonoClock::now());
-    cdc_state_client_init_ = std::make_unique<client::AsyncClientInitializer>(
-        "cdc_state_client", std::chrono::milliseconds(FLAGS_cdc_read_rpc_timeout_ms),
-        permanent_uuid, tablet_server_opts, metric_entity, parent_mem_tracker, messenger);
-    cdc_state_client_init_->Start();
-    cdc_state_table_ =
-        std::make_shared<cdc::CDCStateTable>(cdc_state_client_init_->get_client_future());
+    cdc_state_table_ = std::make_shared<cdc::CDCStateTable>(client_future);
     if (FLAGS_pg_client_use_shared_memory) {
       WARN_NOT_OK(SharedExchange::Cleanup(instance_id_), "Cleanup shared memory failed");
     }
+    shared_mem_pool_.Start(messenger->scheduler());
   }
 
   ~Impl() {
     cdc_state_table_.reset();
-    cdc_state_client_init_->Shutdown();
+    std::vector<SessionInfoPtr> sessions;
+    {
+      std::lock_guard lock(mutex_);
+      sessions.reserve(sessions_.size());
+      for (const auto& session : sessions_) {
+        sessions.push_back(session);
+      }
+    }
+    for (const auto& session : sessions) {
+      session->session().StartShutdown();
+    }
+    for (const auto& session : sessions) {
+      session->session().CompleteShutdown();
+    }
+    sessions.clear();
     check_expired_sessions_.Shutdown();
     check_object_id_allocators_.Shutdown();
   }
@@ -455,11 +494,12 @@ class PgClientServiceImpl::Impl {
         &txns_assignment_mutexes_[session_id % txns_assignment_mutexes_.size()],
         FLAGS_pg_client_session_expiration_ms * 1ms,
         transaction_builder_, session_id, &client(), clock_, &table_cache_, xcluster_context_,
-        pg_node_level_mutation_counter_, &response_cache_, &sequence_cache_);
+        pg_node_level_mutation_counter_, &response_cache_, &sequence_cache_, shared_mem_pool_,
+        stats_exchange_response_size_, messenger_.scheduler());
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
       resp->set_instance_id(instance_id_);
-      session_info->session().StartExchange(instance_id_);
+      RETURN_NOT_OK(session_info->session().StartExchange(instance_id_));
     }
 
     std::lock_guard lock(mutex_);
@@ -481,7 +521,9 @@ class PgClientServiceImpl::Impl {
     }
 
     client::YBTablePtr table;
-    RETURN_NOT_OK(table_cache_.GetInfo(req.table_id(), &table, resp->mutable_info()));
+    RETURN_NOT_OK(table_cache_.GetInfo(
+        req.table_id(), master::IncludeInactive(req.include_inactive()), &table,
+        resp->mutable_info()));
     tserver::GetTablePartitionList(table, resp->mutable_partitions());
     return Status::OK();
   }
@@ -1387,25 +1429,36 @@ class PgClientServiceImpl::Impl {
           call.wait_state().aux_info().method() == "Perform")));
   }
 
+  void MaybeIncludeSample(
+      tserver::WaitStatesPB* resp, const WaitStateInfoPB& wait_state_pb, int sample_size,
+      int& samples_considered) {
+    if (++samples_considered <= sample_size) {
+      resp->add_wait_states()->CopyFrom(wait_state_pb);
+    } else {
+      int random_index = RandomUniformInt<int>(1, samples_considered);
+      if (random_index <= sample_size) {
+        resp->mutable_wait_states(random_index - 1)->CopyFrom(wait_state_pb);
+      }
+    }
+  }
+
   void PopulateWaitStates(
       const PgActiveSessionHistoryRequestPB& req, const yb::rpc::RpcConnectionPB& conn,
-      tserver::WaitStatesPB* resp) {
+      tserver::WaitStatesPB* resp, int sample_size, int& samples_considered) {
     for (const auto& call : conn.calls_in_flight()) {
       if (ShouldIgnoreCall(req, call)) {
         VLOG(3) << "Ignoring " << call.wait_state().DebugString();
         continue;
       }
-      auto* wait_state = resp->add_wait_states();
-      wait_state->CopyFrom(call.wait_state());
+      MaybeIncludeSample(resp, call.wait_state(), sample_size, samples_considered);
     }
   }
 
   void GetRpcsWaitStates(
       const PgActiveSessionHistoryRequestPB& req, ash::Component component,
-      tserver::WaitStatesPB* resp) {
+      tserver::WaitStatesPB* resp, int sample_size, int& samples_considered) {
     auto* messenger = tablet_server_.GetMessenger(component);
     if (!messenger) {
-      LOG_WITH_FUNC(ERROR) << "got no messenger for " << yb::ToString(component);
       return;
     }
 
@@ -1422,11 +1475,11 @@ class PgClientServiceImpl::Impl {
     WARN_NOT_OK(messenger->DumpRunningRpcs(dump_req, &dump_resp), "DumpRunningRpcs failed");
 
     for (const auto& conn : dump_resp.inbound_connections()) {
-      PopulateWaitStates(req, conn, resp);
+      PopulateWaitStates(req, conn, resp, sample_size, samples_considered);
     }
 
     if (dump_resp.has_local_calls()) {
-      PopulateWaitStates(req, dump_resp.local_calls(), resp);
+      PopulateWaitStates(req, dump_resp.local_calls(), resp, sample_size, samples_considered);
     }
 
     VLOG(3) << __PRETTY_FUNCTION__ << " wait-states: " << yb::ToString(resp->wait_states());
@@ -1434,17 +1487,23 @@ class PgClientServiceImpl::Impl {
 
   void AddWaitStatesToResponse(
       const ash::WaitStateTracker& tracker, bool export_wait_state_names,
-      tserver::WaitStatesPB* resp) {
+      tserver::WaitStatesPB* resp, int sample_size, int& samples_considered) {
     Result<Uuid> local_uuid = Uuid::FromHexStringBigEndian(instance_id_);
     DCHECK_OK(local_uuid);
     resp->set_component(yb::to_underlying(ash::Component::kTServer));
     for (auto& wait_state_ptr : tracker.GetWaitStates()) {
-      if (wait_state_ptr && wait_state_ptr->code() != ash::WaitStateCode::kIdle) {
-        if (local_uuid) {
-          wait_state_ptr->set_yql_endpoint_tserver_uuid(*local_uuid);
-        }
-        wait_state_ptr->ToPB(resp->add_wait_states(), export_wait_state_names);
+      if (!wait_state_ptr) {
+        continue;
       }
+      WaitStateInfoPB wait_state_pb;
+      wait_state_ptr->ToPB(&wait_state_pb, export_wait_state_names);
+      if (wait_state_pb.wait_state_code() == yb::to_underlying(ash::WaitStateCode::kIdle)) {
+        continue;
+      }
+      if (local_uuid) {
+        local_uuid->ToBytes(wait_state_pb.mutable_metadata()->mutable_top_level_node_id());
+      }
+      MaybeIncludeSample(resp, wait_state_pb, sample_size, samples_considered);
     }
     VLOG(2) << "Tracker call sending " << resp->DebugString();
   }
@@ -1452,25 +1511,35 @@ class PgClientServiceImpl::Impl {
   Status ActiveSessionHistory(
       const PgActiveSessionHistoryRequestPB& req, PgActiveSessionHistoryResponsePB* resp,
       rpc::RpcContext* context) {
+    int tserver_samples_considered = 0;
+    int cql_samples_considered = 0;
+    int sample_size = req.sample_size();
     if (req.fetch_tserver_states()) {
-      GetRpcsWaitStates(req, ash::Component::kTServer, resp->mutable_tserver_wait_states());
+      GetRpcsWaitStates(req, ash::Component::kTServer, resp->mutable_tserver_wait_states(),
+          sample_size, tserver_samples_considered);
       AddWaitStatesToResponse(
           ash::SharedMemoryPgPerformTracker(), req.export_wait_state_code_as_string(),
-          resp->mutable_tserver_wait_states());
+          resp->mutable_tserver_wait_states(), sample_size, tserver_samples_considered);
     }
     if (req.fetch_flush_and_compaction_states()) {
       AddWaitStatesToResponse(
           ash::FlushAndCompactionWaitStatesTracker(), req.export_wait_state_code_as_string(),
-          resp->mutable_flush_and_compaction_wait_states());
+          resp->mutable_tserver_wait_states(), sample_size, tserver_samples_considered);
     }
     if (req.fetch_raft_log_appender_states()) {
       AddWaitStatesToResponse(
-          ash::RaftLogAppenderWaitStatesTracker(), req.export_wait_state_code_as_string(),
-          resp->mutable_raft_log_appender_wait_states());
+          ash::RaftLogWaitStatesTracker(), req.export_wait_state_code_as_string(),
+          resp->mutable_tserver_wait_states(), sample_size, tserver_samples_considered);
     }
     if (req.fetch_cql_states()) {
-      GetRpcsWaitStates(req, ash::Component::kYCQL, resp->mutable_cql_wait_states());
+      GetRpcsWaitStates(req, ash::Component::kYCQL, resp->mutable_cql_wait_states(),
+          sample_size, cql_samples_considered);
     }
+    float tserver_sample_weight =
+        std::max(tserver_samples_considered, sample_size) * 1.0 / sample_size;
+    float cql_sample_weight = std::max(cql_samples_considered, sample_size) * 1.0 / sample_size;
+    resp->mutable_tserver_wait_states()->set_sample_weight(tserver_sample_weight);
+    resp->mutable_cql_wait_states()->set_sample_weight(cql_sample_weight);
     return Status::OK();
   }
 
@@ -1671,6 +1740,113 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status ServersMetrics(
+      const PgServersMetricsRequestPB& req, PgServersMetricsResponsePB* resp,
+      rpc::RpcContext* context) {
+
+    std::vector<tserver::PgServerMetricsInfoPB> result;
+    std::vector<std::future<Status>> status_futures;
+    std::vector<std::shared_ptr<GetMetricsResponsePB>> node_responses;
+
+    GetMetricsRequestPB metrics_req;
+    const auto remote_tservers = VERIFY_RESULT(tablet_server_.GetRemoteTabletServers());
+    status_futures.reserve(remote_tservers.size());
+    node_responses.reserve(remote_tservers.size());
+
+    for (const auto& remote_tserver : remote_tservers) {
+      RETURN_NOT_OK(remote_tserver->InitProxy(&client()));
+      auto proxy = remote_tserver->proxy();
+      auto status_promise = std::make_shared<std::promise<Status>>();
+      status_futures.push_back(status_promise->get_future());
+      auto node_resp = std::make_shared<GetMetricsResponsePB>();
+      node_responses.push_back(node_resp);
+
+      std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
+      controller->set_timeout(MonoDelta::FromMilliseconds(5000));
+
+      proxy->GetMetricsAsync(metrics_req, node_resp.get(), controller.get(),
+      [controller, status_promise] {
+        status_promise->set_value(controller->status());
+      });
+    }
+    for (size_t i = 0; i < status_futures.size(); ++i) {
+      auto& node_resp = node_responses[i];
+      auto s = status_futures[i].get();
+      tserver::PgServerMetricsInfoPB server_metrics;
+      server_metrics.set_uuid(remote_tservers[i]->permanent_uuid());
+      if (!s.ok()) {
+        server_metrics.set_status(tserver::PgMetricsInfoStatus::ERROR);
+        server_metrics.set_error(s.ToUserMessage());
+      } else if (node_resp->has_error()) {
+        server_metrics.set_status(tserver::PgMetricsInfoStatus::ERROR);
+        server_metrics.set_error(node_resp->error().status().message());
+      } else {
+        server_metrics.mutable_metrics()->Swap(node_resp->mutable_metrics());
+        server_metrics.set_status(tserver::PgMetricsInfoStatus::OK);
+        server_metrics.set_error("");
+      }
+      result.emplace_back(std::move(server_metrics));
+    }
+
+    *resp->mutable_servers_metrics() = {result.begin(), result.end()};
+    return Status::OK();
+  }
+
+  Status CronSetLastMinute(
+      const PgCronSetLastMinuteRequestPB& req, PgCronSetLastMinuteResponsePB* resp,
+      rpc::RpcContext* context) {
+    auto controller = std::make_shared<rpc::RpcController>();
+    controller->set_deadline(context->GetClientDeadline());
+
+    stateful_service::PgCronSetLastMinuteRequestPB stateful_service_req;
+    stateful_service_req.set_last_minute(req.last_minute());
+    RETURN_NOT_OK(client::PgCronLeaderServiceClient(client()).PgCronSetLastMinute(
+        stateful_service_req, context->GetClientDeadline()));
+
+    return Status::OK();
+  }
+
+  Status CronGetLastMinute(
+      const PgCronGetLastMinuteRequestPB& req, PgCronGetLastMinuteResponsePB* resp,
+      rpc::RpcContext* context) {
+    stateful_service::PgCronGetLastMinuteRequestPB stateful_service_req;
+    auto stateful_service_resp =
+        VERIFY_RESULT(client::PgCronLeaderServiceClient(client()).PgCronGetLastMinute(
+            stateful_service_req, context->GetClientDeadline()));
+
+    resp->set_last_minute(stateful_service_resp.last_minute());
+    return Status::OK();
+  }
+
+  Status ListClones(
+      const PgListClonesRequestPB& req, PgListClonesResponsePB* resp, rpc::RpcContext* context) {
+    master::ListClonesResponsePB master_resp;
+    RETURN_NOT_OK(client().ListClones(&master_resp));
+    if (master_resp.has_error()) {
+      return StatusFromPB(master_resp.error().status());
+    }
+    for (const auto& clone_state : master_resp.entries()) {
+      if (clone_state.database_type() == YQL_DATABASE_PGSQL) {
+        auto pg_clone_entry = resp->add_database_clones();
+        if (clone_state.has_target_namespace_id()) {
+          pg_clone_entry->set_db_id(
+              VERIFY_RESULT(GetPgsqlDatabaseOid(clone_state.target_namespace_id())));
+        }
+        pg_clone_entry->set_db_name(clone_state.target_namespace_name());
+        pg_clone_entry->set_parent_db_id(
+            VERIFY_RESULT(GetPgsqlDatabaseOid(clone_state.source_namespace_id())));
+        pg_clone_entry->set_parent_db_name(clone_state.source_namespace_name());
+        pg_clone_entry->set_state(
+            master::SysCloneStatePB_State_Name(clone_state.aggregate_state()));
+        pg_clone_entry->set_as_of_time(clone_state.restore_time());
+        if (clone_state.has_abort_message()) {
+          pg_clone_entry->set_failure_reason(clone_state.abort_message());
+        }
+      }
+    }
+    return Status::OK();
+  }
+
   #define PG_CLIENT_SESSION_METHOD_FORWARD(r, data, method) \
   Status method( \
       const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
@@ -1746,32 +1922,49 @@ class PgClientServiceImpl::Impl {
 
   void CheckExpiredSessions() {
     auto now = CoarseMonoClock::now();
-    std::vector<uint64_t> expired_sessions;
-    std::lock_guard lock(mutex_);
-    while (!session_expiration_queue_.empty()) {
-      auto& top = session_expiration_queue_.top();
-      if (top.first > now) {
-        break;
-      }
-      auto id = top.second;
-      session_expiration_queue_.pop();
-      auto it = sessions_.find(id);
-      if (it != sessions_.end()) {
-        auto current_expiration = (**it).session().expiration();
-        if (current_expiration > now) {
-          session_expiration_queue_.push({current_expiration, id});
-        } else {
-          expired_sessions.push_back(id);
-          sessions_.erase(it);
+    std::vector<SessionInfoPtr> expired_sessions;
+    {
+      std::lock_guard lock(mutex_);
+      while (!session_expiration_queue_.empty()) {
+        auto& top = session_expiration_queue_.top();
+        if (top.first > now) {
+          break;
+        }
+        auto id = top.second;
+        session_expiration_queue_.pop();
+        auto it = sessions_.find(id);
+        if (it != sessions_.end()) {
+          auto current_expiration = (**it).session().expiration();
+          if (current_expiration > now) {
+            session_expiration_queue_.push({current_expiration, id});
+          } else {
+            expired_sessions.push_back(*it);
+            sessions_.erase(it);
+          }
         }
       }
+      ScheduleCheckExpiredSessions(now);
+    }
+    if (expired_sessions.empty()) {
+      return;
+    }
+    for (const auto& session : expired_sessions) {
+      session->session().StartShutdown();
+    }
+    for (const auto& session : expired_sessions) {
+      session->session().CompleteShutdown();
     }
     auto cdc_service = tablet_server_.GetCDCService();
     // We only want to call this on tablet servers. On master, cdc_service will be null.
     if (cdc_service) {
-      cdc_service->DestroyVirtualWALBatchForCDC(expired_sessions);
+      std::vector<uint64_t> expired_session_ids;
+      expired_session_ids.reserve(expired_sessions.size());
+      for (auto& session : expired_sessions) {
+        expired_session_ids.push_back(session->id());
+      }
+      expired_sessions.clear();
+      cdc_service->DestroyVirtualWALBatchForCDC(expired_session_ids);
     }
-    ScheduleCheckExpiredSessions(now);
   }
 
   Status DoPerform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
@@ -1837,6 +2030,7 @@ class PgClientServiceImpl::Impl {
   std::shared_future<client::YBClient*> client_future_;
   scoped_refptr<ClockBase> clock_;
   TransactionPoolProvider transaction_pool_provider_;
+  rpc::Messenger& messenger_;
   PgTableCache table_cache_;
   rw_spinlock mutex_;
 
@@ -1865,7 +2059,6 @@ class PgClientServiceImpl::Impl {
   rpc::ScheduledTaskTracker check_expired_sessions_;
   rpc::ScheduledTaskTracker check_object_id_allocators_;
 
-  std::unique_ptr<yb::client::AsyncClientInitializer> cdc_state_client_init_;
   std::shared_ptr<cdc::CDCStateTable> cdc_state_table_;
 
   const TserverXClusterContextIf* xcluster_context_;
@@ -1877,6 +2070,10 @@ class PgClientServiceImpl::Impl {
   PgSequenceCache sequence_cache_;
 
   const std::string instance_id_;
+
+  PgSharedMemoryPool shared_mem_pool_;
+
+  EventStatsPtr stats_exchange_response_size_;
 
   std::array<rw_spinlock, 8> txns_assignment_mutexes_;
   TransactionBuilder transaction_builder_;
@@ -1932,6 +2129,7 @@ void PgClientServiceImpl::method( \
     const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
     BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
     rpc::RpcContext context) { \
+  TryUpdateAshWaitState(*req); \
   Respond(impl_->method(*req, resp, &context), resp, &context); \
 }
 
@@ -1940,10 +2138,74 @@ void PgClientServiceImpl::method( \
     const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
     BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
     rpc::RpcContext context) { \
+  TryUpdateAshWaitState(*req); \
   impl_->method(*req, resp, std::move(context)); \
 }
 
 BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DEFINE, ~, YB_PG_CLIENT_METHODS);
 BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_ASYNC_METHOD_DEFINE, ~, YB_PG_CLIENT_ASYNC_METHODS);
+
+PgClientServiceMockImpl::PgClientServiceMockImpl(
+    const scoped_refptr<MetricEntity>& entity, PgClientServiceIf* impl)
+    : PgClientServiceIf(entity), impl_(impl) {}
+
+PgClientServiceMockImpl::Handle PgClientServiceMockImpl::SetMock(
+    const std::string& method, SharedFunctor&& mock) {
+  {
+    std::lock_guard lock(mutex_);
+    mocks_[method] = mock;
+  }
+
+  return Handle{std::move(mock)};
+}
+
+Result<bool> PgClientServiceMockImpl::DispatchMock(
+    const std::string& method, const void* req, void* resp, rpc::RpcContext* context) {
+  SharedFunctor mock;
+  {
+    SharedLock lock(mutex_);
+    auto it = mocks_.find(method);
+    if (it != mocks_.end()) {
+      mock = it->second.lock();
+    }
+  }
+
+  if (!mock) {
+    return false;
+  }
+  RETURN_NOT_OK((*mock)(req, resp, context));
+  return true;
+}
+
+#define YB_PG_CLIENT_MOCK_METHOD_DEFINE(r, data, method) \
+  void PgClientServiceMockImpl::method( \
+      const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB) * req, \
+      BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB) * resp, rpc::RpcContext context) { \
+    auto result = DispatchMock(BOOST_PP_STRINGIZE(method), req, resp, &context); \
+    if (!result.ok() || *result) { \
+      Respond(ResultToStatus(result), resp, &context); \
+      return; \
+    } \
+    impl_->method(req, resp, std::move(context)); \
+  }
+
+template <class Req, class Resp>
+auto MakeSharedFunctor(const std::function<Status(const Req*, Resp*, rpc::RpcContext*)>& func) {
+  return std::make_shared<PgClientServiceMockImpl::Functor>(
+      [func](const void* req, void* resp, rpc::RpcContext* context) {
+        return func(pointer_cast<const Req*>(req), pointer_cast<Resp*>(resp), context);
+      });
+}
+
+#define YB_PG_CLIENT_MOCK_METHOD_SETTER_DEFINE(r, data, method) \
+  PgClientServiceMockImpl::Handle BOOST_PP_CAT(PgClientServiceMockImpl::Mock, method)( \
+      const std::function<Status( \
+          const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)*, \
+          BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)*, rpc::RpcContext*)>& mock) { \
+    return SetMock(BOOST_PP_STRINGIZE(method), MakeSharedFunctor(mock)); \
+  }
+
+BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_MOCK_METHOD_DEFINE, ~, YB_PG_CLIENT_MOCKABLE_METHODS);
+BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_MOCK_METHOD_SETTER_DEFINE, ~, YB_PG_CLIENT_MOCKABLE_METHODS);
 
 }  // namespace yb::tserver

@@ -19,6 +19,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 #ifdef __cplusplus
 extern "C" {
 
@@ -100,6 +102,14 @@ extern int yb_locks_txn_locks_per_tablet;
  * for a newly created target database to restore those tables.
  */
 extern bool yb_binary_restore;
+
+/*
+ * Guc variable for ignoring requests to set pg_class oids when yb_binary_restore is set.
+ *
+ * If true then calls to pg_catalog.binary_upgrade_set_next_{heap|index}_pg_class_oid will have no
+ * effect.
+ */
+extern bool yb_ignore_pg_class_oids;
 
 /*
  * Set to true only for runs with EXPLAIN ANALYZE
@@ -185,6 +195,13 @@ extern int yb_walsender_poll_sleep_duration_nonempty_ms;
 extern int yb_walsender_poll_sleep_duration_empty_ms;
 
 /*
+ * GUC flag: Specifies the maximum number of changes kept in memory per transaction in reorder
+ * buffer, which is used in streaming changes via logical replication. After that changes are
+ * spooled to disk.
+ */
+extern int yb_reorderbuffer_max_changes_in_memory;
+
+/*
  * Allows for customizing the maximum size of a batch of explicit row lock operations.
  */
 extern int yb_explicit_row_locking_batch_size;
@@ -236,7 +253,6 @@ unsigned int YBCStatusRelationOid(YBCStatus s);
 const char** YBCStatusArguments(YBCStatus s, size_t* nargs);
 
 bool YBCIsRestartReadError(uint16_t txn_errcode);
-
 bool YBCIsTxnConflictError(uint16_t txn_errcode);
 bool YBCIsTxnSkipLockingError(uint16_t txn_errcode);
 bool YBCIsTxnDeadlockError(uint16_t txn_errcode);
@@ -330,6 +346,13 @@ const char* YBCGetWaitEventClass(uint32_t wait_event_info);
 const char* YBCGetWaitEventComponent(uint32_t wait_event_info);
 const char* YBCGetWaitEventType(uint32_t wait_event_info);
 uint8_t YBCGetQueryIdForCatalogRequests();
+uint32_t YBCWaitEventForWaitingOnTServer();
+int YBCGetRandomUniformInt(int a, int b);
+YBCWaitEventDescriptor YBCGetWaitEventDescription(size_t index);
+int YBCGetCircularBufferSizeInKiBs();
+const char* YBCGetPggateRPCName(uint32_t pggate_rpc_enum_value);
+
+int YBCGetCallStackFrames(void** result, int max_depth, int skip_count);
 
 #ifdef __cplusplus
 } // extern "C"

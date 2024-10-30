@@ -67,6 +67,9 @@
 
 #include <execinfo.h>
 
+/* Yugabyte includes */
+#include "utils/builtins.h"
+
 bool yb_disable_transactional_writes = false;
 bool yb_enable_upsert_mode = false;
 
@@ -85,7 +88,12 @@ void MarkCurrentCommandUsed() {
 bool YBCIsSingleRowTxnCapableRel(ResultRelInfo *resultRelInfo)
 {
 	bool has_triggers = resultRelInfo->ri_TrigDesc && resultRelInfo->ri_TrigDesc->numtriggers > 0;
-	bool has_indices = YBCRelInfoHasSecondaryIndices(resultRelInfo);
+	/*
+	 * It would be nice to use YBCRelInfoHasSecondaryIndices(resultRelInfo)
+	 * instead of the below, but that doesn't work because the callers (2 of 2
+	 * at the time of writing) do not have that information populated yet.
+	 */
+	bool has_indices = YBRelHasSecondaryIndices(resultRelInfo->ri_RelationDesc);
 	return !has_indices && !has_triggers;
 }
 
@@ -98,9 +106,8 @@ bool YbIsSingleRowModifyTxnPlanned(PlannedStmt *pstmt, EState *estate)
 
 	return ActivePortal->stmts->length == 1 &&
 		YBCIsSingleRowModify(pstmt) &&
-		estate->es_num_result_relations == 1 &&
 		(pstmt->commandType == CMD_UPDATE ||
-		YBCIsSingleRowTxnCapableRel(&estate->es_result_relations[0]));
+		YBCIsSingleRowTxnCapableRel((ResultRelInfo *) linitial(estate->es_opened_result_relations)));
 }
 
 /*
@@ -109,12 +116,12 @@ bool YbIsSingleRowModifyTxnPlanned(PlannedStmt *pstmt, EState *estate)
 Datum YBCGetYBTupleIdFromSlot(TupleTableSlot *slot)
 {
 	/*
-	 * Look for ybctid in the tuple first if the slot contains a tuple packed with ybctid.
+	 * Look for ybctid in the slot's item pointer field first.
 	 * Otherwise, look for it in the attribute list as a junk attribute.
 	 */
-	if (slot->tts_tuple != NULL && slot->tts_tuple->t_ybctid != 0)
+	if (TABLETUPLE_YBCTID(slot) != 0)
 	{
-		return slot->tts_tuple->t_ybctid;
+		return TABLETUPLE_YBCTID(slot);
 	}
 
 	for (int idx = 0; idx < slot->tts_nvalid; idx++)
@@ -137,9 +144,8 @@ Datum YBCGetYBTupleIdFromSlot(TupleTableSlot *slot)
  * meaning the ybctid will be unique. Therefore you should only use this if the relation has
  * a primary key or you're doing an insert.
  */
-Datum YBCGetYBTupleIdFromTuple(Relation rel,
-							   HeapTuple tuple,
-							   TupleDesc tupleDesc) {
+Datum YBCComputeYBTupleIdFromSlot(Relation rel, TupleTableSlot *slot)
+{
 	Oid dboid = YBCGetDatabaseOid(rel);
 	YBCPgTableDesc ybc_table_desc = NULL;
 	HandleYBStatus(YBCPgGetTableDesc(dboid, YbGetRelfileNodeId(rel), &ybc_table_desc));
@@ -158,11 +164,11 @@ Datum YBCGetYBTupleIdFromTuple(Relation rel,
 		 */
 		if (attnum != YBRowIdAttributeNumber) {
 			Oid	type_id = (attnum > 0) ?
-					TupleDescAttr(tupleDesc, attnum - 1)->atttypid : InvalidOid;
+					TupleDescAttr(slot->tts_tupleDescriptor, attnum - 1)->atttypid : InvalidOid;
 
 			next_attr->type_entity = YbDataTypeFromOidMod(attnum, type_id);
 			next_attr->collation_id = ybc_get_attcollation(RelationGetDescr(rel), attnum);
-			next_attr->datum = heap_getattr(tuple, attnum, tupleDesc, &next_attr->is_null);
+			next_attr->datum = slot_getattr(slot, attnum, &next_attr->is_null);
 		} else {
 			next_attr->datum = 0;
 			next_attr->is_null = false;
@@ -264,7 +270,7 @@ static void YBCExecWriteStmt(YBCPgStatement ybc_stmt,
 	}
 }
 
-static Oid YBCApplyInsertRow(
+static void YBCApplyInsertRow(
     YBCPgStatement insert_stmt, Relation rel, TupleTableSlot *slot, 
     OnConflictAction onConflictAction, Datum *ybctid,
     YBCPgTransactionSetting transaction_setting) {
@@ -273,23 +279,15 @@ static Oid YBCApplyInsertRow(
 	int            natts            = RelationGetNumberOfAttributes(rel);
 	Bitmapset      *pkey            = YBGetTablePrimaryKeyBms(rel);
 	TupleDesc	   tupleDesc        = RelationGetDescr(rel);
-	HeapTuple 	   tuple            = slot->tts_tuple;
-
-	/* Generate a new oid for this row if needed */
-	if (rel->rd_rel->relhasoids)
-	{
-		if (!OidIsValid(HeapTupleGetOid(tuple)))
-			HeapTupleSetOid(tuple, GetNewOid(rel));
-	}
 
 	/* Get the ybctid for the tuple and bind to statement */
-	tuple->t_ybctid =
+	TABLETUPLE_YBCTID(slot) =
 		ybctid != NULL && *ybctid != 0 ? *ybctid
-		                               : YBCGetYBTupleIdFromTuple(rel, tuple, tupleDesc);
+									   : YBCComputeYBTupleIdFromSlot(rel, slot);
 
 	if (ybctid != NULL)
 	{
-		*ybctid = tuple->t_ybctid;
+		*ybctid = TABLETUPLE_YBCTID(slot);
 	}
 	int buf_size = natts - minattr + 1;
 	YBCBindColumn columns[buf_size];
@@ -331,7 +329,8 @@ static Oid YBCApplyInsertRow(
 		/* Add the column value to the insert request */
 		++column;
 	}
-	HandleYBStatus(YBCPgDmlBindRow(insert_stmt, tuple->t_ybctid, columns, column - columns));
+	HandleYBStatus(YBCPgDmlBindRow(insert_stmt, TABLETUPLE_YBCTID(slot),
+								   columns, column - columns));
 
 	/*
 	 * For system tables, mark tuple for invalidation from system caches
@@ -342,8 +341,12 @@ static Oid YBCApplyInsertRow(
 	 */
 	if (IsCatalogRelation(rel))
 	{
+		bool shouldFree;
+		HeapTuple tuple = ExecFetchSlotHeapTuple(slot, false, &shouldFree);
 		MarkCurrentCommandUsed();
 		CacheInvalidateHeapTuple(rel, tuple, NULL);
+		if (shouldFree)
+			pfree(tuple);
 	}
 
 	if (onConflictAction == ONCONFLICT_YB_REPLACE || yb_enable_upsert_mode)
@@ -353,20 +356,20 @@ static Oid YBCApplyInsertRow(
 
 	/* Add row into foreign key cache */
 	if (transaction_setting != YB_SINGLE_SHARD_TRANSACTION)
-		YBCPgAddIntoForeignKeyReferenceCache(relfileNodeId, tuple->t_ybctid);
+		YBCPgAddIntoForeignKeyReferenceCache(relfileNodeId,
+											 TABLETUPLE_YBCTID(slot));
 
-	return HeapTupleGetOid(tuple);
 }
 
 /*
  * Utility method to insert a tuple into the relation's backing YugaByte table.
  */
-static Oid YBCExecuteInsertInternal(Oid dboid,
-                                    Relation rel,
-									TupleTableSlot *slot,
-                                    OnConflictAction onConflictAction,
-                                    Datum *ybctid,
-                                    YBCPgTransactionSetting transaction_setting)
+static void YBCExecuteInsertInternal(Oid dboid,
+									 Relation rel,
+									 TupleTableSlot *slot,
+									 OnConflictAction onConflictAction,
+									 Datum *ybctid,
+									 YBCPgTransactionSetting transaction_setting)
 {
 	Oid            relfileNodeId    = YbGetRelfileNodeId(rel);
 	YBCPgStatement insert_stmt      = NULL;
@@ -378,26 +381,24 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
 	                              &insert_stmt,
 	                              transaction_setting));
 
-	Oid result = YBCApplyInsertRow(
+	YBCApplyInsertRow(
 	    insert_stmt, rel, slot, onConflictAction, ybctid,
 	    transaction_setting);
 
 	/* Execute the insert */
 	YBCApplyWriteStmt(insert_stmt, rel);
-
-	return result;
 }
 
-Oid YBCExecuteInsert(Relation rel,
-					 TupleTableSlot *slot,
-                     OnConflictAction onConflictAction)
+void YBCExecuteInsert(Relation rel,
+					  TupleTableSlot *slot,
+					  OnConflictAction onConflictAction)
 {
-	return YBCExecuteInsertForDb(YBCGetDatabaseOid(rel),
-	                             rel,
-								 slot,
-	                             onConflictAction,
-	                             NULL /* ybctid */,
-	                             YB_TRANSACTIONAL);
+	YBCExecuteInsertForDb(YBCGetDatabaseOid(rel),
+						  rel,
+						  slot,
+						  onConflictAction,
+						  NULL /* ybctid */,
+						  YB_TRANSACTIONAL);
 }
 
 void YBCApplyWriteStmt(YBCPgStatement handle, Relation relation)
@@ -418,63 +419,83 @@ static YBCPgTransactionSetting YBCFixTransactionSetting(
 	return transaction_setting;
 }
 
-Oid YBCExecuteInsertForDb(Oid dboid,
-                          Relation rel,
-						  TupleTableSlot *slot,
-                          OnConflictAction onConflictAction,
-                          Datum *ybctid,
-                          YBCPgTransactionSetting transaction_setting)
+void
+YBCExecuteInsertHeapTupleForDb(Oid dboid,
+							   Relation rel,
+							   HeapTuple tuple,
+							   OnConflictAction onConflictAction,
+							   Datum *ybctid,
+							   YBCPgTransactionSetting transaction_setting)
 {
-	return YBCExecuteInsertInternal(dboid,
-	                                rel,
-									slot,
-	                                onConflictAction,
-	                                ybctid,
-	                                YBCFixTransactionSetting(rel, transaction_setting));
+	TupleTableSlot *slot =
+		MakeSingleTupleTableSlot(RelationGetDescr(rel), &TTSOpsHeapTuple);
+	ExecStoreHeapTuple(tuple, slot, false);
+	YBCExecuteInsertForDb(dboid, rel, slot, onConflictAction, ybctid,
+						  transaction_setting);
+	HEAPTUPLE_YBCTID(tuple) = TABLETUPLE_YBCTID(slot);
+	ExecDropSingleTupleTableSlot(slot);
 }
 
-Oid YBCExecuteNonTxnInsert(Relation rel,
+void YBCExecuteInsertForDb(Oid dboid,
+						   Relation rel,
 						   TupleTableSlot *slot,
-                           OnConflictAction onConflictAction)
+						   OnConflictAction onConflictAction,
+						   Datum *ybctid,
+						   YBCPgTransactionSetting transaction_setting)
 {
-	return YBCExecuteNonTxnInsertForDb(YBCGetDatabaseOid(rel),
-	                                   rel,
-									   slot,
-	                                   onConflictAction,
-	                                   NULL /* ybctid */);
+	YBCExecuteInsertInternal(dboid,
+							 rel,
+							 slot,
+							 onConflictAction,
+							 ybctid,
+							 YBCFixTransactionSetting(rel, transaction_setting));
 }
 
-Oid YBCExecuteNonTxnInsertForDb(Oid dboid,
-                                Relation rel,
-								TupleTableSlot *slot,
-                                OnConflictAction onConflictAction,
-                                Datum *ybctid)
+void YBCExecuteNonTxnInsert(Relation rel,
+							TupleTableSlot *slot,
+							OnConflictAction onConflictAction)
 {
-	return YBCExecuteInsertInternal(dboid,
-	                                rel,
-									slot,
-	                                onConflictAction,
-	                                ybctid,
-	                                YB_NON_TRANSACTIONAL);
+	YBCExecuteNonTxnInsertForDb(YBCGetDatabaseOid(rel),
+								rel,
+								slot,
+								onConflictAction,
+								NULL /* ybctid */);
 }
 
-Oid YBCHeapInsert(TupleTableSlot *slot,
-                  YBCPgStatement blockInsertStmt,
-                  EState *estate)
+void YBCExecuteNonTxnInsertForDb(Oid dboid,
+								 Relation rel,
+								 TupleTableSlot *slot,
+								 OnConflictAction onConflictAction,
+								 Datum *ybctid)
+{
+	YBCExecuteInsertInternal(dboid,
+							 rel,
+							 slot,
+							 onConflictAction,
+							 ybctid,
+							 YB_NON_TRANSACTIONAL);
+}
+
+void YBCHeapInsert(ResultRelInfo *resultRelInfo,
+				   TupleTableSlot *slot,
+				   YBCPgStatement blockInsertStmt,
+				   EState *estate)
 {
 	/*
 	 * get information on the (current) result relation
 	 */
-	Relation resultRelationDesc = estate->es_result_relation_info->ri_RelationDesc;
+	Relation resultRelationDesc = resultRelInfo->ri_RelationDesc;
+	slot->tts_tableOid = RelationGetRelid(resultRelationDesc);
 	YBCPgTransactionSetting transaction_setting =
 	    estate->yb_es_is_single_row_modify_txn ? YB_SINGLE_SHARD_TRANSACTION
 	    	    	    	    	    	   : YB_TRANSACTIONAL;
 
 	if (blockInsertStmt) {
-		return YBCApplyInsertRow(
+		YBCApplyInsertRow(
 		    blockInsertStmt, resultRelationDesc, slot,
 		    ONCONFLICT_NONE, NULL /* ybctid */,
 		    YBCFixTransactionSetting(resultRelationDesc, transaction_setting));
+		return;
 	}
 
 	Oid dboid = YBCGetDatabaseOid(resultRelationDesc);
@@ -486,9 +507,33 @@ Oid YBCHeapInsert(TupleTableSlot *slot,
 	 * transaction that targets a single row (i.e. single-row-modify txn), and
 	 * there are no indices or triggers on the target table.
 	 */
-	return YBCExecuteInsertForDb(
+	YBCExecuteInsertForDb(
 			dboid, resultRelationDesc, slot, ONCONFLICT_NONE, NULL /* ybctid */,
 			transaction_setting);
+}
+
+bool
+YbIsInsertOnConflictReadBatchingEnabled(ResultRelInfo *resultRelInfo)
+{
+	/*
+	 * TODO(jason): figure out how to enable triggers.
+	 * TODO(jason): disable (or handle) NULLS NOT DISTINCT indexes once that is
+	 * officially allowed.
+	 */
+	return (IsYBRelation(resultRelInfo->ri_RelationDesc) &&
+			!IsCatalogRelation(resultRelInfo->ri_RelationDesc) &&
+			resultRelInfo->ri_BatchSize > 1 &&
+			!resultRelInfo->ri_projectReturning &&
+			!(resultRelInfo->ri_TrigDesc &&
+			  (resultRelInfo->ri_TrigDesc->trig_delete_after_row ||
+			   resultRelInfo->ri_TrigDesc->trig_delete_before_row ||
+			   resultRelInfo->ri_TrigDesc->trig_delete_instead_row ||
+			   resultRelInfo->ri_TrigDesc->trig_insert_after_row ||
+			   resultRelInfo->ri_TrigDesc->trig_insert_before_row ||
+			   resultRelInfo->ri_TrigDesc->trig_insert_instead_row ||
+			   resultRelInfo->ri_TrigDesc->trig_update_after_row ||
+			   resultRelInfo->ri_TrigDesc->trig_update_before_row ||
+			   resultRelInfo->ri_TrigDesc->trig_update_instead_row)));
 }
 
 static YBCPgYBTupleIdDescriptor*
@@ -615,7 +660,7 @@ void YBCExecuteInsertIndexForDb(Oid dboid,
 }
 
 bool YBCExecuteDelete(Relation rel,
-					  TupleTableSlot *slot,
+					  TupleTableSlot *planSlot,
 					  List *returning_columns,
 					  bool target_tuple_fetched,
 					  YBCPgTransactionSetting transaction_setting,
@@ -646,12 +691,9 @@ bool YBCExecuteDelete(Relation rel,
 	 * from tuple values.
 	 */
 	if (target_tuple_fetched)
-		ybctid = YBCGetYBTupleIdFromSlot(slot);
+		ybctid = YBCGetYBTupleIdFromSlot(planSlot);
 	else
-	{
-		HeapTuple tuple = ExecMaterializeSlot(slot);
-		ybctid = YBCGetYBTupleIdFromTuple(rel, tuple, slot->tts_tupleDescriptor);
-	}
+		ybctid = YBCComputeYBTupleIdFromSlot(rel, planSlot);
 
 	if (ybctid == 0)
 	{
@@ -693,6 +735,7 @@ bool YBCExecuteDelete(Relation rel,
 		YBCExecWriteStmt(delete_stmt, rel, &rows_affected_count);
 		/* Cleanup. */
 		YBCPgDeleteStatement(delete_stmt);
+
 		return rows_affected_count > 0;
 	}
 
@@ -712,8 +755,14 @@ bool YBCExecuteDelete(Relation rel,
 	if (IsCatalogRelation(rel))
 	{
 		MarkCurrentCommandUsed();
-		if (slot->tts_tuple)
-			CacheInvalidateHeapTuple(rel, slot->tts_tuple, NULL);
+		if (!target_tuple_fetched)
+		{
+			bool shouldFree;
+			HeapTuple tuple = ExecFetchSlotHeapTuple(planSlot, false, &shouldFree);
+			CacheInvalidateHeapTuple(rel, tuple, NULL);
+			if (shouldFree)
+				pfree(tuple);
+		}
 		else
 		{
 			/*
@@ -755,8 +804,8 @@ bool YBCExecuteDelete(Relation rel,
 		Assert(rows_affected_count == 1);
 		HandleYBStatus(YBCPgDmlFetch(delete_stmt,
 									 tupleDesc->natts,
-									 (uint64_t *) slot->tts_values,
-									 slot->tts_isnull,
+									 (uint64_t *) planSlot->tts_values,
+									 planSlot->tts_isnull,
 									 &syscols,
 									 &has_data));
 		Assert(has_data);
@@ -766,15 +815,15 @@ bool YBCExecuteDelete(Relation rel,
 		 * to ensure that returning_columns contains all the
 		 * attributes that may be referenced during subsequent evaluations.
 		 */
-		slot->tts_nvalid = tupleDesc->natts;
-		slot->tts_isempty = false;
+		planSlot->tts_nvalid = tupleDesc->natts;
+		planSlot->tts_flags &= ~TTS_FLAG_EMPTY;
 
 		/*
 		 * The Result is getting dummy TLEs in place of missing attributes,
 		 * so we should fix the tuple table slot's descriptor before
 		 * the RETURNING clause expressions are evaluated.
 		 */
-		slot->tts_tupleDescriptor = CreateTupleDescCopyConstr(tupleDesc);
+		planSlot->tts_tupleDescriptor = CreateTupleDescCopyConstr(tupleDesc);
 	}
 
 	/* Cleanup. */
@@ -825,10 +874,10 @@ void YBCExecuteDeleteIndex(Relation index,
 	YBCApplyWriteStmt(delete_stmt, index);
 }
 
-bool YBCExecuteUpdate(Relation rel,
+bool YBCExecuteUpdate(ResultRelInfo *resultRelInfo,
+					  TupleTableSlot *planSlot,
 					  TupleTableSlot *slot,
 					  HeapTuple oldtuple,
-					  HeapTuple tuple,
 					  EState *estate,
 					  ModifyTable *mt_plan,
 					  bool target_tuple_fetched,
@@ -837,7 +886,7 @@ bool YBCExecuteUpdate(Relation rel,
 					  bool canSetTag)
 {
 	// The input heap tuple's descriptor
-	TupleDesc		inputTupleDesc = slot->tts_tupleDescriptor;
+	Relation rel = resultRelInfo->ri_RelationDesc;
 	// The target table tuple's descriptor
 	TupleDesc		outputTupleDesc = RelationGetDescr(rel);
 	Oid				dboid = YBCGetDatabaseOid(rel);
@@ -845,8 +894,12 @@ bool YBCExecuteUpdate(Relation rel,
 	YBCPgStatement	update_stmt = NULL;
 	Datum			ybctid;
 
+
 	/* YB_SINGLE_SHARD_TRANSACTION always implies target tuple wasn't fetched. */
 	Assert((transaction_setting != YB_SINGLE_SHARD_TRANSACTION) || !target_tuple_fetched);
+
+	/* Update the tuple with table oid */
+	slot->tts_tableOid = RelationGetRelid(rel);
 
 	/* Create update statement. */
 	HandleYBStatus(YBCPgNewUpdate(dboid,
@@ -862,9 +915,9 @@ bool YBCExecuteUpdate(Relation rel,
 	 * from tuple values.
 	 */
 	if (target_tuple_fetched)
-		ybctid = YBCGetYBTupleIdFromSlot(slot);
+		ybctid = YBCGetYBTupleIdFromSlot(planSlot);
 	else
-		ybctid = YBCGetYBTupleIdFromTuple(rel, tuple, inputTupleDesc);
+		ybctid = YBCComputeYBTupleIdFromSlot(rel, slot);
 
 	if (ybctid == 0)
 		ereport(ERROR,
@@ -898,21 +951,24 @@ bool YBCExecuteUpdate(Relation rel,
 		 */
 		Assert(!bms_is_member(attnum - minattr, YBGetTablePrimaryKeyBms(rel)));
 
-		MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 		/* Assign this attr's value, handle expression pushdown if needed. */
 		if (pushdown_lc != NULL &&
 			((TargetEntry *) lfirst(pushdown_lc))->resno == attnum)
 		{
 			TargetEntry *tle = (TargetEntry *) lfirst(pushdown_lc);
 			Expr *expr = YbExprInstantiateParams(tle->expr, estate);
+			MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 			YBCPgExpr ybc_expr = YBCNewEvalExprCall(update_stmt, expr);
 			HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
-			pushdown_lc = lnext(pushdown_lc);
+
+			pushdown_lc = lnext(mt_plan->ybPushdownTlist, pushdown_lc);
+			MemoryContextSwitchTo(oldContext);
 		}
 		else
 		{
+			MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 			bool is_null = false;
-			Datum d = heap_getattr(tuple, attnum, inputTupleDesc, &is_null);
+			Datum d = slot_getattr(slot, attnum, &is_null);
 			/*
 			 * For system relations, since we assign values to non-primary-key
 			 * columns only, pass InvalidOid as collation_id to skip computing
@@ -924,8 +980,8 @@ bool YBCExecuteUpdate(Relation rel,
 			YBCPgExpr ybc_expr = YBCNewConstant(update_stmt, type_id, collation_id, d, is_null);
 
 			HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
+			MemoryContextSwitchTo(oldContext);
 		}
-		MemoryContextSwitchTo(oldContext);
 	}
 
 	/*
@@ -975,7 +1031,7 @@ bool YBCExecuteUpdate(Relation rel,
 	 * the first and the last conditions are checked here.
 	 */
 	bool can_batch_update = target_tuple_fetched ||
-		(!canSetTag && estate && estate->es_result_relation_info->ri_returningList == NIL);
+		(!canSetTag && resultRelInfo->ri_returningList == NIL);
 
 	/*
 	 * For system tables, mark tuple pair for invalidation from system caches
@@ -992,7 +1048,14 @@ bool YBCExecuteUpdate(Relation rel,
 	{
 		MarkCurrentCommandUsed();
 		if (oldtuple)
+		{
+			bool shouldFree;
+			/* tuple will be used transitorily, don't materialize it */
+			HeapTuple tuple = ExecFetchSlotHeapTuple(slot, false, &shouldFree);
 			CacheInvalidateHeapTuple(rel, oldtuple, tuple);
+			if (shouldFree)
+				pfree(tuple);
+		}
 		else
 		{
 			/*
@@ -1017,8 +1080,8 @@ bool YBCExecuteUpdate(Relation rel,
 	 */
 	if (mt_plan->ybReturningColumns && rows_affected_count > 0)
 	{
-		Datum		   *values    = slot->tts_values;
-		bool		   *isnull    = slot->tts_isnull;
+		Datum		   *values    = planSlot->tts_values;
+		bool		   *isnull    = planSlot->tts_isnull;
 		bool			has_data   = false;
 		YBCPgSysColumns	syscols;
 
@@ -1049,15 +1112,15 @@ bool YBCExecuteUpdate(Relation rel,
 		 * to ensure that mt_plan->ybReturningColumns contains all the
 		 * attributes that may be referenced during subsequent evaluations.
 		 */
-		slot->tts_nvalid = outputTupleDesc->natts;
-		slot->tts_isempty = false;
+		planSlot->tts_nvalid = outputTupleDesc->natts;
+		planSlot->tts_flags &= ~TTS_FLAG_EMPTY;
 
 		/*
 		 * The Result is getting dummy TLEs in place of missing attributes,
 		 * so we should fix the tuple table slot's descriptor before
 		 * the RETURNING clause expressions are evaluated.
 		 */
-		slot->tts_tupleDescriptor = CreateTupleDescCopyConstr(outputTupleDesc);
+		planSlot->tts_tupleDescriptor = CreateTupleDescCopyConstr(outputTupleDesc);
 	}
 
 	/* Cleanup. */
@@ -1068,7 +1131,7 @@ bool YBCExecuteUpdate(Relation rel,
 	 */
 	if (YBRelHasSecondaryIndices(rel))
 	{
-		tuple->t_ybctid = ybctid;
+		TABLETUPLE_YBCTID(slot) = ybctid;
 	}
 
 	/*
@@ -1078,6 +1141,32 @@ bool YBCExecuteUpdate(Relation rel,
 	 * secondary indexes, after row update triggers, nor returning clause.
 	 */
 	return rows_affected_count > 0;
+}
+
+void YBCExecuteUpdateIndex(Relation index,
+						   Datum *values,
+						   bool *isnull,
+						   Datum oldYbctid,
+						   Datum newYbctid,
+						   yb_assign_for_write_function callback)
+{
+	Assert(index->rd_rel->relkind == RELKIND_INDEX);
+
+	Oid            dboid    = YBCGetDatabaseOid(index);
+	YBCPgStatement update_stmt = NULL;
+
+	/* Create the UPDATE request and add the values from the tuple. */
+	HandleYBStatus(YBCPgNewUpdate(dboid,
+								  YbGetRelfileNodeId(index),
+								  YBCIsRegionLocal(index),
+								  &update_stmt,
+								  YB_TRANSACTIONAL));
+
+	callback(update_stmt, index, values, isnull,
+			 RelationGetNumberOfAttributes(index),
+			 oldYbctid, newYbctid);
+
+	YBCApplyWriteStmt(update_stmt, index);
 }
 
 bool
@@ -1092,6 +1181,7 @@ YBCExecuteUpdateLoginAttempts(Oid roleid,
 	TupleDesc 		inputTupleDesc = rel->rd_att;
 	TupleDesc		outputTupleDesc = RelationGetDescr(rel);
 	Oid				dboid = YBCGetDatabaseOid(rel);
+	TupleTableSlot *slot;
 
 	/* Create update statement. */
 	HandleYBStatus(YBCPgNewUpdate(dboid,
@@ -1106,7 +1196,10 @@ YBCExecuteUpdateLoginAttempts(Oid roleid,
 	 * Retrieve ybctid from the slot if possible, otherwise generate it
 	 * from tuple values.
 	 */
-	ybctid = YBCGetYBTupleIdFromTuple(rel, tuple, inputTupleDesc);
+	slot = MakeSingleTupleTableSlot(inputTupleDesc, &TTSOpsHeapTuple);
+	ExecStoreHeapTuple(tuple, slot, false);
+	ybctid = YBCComputeYBTupleIdFromSlot(rel, slot);
+	ExecDropSingleTupleTableSlot(slot);
 
 	if (ybctid == 0)
 		ereport(ERROR,
@@ -1151,21 +1244,25 @@ YBCExecuteUpdateLoginAttempts(Oid roleid,
 	return rows_affected_count > 0;
 }
 
-Oid YBCExecuteUpdateReplace(Relation rel,
-							TupleTableSlot *slot,
-							EState *estate)
+void YBCExecuteUpdateReplace(Relation rel,
+							 TupleTableSlot *planSlot,
+							 TupleTableSlot *slot,
+							 EState *estate)
 {
 	YBCExecuteDelete(rel,
-					 slot,
+					 planSlot,
 					 NIL /* returning_columns */,
 					 true /* target_tuple_fetched */,
 					 YB_TRANSACTIONAL,
 					 false /* changingPart */,
 					 estate);
 
-	return YBCExecuteInsert(rel,
-							slot,
-							ONCONFLICT_NONE);
+	/* Update the tuple with table oid */
+	slot->tts_tableOid = RelationGetRelid(rel);
+
+	YBCExecuteInsert(rel,
+					 slot,
+					 ONCONFLICT_NONE);
 }
 
 void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
@@ -1174,10 +1271,10 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 	YBCPgStatement delete_stmt = NULL;
 	Oid				relfileNodeId = YbGetRelfileNodeId(rel);
 
-	if (tuple->t_ybctid == 0)
+	if (HEAPTUPLE_YBCTID(tuple) == 0)
 		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_COLUMN),
-				 errmsg("Missing column ybctid in DELETE request")));
+		        (errcode(ERRCODE_UNDEFINED_COLUMN), errmsg(
+				        "Missing column ybctid in DELETE request to YugaByte database")));
 
 	/* Prepare DELETE statement. */
 	HandleYBStatus(YBCPgNewDelete(dboid,
@@ -1187,12 +1284,12 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 									YB_TRANSACTIONAL));
 
 	/* Bind ybctid to identify the current row. */
-	YBCPgExpr ybctid_expr = YBCNewConstant(delete_stmt, BYTEAOID, InvalidOid, tuple->t_ybctid,
-										   false /* is_null */);
+	YBCPgExpr ybctid_expr = YBCNewConstant(delete_stmt, BYTEAOID, InvalidOid,
+										   HEAPTUPLE_YBCTID(tuple), false /* is_null */);
 
 	/* Delete row from foreign key cache */
 	YBCPgDeleteFromForeignKeyReferenceCache(relfileNodeId,
-											tuple->t_ybctid);
+											HEAPTUPLE_YBCTID(tuple));
 
 	HandleYBStatus(YBCPgDmlBindColumn(delete_stmt, YBTupleIdAttributeNumber, ybctid_expr));
 
@@ -1230,7 +1327,7 @@ void YBCUpdateSysCatalogTupleForDb(Oid dboid, Relation rel, HeapTuple oldtuple, 
 	Bitmapset  *pkey   = YBGetTablePrimaryKeyBms(rel);
 
 	/* Bind the ybctid to the statement. */
-	YBCBindTupleId(update_stmt, tuple->t_ybctid);
+	YBCBindTupleId(update_stmt, HEAPTUPLE_YBCTID(tuple));
 
 	/* Assign values to the non-primary-key columns to update the current row. */
 	for (int idx = 0; idx < natts; idx++)
@@ -1281,10 +1378,45 @@ void YBCUpdateSysCatalogTupleForDb(Oid dboid, Relation rel, HeapTuple oldtuple, 
 	YBCApplyWriteStmt(update_stmt, rel);
 }
 
+/*
+ * This checks if a YB relation has any separate index DocDB tables.
+ * Covered/primary indexes do not have separate DocDB tables.
+ */
 bool
 YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo)
 {
-	return resultRelInfo->ri_NumIndices > 1 ||
-			(resultRelInfo->ri_NumIndices == 1 &&
-			 !resultRelInfo->ri_IndexRelationDescs[0]->rd_index->indisprimary);
+	for (int i = 0; i < resultRelInfo->ri_NumIndices; i++)
+	{
+		Relation index = resultRelInfo->ri_IndexRelationDescs[i];
+		if (YBIsCoveredByMainTable(index))
+			continue;
+
+		return true;
+	}
+
+	return false;
+}
+
+/*
+ * This code is authored by upstream PG and moved from ExecInsertIndexTuples in
+ * order to be reused in various other places by YB.
+ */
+bool
+YbIsPartialIndexPredicateSatisfied(IndexInfo *indexInfo, EState *estate)
+{
+	ExprState  *predicate;
+
+	/*
+	 * If predicate state not set up yet, create it (in the estate's
+	 * per-query context)
+	 */
+	predicate = indexInfo->ii_PredicateState;
+	if (predicate == NULL)
+	{
+		predicate = ExecPrepareQual(indexInfo->ii_Predicate, estate);
+		indexInfo->ii_PredicateState = predicate;
+	}
+
+	/* Skip this index-update if the predicate isn't satisfied */
+	return ExecQual(predicate, GetPerTupleExprContext(estate));
 }

@@ -17,7 +17,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
@@ -30,10 +29,14 @@ type prometheusDirectories struct {
 	templateFileName    string
 	DataDir             string
 	PromDir             string
-	cronScript          string
+	LogDir              string
 }
 
 func newPrometheusDirectories() prometheusDirectories {
+	logDir := "/var/log"
+	if !common.HasSudoAccess() {
+		logDir = common.GetBaseInstall() + "/data/logs"
+	}
 	return prometheusDirectories{
 		SystemdFileLocation: common.SystemdDir + "/prometheus.service",
 		ConfFileLocation:    common.GetSoftwareRoot() + "/prometheus/conf/prometheus.yml",
@@ -41,8 +44,7 @@ func newPrometheusDirectories() prometheusDirectories {
 		templateFileName:    "yba-installer-prometheus.yml",
 		DataDir:             common.GetBaseInstall() + "/data/prometheus",
 		PromDir:             common.GetSoftwareRoot() + "/prometheus",
-		cronScript: filepath.Join(
-			common.GetInstallerSoftwareDir(), common.CronDir, "managePrometheus.sh"),
+		LogDir:              logDir,
 	}
 }
 
@@ -77,7 +79,7 @@ func (prom Prometheus) TemplateFile() string {
 }
 
 func (prom Prometheus) SystemdFile() string {
-	return prom.SystemdFileLocation
+	return prom.getSystemdFile()
 }
 
 // Name returns the name of the service.
@@ -100,9 +102,6 @@ func (prom Prometheus) Install() error {
 	if err := prom.moveAndExtractPrometheusPackage(); err != nil {
 		return err
 	}
-	if err := prom.createDataDirs(); err != nil {
-		return err
-	}
 	if err := prom.createPrometheusSymlinks(); err != nil {
 		return err
 	}
@@ -119,56 +118,47 @@ func (prom Prometheus) Install() error {
 			log.Error("failed to change ownership of " + promDir + ": " + err.Error())
 			return err
 		}
-	} else {
-		if err := prom.CreateCronJob(); err != nil {
-			return err
-		}
+	}
+
+	log.Info("Finishing Prometheus install")
+	return nil
+}
+
+func (prom Prometheus) Initialize() error {
+	log.Info("Starting Prometheus initialize")
+	if err := prom.createDataDirs(); err != nil {
+		return err
+	}
+
+	if err := prom.createDataSymlinks(); err != nil {
+		return err
 	}
 
 	if err := prom.Start(); err != nil {
 		return err
 	}
-	log.Info("Finishing Prometheus install")
+	log.Info("Finishing Prometheus initialize")
 	return nil
 }
 
 // Start the prometheus service.
 func (prom Prometheus) Start() error {
-
-	if common.HasSudoAccess() {
-
-		if out := shell.Run(common.Systemctl, "daemon-reload"); !out.SucceededOrLog() {
-			return out.Error
-		}
-		if out := shell.Run(common.Systemctl, "enable", "prometheus"); !out.SucceededOrLog() {
-			return out.Error
-		}
-		if out := shell.Run(common.Systemctl, "start", "prometheus"); !out.SucceededOrLog() {
-			return out.Error
-		}
-		if out := shell.Run(common.Systemctl, "status", "prometheus"); !out.SucceededOrLog() {
-			return out.Error
-		}
-
-	} else {
-		out := shell.RunShell(prom.cronScript, common.GetSoftwareRoot(),
-			common.GetDataRoot(),
-			fmt.Sprint(viper.GetInt("prometheus.port")),
-			fmt.Sprint(viper.GetInt("prometheus.maxSamples")),
-			fmt.Sprint(viper.GetInt("prometheus.timeout")),
-			fmt.Sprint(viper.GetInt("prometheus.maxConcurrency")),
-			fmt.Sprint(viper.GetInt("prometheus.restartSeconds")),
-			prom.version,
-			"> /dev/null 2>&1 &",
-		)
-		if !out.SucceededOrLog() {
-			return out.Error
-		}
+	serviceName := filepath.Base(prom.SystemdFileLocation)
+	if err := systemd.DaemonReload(); err != nil {
+		return fmt.Errorf("failed to start prometheus: %w", err)
 	}
+	if err := systemd.Enable(false, serviceName); err != nil {
+		return fmt.Errorf("failed to start prometheus: %w", err)
+	}
+	if err := systemd.Start(serviceName); err != nil {
+		return fmt.Errorf("failed to start prometheus: %w", err)
+	}
+	log.Debug("started prometheus")
 	return nil
 }
 
 func (prom Prometheus) Stop() error {
+	serviceName := filepath.Base(prom.SystemdFileLocation)
 	status, err := prom.Status()
 	if err != nil {
 		return err
@@ -177,57 +167,22 @@ func (prom Prometheus) Stop() error {
 		log.Debug(prom.name + " is already stopped")
 		return nil
 	}
-
-	if common.HasSudoAccess() {
-		if out := shell.Run(common.Systemctl, "stop", "prometheus"); !out.SucceededOrLog() {
-			return out.Error
-		}
-	} else {
-
-		// Delete the file used by the crontab bash script for monitoring.
-		common.RemoveAll(common.GetSoftwareRoot() + "/prometheus/testfile")
-
-		out := shell.Run("pgrep", "prometheus")
-		if !out.SucceededOrLog() {
-			return out.Error
-		}
-		// Need to stop the binary if it is running, can just do kill -9 PID (will work as the
-		// process itself was started by a non-root user.)
-		if strings.TrimSuffix(out.StdoutString(), "\n") != "" {
-			pids := strings.Split(out.StdoutString(), "\n")
-			for _, pid := range pids {
-				log.Debug("kill prometheus pid: " + pid)
-				if strings.TrimSuffix(pid, "\n") != "" {
-					if out2 := shell.Run("kill", "-9", strings.TrimSuffix(pid, "\n")); !out2.SucceededOrLog() {
-						return out2.Error
-					}
-				}
-			}
-		}
+	if err := systemd.Stop(serviceName); err != nil {
+		return fmt.Errorf("failed to stop prometheus: %w", err)
 	}
+	log.Info("stopped prometheus")
 	return nil
 }
 
 // Restart the prometheus service.
 func (prom Prometheus) Restart() error {
 	log.Info("Restarting prometheus..")
-
-	if common.HasSudoAccess() {
-		// reload systemd daemon
-		if out := shell.Run(common.Systemctl, "daemon-reload"); !out.SucceededOrLog() {
-			return out.Error
-		}
-
-		if out := shell.Run(common.Systemctl, "restart", "prometheus"); !out.SucceededOrLog() {
-			return out.Error
-		}
-	} else {
-		if err := prom.Stop(); err != nil {
-			return err
-		}
-		if err := prom.Start(); err != nil {
-			return err
-		}
+	serviceName := filepath.Base(prom.SystemdFileLocation)
+	if err := systemd.DaemonReload(); err != nil {
+		return fmt.Errorf("failed to restart prometheus: %w", err)
+	}
+	if err := systemd.Restart(serviceName); err != nil {
+		return fmt.Errorf("failed to restart prometheus: %w", err)
 	}
 	return nil
 }
@@ -239,19 +194,17 @@ func (prom Prometheus) Uninstall(removeData bool) error {
 		return err
 	}
 
-	if common.HasSudoAccess() {
-		err := os.Remove(prom.SystemdFileLocation)
-		if err != nil {
-			pe := err.(*fs.PathError)
-			if !errors.Is(pe.Err, fs.ErrNotExist) {
-				log.Info(fmt.Sprintf("Error %s removing systemd service %s.",
-					err.Error(), prom.SystemdFileLocation))
-				return err
-			}
+	err := os.Remove(prom.SystemdFileLocation)
+	if err != nil {
+		pe := err.(*fs.PathError)
+		if !errors.Is(pe.Err, fs.ErrNotExist) {
+			log.Info(fmt.Sprintf("Error %s removing systemd service %s.",
+				err.Error(), prom.SystemdFileLocation))
+			return err
 		}
 		// reload systemd daemon
-		if out := shell.Run(common.Systemctl, "daemon-reload"); !out.SucceededOrLog() {
-			return out.Error
+		if err := systemd.DaemonReload(); err != nil {
+			return fmt.Errorf("failed to uninstall prometheus: %w", err)
 		}
 	}
 
@@ -291,56 +244,42 @@ func (prom Prometheus) Upgrade() error {
 		}
 	}
 
-	//Crontab based monitoring for non-root installs.
-	if !common.HasSudoAccess() {
-		prom.CreateCronJob()
-	}
 	return prom.Start()
 }
 
 // Status prints out the header information for the
 // Prometheus service specifically.
 func (prom Prometheus) Status() (common.Status, error) {
+
+	logFileLoc := common.GetBaseInstall() + "/data/logs/prometheus.log"
+	if common.SystemdLogMethod() == "" {
+		logFileLoc = "journalctl -u prometheus"
+	}
 	status := common.Status{
 		Service:    prom.Name(),
 		Port:       viper.GetInt("prometheus.port"),
 		Version:    prom.version,
 		ConfigLoc:  prom.ConfFileLocation,
-		LogFileLoc: prom.DataDir + "/prometheus.log",
+		LogFileLoc: logFileLoc,
 	}
 
 	// Set the systemd service file location if one exists
-	if common.HasSudoAccess() {
-		status.ServiceFileLoc = prom.SystemdFileLocation
-	} else {
-		status.ServiceFileLoc = "N/A"
-	}
+	status.ServiceFileLoc = prom.SystemdFileLocation
 
 	// Get the service status
-	if common.HasSudoAccess() {
-		props := systemd.Show(filepath.Base(prom.SystemdFileLocation), "LoadState", "SubState",
-			"ActiveState", "ActiveEnterTimestamp", "ActiveExitTimestamp")
-		if props["LoadState"] == "not-found" {
-			status.Status = common.StatusNotInstalled
-		} else if props["SubState"] == "running" {
-			status.Status = common.StatusRunning
-			status.Since = common.StatusSince(props["ActiveEnterTimestamp"])
-		} else if props["ActiveState"] == "inactive" {
-			status.Status = common.StatusStopped
-			status.Since = common.StatusSince(props["ActiveExitTimestamp"])
-		} else {
-			status.Status = common.StatusErrored
-			status.Since = common.StatusSince(props["ActiveExitTimestamp"])
-		}
+	props := systemd.Show(filepath.Base(prom.SystemdFileLocation), "LoadState", "SubState",
+		"ActiveState", "ActiveEnterTimestamp", "ActiveExitTimestamp")
+	if props["LoadState"] == "not-found" {
+		status.Status = common.StatusNotInstalled
+	} else if props["SubState"] == "running" {
+		status.Status = common.StatusRunning
+		status.Since = common.StatusSince(props["ActiveEnterTimestamp"])
+	} else if props["ActiveState"] == "inactive" {
+		status.Status = common.StatusStopped
+		status.Since = common.StatusSince(props["ActiveExitTimestamp"])
 	} else {
-		out := shell.Run("pgrep", "prometheus")
-		if out.Succeeded() {
-			status.Status = common.StatusRunning
-		} else if out.ExitCode == 1 {
-			status.Status = common.StatusStopped
-		} else {
-			return status, out.Error
-		}
+		status.Status = common.StatusErrored
+		status.Since = common.StatusSince(props["ActiveExitTimestamp"])
 	}
 	return status, nil
 }
@@ -377,10 +316,6 @@ func (prom Prometheus) MigrateFromReplicated() error {
 			log.Error("failed to change ownership of " + promDir + ": " + err.Error())
 			return err
 		}
-	} else {
-		if err := prom.CreateCronJob(); err != nil {
-			return err
-		}
 	}
 
 	log.Info("Finishing Prometheus migration")
@@ -414,14 +349,6 @@ func (prom Prometheus) FinishReplicatedMigrate() error {
 			filepath.Join(rootDir, "prometheusv2"),
 			filepath.Join(prom.DataDir, "storage"),
 		},
-		{
-			filepath.Join(rootDir, "/yugaware/swamper_targets"),
-			filepath.Join(prom.DataDir, "swamper_targets"),
-		},
-		{
-			filepath.Join(rootDir, "yugaware/swamper_rules"),
-			filepath.Join(prom.DataDir, "swamper_rules"),
-		},
 	}
 
 	for _, link := range linkDirs {
@@ -441,8 +368,6 @@ func (prom Prometheus) FinishReplicatedMigrate() error {
 func (prom Prometheus) RollbackMigration(uid, gid uint32, replBaseDir string) error {
 	replDirs := []string{
 		filepath.Join(replBaseDir, "prometheusv2"),
-		filepath.Join(replBaseDir, "/yugaware/swamper_targets"),
-		filepath.Join(replBaseDir, "yugaware/swamper_rules"),
 	}
 	for _, dir := range replDirs {
 		if err := common.Chown(dir, fmt.Sprintf("%d", uid), fmt.Sprintf("%d", gid), true); err != nil {
@@ -520,15 +445,12 @@ func (prom Prometheus) createPrometheusSymlinks() error {
 	promPkg := fmt.Sprintf("%s/packages/prometheus-%s.linux-amd64",
 		common.GetInstallerSoftwareDir(), prom.version)
 
-	promBinaryDir := common.GetSoftwareRoot() + "/prometheus/bin"
-
 	// Required for systemctl.
-	if common.HasSudoAccess() {
-		promBinaryDir = "/usr/local/bin"
-	} else {
+	if !common.HasSudoAccess() {
+		binDir := filepath.Dir(common.GetSoftwareRoot() + "/prometheus/bin/prometheus")
 		// promBinaryDir doesn't exist for non-root mode, lets create it.
-		if err := common.MkdirAll(promBinaryDir, common.DirMode); err != nil {
-			log.Error("failed to create " + promBinaryDir + ": " + err.Error())
+		if err := common.MkdirAll(binDir, common.DirMode); err != nil {
+			log.Error("failed to create " + binDir + ": " + err.Error())
 			return err
 		}
 	}
@@ -536,8 +458,8 @@ func (prom Prometheus) createPrometheusSymlinks() error {
 	links := []struct {
 		pkgDir, linkDir, binary string
 	}{
-		{promPkg, promBinaryDir, "prometheus"},
-		{promPkg, promBinaryDir, "promtool"},
+		{promPkg, prom.PromDir, "prometheus"},
+		{promPkg, prom.PromDir, "promtool"},
 		{promPkg, prom.PromDir, "consoles"},
 		{promPkg, prom.PromDir, "console_libraries"},
 	}
@@ -552,6 +474,17 @@ func (prom Prometheus) createPrometheusSymlinks() error {
 		userName := viper.GetString("service_username")
 		if err := common.Chown(prom.PromDir, userName, userName, true); err != nil {
 			log.Error("failed to change ownership of " + prom.PromDir + ": " + err.Error())
+			return err
+		}
+	}
+	return nil
+}
+
+func (prom Prometheus) createDataSymlinks() error {
+	if common.HasSudoAccess() {
+		// for root the log file is in /var/log in case of SELinux
+		if err := common.CreateSymlink(prom.LogDir,
+			filepath.Join(common.GetBaseInstall(), "data/logs"), "prometheus.log"); err != nil {
 			return err
 		}
 	}
@@ -574,21 +507,13 @@ func (prom Prometheus) migrateReplicatedDirs() error {
 			filepath.Join(rootDir, "prometheusv2"),
 			filepath.Join(prom.DataDir, "storage"),
 		},
-		{
-			filepath.Join(rootDir, "/yugaware/swamper_targets"),
-			filepath.Join(prom.DataDir, "swamper_targets"),
-		},
-		{
-			filepath.Join(rootDir, "yugaware/swamper_rules"),
-			filepath.Join(prom.DataDir, "swamper_rules"),
-		},
 	}
 	for _, ld := range linkDirs {
 		if err := common.Symlink(ld.src, ld.dest); err != nil {
 			return fmt.Errorf("could not symlink replicated data %s -> %s: %w", ld.src, ld.dest, err)
 		}
 		if common.HasSudoAccess() {
-			// Need to give the yugabyte user ownership of the entire postgres directory.
+			// Need to give the yugabyte user ownership of the entire prometheus directory.
 			file := ld.dest
 			if !strings.HasSuffix(file, ".yml") {
 				file = file + "/"
@@ -608,24 +533,5 @@ func (prom Prometheus) migrateReplicatedDirs() error {
 		}
 	}
 
-	return nil
-}
-
-// CreateCronJob creates the cron job for managing prometheus with cron script in non-root.
-func (prom Prometheus) CreateCronJob() error {
-	bashCmd := fmt.Sprintf(
-		"(crontab -l 2>/dev/null; echo \"@reboot %s %s %s %s %s %s %s %s %s \") | sort - | uniq - | "+
-			"crontab - ",
-		prom.cronScript,
-		common.GetSoftwareRoot(),
-		common.GetDataRoot(),
-		config.GetYamlPathData("prometheus.port"),
-		config.GetYamlPathData("prometheus.maxConcurrency"),
-		config.GetYamlPathData("prometheus.maxSamples"),
-		config.GetYamlPathData("prometheus.timeout"),
-		config.GetYamlPathData("prometheus.restartSeconds"),
-		prom.version,
-	)
-	shell.Run("bash", "-c", bashCmd)
 	return nil
 }

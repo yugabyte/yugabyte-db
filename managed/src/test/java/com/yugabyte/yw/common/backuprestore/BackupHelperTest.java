@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.backuprestore.BackupUtil.PerBackupLocationKeyspaceTables;
 import com.yugabyte.yw.common.backuprestore.BackupUtil.PerLocationBackupInfo;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
@@ -30,10 +31,14 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.replication.ValidateReplicationInfo;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestorePreflightParams;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
+import com.yugabyte.yw.forms.backuprestore.AdvancedRestorePreflightParams;
+import com.yugabyte.yw.forms.backuprestore.KeyspaceTables;
+import com.yugabyte.yw.forms.backuprestore.RestoreItemsValidationParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupVersion;
@@ -50,6 +55,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import lombok.extern.slf4j.Slf4j;
@@ -256,14 +262,14 @@ public class BackupHelperTest extends FakeDBApplication {
 
     RestorePreflightParams preflightParams = new RestorePreflightParams();
     preflightParams.setBackupUUID(backup.getBackupUUID());
-    preflightParams.setBackupLocations(
-        new HashSet<>(Arrays.asList(backup.getBackupInfo().backupList.get(0).storageLocation)));
-    preflightParams.setStorageConfigUUID(testStorageConfigS3.getConfigUUID());
+    // preflightParams.setBackupLocations(
+    //     new HashSet<>(Arrays.asList(backup.getBackupInfo().backupList.get(0).storageLocation)));
+    // preflightParams.setStorageConfigUUID(testStorageConfigS3.getConfigUUID());
     preflightParams.setUniverseUUID(testYbcUniverse.getUniverseUUID());
 
     RestorePreflightResponse preflightResponse =
         spyBackupHelper.restorePreflightWithBackupObject(
-            testCustomer.getUuid(), backup, preflightParams, true);
+            testCustomer.getUuid(), backup, preflightParams);
 
     PerLocationBackupInfo bInfo =
         preflightResponse.getPerLocationBackupInfoMap().values().iterator().next();
@@ -321,14 +327,11 @@ public class BackupHelperTest extends FakeDBApplication {
 
     RestorePreflightParams preflightParams = new RestorePreflightParams();
     preflightParams.setBackupUUID(backup.getBackupUUID());
-    preflightParams.setBackupLocations(
-        new HashSet<>(Arrays.asList(backup.getBackupInfo().backupList.get(0).storageLocation)));
-    preflightParams.setStorageConfigUUID(testStorageConfigS3.getConfigUUID());
     preflightParams.setUniverseUUID(testYbcUniverse.getUniverseUUID());
 
     RestorePreflightResponse preflightResponse =
         spyBackupHelper.restorePreflightWithBackupObject(
-            testCustomer.getUuid(), backup, preflightParams, true);
+            testCustomer.getUuid(), backup, preflightParams);
 
     PerLocationBackupInfo bInfo =
         preflightResponse.getPerLocationBackupInfoMap().values().iterator().next();
@@ -391,15 +394,15 @@ public class BackupHelperTest extends FakeDBApplication {
             eq(BackupUtil.BACKUP_KEYS_JSON),
             anyBoolean());
 
-    RestorePreflightParams preflightParams = new RestorePreflightParams();
+    AdvancedRestorePreflightParams preflightParams = new AdvancedRestorePreflightParams();
     preflightParams.setUniverseUUID(testUniverse.getUniverseUUID());
     preflightParams.setStorageConfigUUID(testStorageConfigS3.getConfigUUID());
     preflightParams.setBackupLocations(new HashSet<String>(Arrays.asList(backupLocationAbsolute)));
     when(mockAWSUtil.generateYBBackupRestorePreflightResponseWithoutBackupObject(
-            any(RestorePreflightParams.class), any(CustomerConfigData.class)))
+            any(AdvancedRestorePreflightParams.class), any(CustomerConfigData.class)))
         .thenCallRealMethod();
     RestorePreflightResponse preflightResponse =
-        spyBackupHelper.generateRestorePreflightAPIResponse(
+        spyBackupHelper.generateAdvancedRestorePreflightAPIResponse(
             preflightParams, testCustomer.getUuid());
 
     assertEquals(preflightResponse.getHasKMSHistory(), isKMS);
@@ -455,18 +458,18 @@ public class BackupHelperTest extends FakeDBApplication {
             any(Universe.class),
             argThat(locationList -> locationList.containsAll(bulkCheckResultMap.keySet())));
 
-    RestorePreflightParams preflightParams = new RestorePreflightParams();
+    AdvancedRestorePreflightParams preflightParams = new AdvancedRestorePreflightParams();
     preflightParams.setUniverseUUID(testUniverse.getUniverseUUID());
     preflightParams.setStorageConfigUUID(testStorageConfigNFS.getConfigUUID());
     preflightParams.setBackupLocations(new HashSet<String>(Arrays.asList(backupLocationAbsolute)));
     when(mockNfsUtil.generateYBBackupRestorePreflightResponseWithoutBackupObject(
-            any(RestorePreflightParams.class), any(CustomerConfigData.class)))
+            any(AdvancedRestorePreflightParams.class), any(CustomerConfigData.class)))
         .thenCallRealMethod();
     when(mockNfsUtil.generateYBBackupRestorePreflightResponseWithoutBackupObject(
-            any(RestorePreflightParams.class)))
+            any(AdvancedRestorePreflightParams.class)))
         .thenCallRealMethod();
     RestorePreflightResponse preflightResponse =
-        spyBackupHelper.generateRestorePreflightAPIResponse(
+        spyBackupHelper.generateAdvancedRestorePreflightAPIResponse(
             preflightParams, testCustomer.getUuid());
 
     assertEquals(preflightResponse.getHasKMSHistory(), isKMS);
@@ -493,7 +496,7 @@ public class BackupHelperTest extends FakeDBApplication {
         BackupUtil.getPathWithPrefixSuffixJoin(
             ((CustomerConfigStorageData) testStorageConfigS3.getDataObject()).backupLocation,
             suffixDir);
-    RestorePreflightParams preflightParams = new RestorePreflightParams();
+    AdvancedRestorePreflightParams preflightParams = new AdvancedRestorePreflightParams();
     preflightParams.setBackupLocations(new HashSet<>(Arrays.asList(backupLocation)));
     preflightParams.setUniverseUUID(testUniverse.getUniverseUUID());
     preflightParams.setStorageConfigUUID(testStorageConfigS3.getConfigUUID());
@@ -689,5 +692,227 @@ public class BackupHelperTest extends FakeDBApplication {
             eq(testUniverse), eq(UniverseConfKeys.skipConfigBasedPreflightValidation)))
         .thenReturn(value);
     assertEquals(value, spyBackupHelper.isSkipConfigBasedPreflightValidation(testUniverse));
+  }
+
+  private Backup createYCQLMultiKeyspaceBackup() {
+    CustomerConfig testStorageConfigS3 =
+        ModelFactory.createS3StorageConfig(testCustomer, "test_S3");
+    BackupTableParams parentBTableParams = new BackupTableParams();
+    parentBTableParams.setUniverseUUID(testUniverse.getUniverseUUID());
+    parentBTableParams.customerUuid = testCustomer.getUuid();
+    parentBTableParams.storageConfigUUID = testStorageConfigS3.getConfigUUID();
+
+    List<UUID> tableUUIDList =
+        Arrays.asList(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+    List<String> tableNameList = Arrays.asList("table_1", "table_2", "table_3", "table_4");
+
+    BackupTableParams childBTableParams_1 = new BackupTableParams();
+    childBTableParams_1.tableNameList = tableNameList.subList(0, 2);
+    childBTableParams_1.tableUUIDList = tableUUIDList.subList(0, 2);
+    childBTableParams_1.setKeyspace("foo");
+    childBTableParams_1.backupType = TableType.YQL_TABLE_TYPE;
+    childBTableParams_1.storageConfigUUID = testStorageConfigS3.getConfigUUID();
+
+    BackupTableParams childBTableParams_2 = new BackupTableParams();
+    childBTableParams_2.tableNameList = tableNameList.subList(2, 3);
+    childBTableParams_2.tableUUIDList = tableUUIDList.subList(2, 3);
+    childBTableParams_2.setKeyspace("foo");
+    childBTableParams_2.backupType = TableType.YQL_TABLE_TYPE;
+    childBTableParams_2.storageConfigUUID = testStorageConfigS3.getConfigUUID();
+
+    BackupTableParams childBTableParams_3 = new BackupTableParams();
+    childBTableParams_3.tableNameList = new ArrayList<>(tableNameList);
+    childBTableParams_3.tableUUIDList = new ArrayList<>(tableUUIDList);
+    childBTableParams_3.setKeyspace("bar");
+    childBTableParams_3.backupType = TableType.YQL_TABLE_TYPE;
+    childBTableParams_3.storageConfigUUID = testStorageConfigS3.getConfigUUID();
+
+    parentBTableParams.backupList =
+        Arrays.asList(childBTableParams_1, childBTableParams_2, childBTableParams_3);
+    return Backup.create(
+        testCustomer.getUuid(), parentBTableParams, BackupCategory.YB_CONTROLLER, BackupVersion.V2);
+  }
+
+  @Test
+  public void testGetBackupLocationKeyspaceTablesMapRestoreEverything() {
+    Backup backup = createYCQLMultiKeyspaceBackup();
+    Map<String, PerBackupLocationKeyspaceTables> response =
+        spyBackupHelper.getBackupLocationKeyspaceTablesMap(null, 0L, backup);
+    // assert we get back everything
+    assertEquals(3, response.size());
+  }
+
+  @Test
+  public void testGetBackupLocationKeyspaceTablesMapRestorePartialBothKeyspace() {
+    Backup backup = createYCQLMultiKeyspaceBackup();
+    KeyspaceTables kT1 = new KeyspaceTables(Set.of("table_1", "table_2", "table_3"), "foo");
+    KeyspaceTables kT2 = new KeyspaceTables(null, "bar");
+    List<KeyspaceTables> keyspaceTablesList = Arrays.asList(kT1, kT2);
+    Map<String, PerBackupLocationKeyspaceTables> response =
+        spyBackupHelper.getBackupLocationKeyspaceTablesMap(keyspaceTablesList, 0L, backup);
+    // assert we get back what is required
+    assertEquals(3, response.size());
+    AtomicInteger fooKeyspaceCount = new AtomicInteger(0);
+    AtomicInteger barKeyspaceCount = new AtomicInteger(0);
+    response.forEach(
+        (location, keyspaceTables) -> {
+          if (keyspaceTables.getOriginalKeyspace().equals("foo")) {
+            fooKeyspaceCount.incrementAndGet();
+            if (keyspaceTables.getTableNameList().contains("table_1")) {
+              assertEquals(2, keyspaceTables.getTableNameList().size());
+              assertTrue(keyspaceTables.getTableNameList().contains("table_1"));
+              assertTrue(keyspaceTables.getTableNameList().contains("table_2"));
+            } else if (keyspaceTables.getTableNameList().contains("table_3")) {
+              assertEquals(1, keyspaceTables.getTableNameList().size());
+              assertTrue(keyspaceTables.getTableNameList().contains("table_3"));
+            }
+          } else if (keyspaceTables.getOriginalKeyspace().equals("bar")) {
+            barKeyspaceCount.incrementAndGet();
+            assertEquals(4, keyspaceTables.getTableNameList().size());
+          }
+        });
+    assertEquals(2, fooKeyspaceCount.get());
+    assertEquals(1, barKeyspaceCount.get());
+  }
+
+  @Test
+  public void testGetBackupLocationKeyspaceTablesMapRestorePartialOneKeyspace() {
+    Backup backup = createYCQLMultiKeyspaceBackup();
+    KeyspaceTables kT1 = new KeyspaceTables(Set.of("table_1", "table_2", "table_3"), "foo");
+    List<KeyspaceTables> keyspaceTablesList = Arrays.asList(kT1);
+    Map<String, PerBackupLocationKeyspaceTables> response =
+        spyBackupHelper.getBackupLocationKeyspaceTablesMap(keyspaceTablesList, 0L, backup);
+    // assert we get back what is required
+    assertEquals(2, response.size());
+    AtomicInteger fooKeyspaceCount = new AtomicInteger(0);
+    AtomicInteger barKeyspaceCount = new AtomicInteger(0);
+    response.forEach(
+        (location, keyspaceTables) -> {
+          if (keyspaceTables.getOriginalKeyspace().equals("foo")) {
+            fooKeyspaceCount.incrementAndGet();
+            if (keyspaceTables.getTableNameList().contains("table_1")) {
+              assertEquals(2, keyspaceTables.getTableNameList().size());
+              assertTrue(keyspaceTables.getTableNameList().contains("table_1"));
+              assertTrue(keyspaceTables.getTableNameList().contains("table_2"));
+            } else if (keyspaceTables.getTableNameList().contains("table_3")) {
+              assertEquals(1, keyspaceTables.getTableNameList().size());
+              assertTrue(keyspaceTables.getTableNameList().contains("table_3"));
+            }
+          } else if (keyspaceTables.getOriginalKeyspace().equals("bar")) {
+            barKeyspaceCount.incrementAndGet();
+          }
+        });
+    assertEquals(2, fooKeyspaceCount.get());
+    assertEquals(0, barKeyspaceCount.get());
+  }
+
+  @Test
+  public void testGetBackupLocationKeyspaceTablesMapRestoreKeyspaceDoesNotExistFail() {
+    Backup backup = createYCQLMultiKeyspaceBackup();
+    KeyspaceTables kT1 = new KeyspaceTables(Set.of("table_1", "table_2", "table_3"), "foo");
+    KeyspaceTables kT2 = new KeyspaceTables(null, "fail");
+    List<KeyspaceTables> keyspaceTablesList = Arrays.asList(kT1, kT2);
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                spyBackupHelper.getBackupLocationKeyspaceTablesMap(keyspaceTablesList, 0L, backup));
+    assertEquals("Keyspace fail not found in backup", ex.getMessage());
+  }
+
+  @Test
+  public void testGetBackupLocationKeyspaceTablesMapRestoreTableDoesNotExistFail() {
+    Backup backup = createYCQLMultiKeyspaceBackup();
+    KeyspaceTables kT1 = new KeyspaceTables(Set.of("table_1", "table_2", "table_3"), "foo");
+    KeyspaceTables kT2 = new KeyspaceTables(Set.of("table_2", "table_5"), "bar");
+    List<KeyspaceTables> keyspaceTablesList = Arrays.asList(kT1, kT2);
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                spyBackupHelper.getBackupLocationKeyspaceTablesMap(keyspaceTablesList, 0L, backup));
+    assertEquals("Keyspace bar all tables cannot be restored", ex.getMessage());
+  }
+
+  @Test
+  public void testValidateRestorableKeyspaceTablesAgainstBackupTablesNotExist() {
+    Backup backup = createYCQLMultiKeyspaceBackup();
+    KeyspaceTables kT1 = new KeyspaceTables(Set.of("table_1", "table_2", "table_3"), "foo");
+    KeyspaceTables kT2 = new KeyspaceTables(Set.of("table_2", "table_5"), "bar");
+    List<KeyspaceTables> keyspaceTablesList = Arrays.asList(kT1, kT2);
+    RestoreItemsValidationParams params =
+        new RestoreItemsValidationParams(backup.getBackupUUID(), 0L, keyspaceTablesList);
+    Pair<Boolean, List<KeyspaceTables>> nonRestorableItems =
+        spyBackupHelper.validateRestorableKeyspaceTablesAgainstBackup(
+            testCustomer.getUuid(), params);
+    assertFalse(nonRestorableItems.getFirst());
+    assertEquals(1, nonRestorableItems.getSecond().size());
+    assertEquals(nonRestorableItems.getSecond().get(0).getKeyspace(), "bar");
+    assertEquals(nonRestorableItems.getSecond().get(0).getTableNames(), Set.of("table_5"));
+  }
+
+  @Test
+  public void testValidateRestorableKeyspaceTablesAgainstBackupKeyspaceNotExist_WithTables() {
+    Backup backup = createYCQLMultiKeyspaceBackup();
+    KeyspaceTables kT1 = new KeyspaceTables(Set.of("table_1", "table_2", "table_3"), "foo");
+    KeyspaceTables kT2 = new KeyspaceTables(Set.of("table_2", "table_5"), "fail");
+    List<KeyspaceTables> keyspaceTablesList = Arrays.asList(kT1, kT2);
+    RestoreItemsValidationParams params =
+        new RestoreItemsValidationParams(backup.getBackupUUID(), 0L, keyspaceTablesList);
+    Pair<Boolean, List<KeyspaceTables>> nonRestorableItems =
+        spyBackupHelper.validateRestorableKeyspaceTablesAgainstBackup(
+            testCustomer.getUuid(), params);
+    assertFalse(nonRestorableItems.getFirst());
+    assertEquals(1, nonRestorableItems.getSecond().size());
+    assertEquals(nonRestorableItems.getSecond().get(0).getKeyspace(), "fail");
+    assertEquals(
+        nonRestorableItems.getSecond().get(0).getTableNames(), Set.of("table_2", "table_5"));
+  }
+
+  @Test
+  public void testValidateRestorableKeyspaceTablesAgainstBackupKeyspaceNotExist_WithoutTables() {
+    Backup backup = createYCQLMultiKeyspaceBackup();
+    KeyspaceTables kT1 = new KeyspaceTables(Set.of("table_1", "table_2", "table_3"), "foo");
+    KeyspaceTables kT2 = new KeyspaceTables(null, "fail");
+    List<KeyspaceTables> keyspaceTablesList = Arrays.asList(kT1, kT2);
+    RestoreItemsValidationParams params =
+        new RestoreItemsValidationParams(backup.getBackupUUID(), 0L, keyspaceTablesList);
+    Pair<Boolean, List<KeyspaceTables>> nonRestorableItems =
+        spyBackupHelper.validateRestorableKeyspaceTablesAgainstBackup(
+            testCustomer.getUuid(), params);
+    assertFalse(nonRestorableItems.getFirst());
+    assertEquals(1, nonRestorableItems.getSecond().size());
+    assertEquals(nonRestorableItems.getSecond().get(0).getKeyspace(), "fail");
+    assertEquals(0, nonRestorableItems.getSecond().get(0).getTableNames().size());
+  }
+
+  @Test
+  public void testValidateRestorableKeyspaceTablesAgainstBackupKeyspacePartialSuccess() {
+    Backup backup = createYCQLMultiKeyspaceBackup();
+    KeyspaceTables kT1 = new KeyspaceTables(Set.of("table_1", "table_2", "table_3"), "foo");
+    KeyspaceTables kT2 = new KeyspaceTables(Set.of("table_2", "table_3"), "bar");
+    List<KeyspaceTables> keyspaceTablesList = Arrays.asList(kT1, kT2);
+    RestoreItemsValidationParams params =
+        new RestoreItemsValidationParams(backup.getBackupUUID(), 0L, keyspaceTablesList);
+    Pair<Boolean, List<KeyspaceTables>> nonRestorableItems =
+        spyBackupHelper.validateRestorableKeyspaceTablesAgainstBackup(
+            testCustomer.getUuid(), params);
+    assertTrue(nonRestorableItems.getFirst());
+    assertEquals(0, nonRestorableItems.getSecond().size());
+  }
+
+  @Test
+  public void testValidateRestorableKeyspaceTablesAgainstBackupKeyspaceAllTablesSuccess() {
+    Backup backup = createYCQLMultiKeyspaceBackup();
+    KeyspaceTables kT1 = new KeyspaceTables(Set.of("table_1", "table_2", "table_3"), "foo");
+    KeyspaceTables kT2 = new KeyspaceTables(null, "bar");
+    List<KeyspaceTables> keyspaceTablesList = Arrays.asList(kT1, kT2);
+    RestoreItemsValidationParams params =
+        new RestoreItemsValidationParams(backup.getBackupUUID(), 0L, keyspaceTablesList);
+    Pair<Boolean, List<KeyspaceTables>> nonRestorableItems =
+        spyBackupHelper.validateRestorableKeyspaceTablesAgainstBackup(
+            testCustomer.getUuid(), params);
+    assertTrue(nonRestorableItems.getFirst());
+    assertEquals(0, nonRestorableItems.getSecond().size());
   }
 }

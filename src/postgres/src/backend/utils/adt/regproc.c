@@ -8,7 +8,7 @@
  * special I/O conversion routines.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -24,6 +24,7 @@
 #include "access/htup_details.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_class.h"
+#include "catalog/pg_collation.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_ts_config.h"
@@ -33,17 +34,15 @@
 #include "miscadmin.h"
 #include "parser/parse_type.h"
 #include "parser/scansup.h"
+#include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
-#include "utils/syscache.h"
-#include "utils/acl.h"
 #include "utils/regproc.h"
+#include "utils/syscache.h"
 #include "utils/varlena.h"
 
-static char *format_operator_internal(Oid operator_oid, bool force_qualify);
-static char *format_procedure_internal(Oid procedure_oid, bool force_qualify);
 static void parseNameAndArgTypes(const char *string, bool allowNone,
-					 List **names, int *nargs, Oid *argtypes);
+								 List **names, int *nargs, Oid *argtypes);
 
 
 /*****************************************************************************
@@ -94,7 +93,7 @@ regprocin(PG_FUNCTION_ARGS)
 	 * pg_proc entries in the current search path.
 	 */
 	names = stringToQualifiedNameList(pro_name_or_oid);
-	clist = FuncnameGetCandidates(names, -1, NIL, false, false, false);
+	clist = FuncnameGetCandidates(names, -1, NIL, false, false, false, false);
 
 	if (clist == NULL)
 		ereport(ERROR,
@@ -128,7 +127,7 @@ to_regproc(PG_FUNCTION_ARGS)
 	 * entries in the current search path.
 	 */
 	names = stringToQualifiedNameList(pro_name);
-	clist = FuncnameGetCandidates(names, -1, NIL, false, false, true);
+	clist = FuncnameGetCandidates(names, -1, NIL, false, false, false, true);
 
 	if (clist == NULL || clist->next != NULL)
 		PG_RETURN_NULL();
@@ -176,7 +175,7 @@ regprocout(PG_FUNCTION_ARGS)
 			 * qualify it.
 			 */
 			clist = FuncnameGetCandidates(list_make1(makeString(proname)),
-										  -1, NIL, false, false, false);
+										  -1, NIL, false, false, false, false);
 			if (clist != NULL && clist->next == NULL &&
 				clist->oid == proid)
 				nspname = NULL;
@@ -263,7 +262,8 @@ regprocedurein(PG_FUNCTION_ARGS)
 	 */
 	parseNameAndArgTypes(pro_name_or_oid, false, &names, &nargs, argtypes);
 
-	clist = FuncnameGetCandidates(names, nargs, NIL, false, false, false);
+	clist = FuncnameGetCandidates(names, nargs, NIL, false, false,
+								  false, false);
 
 	for (; clist; clist = clist->next)
 	{
@@ -302,7 +302,7 @@ to_regprocedure(PG_FUNCTION_ARGS)
 	 */
 	parseNameAndArgTypes(pro_name, false, &names, &nargs, argtypes);
 
-	clist = FuncnameGetCandidates(names, nargs, NIL, false, false, true);
+	clist = FuncnameGetCandidates(names, nargs, NIL, false, false, false, true);
 
 	for (; clist; clist = clist->next)
 	{
@@ -322,24 +322,32 @@ to_regprocedure(PG_FUNCTION_ARGS)
 char *
 format_procedure(Oid procedure_oid)
 {
-	return format_procedure_internal(procedure_oid, false);
+	return format_procedure_extended(procedure_oid, 0);
 }
 
 char *
 format_procedure_qualified(Oid procedure_oid)
 {
-	return format_procedure_internal(procedure_oid, true);
+	return format_procedure_extended(procedure_oid, FORMAT_PROC_FORCE_QUALIFY);
 }
 
 /*
+ * format_procedure_extended - converts procedure OID to "pro_name(args)"
+ *
+ * This exports the useful functionality of regprocedureout for use
+ * in other backend modules.  The result is a palloc'd string, or NULL.
+ *
  * Routine to produce regprocedure names; see format_procedure above.
  *
- * force_qualify says whether to schema-qualify; if true, the name is always
- * qualified regardless of search_path visibility.  Otherwise the name is only
- * qualified if the function is not in path.
+ * The following bits in 'flags' modify the behavior:
+ * - FORMAT_PROC_INVALID_AS_NULL
+ *			if the procedure OID is invalid or unknown, return NULL instead
+ *			of the numeric OID.
+ * - FORMAT_PROC_FORCE_QUALIFY
+ *			always schema-qualify procedure names, regardless of search_path
  */
-static char *
-format_procedure_internal(Oid procedure_oid, bool force_qualify)
+char *
+format_procedure_extended(Oid procedure_oid, bits16 flags)
 {
 	char	   *result;
 	HeapTuple	proctup;
@@ -364,7 +372,8 @@ format_procedure_internal(Oid procedure_oid, bool force_qualify)
 		 * Would this proc be found (given the right args) by regprocedurein?
 		 * If not, or if caller requests it, we need to qualify it.
 		 */
-		if (!force_qualify && FunctionIsVisible(procedure_oid))
+		if ((flags & FORMAT_PROC_FORCE_QUALIFY) == 0 &&
+			FunctionIsVisible(procedure_oid))
 			nspname = NULL;
 		else
 			nspname = get_namespace_name(procform->pronamespace);
@@ -378,7 +387,7 @@ format_procedure_internal(Oid procedure_oid, bool force_qualify)
 			if (i > 0)
 				appendStringInfoChar(&buf, ',');
 			appendStringInfoString(&buf,
-								   force_qualify ?
+								   (flags & FORMAT_PROC_FORCE_QUALIFY) != 0 ?
 								   format_type_be_qualified(thisargtype) :
 								   format_type_be(thisargtype));
 		}
@@ -387,6 +396,11 @@ format_procedure_internal(Oid procedure_oid, bool force_qualify)
 		result = buf.data;
 
 		ReleaseSysCache(proctup);
+	}
+	else if ((flags & FORMAT_PROC_INVALID_AS_NULL) != 0)
+	{
+		/* If object is undefined, return NULL as wanted by caller */
+		result = NULL;
 	}
 	else
 	{
@@ -405,7 +419,8 @@ format_procedure_internal(Oid procedure_oid, bool force_qualify)
  * This can be used to feed get_object_address.
  */
 void
-format_procedure_parts(Oid procedure_oid, List **objnames, List **objargs)
+format_procedure_parts(Oid procedure_oid, List **objnames, List **objargs,
+					   bool missing_ok)
 {
 	HeapTuple	proctup;
 	Form_pg_proc procform;
@@ -415,7 +430,11 @@ format_procedure_parts(Oid procedure_oid, List **objnames, List **objargs)
 	proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(procedure_oid));
 
 	if (!HeapTupleIsValid(proctup))
-		elog(ERROR, "cache lookup failed for procedure with OID %u", procedure_oid);
+	{
+		if (!missing_ok)
+			elog(ERROR, "cache lookup failed for procedure with OID %u", procedure_oid);
+		return;
+	}
 
 	procform = (Form_pg_proc) GETSTRUCT(proctup);
 	nargs = procform->pronargs;
@@ -746,13 +765,20 @@ to_regoperator(PG_FUNCTION_ARGS)
 }
 
 /*
- * format_operator		- converts operator OID to "opr_name(args)"
+ * format_operator_extended - converts operator OID to "opr_name(args)"
  *
  * This exports the useful functionality of regoperatorout for use
- * in other backend modules.  The result is a palloc'd string.
+ * in other backend modules.  The result is a palloc'd string, or NULL.
+ *
+ * The following bits in 'flags' modify the behavior:
+ * - FORMAT_OPERATOR_INVALID_AS_NULL
+ *			if the operator OID is invalid or unknown, return NULL instead
+ *			of the numeric OID.
+ * - FORMAT_OPERATOR_FORCE_QUALIFY
+ *			always schema-qualify operator names, regardless of search_path
  */
-static char *
-format_operator_internal(Oid operator_oid, bool force_qualify)
+char *
+format_operator_extended(Oid operator_oid, bits16 flags)
 {
 	char	   *result;
 	HeapTuple	opertup;
@@ -775,7 +801,8 @@ format_operator_internal(Oid operator_oid, bool force_qualify)
 		 * Would this oper be found (given the right args) by regoperatorin?
 		 * If not, or if caller explicitly requests it, we need to qualify it.
 		 */
-		if (force_qualify || !OperatorIsVisible(operator_oid))
+		if ((flags & FORMAT_OPERATOR_FORCE_QUALIFY) != 0 ||
+			!OperatorIsVisible(operator_oid))
 		{
 			nspname = get_namespace_name(operform->oprnamespace);
 			appendStringInfo(&buf, "%s.",
@@ -786,7 +813,7 @@ format_operator_internal(Oid operator_oid, bool force_qualify)
 
 		if (operform->oprleft)
 			appendStringInfo(&buf, "%s,",
-							 force_qualify ?
+							 (flags & FORMAT_OPERATOR_FORCE_QUALIFY) != 0 ?
 							 format_type_be_qualified(operform->oprleft) :
 							 format_type_be(operform->oprleft));
 		else
@@ -794,7 +821,7 @@ format_operator_internal(Oid operator_oid, bool force_qualify)
 
 		if (operform->oprright)
 			appendStringInfo(&buf, "%s)",
-							 force_qualify ?
+							 (flags & FORMAT_OPERATOR_FORCE_QUALIFY) != 0 ?
 							 format_type_be_qualified(operform->oprright) :
 							 format_type_be(operform->oprright));
 		else
@@ -803,6 +830,11 @@ format_operator_internal(Oid operator_oid, bool force_qualify)
 		result = buf.data;
 
 		ReleaseSysCache(opertup);
+	}
+	else if ((flags & FORMAT_OPERATOR_INVALID_AS_NULL) != 0)
+	{
+		/* If object is undefined, return NULL as wanted by caller */
+		result = NULL;
 	}
 	else
 	{
@@ -819,25 +851,31 @@ format_operator_internal(Oid operator_oid, bool force_qualify)
 char *
 format_operator(Oid operator_oid)
 {
-	return format_operator_internal(operator_oid, false);
+	return format_operator_extended(operator_oid, 0);
 }
 
 char *
 format_operator_qualified(Oid operator_oid)
 {
-	return format_operator_internal(operator_oid, true);
+	return format_operator_extended(operator_oid,
+									FORMAT_OPERATOR_FORCE_QUALIFY);
 }
 
 void
-format_operator_parts(Oid operator_oid, List **objnames, List **objargs)
+format_operator_parts(Oid operator_oid, List **objnames, List **objargs,
+					  bool missing_ok)
 {
 	HeapTuple	opertup;
 	Form_pg_operator oprForm;
 
 	opertup = SearchSysCache1(OPEROID, ObjectIdGetDatum(operator_oid));
 	if (!HeapTupleIsValid(opertup))
-		elog(ERROR, "cache lookup failed for operator with OID %u",
-			 operator_oid);
+	{
+		if (!missing_ok)
+			elog(ERROR, "cache lookup failed for operator with OID %u",
+				 operator_oid);
+		return;
+	}
 
 	oprForm = (Form_pg_operator) GETSTRUCT(opertup);
 	*objnames = list_make2(get_namespace_name_or_temp(oprForm->oprnamespace),
@@ -1037,6 +1075,158 @@ regclassrecv(PG_FUNCTION_ARGS)
  */
 Datum
 regclasssend(PG_FUNCTION_ARGS)
+{
+	/* Exactly the same as oidsend, so share code */
+	return oidsend(fcinfo);
+}
+
+
+/*
+ * regcollationin		- converts "collationname" to collation OID
+ *
+ * We also accept a numeric OID, for symmetry with the output routine.
+ *
+ * '-' signifies unknown (OID 0).  In all other cases, the input must
+ * match an existing pg_collation entry.
+ */
+Datum
+regcollationin(PG_FUNCTION_ARGS)
+{
+	char	   *collation_name_or_oid = PG_GETARG_CSTRING(0);
+	Oid			result = InvalidOid;
+	List	   *names;
+
+	/* '-' ? */
+	if (strcmp(collation_name_or_oid, "-") == 0)
+		PG_RETURN_OID(InvalidOid);
+
+	/* Numeric OID? */
+	if (collation_name_or_oid[0] >= '0' &&
+		collation_name_or_oid[0] <= '9' &&
+		strspn(collation_name_or_oid, "0123456789") == strlen(collation_name_or_oid))
+	{
+		result = DatumGetObjectId(DirectFunctionCall1(oidin,
+													  CStringGetDatum(collation_name_or_oid)));
+		PG_RETURN_OID(result);
+	}
+
+	/* Else it's a name, possibly schema-qualified */
+
+	/* The rest of this wouldn't work in bootstrap mode */
+	if (IsBootstrapProcessingMode())
+		elog(ERROR, "regcollation values must be OIDs in bootstrap mode");
+
+	/*
+	 * Normal case: parse the name into components and see if it matches any
+	 * pg_collation entries in the current search path.
+	 */
+	names = stringToQualifiedNameList(collation_name_or_oid);
+
+	result = get_collation_oid(names, false);
+
+	PG_RETURN_OID(result);
+}
+
+/*
+ * to_regcollation		- converts "collationname" to collation OID
+ *
+ * If the name is not found, we return NULL.
+ */
+Datum
+to_regcollation(PG_FUNCTION_ARGS)
+{
+	char	   *collation_name = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	Oid			result;
+	List	   *names;
+
+	/*
+	 * Parse the name into components and see if it matches any pg_collation
+	 * entries in the current search path.
+	 */
+	names = stringToQualifiedNameList(collation_name);
+
+	/* We might not even have permissions on this relation; don't lock it. */
+	result = get_collation_oid(names, true);
+
+	if (OidIsValid(result))
+		PG_RETURN_OID(result);
+	else
+		PG_RETURN_NULL();
+}
+
+/*
+ * regcollationout		- converts collation OID to "collation_name"
+ */
+Datum
+regcollationout(PG_FUNCTION_ARGS)
+{
+	Oid			collationid = PG_GETARG_OID(0);
+	char	   *result;
+	HeapTuple	collationtup;
+
+	if (collationid == InvalidOid)
+	{
+		result = pstrdup("-");
+		PG_RETURN_CSTRING(result);
+	}
+
+	collationtup = SearchSysCache1(COLLOID, ObjectIdGetDatum(collationid));
+
+	if (HeapTupleIsValid(collationtup))
+	{
+		Form_pg_collation collationform = (Form_pg_collation) GETSTRUCT(collationtup);
+		char	   *collationname = NameStr(collationform->collname);
+
+		/*
+		 * In bootstrap mode, skip the fancy namespace stuff and just return
+		 * the collation name.  (This path is only needed for debugging output
+		 * anyway.)
+		 */
+		if (IsBootstrapProcessingMode())
+			result = pstrdup(collationname);
+		else
+		{
+			char	   *nspname;
+
+			/*
+			 * Would this collation be found by regcollationin? If not,
+			 * qualify it.
+			 */
+			if (CollationIsVisible(collationid))
+				nspname = NULL;
+			else
+				nspname = get_namespace_name(collationform->collnamespace);
+
+			result = quote_qualified_identifier(nspname, collationname);
+		}
+
+		ReleaseSysCache(collationtup);
+	}
+	else
+	{
+		/* If OID doesn't match any pg_collation entry, return it numerically */
+		result = (char *) palloc(NAMEDATALEN);
+		snprintf(result, NAMEDATALEN, "%u", collationid);
+	}
+
+	PG_RETURN_CSTRING(result);
+}
+
+/*
+ *		regcollationrecv			- converts external binary format to regcollation
+ */
+Datum
+regcollationrecv(PG_FUNCTION_ARGS)
+{
+	/* Exactly the same as oidrecv, so share code */
+	return oidrecv(fcinfo);
+}
+
+/*
+ *		regcollationsend			- converts regcollation to binary format
+ */
+Datum
+regcollationsend(PG_FUNCTION_ARGS)
 {
 	/* Exactly the same as oidsend, so share code */
 	return oidsend(fcinfo);

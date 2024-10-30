@@ -14,7 +14,8 @@ import {
   InstanceTag,
   InstanceTags,
   MasterPlacementMode,
-  NodeDetails
+  NodeDetails,
+  CommunicationPorts
 } from './dto';
 import { UniverseFormContextState } from '../UniverseFormContainer';
 import {
@@ -25,6 +26,19 @@ import {
 } from './constants';
 import { api } from './api';
 import { getPlacementsFromCluster } from '../form/fields/PlacementsField/PlacementsFieldHelper';
+import {
+  compareYBSoftwareVersions,
+  isVersionStable
+} from '../../../../../utils/universeUtilsTyped';
+import {
+  GFLAG_GROUPS,
+  MIN_PG_SUPPORTED_PREVIEW_VERSION,
+  MIN_PG_SUPPORTED_STABLE_VERSION,
+  CONNECTION_POOL_SUPPORTED_PREV_VERSION,
+  CONNECTION_POOL_SUPPORTED_STABLE_VERSION
+} from '../../../../helpers/constants';
+import { YBProvider } from '../../../../../components/configRedesign/providerRedesign/types';
+import { ProviderCode } from '../../../../../components/configRedesign/providerRedesign/constants';
 
 export const transitToUniverse = (universeUUID?: string) =>
   universeUUID
@@ -50,11 +64,11 @@ export const getCurrentVersion = (universeData: UniverseDetails) => {
 export const getUniverseName = (universeData: UniverseDetails) =>
   _.get(getClusterByType(universeData, ClusterType.PRIMARY), 'userIntent.universeName');
 
-export const getPrimaryFormData = (universeData: UniverseDetails) =>
-  getFormData(universeData, ClusterType.PRIMARY);
+export const getPrimaryFormData = (universeData: UniverseDetails, providerConfig?: YBProvider) =>
+  getFormData(universeData, ClusterType.PRIMARY, providerConfig);
 
-export const getAsyncFormData = (universeData: UniverseDetails) =>
-  getFormData(universeData, ClusterType.ASYNC);
+export const getAsyncFormData = (universeData: UniverseDetails, providerConfig?: YBProvider) =>
+  getFormData(universeData, ClusterType.ASYNC, providerConfig);
 
 //returns fields needs to be copied from Primary to Async in Create+RR flow
 export const getPrimaryInheritedValues = (formData: UniverseFormData) =>
@@ -63,8 +77,6 @@ export const getPrimaryInheritedValues = (formData: UniverseFormData) =>
 //create error msg from reponse payload
 export const createErrorMessage = (payload: any) => {
   try {
-
-
     const structuredError = payload?.response?.data?.error;
     if (structuredError) {
       if (typeof structuredError === 'string') {
@@ -74,17 +86,17 @@ export const createErrorMessage = (payload: any) => {
         return _.get(structuredError, 'message');
       }
 
-      const message = (Object.keys(structuredError)
-        ?.map((fieldName) => {
-          const messages = structuredError[fieldName];
-          return fieldName + ': ' + (messages?.join(', ') ?? '');
-        })
-        ?.join('\n')) ?? 'Something went wrong. Please try again';
+      const message =
+        Object.keys(structuredError)
+          ?.map((fieldName) => {
+            const messages = structuredError[fieldName];
+            return fieldName + ': ' + (messages?.join(', ') ?? '');
+          })
+          ?.join('\n') ?? 'Something went wrong. Please try again';
       return message;
     }
     return payload.message;
-  }
-  catch (e) {
+  } catch (e) {
     console.error(e);
     return 'Something went wrong. Please try again';
   }
@@ -157,8 +169,17 @@ export const transformTagsArrayToObject = (instanceTags: InstanceTags) =>
     return tagsObj;
   }, {});
 
+export const isPGEnabledFromIntent = (intent: UserIntent) => {
+  const gFlagGroups = _.get(intent, 'specificGFlags.gflagGroups', []);
+  return gFlagGroups.includes(GFLAG_GROUPS.ENHANCED_POSTGRES_COMPATIBILITY);
+};
+
 //Transform universe data to form data
-export const getFormData = (universeData: UniverseDetails, clusterType: ClusterType) => {
+export const getFormData = (
+  universeData: UniverseDetails,
+  clusterType: ClusterType,
+  providerConfig?: YBProvider
+) => {
   const { communicationPorts, encryptionAtRestConfig, rootCA } = universeData;
   const cluster = getClusterByType(universeData, clusterType);
 
@@ -171,7 +192,11 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
       universeName: userIntent.universeName,
       provider: {
         code: userIntent.providerType,
-        uuid: userIntent.provider
+        uuid: userIntent.provider,
+        isOnPremManuallyProvisioned:
+          (providerConfig?.code === ProviderCode.ON_PREM &&
+            providerConfig.details?.skipProvisioning) ??
+          false
       },
       regionList: userIntent.regionList,
       numNodes: userIntent.numNodes,
@@ -213,7 +238,9 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
       ybSoftwareVersion: userIntent.ybSoftwareVersion,
       communicationPorts,
       customizePort: false, //** */
-      ybcPackagePath: null //** */
+      ybcPackagePath: null, //** */,
+      enablePGCompatibitilty: isPGEnabledFromIntent(userIntent),
+      enableConnectionPooling: _.get(userIntent, 'enableConnectionPooling', false)
     },
     instanceTags: transformInstanceTags(userIntent.instanceTags),
     gFlags: userIntent?.specificGFlags
@@ -289,6 +316,7 @@ export const getUserIntent = (
     enableIPV6: advancedConfig.enableIPV6,
     enableExposingService: advancedConfig.enableExposingService,
     useSystemd: advancedConfig.useSystemd,
+    enableConnectionPooling: _.get(advancedConfig, 'enableConnectionPooling', false),
     imageBundleUUID: instanceConfig.imageBundleUUID!
   };
 
@@ -308,7 +336,10 @@ export const getUserIntent = (
             TSERVER: tserverGFlags
           }
         },
-        perAZ: specificGFlagsAzOverrides ?? {}
+        perAZ: specificGFlagsAzOverrides ?? {},
+        gflagGroups: advancedConfig.enablePGCompatibitilty
+          ? [GFLAG_GROUPS.ENHANCED_POSTGRES_COMPATIBILITY]
+          : []
       };
     }
   } else {
@@ -433,21 +464,31 @@ export const getDiffClusterData = (currentClusterConfig?: Cluster, newClusterCon
       currentNodeCount: 0,
       newNodeCount: 0,
       oldNumReadReplicas: 0,
-      newNumReadReplicas: 0
+      newNumReadReplicas: 0,
+      oldInstanceTags: null,
+      newInstanceTags: null
     };
   }
 
   return {
-    masterPlacementChanged: currentClusterConfig?.userIntent?.dedicatedNodes !== newClusterConfig?.userIntent?.dedicatedNodes,
-    numNodesChanged: currentClusterConfig?.userIntent?.numNodes !== newClusterConfig?.userIntent?.numNodes,
+    masterPlacementChanged:
+      currentClusterConfig?.userIntent?.dedicatedNodes !==
+      newClusterConfig?.userIntent?.dedicatedNodes,
+    numNodesChanged:
+      currentClusterConfig?.userIntent?.numNodes !== newClusterConfig?.userIntent?.numNodes,
     currentNodeCount: currentClusterConfig?.userIntent?.numNodes,
     newNodeCount: newClusterConfig?.userIntent?.numNodes,
     oldNumReadReplicas: currentClusterConfig?.userIntent?.replicationFactor,
     newNumReadReplicas: newClusterConfig?.userIntent?.replicationFactor,
+    oldInstanceTags: currentClusterConfig?.userIntent?.instanceTags,
+    newInstanceTags: newClusterConfig?.userIntent?.instanceTags
   };
 };
 
-export const getKubernetesDiffClusterData = (currentClusterConfig?: Cluster, newClusterConfig?: Cluster) => {
+export const getKubernetesDiffClusterData = (
+  currentClusterConfig?: Cluster,
+  newClusterConfig?: Cluster
+) => {
   if (!currentClusterConfig || !newClusterConfig) {
     return {
       numNodesChanged: false,
@@ -464,12 +505,15 @@ export const getKubernetesDiffClusterData = (currentClusterConfig?: Cluster, new
       oldMasterNumCores: 0,
       newMasterNumCores: 0,
       oldMasterMemory: 0,
-      newMasterMemory: 0
+      newMasterMemory: 0,
+      oldTServerVolumeCount: 0,
+      newTServerVolumeCount: 0
     };
   }
 
   return {
-    numNodesChanged: currentClusterConfig?.userIntent?.numNodes !== newClusterConfig?.userIntent?.numNodes,
+    numNodesChanged:
+      currentClusterConfig?.userIntent?.numNodes !== newClusterConfig?.userIntent?.numNodes,
     currentNodeCount: currentClusterConfig?.userIntent?.numNodes,
     newNodeCount: newClusterConfig?.userIntent?.numNodes,
     oldNumReadReplicas: currentClusterConfig?.userIntent?.replicationFactor,
@@ -483,6 +527,53 @@ export const getKubernetesDiffClusterData = (currentClusterConfig?: Cluster, new
     oldMasterNumCores: currentClusterConfig?.userIntent?.masterK8SNodeResourceSpec?.cpuCoreCount,
     newMasterNumCores: newClusterConfig?.userIntent?.masterK8SNodeResourceSpec?.cpuCoreCount,
     oldMasterMemory: currentClusterConfig?.userIntent?.masterK8SNodeResourceSpec?.memoryGib,
-    newMasterMemory: newClusterConfig?.userIntent?.masterK8SNodeResourceSpec?.memoryGib
+    newMasterMemory: newClusterConfig?.userIntent?.masterK8SNodeResourceSpec?.memoryGib,
+    oldTServerVolumeCount: currentClusterConfig?.userIntent?.deviceInfo?.numVolumes,
+    newTServerVolumeCount: newClusterConfig?.userIntent?.deviceInfo?.numVolumes
   };
+};
+
+export const isVersionPGSupported = (dbVersion: string) => {
+  return (
+    compareYBSoftwareVersions({
+      versionA: dbVersion,
+      versionB: isVersionStable(dbVersion)
+        ? MIN_PG_SUPPORTED_STABLE_VERSION
+        : MIN_PG_SUPPORTED_PREVIEW_VERSION,
+      options: {
+        suppressFormatError: true
+      }
+    }) >= 0
+  );
+};
+
+export const isVersionConnectionPoolSupported = (dbVersion: string) => {
+  return (
+    compareYBSoftwareVersions({
+      versionA: dbVersion,
+      versionB: isVersionStable(dbVersion)
+        ? CONNECTION_POOL_SUPPORTED_STABLE_VERSION
+        : CONNECTION_POOL_SUPPORTED_PREV_VERSION,
+      options: {
+        suppressFormatError: true
+      }
+    }) >= 0
+  );
+};
+
+export const getChangedPorts = (
+  oldCommunicationPorts: CommunicationPorts,
+  newCommunicationPorts: CommunicationPorts
+) => {
+  const oldPorts = {};
+  const newPorts = {};
+
+  Object.keys(newCommunicationPorts).forEach((key) => {
+    if (JSON.stringify(oldCommunicationPorts[key]) !== JSON.stringify(newCommunicationPorts[key])) {
+      newPorts[key] = newCommunicationPorts[key];
+      oldPorts[key] = oldCommunicationPorts[key];
+    }
+  });
+
+  return { oldPorts, newPorts };
 };

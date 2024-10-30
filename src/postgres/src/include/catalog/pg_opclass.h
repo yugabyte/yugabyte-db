@@ -24,7 +24,7 @@
  * AMs support this.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_opclass.h
@@ -48,6 +48,8 @@
  */
 CATALOG(pg_opclass,2616,OperatorClassRelationId)
 {
+	Oid			oid;			/* oid */
+
 	/* index access method opclass is for */
 	Oid			opcmethod BKI_LOOKUP(pg_am);
 
@@ -55,10 +57,10 @@ CATALOG(pg_opclass,2616,OperatorClassRelationId)
 	NameData	opcname;
 
 	/* namespace of this opclass */
-	Oid			opcnamespace BKI_DEFAULT(PGNSP);
+	Oid			opcnamespace BKI_DEFAULT(pg_catalog) BKI_LOOKUP(pg_namespace);
 
 	/* opclass owner */
-	Oid			opcowner BKI_DEFAULT(PGUID);
+	Oid			opcowner BKI_DEFAULT(POSTGRES) BKI_LOOKUP(pg_authid);
 
 	/* containing operator family */
 	Oid			opcfamily BKI_LOOKUP(pg_opfamily);
@@ -69,8 +71,8 @@ CATALOG(pg_opclass,2616,OperatorClassRelationId)
 	/* T if opclass is default for opcintype */
 	bool		opcdefault BKI_DEFAULT(t);
 
-	/* type of data in index, or InvalidOid */
-	Oid			opckeytype BKI_DEFAULT(0) BKI_LOOKUP(pg_type);
+	/* type of data in index, or InvalidOid if same as input column type */
+	Oid			opckeytype BKI_DEFAULT(0) BKI_LOOKUP_OPT(pg_type);
 } FormData_pg_opclass;
 
 /* ----------------
@@ -79,5 +81,8 @@ CATALOG(pg_opclass,2616,OperatorClassRelationId)
  * ----------------
  */
 typedef FormData_pg_opclass *Form_pg_opclass;
+
+DECLARE_UNIQUE_INDEX(pg_opclass_am_name_nsp_index, 2686, OpclassAmNameNspIndexId, on pg_opclass using btree(opcmethod oid_ops, opcname name_ops, opcnamespace oid_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_opclass_oid_index, 2687, OpclassOidIndexId, on pg_opclass using btree(oid oid_ops));
 
 #endif							/* PG_OPCLASS_H */

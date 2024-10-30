@@ -2,9 +2,13 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.Util.CONSISTENCY_CHECK_TABLE_NAME;
+import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 import static play.libs.Json.newObject;
 import static play.libs.Json.toJson;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -32,6 +36,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Http;
@@ -183,16 +188,6 @@ public class YsqlQueryExecutor {
   }
 
   public JsonNode executeQueryInNodeShell(
-      Universe universe, RunQueryFormData queryParams, NodeDetails node, boolean authEnabled) {
-    return executeQueryInNodeShell(
-        universe,
-        queryParams,
-        node,
-        runtimeConfigFactory.forUniverse(universe).getLong("yb.ysql_timeout_secs"),
-        authEnabled);
-  }
-
-  public JsonNode executeQueryInNodeShell(
       Universe universe, RunQueryFormData queryParams, NodeDetails node, long timeoutSec) {
 
     return executeQueryInNodeShell(
@@ -209,6 +204,41 @@ public class YsqlQueryExecutor {
       NodeDetails node,
       long timeoutSec,
       boolean authEnabled) {
+    return executeQueryInNodeShell(
+        universe,
+        queryParams,
+        node,
+        timeoutSec,
+        authEnabled,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling,
+        universe.getUniverseDetails().communicationPorts.internalYsqlServerRpcPort);
+  }
+
+  public JsonNode executeQueryInNodeShell(
+      Universe universe,
+      RunQueryFormData queryParams,
+      NodeDetails node,
+      boolean authEnabled,
+      boolean enableConnectionPooling,
+      int internalYsqlServerRpcPort) {
+    return executeQueryInNodeShell(
+        universe,
+        queryParams,
+        node,
+        runtimeConfigFactory.forUniverse(universe).getLong("yb.ysql_timeout_secs"),
+        authEnabled,
+        enableConnectionPooling,
+        internalYsqlServerRpcPort);
+  }
+
+  public JsonNode executeQueryInNodeShell(
+      Universe universe,
+      RunQueryFormData queryParams,
+      NodeDetails node,
+      long timeoutSec,
+      boolean authEnabled,
+      boolean enableConnectionPooling,
+      int internalYsqlServerRpcPort) {
     ObjectNode response = newObject();
     response.put("type", "ysql");
     String queryType = getQueryType(queryParams.getQuery());
@@ -219,7 +249,14 @@ public class YsqlQueryExecutor {
       shellResponse =
           nodeUniverseManager
               .runYsqlCommand(
-                  node, universe, queryParams.getDbName(), queryString, timeoutSec, authEnabled)
+                  node,
+                  universe,
+                  queryParams.getDbName(),
+                  queryString,
+                  timeoutSec,
+                  authEnabled,
+                  enableConnectionPooling,
+                  internalYsqlServerRpcPort)
               .processErrors("Ysql Query Execution Error");
     } catch (RuntimeException e) {
       response.put("error", ShellResponse.cleanedUpErrorMessage(e.getMessage()));
@@ -455,6 +492,72 @@ public class YsqlQueryExecutor {
     return ysqlResponse;
   }
 
+  public static class ConsistencyInfoResp {
+    @JsonProperty("task_uuid")
+    private UUID taskUuid;
+
+    @JsonProperty("seq_num")
+    private int seqNum;
+
+    @JsonProperty("yw_uuid")
+    private UUID ywUuid;
+
+    @JsonProperty("yw_host")
+    private String ywHost;
+
+    public UUID getTaskUUID() {
+      return taskUuid;
+    }
+
+    public int getSeqNum() {
+      return seqNum;
+    }
+
+    public UUID getYwUUID() {
+      return ywUuid;
+    }
+
+    public String getYwHost() {
+      return ywHost;
+    }
+  }
+
+  public ConsistencyInfoResp getConsistencyInfo(Universe universe) throws RecoverableException {
+    NodeDetails node;
+    try {
+      node = CommonUtils.getServerToRunYsqlQuery(universe, true);
+    } catch (IllegalStateException e) {
+      LOG.warn("Could not find valid tserver querying consistency info.");
+      return null;
+    }
+    RunQueryFormData ysqlQuery = new RunQueryFormData();
+    ysqlQuery.setDbName(SYSTEM_PLATFORM_DB);
+    ysqlQuery.setQuery(
+        String.format(
+            "SELECT seq_num, task_uuid, yw_uuid, yw_host FROM %s ORDER BY seq_num DESC LIMIT 1",
+            CONSISTENCY_CHECK_TABLE_NAME));
+    JsonNode response = executeQueryInNodeShell(universe, ysqlQuery, node);
+    int retries = 0;
+    while (response != null && response.has("error") && retries < 5) {
+      String match = String.format("relation \"%s\" does not exist", CONSISTENCY_CHECK_TABLE_NAME);
+      if (response.get("error").asText().contains(match)) {
+        throw new RecoverableException("consistency_check table does not exist");
+      }
+      node = CommonUtils.getARandomLiveOrToBeRemovedTServer(universe);
+      retries += 1;
+      response = executeQueryInNodeShell(universe, ysqlQuery, node);
+    }
+    if (response != null && response.has("result")) {
+      ObjectMapper mapper = new ObjectMapper();
+      try {
+        return mapper.treeToValue(response.get("result").get(0), ConsistencyInfoResp.class);
+      } catch (JsonProcessingException e) {
+        LOG.warn("Error parsing consistency info response: " + e.getMessage());
+      }
+    }
+    return null;
+  }
+
   public void validateAdminPassword(Universe universe, DatabaseSecurityFormData data) {
     RunQueryFormData ysqlQuery = new RunQueryFormData();
     ysqlQuery.setDbName(data.dbName);
@@ -483,5 +586,10 @@ public class YsqlQueryExecutor {
     query = "SELECT pg_stat_statements_reset();";
     allQueries.append(query);
     runUserDbCommands(allQueries.toString(), data.dbName, universe);
+  }
+
+  public void dropTable(Universe universe, String dbName, String tableName) {
+    String query = String.format("DROP TABLE if exists %s;", tableName);
+    runUserDbCommands(query, dbName, universe);
   }
 }

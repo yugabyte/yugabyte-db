@@ -3,7 +3,7 @@
  * walreceiver.h
  *	  Exports from replication/walreceiverfuncs.c.
  *
- * Portions Copyright (c) 2010-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *
  * src/include/replication/walreceiver.h
  *
@@ -14,19 +14,20 @@
 
 #include "access/xlog.h"
 #include "access/xlogdefs.h"
-#include "fmgr.h"
 #include "getaddrinfo.h"		/* for NI_MAXHOST */
+#include "pgtime.h"
+#include "port/atomics.h"
 #include "replication/logicalproto.h"
 #include "replication/walsender.h"
+#include "storage/condition_variable.h"
 #include "storage/latch.h"
 #include "storage/spin.h"
-#include "pgtime.h"
 #include "utils/tuplestore.h"
 
 /* user-settable parameters */
-extern int	wal_receiver_status_interval;
-extern int	wal_receiver_timeout;
-extern bool hot_standby_feedback;
+extern PGDLLIMPORT int wal_receiver_status_interval;
+extern PGDLLIMPORT int wal_receiver_timeout;
+extern PGDLLIMPORT bool hot_standby_feedback;
 
 /*
  * MAXCONNINFO: maximum size of a connection string.
@@ -62,6 +63,7 @@ typedef struct
 	 */
 	pid_t		pid;
 	WalRcvState walRcvState;
+	ConditionVariable walRcvStoppedCV;
 	pg_time_t	startTime;
 
 	/*
@@ -74,19 +76,19 @@ typedef struct
 	TimeLineID	receiveStartTLI;
 
 	/*
-	 * receivedUpto-1 is the last byte position that has already been
-	 * received, and receivedTLI is the timeline it came from.  At the first
-	 * startup of walreceiver, these are set to receiveStart and
-	 * receiveStartTLI. After that, walreceiver updates these whenever it
-	 * flushes the received WAL to disk.
+	 * flushedUpto-1 is the last byte position that has already been received,
+	 * and receivedTLI is the timeline it came from.  At the first startup of
+	 * walreceiver, these are set to receiveStart and receiveStartTLI. After
+	 * that, walreceiver updates these whenever it flushes the received WAL to
+	 * disk.
 	 */
-	XLogRecPtr	receivedUpto;
+	XLogRecPtr	flushedUpto;
 	TimeLineID	receivedTLI;
 
 	/*
 	 * latestChunkStart is the starting byte position of the current "batch"
 	 * of received WAL.  It's actually the same as the previous value of
-	 * receivedUpto before the last flush to disk.  Startup process can use
+	 * flushedUpto before the last flush to disk.  Startup process can use
 	 * this to detect whether it's keeping up or not.
 	 */
 	XLogRecPtr	latestChunkStart;
@@ -122,6 +124,12 @@ typedef struct
 	 */
 	char		slotname[NAMEDATALEN];
 
+	/*
+	 * If it's a temporary replication slot, it needs to be recreated when
+	 * connecting.
+	 */
+	bool		is_temp_slot;
+
 	/* set true once conninfo is ready to display (obfuscated pwds etc) */
 	bool		ready_to_display;
 
@@ -137,6 +145,14 @@ typedef struct
 	slock_t		mutex;			/* locks shared variables shown above */
 
 	/*
+	 * Like flushedUpto, but advanced after writing and before flushing,
+	 * without the need to acquire the spin lock.  Data can be read by another
+	 * process up to this point, but shouldn't be used for data integrity
+	 * purposes.
+	 */
+	pg_atomic_uint64 writtenUpto;
+
+	/*
 	 * force walreceiver reply?  This doesn't need to be locked; memory
 	 * barriers for ordering are sufficient.  But we do need atomic fetch and
 	 * store semantics, so use sig_atomic_t.
@@ -144,7 +160,7 @@ typedef struct
 	sig_atomic_t force_reply;	/* used as a bool */
 } WalRcvData;
 
-extern WalRcvData *WalRcv;
+extern PGDLLIMPORT WalRcvData *WalRcv;
 
 typedef struct
 {
@@ -163,6 +179,10 @@ typedef struct
 		{
 			uint32		proto_version;	/* Logical protocol version */
 			List	   *publication_names;	/* String list of publications */
+			bool		binary; /* Ask publisher to use binary */
+			bool		streaming;	/* Streaming of large transactions */
+			bool		twophase;	/* Streaming of two-phase transactions at
+									 * prepare time */
 		}			logical;
 	}			proto;
 } WalRcvStreamOptions;
@@ -188,49 +208,176 @@ typedef enum
 } WalRcvExecStatus;
 
 /*
- * Return value for walrcv_query, returns the status of the execution and
+ * Return value for walrcv_exec, returns the status of the execution and
  * tuples if any.
  */
 typedef struct WalRcvExecResult
 {
 	WalRcvExecStatus status;
+	int			sqlstate;
 	char	   *err;
 	Tuplestorestate *tuplestore;
 	TupleDesc	tupledesc;
 } WalRcvExecResult;
 
-/* libpqwalreceiver hooks */
-typedef WalReceiverConn *(*walrcv_connect_fn) (const char *conninfo, bool logical,
+/* WAL receiver - libpqwalreceiver hooks */
+
+/*
+ * walrcv_connect_fn
+ *
+ * Establish connection to a cluster.  'logical' is true if the
+ * connection is logical, and false if the connection is physical.
+ * 'appname' is a name associated to the connection, to use for example
+ * with fallback_application_name or application_name.  Returns the
+ * details about the connection established, as defined by
+ * WalReceiverConn for each WAL receiver module.  On error, NULL is
+ * returned with 'err' including the error generated.
+ */
+typedef WalReceiverConn *(*walrcv_connect_fn) (const char *conninfo,
+											   bool logical,
 											   const char *appname,
 											   char **err);
+
+/*
+ * walrcv_check_conninfo_fn
+ *
+ * Parse and validate the connection string given as of 'conninfo'.
+ */
 typedef void (*walrcv_check_conninfo_fn) (const char *conninfo);
+
+/*
+ * walrcv_get_conninfo_fn
+ *
+ * Returns a user-displayable conninfo string.  Note that any
+ * security-sensitive fields should be obfuscated.
+ */
 typedef char *(*walrcv_get_conninfo_fn) (WalReceiverConn *conn);
+
+/*
+ * walrcv_get_senderinfo_fn
+ *
+ * Provide information of the WAL sender this WAL receiver is connected
+ * to, as of 'sender_host' for the host of the sender and 'sender_port'
+ * for its port.
+ */
 typedef void (*walrcv_get_senderinfo_fn) (WalReceiverConn *conn,
 										  char **sender_host,
 										  int *sender_port);
+
+/*
+ * walrcv_identify_system_fn
+ *
+ * Run IDENTIFY_SYSTEM on the cluster connected to and validate the
+ * identity of the cluster.  Returns the system ID of the cluster
+ * connected to.  'primary_tli' is the timeline ID of the sender.
+ */
 typedef char *(*walrcv_identify_system_fn) (WalReceiverConn *conn,
-											TimeLineID *primary_tli,
-											int *server_version);
+											TimeLineID *primary_tli);
+
+/*
+ * walrcv_server_version_fn
+ *
+ * Returns the version number of the cluster connected to.
+ */
+typedef int (*walrcv_server_version_fn) (WalReceiverConn *conn);
+
+/*
+ * walrcv_readtimelinehistoryfile_fn
+ *
+ * Fetch from cluster the timeline history file for timeline 'tli'.
+ * Returns the name of the timeline history file as of 'filename', its
+ * contents as of 'content' and its 'size'.
+ */
 typedef void (*walrcv_readtimelinehistoryfile_fn) (WalReceiverConn *conn,
 												   TimeLineID tli,
 												   char **filename,
-												   char **content, int *size);
+												   char **content,
+												   int *size);
+
+/*
+ * walrcv_startstreaming_fn
+ *
+ * Start streaming WAL data from given streaming options.  Returns true
+ * if the connection has switched successfully to copy-both mode and false
+ * if the server received the command and executed it successfully, but
+ * didn't switch to copy-mode.
+ */
 typedef bool (*walrcv_startstreaming_fn) (WalReceiverConn *conn,
 										  const WalRcvStreamOptions *options);
+
+/*
+ * walrcv_endstreaming_fn
+ *
+ * Stop streaming of WAL data.  Returns the next timeline ID of the cluster
+ * connected to in 'next_tli', or 0 if there was no report.
+ */
 typedef void (*walrcv_endstreaming_fn) (WalReceiverConn *conn,
 										TimeLineID *next_tli);
-typedef int (*walrcv_receive_fn) (WalReceiverConn *conn, char **buffer,
+
+/*
+ * walrcv_receive_fn
+ *
+ * Receive a message available from the WAL stream.  'buffer' is a pointer
+ * to a buffer holding the message received.  Returns the length of the data,
+ * 0 if no data is available yet ('wait_fd' is a socket descriptor which can
+ * be waited on before a retry), and -1 if the cluster ended the COPY.
+ */
+typedef int (*walrcv_receive_fn) (WalReceiverConn *conn,
+								  char **buffer,
 								  pgsocket *wait_fd);
-typedef void (*walrcv_send_fn) (WalReceiverConn *conn, const char *buffer,
+
+/*
+ * walrcv_send_fn
+ *
+ * Send a message of size 'nbytes' to the WAL stream with 'buffer' as
+ * contents.
+ */
+typedef void (*walrcv_send_fn) (WalReceiverConn *conn,
+								const char *buffer,
 								int nbytes);
+
+/*
+ * walrcv_create_slot_fn
+ *
+ * Create a new replication slot named 'slotname'.  'temporary' defines
+ * if the slot is temporary.  'snapshot_action' defines the behavior wanted
+ * for an exported snapshot (see replication protocol for more details).
+ * 'lsn' includes the LSN position at which the created slot became
+ * consistent.  Returns the name of the exported snapshot for a logical
+ * slot, or NULL for a physical slot.
+ */
 typedef char *(*walrcv_create_slot_fn) (WalReceiverConn *conn,
-										const char *slotname, bool temporary,
+										const char *slotname,
+										bool temporary,
+										bool two_phase,
 										CRSSnapshotAction snapshot_action,
 										XLogRecPtr *lsn);
+
+/*
+ * walrcv_get_backend_pid_fn
+ *
+ * Returns the PID of the remote backend process.
+ */
+typedef pid_t (*walrcv_get_backend_pid_fn) (WalReceiverConn *conn);
+
+/*
+ * walrcv_exec_fn
+ *
+ * Send generic queries (and commands) to the remote cluster.  'nRetTypes'
+ * is the expected number of returned attributes, and 'retTypes' an array
+ * including their type OIDs.  Returns the status of the execution and
+ * tuples if any.
+ */
 typedef WalRcvExecResult *(*walrcv_exec_fn) (WalReceiverConn *conn,
 											 const char *query,
 											 const int nRetTypes,
 											 const Oid *retTypes);
+
+/*
+ * walrcv_disconnect_fn
+ *
+ * Disconnect with the cluster.
+ */
 typedef void (*walrcv_disconnect_fn) (WalReceiverConn *conn);
 
 typedef struct WalReceiverFunctionsType
@@ -240,12 +387,14 @@ typedef struct WalReceiverFunctionsType
 	walrcv_get_conninfo_fn walrcv_get_conninfo;
 	walrcv_get_senderinfo_fn walrcv_get_senderinfo;
 	walrcv_identify_system_fn walrcv_identify_system;
+	walrcv_server_version_fn walrcv_server_version;
 	walrcv_readtimelinehistoryfile_fn walrcv_readtimelinehistoryfile;
 	walrcv_startstreaming_fn walrcv_startstreaming;
 	walrcv_endstreaming_fn walrcv_endstreaming;
 	walrcv_receive_fn walrcv_receive;
 	walrcv_send_fn walrcv_send;
 	walrcv_create_slot_fn walrcv_create_slot;
+	walrcv_get_backend_pid_fn walrcv_get_backend_pid;
 	walrcv_exec_fn walrcv_exec;
 	walrcv_disconnect_fn walrcv_disconnect;
 } WalReceiverFunctionsType;
@@ -260,8 +409,10 @@ extern PGDLLIMPORT WalReceiverFunctionsType *WalReceiverFunctions;
 	WalReceiverFunctions->walrcv_get_conninfo(conn)
 #define walrcv_get_senderinfo(conn, sender_host, sender_port) \
 	WalReceiverFunctions->walrcv_get_senderinfo(conn, sender_host, sender_port)
-#define walrcv_identify_system(conn, primary_tli, server_version) \
-	WalReceiverFunctions->walrcv_identify_system(conn, primary_tli, server_version)
+#define walrcv_identify_system(conn, primary_tli) \
+	WalReceiverFunctions->walrcv_identify_system(conn, primary_tli)
+#define walrcv_server_version(conn) \
+	WalReceiverFunctions->walrcv_server_version(conn)
 #define walrcv_readtimelinehistoryfile(conn, tli, filename, content, size) \
 	WalReceiverFunctions->walrcv_readtimelinehistoryfile(conn, tli, filename, content, size)
 #define walrcv_startstreaming(conn, options) \
@@ -272,8 +423,10 @@ extern PGDLLIMPORT WalReceiverFunctionsType *WalReceiverFunctions;
 	WalReceiverFunctions->walrcv_receive(conn, buffer, wait_fd)
 #define walrcv_send(conn, buffer, nbytes) \
 	WalReceiverFunctions->walrcv_send(conn, buffer, nbytes)
-#define walrcv_create_slot(conn, slotname, temporary, snapshot_action, lsn) \
-	WalReceiverFunctions->walrcv_create_slot(conn, slotname, temporary, snapshot_action, lsn)
+#define walrcv_create_slot(conn, slotname, temporary, two_phase, snapshot_action, lsn) \
+	WalReceiverFunctions->walrcv_create_slot(conn, slotname, temporary, two_phase, snapshot_action, lsn)
+#define walrcv_get_backend_pid(conn) \
+	WalReceiverFunctions->walrcv_get_backend_pid(conn)
 #define walrcv_exec(conn, exec, nRetTypes, retTypes) \
 	WalReceiverFunctions->walrcv_exec(conn, exec, nRetTypes, retTypes)
 #define walrcv_disconnect(conn) \
@@ -299,6 +452,7 @@ walrcv_clear_result(WalRcvExecResult *walres)
 
 /* prototypes for functions in walreceiver.c */
 extern void WalReceiverMain(void) pg_attribute_noreturn();
+extern void ProcessWalRcvInterrupts(void);
 
 /* prototypes for functions in walreceiverfuncs.c */
 extern Size WalRcvShmemSize(void);
@@ -307,8 +461,10 @@ extern void ShutdownWalRcv(void);
 extern bool WalRcvStreaming(void);
 extern bool WalRcvRunning(void);
 extern void RequestXLogStreaming(TimeLineID tli, XLogRecPtr recptr,
-					 const char *conninfo, const char *slotname);
-extern XLogRecPtr GetWalRcvWriteRecPtr(XLogRecPtr *latestChunkStart, TimeLineID *receiveTLI);
+								 const char *conninfo, const char *slotname,
+								 bool create_temp_slot);
+extern XLogRecPtr GetWalRcvFlushRecPtr(XLogRecPtr *latestChunkStart, TimeLineID *receiveTLI);
+extern XLogRecPtr GetWalRcvWriteRecPtr(void);
 extern int	GetReplicationApplyDelay(void);
 extern int	GetReplicationTransferLatency(void);
 extern void WalRcvForceReply(void);

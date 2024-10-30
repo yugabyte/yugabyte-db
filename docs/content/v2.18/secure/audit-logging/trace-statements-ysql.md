@@ -33,14 +33,14 @@ To log the appropriate session information, you need to set the following config
 
 ## Review logs
 
-Session information is written to the PostgreSQL logs, located in the YugabyteDB base folder in the `yb-data/tserver/logs` directory. For information on inspecting logs, refer to [Inspect YugabyteDB logs](../../../troubleshoot/nodes/check-logs/).
+Session information is written to the PostgreSQL logs, located in the YugabyteDB base folder in the `yb-data/tserver/logs` directory. For information on inspecting logs, refer to [Inspect YugabyteDB logs](/preview/troubleshoot/nodes/check-logs/).
 
 ## Example session
 
 Create a local cluster and configure `ysql_log_statement` to log all statements, and `log_line_prefix` to log timestamp, PostgreSQL PID, and session identifier as follows:
 
 ```sh
-./bin/yb-ctl create --tserver_flags="ysql_log_statement=all,ysql_pg_conf_csv=\"log_line_prefix='timestamp: %m, pid: %p session: %c '\"" --rf 1
+./bin/yb-ctl create --tserver_flags="ysql_log_statement=all,ysql_pg_conf_csv=\"log_line_prefix='timestamp: %m pid: %p session: %c '\"" --rf 1
 ```
 
 For local clusters created using yb-ctl, `postgresql` logs are located in `~/yugabyte-data/node-1/disk-1/yb-data/tserver/logs`.

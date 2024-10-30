@@ -9,12 +9,12 @@ To connect to a cluster using `ysqlsh`:
 1. On the **Clusters** tab, select a cluster.
 1. Click **Connect**.
 1. Click **YugabyteDB Client Shell**.
-1. Make sure you are running the latest version of the Yugabyte Client shell. If you have not installed Yugabyte Client on your computer, select your operating system and copy the command to install Yugabyte Client from the command line.
+1. If you have not installed the YugabyteDB clients on your computer, select your operating system and copy the command to install the clients from the command line.
 1. Click **Download CA Cert** to download the root.crt certificate for TLS encryption, and install the certificate on your computer. If you are using Docker, copy the certificate to your Docker container.
 1. If your cluster is deployed in a VPC, choose **Private Address** if you are connecting from a peered VPC. Otherwise, choose **Public Address** (only available if you have enabled Public Access for the cluster; not recommended for production).
 1. Copy the **YSQL** connection string.
 
-    The connection string includes flags specifying the host (`host`), username (`user`), database (`dbname`), and TLS settings (`sslmode` and `sslrootcert`). The command specifies that the connection will use the CA certificate you installed on your computer. For information on using other SSL modes, refer to [SSL modes in YSQL](../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql).
+    The connection string includes flags specifying the host (`host`), username (`user`), database (`dbname`), and TLS settings (`sslmode` and `sslrootcert`). The command specifies that the connection will use the CA certificate you installed on your computer. For information on using other SSL modes, refer to [SSL modes in YSQL](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql).
 
     Here's an example of the generated `ysqlsh` command:
 
@@ -38,7 +38,7 @@ To connect to a cluster using `ysqlsh`:
 The `ysqlsh` shell opens connected to the remote cluster.
 
 ```output
-ysqlsh (11.2-YB-2.6.1.0-b0)
+ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 

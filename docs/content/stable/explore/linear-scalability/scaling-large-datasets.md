@@ -96,7 +96,7 @@ In a customer installation, YugabyteDB has been loaded with ~20 TB of compressed
 
 ### 80 TB
 
-One of our customers uses YCQL interface to store and retrieve about 80 TB of event data from different vehicles clocked at 1.25 M Ops/s with an average latency of 1.7 s. Their setup is:
+One customer uses the YCQL interface to store and retrieve about 80 TB of event data from different vehicles clocked at 1.25 M Ops/s with an average latency of 1.7s. Their setup is as follows:
 
 |                          |             |
 | -----------------------: | :---------- |
@@ -105,7 +105,7 @@ One of our customers uses YCQL interface to store and retrieve about 80 TB of ev
 |       Replication Factor | 5           |
 |                      CPU | 64vCPU      |
 |                   Memory | 256 GB RAM   |
-|                  Storage | 6x 4 TB NVMe |
+|                  Storage | 6x4 TB NVMe |
 |                Data Size | **80 TB**   |
 |        Data Density/node | **10 TB**   |
 | Data Size (+Replication) | **450 TB**   |

@@ -1016,7 +1016,7 @@ fi
 
 if [[ ${use_google_tcmalloc} == "true" ]]; then
   if ! is_linux; then
-    fatal "Google TCMalloc is only supported on linux. is_linux is: '${is_linux}'."
+    fatal "Google TCMalloc is only supported on linux. OSTYPE is: '${OSTYPE}'."
   fi
   cmake_opts+=( "-DYB_GOOGLE_TCMALLOC=1" )
 fi
@@ -1133,6 +1133,12 @@ if [[ ${build_java} == "true" ]]; then
 
   log "Java build finished, total time information above."
 fi
+
+ if [[ $running_any_tests == "true" ]]; then
+   if [[ $test_ybc == "true" && $YB_TEST_YB_CONTROLLER == "1" ]]; then
+     prep_ybc_testing
+   fi
+ fi
 
 run_tests_remotely
 

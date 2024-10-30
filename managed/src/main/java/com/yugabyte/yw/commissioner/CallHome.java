@@ -23,7 +23,7 @@ public class CallHome {
   private final Environment environment;
 
   // Interval at which to send callhome diagnostics in minutes
-  private static final int YB_CALLHOME_INTERVAL = 60;
+  private static final Duration YB_CALLHOME_INTERVAL = Duration.ofDays(1);
 
   @Inject
   public CallHome(
@@ -43,10 +43,7 @@ public class CallHome {
     }
     log.info("Initialize callhome service");
     platformScheduler.schedule(
-        getClass().getSimpleName(),
-        Duration.ZERO,
-        Duration.ofMinutes(YB_CALLHOME_INTERVAL),
-        this::scheduleRunner);
+        getClass().getSimpleName(), Duration.ZERO, YB_CALLHOME_INTERVAL, this::scheduleRunner);
   }
 
   @VisibleForTesting

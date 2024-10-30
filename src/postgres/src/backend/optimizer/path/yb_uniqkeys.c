@@ -1,9 +1,9 @@
 /*--------------------------------------------------------------------------------------------------
  *
  * yb_uniqkeys.c
- *	  YugaByteDB distinct pushdown API
+ *	  YugabyteDB distinct pushdown API
  *
- * Copyright (c) YugaByteDB, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.  You may obtain a copy of the License at
@@ -26,10 +26,9 @@
 #include "access/sysattr.h"
 #include "nodes/nodes.h"
 #include "nodes/nodeFuncs.h"
-#include "optimizer/clauses.h"
+#include "optimizer/optimizer.h"
 #include "optimizer/paths.h"
 #include "optimizer/tlist.h"
-#include "optimizer/var.h"
 #include "utils/lsyscache.h"
 
 /*
@@ -170,9 +169,9 @@ yb_get_colrefs_for_distinct_pushdown(IndexOptInfo *index, List *index_clauses,
 	 */
 	foreach(lc, index->indrestrictinfo)
 	{
-		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+		RestrictInfo   *rinfo = lfirst_node(RestrictInfo, lc);
 
-		if (!list_member_ptr(index_clauses, rinfo))
+		if (!is_redundant_with_indexclauses(rinfo, index_clauses))
 			exprs = lappend(exprs, rinfo->clause);
 	}
 
@@ -202,27 +201,32 @@ yb_get_colrefs_for_distinct_pushdown(IndexOptInfo *index, List *index_clauses,
  * change in the future when we start supporting storage filters for DISTINCT.
  */
 static bool
-yb_is_const_clause_for_distinct_pushdown(IndexOptInfo *index,
+yb_is_const_clause_for_distinct_pushdown(PlannerInfo *root,
+										 IndexOptInfo *index,
 										 List *index_clauses,
 										 int indexcol,
 				   						 Expr *indexkey)
 {
 	ListCell *lc;
 
-	/* Boolean clauses. */
-	if (indexcol_is_bool_constant_for_query(index, indexcol))
-		return true;
-
 	foreach(lc, index_clauses)
 	{
-		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
-		Expr		 *clause = rinfo->clause;
+		IndexClause  *ic = lfirst_node(IndexClause, lc);
+		RestrictInfo *rinfo;
+		Expr		 *clause;
 		Node		 *left_op,
 					 *right_op;
 		int			  op_strategy;
 
+		if (ic->lossy || list_length(ic->indexquals) != 1)
+			continue;
+
+		rinfo = linitial_node(RestrictInfo, ic->indexquals);
+		clause = rinfo->clause;
+
 		/* Must be a binary operation. */
-		if (!is_opclause(clause))
+		if (!is_opclause(clause)
+			|| list_length(((OpExpr *) clause)->args) != 2)
 			continue;
 
 		left_op = get_leftop(clause);
@@ -231,18 +235,12 @@ yb_is_const_clause_for_distinct_pushdown(IndexOptInfo *index,
 			continue;
 
 		op_strategy = get_op_opfamily_strategy(((OpExpr *) clause)->opno,
-											   index->opfamily[indexcol]);
+												index->opfamily[indexcol]);
 		if (op_strategy != BTEqualStrategyNumber)
 			continue;
 
 		/* Check whether the clause is of the form indexkey = constant. */
-		if (equal(indexkey, left_op) &&
-			rinfo->right_ec && EC_MUST_BE_REDUNDANT(rinfo->right_ec))
-			return true;
-
-		/* Check whether the indexkey is on the right. */
-		if (equal(indexkey, right_op) &&
-			rinfo->left_ec && EC_MUST_BE_REDUNDANT(rinfo->left_ec))
+		if (equal(indexkey, left_op) && IsA(right_op, Const))
 			return true;
 	}
 
@@ -269,7 +267,8 @@ yb_is_const_clause_for_distinct_pushdown(IndexOptInfo *index,
  * 'index_clauses' as the truth source.
  */
 static Bitmapset *
-yb_get_const_colrefs_for_distinct_pushdown(IndexOptInfo *index,
+yb_get_const_colrefs_for_distinct_pushdown(PlannerInfo *root,
+										   IndexOptInfo *index,
 										   List *index_clauses)
 {
 	Bitmapset *const_colrefs;
@@ -292,7 +291,7 @@ yb_get_const_colrefs_for_distinct_pushdown(IndexOptInfo *index,
 		if (indexcol >= index->nhashcolumns &&
 			IsA(tle->expr, Var) &&
 			yb_is_const_clause_for_distinct_pushdown(
-				index, index_clauses, indexcol, tle->expr))
+				root, index, index_clauses, indexcol, tle->expr))
 			const_colrefs = bms_add_member(const_colrefs,
 				((Var *) tle->expr)->varattno -
 				YBFirstLowInvalidAttributeNumber);
@@ -350,7 +349,8 @@ yb_find_colref_in_index(IndexOptInfo *index, int target_colref)
  * Returns -1 when 'colrefs' cannot be satisfied by the 'index'.
  */
 int
-yb_calculate_distinct_prefixlen(IndexOptInfo *index, List *index_clauses)
+yb_calculate_distinct_prefixlen(PlannerInfo *root, IndexOptInfo *index,
+								List *index_clauses)
 {
 	Bitmapset *colrefs;
 	Bitmapset *const_colrefs;
@@ -360,7 +360,7 @@ yb_calculate_distinct_prefixlen(IndexOptInfo *index, List *index_clauses)
 	if (!yb_get_colrefs_for_distinct_pushdown(index, index_clauses, &colrefs))
 		return -1;
 
-	const_colrefs = yb_get_const_colrefs_for_distinct_pushdown(index,
+	const_colrefs = yb_get_const_colrefs_for_distinct_pushdown(root, index,
 															   index_clauses);
 
 	prefixlen = 0;
@@ -372,6 +372,13 @@ yb_calculate_distinct_prefixlen(IndexOptInfo *index, List *index_clauses)
 		 */
 		int ordpos = yb_find_colref_in_index(index, target_colref);
 		if (ordpos < 0)
+			return -1;
+
+		/*
+		 * Return -1 when an include column is referenced.
+		 * Because include columns of an index are not sorted.
+		 */
+		if (ordpos > index->nkeycolumns)
 			return -1;
 
 		/*

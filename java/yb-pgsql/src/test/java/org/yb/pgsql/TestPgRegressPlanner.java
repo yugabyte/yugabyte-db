@@ -14,6 +14,7 @@ package org.yb.pgsql;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 /**
@@ -28,6 +29,9 @@ public class TestPgRegressPlanner extends BasePgRegressTest {
 
     @Test
     public void testPgRegressPlanner() throws Exception {
+        // (DB-13032) This test touches system tables, so enable stickiness for
+        // superuser connections when Connection Manager is enabled.
+        enableStickySuperuserConnsAndRestartCluster();
         runPgRegressTest("yb_planner_serial_schedule");
     }
 }

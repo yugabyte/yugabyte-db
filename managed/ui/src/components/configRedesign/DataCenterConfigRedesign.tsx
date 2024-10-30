@@ -6,7 +6,9 @@
  */
 import { Tab } from 'react-bootstrap';
 import { useSelector } from 'react-redux';
-import { useQueries } from 'react-query';
+import { useQuery, useQueries } from 'react-query';
+import i18next from 'i18next';
+import { useTranslation } from 'react-i18next';
 
 import SecurityConfiguration from '../config/Security/SecurityConfiguration';
 import awsLogo from '../config/ConfigProvider/images/aws.svg';
@@ -28,6 +30,7 @@ import { LocationShape } from 'react-router/lib/PropTypes';
 import { NewStorageConfiguration } from '../config/Storage/StorageConfigurationNew';
 import { ProviderView } from './providerRedesign/providerView/ProviderView';
 import { StorageConfigurationContainer } from '../config';
+import { ExportLog } from '../../redesign/features/export-log/ExportLog';
 import { YBErrorIndicator } from '../common/indicators';
 import { YBTabsPanel, YBTabsWithLinksPanel } from '../panels';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
@@ -35,17 +38,26 @@ import { isAvailable, showOrRedirect } from '../../utils/LayoutUtils';
 import { api, regionMetadataQueryKey } from '../../redesign/helpers/api';
 import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
-import { TroubleshootConfiguration } from '@yugabytedb/troubleshoot-ui';
+import { TroubleshootingDetails } from '../../redesign/features/Troubleshooting/TroubleshootingDetails';
+import { fetchGlobalRunTimeConfigs } from '../../api/admin';
+import { runtimeConfigQueryKey } from '../../redesign/helpers/api';
+import { RuntimeConfigKey } from '../../redesign/helpers/constants';
 
 interface ReactRouterProps {
   location: LocationShape;
   params: { tab?: string; section?: string; uuid?: string };
+  isTroubleshootingEnabled: boolean;
 }
 
-export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps) => {
+export const DataCenterConfigRedesign = ({
+  location,
+  params,
+  isTroubleshootingEnabled
+}: ReactRouterProps) => {
   const { currentCustomer } = useSelector((state: any) => state.customer);
   const featureFlags = useSelector((state: any) => state.featureFlags);
   showOrRedirect(currentCustomer.data.features, 'menu.config');
+  const { t } = useTranslation('translation', { keyPrefix: 'integrations' });
 
   // Start fetching the region metadata to seed the cache once the user navigates to the providers tab.
   // Although this data isn't required on first load, the intention is to start fetching in the background to avoid
@@ -67,12 +79,21 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
     }))
   );
 
+  const globalRuntimeConfigs = useQuery(runtimeConfigQueryKey.globalScope(), () =>
+    fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
+  );
+
+  const isExportLogEnabled =
+    globalRuntimeConfigs?.data?.configEntries?.find(
+      (c: any) => c.key === RuntimeConfigKey.ENABLE_AUDIT_LOG
+    )?.value === 'true';
+
   // Validate the URL params.
   if (
     params.tab !== undefined &&
     !Object.values(ConfigTabKey).includes(params.tab as ConfigTabKey)
   ) {
-    return <YBErrorIndicator customErrorMessage="404 Page Not Found." />;
+    return <YBErrorIndicator customErrorMessage={t('error.pageNotFound')} />;
   }
 
   const defaultTab = isAvailable(currentCustomer.data.features, 'config.infra')
@@ -82,7 +103,7 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
   const activeSection = params.section ?? 's3';
   return (
     <div>
-      <h2 className="content-title">Provider Configuration</h2>
+      <h2 className="content-title">{t('title')}</h2>
       <RbacValidator accessRequiredOn={ApiPermissionMap.GET_PROVIDERS}>
         <YBTabsWithLinksPanel
           defaultTab={defaultTab}
@@ -92,7 +113,11 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
           className="universe-detail data-center-config-tab"
         >
           {isAvailable(currentCustomer.data.features, 'config.infra') && (
-            <Tab eventKey={ConfigTabKey.INFRA} title="Infrastructure" key="infra-config">
+            <Tab
+              eventKey={ConfigTabKey.INFRA}
+              title={t('tab.infrastructure.tabLabel')}
+              key="infra-config"
+            >
               <YBTabsPanel
                 defaultTab={ProviderCode.AWS}
                 activeTab={params.section}
@@ -197,15 +222,26 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
             </Tab>
           )}
           {isAvailable(currentCustomer.data.features, 'config.backup') && (
-            <Tab eventKey="backup" title="Backup" key="storage-config">
+            <Tab eventKey="backup" title={t('tab.backup.tabLabel')} key="storage-config">
               <StorageConfigurationContainer
                 activeTab={activeSection}
                 routePrefix={CONFIG_ROUTE_PREFIX}
               />
             </Tab>
           )}
+
+          {isExportLogEnabled && (
+            <Tab eventKey={ConfigTabKey.LOG} title={t('tab.log.tabLabel')} key="log">
+              <ExportLog />
+            </Tab>
+          )}
+
           {isAvailable(currentCustomer.data.features, 'config.security') && (
-            <Tab eventKey={ConfigTabKey.SECURITY} title="Security" key="security-config">
+            <Tab
+              eventKey={ConfigTabKey.SECURITY}
+              title={t('tab.security.tabLabel')}
+              key="security-config"
+            >
               <SecurityConfiguration activeTab={params.section} />
             </Tab>
           )}
@@ -213,10 +249,19 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
             featureFlags.released['enableMultiRegionConfig']) && (
             <Tab
               eventKey={ConfigTabKey.BACKUP_NEW}
-              title="New Backup Config"
+              title={t('tab.backupNew.tabLabel')}
               key="new-backup-config"
             >
               <NewStorageConfiguration activeTab={params.section} />
+            </Tab>
+          )}
+          {isTroubleshootingEnabled && (
+            <Tab
+              eventKey={ConfigTabKey.TROUBLESHOOT}
+              title={t('tab.troubleshoot.tabLabel')}
+              key="troubleshoot-config"
+            >
+              <TroubleshootingDetails activeTab={params.section} />
             </Tab>
           )}
         </YBTabsWithLinksPanel>
@@ -226,40 +271,41 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
 };
 
 const getTabTitle = (providerCode: ProviderCode | KubernetesProviderType) => {
+  const I18N_KEY_PREFIX = 'integrations.tab.infrastructure.tab';
   switch (providerCode) {
     case ProviderCode.AWS:
       return (
         <div className="title">
           <img src={awsLogo} alt="AWS" className="aws-logo" />
-          <span>Amazon Web Services</span>
+          <span>{i18next.t(`${I18N_KEY_PREFIX}.aws`)}</span>
         </div>
       );
     case ProviderCode.GCP:
       return (
         <div className="title">
           <img src={gcpLogo} alt="GCP" className="gcp-logo" />
-          <span>Google Cloud Platform</span>
+          <span>{i18next.t(`${I18N_KEY_PREFIX}.gcp`)}</span>
         </div>
       );
     case ProviderCode.AZU:
       return (
         <div className="title">
           <img src={azureLogo} alt="Azure" className="azure-logo" />
-          <span>Microsoft Azure</span>
+          <span>{i18next.t(`${I18N_KEY_PREFIX}.azu`)}</span>
         </div>
       );
     case KubernetesProviderType.TANZU:
       return (
         <div className="title">
           <img src={tanzuLogo} alt="VMware Tanzu" />
-          <span>VMware Tanzu</span>
+          <span>{i18next.t(`${I18N_KEY_PREFIX}.vmwareTanzu`)}</span>
         </div>
       );
     case KubernetesProviderType.OPEN_SHIFT:
       return (
         <div className="title">
           <img src={openshiftLogo} alt="Red Hat OpenShift" />
-          <span>Red Hat OpenShift</span>
+          <span>{i18next.t(`${I18N_KEY_PREFIX}.redHatOpenShift`)}</span>
         </div>
       );
     case KubernetesProviderType.MANAGED_SERVICE:
@@ -267,14 +313,14 @@ const getTabTitle = (providerCode: ProviderCode | KubernetesProviderType) => {
       return (
         <div className="title">
           <img src={k8sLogo} alt="Managed Kubernetes" />
-          <span>Managed Kubernetes Service</span>
+          <span>{i18next.t(`${I18N_KEY_PREFIX}.managedK8s`)}</span>
         </div>
       );
     case ProviderCode.ON_PREM:
       return (
         <div className="title">
           <i className="fa fa-server tab-logo" />
-          <span>On-Premises Datacenters</span>
+          <span>{i18next.t(`${I18N_KEY_PREFIX}.onPrem`)}</span>
         </div>
       );
     case ProviderCode.CLOUD:

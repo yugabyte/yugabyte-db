@@ -5,10 +5,16 @@
 
 #include "postgres.h"
 
-#include "parser/gramparse.h"
 /* Not needed now that this file is compiled as part of gram.y */
 /* #include "parser/parse.h" */
 #include "parser/scansup.h"
+
+#if PG_VERSION_NUM >= 130000
+
+#include "port/pg_bitutils.h"
+
+#endif
+
 #include "mb/pg_wchar.h"
 
 #include "parse_keyword.h"
@@ -36,10 +42,10 @@ static bool extended_string = false;
 
 static YY_BUFFER_STATE scanbufhandle;
 
-#define SET_YYLLOC()  (orafce_sql_yylval.val.lloc = yytext - scanbuf)                                                                                              
-                                                                                                                                               
-/* Handles to the buffer that the lexer uses internally */                                                                                     
-static char *scanbuf;       
+#define SET_YYLLOC()  (orafce_sql_yylval.val.lloc = yytext - scanbuf)
+
+/* Handles to the buffer that the lexer uses internally */
+static char *scanbuf;
 
 /* flex 2.5.4 doesn't bother with a decl for this */
 
@@ -309,7 +315,7 @@ other			.
 
 {whitespace}	{
 					SET_YYLLOC();
-					yylval.val.str = yytext;
+					yylval.val.str = pstrdup(yytext);
 					yylval.val.modificator = NULL;
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
@@ -318,7 +324,7 @@ other			.
 
 {comment}	{
 					SET_YYLLOC();
-					yylval.val.str = yytext;
+					yylval.val.str = pstrdup(yytext);
 					yylval.val.modificator = "sc";
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
@@ -548,7 +554,7 @@ other			.
 					/* throw back all but the initial "$" */
 					yyless(1);
 					/* and treat it as {other} */
-					yylval.val.str = yytext;
+					yylval.val.str = pstrdup(yytext);
 					yylval.val.modificator = "dolqf";
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
@@ -629,6 +635,7 @@ other			.
 				}
 {typecast}		{
 					SET_YYLLOC();
+					yylval.val.str = pstrdup(yytext);
 					yylval.val.modificator = "typecast";
 					yylval.val.keycode = X_TYPECAST;
 					yylval.val.sep = NULL;
@@ -637,7 +644,7 @@ other			.
 
 {self}			{
 					SET_YYLLOC();
-					yylval.val.str = yytext;
+					yylval.val.str = pstrdup(yytext);
 					yylval.val.modificator = "self";
 					yylval.val.keycode = yytext[0];
 					yylval.val.sep = NULL;
@@ -705,7 +712,7 @@ other			.
 						if (nchars == 1 &&
 							strchr(",()[].;:+-*/%^<>=", yytext[0]))
 						{
-							yylval.val.str = yytext;
+							yylval.val.str = pstrdup(yytext);
 							yylval.val.modificator = NULL;
 							yylval.val.keycode = yytext[0];
 							yylval.val.sep = NULL;
@@ -736,7 +743,7 @@ other			.
 {param}			{
 					SET_YYLLOC();
 					yylval.val.modificator = NULL;
-					yylval.val.str = yytext;
+					yylval.val.str = pstrdup(yytext);
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
 					return X_PARAM;
@@ -763,7 +770,7 @@ other			.
 						yylval.val.sep = NULL;
 						return X_NCONST;
 					}
-					yylval.val.str = yytext;
+					yylval.val.str = pstrdup(yytext);
 					yylval.val.modificator = "i";
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
@@ -847,7 +854,7 @@ other			.
 
 {other}			{
 					SET_YYLLOC();
-					yylval.val.str = yytext;
+					yylval.val.str = pstrdup(yytext);
 					yylval.val.modificator = NULL;
 					yylval.val.keycode = yytext[0];
 					yylval.val.sep = NULL;
@@ -974,9 +981,19 @@ addlit(char *ytext, int yleng)
 	/* enlarge buffer if needed */
 	if ((literallen+yleng) >= literalalloc)
 	{
+
+#if PG_VERSION_NUM >= 130000
+
+		literalalloc = pg_nextpower2_32(literallen + yleng + 1);
+
+#else
+
 		do {
 			literalalloc *= 2;
 		} while ((literallen+yleng) >= literalalloc);
+
+#endif
+
 		literalbuf = (char *) repalloc(literalbuf, literalalloc);
 	}
 	/* append new data, add trailing null */
@@ -1037,5 +1054,3 @@ unescape_single_char(unsigned char c)
 			return c;
 	}
 }
-
-

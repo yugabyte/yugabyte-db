@@ -19,9 +19,11 @@ import (
 )
 
 var listTaskCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List YugabyteDB Anywhere tasks",
-	Long:  "List YugabyteDB Anywhere tasks",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List YugabyteDB Anywhere tasks",
+	Long:    "List YugabyteDB Anywhere tasks",
+	Example: `yba task list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
@@ -48,14 +50,15 @@ var listTaskCmd = &cobra.Command{
 		}
 
 		taskCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: task.NewTaskFormat(viper.GetString("output")),
+			Command: "list",
+			Output:  os.Stdout,
+			Format:  task.NewTaskFormat(viper.GetString("output")),
 		}
 		if len(r) < 1 {
-			if util.IsOutputType("table") {
-				logrus.Infoln("No tasks found\n")
+			if util.IsOutputType(formatter.TableFormatKey) {
+				logrus.Info("No tasks found\n")
 			} else {
-				logrus.Infoln("{}\n")
+				logrus.Info("[]\n")
 			}
 			return
 		}

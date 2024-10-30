@@ -204,33 +204,33 @@ SELECT dense_rank() OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 
 (10 rows)
 
 SELECT percent_rank() OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
-   percent_rank    | ten | four 
--------------------+-----+------
-                 0 |   0 |    0
-                 0 |   0 |    0
-                 1 |   4 |    0
-                 0 |   1 |    1
-                 0 |   1 |    1
- 0.666666666666667 |   7 |    1
-                 1 |   9 |    1
-                 0 |   0 |    2
-                 0 |   1 |    3
-                 1 |   3 |    3
+    percent_rank    | ten | four 
+--------------------+-----+------
+                  0 |   0 |    0
+                  0 |   0 |    0
+                  1 |   4 |    0
+                  0 |   1 |    1
+                  0 |   1 |    1
+ 0.6666666666666666 |   7 |    1
+                  1 |   9 |    1
+                  0 |   0 |    2
+                  0 |   1 |    3
+                  1 |   3 |    3
 (10 rows)
 
 SELECT cume_dist() OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
-     cume_dist     | ten | four 
--------------------+-----+------
- 0.666666666666667 |   0 |    0
- 0.666666666666667 |   0 |    0
-                 1 |   4 |    0
-               0.5 |   1 |    1
-               0.5 |   1 |    1
-              0.75 |   7 |    1
-                 1 |   9 |    1
-                 1 |   0 |    2
-               0.5 |   1 |    3
-                 1 |   3 |    3
+     cume_dist      | ten | four 
+--------------------+-----+------
+ 0.6666666666666666 |   0 |    0
+ 0.6666666666666666 |   0 |    0
+                  1 |   4 |    0
+                0.5 |   1 |    1
+                0.5 |   1 |    1
+               0.75 |   7 |    1
+                  1 |   9 |    1
+                  1 |   0 |    2
+                0.5 |   1 |    3
+                  1 |   3 |    3
 (10 rows)
 
 SELECT ntile(3) OVER (ORDER BY ten, four), ten, four FROM tenk1 WHERE unique2 < 10;
@@ -300,6 +300,21 @@ SELECT lag(ten, four, 0) OVER (PARTITION BY four ORDER BY ten), ten, four FROM t
    0 |   3 |    3
 (10 rows)
 
+SELECT lag(ten, four, 0.7) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10 ORDER BY four, ten;
+ lag | ten | four 
+-----+-----+------
+   0 |   0 |    0
+   0 |   0 |    0
+   4 |   4 |    0
+ 0.7 |   1 |    1
+   1 |   1 |    1
+   1 |   7 |    1
+   7 |   9 |    1
+ 0.7 |   0 |    2
+ 0.7 |   1 |    3
+ 0.7 |   3 |    3
+(10 rows)
+
 SELECT lead(ten) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
  lead | ten | four 
 ------+-----+------
@@ -343,6 +358,21 @@ SELECT lead(ten * 2, 1, -1) OVER (PARTITION BY four ORDER BY ten), ten, four FRO
    -1 |   0 |    2
     6 |   1 |    3
    -1 |   3 |    3
+(10 rows)
+
+SELECT lead(ten * 2, 1, -1.4) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10 ORDER BY four, ten;
+ lead | ten | four 
+------+-----+------
+    0 |   0 |    0
+    8 |   0 |    0
+ -1.4 |   4 |    0
+    2 |   1 |    1
+   14 |   1 |    1
+   18 |   7 |    1
+ -1.4 |   9 |    1
+ -1.4 |   0 |    2
+    6 |   1 |    3
+ -1.4 |   3 |    3
 (10 rows)
 
 SELECT first_value(ten) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
@@ -504,9 +534,9 @@ SELECT sum(salary),
 FROM empsalary GROUP BY depname;
   sum  | row_number |  sum  
 -------+------------+-------
- 14600 |          3 | 14600
-  7400 |          2 | 22000
  25100 |          1 | 47100
+  7400 |          2 | 22000
+ 14600 |          3 | 14600
 (3 rows)
 
 -- identical windows with different names
@@ -1809,6 +1839,146 @@ window w as
    | 43 |          42 |         43
 (7 rows)
 
+-- There is a syntactic ambiguity in the SQL standard.  Since
+-- UNBOUNDED is a non-reserved word, it could be the name of a
+-- function parameter and be used as an expression.  There is a
+-- grammar hack to resolve such cases as the keyword.  The following
+-- tests record this behavior.
+CREATE FUNCTION unbounded_syntax_test1a(x int) RETURNS TABLE (a int, b int, c int)
+LANGUAGE SQL
+BEGIN ATOMIC
+  SELECT sum(unique1) over (rows between x preceding and x following),
+         unique1, four
+  FROM tenk1 WHERE unique1 < 10;
+END;
+CREATE FUNCTION unbounded_syntax_test1b(x int) RETURNS TABLE (a int, b int, c int)
+LANGUAGE SQL
+AS $$
+  SELECT sum(unique1) over (rows between x preceding and x following),
+         unique1, four
+  FROM tenk1 WHERE unique1 < 10;
+$$;
+-- These will apply the argument to the window specification inside the function.
+SELECT * FROM unbounded_syntax_test1a(2);
+ a  | b | c 
+----+---+---
+  7 | 4 | 0
+ 13 | 2 | 2
+ 22 | 1 | 1
+ 26 | 6 | 2
+ 29 | 9 | 1
+ 31 | 8 | 0
+ 32 | 5 | 1
+ 23 | 3 | 3
+ 15 | 7 | 3
+ 10 | 0 | 0
+(10 rows)
+
+SELECT * FROM unbounded_syntax_test1b(2);
+ a  | b | c 
+----+---+---
+  7 | 4 | 0
+ 13 | 2 | 2
+ 22 | 1 | 1
+ 26 | 6 | 2
+ 29 | 9 | 1
+ 31 | 8 | 0
+ 32 | 5 | 1
+ 23 | 3 | 3
+ 15 | 7 | 3
+ 10 | 0 | 0
+(10 rows)
+
+CREATE FUNCTION unbounded_syntax_test2a(unbounded int) RETURNS TABLE (a int, b int, c int)
+LANGUAGE SQL
+BEGIN ATOMIC
+  SELECT sum(unique1) over (rows between unbounded preceding and unbounded following),
+         unique1, four
+  FROM tenk1 WHERE unique1 < 10;
+END;
+CREATE FUNCTION unbounded_syntax_test2b(unbounded int) RETURNS TABLE (a int, b int, c int)
+LANGUAGE SQL
+AS $$
+  SELECT sum(unique1) over (rows between unbounded preceding and unbounded following),
+         unique1, four
+  FROM tenk1 WHERE unique1 < 10;
+$$;
+-- These will not apply the argument but instead treat UNBOUNDED as a keyword.
+SELECT * FROM unbounded_syntax_test2a(2);
+ a  | b | c 
+----+---+---
+ 45 | 4 | 0
+ 45 | 2 | 2
+ 45 | 1 | 1
+ 45 | 6 | 2
+ 45 | 9 | 1
+ 45 | 8 | 0
+ 45 | 5 | 1
+ 45 | 3 | 3
+ 45 | 7 | 3
+ 45 | 0 | 0
+(10 rows)
+
+SELECT * FROM unbounded_syntax_test2b(2);
+ a  | b | c 
+----+---+---
+ 45 | 4 | 0
+ 45 | 2 | 2
+ 45 | 1 | 1
+ 45 | 6 | 2
+ 45 | 9 | 1
+ 45 | 8 | 0
+ 45 | 5 | 1
+ 45 | 3 | 3
+ 45 | 7 | 3
+ 45 | 0 | 0
+(10 rows)
+
+DROP FUNCTION unbounded_syntax_test1a, unbounded_syntax_test1b,
+              unbounded_syntax_test2a, unbounded_syntax_test2b;
+-- Other tests with token UNBOUNDED in potentially problematic position
+CREATE FUNCTION unbounded(x int) RETURNS int LANGUAGE SQL IMMUTABLE RETURN x;
+SELECT sum(unique1) over (rows between 1 preceding and 1 following),
+       unique1, four
+FROM tenk1 WHERE unique1 < 10;
+ sum | unique1 | four 
+-----+---------+------
+   6 |       4 |    0
+   7 |       2 |    2
+   9 |       1 |    1
+  16 |       6 |    2
+  23 |       9 |    1
+  22 |       8 |    0
+  16 |       5 |    1
+  15 |       3 |    3
+  10 |       7 |    3
+   7 |       0 |    0
+(10 rows)
+
+SELECT sum(unique1) over (rows between unbounded(1) preceding and unbounded(1) following),
+       unique1, four
+FROM tenk1 WHERE unique1 < 10;
+ sum | unique1 | four 
+-----+---------+------
+   6 |       4 |    0
+   7 |       2 |    2
+   9 |       1 |    1
+  16 |       6 |    2
+  23 |       9 |    1
+  22 |       8 |    0
+  16 |       5 |    1
+  15 |       3 |    3
+  10 |       7 |    3
+   7 |       0 |    0
+(10 rows)
+
+SELECT sum(unique1) over (rows between unbounded.x preceding and unbounded.x following),
+       unique1, four
+FROM tenk1, (values (1)) as unbounded(x) WHERE unique1 < 10;
+ERROR:  argument of ROWS must not contain variables
+LINE 1: SELECT sum(unique1) over (rows between unbounded.x preceding...
+                                               ^
+DROP FUNCTION unbounded;
 -- Check overflow behavior for various integer sizes
 select x, last_value(x) over (order by x::smallint range between current row and 2147450884 following)
 from generate_series(32764, 32766) x;
@@ -1872,7 +2042,7 @@ create temp table numerics(
     f_numeric numeric
 );
 insert into numerics values
-(0, '-infinity', '-infinity', '-1000'),  -- numeric type lacks infinities
+(0, '-infinity', '-infinity', '-infinity'),
 (1, -3, -3, -3),
 (2, -1, -1, -1),
 (3, 0, 0, 0),
@@ -1880,7 +2050,7 @@ insert into numerics values
 (5, 1.12, 1.12, 1.12),
 (6, 2, 2, 2),
 (7, 100, 100, 100),
-(8, 'infinity', 'infinity', '1000'),
+(8, 'infinity', 'infinity', 'infinity'),
 (9, 'NaN', 'NaN', 'NaN');
 select id, f_float4, first_value(id) over w, last_value(id) over w
 from numerics
@@ -1933,6 +2103,42 @@ window w as (order by f_float4 range between
   6 |         2 |           0 |          8
   7 |       100 |           0 |          8
   8 |  Infinity |           0 |          8
+  9 |       NaN |           9 |          9
+(10 rows)
+
+select id, f_float4, first_value(id) over w, last_value(id) over w
+from numerics
+window w as (order by f_float4 range between
+             'inf' preceding and 'inf' preceding);
+ id | f_float4  | first_value | last_value 
+----+-----------+-------------+------------
+  0 | -Infinity |           0 |          0
+  1 |        -3 |           0 |          0
+  2 |        -1 |           0 |          0
+  3 |         0 |           0 |          0
+  4 |       1.1 |           0 |          0
+  5 |      1.12 |           0 |          0
+  6 |         2 |           0 |          0
+  7 |       100 |           0 |          0
+  8 |  Infinity |           0 |          8
+  9 |       NaN |           9 |          9
+(10 rows)
+
+select id, f_float4, first_value(id) over w, last_value(id) over w
+from numerics
+window w as (order by f_float4 range between
+             'inf' following and 'inf' following);
+ id | f_float4  | first_value | last_value 
+----+-----------+-------------+------------
+  0 | -Infinity |           0 |          8
+  1 |        -3 |           8 |          8
+  2 |        -1 |           8 |          8
+  3 |         0 |           8 |          8
+  4 |       1.1 |           8 |          8
+  5 |      1.12 |           8 |          8
+  6 |         2 |           8 |          8
+  7 |       100 |           8 |          8
+  8 |  Infinity |           8 |          8
   9 |       NaN |           9 |          9
 (10 rows)
 
@@ -1998,6 +2204,42 @@ window w as (order by f_float8 range between
 select id, f_float8, first_value(id) over w, last_value(id) over w
 from numerics
 window w as (order by f_float8 range between
+             'inf' preceding and 'inf' preceding);
+ id | f_float8  | first_value | last_value 
+----+-----------+-------------+------------
+  0 | -Infinity |           0 |          0
+  1 |        -3 |           0 |          0
+  2 |        -1 |           0 |          0
+  3 |         0 |           0 |          0
+  4 |       1.1 |           0 |          0
+  5 |      1.12 |           0 |          0
+  6 |         2 |           0 |          0
+  7 |       100 |           0 |          0
+  8 |  Infinity |           0 |          8
+  9 |       NaN |           9 |          9
+(10 rows)
+
+select id, f_float8, first_value(id) over w, last_value(id) over w
+from numerics
+window w as (order by f_float8 range between
+             'inf' following and 'inf' following);
+ id | f_float8  | first_value | last_value 
+----+-----------+-------------+------------
+  0 | -Infinity |           0 |          8
+  1 |        -3 |           8 |          8
+  2 |        -1 |           8 |          8
+  3 |         0 |           8 |          8
+  4 |       1.1 |           8 |          8
+  5 |      1.12 |           8 |          8
+  6 |         2 |           8 |          8
+  7 |       100 |           8 |          8
+  8 |  Infinity |           8 |          8
+  9 |       NaN |           9 |          9
+(10 rows)
+
+select id, f_float8, first_value(id) over w, last_value(id) over w
+from numerics
+window w as (order by f_float8 range between
              1.1 preceding and 'NaN' following);  -- error, NaN disallowed
 ERROR:  invalid preceding or following size in window function
 select id, f_numeric, first_value(id) over w, last_value(id) over w
@@ -2006,7 +2248,7 @@ window w as (order by f_numeric range between
              1 preceding and 1 following);
  id | f_numeric | first_value | last_value 
 ----+-----------+-------------+------------
-  0 |     -1000 |           0 |          0
+  0 | -Infinity |           0 |          0
   1 |        -3 |           1 |          1
   2 |        -1 |           2 |          3
   3 |         0 |           2 |          3
@@ -2014,7 +2256,7 @@ window w as (order by f_numeric range between
   5 |      1.12 |           4 |          6
   6 |         2 |           4 |          6
   7 |       100 |           7 |          7
-  8 |      1000 |           8 |          8
+  8 |  Infinity |           8 |          8
   9 |       NaN |           9 |          9
 (10 rows)
 
@@ -2024,7 +2266,7 @@ window w as (order by f_numeric range between
              1 preceding and 1.1::numeric following);
  id | f_numeric | first_value | last_value 
 ----+-----------+-------------+------------
-  0 |     -1000 |           0 |          0
+  0 | -Infinity |           0 |          0
   1 |        -3 |           1 |          1
   2 |        -1 |           2 |          3
   3 |         0 |           2 |          4
@@ -2032,7 +2274,7 @@ window w as (order by f_numeric range between
   5 |      1.12 |           4 |          6
   6 |         2 |           4 |          6
   7 |       100 |           7 |          7
-  8 |      1000 |           8 |          8
+  8 |  Infinity |           8 |          8
   9 |       NaN |           9 |          9
 (10 rows)
 
@@ -2044,6 +2286,60 @@ ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type n
 LINE 4:              1 preceding and 1.1::float8 following);
                                      ^
 HINT:  Cast the offset value to an appropriate type.
+select id, f_numeric, first_value(id) over w, last_value(id) over w
+from numerics
+window w as (order by f_numeric range between
+             'inf' preceding and 'inf' following);
+ id | f_numeric | first_value | last_value 
+----+-----------+-------------+------------
+  0 | -Infinity |           0 |          8
+  1 |        -3 |           0 |          8
+  2 |        -1 |           0 |          8
+  3 |         0 |           0 |          8
+  4 |       1.1 |           0 |          8
+  5 |      1.12 |           0 |          8
+  6 |         2 |           0 |          8
+  7 |       100 |           0 |          8
+  8 |  Infinity |           0 |          8
+  9 |       NaN |           9 |          9
+(10 rows)
+
+select id, f_numeric, first_value(id) over w, last_value(id) over w
+from numerics
+window w as (order by f_numeric range between
+             'inf' preceding and 'inf' preceding);
+ id | f_numeric | first_value | last_value 
+----+-----------+-------------+------------
+  0 | -Infinity |           0 |          0
+  1 |        -3 |           0 |          0
+  2 |        -1 |           0 |          0
+  3 |         0 |           0 |          0
+  4 |       1.1 |           0 |          0
+  5 |      1.12 |           0 |          0
+  6 |         2 |           0 |          0
+  7 |       100 |           0 |          0
+  8 |  Infinity |           0 |          8
+  9 |       NaN |           9 |          9
+(10 rows)
+
+select id, f_numeric, first_value(id) over w, last_value(id) over w
+from numerics
+window w as (order by f_numeric range between
+             'inf' following and 'inf' following);
+ id | f_numeric | first_value | last_value 
+----+-----------+-------------+------------
+  0 | -Infinity |           0 |          8
+  1 |        -3 |           8 |          8
+  2 |        -1 |           8 |          8
+  3 |         0 |           8 |          8
+  4 |       1.1 |           8 |          8
+  5 |      1.12 |           8 |          8
+  6 |         2 |           8 |          8
+  7 |       100 |           8 |          8
+  8 |  Infinity |           8 |          8
+  9 |       NaN |           9 |          9
+(10 rows)
+
 select id, f_numeric, first_value(id) over w, last_value(id) over w
 from numerics
 window w as (order by f_numeric range between
@@ -2994,9 +3290,9 @@ SELECT sum(salary), row_number() OVER (ORDER BY depname), sum(
 FROM empsalary GROUP BY depname;
   sum  | row_number | filtered_sum |  depname  
 -------+------------+--------------+-----------
- 14600 |          3 |              | sales
-  7400 |          2 |         3500 | personnel
  25100 |          1 |        22600 | develop
+  7400 |          2 |         3500 | personnel
+ 14600 |          3 |              | sales
 (3 rows)
 
 -- Test pushdown of quals into a subquery containing window functions
@@ -3008,13 +3304,13 @@ SELECT * FROM
           min(salary) OVER (PARTITION BY depname || 'A', depname) depminsalary
    FROM empsalary) emp
 WHERE depname = 'sales';
-                             QUERY PLAN                              
----------------------------------------------------------------------
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
  Subquery Scan on emp
    ->  WindowAgg
-         ->  Sort
-               Sort Key: (((empsalary.depname)::text || 'A'::text))
-               ->  WindowAgg
+         ->  WindowAgg
+               ->  Sort
+                     Sort Key: (((empsalary.depname)::text || 'A'::text))
                      ->  Seq Scan on empsalary
                            Filter: ((depname)::text = 'sales'::text)
 (7 rows)
@@ -3027,18 +3323,530 @@ SELECT * FROM
           min(salary) OVER (PARTITION BY depname) depminsalary
    FROM empsalary) emp
 WHERE depname = 'sales';
-                        QUERY PLAN                         
------------------------------------------------------------
+                      QUERY PLAN                       
+-------------------------------------------------------
  Subquery Scan on emp
    Filter: ((emp.depname)::text = 'sales'::text)
    ->  WindowAgg
          ->  Sort
-               Sort Key: empsalary.depname
+               Sort Key: empsalary.enroll_date
                ->  WindowAgg
                      ->  Sort
-                           Sort Key: empsalary.enroll_date
+                           Sort Key: empsalary.depname
                            ->  Seq Scan on empsalary
 (9 rows)
+
+-- Test window function run conditions are properly pushed down into the
+-- WindowAgg
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          row_number() OVER (ORDER BY empno) rn
+   FROM empsalary) emp
+WHERE rn < 3;
+                  QUERY PLAN                  
+----------------------------------------------
+ WindowAgg
+   Run Condition: (row_number() OVER (?) < 3)
+   ->  Sort
+         Sort Key: empsalary.empno
+         ->  Seq Scan on empsalary
+(5 rows)
+
+-- The following 3 statements should result the same result.
+SELECT * FROM
+  (SELECT empno,
+          row_number() OVER (ORDER BY empno) rn
+   FROM empsalary) emp
+WHERE rn < 3;
+ empno | rn 
+-------+----
+     1 |  1
+     2 |  2
+(2 rows)
+
+SELECT * FROM
+  (SELECT empno,
+          row_number() OVER (ORDER BY empno) rn
+   FROM empsalary) emp
+WHERE 3 > rn;
+ empno | rn 
+-------+----
+     1 |  1
+     2 |  2
+(2 rows)
+
+SELECT * FROM
+  (SELECT empno,
+          row_number() OVER (ORDER BY empno) rn
+   FROM empsalary) emp
+WHERE 2 >= rn;
+ empno | rn 
+-------+----
+     1 |  1
+     2 |  2
+(2 rows)
+
+-- Ensure r <= 3 is pushed down into the run condition of the window agg
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          salary,
+          rank() OVER (ORDER BY salary DESC) r
+   FROM empsalary) emp
+WHERE r <= 3;
+               QUERY PLAN                
+-----------------------------------------
+ WindowAgg
+   Run Condition: (rank() OVER (?) <= 3)
+   ->  Sort
+         Sort Key: empsalary.salary DESC
+         ->  Seq Scan on empsalary
+(5 rows)
+
+SELECT * FROM
+  (SELECT empno,
+          salary,
+          rank() OVER (ORDER BY salary DESC) r
+   FROM empsalary) emp
+WHERE r <= 3;
+ empno | salary | r 
+-------+--------+---
+     8 |   6000 | 1
+    10 |   5200 | 2
+    11 |   5200 | 2
+(3 rows)
+
+-- Ensure dr = 1 is converted to dr <= 1 to get all rows leading up to dr = 1
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          salary,
+          dense_rank() OVER (ORDER BY salary DESC) dr
+   FROM empsalary) emp
+WHERE dr = 1;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Subquery Scan on emp
+   Filter: (emp.dr = 1)
+   ->  WindowAgg
+         Run Condition: (dense_rank() OVER (?) <= 1)
+         ->  Sort
+               Sort Key: empsalary.salary DESC
+               ->  Seq Scan on empsalary
+(7 rows)
+
+SELECT * FROM
+  (SELECT empno,
+          salary,
+          dense_rank() OVER (ORDER BY salary DESC) dr
+   FROM empsalary) emp
+WHERE dr = 1;
+ empno | salary | dr 
+-------+--------+----
+     8 |   6000 |  1
+(1 row)
+
+-- Check COUNT() and COUNT(*)
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          salary,
+          count(*) OVER (ORDER BY salary DESC) c
+   FROM empsalary) emp
+WHERE c <= 3;
+                QUERY PLAN                 
+-------------------------------------------
+ WindowAgg
+   Run Condition: (count(*) OVER (?) <= 3)
+   ->  Sort
+         Sort Key: empsalary.salary DESC
+         ->  Seq Scan on empsalary
+(5 rows)
+
+SELECT * FROM
+  (SELECT empno,
+          salary,
+          count(*) OVER (ORDER BY salary DESC) c
+   FROM empsalary) emp
+WHERE c <= 3;
+ empno | salary | c 
+-------+--------+---
+     8 |   6000 | 1
+    10 |   5200 | 3
+    11 |   5200 | 3
+(3 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          salary,
+          count(empno) OVER (ORDER BY salary DESC) c
+   FROM empsalary) emp
+WHERE c <= 3;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ WindowAgg
+   Run Condition: (count(empsalary.empno) OVER (?) <= 3)
+   ->  Sort
+         Sort Key: empsalary.salary DESC
+         ->  Seq Scan on empsalary
+(5 rows)
+
+SELECT * FROM
+  (SELECT empno,
+          salary,
+          count(empno) OVER (ORDER BY salary DESC) c
+   FROM empsalary) emp
+WHERE c <= 3;
+ empno | salary | c 
+-------+--------+---
+     8 |   6000 | 1
+    10 |   5200 | 3
+    11 |   5200 | 3
+(3 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          salary,
+          count(*) OVER (ORDER BY salary DESC ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING) c
+   FROM empsalary) emp
+WHERE c >= 3;
+                QUERY PLAN                 
+-------------------------------------------
+ WindowAgg
+   Run Condition: (count(*) OVER (?) >= 3)
+   ->  Sort
+         Sort Key: empsalary.salary DESC
+         ->  Seq Scan on empsalary
+(5 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          salary,
+          count(*) OVER () c
+   FROM empsalary) emp
+WHERE 11 <= c;
+                 QUERY PLAN                 
+--------------------------------------------
+ WindowAgg
+   Run Condition: (11 <= count(*) OVER (?))
+   ->  Seq Scan on empsalary
+(3 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          salary,
+          count(*) OVER (ORDER BY salary DESC) c,
+          dense_rank() OVER (ORDER BY salary DESC) dr
+   FROM empsalary) emp
+WHERE dr = 1;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Subquery Scan on emp
+   Filter: (emp.dr = 1)
+   ->  WindowAgg
+         Run Condition: (dense_rank() OVER (?) <= 1)
+         ->  Sort
+               Sort Key: empsalary.salary DESC
+               ->  Seq Scan on empsalary
+(7 rows)
+
+-- Ensure we get a run condition when there's a PARTITION BY clause
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          depname,
+          row_number() OVER (PARTITION BY depname ORDER BY empno) rn
+   FROM empsalary) emp
+WHERE rn < 3;
+                      QUERY PLAN                      
+------------------------------------------------------
+ WindowAgg
+   Run Condition: (row_number() OVER (?) < 3)
+   ->  Sort
+         Sort Key: empsalary.depname, empsalary.empno
+         ->  Seq Scan on empsalary
+(5 rows)
+
+-- and ensure we get the correct results from the above plan
+SELECT * FROM
+  (SELECT empno,
+          depname,
+          row_number() OVER (PARTITION BY depname ORDER BY empno) rn
+   FROM empsalary) emp
+WHERE rn < 3;
+ empno |  depname  | rn 
+-------+-----------+----
+     7 | develop   |  1
+     8 | develop   |  2
+     2 | personnel |  1
+     5 | personnel |  2
+     1 | sales     |  1
+     3 | sales     |  2
+(6 rows)
+
+-- ensure that "unused" subquery columns are not removed when the column only
+-- exists in the run condition
+EXPLAIN (COSTS OFF)
+SELECT empno, depname FROM
+  (SELECT empno,
+          depname,
+          row_number() OVER (PARTITION BY depname ORDER BY empno) rn
+   FROM empsalary) emp
+WHERE rn < 3;
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Subquery Scan on emp
+   ->  WindowAgg
+         Run Condition: (row_number() OVER (?) < 3)
+         ->  Sort
+               Sort Key: empsalary.depname, empsalary.empno
+               ->  Seq Scan on empsalary
+(6 rows)
+
+-- likewise with count(empno) instead of row_number()
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          depname,
+          salary,
+          count(empno) OVER (PARTITION BY depname ORDER BY salary DESC) c
+   FROM empsalary) emp
+WHERE c <= 3;
+                         QUERY PLAN                         
+------------------------------------------------------------
+ WindowAgg
+   Run Condition: (count(empsalary.empno) OVER (?) <= 3)
+   ->  Sort
+         Sort Key: empsalary.depname, empsalary.salary DESC
+         ->  Seq Scan on empsalary
+(5 rows)
+
+-- and again, check the results are what we expect.
+SELECT * FROM
+  (SELECT empno,
+          depname,
+          salary,
+          count(empno) OVER (PARTITION BY depname ORDER BY salary DESC) c
+   FROM empsalary) emp
+WHERE c <= 3;
+ empno |  depname  | salary | c 
+-------+-----------+--------+---
+     8 | develop   |   6000 | 1
+    10 | develop   |   5200 | 3
+    11 | develop   |   5200 | 3
+     2 | personnel |   3900 | 1
+     5 | personnel |   3500 | 2
+     1 | sales     |   5000 | 1
+     4 | sales     |   4800 | 3
+     3 | sales     |   4800 | 3
+(8 rows)
+
+-- Ensure we get the correct run condition when the window function is both
+-- monotonically increasing and decreasing.
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          depname,
+          salary,
+          count(empno) OVER () c
+   FROM empsalary) emp
+WHERE c = 1;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ WindowAgg
+   Run Condition: (count(empsalary.empno) OVER (?) = 1)
+   ->  Seq Scan on empsalary
+(3 rows)
+
+-- Some more complex cases with multiple window clauses
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT *,
+          count(salary) OVER (PARTITION BY depname || '') c1, -- w1
+          row_number() OVER (PARTITION BY depname) rn, -- w2
+          count(*) OVER (PARTITION BY depname) c2, -- w2
+          count(*) OVER (PARTITION BY '' || depname) c3 -- w3
+   FROM empsalary
+) e WHERE rn <= 1 AND c1 <= 3;
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Subquery Scan on e
+   ->  WindowAgg
+         Filter: ((row_number() OVER (?)) <= 1)
+         Run Condition: (count(empsalary.salary) OVER (?) <= 3)
+         ->  Sort
+               Sort Key: (((empsalary.depname)::text || ''::text))
+               ->  WindowAgg
+                     Run Condition: (row_number() OVER (?) <= 1)
+                     ->  Sort
+                           Sort Key: empsalary.depname
+                           ->  WindowAgg
+                                 ->  Sort
+                                       Sort Key: ((''::text || (empsalary.depname)::text))
+                                       ->  Seq Scan on empsalary
+(14 rows)
+
+-- Ensure we correctly filter out all of the run conditions from each window
+SELECT * FROM
+  (SELECT *,
+          count(salary) OVER (PARTITION BY depname || '') c1, -- w1
+          row_number() OVER (PARTITION BY depname) rn, -- w2
+          count(*) OVER (PARTITION BY depname) c2, -- w2
+          count(*) OVER (PARTITION BY '' || depname) c3 -- w3
+   FROM empsalary
+) e WHERE rn <= 1 AND c1 <= 3;
+  depname  | empno | salary | enroll_date | c1 | rn | c2 | c3 
+-----------+-------+--------+-------------+----+----+----+----
+ personnel |     5 |   3500 | 12-10-2007  |  2 |  1 |  2 |  2
+ sales     |     3 |   4800 | 08-01-2007  |  3 |  1 |  3 |  3
+(2 rows)
+
+-- Tests to ensure we don't push down the run condition when it's not valid to
+-- do so.
+-- Ensure we don't push down when the frame options show that the window
+-- function is not monotonically increasing
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          salary,
+          count(*) OVER (ORDER BY salary DESC ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING) c
+   FROM empsalary) emp
+WHERE c <= 3;
+                  QUERY PLAN                   
+-----------------------------------------------
+ Subquery Scan on emp
+   Filter: (emp.c <= 3)
+   ->  WindowAgg
+         ->  Sort
+               Sort Key: empsalary.salary DESC
+               ->  Seq Scan on empsalary
+(6 rows)
+
+-- Ensure we don't push down when the window function's monotonic properties
+-- don't match that of the clauses.
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          salary,
+          count(*) OVER (ORDER BY salary) c
+   FROM empsalary) emp
+WHERE 3 <= c;
+                QUERY PLAN                
+------------------------------------------
+ Subquery Scan on emp
+   Filter: (3 <= emp.c)
+   ->  WindowAgg
+         ->  Sort
+               Sort Key: empsalary.salary
+               ->  Seq Scan on empsalary
+(6 rows)
+
+-- Ensure we don't pushdown when there are multiple window clauses to evaluate
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          salary,
+          count(*) OVER (ORDER BY empno DESC) c,
+          dense_rank() OVER (ORDER BY salary DESC) dr
+   FROM empsalary) emp
+WHERE dr = 1;
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Subquery Scan on emp
+   Filter: (emp.dr = 1)
+   ->  WindowAgg
+         Filter: ((dense_rank() OVER (?)) <= 1)
+         ->  Sort
+               Sort Key: empsalary.empno DESC
+               ->  WindowAgg
+                     Run Condition: (dense_rank() OVER (?) <= 1)
+                     ->  Sort
+                           Sort Key: empsalary.salary DESC
+                           ->  Seq Scan on empsalary
+(11 rows)
+
+-- Test Sort node collapsing
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT depname,
+          sum(salary) OVER (PARTITION BY depname order by empno) depsalary,
+          min(salary) OVER (PARTITION BY depname, empno order by enroll_date) depminsalary
+   FROM empsalary) emp
+WHERE depname = 'sales';
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Subquery Scan on emp
+   ->  WindowAgg
+         ->  WindowAgg
+               ->  Sort
+                     Sort Key: empsalary.empno, empsalary.enroll_date
+                     ->  Seq Scan on empsalary
+                           Filter: ((depname)::text = 'sales'::text)
+(7 rows)
+
+-- Test Sort node reordering
+EXPLAIN (COSTS OFF)
+SELECT
+  lead(1) OVER (PARTITION BY depname ORDER BY salary, enroll_date),
+  lag(1) OVER (PARTITION BY depname ORDER BY salary,enroll_date,empno)
+FROM empsalary;
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ WindowAgg
+   ->  WindowAgg
+         ->  Sort
+               Sort Key: depname, salary, enroll_date, empno
+               ->  Seq Scan on empsalary
+(5 rows)
+
+-- Test incremental sorting
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT depname,
+          empno,
+          salary,
+          enroll_date,
+          row_number() OVER (PARTITION BY depname ORDER BY enroll_date) AS first_emp,
+          row_number() OVER (PARTITION BY depname ORDER BY enroll_date DESC) AS last_emp
+   FROM empsalary) emp
+WHERE first_emp = 1 OR last_emp = 1;
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Subquery Scan on emp
+   Filter: ((emp.first_emp = 1) OR (emp.last_emp = 1))
+   ->  WindowAgg
+         ->  Incremental Sort
+               Sort Key: empsalary.depname, empsalary.enroll_date
+               Presorted Key: empsalary.depname
+               ->  WindowAgg
+                     ->  Sort
+                           Sort Key: empsalary.depname, empsalary.enroll_date DESC
+                           ->  Seq Scan on empsalary
+(10 rows)
+
+SELECT * FROM
+  (SELECT depname,
+          empno,
+          salary,
+          enroll_date,
+          row_number() OVER (PARTITION BY depname ORDER BY enroll_date) AS first_emp,
+          row_number() OVER (PARTITION BY depname ORDER BY enroll_date DESC) AS last_emp
+   FROM empsalary) emp
+WHERE first_emp = 1 OR last_emp = 1;
+  depname  | empno | salary | enroll_date | first_emp | last_emp 
+-----------+-------+--------+-------------+-----------+----------
+ develop   |     8 |   6000 | 10-01-2006  |         1 |        5
+ develop   |     7 |   4200 | 01-01-2008  |         5 |        1
+ personnel |     2 |   3900 | 12-23-2006  |         1 |        2
+ personnel |     5 |   3500 | 12-10-2007  |         2 |        1
+ sales     |     1 |   5000 | 10-01-2006  |         1 |        3
+ sales     |     4 |   4800 | 08-08-2007  |         3 |        1
+(6 rows)
 
 -- cleanup
 DROP TABLE empsalary;
@@ -3785,5 +4593,47 @@ SELECT i, b, bool_and(b) OVER w, bool_or(b) OVER w
  3 | f | f        | f
  4 | f | f        | t
  5 | t | t        | t
+(5 rows)
+
+-- Tests for problems with failure to walk or mutate expressions
+-- within window frame clauses.
+-- test walker (fails with collation error if expressions are not walked)
+SELECT array_agg(i) OVER w
+  FROM generate_series(1,5) i
+WINDOW w AS (ORDER BY i ROWS BETWEEN (('foo' < 'foobar')::integer) PRECEDING AND CURRENT ROW);
+ array_agg 
+-----------
+ {1}
+ {1,2}
+ {2,3}
+ {3,4}
+ {4,5}
+(5 rows)
+
+-- test mutator (fails when inlined if expressions are not mutated)
+CREATE FUNCTION pg_temp.f(group_size BIGINT) RETURNS SETOF integer[]
+AS $$
+    SELECT array_agg(s) OVER w
+      FROM generate_series(1,5) s
+    WINDOW w AS (ORDER BY s ROWS BETWEEN CURRENT ROW AND GROUP_SIZE FOLLOWING)
+$$ LANGUAGE SQL STABLE;
+EXPLAIN (costs off) SELECT * FROM pg_temp.f(2);
+                      QUERY PLAN                      
+------------------------------------------------------
+ Subquery Scan on f
+   ->  WindowAgg
+         ->  Sort
+               Sort Key: s.s
+               ->  Function Scan on generate_series s
+(5 rows)
+
+SELECT * FROM pg_temp.f(2);
+    f    
+---------
+ {1,2,3}
+ {2,3,4}
+ {3,4,5}
+ {4,5}
+ {5}
 (5 rows)
 

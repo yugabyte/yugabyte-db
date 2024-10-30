@@ -123,12 +123,11 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
 TEST_F(RegistrationTest, TestTSRegisters) {
   DontVerifyClusterBeforeNextTearDown();
   // Wait for the TS to register.
-  vector<shared_ptr<TSDescriptor> > descs;
-  ASSERT_OK(cluster_->WaitForTabletServerCount(1, &descs));
+  auto descs = ASSERT_RESULT(cluster_->WaitForTabletServerCount(1));
   ASSERT_EQ(1, descs.size());
 
   // Verify that the registration is sane.
-  master::TSRegistrationPB reg = descs[0]->GetRegistration();
+  auto reg = descs[0]->GetRegistration();
   {
     SCOPED_TRACE(reg.ShortDebugString());
     ASSERT_EQ(reg.ShortDebugString().find("0.0.0.0"), string::npos)
@@ -244,7 +243,8 @@ TEST_F(RegistrationTest, TestTabletReports) {
   // After restart, check that the tablet reports produced the expected number of writes to the
   // catalog table. We expect two updates per tablet, since both replicas should have increased
   // their term on restart.
-  EXPECT_EQ(2 * FLAGS_yb_num_shards_per_tserver, GetCatalogMetric(METRIC_rows_inserted));
+  // We also expect one write for the ts registry entry written for the tserver.
+  EXPECT_EQ(2 * FLAGS_yb_num_shards_per_tserver + 1, GetCatalogMetric(METRIC_rows_inserted));
 
   // If we restart just the master, it should not write any data to the catalog, since the
   // tablets themselves are not changing term, etc.

@@ -80,5 +80,18 @@
         "action": "READ"
       }
     ]
+  },
+  {
+    "resourceType": "UNIVERSE",
+    "action": "XCLUSTER",
+    "name": "Manage XCluster",
+    "description": "Manges XCluster on a universe.",
+    "permissionValidOnResource": true,
+    "prerequisitePermissions": [
+      {
+        "resourceType": "UNIVERSE",
+        "action": "READ"
+      }
+    ]
   }
 ]

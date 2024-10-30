@@ -15,7 +15,7 @@ type: docs
 
 [Azure API Management (APIM)](https://azure.microsoft.com/en-us/products/api-management/) can be used to design, manage, and protect your APIs. This service acts as a centralized hub for your APIs, providing API gateway functionality, security measures, rate limiting, analytics, and monitoring, among other features.
 
-In this tutorial, we'll walk through the steps required to develop and deploy an API using Azure API Management with Node.js and [YugabyteDB Managed](https://www.yugabyte.com/yugabytedb/). It covers the deployment of a geo-partitioned YugabyteDB cluster, the development of Azure Functions for database queries, and the creation of an API using Azure API Management.
+In this tutorial, we'll walk through the steps required to develop and deploy an API using Azure API Management with Node.js and [YugabyteDB Aeon](https://www.yugabyte.com/yugabytedb/). It covers the deployment of a geo-partitioned YugabyteDB cluster, the development of Azure Functions for database queries, and the creation of an API using Azure API Management.
 
 In the following sections, you will:
 
@@ -25,7 +25,7 @@ In the following sections, you will:
 
 ## Prerequisites
 
-- A YugabyteDB Managed account. Sign up for a [free trial](https://cloud.yugabyte.com/signup/).
+- A YugabyteDB Aeon account. Sign up for a [free trial](https://cloud.yugabyte.com/signup/).
 - An Azure Cloud account with permission to create services.
 
 ## Create a YugabyteDB cluster
@@ -37,20 +37,20 @@ Begin by deploying a multi-region, [geo-partitioned cluster](../../../yugabyte-c
 
     ![Geo-partitioned YugabyteDB deployment on Azure](/images/tutorials/azure/azure-private-link/yb-deployment.png "Geo-partitioned YugabyteDB deployment on Azure")
 
-1. Enable public access on the cluster and add 0.0.0.0/0 to the cluster [IP Allow List](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/). This setup allows connections to the cluster from all IP addresses.
+1. Enable public access on the cluster and add 0.0.0.0/0 to the cluster [IP Allow List](/preview/yugabyte-cloud/cloud-secure-clusters/add-connections/). This setup allows connections to the cluster from all IP addresses.
 
     {{< note title="Note" >}}
-In a production application, [Azure Private Link](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/managed-endpoint-azure/) can be used with [private service endpoints](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/managed-endpoint-azure/#create-a-pse-in-yugabytedb-managed) to create a secure connection between your application and database VPCs.
+In a production application, [Azure Private Link](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/managed-endpoint-azure/) can be used with [private service endpoints](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/managed-endpoint-azure/#create-a-pse-in-yugabytedb-managed) to create a secure connection between your application and database VPCs.
     {{< /note >}}
 
-1. Upon creation, save the credentials and [download the CA certificate](../../../tutorials/build-apps/cloud-add-ip/#download-your-cluster-certificate) once everything is up and running. This is essential for secure connections using the Node.js Smart Client.
+1. Upon creation, save the credentials and [download the CA certificate](../../build-apps/cloud-add-ip/#download-your-cluster-certificate) once everything is up and running. This is essential for secure connections using the Node.js Smart Client.
 
 ## Create tables and insert records
 
-Connect to your YugabyteDB cluster running on Azure via the [Cloud Shell](../../../yugabyte-cloud/cloud-connect/connect-cloud-shell/) and execute the following commands:
+Connect to your YugabyteDB cluster running on Azure via the [Cloud Shell](/preview/yugabyte-cloud/cloud-connect/connect-cloud-shell/) and execute the following commands:
 
 1. Create the _orders_ table and partition it by region.
-1. Create partition tables using the automatically created [regional tablespaces](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-geopartition/#tablespaces).
+1. Create partition tables using the automatically created [regional tablespaces](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-geopartition/#tablespaces).
 1. Seed the database with some orders. These records will be stored in the appropriate cluster node according to the supplied region.
 
 ## Develop an Azure function

@@ -23,6 +23,7 @@
 namespace yb {
 
 class HybridTime;
+class IsOperationDoneResult;
 class JsonWriter;
 
 namespace rpc {
@@ -38,11 +39,14 @@ namespace master {
 class GetXClusterSafeTimeRequestPB;
 class GetXClusterSafeTimeResponsePB;
 struct LeaderEpoch;
+class XClusterConsumerReplicationStatusPB;
 struct XClusterStatus;
 
 class XClusterManagerIf {
  public:
-  virtual Result<HybridTime> GetXClusterSafeTime(const NamespaceId& namespace_id) const = 0;
+  virtual Result<std::optional<HybridTime>> TryGetXClusterSafeTimeForBackfill(
+      const std::vector<TableId>& index_table_ids, const TableInfoPtr& indexed_table,
+      const LeaderEpoch& epoch) const = 0;
   virtual Status RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) = 0;
   virtual Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap() const = 0;
   virtual Status SetXClusterNamespaceToSafeTimeMap(
@@ -60,6 +64,47 @@ class XClusterManagerIf {
 
   virtual std::unordered_set<xcluster::ReplicationGroupId>
   GetInboundTransactionalReplicationGroups() const = 0;
+
+  virtual Status ClearXClusterSourceTableId(TableInfoPtr table_info, const LeaderEpoch& epoch) = 0;
+
+  virtual void NotifyAutoFlagsConfigChanged() = 0;
+
+  virtual void StoreConsumerReplicationStatus(
+      const XClusterConsumerReplicationStatusPB& consumer_replication_status) = 0;
+
+  virtual void SyncConsumerReplicationStatusMap(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const google::protobuf::Map<std::string, cdc::ProducerEntryPB>& producer_map) = 0;
+
+  virtual Result<bool> HasReplicationGroupErrors(
+      const xcluster::ReplicationGroupId& replication_group_id) = 0;
+
+  virtual bool IsTableReplicationConsumer(const TableId& table_id) const = 0;
+
+  virtual void RemoveTableConsumerStreams(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::set<TableId>& tables_to_clear) = 0;
+
+  virtual Status HandleTabletSplit(
+      const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids,
+      const LeaderEpoch& epoch) = 0;
+
+  virtual void RemoveTableConsumerStream(
+      const TableId& table_id, const xcluster::ReplicationGroupId& replication_group_id) = 0;
+
+  virtual Status AlterUniverseReplication(
+      const AlterUniverseReplicationRequestPB* req, AlterUniverseReplicationResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch) = 0;
+
+  virtual Status AddTableToReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id, const TableId& source_table_id,
+      const xrepl::StreamId& bootstrap_id, const std::optional<TableId>& target_table_id,
+      const LeaderEpoch& epoch) = 0;
+
+  virtual Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
+      const xcluster::ReplicationGroupId& replication_group_id, bool skip_health_check) = 0;
+
+  virtual bool IsTableBiDirectionallyReplicated(const TableId& table_id) const = 0;
 
  protected:
   virtual ~XClusterManagerIf() = default;

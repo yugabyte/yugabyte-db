@@ -6,8 +6,10 @@ package gcp
 
 import (
 	"encoding/json"
+	"fmt"
 
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
@@ -17,13 +19,27 @@ const (
 		"\t{{.FirewallTags}}"
 
 	// Region provides header for GCP Region Cloud Info
-	Region = "table {{.InstanceTemplate}}\t{{.YbImage}}"
+	Region = "table {{.InstanceTemplate}}"
+
+	// EAR1 for EAR listing
+	EAR1 = "table {{.LocationID}}\t{{.ProtectionLevel}}"
+
+	// EAR2 for EAR listing
+	EAR2 = "table {{.GCPConfig}}"
+
+	// EAR3 for EAR listing
+	EAR3 = "table {{.GcpKmsEndpoint}}\t{{.KeyRingID}}\t{{.CryptoKeyID}}"
 
 	projectHeader          = "GCE Project"
 	vpcTypeHeader          = "VPC Type"
 	ybFirewallTagsHeader   = "YB Firewall Tags"
 	instanceTemplateHeader = "Instance Template"
-	ybImageHeader          = "YB Image"
+	gcpConfigHeader        = "GCP Config"
+	locationIDHeader       = "Location ID"
+	protectionLevelHeader  = "Protection Level"
+	gcpKmsEndpointHeader   = "GCP KMS Endpoint"
+	keyRingIDHeader        = "Key Ring ID"
+	cryptoKeyIDHeader      = "Crypto Key ID"
 )
 
 // ProviderContext for provider outputs
@@ -40,10 +56,17 @@ type RegionContext struct {
 	Region ybaclient.GCPRegionCloudInfo
 }
 
+// EARContext for kms outputs
+type EARContext struct {
+	formatter.HeaderContext
+	formatter.Context
+	Gcp util.GcpKmsAuthConfigField
+}
+
 // NewProviderFormat for formatting output
 func NewProviderFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := Provider
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -54,8 +77,19 @@ func NewProviderFormat(source string) formatter.Format {
 // NewRegionFormat for formatting output
 func NewRegionFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := Region
+		return formatter.Format(format)
+	default: // custom format or json or pretty
+		return formatter.Format(source)
+	}
+}
+
+// NewEARFormat for formatting output
+func NewEARFormat(source string) formatter.Format {
+	switch source {
+	case formatter.TableFormatKey, "":
+		format := EAR1
 		return formatter.Format(format)
 	default: // custom format or json or pretty
 		return formatter.Format(source)
@@ -66,9 +100,7 @@ func NewRegionFormat(source string) formatter.Format {
 func NewProviderContext() *ProviderContext {
 	gcpProviderCtx := ProviderContext{}
 	gcpProviderCtx.Header = formatter.SubHeaderContext{
-
-		"Project": projectHeader,
-
+		"Project":      projectHeader,
 		"VpcType":      vpcTypeHeader,
 		"FirewallTags": ybFirewallTagsHeader,
 	}
@@ -80,9 +112,22 @@ func NewRegionContext() *RegionContext {
 	gcpRegionCtx := RegionContext{}
 	gcpRegionCtx.Header = formatter.SubHeaderContext{
 		"InstanceTemplate": instanceTemplateHeader,
-		"YbImage":          ybImageHeader,
 	}
 	return &gcpRegionCtx
+}
+
+// NewEARContext creates a new context for rendering ear
+func NewEARContext() *EARContext {
+	gcpEARCtx := EARContext{}
+	gcpEARCtx.Header = formatter.SubHeaderContext{
+		"GCPConfig":       gcpConfigHeader,
+		"LocationID":      locationIDHeader,
+		"ProtectionLevel": protectionLevelHeader,
+		"GcpKmsEndpoint":  gcpKmsEndpointHeader,
+		"KeyRingID":       keyRingIDHeader,
+		"CryptoKeyID":     cryptoKeyIDHeader,
+	}
+	return &gcpEARCtx
 }
 
 // Project fetches the GCE project
@@ -110,12 +155,49 @@ func (c *RegionContext) InstanceTemplate() string {
 	return c.Region.GetInstanceTemplate()
 }
 
-// YbImage fetches the YB image
-func (c *RegionContext) YbImage() string {
-	return c.Region.GetYbImage()
-}
-
 // MarshalJSON function
 func (c *RegionContext) MarshalJSON() ([]byte, error) {
 	return json.Marshal(c.Region)
+}
+
+// GCPConfig fetches the GCP config
+func (c *EARContext) GCPConfig() string {
+	config := ""
+	for k, v := range c.Gcp.GCPConfig {
+		config = fmt.Sprintf("%s%s : %s\n", config, k, v)
+	}
+	if len(config) == 0 {
+		return ""
+	}
+	return config[0 : len(config)-1]
+}
+
+// LocationID fetches the location ID
+func (c *EARContext) LocationID() string {
+	return c.Gcp.LocationID
+}
+
+// ProtectionLevel fetches the protection level
+func (c *EARContext) ProtectionLevel() string {
+	return c.Gcp.ProtectionLevel
+}
+
+// GcpKmsEndpoint fetches the GCP KMS endpoint
+func (c *EARContext) GcpKmsEndpoint() string {
+	return c.Gcp.GcpKmsEndpoint
+}
+
+// KeyRingID fetches the key ring ID
+func (c *EARContext) KeyRingID() string {
+	return c.Gcp.KeyRingID
+}
+
+// CryptoKeyID fetches the crypto key ID
+func (c *EARContext) CryptoKeyID() string {
+	return c.Gcp.CryptoKeyID
+}
+
+// MarshalJSON function
+func (c *EARContext) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.Gcp)
 }

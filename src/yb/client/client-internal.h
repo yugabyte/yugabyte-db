@@ -207,6 +207,15 @@ class YBClient::Data {
                                       const TableId& index_id,
                                       CoarseTimePoint deadline);
 
+  // Has the index entered the backfill stage yet?
+  // Returns true if the backfill has started or has already completed.
+  // Returns false if the index is not backfilling yet or is not yet part of the indexed table
+  // schema.
+  // Returns a bad Status if the index is being dropped, or it encountered a backfill error.
+  Result<bool> IsBackfillIndexStarted(
+      YBClient* client, const TableId& index_table_id, const TableId& indexed_table_id,
+      CoarseTimePoint deadline);
+
   Result<master::GetBackfillStatusResponsePB> GetBackfillStatus(
     const std::vector<std::string_view>& table_ids,
     const CoarseTimePoint deadline);
@@ -259,30 +268,27 @@ class YBClient::Data {
                         const TableId& table_id,
                         CoarseTimePoint deadline,
                         YBTableInfo* info,
+                        master::IncludeInactive include_inactive = master::IncludeInactive::kFalse,
                         master::GetTableSchemaResponsePB* resp = nullptr);
   Status GetTableSchema(YBClient* client,
                         const YBTableName& table_name,
                         CoarseTimePoint deadline,
                         std::shared_ptr<YBTableInfo> info,
                         StatusCallback callback,
+                        master::IncludeInactive include_inactive = master::IncludeInactive::kFalse,
                         master::GetTableSchemaResponsePB* resp_ignored = nullptr);
   Status GetTableSchema(YBClient* client,
                         const TableId& table_id,
                         CoarseTimePoint deadline,
                         std::shared_ptr<YBTableInfo> info,
                         StatusCallback callback,
+                        master::IncludeInactive include_inactive = master::IncludeInactive::kFalse,
                         master::GetTableSchemaResponsePB* resp = nullptr);
   Status GetTablegroupSchemaById(YBClient* client,
                                  const TablegroupId& tablegroup_id,
                                  CoarseTimePoint deadline,
                                  std::shared_ptr<std::vector<YBTableInfo>> info,
                                  StatusCallback callback);
-  Status GetColocatedTabletSchemaByParentTableId(
-      YBClient* client,
-      const TableId& parent_colocated_table_id,
-      CoarseTimePoint deadline,
-      std::shared_ptr<std::vector<YBTableInfo>> info,
-      StatusCallback callback);
 
   Result<IndexPermissions> GetIndexPermissions(
       YBClient* client,
@@ -351,7 +357,8 @@ class YBClient::Data {
   void GetTableLocations(
       YBClient* client, const TableId& table_id, int32_t max_tablets,
       RequireTabletsRunning require_tablets_running, PartitionsOnly partitions_only,
-      CoarseTimePoint deadline, GetTableLocationsCallback callback);
+      CoarseTimePoint deadline, GetTableLocationsCallback callback,
+      master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
 
   bool IsTabletServerLocal(const internal::RemoteTabletServer& rts) const;
 
@@ -457,10 +464,18 @@ class YBClient::Data {
 
   Result<bool> CheckIfPitrActive(CoarseTimePoint deadline);
 
+  // Get xCluster streams by source table names + pg schema names.
   Status GetXClusterStreams(
       YBClient* client, CoarseTimePoint deadline,
       const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
       const std::vector<TableName>& table_names, const std::vector<PgSchemaName>& pg_schema_names,
+      std::function<void(Result<master::GetXClusterStreamsResponsePB>)> user_cb);
+
+  // Get xCluster streams by source table ids.
+  Status GetXClusterStreams(
+      YBClient* client, CoarseTimePoint deadline,
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+      const std::vector<TableId>& source_table_ids,
       std::function<void(Result<master::GetXClusterStreamsResponsePB>)> user_cb);
 
   Status IsXClusterBootstrapRequired(

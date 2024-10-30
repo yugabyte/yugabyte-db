@@ -13,43 +13,38 @@
 
 #pragma once
 
-#include <vector>
-#include <unordered_set>
+#include <map>
+#include <string>
+#include <google/protobuf/repeated_field.h>
 
-#include "yb/cdc/cdc_types.h"
-
-#include "yb/master/master_fwd.h"
-
+#include "yb/common/entity_ids_types.h"
+#include "yb/master/catalog_entity_info.h"
 #include "yb/util/status_fwd.h"
-#include "yb/util/net/net_util.h"
 
 namespace yb {
 namespace cdc {
-
 class StreamEntryPB;
-
 }  // namespace cdc
+
+namespace client {
+class YBClient;
+}  // namespace client
 
 namespace master {
 
 class ListTablesResponsePB;
 class GetTableLocationsResponsePB;
+class TabletLocationsPB;
 
 struct KeyRange {
   std::string start_key;
   std::string end_key;
 };
 
-struct XClusterConsumerStreamInfo {
-  xrepl::StreamId stream_id = xrepl::StreamId::Nil();
-  TableId consumer_table_id;
-  TableId producer_table_id;
-};
-
-Status InitXClusterStream(
+Status PopulateXClusterStreamEntryTabletMapping(
     const TableId& producer_table_id, const TableId& consumer_table_id,
     const std::map<std::string, KeyRange>& consumer_tablet_keys, cdc::StreamEntryPB* stream_entry,
-    std::shared_ptr<XClusterRpcTasks> xcluster_rpc_tasks);
+    const google::protobuf::RepeatedPtrField<TabletLocationsPB>& producer_table_locations);
 
 Status UpdateTabletMappingOnConsumerSplit(
     const std::map<std::string, KeyRange>& consumer_tablet_keys,

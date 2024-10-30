@@ -164,9 +164,7 @@ class XClusterProducerTest : public MiniClusterTestWithClient<MiniCluster> {
 TEST_F(XClusterProducerTest, GetChangesBasic) {
   const int kBatchCount = 10;
   auto resp = ASSERT_RESULT(GetChanges());
-  ASSERT_EQ(resp.records_size(), 1);
-  ASSERT_EQ(resp.records(0).operation(), CDCRecordPB::CHANGE_METADATA);
-  ASSERT_EQ(resp.records(0).changes_size(), 0);
+  ASSERT_EQ(resp.records_size(), 0);
   ASSERT_TRUE(resp.has_checkpoint());
   ASSERT_TRUE(resp.checkpoint().has_op_id());
   auto last_op_id = resp.checkpoint().op_id();
@@ -197,7 +195,7 @@ TEST_F(XClusterProducerTest, GetChangesWithAutoFlags) {
   auto config_version = ASSERT_RESULT(GetAutoFlagsConfigVersion());
 
   auto resp = ASSERT_RESULT(GetChanges());
-  ASSERT_EQ(resp.records_size(), 1);
+  ASSERT_EQ(resp.records_size(), 0);
   auto last_op_id = resp.checkpoint().op_id();
 
   // We should fail if AutoFlags config version is not valid.
@@ -224,7 +222,7 @@ TEST_F(XClusterProducerTest, HeartbeatDelayWithoutData) {
   auto config_version = ASSERT_RESULT(GetAutoFlagsConfigVersion());
 
   auto resp = ASSERT_RESULT(GetChanges());
-  ASSERT_EQ(resp.records_size(), 1);
+  ASSERT_EQ(resp.records_size(), 0);
   auto last_op_id = resp.checkpoint().op_id();
 
   // Set very low auto_flags_apply_delay_ms and disable heartbeats.
@@ -266,7 +264,7 @@ TEST_F(XClusterProducerTest, HeartbeatDelayWithData) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_flags_apply_delay_ms) = auto_flags_apply_delay_ms;
 
   auto resp = ASSERT_RESULT(GetChanges());
-  ASSERT_EQ(resp.records_size(), 1);
+  ASSERT_EQ(resp.records_size(), 0);
   auto last_op_id = resp.checkpoint().op_id();
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = true;
@@ -316,7 +314,7 @@ TEST_F(XClusterProducerTest, HeartbeatDelayWithData) {
 TEST_F(XClusterProducerTest, ProducerUpgrade) {
   auto config_version = ASSERT_RESULT(GetAutoFlagsConfigVersion());
   auto resp = ASSERT_RESULT(GetChanges());
-  ASSERT_EQ(resp.records_size(), 1);
+  ASSERT_EQ(resp.records_size(), 0);
   auto last_op_id = resp.checkpoint().op_id();
 
   resp = ASSERT_RESULT(GetChanges(last_op_id, config_version));

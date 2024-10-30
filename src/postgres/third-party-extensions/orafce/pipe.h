@@ -33,6 +33,7 @@ typedef struct {
 
 typedef struct {
 	int sid;
+	int pid;
 	message_echo *echo;
 } alert_lock;
 

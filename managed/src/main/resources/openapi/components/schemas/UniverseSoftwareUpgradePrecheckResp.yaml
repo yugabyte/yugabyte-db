@@ -1,0 +1,15 @@
+title: UniverseSoftwareUpgradePrecheckResp
+description: |
+  UniverseSoftwareUpgradePrecheckResp
+
+  Response to a YugabyteDB software upgrade precheck on a Universe. Returns if a finalize is 
+  required. Part of UniverseSoftwareUpgradePrecheckResponse.
+type: object
+required:
+  - finalize_required
+properties:
+  finalize_required:
+    description: |
+      If the upgrade requires a finalize step. If true, the user must call the finalize 
+      endpoint to complete the upgrade.
+    type: boolean

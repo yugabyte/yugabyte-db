@@ -1,4 +1,7 @@
-<!-- doc/src/sgml/ref/pgarchivecleanup.sgml -->
+<!--
+doc/src/sgml/ref/pgarchivecleanup.sgml
+PostgreSQL documentation
+-->
 
 <refentry id="pgarchivecleanup">
  <indexterm zone="pgarchivecleanup">
@@ -39,7 +42,7 @@
   <para>
    To configure a standby
    server to use <application>pg_archivecleanup</application>, put this into its
-   <filename>recovery.conf</filename> configuration file:
+   <filename>postgresql.conf</filename> configuration file:
 <programlisting>
 archive_cleanup_command = 'pg_archivecleanup <replaceable>archivelocation</replaceable> %r'
 </programlisting>
@@ -47,7 +50,7 @@ archive_cleanup_command = 'pg_archivecleanup <replaceable>archivelocation</repla
    files should be removed.
   </para>
   <para>
-   When used within <xref linkend="archive-cleanup-command"/>, all WAL files
+   When used within <xref linkend="guc-archive-cleanup-command"/>, all WAL files
    logically preceding the value of the <literal>%r</literal> argument will be removed
    from <replaceable>archivelocation</replaceable>. This minimizes the number of files
    that need to be retained, while preserving crash-restart capability.  Use of
@@ -148,6 +151,17 @@ pg_archivecleanup:  removing file "archive/00000001000000370000000E"
  </refsect1>
 
  <refsect1>
+  <title>Environment</title>
+
+  <para>
+   The environment variable <envar>PG_COLOR</envar> specifies whether to use
+   color in diagnostic messages. Possible values are
+   <literal>always</literal>, <literal>auto</literal> and
+   <literal>never</literal>.
+  </para>
+ </refsect1>
+
+ <refsect1>
   <title>Notes</title>
 
   <para>
@@ -190,11 +204,4 @@ archive_cleanup_command = 'pg_archivecleanup -d /mnt/standby/archive %r 2>>clean
   </itemizedlist>
  </refsect1>
 
- <refsect1>
-  <title>See Also</title>
-
-  <simplelist type="inline">
-   <member><xref linkend="pgstandby"/></member>
-  </simplelist>
- </refsect1>
 </refentry>

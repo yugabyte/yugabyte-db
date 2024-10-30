@@ -10,7 +10,7 @@ menu:
   preview:
     identifier: sequelize-1
     parent: nodejs-drivers
-    weight: 500
+    weight: 600
 type: docs
 ---
 
@@ -189,7 +189,7 @@ Employees Details:
 
 ## Specifying SSL configuration
 
-This configuration can be used while connecting to a YugabyteDB Managed cluster or a local YB cluster with SSL enabled.
+This configuration can be used while connecting to a YugabyteDB Aeon cluster or a local YB cluster with SSL enabled.
 
 1. Install the `fs` package to read the SSL certificate:
 

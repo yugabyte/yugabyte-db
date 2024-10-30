@@ -28,7 +28,7 @@ rightNav:
 
 </ul>
 
-When installing YBA on an existing Kubernetes cluster, you will install YBA onto a Kubernetes pod using Helm charts.
+When installing YugabyteDB Anywhere (YBA) on an existing Kubernetes cluster, you will install YBA onto a Kubernetes pod using Helm charts.
 
 In addition to the Kubernetes [admin account](../cloud-permissions/cloud-permissions-nodes/) and other Kubernetes permissions, your Kubernetes cluster(s) must meet the following hardware and software requirements.
 

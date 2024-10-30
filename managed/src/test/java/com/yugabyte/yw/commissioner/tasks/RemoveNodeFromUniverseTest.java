@@ -6,9 +6,18 @@ import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
-import static org.junit.Assert.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
@@ -23,8 +32,6 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
@@ -35,17 +42,19 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.*;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
-import org.yb.client.ListLiveTabletServersResponse;
-import org.yb.client.ListMastersResponse;
+import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.YBClient;
-import org.yb.util.TabletServerInfo;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -119,6 +128,8 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
               }
               return ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, "true");
             });
+    when(mockNodeUniverseManager.runCommand(any(), any(), any()))
+        .thenReturn(ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, "true"));
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
 
     ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
@@ -129,14 +140,14 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
       doNothing().when(mockClient).waitForMasterLeader(anyLong());
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
       when(mockClient.getLoadMoveCompletion()).thenReturn(gpr);
-      ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
-      when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
-      when(mockClient.listMasters()).thenReturn(listMastersResponse);
+      ListMasterRaftPeersResponse listMastersResponse = mock(ListMasterRaftPeersResponse.class);
+      when(listMastersResponse.getPeersList()).thenReturn(Collections.emptyList());
+      when(mockClient.listMasterRaftPeers()).thenReturn(listMastersResponse);
       when(mockClient.setFlag(any(), any(), any(), anyBoolean())).thenReturn(true);
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.getLeaderMasterHostAndPort())
           .thenReturn(HostAndPort.fromParts("10.0.0.1", 1234));
-      setMockLiveTabletServers();
+      setMockLiveTabletServers(mockClient, defaultUniverse);
     } catch (Exception e) {
       fail();
     }
@@ -164,6 +175,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   private static final List<TaskType> REMOVE_NODE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
+          TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.UpdatePlacementInfo,
@@ -178,6 +190,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Removing")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -190,6 +203,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   private static final List<TaskType> REMOVE_NODE_WITH_MASTER_REPLACE =
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
+          TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.UpdatePlacementInfo,
@@ -214,13 +228,13 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           TaskType.SetFlagInMemory,
           TaskType.SetFlagInMemory,
           TaskType.SetNodeState,
-          TaskType.SetNodeStatus,
           TaskType.SetNodeState,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
 
   private static final List<JsonNode> REMOVE_NODE_WITH_MASTER_REPLACE_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Removing")),
@@ -249,8 +263,6 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of("serverType", "TSERVER")),
           Json.toJson(ImmutableMap.of("serverType", "MASTER")),
           Json.toJson(ImmutableMap.of("state", "Live")),
-          // Clear master state.
-          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Removed")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
@@ -258,6 +270,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   private static final List<TaskType> REMOVE_NODE_WITH_MASTER =
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
+          TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.UpdatePlacementInfo,
@@ -272,13 +285,13 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           TaskType.AnsibleConfigureServers,
           TaskType.SetFlagInMemory,
           TaskType.SetFlagInMemory,
-          TaskType.SetNodeStatus,
           TaskType.SetNodeState,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
 
   private static final List<JsonNode> REMOVE_NODE_WITH_MASTER_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Removing")),
@@ -296,8 +309,6 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of("type", "GFlags")),
           Json.toJson(ImmutableMap.of("serverType", "TSERVER")),
           Json.toJson(ImmutableMap.of("serverType", "MASTER")),
-          // Clear master state.
-          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Removed")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
@@ -568,36 +579,5 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
         defaultUniverse.getUniverseUUID(),
         TaskType.RemoveNodeFromUniverse,
         taskParams);
-  }
-
-  public void setMockLiveTabletServers() throws Exception {
-    List<TabletServerInfo> tabletServerInfoList = new ArrayList<>();
-
-    // Loop through both Primary cluster and RR nodes.
-    for (Cluster cluster : defaultUniverse.getUniverseDetails().clusters) {
-      UUID clusterUuid = cluster.uuid;
-      Set<NodeDetails> nodesInCluster =
-          new HashSet<>(defaultUniverse.getNodesByCluster(cluster.uuid));
-      for (NodeDetails curNode : nodesInCluster) {
-        TabletServerInfo.CloudInfo cloudInfo = new TabletServerInfo.CloudInfo();
-        cloudInfo.setCloud(curNode.cloudInfo.cloud);
-        cloudInfo.setRegion(curNode.cloudInfo.region);
-        cloudInfo.setZone(curNode.cloudInfo.az);
-
-        TabletServerInfo tserverInfo = new TabletServerInfo();
-        tserverInfo.setCloudInfo(cloudInfo);
-        tserverInfo.setUuid(UUID.randomUUID());
-        tserverInfo.setInPrimaryCluster(cluster.clusterType.equals(ClusterType.PRIMARY));
-        tserverInfo.setPlacementUuid(clusterUuid);
-        tserverInfo.setPrivateRpcAddress(
-            HostAndPort.fromParts(curNode.cloudInfo.private_ip, curNode.tserverRpcPort));
-
-        tabletServerInfoList.add(tserverInfo);
-      }
-    }
-    ListLiveTabletServersResponse listLiveTabletServersResponse =
-        mock(ListLiveTabletServersResponse.class);
-    when(listLiveTabletServersResponse.getTabletServers()).thenReturn(tabletServerInfoList);
-    when(mockClient.listLiveTabletServers()).thenReturn(listLiveTabletServersResponse);
   }
 }

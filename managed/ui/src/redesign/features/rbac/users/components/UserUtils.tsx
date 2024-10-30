@@ -3,6 +3,7 @@ import { UniverseResource } from '../../policy/IPolicy';
 import { Role } from '../../roles';
 import { RbacUser, RbacUserWithResources } from '../interface/Users';
 import { Resource } from '../../permission';
+import { AuthGroupToRolesMapping } from '../../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
 export type RbacBindings = {
   createTime: string;
@@ -14,6 +15,7 @@ export type RbacBindings = {
   };
   role: Role;
   type: Role['roleType'];
+  groupInfo?: AuthGroupToRolesMapping & { identifier: string };
 };
 export const convertRbacBindingsToUISchema = (
   rbacBindings: RbacBindings[]

@@ -268,7 +268,7 @@ Indexes:
     "idxpart1_a_idx" lsm (a HASH)
 
 \d idxpart2
-              Table "public.idxpart2"
+        Partitioned table "public.idxpart2"
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
  a      | integer |           |          |
@@ -313,7 +313,7 @@ where indexrelid::regclass::text like 'idxpart%'
 -- attaching idxpart22 is not enough to set idxpart22_a_idx valid ...
 alter index idxpart2_a_idx attach partition idxpart22_a_idx;
 \d idxpart2
-              Table "public.idxpart2"
+        Partitioned table "public.idxpart2"
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
  a      | integer |           |          |
@@ -327,7 +327,7 @@ Number of partitions: 2 (Use \d+ to list them.)
 create index on idxpart21 (a);
 alter index idxpart2_a_idx attach partition idxpart21_a_idx;
 \d idxpart2
-              Table "public.idxpart2"
+        Partitioned table "public.idxpart2"
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
  a      | integer |           |          |
@@ -736,7 +736,7 @@ create table idxpart (col_keep int) partition by range (col_keep);
 create index on idxpart (col_keep);
 alter table idxpart attach partition idxpart1 for values from (0) to (1000);
 \d idxpart
-               Table "public.idxpart"
+         Partitioned table "public.idxpart"
   Column  |  Type   | Collation | Nullable | Default
 ----------+---------+-----------+----------+---------
  col_keep | integer |           |          |
@@ -779,7 +779,7 @@ create index on idxpart1 (col_keep);
 create index on idxpart (col_keep);
 alter table idxpart attach partition idxpart1 for values from (0) to (1000);
 \d idxpart
-               Table "public.idxpart"
+         Partitioned table "public.idxpart"
   Column  |  Type   | Collation | Nullable | Default
 ----------+---------+-----------+----------+---------
  col_keep | integer |           |          |
@@ -818,7 +818,7 @@ drop table idxpart;
 -- Verify that it works to add primary key / unique to partitioned tables
 create table idxpart (a int primary key, b int) partition by range (a);
 \d idxpart
-              Table "public.idxpart"
+        Partitioned table "public.idxpart"
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
  a      | integer |           | not null |
@@ -847,16 +847,16 @@ Indexes:
 drop table idxpart;
 -- Failing to use the full partition key is not allowed
 create table idxpart (a int unique, b int) partition by range (a, b);
-ERROR:  insufficient columns in UNIQUE constraint definition
+ERROR:  unique constraint on partitioned table must include all partitioning columns
 DETAIL:  UNIQUE constraint on table "idxpart" lacks column "b" which is part of the partition key.
 create table idxpart (a int, b int unique) partition by range (a, b);
-ERROR:  insufficient columns in UNIQUE constraint definition
+ERROR:  unique constraint on partitioned table must include all partitioning columns
 DETAIL:  UNIQUE constraint on table "idxpart" lacks column "a" which is part of the partition key.
 create table idxpart (a int primary key, b int) partition by range (b, a);
-ERROR:  insufficient columns in PRIMARY KEY constraint definition
+ERROR:  unique constraint on partitioned table must include all partitioning columns
 DETAIL:  PRIMARY KEY constraint on table "idxpart" lacks column "b" which is part of the partition key.
 create table idxpart (a int, b int primary key) partition by range (b, a);
-ERROR:  insufficient columns in PRIMARY KEY constraint definition
+ERROR:  unique constraint on partitioned table must include all partitioning columns
 DETAIL:  PRIMARY KEY constraint on table "idxpart" lacks column "a" which is part of the partition key.
 -- OK if you use them in some other order
 create table idxpart (a int, b int, c text, primary key  (a, b, c)) partition by range (b, c, a);
@@ -877,16 +877,16 @@ DETAIL:  UNIQUE constraints cannot be used when partition keys include expressio
 -- use ALTER TABLE to add a primary key
 create table idxpart (a int, b int, c text) partition by range (a, b);
 alter table idxpart add primary key (a);	-- not an incomplete one though
-ERROR:  insufficient columns in PRIMARY KEY constraint definition
+ERROR:  unique constraint on partitioned table must include all partitioning columns
 DETAIL:  PRIMARY KEY constraint on table "idxpart" lacks column "b" which is part of the partition key.
 alter table idxpart add primary key (a, b);	-- this works
 \d idxpart
-              Table "public.idxpart"
- Column |  Type   | Collation | Nullable | Default 
+        Partitioned table "public.idxpart"
+ Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
- a      | integer |           | not null | 
- b      | integer |           | not null | 
- c      | text    |           |          | 
+ a      | integer |           | not null |
+ b      | integer |           | not null |
+ c      | text    |           |          |
 Partition key: RANGE (a, b)
 Indexes:
     "idxpart_pkey" PRIMARY KEY, lsm (a HASH, b ASC)
@@ -895,11 +895,11 @@ Number of partitions: 0
 create table idxpart1 partition of idxpart for values from (0, 0) to (1000, 1000);
 \d idxpart1
               Table "public.idxpart1"
- Column |  Type   | Collation | Nullable | Default 
+ Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
- a      | integer |           | not null | 
- b      | integer |           | not null | 
- c      | text    |           |          | 
+ a      | integer |           | not null |
+ b      | integer |           | not null |
+ c      | text    |           |          |
 Partition of: idxpart FOR VALUES FROM (0, 0) TO (1000, 1000)
 Indexes:
     "idxpart1_pkey" PRIMARY KEY, lsm (a HASH, b ASC)
@@ -908,11 +908,11 @@ drop table idxpart;
 -- use ALTER TABLE to add a unique constraint
 create table idxpart (a int, b int) partition by range (a, b);
 alter table idxpart add unique (a);			-- not an incomplete one though
-ERROR:  insufficient columns in UNIQUE constraint definition
+ERROR:  unique constraint on partitioned table must include all partitioning columns
 DETAIL:  UNIQUE constraint on table "idxpart" lacks column "b" which is part of the partition key.
 alter table idxpart add unique (b, a);		-- this works
 \d idxpart
-              Table "public.idxpart"
+        Partitioned table "public.idxpart"
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
  a      | integer |           |          |
@@ -940,6 +940,9 @@ create table idxpart21 partition of idxpart2 for values from (10) to (15);
 create table idxpart22 partition of idxpart2 for values from (15) to (20);
 create table idxpart3 (b int not null, a int not null);
 alter table idxpart attach partition idxpart3 for values from (20, 20) to (30, 30);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 select conname, contype, conrelid::regclass, conindid::regclass, conkey
   from pg_constraint where conrelid::regclass::text like 'idxpart%'
   order by conname;
@@ -959,7 +962,7 @@ drop table idxpart;
 create table idxpart (a int, b int, primary key (a)) partition by range (a);
 create table idxpart2 partition of idxpart
 for values from (0) to (1000) partition by range (b); -- fail
-ERROR:  insufficient columns in PRIMARY KEY constraint definition
+ERROR:  unique constraint on partitioned table must include all partitioning columns
 DETAIL:  PRIMARY KEY constraint on table "idxpart2" lacks column "b" which is part of the partition key.
 drop table idxpart;
 -- Ditto for the ATTACH PARTITION case
@@ -967,7 +970,7 @@ create table idxpart (a int unique, b int) partition by range (a);
 create table idxpart1 (a int not null, b int, unique (a, b))
   partition by range (a, b);
 alter table idxpart attach partition idxpart1 for values from (1) to (1000);
-ERROR:  insufficient columns in UNIQUE constraint definition
+ERROR:  unique constraint on partitioned table must include all partitioning columns
 DETAIL:  UNIQUE constraint on table "idxpart1" lacks column "b" which is part of the partition key.
 DROP TABLE idxpart, idxpart1;
 -- Multi-layer partitioning works correctly in this case:
@@ -1009,7 +1012,7 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
- indrelid |  indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated 
+ indrelid |  indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated
 ----------+---------------+--------------+------------+---------------+------------+-------------+--------------+--------------
  idxpart0 | idxpart0_pkey | idxpart_pkey | t          | idxpart0_pkey | f          |           1 | t            | t
  idxpart1 | idxpart1_pkey | idxpart_pkey | t          | idxpart1_pkey | f          |           1 | f            | t
@@ -1039,7 +1042,7 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
- indrelid | indexrelid | inhparent | indisvalid | conname | conislocal | coninhcount | connoinherit | convalidated 
+ indrelid | indexrelid | inhparent | indisvalid | conname | conislocal | coninhcount | connoinherit | convalidated
 ----------+------------+-----------+------------+---------+------------+-------------+--------------+--------------
 (0 rows)
 
@@ -1082,7 +1085,7 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
- indrelid |  indexrelid   | inhparent | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated 
+ indrelid |  indexrelid   | inhparent | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated
 ----------+---------------+-----------+------------+---------------+------------+-------------+--------------+--------------
  idxpart0 | idxpart0_pkey |           | t          | idxpart0_pkey | t          |           0 | t            | t
  idxpart  | idxpart_pkey  |           | f          | idxpart_pkey  | t          |           0 | t            | t
@@ -1095,7 +1098,7 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
- indrelid |  indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated 
+ indrelid |  indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated
 ----------+---------------+--------------+------------+---------------+------------+-------------+--------------+--------------
  idxpart0 | idxpart0_pkey | idxpart_pkey | t          | idxpart0_pkey | f          |           1 | t            | t
  idxpart  | idxpart_pkey  |              | t          | idxpart_pkey  | t          |           0 | t            | t
@@ -1109,15 +1112,18 @@ create table idxpart1 (a int not null, b int);
 create unique index on idxpart1 (a);
 alter table idxpart add primary key (a);
 alter table idxpart attach partition idxpart1 for values from (1) to (1000);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid,
   conname, conislocal, coninhcount, connoinherit, convalidated
   from pg_index idx left join pg_inherits inh on (idx.indexrelid = inh.inhrelid)
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
- indrelid |   indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated 
+ indrelid |   indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated
 ----------+----------------+--------------+------------+---------------+------------+-------------+--------------+--------------
- idxpart1 | idxpart1_a_idx |              | t          |               |            |             |              | 
+ idxpart1 | idxpart1_a_idx |              | t          |               |            |             |              |
  idxpart1 | idxpart1_pkey  | idxpart_pkey | t          | idxpart1_pkey | f          |           1 | f            | t
  idxpart  | idxpart_pkey   |              | t          | idxpart_pkey  | t          |           0 | t            | t
 (3 rows)
@@ -1144,6 +1150,9 @@ insert into idxpart2 (c, a, b) values (42, 572814, 'inserted first');
 alter table idxpart2 drop column c;
 create unique index on idxpart (a);
 alter table idxpart attach partition idxpart2 for values from (100000) to (1000000);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 insert into idxpart values (0, 'zero'), (42, 'life'), (2^16, 'sixteen');
 insert into idxpart select 2^g, format('two to power of %s', g) from generate_series(15, 17) g;
 ERROR:  duplicate key value violates unique constraint "idxpart1_a_idx"
@@ -1441,7 +1450,7 @@ insert into covidxpart values (4, 1);
 insert into covidxpart values (4, 1);
 ERROR:  duplicate key value violates unique constraint "covidxpart4_a_b_idx"
 create unique index on covidxpart (b) include (a); -- should fail
-ERROR:  insufficient columns in UNIQUE constraint definition
+ERROR:  unique constraint on partitioned table must include all partitioning columns
 DETAIL:  UNIQUE constraint on table "covidxpart" lacks column "a" which is part of the partition key.
 -- check that detaching a partition also detaches the primary key constraint
 create table parted_pk_detach_test (a int primary key) partition by list (a);

@@ -1,12 +1,15 @@
 ---
-title: Manual review guideline for YugabyteDB Voyager
-headerTitle: Manual review guideline
-linkTitle: Manual review guideline
+title: Schema review workarounds for YugabyteDB Voyager
+headerTitle: Schema review workarounds
+linkTitle: Schema review workarounds
 image: /images/section_icons/develop/learn.png
 headcontent: What to watch out for when migrating data using YugabyteDB Voyager
 description: What to watch out for when migrating data using YugabyteDB Voyager.
 type: indexpage
 showRightNav: true
+aliases:
+  - /preview/yugabyte-voyager/known-issues/general-issues/
+  - /preview/yugabyte-voyager/known-issues/mysql-oracle/
 menu:
   preview_yugabyte-voyager:
     identifier: known-issues
@@ -23,70 +26,31 @@ Currently, yb-voyager doesn't support the following features:
 | Feature | Description/Alternatives  | GitHub Issue |
 | :------ | :------------------------ | :----------- |
 | ALTER VIEW | YugabyteDB does not yet support any schemas containing `ALTER VIEW` statements. | [48](https://github.com/yugabyte/yb-voyager/issues/48) |
-| USERS/GRANTS | Voyager does not support migrating the USERS and GRANTS from the source database to the target cluster. |
+| USERS/GRANTS | Voyager does not support migrating the USERS and GRANTS from the source database to the target cluster. | |
+| CREATE CAST<br>CREATE SERVER <br> CREATE&nbsp;ACCESS&nbsp;METHOD | Voyager does not support migrating these object types from the source database to the target cluster. | |
 | Unsupported data types | Data migration is unsupported for some data types, such as BLOB and XML. For others such as ANY and BFile, both schema and data migration is unsupported. Refer to [datatype mapping](../reference/datatype-mapping-oracle/) for the detailed list of data types. | |
 | Unsupported PostgreSQL features | Yugabyte currently doesn't support the PostgreSQL features listed in [PostgreSQL compatibility](../../explore/ysql-language-features/postgresql-compatibility/#unsupported-postgresql-features). If such schema clauses are encountered, Voyager results in an error. | |
 
-## Manual review
+## Schema review
 
-<div class="row">
- <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="general-issues/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true" />
-        <div class="title">General</div>
-      </div>
-      <div class="body">
-       Explore workarounds for limitations associated with MySQL, PostgreSQL, and Oracle source databases.
-      </div>
-    </a>
-  </div>
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="mysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true" />
-        <div class="title">MySQL</div>
-      </div>
-      <div class="body">
-        Explore workarounds for limitations associated with MySQL as the source database.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="PostgreSQL"
+    body="Explore workarounds for limitations associated with PostgreSQL as the source database."
+    href="postgresql/"
+    icon="/images/section_icons/architecture/concepts.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="postgresql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true" />
-        <div class="title">PostgreSQL</div>
-      </div>
-      <div class="body">
-        Explore workarounds for limitations associated with PostgreSQL as the source database.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Oracle"
+    body="Explore workarounds for limitations associated with Oracle as the source database."
+    href="oracle/"
+    icon="/images/section_icons/architecture/concepts.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="oracle/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true" />
-        <div class="title">Oracle</div>
-      </div>
-      <div class="body">
-       Explore workarounds for limitations associated with Oracle as the source database.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="MySQL"
+    body="Explore workarounds for limitations associated with MySQL as the source database."
+    href="mysql/"
+    icon="/images/section_icons/architecture/concepts.png">}}
 
-<div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="mysql-oracle/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true" />
-        <div class="title">MySQL and Oracle</div>
-      </div>
-      <div class="body">
-       Explore workarounds for limitations associated with MySQL and Oracle source databases.
-      </div>
-    </a>
-  </div>
-</div>
+{{</index/block>}}

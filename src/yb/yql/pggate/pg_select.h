@@ -14,32 +14,35 @@
 
 #pragma once
 
+#include <memory>
+#include <optional>
+
+#include "yb/util/result.h"
+
 #include "yb/yql/pggate/pg_dml_read.h"
 
-namespace yb {
-namespace pggate {
-
-//--------------------------------------------------------------------------------------------------
-// SELECT
-//--------------------------------------------------------------------------------------------------
+namespace yb::pggate {
 
 class PgSelect : public PgDmlRead {
  public:
-  PgSelect(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id,
-           const PgObjectId& index_id, const PgPrepareParameters *prepare_params,
-           bool is_region_local);
-  virtual ~PgSelect();
+  struct IndexQueryInfo {
+    IndexQueryInfo(PgObjectId id_, bool is_embedded_)
+        : id(id_), is_embedded(is_embedded_) {}
 
-  // Prepare query before execution.
-  Status Prepare() override;
+    PgObjectId id;
+    bool is_embedded;
+  };
 
-  // Prepare secondary index if that index is used by this query.
-  Status PrepareSecondaryIndex();
+  static Result<std::unique_ptr<PgSelect>> Make(
+      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool is_region_local,
+      const std::optional<IndexQueryInfo>& index_info = std::nullopt);
 
-  virtual Result<PgTableDescPtr> LoadTable();
+ protected:
+  explicit PgSelect(const PgSession::ScopedRefPtr& pg_session);
 
-  virtual bool UseSecondaryIndex() const;
+  Status Prepare(
+      const PgObjectId& table_id, bool is_region_local,
+      const std::optional<IndexQueryInfo>& index_info = std::nullopt);
 };
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

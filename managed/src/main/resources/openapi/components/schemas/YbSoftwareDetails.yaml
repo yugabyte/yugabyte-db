@@ -1,0 +1,16 @@
+title: YbSoftwareDetails
+description: |
+  YbSoftwareDetails
+
+  YugabyteDB Software Details object is used to represent the software version of YugabyteDB running on a Universe.
+type: object
+properties:
+  yb_software_version:
+    description: YugabyteDB Software version installed in DB nodes of this Universe
+    type: string
+    example: 2024.2.0.0-b6
+  auto_flag_config_version:
+    description: Auto flag version installed in DB nodes of this Universe
+    type: integer
+    format: int32
+    x-yba-api-visibility: internal

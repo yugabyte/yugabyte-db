@@ -283,7 +283,7 @@ public class ProviderEditRestrictionManagerTest extends CommissionerBaseTest {
   private TaskInfo createFakeTaskInfo(UUID taskUUID) {
     TaskInfo taskInfo = new TaskInfo(TaskType.ResizeNode, null);
     taskInfo.setTaskState(TaskInfo.State.Running);
-    taskInfo.setTaskUUID(taskUUID);
+    taskInfo.setUuid(taskUUID);
     taskInfo.setTaskParams(Json.newObject());
     taskInfo.setOwner("Myself");
     taskInfo.save();

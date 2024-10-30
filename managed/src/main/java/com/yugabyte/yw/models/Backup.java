@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.backuprestore.KeyspaceTables;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.BackupFilter;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -48,7 +49,9 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import java.text.SimpleDateFormat;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -58,6 +61,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.collections4.CollectionUtils;
@@ -138,6 +142,7 @@ public class Backup extends Model {
           .put(BackupState.Failed, BackupState.QueuedForDeletion)
           .put(BackupState.Stopped, BackupState.QueuedForDeletion)
           .put(BackupState.Stopped, BackupState.InProgress)
+          .put(BackupState.Stopped, BackupState.FailedToDelete)
           .put(BackupState.Stopping, BackupState.QueuedForDeletion)
           .put(BackupState.InProgress, BackupState.QueuedForDeletion)
           .put(BackupState.Completed, BackupState.QueuedForDeletion)
@@ -186,6 +191,9 @@ public class Backup extends Model {
   public static final Set<BackupState> IN_PROGRESS_STATES =
       Sets.immutableEnumSet(
           BackupState.InProgress, BackupState.QueuedForDeletion, BackupState.DeleteInProgress);
+  public static final List<BackupState> COMPLETED_STATES =
+      Arrays.asList(
+          BackupState.Completed, BackupState.Failed, BackupState.Stopped, BackupState.Skipped);
 
   public enum SortBy implements PagedQuery.SortByIF {
     createTime("createTime");
@@ -218,6 +226,11 @@ public class Backup extends Model {
   public UUID getCustomerUUID() {
     return customerUUID;
   }
+
+  @JsonIgnore
+  @ApiModelProperty(value = "Whether to hide this backup on the UI", accessMode = READ_WRITE)
+  @Column(nullable = false)
+  private boolean hidden = false;
 
   @JsonIgnore
   @ApiModelProperty(value = "Universe UUID that created this backup", accessMode = READ_WRITE)
@@ -330,6 +343,10 @@ public class Backup extends Model {
   @Column(nullable = false)
   private BackupVersion version = BackupVersion.V1;
 
+  @ApiModelProperty(value = "Retry count for backup deletion")
+  @Column(nullable = false)
+  private int retryCount;
+
   public static final Finder<UUID, Backup> find = new Finder<UUID, Backup>(Backup.class) {};
 
   public static Backup create(
@@ -362,6 +379,11 @@ public class Backup extends Model {
     if (params.scheduleUUID != null) {
       backup.scheduleUUID = params.scheduleUUID;
       backup.scheduleName = params.scheduleName;
+    }
+    if (params.scheduleUUID == null && params.baseBackupUUID != null) {
+      // Set PIT enabled conditionally for manually added incremental backups
+      params.setPointInTimeRestoreEnabled(
+          BackupUtil.getManualIncrementPITEnabled(params.baseBackupUUID));
     }
     if (params.timeBeforeDelete != 0L) {
       backup.expiry = new Date(System.currentTimeMillis() + params.timeBeforeDelete);
@@ -418,6 +440,9 @@ public class Backup extends Model {
     for (BackupTableParams childParams : params.backupList) {
       childParams.backupUuid = params.backupUuid;
       childParams.baseBackupUUID = params.baseBackupUUID;
+      // Set PIT restore enabled if backup chain has it enabled.
+      // This is required for manually created incremental backups.
+      childParams.setPointInTimeRestoreEnabled(params.isPointInTimeRestoreEnabled());
       if (!previousBackupInfo.backupType.equals(params.backupType)) {
         childParams.backupParamsIdentifier = UUID.randomUUID();
       } else {
@@ -486,6 +511,90 @@ public class Backup extends Model {
     } else {
       return ImmutableList.of(backupParams);
     }
+  }
+
+  @JsonIgnore
+  public List<KeyspaceTables> getBackupKeyspaceTablesList() {
+    return this.getBackupParamsCollection().stream()
+        .map(bP -> bP.getKeyspaceTables())
+        .collect(Collectors.toList());
+  }
+
+  @JsonIgnore
+  public List<BackupTableParams> getBackupParamsCollectionForRestore(
+      long restoreToTimestampMillis) {
+    if (restoreToTimestampMillis <= 0) {
+      return this.getBackupParamsCollection();
+    } else {
+      return this.getBackupParamsCollection().stream()
+          .filter(
+              bP -> {
+                if (bP.getBackupPointInTimeRestoreWindow() == null) {
+                  return false;
+                }
+                long rangeEnd =
+                    bP.getBackupPointInTimeRestoreWindow().timestampRetentionWindowEndMillis;
+                long rangeStart =
+                    bP.getBackupPointInTimeRestoreWindow().timestampRetentionWindowStartMillis;
+                if (restoreToTimestampMillis > rangeStart && restoreToTimestampMillis <= rangeEnd) {
+                  return true;
+                }
+                return false;
+              })
+          .collect(Collectors.toList());
+    }
+  }
+
+  @JsonIgnore
+  public Map<String, KeyspaceTables> getBackupLocationKeyspaceTablesMap() {
+    return getBackupLocationKeyspaceTablesMap(0L);
+  }
+
+  @JsonIgnore
+  public Map<String, KeyspaceTables> getBackupLocationKeyspaceTablesMap(
+      long restoreToTimestampMillis) {
+    return this.getBackupParamsCollectionForRestore(restoreToTimestampMillis).stream()
+        .collect(Collectors.toMap(bP -> bP.storageLocation, bP -> bP.getKeyspaceTables()));
+  }
+
+  @JsonIgnore
+  // For Backup params in format:
+  // (location: {keyspace: {table1, table2}}, location2: {keyspace: {table3, table4}})
+  // This method will return it as:
+  // (keyspace: {location: {table1, table2}, location2: {table3, table4}})
+  public Map<String, Map<String, Set<String>>> getKeyspaceAndTablesBackupLocationMap(
+      long restoreToTimestampMillis) {
+    return this.getBackupParamsCollectionForRestore(restoreToTimestampMillis).stream()
+        .reduce(
+            new HashMap<String, Map<String, Set<String>>>(),
+            (map, backupParams) -> {
+              map.compute(
+                  backupParams.getKeyspace(),
+                  (keyspace, locationTablesMap) -> {
+                    if (locationTablesMap == null) {
+                      locationTablesMap = new HashMap<>();
+                    }
+                    locationTablesMap.put(
+                        backupParams.storageLocation, backupParams.getTableNames());
+                    return locationTablesMap;
+                  });
+              return map;
+            },
+            (map1, map2) -> {
+              map2.forEach(
+                  (keyspace, locationTablesMap2) -> {
+                    map1.compute(
+                        keyspace,
+                        (k, locationTablesMap1) -> {
+                          if (locationTablesMap1 == null) {
+                            locationTablesMap1 = new HashMap<>();
+                          }
+                          locationTablesMap1.putAll(locationTablesMap2);
+                          return locationTablesMap1;
+                        });
+                  });
+              return map1;
+            });
   }
 
   /**
@@ -564,8 +673,9 @@ public class Backup extends Model {
       this.expiry = newExpiryDate;
     }
     this.backupInfo.fullChainSizeInBytes =
-        fetchAllBackupsByBaseBackupUUID(this.customerUUID, this.getBaseBackupUUID()).stream()
-            .filter(b -> b.getState() == BackupState.Completed)
+        fetchAllBackupsByBaseBackupUUID(
+                this.customerUUID, this.getBaseBackupUUID(), BackupState.Completed)
+            .stream()
             .mapToLong(b -> b.backupInfo.backupSizeInBytes)
             .sum();
     this.save();
@@ -646,7 +756,7 @@ public class Backup extends Model {
   public static Map<UUID, List<Backup>> getCompletedExpiredBackups() {
     Date now = new Date();
     List<Backup> expiredBackups =
-        Backup.find.query().where().lt("expiry", now).in("state", BackupState.Completed).findList();
+        Backup.find.query().where().lt("expiry", now).in("state", COMPLETED_STATES).findList();
     Map<UUID, List<Backup>> expiredBackupsByCustomerUUID = new HashMap<>();
     for (Backup backup : expiredBackups) {
       if (!(Universe.isUniversePaused(backup.getBackupInfo().getUniverseUUID())
@@ -853,17 +963,25 @@ public class Backup extends Model {
     return universes;
   }
 
+  /**
+   * Fetch list of backups in a given backup chain in descending order of creation time.
+   *
+   * @param customerUUID The customer UUID
+   * @param baseBackupUUID The base backup UUID
+   * @param state Optional backup state to fetch backups only belonging to the given state
+   * @return List of backups matching the criteria
+   */
   public static List<Backup> fetchAllBackupsByBaseBackupUUID(
-      UUID customerUUID, UUID baseBackupUUID) {
-    List<Backup> backupChain =
+      UUID customerUUID, UUID baseBackupUUID, @Nullable BackupState state) {
+    ExpressionList<Backup> query =
         find.query()
             .where()
             .eq("customer_uuid", customerUUID)
-            .eq("base_backup_uuid", baseBackupUUID)
-            .orderBy()
-            .desc("create_time")
-            .findList();
-    return backupChain;
+            .eq("base_backup_uuid", baseBackupUUID);
+    if (state != null) {
+      query.eq("state", state);
+    }
+    return query.orderBy().desc("create_time").findList();
   }
 
   /**
@@ -873,11 +991,10 @@ public class Backup extends Model {
    * @param baseBackupUUID
    */
   public static Backup getLastSuccessfulBackupInChain(UUID customerUUID, UUID baseBackupUUID) {
-    List<Backup> backupChain = fetchAllBackupsByBaseBackupUUID(customerUUID, baseBackupUUID);
-    Optional<Backup> backup =
-        backupChain.stream().filter(b -> b.getState().equals(BackupState.Completed)).findFirst();
-    if (backup.isPresent()) {
-      return backup.get();
+    List<Backup> backupChain =
+        fetchAllBackupsByBaseBackupUUID(customerUUID, baseBackupUUID, BackupState.Completed);
+    if (CollectionUtils.isNotEmpty(backupChain)) {
+      return backupChain.get(0);
     }
     return null;
   }
@@ -890,6 +1007,28 @@ public class Backup extends Model {
         .eq("schedule_uuid", scheduleUUID)
         .eq("state", BackupState.Completed)
         .findList();
+  }
+
+  /**
+   * Get restorable backup with closest create time after the restore timestamp.
+   *
+   * @param customerUUID The customer UUID
+   * @param baseBackupUUID The base backup UUID of the backup chain
+   * @param restoreTimestampMillis Timestamp to restore the backup to
+   */
+  public static Optional<Backup> maybeGetRestorableBackup(
+      UUID customerUUID, UUID baseBackupUUID, long restoreTimestampMillis) {
+    Date restoreTimestamp = Date.from(Instant.ofEpochMilli(restoreTimestampMillis));
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("base_backup_uuid", baseBackupUUID)
+        .eq("state", BackupState.Completed)
+        .ge("create_time", restoreTimestamp)
+        .orderBy()
+        .asc("create_time")
+        .setMaxRows(1)
+        .findOneOrEmpty();
   }
 
   public static ExpressionList<Backup> createQueryByFilter(BackupFilter filter) {
@@ -921,6 +1060,9 @@ public class Backup extends Model {
     if (!CollectionUtils.isEmpty(filter.getStates())) {
       appendInClause(query, "state", filter.getStates());
     }
+    if (!filter.isShowHidden()) {
+      query.eq("hidden", false);
+    }
     if (!CollectionUtils.isEmpty(filter.getKeyspaceList())) {
       Junction<Backup> orExpr = query.or();
       String queryStringInner =
@@ -946,6 +1088,7 @@ public class Backup extends Model {
           "t0.storage_config_uuid not in (select C.config_uuid from customer_config C)";
       query.raw(configNotExists);
     }
+
     return query;
   }
 
@@ -971,5 +1114,13 @@ public class Backup extends Model {
 
   public boolean isParentBackup() {
     return this.getBaseBackupUUID().equals(this.getBackupUUID());
+  }
+
+  public long backupCreateTimeInMillis() {
+    return this.createTime.toInstant().toEpochMilli();
+  }
+
+  public long backupCompleteTimeInMillis() {
+    return this.completionTime.toInstant().toEpochMilli();
   }
 }

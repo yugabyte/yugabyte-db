@@ -126,7 +126,7 @@ The key's randomart image is:
     $ az group deployment show -g <Your-Azure-Resource-Group> -n <Your-Deployment-Name> --query properties.outputs
     ```
 
-    The output displays the YugabyteDB Admin URL, JDBC URL, YSQL, YCQL, and YEDIS connection string. You can use the YugabyteDB Admin URL to access the Admin portal.
+    The output displays the YugabyteDB Admin URL, JDBC URL, YSQL, and YCQL connection strings. You can use the YugabyteDB Admin URL to access the Admin portal.
 
 ## Deploy using Azure Portal
 

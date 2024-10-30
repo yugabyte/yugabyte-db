@@ -69,4 +69,4 @@ The following table includes a list of supported data type mappings for migratin
 
 ## Learn more
 
-- [Data modeling](../data-modeling)
+- [Data modeling](../../../develop/data-modeling)

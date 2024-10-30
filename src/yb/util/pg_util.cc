@@ -20,6 +20,7 @@
 
 #include "yb/util/format.h"
 #include "yb/util/hash_util.h"
+#include "yb/util/path_util.h"
 
 DECLARE_string(tmp_dir);
 
@@ -103,6 +104,11 @@ std::string PgDeriveSocketDir(const HostPort& host_port) {
   }
   DCHECK_LE(path.size(), kSocketMaxChars);
   return path;
+}
+
+std::string PgDeriveSocketLockFile(const HostPort& host_port) {
+  return JoinPathSegments(
+      PgDeriveSocketDir(host_port), Format(".s.PGSQL.$0.lock", host_port.port()));
 }
 
 } // namespace yb

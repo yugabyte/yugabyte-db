@@ -30,10 +30,11 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -144,14 +145,28 @@ public class VMImageUpgrade extends UpgradeTaskBase {
         });
   }
 
-  private void createVMImageUpgradeTasks(Set<NodeDetails> nodes) {
-    createRootVolumeCreationTasks(nodes).setSubTaskGroupType(getTaskSubGroupType());
+  private static class ImageSettings {
+    final String machineImage;
+    final String sshUserOverride;
+    final Integer sshPortOverride;
+    final UUID imageBundleUUID;
 
-    Map<UUID, UUID> clusterToImageBundleMap = new HashMap<>();
-    Universe universe = getUniverse();
+    private ImageSettings(
+        String machineImage,
+        String sshUserOverride,
+        Integer sshPortOverride,
+        UUID imageBundleUUID) {
+      this.machineImage = machineImage;
+      this.sshUserOverride = sshUserOverride;
+      this.sshPortOverride = sshPortOverride;
+      this.imageBundleUUID = imageBundleUUID;
+    }
+  }
+
+  private Map<NodeDetails, ImageSettings> getImageSettingsForNodes(Set<NodeDetails> nodes) {
+    Map<NodeDetails, ImageSettings> result = new LinkedHashMap<>();
     UUID imageBundleUUID;
     for (NodeDetails node : nodes) {
-      createSetNodeStateTask(node, getNodeState());
       UUID region = taskParams().nodeToRegion.get(node.nodeUuid);
       String machineImage = "";
       String sshUserOverride = "";
@@ -188,20 +203,40 @@ public class VMImageUpgrade extends UpgradeTaskBase {
             machineImage);
         continue;
       }
-      List<UniverseTaskBase.ServerType> processTypes = new ArrayList<>();
-      List<NodeDetails> masters = new ArrayList<>();
+      result.put(
+          node, new ImageSettings(machineImage, sshUserOverride, sshPortOverride, imageBundleUUID));
+    }
+    return result;
+  }
+
+  private void createVMImageUpgradeTasks(Set<NodeDetails> nodes) {
+    Map<NodeDetails, ImageSettings> imageSettingsMap = getImageSettingsForNodes(nodes);
+
+    createRootVolumeCreationTasks(imageSettingsMap).setSubTaskGroupType(getTaskSubGroupType());
+
+    Map<UUID, UUID> clusterToImageBundleMap = new HashMap<>();
+    Universe universe = getUniverse();
+    for (NodeDetails node : imageSettingsMap.keySet()) {
+      ImageSettings imageSettings = imageSettingsMap.get(node);
+      final UUID imageBundleUUID = imageSettings.imageBundleUUID;
+      final String sshUserOverride = imageSettings.sshUserOverride;
+      final Integer sshPortOverride = imageSettings.sshPortOverride;
+      final String machineImage = imageSettings.machineImage;
+      Set<UniverseTaskBase.ServerType> processTypes = new LinkedHashSet<>();
       if (node.isMaster) {
         processTypes.add(ServerType.MASTER);
-        masters.add(node);
       }
-      List<NodeDetails> tservers = new ArrayList<>();
       if (node.isTserver) {
         processTypes.add(ServerType.TSERVER);
-        tservers.add(node);
       }
       if (universe.isYbcEnabled()) processTypes.add(ServerType.CONTROLLER);
 
-      createCheckNodesAreSafeToTakeDownTask(masters, tservers, null);
+      createSetNodeStateTask(node, getNodeState());
+
+      createCheckNodesAreSafeToTakeDownTask(
+          Collections.singletonList(MastersAndTservers.from(node, processTypes)),
+          getTargetSoftwareVersion(),
+          false);
 
       // The node is going to be stopped. Ignore error because of previous error due to
       // possibly detached root volume.
@@ -228,7 +263,12 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       createInstallNodeAgentTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createWaitForNodeAgentTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createHookProvisionTask(nodeList, TriggerType.PreNodeProvision);
-      createSetupServerTasks(nodeList, p -> p.vmUpgradeTaskType = taskParams().vmUpgradeTaskType)
+      createSetupServerTasks(
+              nodeList,
+              p -> {
+                p.vmUpgradeTaskType = taskParams().vmUpgradeTaskType;
+                p.rebootNodeAllowed = true;
+              })
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
       createHookProvisionTask(nodeList, TriggerType.PostNodeProvision);
       createLocaleCheckTask(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
@@ -291,9 +331,9 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           clusterToImageBundleMap.put(node.placementUuid, imageBundleUUID);
         }
       }
+      createSetNodeStateTask(node, NodeState.Live);
       createNodeDetailsUpdateTask(node, !taskParams().isSoftwareUpdateViaVm)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-      createSetNodeStateTask(node, NodeState.Live);
     }
 
     // Update the imageBundleUUID in the cluster -> userIntent
@@ -309,49 +349,18 @@ public class VMImageUpgrade extends UpgradeTaskBase {
         .setSubTaskGroupType(getTaskSubGroupType());
   }
 
-  private SubTaskGroup createRootVolumeCreationTasks(Collection<NodeDetails> nodes) {
+  private SubTaskGroup createRootVolumeCreationTasks(Map<NodeDetails, ImageSettings> settingsMap) {
     Map<UUID, List<NodeDetails>> rootVolumesPerAZ =
-        nodes.stream().collect(Collectors.groupingBy(n -> n.azUuid));
+        settingsMap.keySet().stream().collect(Collectors.groupingBy(n -> n.azUuid));
     SubTaskGroup subTaskGroup = createSubTaskGroup("CreateRootVolumes");
-    Universe universe = getUniverse();
 
     rootVolumesPerAZ.forEach(
         (key, value) -> {
           NodeDetails node = value.get(0);
-          UUID region = taskParams().nodeToRegion.get(node.nodeUuid);
-          String updatedMachineImage = "";
-          if (taskParams().imageBundles != null && taskParams().imageBundles.size() > 0) {
-            UUID imageBundleUUID = retrieveImageBundleUUID(taskParams().imageBundles, node);
-            ImageBundle.NodeProperties toOverwriteNodeProperties =
-                imageBundleUtil.getNodePropertiesOrFail(
-                    imageBundleUUID, node.cloudInfo.region, node.cloudInfo.cloud);
-            updatedMachineImage = toOverwriteNodeProperties.getMachineImage();
-          } else {
-            // Backward compatiblity.
-            updatedMachineImage = taskParams().machineImages.get(region);
-          }
-          final String machineImage = updatedMachineImage;
+          ImageSettings imageSettings = settingsMap.get(node);
+
+          final String machineImage = imageSettings.machineImage;
           int numVolumes = value.size();
-
-          if (!taskParams().forceVMImageUpgrade) {
-            numVolumes =
-                (int)
-                    value.stream()
-                        .filter(
-                            n -> {
-                              String existingMachineImage = n.machineImage;
-                              if (StringUtils.isBlank(existingMachineImage)) {
-                                existingMachineImage = retreiveMachineImageForNode(n);
-                              }
-                              return !machineImage.equals(existingMachineImage);
-                            })
-                        .count();
-          }
-
-          if (numVolumes == 0) {
-            log.info("Nothing to upgrade in AZ {}", node.cloudInfo.az);
-            return;
-          }
 
           CreateRootVolumes.Params params = new CreateRootVolumes.Params();
           Cluster cluster = taskParams().getClusterByUuid(node.placementUuid);

@@ -13,10 +13,11 @@
 
 #pragma once
 
-#include <atomic>
 #include <optional>
+#include <unordered_map>
 
 #include "yb/common/entity_ids_types.h"
+#include "yb/common/pg_types.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
 #include "yb/util/status_fwd.h"
@@ -39,8 +40,21 @@ class TserverXClusterContext : public TserverXClusterContextIf {
 
   void UpdateSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map);
 
+  Status SetSourceTableMappingForCreateTable(
+      const YsqlFullTableName& table_name, const PgObjectId& source_table_id) override
+      EXCLUDES(source_table_id_for_create_table_map_mutex_);
+  void ClearSourceTableMappingForCreateTable(const YsqlFullTableName& table_name) override
+      EXCLUDES(source_table_id_for_create_table_map_mutex_);
+  // Returns an invalid PgObjectId if the table is not found.
+  PgObjectId GetXClusterSourceTableId(const YsqlFullTableName& table_name) const override
+      EXCLUDES(source_table_id_for_create_table_map_mutex_);
+
  private:
   XClusterSafeTimeMap safe_time_map_;
+
+  mutable rw_spinlock source_table_id_for_create_table_map_mutex_;
+  std::unordered_map<YsqlFullTableName, PgObjectId, YsqlFullTableNameHash>
+      source_table_id_for_create_table_map_ GUARDED_BY(source_table_id_for_create_table_map_mutex_);
 };
 
 }  // namespace tserver

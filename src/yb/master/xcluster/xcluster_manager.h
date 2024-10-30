@@ -14,15 +14,11 @@
 #pragma once
 
 #include <memory>
-#include <shared_mutex>
 #include <vector>
 
 #include "yb/common/entity_ids_types.h"
-#include "yb/gutil/thread_annotations.h"
 
-#include "yb/master/xcluster/xcluster_catalog_entity.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
-#include "yb/master/xcluster/xcluster_outbound_replication_group.h"
 #include "yb/master/xcluster/xcluster_source_manager.h"
 #include "yb/master/xcluster/xcluster_target_manager.h"
 
@@ -39,6 +35,7 @@ class TSHeartbeatResponsePB;
 class XClusterConfig;
 class XClusterSafeTimeService;
 struct SysCatalogLoadingState;
+struct XClusterSetupUniverseReplicationData;
 
 // The XClusterManager class is responsible for managing all yb-master related control logic of
 // XCluster. All XCluster related RPCs and APIs are handled by this class.
@@ -54,7 +51,8 @@ class XClusterManager : public XClusterManagerIf,
 
   Status Init();
 
-  void Shutdown();
+  void StartShutdown() EXCLUDES(monitored_tasks_mutex_);
+  void CompleteShutdown() EXCLUDES(monitored_tasks_mutex_);
 
   void Clear();
 
@@ -93,7 +91,9 @@ class XClusterManager : public XClusterManagerIf,
   Status GetXClusterSafeTime(
       const GetXClusterSafeTimeRequestPB* req, GetXClusterSafeTimeResponsePB* resp,
       rpc::RpcContext* rpc, const LeaderEpoch& epoch);
-  Result<HybridTime> GetXClusterSafeTime(const NamespaceId& namespace_id) const override;
+  Result<std::optional<HybridTime>> TryGetXClusterSafeTimeForBackfill(
+      const std::vector<TableId>& index_table_ids, const TableInfoPtr& indexed_table,
+      const LeaderEpoch& epoch) const override;
 
   Status GetXClusterSafeTimeForNamespace(
       const GetXClusterSafeTimeForNamespaceRequestPB* req,
@@ -104,6 +104,48 @@ class XClusterManager : public XClusterManagerIf,
       const XClusterSafeTimeFilter& filter) override;
 
   Status RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) override;
+
+  Status SetupUniverseReplication(
+      const SetupUniverseReplicationRequestPB* req, SetupUniverseReplicationResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+
+  Status SetupUniverseReplication(
+      XClusterSetupUniverseReplicationData&& data, const LeaderEpoch& epoch);
+
+  Status IsSetupUniverseReplicationDone(
+      const IsSetupUniverseReplicationDoneRequestPB* req,
+      IsSetupUniverseReplicationDoneResponsePB* resp, rpc::RpcContext* rpc);
+
+  Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
+      const xcluster::ReplicationGroupId& replication_group_id, bool skip_health_check) override;
+
+  Status SetupNamespaceReplicationWithBootstrap(
+      const SetupNamespaceReplicationWithBootstrapRequestPB* req,
+      SetupNamespaceReplicationWithBootstrapResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+
+  Status IsSetupNamespaceReplicationWithBootstrapDone(
+      const IsSetupNamespaceReplicationWithBootstrapDoneRequestPB* req,
+      IsSetupNamespaceReplicationWithBootstrapDoneResponsePB* resp, rpc::RpcContext* rpc);
+
+  Status AlterUniverseReplication(
+      const AlterUniverseReplicationRequestPB* req, AlterUniverseReplicationResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch) override;
+
+  Status DeleteUniverseReplication(
+      const DeleteUniverseReplicationRequestPB* req, DeleteUniverseReplicationResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+
+  Status AddTableToReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id, const TableId& source_table_id,
+      const xrepl::StreamId& bootstrap_id, const std::optional<TableId>& target_table_id,
+      const LeaderEpoch& epoch) override;
+
+  // Inserts the sent schema into the historical packing schema for the target table.
+  Status InsertPackedSchemaForXClusterTarget(
+      const InsertPackedSchemaForXClusterTargetRequestPB* req,
+      InsertPackedSchemaForXClusterTargetResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
 
   // OutboundReplicationGroup RPCs.
   Status XClusterCreateOutboundReplicationGroup(
@@ -165,6 +207,13 @@ class XClusterManager : public XClusterManagerIf,
   Status GetUniverseReplicationInfo(
       const GetUniverseReplicationInfoRequestPB* req, GetUniverseReplicationInfoResponsePB* resp,
       rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+  Status GetReplicationStatus(
+      const GetReplicationStatusRequestPB* req, GetReplicationStatusResponsePB* resp,
+      rpc::RpcContext* rpc);
+  Status XClusterReportNewAutoFlagConfigVersion(
+      const XClusterReportNewAutoFlagConfigVersionRequestPB* req,
+      XClusterReportNewAutoFlagConfigVersionResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
 
   std::vector<std::shared_ptr<PostTabletCreateTaskBase>> GetPostTabletCreateTasks(
       const TableInfoPtr& table_info, const LeaderEpoch& epoch);
@@ -175,6 +224,56 @@ class XClusterManager : public XClusterManagerIf,
   std::unordered_set<xcluster::ReplicationGroupId> GetInboundTransactionalReplicationGroups()
       const override;
 
+  Status ClearXClusterSourceTableId(TableInfoPtr table_info, const LeaderEpoch& epoch) override;
+
+  void NotifyAutoFlagsConfigChanged() override;
+
+  // TODO: Remove these *Consumer* functions once Universe Replication is fully moved into
+  // XClusterManager.
+
+  void StoreConsumerReplicationStatus(
+      const XClusterConsumerReplicationStatusPB& consumer_replication_status) override;
+  void SyncConsumerReplicationStatusMap(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const google::protobuf::Map<std::string, cdc::ProducerEntryPB>& producer_map) override;
+  Result<bool> HasReplicationGroupErrors(
+      const xcluster::ReplicationGroupId& replication_group_id) override;
+
+  void RecordTableConsumerStream(
+      const TableId& table_id, const xcluster::ReplicationGroupId& replication_group_id,
+      const xrepl::StreamId& stream_id);
+
+  void RemoveTableConsumerStream(
+      const TableId& table_id, const xcluster::ReplicationGroupId& replication_group_id) override;
+
+  void RemoveTableConsumerStreams(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::set<TableId>& tables_to_clear) override;
+
+  Result<TableId> GetConsumerTableIdForStreamId(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const xrepl::StreamId& stream_id) const;
+
+  bool IsTableReplicated(const TableId& table_id) const;
+
+  bool IsTableReplicationConsumer(const TableId& table_id) const override;
+
+  bool IsTableBiDirectionallyReplicated(const TableId& table_id) const override;
+
+  Status HandleTabletSplit(
+      const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids,
+      const LeaderEpoch& epoch) override;
+
+  Status ValidateNewSchema(const TableInfo& table_info, const Schema& consumer_schema) const;
+
+  Status ValidateSplitCandidateTable(const TableId& table_id) const;
+
+  Status HandleTabletSchemaVersionReport(
+      const TableInfo& table_info, SchemaVersion consumer_schema_version, const LeaderEpoch& epoch);
+
+  Status RegisterMonitoredTask(server::MonitoredTaskPtr task) EXCLUDES(monitored_tasks_mutex_);
+  void UnRegisterMonitoredTask(server::MonitoredTaskPtr task) EXCLUDES(monitored_tasks_mutex_);
+
  private:
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;
@@ -182,6 +281,9 @@ class XClusterManager : public XClusterManagerIf,
   bool in_memory_state_cleared_ = true;
 
   std::unique_ptr<XClusterConfig> xcluster_config_;
+
+  std::mutex monitored_tasks_mutex_;
+  std::unordered_set<server::MonitoredTaskPtr> monitored_tasks_ GUARDED_BY(monitored_tasks_mutex_);
 };
 
 }  // namespace master

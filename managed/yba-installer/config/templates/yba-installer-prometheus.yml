@@ -8,7 +8,7 @@
         # By default, scrape targets every 15 seconds.
         scrape_interval:     {{ yamlPath "prometheus.scrapeInterval" }}
         evaluation_interval: {{ yamlPath "prometheus.scrapeInterval" }}
-        # scrape_timeout is set to the global default (10s).
+        scrape_timeout: {{ yamlPath "prometheus.scrapeTimeout" }}
 
         # The labels to add to any time series or alerts when communicating with
         # external systems (federation, remote storage, Alertmanager).
@@ -180,10 +180,12 @@
       After=network-online.target
 
       [Service]
+      {{ if eq (yamlPath "as_root") "true" }}
       User={{ yamlPath "service_username" }}
       Group={{ yamlPath "service_username" }}
+      {{ end }}
       Type=simple
-      ExecStart=/usr/local/bin/prometheus \
+      ExecStart= {{ .PromDir }}/prometheus \
       --config.file {{ .ConfFileLocation }} \
       --storage.tsdb.path {{ .DataDir }}/storage \
       --storage.tsdb.retention={{ yamlPath "prometheus.retentionTime" }} \
@@ -200,6 +202,11 @@
       Restart=always
       RestartSec={{ yamlPath "prometheus.restartSeconds"}}
       OOMScoreAdjust={{ yamlPath "prometheus.oomScoreAdjust"}}
+      {{ $systemdLog := systemdLogMethod }}
+      {{ if ne $systemdLog "" }}
+      StandardOutput={{ $systemdLog }}:{{ .LogDir }}/prometheus.log
+      StandardError={{ $systemdLog }}:{{ .LogDir }}/prometheus.log
+      {{ end }}
 
       [Install]
       WantedBy=multi-user.target

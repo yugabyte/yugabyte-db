@@ -34,18 +34,17 @@ import org.yb.pgsql.ConnectionEndpoint;
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
 public class TestSessionParameters extends BaseYsqlConnMgr {
 
-  // Keep the pool size to 2 in order to test how GUC variables are set on
-  // different physical connections. Keeping this limit does not affect the
-  // rest of the test, and is only used to determinstically switch between
-  // physical connections.
-  private final int POOL_SIZE = 2;
-
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
+    // Keep the pool size to 2 in order to test how GUC variables are set on
+    // different physical connections. Keeping this limit does not affect the
+    // rest of the test, and is only used to determinstically switch between
+    // physical connections.
     Map<String, String> additionalTserverFlags = new HashMap<String, String>() {
       {
-        put("ysql_conn_mgr_max_conns_per_db", Integer.toString(POOL_SIZE));
+        put("ysql_conn_mgr_max_conns_per_db",
+          Integer.toString(isTestRunningInWarmupRandomMode() ? 3 : 2));
       }
     };
 
@@ -90,6 +89,7 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     SET,
     RESET,
     SET_LOCAL,
+    SET_LOCAL_DEFAULT,
     RESET_ALL
   }
 
@@ -98,6 +98,7 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     TRANSACTION_SKIP,   // Should be skipped for active transactions
     TRANSACTION_ONLY,   // Can only be modified within a transaction
     AUTH_PARAM,         // Auth-related parameters
+    STICKY_PARAM,       // Parameters that need stickiness
     TIME_UNIT,          // Parameters with TIME_UNIT flag enabled
     APPLICATION_NAME,   // Overriden by JDBC driver
     EXTRA_FLOAT_DIGITS, // Overriden by JDBC driver
@@ -112,10 +113,6 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
       new ExceptionType[] {}),
     new SessionParameter("search_path", "\"$user\", public", "test",
       new ExceptionType[] {}),
-    new SessionParameter("session_authorization", "yugabyte", "test",
-      new ExceptionType[] { ExceptionType.AUTH_PARAM, ExceptionType.INVALID_STARTUP }),
-    new SessionParameter("role", "none", "test2",
-      new ExceptionType[] { ExceptionType.AUTH_PARAM, ExceptionType.INVALID_STARTUP }),
     new SessionParameter("TimeZone", "UTC", "EST",
       new ExceptionType[] {}),
     new SessionParameter("default_transaction_isolation", "read committed", "serializable",
@@ -132,7 +129,7 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
       new ExceptionType[] { ExceptionType.TIME_UNIT }),
     new SessionParameter("idle_in_transaction_session_timeout", "0", "999",
       new ExceptionType[] { ExceptionType.TIME_UNIT }),
-    new SessionParameter("extra_float_digits", "0", "2",
+    new SessionParameter("extra_float_digits", "1", "2",
       new ExceptionType[] { ExceptionType.EXTRA_FLOAT_DIGITS, ExceptionType.INVALID_STARTUP }),
     new SessionParameter("default_statistics_target", "100", "200",
       new ExceptionType[] {}),
@@ -146,6 +143,19 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
       new ExceptionType[] {}),
     new SessionParameter("transaction_read_only", "off", "off", "on",
       new ExceptionType[] { ExceptionType.TRANSACTION_ONLY }),
+
+    // Sticky GUC variables make the primary connection sticky, test at the end.
+
+    new SessionParameter("session_authorization", "yugabyte", "test",
+      new ExceptionType[] { ExceptionType.AUTH_PARAM, ExceptionType.INVALID_STARTUP,
+        ExceptionType.STICKY_PARAM }),
+    new SessionParameter("role", "none", "test2",
+      new ExceptionType[] { ExceptionType.AUTH_PARAM, ExceptionType.INVALID_STARTUP,
+        ExceptionType.STICKY_PARAM }),
+    new SessionParameter("default_tablespace", "", "pg_default",
+      new ExceptionType[] { ExceptionType.STICKY_PARAM }),
+    new SessionParameter("temp_tablespaces", "", "pg_default",
+      new ExceptionType[] { ExceptionType.STICKY_PARAM }),
   };
 
   // Trim the leading millisecond unit from the fetched value, if not 0.
@@ -174,15 +184,20 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
 
   private static void modifyParameterValue(Statement stmt, SessionParameter sp, QueryType qType) {
     String expectedValue = sp.expectedValue;
+    String defaultValue = sp.defaultValue;
     final String expectedInTransactionValue = sp.expectedInTransactionValue;
     final String parameterName = sp.parameterName;
 
     // SET_UNIQUE variables cannot be SET to the same value as its
     // initial value, it is fine to change its value to any arbritrary, allowed
     // value.
-    if (sp.exceptionSet.contains(ExceptionType.SET_UNIQUE))
+    if (sp.exceptionSet.contains(ExceptionType.SET_UNIQUE)) {
       expectedValue = sp.expectedInTransactionValue;
+    }
 
+    if (defaultValue.isEmpty() || defaultValue.contains(" ")) {
+      defaultValue = String.format("'%s'", defaultValue);
+    }
     try {
       switch (qType) {
         case RESET_ALL:
@@ -192,12 +207,14 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
           stmt.execute(String.format("RESET %s", parameterName));
           break;
         case SET:
-          stmt.executeUpdate(String.format("SET %s = %s", parameterName, expectedValue));
+          stmt.execute(String.format("SET %s = %s", parameterName, expectedValue));
           break;
         case SET_LOCAL:
-          stmt.executeUpdate(String.format("SET LOCAL %s = %s", parameterName,
+          stmt.execute(String.format("SET LOCAL %s = %s", parameterName,
               expectedInTransactionValue));
           break;
+        case SET_LOCAL_DEFAULT:
+          stmt.execute(String.format("SET LOCAL %s = %s", parameterName, defaultValue));
         default:
           break;
       }
@@ -250,10 +267,35 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
         Connection newConn2 = getConnectionBuilder()
             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
             .connect();
+        Connection newConn3 = isTestRunningInWarmupRandomMode() ?
+            getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect() :
+            null;
         Statement newStmt1 = newConn1.createStatement();
-        Statement newStmt2 = newConn2.createStatement()) {
+        Statement newStmt2 = newConn2.createStatement();
+        Statement newStmt3 = isTestRunningInWarmupRandomMode() ?
+            newConn3.createStatement() :
+            null;) {
 
-      // Create new physical connections.
+      int backendPID = -1;
+
+      // Create new physical connections, but only for non-sticky GUC variables.
+
+      // Just ensure connection is stuck for sticky GUC variables.
+      if (sp.exceptionSet.contains(ExceptionType.STICKY_PARAM)) {
+        rs = stmt.executeQuery("SELECT pg_backend_pid()");
+        assertTrue("backend pid should be non-null", rs.next());
+        backendPID = rs.getInt(1);
+
+        // Backend pid on different logical connection should be different.
+        rs = newStmt1.executeQuery("SELECT pg_backend_pid()");
+        assertTrue("backend pid should be non-null", rs.next());
+        assertFalse(String.format(
+            "new logical connection should have attached onto new physical connection for %s",
+            parameterName), backendPID == rs.getInt(1));
+        return;
+      }
 
       // newStmt1 will latch onto the physical conenction the test uses.
       newStmt1.execute("BEGIN");
@@ -263,13 +305,19 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
       newStmt2.execute("BEGIN");
       newStmt2.execute("SELECT 1");
 
+      if (isTestRunningInWarmupRandomMode()) {
+      // newStmt3 will create a new physical connection.
+        newStmt3.execute("BEGIN");
+        newStmt3.execute("SELECT 1");
+      }
+
       // Detach newStmt1 from its physical connection.
       newStmt1.execute("COMMIT");
 
       // Find the backend PID of the physical connection the test uses.
       rs = stmt.executeQuery("SELECT pg_backend_pid()");
       assertTrue("backend pid should be non-null", rs.next());
-      int backendPID = rs.getInt(1);
+      backendPID = rs.getInt(1);
 
       // Ensure that the variables' state is preserved correctly on the first
       // physical connection.
@@ -300,6 +348,11 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
       // have to strictly ensure that our primary connection sticks to
       // its original physical connection.
       newStmt1.execute("COMMIT");
+      if (isTestRunningInWarmupRandomMode())
+      {
+        newStmt3.execute("COMMIT");
+        newConn3.close();
+      }
     } catch (Exception e) {
       fail(String.format("failed to check value of %s: %s", parameterName, e.getMessage()));
     }
@@ -399,6 +452,29 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
       assertTrue(String.format(
           "expected %s, but got %s for SET LOCAL->COMMIT value check of %s",
           expectedValue, fetchedValue, parameterName), expectedValue.equals(fetchedValue));
+
+      // Check non-default SET LOCAL statements. Only verify the final result
+      // since we already verified the ability to use SET LOCAL statements.
+      expectedValue = sp.expectedValue;
+
+      modifyParameterValue(stmt, sp, QueryType.SET);
+      stmt.execute("BEGIN");
+      modifyParameterValue(stmt, sp, QueryType.SET_LOCAL_DEFAULT);
+      stmt.execute("COMMIT");
+
+      fetchedValue = fetchParameterValue(stmt, sp);
+      assertTrue(String.format(
+        "expected %s, but got %s for SET LOCAL DEFAULT->COMMIT value check of %s",
+        expectedValue, fetchedValue, parameterName), expectedValue.equals(fetchedValue));
+
+      stmt.execute("BEGIN");
+      modifyParameterValue(stmt, sp, QueryType.SET_LOCAL_DEFAULT);
+      stmt.execute("ROLLBACK");
+
+      fetchedValue = fetchParameterValue(stmt, sp);
+      assertTrue(String.format(
+        "expected %s, but got %s for SET LOCAL DEFAULT->ROLLBACK value check of %s",
+        expectedValue, fetchedValue, parameterName), expectedValue.equals(fetchedValue));
     } catch (Exception e) {
       fail(String.format("an error occured while checking SET LOCAL value for %s: %s",
           parameterName, e.getMessage()));

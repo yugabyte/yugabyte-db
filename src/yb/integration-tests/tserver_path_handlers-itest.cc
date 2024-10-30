@@ -104,8 +104,8 @@ TEST_F(TServerPathHandlersItest, TestVarzAutoFlag) {
   static const auto kUnExpectedAutoFlag = "use_parent_table_id_field";
 
   // Test the HTML endpoint.
-  static const auto kAutoFlagsStart = "<h2>Auto Flags</h2>";
-  static const auto kAutoFlagsEnd = "<h2>Default Flags</h2>";
+  static const auto kAutoFlagsStart = ">Auto Flags<";
+  static const auto kAutoFlagsEnd = ">Default Flags<";
 
   auto result = ASSERT_RESULT(FetchURL("/varz"));
 
@@ -120,6 +120,12 @@ TEST_F(TServerPathHandlersItest, TestVarzAutoFlag) {
 
   auto it_unexpected_flag = result.find(kUnExpectedAutoFlag);
   ASSERT_GT(it_unexpected_flag, it_auto_flags_end);
+
+  // We should not have any hidden flags in the UI. TEST flags are always marked hidden.
+  ASSERT_STR_NOT_CONTAINS(result, "TEST_override_transaction_priority");
+
+  // We should not have any master flags in the tserver.
+  ASSERT_STR_NOT_CONTAINS(result, "master_yb_client_default_timeout_ms");
 
   // Test the JSON API endpoint.
   result = ASSERT_RESULT(FetchURL("/api/v1/varz"));

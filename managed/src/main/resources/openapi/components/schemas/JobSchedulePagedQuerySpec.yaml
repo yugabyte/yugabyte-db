@@ -1,0 +1,23 @@
+title: JobSchedulePagedQuerySpec
+description: |
+  JobSchedulePagedQuerySpec
+
+  Paged API query params for job schedule.
+type: object
+allOf:
+  - $ref: "./PaginationSpec.yaml"
+properties:
+  filter:
+    $ref: "./JobScheduleApiFilter.yaml"
+  sort_by:
+    description: Sort fields of the records.
+    type: string
+    enum:
+      - uuid
+      - name
+      - enabled
+      - state
+      - type
+      - nextStartTime
+      - createdAt
+      - updatedAt

@@ -30,7 +30,7 @@ type: docs
 
 </ul>
 
-If your YugabyteDB Anywhere installation was installed using [YBA Installer](../../install-yugabyte-platform/install-software/installer/), use YBA Installer to upgrade to a newer version. Note that you can only upgrade to a newer version; downgrades are not supported.
+If your YugabyteDB Anywhere (YBA) installation was installed using [YBA Installer](../../install-yugabyte-platform/install-software/installer/), use YBA Installer to upgrade to a newer version. Note that you can only upgrade to a newer version; downgrades are not supported.
 
 For more information, refer to [Compatibility with YugabyteDB](/preview/releases/yba-releases/#compatibility-with-yugabytedb).
 
@@ -49,21 +49,21 @@ To upgrade using YBA Installer, first download the version of YBA Installer corr
 Download and extract the YBA Installer by entering the following commands:
 
 ```sh
-$ wget https://downloads.yugabyte.com/releases/{{<yb-version version="preview" format="long">}}/yba_installer_full-{{<yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
-$ tar -xf yba_installer_full-{{<yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
-$ cd yba_installer_full-{{<yb-version version="preview" format="build">}}/
+wget https://downloads.yugabyte.com/releases/{{<yb-version version="preview" format="long">}}/yba_installer_full-{{<yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
+tar -xf yba_installer_full-{{<yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
+cd yba_installer_full-{{<yb-version version="preview" format="build">}}/
 ```
 
 When ready to upgrade, run the `upgrade` command from the untarred directory of the target version of the YBA upgrade:
 
 ```sh
-$ sudo ./yba-ctl upgrade
+sudo ./yba-ctl upgrade
 ```
 
 The upgrade takes a few minutes to complete. When finished, use the status command to verify that YBA has been upgraded to the target version:
 
 ```sh
-$ sudo yba-ctl status
+sudo yba-ctl status
 ```
 
 If you encounter errors or have any problems with an upgrade, contact {{% support-platform %}}.

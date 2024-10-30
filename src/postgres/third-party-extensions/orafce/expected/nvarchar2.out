@@ -1,5 +1,6 @@
 \set VERBOSITY terse
 SET client_encoding = utf8;
+SET search_path TO public, oracle;
 --
 -- test type modifier related rules
 --
@@ -39,28 +40,29 @@ INSERT INTO bar VALUES ('abc'::NVARCHAR2(5));
 --
 -- equal
 SELECT 'abcde   '::NVARCHAR2(10) = 'abcde   '::NVARCHAR2(10);
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 -- not equal
 SELECT 'abcde  '::NVARCHAR2(10) = 'abcde   '::NVARCHAR2(10);
- ?column?
+ ?column? 
 ----------
  f
 (1 row)
 
 -- null safe concat (disabled by default)
 SELECT NULL || 'hello'::varchar2 || NULL;
- ?column?
+ ?column? 
 ----------
-
+ 
 (1 row)
 
 SET orafce.varchar2_null_safe_concat TO true;
 SELECT NULL || 'hello'::varchar2 || NULL;
- ?column?
+ ?column? 
 ----------
  hello
 (1 row)
+

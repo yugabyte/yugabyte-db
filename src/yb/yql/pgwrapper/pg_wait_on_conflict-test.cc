@@ -1291,6 +1291,12 @@ void PgWaitQueuesTest::TestMultiTabletFairness() const {
   update_conns.reserve(kNumUpdateConns);
   for (int i = 0; i < kNumUpdateConns; ++i) {
     update_conns.push_back(ASSERT_RESULT(Connect()));
+    auto& conn = update_conns.back();
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    // Establish a distributed transaction by obtaining a lock on some key outside of the contended
+    // range of keys.
+    ASSERT_OK(conn.FetchFormat("SELECT * FROM foo WHERE k=$0 FOR UPDATE", kNumKeys * 2 + i));
+    LOG(INFO) << "Conn " << i << " started";
   }
 
   TestThreadHolder thread_holder;
@@ -1301,20 +1307,14 @@ void PgWaitQueuesTest::TestMultiTabletFairness() const {
   // in *serial* in both RR and RC isolation.
   for (int i = 0; i < kNumUpdateConns; ++i) {
     auto& conn = update_conns.at(i);
-    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-    // Establish a distributed transaction by obtaining a lock on some key outside of the contended
-    // range of keys.
-    ASSERT_OK(conn.FetchFormat("SELECT * FROM foo WHERE k=$0 FOR UPDATE", kNumKeys * 2 + i));
-    LOG(INFO) << "Conn " << i << " started";
     update_did_return[i] = false;
-
     thread_holder.AddThreadFunctor(
         [i, &conn, &update_did_return = update_did_return[i], &queued_waiters, &update_query] {
       // Wait for all connections to queue their thread of execution
       auto txn_id = ASSERT_RESULT(conn.FetchRow<Uuid>("SELECT yb_get_current_transaction()"));
       LOG(INFO) << "Conn " << i << " queued with txn id " << yb::ToString(txn_id);
       queued_waiters.CountDown();
-      ASSERT_TRUE(queued_waiters.WaitFor(10s * kTimeMultiplier));
+      ASSERT_TRUE(queued_waiters.WaitFor(20s * kTimeMultiplier));
       LOG(INFO) << "Conn " << i << " finished waiting";
 
       // Set timeout to 10s so the test does not hang for default 600s timeout in case of failure.
@@ -1368,7 +1368,7 @@ void PgWaitQueuesTest::TestMultiTabletFairness() const {
   }
 }
 
-TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(MultiTabletFairness)) {
+TEST_F(PgWaitQueuesTest, MultiTabletFairness) {
   TestMultiTabletFairness();
 }
 
@@ -1659,6 +1659,61 @@ TEST_F(PgWaitQueuePackedRowTest, YB_DISABLE_TEST_IN_TSAN(TestKeyShareAndUpdate))
   ASSERT_OK(conn.Execute("COMMIT"));
 
   th.join();
+}
+
+class PgWaitQueuesWithRetriesTest : public PgMiniTestBase {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = "yb_debug_log_internal_restarts=true";
+    PgMiniTestBase::SetUp();
+  }
+};
+
+TEST_F(PgWaitQueuesWithRetriesTest, TestDeadlockRetries) {
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE test (k INT PRIMARY KEY, v1 INT, v2 INT, v3 INT)"));
+  ASSERT_OK(setup_conn.Execute("CREATE INDEX idx ON test(v1)"));
+  ASSERT_OK(setup_conn.Execute("CREATE INDEX idx2 ON test(v2)"));
+  ASSERT_OK(setup_conn.Execute("CREATE INDEX idx3 ON test(v3)"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO test VALUES (1, 0, 0, 0)"));
+  TestThreadHolder thread_holder;
+
+  auto kIterations = 100;
+  auto kNumClients = 5;
+  CountDownLatch start_latch(kNumClients);
+
+  std::vector<IsolationLevel> isolation_levels({
+      IsolationLevel::READ_COMMITTED,
+      IsolationLevel::SNAPSHOT_ISOLATION,
+      IsolationLevel::SERIALIZABLE_ISOLATION,
+      IsolationLevel::NON_TRANSACTIONAL
+  });
+  for (int i=0; i < kNumClients; i++) {
+    thread_holder.AddThreadFunctor(
+        [this, kIterations, isolation_levels, &start_latch] {
+      auto conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(conn.Execute("SET yb_max_query_layer_retries=3072"));
+      start_latch.CountDown();
+      start_latch.Wait();
+      for (int i = 0; i != kIterations; ++i) {
+        IsolationLevel isolation = RandomElement(isolation_levels);
+        if (isolation != IsolationLevel::NON_TRANSACTIONAL) {
+          ASSERT_OK(conn.StartTransaction(isolation));
+        }
+        auto status = conn.Execute("UPDATE test SET v1=v1+1, v2=v2+1, v3=v3+1 WHERE k=1");
+        if (!status.ok()) {
+          ASSERT_STR_CONTAINS(status.ToString(), "Unknown transaction, could be recently aborted");
+        }
+        if (isolation != IsolationLevel::NON_TRANSACTIONAL) {
+          auto status = conn.CommitTransaction();
+        }
+      }
+    });
+  }
+
+  thread_holder.WaitAndStop(30s * kTimeMultiplier);
 }
 
 } // namespace pgwrapper

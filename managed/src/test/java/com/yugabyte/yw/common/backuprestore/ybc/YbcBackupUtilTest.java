@@ -18,6 +18,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTableYbc;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -30,6 +31,7 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.TablesMetadata;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.RestorableWindow;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.SnapshotObjectDetails.TableData;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcSuccessBackupConfig;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
@@ -38,6 +40,7 @@ import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
+import com.yugabyte.yw.forms.backuprestore.BackupPointInTimeRestoreWindow;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -339,6 +342,8 @@ public class YbcBackupUtilTest extends FakeDBApplication {
   public void testGetExtendedBackupArgs(String filePath) throws Exception {
     BackupTableParams tableParams = new BackupTableParams();
     tableParams.useTablespaces = true;
+    tableParams.customerUuid = testCustomer.getUuid();
+    tableParams.backupUuid = UUID.randomUUID();
     tableParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     String backupKeys = TestUtils.readResource(filePath);
     ObjectMapper mapper = new ObjectMapper();
@@ -351,7 +356,10 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     backupConfig.ybdbVersion = universeVersion;
     backupConfig.universeKeys = keysNode.get("universe_keys");
     backupConfig.masterKeyMetadata = keysNode.get("master_key_metadata");
-    BackupServiceTaskExtendedArgs extArgs = ybcBackupUtil.getExtendedArgsForBackup(tableParams);
+    backupConfig.backupUUID = tableParams.backupUuid.toString();
+    backupConfig.customerUUID = tableParams.customerUuid.toString();
+    BackupTableYbc.Params params = new BackupTableYbc.Params(tableParams, null, defaultUniverse);
+    BackupServiceTaskExtendedArgs extArgs = ybcBackupUtil.getExtendedArgsForBackup(params);
     assertEquals(true, extArgs.getUseTablespaces());
     assertEquals(mapper.writeValueAsString(backupConfig), extArgs.getBackupConfigData());
   }
@@ -992,5 +1000,19 @@ public class YbcBackupUtilTest extends FakeDBApplication {
         tRSpec.getTableList().parallelStream()
             .collect(Collectors.toList())
             .containsAll(tablesInSuccessFile));
+  }
+
+  @Test
+  @Parameters({"backup/ybc_success_file_with_index_tables.json"})
+  public void testGetRestorableWindow(String filePath) {
+    String successStr = TestUtils.readResource(filePath);
+    YbcBackupResponse backupResponse = YbcBackupUtil.parseYbcBackupResponse(successStr);
+    long restorableWindowEndExpected = 1721632620000L;
+    long restorableWindowStartExpected = 1721632620000L - 4500000L;
+    RestorableWindow restorableWindowActual = backupResponse.restorableWindow;
+    BackupPointInTimeRestoreWindow pitWindow =
+        new BackupPointInTimeRestoreWindow(restorableWindowActual);
+    assertEquals(pitWindow.timestampRetentionWindowEndMillis, restorableWindowEndExpected);
+    assertEquals(pitWindow.timestampRetentionWindowStartMillis, restorableWindowStartExpected);
   }
 }

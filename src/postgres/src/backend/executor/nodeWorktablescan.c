@@ -3,7 +3,7 @@
  * nodeWorktablescan.c
  *	  routines to handle WorkTableScan nodes.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -160,7 +160,12 @@ ExecInitWorkTableScan(WorkTableScan *node, EState *estate, int eflags)
 	 * tuple table initialization
 	 */
 	ExecInitResultTypeTL(&scanstate->ss.ps);
-	ExecInitScanTupleSlot(estate, &scanstate->ss, NULL);
+
+	/* signal that return type is not yet known */
+	scanstate->ss.ps.resultopsset = true;
+	scanstate->ss.ps.resultopsfixed = false;
+
+	ExecInitScanTupleSlot(estate, &scanstate->ss, NULL, &TTSOpsMinimalTuple);
 
 	/*
 	 * initialize child expressions

@@ -3,6 +3,8 @@ title: Java Driver 3.10 for YCQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Java application using YCQL 3.10 driver
+tags:
+  other: ycql
 aliases:
   - /preview/tutorials/build-apps/java/ycql
 menu:
@@ -30,22 +32,28 @@ type: docs
   <li >
     <a href="../ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YugabyteDB Java Driver for YCQL (3.10)
+      YCQL (3.10)
     </a>
   </li>
    <li >
     <a href="../ycql-4.x/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YugabyteDB Java Driver for YCQL (4.15)
+      YCQL (4.15)
+    </a>
+  </li>
+  <li >
+    <a href="../ycql-ssl/" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL (4.15) with SSL
     </a>
   </li>
 </ul>
 
 [YugabyteDB Java Driver for YCQL (3.10)](https://github.com/yugabyte/cassandra-java-driver) is based on [DataStax Java Driver 3.10](https://docs.datastax.com/en/developer/java-driver/3.10/) for [YCQL](../../../api/ycql/) with additional [smart driver](../../smart-drivers-ycql/) features.
 
-{{< note title="YugabyteDB Managed" >}}
+{{< note title="YugabyteDB Aeon" >}}
 
-To use the driver's partition-aware load balancing feature in a YugabyteDB Managed cluster, applications must be deployed in a VPC that has been peered with the cluster VPC so that they have access to all nodes in the cluster. For more information, refer to [Using YCQL drivers with YugabyteDB Managed](../../smart-drivers-ycql/#using-ycql-drivers-with-yugabytedb-managed).
+To use the driver's partition-aware load balancing feature in a YugabyteDB Aeon cluster, applications must be deployed in a VPC that has been peered with the cluster VPC so that they have access to all nodes in the cluster. For more information, refer to [Using YCQL drivers with YugabyteDB Aeon](../../smart-drivers-ycql/#using-ycql-drivers-with-yugabytedb-aeon).
 
 {{< /note >}}
 

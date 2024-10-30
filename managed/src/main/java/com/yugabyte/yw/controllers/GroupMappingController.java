@@ -13,34 +13,34 @@ package com.yugabyte.yw.controllers;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.forms.LdapDnToYbaRoleData;
 import com.yugabyte.yw.forms.OidcGroupToYbaRolesData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.LdapDnToYbaRole;
-import com.yugabyte.yw.models.OidcGroupToYbaRoles;
-import com.yugabyte.yw.models.Users.Role;
+import com.yugabyte.yw.models.GroupMappingInfo;
+import com.yugabyte.yw.models.GroupMappingInfo.GroupType;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
+import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
 import com.yugabyte.yw.rbac.annotations.Resource;
 import com.yugabyte.yw.rbac.enums.SourceType;
-import io.ebean.DB;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -66,7 +66,11 @@ public class GroupMappingController extends AuthenticatedController {
    */
   @ApiOperation(
       value = "List LDAP Mappings",
-      notes = "Available since YBA version 2.18.1.0",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2024.2.0.0.</b> Please use the"
+              + " v2 /auth/group-mappings GET endpoint instead. Note that this API will not return"
+              + " the custom roles assigned to groups via the new"
+              + " /api/v2/customers/{cUUID}/auth/group-mappings API.",
       response = LdapDnToYbaRoleData.class,
       nickname = "listLdapDnToYbaRoles")
   @AuthzPath({
@@ -75,12 +79,18 @@ public class GroupMappingController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
-  @YbaApi(visibility = YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.18.1.0")
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2024.2.0.0")
+  @Deprecated
   public Result listLdapMappings(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
-    List<LdapDnToYbaRole> ldapMappings =
-        LdapDnToYbaRole.find.query().where().eq("customer_uuid", customerUUID).findList();
+    List<GroupMappingInfo> ldapMappings =
+        GroupMappingInfo.find
+            .query()
+            .where()
+            .eq("customer_uuid", customerUUID)
+            .eq("type", "LDAP")
+            .findList();
     LdapDnToYbaRoleData result = new LdapDnToYbaRoleData();
     result.setLdapDnToYbaRolePairs(
         ldapMappings.stream()
@@ -88,8 +98,9 @@ public class GroupMappingController extends AuthenticatedController {
                 lm -> {
                   LdapDnToYbaRoleData.LdapDnYbaRoleDataPair lmd =
                       new LdapDnToYbaRoleData.LdapDnYbaRoleDataPair();
-                  lmd.setYbaRole(lm.ybaRole);
-                  lmd.setDistinguishedName(lm.distinguishedName);
+                  lmd.setYbaRole(
+                      Users.Role.valueOf(Role.get(customerUUID, lm.getRoleUUID()).getName()));
+                  lmd.setDistinguishedName(lm.getIdentifier());
                   return lmd;
                 })
             .collect(Collectors.toList()));
@@ -105,7 +116,9 @@ public class GroupMappingController extends AuthenticatedController {
    */
   @ApiOperation(
       value = "Set LDAP Mappings",
-      notes = "Available since YBA version 2.18.1.0",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2024.2.0.0.</b> Please use the"
+              + " v2 /auth/group-mappings PUT endpoint instead",
       response = Result.class,
       nickname = "setLdapDnToYbaRoles")
   @ApiImplicitParams(
@@ -123,57 +136,73 @@ public class GroupMappingController extends AuthenticatedController {
                 action = Action.SUPER_ADMIN_ACTIONS),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
-  @YbaApi(visibility = YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.18.1.0")
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2024.2.0.0")
+  @Transactional
+  @Deprecated
   public Result updateLdapMappings(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
     LdapDnToYbaRoleData data = parseJsonAndValidate(request, LdapDnToYbaRoleData.class);
     data.validate();
 
-    DB.getDefault().beginTransaction();
-
-    LdapDnToYbaRole.find.query().delete();
-
-    Map<String, LdapDnToYbaRole> ldapMappingsMap = new HashMap<>();
+    // Preserve existing behaviour.
+    // Delete all existing LDAP mappings.
+    GroupMappingInfo.find
+        .query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("type", "LDAP")
+        .findList()
+        .forEach(gm -> gm.delete());
 
     data.getLdapDnToYbaRolePairs()
         .forEach(
             ldp -> {
-              String distinguishedName = ldp.getDistinguishedName();
-              Role role = ldp.getYbaRole();
+              String distinguishedName = ldp.getDistinguishedName().strip();
+              Users.Role role = ldp.getYbaRole();
 
-              if (!ldapMappingsMap.containsKey(distinguishedName)) {
-                LdapDnToYbaRole ldapMapping = new LdapDnToYbaRole();
-                ldapMapping.distinguishedName = distinguishedName;
-                ldapMapping.ybaRole = null;
-                ldapMapping.customerUUID = customerUUID;
-                ldapMappingsMap.put(distinguishedName, ldapMapping);
+              GroupMappingInfo entity =
+                  GroupMappingInfo.find
+                      .query()
+                      .where()
+                      .eq("customer_uuid", customerUUID)
+                      .eq("type", "LDAP")
+                      .ieq("identifier", distinguishedName)
+                      .findOne();
+
+              if (entity == null) {
+                entity =
+                    GroupMappingInfo.create(
+                        customerUUID,
+                        Role.get(customerUUID, role.name()).getRoleUUID(),
+                        distinguishedName,
+                        GroupType.LDAP);
+              } else {
+                entity.setRoleUUID(Role.get(customerUUID, role.name()).getRoleUUID());
               }
-
-              Role dnRole = ldapMappingsMap.get(distinguishedName).ybaRole;
-              ldapMappingsMap.get(distinguishedName).ybaRole = Role.union(role, dnRole);
+              entity.save();
+              // Add role binding for group if RBAC is enabled.
+              if (confGetter.getGlobalConf(GlobalConfKeys.useNewRbacAuthz)) {
+                RoleBindingUtil.clearRoleBindingsForGroup(entity);
+                RoleBindingUtil.createSystemRoleBindingsForGroup(entity);
+              }
             });
-
-    DB.getDefault().saveAll(ldapMappingsMap.values());
-
-    DB.getDefault().commitTransaction();
-
-    DB.getDefault().endTransaction();
-
-    auditService().createAuditEntry(request, request.body().asJson(), Audit.ActionType.Set);
+    auditService()
+        .createAuditEntryWithReqBody(request, Audit.TargetType.GroupMapping, Audit.ActionType.Set);
 
     return PlatformResults.YBPSuccess.withMessage("LDAP Group Mapping Updated!");
   }
 
   @YbaApi(
-      visibility = YbaApiVisibility.PREVIEW,
-      sinceYBAVersion = "2.21.0.0",
+      visibility = YbaApiVisibility.DEPRECATED,
+      sinceYBAVersion = "2024.2.0.0",
       runtimeConfig = oidcAutoCreateKey)
   @ApiOperation(
       value = "Set OIDC Mappings",
       response = Result.class,
       notes =
-          "WARNING: This is a preview API that could change,Available since YBA version 2.21.0.0",
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2024.2.0.0.</b> Please use the"
+              + " v2 /auth/group-mappings PUT endpoint instead",
       nickname = "mapOidcGroupToYbaRoles")
   @Transactional
   @ApiImplicitParams(
@@ -191,6 +220,7 @@ public class GroupMappingController extends AuthenticatedController {
                 action = Action.SUPER_ADMIN_ACTIONS),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @Deprecated
   public Result updateOidcMappings(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -205,36 +235,54 @@ public class GroupMappingController extends AuthenticatedController {
     data.getOidcGroupToYbaRolesPairs()
         .forEach(
             rolePair -> {
-              // make group name case insensitive
-              String groupName = rolePair.getGroupName().toLowerCase();
-              OidcGroupToYbaRoles entity =
-                  OidcGroupToYbaRoles.find.query().where().eq("group_name", groupName).findOne();
+              String groupName = rolePair.getGroupName();
+
+              GroupMappingInfo entity =
+                  GroupMappingInfo.find
+                      .query()
+                      .where()
+                      .eq("customer_uuid", customerUUID)
+                      .eq("type", "OIDC")
+                      .ieq("identifier", groupName)
+                      .findOne();
 
               // update group entry if present or create new entry
               if (entity == null) {
-                entity = OidcGroupToYbaRoles.create(customerUUID, groupName, rolePair.getRoles());
+                entity =
+                    GroupMappingInfo.create(
+                        customerUUID,
+                        getUnifiedRole(customerUUID, rolePair.getRoles()),
+                        groupName,
+                        GroupType.OIDC);
               } else {
-                entity.setYbaRoles(rolePair.getRoles());
+                entity.setRoleUUID(getUnifiedRole(customerUUID, rolePair.getRoles()));
               }
               entity.save();
+              // Add role binding for group if RBAC is enabled.
+              if (confGetter.getGlobalConf(GlobalConfKeys.useNewRbacAuthz)) {
+                RoleBindingUtil.clearRoleBindingsForGroup(entity);
+                RoleBindingUtil.createSystemRoleBindingsForGroup(entity);
+              }
             });
 
     auditService()
-        .createAuditEntryWithReqBody(
-            request, Audit.TargetType.OIDCGroupMapping, Audit.ActionType.Set);
+        .createAuditEntryWithReqBody(request, Audit.TargetType.GroupMapping, Audit.ActionType.Set);
 
     return PlatformResults.YBPSuccess.withMessage("OIDC Group Mapping Updated!");
   }
 
   @YbaApi(
-      visibility = YbaApiVisibility.PREVIEW,
-      sinceYBAVersion = "2.21.0.0",
+      visibility = YbaApiVisibility.DEPRECATED,
+      sinceYBAVersion = "2024.2.0.0",
       runtimeConfig = oidcAutoCreateKey)
   @ApiOperation(
       value = "List OIDC Group Mappings",
       response = OidcGroupToYbaRolesData.class,
       notes =
-          "WARNING: This is a preview API that could change,Available since YBA version 2.21.0.0",
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2024.2.0.0.</b> Please use the"
+              + " v2 /auth/group-mappings GET endpoint instead. Note that this API will not return"
+              + " the custom roles assigned to groups via the new"
+              + " /api/v2/customers/{cUUID}/auth/group-mappings API.",
       nickname = "listOidcGroupToYbaRoles")
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -242,20 +290,26 @@ public class GroupMappingController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @Deprecated
   public Result listOidcMappings(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
-    List<OidcGroupToYbaRoles> oidcMappings =
-        OidcGroupToYbaRoles.find.query().where().eq("customer_uuid", customerUUID).findList();
+    List<GroupMappingInfo> groupInfoList =
+        GroupMappingInfo.find
+            .query()
+            .where()
+            .eq("customer_uuid", customerUUID)
+            .eq("type", "OIDC")
+            .findList();
     OidcGroupToYbaRolesData result = new OidcGroupToYbaRolesData();
     result.setOidcGroupToYbaRolesPairs(
-        oidcMappings.stream()
+        groupInfoList.stream()
             .map(
-                om -> {
+                info -> {
                   OidcGroupToYbaRolesData.OidcGroupToYbaRolesPair orl =
                       new OidcGroupToYbaRolesData.OidcGroupToYbaRolesPair();
-                  orl.setGroupName(om.getGroupName());
-                  orl.setRoles(om.getYbaRoles());
+                  orl.setGroupName(info.getIdentifier());
+                  orl.setRoles(List.of(info.getRoleUUID()));
                   return orl;
                 })
             .collect(Collectors.toList()));
@@ -264,14 +318,15 @@ public class GroupMappingController extends AuthenticatedController {
   }
 
   @YbaApi(
-      visibility = YbaApiVisibility.PREVIEW,
-      sinceYBAVersion = "2.21.0.0",
+      visibility = YbaApiVisibility.DEPRECATED,
+      sinceYBAVersion = "2024.2.0.0",
       runtimeConfig = oidcAutoCreateKey)
   @ApiOperation(
       value = "Delete a OIDC group mapping",
       response = PlatformResults.YBPSuccess.class,
       notes =
-          "WARNING: This is a preview API that could change,Available since YBA version 2.21.0.0")
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2024.2.0.0.</b> Please use the"
+              + " v2 /auth/group-mappings/{groupUUID} DELETE endpoint instead")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -279,17 +334,19 @@ public class GroupMappingController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   @Transactional
+  @Deprecated
   public Result deleteOidcGroupMapping(UUID customerUUID, String groupName, Http.Request request) {
     boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(request);
     if (!isSuperAdmin) {
       throw new PlatformServiceException(BAD_REQUEST, "Only SuperAdmin can delete group mappings!");
     }
-    OidcGroupToYbaRoles entity =
-        OidcGroupToYbaRoles.find
+    GroupMappingInfo entity =
+        GroupMappingInfo.find
             .query()
             .where()
             .eq("customer_uuid", customerUUID)
-            .eq("group_name", groupName.toLowerCase())
+            .eq("type", "OIDC")
+            .ieq("identifier", groupName)
             .findOne();
     if (entity == null) {
       throw new PlatformServiceException(NOT_FOUND, "No OIDC group found with name: " + groupName);
@@ -298,7 +355,16 @@ public class GroupMappingController extends AuthenticatedController {
     log.info("Deleted OIDC group with name: " + groupName);
     auditService()
         .createAuditEntry(
-            request, Audit.TargetType.OIDCGroupMapping, groupName, Audit.ActionType.Delete);
+            request, Audit.TargetType.GroupMapping, groupName, Audit.ActionType.Delete);
     return PlatformResults.YBPSuccess.empty();
+  }
+
+  private UUID getUnifiedRole(UUID cUUID, List<UUID> roles) {
+    Users.Role role = Users.Role.ConnectOnly;
+    for (UUID roleUUID : roles) {
+      Users.Role systemRole = Users.Role.valueOf(Role.get(cUUID, roleUUID).getName());
+      role = Users.Role.union(role, systemRole);
+    }
+    return Role.get(cUUID, role.name()).getRoleUUID();
   }
 }

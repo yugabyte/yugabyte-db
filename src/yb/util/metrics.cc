@@ -40,6 +40,7 @@
 #include "yb/gutil/map-util.h"
 
 #include "yb/util/aggregate_stats.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/histogram.pb.h"
 #include "yb/util/jsonwriter.h"
@@ -53,6 +54,9 @@ DEFINE_UNKNOWN_bool(expose_metric_histogram_percentiles, true,
 
 DEPRECATE_FLAG(int32, max_tables_metrics_breakdowns, "08_2023"
              "The maxmimum number of tables to retrieve metrics for");
+
+DEFINE_test_flag(bool, pause_flush_aggregated_metrics, false,
+                 "If true, pause before flushing aggregated metrics.");
 
 // Process/server-wide metrics should go into the 'server' entity.
 // More complex applications will define other entities.
@@ -232,18 +236,24 @@ Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
     entities = entities_;
   }
 
+  std::vector<MetricEntity::MetricMap> owning_metric_maps;
   for (const EntityMap::value_type& e : entities) {
     if (TabletHasBeenShutdown(e.second)) {
       continue;
     }
 
-    WARN_NOT_OK(e.second->WriteForPrometheus(writer, opts),
+    WARN_NOT_OK(e.second->WriteForPrometheus(writer, opts, &owning_metric_maps),
                 Substitute("Failed to write entity $0 as Prometheus", e.second->id()));
   }
+
+  TEST_PAUSE_IF_FLAG(TEST_pause_flush_aggregated_metrics);
 
   RETURN_NOT_OK(writer->FlushAggregatedValues());
 
   RETURN_NOT_OK(writer->FlushNumberOfEntriesCutOff());
+
+  // Once all metrics have been flushed, we can release the ownership of all metrics.
+  owning_metric_maps.clear();
 
   // Rather than having a thread poll metrics periodically to retire old ones,
   // we'll just retire them here. The only downside is that, if no one is polling

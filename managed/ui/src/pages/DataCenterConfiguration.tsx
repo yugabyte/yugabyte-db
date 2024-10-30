@@ -52,13 +52,20 @@ export const DataCenterConfiguration = (props: any) => {
     (config: any) =>
       config.key === RuntimeConfigKey.PROVIDER_REDESIGN_UI_FEATURE_FLAG && config.value === 'true'
   );
+  const isTroubleshootingEnabled = runtimeConfigEntries.some(
+    (config: any) =>
+      config.key === RuntimeConfigKey.ENABLE_TROUBLESHOOTING && config.value === 'true'
+  );
 
   return (
     <>
       {shouldShowRedesignedUI ? (
         <>
           <Suspense fallback={YBLoadingCircleIcon}>
-            <DataCenterConfigRedesignComponent {...props} />
+            <DataCenterConfigRedesignComponent
+              isTroubleshootingEnabled={isTroubleshootingEnabled}
+              {...props}
+            />
           </Suspense>
         </>
       ) : (

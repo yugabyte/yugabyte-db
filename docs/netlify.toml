@@ -11,22 +11,25 @@
 # https://docs.netlify.com/configure-builds/file-based-configuration/#deploy-contexts
 # all api_keys were generated from btoa(orig_key)
 [context.deploy-preview.environment]
-  HUGO_VERSION = "0.115.4"
+  GO_VERSION = "1.20"
+  HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
-  SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
+  RUDDERSTACK_API_KEY = "Mmo5Zmp5M1lONWFLM2xYS044N3k5cGhic3R4"
 
 [context.branch-deploy.environment]
-  HUGO_VERSION = "0.115.4"
+  GO_VERSION = "1.20"
+  HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
-  SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
+  RUDDERSTACK_API_KEY = "Mmo5Zmp5M1lONWFLM2xYS044N3k5cGhic3R4"
 
 [context.production.environment]
-  HUGO_VERSION = "0.115.4"
+  GO_VERSION = "1.20"
+  HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
-  SEGMENT_API_KEY = "WFp1RWk3dUVBbjM2NmpncnNnbzBMZUpIVXB1ZVRvTHg="
+  RUDDERSTACK_API_KEY = "Mmo5Y252MjZ6R290ZjhPa3BROUx4cFl6VFVK"
 
 ################ REDIRECTS ################
 #
@@ -352,6 +355,10 @@
   from = "/preview/architecture/concepts"
   to = "/preview/architecture/key-concepts"
 
+[[redirects]]
+  from = "/preview/explore/sql-nosql*"
+  to = "/preview/faq/general/#how-is-yugabytedb-different-from-nosql-databases"
+
 # from 404 report (referrer: ycombinator)
 [[redirects]]
   from = "/preview/architecture/concepts/acknowledgements"
@@ -385,6 +392,12 @@
   from = "/preview/deploy/reference/configuration/yb-tserver/"
   to = "/preview/reference/configuration/yb-tserver/"
 
+## develop
+
+[[redirects]]
+  from = "/preview/develop/common-patterns/*"
+  to = "/preview/develop/data-modeling/common-patterns/:splat"
+
 [[redirects]]
   from = "/preview/develop/learn/acid-transactions/"
   to = "/preview/develop/learn/acid-transactions-ysql/"
@@ -396,6 +409,10 @@
 [[redirects]]
   from = "/preview/develop/learn/data-types/"
   to = "/preview/develop/learn/data-types-ysql/"
+
+[[redirects]]
+  from = "/preview/develop/client-drivers/*"
+  to = "/preview/drivers-orms/:splat"
 
 [[redirects]]
   from = "/preview/explore/cloud-native/"
@@ -602,28 +619,52 @@
   to = "/preview/yugabyte-cloud/"
 
 [[redirects]]
-  from = "preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
+  from = "/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
   to = "/preview/yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/"
+
+[[redirects]]
+  from = "/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
+  to = "/stable/yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/"
 
 [[redirects]]
   from = "/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/*"
   to = "/preview/yugabyte-platform/configure-yugabyte-platform/:splat"
 
 [[redirects]]
+  from = "/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/*"
+  to = "/stable/yugabyte-platform/configure-yugabyte-platform/:splat"
+
+[[redirects]]
   from = "/preview/yugabyte-platform/configure-yugabyte-platform/configure/*"
   to = "/preview/yugabyte-platform/configure-yugabyte-platform/"
+
+[[redirects]]
+  from = "/stable/yugabyte-platform/configure-yugabyte-platform/configure/*"
+  to = "/stable/yugabyte-platform/configure-yugabyte-platform/"
 
 [[redirects]]
   from = "/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/*"
   to = "/preview/yugabyte-platform/prepare/cloud-permissions/"
 
 [[redirects]]
+  from = "/stable/yugabyte-platform/install-yugabyte-platform/prepare-environment/*"
+  to = "/stable/yugabyte-platform/prepare/cloud-permissions/"
+
+[[redirects]]
   from = "/preview/yugabyte-platform/install-yugabyte-platform/install/*"
   to = "/preview/yugabyte-platform/install-yugabyte-platform/install-software/installer/"
 
 [[redirects]]
+  from = "/stable/yugabyte-platform/install-yugabyte-platform/install/*"
+  to = "/stable/yugabyte-platform/install-yugabyte-platform/install-software/installer/"
+
+[[redirects]]
    from = "/preview/yugabyte-platform/install-yugabyte-platform/prerequisites/*"
    to = "/preview/yugabyte-platform/prepare/server-yba/"
+
+# [[redirects]]
+#    from = "/stable/yugabyte-platform/install-yugabyte-platform/prerequisites/*"
+#    to = "/stable/yugabyte-platform/prepare/server-yba/"
 
 [[redirects]]
   from = "/preview/yugabyte-platform/overview/"
@@ -643,6 +684,10 @@
 
 [[redirects]]
   from = "/preview/develop/realworld-apps/*"
+  to = "/preview/tutorials/"
+
+[[redirects]]
+  from = "/stable/develop/realworld-apps/*"
   to = "/preview/tutorials/"
 
 [[redirects]]
@@ -706,7 +751,7 @@
 
 [[redirects]]
   from = "/:version/reference/connectors/*"
-  to = "/preview/integrations/apache-kafka/"
+  to = "/preview/explore/change-data-capture/"
 
 # Redirect for troubleshoot
 
@@ -727,18 +772,10 @@
   to = "/preview/tutorials/azure/"
   force = true
 [[redirects]]
-  from = "/v2.16/tutorials/*"
-  to = "/preview/tutorials/azure/"
-  force = true
-[[redirects]]
   from = "/v2.18/tutorials/*"
   to = "/preview/tutorials/azure/"
   force = true
 
-[[redirects]]
-  from = "/v2.16/explore/ysql-language-features/indexes-constraints/*"
-  to = "/v2.16/explore/indexes-constraints/"
-  force = true
 [[redirects]]
   from = "/v2.18/explore/ysql-language-features/indexes-constraints/*"
   to = "/v2.18/explore/indexes-constraints/"
@@ -746,16 +783,6 @@
 [[redirects]]
   from = "/v2.14/explore/ysql-language-features/indexes-constraints/*"
   to = "/v2.14/explore/indexes-constraints/"
-  force = true
-
-[[redirects]]
-  from = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/"
-  to = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/"
-  force = true
-
-[[redirects]]
-  from = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
-  to = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/"
   force = true
 
 [[redirects]]
@@ -773,12 +800,33 @@
   to = "/v2.18/deploy/checklist/"
   force = true
 [[redirects]]
-  from = "/v2.16/reference/configuration/operating-systems/"
-  to = "/v2.16/deploy/checklist/"
-  force = true
-[[redirects]]
   from = "/v2.14/reference/configuration/operating-systems/"
   to = "/v2.14/deploy/checklist/"
+  force = true
+
+[[redirects]]
+  from = "/v2.20/api/ysqlsh/*"
+  to = "/v2.20/admin/ysqlsh/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.18/api/ysqlsh/*"
+  to = "/v2.18/admin/ysqlsh/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.14/api/ysqlsh/*"
+  to = "/v2.14/admin/ysqlsh/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.20/api/ycqlsh/*"
+  to = "/v2.20/admin/ycqlsh/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.18/api/ycqlsh/*"
+  to = "/v2.18/admin/ycqlsh/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.14/api/ycqlsh/*"
+  to = "/v2.14/admin/ycqlsh/:splat"
   force = true
 
 
@@ -793,15 +841,11 @@
   to = "/stable/yugabyte-platform/administer-yugabyte-platform/high-availability/"
   force = true
 [[redirects]]
-  from = "/v2.16/yugabyte-platform/manage-deployments/high-availability/"
-  to = "/v2.16/yugabyte-platform/administer-yugabyte-platform/high-availability/"
-  force = true
-[[redirects]]
   from = "/v2.14/yugabyte-platform/administer-yugabyte-platform/high-availability/"
   to = "/v2.14/yugabyte-platform/manage-deployments/high-availability/"
   force = true
 
-# Build an app was in quick-start, now in develop
+# Build an app was in quick-start, then develop, now in tutorials
 
 [[redirects]]
   from = "/preview/develop/build-apps/*"
@@ -941,6 +985,11 @@
   force = true
 
 [[redirects]]
+  from = "/v2.16/*"
+  to = "https://docs-archive.yugabyte.com/v2.16/"
+  force = true
+
+[[redirects]]
   from = "/preview/develop/build-apps/java/ysql-hibernate/"
   to = "/preview/drivers-orms/orms/ysql-hibernate/"
   force = true
@@ -1076,8 +1125,13 @@
   to = "/stable/manage/data-migration/bulk-export-ysql/"
   force = true
 
-# CDC tutorials was in explore, now in Tutorials
+# Moving Drivers from reference to Develop
+[[redirects]]
+  from = "/preview/reference/drivers/"
+  to = "/preview/drivers-orms/"
+  force = true
 
+# CDC tutorials was in explore, now in Tutorials
 [[redirects]]
   from = "/preview/explore/change-data-capture/cdc-tutorials/*"
   to = "/preview/tutorials/cdc-tutorials/:splat"
@@ -1153,12 +1207,12 @@
 # Redirect all non-preview quick start links to preview
 
 [[redirects]]
-  from = ":version/quick-start/*"
+  from = "/:version/quick-start/*"
   to = "/preview/quick-start/"
   force = true
 
 [[redirects]]
-  from = ":version/quick-start-yugabytedb-managed/*"
+  from = "/:version/quick-start-yugabytedb-managed/*"
   to = "/preview/quick-start-yugabytedb-managed/"
   force = true
 
@@ -1321,10 +1375,15 @@
         ;
 
         connect-src 'self'
-            https://app.clearbit.com
+            https://80f647c7c1f545fc97ff43f8b602dc86.us-west-2.aws.found.io/
+            https://api.rudderstack.com/
+            https://app.clearbit.com/
+            https://ingesteer.services-prod.nsvcs.net/rum_collection
             https://ka-f.fontawesome.com/releases/
             https://kapa-widget-proxy-la7dkmplpq-uc.a.run.app
+            https://metrics.kapa.ai/
             https://raw.githubusercontent.com/
+            https://sessions.bugsnag.com/
             https://stats.g.doubleclick.net/
             https://umbcujcbe8-1.algolianet.com/
             https://umbcujcbe8-2.algolianet.com/
@@ -1332,20 +1391,24 @@
             https://umbcujcbe8-dsn.algolia.net/
             https://www.google-analytics.com/
             https://www.yugabyte.com
-            https://api.segment.io/
-            https://cdn.segment.com/
+            https://yugabyteklhgka.dataplane.rudderstack.com/v1/page
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
-            https://app.clearbit.com
-            https://cdn.jsdelivr.net
+            https://app.clearbit.com/
+            https://cdn.jsdelivr.net/
+            https://cdn.madkudu.com/
+            https://cdn.rudderlabs.com/
             https://cdnjs.cloudflare.com
-            https://code.jquery.com/jquery-3.6.0.min.js
+            https://code.jquery.com/jquery-3.7.1.min.js
+            https://d2wy8f7a9ursnm.cloudfront.net/v6/bugsnag.min.js
+            https://j.6sc.co/
             https://kit.fontawesome.com/
             https://maxcdn.bootstrapcdn.com
+            https://metrics.kapa.ai/
             https://netlify-cdp-loader.netlify.app/
             https://netlify-rum.netlify.app
-            https://tag.clearbitscripts.com
+            https://tag.clearbitscripts.com/
             https://umbcujcbe8-1.algolianet.com/
             https://umbcujcbe8-2.algolianet.com/
             https://umbcujcbe8-3.algolianet.com/
@@ -1355,9 +1418,7 @@
             https://www.google.com/recaptcha/
             https://www.googletagmanager.com/
             https://www.gstatic.com/recaptcha/
-            https://x.clearbitjs.com
-            https://js.driftt.com/
-            https://cdn.segment.com/
+            https://x.clearbitjs.com/
         ;
 
         style-src 'self' 'unsafe-inline'
@@ -1399,7 +1460,6 @@
             https://app.supademo.com/
             https://www.google.com/
             https://www.youtube.com/
-            https://js.driftt.com/
         ;
 
         frame-ancestors 'self'
@@ -1409,7 +1469,6 @@
         ;
 
         media-src 'self' 'unsafe-inline'
-        https://js.driftt.com/conductor/assets/
         ;
 '''
     X-Content-Type-Options = "nosniff"

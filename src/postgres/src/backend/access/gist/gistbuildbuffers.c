@@ -4,7 +4,7 @@
  *	  node buffer management functions for GiST buffering build algorithm.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -25,15 +25,15 @@
 
 static GISTNodeBufferPage *gistAllocateNewPageBuffer(GISTBuildBuffers *gfbb);
 static void gistAddLoadedBuffer(GISTBuildBuffers *gfbb,
-					GISTNodeBuffer *nodeBuffer);
+								GISTNodeBuffer *nodeBuffer);
 static void gistLoadNodeBuffer(GISTBuildBuffers *gfbb,
-				   GISTNodeBuffer *nodeBuffer);
+							   GISTNodeBuffer *nodeBuffer);
 static void gistUnloadNodeBuffer(GISTBuildBuffers *gfbb,
-					 GISTNodeBuffer *nodeBuffer);
+								 GISTNodeBuffer *nodeBuffer);
 static void gistPlaceItupToPage(GISTNodeBufferPage *pageBuffer,
-					IndexTuple item);
+								IndexTuple item);
 static void gistGetItupFromPage(GISTNodeBufferPage *pageBuffer,
-					IndexTuple *item);
+								IndexTuple *item);
 static long gistBuffersGetFreeBlock(GISTBuildBuffers *gfbb);
 static void gistBuffersReleaseBlock(GISTBuildBuffers *gfbb, long blocknum);
 
@@ -76,7 +76,6 @@ gistInitBuildBuffers(int pagesPerBuffer, int levelStep, int maxLevel)
 	 * nodeBuffersTab hash is association between index blocks and it's
 	 * buffers.
 	 */
-	memset(&hashCtl, 0, sizeof(hashCtl));
 	hashCtl.keysize = sizeof(BlockNumber);
 	hashCtl.entrysize = sizeof(GISTNodeBuffer);
 	hashCtl.hcxt = GetCurrentMemoryContext();
@@ -138,6 +137,7 @@ gistGetNodeBuffer(GISTBuildBuffers *gfbb, GISTSTATE *giststate,
 		nodeBuffer->pageBlocknum = InvalidBlockNumber;
 		nodeBuffer->pageBuffer = NULL;
 		nodeBuffer->queuedForEmptying = false;
+		nodeBuffer->isTemp = false;
 		nodeBuffer->level = level;
 
 		/*
@@ -186,8 +186,8 @@ gistAllocateNewPageBuffer(GISTBuildBuffers *gfbb)
 {
 	GISTNodeBufferPage *pageBuffer;
 
-	pageBuffer = (GISTNodeBufferPage *) MemoryContextAlloc(gfbb->context,
-														   BLCKSZ);
+	pageBuffer = (GISTNodeBufferPage *) MemoryContextAllocZero(gfbb->context,
+															   BLCKSZ);
 	pageBuffer->prev = InvalidBlockNumber;
 
 	/* Set page free space */
@@ -665,7 +665,7 @@ gistRelocateBuildBuffersOnSplit(GISTBuildBuffers *gfbb, GISTSTATE *giststate,
 			zero_penalty = true;
 
 			/* Loop over index attributes. */
-			for (j = 0; j < r->rd_att->natts; j++)
+			for (j = 0; j < IndexRelationGetNumberOfKeyAttributes(r); j++)
 			{
 				float		usize;
 
@@ -691,7 +691,7 @@ gistRelocateBuildBuffersOnSplit(GISTBuildBuffers *gfbb, GISTSTATE *giststate,
 					which = i;
 					best_penalty[j] = usize;
 
-					if (j < r->rd_att->natts - 1)
+					if (j < IndexRelationGetNumberOfKeyAttributes(r) - 1)
 						best_penalty[j + 1] = -1;
 				}
 				else if (best_penalty[j] == usize)
@@ -756,26 +756,20 @@ gistRelocateBuildBuffersOnSplit(GISTBuildBuffers *gfbb, GISTSTATE *giststate,
 static void
 ReadTempFileBlock(BufFile *file, long blknum, void *ptr)
 {
+	size_t		nread;
+
 	if (BufFileSeekBlock(file, blknum) != 0)
-		elog(ERROR, "could not seek temporary file: %m");
-	if (BufFileRead(file, ptr, BLCKSZ) != BLCKSZ)
-		elog(ERROR, "could not read temporary file: %m");
+		elog(ERROR, "could not seek to block %ld in temporary file", blknum);
+	nread = BufFileRead(file, ptr, BLCKSZ);
+	if (nread != BLCKSZ)
+		elog(ERROR, "could not read temporary file: read only %zu of %zu bytes",
+			 nread, (size_t) BLCKSZ);
 }
 
 static void
 WriteTempFileBlock(BufFile *file, long blknum, void *ptr)
 {
 	if (BufFileSeekBlock(file, blknum) != 0)
-		elog(ERROR, "could not seek temporary file: %m");
-	if (BufFileWrite(file, ptr, BLCKSZ) != BLCKSZ)
-	{
-		/*
-		 * the other errors in Read/WriteTempFileBlock shouldn't happen, but
-		 * an error at write can easily happen if you run out of disk space.
-		 */
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not write block %ld of temporary file: %m",
-						blknum)));
-	}
+		elog(ERROR, "could not seek to block %ld in temporary file", blknum);
+	BufFileWrite(file, ptr, BLCKSZ);
 }

@@ -45,7 +45,7 @@ The YugabyteDB Helm chart has been tested with the following software versions:
 - GKE running Kubernetes 1.20 or later. The Helm chart you use to install YugabyteDB creates three YB-Master and three YB-TServers, each with 2 CPU cores, for a total of 12 CPU cores. This means you need a Kubernetes cluster with more than 12 CPU cores. If the cluster contains three nodes, then each node should have more than 4 cores.
 
 - Helm 3.4 or later.
-- For optimal performance, ensure you set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#ulimits) on each node in your Kubernetes cluster.
+- For optimal performance, ensure you set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#set-ulimits) on each node in your Kubernetes cluster.
 
 The following steps show how to meet these prerequisites:
 
@@ -85,11 +85,13 @@ The following steps show how to meet these prerequisites:
 
 ## Create a GKE cluster
 
-Create a Kubernetes cluster by running the following command:
+Create a private Kubernetes cluster by running the following command.
 
 ```sh
-gcloud container clusters create yugabyte --machine-type=n1-standard-8
+gcloud container clusters create cluster_name --enable-private-nodes --machine-type=n1-standard-8
 ```
+
+Note that you must set up Cloud NAT for a private Kubernetes cluster in Google Cloud to ensure that your cluster can access the internet while its nodes do not have public IP addresses. Refer to [Configuring Private Google Access and Cloud NAT in Google Cloud Platform (GCP)](https://kloudkraft.medium.com/configuring-private-google-access-and-cloud-nat-in-google-cloud-platform-gcp-3c4406b590b3).
 
 As stated in [Prerequisites](#prerequisites), the default configuration in the YugabyteDB Helm chart requires Kubernetes nodes to have a total of 12 CPU cores and 45 GB RAM allocated to YugabyteDB. This can be three nodes with 4 CPU cores and 15 GB RAM allocated to YugabyteDB. The smallest Google Cloud machine type that meets this requirement is `n1-standard-8` which has 8 CPU cores and 30GB RAM.
 

@@ -8,6 +8,8 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
@@ -16,6 +18,7 @@ import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import javax.inject.Inject;
@@ -34,10 +37,20 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
       BaseTaskDependencies baseTaskDependencies,
       GFlagsValidation gFlagsValidation,
       XClusterUniverseService xClusterUniverseService,
-      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
-    super(baseTaskDependencies, operatorStatusUpdaterFactory);
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory,
+      KubernetesManagerFactory kubernetesManagerFactory) {
+    super(baseTaskDependencies, operatorStatusUpdaterFactory, kubernetesManagerFactory);
     this.gFlagsValidation = gFlagsValidation;
     this.xClusterUniverseService = xClusterUniverseService;
+  }
+
+  @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    if (isFirstTry) {
+      // Verify the task params.
+      validateGflagsTaskParams();
+    }
   }
 
   @Override
@@ -115,7 +128,10 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
                   universe.getUniverseDetails().getYbcSoftwareVersion());
               break;
             case NON_RESTART_UPGRADE:
-              throw new RuntimeException("Non-restart unimplemented for K8s");
+              createNonRestartGflagsUpgradeTask(getUniverse());
+              break;
+            default:
+              throw new RuntimeException("Invalid Upgrade type!");
           }
           installThirdPartyPackagesTaskK8s(
               universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.JWT_JWKS);
@@ -127,5 +143,14 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
                   getPrimaryClusterSpecificGFlags())
               .setSubTaskGroupType(getTaskSubGroupType());
         });
+  }
+
+  private void validateGflagsTaskParams() {
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    if (taskParams().upgradeOption == UpgradeOption.NON_RESTART_UPGRADE
+        && !KubernetesUtil.isNonRestartGflagsUpgradeSupported(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)) {
+      throw new RuntimeException("Universe does not support Non-restart gflags upgrade");
+    }
   }
 }

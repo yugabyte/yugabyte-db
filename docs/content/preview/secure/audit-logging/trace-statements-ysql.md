@@ -43,14 +43,14 @@ To log the appropriate session information, you need to set the following config
 
 ## Review logs
 
-Session information is written to the PostgreSQL logs, located in the YugabyteDB base folder in the `yb-data/tserver/logs` directory. For information on inspecting logs, refer to [Inspect YugabyteDB logs](../../../troubleshoot/nodes/check-logs/).
+Session information is written to the PostgreSQL logs, located in the YugabyteDB base folder in the `yb-data/tserver/logs` directory. For information on inspecting logs, refer to [Inspect YugabyteDB logs](/preview/troubleshoot/nodes/check-logs/).
 
 ## Example session
 
 Create a local cluster and configure `ysql_log_statement` to log all statements, and `log_line_prefix` to log timestamp, PostgreSQL PID, and session identifier as follows:
 
 ```sh
-./bin/yugabyted start --tserver_flags="ysql_log_statement=all,ysql_pg_conf_csv=\"log_line_prefix='timestamp: %m, pid: %p session: %c '\""
+./bin/yugabyted start --tserver_flags="ysql_log_statement=all,ysql_pg_conf_csv=\"log_line_prefix='timestamp: %m pid: %p session: %c '\""
 ```
 
 For local clusters created using yugabyted, `postgresql` logs are located in `~/var/data/yb-data/tserver/logs`.
@@ -62,10 +62,10 @@ Connect to the cluster using ysqlsh as follows:
 ```
 
 ```output
-ysqlsh (11.2-YB-2.15.2.1-b0)
+ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help.
 
-yugabyte=# 
+yugabyte=#
 ```
 
 ### Trace statement execution
@@ -209,4 +209,4 @@ timestamp: 2022-10-24 17:05:25.404 UTC --pid: 1930 session: 6356c208.78a LOG:  s
 
 ## Next steps
 
-Use `pgaudit` to enable logging for specific databases, tables, or specific sets of operations. See [Configure audit logging in YSQL](../audit-logging-ysql).
+Use the pgaudit extension to enable logging for specific databases, tables, or specific sets of operations. See [Configure audit logging in YSQL](../audit-logging-ysql).

@@ -12,8 +12,6 @@
 
 #include "yb/tserver/xcluster_output_client.h"
 
-#include <shared_mutex>
-
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/xcluster_rpc.h"
 
@@ -25,28 +23,23 @@
 #include "yb/client/client_utils.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/table.h"
+#include "yb/client/xcluster_client.h"
 #include "yb/dockv/doc_key.h"
-#include "yb/docdb/docdb.h"
-
-#include "yb/gutil/strings/join.h"
 
 #include "yb/master/master_replication.pb.h"
 
 #include "yb/rocksdb/rate_limiter.h"
-#include "yb/rocksdb/util/rate_limiter.h"
 
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/tserver/xcluster_consumer.h"
 #include "yb/tserver/xcluster_poller.h"
-#include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/xcluster_write_interface.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
-#include "yb/util/stol_utils.h"
 #include "yb/util/stopwatch.h"
 
 DECLARE_int32(cdc_write_rpc_timeout_ms);
@@ -87,6 +80,15 @@ DECLARE_bool(TEST_running_test);
   std::lock_guard l(lock_); \
   SCHECK(!IsOffline(), Aborted, LogPrefix(), "xCluster output client went offline")
 
+#define STORE_REPLICATION_ERROR_AND_HANDLE_ERROR(replication_error, status) \
+  do { \
+    { \
+      ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN; \
+      xcluster_poller_->StoreReplicationError(replication_error); \
+    } \
+    HandleError(status); \
+  } while (0)
+
 using namespace std::placeholders;
 
 namespace yb {
@@ -94,15 +96,16 @@ namespace tserver {
 
 XClusterOutputClient::XClusterOutputClient(
     XClusterPoller* xcluster_poller, const xcluster::ConsumerTabletInfo& consumer_tablet_info,
-    const xcluster::ProducerTabletInfo& producer_tablet_info,
-    const std::shared_ptr<XClusterClient>& local_client, ThreadPool* thread_pool, rpc::Rpcs* rpcs,
-    bool use_local_tserver, rocksdb::RateLimiter* rate_limiter)
-    : XClusterAsyncExecutor(thread_pool, local_client->messenger.get(), rpcs),
+    const xcluster::ProducerTabletInfo& producer_tablet_info, client::YBClient& local_client,
+    ThreadPool* thread_pool, rpc::Rpcs* rpcs, bool use_local_tserver, bool is_automatic_mode,
+    rocksdb::RateLimiter* rate_limiter)
+    : XClusterAsyncExecutor(thread_pool, local_client.messenger(), rpcs),
       xcluster_poller_(xcluster_poller),
       consumer_tablet_info_(consumer_tablet_info),
       producer_tablet_info_(producer_tablet_info),
       local_client_(local_client),
       use_local_tserver_(use_local_tserver),
+      is_automatic_mode_(is_automatic_mode),
       all_tablets_result_(STATUS(Uninitialized, "Result has not been initialized.")),
       rate_limiter_(rate_limiter) {}
 
@@ -140,8 +143,8 @@ void XClusterOutputClient::SetLastCompatibleConsumerSchemaVersion(SchemaVersion 
   std::lock_guard lock(lock_);
   if (schema_version != cdc::kInvalidSchemaVersion &&
       schema_version > last_compatible_consumer_schema_version_) {
-    LOG(INFO) << "Last compatible consumer schema version updated to  "
-              << schema_version;
+    LOG_WITH_PREFIX(INFO) << "Last compatible consumer schema version updated to  "
+                          << schema_version;
     last_compatible_consumer_schema_version_ = schema_version;
   }
 }
@@ -197,14 +200,14 @@ void XClusterOutputClient::ApplyChanges(std::shared_ptr<cdc::GetChangesResponseP
   // Ensure we have a connection to the consumer table cached.
   if (!table_) {
     HANDLE_ERROR_AND_RETURN_IF_NOT_OK(
-        local_client_->client->OpenTable(consumer_tablet_info_.table_id, &table_));
+        local_client_.OpenTable(consumer_tablet_info_.table_id, &table_));
   }
 
   timeout_ms_ = MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms);
   // Using this future as a barrier to get all the tablets before processing.  Ordered iteration
   // matters: we need to ensure that each record is handled sequentially.
-  all_tablets_result_ = local_client_->client->LookupAllTabletsFuture(
-      table_, CoarseMonoClock::now() + timeout_ms_).get();
+  all_tablets_result_ =
+      local_client_.LookupAllTabletsFuture(table_, CoarseMonoClock::now() + timeout_ms_).get();
 
   HANDLE_ERROR_AND_RETURN_IF_NOT_OK(ProcessChangesStartingFromIndex(0));
 }
@@ -245,8 +248,10 @@ Status XClusterOutputClient::ProcessChangesStartingFromIndex(int start) {
           break;
         default: {
           std::string partition_key = record.key(0).key();
-          auto tablet_result = local_client_->client->LookupTabletByKeyFuture(
-              table_, partition_key, CoarseMonoClock::now() + timeout_ms_).get();
+          auto tablet_result = local_client_
+                                   .LookupTabletByKeyFuture(
+                                       table_, partition_key, CoarseMonoClock::now() + timeout_ms_)
+                                   .get();
           RETURN_NOT_OK(ProcessRecordForTablet(record, tablet_result));
           break;
         }
@@ -269,7 +274,7 @@ Status XClusterOutputClient::SendUserTableWrites() {
     write_request = write_strategy_->FetchNextRequest();
   }
   if (!write_request) {
-    LOG(WARNING) << "Expected to find a write_request but were unable to";
+    LOG_WITH_PREFIX(WARNING) << "Expected to find a write_request but were unable to";
     return STATUS(IllegalState, "Could not find a write request to send");
   }
   SendNextCDCWriteToTablet(std::move(write_request));
@@ -372,15 +377,17 @@ Result<bool> XClusterOutputClient::ProcessChangeMetadataOp(const cdc::CDCRecordP
   if (record.change_metadata_request().has_remove_table_id() ||
       !record.change_metadata_request().add_multiple_tables().empty()) {
     // TODO (#16557): Support remove_table_id() for colocated tables / tablegroups.
-    LOG(INFO) << "Ignoring change metadata request to add multiple/remove tables to tablet : "
-              << producer_tablet_info_.tablet_id;
+    LOG_WITH_PREFIX(INFO)
+        << "Ignoring change metadata request to add multiple/remove tables to tablet : "
+        << producer_tablet_info_.tablet_id;
     return true;
   }
 
   if (!record.change_metadata_request().has_schema() &&
       !record.change_metadata_request().has_add_table()) {
-    LOG(INFO) << "Ignoring change metadata request for tablet : " << producer_tablet_info_.tablet_id
-              << " as it does not contain any schema. ";
+    LOG_WITH_PREFIX(INFO) << "Ignoring change metadata request for tablet : "
+                          << producer_tablet_info_.tablet_id
+                          << " as it does not contain any schema. ";
     return true;
   }
 
@@ -402,7 +409,7 @@ Result<bool> XClusterOutputClient::ProcessChangeMetadataOp(const cdc::CDCRecordP
 
       if (cached_schema_versions &&
           cached_schema_versions->contains(record.change_metadata_request().schema_version())) {
-        LOG(INFO) << Format(
+        LOG_WITH_PREFIX(INFO) << Format(
             "Ignoring change metadata request with schema $0 for tablet $1 as mapping from"
             "producer-consumer schema version already exists",
             schema.DebugString(), producer_tablet_info_.tablet_id);
@@ -443,7 +450,7 @@ Result<bool> XClusterOutputClient::ProcessMetaOp(const cdc::CDCRecordPB& record)
           InternalError, "Fail due to FLAGS_TEST_xcluster_consumer_fail_after_process_split_op");
     }
 
-    RETURN_NOT_OK(local_client_->client->UpdateConsumerOnProducerSplit(
+    RETURN_NOT_OK(local_client_.UpdateConsumerOnProducerSplit(
         producer_tablet_info_.replication_group_id, producer_tablet_info_.stream_id, split_info));
   } else if (record.operation() == cdc::CDCRecordPB::CHANGE_METADATA) {
     if (!VERIFY_RESULT(ProcessChangeMetadataOp(record))) {
@@ -480,8 +487,7 @@ void XClusterOutputClient::SendNextCDCWriteToTablet(std::unique_ptr<WriteRequest
 
   // Send in nullptr for RemoteTablet since cdc rpc now gets the tablet_id from the write request.
   *handle = rpc::xcluster::CreateXClusterWriteRpc(
-      deadline, nullptr /* RemoteTablet */, table_, local_client_->client.get(),
-      write_request.get(),
+      deadline, nullptr /* RemoteTablet */, table_, &local_client_, write_request.get(),
       [weak_ptr = weak_from_this(), this, handle, rpcs = rpcs_](
           const Status& status, WriteResponsePB&& resp) {
         RpcCallback(
@@ -510,7 +516,7 @@ void XClusterOutputClient::UpdateSchemaVersionMapping(
   // Send in nullptr for RemoteTablet since cdc rpc now gets the tablet_id from the write
   // request.
   *handle = rpc::xcluster::CreateGetCompatibleSchemaVersionRpc(
-      deadline, nullptr, local_client_->client.get(), req,
+      deadline, nullptr, &local_client_, req,
       [weak_ptr = weak_from_this(), this, handle, rpcs = rpcs_](
           const Status& status, const GetCompatibleSchemaVersionRequestPB& req,
           GetCompatibleSchemaVersionResponsePB&& resp) {
@@ -545,12 +551,39 @@ void XClusterOutputClient::DoSchemaVersionCheckDone(
     auto msg = Format(
         "XCluster schema mismatch. No matching schema for producer schema $0 with version $1",
         req.schema().DebugString(), producer_schema_version);
-    LOG(WARNING) << msg << ": " << status;
+    LOG_WITH_PREFIX(WARNING) << msg << ": " << status;
     if (resp.error().code() == TabletServerErrorPB::MISMATCHED_SCHEMA) {
-      ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
-      xcluster_poller_->StoreReplicationError(replication_error);
+      // For automatic DDL replication, we need to insert this packing schema into the historical
+      // set of schemas - this will allow us to correctly map packing schema versions until the
+      // replicated DDL is run via ddl_queue.
+      if (is_automatic_mode_) {
+        // Also pass the latest schema version so that we don't repeatedly insert the same schema.
+        if (!resp.has_latest_schema_version()) {
+          STORE_REPLICATION_ERROR_AND_HANDLE_ERROR(
+              ReplicationErrorPb::REPLICATION_SYSTEM_ERROR,
+              STATUS(IllegalState, "Missing latest schema version in response"));
+          return;
+        }
+        auto s =
+            client::XClusterClient(local_client_)
+                .InsertPackedSchemaForXClusterTarget(
+                    consumer_tablet_info_.table_id, req.schema(), resp.latest_schema_version());
+
+        if (s.ok()) {
+          VLOG_WITH_PREFIX(2) << "Inserted schema for automatic DDL replication: "
+                              << req.schema().ShortDebugString();
+          // Can now retry creating the schema version mapping.
+          tserver::GetCompatibleSchemaVersionRequestPB new_req(req);
+          UpdateSchemaVersionMapping(&new_req);
+          return;
+        }
+
+        LOG_WITH_PREFIX(WARNING) << "Failed to insert schema for automatic DDL replication: " << s;
+        STORE_REPLICATION_ERROR_AND_HANDLE_ERROR(ReplicationErrorPb::REPLICATION_SYSTEM_ERROR, s);
+        return;
+      }
     }
-    HandleError(status);
+    STORE_REPLICATION_ERROR_AND_HANDLE_ERROR(replication_error, status);
     return;
   }
 
@@ -565,7 +598,7 @@ void XClusterOutputClient::DoSchemaVersionCheckDone(
   tablet::ChangeMetadataRequestPB meta;
   meta.set_tablet_id(producer_tablet_info_.tablet_id);
   master::UpdateConsumerOnProducerMetadataResponsePB response;
-  Status s = local_client_->client->UpdateConsumerOnProducerMetadata(
+  Status s = local_client_.UpdateConsumerOnProducerMetadata(
       producer_tablet_info_.replication_group_id, producer_tablet_info_.stream_id, meta,
       colocation_id, producer_schema_version, resp.compatible_schema_version(), &response);
   if (!s.ok()) {
@@ -658,11 +691,11 @@ void XClusterOutputClient::DoWriteCDCRecordDone(
 
 void XClusterOutputClient::HandleError(const Status& s) {
   if (s.IsTryAgain()) {
-    LOG(WARNING) << "Retrying applying replicated record for consumer tablet: "
-                 << consumer_tablet_info_.tablet_id << ", reason: " << s;
+    LOG_WITH_PREFIX(WARNING) << "Retrying applying replicated record for consumer tablet: "
+                             << consumer_tablet_info_.tablet_id << ", reason: " << s;
   } else {
-    LOG(ERROR) << "Error while applying replicated record: " << s
-               << ", consumer tablet: " << consumer_tablet_info_.tablet_id;
+    LOG_WITH_PREFIX(ERROR) << "Error while applying replicated record: " << s
+                           << ", consumer tablet: " << consumer_tablet_info_.tablet_id;
   }
   {
     ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
@@ -705,12 +738,12 @@ bool XClusterOutputClient::IncProcessedRecordCount() {
 
 std::shared_ptr<XClusterOutputClient> CreateXClusterOutputClient(
     XClusterPoller* xcluster_poller, const xcluster::ConsumerTabletInfo& consumer_tablet_info,
-    const xcluster::ProducerTabletInfo& producer_tablet_info,
-    const std::shared_ptr<XClusterClient>& local_client, ThreadPool* thread_pool, rpc::Rpcs* rpcs,
-    bool use_local_tserver, rocksdb::RateLimiter* rate_limiter) {
+    const xcluster::ProducerTabletInfo& producer_tablet_info, client::YBClient& local_client,
+    ThreadPool* thread_pool, rpc::Rpcs* rpcs, bool use_local_tserver, bool is_automatic_mode,
+    rocksdb::RateLimiter* rate_limiter) {
   return std::make_unique<XClusterOutputClient>(
       xcluster_poller, consumer_tablet_info, producer_tablet_info, local_client, thread_pool, rpcs,
-      use_local_tserver, rate_limiter);
+      use_local_tserver, is_automatic_mode, rate_limiter);
 }
 
 }  // namespace tserver

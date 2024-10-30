@@ -2,52 +2,24 @@ import { makeStyles, Typography } from '@material-ui/core';
 import { Trans, useTranslation } from 'react-i18next';
 import { useFormContext } from 'react-hook-form';
 
-import { YBTooltip } from '../../../../redesign/components';
 import InfoIcon from '../../../../redesign/assets/info-message.svg';
-import { ReactSelectStorageConfigField } from '../../sharedComponents/ReactSelectStorageConfig';
 import { CreateDrConfigFormValues } from './CreateConfigModal';
-import { DR_DROPDOWN_SELECT_INPUT_WIDTH_PX } from '../constants';
+import { INPUT_FIELD_WIDTH_PX } from '../../constants';
+import { ReactSelectStorageConfigField } from '../../sharedComponents/ReactSelectStorageConfig';
+import { YBTooltip } from '../../../../redesign/components';
+
+import { useModalStyles } from '../../styles';
 
 interface ConfigureBootstrapStepProps {
   isFormDisabled: boolean;
 }
-
-const useStyles = makeStyles((theme) => ({
-  stepContainer: {
-    '& ol': {
-      paddingLeft: theme.spacing(2),
-      listStylePosition: 'outside',
-      '& li::marker': {
-        fontWeight: 'bold'
-      }
-    }
-  },
-  instruction: {
-    marginBottom: theme.spacing(4)
-  },
-  formSectionDescription: {
-    marginBottom: theme.spacing(3)
-  },
-  fieldLabel: {
-    display: 'flex',
-    gap: theme.spacing(1),
-    alignItems: 'center',
-
-    marginBottom: theme.spacing(1)
-  },
-  infoIcon: {
-    '&:hover': {
-      cursor: 'pointer'
-    }
-  }
-}));
 
 const TRANSLATION_KEY_PREFIX =
   'clusterDetail.disasterRecovery.config.createModal.step.configureBootstrap';
 
 export const ConfigureBootstrapStep = ({ isFormDisabled }: ConfigureBootstrapStepProps) => {
   const { control } = useFormContext<CreateDrConfigFormValues>();
-  const classes = useStyles();
+  const classes = useModalStyles();
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
 
   return (
@@ -80,7 +52,7 @@ export const ConfigureBootstrapStep = ({ isFormDisabled }: ConfigureBootstrapSte
             name="storageConfig"
             rules={{ required: t('error.backupStorageConfigRequired') }}
             isDisabled={isFormDisabled}
-            autoSizeMinWidth={DR_DROPDOWN_SELECT_INPUT_WIDTH_PX}
+            autoSizeMinWidth={INPUT_FIELD_WIDTH_PX}
             maxWidth="100%"
           />
         </li>

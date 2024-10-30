@@ -2,7 +2,7 @@
 title: ybm CLI usage resource
 headerTitle: ybm usage
 linkTitle: usage
-description: YugabyteDB Managed CLI reference usage resource.
+description: YugabyteDB Aeon CLI reference usage resource.
 headcontent: Output cluster usage
 menu:
   preview_yugabyte-cloud:

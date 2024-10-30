@@ -70,6 +70,8 @@ struct CBTabletMetadata {
   // Number of starting replicas for this tablet.
   int starting = 0;
 
+  int NumReplicas() const { return running + starting; }
+
   // If this tablet has fewer replicas than the configured number in the PlacementInfoPB.
   bool is_under_replicated = false;
 
@@ -177,17 +179,14 @@ struct Options {
   virtual ~Options() {}
 
   std::string ToString() {
-    std::string out =
-        Format("{ MinLoadVarianceToBalance: $0, MinGlobalLoadVarianceToBalance: $1, "
-                  "MinLeaderLoadVarianceToBalance: $2, MinGlobalLeaderLoadVarianceToBalance: $3, "
-                  "AllowLimitStartingTablets: $4, MaxTabletRemoteBootstraps: $5, "
-                  "MaxTabletRemoteBootstrapsPerTable: $6, AllowLimitOverReplicatedTablets: $7, "
-                  "MaxOverReplicatedTablets: $8, MaxConcurrentRemovals: $9, ",
-                  kMinLoadVarianceToBalance, kMinGlobalLoadVarianceToBalance,
-                  kMinLeaderLoadVarianceToBalance, kMinGlobalLeaderLoadVarianceToBalance,
-                  kAllowLimitStartingTablets, kMaxTabletRemoteBootstraps,
-                  kMaxTabletRemoteBootstrapsPerTable, kAllowLimitOverReplicatedTablets,
-                  kMaxOverReplicatedTablets, kMaxConcurrentRemovals);
+    std::string out = Format(
+        "{ MinLoadVarianceToBalance: $0, AllowLimitStartingTablets: $1, "
+        "MaxTabletRemoteBootstraps: $2, MaxTabletRemoteBootstrapsPerTable: $3, "
+        "AllowLimitOverReplicatedTablets: $4, MaxOverReplicatedTablets: $5, "
+        "MaxConcurrentRemovals: $6, ",
+        kMinLoadVarianceToBalance, kAllowLimitStartingTablets, kMaxTabletRemoteBootstraps,
+        kMaxTabletRemoteBootstrapsPerTable, kAllowLimitOverReplicatedTablets,
+        kMaxOverReplicatedTablets, kMaxConcurrentRemovals);
 
     out += Format("MaxConcurrentAdds: $0, MaxConcurrentLeaderMoves: $1, "
                   "MaxConcurrentLeaderMovesPerTable: $2, ReplicaType: $3, "
@@ -198,16 +197,9 @@ struct Options {
   }
 
   // If variance between load on TS goes past this number, we should try to balance.
+  // Don't balance load variance lower than this else we will repeatedly bounce the same peer back
+  // and forth.
   double kMinLoadVarianceToBalance = 2.0;
-
-  // If variance between global load on TS goes past this number, we should try to balance.
-  double kMinGlobalLoadVarianceToBalance = 2.0;
-
-  // If variance between leader load on TS goes past this number, we should try to balance.
-  double kMinLeaderLoadVarianceToBalance = 2.0;
-
-  // If variance between global leader load on TS goes past this number, we should try to balance.
-  double kMinGlobalLeaderLoadVarianceToBalance = 2.0;
 
   // Whether to limit the number of tablets being spun up on the cluster at any given time.
   bool kAllowLimitStartingTablets = true;
@@ -397,7 +389,7 @@ class PerTableLoadState {
   // Note: this does not call SortLeaderLoad.
   Status AddLeaderTablet(const TabletId& tablet_id,
                          const TabletServerId& ts_uuid,
-                         const TabletServerId& ts_path);
+                         const std::string& ts_path);
 
   // Note: this does not call SortLeaderLoad.
   Status RemoveLeaderTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);

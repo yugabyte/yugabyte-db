@@ -134,8 +134,100 @@ doBindsForIdxWrite(YBCPgStatement stmt,
 }
 
 static void
-ybcinbuildCallback(Relation index, HeapTuple heapTuple, Datum *values, bool *isnull,
-				   bool tupleIsAlive, void *state)
+doAssignForIdxUpdate(YBCPgStatement stmt,
+					 Relation index,
+					 Datum *values,
+					 bool *isnull,
+					 int n_atts,
+					 Datum old_ybbasectid,
+					 Datum new_ybbasectid)
+{
+	TupleDesc tupdesc		= RelationGetDescr(index);
+	int		  indnkeyatts	= IndexRelationGetNumberOfKeyAttributes(index);
+
+	if (old_ybbasectid == 0)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("Missing base table ybctid in index write request")));
+	}
+
+	bool has_null_attr = false;
+	for (AttrNumber attnum = 1; attnum <= n_atts; ++attnum)
+	{
+		Oid			type_id = GetTypeId(attnum, tupdesc);
+		Oid			collation_id = YBEncodingCollation(stmt, attnum,
+													   ybc_get_attcollation(tupdesc, attnum));
+		Datum		value   = values[attnum - 1];
+		bool		is_null = isnull[attnum - 1];
+
+		YBCPgExpr ybc_expr = YBCNewConstant(stmt, type_id, collation_id, value, is_null);
+
+		/*
+		 * Attrs that are a part of the index key are 'bound' to their values.
+		 * It is guaranteed by YbExecUpdateIndexTuples that the values of these
+		 * attrs are unmodified. The non-key attrs are 'assigned' to their
+		 * new (updated) values. These represent the values that are undergoing
+		 * the update.
+		 */
+		if (attnum <= indnkeyatts)
+		{
+			HandleYBStatus(YBCPgDmlBindColumn(stmt, attnum, ybc_expr));
+
+			/*
+			 * In a unique index, if any of the key columns are NULL, we need
+			 * to handle NULL != NULL semantics.
+			 */
+			has_null_attr = has_null_attr || is_null;
+		}
+		else
+			HandleYBStatus(YBCPgDmlAssignColumn(stmt, attnum, ybc_expr));
+	}
+
+	bool unique_index = index->rd_index->indisunique;
+
+	/*
+	 * For a non-unique index, the base table CTID attribute is a part of the
+	 * index key. Therefore, updates to the primary key require the index
+	 * tuple to be deleted and re-inserted, and will not utilize this function.
+	 * For a unique index, the base table CTID attribute is not a part of the
+	 * index key and can be updated in place. Handle that here.
+	 */
+	if (new_ybbasectid != (Datum) NULL)
+	{
+		Assert(unique_index);
+
+		YBCPgExpr ybc_expr = YBCNewConstant(stmt, BYTEAOID, InvalidOid, new_ybbasectid, false);
+		HandleYBStatus(YBCPgDmlAssignColumn(stmt, YBIdxBaseTupleIdAttributeNumber, ybc_expr));
+	}
+
+	/*
+	 * Bind to key columns that do not have an attnum in postgres:
+	 * - For non-unique indexes, this is the base table CTID.
+	 * - For unique indexes, this is the unique key suffix.
+	 */
+	if (!unique_index)
+		YbBindDatumToColumn(stmt,
+							YBIdxBaseTupleIdAttributeNumber,
+							BYTEAOID,
+							InvalidOid,
+							old_ybbasectid,
+							false,
+							NULL /* null_type_entity */);
+
+	else
+		YbBindDatumToColumn(stmt,
+							YBUniqueIdxKeySuffixAttributeNumber,
+							BYTEAOID,
+							InvalidOid,
+							old_ybbasectid,
+							!has_null_attr /* is_null */,
+							NULL /* null_type_entity */);
+}
+
+static void
+ybcinbuildCallback(Relation index, Datum ybctid, Datum *values,
+				   bool *isnull, bool tupleIsAlive, void *state)
 {
 	YBCBuildState  *buildstate = (YBCBuildState *)state;
 
@@ -143,7 +235,7 @@ ybcinbuildCallback(Relation index, HeapTuple heapTuple, Datum *values, bool *isn
 		YBCExecuteInsertIndex(index,
 							  values,
 							  isnull,
-							  heapTuple->t_ybctid,
+							  ybctid,
 							  buildstate->backfill_write_time,
 							  doBindsForIdxWrite,
 							  NULL /* indexstate */);
@@ -167,8 +259,9 @@ ybcinbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
 	 */
 	if (!index->rd_index->indisprimary)
 	{
-		heap_tuples = IndexBuildHeapScan(heap, index, indexInfo, true,
-										 ybcinbuildCallback, &buildstate, NULL);
+		heap_tuples = yb_table_index_build_scan(heap, index, indexInfo, true,
+												ybcinbuildCallback, &buildstate,
+												NULL);
 	}
 	/*
 	 * Return statistics
@@ -230,7 +323,7 @@ ybcininsert(Relation index, Datum *values, bool *isnull, Datum ybctid, Relation 
 
 			YB_FOR_EACH_DB(pg_db_tuple)
 			{
-				Oid dboid = HeapTupleGetOid(pg_db_tuple);
+				Oid dboid = ((Form_pg_database) GETSTRUCT(pg_db_tuple))->oid;
 				/*
 				 * Since this is a catalog index, we assume it exists in all databases.
 				 * YB doesn't use PG locks so it's okay not to take them.
@@ -266,6 +359,15 @@ ybcindelete(Relation index, Datum *values, bool *isnull, Datum ybctid, Relation 
 	if (!index->rd_index->indisprimary)
 		YBCExecuteDeleteIndex(index, values, isnull, ybctid,
 							  doBindsForIdxWrite, NULL /* indexstate */);
+}
+
+static void
+ybcinupdate(Relation index, Datum *values, bool *isnull, Datum oldYbctid,
+			Datum newYbctid, Relation heap, struct IndexInfo *indexInfo)
+{
+	Assert(!index->rd_index->indisprimary);
+	YBCExecuteUpdateIndex(index, values, isnull, oldYbctid, newYbctid,
+						  doAssignForIdxUpdate);
 }
 
 static IndexBulkDeleteResult *
@@ -334,16 +436,8 @@ ybcgetbitmap(IndexScanDesc scan, YbTIDBitmap *ybtbm)
 	if (!ybscan->is_exec_done)
 		pgstat_count_index_scan(scan->indexRelation);
 
-	/* Special case: aggregate pushdown. */
-	if (scan->yb_aggrefs)
-		elog(ERROR, "TODO: Handle aggregate pushdown");
-
 	if (ybscan->quit_scan || ybtbm->work_mem_exceeded)
 		return 0;
-
-	ybtbm->recheck |= YbPredetermineNeedsRecheck(ybscan->relation, ybscan->index,
-												 true /* xs_want_itup */,
-												 *ybscan->keys, ybscan->nkeys);
 
 	HandleYBStatus(YBCPgRetrieveYbctids(ybscan->handle, ybscan->exec_params,
 										ybscan->target_desc->natts, &ybctids, &new_tuples,
@@ -636,6 +730,7 @@ ybcinhandler(PG_FUNCTION_ARGS)
 	amroutine->ampredlocks = true;
 	amroutine->amcanparallel = true;
 	amroutine->amcaninclude = true;
+	amroutine->ybamcanupdatetupleinplace = true;
 	amroutine->amkeytype = InvalidOid;
 
 	amroutine->ambuild = ybcinbuild;
@@ -661,6 +756,7 @@ ybcinhandler(PG_FUNCTION_ARGS)
 	amroutine->yb_amisforybrelation = true;
 	amroutine->yb_aminsert = ybcininsert;
 	amroutine->yb_amdelete = ybcindelete;
+	amroutine->yb_amupdate = ybcinupdate;
 	amroutine->yb_ambackfill = ybcinbackfill;
 	amroutine->yb_ammightrecheck = ybcinmightrecheck;
 	amroutine->yb_amgetbitmap = ybcgetbitmap;

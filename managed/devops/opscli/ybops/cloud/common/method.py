@@ -775,6 +775,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  help="Path to GCP credentials file used for logs export.")
         self.parser.add_argument('--ycql_audit_log_level', default=None,
                                  help="YCQL audit log level.")
+        self.parser.add_argument('--reboot_node_allowed', action='store_true', default=False,
+                                 help='If set YBA will reboot the node for configuring the ulimits')
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -793,7 +795,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         use_default_ssh_port = not ssh_port_updated
 
         # Check if secondary subnet is present. If so, configure it.
-        if host_info.get('secondary_subnet'):
+        if (not args.tags or "systemd_upgrade" not in args.tags) \
+                and host_info.get('secondary_subnet'):
             # Wait for host to be ready to run ssh commands.
             self.wait_for_host(args, use_default_ssh_port)
             server_ports = self.get_server_ports_to_check(args)
@@ -807,6 +810,9 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                 # copy and run the script
                 self.cloud.execute_boot_script(args, self.extra_vars)
 
+        if args.air_gap:
+            self.extra_vars.update({"air_gap": args.air_gap})
+
         if not args.skip_preprovision:
             self.preprovision(args)
             self.extra_vars["device_names"] = self.get_device_names(args, host_info)
@@ -814,8 +820,6 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
         if args.local_package_path:
             self.extra_vars.update({"local_package_path": args.local_package_path})
-        if args.air_gap:
-            self.extra_vars.update({"air_gap": args.air_gap})
         if args.node_exporter_port:
             self.extra_vars.update({"node_exporter_port": args.node_exporter_port})
         if args.install_node_exporter:
@@ -845,6 +849,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             self.extra_vars.update({"otel_col_gcp_creds_local": args.otel_col_gcp_creds_file})
         if args.ycql_audit_log_level:
             self.extra_vars.update({"ycql_audit_log_level": args.ycql_audit_log_level})
+        if args.reboot_node_allowed:
+            self.extra_vars.update({"reboot_node_allowed": args.reboot_node_allowed})
 
         if wait_for_server(self.extra_vars):
             self.cloud.setup_ansible(args).run("yb-server-provision.yml",
@@ -854,8 +860,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             raise YBOpsRecoverableError("Could not connect({}) into node {}:{} using username {}"
                                         .format(host_port_user["connection_type"],
                                                 host_port_user["host"],
-                                                host_port_user["user"],
-                                                host_port_user["port"]))
+                                                host_port_user["port"],
+                                                host_port_user["user"]))
 
     def get_device_names(self, args, host_info=None):
         return self.cloud.get_device_names(args)
@@ -1178,10 +1184,6 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
     def prepare(self):
         super(ConfigureInstancesMethod, self).prepare()
 
-        self.parser.add_argument("--node_exporter_port", type=int, default=9300,
-                                 help="The port for node_exporter to bind to.")
-        self.parser.add_argument("--node_exporter_user", default="prometheus")
-        self.parser.add_argument("--install_node_exporter", action="store_true")
         self.parser.add_argument('--package', default=None)
         self.parser.add_argument('--num_releases_to_keep', type=int,
                                  help="Number of releases to keep after upgrade.")
@@ -1234,6 +1236,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--gcs_remote_download', action="store_true")
         self.parser.add_argument('--gcs_credentials_json')
         self.parser.add_argument('--http_remote_download', action="store_true")
+        self.parser.add_argument("--pg_max_mem_mb", type=int, default=0,
+                                 help="Max memory for postgress process.")
         self.parser.add_argument('--http_package_checksum', default='')
         self.parser.add_argument('--install_third_party_packages',
                                  action="store_true",
@@ -1312,6 +1316,9 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
 
             if args.yb_process_type:
                 self.extra_vars["yb_process_type"] = args.yb_process_type.lower()
+
+            if args.pg_max_mem_mb:
+                self.extra_vars.update({"pg_max_mem_mb": args.pg_max_mem_mb})
         else:
             raise YBOpsRuntimeError("Supported types for this command are only: {}".format(
                 self.supported_types))
@@ -1370,13 +1377,6 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 raise YBOpsRuntimeError(
                     "Supported actions for this command are only: {}".format(
                         self.CERT_ROTATE_ACTIONS))
-
-        if args.node_exporter_port:
-            self.extra_vars.update({"node_exporter_port": args.node_exporter_port})
-        if args.install_node_exporter:
-            self.extra_vars.update({"install_node_exporter": args.install_node_exporter})
-        if args.node_exporter_user:
-            self.extra_vars.update({"node_exporter_user": args.node_exporter_user})
 
         host_info = None
         if args.search_pattern != 'localhost':
@@ -1618,6 +1618,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                             # Example path is /mnt/d0/yb-data/master/wals.
                             path = os.path.join(fs_data_dir, 'yb-data', 'master', state_dir)
                             delete_paths.append(path)
+            self.extra_vars["expected_yb_process_state"] = "stopped"
             if delete_paths:
                 self.extra_vars["delete_paths"] = delete_paths
         # If we are just rotating certs, we don't need to do any configuration changes.
@@ -1885,9 +1886,9 @@ class TransferXClusterCerts(AbstractInstancesMethod):
                                  required=True,
                                  help="The format of this name must be "
                                       "[Source universe UUID]_[Config name].")
-        self.parser.add_argument("--producer_certs_dir",
+        self.parser.add_argument("--xcluster_dest_certs_dir",
                                  required=True,
-                                 help="The directory containing the certs on the target universe.")
+                                 help="The directory containing the certs on destination universe.")
         self.parser.add_argument("--action",
                                  default="copy",
                                  help="If true, the root certificate will be removed.")
@@ -1922,12 +1923,12 @@ class TransferXClusterCerts(AbstractInstancesMethod):
                 connect_options,
                 args.root_cert_path,
                 args.replication_config_name,
-                args.producer_certs_dir)
+                args.xcluster_dest_certs_dir)
         elif args.action == "remove":
             self.cloud.remove_xcluster_root_cert(
                 connect_options,
                 args.replication_config_name,
-                args.producer_certs_dir)
+                args.xcluster_dest_certs_dir)
         else:
             raise YBOpsRuntimeError("The action \"{}\" was not found: Must be either copy, "
                                     "or remove".format(args.action))
@@ -2194,5 +2195,5 @@ class ManageOtelCollector(AbstractInstancesMethod):
             raise YBOpsRecoverableError("Could not connect({}) into node {}:{} using username {}"
                                         .format(host_port_user["connection_type"],
                                                 host_port_user["host"],
-                                                host_port_user["user"],
-                                                host_port_user["port"]))
+                                                host_port_user["port"],
+                                                host_port_user["user"]))

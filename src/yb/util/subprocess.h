@@ -169,10 +169,8 @@ class Subprocess {
 
   // Same as above, but collects the output from the child process stdout into
   // the output parameter.
-  // If read_stderr is set to true, stderr is collected instead.
   static Status Call(
-      const std::vector<std::string>& argv,
-      std::string* output, StdFdTypes read_fds = StdFdTypes{StdFdType::kOut});
+      const std::vector<std::string>& argv, std::string* output, std::string* error = nullptr);
 
   // Return the pipe fd to the child's standard stream.
   // Stream should not be disabled or shared.
@@ -192,9 +190,9 @@ class Subprocess {
 
   void SetEnv(const std::string& key, const std::string& value);
 
-  // Issues Start() then Wait() and collects the output from the child process
-  // (stdout or stderr) into the output parameter.
-  Status Call(std::string* output, StdFdTypes read_fds = StdFdTypes{StdFdType::kOut});
+  // Issues Start() then Wait() and collects the desired streams from the child process
+  // into the output parameter(s).
+  Status Call(std::string* output, std::string* error = nullptr);
 
   // Writes pid to cgroup specified by path
   void AddPIDToCGroup(const std::string& path, pid_t pid);

@@ -17,9 +17,11 @@ import (
 )
 
 var listUniverseCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List YugabyteDB Anywhere universes",
-	Long:  "List YugabyteDB Anywhere universes",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List YugabyteDB Anywhere universes",
+	Long:    "List YugabyteDB Anywhere universes",
+	Example: `yba universe list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
@@ -37,14 +39,15 @@ var listUniverseCmd = &cobra.Command{
 		}
 
 		universeCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: universe.NewUniverseFormat(viper.GetString("output")),
+			Command: "list",
+			Output:  os.Stdout,
+			Format:  universe.NewUniverseFormat(viper.GetString("output")),
 		}
 		if len(r) < 1 {
-			if util.IsOutputType("table") {
-				logrus.Infoln("No universes found\n")
+			if util.IsOutputType(formatter.TableFormatKey) {
+				logrus.Info("No universes found\n")
 			} else {
-				logrus.Infoln("{}\n")
+				logrus.Info("[]\n")
 			}
 			return
 		}

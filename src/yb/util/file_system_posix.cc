@@ -278,6 +278,17 @@ Status PosixRandomAccessFile::InvalidateCache(size_t offset, size_t length) {
 #endif
 }
 
+void PosixRandomAccessFile::Readahead(size_t offset, size_t length) {
+#ifdef __linux__
+  auto ret = readahead(fd_, implicit_cast<off64_t>(offset), length);
+  if (ret == 0) {
+    return;
+  }
+  YB_LOG_EVERY_N_SECS(ERROR, 60) << "Readahead error for " << filename_ << " at " << offset
+                                 << ", length=" << length << ": " << ErrnoToString(errno);
+#endif
+}
+
 } // namespace yb
 
 namespace rocksdb {
@@ -413,8 +424,8 @@ Status PosixWritableFile::InvalidateCache(size_t offset, size_t length) {
 
 #ifdef ROCKSDB_FALLOCATE_PRESENT
 Status PosixWritableFile::Allocate(uint64_t offset, uint64_t len) {
-  assert(yb::std_util::cmp_less_equal(offset, std::numeric_limits<off_t>::max()));
-  assert(yb::std_util::cmp_less_equal(len, std::numeric_limits<off_t>::max()));
+  assert(std::cmp_less_equal(offset, std::numeric_limits<off_t>::max()));
+  assert(std::cmp_less_equal(len, std::numeric_limits<off_t>::max()));
   TEST_KILL_RANDOM("PosixWritableFile::Allocate:0", test_kill_odds);
   IOSTATS_TIMER_GUARD(allocate_nanos);
   int alloc_status = 0;
@@ -431,8 +442,8 @@ Status PosixWritableFile::Allocate(uint64_t offset, uint64_t len) {
 }
 
 Status PosixWritableFile::RangeSync(uint64_t offset, uint64_t nbytes) {
-  assert(yb::std_util::cmp_less_equal(offset, std::numeric_limits<off_t>::max()));
-  assert(yb::std_util::cmp_less_equal(nbytes, std::numeric_limits<off_t>::max()));
+  assert(std::cmp_less_equal(offset, std::numeric_limits<off_t>::max()));
+  assert(std::cmp_less_equal(nbytes, std::numeric_limits<off_t>::max()));
   if (sync_file_range(fd_, static_cast<off_t>(offset),
       static_cast<off_t>(nbytes), SYNC_FILE_RANGE_WRITE) == 0) {
     return Status::OK();

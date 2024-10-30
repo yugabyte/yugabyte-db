@@ -49,6 +49,10 @@
   <xsl:call-template name="inline.charseq"/>
 </xsl:template>
 
+<!-- Render <returnvalue> with a right arrow then the type name -->
+<!-- Avoid adding unnecessary white space in this template! -->
+<xsl:template match="returnvalue">&#x2192; <xsl:call-template name="inline.monoseq"/></xsl:template>
+
 <xsl:template match="structfield">
   <xsl:call-template name="inline.monoseq"/>
 </xsl:template>
@@ -84,6 +88,17 @@
   <xsl:text>?</xsl:text>
   <xsl:call-template name="inline.charseq"/>
   <xsl:text>?</xsl:text>
+</xsl:template>
+
+
+<!-- Support for generating xref link text to additional elements -->
+
+<xsl:template match="command" mode="xref-to">
+  <xsl:apply-templates select="." mode="xref"/>
+</xsl:template>
+
+<xsl:template match="function" mode="xref-to">
+  <xsl:apply-templates select="." mode="xref"/>
 </xsl:template>
 
 </xsl:stylesheet>

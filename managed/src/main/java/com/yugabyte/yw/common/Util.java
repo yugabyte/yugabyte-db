@@ -18,6 +18,8 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.logging.LogUtil;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.RequestContext;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
@@ -75,6 +77,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
@@ -84,6 +87,7 @@ import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
@@ -92,6 +96,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.routines.InetAddressValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import play.libs.Json;
 
 public class Util {
@@ -106,10 +111,12 @@ public class Util {
   public static final String DEFAULT_YCQL_USERNAME = "cassandra";
   public static final String DEFAULT_YCQL_PASSWORD = "cassandra";
   public static final String YUGABYTE_DB = "yugabyte";
+  public static final String CONSISTENCY_CHECK_TABLE_NAME = "yba_consistency_check";
   public static final int MIN_NUM_BACKUPS_TO_RETAIN = 3;
   public static final String REDACT = "REDACTED";
   public static final String KEY_LOCATION_SUFFIX = "/backup_keys.json";
   public static final String SYSTEM_PLATFORM_DB = "system_platform";
+  public static final String WRITE_READ_TABLE = "write_read_table";
   public static final int YB_SCHEDULER_INTERVAL = 2;
   public static final String DEFAULT_YB_SSH_USER = "yugabyte";
   public static final String DEFAULT_SUDO_SSH_USER = "centos";
@@ -136,7 +143,17 @@ public class Util {
 
   public static final String YBDB_ROLLBACK_DB_VERSION = "2.20.2.0-b1";
 
+  public static final String GFLAG_GROUPS_STABLE_VERSION = "2024.1.0.0-b129";
+
+  public static final String GFLAG_GROUPS_PREVIEW_VERSION = "2.23.0.0-b416";
+
+  public static final String CONNECTION_POOLING_PREVIEW_VERSION = "2.23.0.0";
+
+  public static final String CONNECTION_POOLING_STABLE_VERSION = "2024.1.0.0";
+
   public static final String AUTO_FLAG_FILENAME = "auto_flags.json";
+
+  public static final String GFLAG_GROUPS_FILENAME = "gflag_groups.json";
 
   public static final String DB_VERSION_METADATA_FILENAME = "version_metadata.json";
 
@@ -215,6 +232,13 @@ public class Util {
           id.replaceAll("(\\w{8})(\\w{4})(\\w{4})(\\w{4})(\\w{12})", "$1-$2-$3-$4-$5");
       return UUID.fromString(uuidWithHyphens);
     }
+  }
+
+  public static String getIdRepresentation(UUID uuid) {
+    if (uuid == null) {
+      return null;
+    }
+    return uuid.toString().replace("-", "");
   }
 
   /**
@@ -763,6 +787,19 @@ public class Util {
     return ip;
   }
 
+  public static String getIpToUse(Universe universe, String nodeName, boolean cloudEnabled) {
+    // For K8s the NodeDetails are only populated with nodeName, so need to fetch details
+    // from Universe, which works for both K8s and VMs.
+    NodeDetails nodeInUniverse = universe.getNode(nodeName);
+    if (nodeInUniverse == null) {
+      return null;
+    }
+    if (GFlagsUtil.isUseSecondaryIP(universe, nodeInUniverse, cloudEnabled)) {
+      return nodeInUniverse.cloudInfo.secondary_private_ip;
+    }
+    return nodeInUniverse.cloudInfo.private_ip;
+  }
+
   // Generate a deterministic node UUID from the universe UUID and the node name.
   public static UUID generateNodeUUID(UUID universeUuid, String nodeName) {
     return UUID.nameUUIDFromBytes((universeUuid.toString() + nodeName).getBytes());
@@ -1199,17 +1236,10 @@ public class Util {
 
   public static UUID retreiveImageBundleUUID(
       Architecture arch, UserIntent userIntent, Provider provider) {
-    return retreiveImageBundleUUID(arch, userIntent, provider, false);
-  }
-
-  public static UUID retreiveImageBundleUUID(
-      Architecture arch, UserIntent userIntent, Provider provider, boolean cloudEnabled) {
     UUID imageBundleUUID = null;
     if (userIntent.imageBundleUUID != null) {
       imageBundleUUID = userIntent.imageBundleUUID;
-    } else if (provider.getUuid() != null && !cloudEnabled) {
-      // Don't use defaultProvider bundle for YBM, as they will
-      // specify machineImage for provisioning the node.
+    } else if (provider.getUuid() != null) {
       List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(provider.getUuid());
       if (bundles.size() > 0) {
         ImageBundle bundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, bundles);
@@ -1331,5 +1361,29 @@ public class Util {
       }
     }
     return clone;
+  }
+
+  public static <T> Predicate<T> not(Predicate<T> t) {
+    return t.negate();
+  }
+
+  public static <T> T doWithCorrelationId(Function<String, T> function) {
+    Map<String, String> originalContext = MDC.getCopyOfContextMap();
+    try {
+      String correlationId = UUID.randomUUID().toString();
+      Map<String, String> context = MDC.getCopyOfContextMap();
+      if (context == null) {
+        context = new HashMap<>();
+      }
+      context.put(LogUtil.CORRELATION_ID, correlationId);
+      MDC.setContextMap(context);
+      return function.apply(correlationId);
+    } finally {
+      if (MapUtils.isEmpty(originalContext)) {
+        MDC.clear();
+      } else {
+        MDC.setContextMap(originalContext);
+      }
+    }
   }
 }

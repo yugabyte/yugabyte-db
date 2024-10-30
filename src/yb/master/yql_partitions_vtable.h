@@ -38,8 +38,8 @@ class YQLPartitionsVTable : public YQLVirtualTable {
 
   // Filter only tablets that have relevant system.partitions changes from a list of tablets that
   // have heartbeated in and are being processed.
-  std::vector<TabletInfoPtr> FilterRelevantTablets(
-      const std::vector<TabletInfo*>& mutated_tablets) const;
+  Result<std::vector<TabletInfoPtr>> FilterRelevantTablets(
+      const std::vector<TabletInfoPtr>& mutated_tablets) const;
 
   // Process a filtered list of tablets and add them to the system.partitions vtable.
   Status ProcessMutatedTablets(
@@ -70,7 +70,7 @@ class YQLPartitionsVTable : public YQLVirtualTable {
   Status ProcessTablets(const std::vector<TabletInfoPtr>& tablets) const REQUIRES(mutex_);
 
   Result<TabletData> GetTabletData(
-      const scoped_refptr<TabletInfo>& tablet,
+      const TabletInfoPtr& tablet,
       DnsLookupMap* dns_lookups,
       google::protobuf::Arena* arena) const;
 

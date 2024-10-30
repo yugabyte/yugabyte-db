@@ -44,6 +44,8 @@ set(TABLET_SRCS
   tablet.cc
   tablet_bootstrap.cc
   tablet_bootstrap_if.cc
+  tablet_bootstrap_state_flusher.cc
+  tablet_bootstrap_state_manager.cc
   tablet_component.cc
   tablet_metrics.cc
   tablet_peer_mm_ops.cc
@@ -70,7 +72,6 @@ set(TABLET_SRCS
   tablet_retention_policy.cc
   preparer.cc
   write_query.cc
-  retryable_requests_flusher.cc
   )
 
 set(TABLET_DEPS pq_utils)

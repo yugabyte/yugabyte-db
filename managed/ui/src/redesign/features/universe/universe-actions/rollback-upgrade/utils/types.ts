@@ -1,4 +1,4 @@
-import { Cluster, Universe } from '../../../universe-form/utils/dto';
+import { Cluster, RollMaxBatchSize, Universe } from '../../../universe-form/utils/dto';
 
 export enum UPGRADE_TYPE {
   ROLLING = 'Rolling',
@@ -8,6 +8,7 @@ export enum UPGRADE_TYPE {
 export interface DBUpgradeFormFields {
   softwareVersion: string | null;
   rollingUpgrade: boolean;
+  numNodesToUpgradePrimary: number;
   timeDelay: Number;
 }
 
@@ -21,6 +22,7 @@ export interface DBUpgradePayload {
   clusters: Cluster[];
   nodePrefix: string;
   enableYbc: boolean;
+  rollMaxBatchSize?: RollMaxBatchSize;
 }
 
 export interface DBRollbackFormFields {

@@ -11,7 +11,6 @@
 // under the License.
 
 #include <sstream>
-#include <thread>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/optional.hpp>
@@ -25,7 +24,6 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/flags/flag_tags.h"
-#include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
@@ -46,9 +44,7 @@ DEFINE_RUNTIME_bool(callhome_enabled, true,
     "Enables callhome feature that sends analytics data to yugabyte");
 
 DEFINE_RUNTIME_int32(callhome_interval_secs, 3600, "How often to run callhome");
-// TODO: We need to change this to https, it involves updating our libcurl
-// implementation to support SSL.
-DEFINE_RUNTIME_string(callhome_url, "http://diagnostics.yugabyte.com", "URL of callhome server");
+DEFINE_RUNTIME_string(callhome_url, "https://diagnostics.yugabyte.com", "URL of callhome server");
 DEFINE_RUNTIME_string(callhome_collection_level, kMediumLevel, "Level of details sent by callhome");
 
 DEFINE_RUNTIME_string(callhome_tag, "",
@@ -104,6 +100,22 @@ std::string GetCurrentUser() {
     return "unknown_user";
   }
 }
+
+class GenericServerCollector : public Collector {
+ public:
+  using Collector::Collector;
+
+  void Collect(CollectionLevel collection_level) {
+    AppendPairToJson("node_uuid", server_->fs_manager()->uuid(), &json_);
+    // GetAllVersionInfoJson is already a json object so cannot use AppendPairToJson.
+    json_ += ",\"version_info\":" + VersionInfo::GetAllVersionInfoJson();
+    AppendPairToJson("timestamp", std::to_string(WallTime_Now()), &json_);
+  }
+
+  string collector_name() { return "GenericServerCollector"; }
+
+  virtual CollectionLevel collection_level() { return CollectionLevel::LOW; }
+};
 
 class MetricsCollector : public Collector {
  public:
@@ -181,10 +193,25 @@ class GFlagsCollector : public Collector {
   using Collector::Collector;
 
   void Collect(CollectionLevel collection_level) {
-    auto gflags = CommandlineFlagsIntoString();
-    boost::replace_all(gflags, "\n", " ");
+    auto flag_infos = yb::GetFlagInfos(
+        [webserver = server_->web_server()](const std::string& flag_name) {
+          return webserver->ContainsAutoFlag(flag_name);
+        },
+        /*default_flag_filter=*/nullptr, /*custom_varz=*/{}, /*mask_value_if_private=*/true);
+
+    std::stringstream gflags;
+    for (const auto& [tag, flags] : flag_infos) {
+      if (tag != FlagType::kCustom) {
+        // Ignore default flags.
+        continue;
+      }
+      for (const auto& flag : flags) {
+        gflags << "--" << flag.name << "=" << flag.value << " ";
+      }
+    }
+
     string escaped_gflags;
-    JsonEscape(gflags, &escaped_gflags);
+    JsonEscape(gflags.str(), &escaped_gflags);
     json_ = Substitute("\"gflags\":\"$0\"", escaped_gflags);
   }
 
@@ -195,7 +222,9 @@ class GFlagsCollector : public Collector {
 
 CallHome::CallHome(server::RpcAndWebServerBase* server) : server_(server), pool_("call_home", 1) {
   scheduler_ = std::make_unique<yb::rpc::Scheduler>(&pool_.io_service());
+  curl_.set_follow_redirects(true);
 
+  AddCollector<GenericServerCollector>();
   AddCollector<MetricsCollector>();
   AddCollector<RpcsCollector>();
   AddCollector<GFlagsCollector>();

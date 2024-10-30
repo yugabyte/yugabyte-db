@@ -210,6 +210,8 @@ class ClusterAdminClient {
   // List all tablet servers known to master
   Status ListAllTabletServers(bool exclude_dead = false);
 
+  Status RemoveTabletServer(const std::string& uuid);
+
   // List all masters
   Status ListAllMasters();
 
@@ -316,6 +318,18 @@ class ClusterAdminClient {
   //       look like this workflow is a good fit there.
   Status UpgradeYsql(bool use_single_connection);
 
+  Status StartYsqlMajorVersionUpgradeInitdb();
+
+  // Returns error Result if the RPC failed, otherwise returns the response for the caller to parse
+  // for both whether next version's initdb is done, and whether there is an initdb (non-RPC)
+  // error.
+  Result<master::IsYsqlMajorVersionUpgradeInitdbDoneResponsePB>
+  IsYsqlMajorVersionUpgradeInitdbDone();
+
+  Status WaitForYsqlMajorVersionUpgradeInitdb();
+
+  Status RollbackYsqlMajorVersionUpgrade();
+
   // Set WAL retention time in secs for a table name.
   Status SetWalRetentionSecs(
     const client::YBTableName& table_name, const uint32_t wal_ret_secs);
@@ -394,7 +408,8 @@ class ClusterAdminClient {
   Status CreateCDCSDKDBStream(
       const TypedNamespaceName& ns, const std::string& CheckPointType,
       const cdc::CDCRecordType RecordType,
-      const std::string& ConsistentSnapshotOption);
+      const std::string& ConsistentSnapshotOption,
+      const bool& is_dynamic_tables_enabled);
 
   Status DeleteCDCStream(const std::string& stream_id, bool force_delete = false);
 
@@ -408,6 +423,12 @@ class ClusterAdminClient {
 
   Status YsqlBackfillReplicationSlotNameToCDCSDKStream(
       const std::string& stream_id, const std::string& replication_slot_name);
+
+  Status DisableDynamicTableAdditionOnCDCSDKStream(const std::string& stream_id);
+
+  Status RemoveUserTableFromCDCSDKStream(const std::string& stream_id, const std::string& table_id);
+
+  Status ValidateAndSyncCDCStateEntriesForCDCSDKStream(const std::string& stream_id);
 
   Status SetupNamespaceReplicationWithBootstrap(const std::string& replication_id,
                                   const std::vector<std::string>& producer_addresses,
@@ -427,8 +448,7 @@ class ClusterAdminClient {
       const std::string& replication_group_id, const std::vector<std::string>& producer_addresses,
       const std::vector<TableId>& add_tables, const std::vector<TableId>& remove_tables,
       const std::vector<std::string>& producer_bootstrap_ids_to_add,
-      const std::string& new_replication_group_id, const NamespaceId& source_namespace_to_remove,
-      bool remove_table_ignore_errors = false);
+      const NamespaceId& source_namespace_to_remove, bool remove_table_ignore_errors = false);
 
   Status RenameUniverseReplication(const std::string& old_universe_name,
                                    const std::string& new_universe_name);
@@ -447,10 +467,6 @@ class ClusterAdminClient {
 
   Status WaitForReplicationDrain(
       const std::vector<xrepl::StreamId>& stream_ids, const std::string& target_time);
-
-  Status SetupNSUniverseReplication(const std::string& replication_group_id,
-                                    const std::vector<std::string>& producer_addresses,
-                                    const TypedNamespaceName& producer_namespace);
 
   Status GetReplicationInfo(const std::string& replication_group_id);
 
@@ -478,6 +494,21 @@ class ClusterAdminClient {
 
   using NamespaceMap = std::unordered_map<NamespaceId, client::NamespaceInfo>;
   Result<const NamespaceMap&> GetNamespaceMap(bool include_nonrunning = false);
+
+  Result<master::DumpSysCatalogEntriesResponsePB> DumpSysCatalogEntries(
+      master::SysRowEntryType entry_type, const std::string& entity_id_filter);
+
+  Status DumpSysCatalogEntriesAction(
+      master::SysRowEntryType entry_type, const std::string& folder_path,
+      const std::string& entry_id_filter);
+
+  Status WriteSysCatalogEntry(
+      master::WriteSysCatalogEntryRequestPB::WriteOp operation, master::SysRowEntryType entry_type,
+      const std::string& entity_id, const std::string& pb_debug_string);
+
+  Status WriteSysCatalogEntryAction(
+      master::WriteSysCatalogEntryRequestPB::WriteOp operation, master::SysRowEntryType entry_type,
+      const std::string& entry_id, const std::string& file_path, bool force);
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.

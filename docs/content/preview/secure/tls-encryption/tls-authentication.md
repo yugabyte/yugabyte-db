@@ -4,7 +4,6 @@ headerTitle: TLS and authentication
 linkTitle: TLS and authentication
 description: Use authentication in conjunction with TLS encryption.
 headcontent: Use authentication in conjunction with TLS encryption
-image: /images/section_icons/secure/authentication.png
 menu:
   preview:
     identifier: tls-authentication
@@ -101,7 +100,7 @@ $ ./bin/ysqlsh "sslmode=require"
 ```
 
 ```output
-ysqlsh (11.2-YB-2.7.0.0-b0)
+ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```
@@ -115,7 +114,7 @@ $ ./bin/ysqlsh
 ```
 
 ```output
-ysqlsh (11.2-YB-2.7.0.0-b0)
+ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```
@@ -140,7 +139,7 @@ $ ./bin/ysqlsh
 
 ```output
 Password for user yugabyte:
-ysqlsh (11.2-YB-2.7.0.0-b0)
+ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```
@@ -181,7 +180,7 @@ $ ./bin/ysqlsh "sslcert=$CERTS/node.127.0.0.1.crt sslkey=$CERTS/node.127.0.0.1.k
 ```
 
 ```output
-ysqlsh (11.2-YB-2.7.0.0-b0)
+ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```
@@ -224,7 +223,7 @@ $ ./bin/ysqlsh "sslcert=$CERTS/node.127.0.0.1.crt sslkey=$CERTS/node.127.0.0.1.k
 
 ```output
 Password for user yugabyte:
-ysqlsh (11.2-YB-2.7.0.0-b0)
+ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```

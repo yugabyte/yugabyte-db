@@ -47,18 +47,18 @@ type: docs
 
 To deploy using Google Cloud Deployment Manager:
 
-* Change the current directory to the cloned repository.
-* Use the following `gcloud` command to create the deployment-manager deployment:
+1. Change the current directory to the cloned repository.
+1. Use the following `gcloud` command to create the deployment-manager deployment:
 
     ```sh
     $ gcloud deployment-manager deployments create <your-deployment-name> --config=yugabyte-deployment.yaml
     ```
 
-* Wait 5-10 minutes for the creation of all resources to complete.
-* After the deployment creation is complete, you can describe it as follows:
+1. Wait 5-10 minutes for the creation of all resources to complete.
+1. After the deployment creation is complete, you can describe it as follows:
 
     ```sh
     $ gcloud deployment-manager deployments describe <your-deployment-name>
     ```
 
-The output includes the YugabyteDB Admin URL, JDBC URL, and YSQL, YCQL, and YEDIS connection strings. You can use the YugabyteDB Admin URL to access the Admin portal.
+The output includes the YugabyteDB Admin URL, JDBC URL, and YSQL, and YCQL connection strings. You can use the YugabyteDB Admin URL to access the Admin portal.

@@ -1,0 +1,13 @@
+title: SoftwareUpgradeFinalizeInfo
+description: |
+  SoftwareUpgradesFinalizeInfo
+
+  The list of connected xclusters that will be impacted by finalizing the software upgrade. Part of
+  SoftwareUpgradeFinalizeResponse.
+type: object
+properties:
+  impacted_xclusters:
+    description: List of XCluster info that are impacted by software upgrade
+    type: array
+    items:
+      $ref: "UniverseSoftwareFinalizeImpactedXCluster.yaml"

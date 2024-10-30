@@ -4,7 +4,7 @@ headerTitle: CREATE TABLE
 linkTitle: CREATE TABLE
 description: Use the CREATE TABLE statement to create a table in a database.
 menu:
-  preview:
+  preview_api:
     identifier: ddl_create_table
     parent: statements
 type: docs
@@ -174,7 +174,7 @@ CREATE TABLE <name> (columns) WITH (COLOCATION = false);
 This ensures that the table is not stored on the same tablet as the rest of the tables for this database, but instead has its own set of tablets. Use this option for large tables that need to be scaled out.
 
 {{<note>}}
-Setting `COLOCATION = true` has no effect if the database that the table is part of is not colocated, as currently colocation is supported only at the database level. See [Colocated tables](../../../../../architecture/docdb-sharding/colocated-tables/) for more details.
+Setting `COLOCATION = true` has no effect if the database that the table is part of is not colocated, as currently colocation is supported only at the database level. See [Colocated tables](../../../../../explore/colocation/) for more details.
 {{</note>}}
 
 ### Storage parameters

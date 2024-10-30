@@ -10,7 +10,7 @@ import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import '../AdvancedConfig.scss';
 
 export const UniverseRuntimeConfig: FC<RuntimeConfigScopeProps> = ({
-  configTagFilter,
+  getRuntimeConfig,
   fetchRuntimeConfigs,
   setRuntimeConfig,
   deleteRunTimeConfig,
@@ -91,11 +91,11 @@ export const UniverseRuntimeConfig: FC<RuntimeConfigScopeProps> = ({
       )}
 
       <ConfigData
+        getRuntimeConfig={getRuntimeConfig}
         setRuntimeConfig={setRuntimeConfig}
         deleteRunTimeConfig={deleteRunTimeConfig}
         scope={RunTimeConfigScope.UNIVERSE}
         universeUUID={universeUUID}
-        configTagFilter={configTagFilter}
       />
     </div>
   );

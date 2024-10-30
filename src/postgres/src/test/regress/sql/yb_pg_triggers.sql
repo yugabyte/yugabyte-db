@@ -2,6 +2,39 @@
 -- TRIGGERS
 --
 
+-- directory paths and dlsuffix are passed to us in environment variables
+\getenv libdir PG_LIBDIR
+\getenv dlsuffix PG_DLSUFFIX
+
+\set autoinclib :libdir '/autoinc' :dlsuffix
+\set refintlib :libdir '/refint' :dlsuffix
+\set regresslib :libdir '/regress' :dlsuffix
+
+CREATE FUNCTION autoinc ()
+	RETURNS trigger
+	AS :'autoinclib'
+	LANGUAGE C;
+
+CREATE FUNCTION check_primary_key ()
+	RETURNS trigger
+	AS :'refintlib'
+	LANGUAGE C;
+
+CREATE FUNCTION check_foreign_key ()
+	RETURNS trigger
+	AS :'refintlib'
+	LANGUAGE C;
+
+CREATE FUNCTION trigger_return_old ()
+        RETURNS trigger
+        AS :'regresslib'
+        LANGUAGE C;
+
+CREATE FUNCTION set_ttdummy (int4)
+        RETURNS int4
+        AS :'regresslib'
+        LANGUAGE C STRICT;
+
 create table pkeys (pkey1 int4 not null, pkey2 text not null);
 create table fkeys (fkey1 int4, fkey2 text, fkey3 int);
 create table fkeys2 (fkey21 int4, fkey22 text, pkey23 int not null);
@@ -1294,8 +1327,6 @@ drop table my_table;
 create table parted_trig (a int) partition by list (a);
 create function trigger_nothing() returns trigger
   language plpgsql as $$ begin end; $$;
-create trigger failed before insert or update or delete on parted_trig
-  for each row execute procedure trigger_nothing();
 create trigger failed instead of update on parted_trig
   for each row execute procedure trigger_nothing();
 create trigger failed after update on parted_trig
@@ -1510,6 +1541,86 @@ insert into parted_irreg values (1, 'aardvark'), (2, 'aanimals');
 insert into parted1_irreg values ('aardwolf', 2);
 insert into parted_irreg_ancestor values ('aasvogel', 3);
 drop table parted_irreg_ancestor;
+
+-- Before triggers and partitions
+create table parted (a int, b int, c text) partition by list (a);
+create table parted_1 partition of parted for values in (1)
+  partition by list (b);
+create table parted_1_1 partition of parted_1 for values in (1);
+create function parted_trigfunc() returns trigger language plpgsql as $$
+begin
+  new.a = new.a + 1;
+  return new;
+end;
+$$;
+insert into parted values (1, 1, 'uno uno v1');    -- works
+create trigger t before insert or update or delete on parted
+  for each row execute function parted_trigfunc();
+insert into parted values (1, 1, 'uno uno v2');    -- fail
+update parted set c = c || 'v3';                   -- fail
+create or replace function parted_trigfunc() returns trigger language plpgsql as $$
+begin
+  new.b = new.b + 1;
+  return new;
+end;
+$$;
+insert into parted values (1, 1, 'uno uno v4');    -- fail
+update parted set c = c || 'v5';                   -- fail
+create or replace function parted_trigfunc() returns trigger language plpgsql as $$
+begin
+  new.c = new.c || ' did '|| TG_OP;
+  return new;
+end;
+$$;
+insert into parted values (1, 1, 'uno uno');       -- works
+update parted set c = c || ' v6';                   -- works
+-- YB note: add order by desc to match PG ordering
+select tableoid::regclass, * from parted order by c desc;
+
+-- update itself moves tuple to new partition; trigger still works
+truncate table parted;
+create table parted_2 partition of parted for values in (2);
+insert into parted values (1, 1, 'uno uno v5');
+update parted set a = 2;
+select tableoid::regclass, * from parted;
+
+-- both trigger and update change the partition
+create or replace function parted_trigfunc2() returns trigger language plpgsql as $$
+begin
+  new.a = new.a + 1;
+  return new;
+end;
+$$;
+create trigger t2 before update on parted
+  for each row execute function parted_trigfunc2();
+truncate table parted;
+insert into parted values (1, 1, 'uno uno v6');
+create table parted_3 partition of parted for values in (3);
+update parted set a = a + 1;
+select tableoid::regclass, * from parted;
+-- there's no partition for a=0, but this update works anyway because
+-- the trigger causes the tuple to be routed to another partition
+update parted set a = 0;
+select tableoid::regclass, * from parted;
+
+drop table parted;
+create table parted (a int, b int, c text) partition by list ((a + b));
+create or replace function parted_trigfunc() returns trigger language plpgsql as $$
+begin
+  new.a = new.a + new.b;
+  return new;
+end;
+$$;
+create table parted_1 partition of parted for values in (1, 2);
+create table parted_2 partition of parted for values in (3, 4);
+create trigger t before insert or update on parted
+  for each row execute function parted_trigfunc();
+insert into parted values (0, 1, 'zero win');
+insert into parted values (1, 1, 'one fail');
+insert into parted values (1, 2, 'two fail');
+select * from parted;
+drop table parted;
+drop function parted_trigfunc();
 
 --
 -- Constraint triggers and partitioned tables

@@ -93,7 +93,7 @@ To build and run the application, do the following:
 
     - Set the following connection parameters:
 
-        - **host** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
+        - **host** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Aeon cluster host name, sign in to YugabyteDB Aeon, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **port** - the port number that will be used by the JDBC driver (the default YugabyteDB YSQL port is 5433).
 
     - Save the file.
@@ -204,7 +204,7 @@ What follows is an image:
 
 What follows is an embedded YouTube video:
 
-{{< youtube id="qYMcNzWotkI" title="Deploy a fault tolerant cluster in YugabyteDB Managed" >}}
+{{< youtube id="qYMcNzWotkI" title="Deploy a fault tolerant cluster in YugabyteDB Aeon" >}}
 
 ## Lists
 
@@ -250,8 +250,8 @@ Bulleted lists with levels of indent:
 
 Some bullets:
 
-- a cluster deployed in YugabyteDB Managed.
-- the cluster CA certificate; YugabyteDB Managed uses TLS to secure connections to the database.
+- a cluster deployed in YugabyteDB Aeon.
+- the cluster CA certificate; YugabyteDB Aeon uses TLS to secure connections to the database.
 - your computer added to the cluster IP allow list.
 
 Refer to [Before you begin](../../../tutorials/build-apps/cloud-add-ip/).

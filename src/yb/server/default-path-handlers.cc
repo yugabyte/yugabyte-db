@@ -68,10 +68,11 @@
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/rpc/secure.h"
 #include "yb/rpc/secure_stream.h"
+#include "yb/server/html_print_helper.h"
 #include "yb/server/pprof-path-handlers.h"
 #include "yb/server/server_base.h"
-#include "yb/rpc/secure.h"
 #include "yb/server/webserver.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -189,131 +190,59 @@ static void LogsHandler(const Webserver::WebRequest& req, Webserver::WebResponse
   }
 }
 
-std::vector<google::CommandLineFlagInfo> GetAllFlags(const Webserver::WebRequest& req) {
-  std::vector<google::CommandLineFlagInfo> flag_infos;
-  google::GetAllFlags(&flag_infos);
-
-  if (FLAGS_TEST_mini_cluster_mode) {
-    const string* custom_varz_ptr = FindOrNull(req.parsed_args, "TEST_custom_varz");
-    if (custom_varz_ptr != nullptr) {
-      map<string, string> varz;
-      SplitStringToMapUsing(*custom_varz_ptr, "\n", &varz);
-
-      // Replace values for existing flags.
-      for (auto& flag_info : flag_infos) {
-        auto varz_it = varz.find(flag_info.name);
-        if (varz_it != varz.end()) {
-          if (flag_info.current_value != varz_it->second) {
-            flag_info.current_value = varz_it->second;
-            flag_info.is_default = false;
-          }
-          varz.erase(varz_it);
-        }
-      }
-
-      // Add new flags.
-      for (auto const& flag : varz) {
-        google::CommandLineFlagInfo flag_info;
-        flag_info.name = flag.first;
-        flag_info.current_value = flag.second;
-        flag_info.default_value = "";
-        flag_info.is_default = false;
-        flag_infos.push_back(flag_info);
-      }
-    }
-  }
-
-  return flag_infos;
-}
-
-YB_DEFINE_ENUM(FlagType, (kInvalid)(kNodeInfo)(kCustom)(kAuto)(kDefault));
-
-struct FlagInfo {
-  string name;
-  string value;
-  FlagType type;
-};
-
-void ConvertFlagsToJson(const vector<FlagInfo>& flag_infos, std::stringstream* output) {
+void ConvertFlagsToJson(
+    const std::unordered_map<FlagType, std::vector<FlagInfo>>& flag_infos,
+    std::stringstream* output) {
   JsonWriter jw(output, JsonWriter::COMPACT);
   jw.StartObject();
   jw.String("flags");
   jw.StartArray();
 
-  for (const auto& flag_info : flag_infos) {
-    jw.StartObject();
-    jw.String("name");
-    jw.String(flag_info.name);
-    jw.String("value");
-    jw.String(flag_info.value);
-    jw.String("type");
-    // Remove the prefix 'k' from the type name
-    jw.String(ToString(flag_info.type).substr(1));
-    jw.EndObject();
+  for (const auto& [type, flags] : flag_infos) {
+    for (const auto& flag : flags) {
+      jw.StartObject();
+      jw.String("name");
+      jw.String(flag.name);
+      jw.String("value");
+      jw.String(flag.value);
+      jw.String("type");
+      // Remove the prefix 'k' from the type name
+      jw.String(ToString(type).substr(1));
+      jw.EndObject();
+    }
   }
 
   jw.EndArray();
   jw.EndObject();
 }
 
-vector<FlagInfo> GetFlagInfos(
-    const Webserver::WebRequest& req, Webserver* webserver, bool skip_default_test_flags) {
-  const std::set<string> node_info_flags{
-      "log_filename",    "rpc_bind_addresses", "webserver_interface", "webserver_port",
-      "placement_cloud", "placement_region",   "placement_zone"};
-
-  const auto flags = GetAllFlags(req);
-
-  vector<FlagInfo> flag_infos;
-  flag_infos.reserve(flags.size());
-
-  for (const auto& flag : flags) {
-    std::unordered_set<FlagTag> flag_tags;
-    GetFlagTags(flag.name, &flag_tags);
-
-    FlagInfo flag_info;
-    flag_info.name = flag.name;
-    flag_info.type = FlagType::kDefault;
-
-    if (PREDICT_FALSE(ContainsKey(flag_tags, FlagTag::kSensitive_info))) {
-      flag_info.value = "****";
-    } else {
-      flag_info.value = flag.current_value;
+std::unordered_map<FlagType, std::vector<FlagInfo>> GetFlagInfos(
+    const Webserver::WebRequest& req, Webserver* webserver, bool filter_default_flags) {
+  std::map<std::string, std::string> custom_varz;
+  if (FLAGS_TEST_mini_cluster_mode) {
+    const string* custom_varz_ptr = FindOrNull(req.parsed_args, "TEST_custom_varz");
+    if (custom_varz_ptr != nullptr) {
+      SplitStringToMapUsing(*custom_varz_ptr, "\n", &custom_varz);
     }
-
-    if (node_info_flags.contains(flag.name)) {
-      flag_info.type = FlagType::kNodeInfo;
-    } else if (flag.current_value != flag.default_value) {
-      flag_info.type = FlagType::kCustom;
-    } else if (flag_tags.contains(FlagTag::kAuto) && webserver->ContainsAutoFlag(flag_info.name)) {
-      flag_info.type = FlagType::kAuto;
-    }
-
-    if (skip_default_test_flags && flag_info.type == FlagType::kDefault &&
-        flag_tags.contains(FlagTag::kHidden) && flag_info.name.starts_with("TEST_")) {
-      // Skip Default TEST flags.
-      continue;
-    }
-
-    flag_infos.push_back(std::move(flag_info));
   }
 
-  // Sort by type, name ascending
-  std::sort(flag_infos.begin(), flag_infos.end(), [](const FlagInfo& lhs, const FlagInfo& rhs) {
-    if (lhs.type == rhs.type) {
-      return ToLowerCase(lhs.name) < ToLowerCase(rhs.name);
-    }
-    return to_underlying(lhs.type) < to_underlying(rhs.type);
-  });
+  std::function<bool(const std::string&)> default_flag_filter = nullptr;
+  if (filter_default_flags) {
+    default_flag_filter = [webserver](const std::string& flag_name) {
+      return webserver->ContainsFlag(flag_name);
+    };
+  }
 
-  return flag_infos;
+  return yb::GetFlagInfos(
+      [webserver](const std::string& flag_name) { return webserver->ContainsAutoFlag(flag_name); },
+      std::move(default_flag_filter), custom_varz);
 }
 
 // Registered to handle "/api/v1/varz", and prints out all command-line flags and their values in
 // JSON format.
 static void GetFlagsJsonHandler(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp, Webserver* webserver) {
-  const auto flag_infos = GetFlagInfos(req, webserver, /*skip_default_test_flags=*/false);
+  const auto flag_infos = GetFlagInfos(req, webserver, /*filter_default_flags=*/false);
   ConvertFlagsToJson(std::move(flag_infos), &resp->output);
 }
 
@@ -322,40 +251,42 @@ static void GetFlagsJsonHandler(
 static void FlagsHandler(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp, Webserver* webserver) {
   std::stringstream& output = resp->output;
-  auto flag_infos = GetFlagInfos(req, webserver, /*skip_default_test_flags=*/true);
-  if (req.parsed_args.find("raw") != req.parsed_args.end()) {
-    for (const auto& flag_info : flag_infos) {
-      output << "--" << flag_info.name << "=" << flag_info.value << endl;
+  const auto is_raw = req.parsed_args.contains("raw");
+
+  auto flag_infos = GetFlagInfos(req, webserver, /*filter_default_flags=*/!is_raw);
+  if (is_raw) {
+    for (const auto& [_, flags] : flag_infos) {
+      for (const auto& flag : flags) {
+        output << "--" << flag.name << "=" << flag.value << endl;
+      }
     }
     return;
   }
 
   Tags tags(false /* as_text */);
 
-  // List is sorted by type. Convert to HTML table for each type.
-  FlagType previous_type = FlagType::kInvalid;
-  bool first_table = true;
-  for (auto& flag_info : flag_infos) {
-    if (previous_type != flag_info.type) {
-      if (!first_table) {
-        output << tags.end_table;
-      }
-      first_table = false;
-
-      previous_type = flag_info.type;
-
-      string type_str = ToString(flag_info.type).substr(1);
-      output << tags.header << type_str << " Flags" << tags.end_header;
-      output << tags.table << tags.row << tags.table_header << "Name" << tags.end_table_header
-             << tags.table_header << "Value" << tags.end_table_header << tags.end_row;
+  HtmlPrintHelper html_print_helper(output);
+  for (const auto& type : FlagTypeList()) {
+    if (!ContainsKey(flag_infos, type)) {
+      continue;
     }
 
-    output << tags.row << tags.cell << flag_info.name << tags.end_cell;
-    output << tags.cell << EscapeForHtmlToString(flag_info.value) << tags.end_cell << tags.end_row;
-  }
+    auto field_set = html_print_helper.CreateFieldset(ToString(type).substr(1) + " Flags");
 
-  if (!first_table) {
-    output << tags.end_table;
+    std::vector<std::string> column_names = {"Name", "Value"};
+    if (type == FlagType::kAuto) {
+      column_names.push_back("State");
+    }
+    auto html_table = html_print_helper.CreateTablePrinter(ToString(type), column_names);
+    for (auto& flag : flag_infos.at(type)) {
+      if (type == FlagType::kAuto) {
+        html_table.AddRow(
+            flag.name, flag.value, (flag.is_auto_flag_promoted ? "PROMOTED" : "NOT PROMOTED"));
+      } else {
+        html_table.AddRow(flag.name, flag.value);
+      }
+    }
+    html_table.Print();
   }
 }
 
@@ -521,96 +452,6 @@ void SetParsedValue(Value* v, const Result<Value>& result) {
   }
 }
 
-static void ParseRequestOptions(const Webserver::WebRequest& req,
-                                MetricPrometheusOptions *prometheus_opts,
-                                MetricJsonOptions *json_opts = nullptr,
-                                JsonWriter::Mode *json_mode = nullptr) {
-  auto ParseMetricOptions = [](const Webserver::WebRequest& req,
-                               MetricOptions *metric_opts) {
-    if (const string* metrics_p = FindOrNull(req.parsed_args, "metrics")) {
-      metric_opts->general_metrics_allowlist = SplitStringUsing(*metrics_p, ",");
-    }
-
-    string arg = FindWithDefault(req.parsed_args, "reset_histograms", "true");
-    metric_opts->reset_histograms = ParseLeadingBoolValue(arg.c_str(), true);
-
-    arg = FindWithDefault(req.parsed_args, "level", "debug");
-    SetParsedValue(&metric_opts->level, MetricLevelFromName(arg));
-  };
-
-  string arg;
-  if (json_opts) {
-    ParseMetricOptions(req, json_opts);
-
-    arg = FindWithDefault(req.parsed_args, "include_raw_histograms", "false");
-    json_opts->include_raw_histograms = ParseLeadingBoolValue(arg.c_str(), false);
-
-    arg = FindWithDefault(req.parsed_args, "include_schema", "false");
-    json_opts->include_schema_info = ParseLeadingBoolValue(arg.c_str(), false);
-  }
-
-  if (prometheus_opts) {
-    ParseMetricOptions(req, prometheus_opts);
-
-    if (const std::string* arg_p = FindOrNull(req.parsed_args, "show_help")) {
-      prometheus_opts->export_help_and_type =
-          ExportHelpAndType(ParseLeadingBoolValue(arg_p->c_str(), false));
-    }
-
-    if (const std::string* arg_p = FindOrNull(req.parsed_args, "max_metric_entries")) {
-        try {
-          if (arg_p->starts_with('-')) {
-            throw std::invalid_argument("Input value is negative");
-          }
-          prometheus_opts->max_metric_entries = static_cast<uint32_t>(std::stoul(*arg_p));
-        } catch (const std::exception& e) {
-          LOG(WARNING) << "Prometheus metric endpoint URL parameter max_metric_entries=" << *arg_p
-                       << ". Failed to convert its value to unsigned 32 bits integer: "
-                       << e.what();
-        }
-    }
-
-    prometheus_opts->version = FindWithDefault(req.parsed_args, "version",
-        kFilterVersionOne);
-
-    if (prometheus_opts->version == kFilterVersionTwo) {
-      // Set it to accept all metrics, because we ignore metrics URL parameter when using v2.
-      prometheus_opts->general_metrics_allowlist = std::nullopt;
-
-      auto FindHandlingAllOrNone = [&](
-          const std::string& arg, const std::string& default_value) -> std::string {
-        std::string regex_string = FindWithDefault(req.parsed_args, arg, default_value);
-        if (regex_string == "ALL") {
-          return ".*";
-        } else if (regex_string == "NONE") {
-          return "";
-        }
-        return regex_string;
-      };
-
-      prometheus_opts->table_allowlist_string = FindHandlingAllOrNone("table_allowlist", "ALL");
-
-      prometheus_opts->table_blocklist_string = FindHandlingAllOrNone("table_blocklist", "NONE");
-
-      prometheus_opts->server_allowlist_string = FindHandlingAllOrNone("server_allowlist", "ALL");
-
-      prometheus_opts->server_blocklist_string = FindHandlingAllOrNone("server_blocklist", "NONE");
-    } else {
-      prometheus_opts->priority_regex_string = FindWithDefault(
-          req.parsed_args, "priority_regex", ".*");
-      LOG_IF(WARNING, prometheus_opts->version != kFilterVersionOne)
-          << "Prometheus endpoint URL parameter version=" << prometheus_opts->version
-          << " is not recognized. Only v1 or v2 can be accepted.";
-    }
-  }
-
-  if (json_mode) {
-    arg = FindWithDefault(req.parsed_args, "compact", "false");
-    *json_mode =
-        ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
-  }
-}
-
 static void WriteMetricsAsJson(const MetricRegistry* const metrics,
                                const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   MetricJsonOptions opts;
@@ -626,8 +467,7 @@ static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
                                       const Webserver::WebRequest& req,
                                       Webserver::WebResponse* resp) {
   MetricPrometheusOptions opts;
-  opts.export_help_and_type =
-      ExportHelpAndType(GetAtomicFlag(&FLAGS_export_help_and_type_in_prometheus_metrics));
+  opts.export_help_and_type = ExportHelpAndType(FLAGS_export_help_and_type_in_prometheus_metrics);
   opts.max_metric_entries = GetAtomicFlag(&FLAGS_max_prometheus_metric_entries);
   ParseRequestOptions(req, &opts);
 
@@ -671,88 +511,176 @@ static void HandleGetVersionInfo(
   jw.EndObject();
 }
 
-static void IOStackTraceHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  std::stringstream *output = &resp->output;
+template<typename WeightFormatter = std::identity>
+static void StackTraceTrackerHandler(
+    const Webserver::WebRequest& req,
+    Webserver::WebResponse* resp,
+    std::string_view title,
+    const std::unordered_map<StackTraceTrackingGroup, std::string>& groups,
+    std::string_view weight_header,
+    WeightFormatter format_weight = {}) {
+  std::stringstream& output = resp->output;
 
   if (!GetAtomicFlag(&FLAGS_track_stack_traces)) {
-    (*output) << "track_stack_traces must be turned on to use this page.";
+    output << "track_stack_traces must be turned on to use this page.";
     return;
   }
 
   Tags tags(false /* as_text */);
+  HtmlPrintHelper html_print_helper(output);
 
   auto traces = GetTrackedStackTraces();
   std::sort(traces.begin(), traces.end(),
             [](const auto& left, const auto& right) { return left.weight > right.weight; });
 
-  (*output) << tags.header << "I/O stack traces" << tags.end_header;
+  output << tags.header << title << tags.end_header;
 
-  (*output) << tags.table << tags.row
-            << tags.table_header << "Type" << tags.end_table_header
-            << tags.table_header << "Count" << tags.end_table_header
-            << tags.table_header << "Bytes" << tags.end_table_header
-            << tags.table_header << "Stack Trace" << tags.end_table_header
-            << tags.end_row;
+  auto tracking_start = GetLastStackTraceTrackerResetTime();
+  auto tracking_end = MonoTime::Now();
+  output << "Tracking Period: "
+         << tracking_start.ToFormattedString() << " to " << tracking_end.ToFormattedString()
+         << " (" << (tracking_end - tracking_start).ToString() << ")" << tags.line_break;
+  output << "<a href=\"/reset-stack-traces\">Reset Tracking</a>" << tags.line_break;
+
+  std::vector<std::string> column_names;
+  if (groups.size() > 1) {
+    column_names.emplace_back("Type");
+  }
+  column_names.emplace_back("Count");
+  column_names.emplace_back(weight_header);
+  column_names.emplace_back("Stack Trace");
+
+  auto stack_traces = html_print_helper.CreateTablePrinter("stack_traces", column_names);
+
   for (const auto& entry : traces) {
-    if (entry.count == 0 ||
-        (entry.group != StackTraceTrackingGroup::kReadIO &&
-         entry.group != StackTraceTrackingGroup::kWriteIO)) {
+    auto group_itr = groups.find(entry.group);
+    if (entry.count == 0 || group_itr == groups.end()) {
       continue;
     }
-    (*output) << tags.row
-              << tags.cell
-              << (entry.group == StackTraceTrackingGroup::kReadIO ? "Read" : "Write")
-              << tags.end_cell
-              << tags.cell << entry.count << tags.end_cell
-              << tags.cell << HumanReadableNumBytes::ToString(entry.weight) << tags.end_cell
-              << tags.cell << tags.pre_tag << EscapeForHtmlToString(entry.symbolized_trace)
-              << tags.end_pre_tag << tags.end_cell
-              << tags.end_row;
+
+    auto count = entry.count;
+    auto weight = format_weight(entry.weight);
+    auto stack = tags.pre_tag + EscapeForHtmlToString(entry.symbolized_trace) + tags.end_pre_tag;
+
+    if (groups.size() > 1) {
+      stack_traces.AddRow(group_itr->second, count, weight, stack);
+    } else {
+      stack_traces.AddRow(count, weight, stack);
+    }
   }
 
-  (*output) << tags.end_table;
+  stack_traces.Print();
+}
+
+static void IOStackTraceHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  StackTraceTrackerHandler(
+      req, resp, "I/O stack traces",
+      {{StackTraceTrackingGroup::kReadIO, "Read"}, {StackTraceTrackingGroup::kWriteIO, "Write"}},
+      "Bytes", &HumanReadableNumBytes::ToString);
 }
 
 static void DebugStackTraceHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  std::stringstream *output = &resp->output;
-
-  if (!GetAtomicFlag(&FLAGS_track_stack_traces)) {
-    (*output) << "track_stack_traces must be turned on to use this page.";
-    return;
-  }
-
-  Tags tags(false /* as_text */);
-
-  auto traces = GetTrackedStackTraces();
-  std::sort(traces.begin(), traces.end(),
-            [](const auto& left, const auto& right) { return left.count > right.count; });
-
-  (*output) << tags.header << "Tracked stack traces" << tags.end_header;
-
-  (*output) << tags.table << tags.row
-            << tags.table_header << "Count" << tags.end_table_header
-            << tags.table_header << "Stack Trace" << tags.end_table_header
-            << tags.end_row;
-  for (const auto& entry : traces) {
-    if (entry.count == 0 || entry.group != StackTraceTrackingGroup::kDebugging) {
-      continue;
-    }
-    (*output) << tags.row
-              << tags.cell << entry.count << tags.end_cell
-              << tags.cell << tags.pre_tag << EscapeForHtmlToString(entry.symbolized_trace)
-              << tags.end_pre_tag << tags.end_cell
-              << tags.end_row;
-  }
-
-  (*output) << tags.end_table;
+  StackTraceTrackerHandler(
+      req, resp, "Tracked stack traces",
+      {{StackTraceTrackingGroup::kDebugging, "Debugging"}},
+      "Weight");
 }
 
 static void ResetStackTraceHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   ResetTrackedStackTraces();
-  resp->output << "Tracked stack traces reset.";
+
+  Tags tags(false /* as_text */);
+  resp->output << "Tracked stack traces reset." << tags.line_break
+               << "<a href=\"javascript:window.location=document.referrer\">Back</a>";
 }
 
 } // anonymous namespace
+
+void ParseRequestOptions(
+    const Webserver::WebRequest& req, MetricPrometheusOptions* prometheus_opts,
+    MetricJsonOptions* json_opts, JsonWriter::Mode* json_mode) {
+  auto ParseMetricOptions = [](const Webserver::WebRequest& req, MetricOptions* metric_opts) {
+    if (const string* metrics_p = FindOrNull(req.parsed_args, "metrics")) {
+      metric_opts->general_metrics_allowlist = SplitStringUsing(*metrics_p, ",");
+    }
+
+    string arg = FindWithDefault(req.parsed_args, "reset_histograms", "true");
+    metric_opts->reset_histograms = ParseLeadingBoolValue(arg.c_str(), true);
+
+    arg = FindWithDefault(req.parsed_args, "level", "debug");
+    SetParsedValue(&metric_opts->level, MetricLevelFromName(arg));
+  };
+
+  string arg;
+  if (json_opts) {
+    ParseMetricOptions(req, json_opts);
+
+    arg = FindWithDefault(req.parsed_args, "include_raw_histograms", "false");
+    json_opts->include_raw_histograms = ParseLeadingBoolValue(arg.c_str(), false);
+
+    arg = FindWithDefault(req.parsed_args, "include_schema", "false");
+    json_opts->include_schema_info = ParseLeadingBoolValue(arg.c_str(), false);
+  }
+
+  if (prometheus_opts) {
+    ParseMetricOptions(req, prometheus_opts);
+
+    if (const std::string* arg_p = FindOrNull(req.parsed_args, "show_help")) {
+      prometheus_opts->export_help_and_type =
+          ExportHelpAndType(ParseLeadingBoolValue(arg_p->c_str(), false));
+    }
+
+    if (const std::string* arg_p = FindOrNull(req.parsed_args, "max_metric_entries")) {
+      try {
+        if (arg_p->starts_with('-')) {
+          throw std::invalid_argument("Input value is negative");
+        }
+        prometheus_opts->max_metric_entries = static_cast<uint32_t>(std::stoul(*arg_p));
+      } catch (const std::exception& e) {
+        LOG(WARNING) << "Prometheus metric endpoint URL parameter max_metric_entries=" << *arg_p
+                     << ". Failed to convert its value to unsigned 32 bits integer: " << e.what();
+      }
+    }
+
+    prometheus_opts->version = FindWithDefault(req.parsed_args, "version", kFilterVersionOne);
+
+    if (prometheus_opts->version == kFilterVersionTwo) {
+      // Set it to accept all metrics, because we ignore metrics URL parameter when using v2.
+      prometheus_opts->general_metrics_allowlist = std::nullopt;
+
+      auto FindHandlingAllOrNone = [&](const std::string& arg,
+                                       const std::string& default_value) -> std::string {
+        std::string regex_string = FindWithDefault(req.parsed_args, arg, default_value);
+        if (regex_string == "ALL") {
+          return ".*";
+        } else if (regex_string == "NONE") {
+          return "";
+        }
+        return regex_string;
+      };
+
+      prometheus_opts->table_allowlist_string = FindHandlingAllOrNone("table_allowlist", "ALL");
+
+      prometheus_opts->table_blocklist_string = FindHandlingAllOrNone("table_blocklist", "NONE");
+
+      prometheus_opts->server_allowlist_string = FindHandlingAllOrNone("server_allowlist", "ALL");
+
+      prometheus_opts->server_blocklist_string = FindHandlingAllOrNone("server_blocklist", "NONE");
+    } else {
+      prometheus_opts->priority_regex_string =
+          FindWithDefault(req.parsed_args, "priority_regex", ".*");
+      LOG_IF(WARNING, prometheus_opts->version != kFilterVersionOne)
+          << "Prometheus endpoint URL parameter version=" << prometheus_opts->version
+          << " is not recognized. Only v1 or v2 can be accepted.";
+    }
+  }
+
+  if (json_mode) {
+    arg = FindWithDefault(req.parsed_args, "compact", "false");
+    *json_mode =
+        ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
+  }
+}
 
 // Registered to handle "/memz", and prints out memory allocation statistics.
 void MemUsageHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {

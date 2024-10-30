@@ -15,6 +15,10 @@
 
 #include "yb/yql/pggate/pg_dml_write.h"
 
+#include <limits>
+#include <string>
+#include <utility>
+
 #include "yb/dockv/packed_row.h"
 
 #include "yb/gutil/casts.h"
@@ -24,32 +28,31 @@
 
 #include "catalog/pg_type_d.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
-//--------------------------------------------------------------------------------------------------
-// PgDmlWrite
-//--------------------------------------------------------------------------------------------------
-
-PgDmlWrite::PgDmlWrite(PgSession::ScopedRefPtr pg_session,
-                       const PgObjectId& table_id,
-                       bool is_region_local,
-                       YBCPgTransactionSetting transaction_setting,
-                       bool packed)
-    : PgDml(std::move(pg_session), table_id, is_region_local),
-      transaction_setting_(transaction_setting),
-      packed_(packed) {
+PgDmlWrite::PgDmlWrite(
+    const PgSession::ScopedRefPtr& pg_session, YBCPgTransactionSetting transaction_setting,
+    bool packed)
+    : PgDml(pg_session), transaction_setting_(transaction_setting), packed_(packed) {
 }
 
-PgDmlWrite::~PgDmlWrite() {
-}
-
-Status PgDmlWrite::Prepare() {
+Status PgDmlWrite::Prepare(const PgObjectId& table_id, bool is_region_local) {
   // Setup descriptors for target and bind columns.
-  target_ = bind_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id_)));
+  target_ = bind_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id)));
 
-  // Allocate either INSERT, UPDATE, DELETE, or TRUNCATE_COLOCATED request.
-  AllocWriteRequest();
+  auto write_op = ArenaMakeShared<PgsqlWriteOp>(
+      arena_ptr(), &arena(),
+      /* need_transaction= */ transaction_setting_ == YBCPgTransactionSetting::YB_TRANSACTIONAL,
+      is_region_local);
+
+  write_req_ = std::shared_ptr<LWPgsqlWriteRequestPB>(write_op, &write_op->write_request());
+  write_req_->set_stmt_type(stmt_type());
+  write_req_->set_client(YQL_CLIENT_PGSQL);
+  write_req_->dup_table_id(table_id.GetYbTableId());
+  write_req_->set_schema_version(target_->schema_version());
+  write_req_->set_stmt_id(reinterpret_cast<uint64_t>(write_req_.get()));
+
+  doc_op_ = std::make_shared<PgDocWriteOp>(pg_session_, &target_, std::move(write_op));
   PrepareColumns();
   return Status::OK();
 }
@@ -150,41 +153,24 @@ Status PgDmlWrite::SetWriteTime(const HybridTime& write_time) {
   return Status::OK();
 }
 
-void PgDmlWrite::AllocWriteRequest() {
-  auto write_op = ArenaMakeShared<PgsqlWriteOp>(
-      arena_ptr(), &arena(),
-      /* need_transaction */
-      (transaction_setting_ == YBCPgTransactionSetting::YB_TRANSACTIONAL),
-      is_region_local_);
-
-  write_req_ = std::shared_ptr<LWPgsqlWriteRequestPB>(write_op, &write_op->write_request());
-  write_req_->set_stmt_type(stmt_type());
-  write_req_->set_client(YQL_CLIENT_PGSQL);
-  write_req_->dup_table_id(table_id_.GetYbTableId());
-  write_req_->set_schema_version(target_->schema_version());
-  write_req_->set_stmt_id(reinterpret_cast<uint64_t>(write_req_.get()));
-
-  doc_op_ = std::make_shared<PgDocWriteOp>(pg_session_, &target_, std::move(write_op));
-}
-
 Result<LWPgsqlExpressionPB*> PgDmlWrite::AllocColumnBindPB(PgColumn* col, PgExpr* expr) {
   return col->AllocBindPB(write_req_.get(), expr);
 }
 
-LWPgsqlExpressionPB *PgDmlWrite::AllocColumnAssignPB(PgColumn *col) {
+LWPgsqlExpressionPB* PgDmlWrite::AllocColumnAssignPB(PgColumn* col) {
   return col->AllocAssignPB(write_req_.get());
 }
 
-LWPgsqlExpressionPB *PgDmlWrite::AllocTargetPB() {
+LWPgsqlExpressionPB* PgDmlWrite::AllocTargetPB() {
   return write_req_->add_targets();
 }
 
-LWPgsqlExpressionPB *PgDmlWrite::AllocQualPB() {
+LWPgsqlExpressionPB* PgDmlWrite::AllocQualPB() {
   LOG(FATAL) << "Pure virtual function is being called";
   return nullptr;
 }
 
-LWPgsqlColRefPB *PgDmlWrite::AllocColRefPB() {
+LWPgsqlColRefPB* PgDmlWrite::AllocColRefPB() {
   return write_req_->add_col_refs();
 }
 
@@ -451,5 +437,4 @@ Status PgDmlWrite::BindPackedRow(uint64_t ybctid, YBCBindColumn* columns, int co
   return Status::OK();
 }
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

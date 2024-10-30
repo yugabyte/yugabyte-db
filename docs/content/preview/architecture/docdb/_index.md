@@ -6,7 +6,7 @@ description: Learn about the persistent storage layer of DocDB.
 image: fa-thin fa-database
 aliases:
   - /architecture/concepts/docdb/
-  - /preview/docdb/persistence
+  - /preview/docdb/persistence/
 headcontent: The document store responsible for transactions, sharding, replication, and persistence
 menu:
   preview:

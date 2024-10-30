@@ -18,7 +18,10 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/metrics.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/string_util.h"
+
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 using namespace std::literals;
 
@@ -106,5 +109,24 @@ SingleMetricDescriber::SingleMetricDescriber(
     std::reference_wrapper<const server::RpcServerBase> server,
     std::reference_wrapper<const MetricPrototype> proto)
     : SingleMetricDescriber(*server.get().metric_entity(), proto) {}
+
+
+Status SetNonDDLTxnAllowedForSysTableWrite(PGConn& conn, bool value) {
+  return conn.ExecuteFormat("SET yb_non_ddl_txn_for_sys_tables_allowed = $0", value ? "1" : "0");
+}
+
+Status IncrementAllDBCatalogVersions(
+    PGConn& conn, IsBreakingCatalogVersionChange is_breaking) {
+  RETURN_NOT_OK(SetNonDDLTxnAllowedForSysTableWrite(conn, true));
+  Status result;
+  {
+    const auto scope = ScopeExit([&conn, &result] {
+      result = SetNonDDLTxnAllowedForSysTableWrite(conn, false);
+    });
+    RETURN_NOT_OK(conn.FetchFormat(
+        "SELECT yb_increment_all_db_catalog_versions($0)", is_breaking ? "true" : "false"));
+  }
+  return result;
+}
 
 } // namespace yb::pgwrapper

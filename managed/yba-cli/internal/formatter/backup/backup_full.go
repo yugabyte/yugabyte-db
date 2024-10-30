@@ -13,18 +13,25 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
 const (
 	// Backup details
-	defaultFullBackupGeneral = "table {{.BackupUUID}}\t{{.BackupType}}\t{{.CreateTime}}\t{{.State}}"
-	backupDetails1           = "table {{.UniverseUUID}}\t{{.UniverseName}}\t{{.BaseBackupUUID}}\t{{.HasIncrementalBackups}}" +
-		"\t{{.StorageConfigUUID}}\t{{.StorageConfigType}}\t{{.CompletionTime}}\t{{.ExpiryTime}}"
-	// backupDetails2 = "table {{.KeyspaceDetails}}"
+	defaultFullBackupGeneral = "table {{.BackupUUID}}\t{{.BackupType}}\t{{.Category}}\t{{.State}}"
+	backupDetails1           = "table {{.Universe}}\t{{.ScheduleName}}\t{{.HasIncrementalBackups}}"
+	backupDetails2           = "table {{.StorageConfig}}\t{{.StorageConfigType}}\t{{.KMSConfig}}"
+	backupDetails3           = "table {{.CreateTime}}\t{{.CompletionTime}}\t{{.ExpiryTime}}"
 )
 
-// FullBackupContext to render Provider Details output
+// StorageConfigs hold storage config for the backup
+var StorageConfigs []ybaclient.CustomerConfigUI
+
+// KMSConfigs hold kms configs declared under the current customer
+var KMSConfigs []util.KMSConfig
+
+// FullBackupContext to render backup Details output
 type FullBackupContext struct {
 	formatter.HeaderContext
 	formatter.Context
@@ -39,7 +46,7 @@ func (fb *FullBackupContext) SetFullBackup(backup ybaclient.BackupResp) {
 // NewFullBackupFormat for formatting output
 func NewFullBackupFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultBackupListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -87,6 +94,30 @@ func (fb *FullBackupContext) Write() error {
 	fb.PostFormat(tmpl, NewBackupContext())
 	fb.Output.Write([]byte("\n"))
 
+	tmpl, err = fb.startSubsection(backupDetails2)
+	if err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
+	if err := fb.ContextFormat(tmpl, fbc.Backup); err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
+	fb.PostFormat(tmpl, NewBackupContext())
+	fb.Output.Write([]byte("\n"))
+
+	tmpl, err = fb.startSubsection(backupDetails3)
+	if err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
+	if err := fb.ContextFormat(tmpl, fbc.Backup); err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
+	fb.PostFormat(tmpl, NewBackupContext())
+	fb.Output.Write([]byte("\n"))
+
 	commonBackupInfo := fbc.Backup.b.GetCommonBackupInfo()
 	// Section 2: Keyspace details subSection 1
 	logrus.Debugf("Number of keyspaces: %d", len(commonBackupInfo.GetResponseList()))
@@ -99,18 +130,6 @@ func (fb *FullBackupContext) Write() error {
 		keyspaceLocationContext.Write(i)
 		fb.Output.Write([]byte("\n"))
 	}
-	// tmpl, err = fb.startSubsection(backupDetails2)
-	// if err != nil {
-	// 	logrus.Errorf("%s", err.Error())
-	// 	return err
-	// }
-
-	// if err := fb.ContextFormat(tmpl, fbc.Backup); err != nil {
-	// 	logrus.Errorf("%s", err.Error())
-	// 	return err
-	// }
-	// fb.PostFormat(tmpl, NewBackupContext())
-	// fb.Output.Write([]byte("\n"))
 
 	return nil
 }

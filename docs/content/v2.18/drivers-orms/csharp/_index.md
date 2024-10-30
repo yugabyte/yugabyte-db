@@ -19,7 +19,7 @@ The following projects can be used to implement C# applications using the Yugaby
 
 | Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | :------ | :----------------------- | :-------------------- | :--------------------------- |
-| YugabyteDB C# Driver for YSQL [Recommended] | [Documentation](ysql/) <br /> [Reference](../../reference/drivers/csharp/yb-npgsql-reference/) | [8.0.0-yb-1-beta](https://www.nuget.org/packages/NpgsqlYugabyteDB/) | 2.8 and later
+| YugabyteDB C# Driver for YSQL [Recommended] | [Documentation](ysql/) <br /> [Reference](../../reference/drivers/csharp/yb-npgsql-reference/) | [8.0.3-yb-1](https://www.nuget.org/packages/NpgsqlYugabyteDB/) | 2.8 and later
 | PostgreSQL Npgsql Driver | [Documentation](postgres-npgsql/) <br /> [Reference](../../reference/drivers/csharp/postgres-npgsql-reference/) | [6.0.3](https://www.nuget.org/packages/Npgsql/) | 2.6 and later
 | YugabyteDB C# Driver for YCQL | [Documentation](ycql/) |
 
@@ -49,7 +49,7 @@ To develop C# applications for YugabyteDB, you need the following:
     ```
 
 - **YugabyteDB cluster**
-  - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Use a cloud cluster](../../quick-start-yugabytedb-managed/). Note that YugabyteDB Managed requires SSL.
+  - Create a free cluster on YugabyteDB Aeon. Refer to [Use a cloud cluster](../../quick-start-yugabytedb-managed/). Note that YugabyteDB Aeon requires SSL.
   - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](../../quick-start/).
 
 ## Next step

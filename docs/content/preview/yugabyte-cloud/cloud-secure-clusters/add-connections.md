@@ -17,7 +17,7 @@ type: docs
 
 To secure your cluster from distributed denial-of-service (DDoS) and brute force password attacks, access to your clusters is restricted to IP addresses that you specify in IP allow lists. An IP allow list is a set of IP addresses and ranges that, when assigned to a cluster, grant access to connections made from those addresses; all other connections are ignored.
 
-YugabyteDB Managed only allows client connections to clusters from addresses in IP allow lists that have been assigned to the cluster.
+YugabyteDB Aeon only allows client connections to clusters from addresses in IP allow lists that have been assigned to the cluster.
 
 Add IP allow lists for the following:
 
@@ -92,7 +92,7 @@ To create an IP allow list:
 1. Click **Add IP Address** to display the **Create New IP Allow List** sheet.
 1. Enter a name and description for the allow list.
 1. Enter the IP addresses and ranges. Each entry can either be a single IP address, a CIDR-notated range of addresses, or multiple comma-delimited addresses.
-1. Click **Add Current IP Address** to add the IP address of the computer you are using to access YugabyteDB Managed.
+1. Click **Add Current IP Address** to add the IP address of the computer you are using to access YugabyteDB Aeon.
 1. Click **Create** when you are done.
 
 The allow list takes up to 30 seconds to become active.

@@ -46,7 +46,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
   private static final String INVALID_NUM_SKIPPED_ROWS_ERROR_MSG =
       "argument to option \"skip\" must be a nonnegative integer";
   private static final String INVALID_COPY_INPUT_ERROR_MSG =
-      "invalid input syntax for integer";
+      "invalid input syntax for type integer";
   private static final String INVALID_FOREIGN_KEY_ERROR_MSG =
       "violates foreign key constraint";
   private static final String BATCH_TXN_SESSION_VARIABLE_NAME =

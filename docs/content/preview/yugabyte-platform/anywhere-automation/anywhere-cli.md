@@ -1,10 +1,11 @@
 ---
-title: YugabyteDB Anywhere CLI
+title: YugabyteDB Anywhere CLI (yba)
 headerTitle: YugabyteDB Anywhere CLI
-linkTitle: CLI
+linkTitle: yba CLI
 description: Use YugabyteDB Anywhere CLI to create and manage resources in YBA.
 headcontent: Install the CLI, configure default settings, and set up autocompletion
-techPreview: /preview/releases/versioning/#feature-availability
+tags:
+  feature: tech-preview
 menu:
   preview_yugabyte-platform:
     parent: anywhere-automation
@@ -19,7 +20,7 @@ The [YugabyteDB Anywhere (YBA) Command Line Interface](https://github.com/yugaby
 
 The CLI can only be used with YugabyteDB Anywhere v2024.1 or later.
 
-The CLI is in [Tech Preview](/preview/releases/versioning/#feature-availability). Commands and options may change before {{<badge/ga>}}.
+The CLI is in [Tech Preview](/preview/releases/versioning/#feature-availability). Commands and options may change before {{<tags/feature/ga>}}.
 
 ## Install CLI
 
@@ -75,7 +76,7 @@ You can set the following CLI environment variables.
 
 | Variable | Description |
 | :--- | :--- |
-| YBA_APITOKEN | The API token to use to authenticate to your YugabyteDB Managed account. |
+| YBA_APITOKEN | The API token to use to authenticate to your YugabyteDB Aeon account. |
 | YBA_CI | Set to `true` to avoid outputting unnecessary log lines. |
 | YBA_HOST | The host address of the universe you are managing. By default, https is added to the host if no scheme is provided. |
 

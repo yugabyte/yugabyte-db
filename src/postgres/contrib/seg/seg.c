@@ -19,7 +19,7 @@
 
 
 #define DatumGetSegP(X) ((SEG *) DatumGetPointer(X))
-#define PG_GETARG_SEG_P(n) DatumGetSegP(PG_GETARG_POINTER(n))
+#define PG_GETARG_SEG_P(n) DatumGetSegP(PG_GETARG_DATUM(n))
 
 
 /*
@@ -557,8 +557,9 @@ seg_contained(PG_FUNCTION_ARGS)
 Datum
 seg_same(PG_FUNCTION_ARGS)
 {
-	int			cmp = DatumGetInt32(
-									DirectFunctionCall2(seg_cmp, PG_GETARG_DATUM(0), PG_GETARG_DATUM(1)));
+	int			cmp = DatumGetInt32(DirectFunctionCall2(seg_cmp,
+														PG_GETARG_DATUM(0),
+														PG_GETARG_DATUM(1)));
 
 	PG_RETURN_BOOL(cmp == 0);
 }
@@ -706,8 +707,6 @@ rt_seg_size(SEG *a, float *size)
 		*size = 0.0;
 	else
 		*size = (float) Abs(a->upper - a->lower);
-
-	return;
 }
 
 Datum
@@ -847,8 +846,9 @@ seg_cmp(PG_FUNCTION_ARGS)
 Datum
 seg_lt(PG_FUNCTION_ARGS)
 {
-	int			cmp = DatumGetInt32(
-									DirectFunctionCall2(seg_cmp, PG_GETARG_DATUM(0), PG_GETARG_DATUM(1)));
+	int			cmp = DatumGetInt32(DirectFunctionCall2(seg_cmp,
+														PG_GETARG_DATUM(0),
+														PG_GETARG_DATUM(1)));
 
 	PG_RETURN_BOOL(cmp < 0);
 }
@@ -856,8 +856,9 @@ seg_lt(PG_FUNCTION_ARGS)
 Datum
 seg_le(PG_FUNCTION_ARGS)
 {
-	int			cmp = DatumGetInt32(
-									DirectFunctionCall2(seg_cmp, PG_GETARG_DATUM(0), PG_GETARG_DATUM(1)));
+	int			cmp = DatumGetInt32(DirectFunctionCall2(seg_cmp,
+														PG_GETARG_DATUM(0),
+														PG_GETARG_DATUM(1)));
 
 	PG_RETURN_BOOL(cmp <= 0);
 }
@@ -865,8 +866,9 @@ seg_le(PG_FUNCTION_ARGS)
 Datum
 seg_gt(PG_FUNCTION_ARGS)
 {
-	int			cmp = DatumGetInt32(
-									DirectFunctionCall2(seg_cmp, PG_GETARG_DATUM(0), PG_GETARG_DATUM(1)));
+	int			cmp = DatumGetInt32(DirectFunctionCall2(seg_cmp,
+														PG_GETARG_DATUM(0),
+														PG_GETARG_DATUM(1)));
 
 	PG_RETURN_BOOL(cmp > 0);
 }
@@ -874,8 +876,9 @@ seg_gt(PG_FUNCTION_ARGS)
 Datum
 seg_ge(PG_FUNCTION_ARGS)
 {
-	int			cmp = DatumGetInt32(
-									DirectFunctionCall2(seg_cmp, PG_GETARG_DATUM(0), PG_GETARG_DATUM(1)));
+	int			cmp = DatumGetInt32(DirectFunctionCall2(seg_cmp,
+														PG_GETARG_DATUM(0),
+														PG_GETARG_DATUM(1)));
 
 	PG_RETURN_BOOL(cmp >= 0);
 }
@@ -884,8 +887,9 @@ seg_ge(PG_FUNCTION_ARGS)
 Datum
 seg_different(PG_FUNCTION_ARGS)
 {
-	int			cmp = DatumGetInt32(
-									DirectFunctionCall2(seg_cmp, PG_GETARG_DATUM(0), PG_GETARG_DATUM(1)));
+	int			cmp = DatumGetInt32(DirectFunctionCall2(seg_cmp,
+														PG_GETARG_DATUM(0),
+														PG_GETARG_DATUM(1)));
 
 	PG_RETURN_BOOL(cmp != 0);
 }
@@ -931,9 +935,13 @@ restore(char *result, float val, int n)
 
 	/*
 	 * Put a cap on the number of significant digits to avoid garbage in the
-	 * output and ensure we don't overrun the result buffer.
+	 * output and ensure we don't overrun the result buffer.  (n should not be
+	 * negative, but check to protect ourselves against corrupted data.)
 	 */
-	n = Min(n, FLT_DIG);
+	if (n <= 0)
+		n = FLT_DIG;
+	else
+		n = Min(n, FLT_DIG);
 
 	/* remember the sign */
 	sign = (val < 0 ? 1 : 0);

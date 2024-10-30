@@ -12,7 +12,9 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.protobuf.ByteString;
+import com.google.protobuf.Descriptors.FieldDescriptor;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.commissioner.NodeAgentEnabler;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
@@ -20,9 +22,14 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentBlockingStub;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentStub;
+import com.yugabyte.yw.nodeagent.Server.AbortTaskRequest;
+import com.yugabyte.yw.nodeagent.Server.DescribeTaskRequest;
+import com.yugabyte.yw.nodeagent.Server.DescribeTaskResponse;
 import com.yugabyte.yw.nodeagent.Server.DownloadFileRequest;
 import com.yugabyte.yw.nodeagent.Server.DownloadFileResponse;
 import com.yugabyte.yw.nodeagent.Server.ExecuteCommandRequest;
@@ -30,6 +37,10 @@ import com.yugabyte.yw.nodeagent.Server.ExecuteCommandResponse;
 import com.yugabyte.yw.nodeagent.Server.FileInfo;
 import com.yugabyte.yw.nodeagent.Server.PingRequest;
 import com.yugabyte.yw.nodeagent.Server.PingResponse;
+import com.yugabyte.yw.nodeagent.Server.PreflightCheckInput;
+import com.yugabyte.yw.nodeagent.Server.PreflightCheckOutput;
+import com.yugabyte.yw.nodeagent.Server.SubmitTaskRequest;
+import com.yugabyte.yw.nodeagent.Server.SubmitTaskResponse;
 import com.yugabyte.yw.nodeagent.Server.UpdateRequest;
 import com.yugabyte.yw.nodeagent.Server.UpdateResponse;
 import com.yugabyte.yw.nodeagent.Server.UpgradeInfo;
@@ -66,6 +77,7 @@ import java.nio.file.Path;
 import java.security.PrivateKey;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -77,6 +89,9 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import javax.inject.Singleton;
 import javax.net.ssl.SSLException;
 import lombok.Builder;
@@ -104,27 +119,34 @@ public class NodeAgentClient {
 
   private final Config appConfig;
   private final ChannelFactory channelFactory;
-
   private final RuntimeConfGetter confGetter;
+  // Late binding to prevent circular dependency.
+  private final com.google.inject.Provider<NodeAgentEnabler> nodeAgentEnablerProvider;
 
   @Inject
   public NodeAgentClient(
       Config appConfig,
       RuntimeConfGetter confGetter,
+      com.google.inject.Provider<NodeAgentEnabler> nodeAgentEnablerProvider,
       PlatformExecutorFactory platformExecutorFactory) {
     this(
         appConfig,
         confGetter,
+        nodeAgentEnablerProvider,
         platformExecutorFactory.createExecutor(
             "node_agent.grpc_executor",
             new ThreadFactoryBuilder().setNameFormat("NodeAgentGrpcPool-%d").build()));
   }
 
   public NodeAgentClient(
-      Config appConfig, RuntimeConfGetter confGetter, ExecutorService executorService) {
+      Config appConfig,
+      RuntimeConfGetter confGetter,
+      com.google.inject.Provider<NodeAgentEnabler> nodeAgentEnablerProvider,
+      ExecutorService executorService) {
     this(
         appConfig,
         confGetter,
+        nodeAgentEnablerProvider,
         config ->
             ChannelFactory.getDefaultChannel(
                 config,
@@ -133,9 +155,13 @@ public class NodeAgentClient {
   }
 
   public NodeAgentClient(
-      Config appConfig, RuntimeConfGetter confGetter, ChannelFactory channelFactory) {
+      Config appConfig,
+      RuntimeConfGetter confGetter,
+      com.google.inject.Provider<NodeAgentEnabler> nodeAgentEnablerProvider,
+      ChannelFactory channelFactory) {
     this.appConfig = appConfig;
     this.confGetter = confGetter;
+    this.nodeAgentEnablerProvider = nodeAgentEnablerProvider;
     this.channelFactory = channelFactory;
     this.cachedChannels =
         CacheBuilder.newBuilder()
@@ -225,18 +251,16 @@ public class NodeAgentClient {
         channelBuilder.withOption(
             ChannelOption.CONNECT_TIMEOUT_MILLIS, (int) config.getConnectTimeout().toMillis());
       }
-      Map<String, ?> serviceConfig = getServiceConfig();
+      Map<String, ?> serviceConfig = getServiceConfig(NODE_AGENT_SERVICE_CONFIG_FILE);
       if (MapUtils.isNotEmpty(serviceConfig)) {
         channelBuilder.defaultServiceConfig(serviceConfig);
       }
       return channelBuilder.build();
     }
 
-    static Map<String, ?> getServiceConfig() {
+    public static Map<String, ?> getServiceConfig(String configFile) {
       try (InputStream inputStream =
-          ChannelFactory.class
-              .getClassLoader()
-              .getResourceAsStream(NODE_AGENT_SERVICE_CONFIG_FILE)) {
+          ChannelFactory.class.getClassLoader().getResourceAsStream(configFile)) {
         Map<String, ?> map =
             Json.mapper()
                 .readValue(
@@ -446,6 +470,50 @@ public class NodeAgentClient {
     }
   }
 
+  static class DescribeTaskResponseObserver<T> extends BaseResponseObserver<DescribeTaskResponse> {
+    private final Class<T> responseClass;
+    private final AtomicReference<T> resultRef;
+
+    DescribeTaskResponseObserver(String id, Class<T> responseClass) {
+      super(id);
+      this.responseClass = responseClass;
+      this.resultRef = new AtomicReference<>();
+    }
+
+    public T waitForResponse() {
+      super.waitFor();
+      return resultRef.get();
+    }
+
+    @Override
+    public void onNext(DescribeTaskResponse response) {
+      try {
+        if (response.hasError()) {
+          com.yugabyte.yw.nodeagent.Server.Error error = response.getError();
+          onError(
+              new RuntimeException(
+                  String.format("Code: %d, Error: %s", error.getCode(), error.getMessage())));
+        } else {
+          if (response.hasOutput()) {
+            log.info(response.getOutput());
+          } else {
+            for (Map.Entry<FieldDescriptor, Object> entry : response.getAllFields().entrySet()) {
+              if (entry.getValue() == null) {
+                continue;
+              }
+              if (entry.getValue().getClass().isAssignableFrom(responseClass)) {
+                resultRef.set(responseClass.cast(entry.getValue()));
+                break;
+              }
+            }
+          }
+        }
+      } catch (Exception e) {
+        onError(e);
+      }
+    }
+  }
+
   public static String getNodeAgentJWT(NodeAgent nodeAgent, Duration tokenLifetime) {
     PrivateKey privateKey = nodeAgent.getPrivateKey();
     return Jwts.builder()
@@ -482,23 +550,25 @@ public class NodeAgentClient {
     redactedVals.put(token, "REDACTED");
   }
 
-  public Optional<NodeAgent> maybeGetNodeAgent(String ip, Provider provider) {
-    if (isClientEnabled(provider)) {
+  public Optional<NodeAgent> maybeGetNodeAgent(
+      String ip, Provider provider, @Nullable Universe universe) {
+    if (isClientEnabled(provider, universe)) {
       Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(ip);
-      if (optional.isPresent() && optional.get().getState() != State.REGISTERING) {
+      if (optional.isPresent() && optional.get().isActive()) {
         return optional;
       }
     }
     return Optional.empty();
   }
 
-  public boolean isClientEnabled(Provider provider) {
-    return provider.getDetails().isEnableNodeAgent()
-        && confGetter.getConfForScope(provider, ProviderConfKeys.enableNodeAgentClient);
+  /* Passing universe allows more specific check for the universe. */
+  public boolean isClientEnabled(Provider provider, @Nullable Universe universe) {
+    return nodeAgentEnablerProvider.get().isNodeAgentClientEnabled(provider, universe);
   }
 
-  public boolean isAnsibleOffloadingEnabled(NodeAgent nodeAgent, Provider provider) {
-    if (!isClientEnabled(provider)) {
+  public boolean isAnsibleOffloadingEnabled(
+      NodeAgent nodeAgent, Provider provider, @Nullable Universe universe) {
+    if (!isClientEnabled(provider, universe)) {
       return false;
     }
     if (!confGetter.getConfForScope(provider, ProviderConfKeys.enableAnsibleOffloading)) {
@@ -554,9 +624,10 @@ public class NodeAgentClient {
     while (true) {
       try {
         PingResponse response = ping(nodeAgent);
-        nodeAgent.updateOffloadable(response.getServerInfo().getOffloadable());
+        nodeAgent.updateServerInfo(response.getServerInfo());
         return response;
       } catch (StatusRuntimeException e) {
+        nodeAgent.updateLastError(new YBAError(YBAError.Code.CONNECTION_ERROR, e.getMessage()));
         if (e.getStatus().getCode() != Code.UNAVAILABLE
             && e.getStatus().getCode() != Code.DEADLINE_EXCEEDED) {
           log.error("Error in connecting to Node agent {} - {}", nodeAgent.getIp(), e.getStatus());
@@ -579,20 +650,34 @@ public class NodeAgentClient {
     }
   }
 
+  public ShellResponse executeCommand(
+      NodeAgent nodeAgent, List<String> command, ShellProcessContext context) {
+    return executeCommand(nodeAgent, command, context, false);
+  }
+
   public ShellResponse executeCommand(NodeAgent nodeAgent, List<String> command) {
-    return executeCommand(nodeAgent, command, ShellProcessContext.DEFAULT);
+    // Use the user of the node-agent process by not setting a specific user.
+    return executeCommand(
+        nodeAgent,
+        command,
+        ShellProcessContext.DEFAULT.toBuilder().useDefaultUser(false).build(),
+        false);
   }
 
   public ShellResponse executeCommand(
-      NodeAgent nodeAgent, List<String> command, ShellProcessContext context) {
+      NodeAgent nodeAgent, List<String> command, ShellProcessContext context, boolean useBash) {
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     NodeAgentStub stub = NodeAgentGrpc.newStub(channel);
     String id = String.format("%s-%s", nodeAgent.getUuid(), command.get(0));
     ExecuteCommandResponseObserver responseObserver =
         new ExecuteCommandResponseObserver(id, context.isLogCmdOutput());
     ExecuteCommandRequest.Builder builder =
-        ExecuteCommandRequest.newBuilder().addAllCommand(command);
-    builder.setUser(context.getSshUserOrDefault());
+        ExecuteCommandRequest.newBuilder()
+            .addAllCommand(useBash ? getBashCommand(command) : command);
+    String user = context.getSshUser();
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
     if (context.getTimeoutSecs() > 0L) {
       stub = stub.withDeadlineAfter(context.getTimeoutSecs(), TimeUnit.SECONDS);
     }
@@ -616,7 +701,7 @@ public class NodeAgentClient {
       response.setDescription(description);
       return response;
     } catch (Throwable e) {
-      log.error("Error in running command. Error: {}", responseObserver.stdErr);
+      log.error("Error in running command. Error: {}", e.getMessage());
       throw new RuntimeException("Command execution failed. Error: " + e.getMessage(), e);
     }
   }
@@ -744,11 +829,75 @@ public class NodeAgentClient {
     return response.getHome();
   }
 
+  public void abortTask(NodeAgent nodeAgent, String taskId) {
+    ManagedChannel channel = getManagedChannel(nodeAgent, true);
+    try {
+      NodeAgentGrpc.newBlockingStub(channel)
+          .abortTask(AbortTaskRequest.newBuilder().setTaskId(taskId).build());
+    } catch (Exception e) {
+      // Ignore error.
+      log.error("Abort failed for task {} - {}", taskId, e.getMessage());
+    }
+  }
+
+  public PreflightCheckOutput runPreflightCheck(
+      NodeAgent nodeAgent, PreflightCheckInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder().setPreflightCheckInput(input);
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), PreflightCheckOutput.class);
+  }
+
   public synchronized void cleanupCachedClients() {
     try {
       cachedChannels.cleanUp();
     } catch (RuntimeException e) {
       log.error("Client cache cleanup failed {}", e);
     }
+  }
+
+  // Common method to submit async task and wait for the result.
+  private <T> T runAsyncTask(
+      NodeAgent nodeAgent, SubmitTaskRequest request, Class<T> responseClass) {
+    ManagedChannel channel = getManagedChannel(nodeAgent, true);
+    SubmitTaskResponse response = NodeAgentGrpc.newBlockingStub(channel).submitTask(request);
+    String taskId = response.getTaskId();
+    NodeAgentStub stub = NodeAgentGrpc.newStub(channel);
+    String id = String.format("%s-%s", nodeAgent.getUuid(), taskId);
+    DescribeTaskRequest describeTaskRequest =
+        DescribeTaskRequest.newBuilder().setTaskId(taskId).build();
+    while (true) {
+      try {
+        log.info("Describing task {}", taskId);
+        DescribeTaskResponseObserver<T> responseObserver =
+            new DescribeTaskResponseObserver<>(id, responseClass);
+        stub.describeTask(describeTaskRequest, responseObserver);
+        return responseObserver.waitForResponse();
+      } catch (StatusRuntimeException e) {
+        if (e.getStatus().getCode() != Code.DEADLINE_EXCEEDED) {
+          // Best effort to abort.
+          abortTask(nodeAgent, taskId);
+          log.error(
+              "Error in describing task for node agent {} - {}", nodeAgent.getIp(), e.getStatus());
+          throw e;
+        } else {
+          log.info("Reconnecting to node agent {} to describe task {}", nodeAgent.getIp(), taskId);
+        }
+      }
+    }
+  }
+
+  private List<String> getBashCommand(List<String> command) {
+    List<String> shellCommand = new ArrayList<>();
+    // Same join as in rpc.py of node agent.
+    shellCommand.add("bash");
+    shellCommand.add("-c");
+    shellCommand.add(
+        command.stream()
+            .map(part -> part.contains(" ") ? "'" + part + "'" : part)
+            .collect(Collectors.joining(" ")));
+    return shellCommand;
   }
 }

@@ -60,8 +60,10 @@ class PosixRandomAccessFile : public RandomAccessFile {
 #ifdef __linux__
   virtual size_t GetUniqueId(char* id) const override;
 #endif
-  virtual void Hint(AccessPattern pattern) override;
-  virtual Status InvalidateCache(size_t offset, size_t length) override;
+  void Hint(AccessPattern pattern) override;
+  Status InvalidateCache(size_t offset, size_t length) override;
+
+  void Readahead(size_t offset, size_t length) override;
 
  private:
   std::string filename_;

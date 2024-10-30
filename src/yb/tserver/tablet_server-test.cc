@@ -168,8 +168,8 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
     req.set_value("bar");
     ASSERT_OK(proxy.SetFlag(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
-    EXPECT_EQ(server::SetFlagResponsePB::NO_SUCH_FLAG, resp.result());
-    EXPECT_EQ(resp.msg(), "Flag does not exist");
+    ASSERT_EQ(server::SetFlagResponsePB::NO_SUCH_FLAG, resp.result());
+    ASSERT_EQ(resp.msg(), "Flag does not exist");
   }
 
   // Set a valid flag to a valid value.
@@ -180,10 +180,10 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
     req.set_value("12345");
     ASSERT_OK(proxy.SetFlag(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
-    EXPECT_EQ(server::SetFlagResponsePB::SUCCESS, resp.result());
-    EXPECT_EQ(resp.msg(), "metrics_retirement_age_ms set to 12345\n");
-    EXPECT_EQ(Substitute("$0", old_val), resp.old_value());
-    EXPECT_EQ(12345, FLAGS_metrics_retirement_age_ms);
+    ASSERT_EQ(server::SetFlagResponsePB::SUCCESS, resp.result());
+    ASSERT_EQ(resp.msg(), "metrics_retirement_age_ms set to 12345\n");
+    ASSERT_EQ(Substitute("$0", old_val), resp.old_value());
+    ASSERT_EQ(12345, FLAGS_metrics_retirement_age_ms);
   }
 
   // Set a valid flag to an invalid value.
@@ -193,9 +193,20 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
     req.set_value("foo");
     ASSERT_OK(proxy.SetFlag(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
-    EXPECT_EQ(server::SetFlagResponsePB::BAD_VALUE, resp.result());
-    EXPECT_EQ(resp.msg(), "Unable to set flag: bad value. Check stderr for more information.");
-    EXPECT_EQ(12345, FLAGS_metrics_retirement_age_ms);
+    ASSERT_EQ(server::SetFlagResponsePB::BAD_VALUE, resp.result());
+    ASSERT_STR_CONTAINS(resp.msg(), "Unable to set flag: Bad value");
+    ASSERT_EQ(12345, FLAGS_metrics_retirement_age_ms);
+  }
+  // Set a valid flag to an value that is rejected by its validator.
+  {
+    RpcController controller;
+    req.set_flag("log_min_segments_to_retain");
+    req.set_value("0");
+    ASSERT_OK(proxy.SetFlag(req, &resp, &controller));
+    SCOPED_TRACE(resp.DebugString());
+    ASSERT_EQ(server::SetFlagResponsePB::BAD_VALUE, resp.result());
+    ASSERT_STR_CONTAINS(resp.msg(), "Must be greater than 0");
+    ASSERT_EQ(12345, FLAGS_metrics_retirement_age_ms);
   }
 
   // Try setting a flag which isn't runtime-modifiable
@@ -205,7 +216,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
     req.set_value("true");
     ASSERT_OK(proxy.SetFlag(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
-    EXPECT_EQ(server::SetFlagResponsePB::NOT_SAFE, resp.result());
+    ASSERT_EQ(server::SetFlagResponsePB::NOT_SAFE, resp.result());
   }
 
   // Try again, but with the force flag.
@@ -216,7 +227,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
     req.set_force(true);
     ASSERT_OK(proxy.SetFlag(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
-    EXPECT_EQ(server::SetFlagResponsePB::SUCCESS, resp.result());
+    ASSERT_EQ(server::SetFlagResponsePB::SUCCESS, resp.result());
   }
 
   EasyCurl c;
@@ -976,7 +987,7 @@ TEST_F(TabletServerTest, TestGFlagsCallHome) {
 #if YB_TCMALLOC_ENABLED
 TEST_F(TabletServerTest, TestUntrackedMemory) {
   auto server_metric_entity = mini_server_->server()->metric_entity();
-  ASSERT_TRUE(server_metric_entity->TEST_ContainMetricName("untracked_memory"));
+  ASSERT_TRUE(server_metric_entity->TEST_ContainsMetricName("untracked_memory"));
 
   const size_t kBufferSize = 10_MB;
   std::unique_ptr<char[]> alloc(new char[kBufferSize]);

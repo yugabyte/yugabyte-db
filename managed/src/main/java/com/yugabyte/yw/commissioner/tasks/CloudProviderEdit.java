@@ -16,6 +16,7 @@ import com.google.common.base.Strings;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.common.CloudProviderHelper;
@@ -46,6 +47,7 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@Retryable
 public class CloudProviderEdit extends CloudTaskBase {
 
   private RegionHandler regionHandler;
@@ -84,6 +86,9 @@ public class CloudProviderEdit extends CloudTaskBase {
       Provider editProviderReq = taskParams().newProviderState;
       Provider provider = Provider.getOrBadRequest(taskParams().getProviderUUID());
       provider.setVersion(editProviderReq.getVersion());
+      if (!isFirstTry()) {
+        provider.setVersion(provider.getVersion() + 1);
+      }
       if (providerEditRestrictionManager.isAllowAutoTasksBeforeEdit()
           && !providerEditRestrictionManager.getTasksInUse(taskParams().providerUUID).isEmpty()) {
         waitForAutoTasks();

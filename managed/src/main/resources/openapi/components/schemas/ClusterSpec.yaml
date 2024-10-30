@@ -4,8 +4,7 @@ type: object
 required:
   - cluster_type
   - num_nodes
-  - instance_type
-  - storage_spec
+  - node_spec
   - provider_spec
 properties:
   uuid:
@@ -35,12 +34,8 @@ properties:
     example: 3
     default: 3
     minimum: 1
-  instance_type:
-    description: Instance type for tserver nodes of cluster
-    type: string
-    example: c5.xlarge
-  storage_spec:
-    $ref: "./ClusterStorageSpec.yaml"
+  node_spec:
+    $ref: "./ClusterNodeSpec.yaml"
   networking_spec:
     $ref: "./ClusterNetworkingSpec.yaml"
   provider_spec:

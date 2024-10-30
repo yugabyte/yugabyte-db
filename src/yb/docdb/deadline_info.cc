@@ -20,6 +20,11 @@
 
 using namespace std::literals;
 
+
+DEFINE_test_flag(uint32, read_deadline_check_granularity, 0,
+    "The factor to determine how often to check the deadline for read operations. "
+    "0 means use the default value kDeadlineCheckGranularity.");
+
 DEFINE_test_flag(bool, tserver_timeout, false,
                  "Sleep past the deadline to test tserver query expiration");
 
@@ -35,8 +40,12 @@ Status DeadlineInfo::CheckDeadlinePassed() {
     return STATUS(Expired, "TEST: Deadline for query passed");
   }
 
+  auto deadline_check_granularity =
+      PREDICT_TRUE(FLAGS_TEST_read_deadline_check_granularity == 0) ?
+      kDeadlineCheckGranularity : FLAGS_TEST_read_deadline_check_granularity;
+
   if (PREDICT_FALSE(
-          (++counter_ & (kDeadlineCheckGranularity - 1)) == 0 &&
+          (++counter_ & (deadline_check_granularity - 1)) == 0 &&
           CoarseMonoClock::now() > deadline_)) {
     return STATUS_FORMAT(
         Expired, "Deadline for query passed $0 ago", CoarseMonoClock::now() - deadline_);

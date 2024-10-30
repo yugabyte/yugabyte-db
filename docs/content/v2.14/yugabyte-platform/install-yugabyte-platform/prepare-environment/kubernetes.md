@@ -68,7 +68,7 @@ Before installing the YugabyteDB Admin Console, verify you have the following:
 
 - A Kubernetes cluster configured with [Helm](https://helm.sh/).
 - A Kubernetes node with minimum 4 CPU core and 15 GB RAM can be allocated to YugabyteDB Anywhere.
-- A Kubernetes secret obtained from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form).
+- A Kubernetes secret obtained from Yugabyte Support.
 
 To confirm that `helm` is configured correctly, run the following command:
 

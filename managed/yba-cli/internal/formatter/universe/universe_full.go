@@ -21,10 +21,11 @@ const (
 	defaultFullUniverseGeneral = "table {{.Name}}\t{{.UUID}}\t{{.Version}}\t{{.State}}"
 	universeGeneral1           = "table {{.ProviderCode}}\t{{.RF}}" +
 		"\t{{.NumMasters}}\t{{.NumTservers}}\t{{.LiveNodes}}"
-	universeDetails1 = "table  {{.ProviderUUID}}\t{{.AccessKey}}\t{{.PricePerDay}}"
+	universeDetails1 = "table  {{.ProviderUUID}}\t{{.AccessKey}}\t{{.PricePerDay}}" +
+		"\t{{.CPUArchitecture}}"
 	universeDetails2 = "table {{.EnableYSQL}}\t{{.YSQLAuthEnabled}}\t{{.EnableYCQL}}" +
 		"\t{{.YCQLAuthEnabled}}\t{{.UseSystemd}}"
-	encryptionRestDetails    = "table {{.KMSEnabled}}\t{{.KMSConfigName}}\t{{.EncryptionRestType}}"
+	encryptionRestDetails    = "table {{.KMSEnabled}}\t{{.KMSConfig}}\t{{.EncryptionRestType}}"
 	encryptionTransitDetails = "table {{.NtoNTLS}}\t{{.NtoNCert}}\t{{.CtoNTLS}}\t{{.CtoNCert}}"
 	universeOverridesTable   = "table {{.UniverseOverrides}}"
 	azOverridesTable         = "table {{.AZOverrides}}"
@@ -33,8 +34,11 @@ const (
 // Certificates hold certificates declared under the current customer
 var Certificates []ybaclient.CertificateInfoExt
 
+// Providers hold providers declared under the current customer
+var Providers []ybaclient.Provider
+
 // KMSConfigs hold kms configs declared under the current customer
-var KMSConfigs []map[string]interface{}
+var KMSConfigs []util.KMSConfig
 
 // FullUniverseContext to render Universe Details output
 type FullUniverseContext struct {
@@ -51,7 +55,7 @@ func (fu *FullUniverseContext) SetFullUniverse(universe ybaclient.UniverseResp) 
 // NewFullUniverseFormat for formatting output
 func NewFullUniverseFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultUniverseListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty

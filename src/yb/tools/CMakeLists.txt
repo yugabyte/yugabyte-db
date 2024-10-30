@@ -61,6 +61,7 @@ add_executable(yb-admin
 target_link_libraries(yb-admin
   yb-admin_lib
   master_error
+  master_util
   ${LINK_LIBS})
 
 add_library(yb-admin_lib
@@ -234,3 +235,10 @@ set(YB_BACKUP_TEST_BASE_DEPS
 ADD_YB_TEST_LIBRARY(yb-backup-test_base
                     SRCS ${YB_BACKUP_TEST_BASE_SRCS}
                     DEPS ${YB_BACKUP_TEST_BASE_DEPS})
+
+add_executable(hnsw_tool hnsw_tool.cc)
+target_link_libraries(hnsw_tool boost_program_options yb_util yb_docdb vector_index)
+
+add_executable(clockbound_dump clockbound_dump.cc)
+target_link_libraries(clockbound_dump
+  clockbound yb_common yb_util)

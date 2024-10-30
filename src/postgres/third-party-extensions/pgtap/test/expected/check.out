@@ -1,0 +1,50 @@
+\unset ECHO
+1..48
+ok 1 - has_check( schema, table, desc ) should pass
+ok 2 - has_check( schema, table, desc ) should have the proper description
+ok 3 - has_check( schema, table, desc ) should have the proper diagnostics
+ok 4 - has_check( table, desc ) should pass
+ok 5 - has_check( table, desc ) should have the proper description
+ok 6 - has_check( table, desc ) should have the proper diagnostics
+ok 7 - has_check( table ) should pass
+ok 8 - has_check( table ) should have the proper description
+ok 9 - has_check( table ) should have the proper diagnostics
+ok 10 - has_check( schema, table, descr ) fail should fail
+ok 11 - has_check( schema, table, descr ) fail should have the proper description
+ok 12 - has_check( schema, table, descr ) fail should have the proper diagnostics
+ok 13 - has_check( table, desc ) fail should fail
+ok 14 - has_check( table, desc ) fail should have the proper description
+ok 15 - has_check( table, desc ) fail should have the proper diagnostics
+ok 16 - col_has_check( sch, tab, col, desc ) should pass
+ok 17 - col_has_check( sch, tab, col, desc ) should have the proper description
+ok 18 - col_has_check( sch, tab, col, desc ) should have the proper diagnostics
+ok 19 - col_has_check( sch, tab, cols, desc ) should pass
+ok 20 - col_has_check( sch, tab, cols, desc ) should have the proper description
+ok 21 - col_has_check( sch, tab, cols, desc ) should have the proper diagnostics
+ok 22 - col_has_check( tab, col, desc ) should pass
+ok 23 - col_has_check( tab, col, desc ) should have the proper description
+ok 24 - col_has_check( tab, col, desc ) should have the proper diagnostics
+ok 25 - col_has_check( tab, cols, desc ) should pass
+ok 26 - col_has_check( tab, cols, desc ) should have the proper description
+ok 27 - col_has_check( tab, cols, desc ) should have the proper diagnostics
+ok 28 - col_has_check( table, column ) should pass
+ok 29 - col_has_check( table, column ) should have the proper description
+ok 30 - col_has_check( table, column ) should have the proper diagnostics
+ok 31 - col_has_check( table, columns ) should pass
+ok 32 - col_has_check( table, columns ) should have the proper description
+ok 33 - col_has_check( table, columns ) should have the proper diagnostics
+ok 34 - col_has_check( sch, tab, col, desc ) fail should fail
+ok 35 - col_has_check( sch, tab, col, desc ) fail should have the proper description
+ok 36 - col_has_check( sch, tab, col, desc ) fail should have the proper diagnostics
+ok 37 - col_has_check( tab, col, desc ) fail should fail
+ok 38 - col_has_check( tab, col, desc ) fail should have the proper description
+ok 39 - col_has_check( tab, col, desc ) fail should have the proper diagnostics
+ok 40 - col_has_check( sch, tab, col[], desc ) should pass
+ok 41 - col_has_check( sch, tab, col[], desc ) should have the proper description
+ok 42 - col_has_check( sch, tab, col[], desc ) should have the proper diagnostics
+ok 43 - col_has_check( tab, col[], desc ) should pass
+ok 44 - col_has_check( tab, col[], desc ) should have the proper description
+ok 45 - col_has_check( tab, col[], desc ) should have the proper diagnostics
+ok 46 - col_has_check( tab, col[] ) should pass
+ok 47 - col_has_check( tab, col[] ) should have the proper description
+ok 48 - col_has_check( tab, col[] ) should have the proper diagnostics

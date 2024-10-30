@@ -198,7 +198,6 @@ check_package_installed() {
 }
 
 check_binaries_installed() {
-  check_binary_installed "chronyc"
   if [[ "$is_aarch64" = false ]]; then
     check_binary_installed "azcopy" # Optional.
   fi

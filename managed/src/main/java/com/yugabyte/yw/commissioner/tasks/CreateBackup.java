@@ -122,26 +122,29 @@ public class CreateBackup extends UniverseTaskBase {
         getRunnableTask().reset();
 
         if (isFirstTry()) {
-          if (ybcBackup
-              && universe.isYbcEnabled()
-              && !universe
-                  .getUniverseDetails()
-                  .getYbcSoftwareVersion()
-                  .equals(ybcManager.getStableYbcVersion())) {
-
-            if (universe
+          if (ybcBackup && universe.isYbcEnabled()) {
+            if (!universe
                 .getUniverseDetails()
-                .getPrimaryCluster()
-                .userIntent
-                .providerType
-                .equals(Common.CloudType.kubernetes)) {
-              createUpgradeYbcTaskOnK8s(
-                      params().getUniverseUUID(), ybcManager.getStableYbcVersion())
-                  .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+                .getYbcSoftwareVersion()
+                .equals(ybcManager.getStableYbcVersion())) {
+              if (universe
+                  .getUniverseDetails()
+                  .getPrimaryCluster()
+                  .userIntent
+                  .providerType
+                  .equals(Common.CloudType.kubernetes)) {
+                createUpgradeYbcTaskOnK8s(
+                        params().getUniverseUUID(), ybcManager.getStableYbcVersion())
+                    .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+              } else {
+                createUpgradeYbcTask(
+                        params().getUniverseUUID(), ybcManager.getStableYbcVersion(), true)
+                    .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+              }
             } else {
-              createUpgradeYbcTask(
-                      params().getUniverseUUID(), ybcManager.getStableYbcVersion(), true)
-                  .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+              // Try re-install ybc if ping check fails
+              // Skip upgrade case, since upgrade will anyway re-configure it
+              handleUnavailableYbcServers(universe, ybcManager);
             }
           }
         }
@@ -175,7 +178,7 @@ public class CreateBackup extends UniverseTaskBase {
                   bkp.setCompletionTime(new Date());
                   bkp.save();
                 });
-        unlockUniverseForUpdate(false);
+        unlockUniverseForUpdate();
         isUniverseLocked = false;
         isAbort = true;
         throw ce;
@@ -185,9 +188,12 @@ public class CreateBackup extends UniverseTaskBase {
         log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
         List<Backup> backupList = Backup.fetchAllBackupsByTaskUUID(getUserTaskUUID());
         handleFailedBackupAndRestore(backupList, null, isAbort, params().alterLoadBalancer);
-        BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
-        metricService.setFailureStatusMetric(
-            buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
+        if (!isAbort) {
+          // If platform restart causes abort, the task is resumed, so no need to increment metric.
+          BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+          metricService.setFailureStatusMetric(
+              buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
+        }
       } finally {
         // Run an unlock in case the task failed before getting to the unlock. It is okay if it
         // errors out.
@@ -262,6 +268,21 @@ public class CreateBackup extends UniverseTaskBase {
         && schedule.isIncrementBacklogStatus()) {
       schedule.updateIncrementBacklogStatus(false);
       log.debug("Schedule {} increment backlog status is set to false", schedule.getScheduleUUID());
+    }
+    if (baseBackupUUID == null
+        && ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID())) {
+      // Update incremental backup task cycle while executing full backups.
+      long incrementalBackupFrequency = ScheduleUtil.getIncrementalBackupFrequency(schedule);
+      if (incrementalBackupFrequency != 0L) {
+        Date updatedNextIncrementalBackupTime =
+            new Date(new Date().getTime() + incrementalBackupFrequency);
+        log.debug(
+            "Updating next incremental backup task time for schedule {} to {} as full backup is"
+                + " preformed.",
+            schedule.getScheduleUUID(),
+            updatedNextIncrementalBackupTime);
+        schedule.updateNextIncrementScheduleTaskTime(updatedNextIncrementalBackupTime);
+      }
     }
     log.info(
         "Submitted backup for universe: {}, task uuid = {}.",

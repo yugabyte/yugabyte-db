@@ -1,10 +1,9 @@
 ---
 title: Enable server-to-server encryption
 headerTitle: Enable server-to-server encryption
-linkTitle: Enable server-to-server encryption
+linkTitle: Server-to-server encryption
 description: Enable server-to-server encryption (using TLS) for intranode communication.
-headcontent: Enable server-to-server encryption (using TLS) for intranode communication.
-image: /images/section_icons/secure/tls-encryption/server-to-server.png
+headcontent: Enable server-to-server encryption (using TLS) for intranode communication
 menu:
   preview:
     identifier: server-to-server
@@ -29,7 +28,7 @@ Flag                           | Node                  | Description            
 
 ## Start the YB-Masters
 
-You can enable access control by starting the `yb-master` services with the `--use_node_to_node_encryption=true` flag as described above. Your command should look similar to this:
+You can enable access control by starting the yb-master services with the `--use_node_to_node_encryption=true` flag as described above. Your command should look similar to this:
 
 ```sh
 bin/yb-master                               \
@@ -44,7 +43,7 @@ For information on starting YB-Master nodes for a deployment, see [Start YB-Mast
 
 ## Start the YB-TServers
 
-You can enable access control by starting the `yb-tserver` services using the `--use_node_to_node_encryption=true` flag described above. Your command should look similar to this:
+You can enable access control by starting the yb-tserver services using the `--use_node_to_node_encryption=true` flag described above. Your command should look similar to this:
 
 ```sh
 bin/yb-tserver                                  \
@@ -67,7 +66,7 @@ $ ./bin/ysqlsh
 ```
 
 ```output
-ysqlsh (11.2-YB-2.0.11.0-b0)
+ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help
 
 yugabyte=#

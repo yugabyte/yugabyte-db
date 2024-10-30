@@ -37,7 +37,7 @@ class AdminCliTestBase : public client::KeyValueTableTest<MiniCluster> {
         GetToolPath("yb-admin"), "-master_addresses", cluster_->GetMasterAddresses(),
         "--never_fsync=true", std::forward<Args>(args)...);
     LOG(INFO) << "Run tool: " << AsString(command);
-    return Subprocess::Call(command, error_msg, StdFdTypes{StdFdType::kErr});
+    return Subprocess::Call(command, /* output */ nullptr, error_msg);
   }
 
   template <class... Args>

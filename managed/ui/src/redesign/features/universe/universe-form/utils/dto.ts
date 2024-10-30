@@ -1,5 +1,6 @@
 import { ArchitectureType } from '../../../../../components/configRedesign/providerRedesign/constants';
 import { ProviderMin } from '../form/fields/ProvidersField/ProvidersField';
+import { AuditLogConfig } from '../../universe-tabs/db-audit-logs/utils/types';
 
 //This File has enum, interfaces, dto related Universe Form and divided to help in finding theme easily
 //--------------------------------------------------------- Most Used OR Common Types - Starts --------------------------------------------------------
@@ -59,6 +60,7 @@ export enum StorageType {
   Persistent = 'Persistent',
   StandardSSD_LRS = 'StandardSSD_LRS',
   Premium_LRS = 'Premium_LRS',
+  PremiumV2_LRS = 'PremiumV2_LRS',
   UltraSSD_LRS = 'UltraSSD_LRS'
 }
 export interface DeviceInfo {
@@ -122,6 +124,7 @@ export interface UserIntent {
   enableYCQLAuth: boolean;
   enableExposingService: ExposingServiceTypes | null;
   useSystemd: boolean;
+  enableConnectionPooling?: boolean;
   //optional fields
   accessKeyCode?: string | null;
   dedicatedNodes?: boolean;
@@ -137,8 +140,14 @@ export interface UserIntent {
   ybcPackagePath?: string | null;
   instanceTags?: Record<string, string>;
   specificGFlags?: {
+    gflagGroups?: string[];
     inheritFromPrimary: boolean;
-    perProcessFlags: {};
+    perProcessFlags: {
+      value?: {
+        MASTER?: Record<string, any>;
+        TSERVER?: Record<string, any>;
+      };
+    };
     perAZ?: {};
   };
   masterGFlags?: Record<string, any>;
@@ -150,6 +159,7 @@ export interface UserIntent {
   proxyConfig?: {};
   useSpotInstance?: boolean | null;
   imageBundleUUID?: string;
+  auditLogConfig?: AuditLogConfig;
 }
 
 export interface Cluster {
@@ -224,6 +234,7 @@ export interface UniverseDetails {
   rootAndClientRootCASame: boolean;
   universeUUID: string;
   updateInProgress: boolean;
+  updatingTaskUUID?: string;
   updateSucceeded: boolean;
   userAZSelected: boolean;
   enableYbc: boolean;
@@ -254,6 +265,12 @@ export interface UniverseConfig {
   disableAlertsUntilSecs: string;
   takeBackups: string;
 }
+
+export interface RollMaxBatchSize {
+  primaryBatchSize: number;
+  readReplicaBatchSize: number;
+}
+
 export interface Universe {
   creationDate: string;
   name: string;
@@ -262,6 +279,7 @@ export interface Universe {
   universeDetails: UniverseDetails;
   universeUUID: string;
   version: number;
+  rollMaxBatchSize: RollMaxBatchSize;
 }
 
 //-------------------------------------------------------- Payload related Types - Ends -------------------------------------------------------------------
@@ -292,6 +310,7 @@ export interface CommunicationPorts {
   ysqlServerHttpPort: number;
   ysqlServerRpcPort: number;
   nodeExporterPort: number;
+  internalYsqlServerRpcPort?: number;
 }
 
 export interface DeviceInfo {
@@ -349,6 +368,7 @@ export interface UserIntent {
   enableYCQLAuth: boolean;
   enableExposingService: ExposingServiceTypes | null;
   useSystemd: boolean;
+  enableConnectionPooling?: boolean;
   //optional fields
   accessKeyCode?: string | null;
   dedicatedNodes?: boolean;
@@ -527,6 +547,8 @@ export interface AdvancedConfigFormValue {
   accessKeyCode: string | null;
   ybSoftwareVersion: string | null;
   communicationPorts: CommunicationPorts;
+  enablePGCompatibitilty: boolean;
+  enableConnectionPooling?: boolean;
 }
 
 export interface InstanceTag {
@@ -568,6 +590,7 @@ export const DEFAULT_COMMUNICATION_PORTS: CommunicationPorts = {
   yqlServerRpcPort: 9042,
   ysqlServerHttpPort: 13000,
   ysqlServerRpcPort: 5433,
+  internalYsqlServerRpcPort: 6433,
   nodeExporterPort: 9300
 };
 
@@ -624,7 +647,9 @@ export const DEFAULT_ADVANCED_CONFIG: AdvancedConfigFormValue = {
   customizePort: false,
   accessKeyCode: '',
   ybSoftwareVersion: null,
-  communicationPorts: DEFAULT_COMMUNICATION_PORTS
+  communicationPorts: DEFAULT_COMMUNICATION_PORTS,
+  enablePGCompatibitilty: false,
+  enableConnectionPooling: false
 };
 
 export const DEFAULT_USER_TAGS = [{ name: '', value: '' }];

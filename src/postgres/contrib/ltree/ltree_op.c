@@ -9,10 +9,10 @@
 
 #include "access/htup_details.h"
 #include "catalog/pg_statistic.h"
+#include "ltree.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/selfuncs.h"
-#include "ltree.h"
 
 PG_MODULE_MAGIC;
 
@@ -91,42 +91,42 @@ Datum
 ltree_lt(PG_FUNCTION_ARGS)
 {
 	RUNCMP;
-	PG_RETURN_BOOL((res < 0) ? true : false);
+	PG_RETURN_BOOL(res < 0);
 }
 
 Datum
 ltree_le(PG_FUNCTION_ARGS)
 {
 	RUNCMP;
-	PG_RETURN_BOOL((res <= 0) ? true : false);
+	PG_RETURN_BOOL(res <= 0);
 }
 
 Datum
 ltree_eq(PG_FUNCTION_ARGS)
 {
 	RUNCMP;
-	PG_RETURN_BOOL((res == 0) ? true : false);
+	PG_RETURN_BOOL(res == 0);
 }
 
 Datum
 ltree_ge(PG_FUNCTION_ARGS)
 {
 	RUNCMP;
-	PG_RETURN_BOOL((res >= 0) ? true : false);
+	PG_RETURN_BOOL(res >= 0);
 }
 
 Datum
 ltree_gt(PG_FUNCTION_ARGS)
 {
 	RUNCMP;
-	PG_RETURN_BOOL((res > 0) ? true : false);
+	PG_RETURN_BOOL(res > 0);
 }
 
 Datum
 ltree_ne(PG_FUNCTION_ARGS)
 {
 	RUNCMP;
-	PG_RETURN_BOOL((res != 0) ? true : false);
+	PG_RETURN_BOOL(res != 0);
 }
 
 Datum
@@ -274,10 +274,17 @@ static ltree *
 ltree_concat(ltree *a, ltree *b)
 {
 	ltree	   *r;
+	int			numlevel = (int) a->numlevel + b->numlevel;
+
+	if (numlevel > LTREE_MAX_LEVELS)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("number of ltree levels (%d) exceeds the maximum allowed (%d)",
+						numlevel, LTREE_MAX_LEVELS)));
 
 	r = (ltree *) palloc0(VARSIZE(a) + VARSIZE(b) - LTREE_HDRSIZE);
 	SET_VARSIZE(r, VARSIZE(a) + VARSIZE(b) - LTREE_HDRSIZE);
-	r->numlevel = a->numlevel + b->numlevel;
+	r->numlevel = (uint16) numlevel;
 
 	memcpy(LTREE_FIRST(r), LTREE_FIRST(a), VARSIZE(a) - LTREE_HDRSIZE);
 	memcpy(((char *) LTREE_FIRST(r)) + VARSIZE(a) - LTREE_HDRSIZE,
@@ -559,10 +566,11 @@ ltree2text(PG_FUNCTION_ARGS)
 }
 
 
-#define DEFAULT_PARENT_SEL 0.001
-
 /*
  *	ltreeparentsel - Selectivity of parent relationship for ltree data types.
+ *
+ * This function is not used anymore, if the ltree extension has been
+ * updated to 1.2 or later.
  */
 Datum
 ltreeparentsel(PG_FUNCTION_ARGS)
@@ -571,101 +579,12 @@ ltreeparentsel(PG_FUNCTION_ARGS)
 	Oid			operator = PG_GETARG_OID(1);
 	List	   *args = (List *) PG_GETARG_POINTER(2);
 	int			varRelid = PG_GETARG_INT32(3);
-	VariableStatData vardata;
-	Node	   *other;
-	bool		varonleft;
 	double		selec;
 
-	/*
-	 * If expression is not variable <@ something or something <@ variable,
-	 * then punt and return a default estimate.
-	 */
-	if (!get_restriction_variable(root, args, varRelid,
-								  &vardata, &other, &varonleft))
-		PG_RETURN_FLOAT8(DEFAULT_PARENT_SEL);
-
-	/*
-	 * If the something is a NULL constant, assume operator is strict and
-	 * return zero, ie, operator will never return TRUE.
-	 */
-	if (IsA(other, Const) &&
-		((Const *) other)->constisnull)
-	{
-		ReleaseVariableStats(vardata);
-		PG_RETURN_FLOAT8(0.0);
-	}
-
-	if (IsA(other, Const))
-	{
-		/* Variable is being compared to a known non-null constant */
-		Datum		constval = ((Const *) other)->constvalue;
-		FmgrInfo	contproc;
-		double		mcvsum;
-		double		mcvsel;
-		double		nullfrac;
-		int			hist_size;
-
-		fmgr_info(get_opcode(operator), &contproc);
-
-		/*
-		 * Is the constant "<@" to any of the column's most common values?
-		 */
-		mcvsel = mcv_selectivity(&vardata, &contproc, constval, varonleft,
-								 &mcvsum);
-
-		/*
-		 * If the histogram is large enough, see what fraction of it the
-		 * constant is "<@" to, and assume that's representative of the
-		 * non-MCV population.  Otherwise use the default selectivity for the
-		 * non-MCV population.
-		 */
-		selec = histogram_selectivity(&vardata, &contproc,
-									  constval, varonleft,
-									  10, 1, &hist_size);
-		if (selec < 0)
-		{
-			/* Nope, fall back on default */
-			selec = DEFAULT_PARENT_SEL;
-		}
-		else if (hist_size < 100)
-		{
-			/*
-			 * For histogram sizes from 10 to 100, we combine the histogram
-			 * and default selectivities, putting increasingly more trust in
-			 * the histogram for larger sizes.
-			 */
-			double		hist_weight = hist_size / 100.0;
-
-			selec = selec * hist_weight +
-				DEFAULT_PARENT_SEL * (1.0 - hist_weight);
-		}
-
-		/* In any case, don't believe extremely small or large estimates. */
-		if (selec < 0.0001)
-			selec = 0.0001;
-		else if (selec > 0.9999)
-			selec = 0.9999;
-
-		if (HeapTupleIsValid(vardata.statsTuple))
-			nullfrac = ((Form_pg_statistic) GETSTRUCT(vardata.statsTuple))->stanullfrac;
-		else
-			nullfrac = 0.0;
-
-		/*
-		 * Now merge the results from the MCV and histogram calculations,
-		 * realizing that the histogram covers only the non-null values that
-		 * are not listed in MCV.
-		 */
-		selec *= 1.0 - nullfrac - mcvsum;
-		selec += mcvsel;
-	}
-	else
-		selec = DEFAULT_PARENT_SEL;
-
-	ReleaseVariableStats(vardata);
-
-	/* result should be in range, but make sure... */
-	CLAMP_PROBABILITY(selec);
+	/* Use generic restriction selectivity logic, with default 0.001. */
+	selec = generic_restriction_selectivity(root, operator, InvalidOid,
+											args, varRelid,
+											0.001);
 
 	PG_RETURN_FLOAT8((float8) selec);
 }

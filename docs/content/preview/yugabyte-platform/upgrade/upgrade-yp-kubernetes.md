@@ -32,7 +32,7 @@ type: docs
 
 </ul>
 
-You can use [Helm](https://helm.sh/) to upgrade your YugabyteDB Anywhere installed on [Kubernetes](https://kubernetes.io/) to a newer version.
+You can use [Helm](https://helm.sh/) to upgrade your YugabyteDB Anywhere (YBA) installed on [Kubernetes](https://kubernetes.io/) to a newer version.
 
 If you are upgrading a YugabyteDB Anywhere installation with high availability enabled, follow the instructions provided in [Upgrade instances](../../administer-yugabyte-platform/high-availability/#upgrade-instances).
 
@@ -58,16 +58,16 @@ helm list | awk '{if (NR!=1) print $NF}'
 
 If you do not wish to port your overrides, do not include `reuse-values`. Instead, you may choose to pass your existing overrides file by adding `--values custom-values.yaml` to your command during the upgrade.
 
-If you have upgraded YugabyteDB Anywhere to version 2.12 or later and [xCluster replication](../../../explore/going-beyond-sql/asynchronous-replication-ysql/) for your universe was set up via `yb-admin` instead of the UI, follow the instructions provided in [Synchronize replication after upgrade](../upgrade-yp-xcluster-ybadmin/).
+If you have upgraded YugabyteDB Anywhere to version 2.12 or later and [xCluster replication](../../../explore/going-beyond-sql/asynchronous-replication-ysql/) for your universe was set up via yb-admin instead of the UI, follow the instructions provided in [Synchronize replication after upgrade](../upgrade-yp-xcluster-ybadmin/).
 
 ## Install Yugabyte Kubernetes Operator by upgrading an existing YBA
 
-The [Yugabyte Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/) {{<badge/tp>}} automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. You can install the operator by upgrading an existing YBA as follows:
+The [Yugabyte Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/) {{<tags/feature/tp>}} automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. You can install the operator by upgrading an existing YBA as follows:
 
 1. Apply the following Custom Resource Definition:
 
     ```sh
-    kubectl apply -f https://github.com/yugabyte/charts/blob/2024.1/crds/concatenated_crd.yaml
+    kubectl apply -f https://raw.github.com/yugabyte/charts/2024.1/crds/concatenated_crd.yaml
     ```
 
 1. Get a list of Helm chart releases in namespace using the following command:

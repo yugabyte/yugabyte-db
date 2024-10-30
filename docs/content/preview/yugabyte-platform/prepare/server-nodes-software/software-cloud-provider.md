@@ -3,7 +3,7 @@ title: YugabyteDB Anywhere node software requirements
 headerTitle: Software requirements for cloud provider nodes
 linkTitle: Cloud provider
 description: Software requirements for cloud provider nodes.
-headContent: Prepare a VM for deployment in a universe
+headContent: Prepare a VM for deploying universes on cloud providers
 menu:
   preview_yugabyte-platform:
     identifier: software-cloud-provider
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-When deploying database clusters using a public cloud provider (AWS, GCP, or Azure), YugabyteDB Anywhere creates cloud VMs directly.
+When deploying database clusters using a public cloud provider (AWS, GCP, or Azure), YugabyteDB Anywhere (YBA) creates cloud VMs directly.
 
 You have two options for provisioning the operating system:
 

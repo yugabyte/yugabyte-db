@@ -16,6 +16,8 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.models.Universe;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.function.Supplier;
@@ -89,24 +91,64 @@ public class SetFlagInMemory extends ServerSubTaskBase {
     }
     YBClient client = getClient();
     try {
-      for (Entry<String, String> gflag : gflags.entrySet()) {
-        boolean setSuccess =
-            client.setFlag(hp, gflag.getKey(), gflag.getValue(), taskParams().force);
-        if (!setSuccess) {
-          throw new RuntimeException(
-              "Could not set gflag "
-                  + gflag
-                  + " for "
-                  + taskParams().serverType
-                  + " on node "
-                  + taskParams().nodeName);
+      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+
+      if (!taskParams().updateMasterAddrs) {
+        // Get the user provided Ysql pg conf csv gflag values and the pgaudit ones from the audit
+        // log
+        // config on a universe (this will be present only if DB audit log is enabled), and merge
+        // them
+        // both before setting the value in memory.
+        String userProvidedYsqlPgConfCsv = gflags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, "");
+        String auditLogYsqlPgConfCsv =
+            GFlagsUtil.getYsqlPgConfCsv(
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.getAuditLogConfig(),
+                null);
+        String finalYsqlPgConfCsv =
+            GFlagsUtil.mergeCSVs(userProvidedYsqlPgConfCsv, auditLogYsqlPgConfCsv, true);
+        if (StringUtils.isNotBlank(finalYsqlPgConfCsv)) {
+          gflags.put(GFlagsUtil.YSQL_PG_CONF_CSV, finalYsqlPgConfCsv);
         }
+      }
+      // allowed_preview_flags_csv should be set first in order to set the preview flags.
+      if (gflags.containsKey(GFlagsUtil.ALLOWED_PREVIEW_FLAGS_CSV)) {
+        log.info(
+            "Setting Allowed Preview Flags for {} on node {}",
+            taskParams().serverType,
+            taskParams().nodeName);
+        setFlag(
+            client,
+            GFlagsUtil.ALLOWED_PREVIEW_FLAGS_CSV,
+            gflags.get(GFlagsUtil.ALLOWED_PREVIEW_FLAGS_CSV),
+            hp);
+        gflags.remove(GFlagsUtil.ALLOWED_PREVIEW_FLAGS_CSV);
+        log.info(
+            "Setting remaining flags for {} on node {}",
+            taskParams().serverType,
+            taskParams().nodeName);
+      }
+      for (Entry<String, String> gflag : gflags.entrySet()) {
+        setFlag(client, gflag.getKey(), gflag.getValue(), hp);
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
     } finally {
       closeClient(client);
+    }
+  }
+
+  private void setFlag(YBClient client, String gflag, String value, HostAndPort hp)
+      throws Exception {
+    boolean setSuccess = client.setFlag(hp, gflag, value, taskParams().force);
+    if (!setSuccess) {
+      throw new RuntimeException(
+          "Could not set gflag "
+              + gflag
+              + " for "
+              + taskParams().serverType
+              + " on node "
+              + taskParams().nodeName);
     }
   }
 }

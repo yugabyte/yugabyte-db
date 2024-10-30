@@ -17,6 +17,7 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.setUniqueListValues;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.AlertTemplateDescription;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import io.ebean.ExpressionList;
@@ -119,7 +120,8 @@ public class AlertDefinition extends Model {
       AlertTemplateDescription templateDescription,
       AlertConfiguration configuration,
       AlertTemplateSettings templateSettings,
-      AlertConfiguration.Severity severity) {
+      AlertConfiguration.Severity severity,
+      RuntimeConfGetter runtimeConfGetter) {
     Map<String, AlertDefinitionLabel> effectiveLabels = new LinkedHashMap<>();
     if (templateSettings != null) {
       templateSettings
@@ -147,7 +149,7 @@ public class AlertDefinition extends Model {
         effectiveLabels,
         KnownAlertLabels.ALERT_EXPRESSION,
         templateDescription.getQueryWithThreshold(
-            this, configuration.getThresholds().get(severity)));
+            configuration, this, severity, runtimeConfGetter));
 
     labels.forEach(label -> putLabel(effectiveLabels, label.getName(), label.getValue()));
     return effectiveLabels.values();

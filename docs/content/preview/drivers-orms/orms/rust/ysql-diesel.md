@@ -45,7 +45,7 @@ Build the REST API server (written using Diesel and Rocket) as follows:
 $ cargo build --release
 ```
 
-If you encounter a build failure, install [libpq](../../../../reference/drivers/ysql-client-drivers/#libpq) and try again.
+If you encounter a build failure, install [libpq](../../../ysql-client-drivers/#libpq) and try again.
 
 ## Set up the database connection
 
@@ -65,7 +65,7 @@ DATABASE_URL=postgres://<username>:<password>@<host>:<port>/<database>
 
 The default values are valid for a local YugabyteDB installation. If you are using a different configuration, change these values in the URL as required.
 
-From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell using:
+From your local YugabyteDB installation directory, connect to the [YSQL](../../../../api/ysqlsh/) shell using:
 
 ```sh
 $ ./bin/ysqlsh

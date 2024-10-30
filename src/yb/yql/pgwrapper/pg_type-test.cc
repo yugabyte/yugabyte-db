@@ -25,7 +25,7 @@ TEST_F(PgTypeTest, YbTypeDetailsMatch) {
     "SELECT oid, typname, typlen, typbyval, typalign FROM pg_type")));
   int nfound = 0;
   for (const auto& [pgtypoid, pgtypname, pgtyplen, pgtypbyval, pgtypalign] : rows) {
-    int ybtyplen;
+    int16_t ybtyplen;
     bool ybtypbyval;
     char ybtypalign;
     if (YbTypeDetailsTest(pgtypoid, &ybtyplen, &ybtypbyval, &ybtypalign)) {

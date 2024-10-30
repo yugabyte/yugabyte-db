@@ -33,7 +33,7 @@ You can replace a failed YB-TServer in a YugabyteDB cluster, as follows:
 
    For details on using this command, see [`get_load_move_completion`](../../../admin/yb-admin/#get-load-move-completion).
 
-4. When the data move is complete (100%), kill the failed YB-TServer by stopping the `yb-tserver` process or terminating the VM. Then wait for the YB-TServer to be marked as `DEAD` by the YB-Master leader. The YB-Master leader will mark the server as `DEAD` after not responding for one minute (based on the `tserver_unresponsive_timeout_ms`, with default being `60000`).
+4. When the data move is complete (100%), kill the failed YB-TServer by stopping the yb-tserver process or terminating the VM. Then wait for the YB-TServer to be marked as `DEAD` by the YB-Master leader. The YB-Master leader will mark the server as `DEAD` after not responding for one minute (based on the `tserver_unresponsive_timeout_ms`, with default being `60000`).
 
    To verify that the failed YB-TServer is dead, open your web browser to `$MASTER_LEADER_IP:7000/tablet-servers` and check the output.
 

@@ -18,47 +18,50 @@ import {
   api,
   CreateDrConfigRequest,
   drConfigQueryKey,
+  runtimeConfigQueryKey,
   universeQueryKey
 } from '../../../../redesign/helpers/api';
-import { generateUniqueName, isActionFrozen } from '../../../../redesign/helpers/utils';
 import { YBButton, YBModal, YBModalProps } from '../../../../redesign/components';
 import { CurrentFormStep } from './CurrentFormStep';
 import { StorageConfigOption } from '../../sharedComponents/ReactSelectStorageConfig';
-import { AllowedTasks, TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos';
-import { UNIVERSE_TASKS } from '../../../../redesign/helpers/constants';
-import { XClusterConfigAction, XCLUSTER_UNIVERSE_TABLE_FILTERS } from '../../constants';
+import {
+  XClusterConfigAction,
+  XClusterConfigType,
+  XCLUSTER_TRANSACTIONAL_PITR_RETENTION_PERIOD_SECONDS_FALLBACK,
+  XCLUSTER_UNIVERSE_TABLE_FILTERS
+} from '../../constants';
+import { DurationUnit, DURATION_UNIT_TO_SECONDS } from '../constants';
+import { RuntimeConfigKey } from '../../../../redesign/helpers/constants';
+import { parseDurationToSeconds } from '../../../../utils/parsers';
+import { convertSecondsToLargestDurationUnit } from '../utils';
+import { PITR_RETENTION_PERIOD_UNIT_OPTIONS } from './ConfigurePitrStep';
+import { generateUniqueName } from '../../../../redesign/helpers/utils';
+
+import { RunTimeConfigEntry } from '../../../../redesign/features/universe/universe-form/utils/dto';
+import { TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos';
 
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
 
 export interface CreateDrConfigFormValues {
-  targetUniverse: { label: string; value: Universe };
+  configName: string;
+  targetUniverse: { label: string; value: Universe; isDisabled: boolean; disabledReason?: string };
   namespaceUuids: string[];
   tableUuids: string[];
   storageConfig: StorageConfigOption;
-}
-
-export interface CreateDrConfigFormErrors {
-  targetUniverse: string;
-  namespaceUuids: { title: string; body: string };
-  storageConfig: string;
-}
-
-export interface CreateXClusterConfigFormWarnings {
-  targetUniverse?: string;
-  namespaceUuids?: { title: string; body: string };
-  storageConfig?: string;
+  pitrRetentionPeriodValue: number;
+  pitrRetentionPeriodUnit: { label: string; value: DurationUnit };
 }
 
 interface CreateConfigModalProps {
   modalProps: YBModalProps;
   sourceUniverseUuid: string;
-  allowedTasks: AllowedTasks;
 }
 
 export const FormStep = {
   SELECT_TARGET_UNIVERSE: 'selectTargetUniverse',
   SELECT_TABLES: 'selectDatabases',
   CONFIGURE_BOOTSTRAP: 'configureBootstrap',
+  CONFIGURE_PITR: 'configurePitr',
   CONFIRM_ALERT: 'configureAlert'
 } as const;
 export type FormStep = typeof FormStep[keyof typeof FormStep];
@@ -68,27 +71,44 @@ const FIRST_FORM_STEP = FormStep.SELECT_TARGET_UNIVERSE;
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.config.createModal';
 const SELECT_TABLE_TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.selectTable';
 
-export const CreateConfigModal = ({
-  modalProps,
-  sourceUniverseUuid,
-  allowedTasks
-}: CreateConfigModalProps) => {
+export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConfigModalProps) => {
   const [currentFormStep, setCurrentFormStep] = useState<FormStep>(FIRST_FORM_STEP);
-  const [tableSelectionError, setTableSelectionError] = useState<{ title: string; body: string }>();
+  const [tableSelectionError, setTableSelectionError] = useState<{
+    title: string;
+    body: string;
+  } | null>(null);
 
-  // The purpose of committedTargetUniverse is to store the targetUniverse field value prior
-  // to the user submitting their target universe step.
+  // The purpose of committedTargetUniverseUuid is to store the target universe uuid prior
+  // to the user submitting their select target universe step.
   // This value updates whenever the user submits SelectTargetUniverseStep with a new
   // target universe.
-  const [committedTargetUniverseUUID, setCommittedTargetUniverseUUID] = useState<string>();
+  const [committedTargetUniverseUuid, setCommittedTargetUniverseUuid] = useState<string>();
 
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const queryClient = useQueryClient();
 
+  const tablesQuery = useQuery<YBTable[]>(
+    universeQueryKey.tables(sourceUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS),
+    () =>
+      fetchTablesInUniverse(sourceUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS).then(
+        (response) => response.data
+      )
+  );
+  const sourceUniverseQuery = useQuery<Universe>(universeQueryKey.detail(sourceUniverseUuid), () =>
+    api.fetchUniverse(sourceUniverseUuid)
+  );
+  const runtimeConfigQuery = useQuery(runtimeConfigQueryKey.universeScope(sourceUniverseUuid), () =>
+    api.fetchRuntimeConfigs(sourceUniverseUuid, true)
+  );
+
   const drConfigMutation = useMutation(
-    (formValues: CreateDrConfigFormValues) => {
+    ({ formValues, isDbScoped }: { formValues: CreateDrConfigFormValues; isDbScoped: boolean }) => {
+      const retentionPeriodSec =
+        formValues.pitrRetentionPeriodValue *
+        DURATION_UNIT_TO_SECONDS[formValues.pitrRetentionPeriodUnit.value];
+
       const createDrConfigRequest: CreateDrConfigRequest = {
-        name: `dr-config-${generateUniqueName()}`,
+        name: formValues.configName,
         sourceUniverseUUID: sourceUniverseUuid,
         targetUniverseUUID: formValues.targetUniverse.value.universeUUID,
         dbs: formValues.namespaceUuids.map(formatUuidForXCluster),
@@ -96,12 +116,16 @@ export const CreateConfigModal = ({
           backupRequestParams: {
             storageConfigUUID: formValues.storageConfig.value.uuid
           }
-        }
+        },
+        pitrParams: {
+          retentionPeriodSec: retentionPeriodSec
+        },
+        dbScoped: isDbScoped
       };
       return api.createDrConfig(createDrConfigRequest);
     },
     {
-      onSuccess: async (response, values) => {
+      onSuccess: async (response, { formValues }) => {
         const invalidateQueries = () => {
           queryClient.invalidateQueries(drConfigQueryKey.detail(response.resourceUUID));
           // The new DR config will update the sourceXClusterConfigs for the source universe and
@@ -111,7 +135,7 @@ export const CreateConfigModal = ({
             exact: true
           });
           queryClient.invalidateQueries(
-            universeQueryKey.detail(values.targetUniverse.value.universeUUID),
+            universeQueryKey.detail(formValues.targetUniverse.value.universeUUID),
             { exact: true }
           );
 
@@ -152,22 +176,10 @@ export const CreateConfigModal = ({
     }
   );
 
-  const tablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(sourceUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS),
-    () =>
-      fetchTablesInUniverse(sourceUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS).then(
-        (response) => response.data
-      )
-  );
-  const sourceUniverseQuery = useQuery<Universe>(universeQueryKey.detail(sourceUniverseUuid), () =>
-    api.fetchUniverse(sourceUniverseUuid)
-  );
-
   const formMethods = useForm<CreateDrConfigFormValues>({
-    defaultValues: {
-      namespaceUuids: [],
-      tableUuids: []
-    }
+    defaultValues: runtimeConfigQuery.data
+      ? getDefaultValues(runtimeConfigQuery.data?.configEntries ?? [])
+      : {}
   });
 
   const modalTitle = t('title');
@@ -176,7 +188,9 @@ export const CreateConfigModal = ({
     tablesQuery.isLoading ||
     tablesQuery.isIdle ||
     sourceUniverseQuery.isLoading ||
-    sourceUniverseQuery.isIdle
+    sourceUniverseQuery.isIdle ||
+    runtimeConfigQuery.isLoading ||
+    runtimeConfigQuery.isIdle
   ) {
     return (
       <YBModal
@@ -194,7 +208,7 @@ export const CreateConfigModal = ({
     );
   }
 
-  if (tablesQuery.isError || sourceUniverseQuery.isError) {
+  if (tablesQuery.isError || sourceUniverseQuery.isError || runtimeConfigQuery.isError) {
     return (
       <YBModal
         title={modalTitle}
@@ -216,26 +230,61 @@ export const CreateConfigModal = ({
     );
   }
 
-  /**
-   * Reset the selection back to defaults.
-   */
-  const resetTableSelection = () => {
-    // resetField() will also clear errors unless
-    // `keepError` option is passed.
-    formMethods.resetField('namespaceUuids');
-    formMethods.resetField('tableUuids');
-    setTableSelectionError(undefined);
+  const setSelectedNamespaceUuids = (namespaces: string[]) => {
+    // Clear any existing errors.
+    // The new table/namespace selection will need to be (re)validated.
+    setTableSelectionError(null);
+    formMethods.clearErrors('namespaceUuids');
+
+    // We will run any required validation on selected namespaces & tables all at once when the
+    // user clicks on the 'Validate Selection' button.
+    formMethods.setValue('namespaceUuids', namespaces, { shouldValidate: false });
+  };
+  const setSelectedTableUuids = (tableUuids: string[]) => {
+    // Clear any existing errors.
+    // The new table/namespace selection will need to be (re)validated.
+    setTableSelectionError(null);
+    formMethods.clearErrors('tableUuids');
+
+    // We will run any required validation on selected namespaces & tables all at once when the
+    // user clicks on the 'Validate Selection' button.
+    formMethods.setValue('tableUuids', tableUuids, { shouldValidate: false });
   };
 
+  /**
+   * Clear table/namespace selection.
+   */
+  const resetTableSelection = () => {
+    setSelectedTableUuids([]);
+    setSelectedNamespaceUuids([]);
+  };
+
+  if (
+    formMethods.formState.defaultValues &&
+    Object.keys(formMethods.formState.defaultValues).length === 0
+  ) {
+    // react-hook-form caches the defaultValues on first render.
+    // We need to update the defaultValues with reset() after regionMetadataQuery is successful.
+    formMethods.reset(getDefaultValues(runtimeConfigQuery.data.configEntries ?? []));
+  }
+
+  const runtimeConfigEntries = runtimeConfigQuery.data.configEntries ?? [];
+  const isDbScopedEnabled =
+    runtimeConfigEntries.find(
+      (config: any) => config.key === RuntimeConfigKey.XCLUSTER_DB_SCOPED_CREATION_FEATURE_FLAG
+    )?.value ?? false;
+
   const onSubmit: SubmitHandler<CreateDrConfigFormValues> = async (formValues) => {
+    // When the user changes target universe, the old table selection is no longer valid.
+    const isTableSelectionInvalidated =
+      formValues.targetUniverse.value.universeUUID !== committedTargetUniverseUuid;
     switch (currentFormStep) {
       case FormStep.SELECT_TARGET_UNIVERSE:
-        if (formValues.targetUniverse.value.universeUUID !== committedTargetUniverseUUID) {
-          // Reset table selection when changing target universe.
-          // This is because the current table selection may be invalid for
-          // the new target universe.
+        if (isTableSelectionInvalidated) {
           resetTableSelection();
-          setCommittedTargetUniverseUUID(formValues.targetUniverse.value.universeUUID);
+        }
+        if (formValues.targetUniverse.value.universeUUID !== committedTargetUniverseUuid) {
+          setCommittedTargetUniverseUuid(formValues.targetUniverse.value.universeUUID);
         }
         setCurrentFormStep(FormStep.SELECT_TABLES);
         return;
@@ -266,16 +315,26 @@ export const CreateConfigModal = ({
         }
         return;
       case FormStep.CONFIGURE_BOOTSTRAP:
+        setCurrentFormStep(FormStep.CONFIGURE_PITR);
+        return;
+      case FormStep.CONFIGURE_PITR:
         setCurrentFormStep(FormStep.CONFIRM_ALERT);
         return;
       case FormStep.CONFIRM_ALERT:
-        return drConfigMutation.mutateAsync(formValues);
+        return drConfigMutation.mutateAsync({
+          formValues,
+          isDbScoped: isDbScopedEnabled
+        });
       default:
         return assertUnreachableCase(currentFormStep);
     }
   };
 
   const handleBackNavigation = () => {
+    // We can clear errors here because prior steps have already been validated
+    // and future steps will be revalidated when the user clicks the next page button.
+    formMethods.clearErrors();
+
     switch (currentFormStep) {
       case FIRST_FORM_STEP:
         return;
@@ -285,8 +344,11 @@ export const CreateConfigModal = ({
       case FormStep.CONFIGURE_BOOTSTRAP:
         setCurrentFormStep(FormStep.SELECT_TABLES);
         return;
-      case FormStep.CONFIRM_ALERT:
+      case FormStep.CONFIGURE_PITR:
         setCurrentFormStep(FormStep.CONFIGURE_BOOTSTRAP);
+        return;
+      case FormStep.CONFIRM_ALERT:
+        setCurrentFormStep(FormStep.CONFIGURE_PITR);
         return;
       default:
         assertUnreachableCase(currentFormStep);
@@ -301,6 +363,8 @@ export const CreateConfigModal = ({
         return t('step.selectDatabases.submitButton');
       case FormStep.CONFIGURE_BOOTSTRAP:
         return t('step.configureBootstrap.submitButton');
+      case FormStep.CONFIGURE_PITR:
+        return t('step.configurePitr.submitButton');
       case FormStep.CONFIRM_ALERT:
         return t('step.confirmAlert.submitButton');
       default:
@@ -308,46 +372,23 @@ export const CreateConfigModal = ({
     }
   };
 
-  const setSelectedNamespaceUuids = (namespaces: string[]) => {
-    // Clear any existing errors.
-    // The new table/namespace selection will need to be (re)validated.
-    setTableSelectionError(undefined);
-    formMethods.clearErrors('namespaceUuids');
-
-    // We will run any required validation on selected namespaces & tables all at once when the
-    // user clicks on the 'Validate Selection' button.
-    formMethods.setValue('namespaceUuids', namespaces, { shouldValidate: false });
-  };
-  const setSelectedTableUuids = (tableUuids: string[]) => {
-    // Clear any existing errors.
-    // The new table/namespace selection will need to be (re)validated.
-    setTableSelectionError(undefined);
-    formMethods.clearErrors('tableUuids');
-
-    // We will run any required validation on selected namespaces & tables all at once when the
-    // user clicks on the 'Validate Selection' button.
-    formMethods.setValue('tableUuids', tableUuids, { shouldValidate: false });
-  };
-
+  const xClusterConfigType = isDbScopedEnabled
+    ? XClusterConfigType.DB_SCOPED
+    : XClusterConfigType.TXN;
   const sourceUniverse = sourceUniverseQuery.data;
   const submitLabel = getFormSubmitLabel(currentFormStep);
   const selectedTableUuids = formMethods.watch('tableUuids');
   const selectedNamespaceUuids = formMethods.watch('namespaceUuids');
   const targetUniverseUuid = formMethods.watch('targetUniverse.value.universeUUID');
-  const isConfigureActionFrozen =
-    currentFormStep === FormStep.CONFIRM_ALERT &&
-    isActionFrozen(allowedTasks, UNIVERSE_TASKS.CONFIGURE_DR);
-  const isFormDisabled = formMethods.formState.isSubmitting || isConfigureActionFrozen;
+  const isFormDisabled = formMethods.formState.isSubmitting;
 
   return (
     <YBModal
       title={modalTitle}
       submitLabel={submitLabel}
-      cancelLabel={cancelLabel}
       buttonProps={{ primary: { disabled: isFormDisabled } }}
       onSubmit={formMethods.handleSubmit(onSubmit)}
       submitTestId={`${MODAL_NAME}-SubmitButton`}
-      cancelTestId={`${MODAL_NAME}-CancelButton`}
       isSubmitting={formMethods.formState.isSubmitting}
       maxWidth="xl"
       size={currentFormStep === FormStep.SELECT_TABLES ? 'fit' : 'md'}
@@ -368,24 +409,54 @@ export const CreateConfigModal = ({
           sourceUniverse={sourceUniverse}
           tableSelectProps={{
             configAction: XClusterConfigAction.CREATE,
-            handleTransactionalConfigCheckboxClick: () => {},
             isDrInterface: true,
-            isFixedTableType: false,
-            isTransactionalConfig: true,
             initialNamespaceUuids: [],
             selectedNamespaceUuids: selectedNamespaceUuids,
             selectedTableUuids: selectedTableUuids,
             selectionError: tableSelectionError,
-            selectionWarning: undefined,
+            selectionWarning: null,
             setSelectedNamespaceUuids: setSelectedNamespaceUuids,
             setSelectedTableUuids: setSelectedTableUuids,
-            setTableType: () => {}, // DR is only available for YSQL
             sourceUniverseUuid: sourceUniverseUuid,
             tableType: TableType.PGSQL_TABLE_TYPE,
+            xClusterConfigType: xClusterConfigType,
             targetUniverseUuid: targetUniverseUuid
           }}
         />
       </FormProvider>
     </YBModal>
   );
+};
+
+const getDefaultValues = (runtimeConfigEntries: RunTimeConfigEntry[]) => {
+  const runtimeConfigDefaultPitrRetentionPeriod = parseDurationToSeconds(
+    runtimeConfigEntries.find(
+      (config: any) => config.key === RuntimeConfigKey.XCLUSTER_TRANSACTIONAL_PITR_RETENTION_PERIOD
+    )?.value ?? '',
+    { noThrow: true }
+  );
+  const defaultPitrRetentionPeriod =
+    isNaN(runtimeConfigDefaultPitrRetentionPeriod) || runtimeConfigDefaultPitrRetentionPeriod < 0
+      ? XCLUSTER_TRANSACTIONAL_PITR_RETENTION_PERIOD_SECONDS_FALLBACK
+      : runtimeConfigDefaultPitrRetentionPeriod;
+  const {
+    value: pitrRetentionPeriodValue,
+    unit: durationUnit
+  } = convertSecondsToLargestDurationUnit(defaultPitrRetentionPeriod, { noThrow: true });
+  const pitrRetentionPeriodUnit = PITR_RETENTION_PERIOD_UNIT_OPTIONS.find(
+    (option) => option.value === durationUnit
+  );
+
+  return {
+    configName: `dr-config-${generateUniqueName()}`,
+    namespaceUuids: [],
+    tableUuids: [],
+    // Fall back to seconds if we can find a matching duration unit.
+    pitrRetentionPeriodValue: pitrRetentionPeriodUnit
+      ? pitrRetentionPeriodValue
+      : defaultPitrRetentionPeriod,
+    pitrRetentionPeriodUnit: pitrRetentionPeriodUnit
+      ? pitrRetentionPeriodUnit
+      : PITR_RETENTION_PERIOD_UNIT_OPTIONS.find((option) => option.value === DurationUnit.SECOND)
+  };
 };

@@ -44,11 +44,15 @@ import org.yb.rpc.RpcHeader;
 @SuppressWarnings("serial")
 public class MasterErrorException extends YBServerException {
 
+  public final MasterTypes.MasterErrorPB error;
+
   MasterErrorException(String serverUuid, RpcHeader.ErrorStatusPB errorStatus) {
     super(serverUuid, errorStatus);
+    this.error = null;
   }
 
   MasterErrorException(String serverUuid, MasterTypes.MasterErrorPB error) {
     super(serverUuid, error.getStatus());
+    this.error = error;
   }
 }

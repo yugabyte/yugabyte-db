@@ -14,3 +14,4 @@ pg_max_mem_mb: 0
 install_retry_count: 5
 vm_max_map_count: 262144
 yb_metrics_dir: "{{ yb_home_dir }}/metrics"
+bin_path: "/usr/local/bin"

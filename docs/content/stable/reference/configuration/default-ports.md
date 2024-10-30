@@ -19,7 +19,6 @@ Application clients connect to the following addresses:
 | ------- | ----- | ------- |------------------------------------------|
 | YSQL | 5433  | YB-TServer | [--pgsql_proxy_bind_address 0.0.0.0:5433](../yb-tserver/#pgsql-proxy-bind-address) |
 | YCQL | 9042  | YB-TServer | [--cql_proxy_bind_address 0.0.0.0:9042](../yb-tserver/#cql-proxy-bind-address)   |
-| YEDIS | 6379  | YB-TServer | [--redis_proxy_bind_address 0.0.0.0:6379](../yb-tserver/#redis-proxy-bind-address) |
 
 ## Internode RPC communication
 
@@ -39,7 +38,9 @@ Before installing YugabyteDB or YugabyteDB Anywhere, or upgrading the YugabyteDB
 | Service       | Port  |
 | ------------- | ----- |
 | YB Controller | 18018 |
-| [Node agent](../../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/#install-node-agent) | 9070 |
+| [Node agent](../../../yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/#install-node-agent) | 9070 |
+
+For more information on networking in YugabyteDB Anywhere, refer to [Networking](../../../yugabyte-platform/prepare/networking/).
 
 ## Admin web server
 
@@ -60,16 +61,37 @@ For clusters started using [yugabyted](../yugabyted/), the YugabyteDB UI can be 
 
 The following common ports are required for firewall rules:
 
-| Service     | Port
+| Service     | Port |
 | ------- | ------------------------- |
 | SSH    | 22 |
 | HTTP for YugabyteDB Anywhere  | 80 |
 | HTTP for YugabyteDB Anywhere (alternate) | 8080 |
 | HTTPS for YugabyteDB Anywhere  | 443 |
 | HTTP for Replicated | 8800 |
-| SSH  **   | 54422 |
+| Custom SSH port for universe nodes | 54422 |
 
-** 54422 is a custom SSH port for universe nodes.
+### Firewall changes for CIS hardened images
+
+Running YugabyteDB on CIS hardened RHEL 8 or 9 requires the following changes to the firewall:
+
+```sh
+#!/bin/bash
+
+sudo dnf repolist
+sudo dnf config-manager --set-enabled extras
+sudo dnf install -y firewalld
+sudo systemctl start firewalld
+
+ports=(5433 9042 7100 9100 18018 9070 7000 9000 12000 13000 15433)
+
+for port in "${ports[@]}"; do
+   sudo firewall-cmd --zone=public --add-port=${port}/tcp --permanent
+done
+
+sudo firewall-cmd --reload
+```
+
+If you have customized any port settings, be sure to replace the port numbers as appropriate.
 
 ## Prometheus monitoring
 
@@ -102,8 +124,7 @@ Use the following targets to monitor YB-TServer and YB-Master server metrics:
 
 Use the following YB-TServer targets for the various API metrics:
 
-| API     | Target
+| API     | Target |
 | ------- | ------------------------- |
 | YSQL    | `<yb-tserver-address>:13000` |
 | YCQL    | `<yb-tserver-address>:12000` |
-| YEDIS   | `<yb-tserver-address>:11000` |

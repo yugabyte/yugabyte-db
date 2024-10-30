@@ -54,8 +54,9 @@ func authWriteConfigFile(r ybaclient.SessionInfo) {
 	}
 
 	sessionCtx := formatter.Context{
-		Output: os.Stdout,
-		Format: session.NewSessionFormat(viper.GetString("output")),
+		Command: "auth",
+		Output:  os.Stdout,
+		Format:  session.NewSessionFormat(viper.GetString("output")),
 	}
 
 	session.Write(sessionCtx, []ybaclient.SessionInfo{r})
@@ -86,10 +87,8 @@ func authUtil(url *url.URL, apiToken string) {
 	}
 	logrus.Debugf("Fetched Customer UUID without errors.\n")
 
-	
-		viper.GetViper().Set("apiToken", apiToken)
-		r.SetApiToken(apiToken)
-	
+	viper.GetViper().Set("apiToken", apiToken)
+	r.SetApiToken(apiToken)
 
 	authWriteConfigFile(r)
 }

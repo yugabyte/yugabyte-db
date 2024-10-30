@@ -18,12 +18,12 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "yb/common/pg_types.h"
 #include "yb/util/condition_variable.h"
 #include "yb/util/locks.h"
 #include "yb/util/mutex.h"
 
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
 
 class PgSequenceCache {
  public:
@@ -60,13 +60,12 @@ class PgSequenceCache {
   // Wait on the cv until the id is available and create an entry for this id if one didn't exist.
   // This function returns the entry if successfully waited, or a time out status if the thread
   // timed out while waiting.
-  Result<std::shared_ptr<Entry>> GetWhenAvailable(int64_t sequence_id, const MonoTime& deadline)
-      EXCLUDES(lock_);
+  Result<std::shared_ptr<Entry>> GetWhenAvailable(
+      const PgObjectId& sequence_id, const MonoTime& deadline) EXCLUDES(lock_);
 
  private:
   simple_spinlock lock_;
-  std::unordered_map<int64_t, std::shared_ptr<Entry>> cache_ GUARDED_BY(lock_);
+  std::unordered_map<PgObjectId, std::shared_ptr<Entry>, PgObjectIdHash> cache_ GUARDED_BY(lock_);
 };
 
-}  // namespace tserver
-}  // namespace yb
+}  // namespace yb::tserver

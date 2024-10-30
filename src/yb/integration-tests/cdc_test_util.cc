@@ -36,6 +36,8 @@
 #include "yb/cdc/cdc_service.h"
 #include "yb/dockv/doc_key.h"
 
+DECLARE_int32(update_min_cdc_indices_interval_secs);
+
 namespace yb {
 namespace cdc {
 
@@ -100,7 +102,8 @@ void WaitUntilWalRetentionSecs(std::function<int()> get_wal_retention_secs,
                 << " for table " << table_name;
       return false;
     }
-  }, MonoDelta::FromSeconds(20), "Verify wal retention set on Producer."));
+  }, MonoDelta::FromSeconds(FLAGS_update_min_cdc_indices_interval_secs * 2),
+      "Verify wal retention set on Producer."));
 }
 
 void VerifyWalRetentionTime(MiniCluster* cluster,
@@ -114,9 +117,6 @@ void VerifyWalRetentionTime(MiniCluster* cluster,
       if (table_name.substr(0, table_name_start.length()) == table_name_start) {
         auto table_id = peer->tablet_metadata()->table_id();
         WaitUntilWalRetentionSecs([&peer]() { return peer->log()->wal_retention_secs(); },
-            expected_wal_retention_secs, table_name);
-        WaitUntilWalRetentionSecs(
-            [&peer]() { return peer->tablet_metadata()->wal_retention_secs(); },
             expected_wal_retention_secs, table_name);
         ntablets_checked++;
       }

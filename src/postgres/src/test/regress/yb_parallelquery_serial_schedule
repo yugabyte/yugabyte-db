@@ -6,6 +6,7 @@
 # Dependencies for yb_select_parallel.
 test: yb_dep_tenk1
 test: yb_dep_tenk2
+test: yb_dep_int4_tbl
 
 test: yb_parallel_colocated
 test: yb_select_parallel

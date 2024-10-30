@@ -98,6 +98,10 @@ public class TestSecureCluster extends BasePgSQLTest {
                    "reload_certificates");
     }
     connection.close();
+    if (isTestRunningWithConnectionManager()) {
+      // In this test single control connection is created.
+      closeControlConnOnReloadConfig(1);
+    }
     connection = getConnectionBuilder().connect();
     try (Statement stmt = connection.createStatement()) {
       stmt.executeUpdate("INSERT INTO test VALUES(1, 1, 1), (2, 2, 2)");

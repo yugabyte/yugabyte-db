@@ -40,12 +40,12 @@ import UniverseNewView from './pages/UniverseNewView';
 import { DataCenterConfiguration } from './pages/DataCenterConfiguration';
 import { SlotDetail } from './redesign/features/universe/universe-tabs/replication-slots/components/SlotDetail';
 import { SecondaryDashboard } from './pages/SecondaryDashboard';
-import { Troubleshoot } from './pages/Troubleshoot';
 import {
   clearRbacCreds,
   getRbacEnabledVal,
   isRbacEnabled
 } from './redesign/features/rbac/common/RbacUtils';
+import { DrPanel } from './pages/DrPanel';
 
 /**
  * Redirects to base url if no queryParmas is set else redirects to path set in queryParam
@@ -263,6 +263,7 @@ export default (store) => {
           {/* <Route path="/universes/:uuid/edit" component={UniverseDetail}> */}
           <Route path="/universes/:uuid/tables/:tableUUID" component={TableDetail} />
           <Route path="/universes/:uuid/replication/:replicationUUID" component={Replication} />
+          <Route path="/universes/:uuid/recovery/:drConfigUuid" component={DrPanel} />
           <Route path="/universes/:uuid/:mode/:type" component={UniverseNewView} />
           {/* </Route> */}
           <Route path="/universes/:uuid/:tab" component={UniverseDetail} />
@@ -285,9 +286,6 @@ export default (store) => {
           <Route path=":tab" component={DataCenterConfiguration} />
           <Route path=":tab/:section" component={DataCenterConfiguration} />
           <Route path=":tab/:section/:uuid" component={DataCenterConfiguration} />
-        </Route>
-        <Route path="/troubleshoot" component={Troubleshoot}>
-          <Route path=":tab" component={Troubleshoot} />
         </Route>
         <Route path="/nodeagent" component={NodeAgent} />
         <Route path="/alerts" component={Alerts} />

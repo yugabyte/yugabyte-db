@@ -7,6 +7,7 @@ import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
 import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
+import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.XClusterConfig;
 import java.util.Objects;
 import javax.inject.Inject;
@@ -65,6 +66,7 @@ public class SetDrStates extends XClusterConfigTaskBase {
       throw new IllegalArgumentException(
           "SetDrStates subtask can only run for xCluster configs that are used for DR");
     }
+    DrConfig drConfig = xClusterConfig.getDrConfig();
 
     // The parameter keyspacePending is not added intentionally because when it is null, the task
     // will set keyspacePending in the xCluster config object to null.
@@ -75,13 +77,14 @@ public class SetDrStates extends XClusterConfigTaskBase {
     }
 
     try {
+      boolean changeInXCluster = false;
       if (Objects.nonNull(taskParams().drConfigState)) {
         log.info(
             "Setting the dr config state of xCluster config {} to {} from {}",
             xClusterConfig.getUuid(),
             taskParams().drConfigState,
-            xClusterConfig.getDrConfig().getState());
-        xClusterConfig.getDrConfig().setState(taskParams().drConfigState);
+            drConfig.getState());
+        drConfig.setState(taskParams().drConfigState);
       }
       if (Objects.nonNull(taskParams().sourceUniverseState)) {
         log.info(
@@ -89,6 +92,7 @@ public class SetDrStates extends XClusterConfigTaskBase {
             xClusterConfig.getUuid(),
             taskParams().sourceUniverseState,
             xClusterConfig.getSourceUniverseState());
+        changeInXCluster = true;
         xClusterConfig.setSourceUniverseState(taskParams().sourceUniverseState);
       }
       if (Objects.nonNull(taskParams().targetUniverseState)) {
@@ -97,17 +101,23 @@ public class SetDrStates extends XClusterConfigTaskBase {
             xClusterConfig.getUuid(),
             taskParams().targetUniverseState,
             xClusterConfig.getTargetUniverseState());
+        changeInXCluster = true;
         xClusterConfig.setTargetUniverseState(taskParams().targetUniverseState);
       }
+      if (Objects.nonNull(taskParams().keyspacePending)) {
+        log.info(
+            "Setting pending keyspace of xCluster config {} to {} from {}",
+            xClusterConfig.getUuid(),
+            taskParams().keyspacePending,
+            xClusterConfig.getKeyspacePending());
+        changeInXCluster = true;
+        xClusterConfig.setKeyspacePending(taskParams().keyspacePending);
+      }
+      if (changeInXCluster) {
+        xClusterConfig.update();
+      }
 
-      log.info(
-          "Setting pending keyspace of xCluster config {} to {} from {}",
-          xClusterConfig.getUuid(),
-          taskParams().keyspacePending,
-          xClusterConfig.getKeyspacePending());
-      xClusterConfig.setKeyspacePending(taskParams().keyspacePending);
-
-      xClusterConfig.update();
+      drConfig.update();
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);

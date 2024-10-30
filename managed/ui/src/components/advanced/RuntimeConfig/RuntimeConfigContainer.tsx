@@ -4,6 +4,8 @@ import { toast } from 'react-toastify';
 import {
   fetchRunTimeConfigs,
   fetchRunTimeConfigsResponse,
+  getRunTimeConfigKey,
+  getRunTimeConfigKeyResponse,
   setRunTimeConfig,
   setRunTimeConfigResponse,
   deleteRunTimeConfig,
@@ -26,7 +28,7 @@ const mapDispatchToProps = (dispatch: any) => {
       value: string,
       scope: string = DEFAULT_RUNTIME_GLOBAL_SCOPE
     ) => {
-      dispatch(
+      return dispatch(
         setRunTimeConfig({
           key: key,
           value: value,
@@ -57,6 +59,14 @@ const mapDispatchToProps = (dispatch: any) => {
           );
         }
       });
+    },
+    getRuntimeConfig: (key: string, scope: string = DEFAULT_RUNTIME_GLOBAL_SCOPE) => {
+      return dispatch(
+        getRunTimeConfigKey({
+          key: key,
+          scope
+        })
+      ).then((response: any) => dispatch(getRunTimeConfigKeyResponse(response.payload)));
     },
     deleteRunTimeConfig: (key: string, scope: string = DEFAULT_RUNTIME_GLOBAL_SCOPE) => {
       dispatch(

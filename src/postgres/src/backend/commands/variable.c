@@ -4,7 +4,7 @@
  *		Routines for handling specialized SET variables.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -24,15 +24,16 @@
 #include "access/xlog.h"
 #include "catalog/pg_authid.h"
 #include "commands/variable.h"
+#include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
-#include "utils/syscache.h"
 #include "utils/snapmgr.h"
+#include "utils/syscache.h"
 #include "utils/timestamp.h"
 #include "utils/varlena.h"
-#include "mb/pg_wchar.h"
 
+/* Yugabyte includes */
 #include "pg_yb_utils.h"
 
 /*
@@ -490,7 +491,7 @@ check_transaction_read_only(bool *newval, void **extra, GucSource source)
 	if (*newval == false && XactReadOnly && IsTransactionState() && !InitializingParallelWorker)
 	{
 		/* Can't go to r/w mode inside a r/o transaction */
-		if (IsSubTransaction())
+		if (IsSubTransaction() && !YbHasOnlyInternalRcSubTransactions())
 		{
 			GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
 			GUC_check_errmsg("cannot set transaction read-write mode inside a read-only transaction");
@@ -534,39 +535,19 @@ assign_transaction_read_only(bool newval, void *extra)
  * As in check_transaction_read_only, allow it if not inside a transaction.
  */
 bool
-check_XactIsoLevel(char **newval, void **extra, GucSource source)
+check_XactIsoLevel(int *newval, void **extra, GucSource source)
 {
-	int			newXactIsoLevel;
+	int			newXactIsoLevel = *newval;
 
-	if (strcmp(*newval, "serializable") == 0)
+	if (source >= PGC_S_INTERACTIVE &&
+		newXactIsoLevel == XACT_READ_COMMITTED &&
+		!YBIsReadCommittedSupported())
 	{
-		newXactIsoLevel = XACT_SERIALIZABLE;
+		ereport(WARNING,
+				(errmsg("read committed isolation is disabled"),
+				 errdetail("Set yb_enable_read_committed_isolation to enable. When disabled, read "
+						 "committed falls back to using repeatable read isolation.")));
 	}
-	else if (strcmp(*newval, "repeatable read") == 0)
-	{
-		newXactIsoLevel = XACT_REPEATABLE_READ;
-	}
-	else if (strcmp(*newval, "read committed") == 0)
-	{
-		newXactIsoLevel = XACT_READ_COMMITTED;
-		if (!YBIsReadCommittedSupported())
-		{
-			ereport(WARNING,
-					(errmsg("read committed isolation is disabled"),
-					 errdetail("Set yb_enable_read_committed_isolation to enable. When disabled, read "
-							 "committed falls back to using repeatable read isolation.")));
-		}
-	}
-	else if (strcmp(*newval, "read uncommitted") == 0)
-	{
-		newXactIsoLevel = XACT_READ_UNCOMMITTED;
-	}
-	else if (strcmp(*newval, "default") == 0)
-	{
-		newXactIsoLevel = DefaultXactIsoLevel;
-	}
-	else
-		return false;
 
 	if (newXactIsoLevel != XactIsoLevel && IsTransactionState())
 	{
@@ -576,8 +557,22 @@ check_XactIsoLevel(char **newval, void **extra, GucSource source)
 			GUC_check_errmsg("SET TRANSACTION ISOLATION LEVEL must be called before any query");
 			return false;
 		}
+
 		/* We ignore a subtransaction setting it to the existing value. */
-		if (IsSubTransaction())
+		/*
+		 * YB: For READ COMMITTED isolation in YB, IsSubTransaction() is true even if SET TRANSACTION
+		 * ISOLATION LEVEL is called before any other query because of the fact that every statement
+		 * starts a new sub transaction in YSQL's READ COMMITTED isolation level. Each statement is
+		 * executed after registering an internal savepoint so that if the statement faces serialization
+		 * or read restart errors, the statement can be retried after cleaning up any work it has done
+		 * (the cleanup is done by rolling back to the internal savepoint). But we still need to block
+		 * SET TRANSACTION ISOLATION LEVEL if a non-internal subtransaction has been started by a user
+		 * savepoint.
+		 *
+		 * To acheive this, we don't error out if there are only sub transactions which have
+		 * ybIsInternalRcSubTransaction=true.
+		 */
+		if (IsSubTransaction() && !YbHasOnlyInternalRcSubTransactions())
 		{
 			GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
 			GUC_check_errmsg("SET TRANSACTION ISOLATION LEVEL must not be called in a subtransaction");
@@ -593,18 +588,13 @@ check_XactIsoLevel(char **newval, void **extra, GucSource source)
 		}
 	}
 
-	*extra = malloc(sizeof(int));
-	if (!*extra)
-		return false;
-	*((int *) *extra) = newXactIsoLevel;
-
 	return true;
 }
 
 void
-assign_XactIsoLevel(const char *newval, void *extra)
+yb_assign_XactIsoLevel(int newval, void *extra)
 {
-	XactIsoLevel = *((int *) extra);
+	XactIsoLevel = newval;
 	if (YBTransactionsEnabled())
 	{
 		HandleYBStatus(
@@ -612,29 +602,11 @@ assign_XactIsoLevel(const char *newval, void *extra)
 	}
 }
 
-const char *
-show_XactIsoLevel(void)
-{
-	/* We need this because we don't want to show "default". */
-	switch (XactIsoLevel)
-	{
-		case XACT_READ_UNCOMMITTED:
-			return "read uncommitted";
-		case XACT_READ_COMMITTED:
-			return "read committed";
-		case XACT_REPEATABLE_READ:
-			return "repeatable read";
-		case XACT_SERIALIZABLE:
-			return "serializable";
-		default:
-			return "bogus";
-	}
-}
-
 bool
 check_yb_default_xact_isolation(int *newval, void **extra, GucSource source)
 {
-	if ((*newval == XACT_READ_COMMITTED) && !YBIsReadCommittedSupported())
+	if (source >= PGC_S_INTERACTIVE && (*newval == XACT_READ_COMMITTED) &&
+		!YBIsReadCommittedSupported())
 	{
 		ereport(WARNING,
 					(errmsg("read committed isolation is disabled"),
@@ -678,18 +650,97 @@ bool is_staleness_acceptable(int32_t staleness_ms) {
 
 bool
 check_follower_reads(bool *newval, void **extra, GucSource source) {
-	if (*newval == false) {
-		return true;
+	if (YBFollowerReadsBehaviorBefore20482())
+	{
+		if (*newval == false) {
+			return true;
+		}
+		return is_staleness_acceptable(yb_follower_read_staleness_ms);
 	}
-	return is_staleness_acceptable(yb_follower_read_staleness_ms);
+
+	if (IsTransactionState())
+	{
+		if (FirstSnapshotSet)
+		{
+			GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
+			GUC_check_errmsg("SET yb_read_from_followers must be called before any query");
+			return false;
+		}
+		if (IsSubTransaction() && !YbHasOnlyInternalRcSubTransactions())
+		{
+			GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
+			GUC_check_errmsg("SET yb_read_from_followers must not be called in a subtransaction");
+			return false;
+		}
+		/* Can't enable follower reads while recovery is still active */
+		if (RecoveryInProgress())
+		{
+			GUC_check_errcode(ERRCODE_FEATURE_NOT_SUPPORTED);
+			GUC_check_errmsg("cannot set yb_read_from_followers during recovery");
+			return false;
+		}
+	}
+	return true;
+}
+
+void
+assign_follower_reads(bool newval, void *extra)
+{
+	if (YBFollowerReadsBehaviorBefore20482())
+	{
+		return;
+	}
+
+	yb_read_from_followers = newval;
+	if (YBTransactionsEnabled())
+	{
+		HandleYBStatus(YBCPgUpdateFollowerReadsConfig(
+			YBReadFromFollowersEnabled(), YBFollowerReadStalenessMs()));
+	}
 }
 
 bool
 check_follower_read_staleness_ms(int32_t *newval, void **extra, GucSource source) {
-	if (!YBReadFromFollowersEnabled()) {
-		return true;
+	if (YBFollowerReadsBehaviorBefore20482())
+	{
+		if (!YBReadFromFollowersEnabled()) {
+			return true;
+		}
+		return is_staleness_acceptable(*newval);
+	}
+	if (YBTransactionsEnabled())
+	{
+		if (FirstSnapshotSet)
+		{
+			GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
+			GUC_check_errmsg("SET yb_follower_read_staleness_ms must be called before any query");
+			return false;
+		}
+		if (IsSubTransaction() && !YbHasOnlyInternalRcSubTransactions())
+		{
+			GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
+			GUC_check_errmsg("SET yb_follower_read_staleness_ms must not be called in a subtransaction");
+			return false;
+		}
+		/* Can't change follower read staleness while recovery is still active */
+		if (RecoveryInProgress())
+		{
+			GUC_check_errcode(ERRCODE_FEATURE_NOT_SUPPORTED);
+			GUC_check_errmsg("cannot set yb_follower_read_staleness_ms during recovery");
+			return false;
+		}
 	}
 	return is_staleness_acceptable(*newval);
+}
+
+void assign_follower_read_staleness_ms(int32_t newval, void *extra)
+{
+	yb_follower_read_staleness_ms = newval;
+	if (YBTransactionsEnabled() && !YBFollowerReadsBehaviorBefore20482())
+	{
+		HandleYBStatus(YBCPgUpdateFollowerReadsConfig(
+			YBReadFromFollowersEnabled(), YBFollowerReadStalenessMs()));
+	}
 }
 
 /*
@@ -699,7 +750,7 @@ check_follower_read_staleness_ms(int32_t *newval, void **extra, GucSource source
 bool
 check_transaction_deferrable(bool *newval, void **extra, GucSource source)
 {
-	if (IsSubTransaction())
+	if (IsSubTransaction() && !YbHasOnlyInternalRcSubTransactions())
 	{
 		GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
 		GUC_check_errmsg("SET TRANSACTION [NOT] DEFERRABLE cannot be called within a subtransaction");
@@ -892,6 +943,7 @@ bool
 check_session_authorization(char **newval, void **extra, GucSource source)
 {
 	HeapTuple	roleTup;
+	Form_pg_authid roleform;
 	Oid			roleid;
 	bool		is_superuser;
 	role_auth_extra *myextra;
@@ -929,8 +981,9 @@ check_session_authorization(char **newval, void **extra, GucSource source)
 		return false;
 	}
 
-	roleid = HeapTupleGetOid(roleTup);
-	is_superuser = ((Form_pg_authid) GETSTRUCT(roleTup))->rolsuper;
+	roleform = (Form_pg_authid) GETSTRUCT(roleTup);
+	roleid = roleform->oid;
+	is_superuser = roleform->rolsuper;
 
 	ReleaseSysCache(roleTup);
 
@@ -974,6 +1027,7 @@ check_role(char **newval, void **extra, GucSource source)
 	Oid			roleid;
 	bool		is_superuser;
 	role_auth_extra *myextra;
+	Form_pg_authid roleform;
 
 	if (strcmp(*newval, "none") == 0)
 	{
@@ -1014,8 +1068,9 @@ check_role(char **newval, void **extra, GucSource source)
 			return false;
 		}
 
-		roleid = HeapTupleGetOid(roleTup);
-		is_superuser = ((Form_pg_authid) GETSTRUCT(roleTup))->rolsuper;
+		roleform = (Form_pg_authid) GETSTRUCT(roleTup);
+		roleid = roleform->oid;
+		is_superuser = roleform->rolsuper;
 
 		ReleaseSysCache(roleTup);
 

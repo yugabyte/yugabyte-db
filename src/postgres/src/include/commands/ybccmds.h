@@ -37,8 +37,8 @@
 /*  Database Functions -------------------------------------------------------------------------- */
 
 extern void YBCCreateDatabase(
-	Oid dboid, const char *dbname, Oid src_dboid, const char *src_dbname, Oid next_oid,
-	bool colocated, bool *retry_on_oid_collision, int64 clone_time);
+	Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid,
+	bool colocated, bool *retry_on_oid_collision, YbCloneInfo *yb_clone_info);
 
 extern void YBCDropDatabase(Oid dboid, const char *dbname);
 
@@ -67,7 +67,7 @@ extern void YBCCreateTable(CreateStmt *stmt,
 
 extern void YBCDropTable(Relation rel);
 
-extern void YbTruncate(Relation rel);
+extern void YbUnsafeTruncate(Relation rel);
 
 extern void YBCCreateIndex(const char *indexName,
 						   IndexInfo *indexInfo,
@@ -97,18 +97,20 @@ extern List* YBCPrepareAlterTable(List** subcmds,
 										   int subcmds_size,
 										   Oid relationId,
 										   YBCPgStatement *rollbackHandle,
-										   bool isPartitionOfAlteredTable,
-										   int rewriteState);
+										   bool isPartitionOfAlteredTable);
 
 extern void YBCExecAlterTable(YBCPgStatement handle, Oid relationId);
 
 extern void YBCRename(RenameStmt* stmt, Oid relationId);
 
+extern void YBCAlterTableNamespace(Form_pg_class classForm, Oid relationId);
+
 extern void YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest);
 
 extern TupleDesc YbBackfillIndexResultDesc(BackfillIndexStmt *stmt);
 
-extern void YbDropAndRecreateIndex(Oid indexOid, Oid relId, Relation oldRel, AttrNumber *newToOldAttmap);
+extern void YbDropAndRecreateIndex(Oid indexOid, Oid relId, Relation oldRel,
+								   AttrMap *newToOldAttmap);
 
 extern void YBCDropSequence(Oid sequence_oid);
 
@@ -143,9 +145,12 @@ extern void YBCUpdatePublicationTableList(const char *stream_id,
 extern void YBCDestroyVirtualWalForCDC();
 
 extern void YBCGetCDCConsistentChanges(const char *stream_id,
-									   YBCPgChangeRecordBatch **record_batch);
+									   YBCPgChangeRecordBatch **record_batch,
+									   YBCTypeEntityProvider type_entity_provider);
 
 extern void YBCUpdateAndPersistLSN(const char *stream_id,
 								   XLogRecPtr restart_lsn_hint,
 								   XLogRecPtr confirmed_flush,
 								   YBCPgXLogRecPtr *restart_lsn);
+
+extern void YBCDropColumn(Relation rel, AttrNumber attnum);

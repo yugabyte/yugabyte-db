@@ -10,13 +10,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/gutil/walltime.h"
 #include "yb/master/master_call_home.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
-#include "yb/util/version_info.h"
 
 using std::string;
 using std::vector;
@@ -33,20 +32,12 @@ class BasicCollector : public MasterCollector {
   using MasterCollector::MasterCollector;
 
   void Collect(CollectionLevel collection_level) override {
+    AppendPairToJson("server_type", "master", &json_);
+
     auto config = master()->catalog_manager()->GetClusterConfig();
     if (config.ok()) {
       AppendPairToJson("cluster_uuid", config->cluster_uuid(), &json_);
     }
-    AppendPairToJson("node_uuid", master()->fs_manager()->uuid(), &json_);
-    AppendPairToJson("server_type", "master", &json_);
-
-    // Only collect hostname and username if collection level is medium or high.
-    if (collection_level != CollectionLevel::LOW) {
-      AppendPairToJson("hostname", master()->get_hostname(), &json_);
-      AppendPairToJson("current_user", GetCurrentUser(), &json_);
-    }
-    json_ += ",\"version_info\":" + VersionInfo::GetAllVersionInfoJson();
-    AppendPairToJson("timestamp", std::to_string(WallTime_Now()), &json_);
   }
 
   string collector_name() override { return "BasicCollector"; }
@@ -107,14 +98,7 @@ class TServersInfoCollector : public MasterCollector {
   using MasterCollector::MasterCollector;
 
   void Collect(CollectionLevel collection_level) override {
-    vector<std::shared_ptr<TSDescriptor>> descs;
-    master()->ts_manager()->GetAllDescriptors(&descs);
-    if (collection_level == CollectionLevel::LOW) {
-      json_ = Substitute("\"tservers\":$0", descs.size());
-    } else {
-      // TODO(hector): Add more details.
-      json_ = Substitute("\"tservers\":$0", descs.size());
-    }
+    json_ = Substitute("\"tservers\":$0", master()->ts_manager()->NumDescriptors());
   }
 
   string collector_name() override { return "TServersInfoCollector"; }

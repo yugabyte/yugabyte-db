@@ -1,0 +1,23 @@
+title: K8SNodeResourceSpec
+description: |
+  K8SNodeResourceSpec
+
+  Custom k8s resource spec is used to specify custom cpu and memory requests/limits for tserver and master pods of a cluster. Specified as part of ClusterCustomInstanceSpec.
+type: object
+properties:
+  cpu_core_count:
+    description: Number of CPU cores for tserver/master pods
+    type: number
+    format: double
+    example: 2
+    default: 2
+    maximum: 100
+    minimum: 0.5
+  memory_gib:
+    description: Memory in GiB for tserver/master pods
+    type: number
+    format: double
+    example: 4
+    default: 4
+    maximum: 1000
+    minimum: 2

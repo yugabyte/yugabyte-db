@@ -47,39 +47,13 @@ Encryption at rest in YugabyteDB Anywhere supports the use of [Amazon Web Servic
 
 ## Prerequisites
 
-The master key resource policy should include the following key policy [permissions](https://docs.aws.amazon.com/kms/latest/developerguide/kms-api-permissions-reference.html):
-
-- kms:Encrypt
-- kms:Decrypt
-- kms:GenerateDataKeyWithoutPlaintext
-- kms:DescribeKey
-- kms:DisableKey
-- kms:ScheduleKeyDeletion
-- kms:CreateAlias
-- kms:DeleteAlias
-- kms:UpdateAlias
-
-{{< note title="Note" >}}
-
-To support master key rotation, after upgrading YBA from a version prior to 2.17.3, add the kms:Encrypt permission to any existing keys that are used by any AWS KMS configurations, if not already present.
-
-{{< /note >}}
-
-The AWS user associated with a KMS configuration requires the following minimum Identity and Access Management (IAM) KMS-related permissions:
-
-- kms:CreateKey
-- kms:ListAliases
-- kms:ListKeys
-- kms:CreateAlias
-- kms:DeleteAlias
-- kms:UpdateAlias
-- kms:TagResource
+The master key resource policy and AWS user associated with a KMS configuration require specific permissions. Refer to [To use encryption at rest with YugabyteDB Anywhere](../../../prepare/cloud-permissions/cloud-permissions-ear/).
 
 ## Create a KMS configuration
 
 You can create a KMS configuration that uses AWS KMS, as follows:
 
-1. Use the YugabyteDB Anywhere UI to navigate to **Configs > Security > Encryption At Rest** to access the list of existing configurations.
+1. Navigate to **Integrations > Security > Encryption At Rest** to access the list of existing configurations.
 
 1. Click **Create New Config**.
 
@@ -91,7 +65,7 @@ You can create a KMS configuration that uses AWS KMS, as follows:
     - **Access Key Id** — Enter the identifier for the access key.
     - **Secret Key Id** — Enter the identifier for the secret key.
     - **Region** — Select the AWS region where the customer master key (CMK) that was used for generating the universe keys is to be located. This setting does not need to match the region where the encrypted universe resides on AWS.
-    - **Customer Master Key ID** — Enter the identifier for the CMK. If an identifier is not entered, a CMK ID will be auto-generated.
+    - **Customer Master Key ID** — Enter the identifier for the CMK. If an identifier is not entered, a CMK ID will be automatically generated.
     - **AWS KMS Endpoint** — Specify the KMS endpoint to ensure that the encryption traffic is routed across your internal links without crossing into an external network.
 
 1. Optionally, click **Upload CMK Policy** to select a custom policy file. The following is the default policy:
@@ -125,6 +99,28 @@ You can create a KMS configuration that uses AWS KMS, as follows:
 
 1. Click **Save**.
 
-    Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
+    Your new configuration should appear in the list of configurations.
 
 1. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.
+
+## Modify a KMS configuration
+
+You can modify an existing KMS configuration as follows:
+
+1. Navigate to **Integrations > Security > Encryption At Rest** to open a list of existing configurations.
+
+1. Find the configuration you want to modify and click its corresponding **Actions > Edit Configuration**.
+
+1. Provide new values for the **Vault Address** and **Secret Token** fields.
+
+1. Click **Save**.
+
+1. Optionally, to confirm that the information is correct, click **Show details** or **Actions > Details**.
+
+## Delete a KMS configuration
+
+{{<note title="Note">}}
+Without a KMS configuration, you would longer be able to decrypt universe keys that were encrypted using the master key in the KMS configuration. Even after a key is rotated out of service, it may still be needed to decrypt data in backups and snapshots that were created while it was active. For this reason, you can only delete a KMS configuration if it has never been used by any universes.
+{{</note>}}
+
+To delete a KMS configuration, click its corresponding **Actions > Delete Configuration**.

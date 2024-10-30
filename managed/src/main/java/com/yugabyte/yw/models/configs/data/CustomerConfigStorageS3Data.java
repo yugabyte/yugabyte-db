@@ -40,7 +40,7 @@ public class CustomerConfigStorageS3Data extends CustomerConfigStorageData {
 
   @ApiModelProperty(value = "AWS fallback region if region-chaining fails.")
   @JsonProperty("SIGNING_REGION")
-  public String fallbackRegion = "us-east-1";
+  public String fallbackRegion;
 
   @ApiModelProperty(value = "IAM Instance profile")
   @JsonProperty("IAM_INSTANCE_PROFILE")

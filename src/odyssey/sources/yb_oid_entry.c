@@ -4,7 +4,7 @@
  * Utilities for Ysql Connection Manager/Yugabyte (Postgres layer) integration
  * that have to be defined on the Ysql Connection Manager (Odyssey) side.
  *
- * Copyright (c) YugaByteDB, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -257,9 +257,17 @@ static inline int update_db_entry_via_ctrl_conn(od_global_t *global,
 
 	rc = update_db_entry_from_backend(instance, server, entry);
 
-	/* detach and unroute */
+	/*
+	 * close the backend connection as we don't want to reuse machines in this
+	 * pool.
+	 */
+	server->offline = true;
 	od_router_detach(router, control_conn_client);
 	od_router_unroute(router, control_conn_client);
+	if (control_conn_client->io.io) {
+		machine_close(control_conn_client->io.io);
+		machine_io_free(control_conn_client->io.io);
+	}
 	od_client_free(control_conn_client);
 
 	if (rc == -1)

@@ -356,6 +356,11 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
   @Test
   public void testAttributes() throws Exception {
+    // (DB-10760) Role OID-based pool design is needed in addition to waiting
+    // for connection count-related statistics for this test to pass when
+    // Connection Manager is enabled. Skipping this test temporarily.
+    assumeFalse(BasePgSQLTest.RECREATE_USER_SUPPORT_NEEDED, isTestRunningWithConnectionManager());
+
     // NOTE: The INHERIT attribute is tested separately in testMembershipInheritance.
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE ROLE unprivileged");
@@ -443,7 +448,7 @@ public class TestPgAuthorization extends BasePgSQLTest {
         runInvalidQuery(
             statement,
             "ALTER ROLE su LOGIN",
-            "must be superuser to alter superusers"
+            "must be superuser to alter superuser roles or change superuser attribute"
         );
       });
 
@@ -2707,6 +2712,9 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
   @Test
   public void testRevokeLoginMidSession() throws Exception {
+    // (DB-12741) Skip this test if running with connection manager.
+    assumeFalse(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR, isTestRunningWithConnectionManager());
+
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Statement statement1 = connection1.createStatement()) {
 
@@ -2847,6 +2855,9 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
   @Test
   public void testConnectionLimitDecreasedMidSession() throws Exception {
+    // (DB-12741) Skip this test if running with connection manager.
+    assumeFalse(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR, isTestRunningWithConnectionManager());
+
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Statement statement1 = connection1.createStatement()) {
 
@@ -3219,6 +3230,14 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
   @Test
   public void testLongPasswords() throws Exception {
+    // (DB-10387) (DB-10760) Using long passwords with Connection Manager
+    // causes I/O errors during test execution. Skip this test temporarily
+    // until support for the same can be provided with Connection Manager.
+    // This test will further need the support of role OID-based pooling
+    // to help support recreate role operations (DROP ROLE followed by
+    // CREATE ROLE).
+    assumeFalse(BasePgSQLTest.LONG_PASSWORD_SUPPORT_NEEDED, isTestRunningWithConnectionManager());
+
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE ROLE unprivileged");
 
@@ -3237,6 +3256,7 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
       // Create role with password.
       statement.execute("DROP ROLE IF EXISTS pass_role");
+      statement.execute("SET password_encryption = 'md5'");
       statement.execute(
           String.format("CREATE ROLE pass_role LOGIN PASSWORD '%s'", passwordWithLen5000));
 
@@ -3341,4 +3361,17 @@ public class TestPgAuthorization extends BasePgSQLTest {
     }
   }
 
+  @Test
+  public void testPgLocksAuthorization() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE ROLE yb_lock_status_user LOGIN");
+      statement.execute("GRANT yb_db_admin TO yb_lock_status_user");
+    }
+
+    try (Connection connection = getConnectionBuilder().withUser("yb_lock_status_user").connect();
+         Statement statement = connection.createStatement()) {
+      // yb_db_admin_member should be able to query pg_locks without superuser access.
+      statement.executeQuery("SELECT * FROM pg_locks");
+    }
+  }
 }

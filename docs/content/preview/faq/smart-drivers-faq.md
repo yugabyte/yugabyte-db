@@ -14,24 +14,13 @@ unversioned: true
 showRightNav: false
 ---
 
-### Contents
-
-- [What is a smart driver?](#what-is-a-smart-driver)
-- [What languages are supported?](#what-languages-are-supported)
-- [Why do I need connection load balancing?](#why-do-i-need-connection-load-balancing)
-- [When should I use a smart driver?](#when-should-i-use-a-smart-driver)
-- [How hard is it to port an application to use a smart driver?](#how-hard-is-it-to-port-an-application-to-use-a-smart-driver)
-- [How does the smart driver determine if a node is unhealthy, or the cluster configuration has changed?](#how-does-the-smart-driver-determine-if-a-node-is-unhealthy-or-the-cluster-configuration-has-changed)
-- [Do smart drivers know when a region fails?](#do-smart-drivers-know-when-a-region-fails)
-- [Do smart drivers provide metrics that can be monitored via JMX?](#do-smart-drivers-provide-metrics-that-can-be-monitored-via-jmx)
-- [Are there recommended settings for the maximum lifetime of a connection?](#are-there-recommended-settings-for-the-maximum-lifetime-of-a-connection)
-- [How do I limit traffic to specific clouds, regions, or AZs using a smart driver?](#how-do-i-limit-traffic-to-specific-clouds-regions-or-azs-using-a-smart-driver)
-
 ### What is a smart driver?
 
 Think of smart drivers as PostgreSQL drivers with the addition of "smart" features that take advantage of the distributed nature of YugabyteDB. A smart driver intelligently distributes application connections across the nodes and regions of a YugabyteDB cluster, without the need for external load balancers. Balanced connections provide lower latencies and prevent hot nodes. For geographically-distributed applications, the driver can seamlessly connect to the geographically nearest regions and availability zones for lower latency.
 
-For more information, refer to [YugabyteDB smart drivers for YSQL](../../drivers-orms/smart-drivers/).
+{{<lead link="../../drivers-orms/smart-drivers/">}}
+YugabyteDB smart drivers for YSQL
+{{</lead>}}
 
 ### What languages are supported?
 
@@ -42,7 +31,9 @@ YugabyteDB smart drivers for YSQL are currently available for the following lang
 - node.js
 - Python
 
-For more information, refer to [YugabyteDB smart drivers for YSQL](../../drivers-orms/smart-drivers/).
+{{<lead link="/preview/drivers-orms/#choose-your-language">}}
+Choose your language
+{{</lead>}}
 
 ### Why do I need connection load balancing?
 
@@ -52,9 +43,17 @@ Topology-aware load balancing further achieves lower latencies by enabling appli
 
 ### When should I use a smart driver?
 
-**YugabyteDB** - Use a smart driver if all the nodes in the cluster are available for direct connectivity from the location where the client application is running.
+- YugabyteDB - Use a smart driver if all the nodes in the cluster are available for direct connectivity from the location where the client application is running. For example, if the VPC hosting YugabateDB is peered with the VPC hosting the application.
 
-**YugabyteDB Managed** - Use a smart driver if your client application is running in a peered VPC. Without a smart driver, YugabyteDB Managed falls back to the connection load balancing provided by cloud providers; however you lose many of the advantages of cluster- and topology-awareness provided by the smart drivers.
+- YugabyteDB Aeon - Use a smart driver if your client application is running in a peered VPC. Without a smart driver, YugabyteDB Aeon falls back to the connection load balancing provided by cloud providers; however you lose many of the advantages of cluster- and topology-awareness provided by the smart drivers.
+
+If the external address given in the connection URL and individual nodes are not accessible directly, do not enable smart driver load balancing. Applications that use smart drivers from outside the peered network with load balance on will try to connect to the inaccessible nodes before falling back to the upstream driver behavior. You may see a warning similar to the following:
+
+```output
+WARNING [com.yug.Driver] (agroal-11) Failed to apply load balance. Trying normal connection
+```
+
+This indicates that the smart driver was unable to perform smart load balancing. To avoid the added latency incurred, turn load balance off or use the upstream driver.
 
 ### How hard is it to port an application to use a smart driver?
 
@@ -100,4 +99,6 @@ You can direct connections to specific clouds, regions, or AZs using topology ke
 - Python: `topology_keys`
 - Rust: `topology_keys`
 
-For more information, refer to [Topology-aware connection load balancing](../../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). 
+{{<lead link="../../drivers-orms/smart-drivers/#topology-aware-load-balancing">}}
+Topology-aware connection load balancing
+{{</lead>}}

@@ -59,7 +59,7 @@ Status FlushManager::FlushTables(const FlushTablesRequestPB* req,
     table = table_description.table_info;
 
     // Prepare per Tablet Server tablet lists.
-    for (const scoped_refptr<TabletInfo>& tablet : table_description.tablet_infos) {
+    for (const auto& tablet : table_description.tablet_infos) {
       TRACE("Locking tablet");
       auto l = tablet->LockForRead();
 

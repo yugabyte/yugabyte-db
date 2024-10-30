@@ -12,9 +12,11 @@
 //
 
 #include "yb/integration-tests/cluster_itest_util.h"
+
 #include "yb/master/master_cluster.proxy.h"
 
 #include "yb/util/test_thread_holder.h"
+
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 
 using namespace std::literals;

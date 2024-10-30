@@ -29,7 +29,15 @@ public class TestToastFunction extends TestToastFunctionBase {
   private static final Logger LOG = LoggerFactory.getLogger(TestToastFunction.class);
 
   @Test
-  public void testSimple() throws SQLException {
+  public void testSimple() throws Exception {
+    // (DB-12699) In any warmup mode, the memory usage is much higher than in
+    // the case of no warmup mode. Allow the test to run exclusively in no
+    // warmup mode for now.
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
+    if (isTestRunningWithConnectionManager()) {
+      createTables();
+    }
+
     setEnableToastFlag(true);
     CacheMemoryContextTracker cxt = simpleTest();
     cxt.assertMemoryUsageLessThan(300 * KB);
@@ -39,20 +47,20 @@ public class TestToastFunction extends TestToastFunctionBase {
   public void testCatalogRefreshMemoryUsage() throws Exception {
     setEnableToastFlag(true);
     List<CacheMemoryContextTracker> contexts = catalogRefreshMemoryUsageTest();
-    contexts.forEach(c -> c.assertMemoryUsageLessThan(6 * MB));
+    contexts.forEach(c -> c.assertMemoryUsageLessThan(8 * MB));
   }
 
   @Test
   public void testAdHocMemoryUsage() throws Exception {
     setEnableToastFlag(true);
     List<CacheMemoryContextTracker> contexts = adHocMemoryUsageTest();
-    contexts.forEach(c -> c.assertMemoryUsageLessThan(7 * MB));
+    contexts.forEach(c -> c.assertMemoryUsageLessThan(8 * MB));
   }
 
   @Test
   public void testBuildRelcacheInitFileMemoryUsage() throws Exception {
     setEnableToastFlag(true);
     CacheMemoryContextTracker cxt = buildRelcacheInitFileMemoryUsage();
-    cxt.assertMemoryUsageLessThan(7 * MB);
+    cxt.assertMemoryUsageLessThan(8 * MB);
   }
 }

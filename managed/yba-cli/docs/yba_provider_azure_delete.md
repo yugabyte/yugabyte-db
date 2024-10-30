@@ -10,6 +10,12 @@ Delete an Azure provider in YugabyteDB Anywhere
 yba provider azure delete [flags]
 ```
 
+### Examples
+
+```
+yba provider azure delete --name <provider-name>
+```
+
 ### Options
 
 ```

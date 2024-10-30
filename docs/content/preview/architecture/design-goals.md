@@ -5,8 +5,6 @@ linkTitle: Design goals
 description: Learn the design goals that drive the building of YugabyteDB
 headcontent: Goals and ideas considered during designing YugabyteDB
 image: fa-sharp fa-thin fa-lightbulb-exclamation-on
-aliases:
-  - /preview/architecture/design-goals/
 menu:
   preview:
     identifier: architecture-design-goals
@@ -17,15 +15,27 @@ type: docs
 
 ## Scalability
 
-YugabyteDB scales out horizontally by adding more nodes to handle increasing data volumes and higher workloads. With YugabyteDB, you can also opt for vertical scaling choosing more powerful infrastructure components. {{<link "../../explore/linear-scalability/">}}
+YugabyteDB scales out horizontally by adding more nodes to handle increasing data volumes and higher workloads. With YugabyteDB, you can also opt for vertical scaling choosing more powerful infrastructure components.
 
-## High Availability
+{{<lead link="../../explore/linear-scalability/">}}
+Scalability
+{{</lead>}}
 
-YugabyteDB ensures continuous availability, even in the face of individual node failures or network partitions. YugabyteDB achieves this by replicating data across multiple nodes and implementing failover mechanisms via leader election. {{<link "../../explore/fault-tolerance">}}
+## High availability
 
-## Fault Tolerance
+YugabyteDB ensures continuous availability, even in the face of individual node failures or network partitions. YugabyteDB achieves this by replicating data across multiple nodes and implementing failover mechanisms via leader election.
 
-YugabyteDB is resilient to various types of failures, such as node crashes, network partitions, disk failures, and other hardware or software faults and failure of various fault domains. It can automatically recover from these failures without data loss or corruption. {{<link "../../explore/fault-tolerance">}}
+{{<lead link="../../explore/fault-tolerance/">}}
+High Availability
+{{</lead>}}
+
+## Fault tolerance
+
+YugabyteDB is resilient to various types of failures, such as node crashes, network partitions, disk failures, and other hardware or software faults and failure of various fault domains. It can automatically recover from these failures without data loss or corruption.
+
+{{<lead link="../../explore/fault-tolerance/">}}
+Fault tolerance
+{{</lead>}}
 
 ## Consistency
 
@@ -47,7 +57,7 @@ YugabyteDB supports single-row linearizable writes. Linearizability is one of th
 
 YugabyteDB supports multi-row transactions with three isolation levels: Serializable, Snapshot (also known as repeatable read), and Read Committed isolation.
 
-- The [YSQL API](../../api/ysql/) supports Serializable, Snapshot (default), and Read Committed isolation {{<badge/ea>}} using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ`, and `READ COMMITTED` respectively. For more details, see [Isolation levels](#transaction-isolation-levels).
+- The [YSQL API](../../api/ysql/) supports Serializable, Snapshot (default), and Read Committed isolation {{<tags/feature/ea>}} using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ`, and `READ COMMITTED` respectively. For more details, see [Isolation levels](#transaction-isolation-levels).
 - The [YCQL API](../../api/ycql/) supports only Snapshot isolation (default) using the [BEGIN TRANSACTION](../../api/ycql/dml_transaction/) syntax.
 
 ## Partition Tolerance - CAP
@@ -66,7 +76,11 @@ YugabyteDB monitors and automatically re-balances the number of tablet leaders a
 
 ## Data locality
 
-YugabyteDB supports colocated tables and databases which enables related data to be kept together on the same node for performance reasons. {{<link "../docdb-sharding/colocated-tables">}}
+YugabyteDB supports colocated tables and databases which enables related data to be kept together on the same node for performance reasons.
+
+{{<lead link="../../explore/colocation/">}}
+Colocating tables
+{{</lead>}}
 
 ## Security
 
@@ -78,13 +92,13 @@ YugabyteDB has been designed with operational simplicity in mind, providing feat
 
 ## Heterogeneous workload support
 
-Depending on the use case, the database may need to support diverse workloads, such as [transactional processing](../../benchmark/tpcc-ysql/), [analytical queries](../../sample-data/retail-analytics/), [real-time data ingestion](../../tutorials/azure/azure-event-hubs/), [time-series](../../develop/common-patterns/timeseries/), and [key-value](../../benchmark/key-value-workload-ycql/) workloads.
+Depending on the use case, the database may need to support diverse workloads, such as [transactional processing](../../benchmark/tpcc/), [analytical queries](../../sample-data/retail-analytics/), [real-time data ingestion](/preview/tutorials/azure/azure-event-hubs/), [time-series](../../develop/data-modeling/common-patterns/timeseries/), and [key-value](../../benchmark/key-value-workload-ycql/) workloads.
 
 ## Transaction isolation levels
 
 Transaction isolation is foundational to handling concurrent transactions in databases. YugabyteDB supports three strict transaction isolation levels in [YSQL](../../api/ysql/).
 
-- [Read Committed](../transactions/read-committed/) {{<badge/ea>}}, which maps to the SQL isolation level of the same name
+- [Read Committed](../transactions/read-committed/) {{<tags/feature/ea>}}, which maps to the SQL isolation level of the same name
 - [Serializable](../../explore/transactions/isolation-levels/#serializable-isolation), which maps to the SQL isolation level of the same name
 - [Snapshot](../../explore/transactions/isolation-levels/#snapshot-isolation), which maps to the SQL Repeatable Read isolation level
 
@@ -103,17 +117,21 @@ In addition:
 - YSQL supports wide SQL functionality, such as the following:
   - [All data types](../../explore/ysql-language-features/data-types/)
   - [Built-in functions and expressions](../../explore/ysql-language-features/expressions-operators/)
-  - [Joins](../../explore/ysql-language-features/join-strategies/) - inner join, outer join, full outer join, cross join, natural join
+  - [Joins](../../explore/ysql-language-features/queries/#join-columns) - inner join, outer join, full outer join, cross join, natural join
   - [Constraints](../../explore/ysql-language-features/indexes-constraints/) - primary key, foreign key, unique, not null, check
   - [Secondary indexes](../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/) (including multi-column and covering columns)
   - [Distributed transactions](../../explore/transactions/distributed-transactions-ysql/) (Serializable, Snapshot, and Read Committed Isolation)
   - [Views](../../explore/ysql-language-features/advanced-features/views/)
-  - [Stored procedures](../../explore/ysql-language-features/stored-procedures/)
+  - [Stored procedures](../../explore/ysql-language-features/advanced-features/stored-procedures/)
   - [Triggers](../../explore/ysql-language-features/advanced-features/triggers/)
 
 ## Cassandra compatibility
 
-[YCQL](../../api/ycql/) is a [semi-relational CQL API](../../explore/ycql-language/) that is best suited for internet-scale OLTP and HTAP applications needing massive write scalability and fast queries. YCQL supports distributed transactions, strongly-consistent secondary indexes, and a native JSON column type. YCQL has its roots in the Cassandra Query Language. {{<link "../query-layer">}}
+[YCQL](../../api/ycql/) is a [semi-relational CQL API](../../explore/ycql-language/) that is best suited for internet-scale OLTP and HTAP applications needing massive write scalability and fast queries. YCQL supports distributed transactions, strongly-consistent secondary indexes, and a native JSON column type. YCQL has its roots in the Cassandra Query Language.
+
+{{<lead link="../query-layer/">}}
+Query layer
+{{</lead>}}
 
 ## Performance
 
@@ -124,7 +142,9 @@ Written in C++ to ensure high performance and the ability to use large memory he
 - high data density (total data set size per node)
 - ability to handle ever-growing event data use cases
 
-For more information, see [High performance in YugabyteDB](../docdb/performance/).
+{{<lead link="../docdb/performance/">}}
+High performance in YugabyteDB
+{{</lead>}}
 
 ## Geographically distributed deployments
 
@@ -143,7 +163,11 @@ YugabyteDB has been designed with several cloud-native principles in mind.
 
 ## Kubernetes-ready
 
-YugabyteDB works natively in Kubernetes and other containerized environments as a stateful application. {{<link "../../deploy/kubernetes/">}}
+YugabyteDB works natively in Kubernetes and other containerized environments as a stateful application. {{<link dest="../../deploy/kubernetes/">}}
+
+{{<lead link="../../deploy/kubernetes/">}}
+Deploy in Kubernetes
+{{</lead>}}
 
 ## Open source
 

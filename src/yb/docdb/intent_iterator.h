@@ -35,6 +35,8 @@ struct IntentFetchKeyResult {
   bool same_transaction;
 };
 
+// NB! This iterator is not up-to-date and is not used in production code.
+//
 // IntentIterator is a wrapper on Intents RocksDB instance which filters out
 // any weak operations except when they are part of same transaction.
 //
@@ -201,13 +203,5 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
     const TransactionOperationContext& txn_op_context,
     rocksdb::Iterator* intent_iter,
     TransactionStatusCache* transaction_status_cache);
-
-Slice StrongWriteSuffix(Slice key);
-
-inline Slice StrongWriteSuffix(const dockv::KeyBytes& key) {
-  return StrongWriteSuffix(key.AsSlice());
-}
-
-void AppendStrongWrite(dockv::KeyBytes* out);
 
 }  // namespace yb::docdb

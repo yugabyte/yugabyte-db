@@ -79,6 +79,7 @@ set(COMMON_SRCS
   colocated_util.cc
   common_consensus_util.cc
   common_flags.cc
+  common_net.cc
   common_types_util.cc
   common_util.cc
   consistent_read_point.cc
@@ -89,7 +90,6 @@ set(COMMON_SRCS
   key_encoder.cc
   opid.cc
   pgsql_error.cc
-  path-handler-util.cc
   placement_info.cc
   pg_types.cc
   ql_protocol_util.cc
@@ -106,6 +106,8 @@ set(COMMON_SRCS
   transaction_error.cc
   wire_protocol.cc
   llvm_profile_dumper.cc
+  xcluster_util.cc
+  ysql_utils.cc
   )
 
 set(COMMON_LIBS

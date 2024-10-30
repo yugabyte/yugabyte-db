@@ -367,6 +367,9 @@ message GetCompatibleSchemaVersionRequestPB {
 message GetCompatibleSchemaVersionResponsePB {
   optional TabletServerErrorPB error = 1;
   optional uint32 compatible_schema_version = 2;
+  // Added on Oct 2024 (v2025.1), will not be set for older versions.
+  // Value is set in the case of a schema mismatch.
+  optional uint32 latest_schema_version = 3;
 }
 
 message CheckTserverTabletHealthRequestPB {
@@ -388,9 +391,45 @@ message ClearAllMetaCachesOnServerRequestPB {}
 
 message ClearAllMetaCachesOnServerResponsePB {}
 
+message ClearMetacacheRequestPB {
+  // Only Ysql namespace can be cleared from metacache.
+  optional string namespace_id = 1;
+}
+
+message ClearMetacacheResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
 message ClearUniverseUuidRequestPB {
 }
 
 message ClearUniverseUuidResponsePB {
   optional TabletServerErrorPB error = 1;
+}
+
+message AcquireObjectLockRequestPB {
+  optional uint64 session_id = 1;
+  optional bytes session_host_uuid = 2;
+  repeated docdb.ObjectLockPB object_locks = 3;
+}
+
+message AcquireObjectLockResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
+message ReleaseObjectLockRequestPB {
+  optional uint64 session_id = 1;
+  optional bytes session_host_uuid = 2;
+  // The lock_type in ObjectLockPB is irrelevant here.
+  repeated docdb.ObjectLockPB object_locks = 3;
+  // When set, releases locks on all objects held against the given session id.
+  optional bool release_all_locks = 4;
+}
+
+message ReleaseObjectLockResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
+message DdlLockEntriesPB {
+  repeated AcquireObjectLockRequestPB lock_entries = 1;
 }

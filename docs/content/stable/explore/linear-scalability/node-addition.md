@@ -22,9 +22,9 @@ Suppose you have a 3-node cluster with 4 tablets and a replication factor (RF) o
 
 ![Initial setup](/images/explore/scalability/node-addition-cluster-setup.png)
 
-{{<tip>}}
+{{<lead link="../data-distribution/">}}
 To understand how tablets are formed and split, see [Data distribution](../data-distribution/).
-{{</tip>}}
+{{</lead>}}
 
 ## New follower creation
 

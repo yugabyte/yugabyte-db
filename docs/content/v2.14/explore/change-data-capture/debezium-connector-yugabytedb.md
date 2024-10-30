@@ -63,7 +63,7 @@ To report issues and file tickets, visit our [GitHub](https://github.com/yugabyt
 
 ## Setup
 
-To use the YugabyteDB Debezium connector, do the following. For complete steps, follow the guide to [running the Debezium connector for YugabyteDB](../../../integrations/cdc/debezium/).
+To use the YugabyteDB Debezium connector, do the following. For complete steps, follow the guide to [running the Debezium connector for YugabyteDB](/preview/integrations/cdc/debezium/).
 
 1. Create a DB stream ID.
 

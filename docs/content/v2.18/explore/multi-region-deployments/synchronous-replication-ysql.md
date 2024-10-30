@@ -29,7 +29,7 @@ This deployment provides the following advantages:
   <li>
     <a href="../synchronous-replication-cloud/" class="nav-link">
       <img src="/icons/cloud.svg" alt="Cloud Icon">
-      YugabyteDB Managed
+      YugabyteDB Aeon
     </a>
   </li>
   <li>
@@ -120,7 +120,7 @@ Follow the [setup instructions](../../#set-up-yb-workload-simulator) to install 
 
 The YugabyteDB JDBC Smart Driver performs uniform load balancing by default, meaning it uniformly distributes application connections across all the nodes in the universe. However, in a multi-region universe, it is more efficient to target regions closest to your application.
 
-You can configure the smart driver with [topology load balancing](../../../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing) to limit connections to the closest region.
+You can configure the smart driver with [topology load balancing](../../../drivers-orms/smart-drivers/#topology-aware-load-balancing) to limit connections to the closest region.
 
 To turn on topology load balancing, start the application as usual, adding the following flag:
 

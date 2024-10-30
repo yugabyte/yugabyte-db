@@ -70,11 +70,7 @@ public class UpgradeYbcGFlags extends KubernetesTaskBase {
             new HashSet<>(universe.getRunningTserversInPrimaryCluster());
 
         installYbcOnThePods(
-            universe.getName(),
-            nodeDetailSet,
-            false,
-            universeDetails.getYbcSoftwareVersion(),
-            ybcGflagsMap);
+            nodeDetailSet, false, universeDetails.getYbcSoftwareVersion(), ybcGflagsMap);
         performYbcAction(nodeDetailSet, false, "stop");
         createWaitForYbcServerTask(nodeDetailSet)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -83,11 +79,7 @@ public class UpgradeYbcGFlags extends KubernetesTaskBase {
         if (!readOnlyClusters.isEmpty()) {
           nodeDetailSet = universeDetails.getTserverNodesInCluster(readOnlyClusters.get(0).uuid);
           installYbcOnThePods(
-              universe.getName(),
-              nodeDetailSet,
-              true,
-              universeDetails.getYbcSoftwareVersion(),
-              ybcGflagsMap);
+              nodeDetailSet, true, universeDetails.getYbcSoftwareVersion(), ybcGflagsMap);
           performYbcAction(nodeDetailSet, true, "stop");
           createWaitForYbcServerTask(nodeDetailSet)
               .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -133,6 +125,9 @@ public class UpgradeYbcGFlags extends KubernetesTaskBase {
 
     Class<?> clazz = ybcGflags.getClass();
     for (Field field : clazz.getDeclaredFields()) {
+      if (field.getName().equalsIgnoreCase("ybcGflagsMetadata")) {
+        continue;
+      }
       field.setAccessible(true);
       String fieldName = field.getName();
       Object value = field.get(ybcGflags);

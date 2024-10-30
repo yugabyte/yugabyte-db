@@ -120,7 +120,7 @@ class NumberedDeque {
   }
 
   void truncate(const const_iterator& cut_from_included) {
-    if (PREDICT_FALSE(std_util::cmp_greater_equal(
+    if (PREDICT_FALSE(std::cmp_greater_equal(
             cut_from_included - inner_deque_.begin(), inner_deque_.size()))) {
       return;
     }
@@ -141,7 +141,7 @@ class NumberedDeque {
     }
 
     const auto idx = seq_num - first_seq_num_;
-    if (std_util::cmp_greater_equal(idx, inner_deque_.size())) {
+    if (std::cmp_greater_equal(idx, inner_deque_.size())) {
       return STATUS_FORMAT(
           NotFound, "Sequence number $0 is later than last available ($1)", seq_num,
           first_seq_num_ + inner_deque_.size() - 1);

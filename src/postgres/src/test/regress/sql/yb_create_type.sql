@@ -117,7 +117,7 @@ SELECT * FROM base_table ORDER BY CAST(a AS text);
 --
 -- Summary
 --
-SELECT typname FROM pg_type WHERE oid > 16000 ORDER BY oid DESC LIMIT 16;
+SELECT typname FROM pg_type WHERE oid > 16000 ORDER BY oid DESC LIMIT 18;
 
 --
 -- Drop composite type

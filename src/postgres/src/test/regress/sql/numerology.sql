@@ -4,6 +4,21 @@
 --
 
 --
+-- Trailing junk in numeric literals
+--
+
+SELECT 123abc;
+SELECT 0x0o;
+SELECT 1_2_3;
+SELECT 0.a;
+SELECT 0.0a;
+SELECT .0a;
+SELECT 0.0e1a;
+SELECT 0.0e;
+SELECT 0.0e+a;
+PREPARE p1 AS SELECT $1a;
+
+--
 -- Test implicit type conversions
 -- This fails for Postgres v6.1 (and earlier?)
 --  so let's try explicit conversions for now - tgl 97/05/07
@@ -17,7 +32,7 @@ INSERT INTO TEMP_FLOAT (f1)
 INSERT INTO TEMP_FLOAT (f1)
   SELECT float8(f1) FROM INT2_TBL;
 
-SELECT '' AS ten, f1 FROM TEMP_FLOAT
+SELECT f1 FROM TEMP_FLOAT
   ORDER BY f1;
 
 -- int4
@@ -31,7 +46,7 @@ INSERT INTO TEMP_INT4 (f1)
 INSERT INTO TEMP_INT4 (f1)
   SELECT int4(f1) FROM INT2_TBL;
 
-SELECT '' AS nine, f1 FROM TEMP_INT4
+SELECT f1 FROM TEMP_INT4
   ORDER BY f1;
 
 -- int2
@@ -46,7 +61,7 @@ INSERT INTO TEMP_INT2 (f1)
   SELECT int2(f1) FROM INT4_TBL
   WHERE (f1 >= -32767) AND (f1 <= 32767);
 
-SELECT '' AS five, f1 FROM TEMP_INT2
+SELECT f1 FROM TEMP_INT2
   ORDER BY f1;
 
 --

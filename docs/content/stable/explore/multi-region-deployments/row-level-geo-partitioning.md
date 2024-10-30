@@ -449,7 +449,7 @@ created_at    | 2020-11-07 22:09:04.8537
 
 So far you've set up replication with 3 copies of the data, which helps tolerate the loss of a single node or zone. However, a regional outage will cause unavailability, because all the nodes are in one region. Placing each replica in a different region helps solve this issue.
 
-Recreate the `us_west_2_tablespace` from earlier, and place one copy each in us-west2, us-west1, and us-east1. Then use `leader_preference` to continue placing all leaders in us-west-2, so that they remain close to the client and provide the best performance. (You can find more information in [Leader preference](../../ysql-language-features/going-beyond-sql/tablespaces/#leader-preference))
+Recreate the `us_west_2_tablespace` from earlier, and place one copy each in us-west2, us-west1, and us-east1. Then use `leader_preference` to continue placing all leaders in us-west-2, so that they remain close to the client and provide the best performance. (You can find more information in [Leader preference](../../going-beyond-sql/tablespaces/#leader-preference))
 
 ```sql
 CREATE TABLESPACE us_west_2_tablespace WITH (

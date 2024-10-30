@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"reflect"
@@ -243,7 +242,7 @@ func MustVersion() string {
 
 func Version() (string, error) {
 	var version string
-	content, err := ioutil.ReadFile(VersionFile())
+	content, err := os.ReadFile(VersionFile())
 	if err != nil {
 		return version, fmt.Errorf("Error when opening file - %s", err.Error())
 	}

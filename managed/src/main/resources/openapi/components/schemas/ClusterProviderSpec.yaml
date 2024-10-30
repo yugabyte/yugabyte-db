@@ -3,7 +3,6 @@ description: Cloud Provider settings for the cluster. Part of ClusterSpec.
 type: object
 required:
   - provider
-  - access_key_code
 properties:
   provider:
     description: Cloud provider UUID
@@ -21,11 +20,31 @@ properties:
     type: string
     format: uuid
   access_key_code:
-    description: One of the SSH access keys defined in Cloud Provider to be configured on nodes VMs
+    description: 'One of the SSH access keys defined in Cloud Provider to be configured on nodes VMs. Required for AWS, Azure and GCP Cloud Providers.'
     type: string
     example: aws-ssh-key
+  aws_instance_profile:
+    description: 'The AWS IAM instance profile ARN to use for the nodes in this cluster. Applicable only for nodes on AWS Cloud Provider. If specified, YugabyteDB Anywhere will use this instance profile instead of the access key.'
+    type: string
+    example: 'arn:aws:iam::myorg:instance-profile/testco-ec2-role'
   image_bundle_uuid:
     description: Image bundle UUID to use for node VM image. Refers to one of the image bundles defined in the cloud provider.
     type: string
     format: uuid
     example: 914aa5a8-febc-44ba-9b60-ea3e22127218
+  helm_overrides:
+    description: 'Helm overrides for this cluster. Applicable only for a k8s cloud provider. Refer https://github.com/yugabyte/charts/blob/master/stable/yugabyte/values.yaml for the list of supported overrides.'
+    type: string
+    example: |
+      tserver:
+        resources:
+          requests:
+            cpu: 1
+            memory: 1Gi
+          limits:
+            cpu: 2
+            memory: 2Gi
+  az_helm_overrides:
+    description: 'Helm overrides per availability zone of this cluster. Applicable only if this is a k8s cloud provider. Refer https://github.com/yugabyte/charts/blob/master/stable/yugabyte/values.yaml for the list of supported overrides.'
+    additionalProperties:
+      type: string

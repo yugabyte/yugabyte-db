@@ -127,6 +127,12 @@ public class TestPgExplainAnalyzeModifyTable extends BasePgExplainAnalyzeTest {
 
   @Test
   public void testUpdate() throws Exception {
+    // Restart the cluster to allow connection manager to operate without
+    // warmed up connections, and set up for the test once again after doing so.
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
+    if (isTestRunningWithConnectionManager()) {
+        setUp();
+    }
     final String updateQuery = "UPDATE %s SET %s = %s + 5 WHERE %s %s";
     final int numRows = 4;
 
@@ -221,6 +227,7 @@ public class TestPgExplainAnalyzeModifyTable extends BasePgExplainAnalyzeTest {
     // Clear the table.
     try (Statement stmt = connection.createStatement()) {
       stmt.execute(String.format("TRUNCATE %s CASCADE", TEST_TABLE));
+      waitForTServerHeartbeatIfConnMgrEnabled();
     }
 
     TopLevelCheckerBuilder topLevelChecker = makeTopLevelBuilder()
@@ -243,7 +250,6 @@ public class TestPgExplainAnalyzeModifyTable extends BasePgExplainAnalyzeTest {
                 .plans(resultNodeChecker
                     .storageTableReadRequests(Checkers.equal(1))
                     .storageTableWriteRequests(Checkers.equal(1))
-                    .storageIndexWriteRequests(Checkers.equal(TEST_NUM_SEC_INDEXES))
                     .build())
                 .build())
             .storageFlushRequests(Checkers.equal(1))
@@ -297,15 +303,15 @@ public class TestPgExplainAnalyzeModifyTable extends BasePgExplainAnalyzeTest {
     {
         Checker checker = topLevelChecker
             .plan(insertNodeChecker
-                .plans(resultNodeChecker
+                .plans(makePlanBuilder()
+                    .nodeType(NODE_RESULT)
                     .storageTableReadRequests(Checkers.equal(1))
                     .storageTableWriteRequests(Checkers.equal(1))
-                    .storageIndexWriteRequests(Checkers.equal(TEST_NUM_SEC_INDEXES * 2))
                     .build())
                 .build())
-            .storageFlushRequests(Checkers.equal(2))
+            .storageFlushRequests(Checkers.equal(1))
             .storageReadRequests(Checkers.equal(1))
-            .storageWriteRequests(Checkers.equal((TEST_NUM_SEC_INDEXES * 2) + 1))
+            .storageWriteRequests(Checkers.equal(1))
             .build();
 
         testExplain(String.format(insertWithOnConflict, TEST_TABLE, "(1, 1, 1, 1, 1)", "k",
@@ -315,6 +321,12 @@ public class TestPgExplainAnalyzeModifyTable extends BasePgExplainAnalyzeTest {
 
   @Test
   public void testForeignKey() throws Exception {
+    // Restart the cluster to allow connection manager to operate without
+    // warmed up connections, and set up for the test once again after doing so.
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
+    if (isTestRunningWithConnectionManager()) {
+        setUp();
+    }
     final String fkSimpleInsert = "INSERT INTO %s VALUES %s";
 
     // Create a table with a foreign key constraint.

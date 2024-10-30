@@ -6,21 +6,24 @@ package backup
 
 import (
 	"os"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	ybaclient "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
-	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/backup"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/backup/commonbackupinfo"
 )
 
 // listIncrementalBackupsCmd represents the universe backup command
 var listIncrementalBackupsCmd = &cobra.Command{
-	Use:   "list-increments",
-	Short: "List the incremental backups of a backup",
-	Long:  "List incremental backups of YugabyteDB Anywhere universe backup",
+	Use:     "list-increments",
+	Short:   "List the incremental backups of a backup",
+	Long:    "List incremental backups of YugabyteDB Anywhere universe backup",
+	Example: `yba backup list-increments --backup-uuid <backup-uuid>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		backupUUID, err := cmd.Flags().GetString("backup-uuid")
 		if err != nil {
@@ -29,15 +32,12 @@ var listIncrementalBackupsCmd = &cobra.Command{
 		if len(backupUUID) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No backup uuid specified to edit backup\n", formatter.RedColor))
+				formatter.Colorize("No backup UUID specified to list incremental backup\n", formatter.RedColor))
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
 		backupUUID, err := cmd.Flags().GetString("backup-uuid")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -51,22 +51,47 @@ var listIncrementalBackupsCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		commonBackupInfoContext := *backup.NewCommonBackupInfoContext()
-		commonBackupInfoContext.Output = os.Stdout
-		commonBackupInfoContext.Format = backup.NewCommonBackupInfoFormat(viper.GetString("output"))
-		for index, value := range r {
-			commonBackupInfoContext.SetCommonBackupInfo(value)
-			commonBackupInfoContext.Write(index)
+		storageConfigListRequest := authAPI.GetListOfCustomerConfig()
+		rList, response, err := storageConfigListRequest.Execute()
+		if err != nil {
+			errMessage := util.ErrorFromHTTPResponse(
+				response, err, "Backup", "List Incrementals - Get Storage Configuration")
+			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
-		return
 
+		commonbackupinfo.StorageConfigs = make([]ybaclient.CustomerConfigUI, 0)
+		for _, s := range rList {
+			if strings.Compare(s.GetType(), util.StorageCustomerConfigType) == 0 {
+				commonbackupinfo.StorageConfigs = append(commonbackupinfo.StorageConfigs, s)
+			}
+		}
+
+		if len(r) > 0 && util.IsOutputType(formatter.TableFormatKey) {
+			fullCommonBackupInfoContext := *commonbackupinfo.NewFullCommonBackupInfoContext()
+			fullCommonBackupInfoContext.Output = os.Stdout
+			fullCommonBackupInfoContext.Format = commonbackupinfo.NewFullCommonBackupInfoFormat(
+				viper.GetString("output"))
+			for i, cbi := range r {
+				fullCommonBackupInfoContext.SetFullCommonBackupInfo(cbi)
+				fullCommonBackupInfoContext.Write(i)
+			}
+
+			return
+		}
+
+		commonBackupInfoCtx := formatter.Context{
+			Command: "list",
+			Output:  os.Stdout,
+			Format:  commonbackupinfo.NewCommonBackupInfoFormat(viper.GetString("output")),
+		}
+		commonbackupinfo.Write(commonBackupInfoCtx, r)
 	},
 }
 
 func init() {
 	listIncrementalBackupsCmd.Flags().SortFlags = false
 	listIncrementalBackupsCmd.Flags().String("backup-uuid", "",
-		"[Required] Base backup uuid")
+		"[Required] Base backup uuid to list incremental backups.")
 	listIncrementalBackupsCmd.MarkFlagRequired("backup-uuid")
 
 }

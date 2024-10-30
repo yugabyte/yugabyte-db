@@ -84,6 +84,12 @@ ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION
 ALTER ROLE yugabyte_test WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN NOREPLICATION BYPASSRLS;
 
 
+--
+-- User Configurations
+--
+
+
+
 
 
 
@@ -129,16 +135,25 @@ ALTER ROLE yugabyte_test WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN NOREPL
 
 
 
+--
+-- Databases
+--
+
+--
+-- Database "template1" dump
+--
+
 \connect template1
 
 --
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.21.1.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.21.1.0-b0
+-- Dumped from database version 15.2-YB-2.23.1.1505-b0
+-- Dumped by ysql_dump version 15.2-YB-2.23.1.1505-b0
 
 SET yb_binary_restore = true;
+SET yb_ignore_pg_class_oids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -147,6 +162,7 @@ SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
+SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
@@ -163,12 +179,12 @@ SET row_security = off;
 \endif
 
 --
--- Name: FUNCTION pg_stat_statements_reset(); Type: ACL; Schema: pg_catalog; Owner: postgres
+-- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
 \if :use_roles
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
-REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset() FROM PUBLIC;
+REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \endif
 
@@ -185,7 +201,22 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 
 
 --
+-- Name: TABLE pg_stat_statements_info; Type: ACL; Schema: pg_catalog; Owner: postgres
+--
+
+\if :use_roles
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
+GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\endif
+
+
+--
 -- YSQL database dump complete
+--
+
+--
+-- Database "postgres" dump
 --
 
 \connect postgres
@@ -194,10 +225,11 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.21.1.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.21.1.0-b0
+-- Dumped from database version 15.2-YB-2.23.1.1505-b0
+-- Dumped by ysql_dump version 15.2-YB-2.23.1.1505-b0
 
 SET yb_binary_restore = true;
+SET yb_ignore_pg_class_oids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -206,6 +238,7 @@ SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
+SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
@@ -222,12 +255,12 @@ SET row_security = off;
 \endif
 
 --
--- Name: FUNCTION pg_stat_statements_reset(); Type: ACL; Schema: pg_catalog; Owner: postgres
+-- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
 \if :use_roles
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
-REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset() FROM PUBLIC;
+REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \endif
 
@@ -244,17 +277,33 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 
 
 --
+-- Name: TABLE pg_stat_statements_info; Type: ACL; Schema: pg_catalog; Owner: postgres
+--
+
+\if :use_roles
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
+GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\endif
+
+
+--
 -- YSQL database dump complete
+--
+
+--
+-- Database "system_platform" dump
 --
 
 --
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.21.1.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.21.1.0-b0
+-- Dumped from database version 15.2-YB-2.23.1.1505-b0
+-- Dumped by ysql_dump version 15.2-YB-2.23.1.1505-b0
 
 SET yb_binary_restore = true;
+SET yb_ignore_pg_class_oids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -263,6 +312,7 @@ SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
+SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
@@ -282,7 +332,7 @@ SET row_security = off;
 -- Name: system_platform; Type: DATABASE; Schema: -; Owner: postgres
 --
 
-CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8';
+CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8';
 
 
 \if :use_roles
@@ -292,6 +342,7 @@ CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LC_C
 \connect system_platform
 
 SET yb_binary_restore = true;
+SET yb_ignore_pg_class_oids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -300,6 +351,7 @@ SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
+SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
@@ -311,12 +363,12 @@ COMMENT ON DATABASE system_platform IS 'system database for YugaByte platform';
 
 
 --
--- Name: FUNCTION pg_stat_statements_reset(); Type: ACL; Schema: pg_catalog; Owner: postgres
+-- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
 \if :use_roles
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
-REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset() FROM PUBLIC;
+REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \endif
 
@@ -333,17 +385,33 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 
 
 --
+-- Name: TABLE pg_stat_statements_info; Type: ACL; Schema: pg_catalog; Owner: postgres
+--
+
+\if :use_roles
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
+GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\endif
+
+
+--
 -- YSQL database dump complete
+--
+
+--
+-- Database "yugabyte" dump
 --
 
 --
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.21.1.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.21.1.0-b0
+-- Dumped from database version 15.2-YB-2.23.1.1505-b0
+-- Dumped by ysql_dump version 15.2-YB-2.23.1.1505-b0
 
 SET yb_binary_restore = true;
+SET yb_ignore_pg_class_oids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -352,6 +420,7 @@ SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
+SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
@@ -371,7 +440,7 @@ SET row_security = off;
 -- Name: yugabyte; Type: DATABASE; Schema: -; Owner: postgres
 --
 
-CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8';
+CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8';
 
 
 \if :use_roles
@@ -381,6 +450,7 @@ CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LC_COLLATE 
 \connect yugabyte
 
 SET yb_binary_restore = true;
+SET yb_ignore_pg_class_oids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -389,6 +459,7 @@ SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
+SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
@@ -439,7 +510,7 @@ CREATE TABLEGROUP grp_without_spc;
     SET default_tablespace = tsp1;
 \endif
 
-SET default_with_oids = false;
+SET default_table_access_method = heap;
 
 --
 -- Name: table1; Type: TABLE; Schema: public; Owner: yugabyte_test; Tablespace: tsp1
@@ -452,6 +523,11 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16386'::pg_catalog.oid);
 
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16385'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16384'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16384'::pg_catalog.oid);
 
 CREATE TABLE public.table1 (
     id integer
@@ -479,6 +555,11 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16390'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16389'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16388'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16388'::pg_catalog.oid);
+
 CREATE TABLE public.table2 (
     name character varying
 )
@@ -504,6 +585,11 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16396'::pg_catalog.oid);
 
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16395'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16394'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16394'::pg_catalog.oid);
 
 CREATE TABLE public.tbl_with_grp_with_spc (
     a integer
@@ -548,6 +634,11 @@ COPY public.tbl_with_grp_with_spc (a) FROM stdin;
 -- Name: idx1; Type: INDEX; Schema: public; Owner: yugabyte_test; Tablespace: tsp2
 --
 
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16387'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16387'::pg_catalog.oid);
+
 CREATE INDEX NONCONCURRENTLY idx1 ON public.table1 USING lsm (id HASH) SPLIT INTO 3 TABLETS;
 
 
@@ -559,16 +650,31 @@ CREATE INDEX NONCONCURRENTLY idx1 ON public.table1 USING lsm (id HASH) SPLIT INT
 -- Name: idx2; Type: INDEX; Schema: public; Owner: yugabyte_test; Tablespace: tsp1
 --
 
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16391'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16391'::pg_catalog.oid);
+
 CREATE INDEX NONCONCURRENTLY idx2 ON public.table2 USING lsm (name HASH) SPLIT INTO 3 TABLETS;
 
 
 --
--- Name: FUNCTION pg_stat_statements_reset(); Type: ACL; Schema: pg_catalog; Owner: postgres
+-- Name: SCHEMA public; Type: ACL; Schema: -; Owner: pg_database_owner
+--
+
+\if :use_roles
+REVOKE USAGE ON SCHEMA public FROM PUBLIC;
+GRANT ALL ON SCHEMA public TO PUBLIC;
+\endif
+
+
+--
+-- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
 \if :use_roles
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
-REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset() FROM PUBLIC;
+REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \endif
 
@@ -580,6 +686,17 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \if :use_roles
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\endif
+
+
+--
+-- Name: TABLE pg_stat_statements_info; Type: ACL; Schema: pg_catalog; Owner: postgres
+--
+
+\if :use_roles
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
+GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \endif
 

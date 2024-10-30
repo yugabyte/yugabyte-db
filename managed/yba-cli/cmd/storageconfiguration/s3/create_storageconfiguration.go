@@ -20,9 +20,12 @@ import (
 
 // createS3StorageConfigurationCmd represents the storage config command
 var createS3StorageConfigurationCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create an S3 YugabyteDB Anywhere storage configuration",
-	Long:  "Create an S3 storage configuration in YugabyteDB Anywhere",
+	Use:     "create",
+	Aliases: []string{"add"},
+	Short:   "Create an S3 YugabyteDB Anywhere storage configuration",
+	Long:    "Create an S3 storage configuration in YugabyteDB Anywhere",
+	Example: `yba storage-config s3 create --name <storage-configuration-name> \
+	--backup-location <backup-location> --access-key <access-key> --secret-key <secret-key>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		storageNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {

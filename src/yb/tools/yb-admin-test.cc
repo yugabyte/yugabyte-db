@@ -52,23 +52,26 @@
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/test_workload.h"
 
-#include "yb/master/catalog_entity_info.h"
-#include "yb/master/master_defaults.h"
 #include "yb/master/master_client.pb.h"
+#include "yb/master/master_cluster_client.h"
+#include "yb/master/master_defaults.h"
 
 #include "yb/tools/admin-test-base.h"
 
+#include "yb/tools/tools_test_utils.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/date_time.h"
 #include "yb/util/format.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/port_picker.h"
-#include "yb/util/random_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/subprocess.h"
 
 using namespace std::literals;
+
+using yb::common::GetMemberAsArray;
+using yb::common::GetMemberAsStr;
+using yb::common::PrettyWriteRapidJsonToString;
 
 namespace yb {
 namespace tools {
@@ -151,12 +154,57 @@ class BlacklistChecker {
   vector<string> args_;
 };
 
+Result<std::string> ReadFileToString(const std::string& file_path) {
+  faststring contents;
+  RETURN_NOT_OK(yb::ReadFileToString(Env::Default(), file_path, &contents));
+  return contents.ToString();
+}
+
 } // namespace
 
 const auto kRollbackAutoFlagsCmd = "rollback_auto_flags";
 const auto kPromoteAutoFlagsCmd = "promote_auto_flags";
+const auto kClusterConfigEntryTypeName =
+    master::SysRowEntryType_Name(master::SysRowEntryType::CLUSTER_CONFIG);
+
+YB_STRONGLY_TYPED_BOOL(EmergencyRepairMode);
 
 class AdminCliTest : public AdminTestBase {
+ public:
+  Result<std::string> GetClusterUuid() {
+    master::GetMasterClusterConfigRequestPB config_req;
+    master::GetMasterClusterConfigResponsePB config_resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(30s);
+    RETURN_NOT_OK(
+        cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>().GetMasterClusterConfig(
+            config_req, &config_resp, &rpc));
+    if (config_resp.has_error()) {
+      return StatusFromPB(config_resp.error().status());
+    }
+    return config_resp.cluster_config().cluster_uuid();
+  }
+
+  Status RestartMaster(EmergencyRepairMode mode) {
+    const auto kEmergencyRepairModeFlag = "emergency_repair_mode";
+    auto* leader_master = cluster_->GetLeaderMaster();
+    if (mode) {
+      leader_master->AddExtraFlag(kEmergencyRepairModeFlag, "true");
+    } else {
+      leader_master->RemoveExtraFlag(kEmergencyRepairModeFlag);
+    }
+
+    leader_master->Shutdown();
+    return leader_master->Restart();
+  }
+
+  std::string GetTempDir() { return *tmp_dir_; }
+
+  // Dump the cluster config catalog_entry and verify that the dump contains the correct
+  // cluster_uuid.
+  Status TestDumpSysCatalogEntry(const std::string& cluster_uuid);
+
+  TmpDirProvider tmp_dir_;
 };
 
 // Test yb-admin config change while running a workload.
@@ -378,7 +426,7 @@ TEST_F(AdminCliTest, InvalidMasterAddresses) {
   std::string error_string;
   ASSERT_NOK(Subprocess::Call(ToStringVector(
       GetAdminToolPath(), "-master_addresses", unreachable_host,
-      "-timeout_ms", "1000", "list_tables"), &error_string, StdFdTypes{StdFdType::kErr}));
+      "-timeout_ms", "1000", "list_tables"), /* output */ nullptr, &error_string));
   ASSERT_STR_CONTAINS(error_string, "verify the addresses");
 }
 
@@ -402,22 +450,21 @@ TEST_F(AdminCliTest, CheckTableIdUsage) {
   // Check bad optional integer argument.
   args.resize(args_size);
   args.push_back("bad");
-  std::string output;
-  ASSERT_NOK(Subprocess::Call(args, &output, StdFdTypes{StdFdType::kErr}));
+  std::string error;
+  ASSERT_NOK(Subprocess::Call(args, /* output */ nullptr, &error));
   // Due to greedy algorithm all bad arguments are treated as table identifier.
-  ASSERT_NE(output.find("Namespace 'bad' of type 'ycql' not found"), std::string::npos);
+  ASSERT_NE(error.find("Namespace 'bad' of type 'ycql' not found"), std::string::npos);
   // Check multiple tables when single one is expected.
   args.resize(args_size);
   args.push_back(table_id_arg);
-  ASSERT_NOK(Subprocess::Call(args, &output, StdFdTypes{StdFdType::kErr}));
-  ASSERT_NE(output.find("Single table expected, 2 found"), std::string::npos);
+  ASSERT_NOK(Subprocess::Call(args, /* output */ nullptr, &error));
+  ASSERT_NE(error.find("Single table expected, 2 found"), std::string::npos);
   // Check wrong table id.
   args.resize(args_size - 1);
   const auto bad_table_id = table_id + "_bad";
   args.push_back(Format("tableid.$0", bad_table_id));
-  ASSERT_NOK(Subprocess::Call(args, &output, StdFdTypes{StdFdType::kErr}));
-  ASSERT_NE(
-      output.find(Format("Table with id '$0' not found", bad_table_id)), std::string::npos);
+  ASSERT_NOK(Subprocess::Call(args, /*output*/ nullptr, &error));
+  ASSERT_NE(error.find(Format("Table with id '$0' not found", bad_table_id)), std::string::npos);
 }
 
 TEST_F(AdminCliTest, TestSnapshotCreation) {
@@ -918,21 +965,22 @@ TEST_F(AdminCliTest, DdlLog) {
 
   auto document = ASSERT_RESULT(CallJsonAdmin("ddl_log"));
 
-  auto log = ASSERT_RESULT(Get(document, "log")).get().GetArray();
+  auto log = ASSERT_RESULT(GetMemberAsArray(document, "log"));
   ASSERT_EQ(log.Size(), 3);
   std::vector<std::string> actions;
+  actions.reserve(log.Size());
   for (const auto& entry : log) {
-    LOG(INFO) << "Entry: " << common::PrettyWriteRapidJsonToString(entry);
+    LOG(INFO) << "Entry: " << PrettyWriteRapidJsonToString(entry);
     TableType type;
     bool parse_result = TableType_Parse(
-        ASSERT_RESULT(Get(entry, "table_type")).get().GetString(), &type);
+        std::string(ASSERT_RESULT(GetMemberAsStr(entry, "table_type"))), &type);
     ASSERT_TRUE(parse_result);
     ASSERT_EQ(type, TableType::YQL_TABLE_TYPE);
-    auto namespace_name = ASSERT_RESULT(Get(entry, "namespace")).get().GetString();
+    auto namespace_name = ASSERT_RESULT(GetMemberAsStr(entry, "namespace"));
     ASSERT_EQ(namespace_name, kNamespaceName);
-    auto table_name = ASSERT_RESULT(Get(entry, "table")).get().GetString();
+    auto table_name = ASSERT_RESULT(GetMemberAsStr(entry, "table"));
     ASSERT_EQ(table_name, kTableName);
-    actions.emplace_back(ASSERT_RESULT(Get(entry, "action")).get().GetString());
+    actions.emplace_back(ASSERT_RESULT(GetMemberAsStr(entry, "action")));
   }
   ASSERT_EQ(actions[0], "Drop column text_column");
   ASSERT_EQ(actions[1], "Drop index test_idx");
@@ -1444,6 +1492,175 @@ TEST_F(AdminCliTest, TestCompactionStatusAfterCompactionFinishes) {
   ASSERT_GT(last_full_compaction_time, time_before_compaction);
   const auto last_request_time = ASSERT_RESULT(DateTime::TimestampFromString(match[2].str()));
   ASSERT_GT(last_request_time, time_before_compaction);
+}
+
+Status AdminCliTest::TestDumpSysCatalogEntry(const std::string& cluster_uuid) {
+  const auto dump_file_path = tmp_dir_ / Format("$0-", kClusterConfigEntryTypeName);
+
+  // We should be able to dump the data while not in emergency_repair_mode.
+  auto output =
+      VERIFY_RESULT(CallAdmin("dump_sys_catalog_entries", kClusterConfigEntryTypeName, *tmp_dir_));
+  SCHECK_STR_CONTAINS(output, dump_file_path);
+
+  auto file_contents = VERIFY_RESULT(ReadFileToString(dump_file_path));
+  SCHECK_STR_CONTAINS(file_contents, cluster_uuid);
+  return Status::OK();
+}
+
+TEST_F(AdminCliTest, TestDumpSysCatalogEntryInNonEmergencyMode) {
+  BuildAndStart();
+  const auto cluster_uuid = ASSERT_RESULT(GetClusterUuid());
+  ASSERT_OK(TestDumpSysCatalogEntry(cluster_uuid));
+}
+
+TEST_F(AdminCliTest, TestDumpSysCatalogEntryInEmergencyMode) {
+  BuildAndStart();
+  const auto cluster_uuid = ASSERT_RESULT(GetClusterUuid());
+  ASSERT_OK(RestartMaster(EmergencyRepairMode::kTrue));
+  ASSERT_OK(TestDumpSysCatalogEntry(cluster_uuid));
+  ASSERT_OK(RestartMaster(EmergencyRepairMode::kFalse));
+}
+
+// Make sure we cannot write to sys catalog when not in emergency repair mode.
+TEST_F(AdminCliTest, BlockWriteToSysCatalogEntryInNonEmergencyMode) {
+  BuildAndStart();
+
+  auto env = Env::Default();
+  const auto dump_file_path = tmp_dir_ / Format("$0-", kClusterConfigEntryTypeName);
+
+  master::SysClusterConfigEntryPB dummy_cluster_config;
+  dummy_cluster_config.set_cluster_uuid(Uuid::Generate().ToString());
+
+  ASSERT_OK(WriteStringToFileSync(env, dummy_cluster_config.DebugString(), dump_file_path));
+
+  const auto kExpectedError = "Updating sys_catalog is only allowed in emergency repair mode";
+
+  ASSERT_NOK_STR_CONTAINS(
+      CallAdmin("write_sys_catalog_entry", "delete", kClusterConfigEntryTypeName, "", "", "force"),
+      kExpectedError);
+
+  ASSERT_NOK_STR_CONTAINS(
+      CallAdmin(
+          "write_sys_catalog_entry", "insert", kClusterConfigEntryTypeName, "dummy", dump_file_path,
+          "force"),
+      kExpectedError);
+
+  ASSERT_NOK_STR_CONTAINS(
+      CallAdmin(
+          "write_sys_catalog_entry", "update", kClusterConfigEntryTypeName, "", dump_file_path,
+          "force"),
+      kExpectedError);
+}
+
+// Test insert and delete of CatalogEntity.
+TEST_F(AdminCliTest, TestInsertDeleteSysCatalogEntry) {
+  BuildAndStart();
+  ASSERT_OK(RestartMaster(EmergencyRepairMode::kTrue));
+
+  auto env = Env::Default();
+  const auto second_cluster_config_id = "second_cc";
+
+  master::SysClusterConfigEntryPB second_cluster_config;
+  second_cluster_config.set_cluster_uuid(Uuid::Generate().ToString());
+  const auto file_path =
+      tmp_dir_ / Format("$0-$1", kClusterConfigEntryTypeName, second_cluster_config_id);
+
+  ASSERT_OK(WriteStringToFileSync(env, second_cluster_config.DebugString(), file_path));
+
+  ASSERT_OK(CallAdmin(
+      "write_sys_catalog_entry", "insert", kClusterConfigEntryTypeName, second_cluster_config_id,
+      file_path, "force"));
+
+  auto validate_dump_cluster_config = [&]() -> Status {
+    RETURN_NOT_OK(env->DeleteFile(file_path));
+    auto output = VERIFY_RESULT(CallAdmin(
+        "dump_sys_catalog_entries", kClusterConfigEntryTypeName, *tmp_dir_,
+        second_cluster_config_id));
+    SCHECK_STR_CONTAINS(output, file_path);
+    auto file_contents = VERIFY_RESULT(ReadFileToString(file_path));
+    SCHECK_STR_CONTAINS(file_contents, second_cluster_config.cluster_uuid());
+    return Status::OK();
+  };
+
+  // Dump the new entry to make sure it was updated.
+  ASSERT_OK(validate_dump_cluster_config());
+
+  // Restart the master and dump the new entry to make sure it was persisted.
+  auto* leader_master = cluster_->GetLeaderMaster();
+  leader_master->Shutdown();
+  ASSERT_OK(leader_master->Restart());
+
+  ASSERT_OK(validate_dump_cluster_config());
+
+  // Delete the second entry.
+  ASSERT_OK(CallAdmin(
+      "write_sys_catalog_entry", "delete", kClusterConfigEntryTypeName, second_cluster_config_id,
+      "", "force"));
+
+  auto output = ASSERT_RESULT(CallAdmin(
+      "dump_sys_catalog_entries", kClusterConfigEntryTypeName, *tmp_dir_,
+      second_cluster_config_id));
+  ASSERT_STR_CONTAINS(output, "Found 0 entries of type CLUSTER_CONFIG");
+
+  // Restart the master to make sure it starts correctly. If the delete did not succeed the master
+  // would crash and fail to start.
+  ASSERT_OK(RestartMaster(EmergencyRepairMode::kFalse));
+  ASSERT_OK(cluster_->WaitForTabletServerCount(cluster_->num_tablet_servers(), 30s));
+}
+
+// Update the ClusterConfig entry in the sys catalog and verify that the change is persisted across
+// master restarts.
+TEST_F(AdminCliTest, TestUpdateSysCatalogEntry) {
+  BuildAndStart();
+  const auto old_cluster_uuid = ASSERT_RESULT(GetClusterUuid());
+  ASSERT_OK(RestartMaster(EmergencyRepairMode::kTrue));
+
+  auto env = Env::Default();
+  const auto file_path = tmp_dir_ / Format("$0-", kClusterConfigEntryTypeName);
+
+  auto new_cluster_uuid = Uuid::Generate().ToString();
+  LOG(INFO) << "Replacing cluster_uuid " << old_cluster_uuid << " with " << new_cluster_uuid;
+
+  master::SysClusterConfigEntryPB new_cluster_config;
+  new_cluster_config.set_cluster_uuid(new_cluster_uuid);
+  ASSERT_OK(WriteStringToFileSync(env, new_cluster_config.DebugString(), file_path));
+
+  auto output = ASSERT_RESULT(CallAdmin(
+      "write_sys_catalog_entry", "update", kClusterConfigEntryTypeName, "", file_path, "force"));
+  ASSERT_STR_CONTAINS(output, new_cluster_uuid);
+
+  ASSERT_OK(RestartMaster(EmergencyRepairMode::kFalse));
+
+  const auto cluster_uuid = ASSERT_RESULT(GetClusterUuid());
+  ASSERT_EQ(cluster_uuid, new_cluster_uuid);
+
+  ASSERT_OK(env->DeleteFile(file_path));
+  output =
+      ASSERT_RESULT(CallAdmin("dump_sys_catalog_entries", kClusterConfigEntryTypeName, *tmp_dir_));
+  ASSERT_STR_CONTAINS(output, file_path);
+  auto file_contents = ASSERT_RESULT(ReadFileToString(file_path));
+  ASSERT_STR_NOT_CONTAINS(file_contents, old_cluster_uuid);
+  ASSERT_STR_CONTAINS(file_contents, new_cluster_uuid);
+}
+
+TEST_F(AdminCliTest, TestRemoveTabletServer) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
+  BuildAndStart({}, {"--enable_load_balancing=false", "--tserver_unresponsive_timeout_ms=5000"});
+  ASSERT_OK(cluster_->AddTabletServer(true));
+  auto added_tserver = cluster_->tablet_server(cluster_->num_tablet_servers() - 1);
+  ASSERT_OK(cluster_->AddTServerToBlacklist(cluster_->master(), added_tserver));
+  added_tserver->Shutdown();
+  auto cluster_client =
+      master::MasterClusterClient(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
+  ASSERT_OK(WaitFor(
+      [&cluster_client, added_tserver]() -> Result<bool> {
+        auto tserver = VERIFY_RESULT(cluster_client.GetTabletServer(added_tserver->uuid()));
+        return tserver && !tserver->alive();
+      },
+      30s, "tserver not present or still alive"));
+  ASSERT_RESULT(CallAdmin("remove_tablet_server", added_tserver->uuid()));
+  auto find_tserver_result = ASSERT_RESULT(cluster_client.GetTabletServer(added_tserver->uuid()));
+  EXPECT_EQ(find_tserver_result, std::nullopt);
 }
 
 }  // namespace tools

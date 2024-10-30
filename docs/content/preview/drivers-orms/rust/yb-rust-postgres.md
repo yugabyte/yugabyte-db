@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: rust-postgres-driver
     parent: rust-drivers
-    weight: 600
+    weight: 500
 type: docs
 ---
 
@@ -31,9 +31,9 @@ type: docs
 
 The [YugabyteDB Rust-Postgres Smart Driver](https://github.com/yugabyte/rust-postgres) is a rust driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL rust-postgres driver](https://github.com/sfackler/rust-postgres), with additional [connection load balancing](../../smart-drivers/) features.
 
-{{< note title="YugabyteDB Managed" >}}
+{{< note title="YugabyteDB Aeon" >}}
 
-To use smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from outside the VPC network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from outside the VPC network fall back to the upstream driver behaviour automatically. For more information, refer to [Using smart drivers with YugabyteDB Managed](../../smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
+To use smart driver load balancing features when connecting to clusters in YugabyteDB Aeon, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from outside the VPC network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from outside the VPC network fall back to the upstream driver behaviour automatically. For more information, refer to [Using smart drivers with YugabyteDB Aeon](../../smart-drivers/#using-smart-drivers-with-yugabytedb-aeon).
 
 {{< /note >}}
 
@@ -54,8 +54,8 @@ The following table describes the connection parameters required to connect, inc
 | database/dbname | Database name |  |
 | user | User connecting to the database |  |
 | password | User password |  |
-| `load_balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true' |
-| `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load_balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
+| `load_balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | Defaults to upstream driver behavior unless set to 'true' |
+| `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing) | If `load_balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
 | yb_servers_refresh_interval | If load_balance is true, the interval in seconds to refresh the servers list | 300 |
 | fallback_to_topology_keys_only | If all the servers in the primary and fallback topology key placements are down, fall back to the host(s) specified in the connection URL, instead of to nodes across the entire cluster. | false |
 | failed_host_reconnect_delay_secs | Mark the server as "UP" only if the server is currently present in `yb_servers()` response and `failed-host-reconnect-delay-secs` duration has elapsed from the last time it was marked "DOWN". | 5 seconds |

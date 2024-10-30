@@ -22,7 +22,7 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
 	"{\"primary\": {\"<gflag-1>\": \"<value-1>\",\"<gflag-2>\": \"<value-2>\"},\
 	\"async\": {\"<gflag-1>\": \"<value-1>\",\"<gflag-2>\": \"<value-2>\"}}" \
 	--num-nodes 1 --replication-factor 1 \
-	--user-tags <tag1>=<value1>,<tag2>=<value2>
+	--user-tags <key-1>=<value-1>,<key-2>=<value-2>
 ```
 
 ### Options
@@ -33,6 +33,7 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
       --provider-code string                             [Required] Provider code. Allowed values: aws, gcp, azu, onprem, kubernetes.
       --provider-name string                             [Optional] Provider name to be used in universe. Run "yba provider list --code <provider-code>" to check the list of providers for the given provider-code. Fetches the first provider in the list by default.
       --dedicated-nodes                                  [Optional] Place Masters on dedicated nodes, (default false) for aws, azu, gcp, onprem. Defaults to true for kubernetes.
+      --cpu-architecture string                          [Optional] CPU architecture for nodes in all clusters. (default "x86_64")
       --add-read-replica                                 [Optional] Add a read replica cluster to the universe. (default false)
       --replication-factor ints                          [Optional] Replication factor of the cluster. Provide replication-factor for each cluster as a separate flag. "--replication-factor 3 --replication-factor 5" OR "--replication-factor 3,5" refers to RF of Primary cluster = 3 and RF of Read Replica = 5. First flag always corresponds to the primary cluster. (default [3,3])
       --num-nodes ints                                   [Optional] Number of nodes in the cluster. Provide no of nodes for each cluster as a separate flag. "--num-nodes 3 --num-nodes 5" OR "--num-nodes 3,5" refers to 3 nodes in the Primary cluster and 5 nodes in the Read Replica cluster. First flag always corresponds to the primry cluster. (default [3,3])
@@ -40,7 +41,7 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
       --preferred-region stringArray                     [Optional] Preferred region to place the node of the cluster in. Provide preferred regions for each cluster as a separate flag. Defaults to null.
       --master-gflags string                             [Optional] Master GFlags in map (JSON or YAML) format. Provide the gflags in the following formats: "--master-gflags { \"master-gflag-key-1\":\"value-1\",\"master-gflag-key-2\":\"value-2\" }" or  "--master-gflags "master-gflag-key-1: value-1
                                                          master-gflag-key-2: value-2
-                                                         master-gflag-key-3: value3".
+                                                         master-gflag-key-3: value-3".
       --tserver-gflags string                            [Optional] TServer GFlags in map (JSON or YAML) format. Provide gflags for clusters in the following format: "--tserver-gflags "{\"primary\": {\"tserver-gflag-key-1\": \"value-1\",\"tserver-gflag-key-2\": \"value-2\"},\"async\": {\"tserver-gflag-key-1\": \"value-1\",\"tserver-gflag-key-2\": \"value-2\"}}"" OR "--tserver-gflag "primary:
                                                          	log_min_segments_to_retain: 1
                                                          	log_cache_size_limit_mb: 0
@@ -50,6 +51,7 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
                                                          	log_min_segments_to_retain: 2
                                                          	log_cache_size_limit_mb: 0
                                                          	global_log_cache_size_limit_mb: 0"". If no-of-clusters = 2 and no tserver gflags are provided for the read replica, the primary cluster gflags are by default applied to the read replica cluster.
+      --linux-version stringArray                        [Optional] Linux version for the universe nodes. Default linux version is fetched from the provider. corresponding to cpu-architecture of the universe.
       --instance-type stringArray                        [Optional] Instance Type for the universe nodes. Provide the instance types for each cluster as a separate flag. Defaults to "c5.large" for aws, "Standard_DS2_v2" for azure and "n1-standard-1" for gcp. Fetches the first available instance type for onprem providers.
       --num-volumes ints                                 [Optional] Number of volumes to be mounted on this instance at the default path. Provide the number of volumes for each cluster as a separate flag or as comma separated values. (default [1,1])
       --volume-size ints                                 [Optional] The size of each volume in each instance. Provide the number of volumes for each cluster as a separate flag or as comma separated values. (default [100,100])
@@ -87,7 +89,7 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
       --use-systemd                                      [Optional] Use SystemD. (default true)
       --access-key-code string                           [Optional] Access Key code (UUID) corresponding to the provider, defaults to the provider's access key.
       --aws-arn-string string                            [Optional] Instance Profile ARN for AWS universes.
-      --user-tags stringToString                         [Optional] User Tags for the DB instances. Provide as key=value pairs per flag. Example "--user-tags name=test --user-tags owner=development" OR "--user-tags name=test,owner=development". (default [])
+      --user-tags stringToString                         [Optional] User Tags for the DB instances. Provide as key-value pairs per flag. Example "--user-tags name=test --user-tags owner=development" OR "--user-tags name=test,owner=development". (default [])
       --kubernetes-universe-overrides-file-path string   [Optional] Helm Overrides file path for the universe, supported for Kubernetes. For examples on universe overrides file contents, please refer to: "https://docs.yugabyte.com/stable/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#configure-helm-overrides"
       --kubernetes-az-overrides-file-path stringArray    [Optional] Helm Overrides file paths for the availabilty zone, supported for Kubernetes. Provide file paths for overrides of each Availabilty zone as a separate flag. For examples on availabilty zone overrides file contents, please refer to: "https://docs.yugabyte.com/stable/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#configure-helm-overrides"
       --master-http-port int                             [Optional] Master HTTP Port. (default 7000)

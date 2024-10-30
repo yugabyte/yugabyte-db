@@ -310,13 +310,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
       expectedOverrides.put("ip_version_support", "v6_only");
     }
 
-    // For all tests but 1, value should default to true.
-    if (defaultUserIntent.enableExposingService == ExposingServiceState.UNEXPOSED) {
-      expectedOverrides.put("enableLoadBalancer", false);
-    } else {
-      expectedOverrides.put("enableLoadBalancer", true);
-    }
-
     Map<String, Object> partition = new HashMap<>();
     partition.put("tserver", 0);
     partition.put("master", 0);
@@ -331,6 +324,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     masterGFlags.put("placement_zone", defaultAZ.getCode());
     masterGFlags.put(
         "placement_uuid", defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid.toString());
+    masterGFlags.put("master_join_existing_universe", "true");
     gflagOverrides.put("master", masterGFlags);
 
     // Tserver flags.
@@ -344,10 +338,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     gflagOverrides.put("tserver", tserverGFlags);
     // Put all the flags together.
     expectedOverrides.put("gflags", gflagOverrides);
-
-    Map<String, Object> ybcOverrides = new HashMap<>();
-    ybcOverrides.put("enabled", false);
-    expectedOverrides.put("ybc", ybcOverrides);
 
     Map<String, String> universeConfig = defaultUniverse.getConfig();
     if (universeConfig.getOrDefault(Universe.LABEL_K8S_RESOURCES, "false").equals("true")) {
@@ -382,6 +372,14 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
       }
     }
     expectedOverrides.put("disableYsql", !defaultUserIntent.enableYSQL);
+
+    // For all tests but 1, value should default to true.
+    if (defaultUserIntent.enableExposingService == ExposingServiceState.UNEXPOSED) {
+      expectedOverrides.put("enableLoadBalancer", false);
+    } else {
+      expectedOverrides.put("enableLoadBalancer", true);
+    }
+
     boolean helmLegacy =
         Universe.HelmLegacy.valueOf(universeConfig.get(Universe.HELM2_LEGACY))
             == Universe.HelmLegacy.V2TO3;
@@ -399,6 +397,12 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     yugabytedUiInfo.put("enabled", COMMUNITY_OP_ENABLED);
     yugabytedUiInfo.put("metricsSnapshotter", metricsSnapshotterInfo);
     expectedOverrides.put("yugabytedUi", yugabytedUiInfo);
+
+    Map<String, Object> ybcOverrides = new HashMap<>();
+    ybcOverrides.put("enabled", false);
+    expectedOverrides.put("ybc", ybcOverrides);
+
+    expectedOverrides.put("defaultServiceScope", "AZ");
     return expectedOverrides;
   }
 

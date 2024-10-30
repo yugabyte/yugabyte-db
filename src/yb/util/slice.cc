@@ -145,7 +145,7 @@ uint8_t Slice::operator[](size_t n) const {
   return begin_[n];
 }
 
-void Slice::remove_prefix(size_t n) {
+void Slice::RemovePrefix(size_t n) {
   DCHECK_LE(n, size());
   begin_ += n;
 }
@@ -164,7 +164,7 @@ Slice Slice::WithoutPrefix(size_t n) const {
   return Slice(begin_ + n, end_);
 }
 
-void Slice::remove_suffix(size_t n) {
+void Slice::RemoveSuffix(size_t n) {
   DCHECK_LE(n, size());
   end_ -= n;
 }

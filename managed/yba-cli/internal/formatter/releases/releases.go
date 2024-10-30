@@ -27,7 +27,7 @@ type Context struct {
 // NewReleasesFormat for formatting output
 func NewReleasesFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultReleasesListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -40,6 +40,29 @@ func Write(
 	ctx formatter.Context,
 	releases []map[string]interface{},
 ) error {
+	// Check if the format is JSON or Pretty JSON
+	if (ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON()) && ctx.Command.IsListCommand() {
+		// Marshal the slice of releases into JSON
+		var output []byte
+		var err error
+
+		if ctx.Format.IsPrettyJSON() {
+			output, err = json.MarshalIndent(releases, "", "  ")
+		} else {
+			output, err = json.Marshal(releases)
+		}
+
+		if err != nil {
+			logrus.Errorf("Error marshaling releases to json: %v\n", err)
+			return err
+		}
+
+		// Write the JSON output to the context
+		_, err = ctx.Output.Write(output)
+		return err
+	}
+
+	// Existing logic for table and other formats
 	render := func(format func(subContext formatter.SubContext) error) error {
 		for _, releaseMetadata := range releases {
 			err := format(&Context{

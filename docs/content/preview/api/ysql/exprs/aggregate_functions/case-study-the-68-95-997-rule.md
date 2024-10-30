@@ -9,7 +9,7 @@ description: Case study to show the use of percentile_cont() to illustrate the w
 aliases:
   - /preview/api/ysql/exprs/aggregate_functions/case-study-the-6895997-rule/
 menu:
-  preview:
+  preview_api:
     identifier: case-study-the-68–95–997-rule
     parent: aggregate-functions
     weight: 100
@@ -22,7 +22,7 @@ This case study shows the use of aggregate functions to demonstrate the so-calle
 
 ## Populate the test table
 
-The demonstration uses the function `normal_rand()`, brought by the [tablefunc](../../../../../explore/ysql-language-features/pg-extensions/#tablefunc-example) extension, to populate the test table:
+The demonstration uses the function `normal_rand()`, brought by the [tablefunc](../../../../../explore/ysql-language-features/pg-extensions/extension-tablefunc) extension, to populate the test table:
 
 ```plpgsql
 drop table if exists t cascade;

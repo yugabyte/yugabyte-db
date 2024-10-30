@@ -14,7 +14,7 @@ type: docs
 
 YugabyteDB Anywhere (YBA) is a self-managed database-as-a-service that allows you to deploy and operate YugabyteDB database clusters (also known as universes) at scale.
 
-In YBA, a database cluster is called a [universe](../../architecture/key-concepts/#universe), and the terms are used interchangeably. More precisely, a universe in YBA always consists of one (and only one) primary cluster, and can optionally also include a single [read replica](../../architecture/docdb-replication/read-replicas/) cluster attached to the primary cluster.
+In YBA, a database cluster is called a [universe](../../architecture/key-concepts/#universe), and the terms are used interchangeably. More precisely, a universe in YBA always consists of one (and only one) [primary cluster](../../architecture/key-concepts/#primary-cluster), and can optionally also include a single [read replica](../../architecture/key-concepts/#read-replica-cluster/) cluster attached to the primary cluster.
 
 ## Features
 
@@ -110,7 +110,7 @@ Use this option for any of the following situations:
 - You are deploying a single [stretched cluster across multiple clouds](../create-deployments/create-universe-multi-cloud/) (for example, one cluster with some nodes on AWS, others on GCP, and/or others on Azure).
 - Any other cases where you must retain control over creating the VMs and/or Linux OS, and can't give this control to YBA.
 
-With the on-premises provider, after creating VMs manually (that is, outside of YBA), you will add them to your on premises provider's free pool of servers. Subsequently, when creating the universe, database nodes are taken from the on-premises provider's free pool of servers and added to the universe.
+With the on-premises provider, after creating VMs manually (that is, outside of YBA), you will add them to your on-premises provider's free pool of servers. Subsequently, when creating the universe, database nodes are taken from the on-premises provider's free pool of servers and added to the universe.
 
 ### Kubernetes
 

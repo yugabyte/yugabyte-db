@@ -6,6 +6,7 @@ package gcp
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -19,9 +20,11 @@ import (
 
 // updateGCPProviderCmd represents the provider command
 var updateGCPProviderCmd = &cobra.Command{
-	Use:   "update",
-	Short: "Update a GCP YugabyteDB Anywhere provider",
-	Long:  "Update a GCP provider in YugabyteDB Anywhere",
+	Use:     "update",
+	Aliases: []string{"edit"},
+	Short:   "Update a GCP YugabyteDB Anywhere provider",
+	Long:    "Update a GCP provider in YugabyteDB Anywhere",
+	Example: `yba provider gcp update --name <provider-name> --new-name <new-provider-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -96,6 +99,8 @@ var updateGCPProviderCmd = &cobra.Command{
 		details := provider.GetDetails()
 		cloudInfo := details.GetCloudInfo()
 		gcpCloudInfo := cloudInfo.GetGcp()
+
+		providerImageBundles := provider.GetImageBundles()
 
 		newProviderName, err := cmd.Flags().GetString("new-name")
 		if err != nil {
@@ -295,18 +300,47 @@ var updateGCPProviderCmd = &cobra.Command{
 
 		// End of Updating Regions
 
-		rUpdate, response, err := authAPI.EditProvider(provider.GetUuid()).
+		// Update Image Bundles
+
+		addImageBundles, err := cmd.Flags().GetStringArray("add-image-bundle")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		editImageBundles, err := cmd.Flags().GetStringArray("edit-image-bundle")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		removeImageBundles, err := cmd.Flags().GetStringArray("remove-image-bundle")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		providerImageBundles = removeGCPImageBundles(removeImageBundles, providerImageBundles)
+
+		providerImageBundles = editGCPImageBundles(
+			editImageBundles,
+			providerImageBundles)
+
+		providerImageBundles = addGCPImageBundles(
+			addImageBundles,
+			providerImageBundles,
+		)
+
+		provider.SetImageBundles(providerImageBundles)
+
+		// End of Updating Image Bundles
+
+		rTask, response, err := authAPI.EditProvider(provider.GetUuid()).
 			EditProviderRequest(provider).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Provider: GCP", "Update")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		providerUUID := rUpdate.GetResourceUUID()
-		taskUUID := rUpdate.GetTaskUUID()
-
 		providerutil.WaitForUpdateProviderTask(
-			authAPI, providerName, providerUUID, providerCode, taskUUID)
+			authAPI, providerName, rTask, providerCode)
 	},
 }
 
@@ -345,30 +379,62 @@ func init() {
 	updateGCPProviderCmd.Flags().StringArray("add-region", []string{},
 		"[Required] Region associated with the GCP provider. Minimum number of required "+
 			"regions = 1. Provide the following comma separated fields as key-value pairs:"+
-			"\"region-name=<region-name>,shared-subnet=<subnet-id>,yb-image=<custom-ami>,"+
+			"\"region-name=<region-name>,shared-subnet=<subnet-id>,"+
 			"instance-template=<instance-templates-for-YugabyteDB-nodes>\". "+
 			formatter.Colorize("Region name and Shared subnet are required key-value pairs.",
 				formatter.GreenColor)+
-			" YB Image (AMI) and Instance Template are optional. "+
+			" Instance Template is optional. "+
 			"Each region can be added using separate --add-region flags.")
 	updateGCPProviderCmd.Flags().StringArray("edit-region", []string{},
 		"[Optional] Edit region details associated with the GCP provider. "+
 			"Provide the following comma separated fields as key-value pairs:"+
-			"\"region-name=<region-name>,shared-subnet=<subnet-id>,yb-image=<custom-ami>,"+
+			"\"region-name=<region-name>,shared-subnet=<subnet-id>,"+
 			"instance-template=<instance-templates-for-YugabyteDB-nodes>\". "+
 			formatter.Colorize("Region name is a required key-value pair.",
 				formatter.GreenColor)+
-			" Shared subnet, YB Image (AMI) and Instance Template are optional. "+
+			" Shared subnet and Instance Template are optional. "+
 			"Each region needs to be modified using a separate --edit-region flag.")
 	updateGCPProviderCmd.Flags().StringArray("remove-region", []string{},
 		"[Optional] Region name to be removed from the provider. "+
 			"Each region to be removed needs to be provided using a separate "+
 			"--remove-region definition. Removing a region removes the corresponding zones.")
 
+	updateGCPProviderCmd.Flags().StringArray("add-image-bundle", []string{},
+		"[Optional] Add Intel x86_64 image bundles associated with the provider. "+
+			"Provide the following comma separated fields as key-value pairs: "+
+			"\"image-bundle-name=<image-bundle-name>,machine-image=<custom-ami>,"+
+			"ssh-user=<ssh-user>,ssh-port=<ssh-port>,default=<true/false>\". "+
+			formatter.Colorize(
+				"Image bundle name, machine image and SSH user are required key-value pairs.",
+				formatter.GreenColor)+
+			" The default SSH Port is 22. Default marks the image bundle as default for the provider. "+
+			"Each image bundle can be added using separate --image-bundle flag. "+
+			"Example: --add-image-bundle <image-bundle-name>=<image-bundle>,machine-image=<custom-ami>,"+
+			"<ssh-user>=<ssh-user>,<ssh-port>=22")
+
+	updateGCPProviderCmd.Flags().StringArray("edit-image-bundle", []string{},
+		"[Optional] Edit Intel x86_64 image bundles associated with the provider. "+
+			"Provide the following comma separated fields as key-value pairs: "+
+			"\"image-bundle-uuid=<image-bundle-uuid>,machine-image=<custom-ami>,"+
+			"ssh-user=<ssh-user>,ssh-port=<ssh-port>,default=<true/false>\". "+
+			formatter.Colorize(
+				"Image bundle UUID is a required key-value pair.",
+				formatter.GreenColor)+
+			"Each image bundle can be added using separate --image-bundle flag. "+
+			"Example: --edit-image-bundle <image-bundle-uuid>=<image-bundle>,machine-image=<custom-ami>,"+
+			"<ssh-user>=<ssh-user>,<ssh-port>=22")
+
+	updateGCPProviderCmd.Flags().StringArray("remove-image-bundle", []string{},
+		"[Optional] Image bundle UUID to be removed from the provider. "+
+			"Each bundle to be removed needs to be provided using a separate "+
+			"--remove-image-bundle definition.")
+
 	updateGCPProviderCmd.Flags().String("ssh-user", "",
 		"[Optional] Updating SSH User to access the YugabyteDB nodes.")
 	updateGCPProviderCmd.Flags().Int("ssh-port", 0,
 		"[Optional] Updating SSH Port to access the YugabyteDB nodes.")
+	updateGCPProviderCmd.Flags().MarkDeprecated("ssh-port", "Use --edit-image-bundle instead.")
+	updateGCPProviderCmd.Flags().MarkDeprecated("ssh-user", "Use --edit-image-bundle instead.")
 
 	updateGCPProviderCmd.Flags().Bool("airgap-install", false,
 		"[Optional] Are YugabyteDB nodes installed in an air-gapped environment,"+
@@ -413,9 +479,6 @@ func editGCPRegions(
 					details := r.GetDetails()
 					cloudInfo := details.GetCloudInfo()
 					gcp := cloudInfo.GetGcp()
-					if len(region["yb-image"]) != 0 {
-						gcp.SetYbImage(region["yb-image"])
-					}
 					if len(region["shared-subnet"]) != 0 {
 						zones := r.GetZones()
 						for i, z := range zones {
@@ -449,7 +512,7 @@ func addGCPRegions(
 	for _, regionString := range addRegions {
 		region := providerutil.BuildRegionMapFromString(regionString, "add")
 
-		zones := addGCPZones(region["name"], region["shared-subnet"],
+		zones := addGCPZones(region["shared-subnet"],
 			make([]ybaclient.AvailabilityZone, 0))
 		r := ybaclient.Region{
 			Code:  util.GetStringPointer(region["name"]),
@@ -458,7 +521,6 @@ func addGCPRegions(
 			Details: &ybaclient.RegionDetails{
 				CloudInfo: &ybaclient.RegionCloudInfo{
 					Gcp: &ybaclient.GCPRegionCloudInfo{
-						YbImage:          util.GetStringPointer(region["yb-image"]),
 						InstanceTemplate: util.GetStringPointer(region["instance-template"]),
 					},
 				},
@@ -471,7 +533,7 @@ func addGCPRegions(
 }
 
 func addGCPZones(
-	regionName, sharedSubnet string,
+	sharedSubnet string,
 	zones []ybaclient.AvailabilityZone,
 ) []ybaclient.AvailabilityZone {
 	z := ybaclient.AvailabilityZone{
@@ -484,4 +546,139 @@ func addGCPZones(
 				formatter.RedColor))
 	}
 	return zones
+}
+
+func removeGCPImageBundles(
+	removeImageBundles []string,
+	providerImageBundles []ybaclient.ImageBundle) []ybaclient.ImageBundle {
+	if len(removeImageBundles) == 0 {
+		return providerImageBundles
+	}
+
+	for _, ib := range removeImageBundles {
+		for i, pIb := range providerImageBundles {
+			if strings.Compare(pIb.GetUuid(), ib) == 0 {
+				providerImageBundles = util.RemoveComponentFromSlice(
+					providerImageBundles, i,
+				).([]ybaclient.ImageBundle)
+			}
+		}
+	}
+
+	return providerImageBundles
+}
+
+func editGCPImageBundles(
+	editImageBundles []string,
+	providerImageBundles []ybaclient.ImageBundle,
+) []ybaclient.ImageBundle {
+
+	for i, ib := range providerImageBundles {
+		bundleUUID := ib.GetUuid()
+		details := ib.GetDetails()
+		if len(editImageBundles) != 0 {
+			for _, imageBundleString := range editImageBundles {
+				imageBundle := providerutil.BuildImageBundleMapFromString(imageBundleString, "edit")
+
+				if strings.Compare(imageBundle["uuid"], bundleUUID) == 0 {
+					if len(imageBundle["machine-image"]) != 0 {
+						details.SetGlobalYbImage(imageBundle["machine-image"])
+					}
+					if len(imageBundle["ssh-user"]) != 0 {
+						details.SetSshUser(imageBundle["ssh-user"])
+					}
+					if len(imageBundle["ssh-port"]) != 0 {
+						sshPort, err := strconv.ParseInt(imageBundle["ssh-port"], 10, 64)
+						if err != nil {
+							errMessage := err.Error() + " Using SSH Port as 22\n"
+							logrus.Errorln(
+								formatter.Colorize(errMessage, formatter.YellowColor),
+							)
+							sshPort = 22
+						}
+						details.SetSshPort(int32(sshPort))
+					}
+
+					ib.SetDetails(details)
+
+					if len(imageBundle["default"]) != 0 {
+						defaultBundle, err := strconv.ParseBool(imageBundle["default"])
+						if err != nil {
+							errMessage := err.Error() + " Setting default as false\n"
+							logrus.Errorln(
+								formatter.Colorize(errMessage, formatter.YellowColor),
+							)
+							defaultBundle = false
+						}
+						ib.SetUseAsDefault(defaultBundle)
+					}
+
+				}
+
+			}
+		}
+		providerImageBundles[i] = ib
+	}
+	return providerImageBundles
+}
+
+func addGCPImageBundles(
+	imageBundles []string,
+	providerImageBundles []ybaclient.ImageBundle,
+) []ybaclient.ImageBundle {
+	if len(imageBundles) == 0 {
+		return providerImageBundles
+	}
+	imageBundleLen := len(imageBundles)
+	for _, i := range imageBundles {
+		bundle := providerutil.BuildImageBundleMapFromString(i, "add")
+		bundle = providerutil.DefaultImageBundleValues(bundle)
+
+		if _, ok := bundle["ssh-user"]; !ok {
+			logrus.Fatalln(
+				formatter.Colorize(
+					"SSH User not specified in image bundle.\n",
+					formatter.RedColor))
+		}
+
+		if _, ok := bundle["machine-image"]; !ok {
+			logrus.Fatalln(
+				formatter.Colorize("Machine Image not specified in image bundle.\n",
+					formatter.RedColor))
+		}
+
+		sshPort, err := strconv.ParseInt(bundle["ssh-port"], 10, 64)
+		if err != nil {
+			errMessage := err.Error() + " Using SSH Port as 22\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			sshPort = 22
+		}
+
+		defaultBundle, err := strconv.ParseBool(bundle["default"])
+		if err != nil {
+			errMessage := err.Error() + " Setting default as false\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			defaultBundle = false
+		}
+		if imageBundleLen == 1 && !defaultBundle {
+			defaultBundle = true
+		}
+
+		imageBundle := ybaclient.ImageBundle{
+			Name:         util.GetStringPointer(bundle["name"]),
+			UseAsDefault: util.GetBoolPointer(defaultBundle),
+			Details: &ybaclient.ImageBundleDetails{
+				Arch:          util.GetStringPointer(bundle["arch"]),
+				GlobalYbImage: util.GetStringPointer(bundle["machine-image"]),
+				SshUser:       util.GetStringPointer(bundle["ssh-user"]),
+				SshPort:       util.GetInt32Pointer(int32(sshPort)),
+			},
+		}
+		providerImageBundles = append(providerImageBundles, imageBundle)
+	}
+	return providerImageBundles
 }

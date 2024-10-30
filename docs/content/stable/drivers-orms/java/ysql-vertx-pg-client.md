@@ -5,9 +5,9 @@ linkTitle: Connect an app
 description: Connect a Java application using Vert.x PG driver
 menu:
   stable:
-    identifier: vertx-pg-client
+    identifier: java-driver-4-vertx-pg-client
     parent: java-drivers
-    weight: 600
+    weight: 500
 type: docs
 ---
 
@@ -30,6 +30,13 @@ type: docs
     <a href="../yugabyte-jdbc/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YugabyteDB JDBC Smart Driver
+    </a>
+  </li>
+
+  <li >
+    <a href="../yb-r2dbc/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YugabyteDB R2DBC Smart Driver
     </a>
   </li>
 
@@ -199,6 +206,6 @@ Example ran successfully!
 ## Learn more
 
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
-- [Develop Spring Boot applications using the YugabyteDB JDBC Driver](../../../integrations/spring-framework/sdyb/)
+- [Develop Spring Boot applications using the YugabyteDB JDBC Driver](/preview/integrations/spring-framework/sdyb/)
 - Build Java applications using [Hibernate ORM](../hibernate/)
 - Build Java applications using [Ebean ORM](../ebean/)

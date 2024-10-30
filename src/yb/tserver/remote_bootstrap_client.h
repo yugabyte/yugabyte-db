@@ -118,7 +118,7 @@ class RemoteBootstrapClient : public RemoteClientBase {
 
   // Download the retryable request file.
   // It might be abscent at the remote peer.
-  Status DownloadRetryableRequestsFile();
+  Status DownloadTabletBootstrapStateFile();
 
   // Write out the Consensus Metadata file based on the ConsensusStatePB
   // downloaded as part of initiating the remote bootstrap session.

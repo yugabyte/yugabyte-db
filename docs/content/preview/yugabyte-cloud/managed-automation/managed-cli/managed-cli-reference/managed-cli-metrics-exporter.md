@@ -2,7 +2,7 @@
 title: ybm CLI metrics-exporter resource
 headerTitle: ybm metrics-exporter
 linkTitle: metrics-exporter
-description: YugabyteDB Managed CLI reference metrics-exporter resource.
+description: YugabyteDB Aeon CLI reference metrics-exporter resource.
 headcontent: Manage metrics export configuration
 menu:
   preview_yugabyte-cloud:
@@ -11,6 +11,10 @@ menu:
     weight: 20
 type: docs
 ---
+
+{{< warning >}}
+`metrics-exporter` is deprecated. Use `integration` instead.
+{{< /warning >}}
 
 Use the `metrics-exporter` resource to create metrics export configurations for third-party tools, and assign them to clusters.
 
@@ -34,7 +38,7 @@ ybm metrics-exporter create \
 Assign the configuration to a cluster:
 
 ```sh
-ybm metrics-exporter attach \
+ybm metrics-exporter assign \
     --config-name datadog1 \
     --cluster-name my_cluster
 ```

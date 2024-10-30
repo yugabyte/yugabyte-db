@@ -83,7 +83,12 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
         int iters = 0;
         boolean podReady;
         do {
-          podReady = isPodReady();
+          try {
+            podReady = isPodReady();
+          } catch (Exception e) {
+            LOG.info("Exception occurred (ignored) while waiting for pod: {}", e.getMessage());
+            podReady = false;
+          }
           iters++;
           if (podReady) {
             break;

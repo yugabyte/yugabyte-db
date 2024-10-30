@@ -9,6 +9,7 @@
 -- First test, check and cascade
 --
 
+SET yb_explain_hide_non_deterministic_fields = true;
 
 CREATE TABLE ITABLE ( ptest1 int, ptest2 text );
 CREATE UNIQUE INDEX ITABLE_IDX ON ITABLE(ptest1);
@@ -368,6 +369,11 @@ SELECT * FROM p2 ORDER BY k;
 SELECT * FROM p3 ORDER BY k;
 SELECT * FROM p4 ORDER BY k;
 SELECT * FROM c ORDER BY k;
+
+-- check distributed storage counters in case of multiple foreign keys
+TRUNCATE c;
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
+INSERT INTO c VALUES(1, 1, 1, 1, 1);
 
 CREATE TABLE parent(k INT PRIMARY KEY, v INT UNIQUE);
 CREATE TABLE child_1(k INT PRIMARY KEY, v INT REFERENCES parent(k));

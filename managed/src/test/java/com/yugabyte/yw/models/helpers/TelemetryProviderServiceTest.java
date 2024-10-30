@@ -7,6 +7,8 @@ import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doNothing;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -40,6 +42,7 @@ public class TelemetryProviderServiceTest extends FakeDBApplication {
   public void setUp() {
     defaultCustomerUuid = ModelFactory.testCustomer().getUuid();
     telemetryProviderService = app.injector().instanceOf(TelemetryProviderService.class);
+    doNothing().when(mockTelemetryProviderService).validateBean(any());
   }
 
   @Parameters({"DataDog", "Splunk", "AWSCloudWatch", "GCPCloudMonitoring"})

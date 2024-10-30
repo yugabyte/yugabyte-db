@@ -20,12 +20,12 @@ import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Duration;
 import java.util.UUID;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
@@ -45,8 +45,9 @@ public class WaitForServer extends ServerSubTaskBase {
   public static class Params extends ServerSubTaskParams {
     // Timeout for the RPC call.
     public long serverWaitTimeoutMs;
-    public UniverseDefinitionTaskParams.UserIntent userIntent;
-    public CommunicationPorts customCommunicationPorts;
+    // During upgrades we update universe state only at the end of the task.
+    // So here we can pass updated universe state that is not yet persisted.
+    @Nullable public Universe currentUniverseState;
   }
 
   @Override
@@ -70,7 +71,10 @@ public class WaitForServer extends ServerSubTaskBase {
         // Check for master UUID retries until timeout.
         ret = client.waitForMaster(hp, taskParams().serverWaitTimeoutMs);
       } else if (taskParams().serverType.equals(ServerType.YSQLSERVER)) {
-        Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+        Universe universe =
+            taskParams().currentUniverseState == null
+                ? Universe.getOrBadRequest(taskParams().getUniverseUUID())
+                : taskParams().currentUniverseState;
         NodeDetails node = universe.getNode(taskParams().nodeName);
         Provider provider =
             Provider.getOrBadRequest(
@@ -113,18 +117,17 @@ public class WaitForServer extends ServerSubTaskBase {
     RunQueryFormData runQueryFormData = new RunQueryFormData();
     runQueryFormData.setQuery("SELECT version()");
     runQueryFormData.setDbName("system_platform");
-    UniverseDefinitionTaskParams.UserIntent userIntent = taskParams().userIntent;
-    if (userIntent == null) {
-      userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-    }
     NodeDetails node = universe.getNode(taskParams().nodeName);
-    if (taskParams().customCommunicationPorts != null) {
-      UniverseTaskParams.CommunicationPorts.setCommunicationPorts(
-          taskParams().customCommunicationPorts, node);
-    }
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
     JsonNode ysqlResponse =
         ysqlQueryExecutor.executeQueryInNodeShell(
-            universe, runQueryFormData, node, userIntent.isYSQLAuthEnabled());
+            universe,
+            runQueryFormData,
+            node,
+            userIntent.isYSQLAuthEnabled(),
+            userIntent.enableConnectionPooling,
+            universe.getUniverseDetails().communicationPorts.internalYsqlServerRpcPort);
     return !ysqlResponse.has("error");
   }
 }

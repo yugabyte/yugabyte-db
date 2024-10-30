@@ -27,7 +27,6 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/master/catalog_manager_util.h"
-
 #include "yb/master/master_fwd.h"
 #include "yb/master/master.h"
 #include "yb/master/master_error.h"
@@ -164,17 +163,11 @@ METRIC_DEFINE_gauge_uint32(cluster,
 namespace yb {
 namespace master {
 
-using std::unique_ptr;
-using std::string;
-using std::set;
-using std::vector;
-using strings::Substitute;
-
 namespace {
 
-vector<set<TabletId>> GetTabletsOnTSToMove(bool drive_aware,
-                                         const CBTabletServerMetadata& from_ts_meta) {
-  vector<set<TabletId>> all_tablets;
+std::vector<std::set<TabletId>> GetTabletsOnTSToMove(
+    bool drive_aware, const CBTabletServerMetadata& from_ts_meta) {
+  std::vector<std::set<TabletId>> all_tablets;
   if (drive_aware) {
     for (const auto& path : from_ts_meta.sorted_path_load_by_tablets_count) {
       auto path_list = from_ts_meta.path_to_tablets.find(path);
@@ -192,7 +185,7 @@ vector<set<TabletId>> GetTabletsOnTSToMove(bool drive_aware,
 
 // Returns sorted list of pair tablet id and path on to_ts.
 std::vector<std::pair<TabletId, std::string>> GetLeadersOnTSToMove(
-    bool drive_aware, const set<TabletId>& leaders, const CBTabletServerMetadata& to_ts_meta) {
+    bool drive_aware, const std::set<TabletId>& leaders, const CBTabletServerMetadata& to_ts_meta) {
   std::vector<std::pair<TabletId, std::string>> peers;
   if (drive_aware) {
     for (const auto& path : to_ts_meta.sorted_path_load_by_leader_count) {
@@ -542,6 +535,14 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
   VLOG(1) << "Global state after analyzing all tablets: " << global_state_->ToString();
 
   bool task_added = false;
+  // Output parameters are unused in the load balancer, but useful in testing.
+  TabletId out_tablet_id;
+  TabletServerId out_from_ts;
+  TabletServerId out_to_ts;
+
+  // Process under-replicated tablets before general tablet moves since these are highest priority.
+  ProcessUnderReplicatedTablets(
+      remaining_adds, master_errors, task_added, out_tablet_id, out_to_ts);
 
   // Iterate over all the tables to take actions based on the data collected on the previous loop.
   for (const auto& table : GetTables()) {
@@ -564,16 +565,12 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
 
     // We may have modified global loads, so we need to reset this state's load.
     state_->SortLoad();
+    state_->SortLeaderLoad();
 
     VLOG(2) << "Per table state for table: " << table->id() << ", " << state_->ToString();
     VLOG(2) << "Global state: " << global_state_->ToString();
     VLOG(2) << "Sorted load: " << table->id() << ", " << GetSortedLoad();
-    VLOG(2) << "Global load: " << table->id() << ", " << GetSortedLeaderLoad();
-
-    // Output parameters are unused in the load balancer, but useful in testing.
-    TabletId out_tablet_id;
-    TabletServerId out_from_ts;
-    TabletServerId out_to_ts;
+    VLOG(2) << "Sorted leader load: " << table->id() << ", " << GetSortedLeaderLoad();
 
     if (!PREDICT_FALSE(FLAGS_TEST_load_balancer_handle_under_replicated_tablets_only)) {
       // Handle cleanup after over-replication.
@@ -657,6 +654,59 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
   RecordActivity(task_added, master_errors);
 }
 
+std::vector<ClusterLoadBalancer::UnderReplicatedTabletInfo>
+ClusterLoadBalancer::CollectUnderReplicatedTablets() {
+  std::vector<UnderReplicatedTabletInfo> under_replicated_tablets;
+  // Order doesn't matter since we sort later, so we can iterate over the map directly.
+  for (const auto& [table_id, state] : per_table_states_) {
+    for (const auto& tablet_id : state->tablets_missing_replicas_) {
+      const auto& tablet_meta = state->per_tablet_meta_[tablet_id];
+      if (tablet_meta.leader_uuid.empty()) {
+        // If the tablet doesn't have a leader, then we are unable to balance it.
+        continue;
+      }
+      under_replicated_tablets.emplace_back(tablet_id, tablet_meta.NumReplicas(), state.get());
+    }
+  }
+  // Sort by number of replicas, so we focus on tablets with fewer replicas first.
+  std::sort(under_replicated_tablets.begin(), under_replicated_tablets.end());
+  return under_replicated_tablets;
+}
+
+void ClusterLoadBalancer::ProcessUnderReplicatedTablets(
+    int& remaining_adds, uint32_t& master_errors, bool& task_added, TabletId& out_tablet_id,
+    TabletServerId& out_to_ts) {
+  auto under_replicated_tablets = CollectUnderReplicatedTablets();
+  for (const auto& under_replicated_tablet : under_replicated_tablets) {
+    if (remaining_adds == 0) {
+      break;
+    }
+
+    state_ = under_replicated_tablet.table_state;
+    if (state_->allow_only_leader_balancing_) {
+      YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 30, 2)
+          << "Skipping adding replicas. Only leader balancing table " << state_->table_id_;
+      continue;
+    }
+    // Perform a sort to handle any global changes from previous underreplicated adds.
+    state_->SortLoad();
+
+    auto handle_add = HandleAddIfMissingPlacement(under_replicated_tablet.tablet_id, &out_to_ts);
+    if (!handle_add.ok()) {
+      YB_LOG_EVERY_N_SECS_OR_VLOG(WARNING, 30, 1) << Format(
+          "Skipping add replica for under-replicated tablet $0 for table $1: $2",
+          under_replicated_tablet.tablet_id, state_->table_id_, StatusToString(handle_add));
+      master_errors++;
+      continue;
+    }
+    if (*handle_add) {
+      --remaining_adds;
+      task_added = true;
+      out_tablet_id = under_replicated_tablet.tablet_id;
+    }
+  }
+}
+
 void ClusterLoadBalancer::RunLoadBalancer(const LeaderEpoch& epoch) {
   epoch_ = epoch;
   SysClusterConfigEntryPB config = CHECK_RESULT(catalog_manager_->GetClusterConfig());
@@ -711,7 +761,7 @@ void ClusterLoadBalancer::RecordActivity(bool tasks_added_in_this_run, uint32_t 
     num_idle_runs_++;
   } else {
     VLOG(1) <<
-      Substitute("Load balancer has $0 table tasks and $1 master errors",
+      Format("Load balancer has $0 table tasks and $1 master errors",
           table_tasks, master_errors);
   }
 
@@ -858,68 +908,67 @@ Status ClusterLoadBalancer::AnalyzeTabletsUnlocked(const TableId& table_uuid) {
 }
 
 Result<bool> ClusterLoadBalancer::HandleAddIfMissingPlacement(
-    TabletId* out_tablet_id, TabletServerId* out_to_ts) {
-  for (const auto& tablet_id : state_->tablets_missing_replicas_) {
-    const auto& tablet_meta = state_->per_tablet_meta_[tablet_id];
-    const auto& placement_info = GetPlacementByTablet(tablet_id);
-    const auto& missing_placements = tablet_meta.under_replicated_placements;
-    if (VLOG_IS_ON(3)) {
-      std::ostringstream out;
-      out << Format("Tablet $0 has $1 placement(s) in which it is missing a replica. Finding "
-          "valid TSs to add a replica to. Missing placements: ",
-          tablet_id, missing_placements.size());
-      for (auto& placements : missing_placements) {
-        out << placements.ShortDebugString() << ", ";
-      }
-      VLOG(3) << out.str();
+    const TabletId& tablet_id, TabletServerId* out_to_ts) {
+  RETURN_NOT_OK(CanAddReplicas());
+
+  const auto& tablet_meta = state_->per_tablet_meta_[tablet_id];
+  const auto& placement_info = GetPlacementByTablet(tablet_id);
+  const auto& missing_placements = tablet_meta.under_replicated_placements;
+  if (VLOG_IS_ON(3)) {
+    std::ostringstream out;
+    out << Format(
+        "Tablet $0 has $1 placement(s) in which it is missing a replica. Finding "
+        "valid TSs to add a replica to. Missing placements: ",
+        tablet_id, missing_placements.size());
+    for (auto& placements : missing_placements) {
+      out << placements.ShortDebugString() << ", ";
     }
-    // Loop through TSs by load to find a TS that matches the placement needed and does not already
-    // host this tablet.
-    for (const auto& ts_uuid : state_->sorted_load_) {
-      bool can_choose_ts = false;
-      // If we had no placement information, it means we are just under-replicated, so just check
-      // that we can use this tablet server.
-      if (placement_info.placement_blocks().empty()) {
-        // No need to check placement info, as there is none.
-        can_choose_ts = VERIFY_RESULT(
-            state_->CanAddTabletToTabletServer(tablet_id, ts_uuid, nullptr /* placement_info */));
-        VLOG(3) << "Placement info is not available for tablet " << tablet_id << " so this tablet "
-                << "can be added to any valid TS. TS " << ts_uuid
-                << ", can choose: " << can_choose_ts;
-      } else {
-        // We added a tablet to the set with missing replicas both if it is under-replicated, and we
-        // added a placement to the tablet_meta under_replicated_placements if the num replicas in
-        // that placement is fewer than min_num_replicas. If the under-replicated tablet has a
-        // placement that is under-replicated and the ts is not in that placement, then that ts
-        // isn't valid.
-        const auto& ts_meta = state_->per_ts_meta_[ts_uuid];
-        // Either we have specific placement blocks that are under-replicated, so confirm
-        // that this TS matches or all the placement blocks have min_num_replicas
-        // but overall num_replicas is fewer than expected.
-        // In the latter case, we still need to conform to the placement rules.
-        VLOG(3) << "Tablet " << tablet_id << " has " << missing_placements.size()
-                << " missing placements, checking if we can add to tserver "
-                << ts_uuid;
-        if (missing_placements.empty() ||
-            tablet_meta.CanAddTSToMissingPlacements(ts_meta.descriptor)) {
-          // If we don't have any missing placements but are under-replicated then we need to
-          // validate placement information in order to avoid adding to a wrong placement block.
-          //
-          // Do the placement check for both the cases.
-          // If we have missing placements then this check is a tautology otherwise it matters.
-          can_choose_ts = VERIFY_RESULT(state_->CanAddTabletToTabletServer(tablet_id, ts_uuid,
-                                                                                &placement_info));
-        }
+    VLOG(3) << out.str();
+  }
+  // Loop through TSs by load to find a TS that matches the placement needed and does not already
+  // host this tablet.
+  for (const auto& ts_uuid : state_->sorted_load_) {
+    bool can_choose_ts = false;
+    // If we had no placement information, it means we are just under-replicated, so just check
+    // that we can use this tablet server.
+    if (placement_info.placement_blocks().empty()) {
+      // No need to check placement info, as there is none.
+      can_choose_ts = VERIFY_RESULT(
+          state_->CanAddTabletToTabletServer(tablet_id, ts_uuid, nullptr /* placement_info */));
+      VLOG(3) << "Placement info is not available for tablet " << tablet_id << " so this tablet "
+              << "can be added to any valid TS. TS " << ts_uuid
+              << ", can choose: " << can_choose_ts;
+    } else {
+      // We added a tablet to the set with missing replicas both if it is under-replicated, and we
+      // added a placement to the tablet_meta under_replicated_placements if the num replicas in
+      // that placement is fewer than min_num_replicas. If the under-replicated tablet has a
+      // placement that is under-replicated and the ts is not in that placement, then that ts
+      // isn't valid.
+      const auto& ts_meta = state_->per_ts_meta_[ts_uuid];
+      // Either we have specific placement blocks that are under-replicated, so confirm
+      // that this TS matches or all the placement blocks have min_num_replicas
+      // but overall num_replicas is fewer than expected.
+      // In the latter case, we still need to conform to the placement rules.
+      VLOG(3) << "Tablet " << tablet_id << " has " << missing_placements.size()
+              << " missing placements, checking if we can add to tserver " << ts_uuid;
+      if (missing_placements.empty() ||
+          tablet_meta.CanAddTSToMissingPlacements(ts_meta.descriptor)) {
+        // If we don't have any missing placements but are under-replicated then we need to
+        // validate placement information in order to avoid adding to a wrong placement block.
+        //
+        // Do the placement check for both the cases.
+        // If we have missing placements then this check is a tautology otherwise it matters.
+        can_choose_ts =
+            VERIFY_RESULT(state_->CanAddTabletToTabletServer(tablet_id, ts_uuid, &placement_info));
       }
-      // If we've passed the checks, then we can choose this TS to add the replica to.
-      if (can_choose_ts) {
-        *out_tablet_id = tablet_id;
-        *out_to_ts = ts_uuid;
-        VLOG(3) << "Found tserver " << ts_uuid << " to add a replica of tablet " << tablet_id;
-        RETURN_NOT_OK(AddReplica(tablet_id, ts_uuid));
-        state_->tablets_missing_replicas_.erase(tablet_id);
-        return true;
-      }
+    }
+    // If we've passed the checks, then we can choose this TS to add the replica to.
+    if (can_choose_ts) {
+      *out_to_ts = ts_uuid;
+      VLOG(3) << "Found tserver " << ts_uuid << " to add a replica of tablet " << tablet_id;
+      RETURN_NOT_OK(AddReplica(tablet_id, ts_uuid));
+      state_->tablets_missing_replicas_.erase(tablet_id);
+      return true;
     }
   }
   return false;
@@ -947,17 +996,16 @@ Result<bool> ClusterLoadBalancer::HandleAddIfWrongPlacement(
   return false;
 }
 
-Result<bool> ClusterLoadBalancer::HandleAddReplicas(
-    TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
+Status ClusterLoadBalancer::CanAddReplicas() {
   DCHECK(!state_->allow_only_leader_balancing_);
 
   if (state_->options_->kAllowLimitStartingTablets) {
     if (global_state_->total_starting_tablets_ >= state_->options_->kMaxTabletRemoteBootstraps) {
-      return STATUS_SUBSTITUTE(TryAgain, "Cannot add replicas. Currently remote bootstrapping $0 "
+      return STATUS_FORMAT(TryAgain, "Cannot add replicas. Currently remote bootstrapping $0 "
           "tablets, when our max allowed is $1",
           global_state_->total_starting_tablets_, state_->options_->kMaxTabletRemoteBootstraps);
     } else if (state_->total_starting_ >= state_->options_->kMaxTabletRemoteBootstrapsPerTable) {
-      return STATUS_SUBSTITUTE(TryAgain, "Cannot add replicas. Currently remote bootstrapping $0 "
+      return STATUS_FORMAT(TryAgain, "Cannot add replicas. Currently remote bootstrapping $0 "
           "tablets for table $1, when our max allowed is $2 per table",
           state_->total_starting_, state_->table_id_,
           state_->options_->kMaxTabletRemoteBootstrapsPerTable);
@@ -967,12 +1015,19 @@ Result<bool> ClusterLoadBalancer::HandleAddReplicas(
   if (state_->options_->kAllowLimitOverReplicatedTablets &&
       get_total_over_replication() >=
           implicit_cast<size_t>(state_->options_->kMaxOverReplicatedTablets)) {
-    return STATUS_SUBSTITUTE(TryAgain,
+    return STATUS_FORMAT(TryAgain,
         "Cannot add replicas. Currently have a total overreplication of $0, when max allowed is $1"
         ", overreplicated tablets: $2",
         get_total_over_replication(), state_->options_->kMaxOverReplicatedTablets,
         boost::algorithm::join(state_->tablets_over_replicated_, ", "));
   }
+
+  return Status::OK();
+}
+
+Result<bool> ClusterLoadBalancer::HandleAddReplicas(
+    TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
+  RETURN_NOT_OK(CanAddReplicas());
 
   VLOG(3) << "Number of global concurrent remote bootstrap sessions: "
           <<  global_state_->total_starting_tablets_
@@ -981,11 +1036,7 @@ Result<bool> ClusterLoadBalancer::HandleAddReplicas(
           << ": " << state_->total_starting_
           << ", max allowed: " << state_->options_->kMaxTabletRemoteBootstrapsPerTable;
 
-  // Handle missing placements with highest priority, as it means we're potentially
-  // under-replicated.
-  if (VERIFY_RESULT(HandleAddIfMissingPlacement(out_tablet_id, out_to_ts))) {
-    return true;
-  }
+  // Missing placements / under-replicated tablets are handled in ProcessUnderReplicatedTablets.
 
   // Handle wrong placements as next priority, as these could be servers we're moving off of, so
   // we can decommission ASAP.
@@ -1002,7 +1053,7 @@ Result<bool> ClusterLoadBalancer::HandleAddReplicas(
   return move_made;
 }
 
-string ClusterLoadBalancer::GetSortedLoad() const {
+std::string ClusterLoadBalancer::GetSortedLoad() const {
   ssize_t last_pos = state_->sorted_load_.size() - 1;
   std::ostringstream out;
   for (ssize_t left = 0; left <= last_pos; ++left) {
@@ -1017,7 +1068,7 @@ string ClusterLoadBalancer::GetSortedLoad() const {
   return out.str();
 }
 
-string ClusterLoadBalancer::GetSortedLeaderLoad() const {
+std::string ClusterLoadBalancer::GetSortedLeaderLoad() const {
   std::ostringstream out;
   for (const auto& leader_set : state_->sorted_leader_load_) {
     for (const auto& ts_uuid : leader_set) {
@@ -1077,7 +1128,7 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
         if (load_variance > 0 && CanBalanceGlobalLoad()) {
           int global_load_variance = global_state_->GetGlobalLoad(high_load_uuid) -
                                      global_state_->GetGlobalLoad(low_load_uuid);
-          if (global_load_variance < state_->options_->kMinGlobalLoadVarianceToBalance) {
+          if (global_load_variance < state_->options_->kMinLoadVarianceToBalance /* 2 */) {
             // Already globally balanced. Since we are sorted by global load, we can return here as
             // there are no other moves for us to make.
             return false;
@@ -1118,11 +1169,11 @@ Result<bool> ClusterLoadBalancer::GetTabletToMove(
     const TabletServerId& from_ts, const TabletServerId& to_ts, TabletId* moving_tablet_id) {
   const auto& from_ts_meta = state_->per_ts_meta_[from_ts];
   // If drive aware, all_tablets is sorted by decreasing drive load.
-  vector<set<TabletId>> all_tablets_by_drive = GetTabletsOnTSToMove(global_state_->drive_aware_,
-                                                                    from_ts_meta);
-  vector<set<TabletId>> all_filtered_tablets_by_drive;
-  for (const set<TabletId>& drive_tablets : all_tablets_by_drive) {
-    set<TabletId> filtered_drive_tablets;
+  std::vector<std::set<TabletId>> all_tablets_by_drive =
+      GetTabletsOnTSToMove(global_state_->drive_aware_, from_ts_meta);
+  std::vector<std::set<TabletId>> all_filtered_tablets_by_drive;
+  for (const std::set<TabletId>& drive_tablets : all_tablets_by_drive) {
+    std::set<TabletId> filtered_drive_tablets;
     for (const TabletId& tablet_id : drive_tablets) {
       // We don't want to add a new replica to an already over-replicated tablet.
       //
@@ -1147,7 +1198,7 @@ Result<bool> ClusterLoadBalancer::GetTabletToMove(
   // Below, we choose a tablet to move. We first filter out any tablets which cannot be moved
   // because of placement limitations. Then, we prioritize moving a tablet whose leader is in the
   // same zone/region it is moving to (for faster remote bootstrapping).
-  for (const set<TabletId>& drive_tablets : all_filtered_tablets_by_drive) {
+  for (const std::set<TabletId>& drive_tablets : all_filtered_tablets_by_drive) {
     VLOG(3) << Format("All tablets being considered for movement from ts $0 to ts $1 for this "
         "drive are: $2", from_ts, to_ts, drive_tablets);
 
@@ -1225,7 +1276,7 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMoveWithinAffinitizedPriorities(
 }
 
 Result<bool> ClusterLoadBalancer::GetLeaderToMove(
-    const vector<TabletServerId>& sorted_leader_load,
+    const std::vector<TabletServerId>& sorted_leader_load,
     TabletId* moving_tablet_id,
     TabletServerId* from_ts,
     TabletServerId* to_ts,
@@ -1316,13 +1367,14 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMove(
       bool is_global_balancing_move = false;
 
       // Check for state change or end conditions.
-      if (left == right || (load_variance < state_->options_->kMinLeaderLoadVarianceToBalance &&
-            !high_leader_blacklisted)) {
+      if (high_leader_blacklisted && state_->GetLeaderLoad(high_load_uuid) == 0) {
+        continue;  // No leaders to move from this blacklisted TS.
+      }
+      if (left == right || (load_variance < state_->options_->kMinLoadVarianceToBalance /* 2 */ &&
+                            !high_leader_blacklisted)) {
         // Global leader balancing only if per table variance is > 0.
-        // If both left and right are same (i.e. load_variance is 0) and right is last_pos
-        // or right is last_pos and load_variance is 0 then we can return as we don't
-        // have any other moves to make.
         if (load_variance == 0 && right == last_pos) {
+          // We can return as we don't have any other moves to make.
           return false;
         }
         // Check if we can benefit from global leader balancing.
@@ -1330,10 +1382,15 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMove(
         if (load_variance > 0 && CanBalanceGlobalLoad()) {
           int global_load_variance = state_->global_state_->GetGlobalLeaderLoad(high_load_uuid) -
                                         state_->global_state_->GetGlobalLeaderLoad(low_load_uuid);
-          // Already globally balanced. Since we are sorted by global load, we can return here as
-          // there are no other moves for us to make.
-          if (global_load_variance < state_->options_->kMinGlobalLeaderLoadVarianceToBalance) {
-            return false;
+          // Already globally balanced. Since we are sorted by (leaders, global leader load), we can
+          // break here as there are no other leaders for us to move to this left tserver.
+          // However, as opposed to global load balancing, we cannot return early here, and instead
+          // must just break. This is because for global load balancing we can always find a tablet
+          // to move from the high load TS to the low load TS (assuming proper placements). But for
+          // leader balancing, we have the additional constraint that both tservers must have a peer
+          // for this tablet. Thus we must continue to the next left tserver.
+          if (global_load_variance < state_->options_->kMinLoadVarianceToBalance /* 2 */) {
+            break;
           }
           VLOG(3) << "This is a global leader balancing pass";
           is_global_balancing_move = true;
@@ -1344,7 +1401,7 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMove(
 
       // Find the leaders on the higher loaded TS that have running peers on the lower loaded TS.
       // If there are, we have a candidate we want, so fill in the output params and return.
-      const set<TabletId>& leaders = state_->per_ts_meta_[high_load_uuid].leaders;
+      const std::set<TabletId>& leaders = state_->per_ts_meta_[high_load_uuid].leaders;
       for (const auto& tablet : GetLeadersOnTSToMove(global_state_->drive_aware_,
                                                      leaders,
                                                      state_->per_ts_meta_[low_load_uuid])) {
@@ -1376,7 +1433,7 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMove(
         }
 
         // Leader movement solely due to leader blacklist.
-        if (load_variance < state_->options_->kMinLeaderLoadVarianceToBalance &&
+        if (load_variance < state_->options_->kMinLoadVarianceToBalance /* 2 */ &&
             high_leader_blacklisted) {
           LOG(INFO) << "Move tablet " << tablet.first << " leader from leader blacklisted TS "
             << *from_ts << " to TS " << *to_ts;
@@ -1415,7 +1472,7 @@ Result<bool> ClusterLoadBalancer::HandleRemoveReplicas(
     const auto& tablet_meta = state_->per_tablet_meta_[tablet_id];
     const auto& tablet_servers = tablet_meta.over_replicated_tablet_servers;
     auto comparator = PerTableLoadState::Comparator(state_);
-    vector<TabletServerId> sorted_ts;
+    std::vector<TabletServerId> sorted_ts;
     // Don't include any tservers where this tablet is still starting.
     std::copy_if(
         tablet_servers.begin(), tablet_servers.end(), std::back_inserter(sorted_ts),
@@ -1423,12 +1480,12 @@ Result<bool> ClusterLoadBalancer::HandleRemoveReplicas(
           return !state_->per_ts_meta_[ts_uuid].starting_tablets.count(tablet_id);
         });
     if (sorted_ts.empty()) {
-      return STATUS_SUBSTITUTE(IllegalState, "No tservers to remove from over-replicated "
-                                             "tablet $0", tablet_id);
+      return STATUS_FORMAT(IllegalState, "No tservers to remove from over-replicated "
+                           "tablet $0", tablet_id);
     }
     // Sort in reverse to first try to remove a replica from the highest loaded TS.
     sort(sorted_ts.rbegin(), sorted_ts.rend(), comparator);
-    string remove_candidate = sorted_ts[0];
+    std::string remove_candidate = sorted_ts[0];
     *out_tablet_id = tablet_id;
     *out_from_ts = remove_candidate;
     // Do force leader stepdown, as we are either not the leader or we are allowed to step down.
@@ -1510,7 +1567,7 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMoveAcrossAffinitizedPriorities(
         }
       }
 
-      const set<TabletId>& leaders = state_->per_ts_meta_[from_uuid].leaders;
+      const std::set<TabletId>& leaders = state_->per_ts_meta_[from_uuid].leaders;
       for (size_t higher_priority = 0; higher_priority < lower_priority; higher_priority++) {
         // higher_priority is always guaranteed not to contain blacklisted servers.
         for (const auto& to_uuid : state_->sorted_leader_load_[higher_priority]) {
@@ -1542,7 +1599,7 @@ Result<bool> ClusterLoadBalancer::HandleLeaderMoves(
   // If the user sets 'transaction_tables_use_preferred_zones' gflag to 0 and the tablet
   // being balanced is a transaction tablet, then logical flow will be changed to ignore
   // preferred zones and instead proceed to normal leader balancing.
-  string out_ts_ts_path;
+  std::string out_ts_ts_path;
   if (state_->use_preferred_zones_ &&
       VERIFY_RESULT(GetLeaderToMoveAcrossAffinitizedPriorities(
           out_tablet_id, out_from_ts, out_to_ts, &out_ts_ts_path))) {
@@ -1560,7 +1617,7 @@ Result<bool> ClusterLoadBalancer::HandleLeaderMoves(
 
 Status ClusterLoadBalancer::MoveReplica(
     const TabletId& tablet_id, const TabletServerId& from_ts, const TabletServerId& to_ts) {
-  LOG(INFO) << Substitute("Moving replica $0 from $1 to $2", tablet_id, from_ts, to_ts);
+  LOG(INFO) << Format("Moving tablet $0 from $1 to $2", tablet_id, from_ts, to_ts);
   RETURN_NOT_OK(SendReplicaChanges(GetTabletMap().at(tablet_id), to_ts, true /* is_add */,
                                    true /* should_remove_leader */));
   RETURN_NOT_OK(state_->AddReplica(tablet_id, to_ts));
@@ -1569,7 +1626,7 @@ Status ClusterLoadBalancer::MoveReplica(
 }
 
 Status ClusterLoadBalancer::AddReplica(const TabletId& tablet_id, const TabletServerId& to_ts) {
-  LOG(INFO) << Substitute("Adding replica $0 to $1", tablet_id, to_ts);
+  LOG(INFO) << Format("Adding replica of tablet $0 to $1", tablet_id, to_ts);
   // This is an add operation, so the "should_remove_leader" flag is irrelevant.
   RETURN_NOT_OK(SendReplicaChanges(GetTabletMap().at(tablet_id), to_ts, true /* is_add */,
                                    true /* should_remove_leader */));
@@ -1578,7 +1635,7 @@ Status ClusterLoadBalancer::AddReplica(const TabletId& tablet_id, const TabletSe
 
 Status ClusterLoadBalancer::RemoveReplica(
     const TabletId& tablet_id, const TabletServerId& ts_uuid) {
-  LOG(INFO) << Substitute("Removing replica $0 from tablet $1", ts_uuid, tablet_id);
+  LOG(INFO) << Format("Removing replica $0 from tablet $1", ts_uuid, tablet_id);
   RETURN_NOT_OK(SendReplicaChanges(GetTabletMap().at(tablet_id), ts_uuid, false /* is_add */,
                                    true /* should_remove_leader */));
   return state_->RemoveReplica(tablet_id, ts_uuid);
@@ -1587,8 +1644,8 @@ Status ClusterLoadBalancer::RemoveReplica(
 Status ClusterLoadBalancer::MoveLeader(const TabletId& tablet_id,
                                        const TabletServerId& from_ts,
                                        const TabletServerId& to_ts,
-                                       const string& to_ts_path) {
-  LOG(INFO) << Substitute("Moving leader of $0 from TS $1 to $2", tablet_id, from_ts, to_ts);
+                                       const std::string& to_ts_path) {
+  LOG(INFO) << Format("Moving leader of $0 from TS $1 to $2", tablet_id, from_ts, to_ts);
   RETURN_NOT_OK(SendReplicaChanges(GetTabletMap().at(tablet_id), from_ts, false /* is_add */,
                                    false /* should_remove_leader */, to_ts));
 
@@ -1596,7 +1653,8 @@ Status ClusterLoadBalancer::MoveLeader(const TabletId& tablet_id,
 }
 
 void ClusterLoadBalancer::GetAllAffinitizedZones(
-  const ReplicationInfoPB& replication_info, vector<AffinitizedZonesSet>* affinitized_zones) const {
+    const ReplicationInfoPB& replication_info,
+    std::vector<AffinitizedZonesSet>* affinitized_zones) const {
   CatalogManagerUtil::GetAllAffinitizedZones(replication_info, affinitized_zones);
   if (VLOG_IS_ON(2)) {
     std::stringstream out;
@@ -1710,9 +1768,9 @@ bool ClusterLoadBalancer::SkipLoadBalancing(const TableInfo& table) const {
 }
 
 Status ClusterLoadBalancer::CountPendingTasksUnlocked(const TableId& table_uuid,
-                                            int* pending_add_replica_tasks,
-                                            int* pending_remove_replica_tasks,
-                                            int* pending_stepdown_leader_tasks) {
+                                                      int* pending_add_replica_tasks,
+                                                      int* pending_remove_replica_tasks,
+                                                      int* pending_stepdown_leader_tasks) {
   GetPendingTasks(table_uuid,
                   &state_->pending_add_replica_tasks_[table_uuid],
                   &state_->pending_remove_replica_tasks_[table_uuid],
@@ -1721,9 +1779,7 @@ Status ClusterLoadBalancer::CountPendingTasksUnlocked(const TableId& table_uuid,
   *pending_add_replica_tasks += state_->pending_add_replica_tasks_[table_uuid].size();
   *pending_remove_replica_tasks += state_->pending_remove_replica_tasks_[table_uuid].size();
   *pending_stepdown_leader_tasks += state_->pending_stepdown_leader_tasks_[table_uuid].size();
-  for (auto e : state_->pending_add_replica_tasks_[table_uuid]) {
-    const auto& ts_uuid = e.second;
-    const auto& tablet_id = e.first;
+  for (const auto& [tablet_id, ts_uuid] : state_->pending_add_replica_tasks_[table_uuid]) {
     RETURN_NOT_OK(state_->AddStartingTablet(tablet_id, ts_uuid));
   }
   return Status::OK();
@@ -1738,38 +1794,31 @@ void ClusterLoadBalancer::GetPendingTasks(const TableId& table_uuid,
 }
 
 Status ClusterLoadBalancer::SendReplicaChanges(
-    scoped_refptr<TabletInfo> tablet, const TabletServerId& ts_uuid, const bool is_add,
+    const TabletInfoPtr& tablet, const TabletServerId& ts_uuid, const bool is_add,
     const bool should_remove_leader, const TabletServerId& new_leader_ts_uuid) {
   auto l = tablet->LockForRead();
   if (is_add) {
     // These checks are temporary. They will be removed once we are confident that the algorithm is
     // always doing the right thing.
-    SCHECK_EQ(state_->pending_add_replica_tasks_[tablet->table()->id()].count(tablet->tablet_id()),
-             0U,
-             IllegalState,
-             "Sending duplicate add replica task.");
+    SCHECK_EQ(
+        state_->pending_add_replica_tasks_[tablet->table()->id()].count(tablet->tablet_id()), 0U,
+        IllegalState, "Sending duplicate add replica task.");
     catalog_manager_->SendAddServerRequest(
         tablet, GetDefaultMemberType(), l->pb.committed_consensus_state(), ts_uuid, epoch_);
-  } else {
+  } else if (state_->per_tablet_meta_[tablet->id()].leader_uuid == ts_uuid) {
     // If the replica is also the leader, first step it down and then remove.
-    if (state_->per_tablet_meta_[tablet->id()].leader_uuid == ts_uuid) {
-      SCHECK_EQ(
-          state_->pending_stepdown_leader_tasks_[tablet->table()->id()].count(tablet->tablet_id()),
-          0U,
-          IllegalState,
-          "Sending duplicate leader stepdown task.");
-      catalog_manager_->SendLeaderStepDownRequest(
-          tablet, l->pb.committed_consensus_state(), ts_uuid, should_remove_leader, epoch_,
-          new_leader_ts_uuid);
-    } else {
-      SCHECK_EQ(
-          state_->pending_remove_replica_tasks_[tablet->table()->id()].count(tablet->tablet_id()),
-          0U,
-          IllegalState,
-          "Sending duplicate remove replica task.");
-      catalog_manager_->SendRemoveServerRequest(
-          tablet, l->pb.committed_consensus_state(), ts_uuid, epoch_);
-    }
+    SCHECK_EQ(
+        state_->pending_stepdown_leader_tasks_[tablet->table()->id()].count(tablet->tablet_id()),
+        0U, IllegalState, "Sending duplicate leader stepdown task.");
+    catalog_manager_->SendLeaderStepDownRequest(
+        tablet, l->pb.committed_consensus_state(), ts_uuid, should_remove_leader, epoch_,
+        new_leader_ts_uuid);
+  } else {
+    SCHECK_EQ(
+        state_->pending_remove_replica_tasks_[tablet->table()->id()].count(tablet->tablet_id()), 0U,
+        IllegalState, "Sending duplicate remove replica task.");
+    catalog_manager_->SendRemoveServerRequest(
+        tablet, l->pb.committed_consensus_state(), ts_uuid, epoch_);
   }
   return Status::OK();
 }
@@ -1810,7 +1859,7 @@ const PlacementInfoPB& ClusterLoadBalancer::GetLiveClusterPlacementInfo() const 
   return l->pb.replication_info().live_replicas();
 }
 
-vector<scoped_refptr<TableInfo>> ClusterLoadBalancer::GetAllTablesLoadBalancerSkipped() {
+std::vector<scoped_refptr<TableInfo>> ClusterLoadBalancer::GetAllTablesLoadBalancerSkipped() {
   SharedLock<decltype(mutex_)> l(mutex_);
   return skipped_tables_;
 }

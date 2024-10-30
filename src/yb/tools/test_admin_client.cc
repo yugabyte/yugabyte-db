@@ -174,7 +174,6 @@ Result<TxnSnapshotId> TestAdminClient::CreateSnapshot(
     req.set_schedule_id(schedule_id.data(), schedule_id.size());
   } else {
     req.add_tables()->CopyFrom(tables);
-    req.set_transaction_aware(true);
     if (retention_duration_hours) {
       req.set_retention_duration_hours(*retention_duration_hours);
     }

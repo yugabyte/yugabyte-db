@@ -776,7 +776,7 @@ TEST_F(QLTabletTest, LeaderLease) {
   QLAddInt32HashValue(req, 1);
   table.AddInt32ColumnValue(req, kValueColumn, 1);
   auto status = session->TEST_ApplyAndFlush(op);
-  ASSERT_TRUE(status.IsIOError()) << "Status: " << status;
+  ASSERT_TRUE(status.IsTimedOut()) << "Status: " << status;
 }
 
 // This test tries to catch situation when some entries were applied and flushed in RocksDB,
@@ -1992,7 +1992,7 @@ class GetTabletKeyRangesTest : public QLTabletRf1TestToggleEnablePackedRow {
     SCHECK_NOTNULL(tablet);
     auto* db = tablet->regular_db();
 
-    while (std_util::cmp_less(
+    while (std::cmp_less(
                db->GetCurrentVersionSstFilesUncompressedSize(),
                kNumFlushes * FLAGS_db_write_buffer_size) ||
            db->GetCurrentVersionNumSSTFiles() < kNumSstFiles) {
@@ -2031,7 +2031,9 @@ Status CalcKeysDistributionAcrossWorkers(
 
   auto iter = CreateRocksDBIterator(
       tablet->doc_db().regular, tablet->doc_db().key_bounds,
-      docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none, rocksdb::kDefaultQueryId);
+      docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none, rocksdb::kDefaultQueryId,
+      /* file_filter = */ nullptr, /* iterate_upper_bound = */ nullptr,
+      rocksdb::CacheRestartBlockKeys { direction == tablet::Direction::kBackward });
   if (direction == tablet::Direction::kForward) {
     iter.SeekToFirst();
   } else {

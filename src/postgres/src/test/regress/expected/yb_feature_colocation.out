@@ -259,6 +259,28 @@ SELECT * FROM tab_range_nonkey_noco;
  3 | 3
 (4 rows)
 
+create table p_out(a int);
+insert into p_out values (1), (2), (3), (4);
+create index on p_out(a asc);
+create table p_in(a int, primary key(a asc));
+insert into p_in values (4);
+/*+Set(yb_prefer_bnl false) IndexScan(p_out) NestLoop(p_out p_in) Leading((p_out p_in))*/ explain (analyze, costs off, summary off, timing off, dist) select * from p_out, p_in where p_out.a = p_in.a limit 1;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Limit (actual rows=1 loops=1)
+   ->  Nested Loop (actual rows=1 loops=1)
+         ->  Index Scan using p_out_a_idx on p_out (actual rows=4 loops=1)
+               Storage Table Rows Scanned: 4
+               Storage Index Read Requests: 2
+               Storage Index Rows Scanned: 4
+         ->  Index Scan using p_in_pkey on p_in (actual rows=0 loops=4)
+               Index Cond: (a = p_out.a)
+               Storage Table Read Requests: 1
+               Storage Table Rows Scanned: 0
+(10 rows)
+
+drop table p_out;
+drop table p_in;
 -- more tables and indexes
 CREATE TABLE tab_range_nonkey_noco2 (a INT, b INT, PRIMARY KEY (a ASC)) WITH (colocation = false);
 CREATE INDEX idx_range3 ON tab_range_nonkey_noco2 (a);
@@ -772,24 +794,24 @@ CREATE DATABASE colocation_test colocation = true;
 \c colocation_test
 -- Lazily create the default implicit tablegroup
 SELECT * FROM pg_yb_tablegroup;
- grpname | grpowner | grptablespace | grpacl | grpoptions
----------+----------+---------------+--------+------------
+ oid | grpname | grpowner | grptablespace | grpacl | grpoptions
+-----+---------+----------+---------------+--------+------------
 (0 rows)
 
 CREATE TABLE tbl (k INT, v INT);
 SELECT * FROM pg_yb_tablegroup;
- grpname | grpowner | grptablespace | grpacl | grpoptions
----------+----------+---------------+--------+------------
- default |       10 |             0 |        |
+  oid  | grpname | grpowner | grptablespace | grpacl | grpoptions
+-------+---------+----------+---------------+--------+------------
+ 16387 | default |       10 |             0 |        |
 (1 row)
 
 -- Check for dependency between colocated table and default tablegroup
 SELECT * FROM pg_depend, pg_yb_tablegroup WHERE classid = 'pg_class'::regclass
 AND objid = 'tbl'::regclass AND refclassid = 'pg_yb_tablegroup'::regclass
 AND refobjid = pg_yb_tablegroup.oid AND grpname = 'default';
- classid | objid | objsubid | refclassid | refobjid | refobjsubid | deptype | grpname | grpowner | grptablespace | grpacl | grpoptions
----------+-------+----------+------------+----------+-------------+---------+---------+----------+---------------+--------+------------
-    1259 | 16384 |        0 |       8036 |    16387 |           0 | n       | default |       10 |             0 |        |
+ classid | objid | objsubid | refclassid | refobjid | refobjsubid | deptype |  oid  | grpname | grpowner | grptablespace | grpacl | grpoptions
+---------+-------+----------+------------+----------+-------------+---------+-------+---------+----------+---------------+--------+------------
+    1259 | 16384 |        0 |       8036 |    16387 |           0 | n       | 16387 | default |       10 |             0 |        |
 (1 row)
 
 DROP TABLEGROUP "default";
@@ -810,6 +832,7 @@ ERROR:  cannot set privileges of an implicit tablegroup in a colocated database
 REVOKE CREATE ON TABLEGROUP "default" FROM test_role;
 ERROR:  cannot set privileges of an implicit tablegroup in a colocated database
 -- Any user can create tables/indexes in an implicit tablegroup
+GRANT CREATE ON SCHEMA public TO test_role;
 SET SESSION AUTHORIZATION test_role;
 CREATE TABLE test_role_table (k INT PRIMARY KEY, v TEXT);
 SELECT * FROM pg_tables WHERE tablename = 'test_role_table';

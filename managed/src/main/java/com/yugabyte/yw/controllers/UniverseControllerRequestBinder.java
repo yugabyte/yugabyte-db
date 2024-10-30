@@ -183,6 +183,9 @@ public class UniverseControllerRequestBinder {
       T taskParams = mergeWithUniverse(formData, universe, paramType);
       taskParams.clusters = clusters;
       taskParams.creatingUser = CommonUtils.getUserFromContext();
+      if (formData.has("runOnlyPrechecks")) {
+        taskParams.runOnlyPrechecks = formData.get("runOnlyPrechecks").booleanValue();
+      }
 
       return taskParams;
     } catch (JsonProcessingException exception) {

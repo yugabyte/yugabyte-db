@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import { Box, useTheme } from '@material-ui/core';
 
 import { XClusterConfig } from '../dtos';
-import { getMasterNodeAddress } from '../ReplicationUtils';
+import { getIsTransactionalAtomicityEnabled, getMasterNodeAddress } from '../ReplicationUtils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { usePillStyles } from '../../../redesign/styles/styles';
 import { XClusterConfigType } from '../constants';
@@ -67,7 +67,7 @@ export function ReplicationOverview({
                   {destinationUniverse.name}
                 </Link>
                 <div className={pillClasses.pill}>Target</div>
-                {xClusterConfig.type === XClusterConfigType.TXN && (
+                {getIsTransactionalAtomicityEnabled(xClusterConfig.type) && (
                   <div className={pillClasses.pill}>
                     {xClusterConfig.targetActive ? 'Active' : 'Standby'}
                   </div>

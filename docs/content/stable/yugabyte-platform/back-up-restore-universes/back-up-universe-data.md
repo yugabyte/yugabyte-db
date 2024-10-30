@@ -10,11 +10,9 @@ menu:
     identifier: back-up-universe-data
     weight: 20
 type: docs
-rightNav:
-  hideH4: true
 ---
 
-You can use YugabyteDB Anywhere to back up your YugabyteDB universe data. This includes actions such as deleting and restoring the backup, as well as restoring and copying the database location.
+You can use YugabyteDB Anywhere (YBA) to back up your YugabyteDB universe data. This includes actions such as deleting and restoring the backup, as well as restoring and copying the database location.
 
 Before you can back up universes, you need to [configure a storage location](../configure-backup-storage/) for your backups.
 
@@ -34,7 +32,7 @@ The universe **Backups** page allows you to create new backups that start immedi
 
 1. Navigate to the universe and select **Backups**, then click **Backup now** to open the dialog shown in the following illustration:
 
-    ![Backup](/images/yp/create-backup-new-3.png)
+    ![Backup](/images/yp/create-backup-ysql-2.20.png)
 
 1. Select the API type for the backup.
 
@@ -44,9 +42,11 @@ The universe **Backups** page allows you to create new backups that start immedi
 
 1. For YCQL backups, you can choose to back up all tables in the keyspace to which the database belongs or only certain tables. Click **Select a subset of tables** to display the **Select Tables** dialog, where you can select one or more tables to back up. Click **Confirm** when you are done.
 
-1. Specify the period of time during which the backup is to be retained. Note that there's an option to never delete the backup.
+1. For YSQL backups of universes with geo-partitioning, you can choose to back up the tablespaces. Select the **Backup tablespaces information** option.
 
-1. If you are using YBA version prior to 2.16 to manage universes with YugabyteDB version prior to 2.16, you can optionally specify the number of threads that should be available for the backup process.
+    If you don't choose to back up tablespaces, the tablespaces are not preserved and their data is backed up to the primary region.
+
+1. Specify the period of time during which the backup is to be retained. Note that there's an option to never delete the backup.
 
 1. Click **Backup**.
 
@@ -59,7 +59,6 @@ For YSQL, you can allow YugabyteDB Anywhere to back up your data with the user a
 To view detailed information about an existing backup, click on the backup (row) in the **Backups** list to open **Backup Details**.
 
 The **Backup Details** include the storage address of your backup. In the list of databases (YSQL) or keyspaces (YCQL), click **Copy Location** for the database or keyspace. If your backup includes incremental backups, click the arrow for the increment of interest to display the databases or keyspaces.
-
 If you want to [manually verify or access a backup](#access-backups-in-storage), you can use this address to access the backup where it is stored.
 
 To access a list of all backups from all universes, including deleted universes, navigate to **Backups** on the YugabyteDB Anywhere left-side menu.
@@ -132,9 +131,9 @@ s3://user_bucket
 
 | Component | Description |
 | :-------- | :---------- |
-| Storage address | The name of the bucket as specified in the [backup configuration](../configure-backup-storage/) that was used for the backup. |
+| Storage address | The name of the bucket as specified in the [storage configuration](../configure-backup-storage/) that was used for the backup. |
 | Sub-directories | The path of the sub-folders (if any) in a bucket. |
-| Universe UUID | The UUID of the universe that was backed up. You can move this folder to different a location, but to successfully restore, do not modify this folder or any of its contents. |
+| Universe UUID | The UUID of the universe that was backed up. You can move this folder to different a location, but to successfully restore, do not modify this folder, or any of its contents. |
 | Backup series name and UUID | The name of the backup series and YBA-generated UUID. The UUID ensures that YBA can correctly identify the appropriate folder. |
 | Backup type | `full` or `incremental`. Indicates whether the subfolders contain full or incremental backups. |
 | Creation time | The time the backup was started. |
@@ -142,7 +141,7 @@ s3://user_bucket
 
 A backup set consists of a successful full backup, and (if incremental backups were taken) one or more consecutive successful incremental backups. The backup set can be used to restore a database at the point in time of the full and/or incremental backup, as long as the chain of good incremental backups is unbroken. Use the creation time to identify increments that occurred after a full backup.
 
-When YBA writes a backup, the last step after all parallel tasks complete is to write a "success" file to the backup folder. The presence of this file is verification of a good backup. Any full or incremental backup that does not include a success file should not be assumed to be good, and you should use an older backup for restore instead.
+When YBA writes a backup, the last step after all tasks complete is to write a "success" file to the backup folder. The presence of this file is verification of a good backup. Any full or incremental backup that does not include a success file should not be assumed to be good, and you should use an older backup for restore instead.
 
 ![Success file metadata](/images/yp/success-file-backup.png)
 

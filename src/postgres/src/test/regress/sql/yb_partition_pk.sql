@@ -80,6 +80,22 @@ CREATE TABLE part_a_15_20 PARTITION OF parted (a, b, PRIMARY KEY(a HASH)) FOR VA
 CREATE TABLE part_a_20_25 (a int, b text NOT NULL, PRIMARY KEY (a ASC));
 ALTER TABLE parted ATTACH PARTITION part_a_20_25 FOR VALUES FROM (20) TO (25);
 
+-- Create a partition table without a primary key and attach it as a partition.
+CREATE TABLE part_a_25_40 (a int NOT NULL, b text NOT NULL) PARTITION BY range (a);
+CREATE TABLE part_a_25_35 PARTITION OF part_a_25_40 FOR VALUES FROM (25) TO (35) PARTITION BY range (a);
+CREATE TABLE part_a_25_30 PARTITION OF part_a_25_35 FOR VALUES FROM (25) TO (30);
+CREATE TABLE part_a_30_35 PARTITION OF part_a_25_35 FOR VALUES FROM (30) TO (35);
+CREATE TABLE part_a_35_40 PARTITION OF part_a_25_40 FOR VALUES FROM (35) TO (40);
+ALTER TABLE parted ATTACH PARTITION part_a_25_40 FOR VALUES FROM (25) TO (40);
+\d part_a_25_40;
+\d part_a_25_35;
+\d part_a_25_30;
+INSERT INTO parted VALUES (26, '26');
+INSERT INTO parted VALUES (26, '26'); -- should fail.
+INSERT INTO parted VALUES (31, '31');
+INSERT INTO parted VALUES (31, '31'); -- should fail.
+INSERT INTO parted VALUES (36, '36');
+INSERT INTO parted VALUES (36, '36'); -- should fail.
 -- Test a complicated situation where the attribute numbers of partition tables
 -- and partitioned tables are different.
 CREATE TABLE col_order_change (

@@ -9,7 +9,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.AccessLevel;
 import lombok.Builder;
+import lombok.Getter;
 import lombok.Value;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -20,8 +22,13 @@ import play.libs.Json;
 public class ShellProcessContext {
   public static final String DEFAULT_REMOTE_USER = "yugabyte";
   public static final ShellProcessContext DEFAULT = ShellProcessContext.builder().build();
-  // specify the SSH user to connect with.
+
+  // Specify the SSH user to connect with.
+  @Getter(AccessLevel.NONE)
   String sshUser;
+
+  // Set it to true if default user needs to be used if sshUser is not set.
+  @Builder.Default boolean useDefaultUser = true;
   // Whether to log stdout&stderr to application.log or not.
   boolean logCmdOutput;
   // Executed command is logged with trace level, in case it's set to true. Otherwise info.
@@ -43,8 +50,11 @@ public class ShellProcessContext {
     return timeoutSecs > 0L ? Duration.ofSeconds(timeoutSecs) : Duration.ZERO;
   }
 
-  public String getSshUserOrDefault() {
-    return StringUtils.isEmpty(sshUser) ? DEFAULT_REMOTE_USER : sshUser;
+  public String getSshUser() {
+    if (StringUtils.isEmpty(sshUser)) {
+      return useDefaultUser ? DEFAULT_REMOTE_USER : null;
+    }
+    return sshUser;
   }
 
   public List<String> redactCommand(List<String> command) {

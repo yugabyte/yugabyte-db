@@ -18,6 +18,7 @@ import {
   SoftwareUpgradeTaskType
 } from '../helpers/universeHelpers';
 import { UniverseAlertBadge } from '../YBUniverseItem/UniverseAlertBadge';
+import { TaskDetailSimpleComp } from '../../../redesign/features/tasks/components/TaskDetailSimpleComp';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 //icons
@@ -30,7 +31,7 @@ export default class UniverseStatus extends Component {
     const {
       currentUniverse: { universeUUID, universeDetails },
       tasks: { customerTaskList },
-      refreshUniverseData
+      refreshUniverseData,
     } = this.props;
 
     if (
@@ -63,6 +64,7 @@ export default class UniverseStatus extends Component {
       : browserHistory.push(`/universes/${universeUUID}/tasks`);
   };
 
+  
   render() {
     const {
       currentUniverse,
@@ -70,7 +72,8 @@ export default class UniverseStatus extends Component {
       tasks: { customerTaskList },
       showAlertsBadge,
       shouldDisplayTaskButton,
-      runtimeConfigs
+      runtimeConfigs,
+      showTaskDetails = false
     } = this.props;
 
     const isRollBackFeatEnabled =
@@ -83,6 +86,7 @@ export default class UniverseStatus extends Component {
       currentUniverse.universeUUID,
       customerTaskList
     );
+    let taskToDisplayInDrawer = universePendingTask;
     const universeUpgradeState = _.get(currentUniverse, 'universeDetails.softwareUpgradeState');
     let statusDisplay = (
       <div className="status-pending-display-container">
@@ -110,6 +114,7 @@ export default class UniverseStatus extends Component {
           );
         }
         if (failedTask?.type === SoftwareUpgradeTaskType.SOFTWARE_UPGRADE) {
+          taskToDisplayInDrawer = failedTask;
           statusDisplay = (
             <div className="pre-finalize-pending">
               <img src={WarningExclamation} height={'22px'} width={'22px'} alt="--" />
@@ -185,6 +190,7 @@ export default class UniverseStatus extends Component {
       universeStatus.state === UniverseState.WARNING
     ) {
       const failedTask = getcurrentUniverseFailedTask(currentUniverse, customerTaskList);
+      taskToDisplayInDrawer = failedTask;
       statusDisplay = (
         <div className={showLabelText ? 'status-error' : ''}>
           <i className="fa fa-warning" />
@@ -249,8 +255,14 @@ export default class UniverseStatus extends Component {
     }
 
     return (
-      <div className={'universe-status ' + universeStatus.state.className}>
+      <div className={'universe-status ' + universeStatus.state.className} onClick={(e) => { e.preventDefault(); }}>
         {statusDisplay}
+        { showTaskDetails &&
+          [UniverseState.PENDING, UniverseState.BAD].includes(universeStatus.state) && (
+            <TaskDetailSimpleComp taskUUID={taskToDisplayInDrawer?.id} universeUUID={currentUniverse.universeUUID} />
+
+          )
+        }
         {showAlertsBadge && <UniverseAlertBadge universeUUID={currentUniverse.universeUUID} />}
       </div>
     );

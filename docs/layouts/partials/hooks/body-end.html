@@ -26,8 +26,8 @@ if (typeof detectExternalLink === 'function') {
 }
 </script>
 
-{{- if .Site.Params.algolia_docsearch -}}
-  <script src="/js/search.js" id="algolia-search-script"{{- if .Site.Params.algolia_sequence_expressions }} data-sequence-expressions="true"{{- end }}></script>
+{{- if .Site.Params.search.algolia_docsearch -}}
+  <script src="/js/search.js" id="algolia-search-script"{{- if .Site.Params.search.algolia_sequence_expressions }} data-sequence-expressions="true"{{- end }}></script>
 {{- end -}}
 
 {{- if .Site.Params.kapa_ai -}}
@@ -59,6 +59,7 @@ if (typeof detectExternalLink === 'function') {
     data-switch-color="#4E5F6D"
     data-website-id="7669d105-58f8-41b7-b3f1-4799ac938657"
     data-search-include-source-names='["Documentation"]'
+    data-user-analytics-fingerprint-enabled="true"
 ></script>
 <script>
   (function() {

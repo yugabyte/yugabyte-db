@@ -22,9 +22,13 @@ import (
 
 // addNodesCmd represents the provider command
 var addNodesCmd = &cobra.Command{
-	Use:   "add",
-	Short: "Add a node instance to YugabyteDB Anywhere on-premises provider",
-	Long:  "Add a node instance to YugabyteDB Anywhere on-premises provider",
+	Use:     "add",
+	Aliases: []string{"create"},
+	Short:   "Add a node instance to YugabyteDB Anywhere on-premises provider",
+	Long:    "Add a node instance to YugabyteDB Anywhere on-premises provider",
+	Example: `yba provider onprem add --name <provider-name> \
+	--ip <node-ip> --instance-type <instance-type> \
+	--region <region> --zone <zone>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -134,8 +138,9 @@ var addNodesCmd = &cobra.Command{
 		}
 
 		nodesCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: onprem.NewNodesFormat(viper.GetString("output")),
+			Command: "add",
+			Output:  os.Stdout,
+			Format:  onprem.NewNodesFormat(viper.GetString("output")),
 		}
 
 		logrus.Infof("The node instance %s has been added to provider %s (%s)\n",

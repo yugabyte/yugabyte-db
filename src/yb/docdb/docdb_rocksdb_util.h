@@ -32,6 +32,10 @@
 namespace yb {
 namespace docdb {
 
+// Map from old cotable id to new cotable id.
+// Used to restore snapshot to a new database/tablegroup and update cotable ids in the frontiers.
+using CotableIdsMap = std::unordered_map<Uuid, Uuid, UuidHash>;
+
 const int kDefaultGroupNo = 0;
 
 dockv::KeyBytes AppendDocHt(Slice key, const DocHybridTime& doc_ht);
@@ -47,18 +51,24 @@ enum class BloomFilterMode {
 // Note: bloom_filter_mode should be specified explicitly to avoid using it incorrectly by default.
 // user_key_for_filter is used with BloomFilterMode::USE_BLOOM_FILTER to exclude SST files which
 // have the same hashed components as (Sub)DocKey encoded in user_key_for_filter.
+// Set `cache_restart_block_keys` to kTrue to allow underlying block iterator to cache block
+// entries per restart block. This could be useful for a backward scan, but should not be used for
+// a forward scan.
 BoundedRocksDbIterator CreateRocksDBIterator(
     rocksdb::DB* rocksdb,
     const KeyBounds* docdb_key_bounds,
     BloomFilterMode bloom_filter_mode,
     const boost::optional<const Slice>& user_key_for_filter,
     const rocksdb::QueryId query_id,
-    std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr,
-    const Slice* iterate_upper_bound = nullptr,
+    std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
+    const Slice* iterate_upper_bound,
+    rocksdb::CacheRestartBlockKeys cache_restart_block_keys,
     rocksdb::Statistics* statistics = nullptr);
 
 // Values and transactions committed later than high_ht can be skipped, so we won't spend time
 // for re-requesting pending transaction status if we already know it wasn't committed at high_ht.
+// Set `use_fast_backward_scan` to true only if an iterator will be used for a backward scan. In
+// this case the iterator would use an optimized version of backward scan. Tested for YSQL only.
 std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     const DocDB& doc_db,
     BloomFilterMode bloom_filter_mode,
@@ -68,14 +78,17 @@ std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     const ReadOperationData& read_operation_data,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr,
     const Slice* iterate_upper_bound = nullptr,
-    FastBackwardScan use_fast_backward_scan = FastBackwardScan::kFalse,
-    const DocDBStatistics* statistics = nullptr);
+    FastBackwardScan use_fast_backward_scan = FastBackwardScan::kFalse);
 
+// Set `cache_restart_block_keys` to kTrue to allow underlying block iterator to cache block
+// entries per restart block. This could be useful for a backward scan, but should not be used for
+// a forward scan.
 BoundedRocksDbIterator CreateIntentsIteratorWithHybridTimeFilter(
     rocksdb::DB* intentsdb,
     const TransactionStatusManager* status_manager,
     const KeyBounds* docdb_key_bounds,
-    const Slice* iterate_upper_bound = nullptr,
+    const Slice* iterate_upper_bound,
+    rocksdb::CacheRestartBlockKeys cache_restart_block_keys,
     rocksdb::Statistics* statistics = nullptr);
 
 std::shared_ptr<rocksdb::RocksDBPriorityThreadPoolMetrics> CreateRocksDBPriorityThreadPoolMetrics(
@@ -135,7 +148,8 @@ class RocksDBPatcher {
   Status SetHybridTimeFilter(std::optional<uint32_t> db_oid, HybridTime value);
 
   // Modify flushed frontier and clean up smallest/largest op id in per-SST file metadata.
-  Status ModifyFlushedFrontier(const ConsensusFrontier& frontier);
+  Status ModifyFlushedFrontier(
+      const ConsensusFrontier& frontier, const CotableIdsMap& cotable_ids_map);
 
   // Update file sizes in manifest if actual file size was changed because of direct manipulation
   // with .sst files.

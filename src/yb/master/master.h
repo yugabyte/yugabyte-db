@@ -44,8 +44,8 @@
 #include "yb/gutil/thread_annotations.h"
 #include "yb/gutil/macros.h"
 
-#include "yb/master/master_fwd.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_options.h"
 #include "yb/master/master_tserver.h"
 #include "yb/master/tablet_health_manager.h"
@@ -86,7 +86,7 @@ class Master : public tserver::DbServerBase {
   explicit Master(const MasterOptions& opts);
   virtual ~Master();
 
-  virtual Status InitAutoFlags(rpc::Messenger* messenger) override;
+  virtual Status InitFlags(rpc::Messenger* messenger) override;
   Status InitAutoFlagsFromMasterLeader(const HostPort& leader_address);
   Status Init() override;
   Status Start() override;
@@ -109,7 +109,7 @@ class Master : public tserver::DbServerBase {
 
   CatalogManagerIf* catalog_manager() const;
 
-  CatalogManager* catalog_manager_impl() const { return catalog_manager_.get(); }
+  CatalogManager* catalog_manager_impl() const { return CHECK_NOTNULL(catalog_manager_.get()); }
 
   TabletSplitManager& tablet_split_manager() const;
 
@@ -135,7 +135,9 @@ class Master : public tserver::DbServerBase {
 
   MasterAutoFlagsManager* GetAutoFlagsManagerImpl() { return auto_flags_manager_.get(); }
 
-  CloneStateManager* clone_state_manager() const;
+  CloneStateManager& clone_state_manager() const;
+
+  MasterSnapshotCoordinator& snapshot_coordinator() const;
 
   scoped_refptr<MetricEntity> metric_entity_cluster();
 
@@ -227,6 +229,8 @@ class Master : public tserver::DbServerBase {
 
   Result<std::unordered_set<std::string>> GetAvailableAutoFlagsForServer() const override;
 
+  Result<std::unordered_set<std::string>> GetFlagsForServer() const override;
+
  private:
   friend class MasterTest;
 
@@ -256,6 +260,7 @@ class Master : public tserver::DbServerBase {
   // The metric entity for the cluster.
   scoped_refptr<MetricEntity> metric_entity_cluster_;
 
+  std::unique_ptr<SysCatalogTable> sys_catalog_;
   std::unique_ptr<TSManager> ts_manager_;
   std::unique_ptr<CatalogManager> catalog_manager_;
   std::unique_ptr<MasterAutoFlagsManager> auto_flags_manager_;
@@ -264,6 +269,9 @@ class Master : public tserver::DbServerBase {
   std::unique_ptr<FlushManager> flush_manager_;
   std::unique_ptr<TabletHealthManager> tablet_health_manager_;
   std::unique_ptr<MasterClusterHandler> master_cluster_handler_;
+  std::unique_ptr<TabletSplitManager> tablet_split_manager_;
+  std::unique_ptr<CloneStateManager> clone_state_manager_;
+  std::unique_ptr<MasterSnapshotCoordinator> snapshot_coordinator_;
 
   std::unique_ptr<TestAsyncRpcManager> test_async_rpc_manager_;
 

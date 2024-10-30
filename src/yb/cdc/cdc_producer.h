@@ -69,6 +69,8 @@ Status GetChangesForCDCSDK(
     const CoarseTimePoint deadline = CoarseTimePoint::max(),
     const std::optional<uint64> getchanges_resp_max_size_bytes = std::nullopt);
 
+bool IsReplicationSlotStream(const StreamMetadata& stream_metadata);
+
 using UpdateOnSplitOpFunc = std::function<Status(const consensus::ReplicateMsg&)>;
 
 Status GetChangesForXCluster(

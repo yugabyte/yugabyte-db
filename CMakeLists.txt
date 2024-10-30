@@ -404,8 +404,11 @@ if(IS_GCC)
     # unnecessary. This does not happen in debug.
     # https://gist.githubusercontent.com/mbautin/02d955abbee29f58c0d0d9cf7ab3291d/raw
     ADD_CXX_FLAGS("-Wno-uninitialized")
-
-    # Also the use-after-free detector complains about Boost multi index container.
+  endif()
+  if ("${COMPILER_VERSION}" MATCHES "^1[23][.].*$" AND
+      "${YB_BUILD_TYPE}" STREQUAL "release")
+    # Also the use-after-free detector complains about Boost multi index container in both GCC 12
+    # and GCC 13.
     # https://gist.githubusercontent.com/mbautin/de18543ea85d46db49dfa4b4b7df082a/raw
     ADD_CXX_FLAGS("-Wno-use-after-free")
   endif()
@@ -607,6 +610,8 @@ include_directories(src)
 
 include_directories("src/inline-thirdparty/usearch")
 include_directories("src/inline-thirdparty/fp16")
+include_directories("src/inline-thirdparty/hnswlib")
+include_directories("src/inline-thirdparty/simsimd")
 
 
 enable_testing()
@@ -622,7 +627,7 @@ endif()
 function(ADD_THIRDPARTY_LIB LIB_NAME)
   set(options)
   set(one_value_args SHARED_LIB STATIC_LIB)
-  set(multi_value_args DEPS)
+  set(multi_value_args DEPS INCLUDE_DIRS)
   cmake_parse_arguments(ARG "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
   if(ARG_UNPARSED_ARGUMENTS)
     message(SEND_ERROR "Error: unrecognized arguments: ${ARG_UNPARSED_ARGUMENTS}")
@@ -648,27 +653,9 @@ function(ADD_THIRDPARTY_LIB LIB_NAME)
       PROPERTIES IMPORTED_LINK_INTERFACE_LIBRARIES "${ARG_DEPS}")
   endif()
 
-  # Set up an "exported variant" for this thirdparty library (see "Visibility"
-  # above). It's the same as the real target, just with an "_exported" suffix.
-  # We prefer the static archive if it exists (as it's akin to an "internal"
-  # library), but we'll settle for the shared object if we must.
-  #
-  # A shared object exported variant will force any "leaf" library that
-  # transitively depends on it to also depend on it at runtime; this is
-  # desirable for some libraries (e.g. cyrus_sasl).
-  set(LIB_NAME_EXPORTED ${LIB_NAME}_exported)
-  if(ARG_STATIC_LIB)
-    add_library(${LIB_NAME_EXPORTED} STATIC IMPORTED)
-    set_target_properties(${LIB_NAME_EXPORTED}
-      PROPERTIES IMPORTED_LOCATION "${ARG_STATIC_LIB}")
-  else()
-    add_library(${LIB_NAME_EXPORTED} SHARED IMPORTED)
-    set_target_properties(${LIB_NAME_EXPORTED}
-      PROPERTIES IMPORTED_LOCATION "${ARG_SHARED_LIB}")
-  endif()
-  if(ARG_DEPS)
-    set_target_properties(${LIB_NAME_EXPORTED}
-      PROPERTIES IMPORTED_LINK_INTERFACE_LIBRARIES "${ARG_DEPS}")
+  if (ARG_INCLUDE_DIRS)
+    target_include_directories(${LIB_NAME}
+      SYSTEM INTERFACE "${ARG_INCLUDE_DIRS}")
   endif()
 endfunction()
 
@@ -900,6 +887,7 @@ set(YB_SUBDIR_NAMES
     tools
     tserver
     util
+    vector_index
     yql
    )
 

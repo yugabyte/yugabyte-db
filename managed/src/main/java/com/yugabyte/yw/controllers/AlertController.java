@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.alerts.impl.AlertChannelBase.Context;
 import com.yugabyte.yw.common.alerts.impl.AlertTemplateService;
 import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.AlertTemplateDescription;
 import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.TestAlertSettings;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -101,6 +102,8 @@ public class AlertController extends AuthenticatedController {
   @Inject private AlertTemplateSettingsService alertTemplateSettingsService;
 
   @Inject private AlertTemplateVariableService alertTemplateVariableService;
+
+  @Inject private RuntimeConfGetter runtimeConfGetter;
 
   @ApiOperation(
       notes = "WARNING: This is a preview API that could change.",
@@ -1177,7 +1180,7 @@ public class AlertController extends AuthenticatedController {
             alertTemplateService.getTemplateDescription(alertConfiguration.getTemplate());
         expression =
             description.getQueryWithThreshold(
-                alertDefinition, alertConfiguration.getThresholds().get(alert.getSeverity()));
+                alertConfiguration, alertDefinition, alert.getSeverity(), runtimeConfGetter);
       } else {
         return null;
       }
@@ -1235,7 +1238,11 @@ public class AlertController extends AuthenticatedController {
     List<AlertLabel> labels =
         definition
             .getEffectiveLabels(
-                alertTemplateDescription, configuration, alertTemplateSettings, severity)
+                alertTemplateDescription,
+                configuration,
+                alertTemplateSettings,
+                severity,
+                runtimeConfGetter)
             .stream()
             .map(label -> new AlertLabel(label.getName(), label.getValue()))
             .collect(Collectors.toList());

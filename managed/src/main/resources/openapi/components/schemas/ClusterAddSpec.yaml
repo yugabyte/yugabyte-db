@@ -7,7 +7,7 @@ type: object
 required:
   - cluster_type
   - num_nodes
-  - instance_type
+  - node_spec
   - provider_spec
 properties:
   cluster_type:
@@ -23,12 +23,8 @@ properties:
     format: int32
     example: 3
     minimum: 1
-  instance_type:
-    description: Set instance type for tserver nodes of cluster
-    type: string
-    example: c5.xlarge
-  storage_spec:
-    $ref: "./ClusterStorageSpec.yaml"
+  node_spec:
+    $ref: "./ClusterNodeSpec.yaml"
   provider_spec:
     $ref: "./ClusterProviderEditSpec.yaml"
   placement_spec:

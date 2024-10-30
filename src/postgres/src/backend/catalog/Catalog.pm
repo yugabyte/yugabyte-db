@@ -4,7 +4,7 @@
 #    Perl module that extracts info from catalog files into Perl
 #    data structures
 #
-# Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/backend/catalog/Catalog.pm
@@ -41,10 +41,12 @@ sub ParseHeader
 	my $is_varlen            = 0;
 	my $is_client_code       = 0;
 
-	$catalog{columns}     = [];
-	$catalog{toasting}    = [];
-	$catalog{indexing}    = [];
-	$catalog{client_code} = [];
+	$catalog{columns}      = [];
+	$catalog{toasting}     = [];
+	$catalog{indexing}     = [];
+	$catalog{other_oids}   = [];
+	$catalog{foreign_keys} = [];
+	$catalog{client_code}  = [];
 
 	open(my $ifh, '<', $input_file) || die "$input_file: $!";
 
@@ -87,19 +89,59 @@ sub ParseHeader
 		}
 
 		# Push the data into the appropriate data structure.
+		# Caution: when adding new recognized OID-defining macros,
+		# also update src/include/catalog/renumber_oids.pl.
 		if (/^DECLARE_TOAST\(\s*(\w+),\s*(\d+),\s*(\d+)\)/)
 		{
 			push @{ $catalog{toasting} },
 			  { parent_table => $1, toast_oid => $2, toast_index_oid => $3 };
 		}
-		elsif (/^DECLARE_(UNIQUE_)?INDEX\(\s*(\w+),\s*(\d+),\s*(.+)\)/)
+		elsif (
+			/^DECLARE_TOAST_WITH_MACRO\(\s*(\w+),\s*(\d+),\s*(\d+),\s*(\w+),\s*(\w+)\)/
+		  )
+		{
+			push @{ $catalog{toasting} },
+			  {
+				parent_table          => $1,
+				toast_oid             => $2,
+				toast_index_oid       => $3,
+				toast_oid_macro       => $4,
+				toast_index_oid_macro => $5
+			  };
+		}
+		elsif (
+			/^DECLARE_(UNIQUE_)?INDEX(_PKEY)?\(\s*(\w+),\s*(\d+),\s*(\w+),\s*(.+)\)/
+		  )
 		{
 			push @{ $catalog{indexing} },
 			  {
 				is_unique => $1 ? 1 : 0,
-				index_name => $2,
-				index_oid  => $3,
-				index_decl => $4
+				is_pkey   => $2 ? 1 : 0,
+				index_name      => $3,
+				index_oid       => $4,
+				index_oid_macro => $5,
+				index_decl      => $6
+			  };
+		}
+		elsif (/^DECLARE_OID_DEFINING_MACRO\(\s*(\w+),\s*(\d+)\)/)
+		{
+			push @{ $catalog{other_oids} },
+			  {
+				other_name => $1,
+				other_oid  => $2
+			  };
+		}
+		elsif (
+			/^DECLARE_(ARRAY_)?FOREIGN_KEY(_OPT)?\(\s*\(([^)]+)\),\s*(\w+),\s*\(([^)]+)\)\)/
+		  )
+		{
+			push @{ $catalog{foreign_keys} },
+			  {
+				is_array => $1 ? 1 : 0,
+				is_opt   => $2 ? 1 : 0,
+				fk_cols  => $3,
+				pk_table => $4,
+				pk_cols  => $5
 			  };
 		}
 		elsif (/^CATALOG\((\w+),(\d+),(\w+)\)/)
@@ -111,8 +153,6 @@ sub ParseHeader
 			$catalog{bootstrap} = /BKI_BOOTSTRAP/ ? ' bootstrap' : '';
 			$catalog{shared_relation} =
 			  /BKI_SHARED_RELATION/ ? ' shared_relation' : '';
-			$catalog{without_oids} =
-			  /BKI_WITHOUT_OIDS/ ? ' without_oids' : '';
 			if (/BKI_ROWTYPE_OID\((\d+),(\w+)\)/)
 			{
 				$catalog{rowtype_oid}        = $1;
@@ -196,9 +236,22 @@ sub ParseHeader
 					{
 						$column{array_default} = $1;
 					}
-					elsif ($attopt =~ /BKI_LOOKUP\((\w+)\)/)
+					elsif ($attopt =~ /BKI_LOOKUP(_OPT)?\((\w+)\)/)
 					{
-						$column{lookup} = $1;
+						$column{lookup} = $2;
+						$column{lookup_opt} = $1 ? 1 : 0;
+						# BKI_LOOKUP implicitly makes an FK reference
+						push @{ $catalog{foreign_keys} },
+						  {
+							is_array =>
+							  ($atttype eq 'oidvector' || $atttype eq '_oid')
+							? 1
+							: 0,
+							is_opt   => $column{lookup_opt},
+							fk_cols  => $attname,
+							pk_table => $column{lookup},
+							pk_cols  => 'oid'
+						  };
 					}
 					else
 					{
@@ -331,21 +384,22 @@ sub AddDefaultValues
 	foreach my $column (@$schema)
 	{
 		my $attname = $column->{name};
-		my $atttype = $column->{type};
 
-		if (defined $row->{$attname})
-		{
-			;
-		}
-		elsif (defined $column->{default})
+		# No work if field already has a value.
+		next if defined $row->{$attname};
+
+		# Ignore 'oid' columns, they're handled elsewhere.
+		next if $attname eq 'oid';
+
+		# If column has a default value, fill that in.
+		if (defined $column->{default})
 		{
 			$row->{$attname} = $column->{default};
+			next;
 		}
-		else
-		{
-			# Failed to find a value.
-			push @missing_fields, $attname;
-		}
+
+		# Failed to find a value for this field.
+		push @missing_fields, $attname;
 	}
 
 	# Failure to provide all columns is a hard error.
@@ -411,6 +465,8 @@ sub GenerateArrayTypes
 	}
 
 	push @$types, @array_types;
+
+	return;
 }
 
 # Rename temporary files to final names.
@@ -528,6 +584,10 @@ sub FindAllOidsFromHeaders
 		foreach my $index (@{ $catalog->{indexing} })
 		{
 			push @oids, $index->{index_oid};
+		}
+		foreach my $other (@{ $catalog->{other_oids} })
+		{
+			push @oids, $other->{other_oid};
 		}
 	}
 

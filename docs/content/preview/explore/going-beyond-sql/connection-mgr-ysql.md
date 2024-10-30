@@ -4,7 +4,8 @@ headerTitle: Built-in connection pooling
 linkTitle: Built-in connection pooling
 description: Built-in server-side connection pooler for YSQL
 headcontent: Built-in server-side connection pooler for YSQL
-techPreview: /preview/releases/versioning/#feature-maturity
+tags:
+  feature: tech-preview
 aliases:
    - /preview/explore/connection-manager/connection-mgr-ysql/
    - /preview/explore/connection-manager/
@@ -29,7 +30,7 @@ To provide the advantages of connection pooling, but without the limitations, Yu
 ![Connection manager](/images/explore/ysql-connection-manager.png)
 
 {{< note title = "Note">}}
-YSQL Connection Manager is currently not supported for [YugabyteDB Anywhere](../../../yugabyte-platform/) and [YugabyteDB Managed](../../../yugabyte-cloud/).
+YSQL Connection Manager is currently not supported for [YugabyteDB Anywhere](../../../yugabyte-platform/) and [YugabyteDB Aeon](../../../yugabyte-cloud/).
 {{< /note >}}
 
 ## Key features
@@ -48,21 +49,21 @@ YSQL Connection Manager has the following key features:
 
 ## How to use
 
-To start a YugabtyeDB cluster with YSQL Connection Manager, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `enable_ysql_conn_mgr` to true.
+To start a YugabyteDB cluster with YSQL Connection Manager, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `enable_ysql_conn_mgr` to true.
 
 When `enable_ysql_conn_mgr` is set, each YB-TServer starts the YSQL Connection Manager process along with the PostgreSQL process. You should see one YSQL Connection Manager process per YB-TServer.
 
 To create a single-node cluster with YSQL Connection Manager using [yugabyted](../../../reference/configuration/yugabyted/), use the following  command:
 
 ```sh
-./bin/yugabyted start --tserver_flags "enable_ysql_conn_mgr=true,allowed_preview_flags_csv=enable_ysql_conn_mgr" --ui false
+./bin/yugabyted start --tserver_flags "enable_ysql_conn_mgr=true,allowed_preview_flags_csv={enable_ysql_conn_mgr}" --ui false
 ```
 
 Because `enable_ysql_conn_mgr` is a preview flag only, to use it, add the flag to the `allowed_preview_flags_csv` list (that is, `allowed_preview_flags_csv=enable_ysql_conn_mgr`).
 
 {{< note >}}
 
-To create a large number of client connections, ensure that "SHMMNI" (the maximum number of concurrent shared memory segments an OS allows) as well as [ulimit](../../../deploy/manual-deployment/system-config/#ulimits) is set correctly as follows:
+To create a large number of client connections, ensure that "SHMMNI" (the maximum number of concurrent shared memory segments an OS allows) as well as [ulimit](../../../deploy/manual-deployment/system-config/#set-ulimits) is set correctly as follows:
 
 1. Open the file `/etc/sysctl.conf`.
 1. Add `kernel.shmmni = 32768` (support for 30000 clients) at the end of the file.

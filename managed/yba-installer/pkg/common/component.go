@@ -18,6 +18,7 @@ type Component interface {
 	Stop() error
 	Restart() error
 	Install() error
+	Initialize() error
 	MigrateFromReplicated() error
 	FinishReplicatedMigrate() error
 	SystemdFile() string

@@ -4,7 +4,7 @@ headerTitle: yb_is_local_table(oid)
 linkTitle: yb_is_local_table()
 description: Returns whether the given 'oid' is a table replicated only in the local region.
 menu:
-  stable:
+  stable_api:
     identifier: api-ysql-exprs-yb_is_local_table
     parent: geo-partitioning-helper-functions
 type: docs
@@ -12,7 +12,7 @@ type: docs
 
 ## Synopsis
 
-`yb_is_local_table` indicates whether a table is pinned to the local region. The function takes a table's OID (object identifier), and looks for a tablespace associated with that table. If the tablespace is confined to the same region as that of the YugabyteDB node processing the query, the function returns `true`. Otherwise, the function returns `false`.
+`yb_is_local_table` indicates whether a table is pinned to the local region. The function takes a table's OID (object identifier), and looks for a tablespace associated with that table. If the tablespace is confined to the same region as that of the YugabyteDB node processing the query, the function returns true. Otherwise, the function returns false.
 
 {{< note title="Note" >}}
 
@@ -23,7 +23,7 @@ type: docs
 
 ## Usage in Row-level geo-partitioning
 
-This function is primarily helpful while implementing [Row-level geo-partitioning](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/), as it can significantly simplify selecting rows from the local partition. Every table contains a system column called `tableoid`. This stores the `oid` of the table to which the row belongs. While querying a partitioned table, the `tableoid` column thus returns the `oid` of the partition to which the row belongs. The following sections describe how the `tableoid` column can be used with `yb_is_local_table` function to query the local partition.
+This function is helpful while implementing [Row-level geo-partitioning](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/), as it can significantly simplify selecting rows from the local partition. Every table contains a system column called `tableoid`. This stores the `oid` of the table to which the row belongs. While querying a partitioned table, the `tableoid` column thus returns the `oid` of the partition to which the row belongs. The following sections describe how the `tableoid` column can be used with `yb_is_local_table` function to query the local partition.
 
 ## Use case examples
 
@@ -61,7 +61,7 @@ This function is primarily helpful while implementing [Row-level geo-partitionin
     ./bin/yb-admin -master_addresses <IP1>:7100 modify_placement_info aws.us-west-1.us-west-1c:1,aws.us-east-1.us-east-1a:1,aws.us-east-2.us-east-2c:1 3
     ```
 
-1. Create tablespaces corresponding to the regions used by the cluster created above [using ysqlsh](../../../../../admin/ysqlsh/#using-ysqlsh) as follows:
+1. Create tablespaces corresponding to the regions used by the cluster created above [using ysqlsh](../../../../../api/ysqlsh/#using-ysqlsh) as follows:
 
     ```sql
     CREATE TABLESPACE us_west_tablespace WITH (replica_placement=' {"num_replicas":1,"placement_blocks":[     {"cloud":"aws","region":"us-west-1","zone":"us-west-1c","min_num_replicas":1}]}');
@@ -69,7 +69,7 @@ This function is primarily helpful while implementing [Row-level geo-partitionin
     CREATE TABLESPACE us_east2_tablespace WITH (replica_placement=' {"num_replicas":1,"placement_blocks":[     {"cloud":"aws","region":"us-east-2","zone":"us-east-2c","min_num_replicas":1}]}');
     ```
 
-     For more information on how to set up a cluster with [yugabyted](../../../../../reference/configuration/yugabyted/) or [YugabyteDB Anywhere](https://www.yugabyte.com/anywhere/) with corresponding tablespaces, see [tablespaces](../../../../../explore/ysql-language-features/going-beyond-sql/tablespaces).
+     For more information on how to set up a cluster, see [tablespaces](../../../../../explore/going-beyond-sql/tablespaces/).
 
 1. Using the tablespaces, you can create a geo-partitioned table as follows. This is a partitioned table with 3 partitions, where each partition is pinned to a different location.
 
@@ -95,7 +95,7 @@ This function is primarily helpful while implementing [Row-level geo-partitionin
     INSERT INTO users VALUES(3, 'US central user', 'us-east2');
     ```
 
-1. In a partitioned setup, if there are no `WHERE` clause restrictions on the partition key, note that every query on a partitioned table gets fanned out to all of its child partitions:
+1. In a partitioned setup, if there are no WHERE clause restrictions on the partition key, note that every query on a partitioned table gets fanned out to all of its child partitions:
 
     ```sql
     EXPLAIN (COSTS OFF) SELECT * FROM users;
@@ -113,7 +113,7 @@ This function is primarily helpful while implementing [Row-level geo-partitionin
 
 ### Using yb_is_local_table() on a partitioned table
 
-Assuming that the client is in the `us-west` region, note that using `yb_is_local_table()` in the `WHERE` clause causes YSQL to only scan the `us_user_west` table:
+Assuming that the client is in the us-west region, note that using `yb_is_local_table()` in the WHERE clause causes YSQL to only scan the `us_user_west` table:
 
 ```sql
 EXPLAIN (COSTS OFF) SELECT * FROM users WHERE yb_is_local_table(tableoid);
@@ -162,7 +162,7 @@ INSERT INTO users_transactions VALUES(2, 5276, 'us-west');
 INSERT INTO users_transactions VALUES(3, 2984, 'us-east2');
 ```
 
-To perform a `JOIN` across the local partitions of both the tables, you can run the following query with two `WHERE` clauses, one for each partitioned table.
+To perform a JOIN across the local partitions of both the tables, you can run the following query with two WHERE clauses, one for each partitioned table.
 
 ```sql
 SELECT * FROM users, users_transactions WHERE users.user_id = users_transactions.user_id AND yb_is_local_table(users.tableoid) AND yb_is_local_table(users_transactions.tableoid);
@@ -219,6 +219,6 @@ SELECT oid, relname from pg_class WHERE yb_is_local_table(oid);
 
 ## Limitations
 
-* Usage of this function is not optimized for `UPDATE` and `DELETE` queries. The planner will still scan all the partitions to find the rows that are present in the local partition.
+* Usage of this function is not optimized for UPDATE and DELETE queries. The planner will still scan all the partitions to find the rows that are present in the local partition.
 
 * Usage of this function is not optimized when it is part of a bigger expression. For example, `WHERE !yb_is_local_table(tableoid)`. In this case also, the planner will still scan all the partitions to find the rows that are not present in the local partition.

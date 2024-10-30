@@ -77,6 +77,7 @@
 #include "yb/util/fault_injection.h"
 #include "yb/util/file_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -219,16 +220,53 @@ DEFINE_RUNTIME_int32(min_segment_size_bytes_to_rollover_at_flush, 0,
                     "Only rotate wals at least of this size (in bytes) at tablet flush."
                     "-1 to disable WAL rollover at flush. 0 to always rollover WAL at flush.");
 
-// Validate that log_min_segments_to_retain >= 1
-static bool ValidateLogsToRetain(const char* flagname, int value) {
-  if (value >= 1) {
-    return true;
-  }
-  LOG(ERROR) << strings::Substitute("$0 must be at least 1, value $1 is invalid",
-                                    flagname, value);
-  return false;
-}
-DEFINE_validator(log_min_segments_to_retain, &ValidateLogsToRetain);
+DEFINE_RUNTIME_uint32(max_disk_throughput_mbps, 300,
+    "The maximum disk throughput the disk attached to this node can support in MBps.");
+
+DEFINE_RUNTIME_uint32(reject_writes_min_disk_space_check_interval_sec, 60,
+    "Interval in seconds to check for disk space availability. The check will switch to aggressive "
+    "mode (every 10s) if the available disk space is less than --max_disk_throughput_mbps * "
+    "--reject_writes_min_disk_space_check_interval_sec. NOTE: Use a value higher than 10. If a "
+    "value less than 10 is used, then we always run in aggressive check mode, potentially causing "
+    "performance degradations.");
+
+DEFINE_RUNTIME_uint64(reject_writes_min_disk_space_mb, 0,
+    "Reject writes if less than this much disk space is available on the WAL directory and "
+    "--reject_writes_when_disk_full is enabled. If set to 0, defaults to "
+    "--max_disk_throughput_mbps * min(10, --reject_writes_min_disk_space_check_interval_sec).");
+
+DEFINE_validator(log_min_segments_to_retain, FLAG_GT_VALUE_VALIDATOR(0));
+DEFINE_validator(max_disk_throughput_mbps, FLAG_GT_VALUE_VALIDATOR(0));
+DEFINE_validator(reject_writes_min_disk_space_check_interval_sec, FLAG_GT_VALUE_VALIDATOR(0));
+
+DEFINE_RUNTIME_uint64(cdc_intent_retention_ms, 4 * 3600 * 1000,
+    "Interval up to which CDC consumer's checkpoint is considered for retaining intents."
+    "If we haven't received an updated checkpoint from CDC consumer within the interval "
+    "specified by cdc_checkpoint_opid_interval, then CDC does not consider that "
+    "consumer while determining which op IDs to delete from the intent.");
+TAG_FLAG(cdc_intent_retention_ms, advanced);
+
+DEFINE_RUNTIME_uint32(cdc_wal_retention_time_secs, 4 * 3600,
+    "WAL retention time in seconds to be used for tables which have a xCluster, "
+    "or CDCSDK outbound stream.");
+
+DEFINE_validator(cdc_intent_retention_ms,
+    FLAG_DELAYED_COND_VALIDATOR(
+        _value <= static_cast<uint64_t>(FLAGS_cdc_wal_retention_time_secs) * 1000,
+        "Must be less than cdc_wal_retention_time_secs * 1000"));
+
+DEFINE_validator(cdc_wal_retention_time_secs,
+    FLAG_DELAYED_COND_VALIDATOR(
+        FLAGS_cdc_intent_retention_ms <= static_cast<uint64_t>(_value) * 1000,
+        "Must be greater than cdc_intent_retention_ms (in seconds)"));
+
+DEFINE_RUNTIME_bool(enable_xcluster_timed_based_wal_retention, true,
+    "If true, enable time-based WAL retention for tables with xCluster "
+    "by using --cdc_wal_retention_time_secs.");
+
+DEFINE_RUNTIME_AUTO_bool(store_min_start_ht_running_txns, kLocalPersisted, false, true,
+                         "If enabled, minimum start hybrid time among running txns will be "
+                         "persisted in the segment footer during closing of the segment.");
 
 static std::string kSegmentPlaceholderFilePrefix = ".tmp.newsegment";
 static std::string kSegmentPlaceholderFileTemplate = kSegmentPlaceholderFilePrefix + "XXXXXX";
@@ -449,7 +487,7 @@ Log::Appender::Appender(Log* log, ThreadPool* append_thread_pool)
     wait_state_->set_query_id(yb::to_underlying(yb::ash::FixedQueryId::kQueryIdForLogAppender));
     wait_state_->UpdateAuxInfo({.tablet_id = log_->tablet_id(), .method = "RaftWAL"});
     SET_WAIT_STATUS_TO(wait_state_, Idle);
-    yb::ash::RaftLogAppenderWaitStatesTracker().Track(wait_state_);
+    yb::ash::RaftLogWaitStatesTracker().Track(wait_state_);
   }
   DCHECK(log_min_segments_to_retain_validator_registered);
 }
@@ -565,7 +603,7 @@ void Log::Appender::Shutdown() {
     task_stream_.reset();
   }
   if (wait_state_) {
-    yb::ash::RaftLogAppenderWaitStatesTracker().Untrack(wait_state_);
+    yb::ash::RaftLogWaitStatesTracker().Untrack(wait_state_);
   }
 }
 
@@ -589,11 +627,11 @@ Status Log::Open(const LogOptions &options,
                  ThreadPool* append_thread_pool,
                  ThreadPool* allocation_thread_pool,
                  ThreadPool* background_sync_threadpool,
-                 int64_t cdc_min_replicated_index,
                  scoped_refptr<Log>* log,
                  const PreLogRolloverCallback& pre_log_rollover_callback,
                  NewSegmentAllocationCallback callback,
-                 CreateNewSegment create_new_segment) {
+                 CreateNewSegment create_new_segment,
+                 MinStartHTRunningTxnsCallback min_start_ht_running_txns_callback) {
   RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options.env, DirName(wal_dir)),
                         Substitute("Failed to create table wal dir $0", DirName(wal_dir)));
 
@@ -613,7 +651,8 @@ Status Log::Open(const LogOptions &options,
                                      background_sync_threadpool,
                                      callback,
                                      pre_log_rollover_callback,
-                                     create_new_segment));
+                                     create_new_segment,
+                                     std::move(min_start_ht_running_txns_callback)));
   RETURN_NOT_OK(new_log->Init());
   log->swap(new_log);
   return Status::OK();
@@ -633,7 +672,8 @@ Log::Log(
     ThreadPool* background_sync_threadpool,
     NewSegmentAllocationCallback callback,
     const PreLogRolloverCallback& pre_log_rollover_callback,
-    CreateNewSegment create_new_segment)
+    CreateNewSegment create_new_segment,
+    MinStartHTRunningTxnsCallback min_start_ht_running_txns_callback)
     : options_(std::move(options)),
       wal_dir_(std::move(wal_dir)),
       tablet_id_(std::move(tablet_id)),
@@ -663,7 +703,8 @@ Log::Log(
       new_segment_allocation_callback_(callback),
       pre_log_rollover_callback_(pre_log_rollover_callback),
       background_synchronizer_wait_state_(
-          ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>()) {
+          ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>()),
+      min_start_ht_running_txns_callback_(std::move(min_start_ht_running_txns_callback)) {
   set_wal_retention_secs(options_.retention_secs);
   if (table_metric_entity_ && tablet_metric_entity_) {
     metrics_.reset(new LogMetrics(table_metric_entity_, tablet_metric_entity_));
@@ -675,7 +716,7 @@ Log::Log(
     background_synchronizer_wait_state_->UpdateAuxInfo(
         {.tablet_id = tablet_id_, .method = "RaftWAL"});
     SET_WAIT_STATUS_TO(background_synchronizer_wait_state_, Idle);
-    yb::ash::RaftLogAppenderWaitStatesTracker().Track(background_synchronizer_wait_state_);
+    yb::ash::RaftLogWaitStatesTracker().Track(background_synchronizer_wait_state_);
   }
 }
 
@@ -749,8 +790,8 @@ Status Log::CloseCurrentSegment() {
     VLOG_WITH_PREFIX(1) << "Writing a segment without any REPLICATE message. Segment: "
                         << active_segment_->path();
   }
-  VLOG_WITH_PREFIX(2) << "Segment footer for " << active_segment_->path()
-                      << ": " << footer_builder_.ShortDebugString();
+  VLOG_WITH_PREFIX(2) << "Segment footer for " << active_segment_->path() << ": "
+                      << footer_builder_.ShortDebugString();
 
   auto close_timestamp_micros = GetCurrentTimeMicros();
 
@@ -781,6 +822,8 @@ Status Log::RollOver() {
   if (pre_log_rollover_callback_) {
     pre_log_rollover_callback_();
   }
+
+  WriteLatestMinStartTimeRunningTxnsInFooterBuilder();
 
   LOG_SLOW_EXECUTION(WARNING, 50, LogPrefix() + "Log roll took a long time") {
     SCOPED_LATENCY_METRIC(metrics_, roll_latency);
@@ -1344,10 +1387,25 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
   // avoid concurrently deleting those ops, we bump min_op_idx here to be at-least as
   // low as log_copy_min_index_.
   min_op_idx = std::min(log_copy_min_index_, min_op_idx);
+
+  auto xrepl_min_replicated_index = cdc_min_replicated_index_.load(std::memory_order_acquire);
+
+  {
+    std::lock_guard l(get_xcluster_index_lock_);
+    if (get_xcluster_min_index_to_retain_) {
+      xrepl_min_replicated_index =
+          std::min(xrepl_min_replicated_index, get_xcluster_min_index_to_retain_(tablet_id_));
+    }
+  }
+
   // Find the prefix of segments in the segment sequence that is guaranteed not to include
   // 'min_op_idx'.
   RETURN_NOT_OK(reader_->GetSegmentPrefixNotIncluding(
-      min_op_idx, cdc_min_replicated_index_.load(std::memory_order_acquire), segments_to_gc));
+      min_op_idx, xrepl_min_replicated_index, segments_to_gc));
+
+  if (segments_to_gc->size() > 0) {
+    UpdateMinStartTimeRunningTxnsFromGCSegments((*segments_to_gc));
+  }
 
   const auto max_to_delete =
       std::max<ssize_t>(reader_->num_segments() - FLAGS_log_min_segments_to_retain, 0);
@@ -1448,6 +1506,17 @@ void Log::set_wal_retention_secs(uint32_t wal_retention_secs) {
 
 uint32_t Log::wal_retention_secs() const {
   uint32_t wal_retention_secs = wal_retention_secs_.load(std::memory_order_acquire);
+
+  {
+    // If tablet is under xCluster, adjust WAL retention time for xCluster.
+    std::lock_guard l(get_xcluster_index_lock_);
+    if (FLAGS_enable_xcluster_timed_based_wal_retention &&
+        get_xcluster_min_index_to_retain_ &&
+        get_xcluster_min_index_to_retain_(tablet_id_) != std::numeric_limits<int64_t>::max()) {
+      wal_retention_secs = std::max(wal_retention_secs, FLAGS_cdc_wal_retention_time_secs);
+    }
+  }
+
   auto flag_wal_retention = ANNOTATE_UNPROTECTED_READ(FLAGS_log_min_seconds_to_retain);
   return flag_wal_retention > 0 ?
       std::max(wal_retention_secs, static_cast<uint32_t>(flag_wal_retention)) :
@@ -1629,6 +1698,9 @@ Status Log::Close() {
   if (PREDICT_FALSE(FLAGS_TEST_simulate_abrupt_server_restart)) {
     return Status::OK();
   }
+
+  WriteLatestMinStartTimeRunningTxnsInFooterBuilder();
+
   std::lock_guard l(state_lock_);
   switch (log_state_) {
     case kLogWriting:
@@ -1642,7 +1714,7 @@ Status Log::Close() {
       RETURN_NOT_OK(ReplaceSegmentInReaderUnlocked());
       log_state_ = kLogClosed;
       if (background_synchronizer_wait_state_) {
-        yb::ash::RaftLogAppenderWaitStatesTracker().Untrack(background_synchronizer_wait_state_);
+        yb::ash::RaftLogWaitStatesTracker().Untrack(background_synchronizer_wait_state_);
       }
       VLOG_WITH_PREFIX(1) << "Log closed";
 
@@ -1925,6 +1997,12 @@ Status Log::SwitchToAllocatedSegment() {
   footer_builder_.Clear();
   footer_builder_.set_num_entries(0);
 
+  // As this is an active segment, set the min_start_time_running_txns as kInvalid since we want CDC
+  // to stream all records from this segment based on the tablet leader safe time.
+  if (GetAtomicFlag(&FLAGS_store_min_start_ht_running_txns)) {
+    footer_builder_.set_min_start_time_running_txns(HybridTime::kInvalid.ToUint64());
+  }
+
   // Set the new segment's schema.
   {
     SharedLock<decltype(schema_lock_)> l(schema_lock_);
@@ -2039,6 +2117,10 @@ Status Log::ResetLastSyncedEntryOpId(const OpId& op_id) {
   return Status::OK();
 }
 
+HybridTime Log::GetMinStartHTOfRunningTxnsFromGCSegments() const {
+  return min_start_time_running_txns_from_gc_segments_.load(std::memory_order_acquire);
+}
+
 Log::~Log() {
   WARN_NOT_OK(Close(), "Error closing log");
 }
@@ -2096,6 +2178,123 @@ Status Log::LogEntryBatch::Serialize() {
 void Log::LogEntryBatch::MarkReady() {
   DCHECK_EQ(state_, kEntryReserved);
   state_ = kEntryReady;
+}
+
+bool Log::HasSufficientDiskSpaceForWrite() {
+  const auto now = CoarseMonoClock::Now();
+  const auto last_disk_space_check_time =
+      last_disk_space_check_time_.load(std::memory_order_acquire);
+
+  auto check_interval_sec = disk_space_frequent_check_interval_sec_.load(std::memory_order_acquire);
+  if (check_interval_sec == 0) {
+    check_interval_sec = FLAGS_reject_writes_min_disk_space_check_interval_sec;
+  }
+
+  if (IsInitialized(last_disk_space_check_time) &&
+      (now - last_disk_space_check_time < check_interval_sec * 1s)) {
+    return has_free_disk_space_.load(std::memory_order_acquire);
+  }
+
+  std::unique_lock l(disk_space_mutex_, std::defer_lock);
+  if (!l.try_lock_for(std::chrono::milliseconds(0))) {
+    // Someone else is already checking disk space. Just use the cached value.
+
+    if (!IsInitialized(last_disk_space_check_time)) {
+      // Always wait for the initial value to be valid.
+      SharedLock shared_l(disk_space_mutex_);
+    }
+
+    return has_free_disk_space_.load(std::memory_order_acquire);
+  }
+
+  std::string path;
+  {
+    std::lock_guard lock(active_segment_mutex_);
+    path = active_segment_->path();
+  }
+
+  bool has_space = true;
+  const uint32 kAggressiveCheckIntervalSec = 10;
+  // Lets assume we need to check frequently. If we have enough space, we will increment to a
+  // higher value.
+  check_interval_sec =
+      std::min(kAggressiveCheckIntervalSec, FLAGS_reject_writes_min_disk_space_check_interval_sec);
+
+  const uint64 min_allowed_disk_space_mb =
+      FLAGS_reject_writes_min_disk_space_mb ? FLAGS_reject_writes_min_disk_space_mb
+                                            : FLAGS_max_disk_throughput_mbps * check_interval_sec;
+
+  const uint64 min_space_to_trigger_aggressive_check_mb =
+      FLAGS_max_disk_throughput_mbps * FLAGS_reject_writes_min_disk_space_check_interval_sec;
+
+  auto free_space_result = get_env()->GetFreeSpaceBytes(path);
+  if (!free_space_result.ok()) {
+    YB_LOG_EVERY_N_SECS(WARNING, 300) << "Unable to get free space: " << free_space_result;
+
+    // Fallback to the last known value.
+    return has_free_disk_space_.load(std::memory_order_acquire);
+  }
+  const auto free_space_mb = *free_space_result / 1024 / 1024;
+
+  if (free_space_mb < min_allowed_disk_space_mb) {
+    YB_LOG_EVERY_N_SECS(ERROR, 600) << "Not enough disk space available on " << path
+                                    << ". Free space: " << *free_space_result << " bytes";
+    has_space = false;
+  } else if (free_space_mb < min_space_to_trigger_aggressive_check_mb) {
+    YB_LOG_EVERY_N_SECS(WARNING, 600)
+        << "Low disk space on " << path << ". Free space: " << *free_space_result << " bytes";
+  } else {
+    // We have enough space so no need to check frequently.
+    check_interval_sec = FLAGS_reject_writes_min_disk_space_check_interval_sec;
+  }
+
+  disk_space_frequent_check_interval_sec_.store(check_interval_sec, std::memory_order_release);
+  has_free_disk_space_.store(has_space, std::memory_order_release);
+  last_disk_space_check_time_.store(now, std::memory_order_release);
+
+  return has_space;
+}
+
+void Log::WriteLatestMinStartTimeRunningTxnsInFooterBuilder() {
+  if (!GetAtomicFlag(&FLAGS_store_min_start_ht_running_txns)) {
+    return;
+  }
+  HybridTime min_start_ht_running_txns = HybridTime::kInitial;
+  if (min_start_ht_running_txns_callback_) {
+    min_start_ht_running_txns = min_start_ht_running_txns_callback_();
+    VLOG_WITH_PREFIX(2) << "min_start_ht_running_txns from callback: " << min_start_ht_running_txns;
+    DCHECK_NE(min_start_ht_running_txns, HybridTime::kInvalid);
+  }
+
+  // If callback is not specified, we want to set min_start_time_running_txns to a valid value
+  // (in this case, kInitial) as it was set to kInvalid at the creation of this segment. This is to
+  // preserve the semantics that min_start_time_running_txns of a closed segment will always hold a
+  // valid HT value.
+  VLOG_WITH_PREFIX(2) << "setting min_start_ht_running_txns to " << min_start_ht_running_txns;
+  footer_builder_.set_min_start_time_running_txns(min_start_ht_running_txns.ToUint64());
+}
+
+void Log::UpdateMinStartTimeRunningTxnsFromGCSegments(const SegmentSequence& segments_to_gc) const {
+  for (const auto& segment : segments_to_gc) {
+    if (segment->HasFooter() && segment->footer().has_min_start_time_running_txns()) {
+      auto curr_seg_min_start_time =
+          HybridTime(segment->footer().min_start_time_running_txns());
+      VLOG_WITH_PREFIX(3) << "Current segment's minimum start HT of running txns: "
+                          << curr_seg_min_start_time;
+
+      auto curr_min_start_time_running_txns_from_gc_segments_ =
+          GetMinStartHTOfRunningTxnsFromGCSegments();
+      if (!curr_min_start_time_running_txns_from_gc_segments_.is_valid() ||
+          curr_seg_min_start_time > curr_min_start_time_running_txns_from_gc_segments_) {
+        VLOG_WITH_PREFIX(1) << "Setting min_start_time_running_txns_from_gc_segments to "
+                            << curr_seg_min_start_time
+                            << ", previous min_start_time_running_txns_from_gc_segments: "
+                            << curr_min_start_time_running_txns_from_gc_segments_;
+        min_start_time_running_txns_from_gc_segments_.store(
+            curr_seg_min_start_time, std::memory_order_release);
+      }
+    }
+  }
 }
 
 }  // namespace log

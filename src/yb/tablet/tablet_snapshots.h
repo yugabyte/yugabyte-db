@@ -101,7 +101,7 @@ class TabletSnapshots : public TabletComponent {
   // Restore the RocksDB checkpoint from the provided directory.
   // Only used when table_type_ == YQL_TABLE_TYPE.
   Status RestoreCheckpoint(
-      const std::string& dir, HybridTime restore_at, const RestoreMetadata& metadata,
+      const std::string& snapshot_dir, HybridTime restore_at, const RestoreMetadata& metadata,
       const docdb::ConsensusFrontier& frontier, bool is_pitr_restore, const OpId& op_id);
 
   // Applies specified snapshot operation.
@@ -109,11 +109,14 @@ class TabletSnapshots : public TabletComponent {
 
   Status CleanupSnapshotDir(const std::string& dir);
   Env& env();
+  FsManager* fs_manager();
 
   Status RestorePartialRows(SnapshotOperation* operation);
 
   Result<TabletRestorePatch> GenerateRestoreWriteBatch(
       const tserver::TabletSnapshotOpRequestPB& request, docdb::DocWriteBatch* write_batch);
+
+  Result<docdb::CotableIdsMap> GetCotableIdsMap(const std::string& snapshot_dir);
 
   std::string TEST_last_rocksdb_checkpoint_dir_;
 };

@@ -201,20 +201,14 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
 
     // Start minicluster and wait for tablet servers to connect to master.
     auto opts = MiniClusterOptions();
-    opts.num_tablet_servers = 3;
+    opts.num_tablet_servers = NumTabletServers();
     opts.num_masters = NumMasters();
-    cluster_.reset(new MiniCluster(opts));
+    cluster_ = std::make_unique<MiniCluster>(opts);
     ASSERT_OK(cluster_->Start());
 
     // Connect to the cluster.
     ASSERT_OK(InitClient());
-
-    // Create a keyspace;
-    ASSERT_OK(client_->CreateNamespace(kKeyspaceName));
-
-    ASSERT_NO_FATALS(CreateTable(kTableName, kNumTablets, &client_table_));
-    ASSERT_NO_FATALS(CreateTable(kTable2Name, 1, &client_table2_));
-    ASSERT_NO_FATALS(CreatePgSqlTable());
+    InitializeSchema();
   }
 
   void DoTearDown() override {
@@ -235,11 +229,24 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     return 1;
   }
 
+  virtual int NumTabletServers() {
+    return 3;
+  }
+
   virtual Status InitClient() {
     client_ = VERIFY_RESULT(YBClientBuilder()
         .add_master_server_addr(yb::ToString(cluster_->mini_master()->bound_rpc_addr()))
         .Build());
     return Status::OK();
+  }
+
+  virtual void InitializeSchema() {
+    // Create a keyspace;
+    ASSERT_OK(client_->CreateNamespace(kKeyspaceName));
+
+    ASSERT_NO_FATALS(CreateTable(kTableName, kNumTablets, &client_table_));
+    ASSERT_NO_FATALS(CreateTable(kTable2Name, 1, &client_table2_));
+    ASSERT_NO_FATALS(CreatePgSqlTable());
   }
 
   string GetFirstTabletId(YBTable* table) {
@@ -611,7 +618,10 @@ class ClientTestForceMasterLookup :
 
 
   void PerformManyLookups(const std::shared_ptr<YBTable>& table, bool point_lookup) {
-    for (int i = 0; i < kNumIterations; i++) {
+    // With the cache disabled and tsan enabled, each lookup is extremely slow. So we greatly
+    // decrease the number of iterations.
+    int adjusted_num_iterations = yb::IsTsan() ? 10 : kNumIterations;
+    for (int i = 0; i < adjusted_num_iterations; i++) {
       if (point_lookup) {
           auto key_rt = ASSERT_RESULT(LookupFirstTabletFuture(client_.get(), table).get());
           ASSERT_NOTNULL(key_rt);
@@ -639,7 +649,6 @@ TEST_P(ClientTestForceMasterLookup, TestConcurrentLookups) {
       PerformManyLookups(table, true /* point_lookup */)); });
   auto t2 = std::thread([&]() { ASSERT_NO_FATALS(
       PerformManyLookups(table, false /* point_lookup */)); });
-
   t1.join();
   t2.join();
 }
@@ -1585,7 +1594,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
       ->AddColumn("new_col")->Type(DataType::INT32);
     ASSERT_OK(table_alterer->Alter());
     // TODO(nspiegelberg): The below assert is flakey because of KUDU-1539.
-    ASSERT_EQ(1, tablet_peer->tablet()->metadata()->schema_version());
+    ASSERT_EQ(1, tablet_peer->tablet()->metadata()->primary_table_schema_version());
   }
 
   {
@@ -1595,7 +1604,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
               ->RenameTo(kRenamedTableName)
               ->Alter());
     // TODO(nspiegelberg): The below assert is flakey because of KUDU-1539.
-    ASSERT_EQ(2, tablet_peer->tablet()->metadata()->schema_version());
+    ASSERT_EQ(2, tablet_peer->tablet()->metadata()->primary_table_schema_version());
     ASSERT_EQ(kRenamedTableName.table_name(), tablet_peer->tablet()->metadata()->table_name());
 
     const auto tables = ASSERT_RESULT(client_->ListTables());
@@ -1918,11 +1927,11 @@ TEST_F(ClientTest, TestReplicatedTabletWritesAndAltersWithLeaderElection) {
   {
     auto tablet_peer = ASSERT_RESULT(
         new_leader->server()->tablet_manager()->GetTablet(remote_tablet->tablet_id()));
-    auto old_version = tablet_peer->tablet()->metadata()->schema_version();
+    auto old_version = tablet_peer->tablet()->metadata()->primary_table_schema_version();
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kReplicatedTable));
     table_alterer->AddColumn("new_col")->Type(DataType::INT32);
     ASSERT_OK(table_alterer->Alter());
-    ASSERT_EQ(old_version + 1, tablet_peer->tablet()->metadata()->schema_version());
+    ASSERT_EQ(old_version + 1, tablet_peer->tablet()->metadata()->primary_table_schema_version());
   }
 }
 
@@ -2194,22 +2203,15 @@ TEST_F(ClientTest, TestCreateDuplicateTable) {
               .Create().IsAlreadyPresent());
 }
 
-TEST_F(ClientTest, CreateTableWithoutTservers) {
-  DoTearDown();
+class ClientTestWithoutTabletServers : public ClientTest {
+ protected:
+  int NumTabletServers() override { return 0; }
 
-  YBMiniClusterTestBase::SetUp();
+  void InitializeSchema() override {}
+};
 
-  MiniClusterOptions options;
-  options.num_tablet_servers = 0;
-  // Start minicluster with only master (to simulate tserver not yet heartbeating).
-  cluster_.reset(new MiniCluster(options));
-  ASSERT_OK(cluster_->Start());
-
-  // Connect to the cluster.
-  client_ = ASSERT_RESULT(YBClientBuilder()
-      .add_master_server_addr(yb::ToString(cluster_->mini_master()->bound_rpc_addr()))
-      .Build());
-
+TEST_F(ClientTestWithoutTabletServers, CreateTableWithoutTservers) {
+  ASSERT_OK(client_->CreateNamespace(kKeyspaceName));
   std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
   Status s = table_creator->table_name(YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "foobar"))
       .schema(&schema_)

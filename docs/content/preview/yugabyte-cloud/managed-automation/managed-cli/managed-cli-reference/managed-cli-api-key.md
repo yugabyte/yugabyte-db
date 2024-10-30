@@ -2,7 +2,7 @@
 title: ybm CLI api-key resource
 headerTitle: ybm api-key
 linkTitle: api-key
-description: YugabyteDB Managed CLI reference api-key resource.
+description: YugabyteDB Aeon CLI reference api-key resource.
 headcontent: Manage API keys
 menu:
   preview_yugabyte-cloud:
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Use the `api-key` resource to create and manage YugabyteDB Managed account [API keys](../../../managed-apikeys/).
+Use the `api-key` resource to create and manage YugabyteDB Aeon account [API keys](../../../managed-apikeys/).
 
 ## Syntax
 
@@ -22,7 +22,7 @@ Usage: ybm api-key [command] [flags]
 
 ## Examples
 
-Create an API key in YugabyteDB Managed:
+Create an API key in YugabyteDB Aeon:
 
 ```sh
 ybm api-key create \
@@ -32,7 +32,7 @@ ybm api-key create \
     --role-name Developer
 ```
 
-List API keys in YugabyteDB Managed:
+List API keys in YugabyteDB Aeon:
 
 ```sh
 ybm api-key list
@@ -54,7 +54,7 @@ Create an API key.
 
 ### list
 
-List the API keys in your YugabyteDB Managed account.
+List the API keys in your YugabyteDB Aeon account.
 
 | Flag | Description |
 | :--- | :--- |

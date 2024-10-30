@@ -147,6 +147,9 @@ public class Audit extends Model {
     @EnumValue("Telemetry Provider")
     TelemetryProvider,
 
+    @EnumValue("Troubleshooting Platform")
+    TroubleshootingPlatform,
+
     @EnumValue("GFlags")
     GFlags,
 
@@ -177,8 +180,17 @@ public class Audit extends Model {
     @EnumValue("RoleBinding")
     RoleBinding,
 
-    @EnumValue("OIDC Group Mapping")
-    OIDCGroupMapping
+    @EnumValue("Group Mapping")
+    GroupMapping,
+
+    @EnumValue("JobSchedule")
+    JobSchedule,
+
+    @EnumValue("ContinuousBackup")
+    ContinuousBackup,
+
+    @EnumValue("IsolatedBackup")
+    IsolatedBackup
   }
 
   public enum ActionType {
@@ -298,6 +310,21 @@ public class Audit extends Model {
 
     @EnumValue("Delete Telemetry Provider Config")
     DeleteTelemetryConfig,
+
+    @EnumValue("Create Troubleshooting Platform Config")
+    CreateTroubleshootingConfig,
+
+    @EnumValue("Edit Troubleshooting Platform Config")
+    EditTroubleshootingConfig,
+
+    @EnumValue("Delete Troubleshooting Platform Config")
+    DeleteTroubleshootingConfig,
+
+    @EnumValue("Register Universe with Troubleshooting Platform")
+    TroubleshootingPlatformRegister,
+
+    @EnumValue("Unregister Universe from Troubleshooting Platform")
+    TroubleshootingPlatformUnregister,
 
     @EnumValue("Upgrade Kubernetes Overrides")
     UpgradeKubernetesOverrides,

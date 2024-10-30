@@ -10,6 +10,8 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -75,6 +77,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.SwamperTargetsFileUpdate,
           TaskType.CreateAlertDefinitions,
           TaskType.CreateTable,
+          TaskType.UpdateConsistencyCheck,
           TaskType.ChangeAdminPassword,
           TaskType.UniverseUpdateSucceeded);
 
@@ -96,6 +99,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.SwamperTargetsFileUpdate,
           TaskType.CreateAlertDefinitions,
           TaskType.CreateTable,
+          TaskType.UpdateConsistencyCheck,
           TaskType.ChangeAdminPassword,
           TaskType.UniverseUpdateSucceeded);
 
@@ -153,7 +157,8 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         .validateAdminPassword(any(), any());
     ShellResponse successResponse = new ShellResponse();
     successResponse.message = "Command output:\nCREATE TABLE";
-    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), (any())))
+    when(mockNodeUniverseManager.runYsqlCommand(
+            any(), any(), any(), (any()), anyBoolean(), anyInt()))
         .thenReturn(successResponse);
   }
 
@@ -219,9 +224,9 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(UNIVERSE_CREATE_TASK_SEQUENCE, subTasksByPosition);
-    taskInfo = TaskInfo.getOrBadRequest(taskInfo.getTaskUUID());
+    taskInfo = TaskInfo.getOrBadRequest(taskInfo.getUuid());
     taskParams = Json.fromJson(taskInfo.getTaskParams(), UniverseDefinitionTaskParams.class);
-    taskParams.setPreviousTaskUUID(taskInfo.getTaskUUID());
+    taskParams.setPreviousTaskUUID(taskInfo.getUuid());
     // Retry the task.
     taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
@@ -240,9 +245,9 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(UNIVERSE_CREATE_TASK_SEQUENCE, subTasksByPosition);
-    taskInfo = TaskInfo.getOrBadRequest(taskInfo.getTaskUUID());
+    taskInfo = TaskInfo.getOrBadRequest(taskInfo.getUuid());
     taskParams = Json.fromJson(taskInfo.getTaskParams(), UniverseDefinitionTaskParams.class);
-    taskParams.setPreviousTaskUUID(taskInfo.getTaskUUID());
+    taskParams.setPreviousTaskUUID(taskInfo.getUuid());
     primaryCluster.userIntent.enableYCQL = true;
     primaryCluster.userIntent.enableYCQLAuth = true;
     primaryCluster.userIntent.ycqlPassword = "Admin@123";

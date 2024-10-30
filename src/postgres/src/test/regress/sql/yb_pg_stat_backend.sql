@@ -9,7 +9,7 @@
 -- this connection, and the java test.
 SELECT datname, usename, state, query, backend_type,
        catalog_version IS NOT null AS has_catalog_snapshot
-    FROM pg_stat_activity;
+    FROM pg_stat_activity ORDER BY usename;
 
 -- Test yb_pg_stat_get_backend_catalog_version.
 SELECT beid, yb_pg_stat_get_backend_catalog_version(beid) IS NOT null

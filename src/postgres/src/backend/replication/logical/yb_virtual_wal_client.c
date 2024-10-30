@@ -26,6 +26,7 @@
 #include <inttypes.h>
 
 #include "access/xact.h"
+#include "catalog/yb_type.h"
 #include "commands/ybccmds.h"
 #include "pg_yb_utils.h"
 #include "replication/slot.h"
@@ -183,9 +184,10 @@ YBCGetTables(List *publication_names)
 	{
 		/*
 		 * When the plugin does not provide a publication list, we assume that
-		 * it targets all the tables present in the database.
+		 * it targets all the tables present in the database and it uses
+		 * publish_via_partition_root = false (default).
 		 */
-		tables = GetAllTablesPublicationRelations();
+		tables = GetAllTablesPublicationRelations(false /* pubviaroot */);
 	}
 
 
@@ -208,6 +210,25 @@ InitVirtualWal(List *publication_names)
 	tables = YBCGetTables(publication_names);
 	table_oids = YBCGetTableOids(tables);
 
+	/* 
+	 * Throw an error if the plugin being used is pgoutput and there exist a
+	 * table in publication with YB specific replica identity (CHANGE).
+	 */
+	if (strcmp(MyReplicationSlot->data.plugin.data, PG_OUTPUT_PLUGIN) == 0)
+	{
+		for (int i = 0; i < list_length(tables); i++)
+		{
+			YBCPgReplicaIdentityDescriptor *value =
+				hash_search(MyReplicationSlot->data.yb_replica_identities,
+							&table_oids[i], HASH_FIND, NULL);
+			Assert(value);
+			if (value->identity_type == YBC_YB_REPLICA_IDENTITY_CHANGE)
+				ereport(ERROR,
+						(errmsg("Replica identity CHANGE is not supported for output "
+						"plugin pgoutput. Consider using output plugin yboutput instead.")));
+		}		
+	}
+
 	YBCInitVirtualWalForCDC(MyReplicationSlot->data.yb_stream_id, table_oids,
 							list_length(tables));
 
@@ -221,9 +242,28 @@ InitVirtualWal(List *publication_names)
 	list_free(tables);
 }
 
+static const YBCPgTypeEntity *
+GetDynamicTypeEntity(int attr_num, Oid relid)
+{
+	bool is_in_txn = IsTransactionOrTransactionBlock();
+	if (!is_in_txn)
+		StartTransactionCommand();
+
+	Relation rel = RelationIdGetRelation(relid);
+	if (!RelationIsValid(rel))
+		elog(ERROR, "Could not open relation with OID %u", relid);
+	Oid type_oid = GetTypeId(attr_num, RelationGetDescr(rel));
+	RelationClose(rel);
+	const YBCPgTypeEntity* type_entity = YbDataTypeFromOidMod(attr_num, type_oid);
+
+	if (!is_in_txn)
+		AbortCurrentTransaction();
+
+	return type_entity;
+}
+
 YBCPgVirtualWalRecord *
-YBCReadRecord(XLogReaderState *state, XLogRecPtr RecPtr,
-			  List *publication_names, char **errormsg)
+YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 {
 	MemoryContext			caller_context;
 	YBCPgVirtualWalRecord	*record = NULL;
@@ -274,7 +314,7 @@ YBCReadRecord(XLogReaderState *state, XLogRecPtr RecPtr,
 		}
 
 		YBCGetCDCConsistentChanges(MyReplicationSlot->data.yb_stream_id,
-								   &cached_records);
+								   &cached_records, &GetDynamicTypeEntity);
 
 		cached_records_last_sent_row_idx = 0;
 		YbWalSndTotalTimeInYBDecodeMicros = 0;
@@ -528,17 +568,15 @@ static void
 CleanupAckedTransactions(XLogRecPtr confirmed_flush)
 {
 	ListCell					*cell;
-	ListCell					*next;
 	YBUnackedTransactionInfo	*txn;
 
-	for (cell = list_head(unacked_transactions); cell; cell = next)
+	foreach(cell, unacked_transactions)
 	{
 		txn = (YBUnackedTransactionInfo *) lfirst(cell);
-		next = lnext(cell);
 
 		if (txn->commit_lsn <= confirmed_flush)
 			unacked_transactions =
-				list_delete_cell(unacked_transactions, cell, NULL /* prev */);
+				foreach_delete_current(unacked_transactions, cell);
 		else
 			break;
 	}
@@ -578,6 +616,16 @@ YBCRefreshReplicaIdentities()
 	{
 		YBCPgReplicaIdentityDescriptor *desc =
 			&yb_replication_slot->replica_identities[replica_identity_idx];
+
+		/* 
+		 * Throw an error if the plugin being used is pgoutput and there exist a
+		 * table with YB specific replica identity (CHANGE).
+		 */
+		if (strcmp(MyReplicationSlot->data.plugin.data, PG_OUTPUT_PLUGIN) == 0 
+			&& desc->identity_type == YBC_YB_REPLICA_IDENTITY_CHANGE)
+			ereport(ERROR,
+						(errmsg("Replica identity CHANGE is not supported for output "
+						"plugin pgoutput. Consider using output plugin yboutput instead.")));
 
 		YBCPgReplicaIdentityDescriptor *value =
 			hash_search(MyReplicationSlot->data.yb_replica_identities,

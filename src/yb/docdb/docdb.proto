@@ -116,3 +116,11 @@ message ApplyTransactionStatePB {
   // Set of aborted subtransactions.
   optional SubtxnSetPB aborted = 4;
 }
+
+// This message is currently only being used for table level locks, which is protected under a
+// test gflag that is disabled by default. The message shouldn't be re-used for production code.
+message ObjectLockPB {
+  optional uint64 database_oid = 1;
+  optional uint64 object_oid = 2;
+  optional TableLockType lock_type = 3;
+}

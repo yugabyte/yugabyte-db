@@ -18,6 +18,7 @@ import (
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/backup"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ybatask"
 )
 
 // createBackupCmd represents the universe backup command
@@ -25,6 +26,11 @@ var createBackupCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a YugabyteDB Anywhere universe backup",
 	Long:  "Create an universe backup in YugabyteDB Anywhere",
+	Example: `yba backup create --universe-name <universe-name> \
+	--storage-config-name <storage-config-name> \
+	--table-type <table-type> \
+	--time-before-delete-in-ms 3600000 \
+	--keyspace-info "keyspace-name=<keyspace-name>"`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		universeNameFlag, err := cmd.Flags().GetString("universe-name")
 		if err != nil {
@@ -58,26 +64,31 @@ var createBackupCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		var response *http.Response
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
+		universeNameFlag, err := cmd.Flags().GetString("universe-name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		authAPI.GetCustomerUUID()
-		universeNameFlag, err := cmd.Flags().GetString("universe-name")
 
 		universeListRequest := authAPI.ListUniverses()
 		universeListRequest = universeListRequest.Name(universeNameFlag)
 
 		r, response, err := universeListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Get")
+			errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Create - Get Universe")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
 		if len(r) < 1 {
-			logrus.Fatalf(fmt.Sprintf("Universe with name %s not found", universeNameFlag))
+			logrus.Fatalf(
+				formatter.Colorize(fmt.Sprintf("Universe with name %s not found", universeNameFlag),
+					formatter.RedColor))
 		} else if len(r) > 1 {
-			logrus.Fatalf(fmt.Sprintf("Multiple universes with same name %s found", universeNameFlag))
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf("Multiple universes with same name %s found", universeNameFlag),
+					formatter.RedColor))
 		}
 
 		var universeUUID string
@@ -95,7 +106,7 @@ var createBackupCmd = &cobra.Command{
 		rList, response, err := storageConfigListRequest.Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Storage Configuration", "Describe")
+				response, err, "Backup", "Create - Get Storage Configuration")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
@@ -126,10 +137,36 @@ var createBackupCmd = &cobra.Command{
 		var storageUUID string
 		if len(rList) > 0 {
 			storageUUID = rList[0].GetConfigUUID()
+			if len(backup.StorageConfigs) == 0 {
+				backup.StorageConfigs = make([]ybaclient.CustomerConfigUI, 0)
+			}
+			backup.StorageConfigs = append(backup.StorageConfigs, rList[0])
+
+		}
+
+		backup.KMSConfigs = make([]util.KMSConfig, 0)
+		kmsConfigs, response, err := authAPI.ListKMSConfigs().Execute()
+		if err != nil {
+			errMessage := util.ErrorFromHTTPResponse(response, err,
+				"Backup", "Create - Get KMS Configurations")
+			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		}
+
+		for _, k := range kmsConfigs {
+			kmsConfig, err := util.ConvertToKMSConfig(k)
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			backup.KMSConfigs = append(backup.KMSConfigs, kmsConfig)
 		}
 
 		tableTypeFlag, err := cmd.Flags().GetString("table-type")
-		if !strings.EqualFold(tableTypeFlag, "ysql") && !strings.EqualFold(tableTypeFlag, "ycql") && !strings.EqualFold(tableTypeFlag, "yedis") {
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if !strings.EqualFold(tableTypeFlag, "ysql") &&
+			!strings.EqualFold(tableTypeFlag, "ycql") &&
+			!strings.EqualFold(tableTypeFlag, "yedis") {
 			logrus.Fatalf(fmt.Sprintf("Table type provided %s is not supported", tableTypeFlag))
 		}
 
@@ -152,6 +189,16 @@ var createBackupCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
+		enableVerboseLogs, err := cmd.Flags().GetBool("enable-verbose-logs")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		parallelism, err := cmd.Flags().GetInt("parallelism")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
 		var keyspaceTableList []ybaclient.KeyspaceTable
 		keyspaces, err := cmd.Flags().GetStringArray("keyspace-info")
 		if err != nil {
@@ -159,6 +206,11 @@ var createBackupCmd = &cobra.Command{
 		}
 
 		timeBeforeDeleteInMs, err := cmd.Flags().GetInt64("time-before-delete-in-ms")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		category, err := cmd.Flags().GetString("category")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -173,99 +225,98 @@ var createBackupCmd = &cobra.Command{
 			UniverseUUID:      universeUUID,
 			CustomerUUID:      util.GetStringPointer(authAPI.CustomerUUID),
 			StorageConfigUUID: storageUUID,
+			BackupCategory:    util.GetStringPointer(strings.ToUpper(category)),
 			BackupType:        util.GetStringPointer(backupType),
 			KeyspaceTableList: &keyspaceTableList,
 			UseTablespaces:    util.GetBoolPointer(useTablespaces),
 			Sse:               util.GetBoolPointer(sse),
 			TimeBeforeDelete:  util.GetInt64Pointer(timeBeforeDeleteInMs),
 			ExpiryTimeUnit:    util.GetStringPointer("MILLISECONDS"),
+			EnableVerboseLogs: util.GetBoolPointer(enableVerboseLogs),
+			Parallelism:       util.GetInt32Pointer(int32(parallelism)),
 		}
 
 		if (len(strings.TrimSpace(baseBackupUUID))) > 0 {
 			requestBody.SetBaseBackupUUID(baseBackupUUID)
 		}
 
-		rCreate, response, err := authAPI.CreateBackup().Backup(requestBody).Execute()
+		rTask, response, err := authAPI.CreateBackup().Backup(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		taskUUID := rCreate.GetTaskUUID()
+		taskUUID := rTask.GetTaskUUID()
 		msg := fmt.Sprintf("The backup task %s is in progress",
 			formatter.Colorize(taskUUID, formatter.GreenColor))
 
 		if viper.GetBool("wait") {
 			if taskUUID != "" {
-				logrus.Info(fmt.Sprintf("\nWaiting for backup task %s on universe (%s) to be completed\n",
-					formatter.Colorize(taskUUID, formatter.GreenColor), universeNameFlag))
+				logrus.Info(fmt.Sprintf("\nWaiting for backup task %s on universe %s(%s) to be completed\n",
+					formatter.Colorize(taskUUID, formatter.GreenColor), universeNameFlag, universeUUID))
 				err = authAPI.WaitForTask(taskUUID, msg)
 				if err != nil {
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
-				logrus.Infof("The backup task %s is complete now\n", formatter.Colorize(taskUUID, formatter.GreenColor))
-				backupTaskRequest := authAPI.GetBackupByTasKUUID(universeUUID, taskUUID)
-				rBackup, response, err := backupTaskRequest.Execute()
-				if err != nil {
-					errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Describe Backup")
-					logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
-				}
-				backupUUID := rBackup[0].GetBackupUUID()
-
-				backupUUIDList := []string{backupUUID}
-
-				var limit int32 = 10
-				var offset int32 = 0
-				backupApiDirection := "DESC"
-				backupApiSort := "createTime"
-
-				backupApiFilter := ybaclient.BackupApiFilter{
-					BackupUUIDList: backupUUIDList,
-				}
-
-				backupApiQuery := ybaclient.BackupPagedApiQuery{
-					Filter:    backupApiFilter,
-					Direction: backupApiDirection,
-					Limit:     limit,
-					Offset:    offset,
-					SortBy:    backupApiSort,
-				}
-
-				backupListRequest := authAPI.ListBackups().PageBackupsRequest(backupApiQuery)
-				r, response, err := backupListRequest.Execute()
-				if err != nil {
-					errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Describe Backup")
-					logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
-				}
-
-				if len(r.GetEntities()) == 1 {
-					fullBackupContext := *backup.NewFullBackupContext()
-					fullBackupContext.Output = os.Stdout
-					fullBackupContext.Format = backup.NewBackupFormat(viper.GetString("output"))
-					fullBackupContext.SetFullBackup(r.GetEntities()[0])
-					fullBackupContext.Write()
-					return
-				}
-
-				if len(r.GetEntities()) < 1 {
-					logrus.Fatalf(
-						formatter.Colorize(
-							fmt.Sprintf("No backups with uuid: %s found\n", backupUUID),
-							formatter.RedColor,
-						))
-				}
-
-				backupCtx := formatter.Context{
-					Output: os.Stdout,
-					Format: backup.NewBackupFormat(viper.GetString("output")),
-				}
-				backup.Write(backupCtx, r.GetEntities())
-
 			}
-		} else {
-			logrus.Infoln(msg + "\n")
-		}
+			backupTaskRequest := authAPI.GetBackupByTaskUUID(universeUUID, taskUUID)
+			rBackup, response, err := backupTaskRequest.Execute()
+			if err != nil {
+				errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Create - Get Backup")
+				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			}
+			backupUUID := rBackup[0].GetBackupUUID()
 
+			backupUUIDList := []string{backupUUID}
+
+			var limit int32 = 10
+			var offset int32 = 0
+			backupAPIDirection := "DESC"
+			backupAPISort := "createTime"
+
+			backupAPIFilter := ybaclient.BackupApiFilter{
+				BackupUUIDList: backupUUIDList,
+			}
+
+			backupAPIQuery := ybaclient.BackupPagedApiQuery{
+				Filter:    backupAPIFilter,
+				Direction: backupAPIDirection,
+				Limit:     limit,
+				Offset:    offset,
+				SortBy:    backupAPISort,
+			}
+
+			backupListRequest := authAPI.ListBackups().PageBackupsRequest(backupAPIQuery)
+			r, response, err := backupListRequest.Execute()
+			if err != nil {
+				errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Create - Describe Backup")
+				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			}
+
+			if len(r.GetEntities()) < 1 {
+				logrus.Fatalf(
+					formatter.Colorize(
+						fmt.Sprintf("No backups with UUID: %s found\n", backupUUID),
+						formatter.RedColor,
+					))
+			}
+
+			backupCtx := formatter.Context{
+				Command: "create",
+				Output:  os.Stdout,
+				Format:  backup.NewBackupFormat(viper.GetString("output")),
+			}
+			backup.Write(backupCtx, r.GetEntities())
+
+			return
+		}
+		logrus.Infoln(msg + "\n")
+		taskCtx := formatter.Context{
+			Command: "create",
+			Output:  os.Stdout,
+			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
+		}
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
 	},
 }
 
@@ -277,7 +328,7 @@ func buildKeyspaceTables(keyspaces []string) (res []ybaclient.KeyspaceTable) {
 			kvp := strings.Split(keyspaceInfo, "=")
 			if len(kvp) != 2 {
 				logrus.Fatalln(
-					formatter.Colorize("Incorrect format in region description.",
+					formatter.Colorize("Incorrect format in keyspace description.",
 						formatter.RedColor))
 			}
 			key := kvp[0]
@@ -335,21 +386,29 @@ func init() {
 			"If no keyspace info is provided, then all the keyspaces of the table type "+
 			"specified are backed up. If the user wants to take backup of a subset of keyspaces, "+
 			"then the user has to specify the keyspace info. Provide the following semicolon "+
-			"separated fields as key value pairs: "+
-			"\"keyspace-name=<keyspace-name>;table-names=<table-name1>,<table-name2>,<table-name3>;"+
-			"table-ids=<table-id1>,<table-id2>,<table-id3>\". The table-names and table-ids "+
-			"attributes have to be specified as comma separated values."+
+			"separated fields as key value pairs, enclose the string with quotes: "+
+			"\"\"keyspace-name=<keyspace-name>;table-names=<table-name1>,<table-name2>,<table-name3>;"+
+			"table-ids=<table-id1>,<table-id2>,<table-id3>\"\". The table-names and table-ids "+
+			"attributes have to be specified as comma separated values. "+
 			formatter.Colorize("Keyspace name is required value. ", formatter.GreenColor)+
 			"Table names and Table ids are optional values and are needed only for YCQL."+
-			"Example: --keyspace-info keyspace-name=cassandra;table-names=table1,table2;"+
-			"table-ids=1e683b86-7858-44d1-a1f6-406f50a4e56e,19a34a5e-3a19-4070-9d79-805ed713ce7d "+
-			"--keyspace-info keyspace-name=cassandra2;table-names=table3,table4;"+
-			"table-ids=e5b83a7c-130c-40c0-95ff-ec1d9ecff616,bc92d473-2e10-4f76-8bd1-9ca9741890fd")
+			"Example: --keyspace-info \"keyspace-name=cassandra;table-names=table1,table2;"+
+			"table-ids=1e683b86-7858-44d1-a1f6-406f50a4e56e,19a34a5e-3a19-4070-9d79-805ed713ce7d\" "+
+			"--keyspace-info \"keyspace-name=cassandra2;table-names=table3,table4;"+
+			"table-ids=e5b83a7c-130c-40c0-95ff-ec1d9ecff616,bc92d473-2e10-4f76-8bd1-9ca9741890fd\"")
 
 	createBackupCmd.Flags().Bool("use-tablespaces", false,
 		"[Optional] Backup tablespaces information as part of the backup")
 	createBackupCmd.Flags().Bool("sse", true,
 		"[Optional] Enable sse while persisting the data in AWS S3")
+	createBackupCmd.Flags().String("category", "",
+		"[Optional] Category of the backup. "+
+			"If a universe has YBC enabled, then default value of category is YB_CONTROLLER. "+
+			"Allowed values: YB_BACKUP_SCRIPT, YB_CONTROLLER")
+	createBackupCmd.Flags().Bool("enable-verbose-logs", false,
+		"[Optional] Enable verbose logging while taking backup via \"yb_backup\" script. (default false)")
+	createBackupCmd.Flags().Int("parallelism", 8,
+		"[Optional] Number of concurrent commands to run on nodes over SSH via \"yb_backup\" script.")
 	createBackupCmd.Flags().String("base-backup-uuid", "",
 		"[Optional] Base Backup UUID for taking incremental backups")
 }

@@ -25,11 +25,11 @@
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/docdb_statistics.h"
 #include "yb/dockv/intent.h"
 #include "yb/docdb/intent_iterator.h"
 #include "yb/docdb/iter_util.h"
 #include "yb/docdb/key_bounds.h"
-#include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/docdb/transaction_dump.h"
 
 #include "yb/dockv/doc_key.h"
@@ -58,8 +58,7 @@ DEFINE_RUNTIME_uint64(max_next_calls_while_skipping_future_records, 3,
                       "After number of next calls is reached this limit, use seek to find non "
                       "future record.");
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 using dockv::KeyBytes;
 using dockv::KeyEntryType;
@@ -70,6 +69,51 @@ namespace {
 
 const char kKeyEntryTypeMaxByte = dockv::KeyEntryTypeAsChar::kMaxByte;
 const char kKeyEntryTypeMinByte = dockv::KeyEntryTypeAsChar::kLowest;
+
+const char kStrongWriteTail[] = {
+    KeyEntryTypeAsChar::kIntentTypeSet,
+    static_cast<char>(dockv::IntentTypeSet({dockv::IntentType::kStrongWrite}).ToUIntPtr()) };
+
+const Slice kStrongWriteTailSlice = Slice(kStrongWriteTail, sizeof(kStrongWriteTail));
+
+char kEmptyKeyStrongWriteTail[] = {
+    KeyEntryTypeAsChar::kGroupEnd,
+    KeyEntryTypeAsChar::kIntentTypeSet,
+    static_cast<char>(dockv::IntentTypeSet({dockv::IntentType::kStrongWrite}).ToUIntPtr()) };
+
+const Slice kEmptyKeyStrongWriteTailSlice =
+    Slice(kEmptyKeyStrongWriteTail, sizeof(kEmptyKeyStrongWriteTail));
+
+const char kMaxIntentTypeTail[] = {
+    KeyEntryTypeAsChar::kIntentTypeSet,
+    KeyEntryTypeAsChar::kMaxByte };
+
+const Slice kMaxIntentTypeTailSlice = Slice(kMaxIntentTypeTail, sizeof(kMaxIntentTypeTail));
+
+const char kEmptyKeyMaxIntentTypeTail[] = {
+    KeyEntryTypeAsChar::kGroupEnd,
+    KeyEntryTypeAsChar::kIntentTypeSet,
+    KeyEntryTypeAsChar::kMaxByte };
+
+const Slice kEmptyKeyMaxIntentTypeTailSlice =
+    Slice(kEmptyKeyMaxIntentTypeTail, sizeof(kEmptyKeyMaxIntentTypeTail));
+
+inline Slice StrongWriteSuffix(Slice key) {
+  return key.empty() ? kEmptyKeyStrongWriteTailSlice : kStrongWriteTailSlice;
+}
+
+inline Slice StrongWriteSuffix(const dockv::KeyBytes& key) {
+  return StrongWriteSuffix(key.AsSlice());
+}
+
+inline Slice MaxIntentTypeSuffix(const dockv::KeyBytes& key) {
+  return key.empty() ? kEmptyKeyMaxIntentTypeTailSlice : kMaxIntentTypeTailSlice;
+}
+
+inline Slice AppendMaxIntentTypeSuffix(KeyBytes& key) {
+  key.AppendRawBytes(MaxIntentTypeSuffix(key));
+  return key.AsSlice();
+}
 
 void AppendEncodedDocHt(const EncodedDocHybridTime& encoded_doc_ht, KeyBuffer* buffer) {
   buffer->PushBack(KeyEntryTypeAsChar::kHybridTime);
@@ -132,16 +176,8 @@ inline bool IsKeyOrderedBefore(Slice key, Slice other_key) {
   }
 }
 
-inline size_t PrepareIntentSeekBackward(dockv::KeyBytes& key_bytes) {
-  const auto prefix_len = key_bytes.size();
-  key_bytes.AppendRawBytes(StrongWriteSuffix(key_bytes.AsSlice()));
-
-  // Provided key is the key whose latest record we need to point. Thus it is required to add
-  // kMaxByte to correctly position to the desired key as `docdb::SeekBackward()` seeks to
-  // a key, which is previous to the provided key.
-  key_bytes.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
-
-  return prefix_len;
+rocksdb::Statistics* GetIntentsDBStatistics(const DocDBStatistics* statistics) {
+  return statistics ? statistics->IntentsDBStatistics() : nullptr;
 }
 
 } // namespace
@@ -152,7 +188,7 @@ inline size_t PrepareIntentSeekBackward(dockv::KeyBytes& key_bytes) {
 std::string DebugDumpKeyToStr(Slice key) {
   auto result = SubDocKey::DebugSliceToStringAsResult(key);
   if (!result.ok()) {
-    return key.ToDebugString();
+    return Format("$0 ($1)", key.ToDebugString(), result.status().ToString());
   }
   return Format("$0 ($1)", key.ToDebugString(), *result);
 }
@@ -162,8 +198,7 @@ IntentAwareIterator::IntentAwareIterator(
     const rocksdb::ReadOptions& read_opts,
     const ReadOperationData& read_operation_data,
     const TransactionOperationContext& txn_op_context,
-    const FastBackwardScan use_fast_backward_scan,
-    rocksdb::Statistics* intentsdb_statistics)
+    const FastBackwardScan use_fast_backward_scan)
     : read_time_(read_operation_data.read_time),
       encoded_read_time_(read_operation_data.read_time),
       txn_op_context_(txn_op_context),
@@ -173,14 +208,15 @@ IntentAwareIterator::IntentAwareIterator(
       transaction_status_cache_(
           txn_op_context_, read_operation_data.read_time, read_operation_data.deadline) {
   VTRACE(1, __func__);
-  VLOG(4) << "IntentAwareIterator, read_operation_data: " << read_operation_data.ToString()
+  VLOG(2) << "IntentAwareIterator, read_operation_data: " << read_operation_data.ToString()
           << ", txn_op_context: " << txn_op_context_ << ", " << TRACE_BOUNDS
           << ", use_fast_backward_scan: " << use_fast_backward_scan;
 
   if (txn_op_context) {
     intent_iter_ = docdb::CreateIntentsIteratorWithHybridTimeFilter(
-        doc_db.intents, txn_op_context.txn_status_manager, doc_db.key_bounds, &intent_upperbound_,
-        intentsdb_statistics);
+        doc_db.intents, txn_op_context.txn_status_manager, doc_db.key_bounds,
+        &intent_upperbound_, read_opts.cache_restart_block_keys,
+        GetIntentsDBStatistics(read_operation_data.statistics));
   }
   // WARNING: Is is important for regular DB iterator to be created after intents DB iterator,
   // otherwise consistency could break, for example in following scenario:
@@ -576,8 +612,15 @@ void IntentAwareIterator::SeekBackward(dockv::KeyBytes& key_bytes) {
   key_bytes.RemoveLastByte();
 
   if (intent_iter_.Initialized()) {
-    const auto prefix_len = PrepareIntentSeekBackward(key_bytes);
-    IntentSeekBackward(key_bytes);
+    const auto prefix_len = key_bytes.size();
+
+    // It is not possible to use backward seek to kStrongWrite intent type directly as backward
+    // seek expects an upper bound of the target key, but intent type set is a bitset and hence
+    // intent's type could be a subset of several values (including kStrongWrite). That's why
+    // it is required to use kMaxByte (via AppendMaxIntentTypeSuffix), and subsequent call to
+    // SeekToSuitableIntent() will consider only required intents, with kStrongWrite set.
+    IntentSeekBackward(AppendMaxIntentTypeSuffix(key_bytes));
+
     key_bytes.Truncate(prefix_len);
   }
 
@@ -635,6 +678,11 @@ bool IntentAwareIterator::IsRegularEntryOrderedBeforeResolvedIntent() const {
   DCHECK(HasValidIntent());
   return IsKeyOrderedBefore<kDescending>(
       regular_entry_.key, resolved_intent_sub_doc_key_encoded_.AsSlice());
+}
+
+Result<const FetchedEntry&> IntentAwareIterator::FetchNext() {
+  Next();
+  return Fetch();
 }
 
 Result<const FetchedEntry&> IntentAwareIterator::Fetch() {
@@ -819,7 +867,7 @@ void IntentAwareIterator::SeekToSuitableIntent(const rocksdb::KeyValueEntry& ent
                             << intent_upperbound_.ToDebugHexString();
           // We are not calling RevalidateAfterUpperBoundChange here because it is only needed
           // during forward iteration, and is not needed immediately before a seek.
-          // TODO(#22556): It is not clear why SeekToLast for backward direction. It should be
+          // TODO(#22373): It is not clear why SeekToLast for backward direction. It should be
           // investigated in the context of mentioned GH. Also for the details refer to
           // https://phorge.dev.yugabyte.com/D7915.
           entry = &intent_iter_.SeekToLast();
@@ -1319,5 +1367,8 @@ void IntentAwareIterator::DebugSeekTriggered() {
 }
 #endif
 
-}  // namespace docdb
-}  // namespace yb
+void AppendStrongWrite(KeyBytes* out) {
+  out->AppendRawBytes(StrongWriteSuffix(*out));
+}
+
+}  // namespace yb::docdb

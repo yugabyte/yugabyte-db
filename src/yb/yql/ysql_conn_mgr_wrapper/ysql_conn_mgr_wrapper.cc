@@ -15,7 +15,9 @@
 #include <boost/algorithm/string.hpp>
 
 #include "yb/util/env_util.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pg_util.h"
 
@@ -25,6 +27,8 @@
 DECLARE_bool(enable_ysql_conn_mgr_stats);
 DECLARE_int32(ysql_max_connections);
 DECLARE_string(ysql_conn_mgr_warmup_db);
+DECLARE_string(TEST_ysql_conn_mgr_dowarmup_all_pools_mode);
+DECLARE_bool(ysql_conn_mgr_superuser_sticky);
 
 // TODO(janand) : GH #17837  Find the optimum value for `ysql_conn_mgr_idle_time`.
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_idle_time, 60,
@@ -35,6 +39,8 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_idle_time, 60,
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_max_client_connections, 10000,
     "Total number of concurrent client connections that the Ysql Connection Manager allows.");
+
+DEFINE_validator(ysql_conn_mgr_max_client_connections, FLAG_GT_VALUE_VALIDATOR(1));
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_num_workers, 0,
   "Number of worker threads used by Ysql Connection Manager. If set as 0 (default value), "
@@ -58,7 +64,7 @@ DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_dowarmup, false,
   "Enable precreation of server connections in Ysql Connection Manager. If set false, "
   "the server connections are created lazily (on-demand) in Ysql Connection Manager.");
 
-DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_stats_interval, 10,
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_stats_interval, 1,
   "Interval (in secs) at which the stats for Ysql Connection Manager will be updated.");
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_min_conns_per_db, 1,
@@ -71,19 +77,46 @@ DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_unix_conn, true,
     "'local all yugabyte trust' in hba.conf (set ysql_hba_conf_csv as 'local all yugabyte trust')."
     );
 
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_server_lifetime, 3600,
+    "Specifies the maximum duration (in seconds) that a backend PostgreSQL connection "
+    "managed by Ysql Connection Manager can remain open after its creation. Once this time "
+    "is reached, the connection is automatically closed, regardless of activity, ensuring that "
+    "fresh backend connections are regularly maintained.");
+
+DEFINE_NON_RUNTIME_string(ysql_conn_mgr_log_settings, "",
+    "Comma-separated list of log settings for Ysql Connection Manger, which may include "
+    "'log_debug', 'log_config', 'log_session', 'log_query', and 'log_stats'. Only the "
+    "log settings present in this string will be enabled. Omitted settings will remain disabled.");
 namespace {
 
-bool ValidateMaxClientConn(const char* flagname, uint32_t value) {
-  if (value < 1) {
-    LOG(ERROR) << flagname << "(" << value << ") can not be less than 1";
-    return false;
+bool ValidateLogSettings(const char* flag_name, const std::string& value) {
+  const std::unordered_set<std::string> valid_settings = {
+    "log_debug", "log_config", "log_session", "log_query", "log_stats"
+  };
+
+  std::stringstream ss(value);
+  std::string setting;
+  std::unordered_set<std::string> seen_settings;
+
+  while (std::getline(ss, setting, ',')) {
+    setting = yb::util::TrimStr(setting);
+
+    if (setting.empty()) {
+      continue;
+    }
+    if (valid_settings.find(setting) == valid_settings.end()) {
+      LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+          << "Invalid log setting '" << setting << "'. Valid options are: "
+          << "'log_debug', 'log_config', 'log_session', 'log_query', and 'log_stats'.";
+      return false;
+    }
   }
   return true;
 }
 
 } // namespace
 
-DEFINE_validator(ysql_conn_mgr_max_client_connections, &ValidateMaxClientConn);
+DEFINE_validator(ysql_conn_mgr_log_settings, &ValidateLogSettings);
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
@@ -103,6 +136,23 @@ Status YsqlConnMgrWrapper::Start() {
   auto ysql_conn_mgr_executable = GetYsqlConnMgrExecutablePath();
   RETURN_NOT_OK(CheckExecutableValid(ysql_conn_mgr_executable));
 
+  if (FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode != "none") {
+    LOG(INFO) << "Warmup of server connections is enabled in ysql connection manager";
+    if (FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode == "random") {
+      LOG(INFO) << "Random allotment of server connections is enabled in ysql connection manager";
+    } else if (FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode == "round_robin") {
+      LOG(INFO) << "Round robin allotment of server connections is enabled in ysql connection "
+                << "manager";
+    }
+    if (FLAGS_ysql_conn_mgr_min_conns_per_db < 3)
+      FLAGS_ysql_conn_mgr_min_conns_per_db = 3;
+  } else {
+    LOG(INFO) << "Warmup of server connections is disabled in ysql connection manager";
+  }
+
+  if (FLAGS_ysql_conn_mgr_superuser_sticky)
+    LOG(INFO) << "Superuser connections will be made sticky in ysql connection manager";
+
   std::vector<std::string> argv{
       ysql_conn_mgr_executable, conf_.CreateYsqlConnMgrConfigAndGetPath()};
   proc_.emplace(ysql_conn_mgr_executable, argv);
@@ -115,6 +165,9 @@ Status YsqlConnMgrWrapper::Start() {
   proc_->SetEnv("YB_YSQL_CONN_MGR_PASSWORD", conf_.yb_tserver_key_);
 
   proc_->SetEnv("YB_YSQL_CONN_MGR_DOWARMUP", FLAGS_ysql_conn_mgr_dowarmup ? "true" : "false");
+
+  proc_->SetEnv("YB_YSQL_CONN_MGR_DOWARMUP_ALL_POOLS_MODE",
+                FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode);
 
   unsetenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
   if (FLAGS_enable_ysql_conn_mgr_stats) {

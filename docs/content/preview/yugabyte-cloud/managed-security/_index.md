@@ -1,8 +1,8 @@
 ---
-title: Manage YugabyteDB Managed Account
+title: Manage YugabyteDB Aeon Account
 headerTitle: Configure access to your account
 linkTitle: Account access
-description: Manage access to your YugabyteDB Managed account.
+description: Manage access to your YugabyteDB Aeon account.
 image: /images/section_icons/index/admin.png
 headcontent: Invite team members and assign roles
 menu:
@@ -13,7 +13,7 @@ menu:
 type: indexpage
 ---
 
-Invite team members to your YugabyteDB Managed account so that they can create, manage, authorize network access, and connect to clusters. Account access is managed using role based access control, which allows you to control exactly what YugabyteDB Managed features users can access.
+Invite team members to your YugabyteDB Aeon account so that they can create, manage, authorize network access, and connect to clusters. Account access is managed using role based access control, which allows you to control exactly what YugabyteDB Aeon features users can access.
 
 <div class="row">
 
@@ -24,7 +24,7 @@ Invite team members to your YugabyteDB Managed account so that they can create, 
         <div class="title">Manage account users</div>
       </div>
       <div class="body">
-        Invite other users to your account so that they can perform tasks in YugabyteDB Managed.
+        Invite other users to your account so that they can perform tasks in YugabyteDB Aeon.
       </div>
     </a>
   </div>

@@ -19,9 +19,11 @@ import (
 
 // listNodesCmd represents the provider command
 var listNodesCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List node instances of a YugabyteDB Anywhere on-premises provider",
-	Long:  "List node instance of a YugabyteDB Anywhere on-premises provider",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List node instances of a YugabyteDB Anywhere on-premises provider",
+	Long:    "List node instance of a YugabyteDB Anywhere on-premises provider",
+	Example: `yba provider onprem node list --name <provider-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -70,14 +72,15 @@ var listNodesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		nodeInstancesCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: onprem.NewNodesFormat(viper.GetString("output")),
+			Command: "list",
+			Output:  os.Stdout,
+			Format:  onprem.NewNodesFormat(viper.GetString("output")),
 		}
 		if len(rList) < 1 {
-			if util.IsOutputType("table") {
-				logrus.Infoln("No node instances found\n")
+			if util.IsOutputType(formatter.TableFormatKey) {
+				logrus.Info("No node instances found\n")
 			} else {
-				logrus.Infoln("{}\n")
+				logrus.Info("[]\n")
 			}
 			return
 		}

@@ -28,7 +28,7 @@ The source for the above application can be found in the [repository](https://gi
 
 This tutorial assumes that you have:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/quick-start/).
 - Go 1.21, or later, is installed. The latest releases are available on the [Go Downloads page](https://golang.org/dl/).
 
 ## Clone the "orm-examples" repository

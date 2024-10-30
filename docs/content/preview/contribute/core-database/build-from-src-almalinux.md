@@ -15,28 +15,28 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="{{< relref "./build-from-src-almalinux.md" >}}" class="nav-link active">
+    <a href="../build-from-src-almalinux/" class="nav-link active">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       AlmaLinux
     </a>
   </li>
 
   <li >
-    <a href="{{< relref "./build-from-src-macos.md" >}}" class="nav-link">
+    <a href="../build-from-src-macos/" class="nav-link">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="{{< relref "./build-from-src-centos.md" >}}" class="nav-link">
+    <a href="../build-from-src-centos/" class="nav-link">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       CentOS
     </a>
   </li>
 
   <li >
-    <a href="{{< relref "./build-from-src-ubuntu.md" >}}" class="nav-link">
+    <a href="../build-from-src-ubuntu/" class="nav-link">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Ubuntu
     </a>

@@ -16,7 +16,7 @@
 namespace yb::master {
 
 void XClusterSafeTimeInfo::Load(const XClusterSafeTimePB& metadata) {
-  // Debug confirm that there is no xcluster_safe_time_info_ set. This also ensures that this does
+  // Debug confirm that there is no safe_time_info_ set. This also ensures that this does
   // not visit multiple rows.
   DCHECK(LockForRead()->pb.safe_time_map().empty()) << "Already have XCluster Safe Time data!";
 

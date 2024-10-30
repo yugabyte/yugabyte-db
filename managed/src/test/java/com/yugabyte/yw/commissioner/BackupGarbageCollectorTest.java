@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
@@ -86,6 +87,8 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
             mockStorageUtilFactory);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.deleteExpiredBackupMaxGCSize)))
         .thenReturn(10);
+    when(mockConfGetter.getConfForScope(defaultCustomer, CustomerConfKeys.backupGcNumberOfRetries))
+        .thenReturn(1);
   }
 
   @Test

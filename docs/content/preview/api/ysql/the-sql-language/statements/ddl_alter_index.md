@@ -4,7 +4,7 @@ headerTitle: ALTER INDEX
 linkTitle: ALTER INDEX
 description: Use the `ALTER INDEX` statement to change the definition of an index.
 menu:
-  preview:
+  preview_api:
     identifier: ddl_alter_index
     parent: statements
 aliases:

@@ -91,6 +91,8 @@ class SnapshotState : public StateWithTablets {
     return retention_duration_hours_ ? true : false;
   }
 
+  Result<bool> Complete() const;
+
   // Whether to block object (table / tablet) cleanup until the retention window specified in
   // retention_duration_hours (if set) has passed. If true, the objects will be hidden instead
   // of deleted until retention_duration_hours have passed.
@@ -113,12 +115,13 @@ class SnapshotState : public StateWithTablets {
   // The `options` argument for `ToPB` and `ToEntryPB` controls which entry types are serialized.
   // Pass `nullopt` to serialize all entry types.
   Status ToPB(
-      SnapshotInfoPB* out, ListSnapshotsDetailOptionsPB options) const;
+      SnapshotInfoPB* out, const ListSnapshotsDetailOptionsPB& options) const;
   Status ToEntryPB(
       SysSnapshotEntryPB* out, ForClient for_client,
-      ListSnapshotsDetailOptionsPB options) const;
+      const ListSnapshotsDetailOptionsPB& options) const;
   Status StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out);
   Status TryStartDelete();
+  bool delete_started() const;
   void PrepareOperations(TabletSnapshotOperations* out);
   void SetVersion(int value);
   bool NeedCleanup() const;
@@ -152,6 +155,13 @@ class SnapshotState : public StateWithTablets {
 
 Result<dockv::KeyBytes> EncodedSnapshotKey(
     const TxnSnapshotId& id, SnapshotCoordinatorContext* context);
+
+class ListSnapshotsDetailOptionsFactory {
+ public:
+  static ListSnapshotsDetailOptionsPB CreateWithNoDetails();
+
+  ListSnapshotsDetailOptionsFactory() = delete;
+};
 
 } // namespace master
 } // namespace yb

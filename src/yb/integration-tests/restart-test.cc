@@ -174,7 +174,7 @@ class PersistRetryableRequestsTest : public RestartTest {
       return Status::OK();
     }
     return WaitFor([&] {
-      return peer->TEST_HasRetryableRequestsOnDisk();
+      return peer->TEST_HasBootstrapStateOnDisk();
     }, 10s, "retryable requests flushed to disk");
   }
 };

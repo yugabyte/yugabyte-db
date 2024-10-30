@@ -48,4 +48,32 @@ class AddTableToXClusterSourceTask : public PostTabletCreateTaskBase {
   const std::shared_ptr<XClusterOutboundReplicationGroup> outbound_replication_group_;
 };
 
+// Same as AddTableToXClusterSourceTask but does not require an outbound replication group.
+// This is used for bi-directional xCluster indexes only.
+class CreateXClusterStreamForBiDirectionalIndexTask : public PostTabletCreateTaskBase {
+ public:
+  explicit CreateXClusterStreamForBiDirectionalIndexTask(
+      std::function<Result<xrepl::StreamId>(const TableId&, const LeaderEpoch&, StdStatusCallback)>
+          checkpoint_table_func,
+      CatalogManager& catalog_manager, rpc::Messenger& messenger, TableInfoPtr table_info,
+      const LeaderEpoch& epoch);
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kAddTableToXClusterSource;
+  }
+
+  std::string type_name() const override { return "Create xCluster stream for table"; }
+
+  std::string description() const override;
+
+ private:
+  Status FirstStep() override;
+
+  void CheckpointCompletionCallback(const Status& status);
+
+  std::function<Result<xrepl::StreamId>(
+      const TableId&, const LeaderEpoch& epoch, StdStatusCallback callback)>
+      checkpoint_table_func_;
+};
+
 }  // namespace yb::master

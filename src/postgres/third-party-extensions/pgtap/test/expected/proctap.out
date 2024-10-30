@@ -1,0 +1,194 @@
+\unset ECHO
+1..192
+ok 1 - is_procedure(schema, proc, noargs, desc) should pass
+ok 2 - is_procedure(schema, proc, noargs, desc) should have the proper description
+ok 3 - is_procedure(schema, proc, noargs, desc) should have the proper diagnostics
+ok 4 - isnt_procedure(schema, proc, noargs, desc) should fail
+ok 5 - isnt_procedure(schema, proc, noargs, desc) should have the proper description
+ok 6 - isnt_procedure(schema, proc, noargs, desc) should have the proper diagnostics
+ok 7 - is_procedure(schema, func, noargs, desc) should fail
+ok 8 - is_procedure(schema, func, noargs, desc) should have the proper description
+ok 9 - is_procedure(schema, func, noargs, desc) should have the proper diagnostics
+ok 10 - isnt_procedure(schema, func, noargs, desc) should pass
+ok 11 - isnt_procedure(schema, func, noargs, desc) should have the proper description
+ok 12 - isnt_procedure(schema, func, noargs, desc) should have the proper diagnostics
+ok 13 - is_procedure(schema, proc, args, desc) should pass
+ok 14 - is_procedure(schema, proc, args, desc) should have the proper description
+ok 15 - is_procedure(schema, proc, args, desc) should have the proper diagnostics
+ok 16 - isnt_procedure(schema, proc, args, desc) should fail
+ok 17 - isnt_procedure(schema, proc, args, desc) should have the proper description
+ok 18 - isnt_procedure(schema, proc, args, desc) should have the proper diagnostics
+ok 19 - is_procedure(schema, func, args, desc) should fail
+ok 20 - is_procedure(schema, func, args, desc) should have the proper description
+ok 21 - is_procedure(schema, func, args, desc) should have the proper diagnostics
+ok 22 - isnt_procedure(schema, func, args, desc) should pass
+ok 23 - isnt_procedure(schema, func, args, desc) should have the proper description
+ok 24 - isnt_procedure(schema, func, args, desc) should have the proper diagnostics
+ok 25 - is_procedure(schema, noproc, noargs, desc) should fail
+ok 26 - is_procedure(schema, noproc, noargs, desc) should have the proper description
+ok 27 - is_procedure(schema, noproc, noargs, desc) should have the proper diagnostics
+ok 28 - isnt_procedure(schema, noproc, noargs, desc) should fail
+ok 29 - isnt_procedure(schema, noproc, noargs, desc) should have the proper description
+ok 30 - isnt_procedure(schema, noproc, noargs, desc) should have the proper diagnostics
+ok 31 - is_procedure(schema, proc, noargs) should pass
+ok 32 - is_procedure(schema, proc, noargs) should have the proper description
+ok 33 - is_procedure(schema, proc, noargs) should have the proper diagnostics
+ok 34 - isnt_procedure(schema, proc, noargs) should fail
+ok 35 - isnt_procedure(schema, proc, noargs) should have the proper description
+ok 36 - isnt_procedure(schema, proc, noargs) should have the proper diagnostics
+ok 37 - is_procedure(schema, func, noargs) should fail
+ok 38 - is_procedure(schema, func, noargs) should have the proper description
+ok 39 - is_procedure(schema, func, noargs) should have the proper diagnostics
+ok 40 - isnt_procedure(schema, func, noargs) should pass
+ok 41 - isnt_procedure(schema, func, noargs) should have the proper description
+ok 42 - isnt_procedure(schema, func, noargs) should have the proper diagnostics
+ok 43 - is_procedure(schema, proc, args) should pass
+ok 44 - is_procedure(schema, proc, args) should have the proper description
+ok 45 - is_procedure(schema, proc, args) should have the proper diagnostics
+ok 46 - isnt_procedure(schema, proc, args) should fail
+ok 47 - isnt_procedure(schema, proc, args) should have the proper description
+ok 48 - isnt_procedure(schema, proc, args) should have the proper diagnostics
+ok 49 - is_procedure(schema, func, args) should fail
+ok 50 - is_procedure(schema, func, args) should have the proper description
+ok 51 - is_procedure(schema, func, args) should have the proper diagnostics
+ok 52 - isnt_procedure(schema, func, args) should pass
+ok 53 - isnt_procedure(schema, func, args) should have the proper description
+ok 54 - isnt_procedure(schema, func, args) should have the proper diagnostics
+ok 55 - is_procedure(schema, noproc, noargs) should fail
+ok 56 - is_procedure(schema, noproc, noargs) should have the proper description
+ok 57 - is_procedure(schema, noproc, noargs) should have the proper diagnostics
+ok 58 - isnt_procedure(schema, noproc, noargs) should fail
+ok 59 - isnt_procedure(schema, noproc, noargs) should have the proper description
+ok 60 - isnt_procedure(schema, noproc, noargs) should have the proper diagnostics
+ok 61 - is_procedure(schema, proc, desc) should pass
+ok 62 - is_procedure(schema, proc, desc) should have the proper description
+ok 63 - is_procedure(schema, proc, desc) should have the proper diagnostics
+ok 64 - isnt_procedure(schema, proc, desc) should fail
+ok 65 - isnt_procedure(schema, proc, desc) should have the proper description
+ok 66 - isnt_procedure(schema, proc, desc) should have the proper diagnostics
+ok 67 - is_procedure(schema, func, desc) should fail
+ok 68 - is_procedure(schema, func, desc) should have the proper description
+ok 69 - is_procedure(schema, func, desc) should have the proper diagnostics
+ok 70 - isnt_procedure(schema, func, desc) should pass
+ok 71 - isnt_procedure(schema, func, desc) should have the proper description
+ok 72 - isnt_procedure(schema, func, desc) should have the proper diagnostics
+ok 73 - is_procedure(schema, noproc, desc) should fail
+ok 74 - is_procedure(schema, noproc, desc) should have the proper description
+ok 75 - is_procedure(schema, noproc, desc) should have the proper diagnostics
+ok 76 - isnt_procedure(schema, noproc, desc) should fail
+ok 77 - isnt_procedure(schema, noproc, desc) should have the proper description
+ok 78 - isnt_procedure(schema, noproc, desc) should have the proper diagnostics
+ok 79 - is_procedure(schema, proc) should pass
+ok 80 - is_procedure(schema, proc) should have the proper description
+ok 81 - is_procedure(schema, proc) should have the proper diagnostics
+ok 82 - isnt_procedure(schema, proc) should fail
+ok 83 - isnt_procedure(schema, proc) should have the proper description
+ok 84 - isnt_procedure(schema, proc) should have the proper diagnostics
+ok 85 - is_procedure(schema, func) should fail
+ok 86 - is_procedure(schema, func) should have the proper description
+ok 87 - is_procedure(schema, func) should have the proper diagnostics
+ok 88 - isnt_procedure(schema, func) should pass
+ok 89 - isnt_procedure(schema, func) should have the proper description
+ok 90 - isnt_procedure(schema, func) should have the proper diagnostics
+ok 91 - is_procedure(schema, noproc) should fail
+ok 92 - is_procedure(schema, noproc) should have the proper description
+ok 93 - is_procedure(schema, noproc) should have the proper diagnostics
+ok 94 - isnt_procedure(schema, noproc) should fail
+ok 95 - isnt_procedure(schema, noproc) should have the proper description
+ok 96 - isnt_procedure(schema, noproc) should have the proper diagnostics
+ok 97 - is_procedure(proc, noargs, desc) should pass
+ok 98 - is_procedure(proc, noargs, desc) should have the proper description
+ok 99 - is_procedure(proc, noargs, desc) should have the proper diagnostics
+ok 100 - isnt_procedure(proc, noargs, desc) should fail
+ok 101 - isnt_procedure(proc, noargs, desc) should have the proper description
+ok 102 - isnt_procedure(proc, noargs, desc) should have the proper diagnostics
+ok 103 - is_procedure(func, noargs, desc) should fail
+ok 104 - is_procedure(func, noargs, desc) should have the proper description
+ok 105 - is_procedure(func, noargs, desc) should have the proper diagnostics
+ok 106 - isnt_procedure(schema, func, noargs, desc) should pass
+ok 107 - isnt_procedure(schema, func, noargs, desc) should have the proper description
+ok 108 - isnt_procedure(schema, func, noargs, desc) should have the proper diagnostics
+ok 109 - is_procedure(proc, args, desc) should pass
+ok 110 - is_procedure(proc, args, desc) should have the proper description
+ok 111 - is_procedure(proc, args, desc) should have the proper diagnostics
+ok 112 - isnt_procedure(proc, args, desc) should fail
+ok 113 - isnt_procedure(proc, args, desc) should have the proper description
+ok 114 - isnt_procedure(proc, args, desc) should have the proper diagnostics
+ok 115 - is_procedure(unc, args, desc) should fail
+ok 116 - is_procedure(unc, args, desc) should have the proper description
+ok 117 - is_procedure(unc, args, desc) should have the proper diagnostics
+ok 118 - isnt_procedure(func, args, desc) should pass
+ok 119 - isnt_procedure(func, args, desc) should have the proper description
+ok 120 - isnt_procedure(func, args, desc) should have the proper diagnostics
+ok 121 - is_procedure(noproc, noargs, desc) should fail
+ok 122 - is_procedure(noproc, noargs, desc) should have the proper description
+ok 123 - is_procedure(noproc, noargs, desc) should have the proper diagnostics
+ok 124 - isnt_procedure(noproc, noargs, desc) should fail
+ok 125 - isnt_procedure(noproc, noargs, desc) should have the proper description
+ok 126 - isnt_procedure(noproc, noargs, desc) should have the proper diagnostics
+ok 127 - is_procedure(proc, noargs) should pass
+ok 128 - is_procedure(proc, noargs) should have the proper description
+ok 129 - is_procedure(proc, noargs) should have the proper diagnostics
+ok 130 - isnt_procedure(proc, noargs) should fail
+ok 131 - isnt_procedure(proc, noargs) should have the proper description
+ok 132 - isnt_procedure(proc, noargs) should have the proper diagnostics
+ok 133 - is_procedure(func, noargs) should fail
+ok 134 - is_procedure(func, noargs) should have the proper description
+ok 135 - is_procedure(func, noargs) should have the proper diagnostics
+ok 136 - isnt_procedure(schema, func, noargs) should pass
+ok 137 - isnt_procedure(schema, func, noargs) should have the proper description
+ok 138 - isnt_procedure(schema, func, noargs) should have the proper diagnostics
+ok 139 - is_procedure(proc, args) should pass
+ok 140 - is_procedure(proc, args) should have the proper description
+ok 141 - is_procedure(proc, args) should have the proper diagnostics
+ok 142 - isnt_procedure(proc, args) should fail
+ok 143 - isnt_procedure(proc, args) should have the proper description
+ok 144 - isnt_procedure(proc, args) should have the proper diagnostics
+ok 145 - is_procedure(unc, args) should fail
+ok 146 - is_procedure(unc, args) should have the proper description
+ok 147 - is_procedure(unc, args) should have the proper diagnostics
+ok 148 - isnt_procedure(func, args) should pass
+ok 149 - isnt_procedure(func, args) should have the proper description
+ok 150 - isnt_procedure(func, args) should have the proper diagnostics
+ok 151 - is_procedure(noproc, noargs) should fail
+ok 152 - is_procedure(noproc, noargs) should have the proper description
+ok 153 - is_procedure(noproc, noargs) should have the proper diagnostics
+ok 154 - isnt_procedure(noproc, noargs) should fail
+ok 155 - isnt_procedure(noproc, noargs) should have the proper description
+ok 156 - isnt_procedure(noproc, noargs) should have the proper diagnostics
+ok 157 - is_procedure(proc, desc) should pass
+ok 158 - is_procedure(proc, desc) should have the proper description
+ok 159 - is_procedure(proc, desc) should have the proper diagnostics
+ok 160 - isnt_procedure(proc, desc) should fail
+ok 161 - isnt_procedure(proc, desc) should have the proper description
+ok 162 - isnt_procedure(proc, desc) should have the proper diagnostics
+ok 163 - is_procedure(func, desc) should fail
+ok 164 - is_procedure(func, desc) should have the proper description
+ok 165 - is_procedure(func, desc) should have the proper diagnostics
+ok 166 - isnt_procedure(func, desc) should pass
+ok 167 - isnt_procedure(func, desc) should have the proper description
+ok 168 - isnt_procedure(func, desc) should have the proper diagnostics
+ok 169 - is_procedure(noproc, desc) should fail
+ok 170 - is_procedure(noproc, desc) should have the proper description
+ok 171 - is_procedure(noproc, desc) should have the proper diagnostics
+ok 172 - isnt_procedure(noproc, desc) should fail
+ok 173 - isnt_procedure(noproc, desc) should have the proper description
+ok 174 - isnt_procedure(noproc, desc) should have the proper diagnostics
+ok 175 - is_procedure(proc) should pass
+ok 176 - is_procedure(proc) should have the proper description
+ok 177 - is_procedure(proc) should have the proper diagnostics
+ok 178 - isnt_procedure(proc) should fail
+ok 179 - isnt_procedure(proc) should have the proper description
+ok 180 - isnt_procedure(proc) should have the proper diagnostics
+ok 181 - is_procedure(func) should fail
+ok 182 - is_procedure(func) should have the proper description
+ok 183 - is_procedure(func) should have the proper diagnostics
+ok 184 - isnt_procedure(func) should pass
+ok 185 - isnt_procedure(func) should have the proper description
+ok 186 - isnt_procedure(func) should have the proper diagnostics
+ok 187 - is_procedure(noproc) should fail
+ok 188 - is_procedure(noproc) should have the proper description
+ok 189 - is_procedure(noproc) should have the proper diagnostics
+ok 190 - isnt_procedure(noproc) should fail
+ok 191 - isnt_procedure(noproc) should have the proper description
+ok 192 - isnt_procedure(noproc) should have the proper diagnostics

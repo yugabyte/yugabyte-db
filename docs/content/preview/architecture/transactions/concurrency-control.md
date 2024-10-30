@@ -308,12 +308,6 @@ Note that the retries will not be performed in case the amount of data to be sen
 
 ## Wait-on-Conflict
 
-{{< note >}}
-
-Wait-on-conflict is [Tech Preview](/preview/releases/versioning/#feature-maturity).
-
-{{</note >}}
-
 This mode of concurrency control is applicable only for YSQL and provides the same semantics as PostgreSQL.
 
 In this mode, transactions are not assigned priorities. If a conflict occurs when a transaction T1 tries to read, write, or lock a row in a conflicting mode with a few other concurrent transactions, T1 will **wait** until all conflicting transactions finish by either committing or rolling back. Once all conflicting transactions have finished, T1 will:
@@ -335,12 +329,12 @@ After a transaction T1 (that was waiting for other transactions) unblocks, it co
 
 ### Examples
 
-The following examples describe different use cases detailing the Wait-on-Conflict behavior.
+The following examples describe different use cases detailing the Wait-on-Conflict behavior. To run the examples, you need to do the following:
 
-1. Note that the examples require you to set the YB-TServer flag `enable_wait_queues=true`.
-1. Also, set the YB-TServer flag `ysql_max_write_restart_attempts=0` to disable internal query layer retries on conflict. This is done to illustrate the `Wait-on-Conflict` concurrency control semantics separately without query layer retries. It is not recommended to disable these retries in production.
+1. Set the YB-TServer flag `enable_wait_queues=true`.
+1. Set the per-session `yb_max_query_layer_retries=0` YSQL configuration parameter to disable internal query layer retries on conflict. This is done to illustrate the `Wait-on-Conflict` concurrency control semantics separately without query layer retries. It is not recommended to disable these retries in production. To set it at the cluster level, use the `ysql_pg_conf_csv` YB-TServer flag.
 
-A restart is necessary for these flags to take effect.
+A restart is necessary for the flags to take effect.
 
 Start by setting up the table you'll use in all of the examples in this section.
 

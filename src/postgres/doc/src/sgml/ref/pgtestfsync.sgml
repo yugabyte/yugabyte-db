@@ -1,4 +1,7 @@
-<!-- doc/src/sgml/ref/pgtestfsync.sgml -->
+<!--
+doc/src/sgml/ref/pgtestfsync.sgml
+PostgreSQL documentation
+-->
 
 <refentry id="pgtestfsync">
  <indexterm zone="pgtestfsync">
@@ -101,6 +104,17 @@
     </variablelist>
    </para>
 
+ </refsect1>
+
+ <refsect1>
+  <title>Environment</title>
+
+  <para>
+   The environment variable <envar>PG_COLOR</envar> specifies whether to use
+   color in diagnostic messages. Possible values are
+   <literal>always</literal>, <literal>auto</literal> and
+   <literal>never</literal>.
+  </para>
  </refsect1>
 
  <refsect1>

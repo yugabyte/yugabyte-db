@@ -10,6 +10,7 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
@@ -54,7 +55,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
-import org.yb.client.ListMastersResponse;
+import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.YBClient;
 import play.libs.Json;
 
@@ -78,9 +79,10 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     try {
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
-      ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
-      when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
-      when(mockClient.listMasters()).thenReturn(listMastersResponse);
+
+      ListMasterRaftPeersResponse listMastersResponse = mock(ListMasterRaftPeersResponse.class);
+      when(listMastersResponse.getPeersList()).thenReturn(Collections.emptyList());
+      when(mockClient.listMasterRaftPeers()).thenReturn(listMastersResponse);
       mockClockSyncResponse(mockNodeUniverseManager);
     } catch (Exception e) {
       fail();
@@ -139,7 +141,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
               return res;
             })
         .when(mockYsqlQueryExecutor)
-        .executeQueryInNodeShell(any(), any(), any(), anyBoolean());
+        .executeQueryInNodeShell(any(), any(), any(), anyBoolean(), anyBoolean(), anyInt());
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
@@ -172,6 +174,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
   List<TaskType> START_NODE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
@@ -187,6 +190,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
   List<JsonNode> START_NODE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Starting")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -200,6 +204,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
   List<TaskType> WITH_MASTER_UNDER_REPLICATED =
       ImmutableList.of(
+          TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
@@ -231,6 +236,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
   List<JsonNode> WITH_MASTER_UNDER_REPLICATED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Starting")),
           Json.toJson(ImmutableMap.of()),

@@ -50,6 +50,18 @@ class MasterTabletServiceImpl : public tserver::TabletServiceImpl {
                            tserver::IsTabletServerReadyResponsePB* resp,
                            rpc::RpcContext context) override;
 
+  void AcquireObjectLocks(
+      const tserver::AcquireObjectLockRequestPB* req, tserver::AcquireObjectLockResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void ReleaseObjectLocks(
+      const tserver::ReleaseObjectLockRequestPB* req, tserver::ReleaseObjectLockResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void AdminExecutePgsql(
+      const tserver::AdminExecutePgsqlRequestPB* req, tserver::AdminExecutePgsqlResponsePB* resp,
+      rpc::RpcContext context) override;
+
  private:
   Result<std::shared_ptr<tablet::AbstractTablet>> GetTabletForRead(
     const TabletId& tablet_id, tablet::TabletPeerPtr tablet_peer,

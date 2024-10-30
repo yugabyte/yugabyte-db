@@ -32,8 +32,8 @@ YugabyteDB smart drivers have the following key features.
 | Feature | Notes |
 | :--- | :--- |
 | Multiple hosts | As with the upstream driver (with the exception of node.js), you can specify multiple hosts for the initial connection, to avoid dropping connections in the case where the primary host is unavailable. |
-| [Cluster aware](#cluster-aware-connection-load-balancing) | Smart drivers perform automatic uniform connection load balancing<br/>After the driver establishes an initial connection, it fetches the list of available servers from the cluster and distributes connections evenly across these servers. |
-| [Topology aware](#topology-aware-connection-load-balancing) | If you want to restrict connections to particular geographies to achieve lower latency, you can target specific regions, zones, and fallback zones across which to balance connections. |
+| [Cluster aware](#cluster-aware-load-balancing) | Smart drivers perform automatic uniform connection load balancing<br/>After the driver establishes an initial connection, it fetches the list of available servers from the cluster and distributes connections evenly across these servers. |
+| [Topology aware](#topology-aware-load-balancing) | If you want to restrict connections to particular geographies to achieve lower latency, you can target specific regions, zones, and fallback zones across which to balance connections. |
 | [Configurable refresh interval](#servers-refresh-interval) | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable (with the exception of Python). |
 | [Connection pooling](#connection-pooling) | Like the upstream driver, smart drivers support popular connection pooling solutions. |
 
@@ -75,7 +75,7 @@ Developers can use smart driver connection load balancing in two configurations:
 
 In both cases, the driver attempts to connect to the least loaded server from the available group of servers. For topology-aware load balancing, this group is determined by geo-locations specified using the topology keys connection parameter.
 
-### Cluster-aware connection load balancing
+### Cluster-aware load balancing
 
 With cluster-aware (also referred to as uniform) connection load balancing, connections are distributed uniformly across all the YB-TServers in the cluster, irrespective of their placement.
 
@@ -117,7 +117,7 @@ For example, using the Go smart driver, you can change the interval to four minu
 
 (Note that currently this feature is not available in the YugabyteDB Python Smart Driver.)
 
-### Topology-aware connection load balancing
+### Topology-aware load balancing
 
 For a database deployment that spans multiple regions, evenly distributing requests across all database nodes may not be optimal. With topology-aware connection load balancing, you can target nodes in specified geo-locations. The driver then distributes connections uniformly among the nodes in the specified locations. This is beneficial in the following situations:
 
@@ -167,23 +167,33 @@ When a connection reaches the timeout period, the pool re-establishes a new conn
 
 For an example of how connection pooling reduces latencies, see [Database Connection Management: Exploring Pools and Performance](https://www.yugabyte.com/blog/database-connection-management/).
 
-## Using smart drivers with YugabyteDB Managed
+## Using smart drivers with YugabyteDB Aeon
 
-[YugabyteDB Managed](../../yugabyte-cloud/) clusters automatically use the uniform load balancing provided by the cloud provider where the cluster is provisioned. YugabyteDB Managed creates an external load balancer to distribute the load across the nodes in a particular region. For multi-region clusters, each region has its own external load balancer.
+[YugabyteDB Aeon](/preview/yugabyte-cloud/) clusters automatically use the uniform load balancing provided by the cloud provider where the cluster is provisioned. YugabyteDB Aeon creates an external load balancer to distribute the load across the nodes in a particular region. For multi-region clusters, each region has its own external load balancer.
 
 When connecting using an upstream driver, you connect to the region of choice, and application connections are then uniformly distributed across the region without the need for any special coding.
 
 If you are using a smart driver, you can connect to any region and the load balancer acts as a discovery endpoint, allowing the application to use connections to nodes in all regions.
 
-YugabyteDB Managed clusters also support topology-aware load balancing. If the cluster has a [preferred region](../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/#preferred-region), set the topology keys to a zone in that region for best performance.
+YugabyteDB Aeon clusters also support topology-aware load balancing. If the cluster has a [preferred region](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/#preferred-region), set the topology keys to a zone in that region for best performance.
 
-Applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For information on VPC networking in YugabyteDB Managed, refer to [VPC network](../../yugabyte-cloud/cloud-basics/cloud-vpcs/).
+### Deploying applications
 
-For applications that access the cluster from a non-peered network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from non-peered networks fall back to the upstream driver behavior automatically.
+To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Aeon, applications using smart drivers must be deployed in a VPC that has been [peered with the cluster VPC](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-peering/). For applications that access the cluster from outside the peered network or using private endpoints via a private link, set the load balance connection parameter to `false`; in this case, the cluster performs the load balancing.
+
+Applications that use smart drivers from outside the peered network with load balance on will try to connect to the inaccessible nodes before falling back to the upstream driver behavior. You may see a warning similar to the following:
+
+```output
+WARNING [com.yug.Driver] (agroal-11) Failed to apply load balance. Trying normal connection
+```
+
+This indicates that the smart driver was unable to perform smart load balancing. To avoid the added latency incurred, turn load balance off.
+
+For information on VPC peering in YugabyteDB Aeon, refer to [VPC network](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/).
 
 ### SSL/TLS verify-full support
 
-YugabyteDB Managed requires TLS/SSL. Depending on the smart driver, using load balancing with a cluster in YugabyteDB Managed and SSL mode verify-full may require additional configuration. The following table describes support for verify-full for YugabyteDB smart drivers.
+YugabyteDB Aeon requires TLS/SSL. Depending on the smart driver, using load balancing with a cluster in YugabyteDB Aeon and SSL mode verify-full may require additional configuration. The following table describes support for verify-full for YugabyteDB smart drivers.
 
 | Smart Driver | Support | Notes |
 | :--- | :--- | :--- |
@@ -192,7 +202,7 @@ YugabyteDB Managed requires TLS/SSL. Depending on the smart driver, using load b
 | Go | Yes | |
 | Node.js | Yes | In the ssl object, set `rejectUnauthorized` to true, `ca` to point to your cluster CA certificate, and `servername` to the cluster host name. |
 
-For more information on using TLS/SSL in YugabyteDB Managed, refer to [Encryption in transit](../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+For more information on using TLS/SSL in YugabyteDB Aeon, refer to [Encryption in transit](../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
 ## Learn more
 

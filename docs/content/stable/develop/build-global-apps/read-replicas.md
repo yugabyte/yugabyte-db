@@ -19,7 +19,7 @@ For a highly available system, it is typical to opt for a [Global database](../g
 
 But applications running in other regions would incur cross-region latency to read the latest data from the leader. If a little staleness for reads is acceptable for applications running in the other regions, then **Read Replicas** is the pattern to adopt.
 
-A read replica cluster is a set of follower nodes connected to a primary cluster. These are purely observer nodes, which means that they don't take part in the RAFT consensus and elections. This also means that read replicas can have a different replication factor (RF) from the primary cluster, and the RF can be an even number.
+A read replica cluster is a set of follower nodes connected to a primary cluster. These are purely observer nodes, which means that they don't take part in the Raft consensus and elections. This also means that read replicas can have a different replication factor (RF) from the primary cluster, and the RF can be an even number.
 
 {{<tip>}}
 Multiple application instances are active and some instances read stale data.

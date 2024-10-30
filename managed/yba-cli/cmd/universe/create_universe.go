@@ -18,6 +18,7 @@ import (
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/universe"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ybatask"
 )
 
 var tserverGflagsString string
@@ -25,9 +26,10 @@ var v1 = viper.New()
 
 // createUniverseCmd represents the universe command
 var createUniverseCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create YugabyteDB Anywhere universe",
-	Long:  "Create an universe in YugabyteDB Anywhere",
+	Use:     "create",
+	Aliases: []string{"add"},
+	Short:   "Create YugabyteDB Anywhere universe",
+	Long:    "Create an universe in YugabyteDB Anywhere",
 	Example: `yba universe create -n <universe-name> --provider-code <provider-code> \
 	--provider-name <provider-name> --yb-db-version <YugbayteDB-version> \
 	--master-gflags \
@@ -37,7 +39,7 @@ var createUniverseCmd = &cobra.Command{
 	"{\"primary\": {\"<gflag-1>\": \"<value-1>\",\"<gflag-2>\": \"<value-2>\"},\
 	\"async\": {\"<gflag-1>\": \"<value-1>\",\"<gflag-2>\": \"<value-2>\"}}" \
 	--num-nodes 1 --replication-factor 1 \
-	--user-tags <tag1>=<value1>,<tag2>=<value2>`,
+	--user-tags <key-1>=<value-1>,<key-2>=<value-2>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 
 		config, err := cmd.Flags().GetString("config-template")
@@ -84,7 +86,7 @@ var createUniverseCmd = &cobra.Command{
 		}
 
 		enableYbc := true
-		communicationPorts := buildCommunicationPorts(cmd)
+		communicationPorts := buildCommunicationPorts()
 
 		certUUID := ""
 		clientRootCA := v1.GetString("root-ca")
@@ -113,7 +115,7 @@ var createUniverseCmd = &cobra.Command{
 		enableVolumeEncryption := v1.GetBool("enable-volume-encryption")
 
 		if enableVolumeEncryption {
-			opType = "ENABLE"
+			opType = util.EnableKMSOpType
 			kmsConfigName, err := cmd.Flags().GetString("kms-config")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -144,7 +146,12 @@ var createUniverseCmd = &cobra.Command{
 			}
 		}
 
-		clusters, err := buildClusters(cmd, authAPI, universeName)
+		cpuArch := v1.GetString("cpu-architecture")
+		if len(strings.TrimSpace(cpuArch)) == 0 {
+			cpuArch = util.X86_64
+		}
+
+		clusters, err := buildClusters(authAPI, universeName)
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -154,6 +161,7 @@ var createUniverseCmd = &cobra.Command{
 			Clusters:           clusters,
 			CommunicationPorts: communicationPorts,
 			EnableYbc:          util.GetBoolPointer(enableYbc),
+			Arch:               util.GetStringPointer(cpuArch),
 		}
 
 		if enableVolumeEncryption {
@@ -163,15 +171,15 @@ var createUniverseCmd = &cobra.Command{
 			})
 		}
 
-		rCreate, response, err := authAPI.CreateAllClusters().
+		rTask, response, err := authAPI.CreateAllClusters().
 			UniverseConfigureTaskParams(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		universeUUID := rCreate.GetResourceUUID()
-		taskUUID := rCreate.GetTaskUUID()
+		universeUUID := rTask.GetResourceUUID()
+		taskUUID := rTask.GetTaskUUID()
 
 		var universeData []ybaclient.UniverseResp
 
@@ -198,16 +206,21 @@ var createUniverseCmd = &cobra.Command{
 			}
 
 			universesCtx := formatter.Context{
-				Output: os.Stdout,
-				Format: universe.NewUniverseFormat(viper.GetString("output")),
+				Command: "create",
+				Output:  os.Stdout,
+				Format:  universe.NewUniverseFormat(viper.GetString("output")),
 			}
 
 			universe.Write(universesCtx, universeData)
-
-		} else {
-			logrus.Infoln(msg + "\n")
+			return
 		}
-
+		logrus.Infoln(msg + "\n")
+		taskCtx := formatter.Context{
+			Command: "create",
+			Output:  os.Stdout,
+			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
+		}
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
 	},
 }
 
@@ -237,6 +250,8 @@ func init() {
 	createUniverseCmd.Flags().Bool("dedicated-nodes", false,
 		"[Optional] Place Masters on dedicated nodes, (default false) for aws, azu, gcp, onprem."+
 			" Defaults to true for kubernetes.")
+	createUniverseCmd.Flags().String("cpu-architecture", "x86_64",
+		"[Optional] CPU architecture for nodes in all clusters.")
 	createUniverseCmd.Flags().Bool("add-read-replica", false,
 		"[Optional] Add a read replica cluster to the universe. (default false)")
 
@@ -273,7 +288,7 @@ func init() {
 			"\"--master-gflags { \\\"master-gflag-key-1\\\":\\\"value-1\\\","+
 			"\\\"master-gflag-key-2\\\":\\\"value-2\\\" }\" or"+
 			"  \"--master-gflags \"master-gflag-key-1: value-1\nmaster-gflag-key-2"+
-			": value-2\nmaster-gflag-key-3: value3\".")
+			": value-2\nmaster-gflag-key-3: value-3\".")
 
 	createUniverseCmd.Flags().StringVar(&tserverGflagsString, "tserver-gflags", "",
 		"[Optional] TServer GFlags in map (JSON or YAML) format. "+
@@ -293,6 +308,10 @@ func init() {
 			"by default applied to the read replica cluster.")
 
 	// Device Info per cluster
+	createUniverseCmd.Flags().StringArray("linux-version", []string{},
+		"[Optional] Linux version for the universe nodes. "+
+			"Default linux version is fetched from the provider. "+
+			"corresponding to cpu-architecture of the universe.")
 	createUniverseCmd.Flags().StringArray("instance-type", []string{},
 		"[Optional] Instance Type for the universe nodes. Provide the instance types for each "+
 			"cluster as a separate flag."+
@@ -428,7 +447,7 @@ func init() {
 
 	createUniverseCmd.Flags().StringToString("user-tags",
 		map[string]string{}, "[Optional] User Tags for the DB instances. Provide "+
-			"as key=value pairs per flag. Example \"--user-tags "+
+			"as key-value pairs per flag. Example \"--user-tags "+
 			"name=test --user-tags owner=development\" OR "+
 			"\"--user-tags name=test,owner=development\".")
 	createUniverseCmd.Flags().String("kubernetes-universe-overrides-file-path", "",

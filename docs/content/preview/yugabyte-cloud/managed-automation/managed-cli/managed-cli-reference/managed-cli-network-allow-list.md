@@ -2,7 +2,7 @@
 title: ybm CLI etwork-allow-list resource
 headerTitle: ybm network-allow-list
 linkTitle: network-allow-list
-description: YugabyteDB Managed CLI reference Network allow list resource.
+description: YugabyteDB Aeon CLI reference Network allow list resource.
 headcontent: Manage account IP allow lists
 menu:
   preview_yugabyte-cloud:

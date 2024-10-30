@@ -110,9 +110,13 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-type RolesAndResourceMappingProps = {};
+type RolesAndResourceMappingProps = {
+  customTitle?: string;
+  hideCustomRoles?: boolean;
+  hideConnectOnlyHelpText?: boolean;
+};
 
-export const RolesAndResourceMapping: FC<RolesAndResourceMappingProps> = () => {
+export const RolesAndResourceMapping: FC<RolesAndResourceMappingProps> = ({ customTitle, hideCustomRoles = false, hideConnectOnlyHelpText = false }) => {
   const { isLoading: isRoleListLoading, data: roles } = useQuery('roles', getAllRoles, {
     select: (data) => data.data
   });
@@ -142,7 +146,7 @@ export const RolesAndResourceMapping: FC<RolesAndResourceMappingProps> = () => {
 
   if (isRoleListLoading || isUniverseListLoading) return <YBLoadingCircleIcon />;
 
-  const ConnectOnly = (
+  const ConnectOnly = hideConnectOnlyHelpText ? null : (
     <div className={classes.connectOnly}>
       <Trans t={t} i18nKey="connectOnly" components={{ b: <b /> }} />
     </div>
@@ -215,7 +219,7 @@ export const RolesAndResourceMapping: FC<RolesAndResourceMappingProps> = () => {
 
   return (
     <div className={classes.root}>
-      <Typography variant="h4">{t('title')}</Typography>
+      <Typography variant="h4">{customTitle ?? t('title')}</Typography>
       <YBTabs value={tab} onChange={handleChange}>
         <YBTab
           label={
@@ -227,17 +231,22 @@ export const RolesAndResourceMapping: FC<RolesAndResourceMappingProps> = () => {
           value={'System'}
           data-testid={`rbac-builtin-tab`}
         />
-        <YBTab
-          label={
-            <span className={classes.tabLabel}>
-              {t('customRoleTab')}
-              <span className={classes.rolesCount}>{CustomRoleTab.length}</span>
-            </span>
-          }
-          value={'Custom'}
-          data-testid={`rbac-custom-tab`}
-        />
+        {
+          !hideCustomRoles && (
+            <YBTab
+              label={
+                <span className={classes.tabLabel}>
+                  {t('customRoleTab')}
+                  <span className={classes.rolesCount}>{CustomRoleTab.length}</span>
+                </span>
+              }
+              value={'Custom'}
+              data-testid={`rbac-custom-tab`}
+            />
+          )
+        }
       </YBTabs>
+
       {universeList?.length === 0 && (
         <div className={classes.noUniverses} data-testid={`rbac-no-universe-found`}>
           <BulbIcon />

@@ -35,7 +35,7 @@
  * executeItemOptUnwrapTarget() function have 'unwrap' argument, which indicates
  * whether unwrapping of array is needed.  When unwrap == true, each of array
  * members is passed to executeItemOptUnwrapTarget() again but with unwrap == false
- * in order to evade subsequent array unwrapping.
+ * in order to avoid subsequent array unwrapping.
  *
  * All boolean expressions (predicates) are evaluated by executeBoolItem()
  * function, which returns tri-state JsonPathBool.  When error is occurred
@@ -49,7 +49,7 @@
  * we calculate operands first.  Then we check that results are numeric
  * singleton lists, calculate the result and pass it to the next path item.
  *
- * Copyright (c) 2019, PostgreSQL Global Development Group
+ * Copyright (c) 2019-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	src/backend/utils/adt/jsonpath_exec.c
@@ -66,17 +66,16 @@
 #include "miscadmin.h"
 #include "regex/regex.h"
 #include "utils/builtins.h"
+#include "utils/date.h"
 #include "utils/datetime.h"
 #include "utils/datum.h"
-#include "utils/formatting.h"
 #include "utils/float.h"
+#include "utils/formatting.h"
 #include "utils/guc.h"
 #include "utils/json.h"
 #include "utils/jsonpath.h"
-#include "utils/date.h"
 #include "utils/timestamp.h"
 #include "utils/varlena.h"
-
 
 /*
  * Represents "base object" and it's "id" for .keyvalue() evaluation.
@@ -118,8 +117,6 @@ typedef struct JsonLikeRegexContext
 	int			cflags;
 } JsonLikeRegexContext;
 
-#define EmptyJsonLikeRegexContext	{NULL, 0}
-
 /* Result of jsonpath predicate evaluation */
 typedef enum JsonPathBool
 {
@@ -147,11 +144,10 @@ typedef struct JsonValueList
 	List	   *list;
 } JsonValueList;
 
-#define EmptyJsonValueList			{NULL, NIL}
-
 typedef struct JsonValueListIterator
 {
 	JsonbValue *value;
+	List	   *list;
 	ListCell   *next;
 } JsonValueListIterator;
 
@@ -178,80 +174,78 @@ typedef JsonPathBool (*JsonPathPredicateCallback) (JsonPathItem *jsp,
 typedef Numeric (*BinaryArithmFunc) (Numeric num1, Numeric num2, bool *error);
 
 static JsonPathExecResult executeJsonPath(JsonPath *path, Jsonb *vars,
-				Jsonb *json, bool throwErrors,
-				JsonValueList *result, bool useTz);
+										  Jsonb *json, bool throwErrors,
+										  JsonValueList *result, bool useTz);
 static JsonPathExecResult executeItem(JsonPathExecContext *cxt,
-			JsonPathItem *jsp, JsonbValue *jb, JsonValueList *found);
+									  JsonPathItem *jsp, JsonbValue *jb, JsonValueList *found);
 static JsonPathExecResult executeItemOptUnwrapTarget(JsonPathExecContext *cxt,
-						   JsonPathItem *jsp, JsonbValue *jb,
-						   JsonValueList *found, bool unwrap);
+													 JsonPathItem *jsp, JsonbValue *jb,
+													 JsonValueList *found, bool unwrap);
 static JsonPathExecResult executeItemUnwrapTargetArray(JsonPathExecContext *cxt,
-							 JsonPathItem *jsp, JsonbValue *jb,
-							 JsonValueList *found, bool unwrapElements);
+													   JsonPathItem *jsp, JsonbValue *jb,
+													   JsonValueList *found, bool unwrapElements);
 static JsonPathExecResult executeNextItem(JsonPathExecContext *cxt,
-				JsonPathItem *cur, JsonPathItem *next,
-				JsonbValue *v, JsonValueList *found, bool copy);
-static JsonPathExecResult executeItemOptUnwrapResult(
-						   JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
-						   bool unwrap, JsonValueList *found);
-static JsonPathExecResult executeItemOptUnwrapResultNoThrow(
-								  JsonPathExecContext *cxt, JsonPathItem *jsp,
-								  JsonbValue *jb, bool unwrap, JsonValueList *found);
+										  JsonPathItem *cur, JsonPathItem *next,
+										  JsonbValue *v, JsonValueList *found, bool copy);
+static JsonPathExecResult executeItemOptUnwrapResult(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
+													 bool unwrap, JsonValueList *found);
+static JsonPathExecResult executeItemOptUnwrapResultNoThrow(JsonPathExecContext *cxt, JsonPathItem *jsp,
+															JsonbValue *jb, bool unwrap, JsonValueList *found);
 static JsonPathBool executeBoolItem(JsonPathExecContext *cxt,
-				JsonPathItem *jsp, JsonbValue *jb, bool canHaveNext);
+									JsonPathItem *jsp, JsonbValue *jb, bool canHaveNext);
 static JsonPathBool executeNestedBoolItem(JsonPathExecContext *cxt,
-					  JsonPathItem *jsp, JsonbValue *jb);
+										  JsonPathItem *jsp, JsonbValue *jb);
 static JsonPathExecResult executeAnyItem(JsonPathExecContext *cxt,
-			   JsonPathItem *jsp, JsonbContainer *jbc, JsonValueList *found,
-			   uint32 level, uint32 first, uint32 last,
-			   bool ignoreStructuralErrors, bool unwrapNext);
+										 JsonPathItem *jsp, JsonbContainer *jbc, JsonValueList *found,
+										 uint32 level, uint32 first, uint32 last,
+										 bool ignoreStructuralErrors, bool unwrapNext);
 static JsonPathBool executePredicate(JsonPathExecContext *cxt,
-				 JsonPathItem *pred, JsonPathItem *larg, JsonPathItem *rarg,
-				 JsonbValue *jb, bool unwrapRightArg,
-				 JsonPathPredicateCallback exec, void *param);
+									 JsonPathItem *pred, JsonPathItem *larg, JsonPathItem *rarg,
+									 JsonbValue *jb, bool unwrapRightArg,
+									 JsonPathPredicateCallback exec, void *param);
 static JsonPathExecResult executeBinaryArithmExpr(JsonPathExecContext *cxt,
-						JsonPathItem *jsp, JsonbValue *jb,
-						BinaryArithmFunc func, JsonValueList *found);
+												  JsonPathItem *jsp, JsonbValue *jb,
+												  BinaryArithmFunc func, JsonValueList *found);
 static JsonPathExecResult executeUnaryArithmExpr(JsonPathExecContext *cxt,
-					   JsonPathItem *jsp, JsonbValue *jb, PGFunction func,
-					   JsonValueList *found);
+												 JsonPathItem *jsp, JsonbValue *jb, PGFunction func,
+												 JsonValueList *found);
 static JsonPathBool executeStartsWith(JsonPathItem *jsp,
-				  JsonbValue *whole, JsonbValue *initial, void *param);
+									  JsonbValue *whole, JsonbValue *initial, void *param);
 static JsonPathBool executeLikeRegex(JsonPathItem *jsp, JsonbValue *str,
-				 JsonbValue *rarg, void *param);
+									 JsonbValue *rarg, void *param);
 static JsonPathExecResult executeNumericItemMethod(JsonPathExecContext *cxt,
-						 JsonPathItem *jsp, JsonbValue *jb, bool unwrap, PGFunction func,
-						 JsonValueList *found);
+												   JsonPathItem *jsp, JsonbValue *jb, bool unwrap, PGFunction func,
+												   JsonValueList *found);
 static JsonPathExecResult executeDateTimeMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
-                          JsonbValue *jb, JsonValueList *found);
+												JsonbValue *jb, JsonValueList *found);
 static JsonPathExecResult executeKeyValueMethod(JsonPathExecContext *cxt,
-					  JsonPathItem *jsp, JsonbValue *jb, JsonValueList *found);
+												JsonPathItem *jsp, JsonbValue *jb, JsonValueList *found);
 static JsonPathExecResult appendBoolResult(JsonPathExecContext *cxt,
-				 JsonPathItem *jsp, JsonValueList *found, JsonPathBool res);
+										   JsonPathItem *jsp, JsonValueList *found, JsonPathBool res);
 static void getJsonPathItem(JsonPathExecContext *cxt, JsonPathItem *item,
-				JsonbValue *value);
+							JsonbValue *value);
 static void getJsonPathVariable(JsonPathExecContext *cxt,
-					JsonPathItem *variable, Jsonb *vars, JsonbValue *value);
+								JsonPathItem *variable, Jsonb *vars, JsonbValue *value);
 static int	JsonbArraySize(JsonbValue *jb);
 static JsonPathBool executeComparison(JsonPathItem *cmp, JsonbValue *lv,
-				  JsonbValue *rv, void *p);
+									  JsonbValue *rv, void *p);
 static JsonPathBool compareItems(int32 op, JsonbValue *jb1, JsonbValue *jb2,
-				  bool useTz);
+								 bool useTz);
 static int	compareNumeric(Numeric a, Numeric b);
 static JsonbValue *copyJsonbValue(JsonbValue *src);
 static JsonPathExecResult getArrayIndex(JsonPathExecContext *cxt,
-			  JsonPathItem *jsp, JsonbValue *jb, int32 *index);
+										JsonPathItem *jsp, JsonbValue *jb, int32 *index);
 static JsonBaseObjectInfo setBaseObject(JsonPathExecContext *cxt,
-			  JsonbValue *jbv, int32 id);
+										JsonbValue *jbv, int32 id);
 static void JsonValueListAppend(JsonValueList *jvl, JsonbValue *jbv);
 static int	JsonValueListLength(const JsonValueList *jvl);
 static bool JsonValueListIsEmpty(JsonValueList *jvl);
 static JsonbValue *JsonValueListHead(JsonValueList *jvl);
 static List *JsonValueListGetList(JsonValueList *jvl);
 static void JsonValueListInitIterator(const JsonValueList *jvl,
-						  JsonValueListIterator *it);
+									  JsonValueListIterator *it);
 static JsonbValue *JsonValueListNext(const JsonValueList *jvl,
-				  JsonValueListIterator *it);
+									 JsonValueListIterator *it);
 static int	JsonbType(JsonbValue *jb);
 static JsonbValue *JsonbInitBinary(JsonbValue *jbv, Jsonb *jb);
 static int	JsonbType(JsonbValue *jb);
@@ -269,7 +263,7 @@ static int	compareDatetime(Datum val1, Oid typid1, Datum val2, Oid typid2,
  *		implement @? and @@ operators, which in turn are intended to have an
  *		index support.  Thus, it's desirable to make it easier to achieve
  *		consistency between index scan results and sequential scan results.
- *		So, we throw as less errors as possible.  Regarding this function,
+ *		So, we throw as few errors as possible.  Regarding this function,
  *		such behavior also matches behavior of JSON_EXISTS() clause of
  *		SQL/JSON.  Regarding jsonb_path_match(), this function doesn't have
  *		an analogy in SQL/JSON, so we define its behavior on our own.
@@ -334,7 +328,7 @@ jsonb_path_match_internal(FunctionCallInfo fcinfo, bool tz)
 {
 	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
 	JsonPath   *jp = PG_GETARG_JSONPATH_P(1);
-	JsonValueList found = EmptyJsonValueList;
+	JsonValueList found = {0};
 	Jsonb	   *vars = NULL;
 	bool		silent = true;
 
@@ -412,7 +406,7 @@ jsonb_path_query_internal(FunctionCallInfo fcinfo, bool tz)
 		MemoryContext oldcontext;
 		Jsonb	   *vars;
 		bool		silent;
-		JsonValueList found = EmptyJsonValueList;
+		JsonValueList found = {0};
 
 		funcctx = SRF_FIRSTCALL_INIT();
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
@@ -465,7 +459,7 @@ jsonb_path_query_array_internal(FunctionCallInfo fcinfo, bool tz)
 {
 	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
 	JsonPath   *jp = PG_GETARG_JSONPATH_P(1);
-	JsonValueList found = EmptyJsonValueList;
+	JsonValueList found = {0};
 	Jsonb	   *vars = PG_GETARG_JSONB_P(2);
 	bool		silent = PG_GETARG_BOOL(3);
 
@@ -496,7 +490,7 @@ jsonb_path_query_first_internal(FunctionCallInfo fcinfo, bool tz)
 {
 	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
 	JsonPath   *jp = PG_GETARG_JSONPATH_P(1);
-	JsonValueList found = EmptyJsonValueList;
+	JsonValueList found = {0};
 	Jsonb	   *vars = PG_GETARG_JSONB_P(2);
 	bool		silent = PG_GETARG_BOOL(3);
 
@@ -531,9 +525,10 @@ jsonb_path_query_first_tz(PG_FUNCTION_ARGS)
  * 'throwErrors' - whether we should throw suppressible errors
  * 'result' - list to store result items into
  *
- * Returns an error happens during processing or NULL on no error.
+ * Returns an error if a recoverable error happens during processing, or NULL
+ * on no error.
  *
- * Note, jsonb and jsonpath values should be avaliable and untoasted during
+ * Note, jsonb and jsonpath values should be available and untoasted during
  * work because JsonPathItem, JsonbValue and result item could have pointers
  * into input values.  If caller needs to just check if document matches
  * jsonpath, then it doesn't provide a result arg.  In this case executor
@@ -580,7 +575,7 @@ executeJsonPath(JsonPath *path, Jsonb *vars, Jsonb *json, bool throwErrors,
 		 * In strict mode we must get a complete list of values to check that
 		 * there are no errors at all.
 		 */
-		JsonValueList vals = EmptyJsonValueList;
+		JsonValueList vals = {0};
 
 		res = executeItem(&cxt, &jsp, &jbv, &vals);
 
@@ -847,9 +842,7 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				lastjbv = hasNext ? &tmpjbv : palloc(sizeof(*lastjbv));
 
 				lastjbv->type = jbvNumeric;
-				lastjbv->val.numeric =
-					DatumGetNumeric(DirectFunctionCall1(int4_numeric,
-														Int32GetDatum(last)));
+				lastjbv->val.numeric = int64_to_numeric(last);
 
 				res = executeNextItem(cxt, jsp, &elem,
 									  lastjbv, found, hasNext);
@@ -965,9 +958,13 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				JsonbValue *v;
 				bool		hasNext = jspGetNext(jsp, &elem);
 
-				if (!hasNext && !found)
+				if (!hasNext && !found && jsp->type != jpiVariable)
 				{
-					res = jperOk;	/* skip evaluation */
+					/*
+					 * Skip evaluation, but not for variables.  We must
+					 * trigger an error for the missing variable.
+					 */
+					res = jperOk;
 					break;
 				}
 
@@ -1017,9 +1014,7 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				jb = palloc(sizeof(*jb));
 
 				jb->type = jbvNumeric;
-				jb->val.numeric =
-					DatumGetNumeric(DirectFunctionCall1(int4_numeric,
-														Int32GetDatum(size)));
+				jb->val.numeric = int64_to_numeric(size);
 
 				res = executeNextItem(cxt, jsp, NULL, jb, found, false);
 			}
@@ -1182,7 +1177,7 @@ executeItemOptUnwrapResult(JsonPathExecContext *cxt, JsonPathItem *jsp,
 {
 	if (unwrap && jspAutoUnwrap(cxt))
 	{
-		JsonValueList seq = EmptyJsonValueList;
+		JsonValueList seq = {0};
 		JsonValueListIterator it;
 		JsonPathExecResult res = executeItem(cxt, jsp, jb, &seq);
 		JsonbValue *item;
@@ -1310,7 +1305,7 @@ executeBoolItem(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				 * regexes, but we use Postgres regexes here.  'flags' is a
 				 * string literal converted to integer flags at compile-time.
 				 */
-				JsonLikeRegexContext lrcxt = EmptyJsonLikeRegexContext;
+				JsonLikeRegexContext lrcxt = {0};
 
 				jspInitByBuffer(&larg, jsp->base,
 								jsp->content.like_regex.expr);
@@ -1328,7 +1323,7 @@ executeBoolItem(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				 * In strict mode we must get a complete list of values to
 				 * check that there are no errors at all.
 				 */
-				JsonValueList vals = EmptyJsonValueList;
+				JsonValueList vals = {0};
 				JsonPathExecResult res =
 				executeItemOptUnwrapResultNoThrow(cxt, &larg, jb,
 												  false, &vals);
@@ -1480,8 +1475,8 @@ executePredicate(JsonPathExecContext *cxt, JsonPathItem *pred,
 {
 	JsonPathExecResult res;
 	JsonValueListIterator lseqit;
-	JsonValueList lseq = EmptyJsonValueList;
-	JsonValueList rseq = EmptyJsonValueList;
+	JsonValueList lseq = {0};
+	JsonValueList rseq = {0};
 	JsonbValue *lval;
 	bool		error = false;
 	bool		found = false;
@@ -1507,15 +1502,11 @@ executePredicate(JsonPathExecContext *cxt, JsonPathItem *pred,
 		JsonbValue *rval;
 		bool		first = true;
 
+		JsonValueListInitIterator(&rseq, &rseqit);
 		if (rarg)
-		{
-			JsonValueListInitIterator(&rseq, &rseqit);
 			rval = JsonValueListNext(&rseq, &rseqit);
-		}
 		else
-		{
 			rval = NULL;
-		}
 
 		/* Loop over right arg sequence or do single pass otherwise */
 		while (rarg ? (rval != NULL) : first)
@@ -1563,8 +1554,8 @@ executeBinaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 {
 	JsonPathExecResult jper;
 	JsonPathItem elem;
-	JsonValueList lseq = EmptyJsonValueList;
-	JsonValueList rseq = EmptyJsonValueList;
+	JsonValueList lseq = {0};
+	JsonValueList rseq = {0};
 	JsonbValue *lval;
 	JsonbValue *rval;
 	Numeric		res;
@@ -1573,7 +1564,7 @@ executeBinaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 	/*
 	 * XXX: By standard only operands of multiplicative expressions are
-	 * unwrapped.  We extend it to other binary arithmetics expressions too.
+	 * unwrapped.  We extend it to other binary arithmetic expressions too.
 	 */
 	jper = executeItemOptUnwrapResult(cxt, &elem, jb, true, &lseq);
 	if (jperIsError(jper))
@@ -1634,7 +1625,7 @@ executeUnaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	JsonPathExecResult jper;
 	JsonPathExecResult jper2;
 	JsonPathItem elem;
-	JsonValueList seq = EmptyJsonValueList;
+	JsonValueList seq = {0};
 	JsonValueListIterator it;
 	JsonbValue *val;
 	bool		hasNext;
@@ -1791,6 +1782,7 @@ executeDateTimeMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	JsonbValue	jbvbuf;
 	Datum		value;
 	text	   *datetime;
+	Oid			collid;
 	Oid			typid;
 	int32		typmod = -1;
 	int			tz = 0;
@@ -1806,6 +1798,13 @@ executeDateTimeMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 	datetime = cstring_to_text_with_len(jb->val.string.val,
 										jb->val.string.len);
+
+	/*
+	 * At some point we might wish to have callers supply the collation to
+	 * use, but right now it's unclear that they'd be able to do better than
+	 * DEFAULT_COLLATION_OID anyway.
+	 */
+	collid = DEFAULT_COLLATION_OID;
 
 	if (jsp->content.arg)
 	{
@@ -1824,7 +1823,7 @@ executeDateTimeMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		template = cstring_to_text_with_len(template_str,
 											template_len);
 
-		value = parse_datetime(datetime, template, true,
+		value = parse_datetime(datetime, template, collid, true,
 							   &typid, &typmod, &tz,
 							   jspThrowErrors(cxt) ? NULL : &have_error);
 
@@ -1838,16 +1837,22 @@ executeDateTimeMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		/*
 		 * According to SQL/JSON standard enumerate ISO formats for: date,
 		 * timetz, time, timestamptz, timestamp.
+		 *
+		 * We also support ISO 8601 for timestamps, because to_json[b]()
+		 * functions use this format.
 		 */
 		static const char *fmt_str[] =
 		{
 			"yyyy-mm-dd",
-			"HH24:MI:SS TZH:TZM",
-			"HH24:MI:SS TZH",
+			"HH24:MI:SSTZH:TZM",
+			"HH24:MI:SSTZH",
 			"HH24:MI:SS",
-			"yyyy-mm-dd HH24:MI:SS TZH:TZM",
-			"yyyy-mm-dd HH24:MI:SS TZH",
-			"yyyy-mm-dd HH24:MI:SS"
+			"yyyy-mm-dd HH24:MI:SSTZH:TZM",
+			"yyyy-mm-dd HH24:MI:SSTZH",
+			"yyyy-mm-dd HH24:MI:SS",
+			"yyyy-mm-dd\"T\"HH24:MI:SSTZH:TZM",
+			"yyyy-mm-dd\"T\"HH24:MI:SSTZH",
+			"yyyy-mm-dd\"T\"HH24:MI:SS"
 		};
 
 		/* cache for format texts */
@@ -1868,7 +1873,7 @@ executeDateTimeMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				MemoryContextSwitchTo(oldcxt);
 			}
 
-			value = parse_datetime(datetime, fmt_txt[i], true,
+			value = parse_datetime(datetime, fmt_txt[i], collid, true,
 								   &typid, &typmod, &tz,
 								   &have_error);
 
@@ -1882,8 +1887,9 @@ executeDateTimeMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		if (res == jperNotFound)
 			RETURN_ERROR(ereport(ERROR,
 								 (errcode(ERRCODE_INVALID_ARGUMENT_FOR_SQL_JSON_DATETIME_FUNCTION),
-								  errmsg("datetime format is not unrecognized"),
-								  errhint("use datetime template argument for explicit format specification"))));
+								  errmsg("datetime format is not recognized: \"%s\"",
+										 text_to_cstring(datetime)),
+								  errhint("Use a datetime template argument to specify the input data format."))));
 	}
 
 	pfree(datetime);
@@ -1979,8 +1985,7 @@ executeKeyValueMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	id += (int64) cxt->baseObject.id * INT64CONST(10000000000);
 
 	idval.type = jbvNumeric;
-	idval.val.numeric = DatumGetNumeric(DirectFunctionCall1(int8_numeric,
-															Int64GetDatum(id)));
+	idval.val.numeric = int64_to_numeric(id);
 
 	it = JsonbIteratorInit(jbc);
 
@@ -2134,7 +2139,7 @@ getJsonPathVariable(JsonPathExecContext *cxt, JsonPathItem *variable,
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("cannot find jsonpath variable \"%s\"",
+				 errmsg("could not find jsonpath variable \"%s\"",
 						pnstrdup(varName, varNameLength))));
 	}
 
@@ -2386,7 +2391,7 @@ getArrayIndex(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 			  int32 *index)
 {
 	JsonbValue *jbv;
-	JsonValueList found = EmptyJsonValueList;
+	JsonValueList found = {0};
 	JsonPathExecResult res = executeItem(cxt, jsp, jb, &found);
 	Datum		numeric_index;
 	bool		have_error = false;
@@ -2475,16 +2480,19 @@ JsonValueListInitIterator(const JsonValueList *jvl, JsonValueListIterator *it)
 	if (jvl->singleton)
 	{
 		it->value = jvl->singleton;
+		it->list = NIL;
 		it->next = NULL;
 	}
-	else if (list_head(jvl->list) != NULL)
+	else if (jvl->list != NIL)
 	{
 		it->value = (JsonbValue *) linitial(jvl->list);
-		it->next = lnext(list_head(jvl->list));
+		it->list = jvl->list;
+		it->next = list_second_cell(jvl->list);
 	}
 	else
 	{
 		it->value = NULL;
+		it->list = NIL;
 		it->next = NULL;
 	}
 }
@@ -2500,7 +2508,7 @@ JsonValueListNext(const JsonValueList *jvl, JsonValueListIterator *it)
 	if (it->next)
 	{
 		it->value = lfirst(it->next);
-		it->next = lnext(it->next);
+		it->next = lnext(it->list, it->next);
 	}
 	else
 	{
@@ -2524,7 +2532,7 @@ JsonbInitBinary(JsonbValue *jbv, Jsonb *jb)
 }
 
 /*
- * Returns jbv* type of of JsonbValue. Note, it never returns jbvBinary as is.
+ * Returns jbv* type of JsonbValue. Note, it never returns jbvBinary as is.
  */
 static int
 JsonbType(JsonbValue *jb)
@@ -2584,9 +2592,9 @@ checkTimezoneIsUsedForCast(bool useTz, const char *type1, const char *type2)
 	if (!useTz)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot convert value from %s to %s without timezone usage",
+				 errmsg("cannot convert value from %s to %s without time zone usage",
 						type1, type2),
-				 errhint("Use *_tz() function for timezone support.")));
+				 errhint("Use *_tz() function for time zone support.")));
 }
 
 /* Convert time datum to timetz datum */
@@ -2598,93 +2606,36 @@ castTimeToTimeTz(Datum time, bool useTz)
 	return DirectFunctionCall1(time_timetz, time);
 }
 
-/*---
- * Compares 'ts1' and 'ts2' timestamp, assuming that ts1 might be overflowed
- * during cast from another datatype.
- *
- * 'overflow1' specifies overflow of 'ts1' value:
- *  0 - no overflow,
- * -1 - exceed lower boundary,
- *  1 - exceed upper boundary.
- */
-static int
-cmpTimestampWithOverflow(Timestamp ts1, int overflow1, Timestamp ts2)
-{
-	/*
-	 * All the timestamps we deal with in jsonpath are produced by
-	 * to_datetime() method.  So, they should be valid.
-	 */
-	Assert(IS_VALID_TIMESTAMP(ts2));
-
-	/*
-	 * Timestamp, which exceed lower (upper) bound, is always lower (higher)
-	 * than any valid timestamp except minus (plus) infinity.
-	 */
-	if (overflow1)
-	{
-		if (overflow1 < 0)
-		{
-			if (TIMESTAMP_IS_NOBEGIN(ts2))
-				return 1;
-			else
-				return -1;
-		}
-		if (overflow1 > 0)
-		{
-			if (TIMESTAMP_IS_NOEND(ts2))
-				return -1;
-			else
-				return 1;
-		}
-	}
-
-	return timestamp_cmp_internal(ts1, ts2);
-}
-
 /*
- * Compare date to timestamptz without throwing overflow error during cast.
+ * Compare date to timestamp.
+ * Note that this doesn't involve any timezone considerations.
  */
 static int
 cmpDateToTimestamp(DateADT date1, Timestamp ts2, bool useTz)
 {
-	TimestampTz ts1;
-	int			overflow = 0;
-
-	ts1 = date2timestamp_opt_overflow(date1, &overflow);
-
-	return cmpTimestampWithOverflow(ts1, overflow, ts2);
+	return date_cmp_timestamp_internal(date1, ts2);
 }
 
 /*
- * Compare date to timestamptz without throwing overflow error during cast.
+ * Compare date to timestamptz.
  */
 static int
 cmpDateToTimestampTz(DateADT date1, TimestampTz tstz2, bool useTz)
 {
-	TimestampTz tstz1;
-	int			overflow = 0;
-
 	checkTimezoneIsUsedForCast(useTz, "date", "timestamptz");
 
-	tstz1 = date2timestamptz_opt_overflow(date1, &overflow);
-
-	return cmpTimestampWithOverflow(tstz1, overflow, tstz2);
+	return date_cmp_timestamptz_internal(date1, tstz2);
 }
 
 /*
- * Compare timestamp to timestamptz without throwing overflow error during cast.
+ * Compare timestamp to timestamptz.
  */
 static int
 cmpTimestampToTimestampTz(Timestamp ts1, TimestampTz tstz2, bool useTz)
 {
-	TimestampTz tstz1;
-	int			overflow = 0;
-
 	checkTimezoneIsUsedForCast(useTz, "timestamp", "timestamptz");
 
-	tstz1 = timestamp2timestamptz_opt_overflow(ts1, &overflow);
-
-	return cmpTimestampWithOverflow(tstz1, overflow, tstz2);
+	return timestamp_cmp_timestamptz_internal(ts1, tstz2);
 }
 
 /*
@@ -2696,7 +2647,7 @@ static int
 compareDatetime(Datum val1, Oid typid1, Datum val2, Oid typid2,
 				bool useTz, bool *cast_error)
 {
-	PGFunction cmpfunc;
+	PGFunction	cmpfunc;
 
 	*cast_error = false;
 

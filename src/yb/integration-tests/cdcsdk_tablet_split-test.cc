@@ -28,7 +28,9 @@ class CDCSDKTabletSplitTest : public CDCSDKYsqlTest {
  public:
   void SetUp() override {
     CDCSDKYsqlTest::SetUp();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables) = true;
+
+    // TODO(#23000) Rationalize the tests to run with consistent / non-consistent snapshot streams.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = false;
   }
 
   void TestIntentPersistencyAfterTabletSplit(CDCCheckpointType checkpoint_type);
@@ -1123,7 +1125,7 @@ void CDCSDKTabletSplitTest::TestGetTabletListToPollForCDCBootstrapWithTabletSpli
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(checkpoint_type));
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
 
   ASSERT_OK(WriteRowsHelper(1, 200, &test_cluster_, true));
@@ -1173,7 +1175,7 @@ void CDCSDKTabletSplitTest::TestGetTabletListToPollForCDCBootstrapWithTwoTabletS
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(checkpoint_type));
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
 
   ASSERT_OK(WriteRowsHelper(1, 200, &test_cluster_, true));

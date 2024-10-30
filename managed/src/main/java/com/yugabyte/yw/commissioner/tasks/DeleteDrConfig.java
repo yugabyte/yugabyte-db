@@ -3,7 +3,6 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
-import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.DrConfigTaskParams;
 import com.yugabyte.yw.models.DrConfig;
@@ -84,8 +83,8 @@ public class DeleteDrConfig extends DeleteXClusterConfig {
                   : null);
         }
 
-        createDeleteDrConfigEntryTask(drConfig)
-            .setSubTaskGroupType(SubTaskGroupType.DeleteDrConfig);
+        // When the last xCluster config associated with this DR config is deleted, the dr config
+        // entry will be deleted as well.
 
         if (targetUniverse != null) {
           createMarkUniverseUpdateSuccessTasks(targetUniverse.getUniverseUUID())
@@ -98,6 +97,14 @@ public class DeleteDrConfig extends DeleteXClusterConfig {
         }
 
         getRunnableTask().runSubTasks();
+      } catch (Exception e) {
+        log.error("{} hit error : {}", getName(), e.getMessage());
+        Optional<XClusterConfig> mightDeletedXClusterConfig = maybeGetXClusterConfig();
+        if (mightDeletedXClusterConfig.isPresent()
+            && !isInMustDeleteStatus(mightDeletedXClusterConfig.get())) {
+          mightDeletedXClusterConfig.get().updateStatus(XClusterConfigStatusType.DeletionFailed);
+        }
+        throw new RuntimeException(e);
       } finally {
         if (targetUniverse != null) {
           // Unlock the target universe.
@@ -105,14 +112,6 @@ public class DeleteDrConfig extends DeleteXClusterConfig {
         }
         unlockXClusterUniverses(lockedXClusterUniversesUuidSet, false /* force delete */);
       }
-    } catch (Exception e) {
-      log.error("{} hit error : {}", getName(), e.getMessage());
-      Optional<XClusterConfig> mightDeletedXClusterConfig = maybeGetXClusterConfig();
-      if (mightDeletedXClusterConfig.isPresent()
-          && !isInMustDeleteStatus(mightDeletedXClusterConfig.get())) {
-        mightDeletedXClusterConfig.get().updateStatus(XClusterConfigStatusType.DeletionFailed);
-      }
-      throw new RuntimeException(e);
     } finally {
       if (sourceUniverse != null) {
         // Unlock the source universe.

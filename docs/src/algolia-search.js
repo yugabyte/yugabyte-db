@@ -2,8 +2,37 @@ import algoliasearch from 'algoliasearch';
 
 /* eslint no-underscore-dangle: 0 */
 (function () {
+  const algoliaAppId = 'UMBCUJCBE8';
+  const algoliaApiKey = 'b6c4bdb11b865250add6fecc38d8ebdf';
+  const algoliaIndexName = 'yugabytedb_docs';
   const ignoreClickOnMeElement = document.querySelector('body:not(.td-searchpage) .search-area');
   const searchInput = document.getElementById('search-query');
+
+  /**
+   * Decode the cookie and return the appropriate cookie value if found
+   * Otherwise empty string is returned.
+   *
+   * return string
+   */
+  function getCookie(cname) {
+    const splittedCookie = document.cookie.split(';');
+    const splittedLength = splittedCookie.length;
+
+    let fetchCookie = 0;
+    let matchedCookie = '';
+
+    while (fetchCookie < splittedLength) {
+      const cookiePair = splittedCookie[fetchCookie].split('=');
+      if (cname === cookiePair[0].trim() && cookiePair[1].trim() !== '') {
+        matchedCookie = decodeURIComponent(cookiePair[1]);
+        break;
+      }
+
+      fetchCookie += 1;
+    }
+
+    return matchedCookie;
+  }
 
   /**
    * Provided name value from the Query param either from URL or with the passed
@@ -63,6 +92,74 @@ import algoliasearch from 'algoliasearch';
   }
 
   /**
+   * Send the click events to Algolia.
+   *
+   * @param {Object} e - click event.
+   */
+  function clickEvents(e) {
+    if ((e.target.parentNode && e.target.parentNode.className === 'search-title') || (e.target.parentNode.parentNode && e.target.parentNode.parentNode.className === 'search-title')) {
+      let clickResult;
+
+      if (e.target.href) {
+        clickResult = e.target;
+      } else if (e.target.parentNode.href) {
+        clickResult = e.target.parentNode;
+      }
+
+      let hitPosition = 0;
+      let objectId = '';
+      let queryId = '';
+
+      if (clickResult.href) {
+        if (clickResult.getAttribute('data-objectid')) {
+          objectId = clickResult.getAttribute('data-objectid');
+        }
+
+        if (clickResult.getAttribute('data-queryid')) {
+          queryId = clickResult.getAttribute('data-queryid');
+        }
+
+        if (clickResult.getAttribute('data-position')) {
+          hitPosition = clickResult.getAttribute('data-position');
+        }
+      }
+
+      if (objectId !== '' && queryId !== '' && hitPosition > 0) {
+        let userTokenValue = getCookie('_ga');
+        if (userTokenValue === '') {
+          userTokenValue = 'noToken';
+        }
+
+        (async () => {
+          const rawResponse = await fetch('https://insights.algolia.io/1/events', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Algolia-Application-Id': algoliaAppId,
+              'X-Algolia-API-Key': algoliaApiKey,
+            },
+            body: JSON.stringify(
+              {
+                events: [{
+                  eventType: 'click',
+                  eventName: 'Link clicked',
+                  index: algoliaIndexName,
+                  userToken: userTokenValue,
+                  queryID: queryId,
+                  objectIDs: [objectId],
+                  positions: [parseInt(hitPosition, 10)],
+                }],
+              },
+            ),
+          });
+
+          await rawResponse.json();
+        })();
+      }
+    }
+  }
+
+  /**
    * Show Message when Search is empty.
    */
   function emptySearch() {
@@ -89,11 +186,12 @@ import algoliasearch from 'algoliasearch';
   /**
    * Main Docs section HTML.
    */
-  function docsSection(hitIs) {
+  function docsSection(queryID, hitIs, resultPosition) {
     const searchText = encodedSearchedTerm();
 
     let content = '';
-    hitIs.forEach(hit => {
+    hitIs.forEach((hit, index) => {
+      const dataPosition = resultPosition + index + 1;
       let pageBreadcrumb = '';
       let pageHash = '';
       let pageTitle = '';
@@ -156,7 +254,7 @@ import algoliasearch from 'algoliasearch';
 
       content += `<li>
         <div class="search-title">
-          <a href="${hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/')}${pageHash}">
+          <a href="${hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/')}${pageHash}" data-objectid="${hit.objectID}" data-queryid="${queryID}" data-position="${dataPosition}">
             <span class="search-title-inner">${pageTitle}</span>
             <div class="search-subhead-inner">${subHead}</div>
             <div class="breadcrumb-item">${pageBreadcrumb}</div>
@@ -171,7 +269,7 @@ import algoliasearch from 'algoliasearch';
   /**
    * Search Pagination HTML.
    */
-  function searchPagination(pagerInfo) {
+  function searchPager(pagerInfo) {
     document.querySelector('#docs').removeAttribute('style');
 
     const {
@@ -265,6 +363,56 @@ import algoliasearch from 'algoliasearch';
   }
 
   /**
+   * Trigger AI Search on clicking custom button.
+   */
+  function kapaSearch() {
+    const aiSearch = document.getElementById('ai-search');
+    if (aiSearch) {
+      aiSearch.addEventListener('click', () => {
+        const kapaWidgetButton = document.querySelector('#kapa-widget-container > button');
+        if (kapaWidgetButton) {
+          kapaWidgetButton.click();
+
+          const aiSearchInput = new MutationObserver(() => {
+            const mantineTextInput = document.querySelector('.mantine-TextInput-input');
+            if (mantineTextInput) {
+              const event = new Event('input', {
+                bubbles: true,
+              });
+
+              // Add the original searched input.
+              mantineTextInput.setAttribute('value', searchInput.value.trim());
+
+              mantineTextInput.dispatchEvent(event);
+
+              aiSearchInput.disconnect();
+            }
+          });
+
+          const aiSearchTab = new MutationObserver(() => {
+            const mantineSearchTab = document.querySelector('.mantine-SegmentedControl-control input[value="search"]');
+            if (mantineSearchTab) {
+              mantineSearchTab.click();
+
+              aiSearchTab.disconnect();
+            }
+          });
+
+          aiSearchInput.observe(document, {
+            childList: true,
+            subtree: true,
+          });
+
+          aiSearchTab.observe(document, {
+            childList: true,
+            subtree: true,
+          });
+        }
+      });
+    }
+  }
+
+  /**
    * Add queries with filters selected by user and call search algolia function.
    */
   function searchAlgolia() {
@@ -287,13 +435,14 @@ import algoliasearch from 'algoliasearch';
       perPageCount = 10;
     }
 
-    const client = algoliasearch('UMBCUJCBE8', 'b6c4bdb11b865250add6fecc38d8ebdf');
-    const index = client.initIndex('yugabytedb_docs');
+    const client = algoliasearch(algoliaAppId, algoliaApiKey);
+    const index = client.initIndex(algoliaIndexName);
     const pageItems = searchURLParameter('page');
     const searchpagerparent = document.querySelector('#pagination-docs');
     const searchOptions = {
       hitsPerPage: perPageCount,
       page: 0,
+      clickAnalytics: true,
     };
     const searchSummary = document.getElementById('search-summary');
 
@@ -312,18 +461,22 @@ import algoliasearch from 'algoliasearch';
 
     index.search(searchValue, searchOptions).then(
       ({
-        hits, nbHits, nbPages, page,
+        hits, nbHits, nbPages, page, queryID,
       }) => {
+        const searchResults = document.getElementById('doc-hit');
+        const startResultPosition = page * perPageCount;
+
         let pagerDetails = {};
         let sectionHTML = '';
         let totalResults = nbHits;
-        sectionHTML += docsSection(hits);
+        sectionHTML += docsSection(queryID, hits, startResultPosition);
 
         if (totalResults > 1000) {
           totalResults = 1000;
         }
 
         document.getElementById('doc-hit').innerHTML = sectionHTML;
+
         if (hits.length > 0 && sectionHTML !== '') {
           if (searchSummary !== null) {
             searchSummary.innerHTML = `${totalResults} results found for <b>"${searchedTerm}"</b>. <a role="button" id="ai-search">Try this search in AI</a>.`;
@@ -337,35 +490,7 @@ import algoliasearch from 'algoliasearch';
           }
         }
 
-        const aiSearch = document.getElementById('ai-search');
-        if (aiSearch) {
-          aiSearch.addEventListener('click', () => {
-            const kapaWidgetButton = document.querySelector('#kapa-widget-container > button');
-            if (kapaWidgetButton) {
-              kapaWidgetButton.click();
-              setTimeout(() => {
-                const aiSearchTab = document.querySelector('.mantine-SegmentedControl-control input[value="search"]');
-                if (aiSearchTab) {
-                  aiSearchTab.click();
-                }
-
-                setTimeout(() => {
-                  const aiSearchInput = document.querySelector('.mantine-TextInput-input');
-                  if (aiSearchInput) {
-                    const event = new Event('input', {
-                      bubbles: true,
-                    });
-
-                    // Add the original searched input.
-                    aiSearchInput.setAttribute('value', searchInput.value.trim());
-
-                    document.querySelector('.mantine-TextInput-input').dispatchEvent(event);
-                  }
-                }, 10);
-              }, 5);
-            }
-          });
-        }
+        kapaSearch();
 
         if (document.querySelector('body').classList.contains('td-searchpage')) {
           pagerDetails = {
@@ -376,7 +501,7 @@ import algoliasearch from 'algoliasearch';
             totalPages: nbPages,
           };
 
-          searchPagination(pagerDetails);
+          searchPager(pagerDetails);
           searchpagerparent.className = `pager results-${totalResults}`;
         } else {
           searchpagerparent.className = `pager results-${totalResults}`;
@@ -391,6 +516,11 @@ import algoliasearch from 'algoliasearch';
             </div>
             ${viewAll}
           </nav>`;
+        }
+
+        if (searchResults) {
+          searchResults.addEventListener('click', clickEvents);
+          searchResults.addEventListener('contextmenu', clickEvents);
         }
       },
     );
