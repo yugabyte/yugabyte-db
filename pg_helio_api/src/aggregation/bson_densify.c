@@ -1452,11 +1452,9 @@ DensifyFullKeyHashFunc(const void *obj, size_t objsize)
 
 	bson_iter_t partitionByIter;
 	PgbsonInitIterator(entry->evaluatedPartitionBy, &partitionByIter);
-	int64 seed = 0;
-	int64 hash = BsonHashCompare(&partitionByIter, HashBytesUint32AsUint64,
-								 HashCombineUint32AsUint64, seed);
-
-	return (uint32) hash;
+	uint32_t seed = 0;
+	uint32_t hash = HashBsonComparable(&partitionByIter, seed);
+	return hash;
 }
 
 

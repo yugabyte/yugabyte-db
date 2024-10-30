@@ -177,15 +177,17 @@ int32_t IndexBuildScheduleInSec = DEFAULT_INDEX_BUILD_SCHEDULE_IN_SEC;
 #define DEFAULT_INDEX_BUILD_EVICTION_INTERVAL_IN_SEC 1200
 int IndexQueueEvictionIntervalInSec = DEFAULT_INDEX_BUILD_EVICTION_INTERVAL_IN_SEC;
 
-#define DEFAULT_ENABLE_INDEX_TERM_TRUNCATION false
-bool EnableIndexTermTruncation = DEFAULT_ENABLE_INDEX_TERM_TRUNCATION;
-
-
 #define DEFAULT_FORCE_INDEX_TERM_TRUNCATION false
 bool ForceIndexTermTruncation = DEFAULT_FORCE_INDEX_TERM_TRUNCATION;
 
 #define DEFAULT_ENABLE_LARGE_INDEX_KEYS true
 bool DefaultEnableLargeIndexKeys = DEFAULT_ENABLE_LARGE_INDEX_KEYS;
+
+#define DEFAULT_ENABLE_LARGE_UNIQUE_INDEX_KEYS false
+bool DefaultEnableLargeUniqueIndexKeys = DEFAULT_ENABLE_LARGE_UNIQUE_INDEX_KEYS;
+
+#define DEFAULT_ENABLE_NEW_UNIQUE_OPCLASS false
+bool DefaultEnableNewUniqueOpClass = DEFAULT_ENABLE_NEW_UNIQUE_OPCLASS;
 
 #define DEFAULT_INDEX_TRUNCATION_LIMIT_OVERRIDE INT_MAX
 int IndexTruncationLimitOverride = DEFAULT_INDEX_TRUNCATION_LIMIT_OVERRIDE;
@@ -586,13 +588,26 @@ InitApiConfigurations(char *prefix)
 		psprintf("%s.forceIndexTermTruncation", prefix),
 		gettext_noop(
 			"Whether to force the feature for index term truncation"),
-		NULL, &ForceIndexTermTruncation, DEFAULT_ENABLE_INDEX_TERM_TRUNCATION,
+		NULL, &ForceIndexTermTruncation, DEFAULT_FORCE_INDEX_TERM_TRUNCATION,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
 		"helio_api.enable_large_index_keys",
 		gettext_noop("Whether or not to enable large index keys support"),
 		NULL, &DefaultEnableLargeIndexKeys, DEFAULT_ENABLE_LARGE_INDEX_KEYS,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.enable_large_unique_index_keys",
+		gettext_noop("Whether or not to enable large index keys on unique indexes."),
+		NULL, &DefaultEnableLargeUniqueIndexKeys, DEFAULT_ENABLE_LARGE_UNIQUE_INDEX_KEYS,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.enable_new_unique_opclass",
+		gettext_noop(
+			"Testing GUC on Whether or not to enable the new opclass for large index keys on unique indexes."),
+		NULL, &DefaultEnableNewUniqueOpClass, DEFAULT_ENABLE_NEW_UNIQUE_OPCLASS,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomIntVariable(

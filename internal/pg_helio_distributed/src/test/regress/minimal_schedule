@@ -1,1 +1,2 @@
+test: helio_distributed_setup
 test: helio_distributed_test_helpers
