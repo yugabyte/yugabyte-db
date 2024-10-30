@@ -595,9 +595,7 @@ PgCronLauncherMain(Datum arg)
 	/* Establish signal handlers before unblocking signals. */
 	pqsignal(SIGHUP, pg_cron_sighup);
 	pqsignal(SIGINT, SIG_IGN);
-	/* YB Note: Exit immediately. */
-	pqsignal(SIGTERM, quickdie);
-	pqsignal(SIGQUIT, quickdie);
+	pqsignal(SIGTERM, pg_cron_sigterm);
 
 	/* We're now ready to receive signals */
 	BackgroundWorkerUnblockSignals();
@@ -2157,9 +2155,7 @@ CronBackgroundWorker(Datum main_arg)
 	shm_mq_handle *responseq;
 
 	/* handle SIGTERM like regular backend */
-	pqsignal(SIGTERM, quickdie);
-	/* YB Note: Exit immediately. */
-	pqsignal(SIGQUIT, quickdie);
+	pqsignal(SIGTERM, die);
 	BackgroundWorkerUnblockSignals();
 
 	/* Set up a memory context and resource owner. */
