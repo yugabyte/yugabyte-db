@@ -144,6 +144,9 @@ typedef enum {
 	OD_LCATCHUP_CHECKS,
 	OD_LOPTIONS,
 	OD_LHBA_FILE,
+
+	/* YB */
+	OD_YB_USE_AUTH_BACKEND,
 } od_lexeme_t;
 
 static od_keyword_t od_config_keywords[] = {
@@ -312,6 +315,10 @@ static od_keyword_t od_config_keywords[] = {
 
 	/* stats */
 	od_keyword("quantiles", OD_LQUANTILES),
+
+	/* YB */
+	od_keyword("yb_use_auth_backend", OD_YB_USE_AUTH_BACKEND),
+
 	{ 0, 0, 0 },
 };
 
@@ -2387,6 +2394,14 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 				goto error;
 			continue;
 		}
+
+		/* yb_use_auth_backend */
+		case OD_YB_USE_AUTH_BACKEND:
+			if (!od_config_reader_yes_no(reader,
+						     &config->yb_use_auth_backend)) {
+				goto error;
+			}
+			continue;
 		default:
 			od_config_reader_error(reader, &token,
 					       "unexpected parameter");

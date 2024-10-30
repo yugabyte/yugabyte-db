@@ -202,6 +202,7 @@ static inline int od_backend_startup(od_server_t *server,
 		 * manager.
 		 */
 		assert(client->yb_external_client != NULL);
+		assert(instance->config.yb_use_auth_backend);
 
 		/*
 		 * Read and use the database and user values from the client instead of

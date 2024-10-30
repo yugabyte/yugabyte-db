@@ -30,6 +30,7 @@
 
 DECLARE_bool(logtostderr);
 DECLARE_bool(ysql_conn_mgr_use_unix_conn);
+DECLARE_bool(ysql_conn_mgr_use_auth_backend);
 DECLARE_uint32(ysql_conn_mgr_port);
 DECLARE_uint32(ysql_conn_mgr_max_client_connections);
 DECLARE_uint32(ysql_conn_mgr_max_conns_per_db);
@@ -194,6 +195,7 @@ std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%min_pool_size%}", std::to_string(FLAGS_ysql_conn_mgr_min_conns_per_db)},
     {"{%yb_use_unix_socket%}", FLAGS_ysql_conn_mgr_use_unix_conn ? "" : "#"},
     {"{%yb_use_tcp_socket%}", FLAGS_ysql_conn_mgr_use_unix_conn ? "#" : ""},
+    {"{%yb_use_auth_backend%}", BoolToString(FLAGS_ysql_conn_mgr_use_auth_backend)},
     {"{%unix_socket_dir%}",
       PgDeriveSocketDir(postgres_address_)}}; // Return unix socket
             //  file path = "/tmp/.yb.host_ip:port"

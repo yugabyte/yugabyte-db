@@ -87,6 +87,12 @@ DEFINE_NON_RUNTIME_string(ysql_conn_mgr_log_settings, "",
     "Comma-separated list of log settings for Ysql Connection Manger, which may include "
     "'log_debug', 'log_config', 'log_session', 'log_query', and 'log_stats'. Only the "
     "log settings present in this string will be enabled. Omitted settings will remain disabled.");
+
+DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_auth_backend, true,
+    "Enable the use of the auth-backend for authentication of logical connections. "
+    "When false, the older auth-passthrough implementation is used."
+    );
+
 namespace {
 
 bool ValidateLogSettings(const char* flag_name, const std::string& value) {
