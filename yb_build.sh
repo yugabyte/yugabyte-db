@@ -1016,7 +1016,7 @@ fi
 
 if [[ ${use_google_tcmalloc} == "true" ]]; then
   if ! is_linux; then
-    fatal "Google TCMalloc is only supported on linux. is_linux is: '${is_linux}'."
+    fatal "Google TCMalloc is only supported on linux. OSTYPE is: '${OSTYPE}'."
   fi
   cmake_opts+=( "-DYB_GOOGLE_TCMALLOC=1" )
 fi

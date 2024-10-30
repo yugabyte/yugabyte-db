@@ -658,6 +658,7 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
  private:
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
+  virtual void HandleInsertPackedSchema(tablet::ChangeMetadataRequestPB& req) { return; }
 
   TransactionId transaction_id_ = TransactionId::Nil();
   const xrepl::StreamId cdc_sdk_stream_id_ = xrepl::StreamId::Nil();
@@ -683,6 +684,23 @@ class AsyncBackfillDone : public AsyncAlterTable {
   bool SendRequest(int attempt) override;
 
   const std::string table_id_;
+};
+
+class AsyncInsertPackedSchemaForXClusterTarget : public AsyncAlterTable {
+ public:
+  AsyncInsertPackedSchemaForXClusterTarget(
+      Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
+      const SchemaPB& packed_schema, LeaderEpoch epoch)
+      : AsyncAlterTable(master, callback_pool, tablet, std::move(epoch)),
+        packed_schema_(packed_schema) {}
+
+  std::string type_name() const override { return "Insert packed schema for xCluster target"; }
+
+ protected:
+  void HandleInsertPackedSchema(tablet::ChangeMetadataRequestPB& req) override;
+
+ private:
+  SchemaPB packed_schema_;
 };
 
 // Send a Truncate() RPC request.

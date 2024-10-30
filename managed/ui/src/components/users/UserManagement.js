@@ -82,14 +82,18 @@ export const UserManagement = (props) => {
             </Tab>
           )
         }
-        <Tab
-          disabled={!havePermission()}
-          eventKey="user-auth"
-          title={havePermission() ? <AuthTab /> : <AuthTabWithOverlay />}
-          unmountOnExit
-        >
-          {isLoading ? <YBLoading /> : <UserAuthContainer isAdmin={isAdmin} />}
-        </Tab>
+        {
+          !isNewAuthEnabled && (
+            <Tab
+              disabled={!havePermission()}
+              eventKey="user-auth"
+              title={havePermission() ? <AuthTab /> : <AuthTabWithOverlay />}
+              unmountOnExit
+            >
+              {isLoading ? <YBLoading /> : <UserAuthContainer isAdmin={isAdmin} />}
+            </Tab>
+          )
+        }
         {
           isNewAuthEnabled && (
             <Tab
@@ -97,7 +101,7 @@ export const UserManagement = (props) => {
               eventKey="user-auth-new"
               title={<span>
                 <KeyIcon />
-                User Authentication New
+                User Authentication
               </span>}
               unmountOnExit
             >

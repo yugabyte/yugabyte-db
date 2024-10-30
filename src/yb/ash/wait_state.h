@@ -136,6 +136,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kCatalogWrite)
     (kIndexWrite)
     (kTableWrite)
+    (kWaitingOnTServer)
 
     // Common wait states
     ((kOnCpu_Active, YB_ASH_MAKE_EVENT(Common)))
@@ -210,6 +211,55 @@ YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
   (kWaitOnCondition)
 );
 
+// List of pggate sync RPCs instrumented (in pg_client.cc)
+// Make sure that kAsyncRPC is always 0
+YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
+  ((kNoRPC, 0))
+  (kAlterDatabase)
+  (kAlterTable)
+  (kBackfillIndex)
+  (kCreateDatabase)
+  (kCreateReplicationSlot)
+  (kCreateTable)
+  (kCreateTablegroup)
+  (kDropReplicationSlot)
+  (kDropDatabase)
+  (kDropTable)
+  (kDropTablegroup)
+  (kFinishTransaction)
+  (kGetLockStatus)
+  (kGetReplicationSlot)
+  (kListLiveTabletServers)
+  (kListReplicationSlots)
+  (kGetIndexBackfillProgress)
+  (kOpenTable)
+  (kGetTablePartitionList)
+  (kReserveOids)
+  (kRollbackToSubTransaction)
+  (kTabletServerCount)
+  (kTruncateTable)
+  (kValidatePlacement)
+  (kGetTableDiskSize)
+  (kWaitForBackendsCatalogVersion)
+  (kInsertSequenceTuple)
+  (kUpdateSequenceTuple)
+  (kFetchSequenceTuple)
+  (kReadSequenceTuple)
+  (kDeleteSequenceTuple)
+  (kDeleteDBSequences)
+  (kCheckIfPitrActive)
+  (kIsObjectPartOfXRepl)
+  (kGetTserverCatalogVersionInfo)
+  (kCancelTransaction)
+  (kGetActiveTransactionList)
+  (kGetTableKeyRanges)
+  (kGetNewObjectId)
+  (kTabletsMetadata)
+  (kYCQLStatementStats)
+  (kServersMetrics)
+  (kListClones)
+);
+
 struct WaitStatesDescription {
   ash::WaitStateCode code;
   std::string description;
@@ -231,6 +281,7 @@ struct AshMetadata {
   uint8_t addr_family = AF_UNSPEC;
 
   void set_client_host_port(const HostPort& host_port);
+  void clear_rpc_request_id();
 
   std::string ToString() const;
 
@@ -385,7 +436,10 @@ class WaitStateInfo {
   static void UpdateMetadataFromPB(const PB& pb) {
     const auto& wait_state = CurrentWaitState();
     if (wait_state) {
-      wait_state->UpdateMetadata(AshMetadata::FromPB(pb));
+      // rpc_request_id is generated for each RPC, we don't populate it from PB
+      auto metadata = AshMetadata::FromPB(pb);
+      metadata.clear_rpc_request_id();
+      wait_state->UpdateMetadata(metadata);
     }
   }
 

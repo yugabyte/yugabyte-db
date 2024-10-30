@@ -1,4 +1,4 @@
- --
+--
 -- insert with DEFAULT in the target_list
 --
 create table inserttest (col1 int4, col2 int4 NOT NULL, col3 text default 'testing');
@@ -8,7 +8,7 @@ insert into inserttest (col1, col2, col3) values (DEFAULT, 5, DEFAULT);
 insert into inserttest values (DEFAULT, 5, 'test');
 insert into inserttest values (DEFAULT, 7);
 
-select * from inserttest order by col1, col2, col3;
+select * from inserttest;
 
 --
 -- insert with similar expression / target_list values (all fail)
@@ -18,7 +18,7 @@ insert into inserttest (col1, col2, col3) values (1, 2);
 insert into inserttest (col1) values (1, 2);
 insert into inserttest (col1) values (DEFAULT, DEFAULT);
 
-select * from inserttest order by col1, col2, col3;
+select * from inserttest;
 
 --
 -- VALUES test
@@ -26,16 +26,24 @@ select * from inserttest order by col1, col2, col3;
 insert into inserttest values(10, 20, '40'), (-1, 2, DEFAULT),
     ((select 2), (select i from (values(3)) as foo (i)), 'values are fun!');
 
-select * from inserttest order by col1, col2, col3;
+select * from inserttest;
 
 --
 -- TOASTed value test
 --
 insert into inserttest values(30, 50, repeat('x', 10000));
 
-select col1, col2, char_length(col3) from inserttest order by col1, col2, col3;
+select col1, col2, char_length(col3) from inserttest;
 
 drop table inserttest;
+
+--
+-- tuple larger than fillfactor
+--
+CREATE TABLE large_tuple_test (a int, b text) WITH (fillfactor = 10);
+ALTER TABLE large_tuple_test ALTER COLUMN b SET STORAGE plain;
+
+DROP TABLE large_tuple_test;
 
 --
 -- check indirection (field/array assignment), cf bug #14265
@@ -66,7 +74,7 @@ insert into inserttest (f4[1].if2[1], f4[1].if2[2]) values ('foo', 'bar');
 insert into inserttest (f4[1].if2[1], f4[1].if2[2]) values ('foo', 'bar'), ('baz', 'quux');
 insert into inserttest (f4[1].if2[1], f4[1].if2[2]) select 'bear', 'beer';
 
-select * from inserttest ORDER BY f1, f2, f3, f4;
+select * from inserttest;
 
 -- also check reverse-listing
 create table inserttest2 (f1 bigint, f2 text);
@@ -116,8 +124,8 @@ insert into part1 values (null);
 insert into part1 values (1);
 
 create table list_parted (
-    a text,
-    b int
+	a text,
+	b int
 ) partition by list (lower(a));
 create table part_aa_bb partition of list_parted FOR VALUES IN ('aa', 'bb');
 create table part_cc_dd partition of list_parted FOR VALUES IN ('cc', 'dd');
@@ -168,7 +176,7 @@ insert into part_default_p2 values ('de', 35);
 insert into list_parted values ('ab', 21);
 insert into list_parted values ('xx', 1);
 insert into list_parted values ('yy', 2);
-select tableoid::regclass, * from list_parted ORDER BY a,b;
+select tableoid::regclass, * from list_parted;
 
 -- Check tuple routing for partitioned tables
 
@@ -196,7 +204,7 @@ insert into range_parted values ('a', null);
 insert into range_parted values (null, 19);
 insert into range_parted values ('b', 20);
 
-select tableoid::regclass, * from range_parted ORDER BY a,b;
+select tableoid::regclass, * from range_parted;
 -- ok
 insert into list_parted values (null, 1);
 insert into list_parted (a) values ('aA');
@@ -206,7 +214,7 @@ insert into part_ee_ff values ('EE', 0);
 -- ok
 insert into list_parted values ('EE', 1);
 insert into part_ee_ff values ('EE', 10);
-select tableoid::regclass, * from list_parted ORDER BY a,b;
+select tableoid::regclass, * from list_parted;
 
 -- some more tests to exercise tuple-routing with multi-level partitioning
 create table part_gg partition of list_parted for values in ('gg') partition by range (b);
@@ -228,35 +236,8 @@ select tableoid::regclass::text, a, min(b) as min_b, max(b) as max_b from list_p
 
 -- direct partition inserts should check hash partition bound constraint
 
--- Use hand-rolled hash functions and operator classes to get predictable
--- result on different matchines.  The hash function for int4 simply returns
--- the sum of the values passed to it and the one for text returns the length
--- of the non-empty string value passed to it or 0.
-
-create or replace function part_hashint4_noop(value int4, seed int8)
-returns int8 as $$
-select value + seed;
-$$ language sql immutable;
-
-create operator class part_test_int4_ops
-for type int4
-using hash as
-operator 1 =,
-function 2 part_hashint4_noop(int4, int8);
-
-create or replace function part_hashtext_length(value text, seed int8)
-RETURNS int8 AS $$
-select length(coalesce(value, ''))::int8
-$$ language sql immutable;
-
-create operator class part_test_text_ops
-for type text
-using hash as
-operator 1 =,
-function 2 part_hashtext_length(text, int8);
-
 create table hash_parted (
-    a int
+	a int
 ) partition by hash (a part_test_int4_ops);
 create table hpart0 partition of hash_parted for values with (modulus 4, remainder 0);
 create table hpart1 partition of hash_parted for values with (modulus 4, remainder 1);
@@ -274,7 +255,7 @@ insert into hpart3 values(11);
 
 -- view data
 select tableoid::regclass as part, a, a%4 as "remainder = a % 4"
-from hash_parted order by part,a;
+from hash_parted order by part;
 
 -- test \d+ output on a table which has both partitioned and unpartitioned
 -- partitions
@@ -292,7 +273,7 @@ create table part_default partition of list_parted default;
 insert into part_default values (null);
 insert into part_default values (1);
 insert into part_default values (-1);
-select tableoid::regclass, a from list_parted ORDER BY tableoid,a;
+select tableoid::regclass, a from list_parted;
 -- cleanup
 drop table list_parted;
 
@@ -399,7 +380,42 @@ insert into mlparted_def2 values (34, 50);
 create table mlparted_defd partition of mlparted_def default;
 insert into mlparted values (70, 100);
 
-select tableoid::regclass, * from mlparted_def order by tableoid,a;
+select tableoid::regclass, * from mlparted_def;
+
+-- Check multi-level tuple routing with attributes dropped from the
+-- top-most parent.  First remove the last attribute.
+alter table mlparted add d int, add e int;
+alter table mlparted drop e;
+create table mlparted5 partition of mlparted
+  for values from (1, 40) to (1, 50) partition by range (c);
+create table mlparted5_ab partition of mlparted5
+  for values from ('a') to ('c') partition by list (c);
+-- This partitioned table should remain with no partitions.
+create table mlparted5_cd partition of mlparted5
+  for values from ('c') to ('e') partition by list (c);
+create table mlparted5_a partition of mlparted5_ab for values in ('a');
+create table mlparted5_b (d int, b int, c text, a int);
+alter table mlparted5_ab attach partition mlparted5_b for values in ('b');
+truncate mlparted;
+insert into mlparted values (1, 2, 'a', 1);
+insert into mlparted values (1, 40, 'a', 1);  -- goes to mlparted5_a
+insert into mlparted values (1, 45, 'b', 1);  -- goes to mlparted5_b
+insert into mlparted values (1, 45, 'c', 1);  -- goes to mlparted5_cd, fails
+insert into mlparted values (1, 45, 'f', 1);  -- goes to mlparted5, fails
+select tableoid::regclass, * from mlparted order by a, b, c, d;
+alter table mlparted drop d;
+truncate mlparted;
+-- Remove the before last attribute.
+alter table mlparted add e int, add d int;
+alter table mlparted drop e;
+insert into mlparted values (1, 2, 'a', 1);
+insert into mlparted values (1, 40, 'a', 1);  -- goes to mlparted5_a
+insert into mlparted values (1, 45, 'b', 1);  -- goes to mlparted5_b
+insert into mlparted values (1, 45, 'c', 1);  -- goes to mlparted5_cd, fails
+insert into mlparted values (1, 45, 'f', 1);  -- goes to mlparted5, fails
+select tableoid::regclass, * from mlparted order by a, b, c, d;
+alter table mlparted drop d;
+drop table mlparted5;
 
 -- check that message shown after failure to find a partition shows the
 -- appropriate key description (or none) in various situations
@@ -471,10 +487,10 @@ insert into mcrparted3 values (11, 1, -1);
 -- routed to mcrparted5
 insert into mcrparted values (30, 21, 20);
 insert into mcrparted5 values (30, 21, 20);
-insert into mcrparted4 values (30, 21, 20); -- error
+insert into mcrparted4 values (30, 21, 20);	-- error
 
 -- check rows
-select tableoid::regclass::text, * from mcrparted order by 1,a,b;
+select tableoid::regclass::text, * from mcrparted order by 1;
 
 -- cleanup
 drop table mcrparted;
@@ -507,9 +523,7 @@ drop table inserttest3;
 drop table brtrigpartcon;
 drop function brtrigpartcon1trigf();
 
--- check that "do nothing" BR triggers work with tuple-routing (this checks
--- that estate->es_result_relation_info is appropriately set/reset for each
--- routed tuple)
+-- check that "do nothing" BR triggers work with tuple-routing
 create table donothingbrtrig_test (a int, b text) partition by list (a);
 create table donothingbrtrig_test1 (b text, a int);
 create table donothingbrtrig_test2 (c text, b text, a int);
@@ -525,6 +539,7 @@ copy donothingbrtrig_test from stdout;
 2	qux
 \.
 select tableoid::regclass, * from donothingbrtrig_test;
+
 -- cleanup
 drop table donothingbrtrig_test;
 drop function donothingbrtrig_func();

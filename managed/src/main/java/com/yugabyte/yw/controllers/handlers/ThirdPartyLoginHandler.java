@@ -163,7 +163,10 @@ public class ThirdPartyLoginHandler {
                 idToken.getJWTClaimsSet().getStringClaim("oid"),
                 profile.getAccessToken().toAuthorizationHeader());
       } else {
-        groups = idToken.getJWTClaimsSet().getStringListClaim("groups");
+        groups =
+            idToken
+                .getJWTClaimsSet()
+                .getStringListClaim(confGetter.getGlobalConf(GlobalConfKeys.oidcGroupClaim));
       }
       // return if groups claim not found in token
       if (groups == null) {

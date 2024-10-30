@@ -1,5 +1,5 @@
 ---
-title: Configure YugabyteDB Anywhere on premises
+title: Configure YugabyteDB Anywhere on-premises
 headerTitle: Overview
 linkTitle: Overview
 description: Configure YugabyteDB Anywhere on-premises

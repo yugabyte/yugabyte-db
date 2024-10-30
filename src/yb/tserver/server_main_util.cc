@@ -24,6 +24,7 @@
 #include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/log_util.h"
 
+#include "yb/server/clockbound_clock.h"
 #include "yb/server/skewed_clock.h"
 
 #include "yb/util/debug/trace_event.h"
@@ -135,6 +136,7 @@ Status MasterTServerParseFlagsAndInit(
   FLAGS_stderrthreshold = google::FATAL;
 
   server::SkewedClock::Register();
+  server::RegisterClockboundClockProvider();
 
   // These are the actual defaults for these gflags for master and TServer.
   FLAGS_memory_limit_hard_bytes = 0;

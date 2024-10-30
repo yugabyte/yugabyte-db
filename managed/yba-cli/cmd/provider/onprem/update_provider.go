@@ -20,9 +20,12 @@ import (
 
 // updateOnpremProviderCmd represents the provider command
 var updateOnpremProviderCmd = &cobra.Command{
-	Use:   "update",
-	Short: "Update an On-premises YugabyteDB Anywhere provider",
-	Long:  "Update an On-premises provider in YugabyteDB Anywhere",
+	Use:     "update",
+	Aliases: []string{"edit"},
+	Short:   "Update an On-premises YugabyteDB Anywhere provider",
+	Long:    "Update an On-premises provider in YugabyteDB Anywhere",
+	Example: `yba provider onprem update --name <provider-name> \
+	--new-name <new-provider-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -234,7 +237,7 @@ var updateOnpremProviderCmd = &cobra.Command{
 
 		// End of Updating Regions
 
-		rUpdate, response, err := authAPI.EditProvider(provider.GetUuid()).
+		rTask, response, err := authAPI.EditProvider(provider.GetUuid()).
 			EditProviderRequest(provider).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
@@ -242,11 +245,8 @@ var updateOnpremProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		providerUUID := rUpdate.GetResourceUUID()
-		taskUUID := rUpdate.GetTaskUUID()
-
 		providerutil.WaitForUpdateProviderTask(
-			authAPI, providerName, providerUUID, providerCode, taskUUID)
+			authAPI, providerName, rTask, providerCode)
 	},
 }
 

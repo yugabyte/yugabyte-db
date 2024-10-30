@@ -1,7 +1,7 @@
 
 --
 -- ALTER RENAME
--- rename column, table, database
+-- rename column, table, sequence, database
 --
 
 create database test_rename;
@@ -24,6 +24,14 @@ alter table foo rename to bar;
 select * from foo; -- fail
 select * from bar;
 \d
+
+create sequence test_seq;
+\d test_seq
+alter sequence test_seq rename to test_seq_renamed;
+select nextval('test_seq'); -- fail
+select nextval('test_seq_renamed');
+\d test_seq
+\d test_seq_renamed
 
 \c test_rename1;
 alter database test_rename rename to test_rename2;

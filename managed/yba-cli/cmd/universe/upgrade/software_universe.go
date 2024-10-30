@@ -17,9 +17,12 @@ import (
 
 // upgradeSoftwareCmd represents the universe upgrade software command
 var upgradeSoftwareCmd = &cobra.Command{
-	Use:   "software",
-	Short: "Software upgrade for a YugabyteDB Anywhere Universe",
-	Long:  "Software upgrade for a YugabyteDB Anywhere Universe",
+	Use:     "software",
+	Aliases: []string{"yb-db-version"},
+	Short:   "Software upgrade for a YugabyteDB Anywhere Universe",
+	Long:    "Software upgrade for a YugabyteDB Anywhere Universe",
+	Example: `yba universe upgrade software --name <universe-name> \
+	--yb-db-version <software-version>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		universeName, err := cmd.Flags().GetString("name")
@@ -156,14 +159,13 @@ var upgradeSoftwareCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		taskUUID := rUpgrade.GetTaskUUID()
 		logrus.Info(
 			fmt.Sprintf("Upgrading universe %s (%s) from version %s to %s\n",
 				formatter.Colorize(universeName, formatter.GreenColor),
 				universeUUID,
 				oldYBDBVersion, ybdbVersion))
 
-		WaitForUpgradeUniverseTask(authAPI, universeName, universeUUID, taskUUID)
+		WaitForUpgradeUniverseTask(authAPI, universeName, rUpgrade)
 	},
 }
 

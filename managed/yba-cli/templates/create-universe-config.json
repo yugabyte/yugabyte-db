@@ -12,25 +12,25 @@
     3
   ],
   "user-tags": {
-    "<key1>": "<value1>",
-    "<key2>": "<value2>",
-    "<key3>": "<value3>"
+    "<key-1>": "<value-1>",
+    "<key-2>": "<value-2>",
+    "<key-3>": "<value-3>"
   },
   "master-gflags": {
-    "gflag1": "value1",
-    "gflag2": "value2",
-    "gflag3": "value3"
+    "gflag-1": "value-1",
+    "gflag-2": "value-2",
+    "gflag-3": "value-3"
   },
   "tserver-gflags": {
     "primary": {
-      "gflag1": "value1",
-      "gflag2": "value2",
-      "gflag3": "value3"
+      "gflag-1": "value-1",
+      "gflag-2": "value-2",
+      "gflag-3": "value-3"
     },
-    "async" {
-      "gflag1": "value1",
-      "gflag2": "value2",
-      "gflag3": "value3"
+    "async": {
+      "gflag-1": "value-1",
+      "gflag-2": "value-2",
+      "gflag-3": "value-3"
     }
   }
 }

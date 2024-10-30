@@ -11,9 +11,11 @@ import (
 )
 
 var listS3StorageConfigurationCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List S3 YugabyteDB Anywhere storage-configurations",
-	Long:  "List S3 YugabyteDB Anywhere storage-configurations",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List S3 YugabyteDB Anywhere storage-configurations",
+	Long:    "List S3 YugabyteDB Anywhere storage-configurations",
+	Example: `yba storage-config s3 list`,
 	Run: func(cmd *cobra.Command, args []string) {
 
 		storageconfigurationutil.ListStorageConfigurationUtil(cmd, util.S3StorageConfigType, util.S3StorageConfigType)

@@ -33,6 +33,7 @@ import java.util.Map;
 import java.util.Set;
 
 import org.apache.commons.lang3.StringUtils;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized.Parameters;
@@ -1055,8 +1056,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("127.0.0.1/32"),
                 new PgOutputMessageTupleColumnValue("<(0,0),1>"),
                 new PgOutputMessageTupleColumnValue("2024-02-01"),
-                new PgOutputMessageTupleColumnValue("1.20100000000000007"),
-                new PgOutputMessageTupleColumnValue("3.14000000000000012"),
+                new PgOutputMessageTupleColumnValue("1.201"),
+                new PgOutputMessageTupleColumnValue("3.14"),
                 new PgOutputMessageTupleColumnValue("127.0.0.1"),
                 new PgOutputMessageTupleColumnValue("42"),
                 new PgOutputMessageTupleColumnValue("{\"key\": \"value\"}"),
@@ -1150,9 +1151,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
     // 2 Relation (t1 & t2) + 3 records/txn (B+I+C) * 2 txns (performed on t1 & t2
-    // respectively) + 2 records/txn (B+C) * 1 txn (performed on t3) + 4 records/txn
-    // (B+I1+I2+C) * 1 multi-shard txn.
-    result.addAll(receiveMessage(stream, 14));
+    // respectively) + 4 records/txn (B+I1+I2+C) * 1 multi-shard txn.
+    // Note that empty transactions are skipped by pgoutput.
+    result.addAll(receiveMessage(stream, 12));
     for (PgOutputMessage res : result) {
       LOG.info("Row = {}", res);
     }
@@ -1180,10 +1181,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("def")))));
         add(PgOutputCommitMessage.CreateForComparison(
             LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/8")));
-
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/A"), 4));
-        add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/B")));
 
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/F"), 5));
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
@@ -3059,6 +3056,60 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("4")))));
         add(PgOutputCommitMessage.CreateForComparison(
             LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
+      }
+    };
+    assertEquals(expectedResult, result);
+
+    stream.close();
+  }
+
+  // Added with the fix for #24308.
+  @Test
+  public void testWithDropTable() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test_1");
+      stmt.execute("DROP TABLE IF EXISTS test_2");
+      stmt.execute("CREATE TABLE test_1 (a int primary key, b int)");
+      stmt.execute("CREATE TABLE test_2 (a int primary key, b int)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE test_1");
+    }
+
+    String slotName = "test_with_drop_table";
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE test_2");
+      stmt.execute("INSERT INTO test_1 VALUES(1, 1)");
+    }
+
+    // Sleep for some time so that master background thread removes dropped table from the
+    // replica identity map.
+    Thread.sleep(3000 * kMultiplier);
+    PGReplicationStream stream = replConnection.replicationStream()
+      .logical()
+      .withSlotName(slotName)
+      .withStartPosition(LogSequenceNumber.valueOf(0L))
+      .withSlotOption("proto_version", 1)
+      .withSlotOption("publication_names", "pub")
+      .start();
+
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+
+    result.addAll(receiveMessage(stream, 4));
+
+    List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
+      {
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 2));
+        add(PgOutputRelationMessage.CreateForComparison("public", "test_1", 'c',
+          Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+            PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+          Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
+            new PgOutputMessageTupleColumnValue("1")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
       }
     };
     assertEquals(expectedResult, result);

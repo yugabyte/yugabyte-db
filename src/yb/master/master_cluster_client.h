@@ -24,7 +24,8 @@ class MasterClusterClient {
  public:
   explicit MasterClusterClient(MasterClusterProxy&& proxy) noexcept;
 
-  Status BlacklistHost(HostPortPB&& host) const;
+  Status BlacklistHost(HostPortPB&& hp) const;
+  Status UnBlacklistHost(const HostPortPB& hp) const;
   Status ClearBlacklist() const;
 
   Result<std::optional<ListTabletServersResponsePB::Entry>> GetTabletServer(

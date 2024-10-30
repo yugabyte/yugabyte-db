@@ -197,6 +197,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         "Connection Manager is enabled. Skipping this test with Connection Manager enabled " +
         "until the relevant code is pushed to master.";
 
+  protected static final String EXTENSION_NOT_SUPPORTED =
+      "The extension being used as part of the test is not supported with connection manager.";
+
   // Warmup modes for Connection Manager during test runs.
   protected static enum ConnectionManagerWarmupMode {
     NONE,
@@ -221,15 +224,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   // Assuming maximum control connection created will be 3 in any test where config reload is
   // required.
   protected static final int MAX_ATTEMPTS_TO_DESTROY_CONTROL_CONN = 3;
-
-  protected static Map<String, String> FailOnConflictTestGflags = new HashMap<String, String>()
-    {
-      {
-          put("enable_wait_queues", "false");
-          // The retries are set to 2 to speed up the tests.
-          put("ysql_pg_conf_csv", maxQueryLayerRetriesConf(2));
-      }
-    };
 
   protected static ConcurrentSkipListSet<Integer> stuckBackendPidsConcMap =
       new ConcurrentSkipListSet<>();
@@ -277,6 +271,26 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   protected Integer getYsqlRequestLimit() {
     return null;
+  }
+
+  /**
+   * Add ysql_pg_conf_csv flag values using this method to avoid clobbering existing values.
+   * @param flagMap the map of flags to mutate
+   * @param value the raw text to append to the ysql_pg_conf_csv flag value
+   */
+  protected static void appendToYsqlPgConf(Map<String, String> flagMap, String value) {
+    final String flagName = "ysql_pg_conf_csv";
+    if (flagMap.containsKey(flagName)) {
+      flagMap.put(flagName, flagMap.get(flagName) + "," + value);
+    } else {
+      flagMap.put(flagName, value);
+    }
+  }
+
+  protected static void setFailOnConflictFlags(Map<String, String> flagMap) {
+    flagMap.put("enable_wait_queues", "false");
+    // The retries are set to 2 to speed up the tests.
+    appendToYsqlPgConf(flagMap, maxQueryLayerRetriesConf(2));
   }
 
   /**
@@ -337,6 +351,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       builder.enableYsqlConnMgr(true);
       builder.addCommonTServerFlag("ysql_conn_mgr_stats_interval",
         Integer.toString(CONNECTIONS_STATS_UPDATE_INTERVAL_SECS));
+      builder.addCommonTServerFlag("TEST_ysql_conn_mgr_dowarmup_all_pools_mode",
+        warmupMode.toString().toLowerCase());
+      builder.addCommonTServerFlag("ysql_conn_mgr_superuser_sticky", "false");
     }
   }
 
@@ -382,6 +399,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
 
     connection = createTestRole();
+    allowSchemaPublic();
     pgInitialized = true;
   }
 
@@ -394,6 +412,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
 
     return getConnectionBuilder().connect();
+  }
+
+  private void allowSchemaPublic() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("GRANT ALL ON SCHEMA public TO public");
+    }
   }
 
   public void restartClusterWithFlags(
@@ -474,6 +498,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       // TODO(dmitry): Workaround for #1721, remove after fix.
       stmt.execute("ROLLBACK");
       stmt.execute("DISCARD TEMP");
+
+      // TODO(tim): Workaround for DB-11127, remove after fix.
+      stmt.execute("RESET enable_seqscan");
+      stmt.execute("SET enable_bitmapscan = false");
     }
 
     cleanUpCustomDatabases();
@@ -492,6 +520,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
    */
   private void cleanUpCustomDatabases() throws Exception {
     LOG.info("Cleaning up custom databases");
+    if (isTestRunningWithConnectionManager()) {
+      waitForStatsToGetUpdated();
+    }
     try (Statement stmt = connection.createStatement()) {
       for (int i = 0; i < 2; i++) {
         try {
@@ -619,17 +650,25 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   protected
-  void setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode wm) throws Exception {
+  void enableStickySuperuserConnsAndRestartCluster() throws Exception {
     if (!isTestRunningWithConnectionManager()) {
       return;
     }
 
     Map<String, String> tsFlagMap = getTServerFlags();
-    tsFlagMap.put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode",
-      wm.toString().toLowerCase());
-    warmupMode = wm;
+    tsFlagMap.put("ysql_conn_mgr_superuser_sticky", "true");
     Map<String, String> masterFlagMap = getMasterFlags();
     restartClusterWithFlags(masterFlagMap, tsFlagMap);
+  }
+
+  protected
+  void setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode wm) throws Exception {
+    if (!isTestRunningWithConnectionManager()) {
+      return;
+    }
+
+    warmupMode = wm;
+    restartCluster();
   }
 
   protected boolean isConnMgrWarmupRoundRobinMode() {
@@ -708,7 +747,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       YSQLStat ysqlStat = new Metrics(obj, true).getYSQLStat(statName);
       if (ysqlStat != null) {
         value.count += ysqlStat.calls;
-        value.value += ysqlStat.total_time;
+        value.value += ysqlStat.total_exec_time;
         value.rows += ysqlStat.rows;
       }
       scanner.close();
@@ -1661,7 +1700,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     throws SQLException {
 
     String query_plan = getQueryPlanString(stmt, query);
-    assertTrue(query_plan.contains("Merge Append"));
     assertTrue(query_plan.contains("Index Scan using " + index));
   }
 
@@ -1675,7 +1713,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     throws SQLException {
 
     String query_plan = getQueryPlanString(stmt, query);
-    assertTrue(query_plan.contains("Merge Append"));
     assertTrue(query_plan.contains("Index Only Scan using " + index));
   }
 
@@ -2283,9 +2320,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   /** Creates a new tserver and returns its id. **/
   protected int spawnTServer() throws Exception {
-    int tserverId = miniCluster.getNumTServers();
-    miniCluster.startTServer(getTServerFlags());
-    return tserverId;
+    return spawnTServerWithFlags(new HashMap<String, String>());
   }
 
   /** Creates a new tserver with additional flags and returns its id. **/

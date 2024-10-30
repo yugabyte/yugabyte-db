@@ -349,7 +349,8 @@ public class DestroyUniverse extends UniverseTaskBase {
                 xClusterConfig,
                 false /* keepEntry */,
                 params().isForceDelete,
-                true /* deletePitrConfigs */);
+                true /* deleteSourcePitrConfigs */,
+                true /* deleteTargetPitrConfigs */);
           });
 
       // When the last xCluster config associated with this DR config is deleted, the dr config

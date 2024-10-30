@@ -310,7 +310,10 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     // HERE
     ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
     Result result = assertPlatformException(() -> sendPrimaryEditConfigureRequest(topJson));
-    assertBadRequest(result, "Couldn't find 12 nodes of type type.small in PlacementAZ 1");
+    assertBadRequest(
+        result,
+        "Couldn't find 12 node(s) of type type.small in PlacementAZ 1 zone (1 free and 5 currently"
+            + " occupied)");
     assertAuditEntry(0, customer.getUuid());
   }
 

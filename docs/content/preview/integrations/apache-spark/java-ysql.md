@@ -57,7 +57,7 @@ This tutorial assumes that you have:
 
 Create the database and table you will read and write to as follows:
 
-1. From your YugabyteDB installation directory, use [ysqlsh](../../../admin/ysqlsh/) shell to read and write directly to the database as follows:
+1. From your YugabyteDB installation directory, use [ysqlsh](../../../api/ysqlsh/) to read and write directly to the database as follows:
 
     ```sh
     ./bin/ysqlsh
@@ -101,7 +101,7 @@ Create the database and table you will read and write to as follows:
     <dependency>
         <groupId> com.yugabyte</groupId>
         <artifactId>jdbc-yugabytedb</artifactId>
-        <version>42.3.5-yb-8</version>
+        <version>42.7.3-yb-1</version>
     </dependency>
     ```
 

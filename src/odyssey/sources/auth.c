@@ -664,13 +664,26 @@ int od_auth_frontend(od_client_t *client)
 	int rc;
 
 #ifdef YB_SUPPORT_FOUND
-	rc = yb_execute_on_control_connection(client,
-					      yb_auth_frontend_passthrough);
+	if (instance->config.yb_use_auth_backend)
+	{
+		rc = yb_auth_via_auth_backend(client);
 
-	/* AuthOk packet or Auth Failed FATAL response is already sent. */
-	if (rc == -1)
-		return -1;
-	return 0;
+		/* Auth Failed FATAL response is already sent. */
+		if (rc == -1)
+			return -1;
+	}
+	else
+	{
+		rc = yb_execute_on_control_connection(
+			client, yb_auth_frontend_passthrough);
+
+		/* AuthOk packet or Auth Failed FATAL response is already sent. */
+		if (rc == -1)
+			return -1;
+
+		return 0;
+	}
+
 #else
 
 	switch (client->rule->auth_mode) {
@@ -1043,6 +1056,75 @@ int od_auth_backend(od_server_t *server, machine_msg_t *msg,
 			 "failed to parse authentication message");
 		return -1;
 	}
+
+	/* handle communication for the auth backend separately. */
+	if (client->yb_is_authenticating)
+	{
+		/* AuthenticationOk */
+		if (auth_type == 0)
+			return 0;
+
+		/*
+		 * AuthenticationCleartextPassword and AuthenticationMD5Password.
+		 *
+		 * Other possible values are AuthenticationSASL, 
+		 * AuthenticationSASLContinue and AuthenticationSASLFinal which are
+		 * unsupported by YSQL connection manager.
+		 */
+		assert(auth_type == 3 || auth_type == 5);
+		assert(client->yb_external_client != NULL);
+		assert(instance->config.yb_use_auth_backend);
+
+		kiwi_fe_type_t type;
+		od_client_t *external_client = client->yb_external_client;
+
+		/* forward the request for password to the client. */
+		rc = od_write(&external_client->io, msg);
+		if (rc == -1) {
+			od_error(&instance->logger, "auth", external_client, NULL,
+				"error while forwarding the auth packet to the client: %s",
+				od_io_error(&external_client->io));
+			return -1;
+		}
+
+		/* wait for password response packet from the client. */
+		while (true) {
+			msg = od_read(&external_client->io, UINT32_MAX);
+			if (msg == NULL) {
+				od_error(&instance->logger, "auth",
+					external_client, NULL,
+					"read error while expecting a password response packet from"
+					" the client: %s", od_io_error(&external_client->io));
+				return -1;
+			}
+
+			type = *(char *)machine_msg_data(msg);
+
+			/*
+			 * Packet type `KIWI_FE_PASSWORD_MESSAGE` is used by client
+			 * to respond to the server packet for:
+			 * 		GSSAPI, SSPI and password response messages
+			 */
+			if (type == KIWI_FE_PASSWORD_MESSAGE)
+				break;
+			machine_msg_free(msg);
+		}
+
+		/* Forward the password response packet to the database. */
+		rc = od_write(&server->io, msg);
+		if (rc == -1) {
+			od_error(
+				&instance->logger, "auth", client, server,
+				"Unable to forward the password response to the server");
+			return -1;
+		}
+
+		od_debug(&instance->logger, "auth", client, server,
+			"Forwarded the password response to the server");
+
+		return 0;
+	}
+
 	msg = NULL;
 
 	switch (auth_type) {

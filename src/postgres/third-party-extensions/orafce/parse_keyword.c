@@ -2,7 +2,7 @@
 
 #include "parse_keyword.h"
 
-#include "parser/gramparse.h"
+#include "parser/scanner.h"
 
 #if PG_VERSION_NUM >= 90600
 

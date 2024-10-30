@@ -21,11 +21,12 @@ import (
 
 // createOnpremProviderCmd represents the provider command
 var createOnpremProviderCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create an On-premises YugabyteDB Anywhere provider",
+	Use:     "create",
+	Aliases: []string{"add"},
+	Short:   "Create an On-premises YugabyteDB Anywhere provider",
 	Long: "Create an On-premises provider in YugabyteDB Anywhere. " +
 		"To utilize the on-premises provider in universes, manage instance types" +
-		" and node instances using the \"yba provider onprem instance-types/node [operation]\" " +
+		" and node instances using the \"yba provider onprem instance-type/node [operation]\" " +
 		"set of commands",
 	Example: `yba provider onprem create --name <provider-name> \
 	--region region-name=region1 --region region-name=region2 \
@@ -165,7 +166,7 @@ var createOnpremProviderCmd = &cobra.Command{
 				SshUser:                util.GetStringPointer(sshUser),
 			},
 		}
-		rCreate, response, err := authAPI.CreateProvider().
+		rTask, response, err := authAPI.CreateProvider().
 			CreateProviderRequest(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err,
@@ -173,11 +174,8 @@ var createOnpremProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		providerUUID := rCreate.GetResourceUUID()
-		taskUUID := rCreate.GetTaskUUID()
-
 		providerutil.WaitForCreateProviderTask(authAPI,
-			providerName, providerUUID, providerCode, taskUUID)
+			providerName, rTask, providerCode)
 	},
 }
 

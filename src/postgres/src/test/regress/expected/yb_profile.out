@@ -8,6 +8,7 @@
                    Table "pg_catalog.pg_yb_profile"
           Column           |  Type   | Collation | Nullable | Default
 ---------------------------+---------+-----------+----------+---------
+ oid                       | oid     |           | not null |
  prfname                   | name    |           | not null |
  prfmaxfailedloginattempts | integer |           | not null |
  prfpasswordlocktime       | integer |           | not null |
@@ -19,7 +20,7 @@ Tablespace: "pg_global"
 SELECT oid, relname, reltype, relnatts FROM pg_class WHERE relname IN ('pg_yb_profile', 'pg_yb_profile_oid_index');
  oid  |         relname         | reltype | relnatts
 ------+-------------------------+---------+----------
- 8051 | pg_yb_profile           |    8053 |        3
+ 8051 | pg_yb_profile           |    8053 |        4
  8052 | pg_yb_profile_oid_index |       0 |        1
 (2 rows)
 
@@ -125,6 +126,7 @@ ALTER USER { role_specification | ALL } [ IN DATABASE database_name ] RESET ALL
 where role_specification can be:
 
     role_name
+  | CURRENT_ROLE
   | CURRENT_USER
   | SESSION_USER
 
@@ -162,5 +164,6 @@ ALTER ROLE { role_specification | ALL } [ IN DATABASE database_name ] RESET ALL
 where role_specification can be:
 
     role_name
+  | CURRENT_ROLE
   | CURRENT_USER
   | SESSION_USER

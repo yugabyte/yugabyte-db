@@ -315,6 +315,7 @@ export const ConfigTableSelect = ({
     xClusterConfig.tableDetails,
     maxAcceptableLag,
     tableReplicationLagQuery.data?.async_replication_sent_lag?.data,
+    true /* isTableInfoIncludedInConfig */,
     { includeUnconfiguredTables: false, includeDroppedTables: false }
   );
 
@@ -372,6 +373,7 @@ export const ConfigTableSelect = ({
               tableType={configTableType}
               handleTableSelect={handleTableToggle}
               handleTableGroupSelect={handleTableGroupToggle}
+              isDrInterface={isDrInterface}
             />
           )}
           expandColumnOptions={{

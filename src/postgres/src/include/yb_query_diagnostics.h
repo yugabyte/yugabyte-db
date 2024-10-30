@@ -35,6 +35,7 @@
 
 #define YB_QD_MAX_BIND_VARS_LEN 2048
 #define YB_QD_MAX_PGSS_LEN 2048
+#define YB_QD_MAX_PGSS_QUERY_LEN 1024
 #define YB_QD_DESCRIPTION_LEN 128
 
 /*
@@ -114,6 +115,9 @@ typedef struct YbQueryDiagnosticsMetadata
 
 	/* Time when the query diagnostics bundle started */
 	TimestampTz	start_time;
+
+	/* Whether the directory has been created */
+	bool		directory_created;
 } YbQueryDiagnosticsMetadata;
 
 /*

@@ -1341,6 +1341,14 @@ spark_available() {
   return 1  # false
 }
 
+# Build archive that is sent to workers, but don't run any tests.
+# The archive should be automatically re-used by run_tests_on_spark()
+prep_spark_archive() {
+  touch "${BUILD_ROOT}/empty_test_list"
+  "$YB_SCRIPT_PATH_RUN_TESTS_ON_SPARK" --build-root "$BUILD_ROOT" --send_archive_to_workers \
+     --java --cpp --test_list "${BUILD_ROOT}/empty_test_list"
+}
+
 run_tests_on_spark() {
   if ! spark_available; then
     fatal "Spark is not available, can't run tests on Spark"

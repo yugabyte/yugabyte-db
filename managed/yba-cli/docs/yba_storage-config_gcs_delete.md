@@ -10,6 +10,12 @@ Delete a GCS storage configuration in YugabyteDB Anywhere
 yba storage-config gcs delete [flags]
 ```
 
+### Examples
+
+```
+yba storage-config gcs delete --name <storage-configuration-name>
+```
+
 ### Options
 
 ```

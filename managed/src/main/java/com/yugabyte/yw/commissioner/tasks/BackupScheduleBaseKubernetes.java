@@ -22,6 +22,8 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
 import java.util.List;
+import java.util.UUID;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
@@ -100,24 +102,32 @@ public abstract class BackupScheduleBaseKubernetes extends KubernetesUpgradeTask
   }
 
   protected Runnable getBackupScheduleUniverseSubtasks(
-      Universe universe, BackupRequestParams scheduledBackupParams, boolean isDelete) {
+      Universe universe, BackupRequestParams scheduledBackupParams, UUID deleteScheduleUUID) {
+    if (!scheduledBackupParams.enablePointInTimeRestore) {
+      return null;
+    }
     return () -> {
       // Run subtasks to configure history retention if required
-      maybeConfigureHistoryRetention(scheduledBackupParams, universe, isDelete);
+      maybeConfigureHistoryRetention(scheduledBackupParams, universe, deleteScheduleUUID);
     };
   }
 
   // Configure timstamp_history_retention_sec gflag on the universe to accommodate
   // the backup interval
   private void maybeConfigureHistoryRetention(
-      BackupRequestParams scheduledBackupParams, Universe universe, boolean isDelete) {
+      BackupRequestParams scheduledBackupParams,
+      Universe universe,
+      @Nullable UUID deleteScheduleUUID) {
     Duration bufferHistoryRetention =
         Duration.ofSeconds(
             confGetter.getConfForScope(
                 universe, UniverseConfKeys.pitEnabledBackupsRetentionBufferTimeSecs));
     Duration eventualRetentionTime =
         ScheduleUtil.getFinalHistoryRetentionUniverseForPITRestore(
-            universe.getUniverseUUID(), scheduledBackupParams, isDelete, bufferHistoryRetention);
+            universe.getUniverseUUID(),
+            scheduledBackupParams,
+            deleteScheduleUUID,
+            bufferHistoryRetention);
 
     if (eventualRetentionTime.isZero()) {
       log.info("No change in timestamp_history_retention_sec gflag required!");

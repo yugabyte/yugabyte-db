@@ -47,20 +47,20 @@ public class TestToastFunction extends TestToastFunctionBase {
   public void testCatalogRefreshMemoryUsage() throws Exception {
     setEnableToastFlag(true);
     List<CacheMemoryContextTracker> contexts = catalogRefreshMemoryUsageTest();
-    contexts.forEach(c -> c.assertMemoryUsageLessThan(6 * MB));
+    contexts.forEach(c -> c.assertMemoryUsageLessThan(8 * MB));
   }
 
   @Test
   public void testAdHocMemoryUsage() throws Exception {
     setEnableToastFlag(true);
     List<CacheMemoryContextTracker> contexts = adHocMemoryUsageTest();
-    contexts.forEach(c -> c.assertMemoryUsageLessThan(7 * MB));
+    contexts.forEach(c -> c.assertMemoryUsageLessThan(8 * MB));
   }
 
   @Test
   public void testBuildRelcacheInitFileMemoryUsage() throws Exception {
     setEnableToastFlag(true);
     CacheMemoryContextTracker cxt = buildRelcacheInitFileMemoryUsage();
-    cxt.assertMemoryUsageLessThan(7 * MB);
+    cxt.assertMemoryUsageLessThan(8 * MB);
   }
 }

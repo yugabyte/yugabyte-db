@@ -3,7 +3,7 @@
  * barrier.c
  *	  Barriers for synchronizing cooperating processes.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * From Wikipedia[1]: "In parallel computing, a barrier is a type of
@@ -113,9 +113,9 @@ BarrierInit(Barrier *barrier, int participants)
  * too and then return.  Increments the current phase.  The caller must be
  * attached.
  *
- * While waiting, pg_stat_activity shows a wait_event_class and wait_event
+ * While waiting, pg_stat_activity shows a wait_event_type and wait_event
  * controlled by the wait_event_info passed in, which should be a value from
- * from one of the WaitEventXXX enums defined in pgstat.h.
+ * one of the WaitEventXXX enums defined in pgstat.h.
  *
  * Return true in one arbitrarily chosen participant.  Return false in all
  * others.  The return code can be used to elect one participant to execute a
@@ -206,6 +206,28 @@ BarrierArriveAndDetach(Barrier *barrier)
 }
 
 /*
+ * Arrive at a barrier, and detach all but the last to arrive.  Returns true if
+ * the caller was the last to arrive, and is therefore still attached.
+ */
+bool
+BarrierArriveAndDetachExceptLast(Barrier *barrier)
+{
+	SpinLockAcquire(&barrier->mutex);
+	if (barrier->participants > 1)
+	{
+		--barrier->participants;
+		SpinLockRelease(&barrier->mutex);
+
+		return false;
+	}
+	Assert(barrier->participants == 1);
+	++barrier->phase;
+	SpinLockRelease(&barrier->mutex);
+
+	return true;
+}
+
+/*
  * Attach to a barrier.  All waiting participants will now wait for this
  * participant to call BarrierArriveAndWait(), BarrierDetach() or
  * BarrierArriveAndDetach().  Return the current phase.
@@ -226,9 +248,9 @@ BarrierAttach(Barrier *barrier)
 }
 
 /*
- * Detach from a barrier.  This may release other waiters from BarrierWait and
- * advance the phase if they were only waiting for this backend.  Return true
- * if this participant was the last to detach.
+ * Detach from a barrier.  This may release other waiters from
+ * BarrierArriveAndWait() and advance the phase if they were only waiting for
+ * this backend.  Return true if this participant was the last to detach.
  */
 bool
 BarrierDetach(Barrier *barrier)

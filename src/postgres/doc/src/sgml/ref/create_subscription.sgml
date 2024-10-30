@@ -32,20 +32,21 @@ CREATE SUBSCRIPTION <replaceable class="parameter">subscription_name</replaceabl
   <title>Description</title>
 
   <para>
-   <command>CREATE SUBSCRIPTION</command> adds a new subscription for the
-   current database.  The subscription name must be distinct from the name of
-   any existing subscription in the database.
+   <command>CREATE SUBSCRIPTION</command> adds a new logical-replication
+   subscription.  The subscription name must be distinct from the name of
+   any existing subscription in the current database.
   </para>
 
   <para>
-   The subscription represents a replication connection to the publisher.  As
-   such this command does not only add definitions in the local catalogs but
-   also creates a replication slot on the publisher.
+   A subscription represents a replication connection to the publisher.
+   Hence, in addition to adding definitions in the local catalogs, this
+   command normally creates a replication slot on the publisher.
   </para>
 
   <para>
    A logical replication worker will be started to replicate data for the new
-   subscription at the commit of the transaction where this command is run.
+   subscription at the commit of the transaction where this command is run,
+   unless the subscription is initially disabled.
   </para>
 
   <para>
@@ -73,14 +74,15 @@ CREATE SUBSCRIPTION <replaceable class="parameter">subscription_name</replaceabl
     <term><literal>CONNECTION '<replaceable class="parameter">conninfo</replaceable>'</literal></term>
     <listitem>
      <para>
-      The connection string to the publisher.  For details
-      see <xref linkend="libpq-connstring"/>.
+      The <application>libpq</application> connection string defining how
+      to connect to the publisher database.  For details see
+      <xref linkend="libpq-connstring"/>.
      </para>
     </listitem>
    </varlistentry>
 
    <varlistentry>
-    <term><literal>PUBLICATION <replaceable class="parameter">publication_name</replaceable></literal></term>
+    <term><literal>PUBLICATION <replaceable class="parameter">publication_name</replaceable> [, ...]</literal></term>
     <listitem>
      <para>
       Names of the publications on the publisher to subscribe to.
@@ -92,17 +94,37 @@ CREATE SUBSCRIPTION <replaceable class="parameter">subscription_name</replaceabl
     <term><literal>WITH ( <replaceable class="parameter">subscription_parameter</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] )</literal></term>
     <listitem>
      <para>
-      This clause specifies optional parameters for a subscription.  The
-      following parameters are supported:
+      This clause specifies optional parameters for a subscription.
+     </para>
+
+     <para>
+      The following parameters control what happens during subscription creation:
 
       <variablelist>
+
        <varlistentry>
-        <term><literal>copy_data</literal> (<type>boolean</type>)</term>
+        <term><literal>connect</literal> (<type>boolean</type>)</term>
         <listitem>
          <para>
-          Specifies whether the existing data in the publications that are
-          being subscribed to should be copied once the replication starts.
-          The default is <literal>true</literal>.
+          Specifies whether the <command>CREATE SUBSCRIPTION</command>
+          command should connect to the publisher at all.  The default
+          is <literal>true</literal>.  Setting this to
+          <literal>false</literal> will force the values of
+          <literal>create_slot</literal>, <literal>enabled</literal> and
+          <literal>copy_data</literal> to <literal>false</literal>.
+          (You cannot combine setting <literal>connect</literal>
+          to <literal>false</literal> with
+          setting <literal>create_slot</literal>, <literal>enabled</literal>,
+          or <literal>copy_data</literal> to <literal>true</literal>.)
+         </para>
+
+         <para>
+          Since no connection is made when this option is
+          <literal>false</literal>, no tables are subscribed, and so
+          after you enable the subscription nothing will be replicated.
+          You will need to then run
+          <literal>ALTER SUBSCRIPTION ... REFRESH PUBLICATION</literal>
+          for tables to be subscribed.
          </para>
         </listitem>
        </varlistentry>
@@ -113,6 +135,8 @@ CREATE SUBSCRIPTION <replaceable class="parameter">subscription_name</replaceabl
          <para>
           Specifies whether the command should create the replication slot on
           the publisher.  The default is <literal>true</literal>.
+          If set to <literal>false</literal>, you are responsible for
+          creating the publisher's slot in some other way.
          </para>
         </listitem>
        </varlistentry>
@@ -121,8 +145,8 @@ CREATE SUBSCRIPTION <replaceable class="parameter">subscription_name</replaceabl
         <term><literal>enabled</literal> (<type>boolean</type>)</term>
         <listitem>
          <para>
-          Specifies whether the subscription should be actively replicating,
-          or whether it should be just setup but not started yet.  The default
+          Specifies whether the subscription should be actively replicating
+          or whether it should just be set up but not started yet.  The default
           is <literal>true</literal>.
          </para>
         </listitem>
@@ -132,17 +156,74 @@ CREATE SUBSCRIPTION <replaceable class="parameter">subscription_name</replaceabl
         <term><literal>slot_name</literal> (<type>string</type>)</term>
         <listitem>
          <para>
-          Name of the replication slot to use.  The default behavior is to
-          use the name of the subscription for the slot name.
+          Name of the publisher's replication slot to use.  The default is
+          to use the name of the subscription for the slot name.
          </para>
 
          <para>
-          When <literal>slot_name</literal> is set to
-          <literal>NONE</literal>, there will be no replication slot
-          associated with the subscription.  This can be used if the
-          replication slot will be created later manually.  Such
+          Setting <literal>slot_name</literal> to <literal>NONE</literal>
+          means there will be no replication slot
+          associated with the subscription.  Use this when you will be
+          creating the replication slot later manually.  Such
           subscriptions must also have both <literal>enabled</literal> and
           <literal>create_slot</literal> set to <literal>false</literal>.
+         </para>
+        </listitem>
+       </varlistentry>
+      </variablelist>
+     </para>
+
+     <para>
+      The following parameters control the subscription's replication
+      behavior after it has been created:
+
+      <variablelist>
+
+       <varlistentry>
+        <term><literal>binary</literal> (<type>boolean</type>)</term>
+        <listitem>
+         <para>
+          Specifies whether the subscription will request the publisher to
+          send the data in binary format (as opposed to text).
+          The default is <literal>false</literal>.
+          Even when this option is enabled, only data types having
+          binary send and receive functions will be transferred in binary.
+         </para>
+
+         <para>
+          When doing cross-version replication, it could be that the
+          publisher has a binary send function for some data type, but the
+          subscriber lacks a binary receive function for that type.  In
+          such a case, data transfer will fail, and
+          the <literal>binary</literal> option cannot be used.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal>copy_data</literal> (<type>boolean</type>)</term>
+        <listitem>
+         <para>
+          Specifies whether to copy pre-existing data in the publications
+          that are being subscribed to when the replication starts.
+          The default is <literal>true</literal>.
+         </para>
+         <para>
+          If the publications contain <literal>WHERE</literal> clauses, it
+          will affect what data is copied. Refer to the
+          <xref linkend="sql-createsubscription-notes" /> for details.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal>streaming</literal> (<type>boolean</type>)</term>
+        <listitem>
+         <para>
+          Specifies whether to enable streaming of in-progress transactions
+          for this subscription.  By default, all transactions
+          are fully decoded on the publisher and only then sent to the
+          subscriber as a whole.
          </para>
         </listitem>
        </varlistentry>
@@ -152,14 +233,15 @@ CREATE SUBSCRIPTION <replaceable class="parameter">subscription_name</replaceabl
         <listitem>
          <para>
           The value of this parameter overrides the
-          <xref linkend="guc-synchronous-commit"/> setting.  The default
-          value is <literal>off</literal>.
+          <xref linkend="guc-synchronous-commit"/> setting within this
+          subscription's apply worker processes.  The default value
+          is <literal>off</literal>.
          </para>
 
          <para>
           It is safe to use <literal>off</literal> for logical replication:
           If the subscriber loses transactions because of missing
-          synchronization, the data will be resent from the publisher.
+          synchronization, the data will be sent again from the publisher.
          </para>
 
          <para>
@@ -179,41 +261,55 @@ CREATE SUBSCRIPTION <replaceable class="parameter">subscription_name</replaceabl
        </varlistentry>
 
        <varlistentry>
-        <term><literal>connect</literal> (<type>boolean</type>)</term>
+        <term><literal>two_phase</literal> (<type>boolean</type>)</term>
         <listitem>
          <para>
-          Specifies whether the <command>CREATE SUBSCRIPTION</command>
-          should connect to the publisher at all.  Setting this to
-          <literal>false</literal> will change default values of
-          <literal>enabled</literal>, <literal>create_slot</literal> and
-          <literal>copy_data</literal> to <literal>false</literal>.
+          Specifies whether two-phase commit is enabled for this subscription.
+          The default is <literal>false</literal>.
          </para>
 
          <para>
-          It is not allowed to combine <literal>connect</literal> set to
-          <literal>false</literal> and <literal>enabled</literal>,
-          <literal>create_slot</literal>, or <literal>copy_data</literal>
-          set to <literal>true</literal>.
+          When two-phase commit is enabled, prepared transactions are sent
+          to the subscriber at the time of <command>PREPARE
+          TRANSACTION</command>, and are processed as two-phase
+          transactions on the subscriber too.  Otherwise, prepared
+          transactions are sent to the subscriber only when committed, and
+          are then processed immediately by the subscriber.
          </para>
 
          <para>
-          Since no connection is made when this option is set
-          to <literal>false</literal>, the tables are not subscribed, and so
-          after you enable the subscription nothing will be replicated.
-          It is required to run
-          <literal>ALTER SUBSCRIPTION ... REFRESH PUBLICATION</literal> in order
-          for tables to be subscribed.
+          The implementation of two-phase commit requires that replication
+          has successfully finished the initial table synchronization
+          phase. So even when <literal>two_phase</literal> is enabled for a
+          subscription, the internal two-phase state remains
+          temporarily <quote>pending</quote> until the initialization phase
+          completes. See column <structfield>subtwophasestate</structfield>
+          of <link linkend="catalog-pg-subscription"><structname>pg_subscription</structname></link>
+          to know the actual two-phase state.
+         </para>
+
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal>disable_on_error</literal> (<type>boolean</type>)</term>
+        <listitem>
+         <para>
+          Specifies whether the subscription should be automatically disabled
+          if any errors are detected by subscription workers during data
+          replication from the publisher. The default is
+          <literal>false</literal>.
          </para>
         </listitem>
        </varlistentry>
-      </variablelist>
-     </para>
+      </variablelist></para>
+
     </listitem>
    </varlistentry>
   </variablelist>
  </refsect1>
 
- <refsect1>
+ <refsect1 id="sql-createsubscription-notes" xreflabel="Notes">
   <title>Notes</title>
 
   <para>
@@ -239,6 +335,42 @@ CREATE SUBSCRIPTION <replaceable class="parameter">subscription_name</replaceabl
    the parameter <literal>create_slot = false</literal>.  This is an
    implementation restriction that might be lifted in a future release.
   </para>
+
+  <para>
+   If any table in the publication has a <literal>WHERE</literal> clause, rows
+   for which the <replaceable class="parameter">expression</replaceable>
+   evaluates to false or null will not be published. If the subscription has
+   several publications in which the same table has been published with
+   different <literal>WHERE</literal> clauses, a row will be published if any
+   of the expressions (referring to that publish operation) are satisfied. In
+   the case of different <literal>WHERE</literal> clauses, if one of the
+   publications has no <literal>WHERE</literal> clause (referring to that
+   publish operation) or the publication is declared as
+   <literal>FOR ALL TABLES</literal> or
+   <literal>FOR TABLES IN SCHEMA</literal>, rows are always published
+   regardless of the definition of the other expressions.
+   If the subscriber is a <productname>PostgreSQL</productname> version before
+   15, then any row filtering is ignored during the initial data synchronization
+   phase. For this case, the user might want to consider deleting any initially
+   copied data that would be incompatible with subsequent filtering.
+   Because initial data synchronization does not take into account the publication
+   <literal>publish</literal> parameter when copying existing table data, some rows
+   may be copied that would not be replicated using DML. See
+   <xref linkend="logical-replication-subscription-examples"/> for examples.
+  </para>
+
+  <para>
+   Subscriptions having several publications in which the same table has been
+   published with different column lists are not supported.
+  </para>
+
+  <para>
+   We allow non-existent publications to be specified so that users can add
+   those later. This means
+   <link linkend="catalog-pg-subscription"><structname>pg_subscription</structname></link>
+   can have non-existent publications.
+  </para>
+
  </refsect1>
 
  <refsect1>

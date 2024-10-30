@@ -1210,7 +1210,7 @@ Result<bool> PgDocReadOp::PopulateSamplingOps() {
   return true;
 }
 
-Result<EstimatedRowCount> PgDocReadOp::GetEstimatedRowCount() const {
+EstimatedRowCount PgDocReadOp::GetEstimatedRowCount() const {
   VLOG(1) << "Returning liverows " << sample_rows_;
   // TODO count dead tuples while sampling
   return EstimatedRowCount{.live = sample_rows_, .dead = 0};
@@ -1353,13 +1353,9 @@ Status PgDocReadOp::SetRequestPrefetchLimit() {
       if (target.has_column_id()) {
         auto column_id = target.column_id();
         if (column_id < 0) {
-            if (column_id == static_cast<int>(PgSystemAttrNum::kObjectId)) {
-              row_width += GetTypeInfo(DataType::UINT32)->size;
-            } else {
-              // System columns are usually variable length which we are
-              // estimating with the size of a Binary DataType for now.
-              row_width += GetTypeInfo(DataType::BINARY)->size;
-            }
+            // System columns are usually variable length which we are
+            // estimating with the size of a Binary DataType for now.
+            row_width += GetTypeInfo(DataType::BINARY)->size;
             continue;
         }
         const ColumnSchema &col_schema =

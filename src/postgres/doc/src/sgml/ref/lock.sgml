@@ -174,10 +174,15 @@ LOCK [ TABLE ] [ ONLY ] <replaceable class="parameter">name</replaceable> [ * ] 
    </para>
 
    <para>
-    The user performing the lock on the view must have the corresponding privilege
-    on the view.  In addition the view's owner must have the relevant privileges on
-    the underlying base relations, but the user performing the lock does
-    not need any permissions on the underlying base relations.
+    The user performing the lock on the view must have the corresponding
+    privilege on the view.  In addition, by default, the view's owner must
+    have the relevant privileges on the underlying base relations, whereas the
+    user performing the lock does not need any permissions on the underlying
+    base relations.  However, if the view has
+    <literal>security_invoker</literal> set to <literal>true</literal>
+    (see <link linkend="sql-createview"><command>CREATE VIEW</command></link>),
+    the user performing the lock, rather than the view owner, must have the
+    relevant privileges on the underlying base relations.
    </para>
 
    <para>
@@ -186,9 +191,9 @@ LOCK [ TABLE ] [ ONLY ] <replaceable class="parameter">name</replaceable> [ * ] 
     <productname>PostgreSQL</productname> reports an error if <command>LOCK</command>
     is used outside a transaction block.
     Use
-    <xref linkend="sql-begin"/> and
-    <xref linkend="sql-commit"/>
-    (or <xref linkend="sql-rollback"/>)
+    <link linkend="sql-begin"><command>BEGIN</command></link> and
+    <link linkend="sql-commit"><command>COMMIT</command></link>
+    (or <link linkend="sql-rollback"><command>ROLLBACK</command></link>)
     to define a transaction block.
    </para>
 
@@ -202,9 +207,8 @@ LOCK [ TABLE ] [ ONLY ] <replaceable class="parameter">name</replaceable> [ * ] 
    <command>LOCK TABLE</command> is concerned, differing only in the rules
    about which modes conflict with which. For information on how to
    acquire an actual row-level lock, see <xref linkend="locking-rows"/>
-   and the <xref linkend="sql-for-update-share"
-   endterm="sql-for-update-share-title"/> in the <command>SELECT</command>
-   reference documentation.
+   and <xref linkend="sql-for-update-share"/>
+   in the <xref linkend="sql-select"/> documentation.
   </para>
  </refsect1>
 

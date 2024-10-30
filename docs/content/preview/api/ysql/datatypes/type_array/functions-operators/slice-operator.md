@@ -4,7 +4,7 @@ linkTitle: Array slice operator
 headerTitle: The array slice operator
 description: The array slice operator
 menu:
-  preview:
+  preview_api:
     identifier: array-slice-operator
     parent: array-functions-operators
     weight: 30

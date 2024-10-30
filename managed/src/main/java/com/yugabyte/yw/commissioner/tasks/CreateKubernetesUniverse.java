@@ -220,14 +220,12 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       // Install YBC on the pods
       if (taskParams().isEnableYbc()) {
         installYbcOnThePods(
-            universe.getName(),
             tserversAdded,
             false,
             taskParams().getYbcSoftwareVersion(),
             taskParams().getPrimaryCluster().userIntent.ybcFlags);
         if (readClusters.size() == 1) {
           installYbcOnThePods(
-              universe.getName(),
               readOnlyTserversAdded,
               true,
               taskParams().getYbcSoftwareVersion(),
@@ -251,15 +249,17 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
                     // Use generated placement since gflagsParams placement will not have masters
                     // populated.
                     placement,
-                    gflagsParams.getMasterAddresses(),
+                    masterAddresses,
                     ServerType.MASTER,
                     gflagsParams.getYbSoftwareVersion(),
                     gflagsParams.getUniverseOverrides(),
                     gflagsParams.getAzOverrides(),
                     gflagsParams.isNewNamingStyle(),
                     false /* isReadOnlyCluster */,
-                    gflagsParams.isEnableYbc(),
-                    gflagsParams.getYbcSoftwareVersion());
+                    // Use taskParams here since updated universe details are not available
+                    // during subtasks creation.
+                    taskParams().isEnableYbc(),
+                    taskParams().getYbcSoftwareVersion());
       }
 
       createConfigureUniverseTasks(

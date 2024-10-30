@@ -193,6 +193,10 @@ void CDCSDKTabletMetrics::ClearMetrics() {
   cdcsdk_last_sent_physicaltime->set_value(0);
 }
 
+Result<std::string> CDCSDKTabletMetrics::TEST_GetAttribute(const std::string& key) const {
+  return entity_->TEST_GetAttributeFromMap(key);
+}
+
 CDCServerMetrics::CDCServerMetrics(const scoped_refptr<MetricEntity>& entity)
     : MINIT(cdc_rpc_proxy_count),
       entity_(entity) { }

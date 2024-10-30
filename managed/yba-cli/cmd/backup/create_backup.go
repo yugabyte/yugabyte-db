@@ -18,6 +18,7 @@ import (
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/backup"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ybatask"
 )
 
 // createBackupCmd represents the universe backup command
@@ -25,6 +26,11 @@ var createBackupCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a YugabyteDB Anywhere universe backup",
 	Long:  "Create an universe backup in YugabyteDB Anywhere",
+	Example: `yba backup create --universe-name <universe-name> \
+	--storage-config-name <storage-config-name> \
+	--table-type <table-type> \
+	--time-before-delete-in-ms 3600000 \
+	--keyspace-info "keyspace-name=<keyspace-name>"`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		universeNameFlag, err := cmd.Flags().GetString("universe-name")
 		if err != nil {
@@ -138,6 +144,22 @@ var createBackupCmd = &cobra.Command{
 
 		}
 
+		backup.KMSConfigs = make([]util.KMSConfig, 0)
+		kmsConfigs, response, err := authAPI.ListKMSConfigs().Execute()
+		if err != nil {
+			errMessage := util.ErrorFromHTTPResponse(response, err,
+				"Backup", "Create - Get KMS Configurations")
+			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		}
+
+		for _, k := range kmsConfigs {
+			kmsConfig, err := util.ConvertToKMSConfig(k)
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			backup.KMSConfigs = append(backup.KMSConfigs, kmsConfig)
+		}
+
 		tableTypeFlag, err := cmd.Flags().GetString("table-type")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -218,13 +240,13 @@ var createBackupCmd = &cobra.Command{
 			requestBody.SetBaseBackupUUID(baseBackupUUID)
 		}
 
-		rCreate, response, err := authAPI.CreateBackup().Backup(requestBody).Execute()
+		rTask, response, err := authAPI.CreateBackup().Backup(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		taskUUID := rCreate.GetTaskUUID()
+		taskUUID := rTask.GetTaskUUID()
 		msg := fmt.Sprintf("The backup task %s is in progress",
 			formatter.Colorize(taskUUID, formatter.GreenColor))
 
@@ -236,69 +258,65 @@ var createBackupCmd = &cobra.Command{
 				if err != nil {
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
-				backupTaskRequest := authAPI.GetBackupByTaskUUID(universeUUID, taskUUID)
-				rBackup, response, err := backupTaskRequest.Execute()
-				if err != nil {
-					errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Create - Get Backup")
-					logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
-				}
-				backupUUID := rBackup[0].GetBackupUUID()
-
-				backupUUIDList := []string{backupUUID}
-
-				var limit int32 = 10
-				var offset int32 = 0
-				backupAPIDirection := "DESC"
-				backupAPISort := "createTime"
-
-				backupAPIFilter := ybaclient.BackupApiFilter{
-					BackupUUIDList: backupUUIDList,
-				}
-
-				backupAPIQuery := ybaclient.BackupPagedApiQuery{
-					Filter:    backupAPIFilter,
-					Direction: backupAPIDirection,
-					Limit:     limit,
-					Offset:    offset,
-					SortBy:    backupAPISort,
-				}
-
-				backupListRequest := authAPI.ListBackups().PageBackupsRequest(backupAPIQuery)
-				r, response, err := backupListRequest.Execute()
-				if err != nil {
-					errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Create - Describe Backup")
-					logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
-				}
-
-				if len(r.GetEntities()) == 1 {
-					fullBackupContext := *backup.NewFullBackupContext()
-					fullBackupContext.Output = os.Stdout
-					fullBackupContext.Format = backup.NewBackupFormat(viper.GetString("output"))
-					fullBackupContext.SetFullBackup(r.GetEntities()[0])
-					fullBackupContext.Write()
-					return
-				}
-
-				if len(r.GetEntities()) < 1 {
-					logrus.Fatalf(
-						formatter.Colorize(
-							fmt.Sprintf("No backups with UUID: %s found\n", backupUUID),
-							formatter.RedColor,
-						))
-				}
-
-				backupCtx := formatter.Context{
-					Command: "create",
-					Output:  os.Stdout,
-					Format:  backup.NewBackupFormat(viper.GetString("output")),
-				}
-				backup.Write(backupCtx, r.GetEntities())
-
 			}
-		} else {
-			logrus.Infoln(msg + "\n")
-		}
+			backupTaskRequest := authAPI.GetBackupByTaskUUID(universeUUID, taskUUID)
+			rBackup, response, err := backupTaskRequest.Execute()
+			if err != nil {
+				errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Create - Get Backup")
+				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			}
+			backupUUID := rBackup[0].GetBackupUUID()
 
+			backupUUIDList := []string{backupUUID}
+
+			var limit int32 = 10
+			var offset int32 = 0
+			backupAPIDirection := "DESC"
+			backupAPISort := "createTime"
+
+			backupAPIFilter := ybaclient.BackupApiFilter{
+				BackupUUIDList: backupUUIDList,
+			}
+
+			backupAPIQuery := ybaclient.BackupPagedApiQuery{
+				Filter:    backupAPIFilter,
+				Direction: backupAPIDirection,
+				Limit:     limit,
+				Offset:    offset,
+				SortBy:    backupAPISort,
+			}
+
+			backupListRequest := authAPI.ListBackups().PageBackupsRequest(backupAPIQuery)
+			r, response, err := backupListRequest.Execute()
+			if err != nil {
+				errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Create - Describe Backup")
+				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			}
+
+			if len(r.GetEntities()) < 1 {
+				logrus.Fatalf(
+					formatter.Colorize(
+						fmt.Sprintf("No backups with UUID: %s found\n", backupUUID),
+						formatter.RedColor,
+					))
+			}
+
+			backupCtx := formatter.Context{
+				Command: "create",
+				Output:  os.Stdout,
+				Format:  backup.NewBackupFormat(viper.GetString("output")),
+			}
+			backup.Write(backupCtx, r.GetEntities())
+
+			return
+		}
+		logrus.Infoln(msg + "\n")
+		taskCtx := formatter.Context{
+			Command: "create",
+			Output:  os.Stdout,
+			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
+		}
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
 	},
 }
 
@@ -384,7 +402,9 @@ func init() {
 	createBackupCmd.Flags().Bool("sse", true,
 		"[Optional] Enable sse while persisting the data in AWS S3")
 	createBackupCmd.Flags().String("category", "",
-		"[Optional] Category of the backup. Allowed values: YB_BACKUP_SCRIPT, YB_CONTROLLER")
+		"[Optional] Category of the backup. "+
+			"If a universe has YBC enabled, then default value of category is YB_CONTROLLER. "+
+			"Allowed values: YB_BACKUP_SCRIPT, YB_CONTROLLER")
 	createBackupCmd.Flags().Bool("enable-verbose-logs", false,
 		"[Optional] Enable verbose logging while taking backup via \"yb_backup\" script. (default false)")
 	createBackupCmd.Flags().Int("parallelism", 8,

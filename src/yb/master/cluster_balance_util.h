@@ -70,6 +70,8 @@ struct CBTabletMetadata {
   // Number of starting replicas for this tablet.
   int starting = 0;
 
+  int NumReplicas() const { return running + starting; }
+
   // If this tablet has fewer replicas than the configured number in the PlacementInfoPB.
   bool is_under_replicated = false;
 

@@ -450,7 +450,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
       if (universe.isYbcEnabled()) {
         installYbcOnThePods(
-            universe.getName(),
             tserversToAdd,
             isReadOnlyCluster,
             ybcManager.getStableYbcVersion(),
@@ -799,6 +798,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
     createWaitForServersTasks(podsToAdd, serverType)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    createSwamperTargetUpdateTask(false /* removeFile */);
   }
 
   /**

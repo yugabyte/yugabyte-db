@@ -23,6 +23,8 @@ var describeInstanceTypesCmd = &cobra.Command{
 	Aliases: []string{"get"},
 	Short:   "Describe instance type of a YugabyteDB Anywhere on-premises provider",
 	Long:    "Describe instance types of a YugabyteDB Anywhere on-premises provider",
+	Example: `yba provider onprem instance-type describe \
+	--name <provider-name> --instance-type-name <instance-type-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {

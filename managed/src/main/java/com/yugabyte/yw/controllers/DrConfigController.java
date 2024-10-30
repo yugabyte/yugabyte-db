@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.table.TableInfoUtil;
 import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
 import com.yugabyte.yw.forms.DrConfigEditForm;
@@ -85,8 +86,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.yb.CommonTypes;
+import org.yb.client.GetUniverseReplicationInfoResponse;
+import org.yb.client.GetXClusterOutboundReplicationGroupInfoResponse;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterReplicationOuterClass.GetUniverseReplicationInfoResponsePB.*;
+import org.yb.master.MasterReplicationOuterClass.GetUniverseReplicationInfoResponsePB.TableInfoPB;
 import org.yb.master.MasterReplicationOuterClass.GetXClusterSafeTimeResponsePB.NamespaceSafeTimePB;
 import play.libs.Json;
 import play.mvc.Http;
@@ -197,10 +201,20 @@ public class DrConfigController extends AuthenticatedController {
                   targetUniverse, UniverseConfKeys.txnXClusterPitrDefaultRetentionPeriod)
               .getSeconds();
       createForm.pitrParams.snapshotIntervalSec =
-          confGetter
-              .getConfForScope(
-                  targetUniverse, UniverseConfKeys.txnXClusterPitrDefaultSnapshotInterval)
-              .getSeconds();
+          Math.min(
+              createForm.pitrParams.retentionPeriodSec - 1,
+              confGetter
+                  .getConfForScope(
+                      targetUniverse, UniverseConfKeys.txnXClusterPitrDefaultSnapshotInterval)
+                  .getSeconds());
+    } else if (createForm.pitrParams.snapshotIntervalSec == 0L) {
+      createForm.pitrParams.snapshotIntervalSec =
+          Math.min(
+              createForm.pitrParams.retentionPeriodSec - 1,
+              confGetter
+                  .getConfForScope(
+                      targetUniverse, UniverseConfKeys.txnXClusterPitrDefaultSnapshotInterval)
+                  .getSeconds());
     }
     validatePitrParams(createForm.pitrParams);
 
@@ -716,6 +730,7 @@ public class DrConfigController extends AuthenticatedController {
         XClusterConfigTaskBase.verifyTablesNotInReplication(
             ybService,
             tableIds,
+            xClusterConfig.getTableType(),
             ConfigType.Txn,
             sourceUniverse.getUniverseUUID(),
             sourceTableInfoList,
@@ -863,39 +878,11 @@ public class DrConfigController extends AuthenticatedController {
     // All the tables in DBs in replication on the source universe must be in the xCluster config.
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
         XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
-    XClusterConfigTaskBase.groupByNamespaceId(
-            XClusterConfigTaskBase.filterTableInfoListByTableIds(
-                sourceTableInfoList, xClusterConfig.getTableIds()))
-        .forEach(
-            (namespaceId, tablesInfoList) -> {
-              Set<String> tableIdsInNamespace =
-                  sourceTableInfoList.stream()
-                      .filter(
-                          tableInfo ->
-                              XClusterConfigTaskBase.isXClusterSupported(tableInfo)
-                                  && tableInfo
-                                      .getNamespace()
-                                      .getId()
-                                      .toStringUtf8()
-                                      .equals(namespaceId))
-                      .map(XClusterConfigTaskBase::getTableId)
-                      .collect(Collectors.toSet());
-              Set<String> tableIdsNotInReplication =
-                  tableIdsInNamespace.stream()
-                      .filter(
-                          tableId ->
-                              !XClusterConfigTaskBase.getTableIds(tablesInfoList).contains(tableId))
-                      .collect(Collectors.toSet());
-              if (!tableIdsNotInReplication.isEmpty()) {
-                throw new PlatformServiceException(
-                    BAD_REQUEST,
-                    String.format(
-                        "To do a switchover, all the tables in a keyspace that exist on the source"
-                            + " universe and support xCluster replication must be in replication:"
-                            + " missing table ids: %s in the keyspace: %s",
-                        tableIdsNotInReplication, namespaceId));
-              }
-            });
+
+    if (xClusterConfig.getType() != ConfigType.Db) {
+      XClusterConfigTaskBase.validateSourceTablesInReplication(
+          sourceTableInfoList, xClusterConfig.getTableIds());
+    }
 
     // To do switchover, the xCluster config and all the tables in that config must be in
     // the green status because we are going to drop that config and the information for bad
@@ -922,6 +909,8 @@ public class DrConfigController extends AuthenticatedController {
 
     // Todo: PLAT-10130, handle cases where the planned failover task fails.
     DrConfigTaskParams taskParams;
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
+        XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
 
     if (xClusterConfig.getType() != ConfigType.Db) {
       // Use table IDs on the target universe for failover xCluster.
@@ -929,8 +918,6 @@ public class DrConfigController extends AuthenticatedController {
           xClusterUniverseService.getSourceTableIdTargetTableIdMap(
               targetUniverse, xClusterConfig.getReplicationGroupName());
       Set<String> targetTableIds = new HashSet<>(sourceTableIdTargetTableIdMap.values());
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
-          XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
 
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
           XClusterConfigTaskBase.filterTableInfoListByTableIds(targetTableInfoList, targetTableIds);
@@ -977,21 +964,43 @@ public class DrConfigController extends AuthenticatedController {
               requestedTableInfoList,
               mainTableIndexTablesMap);
     } else {
+      GetUniverseReplicationInfoResponse inboundReplicationResp;
+      GetXClusterOutboundReplicationGroupInfoResponse outboundReplicationResp;
+
       try {
-        switchoverXClusterConfig.updateNamespaces(
+        inboundReplicationResp =
             XClusterConfigTaskBase.getUniverseReplicationInfo(
-                    ybService, targetUniverse, xClusterConfig.getReplicationGroupName())
-                .getDbScopedInfos()
-                .stream()
-                .map(DbScopedInfoPB::getTargetNamespaceId)
-                .collect(Collectors.toSet()));
+                ybService, targetUniverse, xClusterConfig.getReplicationGroupName());
       } catch (Exception e) {
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR,
             String.format(
-                "Failed to get target namespace IDs for group %s",
+                "Failed to get inbound replication group %s",
                 xClusterConfig.getReplicationGroupName()));
       }
+
+      try {
+        outboundReplicationResp =
+            XClusterConfigTaskBase.getXClusterOutboundReplicationGroupInfo(
+                ybService, sourceUniverse, xClusterConfig.getReplicationGroupName());
+      } catch (Exception e) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            String.format(
+                "Failed to get outbound replication group %s",
+                xClusterConfig.getReplicationGroupName()));
+      }
+
+      drDBScopedSwitchoverPreChecks(
+          outboundReplicationResp,
+          inboundReplicationResp,
+          sourceTableInfoList,
+          targetTableInfoList);
+
+      switchoverXClusterConfig.updateNamespaces(
+          inboundReplicationResp.getDbScopedInfos().stream()
+              .map(DbScopedInfoPB::getTargetNamespaceId)
+              .collect(Collectors.toSet()));
 
       taskParams =
           new DrConfigTaskParams(
@@ -1870,6 +1879,11 @@ public class DrConfigController extends AuthenticatedController {
 
     if (formData.pitrParams != null) {
       changeInParams = true;
+      if (formData.pitrParams.snapshotIntervalSec == 0L) {
+        formData.pitrParams.snapshotIntervalSec =
+            Math.min(
+                formData.pitrParams.retentionPeriodSec - 1, drConfig.getPitrSnapshotIntervalSec());
+      }
       validatePitrParams(formData.pitrParams);
       Long oldRetentionPeriodSec = drConfig.getPitrRetentionPeriodSec();
       Long oldSnapshotIntervalSec = drConfig.getPitrSnapshotIntervalSec();
@@ -2027,6 +2041,7 @@ public class DrConfigController extends AuthenticatedController {
     XClusterConfigTaskBase.verifyTablesNotInReplication(
         ybClientService,
         tableIds,
+        TableInfoUtil.getXClusterConfigTableType(requestedTableInfoList),
         ConfigType.Txn,
         targetUniverse.getUniverseUUID(),
         targetTableInfoList,
@@ -2038,55 +2053,39 @@ public class DrConfigController extends AuthenticatedController {
     // If table type is YSQL, all tables in that keyspace are selected.
     if (XClusterConfigTaskBase.getTableType(requestedTableInfoList)
         == CommonTypes.TableType.PGSQL_TABLE_TYPE) {
-      XClusterConfigTaskBase.groupByNamespaceId(requestedTableInfoList)
-          .forEach(
-              (namespaceId, tablesInfoList) -> {
-                Set<String> requestedTableIdsInNamespace =
-                    XClusterConfigTaskBase.getTableIds(tablesInfoList).stream()
-                        .filter(tableIds::contains)
-                        .collect(Collectors.toSet());
-                if (!requestedTableIdsInNamespace.isEmpty()) {
-                  Set<String> tableIdsInNamespace =
-                      targetTableInfoList.stream()
-                          .filter(
-                              tableInfo ->
-                                  XClusterConfigTaskBase.isXClusterSupported(tableInfo)
-                                      && tableInfo
-                                          .getNamespace()
-                                          .getId()
-                                          .toStringUtf8()
-                                          .equals(namespaceId))
-                          .map(tableInfo -> tableInfo.getId().toStringUtf8())
-                          .collect(Collectors.toSet());
-                  if (tableIdsInNamespace.size() > requestedTableIdsInNamespace.size()) {
-                    Set<String> extraTableIds =
-                        tableIdsInNamespace.stream()
-                            .filter(tableId -> !requestedTableIdsInNamespace.contains(tableId))
-                            .collect(Collectors.toSet());
-                    throw new IllegalArgumentException(
-                        String.format(
-                            "The DR replica databases under replication contain tables which are"
-                                + " not part of the DR config. %s is not possible until the extra"
-                                + " tables on the DR replica are removed. The extra tables from DR"
-                                + " replica are: %s",
-                            taskType, extraTableIds));
-                  }
-                  if (tableIdsInNamespace.size() < requestedTableIdsInNamespace.size()) {
-                    Set<String> extraTableIds =
-                        requestedTableIdsInNamespace.stream()
-                            .filter(tableId -> !tableIdsInNamespace.contains(tableId))
-                            .collect(Collectors.toSet());
-                    throw new IllegalArgumentException(
-                        String.format(
-                            "The DR replica databases under replication dropped tables that are"
-                                + " part of the DR config. %s is not possible until the same tables"
-                                + " are dropped from the DR primary and DR config. The extra tables"
-                                + " from DR config are: %s",
-                            taskType, extraTableIds));
-                  }
-                }
-              });
+      XClusterConfigTaskBase.validateTargetTablesInReplication(
+          targetTableInfoList,
+          XClusterConfigTaskBase.getTableIds(requestedTableInfoList),
+          taskType);
     }
+  }
+
+  public static void drDBScopedSwitchoverPreChecks(
+      GetXClusterOutboundReplicationGroupInfoResponse outboundReplicationResp,
+      GetUniverseReplicationInfoResponse inboundReplicationResp,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList) {
+
+    Map<String, String> inboundSourceToTargetTableId =
+        inboundReplicationResp.getTableInfos().stream()
+            .collect(
+                Collectors.toMap(TableInfoPB::getSourceTableId, TableInfoPB::getTargetTableId));
+    Set<String> inboundSourceTableIds = inboundSourceToTargetTableId.keySet();
+    Set<String> outboundSourceTableIds =
+        outboundReplicationResp.getNamespaceInfos().stream()
+            .map(namespaceInfo -> namespaceInfo.getTableStreamsMap().keySet())
+            .flatMap(Set::stream)
+            .collect(Collectors.toSet());
+
+    XClusterConfigTaskBase.validateOutInboundReplicationTables(
+        outboundSourceTableIds, inboundSourceTableIds);
+
+    XClusterConfigTaskBase.validateSourceTablesInReplication(
+        sourceTableInfoList, outboundSourceTableIds);
+    XClusterConfigTaskBase.validateTargetTablesInReplication(
+        targetTableInfoList,
+        new HashSet<String>(inboundSourceToTargetTableId.values()),
+        CustomerTask.TaskType.Switchover);
   }
 
   private double getEstimatedDataLossMs(

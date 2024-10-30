@@ -1,5 +1,6 @@
 <!--
 doc/src/sgml/ref/create_procedure.sgml
+PostgreSQL documentation
 -->
 
 <refentry id="sql-createprocedure">
@@ -28,6 +29,7 @@ CREATE [ OR REPLACE ] PROCEDURE
     | SET <replaceable class="parameter">configuration_parameter</replaceable> { TO <replaceable class="parameter">value</replaceable> | = <replaceable class="parameter">value</replaceable> | FROM CURRENT }
     | AS '<replaceable class="parameter">definition</replaceable>'
     | AS '<replaceable class="parameter">obj_file</replaceable>', '<replaceable class="parameter">link_symbol</replaceable>'
+    | <replaceable class="parameter">sql_body</replaceable>
   } ...
 </synopsis>
  </refsynopsisdiv>
@@ -75,6 +77,11 @@ CREATE [ OR REPLACE ] PROCEDURE
    To be able to create a procedure, you must have <literal>USAGE</literal>
    privilege on the argument types.
   </para>
+
+  <para>
+   Refer to <xref linkend="xproc"/> for further information on writing
+   procedures.
+  </para>
  </refsect1>
 
  <refsect1>
@@ -96,11 +103,9 @@ CREATE [ OR REPLACE ] PROCEDURE
 
      <listitem>
       <para>
-       The mode of an argument: <literal>IN</literal>,
+       The mode of an argument: <literal>IN</literal>, <literal>OUT</literal>,
        <literal>INOUT</literal>, or <literal>VARIADIC</literal>.  If omitted,
-       the default is <literal>IN</literal>.  (<literal>OUT</literal>
-       arguments are currently not supported for procedures.  Use
-       <literal>INOUT</literal> instead.)
+       the default is <literal>IN</literal>.
       </para>
      </listitem>
     </varlistentry>
@@ -163,7 +168,9 @@ CREATE [ OR REPLACE ] PROCEDURE
        The name of the language that the procedure is implemented in.
        It can be <literal>sql</literal>, <literal>c</literal>,
        <literal>internal</literal>, or the name of a user-defined
-       procedural language, e.g. <literal>plpgsql</literal>.  Enclosing the
+       procedural language, e.g., <literal>plpgsql</literal>.  The default is
+       <literal>sql</literal> if <replaceable
+       class="parameter">sql_body</replaceable> is specified.  Enclosing the
        name in single quotes is deprecated and requires matching case.
       </para>
      </listitem>
@@ -284,7 +291,7 @@ CREATE [ OR REPLACE ] PROCEDURE
        the SQL procedure. The string <replaceable
        class="parameter">obj_file</replaceable> is the name of the shared
        library file containing the compiled C procedure, and is interpreted
-       as for the <xref linkend="sql-load"/> command.  The string
+       as for the <link linkend="sql-load"><command>LOAD</command></link> command.  The string
        <replaceable class="parameter">link_symbol</replaceable> is the
        procedure's link symbol, that is, the name of the procedure in the C
        language source code.  If the link symbol is omitted, it is assumed
@@ -300,6 +307,41 @@ CREATE [ OR REPLACE ] PROCEDURE
 
      </listitem>
     </varlistentry>
+
+    <varlistentry>
+     <term><replaceable class="parameter">sql_body</replaceable></term>
+
+     <listitem>
+      <para>
+       The body of a <literal>LANGUAGE SQL</literal> procedure.  This should
+       be a block
+<programlisting>
+BEGIN ATOMIC
+  <replaceable>statement</replaceable>;
+  <replaceable>statement</replaceable>;
+  ...
+  <replaceable>statement</replaceable>;
+END
+</programlisting>
+      </para>
+
+      <para>
+       This is similar to writing the text of the procedure body as a string
+       constant (see <replaceable>definition</replaceable> above), but there
+       are some differences: This form only works for <literal>LANGUAGE
+       SQL</literal>, the string constant form works for all languages.  This
+       form is parsed at procedure definition time, the string constant form is
+       parsed at execution time; therefore this form cannot support
+       polymorphic argument types and other constructs that are not resolvable
+       at procedure definition time.  This form tracks dependencies between the
+       procedure and objects used in the procedure body, so <literal>DROP
+       ... CASCADE</literal> will work correctly, whereas the form using
+       string literals may leave dangling procedures.  Finally, this form is
+       more compatible with the SQL standard and other SQL implementations.
+      </para>
+     </listitem>
+    </varlistentry>
+
    </variablelist>
  </refsect1>
 
@@ -319,6 +361,7 @@ CREATE [ OR REPLACE ] PROCEDURE
  <refsect1 id="sql-createprocedure-examples">
   <title>Examples</title>
 
+  <para>
 <programlisting>
 CREATE PROCEDURE insert_data(a integer, b integer)
 LANGUAGE SQL
@@ -326,9 +369,20 @@ AS $$
 INSERT INTO tbl VALUES (a);
 INSERT INTO tbl VALUES (b);
 $$;
-
-CALL insert_data(1, 2);
 </programlisting>
+   or
+<programlisting>
+CREATE PROCEDURE insert_data(a integer, b integer)
+LANGUAGE SQL
+BEGIN ATOMIC
+  INSERT INTO tbl VALUES (a);
+  INSERT INTO tbl VALUES (b);
+END;
+</programlisting>
+   and call like this:
+<programlisting>
+CALL insert_data(1, 2);
+</programlisting></para>
  </refsect1>
 
  <refsect1 id="sql-createprocedure-compat">
@@ -336,9 +390,9 @@ CALL insert_data(1, 2);
 
   <para>
    A <command>CREATE PROCEDURE</command> command is defined in the SQL
-   standard.  The <productname>PostgreSQL</productname> version is similar but
-   not fully compatible.  For details see
-   also <xref linkend="sql-createfunction"/>.
+   standard.  The <productname>PostgreSQL</productname> implementation can be
+   used in a compatible way but has many extensions.  For details see also
+   <xref linkend="sql-createfunction"/>.
   </para>
  </refsect1>
 

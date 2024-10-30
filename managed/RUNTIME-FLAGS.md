@@ -19,6 +19,7 @@
 | "Backup Garbage Collector Number of Retries" | "yb.backupGC.number_of_retries" | "CUSTOMER" | "Number of retries during backup deletion" | "Integer" |
 | "Enable Certificate Config Validation" | "yb.tls.enable_config_validation" | "CUSTOMER" | "Certificate configuration validation during the addition of new certificates." | "Boolean" |
 | "Default Metric Graph Point Count" | "yb.metrics.default_points" | "CUSTOMER" | "Default Metric Graph Point Count, if step is not defined in the query" | "Integer" |
+| "Fetch Batch Size of Task Info" | "yb.task_info_db_query_batch_size" | "CUSTOMER" | "Knob that can be used to make lesser number of calls to DB" | "Integer" |
 | "Allow Unsupported Instances" | "yb.internal.allow_unsupported_instances" | "PROVIDER" | "Enabling removes supported instance type filtering on AWS providers." | "Boolean" |
 | "Default AWS Instance Type" | "yb.aws.default_instance_type" | "PROVIDER" | "Default AWS Instance Type" | "String" |
 | "Default GCP Instance Type" | "yb.gcp.default_instance_type" | "PROVIDER" | "Default GCP Instance Type" | "String" |
@@ -136,9 +137,11 @@
 | "OIDC Refresh Access Token Interval" | "yb.security.oidcRefreshTokenInterval" | "GLOBAL" | "If configured, YBA will refresh the access token at the specified duration, defaulted to 5 minutes." | "Duration" |
 | "Allow Editing of in-use Linux Versions" | "yb.edit_provider.new.allow_used_bundle_edit" | "GLOBAL" | "Caution: If enabled, YBA will blindly allow editing the name/AMI associated with the bundle, without propagating it to the in-use Universes" | "Boolean" |
 | "Enable DB Audit Logging" | "yb.universe.audit_logging_enabled" | "GLOBAL" | "If this flag is enabled, user will be able to create telemetry providers and enable/disable DB audit logging on universes." | "Boolean" |
+| "Allow users to enable or disable connection pooling" | "yb.universe.allow_connection_pooling" | "GLOBAL" | "If this flag is enabled, user will be able to enable/disable connection pooling on universes." | "Boolean" |
 | "Enable Per Process Metrics" | "yb.ui.feature_flags.enable_per_process_metrics" | "GLOBAL" | "Enable Per Process Metrics" | "Boolean" |
 | "Support bundle prometheus dump range" | "yb.support_bundle.default_prom_dump_range" | "GLOBAL" | "The start-end duration to collect the prometheus dump inside the support bundle (in minutes)" | "Integer" |
 | "Number of cloud YBA backups to retain" | "yb.auto_yba_backups.num_cloud_retention" | "GLOBAL" | "When continuous backups feature is enabled only the most recent n backups will be retained in the storage bucket" | "Integer" |
+| "Standby Prometheus scrape interval" | "yb.metrics.scrape_interval_standby" | "GLOBAL" | "Need to increase it in case federation metrics request takes more time  than main Prometheus scrape period to complete" | "String" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |
@@ -263,3 +266,4 @@
 | "Enable consistency check for universe" | "yb.universe.consistency_check.enabled" | "UNIVERSE" | "When enabled, all universe operations will attempt consistency check validation before proceeding. Turn off in disaster scenarios to force perform actions." | "Boolean" |
 | "Fail the the health check if no clock sync service is found" | "yb.health_checks.clock_sync_service_required" | "UNIVERSE" | "Require chrony or ntp(d) to be installed for health check to pass" | "Boolean" |
 | "Node Agent Enabler Installation Time-out" | "yb.node_agent.enabler.install_timeout" | "UNIVERSE" | "Node agent enabler installation time-out for the universe" | "Duration" |
+| "Node Agent Enabler Reinstallation Cooldown Period" | "yb.node_agent.enabler.reinstall_cooldown" | "UNIVERSE" | "Node agent enabler reinstallation cooldown period for the universe" | "Duration" |

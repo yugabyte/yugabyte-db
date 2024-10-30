@@ -14,8 +14,13 @@ CREATE USER yb_user3;
 CREATE DATABASE reset_analyze_test OWNER = yb_user1;
 ALTER DATABASE reset_analyze_test SET yb_enable_optimizer_statistics=ON;
 ALTER DATABASE reset_analyze_test SET yb_enable_base_scans_cost_model=ON;
+-- Grant permissions for this database.
+\c reset_analyze_test yugabyte
+GRANT ALL ON SCHEMA public TO yb_user1;
+GRANT ALL ON SCHEMA public TO yb_user2;
+GRANT ALL ON SCHEMA public TO yb_user3;
 -- Create tables owned by each user
-\c reset_analyze_test yb_user1
+\c - yb_user1
 CREATE SEQUENCE seq_u1;
 CREATE TABLE table_u1 (id int, c1 int, c2 int);
 INSERT INTO table_u1
@@ -92,11 +97,11 @@ CREATE OR REPLACE VIEW all_stats AS
          LEFT JOIN (
              SELECT
                  stxrelid,
-                 string_agg(stxndistinct::text, ', ' ORDER BY stxkind, stxkeys)
+                 string_agg(stxdndistinct::text, ', ' ORDER BY stxkind, stxkeys)
                      AS xn_distinct,
-                 string_agg(stxdependencies, ', ' ORDER BY stxkind, stxkeys)
+                 string_agg(stxddependencies, ', ' ORDER BY stxkind, stxkeys)
                      AS xdependencies
-             FROM pg_statistic_ext
+             FROM pg_statistic_ext e JOIN pg_statistic_ext_data d ON e.oid = d.stxoid
              GROUP BY stxrelid
          ) AS xstats ON stxrelid = attrelid;
 GRANT SELECT ON all_stats TO PUBLIC;
@@ -139,7 +144,7 @@ CALL record_stats();
 -- reltuples of some system catalog tables and indexes may be collected during
 -- the template DB creation.  Clear them in the recorded stats to pretend they
 -- didn't exist.
-UPDATE x_stats SET (reltuples, ncolstats) = (0, 0) WHERE kind IN ('r', 'i') AND reltuples > 0;
+UPDATE x_stats SET (reltuples, ncolstats) = (-1, 0) WHERE kind IN ('r', 'i') AND reltuples >= 0;
 ANALYZE;
 SELECT yb_reset_analyze_statistics(null);
  yb_reset_analyze_statistics
@@ -240,9 +245,9 @@ SELECT * FROM diff_stats
  d |  owner   | schemaname |          relname           | k | s | reltuples | ncolstats | xndv | xdep
 ---+----------+------------+----------------------------+---+---+-----------+-----------+------+------
  - | postgres | pg_catalog | pg_sequence                | r | f |         4 |         8 |      |
- + | postgres | pg_catalog | pg_sequence                | r | f |         0 |         0 |      |
+ + | postgres | pg_catalog | pg_sequence                | r | f |        -1 |         0 |      |
  - | postgres | pg_catalog | pg_sequence_seqrelid_index | i | f |         4 |         0 |      |
- + | postgres | pg_catalog | pg_sequence_seqrelid_index | i | f |         0 |         0 |      |
+ + | postgres | pg_catalog | pg_sequence_seqrelid_index | i | f |        -1 |         0 |      |
 (4 rows)
 
 CALL record_stats();
@@ -257,12 +262,12 @@ SELECT * FROM diff_stats
           OR owner IN ('yb_su', 'yb_user1', 'yb_user2', 'yb_user3');
  d |  owner   | schemaname |          relname          | k | s | reltuples | ncolstats | xndv | xdep
 ---+----------+------------+---------------------------+---+---+-----------+-----------+------+------
- - | postgres | pg_catalog | pg_database               | r | t |         6 |        13 |      |
- + | postgres | pg_catalog | pg_database               | r | t |         0 |         0 |      |
+ - | postgres | pg_catalog | pg_database               | r | t |         6 |        16 |      |
+ + | postgres | pg_catalog | pg_database               | r | t |        -1 |         0 |      |
  - | postgres | pg_catalog | pg_database_datname_index | i | t |         6 |         0 |      |
- + | postgres | pg_catalog | pg_database_datname_index | i | t |         0 |         0 |      |
+ + | postgres | pg_catalog | pg_database_datname_index | i | t |        -1 |         0 |      |
  - | postgres | pg_catalog | pg_database_oid_index     | i | t |         6 |         0 |      |
- + | postgres | pg_catalog | pg_database_oid_index     | i | t |         0 |         0 |      |
+ + | postgres | pg_catalog | pg_database_oid_index     | i | t |        -1 |         0 |      |
 (6 rows)
 
 CALL record_stats();
@@ -278,9 +283,9 @@ SELECT * FROM diff_stats
  d | owner | schemaname |     relname     | k | s | reltuples | ncolstats |     xndv     |         xdep
 ---+-------+------------+-----------------+---+---+-----------+-----------+--------------+----------------------
  - | yb_su | public     | table_su        | r | f |        10 |         3 | {"2, 3": 10} | {"3 => 2": 0.200000}
- + | yb_su | public     | table_su        | r | f |         0 |         0 |              |
+ + | yb_su | public     | table_su        | r | f |        -1 |         0 |              |
  - | yb_su | public     | table_su_c2_idx | i | f |        10 |         0 |              |
- + | yb_su | public     | table_su_c2_idx | i | f |         0 |         0 |              |
+ + | yb_su | public     | table_su_c2_idx | i | f |        -1 |         0 |              |
 (4 rows)
 
 CALL record_stats();
@@ -296,9 +301,9 @@ SELECT * FROM diff_stats
  d |  owner   | schemaname |     relname     | k | s | reltuples | ncolstats |     xndv     |         xdep
 ---+----------+------------+-----------------+---+---+-----------+-----------+--------------+----------------------
  - | yb_user1 | public     | table_u1        | r | f |        10 |         3 | {"2, 3": 10} | {"3 => 2": 0.200000}
- + | yb_user1 | public     | table_u1        | r | f |         0 |         0 |              |
+ + | yb_user1 | public     | table_u1        | r | f |        -1 |         0 |              |
  - | yb_user1 | public     | table_u1_c2_idx | i | f |        10 |         0 |              |
- + | yb_user1 | public     | table_u1_c2_idx | i | f |         0 |         0 |              |
+ + | yb_user1 | public     | table_u1_c2_idx | i | f |        -1 |         0 |              |
 (4 rows)
 
 CALL record_stats();
@@ -314,9 +319,9 @@ SELECT * FROM diff_stats
  d |  owner   | schemaname |     relname     | k | s | reltuples | ncolstats |     xndv     |         xdep
 ---+----------+------------+-----------------+---+---+-----------+-----------+--------------+----------------------
  - | yb_user2 | public     | table_u2        | r | f |        10 |         3 | {"2, 3": 10} | {"3 => 2": 0.200000}
- + | yb_user2 | public     | table_u2        | r | f |         0 |         0 |              |
+ + | yb_user2 | public     | table_u2        | r | f |        -1 |         0 |              |
  - | yb_user2 | public     | table_u2_c2_idx | i | f |        10 |         0 |              |
- + | yb_user2 | public     | table_u2_c2_idx | i | f |         0 |         0 |              |
+ + | yb_user2 | public     | table_u2_c2_idx | i | f |        -1 |         0 |              |
 (4 rows)
 
 CALL record_stats();
@@ -332,9 +337,9 @@ SELECT * FROM diff_stats
  d |  owner   | schemaname |     relname     | k | s | reltuples | ncolstats |     xndv     |         xdep
 ---+----------+------------+-----------------+---+---+-----------+-----------+--------------+----------------------
  - | yb_user3 | public     | table_u3        | r | f |        10 |         3 | {"2, 3": 10} | {"3 => 2": 0.200000}
- + | yb_user3 | public     | table_u3        | r | f |         0 |         0 |              |
+ + | yb_user3 | public     | table_u3        | r | f |        -1 |         0 |              |
  - | yb_user3 | public     | table_u3_c2_idx | i | f |        10 |         0 |              |
- + | yb_user3 | public     | table_u3_c2_idx | i | f |         0 |         0 |              |
+ + | yb_user3 | public     | table_u3_c2_idx | i | f |        -1 |         0 |              |
 (4 rows)
 
 --- Single relation, DB owner
@@ -354,9 +359,9 @@ SELECT * FROM diff_stats
  d |  owner   | schemaname |          relname           | k | s | reltuples | ncolstats | xndv | xdep
 ---+----------+------------+----------------------------+---+---+-----------+-----------+------+------
  - | postgres | pg_catalog | pg_sequence                | r | f |         4 |         8 |      |
- + | postgres | pg_catalog | pg_sequence                | r | f |         0 |         0 |      |
+ + | postgres | pg_catalog | pg_sequence                | r | f |        -1 |         0 |      |
  - | postgres | pg_catalog | pg_sequence_seqrelid_index | i | f |         4 |         0 |      |
- + | postgres | pg_catalog | pg_sequence_seqrelid_index | i | f |         0 |         0 |      |
+ + | postgres | pg_catalog | pg_sequence_seqrelid_index | i | f |        -1 |         0 |      |
 (4 rows)
 
 CALL record_stats();
@@ -386,9 +391,9 @@ SELECT * FROM diff_stats
  d | owner | schemaname |     relname     | k | s | reltuples | ncolstats |     xndv     |         xdep
 ---+-------+------------+-----------------+---+---+-----------+-----------+--------------+----------------------
  - | yb_su | public     | table_su        | r | f |        10 |         3 | {"2, 3": 10} | {"3 => 2": 0.200000}
- + | yb_su | public     | table_su        | r | f |         0 |         0 |              |
+ + | yb_su | public     | table_su        | r | f |        -1 |         0 |              |
  - | yb_su | public     | table_su_c2_idx | i | f |        10 |         0 |              |
- + | yb_su | public     | table_su_c2_idx | i | f |         0 |         0 |              |
+ + | yb_su | public     | table_su_c2_idx | i | f |        -1 |         0 |              |
 (4 rows)
 
 CALL record_stats();
@@ -404,9 +409,9 @@ SELECT * FROM diff_stats
  d |  owner   | schemaname |     relname     | k | s | reltuples | ncolstats |     xndv     |         xdep
 ---+----------+------------+-----------------+---+---+-----------+-----------+--------------+----------------------
  - | yb_user1 | public     | table_u1        | r | f |        10 |         3 | {"2, 3": 10} | {"3 => 2": 0.200000}
- + | yb_user1 | public     | table_u1        | r | f |         0 |         0 |              |
+ + | yb_user1 | public     | table_u1        | r | f |        -1 |         0 |              |
  - | yb_user1 | public     | table_u1_c2_idx | i | f |        10 |         0 |              |
- + | yb_user1 | public     | table_u1_c2_idx | i | f |         0 |         0 |              |
+ + | yb_user1 | public     | table_u1_c2_idx | i | f |        -1 |         0 |              |
 (4 rows)
 
 CALL record_stats();
@@ -422,9 +427,9 @@ SELECT * FROM diff_stats
  d |  owner   | schemaname |     relname     | k | s | reltuples | ncolstats |     xndv     |         xdep
 ---+----------+------------+-----------------+---+---+-----------+-----------+--------------+----------------------
  - | yb_user2 | public     | table_u2        | r | f |        10 |         3 | {"2, 3": 10} | {"3 => 2": 0.200000}
- + | yb_user2 | public     | table_u2        | r | f |         0 |         0 |              |
+ + | yb_user2 | public     | table_u2        | r | f |        -1 |         0 |              |
  - | yb_user2 | public     | table_u2_c2_idx | i | f |        10 |         0 |              |
- + | yb_user2 | public     | table_u2_c2_idx | i | f |         0 |         0 |              |
+ + | yb_user2 | public     | table_u2_c2_idx | i | f |        -1 |         0 |              |
 (4 rows)
 
 CALL record_stats();
@@ -440,9 +445,9 @@ SELECT * FROM diff_stats
  d |  owner   | schemaname |     relname     | k | s | reltuples | ncolstats |     xndv     |         xdep
 ---+----------+------------+-----------------+---+---+-----------+-----------+--------------+----------------------
  - | yb_user3 | public     | table_u3        | r | f |        10 |         3 | {"2, 3": 10} | {"3 => 2": 0.200000}
- + | yb_user3 | public     | table_u3        | r | f |         0 |         0 |              |
+ + | yb_user3 | public     | table_u3        | r | f |        -1 |         0 |              |
  - | yb_user3 | public     | table_u3_c2_idx | i | f |        10 |         0 |              |
- + | yb_user3 | public     | table_u3_c2_idx | i | f |         0 |         0 |              |
+ + | yb_user3 | public     | table_u3_c2_idx | i | f |        -1 |         0 |              |
 (4 rows)
 
 -- Single relation, non-DB owner
@@ -518,9 +523,9 @@ SELECT * FROM diff_stats
  d |  owner   | schemaname |     relname     | k | s | reltuples | ncolstats |     xndv     |         xdep
 ---+----------+------------+-----------------+---+---+-----------+-----------+--------------+----------------------
  - | yb_user2 | public     | table_u2        | r | f |        10 |         3 | {"2, 3": 10} | {"3 => 2": 0.200000}
- + | yb_user2 | public     | table_u2        | r | f |         0 |         0 |              |
+ + | yb_user2 | public     | table_u2        | r | f |        -1 |         0 |              |
  - | yb_user2 | public     | table_u2_c2_idx | i | f |        10 |         0 |              |
- + | yb_user2 | public     | table_u2_c2_idx | i | f |         0 |         0 |              |
+ + | yb_user2 | public     | table_u2_c2_idx | i | f |        -1 |         0 |              |
 (4 rows)
 
 CALL record_stats();

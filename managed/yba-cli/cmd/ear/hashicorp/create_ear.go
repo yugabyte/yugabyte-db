@@ -22,6 +22,8 @@ var createHashicorpVaultEARCmd = &cobra.Command{
 	Aliases: []string{"add"},
 	Short:   "Create a YugabyteDB Anywhere Hashicorp Vault encryption at rest configuration",
 	Long:    "Create a Hashicorp Vault encryption at rest configuration in YugabyteDB Anywhere",
+	Example: `yba ear hashicorp-vault create --name <config-name> \
+	--token <token> --vault-address <vault-address>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		earutil.CreateEARValidation(cmd)
 		token, err := cmd.Flags().GetString("token")
@@ -122,18 +124,15 @@ var createHashicorpVaultEARCmd = &cobra.Command{
 			requestBody[util.HashicorpVaultMountPathField] = mountPath
 		}
 
-		rCreate, response, err := authAPI.CreateKMSConfig(util.HashicorpVaultEARType).
+		rTask, response, err := authAPI.CreateKMSConfig(util.HashicorpVaultEARType).
 			KMSConfig(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "EAR: Hashicorp Vault", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		configUUID := rCreate.GetResourceUUID()
-		taskUUID := rCreate.GetTaskUUID()
-
 		earutil.WaitForCreateEARTask(authAPI,
-			configName, configUUID, util.HashicorpVaultEARType, taskUUID)
+			configName, rTask, util.HashicorpVaultEARType)
 
 	},
 }

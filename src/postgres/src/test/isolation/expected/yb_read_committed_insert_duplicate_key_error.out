@@ -1,3 +1,4 @@
+unused step name: s1_rollback
 Parsed test spec with 2 sessions
 
 starting permutation: s1_insert_1_1_1 s2_insert_1_1_2 s1_commit s2_rollback s1_select
@@ -5,24 +6,28 @@ step s1_insert_1_1_1: INSERT INTO t VALUES(1, 1, 1);
 step s2_insert_1_1_2: INSERT INTO t VALUES(1, 1, 2); <waiting ...>
 step s1_commit: COMMIT;
 step s2_insert_1_1_2: <... completed>
-error in steps s1_commit s2_insert_1_1_2: ERROR:  duplicate key value violates unique constraint "t_pkey"
+ERROR:  duplicate key value violates unique constraint "t_pkey"
 step s2_rollback: ROLLBACK;
 step s1_select: SELECT * FROM T;
-k              v1             v2
+k|v1|v2
+-+--+--
+1| 1| 1
+(1 row)
 
-1              1              1
 
 starting permutation: s1_insert_2_1_1 s1_insert_3_1_1 s1_commit s2_rollback s1_select
 step s1_insert_2_1_1: INSERT INTO t VALUES(2, 1, 1);
 step s1_insert_3_1_1: INSERT INTO t VALUES(3, 1, 1); <waiting ...>
 step s1_commit: COMMIT;
 step s1_insert_3_1_1: <... completed>
-error in steps s1_commit s1_insert_3_1_1: ERROR:  duplicate key value violates unique constraint "t_v2_idx"
+ERROR:  duplicate key value violates unique constraint "t_v2_idx"
 step s2_rollback: ROLLBACK;
 step s1_select: SELECT * FROM T;
-k              v1             v2
+k|v1|v2
+-+--+--
+2| 1| 1
+(1 row)
 
-2              1              1
 
 starting permutation: s1_insert_1_1_1 s2_insert_2_1_2 s1_commit s2_commit s1_select
 step s1_insert_1_1_1: INSERT INTO t VALUES(1, 1, 1);
@@ -30,7 +35,8 @@ step s2_insert_2_1_2: INSERT INTO t VALUES(2, 1, 2);
 step s1_commit: COMMIT;
 step s2_commit: COMMIT;
 step s1_select: SELECT * FROM T;
-k              v1             v2
-
-1              1              1
-2              1              2
+k|v1|v2
+-+--+--
+1| 1| 1
+2| 1| 2
+(2 rows)

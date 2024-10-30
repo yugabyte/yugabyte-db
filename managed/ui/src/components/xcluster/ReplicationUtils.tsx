@@ -22,7 +22,9 @@ import {
   BootstrapCategory,
   XClusterSchemaChangeMode,
   DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_STABLE,
-  DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_PREVIEW
+  DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_PREVIEW,
+  MISMATCHED_TABLE_STATUSES,
+  POTENTIAL_IN_CONFIG_SET_UP_BOOTSTRAP_REQUIRED_TABLES_STATUSES
 } from './constants';
 import {
   alertConfigQueryKey,
@@ -535,6 +537,36 @@ export const getDrConfigUuids = (universe: Universe | undefined) => ({
   targetDrConfigUuids: universe?.drConfigUuidsAsTarget ?? []
 });
 
+/**
+ * Returns an object of counts for table groups of concern.
+ * - Tables in error status
+ *     - User needs to restart replication
+ * - Tables with incomplete ddl operations or incorrect ddl operation order
+ *     - User may need to add or remove these tables from replication to resolve the issue
+ *       of mismatched tables.
+ */
+export const getTableCountsOfConcern = (tableDetails: XClusterTableDetails[]) =>
+  tableDetails.reduce(
+    (
+      tableCountsOfConcern: {
+        error: number;
+        mismatchedTable: number;
+      },
+      xClusterTableDetails
+    ) => {
+      if (xClusterTableDetails.status === XClusterTableStatus.ERROR) {
+        tableCountsOfConcern.error += 1;
+      } else if (MISMATCHED_TABLE_STATUSES.includes(xClusterTableDetails.status)) {
+        tableCountsOfConcern.mismatchedTable += 1;
+      }
+      return tableCountsOfConcern;
+    },
+    {
+      error: 0,
+      mismatchedTable: 0
+    }
+  );
+
 export const hasLinkedXClusterConfig = (universes: Universe[]) =>
   universes.some((universe) => {
     const { sourceXClusterConfigUuids, targetXClusterConfigUuids } = getXClusterConfigUuids(
@@ -663,7 +695,7 @@ export const isTableToggleable = (
     table.eligibilityDetails.status === XClusterTableEligibility.ELIGIBLE_IN_CURRENT_CONFIG);
 
 export const shouldAutoIncludeIndexTables = (xClusterConfig: XClusterConfig | undefined) =>
-  xClusterConfig ? xClusterConfig.type === XClusterConfigType.TXN : true;
+  xClusterConfig ? getIsTransactionalAtomicityEnabled(xClusterConfig.type) : true;
 
 /**
  * If targetUniverse is undefined, then we just consider whether the source universe supports
@@ -701,6 +733,10 @@ export const getIsTransactionalAtomicitySupported = (
   );
 };
 
+export const getIsTransactionalAtomicityEnabled = (xClusterConfigType: XClusterConfigType) =>
+  xClusterConfigType === XClusterConfigType.TXN ||
+  xClusterConfigType === XClusterConfigType.DB_SCOPED;
+
 /**
  * Returns a string identifier for a given namespace using fields provided from the
  * `GET /customers/{customerUuid}/universes/{universeUuid}/namespaces` endpoint.
@@ -724,15 +760,22 @@ export const getNamespaceIdentifierToNamespaceUuidMap = (
   );
 
 /**
- * Returns a map of table UUIDs to table details for all tables which are part of the replication config.
+ * Get the set of table UUIDs for which we will not check for bootstrap required.
+ *
+ * These are tables which are already in the replication config with one exception:
+ * - Tables dropped on the target.
+ * These tables may need to be bootstrapped if selected when submitting the edit table request.
  */
-export const getInConfigTableUuidsToTableDetailsMap = (tableDetails: XClusterTableDetails[]) =>
-  tableDetails.reduce((tableUuidToTableDetails, tableDetails) => {
-    if (!UNCONFIGURED_XCLUSTER_TABLE_STATUSES.includes(tableDetails.status)) {
-      tableUuidToTableDetails.set(tableDetails.tableId, tableDetails);
+export const getNoSetupBootstrapRequiredTableUuids = (tableDetails: XClusterTableDetails[]) =>
+  tableDetails.reduce((inConfigTableUuids: string[], tableDetails) => {
+    if (
+      !UNCONFIGURED_XCLUSTER_TABLE_STATUSES.includes(tableDetails.status) &&
+      !POTENTIAL_IN_CONFIG_SET_UP_BOOTSTRAP_REQUIRED_TABLES_STATUSES.includes(tableDetails.status)
+    ) {
+      inConfigTableUuids.push(tableDetails.tableId);
     }
-    return tableUuidToTableDetails;
-  }, new Map<string, XClusterTableDetails>());
+    return inConfigTableUuids;
+  }, []);
 
 /**
  * Filters out the extra table details and returns the table UUIDs for only tables in
@@ -812,6 +855,7 @@ export const augmentTablesWithXClusterDetails = <TIncludeDroppedTables extends b
   xClusterConfigTables: XClusterTableDetails[],
   maxAcceptableLag: number | undefined,
   metricTraces: MetricTrace[] | undefined,
+  isTableInfoIncludedInConfig: boolean,
 
   options?: {
     includeUnconfiguredTables: boolean;
@@ -866,15 +910,21 @@ export const augmentTablesWithXClusterDetails = <TIncludeDroppedTables extends b
         replicationLag
       });
     } else {
-      // Table dropped from both source and target.
+      // Table info missing from both source and target.
       // YBA backend does not provide a status for this case. Thus, on the client side we will
-      // use `XClusterTableStatus.DROPPED` to indicate no table detail information is available.
+      // use `XClusterTableStatus.DROPPED` or `XClusterTableStatus.TABLE_INFO_MISSING` to indicate no table detail information is available.
       tables.push({
         ...xClusterTableDetails,
         tableUUID: tableId,
-        status: XClusterTableStatus.DROPPED,
+        status: isTableInfoIncludedInConfig
+          ? XClusterTableStatus.DROPPED
+          : XClusterTableStatus.TABLE_INFO_MISSING,
         statusLabel: i18n.t(
-          `${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.${XClusterTableStatus.DROPPED}`
+          `${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.${
+            isTableInfoIncludedInConfig
+              ? XClusterTableStatus.DROPPED
+              : XClusterTableStatus.TABLE_INFO_MISSING
+          }`
         ),
         replicationLag
       });

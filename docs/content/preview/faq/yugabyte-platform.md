@@ -17,40 +17,6 @@ rightNav:
   hideH4: true
 ---
 
-### Contents
-
-##### YugabyteDB Anywhere
-
-- [What is YugabyteDB Anywhere?](#what-is-yugabytedb-anywhere)
-- [How do I report a security vulnerability?](#how-do-i-report-a-security-vulnerability)
-
-##### Installation
-
-- [How does YugabyteDB Anywhere installation work?](#how-does-yugabytedb-anywhere-installation-work)
-- [What are the OS requirements and permissions to run YugabyteDB Anywhere?](#what-are-the-os-requirements-and-permissions-to-run-yugabytedb-anywhere)
-
-##### Data nodes
-
-- [What are the requirements to run YugabyteDB data nodes?](#what-are-the-requirements-to-run-yugabytedb-data-nodes)
-- [How does the YugabyteDB Anywhere UI interact with YugabyteDB data nodes?](#how-does-the-yugabytedb-anywhere-ui-interact-with-yugabytedb-data-nodes)
-- [Can I access the database machines that get spawned in public clouds?](#can-i-access-the-database-machines-that-get-spawned-in-public-clouds)
-- [How many machines do I need to try out YugabyteDB Anywhere against my load?](#how-many-machines-do-i-need-to-try-out-yugabytedb-anywhere-against-my-load)
-- [Can I control the properties (such as VPC, IOPS, tenancy, and so on) of the machines YugabyteDB Anywhere spins up?](#can-i-control-the-properties-such-as-vpc-iops-tenancy-and-so-on-of-the-machines-yugabytedb-anywhere-spins-up)
-
-#### Node agent
-
-- [What is a node agent?](#what-is-a-node-agent)
-- [How is node agent installed on a YugabyteDB node?](#how-is-node-agent-installed-on-a-yugabytedb-node)
-- [Why does YugabyteDB Anywhere prompt for SSH details if the node agent is installed manually and can replace SSH?](#why-does-yugabytedb-anywhere-prompt-for-ssh-details-if-the-node-agent-is-installed-manually-and-can-replace-ssh)
-- [What is registration and unregistration of node agent?](#what-is-registration-and-unregistration-of-node-agent)
-- [Why does node agent installation ask for provider and other details during on-prem manual node agent setup?](#why-does-node-agent-installation-ask-for-provider-and-other-details-during-on-prem-manual-node-agent-setup)
-- [How do I move a node provisioned for one provider to a different provider?](#how-do-i-move-a-node-provisioned-for-one-provider-to-a-different-provider)
-- [How does a node agent perform preflight checks?](#how-does-a-node-agent-perform-preflight-checks)
-- [How do I disable node agent?](#how-do-i-disable-node-agent)
-- [How do I change the node agent default port of 9070?](#how-do-i-change-the-node-agent-default-port-of-9070)
-- [How does YugabyteDB Anywhere determine that a node instance record maps to a node agent entry if they are not related?](#how-does-yugabytedb-anywhere-determine-that-a-node-instance-record-maps-to-a-node-agent-entry-if-they-are-not-related)
-- [How does YugabyteDB Anywhere clean up node agents?](#how-does-yugabytedb-anywhere-clean-up-node-agents)
-
 ## YugabyteDB Anywhere
 
 ### What is YugabyteDB Anywhere?
@@ -59,7 +25,9 @@ YugabyteDB Anywhere (previously known as Yugabyte Platform and YugaWare) is a pr
 
 You deploy and manage your YugabyteDB universes using the YugabyteDB Anywhere UI.
 
-For an overview of YugabyteDB Anywhere, refer to [Introduction to YugabyteDB Anywhere](../../yugabyte-platform/yba-overview/).
+{{<lead link="../../yugabyte-platform/yba-overview/">}}
+Introduction to YugabyteDB Anywhere
+{{</lead>}}
 
 ### How do I report a security vulnerability?
 
@@ -87,7 +55,9 @@ YugabyteDB Anywhere was previously installed using Replicated. However, Yugabyte
 
 YugabyteDB Anywhere distributes and installs YugabyteDB on the hosts identified to run the data nodes. Because the YugabyteDB software is already packaged into existing artifacts, the data node does not require any Internet connectivity.
 
-For instructions on installing YugabyteDB Anywhere, refer to [Install YugabyteDB Anywhere](../../yugabyte-platform/install-yugabyte-platform/).
+{{<lead link="../../yugabyte-platform/install-yugabyte-platform/">}}
+Install YugabyteDB Anywhere
+{{</lead>}}
 
 ### What are the OS requirements and permissions to run YugabyteDB Anywhere?
 
@@ -100,17 +70,25 @@ YugabyteDB Anywhere also requires the following:
 - Attached disk storage (such as persistent EBS volumes on AWS).
 - A YugabyteDB Anywhere license file from Yugabyte Support.
 
-For a complete list of networking requirements, refer to [Networking](../../yugabyte-platform/prepare/networking/).
+{{<lead link="../../yugabyte-platform/prepare/networking/">}}
+For a complete list of networking requirements, see [Networking](../../yugabyte-platform/prepare/networking/).
+{{</lead>}}
 
-For a complete list of hardware and software prerequisites, refer to [Prerequisites](../../yugabyte-platform/prepare/server-yba/).
+{{<lead link="../../yugabyte-platform/prepare/server-yba/">}}
+For a complete list of hardware and software prerequisites, see [Prerequisites](../../yugabyte-platform/prepare/server-yba/).
+{{</lead>}}
 
 ## Data nodes
 
 ### What are the requirements to run YugabyteDB data nodes?
 
+{{<lead link="../../yugabyte-platform/prepare/server-nodes-hardware/">}}
 For hardware prerequisites for YugabyteDB data nodes, refer to [Hardware prerequisites](../../yugabyte-platform/prepare/server-nodes-hardware/).
+{{</lead>}}
 
+{{<lead link="../../yugabyte-platform/prepare/server-nodes-software/">}}
 For software prerequisites for YugabyteDB data nodes, refer to [Software prerequisites](../../yugabyte-platform/prepare/server-nodes-software/).
+{{</lead>}}
 
 ### How does the YugabyteDB Anywhere UI interact with YugabyteDB data nodes?
 
@@ -165,6 +143,10 @@ For cloud (AWS, GCP, and Azure) and automatic on-premises (sudo access provided)
 
 For manually provisioned on-premises providers, node agent is installed on each node either using a script or manually as part of the manual provisioning process.
 
+{{<lead link="../../yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/#install-node-agent">}}
+Install node agent
+{{</lead>}}
+
 ### Why does YugabyteDB Anywhere prompt for SSH details if the node agent is installed manually and can replace SSH?
 
 When creating an on-premises provider, you are prompted to provide SSH credentials, which are used during provisioning of automatically provisioned providers. After provisioning and adding the instances to the provider (including installing the node agent), YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
@@ -194,7 +176,9 @@ Node agent is used to run pre-flight checks on the node during various day-0 and
 
 In v2.18.6 and later, moving a node from one provider to another does not require unregistering the node agent, as node agents aren't linked to providers.
 
+{{<lead link="../../yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/#reconfigure-a-node-agent">}}
 To change the provider of a node, follow the procedure in [Reconfigure a node agent](../../yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/#reconfigure-a-node-agent).
+{{</lead>}}
 
 As long as the IP does not change, the node agent does not try to register again.
 
@@ -208,17 +192,17 @@ A node agent does the following when the preflight-check command is run:
 
 1. Runs the [preflight_check](https://github.com/yugabyte/yugabyte-db/blob/master/managed/node-agent/resources/preflight_check.sh) script.
 1. Collects the output and converts it to a well-formatted JSON payload.
-1. Sends the payload to YugabyteDB Anywhere for validation. YugabyteDB Anywhere has preflight check threshold values defined in the [runtime configuration](../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/) of the provider. The prefix path for the configuration key name is `yb.node_agent.preflight_checks`. The values can be changed if needed.
+1. Sends the payload to YugabyteDB Anywhere for validation. YugabyteDB Anywhere has preflight check threshold values defined in the [runtime configuration settings](../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/) of the provider. The prefix path for the configuration key name is `yb.node_agent.preflight_checks`. The values can be changed if needed.
 
 ### How do I disable node agent?
 
-You can disable node agents of a provider's universes any time by setting the `yb.node_agent.client.enabled` [Provider Configuration](../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/) for the provider to false.
+You can disable node agents of a provider's universes any time by setting the `yb.node_agent.client.enabled` [Provider Runtime Configuration](../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/) for the provider to false.
 
 This disables all node agents for universes created using the provider, and YugabyteDB Anywhere falls back to using SSH to communicate with universe nodes, using credentials provided during provider creation.
 
 ### How do I change the node agent default port of 9070?
 
-Use the `yb.node_agent.server.port` [Provider Configuration](../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/).
+Use the `yb.node_agent.server.port` [Provider Runtime Configuration](../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/).
 
 The change is reflected only on newly created node agents.
 

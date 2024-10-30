@@ -1939,7 +1939,6 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
 
   Schema schema;
   RETURN_NOT_OK(SchemaFromPB(meta.schema(), &schema));
-  const vector<ColumnId>& column_ids = schema.column_ids();
   scoped_refptr<TableInfo> table;
 
   // First, check if namespace id and table id match. If, in addition, other properties match, we
@@ -2139,14 +2138,28 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
 
     // Ignore 'nullable' attribute - due to difference in implementation
     // of PgCreateTable::AddColumn() and PgAlterTable::AddColumn().
-    auto comparator = [](const ColumnSchema& a, const ColumnSchema& b) {
+    auto comparator = !table->is_index() ?
+    [](const ColumnSchema& a, const ColumnSchema& b) {
       return ColumnSchema::CompKind(a, b) &&
              ColumnSchema::CompTypeInfo(a, b) &&
              ColumnSchema::CompName(a, b);
+    } :
+    // For indexes, we only compare the column type and kind.
+    [](const ColumnSchema& a, const ColumnSchema& b) {
+      return ColumnSchema::CompKind(a, b) &&
+             ColumnSchema::CompTypeInfo(a, b);
     };
-    // Schema::Equals() compares only column names & types. It does not compare the column ids.
+
+    // Schema::Equals() compares only the column name, type and kind for regular tables, and the
+    // column type and kind for indexes.
+    // Index columns are not expected to have the same column names as the original index.
+    // We also ensure that the number of columns is the same for both regular tables and indexes.
+    // Additionally, for indexes, we compare the column ids as we expect them to be
+    // preserved.
+    const vector<ColumnId>& column_ids = schema.column_ids();
     if (!persisted_schema.Equals(schema, comparator)
-        || persisted_schema.column_ids().size() != column_ids.size()) {
+        || persisted_schema.column_ids().size() != column_ids.size()
+        || (table->is_index() && persisted_schema.column_ids() != column_ids)) {
       const string msg = Format(
           "Invalid created $0 table '$1' in namespace id $2: schema={$3}, expected={$4}",
           TableType_Name(meta.table_type()), meta.name(), new_namespace_id,
@@ -2202,7 +2215,9 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     // Table schema update depending on different conditions.
     bool notify_ts_for_schema_change = false;
 
-    // Update the table column ids if it's not equal to the stored ids.
+    // Update the table column ids if it's not equal to the stored ids. Note: this only
+    // applies to regular tables. We cannot reach here for indexes because their column ids have
+    // already been checked earlier.
     if (persisted_schema.column_ids() != column_ids) {
       if (meta.table_type() != TableType::PGSQL_TABLE_TYPE) {
         LOG_WITH_FUNC(WARNING) << "Unexpected wrong column ids in "
@@ -2235,6 +2250,25 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
       l.Commit();
       notify_ts_for_schema_change = true;
+    }
+
+    // Set missing values for tables that were created with a default value. ysql_dump will not
+    // properly set that value because it is only set on ADD COLUMN, and it creates the column
+    // directly in CREATE TABLE.
+    {
+      auto l = table->LockForWrite();
+      for (auto i = 0; i < l.mutable_data()->pb.schema().columns_size(); ++i) {
+        auto& column = meta.schema().columns(i);
+        auto& persisted_column = *l.mutable_data()->pb.mutable_schema()->mutable_columns(i);
+        if (column.has_missing_value() && !persisted_column.has_missing_value()) {
+          *persisted_column.mutable_missing_value() = column.missing_value();
+        }
+      }
+      if (l.is_dirty()) {
+        RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
+        l.Commit();
+        notify_ts_for_schema_change = true;
+      }
     }
 
     // Restore partition key version.

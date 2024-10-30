@@ -60,7 +60,7 @@ public class TransactionUtilTest extends PlatformGuiceApplicationBaseTest {
     taskInfo.setOwner("test");
     taskInfo.setTaskState(State.Created);
     taskInfo.save();
-    UUID taskUUID = taskInfo.getTaskUUID();
+    UUID taskUUID = taskInfo.getUuid();
     assertThrows(
         RuntimeException.class,
         () -> {
@@ -84,7 +84,7 @@ public class TransactionUtilTest extends PlatformGuiceApplicationBaseTest {
     taskInfo.setOwner("test");
     taskInfo.setTaskState(State.Created);
     taskInfo.save();
-    UUID taskUUID = taskInfo.getTaskUUID();
+    UUID taskUUID = taskInfo.getUuid();
     TransactionUtil.doInTxn(
         () -> {
           TaskInfo tf = TaskInfo.get(taskUUID);
@@ -142,7 +142,7 @@ public class TransactionUtilTest extends PlatformGuiceApplicationBaseTest {
                 TransactionUtil.doInTxn(
                     () -> {
                       for (TaskInfo taskInfo : tasks) {
-                        TaskInfo tf = TaskInfo.get(taskInfo.getTaskUUID());
+                        TaskInfo tf = TaskInfo.get(taskInfo.getUuid());
                         try {
                           Thread.sleep(10);
                         } catch (InterruptedException e) {

@@ -29,6 +29,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import org.json.JSONObject;
@@ -59,6 +61,9 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
     }
 
     private static final int ASH_SAMPLING_INTERVAL_MS = 500;
+    private static final int BG_WORKER_INTERVAL_MS = 1000;
+    private static final int YB_QD_MAX_EXPLAIN_PLAN_LEN = 16384;
+    private static final int YB_QD_MAX_BIND_VARS_LEN = 2048;
     private static final String noQueriesExecutedWarning = "No query executed;";
     private static final String pgssResetWarning =
         "pg_stat_statements was reset, query string not available;";
@@ -70,6 +75,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         /* Set Gflags and restart cluster */
         Map<String, String> flagMap = super.getTServerFlags();
         flagMap.put("TEST_yb_enable_query_diagnostics", "true");
+        flagMap.put("ysql_pg_conf_csv",
+                    "yb_query_diagnostics_bg_worker_interval_ms=" + BG_WORKER_INTERVAL_MS);
         /* Enable ASH for active_session_history.csv */
         if (isTestRunningWithConnectionManager()) {
             flagMap.put("allowed_preview_flags_csv",
@@ -675,6 +682,108 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                                          "Success" /* expectedStatus */,
                                          noQueriesExecutedWarning /* expectedDescription */,
                                          params);
+        }
+    }
+
+    private int countOccurrences(String content, String regex) {
+        Pattern pattern = Pattern.compile(regex);
+        Matcher matcher = pattern.matcher(content);
+        int count = 0;
+        while (matcher.find()) {
+            count++;
+        }
+        return count;
+    }
+
+    /*
+     * In this test we create a large variable and run the same query multiple times,
+     * with the intent to overflow bind_variables and explain_plan buffers.
+     */
+    @Test
+    public void testIntermediateFlushing() throws Exception {
+        try (Statement statement = connection.createStatement()) {
+            /* Run query diagnostics on the prepared stmt */
+            String queryId = getQueryIdFromPgStatStatements(statement, "PREPARE%");
+
+            /*
+             * Ensures that query plans are not cached,
+             * thereby unaffecting the explain plan output.
+             */
+            statement.execute("SET plan_cache_mode = 'force_custom_plan'");
+
+            int minLen = Math.min(YB_QD_MAX_EXPLAIN_PLAN_LEN, YB_QD_MAX_BIND_VARS_LEN);
+            int maxLen = Math.max(YB_QD_MAX_EXPLAIN_PLAN_LEN, YB_QD_MAX_BIND_VARS_LEN);
+
+            /*
+             * Since the flushing happens whenever the buffer is half full or more,
+             * we consider only half the length.
+             */
+            int varLen = minLen / 2;
+            String largeVariable = new String(new char[ varLen ]).replace('\0', 'a');
+
+            /* To ensure that the buffer overflows we do twice as many iterations */
+            int noOfIterations = (maxLen / varLen) + 1;
+
+            int diagnosticsInterval = noOfIterations * (BG_WORKER_INTERVAL_MS / 1000);
+            QueryDiagnosticsParams params = new QueryDiagnosticsParams(
+                diagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+            Path bundleDataPath = runQueryDiagnostics(statement, queryId, params);
+
+            for (int i = 0; i < noOfIterations; i++) {
+                statement.execute("execute stmt('" + largeVariable + "', 1, 1)");
+
+                /* Sleep for a small duration to ensure that that we flush before the next query */
+                Thread.sleep(BG_WORKER_INTERVAL_MS);
+            }
+
+            long start_time = System.currentTimeMillis();
+            while (true)
+            {
+                ResultSet resultSet = statement.executeQuery(
+                                      "SELECT * FROM yb_query_diagnostics_status");
+                if (resultSet.next() && resultSet.getString("status").equals("Success"))
+                    break;
+
+                if (System.currentTimeMillis() - start_time > 60000) // 1 minute
+                    fail("Bundle did not complete within the expected time");
+
+                Thread.sleep(BG_WORKER_INTERVAL_MS);
+            }
+
+            /* Bundle has expired */
+            Path bindVariablesPath = bundleDataPath.resolve("bind_variables.csv");
+            assertTrue("Bind variables file does not exist", Files.exists(bindVariablesPath));
+
+            Path explainPlanPath = bundleDataPath.resolve("explain_plan.txt");
+            assertTrue("Explain plan file does not exist", Files.exists(explainPlanPath));
+
+            String bindVariablesContent = new String(Files.readAllBytes(bindVariablesPath));
+            String explainPlanContent = new String(Files.readAllBytes(explainPlanPath));
+
+            int bindVariablesLength = bindVariablesContent.length();
+            int explainPlanLength = explainPlanContent.length();
+
+            /* Verify that flushing did happen */
+            assertTrue("Bind variables file was not flushed properly",
+                       bindVariablesLength > YB_QD_MAX_BIND_VARS_LEN);
+            assertTrue("Explain plan file was not flushed properly",
+                       explainPlanLength > YB_QD_MAX_EXPLAIN_PLAN_LEN);
+
+            /* Use regex to count occurrences of largeVariable in both files */
+            String regex = Pattern.quote(largeVariable);
+            int bindVariableCount = countOccurrences(bindVariablesContent, regex);
+            int explainPlanCount = countOccurrences(explainPlanContent, regex);
+
+            assertEquals("Variable should appear exactly " + noOfIterations +
+                         " times in bind variables file", noOfIterations, bindVariableCount);
+            assertEquals("Variable should appear exactly " + noOfIterations +
+                         " times in explain plan file", noOfIterations, explainPlanCount);
         }
     }
 }

@@ -4,7 +4,7 @@
  *	   Win32 open() replacement
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * src/port/open.c
  *
@@ -13,15 +13,19 @@
 
 #ifdef WIN32
 
+#define UMDF_USING_NTSTATUS
+
 #ifndef FRONTEND
 #include "postgres.h"
 #else
 #include "postgres_fe.h"
 #endif
 
+#include "port/win32ntdll.h"
+
 #include <fcntl.h>
 #include <assert.h>
-
+#include <sys/stat.h>
 
 static int
 openFlagsToCreateFileFlags(int openFlags)
@@ -55,15 +59,19 @@ openFlagsToCreateFileFlags(int openFlags)
 }
 
 /*
- *	 - file attribute setting, based on fileMode?
+ * Internal function used by pgwin32_open() and _pgstat64().  When
+ * backup_semantics is true, directories may be opened (for limited uses).  On
+ * failure, INVALID_HANDLE_VALUE is returned and errno is set.
  */
-int
-pgwin32_open(const char *fileName, int fileFlags,...)
+HANDLE
+pgwin32_open_handle(const char *fileName, int fileFlags, bool backup_semantics)
 {
-	int			fd;
-	HANDLE		h = INVALID_HANDLE_VALUE;
+	HANDLE		h;
 	SECURITY_ATTRIBUTES sa;
 	int			loops = 0;
+
+	if (initialize_ntdll() < 0)
+		return INVALID_HANDLE_VALUE;
 
 	/* Check that we can handle the request */
 	assert((fileFlags & ((O_RDONLY | O_WRONLY | O_RDWR) | O_APPEND |
@@ -84,6 +92,7 @@ pgwin32_open(const char *fileName, int fileFlags,...)
 						   &sa,
 						   openFlagsToCreateFileFlags(fileFlags),
 						   FILE_ATTRIBUTE_NORMAL |
+						   (backup_semantics ? FILE_FLAG_BACKUP_SEMANTICS : 0) |
 						   ((fileFlags & O_RANDOM) ? FILE_FLAG_RANDOM_ACCESS : 0) |
 						   ((fileFlags & O_SEQUENTIAL) ? FILE_FLAG_SEQUENTIAL_SCAN : 0) |
 						   ((fileFlags & _O_SHORT_LIVED) ? FILE_ATTRIBUTE_TEMPORARY : 0) |
@@ -94,17 +103,14 @@ pgwin32_open(const char *fileName, int fileFlags,...)
 	{
 		/*
 		 * Sharing violation or locking error can indicate antivirus, backup
-		 * or similar software that's locking the file. Try again for 30
-		 * seconds before giving up.
+		 * or similar software that's locking the file.  Wait a bit and try
+		 * again, giving up after 30 seconds.
 		 */
 		DWORD		err = GetLastError();
 
 		if (err == ERROR_SHARING_VIOLATION ||
 			err == ERROR_LOCK_VIOLATION)
 		{
-			pg_usleep(100000);
-			loops++;
-
 #ifndef FRONTEND
 			if (loops == 50)
 				ereport(LOG,
@@ -115,12 +121,64 @@ pgwin32_open(const char *fileName, int fileFlags,...)
 #endif
 
 			if (loops < 300)
+			{
+				pg_usleep(100000);
+				loops++;
 				continue;
+			}
+		}
+
+		/*
+		 * ERROR_ACCESS_DENIED is returned if the file is deleted but not yet
+		 * gone (Windows NT status code is STATUS_DELETE_PENDING).  In that
+		 * case, we'd better ask for the NT status too so we can translate it
+		 * to a more Unix-like error.  We hope that nothing clobbers the NT
+		 * status in between the internal NtCreateFile() call and CreateFile()
+		 * returning.
+		 *
+		 * If there's no O_CREAT flag, then we'll pretend the file is
+		 * invisible.  With O_CREAT, we have no choice but to report that
+		 * there's a file in the way (which wouldn't happen on Unix).
+		 */
+		if (err == ERROR_ACCESS_DENIED &&
+			pg_RtlGetLastNtStatus() == STATUS_DELETE_PENDING)
+		{
+			if (fileFlags & O_CREAT)
+				err = ERROR_FILE_EXISTS;
+			else
+				err = ERROR_FILE_NOT_FOUND;
 		}
 
 		_dosmaperr(err);
-		return -1;
+		return INVALID_HANDLE_VALUE;
 	}
+
+	return h;
+}
+
+int
+pgwin32_open(const char *fileName, int fileFlags,...)
+{
+	HANDLE		h;
+	int			fd;
+
+	h = pgwin32_open_handle(fileName, fileFlags, false);
+	if (h == INVALID_HANDLE_VALUE)
+		return -1;
+
+#ifdef FRONTEND
+
+	/*
+	 * Since PostgreSQL 12, those concurrent-safe versions of open() and
+	 * fopen() can be used by frontends, having as side-effect to switch the
+	 * file-translation mode from O_TEXT to O_BINARY if none is specified.
+	 * Caller may want to enforce the binary or text mode, but if nothing is
+	 * defined make sure that the default mode maps with what versions older
+	 * than 12 have been doing.
+	 */
+	if ((fileFlags & O_BINARY) == 0)
+		fileFlags |= O_TEXT;
+#endif
 
 	/* _open_osfhandle will, on error, set errno accordingly */
 	if ((fd = _open_osfhandle((intptr_t) h, fileFlags & O_APPEND)) < 0)

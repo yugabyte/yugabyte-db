@@ -236,6 +236,18 @@ class XClusterClient {
       const NamespaceId& source_namespace_id, const std::vector<TableId>& source_table_ids,
       const std::vector<xrepl::StreamId>& bootstrap_ids);
 
+  Status WaitForReplicationDrain(
+      const xrepl::StreamId& stream_id, MicrosecondsInt64 target_time, CoarseTimePoint deadline);
+
+  Result<std::vector<xrepl::StreamId>> GetXClusterStreams(const TableId& table_id);
+
+  // Updates the schema version of the table by 2, and then inserts the packed schema into the
+  // historical set of schemas for all tablets.
+  // current_schema_version is passed to avoid sending repeated alter table requests.
+  Status InsertPackedSchemaForXClusterTarget(
+      const TableId& table_id, const SchemaPB& packed_schema_to_insert,
+      uint32_t current_schema_version);
+
  private:
   CoarseTimePoint GetDeadline() const;
 

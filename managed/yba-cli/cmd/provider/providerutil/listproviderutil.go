@@ -73,9 +73,9 @@ func ListProviderUtil(cmd *cobra.Command, commandCall, providerCode string) {
 	}
 	if len(r) < 1 {
 		if util.IsOutputType(formatter.TableFormatKey) {
-			logrus.Infoln("No providers found\n")
+			logrus.Info("No providers found\n")
 		} else {
-			logrus.Infoln("[]\n")
+			logrus.Info("[]\n")
 		}
 		return
 	}

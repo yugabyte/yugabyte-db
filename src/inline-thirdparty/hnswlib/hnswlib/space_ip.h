@@ -400,7 +400,7 @@ class InnerProductSpace : public SpaceInterface<float> {
 }  // namespace hnswlib
 
 // This file is part of the hnswlib inline third-party dependency of YugabyteDB.
-// Git repo: https://github.com/nmslib/hnswlib
-// Git commit: 2142dc6f4dd08e64ab727a7bbd93be7f732e80b0
+// Git repo: https://github.com/yugabyte/hnswlib
+// Git tag: vc1b9b79a-yb-1
 //
 // See also src/inline-thirdparty/README.md.

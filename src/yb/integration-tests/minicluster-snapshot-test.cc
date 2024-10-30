@@ -54,7 +54,9 @@
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/leader_epoch.h"
+#include "yb/master/master.h"
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_types.pb.h"
@@ -68,6 +70,7 @@
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_data_size_metrics.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -78,18 +81,27 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_int32(cleanup_split_tablets_interval_sec);
+DECLARE_int32(data_size_metric_updater_interval_sec);
 DECLARE_bool(enable_db_clone);
+DECLARE_int32(load_balancer_initial_delay_secs);
 DECLARE_bool(master_auto_run_initdb);
+DECLARE_int32(metrics_snapshotter_interval_ms);
 DECLARE_int32(pgsql_proxy_webserver_port);
-DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
+DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_string(ysql_hba_conf_csv);
+DECLARE_int32(ysql_sequence_cache_minval);
+DECLARE_int32(ysql_tablespace_info_refresh_secs);
 DECLARE_bool(TEST_fail_clone_pg_schema);
 DECLARE_bool(TEST_fail_clone_tablets);
 DECLARE_string(TEST_mini_cluster_pg_host_port);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
 
 namespace yb {
+namespace tserver {
+METRIC_DECLARE_gauge_uint64(ts_data_size);
+METRIC_DECLARE_gauge_uint64(ts_active_data_size);
+}
 namespace master {
 
 constexpr auto kInterval = 20s;
@@ -166,6 +178,15 @@ Result<SnapshotScheduleInfoPB> GetSnapshotSchedule(
   RETURN_NOT_OK(proxy->ListSnapshotSchedules(req, &resp, &controller));
   SCHECK_EQ(resp.schedules_size(), 1, NotFound, "Wrong number of schedules");
   return resp.schedules().Get(0);
+}
+
+Status DeleteSnapshotSchedule(MasterBackupProxy* proxy, const SnapshotScheduleId& id) {
+  rpc::RpcController controller;
+  master::DeleteSnapshotScheduleRequestPB req;
+  master::DeleteSnapshotScheduleResponsePB resp;
+  controller.set_timeout(MonoDelta::FromSeconds(10));
+  req.set_snapshot_schedule_id(id.data(), id.size());
+  return proxy->DeleteSnapshotSchedule(req, &resp, &controller);
 }
 
 Result<TxnSnapshotId> WaitNewSnapshot(MasterBackupProxy* proxy, const SnapshotScheduleId& id) {
@@ -591,6 +612,8 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTimeWithHiddenTables) {
 class PgCloneTest : public PostgresMiniClusterTest {
  protected:
   void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_initial_delay_secs) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_tablespace_info_refresh_secs) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
     PostgresMiniClusterTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
@@ -614,11 +637,12 @@ class PgCloneTest : public PostgresMiniClusterTest {
     RETURN_NOT_OK(CreateDatabase(kSourceNamespaceName, colocated));
     source_conn_ = std::make_unique<pgwrapper::PGConn>(
         VERIFY_RESULT(ConnectToDB(kSourceNamespaceName)));
-    SnapshotScheduleId schedule_id = VERIFY_RESULT(CreateSnapshotSchedule(
+    schedule_id_ = VERIFY_RESULT(CreateSnapshotSchedule(
         master_backup_proxy_.get(), YQL_DATABASE_PGSQL, kSourceNamespaceName, kInterval, kRetention,
         kTimeout));
-    RETURN_NOT_OK(WaitScheduleSnapshot(master_backup_proxy_.get(), schedule_id, kTimeout));
-    RETURN_NOT_OK(source_conn_->Execute("CREATE TABLE t1 (key INT PRIMARY KEY, value INT)"));
+    RETURN_NOT_OK(WaitScheduleSnapshot(master_backup_proxy_.get(), schedule_id_, kTimeout));
+    RETURN_NOT_OK(source_conn_->ExecuteFormat(
+        "CREATE TABLE $0 (key INT PRIMARY KEY, value INT)", kSourceTableName));
      return Status::OK();
   }
 
@@ -659,6 +683,7 @@ class PgCloneTest : public PostgresMiniClusterTest {
   std::shared_ptr<MasterAdminProxy> master_admin_proxy_;
   std::shared_ptr<MasterBackupProxy> master_backup_proxy_;
   std::unique_ptr<pgwrapper::PGConn> source_conn_;
+  SnapshotScheduleId schedule_id_ = SnapshotScheduleId::Nil();
 
   const std::string kSourceNamespaceName = "testdb";
   const std::string kSourceTableName = "t1";
@@ -694,14 +719,13 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneYsqlS
       "INSERT INTO t1 VALUES ($0, $1)", std::get<0>(kRows[0]), std::get<1>(kRows[0])));
 
   // Write a second row after recording the hybrid time.
-  auto ht = HybridTime::FromMicros(static_cast<uint64>(ASSERT_RESULT(GetCurrentTime()).ToInt64()));
+  auto ht = ASSERT_RESULT(GetCurrentTime()).ToInt64();
   ASSERT_OK(source_conn_->ExecuteFormat(
       "INSERT INTO t1 VALUES ($0, $1)", std::get<0>(kRows[1]), std::get<1>(kRows[1])));
 
   // Perform the first clone operation to ht.
   ASSERT_OK(source_conn_->ExecuteFormat(
-      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
-      ht.GetPhysicalValueMicros()));
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName, ht));
 
   // Perform the second clone operation to clone the source DB using the current timestamp (AS OF is
   // not specified)
@@ -731,6 +755,84 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneYsqlS
   ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName2));
 }
 
+class TsDataSizeMetricsTest : public PgCloneTest {
+ public:
+  uint64_t GetTsDataSize() {
+    const auto& metric_entity = recorded_tserver_->metric_entity();
+    const auto metric =
+        metric_entity.FindOrNull<AtomicGauge<uint64_t>>(tserver::METRIC_ts_data_size);
+    CHECK_NOTNULL(metric.get());
+    return metric->value();
+  }
+
+  uint64_t GetTsActiveDataSize() {
+    const auto& metric_entity = recorded_tserver_->metric_entity();
+    const auto metric =
+        metric_entity.FindOrNull<AtomicGauge<uint64_t>>(tserver::METRIC_ts_active_data_size);
+    CHECK_NOTNULL(metric.get());
+    return metric->value();
+  }
+
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_data_size_metric_updater_interval_sec) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_metrics_snapshotter_interval_ms) = 1000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 1000;
+    PgCloneTest::SetUp();
+    recorded_tserver_ = cluster_->mini_tablet_server(0);
+  }
+
+  tserver::MiniTabletServer* recorded_tserver_;
+};
+
+TEST_F(TsDataSizeMetricsTest, TestSnapshotSchedule) {
+  ASSERT_OK(source_conn_->Execute("INSERT INTO t1 VALUES (1, 10)"));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto ts_data_size = GetTsDataSize();
+    auto ts_active_data_size = GetTsActiveDataSize();
+    return ts_data_size > 0 && ts_data_size == ts_active_data_size;
+  }, 30s, "Wait for both data sizes to be equal and non-zero"));
+
+  // Active data size should be less than total data size after dropping a table which is retained
+  // by a snapshot schedule.
+  ASSERT_OK(source_conn_->Execute("DROP TABLE t1"));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return GetTsDataSize() > GetTsActiveDataSize();
+  }, 30s, "Wait for active data size to be less than total data size"));
+
+  ASSERT_OK(DeleteSnapshotSchedule(master_backup_proxy_.get(), schedule_id_));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return GetTsDataSize() == GetTsActiveDataSize();
+  }, 30s, "Wait for both data sizes to be equal"));
+}
+
+// Test that hard links are not double-counted by the data size metric updater.
+// This test is disabled in ASAN builds as it fails due to memory leaks inherited from pg_dump.
+TEST_F(TsDataSizeMetricsTest, YB_DISABLE_TEST_IN_SANITIZERS(Hardlinks)) {
+  // Drop the table to get the size of just the transaction table.
+  ASSERT_OK(source_conn_->ExecuteFormat("DROP TABLE $0", kSourceTableName));
+  SleepFor(FLAGS_data_size_metric_updater_interval_sec * 2s);
+  auto baseline_size = GetTsActiveDataSize();
+  ASSERT_LT(baseline_size, GetTsDataSize());
+
+  // Recreate the table, insert some data, and measure its size.
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value INT)", kSourceTableName));
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "INSERT INTO $0 VALUES (generate_series(1,1000),generate_series(1,1000))", kSourceTableName));
+  FlushAndCompactTablets();
+  SleepFor(FLAGS_data_size_metric_updater_interval_sec * 2s);
+  auto table_size = GetTsActiveDataSize() - baseline_size;
+  ASSERT_GE(table_size, 0);
+
+  // Clone the database. The size should not increase by the table size.
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+  SleepFor(FLAGS_data_size_metric_updater_interval_sec * 2s);
+  auto size_after_clone = GetTsActiveDataSize();
+  ASSERT_LT(size_after_clone - baseline_size, 2 * table_size);
+}
+
 TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithAlterTableSchema)) {
   // Clone to a time before a schema change happened.
   // Writes some data before time t and alter the table schema after t and add some data according
@@ -742,7 +844,7 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithA
       "INSERT INTO t1 VALUES ($0, $1)", std::get<0>(kRow), std::get<1>(kRow)));
 
   // Write a second row after recording the hybrid time.
-  auto ht = HybridTime::FromMicros(static_cast<uint64>(ASSERT_RESULT(GetCurrentTime()).ToInt64()));
+  auto ht = ASSERT_RESULT(GetCurrentTime()).ToInt64();
 
   ASSERT_OK(source_conn_->ExecuteFormat("ALTER TABLE t1 ADD COLUMN c1 INT"));
   ASSERT_OK(source_conn_->ExecuteFormat(
@@ -750,8 +852,7 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithA
       std::get<2>(kRowNewSchema)));
 
   ASSERT_OK(source_conn_->ExecuteFormat(
-      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
-      ht.GetPhysicalValueMicros()));
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName, ht));
 
   // Verify clone only has the first row.
   auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
@@ -872,6 +973,21 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithS
   row = ASSERT_RESULT(
       (target_conn.FetchRow<int32_t, int32_t>(Format("SELECT * FROM t1 WHERE key=$0", key))));
   ASSERT_EQ(row, kRows[3]);
+}
+
+// Test yb_database_clones (ysql function to list clones)
+TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(YsqlListClonesAPI)) {
+  std::string list_clones_query =
+      "SELECT db_oid, db_name, parent_db_oid, parent_db_name, state, failure_reason FROM "
+      "yb_database_clones()";
+  auto row = ASSERT_RESULT((source_conn_->FetchAllAsString(list_clones_query)));
+  ASSERT_TRUE(row.empty());
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+  auto kExpectedCloneRow =
+      Format("16386, $0, 16384, $1, COMPLETE, NULL", kTargetNamespaceName1, kSourceNamespaceName);
+  row = ASSERT_RESULT((source_conn_->FetchRowAsString(list_clones_query)));
+  ASSERT_EQ(row, kExpectedCloneRow);
 }
 
 TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(TabletSplitting)) {
@@ -996,6 +1112,51 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(PreventConnectionsUntilCloneSu
   ASSERT_STR_CONTAINS(
       result.status().message().ToBuffer(),
       Format("database \"$0\" is not currently accepting connections", kTargetNamespaceName1));
+}
+
+TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(Tablespaces)) {
+  const auto kTablespaceName = "test_tablespace";
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE TABLESPACE $0 WITH (replica_placement='{\"num_replicas\": 1, \"placement_blocks\": "
+      "[{\"cloud\":\"cloud1\",\"region\":\"rack1\",\"zone\":\"zone\","
+      "\"min_num_replicas\":1}]}')", kTablespaceName));
+  auto* catalog_mgr = cluster_->mini_master()->master()->catalog_manager();
+
+  // Wait for n running replicas of each tablet of table t1 in the given namespace.
+  auto wait_for_n_replicas = [&](const std::string& namespace_name, int n) {
+    return WaitFor([&]() -> Result<bool> {
+      GetTableLocationsRequestPB req;
+      req.mutable_table()->set_table_id(VERIFY_RESULT(GetTable("t1", namespace_name))->id());
+      GetTableLocationsResponsePB resp;
+      RETURN_NOT_OK(catalog_mgr->GetTableLocations(&req, &resp));
+      SCHECK(!resp.tablet_locations().empty(), IllegalState, "No tablets found");
+      for (const auto& tablet_locs : resp.tablet_locations()) {
+        if (tablet_locs.replicas_size() != n) return false;
+        for (const auto& replica : tablet_locs.replicas()) {
+          if (replica.state() != tablet::RaftGroupStatePB::RUNNING) return false;
+        }
+      }
+      return true;
+    }, 30s, Format("Wait for $0 replicas", n));
+  };
+  auto before_tablespace_timestamp = ASSERT_RESULT(GetCurrentTime()).ToInt64();
+
+  // Attach the tablespace and wait for there to only be 1 tablet replica for t1.
+  ASSERT_OK(source_conn_->ExecuteFormat("ALTER TABLE t1 SET TABLESPACE $0", kTablespaceName));
+  ASSERT_OK(wait_for_n_replicas(kSourceNamespaceName, 1));
+
+  // Clone before and after the table was added to the tablespace.
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
+      before_tablespace_timestamp));
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName2, kSourceNamespaceName));
+
+  // Wait for the table in the first DB to have 3 replicas (since it was created before the
+  // tablespace was added). The table in the second DB should have the tablespace and thus only 1
+  // replica.
+  ASSERT_OK(wait_for_n_replicas(kTargetNamespaceName1, 3));
+  ASSERT_OK(wait_for_n_replicas(kTargetNamespaceName2, 1));
 }
 
 class PgCloneMultiMaster : public PgCloneTest {

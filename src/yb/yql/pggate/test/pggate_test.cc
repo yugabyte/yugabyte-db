@@ -73,8 +73,8 @@ const char* GetDebugQueryStringStub() {
   return "GetDebugQueryString not implemented in test";
 }
 
-uint32_t PgstatReportWaitStartNoOp(uint32_t wait_event) {
-  return wait_event;
+YBCWaitEventInfo PgstatReportWaitStartNoOp(YBCWaitEventInfo info) {
+  return info;
 }
 
 // Not defined locally in PggateTest::Init to avoid asan use-after-return error
@@ -173,7 +173,7 @@ Status PggateTest::Init(
 
   YBCInitPgGate(type_table, count, callbacks, nullptr, &ash_config);
 
-  CHECK_YBC_STATUS(YBCPgInitSession(session_stats));
+  CHECK_YBC_STATUS(YBCPgInitSession(session_stats, false /* is_binary_upgrade */));
   if (should_create_db) {
     CreateDB();
   }

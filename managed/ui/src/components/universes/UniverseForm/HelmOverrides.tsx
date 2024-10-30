@@ -7,16 +7,19 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { FC, useState } from 'react';
+import { ChangeEvent, FC, useState } from 'react';
 import { useMutation, useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 import { Alert, Col, Row } from 'react-bootstrap';
+import { useTranslation } from 'react-i18next';
+import { Box, Typography } from '@material-ui/core';
 import { isEmpty } from 'lodash';
 import { Field, FieldArray, FormikProps } from 'formik';
 import { YBModalForm } from '../../common/forms';
 import { YBLoading } from '../../common/indicators';
 import { YBButton, YBCheckBox, YBModal } from '../../common/forms/fields';
+import { YBCheckbox, YBInput, YBLabel } from '../../../redesign/components';
 import { validateHelmYAML, fetchNodeDetails } from '../../../actions/universe';
 import {
   createErrorMessage,
@@ -26,13 +29,14 @@ import {
   isDefinedNotNull
 } from '../../../utils/ObjectUtils';
 import { getPrimaryCluster } from '../../../utils/UniverseUtils';
-
 import Close from '../../universes/images/close.svg';
 import './HelmOverrides.scss';
 
 interface HelmOverridesType {
   universeOverrides: string;
   azOverrides: string[];
+  rollingUpgrade: boolean;
+  timeDelay: number;
 }
 
 interface HelmOverridesUniversePage {
@@ -144,11 +148,16 @@ export const HelmOverridesModal: FC<HelmOverridesModalProps> = ({
   editMode,
   forceUpdate
 }) => {
-  const [forceConfirm, setForceConfirm] = useState(false);
+  const { t } = useTranslation();
+  const [forceConfirm, setForceConfirm] = useState<boolean>(false);
+  const [rollingUpgrade, setRollingUpgrade] = useState<boolean>(true);
+  const [timeDelay, setTimeDelay] = useState<number>(180);
 
   let initialValues: HelmOverridesType = {
     universeOverrides: '',
-    azOverrides: []
+    azOverrides: [],
+    rollingUpgrade: true,
+    timeDelay: 180
   };
 
   if (editValues) {
@@ -175,7 +184,9 @@ export const HelmOverridesModal: FC<HelmOverridesModalProps> = ({
         const setOverides = () => {
           setHelmOverridesData({
             universeOverrides: reqValues.values.universeOverrides,
-            azOverrides: reqValues.values.azOverrides
+            azOverrides: reqValues.values.azOverrides,
+            rollingUpgrade: rollingUpgrade,
+            timeDelay: timeDelay
           });
           setValidationError(validation_errors_initial_state);
           onHide();
@@ -209,11 +220,20 @@ export const HelmOverridesModal: FC<HelmOverridesModalProps> = ({
     }
   );
 
+  const onTimeDelayChange = (delay: number) => {
+    setTimeDelay(delay);
+  };
+
+  const handleRollingUpgrade = (event: ChangeEvent<HTMLInputElement>) => {
+    const isChecked = event.target.checked;
+    setRollingUpgrade(isChecked);
+  };
+
   const showAlert = validationError?.overridesErrors.length !== 0;
 
   return (
     <YBModalForm
-      title={'Kubernetes Overrides'}
+      title={t('universeActions.helmOverrides.title')}
       visible={visible}
       submitLabel={submitLabel}
       formName="HelmOverridesForm"
@@ -225,7 +245,11 @@ export const HelmOverridesModal: FC<HelmOverridesModalProps> = ({
       footerAccessory={
         forceUpdate ? (
           <YBCheckBox
-            label={editMode ? 'Force Upgrade' : 'Force Apply'}
+            label={
+              editMode
+                ? t('universeActions.helmOverrides.forceUpgrade')
+                : t('universeActions.helmOverrides.forceApply')
+            }
             input={{
               checked: forceConfirm,
               onChange: () => setForceConfirm(!forceConfirm)
@@ -295,7 +319,7 @@ export const HelmOverridesModal: FC<HelmOverridesModalProps> = ({
               </>
             </Alert>
           )}
-          <b>Universe Overrides:</b>
+          <b className="helm-fields">Universe Overrides:</b>
           <Field
             component="textarea"
             name="universeOverrides"
@@ -304,7 +328,7 @@ export const HelmOverridesModal: FC<HelmOverridesModalProps> = ({
           />
           <br />
           <br />
-          <b>AZ Overrides:</b>
+          <b className="helm-fields">AZ Overrides:</b>
           <FieldArray
             name="azOverrides"
             render={(arrayHelper) => (
@@ -336,18 +360,48 @@ export const HelmOverridesModal: FC<HelmOverridesModalProps> = ({
                 </div>
                 <a
                   href="#!"
-                  className="on-prem-add-link add-region-link"
+                  className="on-prem-add-link add-region-link helm-fields"
                   onClick={(e) => {
                     e.preventDefault();
                     arrayHelper.push('');
                   }}
                 >
                   <i className="fa fa-plus-circle" />
-                  Add Availability Zone
+                  {t('universeActions.helmOverrides.addAvailabilityZone')}
                 </a>
               </>
             )}
           />
+          <Box mt={2}>
+            <YBCheckbox
+              label={t('universeActions.helmOverrides.rollingUpgradeLabel')}
+              style={{ width: 'fit-content' }}
+              checked={rollingUpgrade}
+              onChange={handleRollingUpgrade}
+              inputProps={{
+                'data-testid': 'HelmOverrides-RollingUpgrade'
+              }}
+            />
+            <Box display={'flex'} flexDirection={'row'} width="100%" alignItems={'center'} ml={1}>
+              <YBLabel width="210px">
+                {t('universeActions.helmOverrides.upgradeDelayLabel')}
+              </YBLabel>
+              <Box width="160px" mr={1}>
+                <YBInput
+                  type="number"
+                  value={timeDelay}
+                  onChange={(event: any) => onTimeDelayChange(event.target.value)}
+                  disabled={!rollingUpgrade}
+                  fullWidth
+                  inputProps={{
+                    autoFocus: true,
+                    'data-testid': 'HelmOverrides-TimeDelay'
+                  }}
+                />
+              </Box>
+              <Typography variant="body2">{t('common.seconds')}</Typography>
+            </Box>
+          </Box>
         </>
       )}
     />

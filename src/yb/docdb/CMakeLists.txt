@@ -17,10 +17,9 @@ set(YB_PCH_PREFIX docdb)
 
 YRPC_GENERATE(
         DOCDB_PROTO_SRCS DOCDB_PROTO_HDRS DOCDB_PROTO_TGTS
-        MESSAGES TRUE
         SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
         BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-        NO_SERVICE_PROTO_FILES docdb.proto)
+        NO_SERVICE_MESSAGES_PROTO_FILES docdb.proto)
 
 ADD_YB_LIBRARY(docdb_proto
         SRCS ${DOCDB_PROTO_SRCS}
@@ -81,7 +80,6 @@ set(DOCDB_SRCS
         vector_index.cc
         vector_index_read.cc
         vector_index_update.cc
-        vector_lsm.cc
         wait_queue.cc
         )
 
@@ -98,8 +96,8 @@ set(DOCDB_DEPS
         yb_pggate_util
         yb_pggate
         ql_util
+        vector_index
         yb_pgbackend
-        yb_vector
         )
 
 ADD_YB_LIBRARY(yb_docdb

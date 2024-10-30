@@ -10,6 +10,13 @@ Update an GCS storage configuration in YugabyteDB Anywhere
 yba storage-config gcs update [flags]
 ```
 
+### Examples
+
+```
+yba storage-config gcs update --name <storage-configuration-name> \
+	--new-name <new-storage-configuration-name>
+```
+
 ### Options
 
 ```

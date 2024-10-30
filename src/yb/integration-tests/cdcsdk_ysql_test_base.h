@@ -66,7 +66,7 @@ using std::pair;
 using std::string;
 using std::vector;
 
-DECLARE_int64(cdc_intent_retention_ms);
+DECLARE_uint64(cdc_intent_retention_ms);
 DECLARE_bool(enable_update_local_peer_min_index);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_bool(stream_truncate_record);
@@ -140,7 +140,7 @@ using rpc::RpcController;
 
 namespace cdc {
 
-YB_DEFINE_ENUM(IntentCountCompareOption, (GreaterThanOrEqualTo)(GreaterThan)(EqualTo));
+YB_DEFINE_ENUM(IntentCountCompareOption, (GreaterThanOrEqualTo)(GreaterThan)(EqualTo)(LessThan));
 YB_DEFINE_ENUM(OpIdExpectedValue, (MaxOpId)(InvalidOpId)(ValidNonMaxOpId));
 
 static constexpr uint64_t kVWALSessionId1 = std::numeric_limits<uint64_t>::max() / 2;
@@ -714,6 +714,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const int& num_batches, const int& inserts_per_batch, int apply_update_latency = 0,
       const int& start_index = 0);
 
+  std::vector<int> PerformSingleAndMultiShardInsertsInSeparateThreads(
+      int total_single_shard_txns, int total_multi_shard_txns, int batch_size,
+      PostgresMiniCluster* test_cluster, int additional_inserts = 0);
+
   void PerformSingleAndMultiShardQueries(
       const int& num_batches, const int& queries_per_batch, const string& query,
       int apply_update_latency = 0, const int& start_index = 0);
@@ -834,6 +838,15 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>>* tablets,
       std::optional<std::unordered_set<TableId>*> expected_tables = std::nullopt,
       std::optional<std::unordered_set<TabletId>*> expected_tablets = std::nullopt);
+
+  // Get the log segments count on each peer of the given tablet.
+  void GetLogSegmentCountForTablet(
+      const TabletId& tablet_id, std::unordered_map<std::string, size_t>* log_segment_count);
+
+  // Get the intent entry & intent SST file count on each peer of the given tablet.
+  Status GetIntentEntriesAndSSTFileCountForTablet(
+      const TabletId& tablet_id, std::unordered_map<std::string, std::pair<int64_t, int64_t>>*
+                                        initial_intents_and_intent_sst_file_count);
 };
 
 }  // namespace cdc

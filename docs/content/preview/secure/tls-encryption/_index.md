@@ -3,8 +3,8 @@ title: Encryption in transit on YugabyteDB Clusters
 headerTitle: Encryption in transit
 linkTitle: Encryption in transit
 description: Enable encryption in transit (using TLS) to protect network communication.
-headcontent: Enable encryption in transit (using TLS) to protect network communication.
-image: /images/section_icons/secure/tls-encryption.png
+headcontent: Enable encryption in transit (using TLS) to protect network communication
+image: fa-thin fa-certificate
 aliases:
   - /secure/tls-encryption/
 menu:
@@ -24,80 +24,36 @@ YugabyteDB supports [Transport Layer Security (TLS)](https://en.wikipedia.org/wi
 
 Follow the steps in this section to learn how to enable encryption using TLS for a three-node YugabyteDB cluster.
 
-<div class="row">
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="server-certificates/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/tls-encryption/prepare-nodes.png" aria-hidden="true" />
-        <div class="title">Create server certificates</div>
-      </div>
-      <div class="body">
-          Create server certificates (using TLS) for protecting data in transit between YugabyteDB nodes.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Create server certificates"
+    body="Create server certificates (using TLS) for protecting data in transit between YugabyteDB nodes."
+    href="server-certificates/"
+    icon="fa-thin fa-file-certificate">}}
 
-<!--
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="client-certificates/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/tls-encryption/prepare-nodes.png" aria-hidden="true" />
-        <div class="title">Create client certificates</div>
-      </div>
-      <div class="body">
-          Create self-signed certificates to connect clients to YugabyteDB clusters.
-      </div>
-    </a>
-  </div>
--->
+  {{<index/item
+    title="Enable server-to-server encryption"
+    body="Enable server-to-server encryption (using TLS) between YB-Master and YB-TServer nodes."
+    href="server-to-server/"
+    icon="fa-thin fa-server">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="server-to-server/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/tls-encryption/server-to-server.png" aria-hidden="true" />
-        <div class="title">Enable server-to-server encryption</div>
-      </div>
-      <div class="body">
-          Enable server-to-server encryption (using TLS) between YB-Master and YB-TServer nodes.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Enable client-to-server encryption"
+    body="Enable client-to-server encryption (using TLS) for YSQL and YCQL."
+    href="client-to-server/"
+    icon="fa-thin fa-desktop">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="client-to-server/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/tls-encryption/client-to-server.png" aria-hidden="true" />
-        <div class="title">Enable client-to-server encryption</div>
-      </div>
-      <div class="body">
-          Enable client-to-server encryption (using TLS) for YSQL and YCQL.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Connect to clusters"
+    body="Connect clients, tools, and APIs to encryption-enabled YugabyteDB clusters."
+    href="connect-to-cluster/"
+    icon="fa-thin fa-plug">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="connect-to-cluster/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/tls-encryption/connect-to-cluster.png" aria-hidden="true" />
-        <div class="title">Connect to clusters</div>
-      </div>
-      <div class="body">
-          Connect clients, tools, and APIs to encryption-enabled YugabyteDB clusters.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="TLS and authentication"
+    body="Use TLS encryption in conjunction with authentication."
+    href="tls-authentication/"
+    icon="fa-thin fa-user-lock">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="tls-authentication/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
-        <div class="title">TLS and authentication</div>
-      </div>
-      <div class="body">
-          Use TLS encryption in conjunction with authentication.
-      </div>
-    </a>
-  </div>
-
-</div>
+{{</index/block>}}

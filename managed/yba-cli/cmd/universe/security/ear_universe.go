@@ -24,6 +24,7 @@ var encryptionAtRestCmd = &cobra.Command{
 	Aliases: []string{"encryption-at-rest", "kms"},
 	Short:   "Encryption-at-rest settings for a universe",
 	Long:    "Encryption-at-rest settings for a universe",
+	Example: `yba universe security ear --name <universe-name> --operation <operation>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		universeName, err := cmd.Flags().GetString("name")
@@ -247,13 +248,15 @@ func earAPICall(
 		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 	}
 
-	taskUUID := r.GetTaskUUID()
 	logrus.Info(
 		fmt.Sprintf("Setting encryption at rest configuration in universe %s (%s)\n",
 			formatter.Colorize(universeName, formatter.GreenColor),
 			universeUUID,
 		))
 
-	upgrade.WaitForUpgradeUniverseTask(authAPI, universeName, universeUUID, taskUUID)
+	upgrade.WaitForUpgradeUniverseTask(authAPI, universeName, ybaclient.YBPTask{
+		TaskUUID:     util.GetStringPointer(r.GetTaskUUID()),
+		ResourceUUID: util.GetStringPointer(universeUUID),
+	})
 
 }

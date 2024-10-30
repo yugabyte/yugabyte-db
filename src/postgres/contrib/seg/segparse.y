@@ -3,6 +3,7 @@
 
 #include "postgres.h"
 
+#include <float.h>
 #include <math.h>
 
 #include "fmgr.h"
@@ -23,6 +24,8 @@
 
 static float seg_atof(const char *value);
 
+static int sig_digits(const char *value);
+
 static char strbuf[25] = {
 	'0', '0', '0', '0', '0',
 	'0', '0', '0', '0', '0',
@@ -38,13 +41,15 @@ static char strbuf[25] = {
 %expect 0
 %name-prefix="seg_yy"
 
-%union {
-	struct BND {
-		float val;
-		char  ext;
-		char  sigd;
+%union
+{
+	struct BND
+	{
+		float		val;
+		char		ext;
+		char		sigd;
 	} bnd;
-	char * text;
+	char	   *text;
 }
 %token <text> SEGFLOAT
 %token <text> RANGE
@@ -63,9 +68,9 @@ range: boundary PLUMIN deviation
 		result->lower = $1.val - $3.val;
 		result->upper = $1.val + $3.val;
 		sprintf(strbuf, "%g", result->lower);
-		result->l_sigd = Max(Min(6, significant_digits(strbuf)), Max($1.sigd, $3.sigd));
+		result->l_sigd = Max(sig_digits(strbuf), Max($1.sigd, $3.sigd));
 		sprintf(strbuf, "%g", result->upper);
-		result->u_sigd = Max(Min(6, significant_digits(strbuf)), Max($1.sigd, $3.sigd));
+		result->u_sigd = Max(sig_digits(strbuf), Max($1.sigd, $3.sigd));
 		result->l_ext = '\0';
 		result->u_ext = '\0';
 	}
@@ -119,19 +124,19 @@ range: boundary PLUMIN deviation
 boundary: SEGFLOAT
 	{
 		/* temp variable avoids a gcc 3.3.x bug on Sparc64 */
-		float val = seg_atof($1);
+		float		val = seg_atof($1);
 
 		$$.ext = '\0';
-		$$.sigd = significant_digits($1);
+		$$.sigd = sig_digits($1);
 		$$.val = val;
 	}
 	| EXTENSION SEGFLOAT
 	{
 		/* temp variable avoids a gcc 3.3.x bug on Sparc64 */
-		float val = seg_atof($2);
+		float		val = seg_atof($2);
 
 		$$.ext = $1[0];
-		$$.sigd = significant_digits($2);
+		$$.sigd = sig_digits($2);
 		$$.val = val;
 	}
 	;
@@ -139,10 +144,10 @@ boundary: SEGFLOAT
 deviation: SEGFLOAT
 	{
 		/* temp variable avoids a gcc 3.3.x bug on Sparc64 */
-		float val = seg_atof($1);
+		float		val = seg_atof($1);
 
 		$$.ext = '\0';
-		$$.sigd = significant_digits($1);
+		$$.sigd = sig_digits($1);
 		$$.val = val;
 	}
 	;
@@ -153,10 +158,19 @@ deviation: SEGFLOAT
 static float
 seg_atof(const char *value)
 {
-	Datum datum;
+	Datum		datum;
 
 	datum = DirectFunctionCall1(float4in, CStringGetDatum(value));
 	return DatumGetFloat4(datum);
+}
+
+static int
+sig_digits(const char *value)
+{
+	int			n = significant_digits(value);
+
+	/* Clamp, to ensure value will fit in sigd fields */
+	return Min(n, FLT_DIG);
 }
 
 

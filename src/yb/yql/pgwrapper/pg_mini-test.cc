@@ -74,18 +74,21 @@ using std::string;
 
 using namespace std::literals;
 
+DECLARE_bool(TEST_disable_flush_on_shutdown);
+DECLARE_bool(TEST_enable_pg_client_mock);
 DECLARE_bool(TEST_force_master_leader_resolution);
+DECLARE_bool(TEST_no_schedule_remove_intents);
+DECLARE_bool(delete_intents_sst_files);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_tracing);
-DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(enable_wait_queues);
+DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(pg_client_use_shared_memory);
-DECLARE_bool(ysql_yb_enable_replica_identity);
-DECLARE_bool(TEST_enable_pg_client_mock);
-DECLARE_bool(delete_intents_sst_files);
+DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_bool(use_bootstrap_intent_ht_filter);
-DECLARE_bool(TEST_no_schedule_remove_intents);
-DECLARE_bool(TEST_disable_flush_on_shutdown);
+DECLARE_bool(ysql_yb_ash_enable_infra);
+DECLARE_bool(ysql_yb_enable_ash);
+DECLARE_bool(ysql_yb_enable_replica_identity);
 
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
@@ -102,6 +105,7 @@ DECLARE_int32(tracing_level);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int32(yb_num_shards_per_tserver);
+DECLARE_int32(ysql_yb_ash_sample_size);
 
 DECLARE_int64(TEST_inject_random_delay_on_txn_status_response_ms);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
@@ -115,18 +119,14 @@ DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
 DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
 DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 
-DECLARE_uint64(max_clock_skew_usec);
-
 DECLARE_string(time_source);
 DECLARE_string(ysql_yb_default_replica_identity);
 
-DECLARE_bool(rocksdb_disable_compactions);
-DECLARE_uint64(pg_client_session_expiration_ms);
+DECLARE_uint64(consensus_max_batch_size_bytes);
+DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(pg_client_heartbeat_interval_ms);
-
-DECLARE_bool(ysql_yb_ash_enable_infra);
-DECLARE_bool(ysql_yb_enable_ash);
-DECLARE_int32(ysql_yb_ash_sample_size);
+DECLARE_uint64(pg_client_session_expiration_ms);
+DECLARE_uint64(rpc_max_message_size);
 
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_gauge_uint64(aborted_transactions_pending_cleanup);
@@ -2175,11 +2175,7 @@ TEST_F(PgMiniTest, CompactionAfterDBDrop) {
 // The test checks that YSQL doesn't wait for sent RPC response in case of process termination.
 TEST_F(PgMiniTest, NoWaitForRPCOnTermination) {
   auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
-  constexpr auto kRows = RegularBuildVsDebugVsSanitizers(1000000, 100000, 30000);
-  ASSERT_OK(conn.ExecuteFormat(
-      "INSERT INTO t SELECT s FROM generate_series(1, $0) AS s", kRows));
-  constexpr auto kLongTimeQuery = "SELECT COUNT(*) FROM t";
+  constexpr auto kLongTimeQuery = "SELECT pg_sleep(30)";
   std::atomic<MonoTime> termination_start;
   MonoTime termination_end;
   {
@@ -2192,11 +2188,12 @@ TEST_F(PgMiniTest, NoWaitForRPCOnTermination) {
       const auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(30);
       while (MonoTime::Now() < deadline) {
         const auto local_termination_start = MonoTime::Now();
-        auto res = ASSERT_RESULT(thread_conn.FetchFormat(
-          "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE query like '$0'",
-          kLongTimeQuery));
-        auto lines = PQntuples(res.get());
-        if (lines) {
+        const auto lines = ASSERT_RESULT(thread_conn.FetchRows<bool>(
+            Format(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE query like '$0'",
+                kLongTimeQuery)));
+        if (!lines.empty()) {
+          ASSERT_TRUE(lines.size() == 1 && lines.front());
           termination_start.store(local_termination_start, std::memory_order_release);
           break;
         }
@@ -2206,8 +2203,8 @@ TEST_F(PgMiniTest, NoWaitForRPCOnTermination) {
     latch.Wait();
     const auto res = conn.Fetch(kLongTimeQuery);
     ASSERT_NOK(res);
-    ASSERT_STR_CONTAINS(res.status().ToString(),
-                        "terminating connection due to administrator command");
+    ASSERT_TRUE(res.status().IsNetworkError());
+    ASSERT_STR_CONTAINS(res.status().ToString(), "server closed the connection unexpectedly");
     termination_end = MonoTime::Now();
   }
   const auto termination_duration =
@@ -2218,7 +2215,11 @@ TEST_F(PgMiniTest, NoWaitForRPCOnTermination) {
 
 TEST_F(PgMiniTest, ReadHugeRow) {
   constexpr size_t kNumColumns = 2;
-  constexpr size_t kColumnSize = 254000000;
+  constexpr size_t kColumnSize = 254000000 / RegularBuildVsSanitizers(1, 16);
+  if (IsSanitizer()) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_max_message_size) = kColumnSize + 1_MB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_max_batch_size_bytes) = kColumnSize - 1_KB - 1;
+  }
 
   std::string create_query = "CREATE TABLE test(pk INT PRIMARY KEY";
   for (size_t i = 0; i < kNumColumns; ++i) {

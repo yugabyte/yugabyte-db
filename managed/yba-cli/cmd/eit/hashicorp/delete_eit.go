@@ -12,9 +12,11 @@ import (
 
 // deleteHashicorpVaultEITCmd represents the eit command
 var deleteHashicorpVaultEITCmd = &cobra.Command{
-	Use:   "delete",
-	Short: "Delete a YugabyteDB Anywhere Hashicorp Vault encryption in transit configuration",
-	Long:  "Delete a Hashicorp Vault encryption in transit configuration in YugabyteDB Anywhere",
+	Use:     "delete",
+	Aliases: []string{"remove", "rm"},
+	Short:   "Delete a YugabyteDB Anywhere Hashicorp Vault encryption in transit configuration",
+	Long:    "Delete a Hashicorp Vault encryption in transit configuration in YugabyteDB Anywhere",
+	Example: `yba eit hashicorp-vault delete --name <config-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		eitutil.DeleteEITValidation(cmd)
 	},

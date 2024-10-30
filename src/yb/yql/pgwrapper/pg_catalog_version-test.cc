@@ -825,7 +825,7 @@ TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   CHECK_EQ(versions.size(), 1);
   ASSERT_OK(CheckMatch(versions.begin()->second, kCurrentCatalogVersion));
   // A global-impact DDL statement that increments catalog version still works.
-  ASSERT_OK(conn_yugabyte.Execute("ALTER ROLE yugabyte SUPERUSER"));
+  ASSERT_OK(conn_yugabyte.Execute("ALTER ROLE yugabyte NOSUPERUSER"));
   constexpr CatalogVersion kNewCatalogVersion{2, 2};
   versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
   CHECK_EQ(versions.size(), 1);
@@ -1157,7 +1157,7 @@ TEST_F(PgCatalogVersionTest, ResetIsGlobalDdlState) {
   ASSERT_OK(conn_yugabyte.Execute("SET yb_test_fail_next_inc_catalog_version=true"));
   // The following ALTER ROLE is a global impact DDL statement. It will
   // fail due to yb_test_fail_next_inc_catalog_version=true.
-  auto status = conn_yugabyte.Execute("ALTER ROLE yugabyte SUPERUSER");
+  auto status = conn_yugabyte.Execute("ALTER ROLE yugabyte NOSUPERUSER");
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(), "Failed increment catalog version as requested");
 
@@ -1438,7 +1438,9 @@ TEST_F(PgCatalogVersionTest, SqlCrossDBLoadWithDDL) {
 
   for (const auto& db_name : db_names) {
     // On each database, create the tables.
-    auto conn_test = ASSERT_RESULT(ConnectToDBAsUser(db_name, kTestUser));
+    auto conn = ASSERT_RESULT(ConnectToDB(db_name));
+    ASSERT_OK(conn.ExecuteFormat("GRANT ALL ON SCHEMA public TO $0", kTestUser));
+    ASSERT_OK(conn.ExecuteFormat("SET SESSION AUTHORIZATION $0", kTestUser));
     for (const auto& table_name : tableList) {
       auto query = Format(
           "CREATE TABLE IF NOT EXISTS $0 "
@@ -1451,7 +1453,7 @@ TEST_F(PgCatalogVersionTest, SqlCrossDBLoadWithDDL) {
           "v26 integer, v27 money, v28 JSONB, v29 TIMESTAMP, v30 bool)",
         table_name);
       LOG(INFO) << db_name << ":" << query;
-      ASSERT_OK(conn_test.Execute(query));
+      ASSERT_OK(conn.Execute(query));
     }
   }
   TestThreadHolder thread_holder;
@@ -1536,6 +1538,7 @@ TEST_F(PgCatalogVersionTest, NonIncrementingDDLMode) {
   const string kDatabaseName = "yugabyte";
 
   auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  ASSERT_OK(conn.Execute("GRANT CREATE ON SCHEMA public TO yb_db_admin"));
   ASSERT_OK(conn.Execute("SET ROLE yb_db_admin"));
   ASSERT_OK(conn.Execute("CREATE TABLE t1(a int)"));
   auto version = ASSERT_RESULT(GetCatalogVersion(&conn));
@@ -1672,6 +1675,23 @@ TEST_F(PgCatalogVersionTest, SimulateRollingUpgrade) {
   ASSERT_TRUE(status.IsNetworkError()) << status;
   const string msg = "permission denied for table t";
   ASSERT_STR_CONTAINS(status.ToString(), msg);
+}
+
+// This test that ALTER ROLE statement will increment catalog version
+// if --FLAGS_ysql_yb_enable_nop_alter_role_optimization=false.
+TEST_F(PgCatalogVersionTest, DisableNopAlterRoleOptimization) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto v1 = ASSERT_RESULT(GetCatalogVersion(&conn));
+  // This ALTER ROLE should be a nop DDL.
+  ASSERT_OK(conn.Execute("ALTER ROLE yugabyte SUPERUSER"));
+  auto v2 = ASSERT_RESULT(GetCatalogVersion(&conn));
+  ASSERT_EQ(v2, v1);
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "ysql_yb_enable_nop_alter_role_optimization", "false"));
+  // This ALTER ROLE is not a nop DDL because the nop alter role optimization is disabled.
+  ASSERT_OK(conn.Execute("ALTER ROLE yugabyte SUPERUSER"));
+  auto v3 = ASSERT_RESULT(GetCatalogVersion(&conn));
+  ASSERT_EQ(v3, v2 + 1);
 }
 
 } // namespace pgwrapper

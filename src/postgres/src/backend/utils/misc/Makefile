@@ -14,11 +14,25 @@ include $(top_builddir)/src/Makefile.global
 
 override CPPFLAGS := -I. -I$(srcdir) $(CPPFLAGS)
 
-OBJS = backend_random.o guc.o help_config.o pg_config.o pg_controldata.o \
-       pg_rusage.o ps_status.o queryenvironment.o rls.o sampling.o \
-       superuser.o timeout.o tzparser.o \
-       pg_yb_utils.o yb_ash.o yb_exceptions_for_func_pushdown.o \
-       yb_query_diagnostics.o yb_ysql_conn_mgr_helper.o
+OBJS = \
+	pg_yb_utils.o \
+	yb_ash.o \
+	yb_exceptions_for_func_pushdown.o \
+	yb_query_diagnostics.o \
+	yb_ysql_conn_mgr_helper.o \
+	guc.o \
+	help_config.o \
+	pg_config.o \
+	pg_controldata.o \
+	pg_rusage.o \
+	ps_status.o \
+	queryenvironment.o \
+	queryjumble.o \
+	rls.o \
+	sampling.o \
+	superuser.o \
+	timeout.o \
+	tzparser.o
 
 # This location might depend on the installation directories. Therefore
 # we can't substitute it into pg_config.h.

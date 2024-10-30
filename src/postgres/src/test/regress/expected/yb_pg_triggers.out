@@ -1,6 +1,32 @@
 --
 -- TRIGGERS
 --
+-- directory paths and dlsuffix are passed to us in environment variables
+\getenv libdir PG_LIBDIR
+\getenv dlsuffix PG_DLSUFFIX
+\set autoinclib :libdir '/autoinc' :dlsuffix
+\set refintlib :libdir '/refint' :dlsuffix
+\set regresslib :libdir '/regress' :dlsuffix
+CREATE FUNCTION autoinc ()
+	RETURNS trigger
+	AS :'autoinclib'
+	LANGUAGE C;
+CREATE FUNCTION check_primary_key ()
+	RETURNS trigger
+	AS :'refintlib'
+	LANGUAGE C;
+CREATE FUNCTION check_foreign_key ()
+	RETURNS trigger
+	AS :'refintlib'
+	LANGUAGE C;
+CREATE FUNCTION trigger_return_old ()
+        RETURNS trigger
+        AS :'regresslib'
+        LANGUAGE C;
+CREATE FUNCTION set_ttdummy (int4)
+        RETURNS int4
+        AS :'regresslib'
+        LANGUAGE C STRICT;
 create table pkeys (pkey1 int4 not null, pkey2 text not null);
 create table fkeys (fkey1 int4, fkey2 text, fkey3 int);
 create table fkeys2 (fkey21 int4, fkey22 text, pkey23 int not null);
@@ -443,20 +469,20 @@ SELECT * FROM main_table ORDER BY a, b;
 
 SELECT pg_get_triggerdef(oid, true) FROM pg_trigger WHERE tgrelid = 'main_table'::regclass AND tgname = 'modified_a';
                                                              pg_get_triggerdef
---------------------------------------------------------------------------------------------------------------------------------------------
- CREATE TRIGGER modified_a BEFORE UPDATE OF a ON main_table FOR EACH ROW WHEN (old.a <> new.a) EXECUTE PROCEDURE trigger_func('modified_a')
+-------------------------------------------------------------------------------------------------------------------------------------------
+ CREATE TRIGGER modified_a BEFORE UPDATE OF a ON main_table FOR EACH ROW WHEN (old.a <> new.a) EXECUTE FUNCTION trigger_func('modified_a')
 (1 row)
 
 SELECT pg_get_triggerdef(oid, false) FROM pg_trigger WHERE tgrelid = 'main_table'::regclass AND tgname = 'modified_a';
-                                                                  pg_get_triggerdef
------------------------------------------------------------------------------------------------------------------------------------------------------
- CREATE TRIGGER modified_a BEFORE UPDATE OF a ON public.main_table FOR EACH ROW WHEN ((old.a <> new.a)) EXECUTE PROCEDURE trigger_func('modified_a')
+                                                                 pg_get_triggerdef                                                                  
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ CREATE TRIGGER modified_a BEFORE UPDATE OF a ON public.main_table FOR EACH ROW WHEN ((old.a <> new.a)) EXECUTE FUNCTION trigger_func('modified_a')
 (1 row)
 
 SELECT pg_get_triggerdef(oid, true) FROM pg_trigger WHERE tgrelid = 'main_table'::regclass AND tgname = 'modified_any';
                                                                       pg_get_triggerdef
---------------------------------------------------------------------------------------------------------------------------------------------------------------
- CREATE TRIGGER modified_any BEFORE UPDATE OF a ON main_table FOR EACH ROW WHEN (old.* IS DISTINCT FROM new.*) EXECUTE PROCEDURE trigger_func('modified_any')
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+ CREATE TRIGGER modified_any BEFORE UPDATE OF a ON main_table FOR EACH ROW WHEN (old.* IS DISTINCT FROM new.*) EXECUTE FUNCTION trigger_func('modified_any')
 (1 row)
 
 DROP TRIGGER modified_a ON main_table;
@@ -479,8 +505,8 @@ CREATE TRIGGER after_upd_b_stmt_trig AFTER UPDATE OF b ON main_table
 FOR EACH STATEMENT EXECUTE PROCEDURE trigger_func('after_upd_b_stmt');
 SELECT pg_get_triggerdef(oid) FROM pg_trigger WHERE tgrelid = 'main_table'::regclass AND tgname = 'after_upd_a_b_row_trig';
                                                                 pg_get_triggerdef
---------------------------------------------------------------------------------------------------------------------------------------------------
- CREATE TRIGGER after_upd_a_b_row_trig AFTER UPDATE OF a, b ON public.main_table FOR EACH ROW EXECUTE PROCEDURE trigger_func('after_upd_a_b_row')
+-------------------------------------------------------------------------------------------------------------------------------------------------
+ CREATE TRIGGER after_upd_a_b_row_trig AFTER UPDATE OF a, b ON public.main_table FOR EACH ROW EXECUTE FUNCTION trigger_func('after_upd_a_b_row')
 (1 row)
 
 UPDATE main_table SET a = 50;
@@ -1133,15 +1159,15 @@ SELECT * from main_view order by a, b;
  a      | integer |           |          |
  b      | integer |           |          |
 Triggers:
-    after_del_stmt_trig AFTER DELETE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('after_view_del_stmt')
-    after_ins_stmt_trig AFTER INSERT ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('after_view_ins_stmt')
-    after_upd_stmt_trig AFTER UPDATE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('after_view_upd_stmt')
-    before_del_stmt_trig BEFORE DELETE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('before_view_del_stmt')
-    before_ins_stmt_trig BEFORE INSERT ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('before_view_ins_stmt')
-    before_upd_stmt_trig BEFORE UPDATE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('before_view_upd_stmt')
-    instead_of_delete_trig INSTEAD OF DELETE ON main_view FOR EACH ROW EXECUTE PROCEDURE view_trigger('instead_of_del')
-    instead_of_insert_trig INSTEAD OF INSERT ON main_view FOR EACH ROW EXECUTE PROCEDURE view_trigger('instead_of_ins')
-    instead_of_update_trig INSTEAD OF UPDATE ON main_view FOR EACH ROW EXECUTE PROCEDURE view_trigger('instead_of_upd')
+    after_del_stmt_trig AFTER DELETE ON main_view FOR EACH STATEMENT EXECUTE FUNCTION view_trigger('after_view_del_stmt')
+    after_ins_stmt_trig AFTER INSERT ON main_view FOR EACH STATEMENT EXECUTE FUNCTION view_trigger('after_view_ins_stmt')
+    after_upd_stmt_trig AFTER UPDATE ON main_view FOR EACH STATEMENT EXECUTE FUNCTION view_trigger('after_view_upd_stmt')
+    before_del_stmt_trig BEFORE DELETE ON main_view FOR EACH STATEMENT EXECUTE FUNCTION view_trigger('before_view_del_stmt')
+    before_ins_stmt_trig BEFORE INSERT ON main_view FOR EACH STATEMENT EXECUTE FUNCTION view_trigger('before_view_ins_stmt')
+    before_upd_stmt_trig BEFORE UPDATE ON main_view FOR EACH STATEMENT EXECUTE FUNCTION view_trigger('before_view_upd_stmt')
+    instead_of_delete_trig INSTEAD OF DELETE ON main_view FOR EACH ROW EXECUTE FUNCTION view_trigger('instead_of_del')
+    instead_of_insert_trig INSTEAD OF INSERT ON main_view FOR EACH ROW EXECUTE FUNCTION view_trigger('instead_of_ins')
+    instead_of_update_trig INSTEAD OF UPDATE ON main_view FOR EACH ROW EXECUTE FUNCTION view_trigger('instead_of_upd')
 
 -- Test dropping view triggers
 DROP TRIGGER instead_of_insert_trig ON main_view;
@@ -1157,13 +1183,13 @@ View definition:
     main_table.b
    FROM main_table;
 Triggers:
-    after_del_stmt_trig AFTER DELETE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('after_view_del_stmt')
-    after_ins_stmt_trig AFTER INSERT ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('after_view_ins_stmt')
-    after_upd_stmt_trig AFTER UPDATE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('after_view_upd_stmt')
-    before_del_stmt_trig BEFORE DELETE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('before_view_del_stmt')
-    before_ins_stmt_trig BEFORE INSERT ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('before_view_ins_stmt')
-    before_upd_stmt_trig BEFORE UPDATE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('before_view_upd_stmt')
-    instead_of_update_trig INSTEAD OF UPDATE ON main_view FOR EACH ROW EXECUTE PROCEDURE view_trigger('instead_of_upd')
+    after_del_stmt_trig AFTER DELETE ON main_view FOR EACH STATEMENT EXECUTE FUNCTION view_trigger('after_view_del_stmt')
+    after_ins_stmt_trig AFTER INSERT ON main_view FOR EACH STATEMENT EXECUTE FUNCTION view_trigger('after_view_ins_stmt')
+    after_upd_stmt_trig AFTER UPDATE ON main_view FOR EACH STATEMENT EXECUTE FUNCTION view_trigger('after_view_upd_stmt')
+    before_del_stmt_trig BEFORE DELETE ON main_view FOR EACH STATEMENT EXECUTE FUNCTION view_trigger('before_view_del_stmt')
+    before_ins_stmt_trig BEFORE INSERT ON main_view FOR EACH STATEMENT EXECUTE FUNCTION view_trigger('before_view_ins_stmt')
+    before_upd_stmt_trig BEFORE UPDATE ON main_view FOR EACH STATEMENT EXECUTE FUNCTION view_trigger('before_view_upd_stmt')
+    instead_of_update_trig INSTEAD OF UPDATE ON main_view FOR EACH ROW EXECUTE FUNCTION view_trigger('instead_of_upd')
 
 DROP VIEW main_view;
 --
@@ -1635,7 +1661,7 @@ select * from parent; select * from child;
 (1 row)
 
 delete from parent where aid = 1; -- should fail
-ERROR:  tuple to be updated was already modified by an operation triggered by the current command
+ERROR:  tuple to be deleted was already modified by an operation triggered by the current command
 HINT:  Consider using an AFTER trigger instead of a BEFORE trigger to propagate changes to other rows.
 select * from parent; select * from child;
  aid | val1 | val2 | val3 | val4 | bcnt
@@ -1888,10 +1914,6 @@ drop table my_table;
 create table parted_trig (a int) partition by list (a);
 create function trigger_nothing() returns trigger
   language plpgsql as $$ begin end; $$;
-create trigger failed before insert or update or delete on parted_trig
-  for each row execute procedure trigger_nothing();
-ERROR:  "parted_trig" is a partitioned table
-DETAIL:  Partitioned tables cannot have BEFORE / FOR EACH ROW triggers.
 create trigger failed instead of update on parted_trig
   for each row execute procedure trigger_nothing();
 ERROR:  "parted_trig" is a table
@@ -1969,7 +1991,7 @@ create trigger trg1 after insert on trigpart for each row execute procedure trig
  b      | integer |           |          |
 Partition of: trigpart FOR VALUES FROM (2000) TO (3000)
 Triggers:
-    trg1 AFTER INSERT ON trigpart3 FOR EACH ROW EXECUTE PROCEDURE trigger_nothing()
+    trg1 AFTER INSERT ON trigpart3 FOR EACH ROW EXECUTE FUNCTION trigger_nothing(), ON TABLE trigpart
 
 alter table trigpart detach partition trigpart3;
 drop trigger trg1 on trigpart3; -- fail due to "does not exist"
@@ -1987,7 +2009,7 @@ select tgrelid::regclass::text, tgname, tgfoid::regproc, tgenabled, tgisinternal
   tgrelid  | tgname |     tgfoid      | tgenabled | tgisinternal
 -----------+--------+-----------------+-----------+--------------
  trigpart  | trg1   | trigger_nothing | O         | f
- trigpart1 | trg1   | trigger_nothing | O         | t
+ trigpart1 | trg1   | trigger_nothing | O         | f
 (2 rows)
 
 create table trigpart3 (like trigpart);
@@ -1999,7 +2021,7 @@ create trigger trg1 after insert on trigpart3 for each row execute procedure tri
  a      | integer |           |          |
  b      | integer |           |          |
 Triggers:
-    trg1 AFTER INSERT ON trigpart3 FOR EACH ROW EXECUTE PROCEDURE trigger_nothing()
+    trg1 AFTER INSERT ON trigpart3 FOR EACH ROW EXECUTE FUNCTION trigger_nothing()
 
 alter table trigpart attach partition trigpart3 FOR VALUES FROM (2000) to (3000); -- fail
 ERROR:  trigger "trg1" for relation "trigpart3" already exists
@@ -2199,6 +2221,120 @@ NOTICE:  aasvogel <- woof!
 NOTICE:  trigger parted_trig on parted1_irreg AFTER INSERT for ROW: (a,b)=(3,aasvogel)
 NOTICE:  trigger parted_trig_odd on parted1_irreg AFTER INSERT for ROW: (a,b)=(3,aasvogel)
 drop table parted_irreg_ancestor;
+-- Before triggers and partitions
+create table parted (a int, b int, c text) partition by list (a);
+create table parted_1 partition of parted for values in (1)
+  partition by list (b);
+create table parted_1_1 partition of parted_1 for values in (1);
+create function parted_trigfunc() returns trigger language plpgsql as $$
+begin
+  new.a = new.a + 1;
+  return new;
+end;
+$$;
+insert into parted values (1, 1, 'uno uno v1');    -- works
+create trigger t before insert or update or delete on parted
+  for each row execute function parted_trigfunc();
+insert into parted values (1, 1, 'uno uno v2');    -- fail
+ERROR:  moving row to another partition during a BEFORE FOR EACH ROW trigger is not supported
+DETAIL:  Before executing trigger "t", the row was to be in partition "public.parted_1_1".
+update parted set c = c || 'v3';                   -- fail
+ERROR:  no partition of relation "parted" found for row
+DETAIL:  Partition key of the failing row contains (a) = (2).
+create or replace function parted_trigfunc() returns trigger language plpgsql as $$
+begin
+  new.b = new.b + 1;
+  return new;
+end;
+$$;
+insert into parted values (1, 1, 'uno uno v4');    -- fail
+ERROR:  moving row to another partition during a BEFORE FOR EACH ROW trigger is not supported
+DETAIL:  Before executing trigger "t", the row was to be in partition "public.parted_1_1".
+update parted set c = c || 'v5';                   -- fail
+ERROR:  no partition of relation "parted_1" found for row
+DETAIL:  Partition key of the failing row contains (b) = (2).
+create or replace function parted_trigfunc() returns trigger language plpgsql as $$
+begin
+  new.c = new.c || ' did '|| TG_OP;
+  return new;
+end;
+$$;
+insert into parted values (1, 1, 'uno uno');       -- works
+update parted set c = c || ' v6';                   -- works
+-- YB note: add order by desc to match PG ordering
+select tableoid::regclass, * from parted order by c desc;
+  tableoid  | a | b |                c
+------------+---+---+----------------------------------
+ parted_1_1 | 1 | 1 | uno uno v1 v6 did UPDATE
+ parted_1_1 | 1 | 1 | uno uno did INSERT v6 did UPDATE
+(2 rows)
+
+-- update itself moves tuple to new partition; trigger still works
+truncate table parted;
+create table parted_2 partition of parted for values in (2);
+insert into parted values (1, 1, 'uno uno v5');
+update parted set a = 2;
+select tableoid::regclass, * from parted;
+ tableoid | a | b |                      c                      
+----------+---+---+---------------------------------------------
+ parted_2 | 2 | 1 | uno uno v5 did INSERT did UPDATE did INSERT
+(1 row)
+
+-- both trigger and update change the partition
+create or replace function parted_trigfunc2() returns trigger language plpgsql as $$
+begin
+  new.a = new.a + 1;
+  return new;
+end;
+$$;
+create trigger t2 before update on parted
+  for each row execute function parted_trigfunc2();
+truncate table parted;
+insert into parted values (1, 1, 'uno uno v6');
+create table parted_3 partition of parted for values in (3);
+update parted set a = a + 1;
+select tableoid::regclass, * from parted;
+ tableoid | a | b |                      c                      
+----------+---+---+---------------------------------------------
+ parted_3 | 3 | 1 | uno uno v6 did INSERT did UPDATE did INSERT
+(1 row)
+
+-- there's no partition for a=0, but this update works anyway because
+-- the trigger causes the tuple to be routed to another partition
+update parted set a = 0;
+select tableoid::regclass, * from parted;
+  tableoid  | a | b |                                 c                                 
+------------+---+---+-------------------------------------------------------------------
+ parted_1_1 | 1 | 1 | uno uno v6 did INSERT did UPDATE did INSERT did UPDATE did INSERT
+(1 row)
+
+drop table parted;
+create table parted (a int, b int, c text) partition by list ((a + b));
+create or replace function parted_trigfunc() returns trigger language plpgsql as $$
+begin
+  new.a = new.a + new.b;
+  return new;
+end;
+$$;
+create table parted_1 partition of parted for values in (1, 2);
+create table parted_2 partition of parted for values in (3, 4);
+create trigger t before insert or update on parted
+  for each row execute function parted_trigfunc();
+insert into parted values (0, 1, 'zero win');
+insert into parted values (1, 1, 'one fail');
+ERROR:  moving row to another partition during a BEFORE FOR EACH ROW trigger is not supported
+DETAIL:  Before executing trigger "t", the row was to be in partition "public.parted_1".
+insert into parted values (1, 2, 'two fail');
+ERROR:  moving row to another partition during a BEFORE FOR EACH ROW trigger is not supported
+DETAIL:  Before executing trigger "t", the row was to be in partition "public.parted_2".
+select * from parted;
+ a | b |    c     
+---+---+----------
+ 1 | 1 | zero win
+(1 row)
+
+drop table parted;
+drop function parted_trigfunc();
 --
 -- Constraint triggers and partitioned tables
 create table parted_constr_ancestor (a int, b text)

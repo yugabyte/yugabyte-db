@@ -2,7 +2,7 @@
 #
 # Makefile for ecpg compatibility library
 #
-# Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/interfaces/ecpg/compatlib/Makefile
@@ -22,16 +22,15 @@ override CPPFLAGS := -I../include -I$(top_srcdir)/src/interfaces/ecpg/include \
 	-I$(libpq_srcdir) -DFRONTEND $(CPPFLAGS)
 override CFLAGS += $(PTHREAD_CFLAGS)
 
-SHLIB_LINK_INTERNAL = -L../ecpglib -lecpg -L../pgtypeslib -lpgtypes $(libpq)
+SHLIB_LINK_INTERNAL = -L../ecpglib -lecpg -L../pgtypeslib -lpgtypes $(libpq_pgport_shlib)
 SHLIB_LINK = $(filter -lintl -lm, $(LIBS)) $(PTHREAD_LIBS)
 SHLIB_PREREQS = submake-ecpglib submake-pgtypeslib
 
 SHLIB_EXPORTS = exports.txt
 
-# Need to recompile any libpgport object files
-LIBS := $(filter-out -lpgport, $(LIBS))
-
-OBJS= informix.o $(filter snprintf.o strnlen.o, $(LIBOBJS)) $(WIN32RES)
+OBJS = \
+	$(WIN32RES) \
+	informix.o
 
 PKG_CONFIG_REQUIRES_PRIVATE = libecpg libpgtypes
 
@@ -48,9 +47,6 @@ submake-pgtypeslib:
 # Shared library stuff
 include $(top_srcdir)/src/Makefile.shlib
 
-snprintf.c strnlen.c: % : $(top_srcdir)/src/port/%
-	rm -f $@ && $(LN_S) $< .
-
 install: all installdirs install-lib
 
 installdirs: installdirs-lib
@@ -58,6 +54,6 @@ installdirs: installdirs-lib
 uninstall: uninstall-lib
 
 clean distclean: clean-lib
-	rm -f $(OBJS) snprintf.c strnlen.c
+	rm -f $(OBJS)
 
-maintainer-clean: distclean maintainer-clean-lib
+maintainer-clean: distclean

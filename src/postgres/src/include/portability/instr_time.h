@@ -20,6 +20,9 @@
  *
  * INSTR_TIME_SET_CURRENT(t)		set t to current time
  *
+ * INSTR_TIME_SET_CURRENT_LAZY(t)	set t to current time if t is zero,
+ *									evaluates to whether t changed
+ *
  * INSTR_TIME_ADD(x, y)				x += y
  *
  * INSTR_TIME_SUBTRACT(x, y)		x -= y
@@ -43,7 +46,7 @@
  * Beware of multiple evaluations of the macro arguments.
  *
  *
- * Copyright (c) 2001-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2022, PostgreSQL Global Development Group
  *
  * src/include/portability/instr_time.h
  *
@@ -244,5 +247,10 @@ GetTimerFrequency(void)
 }
 
 #endif							/* WIN32 */
+
+/* same macro on all platforms */
+
+#define INSTR_TIME_SET_CURRENT_LAZY(t) \
+	(INSTR_TIME_IS_ZERO(t) ? INSTR_TIME_SET_CURRENT(t), true : false)
 
 #endif							/* INSTR_TIME_H */

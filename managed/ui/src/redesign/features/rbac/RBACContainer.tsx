@@ -45,16 +45,19 @@ const RBACComponent = (props: WithRouterProps) => {
       <Tab eventKey="role" title={'Roles'} unmountOnExit>
         <ManageRoles />
       </Tab>
-      <Tab eventKey="user-auth" title={'User Authentication'} unmountOnExit>
-        <UserAuthContainer isAdmin={isAdmin} />
-      </Tab>
+      {
+        !isNewAuthEnabled && (
+          <Tab eventKey="user-auth" title={'User Authentication'} unmountOnExit>
+            <UserAuthContainer isAdmin={isAdmin} />
+          </Tab>
+        )
+      }
       {isNewAuthEnabled && (
         <Tab
           eventKey="user-auth-new"
           title={
             <span>
-              <KeyIcon />
-              User Authentication New
+              User Authentication
             </span>
           }
           unmountOnExit

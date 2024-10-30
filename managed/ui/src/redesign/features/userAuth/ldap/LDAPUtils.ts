@@ -24,8 +24,9 @@ export const transformData = (values: LDAPFormProps): Record<string, any> => {
     ldap_port: ldap_port ?? '',
     ldap_basedn: ldap_basedn ?? '',
     enable_ldaps: `${security === 'enable_ldaps'}`,
-    enable_ldap_start_tls: `${security === 'enable_ldap_start_tls'}`
-  };
+    enable_ldap_start_tls: `${security === 'enable_ldap_start_tls'}`,
+    ldap_group_use_role_mapping: `${values.ldap_group_use_role_mapping}`
+  } as Record<keyof LDAPFormProps, any>;
 
   if (String(use_search_and_bind) === 'false') {
     transformedData.ldap_search_attribute = '';

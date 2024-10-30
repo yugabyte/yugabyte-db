@@ -17,9 +17,10 @@ import (
 
 // RestartCmd represents the universe upgrade restart command
 var RestartCmd = &cobra.Command{
-	Use:   "restart",
-	Short: "Restart a YugabyteDB Anywhere Universe",
-	Long:  "Restart a YugabyteDB Anywhere Universe",
+	Use:     "restart",
+	Short:   "Restart a YugabyteDB Anywhere Universe",
+	Long:    "Restart a YugabyteDB Anywhere Universe",
+	Example: "yba universe restart --name <universe-name>",
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		universeName, err := cmd.Flags().GetString("name")
@@ -92,12 +93,11 @@ var RestartCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		taskUUID := rUpgrade.GetTaskUUID()
 		logrus.Info(
 			fmt.Sprintf("Restarting universe %s\n",
 				formatter.Colorize(universeName, formatter.GreenColor)))
 
-		WaitForUpgradeUniverseTask(authAPI, universeName, universeUUID, taskUUID)
+		WaitForUpgradeUniverseTask(authAPI, universeName, rUpgrade)
 	},
 }
 

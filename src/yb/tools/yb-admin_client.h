@@ -210,6 +210,8 @@ class ClusterAdminClient {
   // List all tablet servers known to master
   Status ListAllTabletServers(bool exclude_dead = false);
 
+  Status RemoveTabletServer(const std::string& uuid);
+
   // List all masters
   Status ListAllMasters();
 
@@ -315,6 +317,18 @@ class ClusterAdminClient {
   // Note: Works with a tserver but is placed here (and not in yb-ts-cli) because it doesn't
   //       look like this workflow is a good fit there.
   Status UpgradeYsql(bool use_single_connection);
+
+  Status StartYsqlMajorVersionUpgradeInitdb();
+
+  // Returns error Result if the RPC failed, otherwise returns the response for the caller to parse
+  // for both whether next version's initdb is done, and whether there is an initdb (non-RPC)
+  // error.
+  Result<master::IsYsqlMajorVersionUpgradeInitdbDoneResponsePB>
+  IsYsqlMajorVersionUpgradeInitdbDone();
+
+  Status WaitForYsqlMajorVersionUpgradeInitdb();
+
+  Status RollbackYsqlMajorVersionUpgrade();
 
   // Set WAL retention time in secs for a table name.
   Status SetWalRetentionSecs(

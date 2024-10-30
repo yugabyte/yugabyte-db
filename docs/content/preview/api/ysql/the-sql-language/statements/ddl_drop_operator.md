@@ -4,7 +4,7 @@ headerTitle: DROP OPERATOR
 linkTitle: DROP OPERATOR
 description: Use the DROP OPERATOR statement to remove an operator.
 menu:
-  preview:
+  preview_api:
     identifier: ddl_drop_operator
     parent: statements
 aliases:

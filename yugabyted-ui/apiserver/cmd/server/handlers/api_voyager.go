@@ -7,51 +7,61 @@ import (
     "context"
     "encoding/json"
     "fmt"
+    "math"
     "net/http"
+    "os"
     "path/filepath"
+    "runtime"
     "strconv"
     "strings"
     "time"
-    "math"
 
     "github.com/jackc/pgtype"
+    "github.com/jackc/pgx/v4"
     "github.com/jackc/pgx/v4/pgxpool"
     "github.com/labstack/echo/v4"
 )
 
 const LOGGER_FILE_NAME = "api_voyager"
+const MIGRATION_CAVEATS_UI_DISPLAY_STR ="MIGRATION CAVEATS"
 
 // Gets one row for each unique migration_uuid, and also gets the highest migration_phase and
 // invocation for import/export
 // Need to ignore rows with migration_phase 3 i.e. schema analysis
 const RETRIEVE_ALL_VOYAGER_MIGRATIONS_SQL string = 
 `SELECT * FROM (
-    SELECT migration_uuid, highest_export_phase, MAX(invocation_sequence) AS
-    highest_export_invocation FROM (
-        SELECT migration_uuid, MAX(migration_phase) AS
-        highest_export_phase, invocation_sequence FROM (
-            SELECT migration_uuid, migration_phase, invocation_sequence FROM
-            ybvoyager_visualizer.ybvoyager_visualizer_metadata WHERE
-                migration_phase <= 4 AND migration_phase != 3
-        ) AS export_phase_rows GROUP BY migration_uuid, invocation_sequence
-    ) AS highest_export_rows GROUP BY migration_uuid, highest_export_phase
-) AS export FULL JOIN 
-(
-    SELECT migration_uuid, highest_import_phase, MAX(invocation_sequence) AS
-    highest_import_invocation FROM (
-        SELECT migration_uuid, MAX(migration_phase) AS
-        highest_import_phase, invocation_sequence FROM (
-            SELECT migration_uuid, migration_phase, invocation_sequence FROM
-            ybvoyager_visualizer.ybvoyager_visualizer_metadata WHERE migration_phase > 4
-        ) AS export_phase_rows GROUP BY migration_uuid, invocation_sequence
-    ) AS highest_import_rows GROUP BY migration_uuid, highest_import_phase
-) AS import USING (migration_uuid) FULL JOIN
-(
-    SELECT migration_uuid, lowest_phase, MIN(invocation_sequence) AS
-    lowest_invocation FROM (
-        SELECT migration_uuid, MIN(migration_phase) AS lowest_phase, invocation_sequence FROM
-        ybvoyager_visualizer.ybvoyager_visualizer_metadata GROUP BY migration_uuid, invocation_sequence
-    ) AS lowest_rows GROUP BY migration_uuid, lowest_phase
+
+    SELECT migration_uuid, migration_phase AS highest_export_phase,
+            MAX(invocation_sequence) AS highest_export_invocation
+    FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata
+    WHERE (migration_uuid, migration_phase) IN (
+            SELECT migration_uuid, MAX(migration_phase) AS highest_export_phase
+            FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata
+            WHERE migration_phase IN (4,2,1) GROUP BY migration_uuid
+    ) GROUP BY migration_uuid, migration_phase
+
+) AS export FULL JOIN (
+
+    SELECT migration_uuid, migration_phase AS highest_import_phase,
+            MAX(invocation_sequence) AS highest_import_invocation
+    FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata
+    WHERE (migration_uuid, migration_phase) IN (
+            SELECT migration_uuid, MAX(migration_phase) AS highest_export_phase
+            FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata
+            WHERE migration_phase > 4 AND migration_phase <=6 GROUP BY migration_uuid
+    ) GROUP BY migration_uuid, migration_phase
+
+) AS import USING (migration_uuid) FULL JOIN (
+
+    SELECT migration_uuid, migration_phase AS lowest_phase,
+            MIN(invocation_sequence) AS lowest_invocation
+    FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata
+    WHERE (migration_uuid, migration_phase) IN (
+            SELECT migration_uuid, MIN(migration_phase) AS lowest_phase
+            FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata
+            GROUP BY migration_uuid
+    ) GROUP BY migration_uuid, migration_phase
+
 ) AS lowest USING (migration_uuid)`
 
 const RETRIEVE_VOYAGER_MIGRATION_DETAILS string = "SELECT database_name, schema_name, " +
@@ -76,7 +86,7 @@ const RETRIEVE_MIGRATE_SCHEMA_PHASES_INFO string = "SELECT migration_UUID, " +
 
 const RETRIEVE_DATA_MIGRATION_METRICS string = "SELECT * FROM " +
     "ybvoyager_visualizer.ybvoyager_visualizer_table_metrics " +
-    "WHERE migration_UUID=$1" +
+    "WHERE migration_UUID=$1 " +
     "ORDER BY schema_name"
 
 const RETRIEVE_ASSESSMENT_REPORT string = "SELECT payload " +
@@ -394,7 +404,7 @@ func updateMigrationDetailStruct(log logger.Logger, conn *pgxpool.Pool,
         // Otherwise migration is complete => Completed
         if migrationPhase <= 1 {
             migrationDetailsStruct.Progress = "Assessment"
-        } else if migrationPhase < 5 || (migrationPhase <= 5 && !isCompleted) {
+        } else if migrationPhase < 4 || (migrationPhase == 5 && !isCompleted) {
             migrationDetailsStruct.Progress = "Schema migration"
         } else if migrationPhase < 6 || (migrationPhase <= 6 && !isCompleted) {
             migrationDetailsStruct.Progress = "Data migration"
@@ -460,14 +470,6 @@ func updateMigrationDetailStruct(log logger.Logger, conn *pgxpool.Pool,
         migrationDetailsStruct.Complexity = "N/A"
         if complexity.Status == pgtype.Present {
             migrationDetailsStruct.Complexity = complexity.String
-        } else {
-            log.Infof(fmt.Sprintf("Complexity not set for migration uuid: [%s]",
-                migrationDetailsStruct.MigrationUuid))
-            if migrationDetailsStruct.MigrationPhase >= 1 &&
-                migrationDetailsStruct.InvocationSequence >= 2 {
-                go helpers.CalculateAndUpdateComplexity(log, conn,
-                    migrationDetailsStruct.MigrationUuid, 1, 2)
-            }
         }
     }
     return nil
@@ -601,33 +603,56 @@ func getMigrateSchemaTaskInfoFuture(log logger.Logger, conn *pgxpool.Pool, migra
     migrateSchemaTaskInfo.CurrentAnalysisReport.RecommendedRefactoring.RefactorDetails =
         recommendedRefactoringList
 
-    conversionIssuesDetailsWithCountMap := map[string]models.UnsupportedSqlWithDetails{}
-    fmt.Println(migrateSchemaTaskInfo.SuggestionsErrors)
+    conversionIssuesForSuggestedRefacotring := map[string]models.UnsupportedSqlWithDetails{}
     for _, conversionIssue := range migrateSchemaTaskInfo.SuggestionsErrors {
-        fmt.Println(conversionIssue)
-        conversionIssuesByType, ok :=
-            conversionIssuesDetailsWithCountMap[conversionIssue.ObjectType]
-        if ok {
-            conversionIssuesByType.Count = conversionIssuesByType.Count + 1
-            conversionIssuesByType.SuggestionsErrors = append(
-                conversionIssuesByType.SuggestionsErrors, conversionIssue)
-        } else {
-            var newConversionIssuesByType models.UnsupportedSqlWithDetails
-            newConversionIssuesByType.Count = 1
-            newConversionIssuesByType.UnsupportedType = conversionIssue.ObjectType
-            newConversionIssuesByType.SuggestionsErrors =
-                append(newConversionIssuesByType.SuggestionsErrors, conversionIssue)
-            conversionIssuesDetailsWithCountMap[conversionIssue.ObjectType] =
+
+        if conversionIssue.IssueType == "migration_caveats" {
+            conversionIssuesByIssueType, ok :=
+                conversionIssuesForSuggestedRefacotring[conversionIssue.IssueType]
+
+            if ok {
+                conversionIssuesByIssueType.Count = conversionIssuesByIssueType.Count + 1
+                conversionIssuesByIssueType.SuggestionsErrors = append(
+                    conversionIssuesByIssueType.SuggestionsErrors, conversionIssue)
+                conversionIssuesForSuggestedRefacotring[conversionIssue.IssueType] =
+                    conversionIssuesByIssueType
+            } else {
+                var newConversionIssuesByType models.UnsupportedSqlWithDetails
+                newConversionIssuesByType.Count = 1
+                newConversionIssuesByType.UnsupportedType = MIGRATION_CAVEATS_UI_DISPLAY_STR
+                newConversionIssuesByType.SuggestionsErrors =
+                    append(newConversionIssuesByType.SuggestionsErrors, conversionIssue)
+                conversionIssuesForSuggestedRefacotring[conversionIssue.IssueType] =
                     newConversionIssuesByType
+            }
+
+        } else {
+
+            conversionIssuesByObjectType, ok :=
+            conversionIssuesForSuggestedRefacotring[conversionIssue.ObjectType]
+            if ok {
+                conversionIssuesByObjectType.Count = conversionIssuesByObjectType.Count + 1
+                conversionIssuesByObjectType.SuggestionsErrors = append(
+                    conversionIssuesByObjectType.SuggestionsErrors, conversionIssue)
+                conversionIssuesForSuggestedRefacotring[conversionIssue.ObjectType] =
+                    conversionIssuesByObjectType
+            } else {
+                var newConversionIssuesByType models.UnsupportedSqlWithDetails
+                newConversionIssuesByType.Count = 1
+                newConversionIssuesByType.UnsupportedType = conversionIssue.ObjectType
+                newConversionIssuesByType.SuggestionsErrors =
+                    append(newConversionIssuesByType.SuggestionsErrors, conversionIssue)
+                conversionIssuesForSuggestedRefacotring[conversionIssue.ObjectType] =
+                    newConversionIssuesByType
+            }
+
         }
     }
-    fmt.Println(conversionIssuesDetailsWithCountMap)
 
     var conversionIssuesDetailsWithCountList []models.UnsupportedSqlWithDetails
-    for _, value := range conversionIssuesDetailsWithCountMap {
+    for _, value := range conversionIssuesForSuggestedRefacotring {
         conversionIssuesDetailsWithCountList = append(conversionIssuesDetailsWithCountList, value)
     }
-    fmt.Print(conversionIssuesDetailsWithCountList)
 
     migrateSchemaTaskInfo.CurrentAnalysisReport.UnsupportedFeatures =
         conversionIssuesDetailsWithCountList
@@ -773,6 +798,14 @@ func fetchMigrateSchemaUIDetailsByUUID(log logger.Logger, conn *pgxpool.Pool, mi
     future <- MigrateSchemaUIDetailResponse
 }
 
+func extractValue(line string) string {
+    parts := strings.SplitN(line, "=", 2)
+    if len(parts) != 2 {
+        return ""
+    }
+    return strings.Trim(strings.TrimSpace(parts[1]), "\"")
+}
+
 func (c *Container) GetVoyagerAssesmentDetails(ctx echo.Context) error {
 
     migrationAssesmentInfo := models.MigrationAssesmentInfo{}
@@ -786,6 +819,58 @@ func (c *Container) GetVoyagerAssesmentDetails(ctx echo.Context) error {
     if err != nil {
         return ctx.String(http.StatusInternalServerError, err.Error())
     }
+    // Detect operating system
+    var osName string
+    if strings.EqualFold(runtime.GOOS, "linux") {
+      // Check if running in Docker
+      dockerFile, errDocker := os.ReadFile("/proc/1/cgroup")
+      if errDocker == nil && strings.EqualFold(string(dockerFile), "docker") {
+          osName = "docker"
+      } else {
+          file, errLinux := os.ReadFile("/etc/os-release")
+          if errLinux != nil {
+              c.logger.Errorf("Failed to read /etc/os-release: %v", errLinux)
+              osName = "unknown"
+          } else {
+              var versionID string
+              lines := strings.Split(string(file), "\n")
+              for _, line := range lines {
+                  if strings.HasPrefix(line, "ID=") {
+                      osName = extractValue(line)
+                  }
+                  if strings.HasPrefix(line, "VERSION_ID=") {
+                      versionID = extractValue(line)
+                  }
+                  if osName != "" && versionID != "" {
+                      break
+                  }
+              }
+
+              if strings.EqualFold(osName, "ubuntu") {
+                  if strings.HasPrefix(versionID, "22.") {
+                      osName = "ubuntu"
+                  } else {
+                      osName = "UbuntuGeneric"
+                  }
+              } else {
+                  distrosList := []string{"centos", "almalinux", "rhel"}
+                  isRHELDistro := false
+                  for _, distro := range distrosList {
+                      if strings.EqualFold(distro, osName) {
+                          isRHELDistro = true
+                          break
+                      }
+                  }
+                  if !isRHELDistro {
+                      osName = "INVALID_OS"
+                  }
+              }
+          }
+      }
+    } else if strings.EqualFold(runtime.GOOS, "darwin") {
+      osName = "darwin"
+    }
+    migrationAssesmentInfo.OperatingSystem = osName
 
     // Compute the top errors and suggestions
     var migrationUuid string
@@ -872,16 +957,8 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
     future := make(chan AssessmentReportQueryFuture)
     go getMigrationAssessmentReportFuture(c.logger, migrationUuid, conn, future)
 
-    assessmentReportVisualisationData := <- future
-
-    if assessmentReportVisualisationData.Error != nil {
-        return ctx.String(http.StatusInternalServerError,
-            assessmentReportVisualisationData.Error.Error())
-    }
-
-    assessmentReport := assessmentReportVisualisationData.Report.AssessmentJsonReport
-
     voyagerAssessmentReportResponse := models.MigrationAssessmentReport{
+        AssessmentStatus:       true,
         Summary:                models.AssessmentReportSummary{},
         SourceEnvironment:      models.SourceEnvironmentInfo{},
         SourceDatabase:         models.SourceDatabaseInfo{},
@@ -891,6 +968,19 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
         UnsupportedFunctions:   []models.UnsupportedSqlInfo{},
         UnsupportedFeatures:    []models.UnsupportedSqlInfo{},
     }
+
+    assessmentReportVisualisationData := <- future
+    if assessmentReportVisualisationData.Error != nil {
+        if assessmentReportVisualisationData.Error.Error() == pgx.ErrNoRows.Error() {
+            voyagerAssessmentReportResponse.AssessmentStatus = false
+            return ctx.JSON(http.StatusOK, voyagerAssessmentReportResponse)
+        } else {
+            return ctx.String(http.StatusInternalServerError,
+                assessmentReportVisualisationData.Error.Error())
+        }
+    }
+
+    assessmentReport := assessmentReportVisualisationData.Report.AssessmentJsonReport
 
     estimatedTime := int64(math.Round(
         assessmentReport.Sizing.SizingRecommendation.EstimatedTimeInMinForImport))
@@ -983,24 +1073,41 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
     voyagerAssessmentReportResponse.RecommendedRefactoring.RefactorDetails =
             recommendedRefactoringList
 
-    unsupportedDataTypeMap := make(map[string]int32)
+    unsupportedDataTypeMap := make(map[string]models.UnsupportedSqlInfo)
     for _, unsupportedDataType := range assessmentReport.UnsupportedDataTypes {
 
-        count, ok := unsupportedDataTypeMap[unsupportedDataType.DataType]
+        column := fmt.Sprintf("%s.%s.%s", unsupportedDataType.SchemaName,
+            unsupportedDataType.TableName, unsupportedDataType.ColumnName)
+        _, ok := unsupportedDataTypeMap[unsupportedDataType.DataType]
         if ok {
-
-            unsupportedDataTypeMap[unsupportedDataType.DataType] = count + 1
+            unsupportedDataTypeInfo := unsupportedDataTypeMap[unsupportedDataType.DataType]
+            unsupportedDataTypeInfo.Count += 1
+            unsupportedDataTypeInfo.Objects = append(unsupportedDataTypeInfo.Objects,
+                models.UnsupportedSqlObjectData{
+                    ObjectName: column,
+                    SqlStatement: column,
+                },
+            )
+            unsupportedDataTypeMap[unsupportedDataType.DataType] = unsupportedDataTypeInfo
         } else {
-            unsupportedDataTypeMap[unsupportedDataType.DataType] = 1
+            unsupportedDataTypeInfo := models.UnsupportedSqlInfo{
+                UnsupportedType: unsupportedDataType.DataType,
+                Count: 1,
+                Objects: []models.UnsupportedSqlObjectData{
+                    models.UnsupportedSqlObjectData{
+                        ObjectName: column,
+                        SqlStatement: column,
+                    },
+                },
+                DocsLink: "",
+            }
+            unsupportedDataTypeMap[unsupportedDataType.DataType] = unsupportedDataTypeInfo
         }
     }
 
     var unsupportedDataTypesList []models.UnsupportedSqlInfo
-    for key, value := range unsupportedDataTypeMap {
-        unsupportedSqlInfoTmp := models.UnsupportedSqlInfo{}
-        unsupportedSqlInfoTmp.Count = value
-        unsupportedSqlInfoTmp.UnsupportedType = key
-        unsupportedDataTypesList = append(unsupportedDataTypesList, unsupportedSqlInfoTmp)
+    for _, unsupportedDataType := range unsupportedDataTypeMap {
+        unsupportedDataTypesList = append(unsupportedDataTypesList, unsupportedDataType)
     }
 
     voyagerAssessmentReportResponse.UnsupportedDataTypes = unsupportedDataTypesList
@@ -1012,6 +1119,16 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
         unsupportedFeature := models.UnsupportedSqlInfo{}
         unsupportedFeature.UnsupportedType = unsupportedFeatureType.FeatureName
         unsupportedFeature.Count = int32(len(unsupportedFeatureType.Objects))
+        unsupportedFeature.DocsLink = unsupportedFeatureType.DocsLink
+        unsupportedFeature.Objects = []models.UnsupportedSqlObjectData{}
+        for _, obj := range unsupportedFeatureType.Objects {
+            unsupportedFeature.Objects = append(unsupportedFeature.Objects,
+                models.UnsupportedSqlObjectData{
+                    ObjectName: obj.ObjectName,
+                    SqlStatement: obj.SqlStatement,
+                },
+            )
+        }
         if (unsupportedFeature.Count != 0) {
             unsupportedFeaturesList = append(unsupportedFeaturesList, unsupportedFeature)
         }
@@ -1030,19 +1147,21 @@ func getMigrationAssessmentReportFuture(log logger.Logger, migrationUuid string,
         }
         log.Infof(fmt.Sprintf("migration uuid: %s", migrationUuid))
         var assessmentReportPayload string
+        var assessmentVisualisationData helpers.AssessmentVisualisationMetadata
         row := conn.QueryRow(context.Background(), RETRIEVE_ASSESSMENT_REPORT, migrationUuid)
+
         err := row.Scan(&assessmentReportPayload)
-        // log.Infof(fmt.Sprintf("assessment payload: [%s]", assessmentReportPayload))
+
         if err != nil {
+
             log.Errorf(fmt.Sprintf("[%s] Error while scaning results for query: [%s]",
-                LOGGER_FILE_NAME, "RETRIEVE_ALL_VOYAGER_MIGRATIONS_SQL"))
+                LOGGER_FILE_NAME, "RETRIEVE_ASSESSMENT_REPORT"))
             log.Errorf(err.Error())
             MigrationAsessmentReportResponse.Error = err
             future <- MigrationAsessmentReportResponse
             return
         }
 
-        var assessmentVisualisationData helpers.AssessmentVisualisationMetadata
         err = json.Unmarshal([]byte(assessmentReportPayload), &assessmentVisualisationData)
         if err != nil {
             log.Errorf(fmt.Sprintf("[%s] Error while JSON Unmarshal of the assessment report.",
@@ -1074,27 +1193,52 @@ func getMigrationAssessmentReportFuture(log logger.Logger, migrationUuid string,
         assessmentReportVisualisationData := <- future
 
         if assessmentReportVisualisationData.Error != nil {
-            return ctx.String(http.StatusInternalServerError,
-                assessmentReportVisualisationData.Error.Error())
+            if assessmentReportVisualisationData.Error.Error() == pgx.ErrNoRows.Error() {
+                return ctx.JSON(http.StatusOK, assessmentSourceDBDetails)
+            } else {
+                return ctx.String(http.StatusInternalServerError,
+                    assessmentReportVisualisationData.Error.Error())
+            }
         }
 
         assessmentReport := assessmentReportVisualisationData.Report.AssessmentJsonReport
 
         sqlMetadataList := []models.SqlObjectMetadata{}
         tableIndexList := assessmentReport.TableIndexStats
-        for _, dbObjectStat := range tableIndexList {
-            var sqlMetadata1 models.SqlObjectMetadata
-            sqlMetadata1.ObjectName = dbObjectStat.ObjectName
-            if dbObjectStat.IsIndex {
-                sqlMetadata1.SqlType = "Index"
-            } else {
-                sqlMetadata1.SqlType = "Table"
-            }
-            sqlMetadata1.RowCount = dbObjectStat.RowCount
-            sqlMetadata1.Iops = dbObjectStat.Reads
-            sqlMetadata1.Size = dbObjectStat.SizeInBytes
+        setForSchemaObjectPairs := map[string]int{}
+        for _, dbObjectStat := range assessmentReport.SchemaSummary.DBObjects {
+          var sqlMetadata1 models.SqlObjectMetadata
+          allObjectNames := dbObjectStat.ObjectNames
+          allObjectNamesArray := strings.Split(allObjectNames, ", ")
+          for _, currentObjName := range allObjectNamesArray {
+            sqlMetadata1.SqlType = strings.ToLower(dbObjectStat.ObjectType)
+
+            sqlMetadata1.Size = -1
+            sqlMetadata1.Iops = -1
+            sqlMetadata1.ObjectName = currentObjName
+            setForSchemaObjectPairs[strings.ToLower(currentObjName)] = len(sqlMetadataList)
             sqlMetadataList = append(sqlMetadataList, sqlMetadata1)
+          }
         }
+
+        for _, dbObjectStat := range tableIndexList {
+          currentObjectName := string(dbObjectStat.SchemaName) + "." +
+            string(dbObjectStat.ObjectName)
+          // Here searching with and without schema names is important because of inconsistent
+          // payload
+          objectNameLower := strings.ToLower(currentObjectName)
+          objectNameOnlyLower := strings.ToLower(string(dbObjectStat.ObjectName))
+          index, exists := setForSchemaObjectPairs[objectNameLower]
+          if !exists {
+            index, exists = setForSchemaObjectPairs[objectNameOnlyLower]
+          }
+          if exists {
+            sqlMetadataList[index].Iops = dbObjectStat.Reads
+            sqlMetadataList[index].Size = dbObjectStat.SizeInBytes
+            sqlMetadataList[index].ObjectName = currentObjectName
+          }
+        }
+
         assessmentSourceDBDetails.SqlObjectsMetadata = sqlMetadataList
 
         sqlObjectsList := []models.SqlObjectCount{}
@@ -1135,8 +1279,12 @@ func getMigrationAssessmentReportFuture(log logger.Logger, migrationUuid string,
         }
 
         if assessmentReportVisualisationData.Error != nil {
-            return ctx.String(http.StatusInternalServerError,
-                assessmentReportVisualisationData.Error.Error())
+            if assessmentReportVisualisationData.Error.Error() == pgx.ErrNoRows.Error() {
+                return ctx.JSON(http.StatusOK, targetRecommendationDetails)
+            } else {
+                return ctx.String(http.StatusInternalServerError,
+                    assessmentReportVisualisationData.Error.Error())
+            }
         }
 
         assessmentReport := assessmentReportVisualisationData.Report.AssessmentJsonReport

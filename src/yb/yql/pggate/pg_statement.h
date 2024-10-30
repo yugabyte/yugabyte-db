@@ -32,8 +32,7 @@
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
 // Statement types.
 // - Might use it for error reporting or debugging or if different operations share the same
@@ -68,40 +67,28 @@ enum class StmtOp {
 
 class PgStatement : public PgMemctx::Registrable {
  public:
-  //------------------------------------------------------------------------------------------------
-  // Constructors.
-  // pg_session is the session that this statement belongs to. If PostgreSQL cancels the session
-  // while statement is running, pg_session::sharedptr can still be accessed without crashing.
-  explicit PgStatement(PgSession::ScopedRefPtr pg_session)
-      : pg_session_(std::move(pg_session)), arena_(SharedArena()) {
+  explicit PgStatement(const PgSession::ScopedRefPtr& pg_session)
+      : pg_session_(pg_session), arena_(SharedArena()) {
   }
 
   virtual ~PgStatement() = default;
 
-  const PgSession::ScopedRefPtr& pg_session() { return pg_session_; }
-
-  // Statement type.
   virtual StmtOp stmt_op() const = 0;
-
-  //------------------------------------------------------------------------------------------------
-  static bool IsValidStmt(PgStatement* stmt, StmtOp op) {
-    return (stmt != nullptr && stmt->stmt_op() == op);
-  }
 
   const std::shared_ptr<ThreadSafeArena>& arena_ptr() const { return arena_; }
 
   ThreadSafeArena& arena() const { return *arena_; }
 
+  static bool IsValidStmt(const PgStatement* stmt, StmtOp op) {
+    return stmt && stmt->stmt_op() == op;
+  }
+
  protected:
   // YBSession that this statement belongs to.
   PgSession::ScopedRefPtr pg_session_;
 
-  // Execution status.
-  Status status_;
-  std::string errmsg_;
-
+ private:
   std::shared_ptr<ThreadSafeArena> arena_;
 };
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

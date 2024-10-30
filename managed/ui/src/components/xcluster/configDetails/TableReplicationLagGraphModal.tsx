@@ -7,7 +7,7 @@ import { Box, Typography, useTheme } from '@material-ui/core';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { ToggleButton } from '@material-ui/lab';
 
-import { getTableName, getTableUuid } from '../../../utils/tableUtils';
+import { getTableName, getTableUuid, getIsTableInfoMissing } from '../../../utils/tableUtils';
 import { YBMetricGraph } from '../../../redesign/components/YBMetrics/YBMetricGraph';
 import {
   DEFAULT_METRIC_TIME_RANGE_OPTION,
@@ -38,10 +38,10 @@ import {
 import { getAlertConfigurations } from '../../../actions/universe';
 import { YBModal, YBModalProps, YBTooltip } from '../../../redesign/components';
 
-import { MetricTimeRangeOption, XClusterTable } from '../XClusterTypes';
+import { MetricTimeRangeOption, XClusterReplicationTable } from '../XClusterTypes';
 
 interface TableReplicationLagGraphModalProps {
-  xClusterTable: XClusterTable;
+  xClusterTable: XClusterReplicationTable;
   queryEnabled: boolean;
   sourceUniverseUuid: string;
   nodePrefix: string;
@@ -136,10 +136,13 @@ export const TableReplicationLagGraphModal = ({
   const handleToggleShowAlertThresholdReferenceLine = () =>
     setShowAlertThresholdReferenceLIne(!showAlertThresholdReferenceLine);
 
+  const isTableInfoMissing = getIsTableInfoMissing(xClusterTable);
   const getUniqueTraceName = (_: MetricSettings, trace: MetricTrace) =>
-    `${i18next.t(`prometheusMetricTrace.${trace.metricName}`)} (${
-      xClusterTable.keySpace
-    }/${getTableName(xClusterTable)})`;
+    isTableInfoMissing
+      ? xClusterTable.tableUUID
+      : `${i18next.t(`prometheusMetricTrace.${trace.metricName}`)} (${
+          xClusterTable.keySpace
+        }/${getTableName(xClusterTable)})`;
 
   const menuItems = METRIC_TIME_RANGE_OPTIONS.map((option, idx) => {
     if (option.type === 'divider') {
@@ -170,16 +173,20 @@ export const TableReplicationLagGraphModal = ({
         {`${t('label.table')}: `}
         <b>{getTableName(xClusterTable)}</b>
       </p>
-      {xClusterTable.pgSchemaName && (
-        <p>
-          {`${t('label.schema')}: `}
-          <b>{xClusterTable.pgSchemaName}</b>
-        </p>
+      {!isTableInfoMissing && (
+        <>
+          {xClusterTable.pgSchemaName && (
+            <p>
+              {`${t('label.schema')}: `}
+              <b>{xClusterTable.pgSchemaName}</b>
+            </p>
+          )}
+          <p>
+            {`${t('label.database')}: `}
+            <b>{xClusterTable.keySpace}</b>
+          </p>
+        </>
       )}
-      <p>
-        {`${t('label.database')}: `}
-        <b>{xClusterTable.keySpace}</b>
-      </p>
       <Box display="flex" marginBottom={2}>
         <Box marginLeft="auto">
           {selectedTimeRangeOption.type === TimeRangeType.CUSTOM && (

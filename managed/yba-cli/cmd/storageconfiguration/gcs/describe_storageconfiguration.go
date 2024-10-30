@@ -15,6 +15,7 @@ var describeGCSStorageConfigurationCmd = &cobra.Command{
 	Aliases: []string{"get"},
 	Short:   "Describe a GCS YugabyteDB Anywhere storage configuration",
 	Long:    "Describe a GCS storage configuration in YugabyteDB Anywhere",
+	Example: `yba storage-config gcs describe --name <storage-configuration-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		storageconfigurationutil.DescribeStorageConfigurationValidation(cmd)
 	},

@@ -10,6 +10,12 @@ List YugabyteDB Anywhere Encryption at Rest Configurations
 yba ear list [flags]
 ```
 
+### Examples
+
+```
+yba ear list
+```
+
 ### Options
 
 ```

@@ -32,7 +32,7 @@ The [sample application](https://github.com/YugabyteDB-Samples/yugabytedb-azure-
 - The latest [Node.js version](https://github.com/nodejs/release#release-schedule)
 - The latest version of [Docker](https://docs.docker.com/desktop/)
 - A YugabyteDB cluster running [v2.19.2 or later](https://download.yugabyte.com/)
-- [ysqlsh](../../../admin/ysqlsh/) or [psql](https://www.postgresql.org/docs/current/app-psql.html)
+- [ysqlsh](../../../api/ysqlsh/) or [psql](https://www.postgresql.org/docs/current/app-psql.html)
 
 ## Deploy Azure OpenAI models
 
@@ -127,7 +127,7 @@ Navigate to the YugabyteDB UI to confirm that the database is up and running, at
 
 As long as the application provides a lodging recommendation service for San Francisco, you can leverage a publicly available Airbnb data set with over 7500 relevant listings:
 
-1. Create the `airbnb_listing` table (you can use [ysqlsh](../../../admin/ysqlsh/) or another comparable SQL tool instead of psql):
+1. Create the `airbnb_listing` table (you can use [ysqlsh](../../../api/ysqlsh/) or another comparable SQL tool instead of psql):
 
     ```sh
     psql -h 127.0.0.1 -p 5433 -U yugabyte -d yugabyte {project_dir}/sql/0_airbnb_listings.sql

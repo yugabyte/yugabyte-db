@@ -31,12 +31,15 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.proxy.h"
+#include "yb/master/master_types.pb.h"
 #include "yb/master/ts_descriptor.h"
+#include "yb/master/ts_manager.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
@@ -58,8 +61,8 @@ DECLARE_int32(committed_config_change_role_timeout_sec);
 DECLARE_string(TEST_master_universe_uuid);
 DECLARE_int32(TEST_mini_cluster_registration_wait_time_sec);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
+DECLARE_bool(persist_tserver_registry);
 DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
-DECLARE_bool(TEST_persist_tserver_registry);
 
 namespace yb::integration_tests {
 
@@ -396,7 +399,7 @@ TEST_F(MasterHeartbeatITest, PopulateHeartbeatResponseWhenRegistrationRequired) 
 }
 
 TEST_F(MasterHeartbeatITest, TestRegistrationThroughRaftPersisted) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_persist_tserver_registry) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
   CreateTable();
   // Stop all tservers so real heartbeats don't interfere with our fake ones.
   ShutdownAllTServers(mini_cluster_.get());
@@ -454,6 +457,42 @@ TEST_F(MasterHeartbeatITest, TestRegistrationThroughRaftPersisted) {
       });
   ASSERT_TRUE(live_ts_it == live_tservers_resp.servers().end())
       << "TS registered through raft config should be unresponsive, not live";
+}
+
+class PersistTabletServerRegistryUpgradeTest : public MasterHeartbeatITest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = false;
+    MasterHeartbeatITest::SetUp();
+  }
+};
+
+TEST_F(PersistTabletServerRegistryUpgradeTest, FlagFlip) {
+  // Ensure all tservers are registered.
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(3, true));
+  auto* mini_master = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster());
+  // Sanity check the tserver entries haven't been written. Use the persisted bit as a proxy.
+  for (const auto& desc : mini_master->ts_manager().GetAllDescriptors()) {
+    ASSERT_FALSE(desc->LockForRead()->pb.persisted());
+  }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
+  // Wait for the tserver entries to be persisted. Use the persisted bit as a proxy.
+  ASSERT_OK(WaitFor(
+      [mini_master]() -> Result<bool> {
+        auto descs = mini_master->ts_manager().GetAllDescriptors();
+        return std::all_of(descs.begin(), descs.end(), [](const auto& desc) {
+          return desc->LockForRead()->pb.persisted();
+        });
+      },
+      30s, "Not all tservers persisted yet."));
+  // Shutdown every tserver and restart the master. Verify the registry is populated.
+  // This is the blackbox validation that the tserver entries were persisted above.
+  ShutdownAllTServers(mini_cluster_.get());
+  ShutdownAllMasters(mini_cluster_.get());
+  ASSERT_OK(StartAllMasters(mini_cluster_.get()));
+  ASSERT_EQ(
+      ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->ts_manager().GetAllDescriptors().size(),
+      3);
 }
 
 class MasterHeartbeatITestWithUpgrade : public YBTableTestBase {

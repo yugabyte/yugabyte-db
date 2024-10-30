@@ -13,6 +13,44 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## v1.8.4 - October 29, 2024
+
+### New features
+
+- Adaptive parallelism. Introduced the ability to dynamically adjust the number of parallel jobs in the [import data](../reference/data-migration/import-data/) command based on real-time CPU and memory use of the YugabyteDB cluster. This prevents resource under- and over-utilization, optimizes import speeds, and enhances efficiency. It also ensures stability across both snapshot and live migration phases without the need for manual intervention. Available in YugabyteDB versions {{<release "2.20.8.0">}}, v2024.1.4.0, v2024.2.0.0, or later.
+
+- Detect unsupported query constructs. The [assess-migration](../reference/assess-migration/) command can now detect and report SQL queries containing unsupported features and constructs, such as advisory locks, system columns, and XML functions. This helps identify potential issues early in the migration process.
+
+- Guardrails for YugabyteDB Voyager commands. Added checks to validate source/target database permissions, verify binary dependencies, and check database version compatibility for PostgreSQL in all [yb-voyager](../reference/yb-voyager-cli/) commands. This feature is currently disabled by default; to enable it, use the `--run-guardrails-checks` flag during assess-migration, export data, and import data phases.
+
+### Enhancements
+
+- Added support in [assess-migration](../reference/assess-migration/) and [analyze-schema](../reference/schema-migration/analyze-schema/) commands to report unsupported datatypes for live migration during fall-forward/fall-back, such as user-defined types, array of enums, and so on.
+- Improved coverage of reporting PostGIS datatypes by including BOX2D, BOX3D, and TOPOGEOMETRY in the assess-migration and analyze-schema report.
+- Included Voyager version details in assess-migration and analyze-schema reports.
+- Added a confirmation prompt (yes/no) for start clean during data export, allowing users to confirm before proceeding.
+- Enhanced export and import command output to display exported/imported table list by row count, with the largest tables first.
+
+### Bug fixes
+
+- Fixed [import data](../reference/data-migration/import-data/) and `import data file` commands to ensure batches created from data files don't exceed the default batch size limit (200MB), preventing "RPC message too long" errors with large rows. Also, added an immediate check to error out for single row size over 200MB.
+- Fixed an issue in `analyze-schema` where partitioned tables were incorrectly reported as having insufficient columns in the primary key constraint due to a regex misidentifying the CONSTRAINT clause before primary key definition.
+- Fixed the OPERATOR object names in the schema summary of `assess-migration` and `analyze-schema` reports, and renamed the INDEX, TRIGGER, and POLICY objects by appending the table name to the objects for unique identification (using the format `<object_name> ON <table_name>`).
+
+## v1.8.3 - October 15, 2024
+
+### Enhancements
+
+- analyze-schema now reports the [unsupported datatypes](../known-issues/postgresql/#unsupported-datatypes-by-yugabytedb) by YugabyteDB (such as PostGIS types, geometry native types, and so on) and the [datatypes not supported during live migration](../known-issues/postgresql/#unsupported-datatypes-by-voyager-during-live-migration).
+- The assessment report now reports the PostGIS datatypes (geometry and geography) under "Unsupported datatypes".
+- The assess-migration command now reports the unsupported BRIN and SPGIST index methods from PostgreSQL source.
+- Improved console output of the export schema command in case of MVIEW sizing recommendations.
+
+### Bug fixes
+
+- Fixed an issue in the streaming phase of the import data command that only occurred in the case of unique key conflict events. The producer [goroutine](https://go.dev/tour/concurrency/1) (which checks for conflicts, calculates the event's hash, and places them on a channel for consumption) was blocked because the channel was full and, after processing these events, the consumer goroutine couldn't clear the channel due to a lock held by the producer, causing a deadlock.
+- Fixed a syntax error in the data import streaming phase caused by update events with a uuid column and a JSON column containing single quotes.
+
 ## v1.8.2 - October 1, 2024
 
 ### Enhancements

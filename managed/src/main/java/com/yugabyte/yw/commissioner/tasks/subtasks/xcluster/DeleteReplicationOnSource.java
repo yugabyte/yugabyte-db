@@ -24,9 +24,15 @@ public class DeleteReplicationOnSource extends XClusterConfigTaskBase {
     super(baseTaskDependencies, xClusterUniverseService);
   }
 
+  public static class Params extends XClusterConfigTaskParams {
+    // The parent xCluster config must be stored in xClusterConfig field.
+    // Whether the client RPC call ignore errors during replication deletion.
+    public boolean ignoreErrors;
+  }
+
   @Override
-  protected XClusterConfigTaskParams taskParams() {
-    return (XClusterConfigTaskParams) taskParams;
+  protected Params taskParams() {
+    return (Params) taskParams;
   }
 
   @Override
@@ -64,7 +70,13 @@ public class DeleteReplicationOnSource extends XClusterConfigTaskBase {
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
-      Throwables.propagate(e);
+      if (!taskParams().ignoreErrors) {
+        Throwables.propagate(e);
+      }
+      log.debug(
+          "Ignoring failure of {} task as ignore error was set to {}",
+          getName(),
+          taskParams().ignoreErrors);
     }
     log.debug(
         "XCluster delete replication on source universe completed for xClusterConfig: {}",

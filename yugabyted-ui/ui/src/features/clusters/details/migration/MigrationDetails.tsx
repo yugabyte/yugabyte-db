@@ -31,8 +31,8 @@ export const MigrationDetails: FC<MigrationDetailsProps> = ({
   return (
     <Box ml={-2} pt={2}>
       <Divider orientation="horizontal" />
-      <Box display="flex">
-        <Box width={300} flexShrink={0}>
+      <Box display="flex" flexDirection="column">
+        <Box flexShrink={0} >
           <MigrationTiles
             steps={steps}
             currentStep={selectedStep}
@@ -44,9 +44,9 @@ export const MigrationDetails: FC<MigrationDetailsProps> = ({
           />
         </Box>
         <Box mr={2}>
-          <Divider orientation="vertical" />
+          <Divider orientation="horizontal" />
         </Box>
-        <Box flex={1} mt={3} minWidth={0}>
+        <Box ml={4} mt={3} minWidth={0}>
           <MigrationStep
             steps={steps}
             migration={migration}

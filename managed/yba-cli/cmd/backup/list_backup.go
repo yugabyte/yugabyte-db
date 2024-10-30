@@ -20,9 +20,12 @@ import (
 
 // listBackupCmd represents the list backup command
 var listBackupCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List YugabyteDB Anywhere backups",
-	Long:  "List backups in YugabyteDB Anywhere",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List YugabyteDB Anywhere backups",
+	Long:    "List backups in YugabyteDB Anywhere",
+	Example: `yba backup list --universe-uuids <universe-uuid-1>,<universe-uuid-2> \
+	--universe-names <universe-name-1>,<universe-name-2>`,
 	Run: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
@@ -50,6 +53,22 @@ var listBackupCmd = &cobra.Command{
 			if strings.Compare(s.GetType(), util.StorageCustomerConfigType) == 0 {
 				backup.StorageConfigs = append(backup.StorageConfigs, s)
 			}
+		}
+
+		backup.KMSConfigs = make([]util.KMSConfig, 0)
+		kmsConfigs, response, err := authAPI.ListKMSConfigs().Execute()
+		if err != nil {
+			errMessage := util.ErrorFromHTTPResponse(response, err,
+				"Backup", "List - Get KMS Configurations")
+			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		}
+
+		for _, k := range kmsConfigs {
+			kmsConfig, err := util.ConvertToKMSConfig(k)
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			backup.KMSConfigs = append(backup.KMSConfigs, kmsConfig)
 		}
 
 		backupCtx := formatter.Context{

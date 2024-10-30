@@ -224,9 +224,9 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(UNIVERSE_CREATE_TASK_SEQUENCE, subTasksByPosition);
-    taskInfo = TaskInfo.getOrBadRequest(taskInfo.getTaskUUID());
+    taskInfo = TaskInfo.getOrBadRequest(taskInfo.getUuid());
     taskParams = Json.fromJson(taskInfo.getTaskParams(), UniverseDefinitionTaskParams.class);
-    taskParams.setPreviousTaskUUID(taskInfo.getTaskUUID());
+    taskParams.setPreviousTaskUUID(taskInfo.getUuid());
     // Retry the task.
     taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
@@ -245,9 +245,9 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(UNIVERSE_CREATE_TASK_SEQUENCE, subTasksByPosition);
-    taskInfo = TaskInfo.getOrBadRequest(taskInfo.getTaskUUID());
+    taskInfo = TaskInfo.getOrBadRequest(taskInfo.getUuid());
     taskParams = Json.fromJson(taskInfo.getTaskParams(), UniverseDefinitionTaskParams.class);
-    taskParams.setPreviousTaskUUID(taskInfo.getTaskUUID());
+    taskParams.setPreviousTaskUUID(taskInfo.getUuid());
     primaryCluster.userIntent.enableYCQL = true;
     primaryCluster.userIntent.enableYCQLAuth = true;
     primaryCluster.userIntent.ycqlPassword = "Admin@123";

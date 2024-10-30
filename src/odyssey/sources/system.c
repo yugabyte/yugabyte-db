@@ -397,6 +397,8 @@ static inline void od_system_server(void *arg)
 		od_worker_pool_feed(worker_pool, msg);
 		while (od_atomic_u32_of(&router->clients_routing) >=
 		       (uint32_t)instance->config.client_max_routing) {
+			od_debug(&instance->logger, "server", NULL, NULL,
+				"client_max_routing limit hit. waiting for free slot...");
 			machine_sleep(1);
 		}
 	}

@@ -142,7 +142,13 @@ typedef enum statementType
   CatCacheIdMisses_76,
   CatCacheIdMisses_77,
   CatCacheIdMisses_78,
-  CatCacheIdMisses_End = CatCacheIdMisses_78,
+  CatCacheIdMisses_79,
+  CatCacheIdMisses_80,
+  CatCacheIdMisses_81,
+  CatCacheIdMisses_82,
+  CatCacheIdMisses_83,
+  CatCacheIdMisses_84,
+  CatCacheIdMisses_End = CatCacheIdMisses_84,
   CatCacheTableMisses_Start,
   CatCacheTableMisses_0 = CatCacheTableMisses_Start,
   CatCacheTableMisses_1,
@@ -191,7 +197,10 @@ typedef enum statementType
   CatCacheTableMisses_44,
   CatCacheTableMisses_45,
   CatCacheTableMisses_46,
-  CatCacheTableMisses_End = CatCacheTableMisses_46,
+  CatCacheTableMisses_47,
+  CatCacheTableMisses_48,
+  CatCacheTableMisses_49,
+  CatCacheTableMisses_End = CatCacheTableMisses_49,
   kMaxStatementType
 } statementType;
 int num_entries = kMaxStatementType;
@@ -244,6 +253,7 @@ void		_PG_init(void);
 /*
  * Variables used for storing the previous values of used hooks.
  */
+static shmem_request_hook_type prev_shmem_request_hook = NULL;
 static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
 static ExecutorStart_hook_type prev_ExecutorStart = NULL;
 static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
@@ -252,6 +262,7 @@ static ExecutorFinish_hook_type prev_ExecutorFinish = NULL;
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
 
 static void set_metric_names(void);
+static void ybpgm_shmem_request(void);
 static void ybpgm_startup_hook(void);
 static Size ybpgm_memsize(void);
 static bool isTopLevelStatement(void);
@@ -260,10 +271,10 @@ static void ybpgm_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, uin
                               bool execute_once);
 static void ybpgm_ExecutorFinish(QueryDesc *queryDesc);
 static void ybpgm_ExecutorEnd(QueryDesc *queryDesc);
-static void ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
+static void ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString, bool readOnlyTree,
                                  ProcessUtilityContext context,
                                  ParamListInfo params, QueryEnvironment *queryEnv,
-                                 DestReceiver *dest, char *completionTag);
+                                 DestReceiver *dest, QueryCompletion *qc);
 static void ybpgm_Store(statementType type, uint64_t time, uint64_t rows);
 static void ybpgm_StoreCount(statementType type, uint64_t time, uint64_t count);
 
@@ -504,7 +515,7 @@ pullRpczEntries(void)
       rpcz[i].query_start_timestamp = beentry->st_activity_start_timestamp;
 
       rpcz[i].backend_type = (char *) palloc(40);
-      strcpy(rpcz[i].backend_type, pgstat_get_backend_desc(beentry->st_backendType));
+      strcpy(rpcz[i].backend_type, GetBackendTypeDesc(beentry->st_backendType));
 
       rpcz[i].backend_active = 0;
       rpcz[i].backend_status = (char *) palloc(30);
@@ -608,74 +619,67 @@ ws_sigterm_handler(SIGNAL_ARGS)
 void
 webserver_worker_main(Datum unused)
 {
-  YBCInitThreading();
-  /*
-   * We call YBCInit here so that HandleYBStatus can correctly report potential error.
-   */
-  HandleYBStatus(YBCInit(NULL /* argv[0] */, palloc, NULL /* cstring_to_text_with_len_fn */));
+	YBCInitThreading();
+	/*
+	* We call YBCInit here so that HandleYBStatus can correctly report potential error.
+	*/
+	HandleYBStatus(YBCInit(NULL /* argv[0] */, palloc, NULL /* cstring_to_text_with_len_fn */));
 
-  backendStatusArray = getBackendStatusArray();
+	backendStatusArray = getBackendStatusArray();
 
-  BackgroundWorkerUnblockSignals();
+	BackgroundWorkerUnblockSignals();
 
-  /*
-   * Assert that shared memory is allocated to backendStatusArray before this webserver
-   * is started.
-  */
-  if (!backendStatusArray)
-    ereport(FATAL,
-            (errcode(ERRCODE_INTERNAL_ERROR),
-             errmsg("Shared memory not allocated to BackendStatusArray before starting YSQL webserver")));
+	/*
+	* Assert that shared memory is allocated to backendStatusArray before this webserver
+	* is started.
+	*/
+	if (!backendStatusArray)
+		ereport(FATAL,
+			(errcode(ERRCODE_INTERNAL_ERROR),
+			 errmsg("Shared memory not allocated to BackendStatusArray before starting YSQL webserver")));
 
-  webserver = CreateWebserver(ListenAddresses, port);
+	webserver = CreateWebserver(ListenAddresses, port);
 
-  RegisterMetrics(ybpgm_table, num_entries, metric_node_name);
+	RegisterMetrics(ybpgm_table, num_entries, metric_node_name);
 
-  postgresCallbacks callbacks;
-  callbacks.pullRpczEntries      = pullRpczEntries;
-  callbacks.freeRpczEntries      = freeRpczEntries;
-  callbacks.getTimestampTz       = GetCurrentTimestamp;
-  callbacks.getTimestampTzDiffMs = getElapsedMs;
-  callbacks.getTimestampTzToStr  = timestamptz_to_str;
+	postgresCallbacks callbacks;
+	callbacks.pullRpczEntries      = pullRpczEntries;
+	callbacks.freeRpczEntries      = freeRpczEntries;
+	callbacks.getTimestampTz       = GetCurrentTimestamp;
+	callbacks.getTimestampTzDiffMs = getElapsedMs;
+	callbacks.getTimestampTzToStr  = timestamptz_to_str;
 
-  YbConnectionMetrics conn_metrics;
-  conn_metrics.max_conn = &MaxConnections;
-  conn_metrics.too_many_conn = yb_too_many_conn;
-  conn_metrics.new_conn = yb_new_conn;
+	YbConnectionMetrics conn_metrics;
+	conn_metrics.max_conn = &MaxConnections;
+	conn_metrics.too_many_conn = yb_too_many_conn;
+	conn_metrics.new_conn = yb_new_conn;
 
-  RegisterRpczEntries(&callbacks, &num_backends, &rpcz, &conn_metrics);
-  HandleYBStatus(StartWebserver(webserver));
+	RegisterRpczEntries(&callbacks, &num_backends, &rpcz, &conn_metrics);
+	HandleYBStatus(StartWebserver(webserver));
 
 	pqsignal(SIGHUP, ws_sighup_handler);
 	pqsignal(SIGTERM, ws_sigterm_handler);
 
-  SetWebserverConfig(webserver, log_accesses, log_tcmalloc_stats,
-                     webserver_profiler_sample_freq_bytes);
+	SetWebserverConfig(webserver, log_accesses, log_tcmalloc_stats,
+					   webserver_profiler_sample_freq_bytes);
 
-  int rc;
-  while (!got_SIGTERM)
-  {
-    rc = WaitLatch(MyLatch, WL_LATCH_SET | WL_POSTMASTER_DEATH, -1, PG_WAIT_EXTENSION);
-    ResetLatch(MyLatch);
+	int rc;
+	while (!got_SIGTERM)
+	{
+		rc = WaitLatch(MyLatch, WL_LATCH_SET | WL_POSTMASTER_DEATH, -1, PG_WAIT_EXTENSION);
+		ResetLatch(MyLatch);
 
-		if (rc & WL_POSTMASTER_DEATH)
-			break;
+			if (rc & WL_POSTMASTER_DEATH)
+				break;
 
-    if (got_SIGHUP)
-    {
-      got_SIGHUP = false;
-      ProcessConfigFile(PGC_SIGHUP);
-      SetWebserverConfig(webserver, log_accesses, log_tcmalloc_stats,
-                         webserver_profiler_sample_freq_bytes);
-    }
-  }
-
-  if (rpcz != NULL && ybrpczMemoryContext != NULL)
-  {
-    MemoryContext oldcontext = MemoryContextSwitchTo(ybrpczMemoryContext);
-    pfree(rpcz);
-    MemoryContextSwitchTo(oldcontext);
-  }
+		if (got_SIGHUP)
+		{
+			got_SIGHUP = false;
+			ProcessConfigFile(PGC_SIGHUP);
+			SetWebserverConfig(webserver, log_accesses, log_tcmalloc_stats,
+							   webserver_profiler_sample_freq_bytes);
+		}
+	}
 
 	if (webserver)
 	{
@@ -683,10 +687,17 @@ webserver_worker_main(Datum unused)
 		webserver = NULL;
 	}
 
-  if (rc & WL_POSTMASTER_DEATH)
-      proc_exit(1);
+	if (rpcz != NULL && ybrpczMemoryContext != NULL)
+	{
+		MemoryContext oldcontext = MemoryContextSwitchTo(ybrpczMemoryContext);
+		pfree(rpcz);
+		MemoryContextSwitchTo(oldcontext);
+	}
 
-  proc_exit(0);
+	if (rc & WL_POSTMASTER_DEATH)
+		proc_exit(1);
+
+	proc_exit(0);
 }
 
 /*
@@ -697,8 +708,6 @@ _PG_init(void)
 {
   if (!process_shared_preload_libraries_in_progress)
     return;
-
-  RequestAddinShmemSpace(ybpgm_memsize());
 
   /*
    * Parameters that we expect to receive from the tserver process when it starts up postmaster.
@@ -753,6 +762,10 @@ _PG_init(void)
   /*
    * Set the value of the hooks.
    */
+  
+  prev_shmem_request_hook = shmem_request_hook;
+	shmem_request_hook = ybpgm_shmem_request;
+
   prev_shmem_startup_hook = shmem_startup_hook;
   shmem_startup_hook = ybpgm_startup_hook;
 
@@ -772,6 +785,20 @@ _PG_init(void)
   ProcessUtility_hook = ybpgm_ProcessUtility;
   static_assert(SysCacheSize == CatCacheIdMisses_End - CatCacheIdMisses_Start + 1,
 				"Wrong catalog cache number");
+}
+
+/*
+ * shmem_request hook: request additional shared resources.  We'll allocate or
+ * attach to the shared resources in ybpgm_startup_hook().
+ */
+static void
+ybpgm_shmem_request(void)
+{
+	if (prev_shmem_request_hook)
+		prev_shmem_request_hook();
+
+	RequestAddinShmemSpace(ybpgm_memsize());
+	RequestNamedLWLockTranche("yb_pg_metrics", 1);
 }
 
 /*
@@ -818,7 +845,7 @@ ybpgm_ExecutorStart(QueryDesc *queryDesc, int eflags)
   {
     MemoryContext oldcxt;
     oldcxt = MemoryContextSwitchTo(queryDesc->estate->es_query_cxt);
-    queryDesc->totaltime = InstrAlloc(1, INSTRUMENT_TIMER);
+    queryDesc->totaltime = InstrAlloc(1, INSTRUMENT_TIMER, false);
     MemoryContextSwitchTo(oldcxt);
   }
 }
@@ -1011,10 +1038,10 @@ static statementType ybpgm_getStatementType(TransactionStmt *stmt) {
  * Hook used for tracking "Other" statements.
  */
 static void
-ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
+ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString, bool readOnlyTree,
                      ProcessUtilityContext context,
                      ParamListInfo params, QueryEnvironment *queryEnv,
-                     DestReceiver *dest, char *completionTag)
+                     DestReceiver *dest, QueryCompletion *qc)
 {
   if (isTopLevelBlock() && !IsA(pstmt->utilityStmt, ExecuteStmt) &&
       !IsA(pstmt->utilityStmt, PrepareStmt) && !IsA(pstmt->utilityStmt, DeallocateStmt))
@@ -1036,13 +1063,13 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
     PG_TRY();
     {
       if (prev_ProcessUtility)
-        prev_ProcessUtility(pstmt, queryString,
+        prev_ProcessUtility(pstmt, queryString, readOnlyTree,
                             context, params, queryEnv,
-                            dest, completionTag);
+                            dest, qc);
       else
-        standard_ProcessUtility(pstmt, queryString,
+        standard_ProcessUtility(pstmt, queryString, readOnlyTree,
                                 context, params, queryEnv,
-                                dest, completionTag);
+                                dest, qc);
       DecBlockNestingLevel();
     }
     PG_CATCH();
@@ -1082,7 +1109,7 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
      * if non-DDL statement types executed prior to committing.
      */
     if (type == Commit) {
-      if (strcmp(completionTag, "ROLLBACK") != 0 &&
+      if (qc->commandTag != CMDTAG_ROLLBACK &&
           is_inside_transaction_block &&
           is_statement_executed)
       {
@@ -1097,13 +1124,13 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
   else
   {
     if (prev_ProcessUtility)
-      prev_ProcessUtility(pstmt, queryString,
+      prev_ProcessUtility(pstmt, queryString, readOnlyTree,
                           context, params, queryEnv,
-                          dest, completionTag);
+                          dest, qc);
     else
-      standard_ProcessUtility(pstmt, queryString,
+      standard_ProcessUtility(pstmt, queryString, readOnlyTree,
                               context, params, queryEnv,
-                              dest, completionTag);
+                              dest, qc);
   }
 }
 

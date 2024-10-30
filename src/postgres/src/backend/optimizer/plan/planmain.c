@@ -9,7 +9,7 @@
  * shorn of features like subselects, inheritance, aggregates, grouping,
  * and so on.  (Those are the things planner.c deals with.)
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -20,7 +20,10 @@
  */
 #include "postgres.h"
 
+#include "optimizer/appendinfo.h"
 #include "optimizer/clauses.h"
+#include "optimizer/inherit.h"
+#include "optimizer/optimizer.h"
 #include "optimizer/orclauses.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
@@ -39,8 +42,6 @@
  * (grouping_planner) can choose among the surviving paths for the rel.
  *
  * root describes the query to plan
- * tlist is the target list the query should produce
- *		(this is NOT necessarily root->parse->targetList!)
  * qp_callback is a function to compute query_pathkeys once it's safe to do so
  * qp_extra is optional extra data to pass to qp_callback
  *
@@ -51,52 +52,12 @@
  * (We cannot construct canonical pathkeys until that's done.)
  */
 RelOptInfo *
-query_planner(PlannerInfo *root, List *tlist,
+query_planner(PlannerInfo *root,
 			  query_pathkeys_callback qp_callback, void *qp_extra)
 {
 	Query	   *parse = root->parse;
 	List	   *joinlist;
 	RelOptInfo *final_rel;
-	Index		rti;
-	double		total_pages;
-
-	/*
-	 * If the query has an empty join tree, then it's something easy like
-	 * "SELECT 2+2;" or "INSERT ... VALUES()".  Fall through quickly.
-	 */
-	if (parse->jointree->fromlist == NIL)
-	{
-		/* We need a dummy joinrel to describe the empty set of baserels */
-		final_rel = build_empty_join_rel(root);
-
-		/*
-		 * If query allows parallelism in general, check whether the quals are
-		 * parallel-restricted.  (We need not check final_rel->reltarget
-		 * because it's empty at this point.  Anything parallel-restricted in
-		 * the query tlist will be dealt with later.)
-		 */
-		if (root->glob->parallelModeOK)
-			final_rel->consider_parallel =
-				is_parallel_safe(root, parse->jointree->quals);
-
-		/* The only path for it is a trivial Result path */
-		add_path(final_rel, (Path *)
-				 create_result_path(root, final_rel,
-									final_rel->reltarget,
-									(List *) parse->jointree->quals));
-
-		/* Select cheapest path (pretty easy in this case...) */
-		set_cheapest(final_rel);
-
-		/*
-		 * We still are required to call qp_callback, in case it's something
-		 * like "SELECT 2+2 ORDER BY 1".
-		 */
-		root->canon_pathkeys = NIL;
-		(*qp_callback) (root, qp_extra);
-
-		return final_rel;
-	}
 
 	/*
 	 * Init planner lists to empty.
@@ -118,28 +79,89 @@ query_planner(PlannerInfo *root, List *tlist,
 	root->initial_rels = NIL;
 
 	/*
-	 * Make a flattened version of the rangetable for faster access (this is
-	 * OK because the rangetable won't change any more), and set up an empty
-	 * array for indexing base relations.
+	 * Set up arrays for accessing base relations and AppendRelInfos.
 	 */
 	setup_simple_rel_arrays(root);
 
 	/*
-	 * Populate append_rel_array with each AppendRelInfo to allow direct
-	 * lookups by child relid.
+	 * In the trivial case where the jointree is a single RTE_RESULT relation,
+	 * bypass all the rest of this function and just make a RelOptInfo and its
+	 * one access path.  This is worth optimizing because it applies for
+	 * common cases like "SELECT expression" and "INSERT ... VALUES()".
 	 */
-	setup_append_rel_array(root);
+	Assert(parse->jointree->fromlist != NIL);
+	if (list_length(parse->jointree->fromlist) == 1)
+	{
+		Node	   *jtnode = (Node *) linitial(parse->jointree->fromlist);
+
+		if (IsA(jtnode, RangeTblRef))
+		{
+			int			varno = ((RangeTblRef *) jtnode)->rtindex;
+			RangeTblEntry *rte = root->simple_rte_array[varno];
+
+			Assert(rte != NULL);
+			if (rte->rtekind == RTE_RESULT)
+			{
+				/* Make the RelOptInfo for it directly */
+				final_rel = build_simple_rel(root, varno, NULL);
+
+				/*
+				 * If query allows parallelism in general, check whether the
+				 * quals are parallel-restricted.  (We need not check
+				 * final_rel->reltarget because it's empty at this point.
+				 * Anything parallel-restricted in the query tlist will be
+				 * dealt with later.)  This is normally pretty silly, because
+				 * a Result-only plan would never be interesting to
+				 * parallelize.  However, if force_parallel_mode is on, then
+				 * we want to execute the Result in a parallel worker if
+				 * possible, so we must do this.
+				 */
+				if (root->glob->parallelModeOK &&
+					force_parallel_mode != FORCE_PARALLEL_OFF)
+					final_rel->consider_parallel =
+						is_parallel_safe(root, parse->jointree->quals);
+
+				/*
+				 * The only path for it is a trivial Result path.  We cheat a
+				 * bit here by using a GroupResultPath, because that way we
+				 * can just jam the quals into it without preprocessing them.
+				 * (But, if you hold your head at the right angle, a FROM-less
+				 * SELECT is a kind of degenerate-grouping case, so it's not
+				 * that much of a cheat.)
+				 */
+				add_path(final_rel, (Path *)
+						 create_group_result_path(root, final_rel,
+												  final_rel->reltarget,
+												  (List *) parse->jointree->quals));
+
+				/* Select cheapest path (pretty easy in this case...) */
+				set_cheapest(final_rel);
+
+				/*
+				 * We don't need to run generate_base_implied_equalities, but
+				 * we do need to pretend that EC merging is complete.
+				 */
+				root->ec_merging_done = true;
+
+				/*
+				 * We still are required to call qp_callback, in case it's
+				 * something like "SELECT 2+2 ORDER BY 1".
+				 */
+				(*qp_callback) (root, qp_extra);
+
+				return final_rel;
+			}
+		}
+	}
 
 	/*
-	 * Construct RelOptInfo nodes for all base relations in query, and
-	 * indirectly for all appendrel member relations ("other rels").  This
-	 * will give us a RelOptInfo for every "simple" (non-join) rel involved in
-	 * the query.
+	 * Construct RelOptInfo nodes for all base relations used in the query.
+	 * Appendrel member relations ("other rels") will be added later.
 	 *
-	 * Note: the reason we find the rels by searching the jointree and
-	 * appendrel list, rather than just scanning the rangetable, is that the
-	 * rangetable may contain RTEs for rels not actively part of the query,
-	 * for example views.  We don't want to make RelOptInfos for them.
+	 * Note: the reason we find the baserels by searching the jointree, rather
+	 * than scanning the rangetable, is that the rangetable may contain RTEs
+	 * for rels not actively part of the query, for example views.  We don't
+	 * want to make RelOptInfos for them.
 	 */
 	add_base_rels_to_query(root, (Node *) parse->jointree);
 
@@ -153,7 +175,7 @@ query_planner(PlannerInfo *root, List *tlist,
 	 * restrictions.  Finally, we form a target joinlist for make_one_rel() to
 	 * work from.
 	 */
-	build_base_rel_tlists(root, tlist);
+	build_base_rel_tlists(root, root->processed_tlist);
 
 	find_placeholders_in_jointree(root);
 
@@ -232,32 +254,21 @@ query_planner(PlannerInfo *root, List *tlist,
 	extract_restriction_or_clauses(root);
 
 	/*
-	 * We should now have size estimates for every actual table involved in
-	 * the query, and we also know which if any have been deleted from the
-	 * query by join removal; so we can compute total_table_pages.
-	 *
-	 * Note that appendrels are not double-counted here, even though we don't
-	 * bother to distinguish RelOptInfos for appendrel parents, because the
-	 * parents will still have size zero.
-	 *
-	 * XXX if a table is self-joined, we will count it once per appearance,
-	 * which perhaps is the wrong thing ... but that's not completely clear,
-	 * and detecting self-joins here is difficult, so ignore it for now.
+	 * Now expand appendrels by adding "otherrels" for their children.  We
+	 * delay this to the end so that we have as much information as possible
+	 * available for each baserel, including all restriction clauses.  That
+	 * let us prune away partitions that don't satisfy a restriction clause.
+	 * Also note that some information such as lateral_relids is propagated
+	 * from baserels to otherrels here, so we must have computed it already.
 	 */
-	total_pages = 0;
-	for (rti = 1; rti < root->simple_rel_array_size; rti++)
-	{
-		RelOptInfo *brel = root->simple_rel_array[rti];
+	add_other_rels_to_query(root);
 
-		if (brel == NULL)
-			continue;
-
-		Assert(brel->relid == rti); /* sanity check on array */
-
-		if (IS_SIMPLE_REL(brel))
-			total_pages += (double) brel->pages;
-	}
-	root->total_table_pages = total_pages;
+	/*
+	 * Distribute any UPDATE/DELETE/MERGE row identity variables to the target
+	 * relations.  This can't be done till we've finished expansion of
+	 * appendrels.
+	 */
+	distribute_row_identity_vars(root);
 
 	/*
 	 * Ready to do the primary planning.

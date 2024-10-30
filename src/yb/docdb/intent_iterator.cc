@@ -17,6 +17,7 @@
 #include "yb/docdb/doc_ql_filefilter.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/iter_util.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/transaction_dump.h"
@@ -479,29 +480,5 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
   }
   return result;
 }
-
-namespace {
-
-const char kStrongWriteTail[] = {
-    KeyEntryTypeAsChar::kIntentTypeSet,
-    static_cast<char>(dockv::IntentTypeSet({dockv::IntentType::kStrongWrite}).ToUIntPtr()) };
-
-const Slice kStrongWriteTailSlice = Slice(kStrongWriteTail, sizeof(kStrongWriteTail));
-
-char kEmptyKeyStrongWriteTail[] = {
-    KeyEntryTypeAsChar::kGroupEnd,
-    KeyEntryTypeAsChar::kIntentTypeSet,
-    static_cast<char>(dockv::IntentTypeSet({dockv::IntentType::kStrongWrite}).ToUIntPtr()) };
-
-const Slice kEmptyKeyStrongWriteTailSlice =
-    Slice(kEmptyKeyStrongWriteTail, sizeof(kEmptyKeyStrongWriteTail));
-
-} // namespace
-
-Slice StrongWriteSuffix(Slice key) {
-  return key.empty() ? kEmptyKeyStrongWriteTailSlice : kStrongWriteTailSlice;
-}
-
-void AppendStrongWrite(KeyBytes* out) { out->AppendRawBytes(StrongWriteSuffix(*out)); }
 
 }  // namespace yb::docdb

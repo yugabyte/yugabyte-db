@@ -13,7 +13,10 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
-import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ProviderEditRestrictionManager;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -26,9 +29,21 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadFactory;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import play.inject.ApplicationLifecycle;
@@ -77,7 +92,7 @@ public class Commissioner {
    * @param taskType the task type.
    * @return true if abortable.
    */
-  public boolean isTaskAbortable(TaskType taskType) {
+  public static boolean isTaskTypeAbortable(TaskType taskType) {
     return TaskExecutor.isTaskAbortable(taskType.getTaskClass());
   }
 
@@ -87,7 +102,7 @@ public class Commissioner {
    * @param taskType the task type.
    * @return true if retryable.
    */
-  public boolean isTaskRetryable(TaskType taskType) {
+  public static boolean isTaskTypeRetryable(TaskType taskType) {
     return TaskExecutor.isTaskRetryable(taskType.getTaskClass());
   }
 
@@ -159,7 +174,7 @@ public class Commissioner {
    */
   public boolean abortTask(UUID taskUUID, boolean force) {
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
-    if (!force && !isTaskAbortable(taskInfo.getTaskType())) {
+    if (!force && !isTaskTypeAbortable(taskInfo.getTaskType())) {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Invalid task type: Task %s cannot be aborted", taskUUID));
     }
@@ -223,12 +238,13 @@ public class Commissioner {
 
   public Optional<ObjectNode> buildTaskStatus(
       CustomerTask task,
-      TaskInfo taskInfo,
+      List<TaskInfo> subTaskInfos,
       Map<UUID, Set<String>> updatingTasks,
       Map<UUID, CustomerTask> lastTaskByTarget) {
-    if (task == null || taskInfo == null) {
+    if (task == null) {
       return Optional.empty();
     }
+    TaskInfo taskInfo = task.getTaskInfo();
     ObjectNode responseJson = Json.newObject();
     // Add some generic information about the task
     responseJson.put("title", task.getFriendlyDescription());
@@ -251,12 +267,10 @@ public class Commissioner {
 
     // Get subtask groups and add other details to it if applicable.
     UserTaskDetails userTaskDetails;
-    Optional<RunnableTask> optional = taskExecutor.maybeGetRunnableTask(taskInfo.getTaskUUID());
-    if (optional.isPresent()) {
-      userTaskDetails = taskInfo.getUserTaskDetails(optional.get().getTaskCache());
-    } else {
-      userTaskDetails = taskInfo.getUserTaskDetails();
-    }
+    Optional<RunnableTask> optional = taskExecutor.maybeGetRunnableTask(taskInfo.getUuid());
+    userTaskDetails =
+        taskInfo.getUserTaskDetails(
+            subTaskInfos, optional.isPresent() ? optional.get().getTaskCache() : null);
     ObjectNode details = Json.newObject();
     if (userTaskDetails != null && userTaskDetails.taskDetails != null) {
       details.set("taskDetails", Json.toJson(userTaskDetails.taskDetails));
@@ -273,32 +287,40 @@ public class Commissioner {
     responseJson.set("details", details);
 
     // Set abortable if eligible.
-    responseJson.put("abortable", false);
-    if (taskExecutor.isTaskRunning(task.getTaskUUID())) {
-      // Task is abortable only when it is running.
-      responseJson.put("abortable", isTaskAbortable(taskInfo.getTaskType()));
-    }
-
-    boolean retryable = false;
+    responseJson.put("abortable", isTaskAbortable(taskInfo));
     // Set retryable if eligible.
-    if (isTaskRetryable(taskInfo.getTaskType())
-        && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState())) {
-      if (task.getTargetType() == CustomerTask.TargetType.Provider) {
-        CustomerTask lastTask = lastTaskByTarget.get(task.getTargetUUID());
-        retryable = lastTask != null && lastTask.getTaskUUID().equals(task.getTaskUUID());
-      } else {
-        Set<String> taskUuidsToAllowRetry =
-            updatingTasks.getOrDefault(task.getTargetUUID(), Collections.emptySet());
-        retryable = taskUuidsToAllowRetry.contains(taskInfo.getTaskUUID().toString());
-      }
-    }
+    boolean retryable =
+        isTaskRetryable(
+            taskInfo,
+            tf -> {
+              if (task.getTargetType() == CustomerTask.TargetType.Provider) {
+                CustomerTask lastTask = lastTaskByTarget.get(task.getTargetUUID());
+                return lastTask != null && lastTask.getTaskUUID().equals(task.getTaskUUID());
+              }
+              Set<String> taskUuidsToAllowRetry =
+                  updatingTasks.getOrDefault(task.getTargetUUID(), Collections.emptySet());
+              return taskUuidsToAllowRetry.contains(taskInfo.getUuid().toString());
+            });
     responseJson.put("retryable", retryable);
-    if (isTaskPaused(taskInfo.getTaskUUID())) {
+    if (isTaskPaused(taskInfo.getUuid())) {
       // Set this only if it is true. The thread is just parking. From the task state
       // perspective, it is still running.
       responseJson.put("paused", true);
     }
     return Optional.of(responseJson);
+  }
+
+  public boolean isTaskAbortable(TaskInfo taskInfo) {
+    return isTaskTypeAbortable(taskInfo.getTaskType())
+        && taskExecutor.isTaskRunning(taskInfo.getUuid());
+  }
+
+  public boolean isTaskRetryable(TaskInfo taskInfo, Predicate<TaskInfo> moreCondition) {
+    if (isTaskTypeRetryable(taskInfo.getTaskType())
+        && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState())) {
+      return moreCondition.test(taskInfo);
+    }
+    return false;
   }
 
   public ObjectNode getVersionInfo(CustomerTask task, TaskInfo taskInfo) {
@@ -340,17 +362,10 @@ public class Commissioner {
     CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOne();
     if (task == null) {
       // We are not able to find the task. Report an error.
-      log.error("Error fetching task progress for {}. Customer task is not found", taskUUID);
+      log.error("Customer task with task UUID {} is not found", taskUUID);
       return Optional.empty();
     }
-    // Check if the task is in the DB.
-    Optional<TaskInfo> optional = TaskInfo.maybeGet(taskUUID);
-    if (!optional.isPresent()) {
-      // We are not able to find the task. Report an error.
-      log.error("Error fetching task progress for {}. TaskInfo is not found", taskUUID);
-      return Optional.empty();
-    }
-    TaskInfo taskInfo = optional.get();
+    TaskInfo taskInfo = task.getTaskInfo();
     Map<UUID, Set<String>> updatingTaskByTargetMap = new HashMap<>();
     Map<UUID, CustomerTask> lastTaskByTargetMap = new HashMap<>();
     Universe.getUniverseDetailsField(
@@ -373,7 +388,8 @@ public class Commissioner {
                     .add(id));
     lastTaskByTargetMap.put(
         task.getTargetUUID(), CustomerTask.getLastTaskByTargetUuid(task.getTargetUUID()));
-    return buildTaskStatus(task, taskInfo, updatingTaskByTargetMap, lastTaskByTargetMap);
+    return buildTaskStatus(
+        task, taskInfo.getSubTasks(), updatingTaskByTargetMap, lastTaskByTargetMap);
   }
 
   // Returns a map of target to updating task UUID.

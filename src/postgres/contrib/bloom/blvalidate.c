@@ -3,7 +3,7 @@
  * blvalidate.c
  *	  Opclass validator for bloom.
  *
- * Copyright (c) 2016-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/bloom/blvalidate.c
@@ -14,6 +14,7 @@
 
 #include "access/amvalidate.h"
 #include "access/htup_details.h"
+#include "bloom.h"
 #include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
 #include "catalog/pg_opclass.h"
@@ -23,8 +24,6 @@
 #include "utils/lsyscache.h"
 #include "utils/regproc.h"
 #include "utils/syscache.h"
-
-#include "bloom.h"
 
 /*
  * Validator for a bloom opclass.
@@ -108,6 +107,9 @@ blvalidate(Oid opclassoid)
 			case BLOOM_HASH_PROC:
 				ok = check_amproc_signature(procform->amproc, INT4OID, false,
 											1, 1, opckeytype);
+				break;
+			case BLOOM_OPTIONS_PROC:
+				ok = check_amoptsproc_signature(procform->amproc);
 				break;
 			default:
 				ereport(INFO,
@@ -205,6 +207,8 @@ blvalidate(Oid opclassoid)
 		if (opclassgroup &&
 			(opclassgroup->functionset & (((uint64) 1) << i)) != 0)
 			continue;			/* got it */
+		if (i == BLOOM_OPTIONS_PROC)
+			continue;			/* optional method */
 		ereport(INFO,
 				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 				 errmsg("bloom opclass %s is missing support function %d",

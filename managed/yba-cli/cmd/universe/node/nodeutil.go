@@ -17,6 +17,7 @@ import (
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/universe"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ybatask"
 )
 
 func nodeOperationsUtil(cmd *cobra.Command, operation, command string) {
@@ -81,12 +82,12 @@ func nodeOperationsUtil(cmd *cobra.Command, operation, command string) {
 			NodeAction: command,
 		},
 	)
-	rOperation, response, err := nodeActionAPI.Execute()
+	rTask, response, err := nodeActionAPI.Execute()
 	if err != nil {
 		errMessage := util.ErrorFromHTTPResponse(response, err, "Node", operation)
 		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 	}
-	taskUUID := rOperation.GetTaskUUID()
+	taskUUID := rTask.GetTaskUUID()
 
 	msg := fmt.Sprintf("The node %s operation - %s is being performed in universe %s (%s)",
 		formatter.Colorize(nodeName, formatter.GreenColor),
@@ -123,9 +124,15 @@ func nodeOperationsUtil(cmd *cobra.Command, operation, command string) {
 		nodeInstanceList = append(nodeInstanceList, nodeInstance)
 
 		universe.NodeWrite(nodesCtx, nodeInstanceList)
-
-	} else {
-		logrus.Infoln(msg + "\n")
+		return
 	}
+	logrus.Infoln(msg + "\n")
+
+	taskCtx := formatter.Context{
+		Command: "edit",
+		Output:  os.Stdout,
+		Format:  ybatask.NewTaskFormat(viper.GetString("output")),
+	}
+	ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
 
 }

@@ -428,7 +428,7 @@ export const useGetVoyagerMigrationAssesmentDetailsInfiniteQuery = <T = APIForPl
   };
 };
 
-export const useGetVoyagerMigrationAssesmentDetailsQuery = <T = APIForPlanAndAssesPage, Error = ApiError>(
+export const useGetVoyagerMigrationAssesmentDetailsQuery = <T = APIForPlanAndAssesPage["data"], Error = ApiError>(
   params: GetVoyagerMigrationAssesmentDetailsForQuery,
   options?: {
     query?: UseQueryOptions<APIForPlanAndAssesPage, Error, T>;

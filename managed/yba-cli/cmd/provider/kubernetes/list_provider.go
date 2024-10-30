@@ -11,9 +11,11 @@ import (
 )
 
 var listK8sProviderCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List Kubernetes YugabyteDB Anywhere providers",
-	Long:  "List Kubernetes YugabyteDB Anywhere providers",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List Kubernetes YugabyteDB Anywhere providers",
+	Long:    "List Kubernetes YugabyteDB Anywhere providers",
+	Example: `yba provider kubernetes list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		providerutil.ListProviderUtil(cmd, "Kubernetes", util.K8sProviderType)
 	},

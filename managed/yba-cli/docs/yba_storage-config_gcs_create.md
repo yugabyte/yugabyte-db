@@ -10,6 +10,13 @@ Create a GCS storage configuration in YugabyteDB Anywhere
 yba storage-config gcs create [flags]
 ```
 
+### Examples
+
+```
+yba storage-config gcs create --name <storage-configuration-name> \
+	--backup-location <backup-location> --use-gcp-iam
+```
+
 ### Options
 
 ```

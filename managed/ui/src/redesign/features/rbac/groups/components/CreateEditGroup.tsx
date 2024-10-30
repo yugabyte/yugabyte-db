@@ -35,6 +35,7 @@ import {
   GetGroupContext,
   getIsLDAPEnabled,
   getIsOIDCEnabled,
+  getIsRbacGroupMappingEnabled,
   OIDC_RUNTIME_CONFIGS_QUERY_KEY,
   WrapDisabledElements
 } from './GroupUtils';
@@ -42,7 +43,7 @@ import { mapResourceBindingsToApi } from '../../rbacUtils';
 import { api } from '../../../universe/universe-form/utils/api';
 import { isRbacEnabled } from '../../common/RbacUtils';
 import { createErrorMessage } from '../../../universe/universe-form/utils/helpers';
-import { useUpdateGroupMappings } from '../../../../../v2/api/authentication/authentication';
+import { useListMappings, useUpdateGroupMappings } from '../../../../../v2/api/authentication/authentication';
 
 import { getAllRoles } from '../../api';
 import { getGroupValidationSchema, getRoleResourceValidationSchema } from './GroupValidationSchema';
@@ -195,6 +196,8 @@ export const CreateEditGroup: FC = (_) => {
     api.fetchRunTimeConfigs(true)
   );
 
+  const { data: groups } = useListMappings(); 
+
   const doAddGroup = useUpdateGroupMappings({
     mutation: {
       onSuccess: () => {
@@ -211,11 +214,21 @@ export const CreateEditGroup: FC = (_) => {
   const addGroup = () => {
     const mapping = rbacResourceMethods.getValues();
     const resourceDef = mapResourceBindingsToApi(mapping);
+    const values = getValues();
+    // In create mode , if we try to create a group with same name and type as existing group, it will overwrite it.
+    // display an error
+
+    const duplicateGroup = !isEditMode && groups?.find(g => g.group_identifier === values.group_identifier);
+    if(duplicateGroup) {
+      toast.error(t('duplicateGroupError'));
+      return;
+    }
+
     doAddGroup.mutate({
       data: [
         {
           uuid: isEditMode ? currentGroup?.uuid : undefined,
-          ...omit(getValues(), 'creation_date'),
+          ...omit(values, 'creation_date'),
           role_resource_definitions:
             resourceDef?.map((resource) => ({
               role_uuid: resource.roleUUID!,
@@ -256,6 +269,7 @@ export const CreateEditGroup: FC = (_) => {
 
   const isLDAPEnabled = getIsLDAPEnabled(runtimeConfig);
   const isOIDCEnabled = getIsOIDCEnabled(runtimeConfig);
+  const isRBACGroupMappingEnabled = getIsRbacGroupMappingEnabled(runtimeConfig);
 
   const isEditMode = currentGroup !== null;
 
@@ -399,14 +413,15 @@ export const CreateEditGroup: FC = (_) => {
             control={control}
             label={t('groupName')}
             className={classes.groupName}
-            placeholder={t('groupNamePlaceholder')}
+            placeholder={authType === AuthGroupToRolesMappingType.OIDC ? t('groupNamePlaceholder'): t('groupNameLDAPPlaceholder') }
             disabled={isEditMode}
             data-testid="group-identifier"
           />
           <FormProvider {...rbacResourceMethods}>
             <RolesAndResourceMapping
               customTitle={t('groupRolesTitle')}
-              hideCustomRoles={!rbacEnabled}
+              hideCustomRoles={!rbacEnabled || !isRBACGroupMappingEnabled}
+              hideConnectOnlyHelpText={true}
             />
             {roleMappingErros.roleResourceDefinitions?.message && (
               <FormHelperText required error>

@@ -58,7 +58,7 @@ The KairosDB API server should be available at `localhost:8080`.
 
 ## Verify the integration using ycqlsh
 
-Run [ycqlsh](/preview/admin/ycqlsh/) to connect to your database using the YCQL API as follows:
+Run [ycqlsh](/preview/api/ycqlsh/) to connect to your database using the YCQL API as follows:
 
 ```sh
 $ ./bin/ycqlsh localhost

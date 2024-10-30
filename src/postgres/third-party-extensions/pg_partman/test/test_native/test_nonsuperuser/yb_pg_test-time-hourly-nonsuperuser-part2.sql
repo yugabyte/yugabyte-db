@@ -10,7 +10,7 @@
 -- BEGIN; YB: Transactional DDL not supported
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(30); -- YB: decreased number of tests
+SELECT plan(28); -- YB: decreased number of tests
 
 CREATE TABLE partman_test.time_taptest_table (col1 serial, col2 text, col3 timestamp NOT NULL DEFAULT now()) PARTITION BY RANGE (col3);
 CREATE TABLE partman_test.time_taptest_undo (LIKE partman_test.time_taptest_table);
@@ -57,7 +57,9 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'|
 INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(11,20), CURRENT_TIMESTAMP + '1 hour'::interval);
 INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(21,25), CURRENT_TIMESTAMP + '2 hours'::interval);
 
-SELECT is_empty('SELECT * FROM partman_test.time_taptest_table_default', 'Check that default table has had no data inserted to it');
+-- YB: default partition creation is disabled.
+-- TODO(#3109): Re-enable it after transactional DDL support.
+-- SELECT is_empty('SELECT * FROM partman_test.time_taptest_table_default', 'Check that default table has had no data inserted to it'); --YB: Disabled default partition
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table', ARRAY[25], 'Check count from time_taptest_table');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)+'1 hour'::interval, 'YYYY_MM_DD_HH24MI'), 
     ARRAY[10], 'Check count from time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)+'1 hour'::interval, 'YYYY_MM_DD_HH24MI'));
@@ -91,8 +93,10 @@ SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('h
 SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)+'8 hours'::interval, 'YYYY_MM_DD_HH24MI'), ARRAY['col1'], 
     'Check for primary key in time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)+'8 hours'::interval, 'YYYY_MM_DD_HH24MI'));
 
-INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(200,210), CURRENT_TIMESTAMP + '20 hours'::interval);
-SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_taptest_table_default', ARRAY[11], 'Check that data outside trigger scope goes to default');
+-- YB: default partition creation is disabled
+-- TODO(#3109): Re-enable it after transactional DDL support.
+-- INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(200,210), CURRENT_TIMESTAMP + '20 hours'::interval);
+-- SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_taptest_table_default', ARRAY[11], 'Check that data outside trigger scope goes to default');
 
 /* YB: undo_partition not supported
 -- Keep tables after undoing

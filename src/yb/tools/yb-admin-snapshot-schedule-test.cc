@@ -1617,8 +1617,9 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlDeleteCol
   RunTestWithColocatedParam(schedule_id);
 }
 
-// TODO(asrivastava): Fails with DB cloning.
-TEST_P( YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlDeleteColumnWithMissingDefault) {
+TEST_P(
+    YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam,
+    PgsqlDeleteColumnWithMissingDefault) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -2173,6 +2174,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlAlterTabl
 
   LOG(INFO) << "Create user user2";
   ASSERT_OK(conn.Execute("CREATE USER user2"));
+
+  ASSERT_OK(conn.Execute("GRANT CREATE ON SCHEMA public TO user1"));
 
   LOG(INFO) << "Set Session authorization to user1";
   ASSERT_OK(conn.Execute("SET SESSION AUTHORIZATION user1"));

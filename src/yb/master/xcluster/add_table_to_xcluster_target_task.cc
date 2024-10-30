@@ -49,9 +49,9 @@ AddTableToXClusterTargetTask::AddTableToXClusterTargetTask(
           catalog_manager, *catalog_manager.AsyncTaskPool(), messenger, std::move(table_info),
           std::move(epoch)),
       universe_(universe),
-      xcluster_manager_(*catalog_manager.GetXClusterManager()) {
-  is_db_scoped_ = universe_->IsDbScoped();
-}
+      xcluster_manager_(*catalog_manager.GetXClusterManager()),
+      is_db_scoped_(universe_->IsDbScoped()),
+      is_automatic_ddl_mode_(universe_->IsAutomaticDdlMode()) {}
 
 std::string AddTableToXClusterTargetTask::description() const {
   return Format("AddTableToXClusterTargetTask [$0]", table_info_->id());
@@ -107,6 +107,9 @@ Status AddTableToXClusterTargetTask::FirstStep() {
     LOG(INFO) << "Using xCluster source table id " << table_l->pb.xcluster_source_table_id()
               << " for table " << table_info_->ToString() << " in namespace "
               << table_info_->namespace_name() << " in universe " << universe_->id();
+    RSTATUS_DCHECK(
+        is_automatic_ddl_mode_, IllegalState,
+        "Automatic DDL mode is not enabled but received source table id");
     return remote_client_->GetXClusterClient().GetXClusterTableCheckpointInfos(
         universe_->ReplicationGroupId(), producer_namespace_id,
         {table_l->pb.xcluster_source_table_id()}, std::move(callback));
@@ -158,21 +161,19 @@ Status AddTableToXClusterTargetTask::AddTableToReplicationGroup(
   bootstrap_time_ = bootstrap_time;
 
   auto& producer_table_id = producer_table_ids[0];
-  auto& bootstrap_id = bootstrap_ids[0];
+  auto bootstrap_id = VERIFY_RESULT(xrepl::StreamId::FromString(bootstrap_ids[0]));
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "Adding table to xcluster universe replication "
                                  << replication_group_id << " with bootstrap_id:" << bootstrap_id
                                  << ", bootstrap_time:" << bootstrap_time_
                                  << " and producer_table_id:" << producer_table_id;
-  AlterUniverseReplicationRequestPB req;
-  AlterUniverseReplicationResponsePB resp;
-  req.set_replication_group_id(replication_group_id.ToString());
-  req.add_producer_table_ids_to_add(producer_table_id);
-  req.add_producer_bootstrap_ids_to_add(bootstrap_id);
-  RETURN_NOT_OK(xcluster_manager_.AlterUniverseReplication(&req, &resp, nullptr /* rpc */, epoch_));
 
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  // Also specify the target table to attach to. This is needed for automatic DDL replication in
+  // order to skip schema checks.
+  auto target_table_id_opt =
+      is_automatic_ddl_mode_ ? std::optional(table_info_->id()) : std::nullopt;
+
+  RETURN_NOT_OK(xcluster_manager_.AddTableToReplicationGroup(
+      replication_group_id, producer_table_id, bootstrap_id, target_table_id_opt, epoch_));
 
   SCHEDULE_WITH_DELAY(WaitForSetupUniverseReplicationToFinish);
   return Status::OK();

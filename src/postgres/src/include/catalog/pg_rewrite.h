@@ -7,7 +7,7 @@
  * --- ie, rule names are only unique among the rules of a given table.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_rewrite.h
@@ -31,15 +31,16 @@
  */
 CATALOG(pg_rewrite,2618,RewriteRelationId)
 {
+	Oid			oid;			/* oid */
 	NameData	rulename;
-	Oid			ev_class;
+	Oid			ev_class BKI_LOOKUP(pg_class);
 	char		ev_type;
 	char		ev_enabled;
 	bool		is_instead;
 
 #ifdef CATALOG_VARLEN			/* variable-length fields start here */
-	pg_node_tree ev_qual;
-	pg_node_tree ev_action;
+	pg_node_tree ev_qual BKI_FORCE_NOT_NULL;
+	pg_node_tree ev_action BKI_FORCE_NOT_NULL;
 #endif
 } FormData_pg_rewrite;
 
@@ -49,5 +50,10 @@ CATALOG(pg_rewrite,2618,RewriteRelationId)
  * ----------------
  */
 typedef FormData_pg_rewrite *Form_pg_rewrite;
+
+DECLARE_TOAST(pg_rewrite, 2838, 2839);
+
+DECLARE_UNIQUE_INDEX_PKEY(pg_rewrite_oid_index, 2692, RewriteOidIndexId, on pg_rewrite using btree(oid oid_ops));
+DECLARE_UNIQUE_INDEX(pg_rewrite_rel_rulename_index, 2693, RewriteRelRulenameIndexId, on pg_rewrite using btree(ev_class oid_ops, rulename name_ops));
 
 #endif							/* PG_REWRITE_H */

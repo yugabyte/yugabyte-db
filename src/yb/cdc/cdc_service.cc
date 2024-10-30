@@ -227,7 +227,7 @@ DECLARE_int32(cdc_checkpoint_opid_interval_ms);
 
 DECLARE_int32(rpc_workers_limit);
 
-DECLARE_int64(cdc_intent_retention_ms);
+DECLARE_uint64(cdc_intent_retention_ms);
 
 DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_bool(enable_xcluster_auto_flag_validation);
@@ -386,7 +386,8 @@ template <typename T>
 Result<std::shared_ptr<T>> GetOrCreateXreplTabletMetrics(
     const tablet::TabletPeer& tablet_peer, const xrepl::StreamId& stream_id,
     CDCRequestSource source_type, MetricRegistry* metric_registry,
-    CreateMetricsEntityIfNotFound create) {
+    CreateMetricsEntityIfNotFound create,
+    const std::optional<std::string>& slot_name = std::nullopt) {
   const auto tablet_id = tablet_peer.tablet_id();
   auto tablet = tablet_peer.shared_tablet();
   SCHECK(tablet, IllegalState, Format("Tablet id $0 not found", tablet_id));
@@ -402,6 +403,9 @@ Result<std::shared_ptr<T>> GetOrCreateXreplTabletMetrics(
       attrs["table_name"] = raft_group_metadata->table_name();
       attrs["table_type"] = TableType_Name(raft_group_metadata->table_type());
       attrs["stream_id"] = stream_id.ToString();
+      if (slot_name.has_value()) {
+        attrs["slot_name"] = slot_name.value();
+      }
     }
 
     const std::string metric_id = Format("$0:$1", stream_id, tablet_id);
@@ -1972,8 +1976,7 @@ void CDCServiceImpl::GetChanges(
         resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
   }
   // Update relevant GetChanges metrics before handing off the Response.
-  UpdateTabletMetrics(
-      *resp, producer_tablet, tablet_peer, from_op_id, record.GetSourceType(), last_readable_index);
+  UpdateTabletMetrics(*resp, producer_tablet, tablet_peer, from_op_id, record, last_readable_index);
 
   if (report_tablet_split) {
     RPC_STATUS_RETURN_ERROR(
@@ -2163,6 +2166,11 @@ void CDCServiceImpl::UpdateMetrics() {
       continue;
     }
 
+    // Ignore the slot entry.
+    if (entry.key.tablet_id == kCDCSDKSlotEntryTabletId) {
+      continue;
+    }
+
     // Keep track of all tablets in cdc_state and their last_replication time. This is done to help
     // fill any empty split tablets later, as well as determine what metrics can be cleaned up.
     TabletStreamInfo tablet_info = {entry.key.stream_id, entry.key.tablet_id};
@@ -2182,7 +2190,9 @@ void CDCServiceImpl::UpdateMetrics() {
     bool is_leader = (tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY);
 
     if (record.GetSourceType() == CDCSDK) {
-      auto tablet_metric_result = GetCDCSDKTabletMetrics(*tablet_peer.get(), tablet_info.stream_id);
+      auto tablet_metric_result = GetCDCSDKTabletMetrics(
+          *tablet_peer.get(), tablet_info.stream_id, CreateMetricsEntityIfNotFound::kTrue,
+          record.GetReplicationSlotName());
       if (!tablet_metric_result) {
         continue;
       }
@@ -3970,7 +3980,9 @@ Status CDCServiceImpl::CheckStreamActive(
                               : last_active_time_passed;
 
   auto now = GetCurrentTimeMicros();
-  if (now < last_active_time + 1000 * (GetAtomicFlag(&FLAGS_cdc_intent_retention_ms))) {
+  int64_t intent_retention_duration =
+      static_cast<int64_t>(1000 * GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
+  if (now < last_active_time + intent_retention_duration) {
     VLOG(1) << "Tablet: " << producer_tablet.ToString()
             << " found in CDCState table/ cache with active time: " << last_active_time
             << " current time:" << now << ", for stream: " << producer_tablet.stream_id;
@@ -3978,7 +3990,7 @@ Status CDCServiceImpl::CheckStreamActive(
   }
 
   last_active_time = VERIFY_RESULT(GetLastActiveTime(producer_tablet, true));
-  if (now < last_active_time + 1000 * (GetAtomicFlag(&FLAGS_cdc_intent_retention_ms))) {
+  if (now < last_active_time + intent_retention_duration) {
     VLOG(1) << "Tablet: " << producer_tablet.ToString()
             << " found in CDCState table with active time: " << last_active_time
             << " current time:" << now << ", for stream: " << producer_tablet.stream_id;
@@ -4162,11 +4174,12 @@ Result<uint64_t> CDCServiceImpl::GetSafeTime(
 void CDCServiceImpl::UpdateTabletMetrics(
     const GetChangesResponsePB& resp, const TabletStreamInfo& producer_tablet,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const OpId& op_id,
-    const CDCRequestSource source_type, int64_t last_readable_index) {
-  if (source_type == XCLUSTER) {
+    const StreamMetadata& stream_metadata, int64_t last_readable_index) {
+  if (stream_metadata.GetSourceType() == XCLUSTER) {
     UpdateTabletXClusterMetrics(resp, producer_tablet, tablet_peer, op_id, last_readable_index);
   } else {
-    UpdateTabletCDCSDKMetrics(resp, producer_tablet, tablet_peer);
+    UpdateTabletCDCSDKMetrics(
+        resp, producer_tablet, tablet_peer, stream_metadata.GetReplicationSlotName());
   }
 }
 
@@ -4227,8 +4240,11 @@ void CDCServiceImpl::UpdateTabletXClusterMetrics(
 
 void CDCServiceImpl::UpdateTabletCDCSDKMetrics(
     const GetChangesResponsePB& resp, const TabletStreamInfo& producer_tablet,
-    const std::shared_ptr<tablet::TabletPeer>& tablet_peer) {
-  auto tablet_metric_result = GetCDCSDKTabletMetrics(*tablet_peer.get(), producer_tablet.stream_id);
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+    const std::optional<std::string>& slot_name) {
+  auto tablet_metric_result = GetCDCSDKTabletMetrics(
+      *tablet_peer.get(), producer_tablet.stream_id, CreateMetricsEntityIfNotFound::kTrue,
+      slot_name);
   if (!tablet_metric_result) {
     LOG_WITH_FUNC(INFO) << "Skipped Updating Tablet metrics for " << producer_tablet.ToString()
                         << ": " << tablet_metric_result.status();
@@ -4419,9 +4435,9 @@ Result<std::shared_ptr<xrepl::XClusterTabletMetrics>> CDCServiceImpl::GetXCluste
 
 Result<std::shared_ptr<xrepl::CDCSDKTabletMetrics>> CDCServiceImpl::GetCDCSDKTabletMetrics(
     const tablet::TabletPeer& tablet_peer, const xrepl::StreamId& stream_id,
-    CreateMetricsEntityIfNotFound create) {
+    CreateMetricsEntityIfNotFound create, const std::optional<std::string>& slot_name) {
   return GetOrCreateXreplTabletMetrics<xrepl::CDCSDKTabletMetrics>(
-      tablet_peer, stream_id, CDCSDK, metric_registry_, create);
+      tablet_peer, stream_id, CDCSDK, metric_registry_, create, slot_name);
 }
 
 void CDCServiceImpl::RemoveXReplTabletMetrics(

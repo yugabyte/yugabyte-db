@@ -70,14 +70,6 @@ Result<std::shared_ptr<tablet::AbstractTablet>> MasterTabletServiceImpl::GetTabl
 void MasterTabletServiceImpl::AcquireObjectLocks(
     const tserver::AcquireObjectLockRequestPB* req, tserver::AcquireObjectLockResponsePB* resp,
     rpc::RpcContext context) {
-  TRACE("Start AcquireObjectLocks");
-  VLOG(2) << "Received AcquireObjectLocks RPC: " << req->DebugString();
-
-  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespondTServer(resp, &context)) {
-    return;
-  }
-
   if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
     context.RespondRpcFailure(
         rpc::ErrorStatusPB::ERROR_APPLICATION,
@@ -85,20 +77,15 @@ void MasterTabletServiceImpl::AcquireObjectLocks(
     return;
   }
 
-  master_->catalog_manager_impl()->AcquireObjectLocks(l.epoch(), req, resp, std::move(context));
+  TRACE("Start AcquireObjectLocks");
+  VLOG(2) << "Received AcquireObjectLocks RPC: " << req->DebugString();
+
+  master_->catalog_manager_impl()->AcquireObjectLocks(req, resp, std::move(context));
 }
 
 void MasterTabletServiceImpl::ReleaseObjectLocks(
     const tserver::ReleaseObjectLockRequestPB* req, tserver::ReleaseObjectLockResponsePB* resp,
     rpc::RpcContext context) {
-  TRACE("Start ReleaseObjectLocks");
-  VLOG(2) << "Received ReleaseObjectLocks RPC: " << req->DebugString();
-
-  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespondTServer(resp, &context)) {
-    return;
-  }
-
   if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
     context.RespondRpcFailure(
         rpc::ErrorStatusPB::ERROR_APPLICATION,
@@ -106,7 +93,10 @@ void MasterTabletServiceImpl::ReleaseObjectLocks(
     return;
   }
 
-  master_->catalog_manager_impl()->ReleaseObjectLocks(l.epoch(), req, resp, std::move(context));
+  TRACE("Start ReleaseObjectLocks");
+  VLOG(2) << "Received ReleaseObjectLocks RPC: " << req->DebugString();
+
+  master_->catalog_manager_impl()->ReleaseObjectLocks(req, resp, std::move(context));
 }
 
 void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,

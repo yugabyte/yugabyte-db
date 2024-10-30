@@ -10,6 +10,13 @@ Create an S3 storage configuration in YugabyteDB Anywhere
 yba storage-config s3 create [flags]
 ```
 
+### Examples
+
+```
+yba storage-config s3 create --name <storage-configuration-name> \
+	--backup-location <backup-location> --access-key <access-key> --secret-key <secret-key>
+```
+
 ### Options
 
 ```

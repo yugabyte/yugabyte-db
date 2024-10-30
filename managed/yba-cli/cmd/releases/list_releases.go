@@ -18,9 +18,11 @@ import (
 )
 
 var listReleasesCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List YugabyteDB version releases",
-	Long:  "List YugabyteDB version releases",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List YugabyteDB version releases",
+	Long:    "List YugabyteDB version releases",
+	Example: `yba yb-db-version list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 

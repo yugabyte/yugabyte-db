@@ -113,18 +113,18 @@ END ;
 $$ LANGUAGE plpgsql;
 -- Basic queries
 SELECT true FROM yb_lock_status(null, null);
- bool
-------
+ ?column? 
+----------
 (0 rows)
 
 SELECT true FROM yb_lock_status('yb_lock_tests'::regclass, null);
- bool
-------
+ ?column? 
+----------
 (0 rows)
 
 SELECT true FROM yb_lock_status('yb_lock_tests'::regclass::int4, null);
- bool
-------
+ ?column? 
+----------
 (0 rows)
 
 SELECT true FROM yb_lock_status(null, 'bogus');
@@ -132,13 +132,13 @@ ERROR:  invalid input syntax for type uuid: "bogus"
 LINE 1: SELECT true FROM yb_lock_status(null, 'bogus');
                                               ^
 SELECT true FROM yb_lock_status(null, '10000000-2000-3000-1000-400000000000');
- bool
-------
+ ?column? 
+----------
 (0 rows)
 
 SELECT true FROM yb_lock_status('yb_lock_tests'::regclass, '10000000-2000-3000-1000-400000000000');
- bool
-------
+ ?column? 
+----------
 (0 rows)
 
 -- READ COMMITTED
@@ -217,12 +217,14 @@ SELECT * FROM validate_and_return_lock_status('yb_lock_tests_k1_k2'::regclass, n
  locktype |      relation       |            mode            | granted | fastpath | valid_waitstart | valid_waitend | has_node | has_tablet_id | has_transaction_id | valid_subtransaction_id | has_status_tablet_id | is_explicit | hash_cols | range_cols | attnum | column_id | multiple_rows_locked | num_blocking
 ----------+---------------------+----------------------------+---------+----------+-----------------+---------------+----------+---------------+--------------------+-------------------------+----------------------+-------------+-----------+------------+--------+-----------+----------------------+--------------
  relation | yb_lock_tests_k1_k2 | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           |           |            |        |           | t                    |
+ relation | yb_lock_tests_k1_k2 | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           |           |            |        |           | t                    |
+ keyrange | yb_lock_tests_k1_k2 | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       |            |        |           | t                    |
  keyrange | yb_lock_tests_k1_k2 | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       |            |        |           | t                    |
  keyrange | yb_lock_tests_k1_k2 | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1}        |        |           | t                    |
- row      | yb_lock_tests_k1_k2 | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1,"null"} |        |           | f                    |
- row      | yb_lock_tests_k1_k2 | {STRONG_READ}              | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1,"null"} |        |           | f                    |
- column   | yb_lock_tests_k1_k2 | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1,"null"} |        |         3 | f                    |
-(6 rows)
+ keyrange | yb_lock_tests_k1_k2 | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1}        |        |           | t                    |
+ row      | yb_lock_tests_k1_k2 | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1,"null"} |        |           | f                    |
+ row      | yb_lock_tests_k1_k2 | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1,"null"} |        |           | f                    |
+(8 rows)
 
 ABORT;
 BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;

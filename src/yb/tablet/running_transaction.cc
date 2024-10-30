@@ -13,8 +13,6 @@
 
 #include "yb/tablet/running_transaction.h"
 
-#include <glog/logging.h>
-
 #include "yb/client/transaction_rpc.h"
 
 #include "yb/common/hybrid_time.h"
@@ -635,6 +633,7 @@ const TabletId& RunningTransaction::status_tablet() const {
 void RunningTransaction::UpdateTransactionStatusLocation(const TabletId& new_status_tablet) {
   metadata_.old_status_tablet = std::move(metadata_.status_tablet);
   metadata_.status_tablet = new_status_tablet;
+  metadata_.locality = TransactionLocality::GLOBAL;
 }
 
 void RunningTransaction::UpdateAbortCheckHT(HybridTime now, UpdateAbortCheckHTMode mode) {
@@ -650,6 +649,14 @@ void RunningTransaction::UpdateAbortCheckHT(HybridTime now, UpdateAbortCheckHTMo
       ? FLAGS_transaction_abort_check_timeout_ms
       : FLAGS_transaction_abort_check_interval_ms;
   abort_check_ht_ = now.AddDelta(1ms * delta_ms);
+}
+
+void RunningTransaction::SetTxnLoadedWithCDC() {
+  is_txn_loaded_with_cdc_ = true;
+}
+
+bool RunningTransaction::IsTxnLoadedWithCDC() const {
+  return is_txn_loaded_with_cdc_;
 }
 
 } // namespace tablet

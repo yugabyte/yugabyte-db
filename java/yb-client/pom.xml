@@ -25,7 +25,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.94-SNAPSHOT</version>
+    <version>0.8.95-SNAPSHOT</version>
   </parent>
 
   <artifactId>yb-client</artifactId>
@@ -117,6 +117,12 @@
     <dependency>
       <groupId>joda-time</groupId>
       <artifactId>joda-time</artifactId>
+    </dependency>
+    <!-- dependency for smart jdbc driver yugabyte -->
+    <dependency>
+      <groupId>com.yugabyte</groupId>
+      <artifactId>jdbc-yugabytedb</artifactId>
+      <version>42.3.5-yb-1</version>
     </dependency>
   </dependencies>
 

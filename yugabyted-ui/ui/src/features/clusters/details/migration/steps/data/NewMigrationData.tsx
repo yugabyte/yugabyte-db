@@ -4,12 +4,13 @@ import {
   LinearProgress,
   Link,
   makeStyles,
+  Paper,
   TablePagination,
   Typography,
   useTheme,
 } from "@material-ui/core";
 import type { Migration } from "../../MigrationOverview";
-import { GenericFailure, YBButton, YBCodeBlock } from "@app/components";
+import { GenericFailure, YBButton, YBCodeBlock, YBModal } from "@app/components";
 import { useTranslation } from "react-i18next";
 import RefreshIcon from "@app/assets/refresh.svg";
 import BookIcon from "@app/assets/book.svg";
@@ -17,6 +18,9 @@ import { StepCard } from "../schema/StepCard";
 import { Prereqs } from "../schema/Prereqs";
 import { useGetVoyagerDataMigrationMetricsQuery } from "@app/api/src";
 import { MigrationPhase } from "../../migration";
+import { Trans } from "react-i18next";
+import RestartIcon from "@app/assets/restart2.svg";
+import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -48,6 +52,18 @@ const useStyles = makeStyles((theme) => ({
   },
   menuIcon: {
     marginRight: theme.spacing(1),
+  },
+  badge: {
+    height: "32px",
+    width: "32px",
+    borderRadius: "100%",
+  },
+  paper: {
+    border: "1px solid",
+    borderColor: theme.palette.primary[200],
+    backgroundColor: theme.palette.primary[100],
+    textAlign: "center",
+    marginTop: "2rem"
   },
 }));
 
@@ -125,7 +141,21 @@ export const MigrationData: FC<MigrationDataProps> = ({
             data.count_live_rows && data.count_total_rows
               ? Math.floor((data.count_live_rows / data.count_total_rows) * 100)
               : 0,
-        })),
+        })).sort((a, b) => {
+          if (a.exportPercentage == b.exportPercentage) {
+            return a.table_name.localeCompare(b.table_name);
+          }
+          if (a.exportPercentage == 0) {
+            return 1;
+          }
+          if (b.exportPercentage == 0) {
+            return -1;
+          }
+          if (a.exportPercentage < b.exportPercentage) {
+            return -1
+          }
+          return 1;
+        }),
     [dataAPI]
   );
 
@@ -139,7 +169,21 @@ export const MigrationData: FC<MigrationDataProps> = ({
             data.count_live_rows && data.count_total_rows
               ? Math.floor((data.count_live_rows / data.count_total_rows) * 100)
               : 0,
-        })),
+        })).sort((a, b) => {
+          if (a.importPercentage == b.importPercentage) {
+            return a.table_name.localeCompare(b.table_name);
+          }
+          if (a.importPercentage == 0) {
+            return 1;
+          }
+          if (b.importPercentage == 0) {
+            return -1;
+          }
+          if (a.importPercentage < b.importPercentage) {
+            return -1
+          }
+          return 1;
+        }),
     [dataAPI]
   );
 
@@ -183,6 +227,9 @@ export const MigrationData: FC<MigrationDataProps> = ({
     );
   }, [migrationImportProgressData, importPage, importPerPage]);
 
+  const [exportDataModal, setExportDataModal] = React.useState(false);
+  const [importDataModal, setImportDataModal] = React.useState(false);
+
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="start">
@@ -206,31 +253,41 @@ export const MigrationData: FC<MigrationDataProps> = ({
         <>
           <Box display="flex" flexDirection="column" gridGap={theme.spacing(2)}>
             <StepCard
-              title={t("clusterDetail.voyager.migrateData.dataExportSourceDB")}
+              title={
+                <Trans
+                  i18nKey="clusterDetail.voyager.migrateData.dataExportSourceDB"
+                  components={[<strong key="0" />]}
+                />
+              }
               renderChips={() =>
                 `${exportProgress.completedObjects}/${exportProgress.totalObjects} objects completed`
               }
               isLoading={
-                phase === MigrationPhase["Export Data"] ||
                 (migrationExportProgressData.length > 0 && exportProgress.totalProgress < 100)
               }
               accordion={
+                exportProgress.totalProgress === 100
+              }
+              defaultExpanded={
                 phase === MigrationPhase["Export Data"] ||
                 (migrationExportProgressData.length > 0 && exportProgress.totalProgress < 100)
               }
               isDone={exportProgress.totalProgress === 100}
+              contentSeparator={true}
             >
               {(status) => {
-                if (status === "TODO") {
-                  return (
+                  const YBCodeBlockSection = (
                     <>
-                      <Prereqs items={exportDataPrereqs} />
+                      <Box my={4}>
+                        <Prereqs items={exportDataPrereqs} />
+                      </Box>
                       <Box mt={2} mb={2} width="fit-content">
                         <Typography variant="body2">
                           {t("clusterDetail.voyager.migrateData.dataExportDesc")}
                         </Typography>
                       </Box>
                       <YBCodeBlock
+                        highlightSyntax={true}
                         text={
                           "# Replace the argument values with those applicable " +
                           "for your migration\n" +
@@ -240,7 +297,7 @@ export const MigrationData: FC<MigrationDataProps> = ({
                           "--source-db-user <SOURCE_DB_USER> \\\n" +
                           "--source-db-password <SOURCE_DB_PASSWORD> \\\n" +
                           "--source-db-name <SOURCE_DB_NAME> \\\n" +
-                          "--source-db-schema <SOURCE_DB_SCHEMA1>,<SOURCE_DB_SCHEMA2> \\\n" +
+                          "--source-db-schema <SOURCE_DB_SCHEMA1>,<SOURCE_DB_SCHEMA2>\\\n" +
                           "--export-dir <EXPORT/DIR/PATH>"
                         }
                         showCopyIconButton={true}
@@ -253,19 +310,14 @@ export const MigrationData: FC<MigrationDataProps> = ({
                           target="_blank"
                         >
                           <BookIcon className={classes.menuIcon} />
-                          <Typography
-                            variant="body2"
-                          >
+                          <Typography variant="body2">
                             {t("clusterDetail.voyager.migrateData.dataExportLearn")}
                           </Typography>
                         </Link>
                       </Box>
                     </>
                   );
-                }
-
-                if (status === "IN_PROGRESS") {
-                  return (
+                  const DataExportProgressSection = (
                     <Box
                       display="flex"
                       flexDirection="column"
@@ -273,7 +325,7 @@ export const MigrationData: FC<MigrationDataProps> = ({
                       mt={3.5}
                     >
                       {paginatedExportData.map(({ table_name, exportPercentage }) => (
-                        <Box>
+                        <Box key={table_name}>
                           <Box display="flex" justifyContent="space-between" mb={1.5}>
                             <Typography variant="body2">{table_name}</Typography>
                             <Typography variant="body2">{exportPercentage}% completed</Typography>
@@ -304,32 +356,84 @@ export const MigrationData: FC<MigrationDataProps> = ({
                       </Box>
                     </Box>
                   );
-                }
+                  const ShowExportCommandBanner = (
+                    <Paper className={classes.paper}>
+                      <Box px={2} py={1.5} display="flex" alignItems="center"
+                        gridGap={theme.spacing(2)}>
+                        <YBBadge
+                          className={classes.badge}
+                          text=""
+                          variant={BadgeVariant.InProgress}
+                          iconComponent={RestartIcon}
+                        />
+                        <Typography variant="body2" align="left">
+                          {t("clusterDetail.voyager.migrateData.viewExportDataCommand")}
+                        </Typography>
+                        <YBButton variant="secondary" onClick={()=>setExportDataModal(true)}>
+                          {t("clusterDetail.voyager.migrateData.viewCommand")}
+                        </YBButton>
+                        <YBModal
+                          open={exportDataModal}
+                          title={t("clusterDetail.voyager.migrateData.exportDataCommand")}
+                          onClose={() => setExportDataModal(false)}
+                          enableBackdropDismiss
+                          titleSeparator
+                          size="md"
+                         >
+                          {YBCodeBlockSection}
+                        </YBModal>
+                      </Box>
+                    </Paper>
+                  );
 
-                return null;
-              }}
+                  if (status === "DONE") {
+                    return (
+                      <>
+                        {ShowExportCommandBanner}
+                        {DataExportProgressSection}
+                      </>
+                    );
+                  }
+
+                  if (status === "TODO") {
+                    return YBCodeBlockSection;
+                  }
+
+                  if (status === "IN_PROGRESS") {
+                    return (
+                      <>
+                        {ShowExportCommandBanner}
+                        {DataExportProgressSection}
+                      </>
+                    );
+                  }
+
+                  return <></>;
+                }}
             </StepCard>
 
             <StepCard
-              title={t("clusterDetail.voyager.migrateData.dataImportTargetDB")}
+              title={
+                <Trans
+                  i18nKey="clusterDetail.voyager.migrateData.dataImportTargetDB"
+                  components={[<strong key="0" />]}
+                />
+              }
               renderChips={() =>
                 `${importProgress.completedObjects}/${importProgress.totalObjects} objects completed`
               }
               isLoading={
-                phase === MigrationPhase["Import Data"] ||
                 (migrationImportProgressData.length > 0 && importProgress.totalProgress < 100)
               }
               accordion={
-                phase === MigrationPhase["Import Data"] ||
-                (migrationImportProgressData.length > 0 && importProgress.totalProgress < 100)
+                importProgress.totalProgress === 100
               }
               isDone={importProgress.totalProgress === 100}
             >
               {(status) => {
-                if (status === "TODO") {
-                  return (
+                const YBCodeBlockSection = (
                     <>
-                      <Box mt={2} mb={2} width="fit-content">
+                      <Box my={2} width="fit-content">
                         <Typography variant="body2">
                           {t("clusterDetail.voyager.migrateData.dataImportDesc")}
                         </Typography>
@@ -348,6 +452,7 @@ export const MigrationData: FC<MigrationDataProps> = ({
                         }
                         showCopyIconButton={true}
                         preClassName={classes.commandCodeBlock}
+                        highlightSyntax={true}
                       />
                       <Box mt={2} mb={2} width="fit-content">
                         <Link
@@ -364,11 +469,8 @@ export const MigrationData: FC<MigrationDataProps> = ({
                         </Link>
                       </Box>
                     </>
-                  );
-                }
-
-                if (status === "IN_PROGRESS") {
-                  return (
+                )
+                const DataImportProgressSection = (
                     <Box
                       display="flex"
                       flexDirection="column"
@@ -406,10 +508,56 @@ export const MigrationData: FC<MigrationDataProps> = ({
                         />
                       </Box>
                     </Box>
+                );
+                const ShowImportCommandBanner = (
+                  <Paper className={classes.paper}>
+                    <Box px={2} py={1.5} display="flex" alignItems="center"
+                      gridGap={theme.spacing(2)}>
+                      <YBBadge
+                        className={classes.badge}
+                        text=""
+                        variant={BadgeVariant.InProgress}
+                        iconComponent={RestartIcon}
+                      />
+                      <Typography variant="body2" align="left">
+                        {t("clusterDetail.voyager.migrateData.viewImportDataCommand")}
+                      </Typography>
+                      <YBButton variant="secondary" onClick={()=>setImportDataModal(true)}>
+                        {t("clusterDetail.voyager.migrateData.viewCommand")}
+                      </YBButton>
+                      <YBModal
+                        open={importDataModal}
+                        title={t("clusterDetail.voyager.migrateData.importDataCommand")}
+                        onClose={() => setImportDataModal(false)}
+                        enableBackdropDismiss
+                        titleSeparator
+                        size="md"
+                       >
+                        {YBCodeBlockSection}
+                      </YBModal>
+                    </Box>
+                  </Paper>
+                );
+                if (status === "DONE") {
+                  return (
+                    <>
+                      {ShowImportCommandBanner}
+                      {DataImportProgressSection}
+                    </>
                   );
                 }
-
-                return null;
+                if (status === "TODO") {
+                  return YBCodeBlockSection;
+                }
+                if (status === "IN_PROGRESS") {
+                  return (
+                    <>
+                      {ShowImportCommandBanner}
+                      {DataImportProgressSection}
+                    </>
+                  );
+                }
+                return <></>;
               }}
             </StepCard>
           </Box>

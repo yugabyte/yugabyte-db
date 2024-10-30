@@ -55,7 +55,12 @@ import {
   hasNecessaryPerm
 } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
-import { getTableName, getTableUuid } from '../../../utils/tableUtils';
+import {
+  getTableName,
+  getTableUuid,
+  getIsTableInfoMissing,
+  getIsXClusterReplicationTable
+} from '../../../utils/tableUtils';
 import { getAlertConfigurations } from '../../../actions/universe';
 
 import {
@@ -64,7 +69,7 @@ import {
   TableTypeLabel,
   YBTable
 } from '../../../redesign/helpers/dtos';
-import { XClusterReplicationTable, XClusterTable } from '../XClusterTypes';
+import { XClusterReplicationTable } from '../XClusterTypes';
 import { XClusterConfig } from '../dtos';
 import { NodeAggregation, SplitType } from '../../metrics/dtos';
 import { AlertTemplate } from '../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
@@ -81,8 +86,7 @@ import styles from './ReplicationTables.module.scss';
 
 interface CommonReplicationTablesProps {
   xClusterConfig: XClusterConfig;
-  isTableInfoLoading: boolean;
-  isTableInfoError: boolean;
+  isTableInfoIncludedInConfig: boolean;
   // isActive determines whether the component will make periodic
   // queries for metrics.
   isActive?: boolean;
@@ -95,9 +99,11 @@ type ReplicationTablesProps =
 const TABLE_MIN_PAGE_SIZE = 10;
 
 export function ReplicationTables(props: ReplicationTablesProps) {
-  const { xClusterConfig, isTableInfoLoading, isTableInfoError, isActive = true } = props;
+  const { xClusterConfig, isTableInfoIncludedInConfig, isActive = true } = props;
   const [deleteTableDetails, setDeleteTableDetails] = useState<XClusterReplicationTable>();
-  const [openTableLagGraphDetails, setOpenTableLagGraphDetails] = useState<XClusterTable>();
+  const [openTableLagGraphDetails, setOpenTableLagGraphDetails] = useState<
+    XClusterReplicationTable
+  >();
   const [searchTokens, setSearchTokens] = useState<SearchToken[]>([]);
 
   const dispatch = useDispatch();
@@ -213,18 +219,15 @@ export function ReplicationTables(props: ReplicationTablesProps) {
     sourceUniverseTablesQuery.isLoading ||
     sourceUniverseTablesQuery.isIdle ||
     sourceUniverseQuery.isLoading ||
-    sourceUniverseQuery.isIdle ||
-    isTableInfoLoading
+    sourceUniverseQuery.isIdle
   ) {
     return <YBLoading />;
   }
-  if (sourceUniverseTablesQuery.isError || sourceUniverseQuery.isError || isTableInfoError) {
+  if (sourceUniverseTablesQuery.isError || sourceUniverseQuery.isError) {
     const sourceUniverseTerm = props.isDrInterface ? 'DR primary universe' : 'source universe';
     const errorMessage = sourceUniverseTablesQuery.isError
       ? `Failed to fetch ${sourceUniverseTerm} table details.`
-      : sourceUniverseQuery.isError
-      ? `Failed to fetch ${sourceUniverseTerm} details.`
-      : 'Failed to fetch table details.';
+      : `Failed to fetch ${sourceUniverseTerm} details.`;
     return <YBErrorIndicator customErrorMessage={errorMessage} />;
   }
 
@@ -240,11 +243,13 @@ export function ReplicationTables(props: ReplicationTablesProps) {
     xClusterConfig.tableDetails,
     maxAcceptableLag,
     tableReplicationLagQuery.data?.async_replication_sent_lag?.data,
+    isTableInfoIncludedInConfig,
     { includeUnconfiguredTables: true, includeDroppedTables: true }
   );
-  const inConfigTableUuids = getInConfigTableUuid(xClusterConfig.tableDetails);
+  const inConfigTableUuids = new Set<string>(getInConfigTableUuid(xClusterConfig.tableDetails));
   const isDropTablePermitted = (table: XClusterReplicationTable) =>
-    inConfigTableUuids.includes(getTableUuid(table)) &&
+    isTableInfoIncludedInConfig &&
+    inConfigTableUuids.has(getTableUuid(table)) &&
     xClusterConfig.type !== XClusterConfigType.DB_SCOPED;
 
   const sourceUniverse = sourceUniverseQuery.data;
@@ -253,12 +258,6 @@ export function ReplicationTables(props: ReplicationTablesProps) {
   );
   return (
     <div className={styles.rootContainer}>
-      {!props.isDrInterface && (
-        // TODO: Ask Yu-Shen if we can remove this line so both xCluster and xCluster DR are consistent.
-        <div className={styles.headerSection}>
-          <span className={styles.infoText}>Tables selected for Replication</span>
-        </div>
-      )}
       <YBSmartSearchBar
         searchTokens={searchTokens}
         onSearchTokensChange={handleSearchTokenChange}
@@ -290,8 +289,10 @@ export function ReplicationTables(props: ReplicationTablesProps) {
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="pgSchemaName"
-            dataFormat={(pgSchemaName: string, YbTable: YBTable) =>
-              formatSchemaName(YbTable.tableType, pgSchemaName)
+            dataFormat={(pgSchemaName: string, xClusterTable: YBTable | XClusterReplicationTable) =>
+              getIsXClusterReplicationTable(xClusterTable) && getIsTableInfoMissing(xClusterTable)
+                ? '-'
+                : formatSchemaName(xClusterTable.tableType, pgSchemaName)
             }
             dataSort
           >
@@ -322,11 +323,13 @@ export function ReplicationTables(props: ReplicationTablesProps) {
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="statusLabel"
+            hidden={!isTableInfoIncludedInConfig}
             dataSort
             dataFormat={(_: XClusterTableStatus, xClusterTable: XClusterReplicationTable) => (
               <XClusterTableStatusLabel
                 status={xClusterTable.status}
                 errors={xClusterTable.replicationStatusErrors}
+                isDrInterface={props.isDrInterface}
               />
             )}
           >
@@ -393,12 +396,9 @@ export function ReplicationTables(props: ReplicationTablesProps) {
                 <YBButton
                   className={styles.actionButton}
                   btnIcon="fa fa-line-chart"
-                  disabled={table.status === XClusterTableStatus.DROPPED}
                   onClick={(e: any) => {
-                    if (table.status !== XClusterTableStatus.DROPPED) {
-                      setOpenTableLagGraphDetails(table);
-                      dispatch(openDialog(XClusterModalName.TABLE_REPLICATION_LAG_GRAPH));
-                    }
+                    setOpenTableLagGraphDetails(table);
+                    dispatch(openDialog(XClusterModalName.TABLE_REPLICATION_LAG_GRAPH));
                     e.currentTarget.blur();
                   }}
                 />
@@ -429,7 +429,7 @@ export function ReplicationTables(props: ReplicationTablesProps) {
                             dispatch(openDialog(XClusterModalName.REMOVE_TABLE_FROM_CONFIG));
                           }}
                           disabled={
-                            table.status !== XClusterTableStatus.DROPPED &&
+                            !getIsTableInfoMissing(table) &&
                             table.tableType === TableType.TRANSACTION_STATUS_TABLE_TYPE
                           }
                         >
@@ -484,7 +484,7 @@ const isTableMatchedBySearchTokens = (
   searchTokens: SearchToken[]
 ) => {
   const candidate = {
-    ...(table.status !== XClusterTableStatus.DROPPED && {
+    ...(!getIsTableInfoMissing(table) && {
       database: { value: table.keySpace, type: FieldType.STRING },
       schema: { value: table.pgSchemaName, type: FieldType.STRING },
       sizeBytes: { value: table.sizeBytes, type: FieldType.NUMBER },
@@ -492,7 +492,7 @@ const isTableMatchedBySearchTokens = (
       replicationLagMs: { value: table.replicationLag, type: FieldType.NUMBER }
     }),
     table: {
-      value: table.status === XClusterTableStatus.DROPPED ? table.tableUUID : table.tableName,
+      value: getIsTableInfoMissing(table) ? table.tableUUID : table.tableName,
       type: FieldType.STRING
     }
   };

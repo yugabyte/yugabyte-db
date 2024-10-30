@@ -140,20 +140,29 @@ public class ReleasesUtils {
   }
 
   public ExtractedMetadata versionMetadataFromURL(URL url) {
+    // Best effort to get sha256 from url
+    // The current url is sha1, not sha256. When we get a .sha256 file, we can use that.
+    String sha256 = null;
+    ExtractedMetadata em = new ExtractedMetadata();
     try {
       if (isHelmChart(url.getFile())) {
         try (BufferedInputStream stream = new BufferedInputStream(url.openStream())) {
-          return metadataFromHelmChart(stream);
+          em = metadataFromHelmChart(stream);
+          em.sha256 = sha256;
+          return em;
         }
       }
       try (BufferedInputStream stream = new BufferedInputStream(url.openStream())) {
-        return versionMetadataFromInputStream(stream);
+        em = versionMetadataFromInputStream(stream);
+        em.sha256 = sha256;
+        return em;
       }
     } catch (MetadataParseException e) {
       // Fallback to file name validation
       log.warn("falling back to file name metadata parsing for url " + url.toString(), e);
-      ExtractedMetadata em = metadataFromName(url.getFile());
+      em = metadataFromName(url.getFile());
       em.releaseTag = tagFromName(url.toString());
+      em.sha256 = sha256;
       return em;
     } catch (IOException e) {
       log.error("failed to open url " + url.toString());

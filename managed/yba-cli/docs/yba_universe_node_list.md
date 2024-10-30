@@ -10,6 +10,12 @@ List YugabyteDB Anywhere universe nodes
 yba universe node list [flags]
 ```
 
+### Examples
+
+```
+yba universe node list --name <universe-name>
+```
+
 ### Options
 
 ```

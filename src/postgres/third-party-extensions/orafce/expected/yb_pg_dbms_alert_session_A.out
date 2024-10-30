@@ -1,4 +1,7 @@
-\set ECHO all
+\set ECHO none
+ERROR:  advisory locks are not yet implemented
+HINT:  If the app doesn't need strict functionality, this error can be silenced by using the GFlag yb_silence_advisory_locks_not_supported_error. See https://github.com/yugabyte/yugabyte-db/issues/3642 for details.
+CONTEXT:  PL/pgSQL function inline_code_block line 4 at IF
 SELECT pg_sleep(3);
  pg_sleep
 ----------
@@ -48,38 +51,42 @@ SELECT dbms_alert.register('b5');
 (1 row)
 
 SELECT dbms_alert.signal('a1','Msg1 for a1');
-ERROR:  CREATE CONSTRAINT TRIGGER not supported yet
-LINE 1: CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON o...
-        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1709. React with thumbs up to raise its priority
-QUERY:  CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON ora_alerts INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE dbms_alert.defered_signal()
+ signal 
+--------
+ 
+(1 row)
+
 SELECT dbms_alert.signal('a2','Msg1 for a2');
-ERROR:  CREATE CONSTRAINT TRIGGER not supported yet
-LINE 1: CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON o...
-        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1709. React with thumbs up to raise its priority
-QUERY:  CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON ora_alerts INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE dbms_alert.defered_signal()
+ signal 
+--------
+ 
+(1 row)
+
 /*
  * Test: defered_signal
  * The signal is received only when the signalling transaction commits.
  * To test this, an explict BEGIN-COMMIT block is used.
  */
 SELECT dbms_alert.signal('tds','Begin defered_signal test');
-ERROR:  CREATE CONSTRAINT TRIGGER not supported yet
-LINE 1: CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON o...
-        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1709. React with thumbs up to raise its priority
-QUERY:  CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON ora_alerts INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE dbms_alert.defered_signal()
+ signal 
+--------
+ 
+(1 row)
+
 BEGIN;
 SELECT dbms_alert.signal('tds','Testing defered_signal');
-ERROR:  CREATE CONSTRAINT TRIGGER not supported yet
-LINE 1: CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON o...
-        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1709. React with thumbs up to raise its priority
-QUERY:  CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON ora_alerts INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE dbms_alert.defered_signal()
+ signal 
+--------
+ 
+(1 row)
+
 /* The signal is received while transaction is running */
 SELECT dbms_alert.waitone('b1',20);
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ waitone 
+---------
+ (,1)
+(1 row)
+
 COMMIT;
 /* The signal is received after transaction completed.
  * After this the tds signal is received in session B indicating that the
@@ -99,18 +106,18 @@ SELECT dbms_alert.waitone('b2',20);
 
 /* This signals a3 which is not registered in Session B */
 SELECT dbms_alert.signal('a3','Msg1 for a3');
-ERROR:  CREATE CONSTRAINT TRIGGER not supported yet
-LINE 1: CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON o...
-        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1709. React with thumbs up to raise its priority
-QUERY:  CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON ora_alerts INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE dbms_alert.defered_signal()
+ signal 
+--------
+ 
+(1 row)
+
 /* alert a4 is signalled soon after a3 */
 SELECT dbms_alert.signal('a4','Test- Register after signal');
-ERROR:  CREATE CONSTRAINT TRIGGER not supported yet
-LINE 1: CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON o...
-        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1709. React with thumbs up to raise its priority
-QUERY:  CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON ora_alerts INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE dbms_alert.defered_signal()
+ signal 
+--------
+ 
+(1 row)
+
 /* This signal indicates at remove() is called */
 SELECT dbms_alert.waitone('b3',20);
  waitone
@@ -120,11 +127,11 @@ SELECT dbms_alert.waitone('b3',20);
 
 /* Send signal which is removed in session B */
 SELECT dbms_alert.signal('a1','Msg2 for a1');
-ERROR:  CREATE CONSTRAINT TRIGGER not supported yet
-LINE 1: CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON o...
-        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1709. React with thumbs up to raise its priority
-QUERY:  CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON ora_alerts INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE dbms_alert.defered_signal()
+ signal 
+--------
+ 
+(1 row)
+
 SELECT dbms_alert.waitone('b4',20);
  waitone
 ---------
@@ -133,11 +140,11 @@ SELECT dbms_alert.waitone('b4',20);
 
 /* Send signal which is registered in B and not removed */
 SELECT dbms_alert.signal('a4','Msg1 for a4');
-ERROR:  CREATE CONSTRAINT TRIGGER not supported yet
-LINE 1: CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON o...
-        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1709. React with thumbs up to raise its priority
-QUERY:  CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON ora_alerts INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE dbms_alert.defered_signal()
+ signal 
+--------
+ 
+(1 row)
+
 /* This signal inidcates that removeall() is called */
 SELECT dbms_alert.waitone('b5',20);
  waitone
@@ -147,11 +154,11 @@ SELECT dbms_alert.waitone('b5',20);
 
 /* Send a signal to test if session B receives it after removeall() */
 SELECT dbms_alert.signal('a2','Msg2 for a2');
-ERROR:  CREATE CONSTRAINT TRIGGER not supported yet
-LINE 1: CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON o...
-        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1709. React with thumbs up to raise its priority
-QUERY:  CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON ora_alerts INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE dbms_alert.defered_signal()
+ signal 
+--------
+ 
+(1 row)
+
 /* cleanup */
 SELECT dbms_alert.removeall();
  removeall

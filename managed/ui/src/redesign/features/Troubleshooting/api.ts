@@ -33,7 +33,7 @@ class ApiService {
   };
 
   // Register current YBA (customer) to a Troubleshooting Platform service
-  registerTp = (tpUrl: string, ybaUrl: string, metricsUrl: string, apiToken: string, metricsScrapePeriodSecs: number) => {
+  registerTp = (tpUrl: string, ybaUrl: string, metricsUrl: string, apiToken: string, tpApiToken: string, metricsScrapePeriodSecs: number) => {
     const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform`;
     return axios.post(requestURL,  {
       customerUUID: this.getCustomerId(),
@@ -41,6 +41,7 @@ class ApiService {
       ybaUrl,
       metricsUrl,
       apiToken,
+      tpApiToken,
       metricsScrapePeriodSecs
     }).then((res) => res.data);
   };

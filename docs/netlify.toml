@@ -15,7 +15,6 @@
   HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
-  SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
   RUDDERSTACK_API_KEY = "Mmo5Zmp5M1lONWFLM2xYS044N3k5cGhic3R4"
 
 [context.branch-deploy.environment]
@@ -23,7 +22,6 @@
   HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
-  SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
   RUDDERSTACK_API_KEY = "Mmo5Zmp5M1lONWFLM2xYS044N3k5cGhic3R4"
 
 [context.production.environment]
@@ -31,7 +29,6 @@
   HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
-  SEGMENT_API_KEY = "WFp1RWk3dUVBbjM2NmpncnNnbzBMZUpIVXB1ZVRvTHg="
   RUDDERSTACK_API_KEY = "Mmo5Y252MjZ6R290ZjhPa3BROUx4cFl6VFVK"
 
 ################ REDIRECTS ################
@@ -357,6 +354,10 @@
 [[redirects]]
   from = "/preview/architecture/concepts"
   to = "/preview/architecture/key-concepts"
+
+[[redirects]]
+  from = "/preview/explore/sql-nosql*"
+  to = "/preview/faq/general/#how-is-yugabytedb-different-from-nosql-databases"
 
 # from 404 report (referrer: ycombinator)
 [[redirects]]
@@ -801,6 +802,31 @@
 [[redirects]]
   from = "/v2.14/reference/configuration/operating-systems/"
   to = "/v2.14/deploy/checklist/"
+  force = true
+
+[[redirects]]
+  from = "/v2.20/api/ysqlsh/*"
+  to = "/v2.20/admin/ysqlsh/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.18/api/ysqlsh/*"
+  to = "/v2.18/admin/ysqlsh/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.14/api/ysqlsh/*"
+  to = "/v2.14/admin/ysqlsh/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.20/api/ycqlsh/*"
+  to = "/v2.20/admin/ycqlsh/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.18/api/ycqlsh/*"
+  to = "/v2.18/admin/ycqlsh/:splat"
+  force = true
+[[redirects]]
+  from = "/v2.14/api/ycqlsh/*"
+  to = "/v2.14/admin/ycqlsh/:splat"
   force = true
 
 
@@ -1349,10 +1375,15 @@
         ;
 
         connect-src 'self'
-            https://app.clearbit.com
+            https://80f647c7c1f545fc97ff43f8b602dc86.us-west-2.aws.found.io/
+            https://api.rudderstack.com/
+            https://app.clearbit.com/
+            https://ingesteer.services-prod.nsvcs.net/rum_collection
             https://ka-f.fontawesome.com/releases/
             https://kapa-widget-proxy-la7dkmplpq-uc.a.run.app
+            https://metrics.kapa.ai/
             https://raw.githubusercontent.com/
+            https://sessions.bugsnag.com/
             https://stats.g.doubleclick.net/
             https://umbcujcbe8-1.algolianet.com/
             https://umbcujcbe8-2.algolianet.com/
@@ -1360,24 +1391,24 @@
             https://umbcujcbe8-dsn.algolia.net/
             https://www.google-analytics.com/
             https://www.yugabyte.com
-            https://api.segment.io/
-            https://cdn.segment.com/
-            https://ingesteer.services-prod.nsvcs.net/rum_collection
             https://yugabyteklhgka.dataplane.rudderstack.com/v1/page
-            https://api.rudderstack.com/
-            https://sessions.bugsnag.com/
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
-            https://app.clearbit.com
-            https://cdn.jsdelivr.net
+            https://app.clearbit.com/
+            https://cdn.jsdelivr.net/
+            https://cdn.madkudu.com/
+            https://cdn.rudderlabs.com/
             https://cdnjs.cloudflare.com
             https://code.jquery.com/jquery-3.7.1.min.js
+            https://d2wy8f7a9ursnm.cloudfront.net/v6/bugsnag.min.js
+            https://j.6sc.co/
             https://kit.fontawesome.com/
             https://maxcdn.bootstrapcdn.com
+            https://metrics.kapa.ai/
             https://netlify-cdp-loader.netlify.app/
             https://netlify-rum.netlify.app
-            https://tag.clearbitscripts.com
+            https://tag.clearbitscripts.com/
             https://umbcujcbe8-1.algolianet.com/
             https://umbcujcbe8-2.algolianet.com/
             https://umbcujcbe8-3.algolianet.com/
@@ -1387,11 +1418,7 @@
             https://www.google.com/recaptcha/
             https://www.googletagmanager.com/
             https://www.gstatic.com/recaptcha/
-            https://x.clearbitjs.com
-            https://cdn.segment.com/
-            https://j.6sc.co/
-            https://cdn.rudderlabs.com/
-            https://d2wy8f7a9ursnm.cloudfront.net/v6/bugsnag.min.js
+            https://x.clearbitjs.com/
         ;
 
         style-src 'self' 'unsafe-inline'

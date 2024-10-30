@@ -34,6 +34,7 @@ import com.yugabyte.yw.models.XClusterNamespaceConfig;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import io.ebean.PagedList;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -447,14 +448,19 @@ public class SupportBundleUtil {
     }
   }
 
-  public boolean writeStringToFile(String message, String localFilePath) {
+  public boolean writeStringToFile(String message, String localFilePath, boolean append) {
     try {
-      FileUtils.writeStringToFile(new File(localFilePath), message, Charset.forName("UTF-8"));
+      FileUtils.writeStringToFile(
+          new File(localFilePath), message, Charset.forName("UTF-8"), append);
       return true;
     } catch (IOException e) {
       log.error("Failed writing output string to file: ", e);
       return false;
     }
+  }
+
+  public boolean writeStringToFile(String message, String localFilePath) {
+    return writeStringToFile(message, localFilePath, false);
   }
 
   /**
@@ -823,15 +829,31 @@ public class SupportBundleUtil {
     saveMetadata(customer, destDir, jsonData, "users.json");
   }
 
-  public void getTaskMetadata(Customer customer, String destDir) {
+  public void getTaskMetadata(Customer customer, String destDir, Date startDate, Date endDate) {
     // Gather metadata for customer_task table.
-    List<CustomerTask> customerTasks = CustomerTask.getByCustomerUUID(customer.getUuid());
-    // Save the above collected metadata.
-    JsonNode customerTaskJsonData =
-        RedactingService.filterSecretFields(Json.toJson(customerTasks), RedactionTarget.APIS);
-    saveMetadata(customer, destDir, customerTaskJsonData, "customer_task.json");
-
-    // Gather metadata for task_info table later.
+    int pageSize = 10, pageIndex = 0;
+    PagedList<CustomerTask> pagedList;
+    do {
+      pagedList =
+          CustomerTask.find
+              .query()
+              .where()
+              .eq("customer_uuid", customer.getUuid())
+              .ge("create_time", startDate)
+              .le("create_time", endDate)
+              .setFirstRow(pageIndex++ * pageSize)
+              .setMaxRows(pageSize)
+              .findPagedList();
+      List<CustomerTask> list = pagedList.getList();
+      JsonNode jsonData =
+          RedactingService.filterSecretFields(Json.toJson(list), RedactionTarget.LOGS);
+      writeStringToFile(
+          jsonData.toPrettyString(), Paths.get(destDir, "customer_task.json").toString(), true);
+      // For each task, add its subtaks.
+      for (CustomerTask task : list) {
+        getTaskInfo(task.getTaskUUID(), destDir);
+      }
+    } while (pagedList.hasNext());
   }
 
   public void getInstanceTypeMetadata(Customer customer, String destDir) {
@@ -864,15 +886,25 @@ public class SupportBundleUtil {
   }
 
   public void getAuditLogs(Customer customer, String destDir, Date startDate, Date endDate) {
-    List<Audit> audits =
-        Audit.getAll(customer.getUuid()).stream()
-            .filter(
-                audit ->
-                    audit.getTimestamp().after(startDate) && audit.getTimestamp().before(endDate))
-            .collect(Collectors.toList());
-    JsonNode jsonData =
-        RedactingService.filterSecretFields(Json.toJson(audits), RedactionTarget.LOGS);
-    saveMetadata(customer, destDir, jsonData, "audit.json");
+    int pageSize = 50, pageIndex = 0;
+    PagedList<?> pagedList;
+    do {
+      pagedList =
+          Audit.find
+              .query()
+              .where()
+              .eq("customer_uuid", customer.getUuid())
+              .ge("timestamp", startDate)
+              .le("timestamp", endDate)
+              .setFirstRow(pageIndex++ * pageSize)
+              .setMaxRows(pageSize)
+              .findPagedList();
+      JsonNode jsonData =
+          RedactingService.filterSecretFields(
+              Json.toJson(pagedList.getList()), RedactionTarget.LOGS);
+      writeStringToFile(
+          jsonData.toPrettyString(), Paths.get(destDir, "audit.json").toString(), true);
+    } while (pagedList.hasNext());
   }
 
   public void getXclusterMetadata(Customer customer, String destDir) {
@@ -894,14 +926,23 @@ public class SupportBundleUtil {
     saveMetadata(customer, destDir, jsonData, "xcluster_namespace_config.json");
   }
 
-  public void getTaskInfo(Customer customer, String destDir, Date startDate, Date endDate) {
-    List<TaskInfo> taskInfos =
-        TaskInfo.find.all().stream()
-            .filter(ti -> ti.getCreateTime().after(startDate) && ti.getCreateTime().before(endDate))
-            .collect(Collectors.toList());
+  public void getTaskInfo(UUID parentTaskUUID, String destDir) {
+    List<TaskInfo> list = new ArrayList<>();
+    // Add parent task first.
+    list.add(TaskInfo.getOrBadRequest(parentTaskUUID));
+    // Add all subtasks.
+    list.addAll(
+        TaskInfo.find
+            .query()
+            .where()
+            .eq("parent_uuid", parentTaskUUID)
+            .orderBy()
+            .asc("position")
+            .findList());
     JsonNode jsonData =
-        RedactingService.filterSecretFields(Json.toJson(taskInfos), RedactionTarget.LOGS);
-    saveMetadata(customer, destDir, jsonData, "task_info.json");
+        RedactingService.filterSecretFields(Json.toJson(list), RedactionTarget.LOGS);
+    writeStringToFile(
+        jsonData.toPrettyString(), Paths.get(destDir, "task_info.json").toString(), true);
   }
 
   public void gatherAndSaveAllMetadata(
@@ -910,11 +951,10 @@ public class SupportBundleUtil {
     ignoreExceptions(() -> getUniversesMetadata(customer, destDir));
     ignoreExceptions(() -> getProvidersMetadata(customer, destDir));
     ignoreExceptions(() -> getUsersMetadata(customer, destDir));
-    ignoreExceptions(() -> getTaskMetadata(customer, destDir));
+    ignoreExceptions(() -> getTaskMetadata(customer, destDir, startDate, endDate));
     ignoreExceptions(() -> getInstanceTypeMetadata(customer, destDir));
     ignoreExceptions(() -> getHaMetadata(customer, destDir));
     ignoreExceptions(() -> getXclusterMetadata(customer, destDir));
     ignoreExceptions(() -> getAuditLogs(customer, destDir, startDate, endDate));
-    ignoreExceptions(() -> getTaskInfo(customer, destDir, startDate, endDate));
   }
 }

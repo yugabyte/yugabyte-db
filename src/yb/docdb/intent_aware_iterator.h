@@ -406,4 +406,7 @@ using IntentAwareIteratorUpperboundScope = IntentAwareIteratorBoundScope<false>;
 
 std::string DebugDumpKeyToStr(Slice key);
 
+// Used for IntentIterator only.
+void AppendStrongWrite(dockv::KeyBytes* out);
+
 } // namespace yb::docdb

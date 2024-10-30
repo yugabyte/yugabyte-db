@@ -40,7 +40,7 @@ For more information on ports used by YugabyteDB, refer to [Default ports](../..
 
 ## Prepare nodes
 
-You can prepare nodes for on premises deployment, as follows:
+You can prepare nodes for on-premises deployment, as follows:
 
 1. Ensure that the YugabyteDB nodes conform to the requirements outlined in the [deployment checklist](/preview/deploy/checklist/). This checklist also gives an idea of [recommended instance types across public clouds](/preview/deploy/checklist/#running-on-public-clouds).
 1. Install the prerequisites and verify the system resource limits, as described in [system configuration](/preview/deploy/manual-deployment/system-config).

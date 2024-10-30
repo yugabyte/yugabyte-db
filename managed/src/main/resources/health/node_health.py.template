@@ -540,10 +540,10 @@ class NodeChecker():
     def __init__(self, node, node_name, node_identifier, master_index, tserver_index, is_k8s,
                  yb_home_dir, ybc_dir, start_time_ms, ysql_port, internal_ysql_port, ycql_port,
                  redis_port, enable_tls_client, enable_tls, root_and_client_root_ca_same,
-                 ssl_protocol, enable_ysql, enable_ysql_auth, master_http_port, tserver_http_port,
-                 ysql_server_http_port, node_version, is_ybc_enabled, ybc_port,
-                 time_drift_wrn_threshold, time_drift_err_threshold, otel_enabled,
-                 temp_output_file, ddl_atomicity_check, master_leader_url,
+                 ssl_protocol, enable_connection_pooling, enable_ysql, enable_ysql_auth,
+                 master_http_port, tserver_http_port, ysql_server_http_port, node_version,
+                 is_ybc_enabled, ybc_port, time_drift_wrn_threshold, time_drift_err_threshold,
+                 otel_enabled, temp_output_file, ddl_atomicity_check, master_leader_url,
                  master_rpc_port, tserver_rpc_port, verbose, clock_service_required):
         self.node = node
         self.node_name = node_name
@@ -562,6 +562,7 @@ class NodeChecker():
         self.internal_ysql_port = internal_ysql_port
         self.ycql_port = ycql_port
         self.redis_port = redis_port
+        self.enable_connection_pooling = enable_connection_pooling
         self.enable_ysql = enable_ysql
         self.enable_ysql_auth = enable_ysql_auth
         self.master_http_port = master_http_port
@@ -1488,7 +1489,8 @@ class NodeChecker():
             return e.fill_and_return_entry(["TServer is not running on this node"], has_error=False)
 
         try:
-            ysqlsh_cmd = self.create_ysqlsh_command()
+            ysqlsh_cmd = self.create_ysqlsh_command(
+                use_internal_port = True if self.enable_connection_pooling else False)
         except RuntimeError as re:
             metric.add_value(0)
             return e.fill_and_return_entry([str(re)], has_error=True, metrics=[metric])
@@ -1592,7 +1594,8 @@ class NodeChecker():
                                            metrics=[metric])
 
         try:
-            ysqlsh_cmd = self.create_ysqlsh_command("")
+            ysqlsh_cmd = self.create_ysqlsh_command(
+                "", True if self.enable_connection_pooling else False)
         except RuntimeError as re:
             metric.add_value(0)
             return e.fill_and_return_entry([str(re)], has_error=True, metrics=[metric])
@@ -1833,7 +1836,7 @@ class NodeChecker():
 
         service_error = service_status == 0
         return e.fill_and_return_entry(
-            ["%s ms" % drift_ms, "ntp service is%s running" % "not" if service_error else ""],
+            ["%s ms" % drift_ms, "ntp service is%s running" % " not" if service_error else ""],
             has_error=service_error, metrics=metrics)
 
     def check_process_stats(self, process_name):
@@ -1880,10 +1883,10 @@ class NodeChecker():
             root_out = self._check_output(root_cmd)
             user_out = self._check_output(user_cmd)
             success = True
-            if "0 unit files listed" not in root_out:
+            if "0 unit files listed" not in root_out and "Error" not in root_out:
                 if not self._check_unit_for_preexec(service, user=False):
                     errors.append("%s has no clock_sync script ExecStartPre" % service)
-            elif "0 unit files listed" not in user_out:
+            elif "0 unit files listed" not in user_out and "Error" not in user_out:
                 if not self._check_unit_for_preexec(service, user=True):
                     errors.append("%s has no clock_sync script ExecStartPre" % service)
             else:
@@ -2126,7 +2129,8 @@ def _chrony_get_clock_drift_ms():
             skew = float(skew_match.group(1))
             delay = float(delay_match.group(1))
             dispersion = float(dispersion_match.group(1))
-            return skew + dispersion + (.5 * delay)
+            # Main algorithm is (skew + dispersion + (.5 * delay))
+            return (skew + dispersion + (.5 * delay)) * 1000 # Convert seconds to milliseconds
     return "Failed to get clock drift from chrony"
 
 def _ntp_get_clock_drift_ms():
@@ -2134,9 +2138,9 @@ def _ntp_get_clock_drift_ms():
     ntp_out = check_output("systemctl status ntp.service", env)
     ntpd_out = check_output("systemctl status ntpd.service", env)
     if "Active: active" in ntp_out or "Active: active" in ntpd_out:
-        out = check_output("ntpq -p | awk 'NR==3' {print $9}'", env)
-        if "Error" not in out:
-          return int(float(out)*1000) # Convert seconds to milliseconds
+        out = check_output("ntpq -p | awk '$1 ~ \"^*\" {print $9}'", env)
+        if "Error" not in out and out.strip() != "":
+            return int(float(out)) # ntpq -p offset is already in milliseconds
     return "Failed to get clock drift from ntp(d)"
 
 def _timesyncd_get_clock_drift_ms():
@@ -2144,7 +2148,13 @@ def _timesyncd_get_clock_drift_ms():
     # to be correct. We will return 0 here and handle a not-synced system with other errors.
     return 0
 
+# return 1 if ntp service status is good, 0 otherwise.
+# A good status is both having timedatectl show the system clock is "in sync" and
+# having the specific ntp service (chrony, ntpd, or timesyncd) be running.
 def get_ntp_service_status():
+    # First we check if the clock is synced, and fail if its not
+    if get_timedatectl_sync() == 0:
+        return 0
     if chrony_exists():
         return 1 if is_service_running("chronyd.service") else 0
     elif ntp_exists():
@@ -2153,7 +2163,7 @@ def get_ntp_service_status():
         return 1 if ntp_running or ntpd_running else 0
     elif timesyncd_exists():
         return get_timedatectl_status()
-    logging.error("unknown time service: must be ntp(d) or chrony")
+    logging.error("unknown time service: must be ntp(d), chrony, or systemd-timesyncd")
     return 0
 
 def chrony_exists():
@@ -2171,12 +2181,15 @@ def timesyncd_exists():
     timesyncd_out = check_output("systemctl status systemd-timesyncd", env)
     return "Error" not in timesyncd_out
 
-# Returns 1 if timesyncd is running and synced, 0 otherwise.
+# Returns 1 if timesyncd is running 0 otherwise.
 def get_timedatectl_status():
     # timesyncd is not running
     if not is_service_running("systemd-timesyncd.service"):
         return 0
+    return 1
 
+# Returns 1 if system clock is synchronized 0 otherwise.
+def get_timedatectl_sync():
     env = os.environ.copy()
     out = check_output("timedatectl status", env)
     if "System clock synchronized: yes" in out:
@@ -2362,10 +2375,10 @@ def main():
         n.node_host, n.node_name, n.node_identifier, n.master_index, n.tserver_index, n.is_k8s,
         n.yb_home_dir, n.ybc_dir, n.node_start_time, n.ysql_port, n.internal_ysql_port, n.ycql_port,
         n.redis_port, n.enable_tls_client, n.enable_tls, n.root_and_client_root_ca_same,
-        n.ssl_protocol, n.enable_ysql, n.enable_ysql_auth, n.master_http_port, n.tserver_http_port,
-        n.ysql_server_http_port, n.yb_version, n.is_ybc_enabled, n.ybc_port,
-        n.time_drift_wrn_threshold, n.time_drift_err_threshold, n.otel_enabled,
-        args.temp_output_file, args.ddl_atomicity_check, args.master_leader_url,
+        n.ssl_protocol, n.enable_connection_pooling, n.enable_ysql, n.enable_ysql_auth,
+        n.master_http_port, n.tserver_http_port, n.ysql_server_http_port, n.yb_version,
+        n.is_ybc_enabled, n.ybc_port, n.time_drift_wrn_threshold, n.time_drift_err_threshold,
+        n.otel_enabled, args.temp_output_file, args.ddl_atomicity_check, args.master_leader_url,
         n.master_rpc_port, n.tserver_rpc_port, args.verbose, n.clockSyncServiceRequired)
 
     coordinator.add_precheck(checker, "check_openssl_availability")

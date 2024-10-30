@@ -845,7 +845,7 @@ EXPLAIN (COSTS OFF) SELECT ALL pk_real.c0 FROM pk_real WHERE ((0.6)>(pk_real.c0)
                   QUERY PLAN
 ----------------------------------------------
  Index Scan using pk_real_pkey on pk_real
-   Index Cond: ('0.6'::double precision > c0)
+   Index Cond: (c0 < '0.6'::double precision)
 (2 rows)
 
 SELECT ALL pk_real.c0 FROM pk_real WHERE ((0.6)>(pk_real.c0));
@@ -888,7 +888,7 @@ EXPLAIN (COSTS OFF) SELECT c0 FROM pk_smallint WHERE (65568 > c0);
                     QUERY PLAN
 --------------------------------------------------
  Index Scan using pk_smallint_pkey on pk_smallint
-   Index Cond: (65568 > c0)
+   Index Cond: (c0 < 65568)
 (2 rows)
 
 SELECT c0 FROM pk_smallint WHERE (65568 > c0);

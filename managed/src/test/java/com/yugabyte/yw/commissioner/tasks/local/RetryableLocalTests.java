@@ -137,7 +137,7 @@ public class RetryableLocalTests extends LocalProviderUniverseTestBase {
     assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
     MDC.remove(Commissioner.SUBTASK_ABORT_POSITION_PROPERTY);
     CustomerTask customerTask =
-        customerTaskManager.retryCustomerTask(customer.getUuid(), taskInfo.getTaskUUID());
+        customerTaskManager.retryCustomerTask(customer.getUuid(), taskInfo.getUuid());
     taskInfo = CommissionerBaseTest.waitForTask(customerTask.getTaskUUID());
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));

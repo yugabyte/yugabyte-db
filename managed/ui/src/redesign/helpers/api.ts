@@ -64,6 +64,8 @@ export enum QUERY_KEY {
   getGflagByName = 'getGlagByName'
 }
 
+export const PROMETHEUS_URL_QUERY_KEY = 'prometheusUrl';
+
 // --------------------------------------------------------------------------------------
 // React Query Key Factories
 // --------------------------------------------------------------------------------------
@@ -218,7 +220,6 @@ export interface CreateDrConfigRequest {
   };
   pitrParams: {
     retentionPeriodSec: number;
-    snapshotIntervalSec: number;
   };
 
   // `dryRun` - When `true`, it runs the pre-checks without actually running the subtasks

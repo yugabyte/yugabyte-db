@@ -28,6 +28,7 @@
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
+#include "yb/client/stateful_services/pg_cron_leader_service_client.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_info.h"
@@ -41,6 +42,7 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog_constants.h"
@@ -191,8 +193,9 @@ class LockablePgClientSession : public PgClientSession {
         lifetime_(lifetime), expiration_(NewExpiration()) {
   }
 
-  void StartExchange(const std::string& instance_id) {
-    exchange_.emplace(instance_id, id(), Create::kTrue, [this](size_t size) {
+  Status StartExchange(const std::string& instance_id) {
+    auto exchange = VERIFY_RESULT(SharedExchange::Make(instance_id, id(), Create::kTrue));
+    exchange_.emplace(std::move(exchange), [this](size_t size) {
       Touch();
       std::shared_ptr<CountDownLatch> latch;
       {
@@ -203,6 +206,21 @@ class LockablePgClientSession : public PgClientSession {
         latch->Wait();
       }
     });
+    return Status::OK();
+  }
+
+  void StartShutdown() override {
+    if (exchange_) {
+      exchange_->StartShutdown();
+    }
+    PgClientSession::StartShutdown();
+  }
+
+  void CompleteShutdown() override {
+    if (exchange_) {
+      exchange_->CompleteShutdown();
+    }
+    PgClientSession::CompleteShutdown();
   }
 
   CoarseTimePoint expiration() const {
@@ -451,7 +469,10 @@ class PgClientServiceImpl::Impl {
       }
     }
     for (const auto& session : sessions) {
-      session->session().Shutdown();
+      session->session().StartShutdown();
+    }
+    for (const auto& session : sessions) {
+      session->session().CompleteShutdown();
     }
     sessions.clear();
     check_expired_sessions_.Shutdown();
@@ -478,7 +499,7 @@ class PgClientServiceImpl::Impl {
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
       resp->set_instance_id(instance_id_);
-      session_info->session().StartExchange(instance_id_);
+      RETURN_NOT_OK(session_info->session().StartExchange(instance_id_));
     }
 
     std::lock_guard lock(mutex_);
@@ -1771,6 +1792,61 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status CronSetLastMinute(
+      const PgCronSetLastMinuteRequestPB& req, PgCronSetLastMinuteResponsePB* resp,
+      rpc::RpcContext* context) {
+    auto controller = std::make_shared<rpc::RpcController>();
+    controller->set_deadline(context->GetClientDeadline());
+
+    stateful_service::PgCronSetLastMinuteRequestPB stateful_service_req;
+    stateful_service_req.set_last_minute(req.last_minute());
+    RETURN_NOT_OK(client::PgCronLeaderServiceClient(client()).PgCronSetLastMinute(
+        stateful_service_req, context->GetClientDeadline()));
+
+    return Status::OK();
+  }
+
+  Status CronGetLastMinute(
+      const PgCronGetLastMinuteRequestPB& req, PgCronGetLastMinuteResponsePB* resp,
+      rpc::RpcContext* context) {
+    stateful_service::PgCronGetLastMinuteRequestPB stateful_service_req;
+    auto stateful_service_resp =
+        VERIFY_RESULT(client::PgCronLeaderServiceClient(client()).PgCronGetLastMinute(
+            stateful_service_req, context->GetClientDeadline()));
+
+    resp->set_last_minute(stateful_service_resp.last_minute());
+    return Status::OK();
+  }
+
+  Status ListClones(
+      const PgListClonesRequestPB& req, PgListClonesResponsePB* resp, rpc::RpcContext* context) {
+    master::ListClonesResponsePB master_resp;
+    RETURN_NOT_OK(client().ListClones(&master_resp));
+    if (master_resp.has_error()) {
+      return StatusFromPB(master_resp.error().status());
+    }
+    for (const auto& clone_state : master_resp.entries()) {
+      if (clone_state.database_type() == YQL_DATABASE_PGSQL) {
+        auto pg_clone_entry = resp->add_database_clones();
+        if (clone_state.has_target_namespace_id()) {
+          pg_clone_entry->set_db_id(
+              VERIFY_RESULT(GetPgsqlDatabaseOid(clone_state.target_namespace_id())));
+        }
+        pg_clone_entry->set_db_name(clone_state.target_namespace_name());
+        pg_clone_entry->set_parent_db_id(
+            VERIFY_RESULT(GetPgsqlDatabaseOid(clone_state.source_namespace_id())));
+        pg_clone_entry->set_parent_db_name(clone_state.source_namespace_name());
+        pg_clone_entry->set_state(
+            master::SysCloneStatePB_State_Name(clone_state.aggregate_state()));
+        pg_clone_entry->set_as_of_time(clone_state.restore_time());
+        if (clone_state.has_abort_message()) {
+          pg_clone_entry->set_failure_reason(clone_state.abort_message());
+        }
+      }
+    }
+    return Status::OK();
+  }
+
   #define PG_CLIENT_SESSION_METHOD_FORWARD(r, data, method) \
   Status method( \
       const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
@@ -1871,6 +1947,12 @@ class PgClientServiceImpl::Impl {
     }
     if (expired_sessions.empty()) {
       return;
+    }
+    for (const auto& session : expired_sessions) {
+      session->session().StartShutdown();
+    }
+    for (const auto& session : expired_sessions) {
+      session->session().CompleteShutdown();
     }
     auto cdc_service = tablet_server_.GetCDCService();
     // We only want to call this on tablet servers. On master, cdc_service will be null.
@@ -2047,6 +2129,7 @@ void PgClientServiceImpl::method( \
     const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
     BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
     rpc::RpcContext context) { \
+  TryUpdateAshWaitState(*req); \
   Respond(impl_->method(*req, resp, &context), resp, &context); \
 }
 
@@ -2055,6 +2138,7 @@ void PgClientServiceImpl::method( \
     const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
     BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
     rpc::RpcContext context) { \
+  TryUpdateAshWaitState(*req); \
   impl_->method(*req, resp, std::move(context)); \
 }
 

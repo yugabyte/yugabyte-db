@@ -71,6 +71,7 @@ export const TroubleshootingDetails = ({ activeTab }: TroubleshootingDetailsProp
               tpUrl={TpData[0].tpUrl}
               tpUuid={TpData[0].uuid}
               apiToken={TpData[0].apiToken}
+              tpApiToken={TpData[0].tpApiToken}
               metricsScrapePeriodSecs={TpData[0].metricsScrapePeriodSecs}
               customerUUID={TpData[0].customerUUID}
               inUseStatus={TpData[0].inUseStatus === 'IN_USE'}

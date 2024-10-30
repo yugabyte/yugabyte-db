@@ -484,17 +484,28 @@ TEST_F(MasterFailoverTest, TestFailoverAfterTsFailure) {
   ASSERT_OK(cluster_->ChangeConfig(cluster_->GetLeaderMaster(), consensus::REMOVE_SERVER));
 
   // Count all servers equal to 3.
+  auto leader_master = cluster_->GetLeaderMaster();
+  auto original_flag_value =
+      ASSERT_RESULT(leader_master->GetFlag("tserver_unresponsive_timeout_ms"));
+  ASSERT_OK(cluster_->SetFlag(leader_master, "tserver_unresponsive_timeout_ms", "3000"));
+
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     int tserver_count;
     RETURN_NOT_OK(client_->TabletServerCount(&tserver_count, false /* primary_only */));
     return tserver_count == 3;
   }, MonoDelta::FromSeconds(30), "Wait for tablet server count"));
 
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    int tserver_count;
-    RETURN_NOT_OK(client_->TabletServerCount(&tserver_count, true /* primary_only */));
-    return tserver_count == 2;
-  }, MonoDelta::FromSeconds(30), "Wait for tablet server count"));
+  // Count live tservers.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        int tserver_count;
+        RETURN_NOT_OK(client_->TabletServerCount(&tserver_count, true /* primary_only */));
+        return tserver_count == 2;
+      },
+      MonoDelta::FromSeconds(30), "Wait for tablet server count"));
+
+  ASSERT_OK(
+      cluster_->SetFlag(leader_master, "tserver_unresponsive_timeout_ms", original_flag_value));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(client_->GetTablets(table_name, 0, &tablets, /* partition_list_version =*/ nullptr));

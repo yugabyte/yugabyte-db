@@ -20,9 +20,10 @@ import (
 
 // createGCPProviderCmd represents the provider command
 var createGCPProviderCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create a GCP YugabyteDB Anywhere provider",
-	Long:  "Create a GCP provider in YugabyteDB Anywhere",
+	Use:     "create",
+	Aliases: []string{"add"},
+	Short:   "Create a GCP YugabyteDB Anywhere provider",
+	Long:    "Create a GCP provider in YugabyteDB Anywhere",
 	Example: `yba provider gcp create -n dkumar-cli \
 	--network yugabyte-network \
 	--region region-name=us-west1,shared-subnet=<subnet> \
@@ -217,18 +218,15 @@ var createGCPProviderCmd = &cobra.Command{
 			},
 			Regions: buildGCPRegions(regions, allowed, version),
 		}
-		rCreate, response, err := authAPI.CreateProvider().
+		rTask, response, err := authAPI.CreateProvider().
 			CreateProviderRequest(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Provider: GCP", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		providerUUID := rCreate.GetResourceUUID()
-		taskUUID := rCreate.GetTaskUUID()
-
-		providerutil.WaitForCreateProviderTask(authAPI, providerName, providerUUID,
-			providerCode, taskUUID)
+		providerutil.WaitForCreateProviderTask(
+			authAPI, providerName, rTask, providerCode)
 	},
 }
 
@@ -291,8 +289,8 @@ func init() {
 		"[Optional] SSH User to access the YugabyteDB nodes.")
 	createGCPProviderCmd.Flags().Int("ssh-port", 22,
 		"[Optional] SSH Port to access the YugabyteDB nodes.")
-	createGCPProviderCmd.Flags().MarkDeprecated("ssh-port", "Use --edit-image-bundle instead.")
-	createGCPProviderCmd.Flags().MarkDeprecated("ssh-user", "Use --edit-image-bundle instead.")
+	createGCPProviderCmd.Flags().MarkDeprecated("ssh-port", "Use --image-bundle instead.")
+	createGCPProviderCmd.Flags().MarkDeprecated("ssh-user", "Use --image-bundle instead.")
 
 	createGCPProviderCmd.Flags().String("custom-ssh-keypair-name", "",
 		"[Optional] Provide custom key pair name to access YugabyteDB nodes. "+

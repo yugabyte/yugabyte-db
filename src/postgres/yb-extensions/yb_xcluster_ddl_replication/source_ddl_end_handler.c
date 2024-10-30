@@ -23,6 +23,7 @@
 
 #include "extension_util.h"
 #include "pg_yb_utils.h"
+#include "tcop/cmdtag.h"
 #include "utils/jsonb.h"
 #include "utils/palloc.h"
 #include "utils/rel.h"
@@ -71,12 +72,11 @@ SPI_GetBool(HeapTuple spi_tuple, int column_id)
 }
 
 bool
-AreCommandTagsEqual(const char *command_tag1, const char *command_tag2)
+IsPrimaryIndex(Relation rel)
 {
-	size_t len = strlen(command_tag1);
-	if (len != strlen(command_tag2))
-		return false;
-	return strncmp(command_tag1, command_tag2, len) == 0;
+	return (rel->rd_rel->relkind == RELKIND_INDEX ||
+			rel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX) &&
+		   YBIsCoveredByMainTable(rel);
 }
 
 bool
@@ -85,15 +85,17 @@ ShouldReplicateCreateRelation(Oid rel_oid, List **new_rel_list)
 	Relation rel = RelationIdGetRelation(rel_oid);
 	if (!rel)
 		elog(ERROR, "Could not find relation with oid %d", rel_oid);
-
-	// Ignore temporary tables and covered indexes (same as main table).
-	if (!IsYBBackedRelation(rel) ||
-		((rel->rd_rel->relkind == RELKIND_INDEX ||
-		  rel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX) &&
-		 YBIsCoveredByMainTable(rel)))
+	// Ignore temporary tables.
+	if (!IsYBBackedRelation(rel))
 	{
 		RelationClose(rel);
 		return false;
+	}
+	// Primary indexes are YB-backed, but don't have table properties.
+	if (IsPrimaryIndex(rel))
+	{
+		RelationClose(rel);
+		return true;
 	}
 
 	// Also need to disallow colocated objects until that is supported.
@@ -117,6 +119,37 @@ ShouldReplicateCreateRelation(Oid rel_oid, List **new_rel_list)
 }
 
 bool
+ShouldReplicateAlterReplication(Oid rel_oid)
+{
+	Relation rel = RelationIdGetRelation(rel_oid);
+	if (!rel)
+		elog(ERROR, "Could not find relation with oid %d", rel_oid);
+	// Ignore temporary tables.
+	if (!IsYBBackedRelation(rel))
+	{
+		RelationClose(rel);
+		return false;
+	}
+	// Primary indexes are YB-backed, but don't have table properties.
+	if (IsPrimaryIndex(rel))
+	{
+		RelationClose(rel);
+		return true;
+	}
+
+	// Also need to disallow colocated objects until that is supported.
+	YbTableProperties table_props = YbGetTableProperties(rel);
+	bool is_colocated = table_props->is_colocated;
+	RelationClose(rel);
+	if (is_colocated)
+		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg("Colocated objects are not yet supported by "
+							   "yb_xcluster_ddl_replication\n%s",
+							   kManualReplicationErrorMsg)));
+	return true;
+}
+
+bool
 ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 {
 	StringInfoData query_buf;
@@ -135,23 +168,25 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 	{
 		HeapTuple spi_tuple = SPI_tuptable->vals[row];
 		Oid obj_id = SPI_GetOid(spi_tuple, DDL_END_OBJID_COLUMN_ID);
-		const char *command_tag =
+		const char *command_tag_name =
 			SPI_GetText(spi_tuple, DDL_END_COMMAND_TAG_COLUMN_ID);
+		CommandTag command_tag = GetCommandTagEnum(command_tag_name);
 
-		/*
-		 * TODO(jhe): Need a better way of handling all these DDL types. Perhaps
-		 * can mimic CreateCommandTag and return a custom enum instead, thus
-		 * allowing for switch cases here.
-		 */
-		if (AreCommandTagsEqual(command_tag, "CREATE TABLE") ||
-			AreCommandTagsEqual(command_tag, "CREATE INDEX"))
+		if (command_tag == CMDTAG_CREATE_TABLE ||
+			command_tag == CMDTAG_CREATE_INDEX)
 		{
 			should_replicate_ddl |=
 				ShouldReplicateCreateRelation(obj_id, &new_rel_list);
 		}
+		else if (command_tag == CMDTAG_ALTER_TABLE ||
+				 command_tag == CMDTAG_ALTER_INDEX)
+		{
+      // TODO(jhe): May need finer grained control over ALTER TABLE commands.
+	    should_replicate_ddl |= ShouldReplicateAlterReplication(obj_id);
+		}
 		else
 		{
-			elog(ERROR, "Unsupported DDL: %s\n%s", command_tag,
+			elog(ERROR, "Unsupported DDL: %s\n%s", command_tag_name,
 				 kManualReplicationErrorMsg);
 		}
 	}

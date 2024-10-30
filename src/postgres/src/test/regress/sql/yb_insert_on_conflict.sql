@@ -95,8 +95,8 @@ SELECT * FROM ab_tab WHERE a IS NULL ORDER BY b;
 DELETE FROM ab_tab WHERE a IS null;
 -- NULLS NOT DISTINCT
 DROP INDEX ah_idx;
-/* TODO(jason): uncomment when NULLS NOT DISTINCT is either supported or blocked
 CREATE UNIQUE INDEX NONCONCURRENTLY ah_idx ON ab_tab (a HASH) NULLS NOT DISTINCT;
+/* TODO(jason): uncomment when NULLS NOT DISTINCT is supported
 INSERT INTO ab_tab VALUES (null, null);
 INSERT INTO ab_tab VALUES (null, null) ON CONFLICT DO NOTHING;
 SELECT * FROM ab_tab WHERE a IS NULL ORDER BY b;
@@ -151,10 +151,10 @@ INSERT INTO complex_table VALUES ('2024-08-22 06:00:00+06'::timestamptz,
 SELECT count(*) FROM complex_table;
 
 --- ON CONFLICT DO UPDATE varlen type
-CREATE TABLE varlen (t text, b bytea, UNIQUE (t));
+CREATE TABLE varlen (t text, b bytea GENERATED ALWAYS AS (bytea(t)) STORED, UNIQUE (t));
 CREATE INDEX NONCONCURRENTLY ON varlen (b);
-INSERT INTO varlen VALUES ('a', bytea('a'));
-INSERT INTO varlen VALUES ('a', bytea('a')), ('a', bytea('a')) ON CONFLICT (t) DO UPDATE SET t = 'b';
+INSERT INTO varlen VALUES ('a');
+INSERT INTO varlen VALUES ('a'), ('a') ON CONFLICT (t) DO UPDATE SET t = 'b';
 SELECT * FROM varlen ORDER BY t;
 
 --- ON CONFLICT DO UPDATE edge cases

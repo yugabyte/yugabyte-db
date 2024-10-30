@@ -21,9 +21,13 @@ import (
 
 // editBackupCmd represents the edit backup command
 var editBackupCmd = &cobra.Command{
-	Use:   "edit",
-	Short: "Edit a YugabyteDB Anywhere universe backup",
-	Long:  "Edit an universe backup in YugabyteDB Anywhere",
+	Use:     "update",
+	Aliases: []string{"edit"},
+	Short:   "Edit a YugabyteDB Anywhere universe backup",
+	Long:    "Edit an universe backup in YugabyteDB Anywhere",
+	Example: `yba backup update --uuid <backup-uuid> \
+	--time-before-delete-in-ms <time-before-delete-in-ms> \
+	--storage-config-name <storage-config-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		backupUUID, err := cmd.Flags().GetString("uuid")
 		if err != nil {

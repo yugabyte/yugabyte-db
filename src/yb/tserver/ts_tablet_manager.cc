@@ -114,8 +114,8 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_validator.h"
 #include "yb/tserver/tserver.pb.h"
-
 #include "yb/tserver/tserver_xcluster_context_if.h"
+
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/debug-util.h"
@@ -236,12 +236,16 @@ DEFINE_test_flag(bool, pause_apply_tablet_split, false,
 DEFINE_test_flag(bool, skip_deleting_split_tablets, false,
                  "Skip deleting tablets which have been split.");
 
-DEFINE_UNKNOWN_int32(verify_tablet_data_interval_sec, 0,
+DEFINE_NON_RUNTIME_int32(verify_tablet_data_interval_sec, 0,
              "The tick interval time for the tablet data integrity verification background task. "
              "This defaults to 0, which means disable the background task.");
 
-DEFINE_UNKNOWN_int32(cleanup_metrics_interval_sec, 60,
+DEFINE_NON_RUNTIME_int32(cleanup_metrics_interval_sec, 60,
              "The tick interval time for the metrics cleanup background task. "
+             "If set to 0, it disables the background task.");
+
+DEFINE_NON_RUNTIME_int32(data_size_metric_updater_interval_sec, 60,
+             "The interval time for the data size metric updater background task. "
              "If set to 0, it disables the background task.");
 
 DEFINE_UNKNOWN_int32(send_wait_for_report_interval_ms, 60000,
@@ -381,6 +385,10 @@ METRIC_DEFINE_gauge_int64(server, ts_supportable_tablet_peers,
     "Number of Tablet Peers this TServer can support", MetricUnit::kUnits,
     "Number of tablet peers that this TServer can support based on available RAM and cores or -1 "
     "if no tablet limit in effect.");
+
+METRIC_DEFINE_gauge_uint64(server, num_tablet_peers_undergoing_rbs,
+    "Number of Tablet Peers on the TServer undergoing remote bootstrap", MetricUnit::kUnits,
+    "Number of Tablet Peers on the TServer undergoing remote bootstrap i.e actively RBSing peers.");
 
 THREAD_POOL_METRICS_DEFINE(server, admin_triggered_compaction_pool,
     "Thread pool for admin-triggered tablet compaction jobs.");
@@ -577,6 +585,9 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
       server_->metric_entity(), GetNumSupportableTabletPeers());
   ts_open_metadata_time_us_ =
       METRIC_ts_open_metadata_time_us.Instantiate(server_->metric_entity(), 0);
+  ts_data_size_metrics_ = std::make_unique<TsDataSizeMetrics>(this);
+  num_tablet_peers_undergoing_rbs_ = METRIC_num_tablet_peers_undergoing_rbs.Instantiate(
+      server->metric_entity(), 0);
 
   mem_manager_ = std::make_shared<TabletMemoryManager>(
       &tablet_options_,
@@ -757,6 +768,9 @@ Status TSTabletManager::Init() {
   verify_tablet_data_poller_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::VerifyTabletData, this));
 
+  data_size_metric_updater_ = std::make_unique<rpc::Poller>(
+      LogPrefix(), [this]() { return ts_data_size_metrics_->Update(); });
+
   metrics_emitter_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::EmitMetrics, this));
 
@@ -811,32 +825,31 @@ void TSTabletManager::CleanupCheckpoints() {
   }
 }
 
+// Schedules a background task if the interval is > 0.
+void TSTabletManager::StartScheduledTask(
+    rpc::Poller* task, const std::string& name, MonoDelta interval) {
+  if (interval > 0s) {
+    task->Start(&server_->messenger()->scheduler(), interval);
+    LOG(INFO) << Format("$0 task started with interval $1", name, interval);
+  } else {
+    LOG(INFO) << Format("$0 task is disabled because interval is <= 0", name);
+  }
+}
+
 Status TSTabletManager::Start() {
-  if (FLAGS_cleanup_split_tablets_interval_sec > 0) {
-    tablets_cleaner_->Start(
-        &server_->messenger()->scheduler(), FLAGS_cleanup_split_tablets_interval_sec * 1s);
-    LOG(INFO) << "Split tablets cleanup monitor started...";
-  } else {
-    LOG(INFO)
-        << "Split tablets cleanup is disabled by cleanup_split_tablets_interval_sec flag set to 0";
-  }
-  if (FLAGS_verify_tablet_data_interval_sec > 0) {
-    verify_tablet_data_poller_->Start(
-        &server_->messenger()->scheduler(), FLAGS_verify_tablet_data_interval_sec * 1s);
-    LOG(INFO) << "Tablet data verification task started...";
-  } else {
-    LOG(INFO)
-        << "Tablet data verification is disabled by verify_tablet_data_interval_sec flag set to 0";
-  }
-  metrics_emitter_->Start(&server_->messenger()->scheduler(), 1s);
-  if (FLAGS_cleanup_metrics_interval_sec > 0) {
-    metrics_cleaner_->Start(
-        &server_->messenger()->scheduler(), FLAGS_cleanup_metrics_interval_sec * 1s);
-    LOG(INFO) << "Old metrics cleanup task started...";
-  } else {
-    LOG(INFO)
-        << "Old metrics cleanup is disabled by cleanup_metrics_interval_sec flag set to 0";
-  }
+  StartScheduledTask(
+      tablets_cleaner_.get(), "Split tablets cleanup",
+      FLAGS_cleanup_split_tablets_interval_sec * 1s);
+  StartScheduledTask(
+      verify_tablet_data_poller_.get(), "Tablet data verification",
+      FLAGS_verify_tablet_data_interval_sec * 1s);
+  StartScheduledTask(metrics_emitter_.get(), "Metrics emitter", 1s);
+  StartScheduledTask(
+      metrics_cleaner_.get(), "Old metrics cleanup",
+      FLAGS_cleanup_metrics_interval_sec * 1s);
+  StartScheduledTask(
+      data_size_metric_updater_.get(), "Data size metric updater",
+      FLAGS_data_size_metric_updater_interval_sec * 1s);
 
   if (waiting_txn_registry_) {
     waiting_txn_registry_poller_->Start(
@@ -1292,6 +1305,10 @@ Status TSTabletManager::DoApplyCloneTablet(
     committed_raft_config =
         VERIFY_RESULT(tablet_peer->GetRaftConsensus())->CommittedConfigUnlocked();
   }
+  // Set op_id of the raft config to the same as we would for a fresh tablet. This is required
+  // because a change config will use the current op id of 0 (since the tablet has no data). If the
+  // committed config has a higher op id, the change config fails.
+  committed_raft_config->set_opid_index(consensus::kInvalidOpIdIndex);
 
   // State transition for clone target could be already registered because it is remote
   // bootstrapping from an existing quorum. We would ideally avoid this by passing
@@ -1330,8 +1347,8 @@ Status TSTabletManager::DoApplyCloneTablet(
   });
 
   std::unique_ptr<ConsensusMetadata> cmeta = VERIFY_RESULT(ConsensusMetadata::Create(
-      fs_manager_, target_tablet_id, fs_manager_->uuid(), committed_raft_config.value(),
-      clone_op_id.term));
+      fs_manager_, target_tablet_id, fs_manager_->uuid(), *committed_raft_config,
+      consensus::kMinimumTerm /* current_term */));
   cmeta->set_clone_source_info(request->clone_request_seq_no(), source_tablet_id);
   RETURN_NOT_OK(cmeta->Flush());
 
@@ -1447,8 +1464,8 @@ Status TSTabletManager::ApplyCloneTablet(
   }
 
   LOG(INFO) << Format(
-      "Starting apply of clone op with seq_no $0 on tablet $1", clone_request_seq_no,
-      source_tablet_id);
+      "Starting apply of clone op with seq_no $0 on source tablet $1 to target tablet $2",
+      clone_request_seq_no, source_tablet_id, operation->request()->target_tablet_id());
   auto status = DoApplyCloneTablet(operation, raft_log, committed_raft_config);
   if (!status.ok()) {
     if (FLAGS_TEST_expect_clone_apply_failure) {
@@ -1552,8 +1569,10 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   // populates bootstrap_source_addresses_ before looking up the tablet. Define this
   // ScopeExit before calling RegisterRemoteClientAndLookupTablet so that if it fails,
   // we cleanup as expected.
+  num_tablet_peers_undergoing_rbs_->Increment();
   auto decrement_num_session = ScopeExit([this, &private_addr]() {
     DecrementRemoteSessionCount(private_addr, &remote_bootstrap_clients_);
+    num_tablet_peers_undergoing_rbs_->Decrement();
   });
   TabletPeerPtr old_tablet_peer = VERIFY_RESULT(RegisterRemoteClientAndLookupTablet(
       tablet_id, private_addr, kLogPrefix, &remote_bootstrap_clients_,
@@ -2058,6 +2077,17 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
               <<  "Failed to submit retryable requests task: " << s.ToString();
         }
       },
+      .min_start_ht_running_txns_callback = [peer_weak_ptr, kLogPrefix]() -> HybridTime {
+        auto peer = peer_weak_ptr.lock();
+        if (peer) {
+          return peer->GetMinStartHTRunningTxnsOrLeaderSafeTime();
+        }
+
+        LOG(WARNING) << kLogPrefix
+                      << "Tablet peer not found, so setting minimum start time of running txns to "
+                        "kInitial.";
+        return HybridTime::kInitial;
+      }
     };
     s = BootstrapTablet(data, &tablet, &log, &bootstrap_info);
     if (!s.ok()) {
@@ -2197,6 +2227,8 @@ void TSTabletManager::StartShutdown() {
   verify_tablet_data_poller_->Shutdown();
 
   tablet_metadata_validator_->Shutdown();
+
+  data_size_metric_updater_->Shutdown();
 
   metrics_emitter_->Shutdown();
 

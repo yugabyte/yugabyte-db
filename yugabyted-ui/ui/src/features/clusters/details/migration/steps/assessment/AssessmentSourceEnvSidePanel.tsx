@@ -132,7 +132,7 @@ export const MigrationSourceEnvSidePanel: FC<MigrationSourceEnvSidePanelProps> =
       label: t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.type"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px", textTransform: "capitalize"  } }),
       },
     },
     {
@@ -141,7 +141,10 @@ export const MigrationSourceEnvSidePanel: FC<MigrationSourceEnvSidePanelProps> =
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
-        customBodyRender: (size: number) => getMemorySizeUnits(size),
+        customBodyRender: (size: number) => (
+          size === -1 ? <span>-</span> : getMemorySizeUnits(size)
+        ),
+
       },
     },
     /* {
@@ -158,6 +161,9 @@ export const MigrationSourceEnvSidePanel: FC<MigrationSourceEnvSidePanelProps> =
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
+        customBodyRender: (iops: number) => (
+          iops === -1 ? <span>-</span> : iops
+        ),
       },
     },
   ];

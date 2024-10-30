@@ -41,7 +41,6 @@
 #include "yb/yql/pggate/pg_operation_buffer.h"
 #include "yb/yql/pggate/pg_perform_future.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
-#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 
 namespace yb::pggate {
@@ -64,8 +63,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
       scoped_refptr<PgTxnManager> pg_txn_manager,
       const YBCPgCallbacks& pg_callbacks,
       YBCPgExecStatsState& stats_state,
-      YbctidReader&& ybctid_reader);
-  ~PgSession();
+      YbctidReader&& ybctid_reader,
+      bool is_pg_binary_upgrade,
+      std::reference_wrapper<const WaitEventWatcher> wait_event_watcher);
+  virtual ~PgSession();
 
   // Resets the read point for catalog tables.
   // Next catalog read operation will read the very latest catalog's state.
@@ -284,6 +285,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   Result<yb::tserver::PgServersMetricsResponsePB> ServersMetrics();
 
+  Status SetCronLastMinute(int64_t last_minute);
+  Result<int64_t> GetCronLastMinute();
+
  private:
   Result<PgTableDescPtr> DoLoadTable(
       const PgObjectId& table_id, bool fail_on_cache_hit,
@@ -350,6 +354,11 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   PgOperationBuffer buffer_;
 
   bool has_write_ops_in_ddl_mode_ = false;
+
+  // This session is upgrading to PG15.
+  const bool is_major_pg_version_upgrade_;
+
+  const WaitEventWatcher& wait_event_watcher_;
 };
 
 }  // namespace yb::pggate

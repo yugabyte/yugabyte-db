@@ -1164,6 +1164,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 
+  public static final ConfKeyInfo<Integer> nodesAreSafeToTakeDownParallelism =
+      new ConfKeyInfo<>(
+          "yb.checks.nodes_safe_to_take_down.parallelism",
+          ScopeType.UNIVERSE,
+          "Number of threads to use for RPC requests",
+          "Number of threads to use for RPC requests",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
   public static final ConfKeyInfo<Duration> nodesAreSafeToTakeDownCheckTimeout =
       new ConfKeyInfo<>(
           "yb.checks.nodes_safe_to_take_down.timeout",
@@ -1219,7 +1228,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Stop multiple nodes in az simultaneously during upgrade",
           "Stop multiple nodes in az simultaneously during upgrade",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> upgradeBatchRollK8sEnabled =
       new ConfKeyInfo<>(
           "yb.task.upgrade.batch_roll_enabled_k8s",
@@ -1227,23 +1236,23 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Stop multiple nodes in az simultaneously during upgrade (in k8s)",
           "Stop multiple nodes in az simultaneously during upgrade (in k8s)",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> upgradeBatchRollAutoPercent =
       new ConfKeyInfo<>(
           "yb.task.upgrade.batch_roll_auto_percent",
           ScopeType.UNIVERSE,
-          "Percent of nodes to roll simultaneously during upgrade",
-          "Percent of nodes to roll simultaneously during upgrade",
+          "Max percent of nodes to roll simultaneously during upgrade",
+          "Max percent of nodes to roll simultaneously during upgrade",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> upgradeBatchRollAutoNumber =
       new ConfKeyInfo<>(
           "yb.task.upgrade.batch_roll_auto_number",
           ScopeType.UNIVERSE,
-          "Number of nodes to roll simultaneously during upgrade",
-          "Number of nodes to roll simultaneously during upgrade",
+          "Max number of nodes to roll simultaneously during upgrade",
+          "Max number of nodes to roll simultaneously during upgrade",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> autoMasterFailoverDetectionInterval =
       new ConfKeyInfo<>(
           "yb.auto_master_failover.detect_interval",
@@ -1387,4 +1396,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Allow node agent and SSH communications to nodes at the same time for the universe.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> nodeAgentEnablerReinstallCooldown =
+      new ConfKeyInfo<>(
+          "yb.node_agent.enabler.reinstall_cooldown",
+          ScopeType.UNIVERSE,
+          "Node Agent Enabler Reinstallation Cooldown Period",
+          "Node agent enabler reinstallation cooldown period for the universe",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

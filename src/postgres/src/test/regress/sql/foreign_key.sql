@@ -97,6 +97,12 @@ UPDATE PKTABLE SET ptest1=1 WHERE ptest1=2;
 -- Check FKTABLE for update of matched row
 SELECT * FROM FKTABLE;
 
+-- Check update with part of key null
+UPDATE FKTABLE SET ftest1 = NULL WHERE ftest1 = 1;
+
+-- Check update with old and new key values equal
+UPDATE FKTABLE SET ftest1 = 1 WHERE ftest1 = 1;
+
 -- Try altering the column type where foreign keys are involved
 ALTER TABLE PKTABLE ALTER COLUMN ptest1 TYPE bigint;
 ALTER TABLE FKTABLE ALTER COLUMN ftest1 TYPE bigint;
@@ -213,6 +219,20 @@ SELECT * FROM PKTABLE;
 DROP TABLE FKTABLE;
 DROP TABLE PKTABLE;
 
+--
+-- Check initial check upon ALTER TABLE
+--
+CREATE TABLE PKTABLE ( ptest1 int, ptest2 int, PRIMARY KEY(ptest1, ptest2) );
+CREATE TABLE FKTABLE ( ftest1 int, ftest2 int );
+
+INSERT INTO PKTABLE VALUES (1, 2);
+INSERT INTO FKTABLE VALUES (1, NULL);
+
+ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1, ftest2) REFERENCES PKTABLE MATCH FULL;
+
+DROP TABLE FKTABLE;
+DROP TABLE PKTABLE;
+
 
 -- MATCH SIMPLE
 
@@ -256,6 +276,25 @@ DELETE FROM PKTABLE where ptest1=2;
 SELECT * from PKTABLE;
 
 SELECT * from FKTABLE;
+
+DROP TABLE FKTABLE;
+DROP TABLE PKTABLE;
+
+-- restrict with null values
+CREATE TABLE PKTABLE ( ptest1 int, ptest2 int, ptest3 int, ptest4 text, UNIQUE(ptest1, ptest2, ptest3) );
+CREATE TABLE FKTABLE ( ftest1 int, ftest2 int, ftest3 int, ftest4 int,  CONSTRAINT constrname3
+			FOREIGN KEY(ftest1, ftest2, ftest3) REFERENCES PKTABLE (ptest1, ptest2, ptest3));
+
+INSERT INTO PKTABLE VALUES (1, 2, 3, 'test1');
+INSERT INTO PKTABLE VALUES (1, 3, NULL, 'test2');
+INSERT INTO PKTABLE VALUES (2, NULL, 4, 'test3');
+
+INSERT INTO FKTABLE VALUES (1, 2, 3, 1);
+
+DELETE FROM PKTABLE WHERE ptest1 = 2;
+
+SELECT * FROM PKTABLE;
+SELECT * FROM FKTABLE;
 
 DROP TABLE FKTABLE;
 DROP TABLE PKTABLE;
@@ -420,6 +459,33 @@ DELETE FROM PKTABLE where ptest2=-1 and ptest3=5;
 -- Show PKTABLE and FKTABLE
 SELECT * from PKTABLE;
 SELECT * from FKTABLE;
+
+DROP TABLE FKTABLE;
+DROP TABLE PKTABLE;
+
+-- Test for ON DELETE SET NULL/DEFAULT (column_list);
+CREATE TABLE PKTABLE (tid int, id int, PRIMARY KEY (tid, id));
+CREATE TABLE FKTABLE (tid int, id int, foo int, FOREIGN KEY (tid, id) REFERENCES PKTABLE ON DELETE SET NULL (bar));
+CREATE TABLE FKTABLE (tid int, id int, foo int, FOREIGN KEY (tid, id) REFERENCES PKTABLE ON DELETE SET NULL (foo));
+CREATE TABLE FKTABLE (tid int, id int, foo int, FOREIGN KEY (tid, foo) REFERENCES PKTABLE ON UPDATE SET NULL (foo));
+CREATE TABLE FKTABLE (
+  tid int, id int,
+  fk_id_del_set_null int,
+  fk_id_del_set_default int DEFAULT 0,
+  FOREIGN KEY (tid, fk_id_del_set_null) REFERENCES PKTABLE ON DELETE SET NULL (fk_id_del_set_null),
+  FOREIGN KEY (tid, fk_id_del_set_default) REFERENCES PKTABLE ON DELETE SET DEFAULT (fk_id_del_set_default)
+);
+
+SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'fktable'::regclass::oid ORDER BY oid;
+
+INSERT INTO PKTABLE VALUES (1, 0), (1, 1), (1, 2);
+INSERT INTO FKTABLE VALUES
+  (1, 1, 1, NULL),
+  (1, 2, NULL, 2);
+
+DELETE FROM PKTABLE WHERE id = 1 OR id = 2;
+
+SELECT * FROM FKTABLE ORDER BY id;
 
 DROP TABLE FKTABLE;
 DROP TABLE PKTABLE;
@@ -615,7 +681,6 @@ drop table pktable_base;
 
 --
 -- Deferrable constraints
---		(right now, only FOREIGN KEY constraints can be deferred)
 --
 
 -- deferrable, explicitly deferred
@@ -992,22 +1057,24 @@ delete from defp where f1 = 1; -- fail
 -- Test the difference between NO ACTION and RESTRICT
 --
 create temp table pp (f1 int primary key);
-create temp table cc (f1 int references pp on update no action);
+create temp table cc (f1 int references pp on update no action on delete no action);
 insert into pp values(12);
 insert into pp values(11);
 update pp set f1=f1+1;
 insert into cc values(13);
 update pp set f1=f1+1;
 update pp set f1=f1+1; -- fail
+delete from pp where f1 = 13; -- fail
 drop table pp, cc;
 
 create temp table pp (f1 int primary key);
-create temp table cc (f1 int references pp on update restrict);
+create temp table cc (f1 int references pp on update restrict on delete restrict);
 insert into pp values(12);
 insert into pp values(11);
 update pp set f1=f1+1;
 insert into cc values(13);
 update pp set f1=f1+1; -- fail
+delete from pp where f1 = 13; -- fail
 drop table pp, cc;
 
 --
@@ -1029,6 +1096,20 @@ insert into fktable2 values (4, 5);
 delete from pktable2;
 update pktable2 set d = 5;
 drop table pktable2, fktable2;
+
+-- Test truncation of long foreign key names
+create table pktable1 (a int primary key);
+create table pktable2 (a int, b int, primary key (a, b));
+create table fktable2 (
+  a int,
+  b int,
+  very_very_long_column_name_to_exceed_63_characters int,
+  foreign key (very_very_long_column_name_to_exceed_63_characters) references pktable1,
+  foreign key (a, very_very_long_column_name_to_exceed_63_characters) references pktable2,
+  foreign key (a, very_very_long_column_name_to_exceed_63_characters) references pktable2
+);
+select conname from pg_constraint where conrelid = 'fktable2'::regclass order by conname;
+drop table pktable1, pktable2, fktable2;
 
 --
 -- Test deferred FK check on a tuple deleted by a rolled-back subtransaction
@@ -1066,22 +1147,30 @@ commit;
 
 drop table pktable2, fktable2;
 
+--
+-- Test keys that "look" different but compare as equal
+--
+create table pktable2 (a float8, b float8, primary key (a, b));
+create table fktable2 (x float8, y float8, foreign key (x, y) references pktable2 (a, b) on update cascade);
+
+insert into pktable2 values ('-0', '-0');
+insert into fktable2 values ('-0', '-0');
+
+select * from pktable2;
+select * from fktable2;
+
+update pktable2 set a = '0' where a = '-0';
+
+select * from pktable2;
+-- should have updated fktable2.x
+select * from fktable2;
+
+drop table pktable2, fktable2;
+
 
 --
 -- Foreign keys and partitioned tables
 --
-
--- partitioned table in the referenced side are not allowed
-CREATE TABLE fk_partitioned_pk (a int, b int, primary key (a, b))
-  PARTITION BY RANGE (a, b);
--- verify with create table first ...
-CREATE TABLE fk_notpartitioned_fk (a int, b int,
-  FOREIGN KEY (a, b) REFERENCES fk_partitioned_pk);
--- and then with alter table.
-CREATE TABLE fk_notpartitioned_fk_2 (a int, b int);
-ALTER TABLE fk_notpartitioned_fk_2 ADD FOREIGN KEY (a, b)
-  REFERENCES fk_partitioned_pk;
-DROP TABLE fk_partitioned_pk, fk_notpartitioned_fk_2;
 
 -- Creation of a partitioned hierarchy with irregular definitions
 CREATE TABLE fk_notpartitioned_pk (fdrop1 int, a int, fdrop2 int, b int,
@@ -1115,7 +1204,7 @@ ALTER TABLE ONLY fk_partitioned_fk ADD FOREIGN KEY (a, b)
 ALTER TABLE fk_partitioned_fk ADD FOREIGN KEY (a, b)
   REFERENCES fk_notpartitioned_pk NOT VALID;
 
--- these inserts, targetting both the partition directly as well as the
+-- these inserts, targeting both the partition directly as well as the
 -- partitioned table, should all fail
 INSERT INTO fk_partitioned_fk (a,b) VALUES (500, 501);
 INSERT INTO fk_partitioned_fk_1 (a,b) VALUES (500, 501);
@@ -1144,7 +1233,9 @@ UPDATE fk_partitioned_fk SET a = a + 1 WHERE a = 2501;
 UPDATE fk_notpartitioned_pk SET b = 502 WHERE a = 500;
 UPDATE fk_notpartitioned_pk SET b = 1502 WHERE a = 1500;
 UPDATE fk_notpartitioned_pk SET b = 2504 WHERE a = 2500;
-ALTER TABLE fk_partitioned_fk DROP CONSTRAINT fk_partitioned_fk_a_fkey;
+-- check psql behavior
+\d fk_notpartitioned_pk
+ALTER TABLE fk_partitioned_fk DROP CONSTRAINT fk_partitioned_fk_a_b_fkey;
 -- done.
 DROP TABLE fk_notpartitioned_pk, fk_partitioned_fk;
 
@@ -1183,6 +1274,17 @@ INSERT INTO fk_partitioned_fk_3 (a, b) VALUES (2502, 2503);
 -- this always works
 INSERT INTO fk_partitioned_fk (a,b) VALUES (NULL, NULL);
 
+-- MATCH FULL
+INSERT INTO fk_notpartitioned_pk VALUES (1, 2);
+CREATE TABLE fk_partitioned_fk_full (x int, y int) PARTITION BY RANGE (x);
+CREATE TABLE fk_partitioned_fk_full_1 PARTITION OF fk_partitioned_fk_full DEFAULT;
+INSERT INTO fk_partitioned_fk_full VALUES (1, NULL);
+ALTER TABLE fk_partitioned_fk_full ADD FOREIGN KEY (x, y) REFERENCES fk_notpartitioned_pk MATCH FULL;  -- fails
+TRUNCATE fk_partitioned_fk_full;
+ALTER TABLE fk_partitioned_fk_full ADD FOREIGN KEY (x, y) REFERENCES fk_notpartitioned_pk MATCH FULL;
+INSERT INTO fk_partitioned_fk_full VALUES (1, NULL);  -- fails
+DROP TABLE fk_partitioned_fk_full;
+
 -- ON UPDATE SET NULL
 SELECT tableoid::regclass, a, b FROM fk_partitioned_fk WHERE b IS NULL ORDER BY a;
 UPDATE fk_notpartitioned_pk SET a = a + 1 WHERE a = 2502;
@@ -1195,7 +1297,7 @@ DELETE FROM fk_notpartitioned_pk;
 SELECT count(*) FROM fk_partitioned_fk WHERE a IS NULL;
 
 -- ON UPDATE/DELETE SET DEFAULT
-ALTER TABLE fk_partitioned_fk DROP CONSTRAINT fk_partitioned_fk_a_fkey;
+ALTER TABLE fk_partitioned_fk DROP CONSTRAINT fk_partitioned_fk_a_b_fkey;
 ALTER TABLE fk_partitioned_fk ADD FOREIGN KEY (a, b)
   REFERENCES fk_notpartitioned_pk
   ON DELETE SET DEFAULT ON UPDATE SET DEFAULT;
@@ -1209,8 +1311,32 @@ INSERT INTO fk_notpartitioned_pk VALUES (2501, 142857);
 UPDATE fk_notpartitioned_pk SET a = 1500 WHERE a = 2502;
 SELECT * FROM fk_partitioned_fk WHERE b = 142857;
 
+-- ON DELETE SET NULL column_list
+ALTER TABLE fk_partitioned_fk DROP CONSTRAINT fk_partitioned_fk_a_b_fkey;
+ALTER TABLE fk_partitioned_fk ADD FOREIGN KEY (a, b)
+  REFERENCES fk_notpartitioned_pk
+  ON DELETE SET NULL (a);
+BEGIN;
+DELETE FROM fk_notpartitioned_pk WHERE b = 142857;
+SELECT * FROM fk_partitioned_fk WHERE a IS NOT NULL OR b IS NOT NULL ORDER BY a NULLS LAST;
+ROLLBACK;
+
+-- ON DELETE SET DEFAULT column_list
+ALTER TABLE fk_partitioned_fk DROP CONSTRAINT fk_partitioned_fk_a_b_fkey;
+ALTER TABLE fk_partitioned_fk ADD FOREIGN KEY (a, b)
+  REFERENCES fk_notpartitioned_pk
+  ON DELETE SET DEFAULT (a);
+BEGIN;
+DELETE FROM fk_partitioned_fk;
+DELETE FROM fk_notpartitioned_pk;
+INSERT INTO fk_notpartitioned_pk VALUES (500, 100000), (2501, 100000);
+INSERT INTO fk_partitioned_fk VALUES (500, 100000);
+DELETE FROM fk_notpartitioned_pk WHERE a = 500;
+SELECT * FROM fk_partitioned_fk ORDER BY a;
+ROLLBACK;
+
 -- ON UPDATE/DELETE CASCADE
-ALTER TABLE fk_partitioned_fk DROP CONSTRAINT fk_partitioned_fk_a_fkey;
+ALTER TABLE fk_partitioned_fk DROP CONSTRAINT fk_partitioned_fk_a_b_fkey;
 ALTER TABLE fk_partitioned_fk ADD FOREIGN KEY (a, b)
   REFERENCES fk_notpartitioned_pk
   ON DELETE CASCADE ON UPDATE CASCADE;
@@ -1290,6 +1416,86 @@ ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_2
 
 -- leave these tables around intentionally
 
+-- test the case when the referenced table is owned by a different user
+create role regress_other_partitioned_fk_owner;
+grant references on fk_notpartitioned_pk to regress_other_partitioned_fk_owner;
+set role regress_other_partitioned_fk_owner;
+create table other_partitioned_fk(a int, b int) partition by list (a);
+create table other_partitioned_fk_1 partition of other_partitioned_fk
+  for values in (2048);
+insert into other_partitioned_fk
+  select 2048, x from generate_series(1,10) x;
+-- this should fail
+alter table other_partitioned_fk add foreign key (a, b)
+  references fk_notpartitioned_pk(a, b);
+-- add the missing keys and retry
+reset role;
+insert into fk_notpartitioned_pk (a, b)
+  select 2048, x from generate_series(1,10) x;
+set role regress_other_partitioned_fk_owner;
+alter table other_partitioned_fk add foreign key (a, b)
+  references fk_notpartitioned_pk(a, b);
+-- clean up
+drop table other_partitioned_fk;
+reset role;
+revoke all on fk_notpartitioned_pk from regress_other_partitioned_fk_owner;
+drop role regress_other_partitioned_fk_owner;
+
+--
+-- Test self-referencing foreign key with partition.
+-- This should create only one fk constraint per partition
+--
+CREATE TABLE parted_self_fk (
+    id bigint NOT NULL PRIMARY KEY,
+    id_abc bigint,
+    FOREIGN KEY (id_abc) REFERENCES parted_self_fk(id)
+)
+PARTITION BY RANGE (id);
+CREATE TABLE part1_self_fk (
+    id bigint NOT NULL PRIMARY KEY,
+    id_abc bigint
+);
+ALTER TABLE parted_self_fk ATTACH PARTITION part1_self_fk FOR VALUES FROM (0) TO (10);
+CREATE TABLE part2_self_fk PARTITION OF parted_self_fk FOR VALUES FROM (10) TO (20);
+CREATE TABLE part3_self_fk (	-- a partitioned partition
+	id bigint NOT NULL PRIMARY KEY,
+	id_abc bigint
+) PARTITION BY RANGE (id);
+CREATE TABLE part32_self_fk PARTITION OF part3_self_fk FOR VALUES FROM (20) TO (30);
+ALTER TABLE parted_self_fk ATTACH PARTITION part3_self_fk FOR VALUES FROM (20) TO (40);
+CREATE TABLE part33_self_fk (
+	id bigint NOT NULL PRIMARY KEY,
+	id_abc bigint
+);
+ALTER TABLE part3_self_fk ATTACH PARTITION part33_self_fk FOR VALUES FROM (30) TO (40);
+
+SELECT cr.relname, co.conname, co.contype, co.convalidated,
+       p.conname AS conparent, p.convalidated, cf.relname AS foreignrel
+FROM pg_constraint co
+JOIN pg_class cr ON cr.oid = co.conrelid
+LEFT JOIN pg_class cf ON cf.oid = co.confrelid
+LEFT JOIN pg_constraint p ON p.oid = co.conparentid
+WHERE cr.oid IN (SELECT relid FROM pg_partition_tree('parted_self_fk'))
+ORDER BY co.contype, cr.relname, co.conname, p.conname;
+
+-- detach and re-attach multiple times just to ensure everything is kosher
+ALTER TABLE parted_self_fk DETACH PARTITION part2_self_fk;
+ALTER TABLE parted_self_fk ATTACH PARTITION part2_self_fk FOR VALUES FROM (10) TO (20);
+ALTER TABLE parted_self_fk DETACH PARTITION part2_self_fk;
+ALTER TABLE parted_self_fk ATTACH PARTITION part2_self_fk FOR VALUES FROM (10) TO (20);
+
+SELECT cr.relname, co.conname, co.contype, co.convalidated,
+       p.conname AS conparent, p.convalidated, cf.relname AS foreignrel
+FROM pg_constraint co
+JOIN pg_class cr ON cr.oid = co.conrelid
+LEFT JOIN pg_class cf ON cf.oid = co.confrelid
+LEFT JOIN pg_constraint p ON p.oid = co.conparentid
+WHERE cr.oid IN (SELECT relid FROM pg_partition_tree('parted_self_fk'))
+ORDER BY co.contype, cr.relname, co.conname, p.conname;
+
+-- Leave this table around, for pg_upgrade/pg_dump tests
+
+
 -- Test creating a constraint at the parent that already exists in partitions.
 -- There should be no duplicated constraints, and attempts to drop the
 -- constraint in partitions should raise appropriate errors.
@@ -1355,6 +1561,510 @@ alter table fkpart2.fk_part detach partition fkpart2.fk_part_1;
 alter table fkpart2.fk_part_1 drop constraint fkey;	-- ok
 alter table fkpart2.fk_part_1_1 drop constraint my_fkey;	-- doesn't exist
 
-\set VERBOSITY terse	\\ -- suppress cascade details
-drop schema fkpart0, fkpart1, fkpart2 cascade;
-\set VERBOSITY default
+-- verify constraint deferrability
+create schema fkpart3
+  create table pkey (a int primary key)
+  create table fk_part (a int, constraint fkey foreign key (a) references fkpart3.pkey deferrable initially immediate) partition by list (a)
+  create table fk_part_1 partition of fkpart3.fk_part for values in (1) partition by list (a)
+  create table fk_part_1_1 partition of fkpart3.fk_part_1 for values in (1)
+  create table fk_part_2 partition of fkpart3.fk_part for values in (2);
+begin;
+set constraints fkpart3.fkey deferred;
+insert into fkpart3.fk_part values (1);
+insert into fkpart3.pkey values (1);
+commit;
+begin;
+set constraints fkpart3.fkey deferred;
+delete from fkpart3.pkey;
+delete from fkpart3.fk_part;
+commit;
+
+drop schema fkpart0, fkpart1, fkpart2, fkpart3 cascade;
+
+-- Test a partitioned table as referenced table.
+
+-- Verify basic functionality with a regular partition creation and a partition
+-- with a different column layout, as well as partitions added (created and
+-- attached) after creating the foreign key.
+CREATE SCHEMA fkpart3;
+SET search_path TO fkpart3;
+
+CREATE TABLE pk (a int PRIMARY KEY) PARTITION BY RANGE (a);
+CREATE TABLE pk1 PARTITION OF pk FOR VALUES FROM (0) TO (1000);
+CREATE TABLE pk2 (b int, a int);
+ALTER TABLE pk2 DROP COLUMN b;
+ALTER TABLE pk2 ALTER a SET NOT NULL;
+ALTER TABLE pk ATTACH PARTITION pk2 FOR VALUES FROM (1000) TO (2000);
+
+CREATE TABLE fk (a int) PARTITION BY RANGE (a);
+CREATE TABLE fk1 PARTITION OF fk FOR VALUES FROM (0) TO (750);
+ALTER TABLE fk ADD FOREIGN KEY (a) REFERENCES pk;
+CREATE TABLE fk2 (b int, a int) ;
+ALTER TABLE fk2 DROP COLUMN b;
+ALTER TABLE fk ATTACH PARTITION fk2 FOR VALUES FROM (750) TO (3500);
+
+CREATE TABLE pk3 PARTITION OF pk FOR VALUES FROM (2000) TO (3000);
+CREATE TABLE pk4 (LIKE pk);
+ALTER TABLE pk ATTACH PARTITION pk4 FOR VALUES FROM (3000) TO (4000);
+
+CREATE TABLE pk5 (c int, b int, a int NOT NULL) PARTITION BY RANGE (a);
+ALTER TABLE pk5 DROP COLUMN b, DROP COLUMN c;
+CREATE TABLE pk51 PARTITION OF pk5 FOR VALUES FROM (4000) TO (4500);
+CREATE TABLE pk52 PARTITION OF pk5 FOR VALUES FROM (4500) TO (5000);
+ALTER TABLE pk ATTACH PARTITION pk5 FOR VALUES FROM (4000) TO (5000);
+
+CREATE TABLE fk3 PARTITION OF fk FOR VALUES FROM (3500) TO (5000);
+
+-- these should fail: referenced value not present
+INSERT into fk VALUES (1);
+INSERT into fk VALUES (1000);
+INSERT into fk VALUES (2000);
+INSERT into fk VALUES (3000);
+INSERT into fk VALUES (4000);
+INSERT into fk VALUES (4500);
+-- insert into the referenced table, now they should work
+INSERT into pk VALUES (1), (1000), (2000), (3000), (4000), (4500);
+INSERT into fk VALUES (1), (1000), (2000), (3000), (4000), (4500);
+
+-- should fail: referencing value present
+DELETE FROM pk WHERE a = 1;
+DELETE FROM pk WHERE a = 1000;
+DELETE FROM pk WHERE a = 2000;
+DELETE FROM pk WHERE a = 3000;
+DELETE FROM pk WHERE a = 4000;
+DELETE FROM pk WHERE a = 4500;
+UPDATE pk SET a = 2 WHERE a = 1;
+UPDATE pk SET a = 1002 WHERE a = 1000;
+UPDATE pk SET a = 2002 WHERE a = 2000;
+UPDATE pk SET a = 3002 WHERE a = 3000;
+UPDATE pk SET a = 4002 WHERE a = 4000;
+UPDATE pk SET a = 4502 WHERE a = 4500;
+-- now they should work
+DELETE FROM fk;
+UPDATE pk SET a = 2 WHERE a = 1;
+DELETE FROM pk WHERE a = 2;
+UPDATE pk SET a = 1002 WHERE a = 1000;
+DELETE FROM pk WHERE a = 1002;
+UPDATE pk SET a = 2002 WHERE a = 2000;
+DELETE FROM pk WHERE a = 2002;
+UPDATE pk SET a = 3002 WHERE a = 3000;
+DELETE FROM pk WHERE a = 3002;
+UPDATE pk SET a = 4002 WHERE a = 4000;
+DELETE FROM pk WHERE a = 4002;
+UPDATE pk SET a = 4502 WHERE a = 4500;
+DELETE FROM pk WHERE a = 4502;
+
+CREATE SCHEMA fkpart4;
+SET search_path TO fkpart4;
+-- dropping/detaching PARTITIONs is prevented if that would break
+-- a foreign key's existing data
+CREATE TABLE droppk (a int PRIMARY KEY) PARTITION BY RANGE (a);
+CREATE TABLE droppk1 PARTITION OF droppk FOR VALUES FROM (0) TO (1000);
+CREATE TABLE droppk_d PARTITION OF droppk DEFAULT;
+CREATE TABLE droppk2 PARTITION OF droppk FOR VALUES FROM (1000) TO (2000)
+  PARTITION BY RANGE (a);
+CREATE TABLE droppk21 PARTITION OF droppk2 FOR VALUES FROM (1000) TO (1400);
+CREATE TABLE droppk2_d PARTITION OF droppk2 DEFAULT;
+INSERT into droppk VALUES (1), (1000), (1500), (2000);
+CREATE TABLE dropfk (a int REFERENCES droppk);
+INSERT into dropfk VALUES (1), (1000), (1500), (2000);
+-- these should all fail
+ALTER TABLE droppk DETACH PARTITION droppk_d;
+ALTER TABLE droppk2 DETACH PARTITION droppk2_d;
+ALTER TABLE droppk DETACH PARTITION droppk1;
+ALTER TABLE droppk DETACH PARTITION droppk2;
+ALTER TABLE droppk2 DETACH PARTITION droppk21;
+-- dropping partitions is disallowed
+DROP TABLE droppk_d;
+DROP TABLE droppk2_d;
+DROP TABLE droppk1;
+DROP TABLE droppk2;
+DROP TABLE droppk21;
+DELETE FROM dropfk;
+-- dropping partitions is disallowed, even when no referencing values
+DROP TABLE droppk_d;
+DROP TABLE droppk2_d;
+DROP TABLE droppk1;
+-- but DETACH is allowed, and DROP afterwards works
+ALTER TABLE droppk2 DETACH PARTITION droppk21;
+DROP TABLE droppk2;
+
+-- Verify that initial constraint creation and cloning behave correctly
+CREATE SCHEMA fkpart5;
+SET search_path TO fkpart5;
+CREATE TABLE pk (a int PRIMARY KEY) PARTITION BY LIST (a);
+CREATE TABLE pk1 PARTITION OF pk FOR VALUES IN (1) PARTITION BY LIST (a);
+CREATE TABLE pk11 PARTITION OF pk1 FOR VALUES IN (1);
+CREATE TABLE fk (a int) PARTITION BY LIST (a);
+CREATE TABLE fk1 PARTITION OF fk FOR VALUES IN (1) PARTITION BY LIST (a);
+CREATE TABLE fk11 PARTITION OF fk1 FOR VALUES IN (1);
+ALTER TABLE fk ADD FOREIGN KEY (a) REFERENCES pk;
+CREATE TABLE pk2 PARTITION OF pk FOR VALUES IN (2);
+CREATE TABLE pk3 (a int NOT NULL) PARTITION BY LIST (a);
+CREATE TABLE pk31 PARTITION OF pk3 FOR VALUES IN (31);
+CREATE TABLE pk32 (b int, a int NOT NULL);
+ALTER TABLE pk32 DROP COLUMN b;
+ALTER TABLE pk3 ATTACH PARTITION pk32 FOR VALUES IN (32);
+ALTER TABLE pk ATTACH PARTITION pk3 FOR VALUES IN (31, 32);
+CREATE TABLE fk2 PARTITION OF fk FOR VALUES IN (2);
+CREATE TABLE fk3 (b int, a int);
+ALTER TABLE fk3 DROP COLUMN b;
+ALTER TABLE fk ATTACH PARTITION fk3 FOR VALUES IN (3);
+SELECT pg_describe_object('pg_constraint'::regclass, oid, 0), confrelid::regclass,
+       CASE WHEN conparentid <> 0 THEN pg_describe_object('pg_constraint'::regclass, conparentid, 0) ELSE 'TOP' END
+FROM pg_catalog.pg_constraint
+WHERE conrelid IN (SELECT relid FROM pg_partition_tree('fk'))
+ORDER BY conrelid::regclass::text, conname;
+CREATE TABLE fk4 (LIKE fk);
+INSERT INTO fk4 VALUES (50);
+ALTER TABLE fk ATTACH PARTITION fk4 FOR VALUES IN (50);
+
+-- Verify constraint deferrability
+CREATE SCHEMA fkpart9;
+SET search_path TO fkpart9;
+CREATE TABLE pk (a int PRIMARY KEY) PARTITION BY LIST (a);
+CREATE TABLE pk1 PARTITION OF pk FOR VALUES IN (1, 2) PARTITION BY LIST (a);
+CREATE TABLE pk11 PARTITION OF pk1 FOR VALUES IN (1);
+CREATE TABLE pk3 PARTITION OF pk FOR VALUES IN (3);
+CREATE TABLE fk (a int REFERENCES pk DEFERRABLE INITIALLY IMMEDIATE);
+INSERT INTO fk VALUES (1);		-- should fail
+BEGIN;
+SET CONSTRAINTS fk_a_fkey DEFERRED;
+INSERT INTO fk VALUES (1);
+COMMIT;							-- should fail
+BEGIN;
+SET CONSTRAINTS fk_a_fkey DEFERRED;
+INSERT INTO fk VALUES (1);
+INSERT INTO pk VALUES (1);
+COMMIT;							-- OK
+BEGIN;
+SET CONSTRAINTS fk_a_fkey DEFERRED;
+DELETE FROM pk WHERE a = 1;
+DELETE FROM fk WHERE a = 1;
+COMMIT;							-- OK
+
+-- Verify constraint deferrability when changed by ALTER
+-- Partitioned table at referencing end
+CREATE TABLE pt(f1 int, f2 int, f3 int, PRIMARY KEY(f1,f2));
+CREATE TABLE ref(f1 int, f2 int, f3 int)
+  PARTITION BY list(f1);
+CREATE TABLE ref1 PARTITION OF ref FOR VALUES IN (1);
+CREATE TABLE ref2 PARTITION OF ref FOR VALUES in (2);
+ALTER TABLE ref ADD FOREIGN KEY(f1,f2) REFERENCES pt;
+ALTER TABLE ref ALTER CONSTRAINT ref_f1_f2_fkey
+  DEFERRABLE INITIALLY DEFERRED;
+INSERT INTO pt VALUES(1,2,3);
+INSERT INTO ref VALUES(1,2,3);
+BEGIN;
+DELETE FROM pt;
+DELETE FROM ref;
+ABORT;
+DROP TABLE pt, ref;
+-- Multi-level partitioning at referencing end
+CREATE TABLE pt(f1 int, f2 int, f3 int, PRIMARY KEY(f1,f2));
+CREATE TABLE ref(f1 int, f2 int, f3 int)
+  PARTITION BY list(f1);
+CREATE TABLE ref1_2 PARTITION OF ref FOR VALUES IN (1, 2) PARTITION BY list (f2);
+CREATE TABLE ref1 PARTITION OF ref1_2 FOR VALUES IN (1);
+CREATE TABLE ref2 PARTITION OF ref1_2 FOR VALUES IN (2) PARTITION BY list (f2);
+CREATE TABLE ref22 PARTITION OF ref2 FOR VALUES IN (2);
+ALTER TABLE ref ADD FOREIGN KEY(f1,f2) REFERENCES pt;
+INSERT INTO pt VALUES(1,2,3);
+INSERT INTO ref VALUES(1,2,3);
+ALTER TABLE ref22 ALTER CONSTRAINT ref_f1_f2_fkey
+  DEFERRABLE INITIALLY IMMEDIATE;	-- fails
+ALTER TABLE ref ALTER CONSTRAINT ref_f1_f2_fkey
+  DEFERRABLE INITIALLY DEFERRED;
+BEGIN;
+DELETE FROM pt;
+DELETE FROM ref;
+ABORT;
+DROP TABLE pt, ref;
+
+-- Partitioned table at referenced end
+CREATE TABLE pt(f1 int, f2 int, f3 int, PRIMARY KEY(f1,f2))
+  PARTITION BY LIST(f1);
+CREATE TABLE pt1 PARTITION OF pt FOR VALUES IN (1);
+CREATE TABLE pt2 PARTITION OF pt FOR VALUES IN (2);
+CREATE TABLE ref(f1 int, f2 int, f3 int);
+ALTER TABLE ref ADD FOREIGN KEY(f1,f2) REFERENCES pt;
+ALTER TABLE ref ALTER CONSTRAINT ref_f1_f2_fkey
+  DEFERRABLE INITIALLY DEFERRED;
+INSERT INTO pt VALUES(1,2,3);
+INSERT INTO ref VALUES(1,2,3);
+BEGIN;
+DELETE FROM pt;
+DELETE FROM ref;
+ABORT;
+DROP TABLE pt, ref;
+-- Multi-level partitioning at at referenced end
+CREATE TABLE pt(f1 int, f2 int, f3 int, PRIMARY KEY(f1,f2))
+  PARTITION BY LIST(f1);
+CREATE TABLE pt1_2 PARTITION OF pt FOR VALUES IN (1, 2) PARTITION BY LIST (f1);
+CREATE TABLE pt1 PARTITION OF pt1_2 FOR VALUES IN (1);
+CREATE TABLE pt2 PARTITION OF pt1_2 FOR VALUES IN (2);
+CREATE TABLE ref(f1 int, f2 int, f3 int);
+ALTER TABLE ref ADD FOREIGN KEY(f1,f2) REFERENCES pt;
+ALTER TABLE ref ALTER CONSTRAINT ref_f1_f2_fkey1
+  DEFERRABLE INITIALLY DEFERRED;	-- fails
+ALTER TABLE ref ALTER CONSTRAINT ref_f1_f2_fkey
+  DEFERRABLE INITIALLY DEFERRED;
+INSERT INTO pt VALUES(1,2,3);
+INSERT INTO ref VALUES(1,2,3);
+BEGIN;
+DELETE FROM pt;
+DELETE FROM ref;
+ABORT;
+DROP TABLE pt, ref;
+
+DROP SCHEMA fkpart9 CASCADE;
+
+-- Verify ON UPDATE/DELETE behavior
+CREATE SCHEMA fkpart6;
+SET search_path TO fkpart6;
+CREATE TABLE pk (a int PRIMARY KEY) PARTITION BY RANGE (a);
+CREATE TABLE pk1 PARTITION OF pk FOR VALUES FROM (1) TO (100) PARTITION BY RANGE (a);
+CREATE TABLE pk11 PARTITION OF pk1 FOR VALUES FROM (1) TO (50);
+CREATE TABLE pk12 PARTITION OF pk1 FOR VALUES FROM (50) TO (100);
+CREATE TABLE fk (a int) PARTITION BY RANGE (a);
+CREATE TABLE fk1 PARTITION OF fk FOR VALUES FROM (1) TO (100) PARTITION BY RANGE (a);
+CREATE TABLE fk11 PARTITION OF fk1 FOR VALUES FROM (1) TO (10);
+CREATE TABLE fk12 PARTITION OF fk1 FOR VALUES FROM (10) TO (100);
+ALTER TABLE fk ADD FOREIGN KEY (a) REFERENCES pk ON UPDATE CASCADE ON DELETE CASCADE;
+CREATE TABLE fk_d PARTITION OF fk DEFAULT;
+INSERT INTO pk VALUES (1);
+INSERT INTO fk VALUES (1);
+UPDATE pk SET a = 20;
+SELECT tableoid::regclass, * FROM fk;
+DELETE FROM pk WHERE a = 20;
+SELECT tableoid::regclass, * FROM fk;
+DROP TABLE fk;
+
+TRUNCATE TABLE pk;
+INSERT INTO pk VALUES (20), (50);
+CREATE TABLE fk (a int) PARTITION BY RANGE (a);
+CREATE TABLE fk1 PARTITION OF fk FOR VALUES FROM (1) TO (100) PARTITION BY RANGE (a);
+CREATE TABLE fk11 PARTITION OF fk1 FOR VALUES FROM (1) TO (10);
+CREATE TABLE fk12 PARTITION OF fk1 FOR VALUES FROM (10) TO (100);
+ALTER TABLE fk ADD FOREIGN KEY (a) REFERENCES pk ON UPDATE SET NULL ON DELETE SET NULL;
+CREATE TABLE fk_d PARTITION OF fk DEFAULT;
+INSERT INTO fk VALUES (20), (50);
+UPDATE pk SET a = 21 WHERE a = 20;
+DELETE FROM pk WHERE a = 50;
+SELECT tableoid::regclass, * FROM fk;
+DROP TABLE fk;
+
+TRUNCATE TABLE pk;
+INSERT INTO pk VALUES (20), (30), (50);
+CREATE TABLE fk (id int, a int DEFAULT 50) PARTITION BY RANGE (a);
+CREATE TABLE fk1 PARTITION OF fk FOR VALUES FROM (1) TO (100) PARTITION BY RANGE (a);
+CREATE TABLE fk11 PARTITION OF fk1 FOR VALUES FROM (1) TO (10);
+CREATE TABLE fk12 PARTITION OF fk1 FOR VALUES FROM (10) TO (100);
+ALTER TABLE fk ADD FOREIGN KEY (a) REFERENCES pk ON UPDATE SET DEFAULT ON DELETE SET DEFAULT;
+CREATE TABLE fk_d PARTITION OF fk DEFAULT;
+INSERT INTO fk VALUES (1, 20), (2, 30);
+DELETE FROM pk WHERE a = 20 RETURNING *;
+UPDATE pk SET a = 90 WHERE a = 30 RETURNING *;
+SELECT tableoid::regclass, * FROM fk;
+DROP TABLE fk;
+
+TRUNCATE TABLE pk;
+INSERT INTO pk VALUES (20), (30);
+CREATE TABLE fk (a int DEFAULT 50) PARTITION BY RANGE (a);
+CREATE TABLE fk1 PARTITION OF fk FOR VALUES FROM (1) TO (100) PARTITION BY RANGE (a);
+CREATE TABLE fk11 PARTITION OF fk1 FOR VALUES FROM (1) TO (10);
+CREATE TABLE fk12 PARTITION OF fk1 FOR VALUES FROM (10) TO (100);
+ALTER TABLE fk ADD FOREIGN KEY (a) REFERENCES pk ON UPDATE RESTRICT ON DELETE RESTRICT;
+CREATE TABLE fk_d PARTITION OF fk DEFAULT;
+INSERT INTO fk VALUES (20), (30);
+DELETE FROM pk WHERE a = 20;
+UPDATE pk SET a = 90 WHERE a = 30;
+SELECT tableoid::regclass, * FROM fk;
+DROP TABLE fk;
+
+-- test for reported bug: relispartition not set
+-- https://postgr.es/m/CA+HiwqHMsRtRYRWYTWavKJ8x14AFsv7bmAV46mYwnfD3vy8goQ@mail.gmail.com
+CREATE SCHEMA fkpart7
+  CREATE TABLE pkpart (a int) PARTITION BY LIST (a)
+  CREATE TABLE pkpart1 PARTITION OF pkpart FOR VALUES IN (1);
+ALTER TABLE fkpart7.pkpart1 ADD PRIMARY KEY (a);
+ALTER TABLE fkpart7.pkpart ADD PRIMARY KEY (a);
+CREATE TABLE fkpart7.fk (a int REFERENCES fkpart7.pkpart);
+DROP SCHEMA fkpart7 CASCADE;
+
+-- ensure we check partitions are "not used" when dropping constraints
+CREATE SCHEMA fkpart8
+  CREATE TABLE tbl1(f1 int PRIMARY KEY)
+  CREATE TABLE tbl2(f1 int REFERENCES tbl1 DEFERRABLE INITIALLY DEFERRED) PARTITION BY RANGE(f1)
+  CREATE TABLE tbl2_p1 PARTITION OF tbl2 FOR VALUES FROM (minvalue) TO (maxvalue);
+INSERT INTO fkpart8.tbl1 VALUES(1);
+BEGIN;
+INSERT INTO fkpart8.tbl2 VALUES(1);
+ALTER TABLE fkpart8.tbl2 DROP CONSTRAINT tbl2_f1_fkey;
+COMMIT;
+DROP SCHEMA fkpart8 CASCADE;
+
+-- ensure FK referencing a multi-level partitioned table are
+-- enforce reference to sub-children.
+CREATE SCHEMA fkpart9
+  CREATE TABLE pk (a INT PRIMARY KEY) PARTITION BY RANGE (a)
+  CREATE TABLE fk (
+    fk_a INT REFERENCES pk(a) ON DELETE CASCADE
+  )
+  CREATE TABLE pk1 PARTITION OF pk FOR VALUES FROM (30) TO (50) PARTITION BY RANGE (a)
+  CREATE TABLE pk11 PARTITION OF pk1 FOR VALUES FROM (30) TO (40);
+INSERT INTO fkpart9.pk VALUES (35);
+INSERT INTO fkpart9.fk VALUES (35);
+DELETE FROM fkpart9.pk WHERE a=35;
+SELECT * FROM fkpart9.pk;
+SELECT * FROM fkpart9.fk;
+DROP SCHEMA fkpart9 CASCADE;
+
+-- test that ri_Check_Pk_Match() scans the correct partition for a deferred
+-- ON DELETE/UPDATE NO ACTION constraint
+CREATE SCHEMA fkpart10
+  CREATE TABLE tbl1(f1 int PRIMARY KEY) PARTITION BY RANGE(f1)
+  CREATE TABLE tbl1_p1 PARTITION OF tbl1 FOR VALUES FROM (minvalue) TO (1)
+  CREATE TABLE tbl1_p2 PARTITION OF tbl1 FOR VALUES FROM (1) TO (maxvalue)
+  CREATE TABLE tbl2(f1 int REFERENCES tbl1 DEFERRABLE INITIALLY DEFERRED)
+  CREATE TABLE tbl3(f1 int PRIMARY KEY) PARTITION BY RANGE(f1)
+  CREATE TABLE tbl3_p1 PARTITION OF tbl3 FOR VALUES FROM (minvalue) TO (1)
+  CREATE TABLE tbl3_p2 PARTITION OF tbl3 FOR VALUES FROM (1) TO (maxvalue)
+  CREATE TABLE tbl4(f1 int REFERENCES tbl3 DEFERRABLE INITIALLY DEFERRED);
+INSERT INTO fkpart10.tbl1 VALUES (0), (1);
+INSERT INTO fkpart10.tbl2 VALUES (0), (1);
+INSERT INTO fkpart10.tbl3 VALUES (-2), (-1), (0);
+INSERT INTO fkpart10.tbl4 VALUES (-2), (-1);
+BEGIN;
+DELETE FROM fkpart10.tbl1 WHERE f1 = 0;
+UPDATE fkpart10.tbl1 SET f1 = 2 WHERE f1 = 1;
+INSERT INTO fkpart10.tbl1 VALUES (0), (1);
+COMMIT;
+
+-- test that cross-partition updates correctly enforces the foreign key
+-- restriction (specifically testing INITIAILLY DEFERRED)
+BEGIN;
+UPDATE fkpart10.tbl1 SET f1 = 3 WHERE f1 = 0;
+UPDATE fkpart10.tbl3 SET f1 = f1 * -1;
+INSERT INTO fkpart10.tbl1 VALUES (4);
+COMMIT;
+
+BEGIN;
+UPDATE fkpart10.tbl3 SET f1 = f1 * -1;
+UPDATE fkpart10.tbl3 SET f1 = f1 + 3;
+UPDATE fkpart10.tbl1 SET f1 = 3 WHERE f1 = 0;
+INSERT INTO fkpart10.tbl1 VALUES (0);
+COMMIT;
+
+BEGIN;
+UPDATE fkpart10.tbl3 SET f1 = f1 * -1;
+UPDATE fkpart10.tbl1 SET f1 = 3 WHERE f1 = 0;
+INSERT INTO fkpart10.tbl1 VALUES (0);
+INSERT INTO fkpart10.tbl3 VALUES (-2), (-1);
+COMMIT;
+
+-- test where the updated table now has both an IMMEDIATE and a DEFERRED
+-- constraint pointing into it
+CREATE TABLE fkpart10.tbl5(f1 int REFERENCES fkpart10.tbl3);
+INSERT INTO fkpart10.tbl5 VALUES (-2), (-1);
+BEGIN;
+UPDATE fkpart10.tbl3 SET f1 = f1 * -3;
+COMMIT;
+
+-- Now test where the row referenced from the table with an IMMEDIATE
+-- constraint stays in place, while those referenced from the table with a
+-- DEFERRED constraint don't.
+DELETE FROM fkpart10.tbl5;
+INSERT INTO fkpart10.tbl5 VALUES (0);
+BEGIN;
+UPDATE fkpart10.tbl3 SET f1 = f1 * -3;
+COMMIT;
+
+DROP SCHEMA fkpart10 CASCADE;
+
+-- verify foreign keys are enforced during cross-partition updates,
+-- especially on the PK side
+CREATE SCHEMA fkpart11
+  CREATE TABLE pk (a INT PRIMARY KEY, b text) PARTITION BY LIST (a)
+  CREATE TABLE fk (
+    a INT,
+    CONSTRAINT fkey FOREIGN KEY (a) REFERENCES pk(a) ON UPDATE CASCADE ON DELETE CASCADE
+  )
+  CREATE TABLE fk_parted (
+    a INT PRIMARY KEY,
+    CONSTRAINT fkey FOREIGN KEY (a) REFERENCES pk(a) ON UPDATE CASCADE ON DELETE CASCADE
+  ) PARTITION BY LIST (a)
+  CREATE TABLE fk_another (
+    a INT,
+    CONSTRAINT fkey FOREIGN KEY (a) REFERENCES fk_parted (a) ON UPDATE CASCADE ON DELETE CASCADE
+  )
+  CREATE TABLE pk1 PARTITION OF pk FOR VALUES IN (1, 2) PARTITION BY LIST (a)
+  CREATE TABLE pk2 PARTITION OF pk FOR VALUES IN (3)
+  CREATE TABLE pk3 PARTITION OF pk FOR VALUES IN (4)
+  CREATE TABLE fk1 PARTITION OF fk_parted FOR VALUES IN (1, 2)
+  CREATE TABLE fk2 PARTITION OF fk_parted FOR VALUES IN (3)
+  CREATE TABLE fk3 PARTITION OF fk_parted FOR VALUES IN (4);
+CREATE TABLE fkpart11.pk11 (b text, a int NOT NULL);
+ALTER TABLE fkpart11.pk1 ATTACH PARTITION fkpart11.pk11 FOR VALUES IN (1);
+CREATE TABLE fkpart11.pk12 (b text, c int, a int NOT NULL);
+ALTER TABLE fkpart11.pk12 DROP c;
+ALTER TABLE fkpart11.pk1 ATTACH PARTITION fkpart11.pk12 FOR VALUES IN (2);
+INSERT INTO fkpart11.pk VALUES (1, 'xxx'), (3, 'yyy');
+INSERT INTO fkpart11.fk VALUES (1), (3);
+INSERT INTO fkpart11.fk_parted VALUES (1), (3);
+INSERT INTO fkpart11.fk_another VALUES (1), (3);
+-- moves 2 rows from one leaf partition to another, with both updates being
+-- cascaded to fk and fk_parted.  Updates of fk_parted, of which one is
+-- cross-partition (3 -> 4), are further cascaded to fk_another.
+UPDATE fkpart11.pk SET a = a + 1 RETURNING tableoid::pg_catalog.regclass, *;
+SELECT tableoid::pg_catalog.regclass, * FROM fkpart11.fk;
+SELECT tableoid::pg_catalog.regclass, * FROM fkpart11.fk_parted;
+SELECT tableoid::pg_catalog.regclass, * FROM fkpart11.fk_another;
+
+-- let's try with the foreign key pointing at tables in the partition tree
+-- that are not the same as the query's target table
+
+-- 1. foreign key pointing into a non-root ancestor
+--
+-- A cross-partition update on the root table will fail, because we currently
+-- can't enforce the foreign keys pointing into a non-leaf partition
+ALTER TABLE fkpart11.fk DROP CONSTRAINT fkey;
+DELETE FROM fkpart11.fk WHERE a = 4;
+ALTER TABLE fkpart11.fk ADD CONSTRAINT fkey FOREIGN KEY (a) REFERENCES fkpart11.pk1 (a) ON UPDATE CASCADE ON DELETE CASCADE;
+UPDATE fkpart11.pk SET a = a - 1;
+-- it's okay though if the non-leaf partition is updated directly
+UPDATE fkpart11.pk1 SET a = a - 1;
+SELECT tableoid::pg_catalog.regclass, * FROM fkpart11.pk;
+SELECT tableoid::pg_catalog.regclass, * FROM fkpart11.fk;
+SELECT tableoid::pg_catalog.regclass, * FROM fkpart11.fk_parted;
+SELECT tableoid::pg_catalog.regclass, * FROM fkpart11.fk_another;
+
+-- 2. foreign key pointing into a single leaf partition
+--
+-- A cross-partition update that deletes from the pointed-to leaf partition
+-- is allowed to succeed
+ALTER TABLE fkpart11.fk DROP CONSTRAINT fkey;
+ALTER TABLE fkpart11.fk ADD CONSTRAINT fkey FOREIGN KEY (a) REFERENCES fkpart11.pk11 (a) ON UPDATE CASCADE ON DELETE CASCADE;
+-- will delete (1) from p11 which is cascaded to fk
+UPDATE fkpart11.pk SET a = a + 1 WHERE a = 1;
+SELECT tableoid::pg_catalog.regclass, * FROM fkpart11.fk;
+DROP TABLE fkpart11.fk;
+
+-- check that regular and deferrable AR triggers on the PK tables
+-- still work as expected
+CREATE FUNCTION fkpart11.print_row () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+  BEGIN
+    RAISE NOTICE 'TABLE: %, OP: %, OLD: %, NEW: %', TG_RELNAME, TG_OP, OLD, NEW;
+    RETURN NULL;
+  END;
+$$;
+CREATE TRIGGER trig_upd_pk AFTER UPDATE ON fkpart11.pk FOR EACH ROW EXECUTE FUNCTION fkpart11.print_row();
+CREATE TRIGGER trig_del_pk AFTER DELETE ON fkpart11.pk FOR EACH ROW EXECUTE FUNCTION fkpart11.print_row();
+CREATE TRIGGER trig_ins_pk AFTER INSERT ON fkpart11.pk FOR EACH ROW EXECUTE FUNCTION fkpart11.print_row();
+CREATE CONSTRAINT TRIGGER trig_upd_fk_parted AFTER UPDATE ON fkpart11.fk_parted INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fkpart11.print_row();
+CREATE CONSTRAINT TRIGGER trig_del_fk_parted AFTER DELETE ON fkpart11.fk_parted INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fkpart11.print_row();
+CREATE CONSTRAINT TRIGGER trig_ins_fk_parted AFTER INSERT ON fkpart11.fk_parted INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fkpart11.print_row();
+UPDATE fkpart11.pk SET a = 3 WHERE a = 4;
+UPDATE fkpart11.pk SET a = 1 WHERE a = 2;
+
+DROP SCHEMA fkpart11 CASCADE;

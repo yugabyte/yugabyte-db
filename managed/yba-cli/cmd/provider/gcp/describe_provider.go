@@ -15,6 +15,7 @@ var describeGCPProviderCmd = &cobra.Command{
 	Aliases: []string{"get"},
 	Short:   "Describe a GCP YugabyteDB Anywhere provider",
 	Long:    "Describe a GCP provider in YugabyteDB Anywhere",
+	Example: `yba provider gcp describe --name <provider-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerutil.DescribeProviderValidation(cmd)
 	},

@@ -30,6 +30,7 @@
 /* YB includes. */
 #include "pg_yb_utils.h"
 #include "access/relscan.h"
+#include "access/yb_scan.h"
 
 static void yb_init_bitmap_index_scandesc(YbBitmapIndexScanState *node);
 
@@ -284,10 +285,6 @@ ExecEndYbBitmapIndexScan(YbBitmapIndexScanState *node)
 			pfree(indexScanDesc->yb_idx_pushdown);
 			indexScanDesc->yb_idx_pushdown = NULL;
 		}
-
-		Relation relation = node->ss.ss_currentRelation;
-		if (relation)
-			ExecCloseScanRelation(relation);
 	}
 
 	/*

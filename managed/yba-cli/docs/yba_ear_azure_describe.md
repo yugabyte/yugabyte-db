@@ -10,6 +10,12 @@ Describe an Azure YugabyteDB Anywhere Encryption In Transit (EAR) configuration
 yba ear azure describe [flags]
 ```
 
+### Examples
+
+```
+yba ear azure describe --name <config-name>
+```
+
 ### Options
 
 ```

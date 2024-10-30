@@ -40,7 +40,7 @@ has an associated data type which determines its behavior and allowed usage.
 <productname>PostgreSQL</productname> has an extensible type system that is
 more general and flexible than other <acronym>SQL</acronym> implementations.
 Hence, most type conversion behavior in <productname>PostgreSQL</productname>
-is governed by general rules rather than by <foreignphrase>ad hoc</foreignphrase>
+is governed by general rules rather than by ad hoc
 heuristics.  This allows the use of mixed-type expressions even with
 user-defined types.
 </para>
@@ -97,8 +97,8 @@ Operators
 <listitem>
 <para>
 <productname>PostgreSQL</productname> allows expressions with
-prefix and postfix unary (one-argument) operators,
-as well as binary (two-argument) operators.  Like functions, operators can
+prefix (one-argument) operators,
+as well as infix (two-argument) operators.  Like functions, operators can
 be overloaded, so the same problem of selecting the right operator
 exists.
 </para>
@@ -127,8 +127,10 @@ must appear in a single set of columns, the types of the results of each
 <command>SELECT</command> clause must be matched up and converted to a uniform set.
 Similarly, the result expressions of a <literal>CASE</literal> construct must be
 converted to a common type so that the <literal>CASE</literal> expression as a whole
-has a known output type.  The same holds for <literal>ARRAY</literal> constructs,
-and for the <function>GREATEST</function> and <function>LEAST</function> functions.
+has a known output type.  Some other constructs, such
+as <literal>ARRAY[]</literal> and the <function>GREATEST</function>
+and <function>LEAST</function> functions, likewise require determination of a
+common type for several subexpressions.
 </para>
 </listitem>
 </varlistentry>
@@ -266,7 +268,7 @@ create objects.  In such situations, cast arguments to force an exact match.
 <para>
 If one argument of a binary operator invocation is of the <type>unknown</type> type,
 then assume it is the same type as the other argument for this check.
-Invocations involving two <type>unknown</type> inputs, or a unary operator
+Invocations involving two <type>unknown</type> inputs, or a prefix operator
 with an <type>unknown</type> input, will never find a match at this step.
 </para>
 </step>
@@ -354,20 +356,19 @@ Some examples follow.
 </para>
 
 <example>
-<title>Factorial Operator Type Resolution</title>
+<title>Square Root Operator Type Resolution</title>
 
 <para>
-There is only one factorial operator (postfix <literal>!</literal>)
+There is only one square root operator (prefix <literal>|/</literal>)
 defined in the standard catalog, and it takes an argument of type
-<type>bigint</type>.
+<type>double precision</type>.
 The scanner assigns an initial type of <type>integer</type> to the argument
 in this query expression:
 <screen>
-SELECT 40 ! AS "40 factorial";
-
-                   40 factorial
---------------------------------------------------
- 815915283247897734345611269596115894272000000000
+SELECT |/ 40 AS "square root of 40";
+ square root of 40
+-------------------
+ 6.324555320336759
 (1 row)
 </screen>
 
@@ -375,7 +376,7 @@ So the parser does a type conversion on the operand and the query
 is equivalent to:
 
 <screen>
-SELECT CAST(40 AS bigint) ! AS "40 factorial";
+SELECT |/ CAST(40 AS double precision) AS "square root of 40";
 </screen>
 </para>
 </example>
@@ -1041,9 +1042,11 @@ SQL <literal>UNION</literal> constructs must match up possibly dissimilar
 types to become a single result set.  The resolution algorithm is
 applied separately to each output column of a union query.  The
 <literal>INTERSECT</literal> and <literal>EXCEPT</literal> constructs resolve
-dissimilar types in the same way as <literal>UNION</literal>.  The
+dissimilar types in the same way as <literal>UNION</literal>.
+Some other constructs, including
 <literal>CASE</literal>, <literal>ARRAY</literal>, <literal>VALUES</literal>,
-<function>GREATEST</function> and <function>LEAST</function> constructs use the identical
+and the <function>GREATEST</function> and <function>LEAST</function>
+functions, use the identical
 algorithm to match up their component expressions and select a result
 data type.
 </para>
@@ -1069,7 +1072,7 @@ domain's base type for all subsequent steps.
     functions, this behavior allows a domain type to be preserved through
     a <literal>UNION</literal> or similar construct, so long as the user is
     careful to ensure that all inputs are implicitly or explicitly of that
-    exact type.  Otherwise the domain's base type will be preferred.
+    exact type.  Otherwise the domain's base type will be used.
    </para>
   </footnote>
 </para>
@@ -1092,24 +1095,29 @@ If the non-unknown inputs are not all of the same type category, fail.
 
 <step performance="required">
 <para>
-Choose the first non-unknown input type which is a preferred type in
-that category, if there is one.
+Select the first non-unknown input type as the candidate type,
+then consider each other non-unknown input type, left to right.
+  <footnote>
+   <para>
+    For historical reasons, <literal>CASE</literal> treats
+    its <literal>ELSE</literal> clause (if any) as the <quote>first</quote>
+    input, with the <literal>THEN</literal> clauses(s) considered after
+    that.  In all other cases, <quote>left to right</quote> means the order
+    in which the expressions appear in the query text.
+   </para>
+  </footnote>
+If the candidate type can be implicitly converted to the other type,
+but not vice-versa, select the other type as the new candidate type.
+Then continue considering the remaining inputs.  If, at any stage of this
+process, a preferred type is selected, stop considering additional
+inputs.
 </para>
 </step>
 
 <step performance="required">
 <para>
-Otherwise, choose the last non-unknown input type that allows all the
-preceding non-unknown inputs to be implicitly converted to it.  (There
-always is such a type, since at least the first type in the list must
-satisfy this condition.)
-</para>
-</step>
-
-<step performance="required">
-<para>
-Convert all inputs to the selected type.  Fail if there is not a
-conversion from a given input to the selected type.
+Convert all inputs to the final candidate type.  Fail if there is not an
+implicit conversion from a given input type to the candidate type.
 </para>
 </step>
 </procedure>
@@ -1214,7 +1222,7 @@ section consider all of their inputs in one resolution step.
 
 <para>
 The rules given in the preceding sections will result in assignment
-of non-<type>unknown</type> data types to all expressions in a SQL query,
+of non-<type>unknown</type> data types to all expressions in an SQL query,
 except for unspecified-type literals that appear as simple output
 columns of a <command>SELECT</command> command.  For example, in
 

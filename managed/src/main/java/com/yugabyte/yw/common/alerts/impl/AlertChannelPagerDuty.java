@@ -134,6 +134,7 @@ public class AlertChannelPagerDuty extends AlertChannelWebBase {
   }
 
   private EventResult sendRequest(Incident incident) throws Exception {
+    log.debug("Sending PagerDuty alert notification {} to {}", Json.toJson(incident), eventApiUrl);
     WSResponse response = sendRequest(PAGERDUTY_WS_KEY, eventApiUrl, incident);
 
     int responseStatus = response.getStatus();

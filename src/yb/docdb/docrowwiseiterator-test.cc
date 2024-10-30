@@ -251,86 +251,89 @@ const KeyBytes GetKeyBytes(
 }
 
 const Schema population_schema(
-    {ColumnSchema("country", DataType::STRING, ColumnKind::HASH),
-     ColumnSchema("state", DataType::STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
-     ColumnSchema("city", DataType::STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+    {ColumnSchema("global", DataType::STRING, ColumnKind::HASH),
+     ColumnSchema("continent", DataType::STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+     ColumnSchema("country", DataType::STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
      ColumnSchema("area", DataType::STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
      // Non-key columns
      ColumnSchema("population", DataType::INT64, ColumnKind::VALUE, Nullable::kTrue)},
     {10_ColId, 20_ColId, 30_ColId, 40_ColId, 50_ColId});
 
+const std::string GLOBAL = "GLOBAL";
+
+const std::string ASIA = "ASIA";
 const std::string INDIA = "INDIA";
-const std::string CG = "CG";
-const std::string BHILAI = "BHILAI";
-const std::string DURG = "DURG";
-const std::string RPR = "RPR";
-const std::string KA = "KA";
-const std::string BLR = "BLR";
-const std::string MLR = "MLR";
-const std::string MYSORE = "MYSORE";
-const std::string TN = "TN";
-const std::string CHENNAI = "CHENNAI";
-const std::string MADURAI = "MADURAI";
-const std::string OOTY = "OOTY";
+const std::string JAPAN = "JAPAN";
+const std::string SINGAPORE = "SINGAPORE";
+
+const std::string EUROPE = "EUROPE";
+const std::string GERMANY = "GERMANY";
+const std::string SPAIN = "SPAIN";
+const std::string UK = "UK";
+
+const std::string NORTH_AM = "NORTH_AMERICA";
+const std::string CANADA = "CANADA";
+const std::string MEXICO = "MEXICO";
+const std::string USA = "USA";
 
 const std::string AREA1 = "AREA1";
 const std::string AREA2 = "AREA2";
 
 void DocRowwiseIteratorTest::InsertPopulationData() {
   ASSERT_OK(SetPrimitive(
-      DocPath(GetKeyBytes(INDIA, CG, BHILAI, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
+      DocPath(GetKeyBytes(GLOBAL, ASIA, INDIA, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
       QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
-      DocPath(GetKeyBytes(INDIA, CG, DURG, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
+      DocPath(GetKeyBytes(GLOBAL, ASIA, JAPAN, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
       QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
-      DocPath(GetKeyBytes(INDIA, CG, RPR, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
+      DocPath(GetKeyBytes(GLOBAL, ASIA, SINGAPORE, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
       QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
-      DocPath(GetKeyBytes(INDIA, KA, BLR, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
+      DocPath(GetKeyBytes(GLOBAL, EUROPE, GERMANY, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
       QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
-      DocPath(GetKeyBytes(INDIA, KA, MLR, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
+      DocPath(GetKeyBytes(GLOBAL, EUROPE, SPAIN, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
       QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
-      DocPath(GetKeyBytes(INDIA, KA, MYSORE, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
+      DocPath(GetKeyBytes(GLOBAL, EUROPE, UK, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
       QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
-      DocPath(GetKeyBytes(INDIA, TN, CHENNAI, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
+      DocPath(GetKeyBytes(GLOBAL, NORTH_AM, CANADA, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
       QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
-      DocPath(GetKeyBytes(INDIA, TN, MADURAI, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
+      DocPath(GetKeyBytes(GLOBAL, NORTH_AM, MEXICO, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
       QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
-      DocPath(GetKeyBytes(INDIA, TN, OOTY, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
+      DocPath(GetKeyBytes(GLOBAL, NORTH_AM, USA, AREA1), KeyEntryValue::MakeColumnId(50_ColId)),
       QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
 
   ASSERT_OK(SetPrimitive(
-      DocPath(GetKeyBytes(INDIA, CG, BHILAI, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
+      DocPath(GetKeyBytes(GLOBAL, ASIA, INDIA, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
       QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
-      DocPath(GetKeyBytes(INDIA, CG, DURG, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
+      DocPath(GetKeyBytes(GLOBAL, ASIA, JAPAN, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
       QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
-      DocPath(GetKeyBytes(INDIA, CG, RPR, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
+      DocPath(GetKeyBytes(GLOBAL, ASIA, SINGAPORE, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
       QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
-      DocPath(GetKeyBytes(INDIA, KA, BLR, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
+      DocPath(GetKeyBytes(GLOBAL, EUROPE, GERMANY, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
       QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
-      DocPath(GetKeyBytes(INDIA, KA, MLR, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
+      DocPath(GetKeyBytes(GLOBAL, EUROPE, SPAIN, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
       QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
-      DocPath(GetKeyBytes(INDIA, KA, MYSORE, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
+      DocPath(GetKeyBytes(GLOBAL, EUROPE, UK, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
       QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
-      DocPath(GetKeyBytes(INDIA, TN, CHENNAI, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
+      DocPath(GetKeyBytes(GLOBAL, NORTH_AM, CANADA, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
       QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
-      DocPath(GetKeyBytes(INDIA, TN, MADURAI, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
+      DocPath(GetKeyBytes(GLOBAL, NORTH_AM, MEXICO, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
       QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
   ASSERT_OK(SetPrimitive(
-      DocPath(GetKeyBytes(INDIA, TN, OOTY, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
+      DocPath(GetKeyBytes(GLOBAL, NORTH_AM, USA, AREA2), KeyEntryValue::MakeColumnId(50_ColId)),
       QLValue::PrimitiveInt64(10), HybridTime::FromMicros(1000)));
 }
 
@@ -656,7 +659,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstoneReverseSc
 void DocRowwiseIteratorTest::TestClusteredFilterHybridScan() {
   InsertPopulationData();
 
-  const KeyEntryValues hashed_components{KeyEntryValue(INDIA)};
+  const KeyEntryValues hashed_components{KeyEntryValue(GLOBAL)};
 
   QLConditionPB cond;
   auto ids = cond.add_operands()->mutable_tuple();
@@ -667,13 +670,13 @@ void DocRowwiseIteratorTest::TestClusteredFilterHybridScan() {
   auto options = cond.add_operands()->mutable_value()->mutable_list_value();
 
   auto option1 = options->add_elems()->mutable_tuple_value();
-  option1->add_elems()->set_string_value(CG);
-  option1->add_elems()->set_string_value(DURG);
+  option1->add_elems()->set_string_value(ASIA);
+  option1->add_elems()->set_string_value(JAPAN);
   option1->add_elems()->set_string_value(AREA1);
 
   auto option2 = options->add_elems()->mutable_tuple_value();
-  option2->add_elems()->set_string_value(KA);
-  option2->add_elems()->set_string_value(MYSORE);
+  option2->add_elems()->set_string_value(EUROPE);
+  option2->add_elems()->set_string_value(UK);
   option2->add_elems()->set_string_value(AREA1);
 
   DocQLScanSpec spec(
@@ -683,8 +686,8 @@ void DocRowwiseIteratorTest::TestClusteredFilterHybridScan() {
   CreateIteratorAndValidate(
       population_schema, ReadHybridTime::FromMicros(2000), spec,
       R"#(
-        {string:"INDIA",string:"CG",string:"DURG",string:"AREA1",int64:10}
-        {string:"INDIA",string:"KA",string:"MYSORE",string:"AREA1",int64:10}
+        {string:"GLOBAL",string:"ASIA",string:"JAPAN",string:"AREA1",int64:10}
+        {string:"GLOBAL",string:"EUROPE",string:"UK",string:"AREA1",int64:10}
       )#",
       HybridTime::FromMicros(1000));
 }
@@ -692,7 +695,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterHybridScan() {
 void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol() {
   InsertPopulationData();
 
-  const KeyEntryValues hashed_components{KeyEntryValue(INDIA)};
+  const KeyEntryValues hashed_components{KeyEntryValue(GLOBAL)};
 
   QLConditionPB cond;
   auto ids = cond.add_operands()->mutable_tuple();
@@ -702,12 +705,12 @@ void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol() {
   auto options = cond.add_operands()->mutable_value()->mutable_list_value();
 
   auto option1 = options->add_elems()->mutable_tuple_value();
-  option1->add_elems()->set_string_value(CG);
-  option1->add_elems()->set_string_value(DURG);
+  option1->add_elems()->set_string_value(ASIA);
+  option1->add_elems()->set_string_value(JAPAN);
 
   auto option2 = options->add_elems()->mutable_tuple_value();
-  option2->add_elems()->set_string_value(KA);
-  option2->add_elems()->set_string_value(MYSORE);
+  option2->add_elems()->set_string_value(EUROPE);
+  option2->add_elems()->set_string_value(UK);
 
   DocQLScanSpec spec(
       population_schema, kFixedHashCode, kFixedHashCode, hashed_components, &cond, nullptr,
@@ -716,10 +719,10 @@ void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol() {
   CreateIteratorAndValidate(
       population_schema, ReadHybridTime::FromMicros(2000), spec,
       R"#(
-        {string:"INDIA",string:"CG",string:"DURG",string:"AREA1",int64:10}
-        {string:"INDIA",string:"CG",string:"DURG",string:"AREA2",int64:10}
-        {string:"INDIA",string:"KA",string:"MYSORE",string:"AREA1",int64:10}
-        {string:"INDIA",string:"KA",string:"MYSORE",string:"AREA2",int64:10}
+        {string:"GLOBAL",string:"ASIA",string:"JAPAN",string:"AREA1",int64:10}
+        {string:"GLOBAL",string:"ASIA",string:"JAPAN",string:"AREA2",int64:10}
+        {string:"GLOBAL",string:"EUROPE",string:"UK",string:"AREA1",int64:10}
+        {string:"GLOBAL",string:"EUROPE",string:"UK",string:"AREA2",int64:10}
       )#",
       HybridTime::FromMicros(1000));
 }
@@ -727,7 +730,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol() {
 void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol2() {
   InsertPopulationData();
 
-  const KeyEntryValues hashed_components{KeyEntryValue(INDIA)};
+  const KeyEntryValues hashed_components{KeyEntryValue(GLOBAL)};
 
   QLConditionPB cond;
   auto ids = cond.add_operands()->mutable_tuple();
@@ -737,11 +740,11 @@ void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol2() {
   auto options = cond.add_operands()->mutable_value()->mutable_list_value();
 
   auto option1 = options->add_elems()->mutable_tuple_value();
-  option1->add_elems()->set_string_value(DURG);
+  option1->add_elems()->set_string_value(JAPAN);
   option1->add_elems()->set_string_value(AREA1);
 
   auto option2 = options->add_elems()->mutable_tuple_value();
-  option2->add_elems()->set_string_value(MYSORE);
+  option2->add_elems()->set_string_value(UK);
   option2->add_elems()->set_string_value(AREA1);
 
   DocQLScanSpec spec(
@@ -751,8 +754,8 @@ void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol2() {
   CreateIteratorAndValidate(
       population_schema, ReadHybridTime::FromMicros(2000), spec,
       R"#(
-        {string:"INDIA",string:"CG",string:"DURG",string:"AREA1",int64:10}
-        {string:"INDIA",string:"KA",string:"MYSORE",string:"AREA1",int64:10}
+        {string:"GLOBAL",string:"ASIA",string:"JAPAN",string:"AREA1",int64:10}
+        {string:"GLOBAL",string:"EUROPE",string:"UK",string:"AREA1",int64:10}
       )#",
       HybridTime::FromMicros(1000));
 }
@@ -760,7 +763,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol2() {
 void DocRowwiseIteratorTest::TestClusteredFilterMultiIn() {
   InsertPopulationData();
 
-  const KeyEntryValues hashed_components{KeyEntryValue(INDIA)};
+  const KeyEntryValues hashed_components{KeyEntryValue(GLOBAL)};
 
   QLConditionPB cond;
   cond.set_op(QL_OP_AND);
@@ -774,11 +777,11 @@ void DocRowwiseIteratorTest::TestClusteredFilterMultiIn() {
 
   auto options = cond1->add_operands()->mutable_value()->mutable_list_value();
   auto option1 = options->add_elems()->mutable_tuple_value();
-  option1->add_elems()->set_string_value(CG);
-  option1->add_elems()->set_string_value(DURG);
+  option1->add_elems()->set_string_value(ASIA);
+  option1->add_elems()->set_string_value(JAPAN);
   auto option2 = options->add_elems()->mutable_tuple_value();
-  option2->add_elems()->set_string_value(KA);
-  option2->add_elems()->set_string_value(MYSORE);
+  option2->add_elems()->set_string_value(EUROPE);
+  option2->add_elems()->set_string_value(UK);
 
   cond2->add_operands()->set_column_id(40_ColId);
   cond2->set_op(QL_OP_IN);
@@ -792,8 +795,8 @@ void DocRowwiseIteratorTest::TestClusteredFilterMultiIn() {
   CreateIteratorAndValidate(
       population_schema, ReadHybridTime::FromMicros(2000), spec,
       R"#(
-        {string:"INDIA",string:"CG",string:"DURG",string:"AREA1",int64:10}
-        {string:"INDIA",string:"KA",string:"MYSORE",string:"AREA1",int64:10}
+        {string:"GLOBAL",string:"ASIA",string:"JAPAN",string:"AREA1",int64:10}
+        {string:"GLOBAL",string:"EUROPE",string:"UK",string:"AREA1",int64:10}
       )#",
       HybridTime::FromMicros(1000));
 }
@@ -801,7 +804,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterMultiIn() {
 void DocRowwiseIteratorTest::TestClusteredFilterEmptyIn() {
   InsertPopulationData();
 
-  const KeyEntryValues hashed_components{KeyEntryValue(INDIA)};
+  const KeyEntryValues hashed_components{KeyEntryValue(GLOBAL)};
 
   QLConditionPB cond;
   cond.set_op(QL_OP_AND);

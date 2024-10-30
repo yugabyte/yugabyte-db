@@ -25,8 +25,8 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/test_util.h"
 
-DECLARE_bool(TEST_persist_tserver_registry);
 DECLARE_bool(enable_load_balancing);
+DECLARE_bool(persist_tserver_registry);
 DECLARE_int32(replication_factor);
 DECLARE_int32(transaction_table_num_tablets);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
@@ -268,20 +268,14 @@ Status MasterClusterTest::WaitForMasterLeaderToMarkTabletServerDead(
     const std::string& uuid, const MasterClusterClient& client, MonoDelta timeout) {
   return WaitFor(
       [&client, &uuid]() -> Result<bool> {
-        auto tserver_resp = VERIFY_RESULT(client.ListTabletServers());
-        auto tserver = std::find_if(
-            tserver_resp.servers().begin(), tserver_resp.servers().end(),
-            [&uuid](const auto& server) { return server.instance_id().permanent_uuid() == uuid; });
-        if (tserver == tserver_resp.servers().end()) {
-          return false;
-        }
-        return !tserver->alive();
+        auto tserver = VERIFY_RESULT(client.GetTabletServer(uuid));
+        return tserver && !tserver->alive();
       },
       timeout, "Tserver not present or still alive");
 }
 
 void RemoveTabletServerTest::SetUp() {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_persist_tserver_registry) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) = 1;
   MasterClusterTest::SetUp();
 }

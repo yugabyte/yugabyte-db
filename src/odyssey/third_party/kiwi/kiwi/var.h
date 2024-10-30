@@ -248,10 +248,7 @@ static inline void kiwi_vars_init(kiwi_vars_t *vars)
 		      sizeof("odyssey_catchup_timeout"));
 #else
 	vars->size = 0;
-
-	/* Ensure that role oid is "cached" after session authorization oid. */
-	yb_kiwi_var_push(vars, "session_authorization_oid", 26, "-1", 3);
-	yb_kiwi_var_push(vars, "role_oid", 9, "-1", 3);
+	vars->vars = NULL;
 #endif
 }
 
@@ -302,6 +299,27 @@ static inline int kiwi_vars_update(kiwi_vars_t *vars, char *name, int name_len,
 	if (var != NULL)
 		yb_kiwi_var_set(var, value, value_len);
 	else
+		yb_kiwi_var_push(vars, name, name_len, value, value_len);
+#endif
+	return 0;
+}
+
+static inline int yb_kiwi_vars_set_if_not_exists(kiwi_vars_t *vars, char *name,
+				   int name_len, char *value, int value_len)
+{
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
+	kiwi_var_type_t type;
+	type = kiwi_vars_find(vars, name, name_len);
+	if (type == KIWI_VAR_UNDEF)
+		return -1;
+	if (type == KIWI_VAR_IS_HOT_STANDBY) {
+		// skip volatile params caching
+		return 0;
+	}
+	kiwi_vars_set(vars, type, value, value_len);
+#else
+	kiwi_var_t *var = yb_kiwi_vars_get(vars, name);
+	if (var == NULL)
 		yb_kiwi_var_push(vars, name, name_len, value, value_len);
 #endif
 	return 0;
@@ -395,12 +413,6 @@ __attribute__((hot)) static inline int kiwi_vars_cas(kiwi_vars_t *client,
 		/* we do not support odyssey-to-backend compression yet */
 
 		if (strcmp(var->name, "compression") == 0)
-			continue;
-
-		/* do not send default value oid packets to the server */
-		if (((strcmp(var->name, "role_oid") == 0) ||
-			strcmp(var->name, "session_authorization_oid") == 0) &&
-			(strcmp(var->value, "-1") == 0))
 			continue;
 
 		kiwi_var_t *server_var;

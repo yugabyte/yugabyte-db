@@ -3,7 +3,7 @@
  * compress_io.h
  *	 Interface to compress_io.c routines
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -48,9 +48,9 @@ typedef struct CompressorState CompressorState;
 
 extern CompressorState *AllocateCompressor(int compression, WriteFunc writeF);
 extern void ReadDataFromArchive(ArchiveHandle *AH, int compression,
-					ReadFunc readF);
+								ReadFunc readF);
 extern void WriteDataToArchive(ArchiveHandle *AH, CompressorState *cs,
-				   const void *data, size_t dLen);
+							   const void *data, size_t dLen);
 extern void EndCompressor(ArchiveHandle *AH, CompressorState *cs);
 
 

@@ -36,14 +36,43 @@ PREPARE q2(text) AS
 
 EXECUTE q2('postgres');
 
+PREPARE q3(text, int, float, boolean, smallint) AS
+	SELECT * FROM tenk1 WHERE string4 = $1 AND (four = $2 OR
+	ten = $3::bigint OR true = $4 OR odd = $5::int)
+	ORDER BY unique1;
+
+EXECUTE q3('AAAAxx', 5::smallint, 10.5::float, false, 4::bigint);
+
+-- too few params
+EXECUTE q3('bool');
+
+-- too many params
+EXECUTE q3('bytea', 5::smallint, 10.5::float, false, 4::bigint, true);
+
+-- wrong param types
+EXECUTE q3(5::smallint, 10.5::float, false, 4::bigint, 'bytea');
+
 -- invalid type
-PREPARE q3(nonexistenttype) AS SELECT $1;
+PREPARE q4(nonexistenttype) AS SELECT $1;
+
+-- create table as execute
+PREPARE q5(int, text) AS
+	SELECT * FROM tenk1 WHERE unique1 = $1 OR stringu1 = $2
+	ORDER BY unique1;
+CREATE TEMPORARY TABLE q5_prep_results AS EXECUTE q5(200, 'DTAAAA');
+/* YB: uncomment when above CREATE TABLE AS EXECUTE is supported
+SELECT * FROM q5_prep_results;
+CREATE TEMPORARY TABLE q5_prep_nodata AS EXECUTE q5(200, 'DTAAAA')
+    WITH NO DATA;
+SELECT * FROM q5_prep_nodata;
+*/ -- YB
+SELECT 1; -- YB: add intermediate dummy query to avoid comments from polluting the below select from pg_prepared_statements
 
 -- unknown or unspecified parameter types: should succeed
-PREPARE q4 AS
-    SELECT * FROM pg_database WHERE oid = $1 AND datname = $2;
-PREPARE q5(unknown) AS
-    SELECT * FROM pg_namespace WHERE nspname = $1;
+PREPARE q6 AS
+    SELECT * FROM tenk1 WHERE unique1 = $1 AND stringu1 = $2;
+PREPARE q7(unknown) AS
+    SELECT * FROM road WHERE thepath = $1;
 
 SELECT name, statement, parameter_types FROM pg_prepared_statements
     ORDER BY name;

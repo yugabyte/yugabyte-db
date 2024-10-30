@@ -23,6 +23,7 @@ import { filterTypes } from '../../metrics/MetricsComparisonModal/ComparisonFilt
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { getUniverseStatus } from '../helpers/universeHelpers';
 import { RBAC_ERR_MSG_NO_PERM } from '../../../redesign/features/rbac/common/validator/ValidatorUtils';
+import { createErrorMessage } from '../../../utils/ObjectUtils';
 
 const stepsObj = {
   firstStep: 'firstStep',
@@ -94,8 +95,10 @@ export const UniverseSupportBundle = (props) => {
 
   const saveSupportBundle = (universeUUID) => {
     dispatch(crateSupportBundle(universeUUID, payload)).then((response) => {
-      if (response.error && response?.payload?.response?.status === 403) {
-        toast.error(RBAC_ERR_MSG_NO_PERM, { autoClose: 3000 });
+      if (response.error) {
+        if (response?.payload?.response?.status === 403)
+          toast.error(RBAC_ERR_MSG_NO_PERM, { autoClose: 3000 });
+        else toast.error(createErrorMessage(response.payload));
       }
       handleStepChange(stepsObj.thirdStep);
       listSupportBundle(universeUUID);

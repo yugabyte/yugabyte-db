@@ -9,6 +9,7 @@
 
 import { useState } from 'react';
 import { useToggle } from 'react-use';
+import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
 import { isEmpty } from 'lodash';
@@ -139,7 +140,9 @@ const ListGroups = () => {
 
   const [showDeleteModal, toggleDeleteModal] = useToggle(false);
   const [searchText, setSearchText] = useState('');
-
+  
+  const currentUserInfo = useSelector((state: any) => state.customer.currentUser.data);
+  
   if (isLoading || isRolesLoading || isRuntimeConfigLoading || !runtimeConfig)
     return <YBLoadingCircleIcon />;
 
@@ -166,6 +169,9 @@ const ListGroups = () => {
   }
 
   const getActions = (_: undefined, group: AuthGroupToRolesMapping) => {
+
+    const isSuperAdmin = currentUserInfo?.role === 'SuperAdmin';
+
     const menuOptions = [];
 
     menuOptions.push({
@@ -189,7 +195,7 @@ const ListGroups = () => {
           </RbacValidator>
         );
       },
-      disabled: false
+      disabled: !isSuperAdmin
     });
 
     menuOptions.push({
@@ -219,7 +225,7 @@ const ListGroups = () => {
           </RbacValidator>
         );
       },
-      disabled: false
+      disabled: !isSuperAdmin
     });
 
     return (
@@ -259,7 +265,7 @@ const ListGroups = () => {
                 setCurrentGroup(null);
                 setCurrentPage(Pages.CREATE_GROUP);
               }}
-              data-testid={`rbac-resource-create-role`}
+              data-testid={`create-group-button`}
             >
               {t('createGroup')}
             </YBButton>

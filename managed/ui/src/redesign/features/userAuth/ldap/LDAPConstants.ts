@@ -30,6 +30,7 @@ export interface LDAPFormProps {
   ldap_service_account_password: string;
   ldap_group_use_query: boolean;
   ldap_group_search_filter: string;
+  ldap_group_use_role_mapping: string;
 }
 
 export const TLSVersions = [
@@ -80,18 +81,18 @@ export const AuthModes = [
 ];
 
 export enum LDAPUseQuery {
-  USER_ATTRIBUTE = 'true',
-  GROUP_SEARCH_FILTER = 'false'
+  USER_ATTRIBUTE = 'false',
+  GROUP_SEARCH_FILTER = 'true'
 }
 
 export const LDAPUseQueryOptions = [
   {
     label: 'User Attribute',
-    value: 'true'
+    value: 'false'
   },
   {
     label: 'Group Search Filter',
-    value: 'false'
+    value: 'true'
   }
 ];
 

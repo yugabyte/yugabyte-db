@@ -1,462 +1,474 @@
-# LANGUAGE message translation file for pg_rewind
-# Copyright (C) 2016 PostgreSQL Global Development Group
+# pg_rewind.po
+#   Japanese message translation file for pg_rewind
+#
+# Copyright (C) 2016-2022 PostgreSQL Global Development Group
+#
 # This file is distributed under the same license as the PostgreSQL package.
-# FIRST AUTHOR <EMAIL@ADDRESS>, 2016.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: pg_rewind (PostgreSQL) 9.6\n"
-"Report-Msgid-Bugs-To: pgsql-bugs@postgresql.org\n"
-"POT-Creation-Date: 2018-10-12 11:47+0900\n"
-"PO-Revision-Date: 2018-10-12 12:48+0900\n"
-"Last-Translator: Kyotaro Horiguchi <horiguchi.kyotaro@lab.ntt.co.jp>\n"
-"Language-Team: jpug-doc <jpug-doc@ml.postgresql.jp>\n"
+"Project-Id-Version: pg_rewind (PostgreSQL 15)\n"
+"Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
+"POT-Creation-Date: 2022-09-26 11:14+0900\n"
+"PO-Revision-Date: 2022-09-26 14:53+0900\n"
+"Last-Translator: Kyotaro Horiguchi <horikyota.ntt@gmail.com>\n"
+"Language-Team: Japan PostgreSQL Users Group <jpug-doc@ml.postgresql.jp>\n"
 "Language: ja\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"X-Generator: Poedit 1.5.4\n"
-"Plural-Forms: nplurals=1;plural=0;\n"
+"X-Generator: Poedit 1.8.13\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: ../../../src/common/logging.c:276
+#, c-format
+msgid "error: "
+msgstr "エラー: "
+
+#: ../../../src/common/logging.c:283
+#, c-format
+msgid "warning: "
+msgstr "警告: "
+
+#: ../../../src/common/logging.c:294
+#, c-format
+msgid "detail: "
+msgstr "詳細: "
+
+#: ../../../src/common/logging.c:301
+#, c-format
+msgid "hint: "
+msgstr "ヒント: "
 
 #: ../../common/fe_memutils.c:35 ../../common/fe_memutils.c:75
-#: ../../common/fe_memutils.c:98 parsexlog.c:75 parsexlog.c:129
-#: parsexlog.c:187
+#: ../../common/fe_memutils.c:98 ../../common/fe_memutils.c:162
 #, c-format
 msgid "out of memory\n"
 msgstr "メモリ不足です\n"
 
-#: ../../common/fe_memutils.c:92
+#: ../../common/fe_memutils.c:92 ../../common/fe_memutils.c:154
 #, c-format
 msgid "cannot duplicate null pointer (internal error)\n"
 msgstr "null ポインタを複製できません（内部エラー）\n"
 
-#: ../../common/restricted_token.c:68
+#: ../../common/restricted_token.c:64
 #, c-format
-msgid "%s: WARNING: cannot create restricted tokens on this platform\n"
-msgstr "%s: 警告: このプラットフォームでは制限付きトークンを作成できません\n"
+msgid "could not load library \"%s\": error code %lu"
+msgstr "ライブラリ\"%s\"をロードできませんでした: エラーコード %lu"
 
-#: ../../common/restricted_token.c:77
+#: ../../common/restricted_token.c:73
 #, c-format
-msgid "%s: could not open process token: error code %lu\n"
-msgstr "%s: プロセストークンをオープンできませんでした: エラーコード %lu\n"
+msgid "cannot create restricted tokens on this platform: error code %lu"
+msgstr "このプラットフォームでは制限付きトークンを生成できません: エラーコード %lu"
 
-#: ../../common/restricted_token.c:90
+#: ../../common/restricted_token.c:82
 #, c-format
-msgid "%s: could not allocate SIDs: error code %lu\n"
-msgstr "%s: SIDを割り当てられませんでした: エラーコード %lu\n"
+msgid "could not open process token: error code %lu"
+msgstr "プロセストークンをオープンできませんでした: エラーコード %lu"
 
-#: ../../common/restricted_token.c:110
+#: ../../common/restricted_token.c:97
 #, c-format
-msgid "%s: could not create restricted token: error code %lu\n"
-msgstr "%s: 制限付きトークンを作成できませんでした: エラーコード %lu\n"
+msgid "could not allocate SIDs: error code %lu"
+msgstr "SIDを割り当てられませんでした: エラーコード %lu"
 
-#: ../../common/restricted_token.c:132
+#: ../../common/restricted_token.c:119
 #, c-format
-msgid "%s: could not start process for command \"%s\": error code %lu\n"
-msgstr ""
-"%s: \"%s\"コマンド用のプロセスを起動できませんでした: エラーコード %lu\n"
+msgid "could not create restricted token: error code %lu"
+msgstr "制限付きトークンを作成できませんでした: エラーコード %lu"
 
-#: ../../common/restricted_token.c:170
+#: ../../common/restricted_token.c:140
 #, c-format
-msgid "%s: could not re-execute with restricted token: error code %lu\n"
-msgstr "%s: 制限付きトークンで再実行できませんでした: %lu\n"
+msgid "could not start process for command \"%s\": error code %lu"
+msgstr "\"%s\"コマンドのプロセスを起動できませんでした: エラーコード %lu"
 
-#: ../../common/restricted_token.c:186
+#: ../../common/restricted_token.c:178
 #, c-format
-msgid "%s: could not get exit code from subprocess: error code %lu\n"
-msgstr ""
-"%s: サブプロセスの終了コードを入手できませんでした。: エラーコード %lu\n"
+msgid "could not re-execute with restricted token: error code %lu"
+msgstr "制限付きトークンで再実行できませんでした: %lu"
 
-#: copy_fetch.c:60
+#: ../../common/restricted_token.c:193
 #, c-format
-msgid "could not open directory \"%s\": %s\n"
-msgstr "ディレクトリ\"%s\"をオープンできませんでした: %s\n"
+msgid "could not get exit code from subprocess: error code %lu"
+msgstr "サブプロセスの終了コードを取得できませんでした。: エラーコード %lu"
 
-#: copy_fetch.c:89 filemap.c:185 filemap.c:348
+#: ../../fe_utils/archive.c:52
 #, c-format
-msgid "could not stat file \"%s\": %s\n"
-msgstr "ファイル\"%s\"のstatができませんでした: %s\n"
+msgid "cannot use restore_command with %%r placeholder"
+msgstr "%%r置換を含むrestore_commandは使用できません"
 
-#: copy_fetch.c:118
+#: ../../fe_utils/archive.c:70
 #, c-format
-msgid "could not read symbolic link \"%s\": %s\n"
-msgstr "シンボリックリンク \"%s\" を読み込めませんでした: %s\n"
+msgid "unexpected file size for \"%s\": %lld instead of %lld"
+msgstr "想定外の\"%1$s\"のファイルサイズ: %3$lld ではなく %2$lld"
 
-#: copy_fetch.c:121
+#: ../../fe_utils/archive.c:78
 #, c-format
-msgid "symbolic link \"%s\" target is too long\n"
-msgstr "シンボリックリンク\"%s\"の参照先は長すぎます\n"
+msgid "could not open file \"%s\" restored from archive: %m"
+msgstr "アーカイブからリストアされたファイル\"%s\"のオープンに失敗しました: %m"
 
-#: copy_fetch.c:136
+#: ../../fe_utils/archive.c:87 file_ops.c:417
 #, c-format
-msgid ""
-"\"%s\" is a symbolic link, but symbolic links are not supported on this "
-"platform\n"
-msgstr ""
-"\"%s\"はシンボリックリンクですが、このプラットフォームではシンボリックリンク"
-"をサポートしていません\n"
+msgid "could not stat file \"%s\": %m"
+msgstr "ファイル\"%s\"のstatに失敗しました: %m"
 
-#: copy_fetch.c:143
+#: ../../fe_utils/archive.c:99
 #, c-format
-msgid "could not read directory \"%s\": %s\n"
-msgstr "ディレクトリ\"%s\"を読み取れませんでした: %s\n"
+msgid "restore_command failed: %s"
+msgstr "restore_commandが失敗しました: %s"
 
-#: copy_fetch.c:147
+#: ../../fe_utils/archive.c:106
 #, c-format
-msgid "could not close directory \"%s\": %s\n"
-msgstr "ディレクトリ\"%s\"をクローズできませんでした: %s\n"
+msgid "could not restore file \"%s\" from archive"
+msgstr "ファイル\"%s\"をアーカイブからリストアできませんでした"
 
-#: copy_fetch.c:167
+#: ../../fe_utils/recovery_gen.c:34 ../../fe_utils/recovery_gen.c:45
+#: ../../fe_utils/recovery_gen.c:70 ../../fe_utils/recovery_gen.c:90
+#: ../../fe_utils/recovery_gen.c:149
 #, c-format
-msgid "could not open source file \"%s\": %s\n"
-msgstr "ソースファイル\"%s\"をオープンすることができませんでした: %s\n"
+msgid "out of memory"
+msgstr "メモリ不足です"
 
-#: copy_fetch.c:171
+#: ../../fe_utils/recovery_gen.c:121 parsexlog.c:312
 #, c-format
-msgid "could not seek in source file: %s\n"
-msgstr "ソースファイルをシークすることができませんでした: %s\n"
+msgid "could not open file \"%s\": %m"
+msgstr "ファイル\"%s\"をオープンできませんでした: %m"
 
-#: copy_fetch.c:188 file_ops.c:308
+#: ../../fe_utils/recovery_gen.c:124
 #, c-format
-msgid "could not read file \"%s\": %s\n"
-msgstr "ファイル \"%s\" を読み込めませんでした: %s\n"
+msgid "could not write to file \"%s\": %m"
+msgstr "ファイル\"%s\"を書き出せませんでした: %m"
 
-#: copy_fetch.c:191
+#: ../../fe_utils/recovery_gen.c:133
 #, c-format
-msgid "unexpected EOF while reading file \"%s\"\n"
-msgstr "ファイル\"%s\"を読み込み中に想定外のEOFがありました\n"
+msgid "could not create file \"%s\": %m"
+msgstr "ファイル\"%s\"を作成できませんでした: %m"
 
-#: copy_fetch.c:198
+#: file_ops.c:67
 #, c-format
-msgid "could not close file \"%s\": %s\n"
-msgstr "ファイル \"%s\" をクローズできませんでした: %s\n"
+msgid "could not open target file \"%s\": %m"
+msgstr "ターゲットファイル\"%s\"をオープンできませんでした: %m"
 
-#: datapagemap.c:124
+#: file_ops.c:81
 #, c-format
-msgid "  block %u\n"
-msgstr "ブロック数 %u\n"
+msgid "could not close target file \"%s\": %m"
+msgstr "ターゲットファイル\"%s\"をクローズできませんでした: %m"
 
-#: file_ops.c:63
+#: file_ops.c:101
 #, c-format
-msgid "could not open target file \"%s\": %s\n"
-msgstr "ターゲットファイル\"%s\"をオープンできませんでした: %s\n"
+msgid "could not seek in target file \"%s\": %m"
+msgstr "ターゲットファイル\"%s\"をシークできませんでした: %m"
 
-#: file_ops.c:77
+#: file_ops.c:117
 #, c-format
-msgid "could not close target file \"%s\": %s\n"
-msgstr "ターゲットファイル\"%s\"をクローズできませんでした: %s\n"
+msgid "could not write file \"%s\": %m"
+msgstr "ファイル\"%s\"を書き出せませんでした: %m"
 
-#: file_ops.c:97
+#: file_ops.c:150 file_ops.c:177
 #, c-format
-msgid "could not seek in target file \"%s\": %s\n"
-msgstr "ターゲットファイル\"%s\"をシークできませんでした: %s\n"
+msgid "undefined file type for \"%s\""
+msgstr "\"%s\"に対する未定義のファイルタイプ"
 
-#: file_ops.c:113
+#: file_ops.c:173
 #, c-format
-msgid "could not write file \"%s\": %s\n"
-msgstr "ファイル\"%s\"に書き込めませんでした: %s\n"
+msgid "invalid action (CREATE) for regular file"
+msgstr "通常のファイルに対する不正なアクション(CREATE)です"
 
-#: file_ops.c:163
+#: file_ops.c:200
 #, c-format
-msgid "invalid action (CREATE) for regular file\n"
-msgstr "通常のファイルに対する不正なアクション(CREATE)です\n"
+msgid "could not remove file \"%s\": %m"
+msgstr "ファイル\"%s\"を削除できませんでした: %m"
 
-#: file_ops.c:186
+#: file_ops.c:218
 #, c-format
-msgid "could not remove file \"%s\": %s\n"
-msgstr "ファイル\"%s\"を削除できませんでした: %s\n"
+msgid "could not open file \"%s\" for truncation: %m"
+msgstr "ファイル\"%s\"を切り詰めのためにオープンできませんでした: %m"
 
-#: file_ops.c:204
+#: file_ops.c:222
 #, c-format
-msgid "could not open file \"%s\" for truncation: %s\n"
-msgstr "ファイル\"%s\"を切り詰め用にオープンできませんでした: %s\n"
-
-#: file_ops.c:208
-#, c-format
-msgid "could not truncate file \"%s\" to %u: %s\n"
-msgstr "ファイル \"%s\" を%uに切り詰められませんでした: %s\n"
-
-#: file_ops.c:224
-#, c-format
-msgid "could not create directory \"%s\": %s\n"
-msgstr "ディレクトリ\"%s\"を作成できませんでした: %s\n"
+msgid "could not truncate file \"%s\" to %u: %m"
+msgstr "ファイル\"%s\"を%uバイトに切り詰められませんでした: %m"
 
 #: file_ops.c:238
 #, c-format
-msgid "could not remove directory \"%s\": %s\n"
-msgstr "ディレクトリ\"%s\"を削除できませんでした: %s\n"
+msgid "could not create directory \"%s\": %m"
+msgstr "ディレクトリ\"%s\"を作成できませんでした: %m"
 
 #: file_ops.c:252
 #, c-format
-msgid "could not create symbolic link at \"%s\": %s\n"
-msgstr "\"%s\"でシンボリックリンクを作成できませんでした: %s\n"
+msgid "could not remove directory \"%s\": %m"
+msgstr "ディレクトリ\"%s\"を削除できませんでした: %m"
 
 #: file_ops.c:266
 #, c-format
-msgid "could not remove symbolic link \"%s\": %s\n"
-msgstr "シンボリックリンク \"%s\" を削除できませんでした: %s\n"
+msgid "could not create symbolic link at \"%s\": %m"
+msgstr "\"%s\"にシンボリックリンクを作成できませんでした: %m"
 
-#: file_ops.c:296 file_ops.c:300
+#: file_ops.c:280
 #, c-format
-msgid "could not open file \"%s\" for reading: %s\n"
-msgstr "読み取り用のファイル\"%s\"をオープンできませんでした:%s\n"
+msgid "could not remove symbolic link \"%s\": %m"
+msgstr "シンボリックリンク\"%s\"を削除できませんでした: %m"
 
-#: filemap.c:177
+#: file_ops.c:326 file_ops.c:330
 #, c-format
-msgid "data file \"%s\" in source is not a regular file\n"
-msgstr "ソースのデータファイル\"%s\"は通常のファイルではありません\n"
+msgid "could not open file \"%s\" for reading: %m"
+msgstr "ファイル\"%s\"を読み取り用にオープンできませんでした: %m"
 
-#: filemap.c:199
+#: file_ops.c:341 local_source.c:104 local_source.c:163 parsexlog.c:350
 #, c-format
-msgid "\"%s\" is not a directory\n"
-msgstr "\"%s\"はディレクトリではありません\n"
+msgid "could not read file \"%s\": %m"
+msgstr "ファイル\"%s\"の読み取りに失敗しました: %m"
 
-#: filemap.c:222
+#: file_ops.c:344 parsexlog.c:352
 #, c-format
-msgid "\"%s\" is not a symbolic link\n"
-msgstr "\"%s\"はシンボリックリンクではありません\n"
+msgid "could not read file \"%s\": read %d of %zu"
+msgstr "ファイル\"%1$s\"を読み込めませんでした: %3$zuバイトのうち%2$dバイトを読み込みました"
 
-#: filemap.c:234
+#: file_ops.c:388
 #, c-format
-msgid "\"%s\" is not a regular file\n"
-msgstr "\"%s\" は通常のファイルではありません\n"
+msgid "could not open directory \"%s\": %m"
+msgstr "ディレクトリ\"%s\"をオープンできませんでした: %m"
 
-#: filemap.c:360
+#: file_ops.c:446
 #, c-format
-msgid "source file list is empty\n"
-msgstr "ソースファイルリストが空です\n"
+msgid "could not read symbolic link \"%s\": %m"
+msgstr "シンボリックリンク\"%s\"を読めませんでした: %m"
 
-#: filemap.c:475
+#: file_ops.c:449
 #, c-format
-msgid "unexpected page modification for directory or symbolic link \"%s\"\n"
-msgstr ""
-"ディレクトリまたはシンボリックリンク\"%s\"に対する想定外のページ修正です\n"
+msgid "symbolic link \"%s\" target is too long"
+msgstr "シンボリックリンク\"%s\"の参照先が長すぎます"
 
-#: filemap.c:510 filemap.c:530
+#: file_ops.c:464
 #, c-format
-#| msgid "entry \"%s\" excluded from %s file list\n"
-msgid "entry \"%s\" excluded from source file list\n"
-msgstr "エントリ \"%s\" はソースファイルリストから除外されます\n"
+msgid "\"%s\" is a symbolic link, but symbolic links are not supported on this platform"
+msgstr "\"%s\"はシンボリックリンクですが、このプラットフォームではシンボリックリンクをサポートしていません"
 
-#: filemap.c:513 filemap.c:533
+#: file_ops.c:471
 #, c-format
-#| msgid "entry \"%s\" excluded from %s file list\n"
-msgid "entry \"%s\" excluded from target file list\n"
-msgstr "エントリ \"%s\" はターゲットファイルリストから除外されます\n"
+msgid "could not read directory \"%s\": %m"
+msgstr "ディレクトリ\"%s\"を読み取れませんでした: %m"
 
-#. translator: first %s is a file path, second is a keyword such as COPY
-#: filemap.c:664
+#: file_ops.c:475
 #, c-format
-msgid "%s (%s)\n"
-msgstr "%s (%s)\n"
+msgid "could not close directory \"%s\": %m"
+msgstr "ディレクトリ\"%s\"をクローズできませんでした: %m"
 
-#: libpq_fetch.c:52
+#: filemap.c:236
 #, c-format
-msgid "could not connect to server: %s"
-msgstr "サーバに接続できませんでした: %s"
+msgid "data file \"%s\" in source is not a regular file"
+msgstr "ソースのデータファイル\"%s\"は通常のファイルではありません"
 
-#: libpq_fetch.c:55
+#: filemap.c:241 filemap.c:274
 #, c-format
-msgid "connected to server\n"
-msgstr "サーバへ接続しました\n"
+msgid "duplicate source file \"%s\""
+msgstr "ソースファイル\"%s\"が重複しています"
 
-#: libpq_fetch.c:59
+#: filemap.c:329
+#, c-format
+msgid "unexpected page modification for non-regular file \"%s\""
+msgstr "非通常ファイル\"%s\"に対する想定外のページの書き換えです"
+
+#: filemap.c:679 filemap.c:773
+#, c-format
+msgid "unknown file type for \"%s\""
+msgstr "\"%s\"に対する未知のファイルタイプ"
+
+#: filemap.c:706
+#, c-format
+msgid "file \"%s\" is of different type in source and target"
+msgstr "ファイル\"%s\"はソースとターゲットとで異なるタイプです"
+
+#: filemap.c:778
+#, c-format
+msgid "could not decide what to do with file \"%s\""
+msgstr "ファイル\"%s\"の処理を決定できませんでした"
+
+#: libpq_source.c:130
 #, c-format
 msgid "could not clear search_path: %s"
 msgstr "search_pathを消去できませんでした: %s"
 
-#: libpq_fetch.c:71
+#: libpq_source.c:141
 #, c-format
-msgid "source server must not be in recovery mode\n"
-msgstr "ソースサーバはリカバリモードであってはなりません\n"
+msgid "full_page_writes must be enabled in the source server"
+msgstr "ソースサーバーではfull_pate_writesは有効でなければなりません"
 
-#: libpq_fetch.c:81
+#: libpq_source.c:152
 #, c-format
-msgid "full_page_writes must be enabled in the source server\n"
-msgstr "ソースサーバではfull_pate_writesは有効でなければなりません\n"
+msgid "could not prepare statement to fetch file contents: %s"
+msgstr "ファイル内容を取得するための文を準備できませんでした: %s"
 
-#: libpq_fetch.c:93
+#: libpq_source.c:171
 #, c-format
-msgid "could not set up connection context: %s"
-msgstr "接続コンテクストを準備できませんでした: %s"
+msgid "error running query (%s) on source server: %s"
+msgstr "ソースサーバーで実行中のクエリ(%s)でエラー: %s"
 
-#: libpq_fetch.c:111
+#: libpq_source.c:176
+#, c-format
+msgid "unexpected result set from query"
+msgstr "クエリから想定外の結果セット"
+
+#: libpq_source.c:198
 #, c-format
 msgid "error running query (%s) in source server: %s"
-msgstr "ソースサーバの実行中のクエリ(%s)でエラー：%s"
+msgstr "ソースサーバーの実行中のクエリ(%s)でエラー: %s"
 
-#: libpq_fetch.c:116
+#: libpq_source.c:219
 #, c-format
-msgid "unexpected result set from query\n"
-msgstr "クエリから想定外の結果セット\n"
+msgid "unrecognized result \"%s\" for current WAL insert location"
+msgstr "現在のWAL挿入位置として認識不可の結果\"%s\""
 
-#: libpq_fetch.c:139
-#, c-format
-msgid "unrecognized result \"%s\" for current WAL insert location\n"
-msgstr "現在のWALの挿入場所に対する未知の結果 \"%s\" \n"
-
-#: libpq_fetch.c:189
+#: libpq_source.c:270
 #, c-format
 msgid "could not fetch file list: %s"
 msgstr "ファイルリストをフェッチできませんでした: %s"
 
-#: libpq_fetch.c:194
+#: libpq_source.c:275
 #, c-format
-msgid "unexpected result set while fetching file list\n"
-msgstr "ファイルリストをフェッチ中に想定外の結果セット\n"
+msgid "unexpected result set while fetching file list"
+msgstr "ファイルリストのフェッチ中に想定外の結果セット"
 
-#: libpq_fetch.c:242
+#: libpq_source.c:467
 #, c-format
 msgid "could not send query: %s"
 msgstr "クエリを送信できませんでした: %s"
 
-#: libpq_fetch.c:244
+#: libpq_source.c:470
 #, c-format
-msgid "getting file chunks\n"
-msgstr "ファイルチャンクの取得\n"
+msgid "could not set libpq connection to single row mode"
+msgstr "libpq接続を単一行モードに設定できませんでした"
 
-#: libpq_fetch.c:247
-#, c-format
-msgid "could not set libpq connection to single row mode\n"
-msgstr "libpq接続を単一行モードに設定できませんでした\n"
-
-#: libpq_fetch.c:268
+#: libpq_source.c:500
 #, c-format
 msgid "unexpected result while fetching remote files: %s"
 msgstr "リモートファイルをフェッチ中に想定外の結果: %s"
 
-#: libpq_fetch.c:274
+#: libpq_source.c:505
 #, c-format
-msgid "unexpected result set size while fetching remote files\n"
-msgstr "リモートファイルをフェッチ中に想定外の結果セットサイズ\n"
+msgid "received more data chunks than requested"
+msgstr "要求よりも多くのデータチャンクが到着しました"
 
-#: libpq_fetch.c:280
+#: libpq_source.c:509
 #, c-format
-msgid ""
-"unexpected data types in result set while fetching remote files: %u %u %u\n"
-msgstr "リモートファイルをフェッチ中の結果セットに想定外のデータ型: %u %u %u\n"
+msgid "unexpected result set size while fetching remote files"
+msgstr "リモートファイルのフェッチ中に想定外の結果セットサイズ"
 
-#: libpq_fetch.c:288
+#: libpq_source.c:515
 #, c-format
-msgid "unexpected result format while fetching remote files\n"
-msgstr "リモートファイルをフェッチ中に想定外の結果形式\n"
+msgid "unexpected data types in result set while fetching remote files: %u %u %u"
+msgstr "リモートファイルのフェッチ中の結果セットに想定外のデータ型: %u %u %u"
 
-#: libpq_fetch.c:294
+#: libpq_source.c:523
 #, c-format
-msgid "unexpected null values in result while fetching remote files\n"
-msgstr "リモートファイルをフェッチ中の結果に想定外のNULL値\n"
+msgid "unexpected result format while fetching remote files"
+msgstr "リモートファイルのフェッチ中に想定外の結果形式"
 
-#: libpq_fetch.c:298
+#: libpq_source.c:529
 #, c-format
-msgid "unexpected result length while fetching remote files\n"
-msgstr "リモートファイルをフェッチ中に想定外の結果の長さ\n"
+msgid "unexpected null values in result while fetching remote files"
+msgstr "リモートファイルのフェッチ中の結果に想定外のNULL値"
 
-#: libpq_fetch.c:323
+#: libpq_source.c:533
 #, c-format
-msgid "received null value for chunk for file \"%s\", file has been deleted\n"
-msgstr ""
-"ファイル\"%s\"のNULL値のチャンクを受け取りました。ファイルは削除されまし"
-"た。\n"
+msgid "unexpected result length while fetching remote files"
+msgstr "リモートファイルのフェッチ中に想定外の結果の長さ"
 
-#: libpq_fetch.c:336
+#: libpq_source.c:566
 #, c-format
-msgid "received chunk for file \"%s\", offset %s, size %d\n"
-msgstr "ファイル\"%s\", オフセット%s, サイズ%dのチャンクを受け取りました\n"
+msgid "received data for file \"%s\", when requested for \"%s\""
+msgstr "ファイル\"%s\"への要求に対してファイル\"%s\"のデータを受信しました"
 
-#: libpq_fetch.c:365
+#: libpq_source.c:570
+#, c-format
+msgid "received data at offset %lld of file \"%s\", when requested for offset %lld"
+msgstr "ファイル\"%2$s\"のオフセット%3$lldへの要求に対してオフセット%1$lldのデータを受信しました"
+
+#: libpq_source.c:582
+#, c-format
+msgid "received more than requested for file \"%s\""
+msgstr "ファイル”%s\"に対して要求よりも多量のデータを受信しました"
+
+#: libpq_source.c:595
+#, c-format
+msgid "unexpected number of data chunks received"
+msgstr "想定外の数のデータチャンクを受信しました"
+
+#: libpq_source.c:638
 #, c-format
 msgid "could not fetch remote file \"%s\": %s"
 msgstr "リモートファイル\"%s\"をフェッチできませんでした: %s"
 
-#: libpq_fetch.c:370
+#: libpq_source.c:643
 #, c-format
-msgid "unexpected result set while fetching remote file \"%s\"\n"
-msgstr "リモートファイル \"%s\"をフェッチ中に想定外の結果セット\n"
+msgid "unexpected result set while fetching remote file \"%s\""
+msgstr "リモートファイル\"%s\"のフェッチ中に想定外の結果セット"
 
-#: libpq_fetch.c:381
+#: local_source.c:90 local_source.c:142
 #, c-format
-msgid "fetched file \"%s\", length %d\n"
-msgstr "フェッチしたファイル \"%s\",長さ %d\n"
+msgid "could not open source file \"%s\": %m"
+msgstr "ソースファイル\"%s\"をオープンすることができませんでした: %m"
 
-#: libpq_fetch.c:414
+#: local_source.c:117
 #, c-format
-msgid "could not send COPY data: %s"
-msgstr "COPY 対象データを送信できませんでした：%s"
+msgid "size of source file \"%s\" changed concurrently: %d bytes expected, %d copied"
+msgstr "ファイル\"%s\"のサイズが同時に変更されました。%dバイトを期待していましたが、%dバイトコピーされました"
 
-#: libpq_fetch.c:440
+#: local_source.c:121 local_source.c:172
 #, c-format
-msgid "could not create temporary table: %s"
-msgstr "一時テーブルを作成できませんでした：%s"
+msgid "could not close file \"%s\": %m"
+msgstr "ファイル\"%s\"をクローズできませんでした: %m"
 
-#: libpq_fetch.c:448
+#: local_source.c:146
 #, c-format
-msgid "could not send file list: %s"
-msgstr "ファイルリストを送信できませんでした：%s"
+msgid "could not seek in source file: %m"
+msgstr "ソースファイルをシークすることができませんでした: %m"
 
-#: libpq_fetch.c:490
+#: local_source.c:165
 #, c-format
-msgid "could not send end-of-COPY: %s"
-msgstr "コピー終端を送信できませんでした：%s"
+msgid "unexpected EOF while reading file \"%s\""
+msgstr "ファイル\"%s\"を読み込み中に想定外のEOF"
 
-#: libpq_fetch.c:496
+#: parsexlog.c:80 parsexlog.c:139 parsexlog.c:199
 #, c-format
-msgid "unexpected result while sending file list: %s"
-msgstr "ファイルリストを送信中に想定外の結果: %s"
+msgid "out of memory while allocating a WAL reading processor"
+msgstr "WAL読み取り機構のメモリ割り当て中にメモリ不足"
 
-#: logging.c:57
-msgid "Failure, exiting\n"
-msgstr "失敗しました、終了します\n"
-
-#: logging.c:140
+#: parsexlog.c:92 parsexlog.c:146
 #, c-format
-msgid "%*s/%s kB (%d%%) copied"
-msgstr "%*s/%s kB (%d%%) コピーしました"
+msgid "could not read WAL record at %X/%X: %s"
+msgstr "%X/%XのWALレコードを読み取れませんでした: %s"
 
-#: parsexlog.c:88 parsexlog.c:135
+#: parsexlog.c:96 parsexlog.c:149
 #, c-format
-msgid "could not read WAL record at %X/%X: %s\n"
-msgstr "%X/%XでWALレコードを読み取れませんでした: %s\n"
+msgid "could not read WAL record at %X/%X"
+msgstr "%X/%XのWALレコードを読み取れませんでした"
 
-#: parsexlog.c:92 parsexlog.c:138
+#: parsexlog.c:108
 #, c-format
-msgid "could not read WAL record at %X/%X\n"
-msgstr "%X/%XでWALレコードを読み取れませんでした\n"
+msgid "end pointer %X/%X is not a valid end point; expected %X/%X"
+msgstr "終了点%X/%Xは妥当な終了点ではありません; %X/%Xを期待していました"
 
-#: parsexlog.c:199
+#: parsexlog.c:212
 #, c-format
-msgid "could not find previous WAL record at %X/%X: %s\n"
-msgstr "%X/%Xで前のWALレコードが見つかりませんでした: %s\n"
+msgid "could not find previous WAL record at %X/%X: %s"
+msgstr "%X/%Xの前のWALレコードが見つかりませんでした: %s"
 
-#: parsexlog.c:203
+#: parsexlog.c:216
 #, c-format
-msgid "could not find previous WAL record at %X/%X\n"
-msgstr "%X/%Xで前のWALレコードが見つかりませんでした\n"
+msgid "could not find previous WAL record at %X/%X"
+msgstr "%X/%Xの前のWALレコードが見つかりませんでした"
 
-#: parsexlog.c:293
+#: parsexlog.c:341
 #, c-format
-msgid "could not open file \"%s\": %s\n"
-msgstr "ファイル \"%s\" をオープンできませんでした: %s\n"
+msgid "could not seek in file \"%s\": %m"
+msgstr "ファイル\"%s\"をシークできませんでした: %m"
 
-#: parsexlog.c:307
+#: parsexlog.c:440
 #, c-format
-msgid "could not seek in file \"%s\": %s\n"
-msgstr "ファイル\"%s\"をシークできませんでした: %s\n"
+msgid "WAL record modifies a relation, but record type is not recognized: lsn: %X/%X, rmid: %d, rmgr: %s, info: %02X"
+msgstr "WALレコードはリレーションを更新しますが、レコードの型を認識できません: lsn: %X/%X, rmid: %d, rmgr: %s, info: %02X"
 
-#: parsexlog.c:314
-#, c-format
-msgid "could not read from file \"%s\": %s\n"
-msgstr "ファイル\"%s\"を読み込めませんでした: %s\n"
-
-#: parsexlog.c:382
-#, c-format
-msgid ""
-"WAL record modifies a relation, but record type is not recognized\n"
-"lsn: %X/%X, rmgr: %s, info: %02X\n"
-msgstr ""
-"WALレコードはリレーションを修正しますが、レコードの型を認識できません。\n"
-"lsn: %X/%X, rmgr: %s, info: %02X\n"
-
-#: pg_rewind.c:66
+#: pg_rewind.c:86
 #, c-format
 msgid ""
 "%s resynchronizes a PostgreSQL cluster with another copy of the cluster.\n"
@@ -465,7 +477,7 @@ msgstr ""
 "%s はPostgreSQLクラスタをそのクラスタのコピーで再同期します。\n"
 "\n"
 
-#: pg_rewind.c:67
+#: pg_rewind.c:87
 #, c-format
 msgid ""
 "Usage:\n"
@@ -473,487 +485,525 @@ msgid ""
 "\n"
 msgstr ""
 "使用方法:\n"
-"  %s [オプション]...\n"
+" %s [オプション]...\n"
 "\n"
 
-#: pg_rewind.c:68
+#: pg_rewind.c:88
 #, c-format
 msgid "Options:\n"
 msgstr "オプション:\n"
 
-#: pg_rewind.c:69
+#: pg_rewind.c:89
+#, c-format
+msgid ""
+"  -c, --restore-target-wal       use restore_command in target configuration to\n"
+"                                 retrieve WAL files from archives\n"
+msgstr ""
+"  -c, --restore-target-wal      ターゲットの設定の中のrestore_commandを使用して\n"
+"                                アーカイブからWALファイルを取得する\n"
+
+#: pg_rewind.c:91
 #, c-format
 msgid "  -D, --target-pgdata=DIRECTORY  existing data directory to modify\n"
-msgstr "  -D, --target-pgdata=DIRECTORY  既存のデータディレクトリを修正する\n"
+msgstr "  -D, --target-pgdata=DIRECTORY 修正を行う既存データディレクトリ\n"
 
-#: pg_rewind.c:70
+#: pg_rewind.c:92
 #, c-format
-msgid ""
-"      --source-pgdata=DIRECTORY  source data directory to synchronize with\n"
-msgstr "      --source-pgdata=DIRECTORY  同期するソースデータのディレクトリ\n"
+msgid "      --source-pgdata=DIRECTORY  source data directory to synchronize with\n"
+msgstr "      --source-pgdata=DIRECTORY 同期元とするデータディレクトリ\n"
 
-#: pg_rewind.c:71
+#: pg_rewind.c:93
 #, c-format
 msgid "      --source-server=CONNSTR    source server to synchronize with\n"
-msgstr "      --source-server=CONNSTR    同期するソースサーバ\n"
+msgstr "      --source-server=CONNSTR   同期元とするサーバー\n"
 
-#: pg_rewind.c:72
+#: pg_rewind.c:94
 #, c-format
 msgid "  -n, --dry-run                  stop before modifying anything\n"
-msgstr "  -n, --dry-run                  何も変更せずに停止する\n"
+msgstr "  -n, --dry-run                 修正を始める前に停止する\n"
 
-#: pg_rewind.c:73
+#: pg_rewind.c:95
+#, c-format
+msgid ""
+"  -N, --no-sync                  do not wait for changes to be written\n"
+"                                 safely to disk\n"
+msgstr "  -N, --no-sync                 変更のディスクへの安全な書き出しを待機しない\n"
+
+#: pg_rewind.c:97
 #, c-format
 msgid "  -P, --progress                 write progress messages\n"
-msgstr "  -P, --progress                 進行表示メッセージを出力します\n"
+msgstr "  -P, --progress                進捗メッセージを出力\n"
 
-#: pg_rewind.c:74
+#: pg_rewind.c:98
+#, c-format
+msgid ""
+"  -R, --write-recovery-conf      write configuration for replication\n"
+"                                 (requires --source-server)\n"
+msgstr ""
+"  -R, --write-recovery-conf     レプリケーションのための設定を書き込む\n"
+"                                (--source-server が必要となります)\n"
+
+#: pg_rewind.c:100
+#, c-format
+msgid ""
+"      --config-file=FILENAME     use specified main server configuration\n"
+"                                 file when running target cluster\n"
+msgstr ""
+"      --config-file=FILENAME    ターゲットのクラスタの実行時に指定した\n"
+"                                主サーバー設定ファイルを使用する\n"
+
+#: pg_rewind.c:102
 #, c-format
 msgid "      --debug                    write a lot of debug messages\n"
-msgstr ""
-"      --debug                    多くのデバッグメッセージを出力します\n"
+msgstr "      --debug                   多量のデバッグメッセージを出力\n"
 
-#: pg_rewind.c:75
+#: pg_rewind.c:103
 #, c-format
-msgid ""
-"  -V, --version                  output version information, then exit\n"
-msgstr ""
-"  -V, --version                  バージョン情報を表示して、終了します\n"
+msgid "      --no-ensure-shutdown       do not automatically fix unclean shutdown\n"
+msgstr "      --no-ensure-shutdown      非クリーンシャットダウン後の修正を自動で行わない\n"
 
-#: pg_rewind.c:76
+#: pg_rewind.c:104
+#, c-format
+msgid "  -V, --version                  output version information, then exit\n"
+msgstr "  -V, --version                 バージョン情報を表示して終了\n"
+
+#: pg_rewind.c:105
 #, c-format
 msgid "  -?, --help                     show this help, then exit\n"
-msgstr "  -?, --help                     このヘルプを表示して、終了します\n"
+msgstr "  -?, --help                    このヘルプを表示して終了\n"
 
-#: pg_rewind.c:77
+#: pg_rewind.c:106
 #, c-format
 msgid ""
 "\n"
-"Report bugs to <pgsql-bugs@postgresql.org>.\n"
+"Report bugs to <%s>.\n"
 msgstr ""
 "\n"
-"不具合は<pgsql-bugs@postgresql.org>まで報告してください。\n"
+"バグは<%s>に報告してください。\n"
 
-#: pg_rewind.c:132 pg_rewind.c:163 pg_rewind.c:170 pg_rewind.c:177
-#: pg_rewind.c:185
+#: pg_rewind.c:107
 #, c-format
-msgid "Try \"%s --help\" for more information.\n"
-msgstr "詳細は\"%s --help\"を実行してください。\n"
+msgid "%s home page: <%s>\n"
+msgstr "%s ホームページ: <%s>\n"
 
-#: pg_rewind.c:162
+#: pg_rewind.c:215 pg_rewind.c:223 pg_rewind.c:230 pg_rewind.c:237
+#: pg_rewind.c:244 pg_rewind.c:252
 #, c-format
-msgid "%s: no source specified (--source-pgdata or --source-server)\n"
-msgstr "%s: ソースが特定されていません（--source-pgdata or --source-server）\n"
+msgid "Try \"%s --help\" for more information."
+msgstr "詳細は\"%s --help\"を実行してください。"
 
-#: pg_rewind.c:169
+#: pg_rewind.c:222
 #, c-format
-msgid "%s: only one of --source-pgdata or --source-server can be specified\n"
-msgstr ""
-"%s: --source-pgdata か --source-server のいずれかのみを指定してください\n"
+msgid "no source specified (--source-pgdata or --source-server)"
+msgstr "ソースが指定されていません(--source-pgdata または --source-server)"
 
-#: pg_rewind.c:176
+#: pg_rewind.c:229
 #, c-format
-msgid "%s: no target data directory specified (--target-pgdata)\n"
-msgstr "%s: データディレクトリ対象が指定されていません (--target-pgdata)\n"
+msgid "only one of --source-pgdata or --source-server can be specified"
+msgstr "--source-pgdataか--source-server はいずれか一方のみ指定可能です"
 
-#: pg_rewind.c:183
+#: pg_rewind.c:236
 #, c-format
-msgid "%s: too many command-line arguments (first is \"%s\")\n"
-msgstr "%s: コマンドライン引数が多すぎます。(始めは\"%s\")\n"
+msgid "no target data directory specified (--target-pgdata)"
+msgstr "ターゲットデータディレクトリが指定されていません(--target-pgdata)"
 
-#: pg_rewind.c:198
+#: pg_rewind.c:243
 #, c-format
-msgid "cannot be executed by \"root\"\n"
-msgstr "\"root\"では実行できません\n"
+msgid "no source server information (--source-server) specified for --write-recovery-conf"
+msgstr "--write-recovery-confにソースサーバー情報(--source-server)が指定されていません"
 
-#: pg_rewind.c:199
+#: pg_rewind.c:250
 #, c-format
-msgid "You must run %s as the PostgreSQL superuser.\n"
-msgstr "PostgreSQLのスーパーユーザで%sを実行しなければなりません\n"
+msgid "too many command-line arguments (first is \"%s\")"
+msgstr " コマンドライン引数が多すぎます(先頭は\"%s\")"
 
-#: pg_rewind.c:210
+#: pg_rewind.c:265
 #, c-format
-msgid "%s: could not read permissions of directory \"%s\": %s\n"
-msgstr "%s: ディレクトリ\"%s\"の権限を読み取れませんでした: %s\n"
+msgid "cannot be executed by \"root\""
+msgstr "\"root\"では実行できません"
 
-#: pg_rewind.c:241
+#: pg_rewind.c:266
 #, c-format
-msgid "source and target cluster are on the same timeline\n"
-msgstr "変換元と変換先のクラスタが同一タイムラインにあります\n"
+msgid "You must run %s as the PostgreSQL superuser."
+msgstr "PostgreSQLのスーパーユーザーで%sを実行しなければなりません"
 
-#: pg_rewind.c:247
+#: pg_rewind.c:276
 #, c-format
-msgid "servers diverged at WAL location %X/%X on timeline %u\n"
-msgstr "タイムライン%3$uのWAL位置%1$X/%2$Xでサーバが分岐しています\n"
+msgid "could not read permissions of directory \"%s\": %m"
+msgstr "ディレクトリ\"%s\"の権限を読み取れませんでした: %m"
 
-#: pg_rewind.c:284
+#: pg_rewind.c:294
 #, c-format
-msgid "no rewind required\n"
-msgstr "巻き戻しは必要ではありません\n"
+msgid "%s"
+msgstr "%s"
 
-#: pg_rewind.c:291
+#: pg_rewind.c:297
 #, c-format
-msgid "rewinding from last common checkpoint at %X/%X on timeline %u\n"
-msgstr ""
-"タイムライン%3$uの %1$X/%2$X で最新の共通チェックポイントから巻き戻していま"
-"す\n"
+msgid "connected to server"
+msgstr "サーバーへ接続しました"
 
-#: pg_rewind.c:299
+#: pg_rewind.c:344
 #, c-format
-msgid "reading source file list\n"
-msgstr "ソースファイルリストを読み込んでいます\n"
+msgid "source and target cluster are on the same timeline"
+msgstr "ソースとターゲットのクラスタが同一タイムライン上にあります"
 
-#: pg_rewind.c:301
+#: pg_rewind.c:353
 #, c-format
-msgid "reading target file list\n"
-msgstr "ターゲットファイルリストを読み込んでいます\n"
+msgid "servers diverged at WAL location %X/%X on timeline %u"
+msgstr "タイムライン%3$uのWAL位置%1$X/%2$Xで両サーバーが分岐しています"
 
-#: pg_rewind.c:311
+#: pg_rewind.c:401
 #, c-format
-msgid "reading WAL in target\n"
-msgstr "ターゲットでWALを読み込んでいます\n"
+msgid "no rewind required"
+msgstr "巻き戻しは必要ありません"
 
-#: pg_rewind.c:328
+#: pg_rewind.c:410
 #, c-format
-msgid "need to copy %lu MB (total source directory size is %lu MB)\n"
-msgstr ""
-"%lu MBをコピーする必要があります（ソースディレクトリサイズの合計は%lu MBで"
-"す）\n"
+msgid "rewinding from last common checkpoint at %X/%X on timeline %u"
+msgstr "タイムライン%3$uの%1$X/%2$Xにある最新の共通チェックポイントから巻き戻しています"
 
-#: pg_rewind.c:345
+#: pg_rewind.c:420
 #, c-format
-msgid ""
-"\n"
-"creating backup label and updating control file\n"
-msgstr ""
-"\n"
-"backup labelを作成して制御ファイルを更新しています\n"
+msgid "reading source file list"
+msgstr "ソースファイルリストを読み込んでいます"
 
-#: pg_rewind.c:373
+#: pg_rewind.c:424
 #, c-format
-msgid "syncing target data directory\n"
-msgstr "同期しているターゲットデータディレクトリ\n"
+msgid "reading target file list"
+msgstr "ターゲットファイルリストを読み込んでいます"
 
-#: pg_rewind.c:376
+#: pg_rewind.c:433
 #, c-format
-msgid "Done!\n"
-msgstr "完了！\n"
+msgid "reading WAL in target"
+msgstr "ターゲットでWALを読み込んでいます"
 
-#: pg_rewind.c:388
+#: pg_rewind.c:454
 #, c-format
-msgid "source and target clusters are from different systems\n"
-msgstr "ソースクラスタとターゲットクラスタは異なるシステムのものです\n"
+msgid "need to copy %lu MB (total source directory size is %lu MB)"
+msgstr "%lu MBコピーする必要があります(ソースディレクトリの合計サイズは%lu MBです)"
 
-#: pg_rewind.c:396
+#: pg_rewind.c:472
 #, c-format
-msgid "clusters are not compatible with this version of pg_rewind\n"
-msgstr "クラスタが、pg_rewindのバージョンと一致しません\n"
+msgid "syncing target data directory"
+msgstr "ターゲットデータディレクトリを同期しています"
 
-#: pg_rewind.c:406
+#: pg_rewind.c:488
 #, c-format
-msgid ""
-"target server needs to use either data checksums or \"wal_log_hints = on\"\n"
-msgstr ""
-"ターゲットサーバはデータチェックサムを利用するあるいは\"wal_log_hints = onで"
-"ある必要があります\n"
-
-#: pg_rewind.c:417
-#, c-format
-msgid "target server must be shut down cleanly\n"
-msgstr "ターゲットサーバはきれいにシャットダウンしなければなりません\n"
-
-#: pg_rewind.c:427
-#, c-format
-msgid "source data directory must be shut down cleanly\n"
-msgstr "ソースデータディレクトリはきれいにシャットダウンしなければなりません\n"
-
-#: pg_rewind.c:482
-#, c-format
-msgid "invalid control file"
-msgstr "無効な制御ファイル"
-
-#: pg_rewind.c:493
-#, c-format
-msgid "Source timeline history:\n"
-msgstr "ソースタイムラインの履歴\n"
-
-#: pg_rewind.c:495
-#, c-format
-msgid "Target timeline history:\n"
-msgstr "ターゲットタイムラインの履歴:\n"
-
-#. translator: %d is a timeline number, others are LSN positions
-#: pg_rewind.c:509
-#, c-format
-msgid "%d: %X/%X - %X/%X\n"
-msgstr "%d: %X/%X - %X/%X\n"
+msgid "Done!"
+msgstr "完了!"
 
 #: pg_rewind.c:568
 #, c-format
-msgid ""
-"could not find common ancestor of the source and target cluster's timelines\n"
-msgstr ""
-"ソースクラスタ、ターゲットクラスタのタイムラインの共通の祖先を見つけられませ"
-"ん\n"
+msgid "no action decided for file \"%s\""
+msgstr "ファイル\"%s\"に対するアクションが決定されていません"
 
-#: pg_rewind.c:609
+#: pg_rewind.c:600
 #, c-format
-msgid "backup label buffer too small\n"
-msgstr "バックアップラベルのバッファが小さすぎます\n"
+msgid "source system was modified while pg_rewind was running"
+msgstr "pg_rewindの実行中にソースシス7テムが更新されました"
 
-#: pg_rewind.c:632
+#: pg_rewind.c:604
 #, c-format
-msgid "unexpected control file CRC\n"
-msgstr "想定外の制御ファイル CRC です\n"
+msgid "creating backup label and updating control file"
+msgstr "backup labelを作成して制御ファイルを更新しています"
 
-#: pg_rewind.c:642
+#: pg_rewind.c:654
 #, c-format
-msgid "unexpected control file size %d, expected %d\n"
-msgstr "想定外の制御ファイルのサイズ%dです、その期待値は%dです\n"
+msgid "source system was in unexpected state at end of rewind"
+msgstr "巻き戻し完了時点のソースシステムが想定外の状態でした"
 
-#: pg_rewind.c:651
+#: pg_rewind.c:685
 #, c-format
-msgid ""
-"WAL segment size must be a power of two between 1 MB and 1 GB, but the "
-"control file specifies %d byte\n"
-msgid_plural ""
-"WAL segment size must be a power of two between 1 MB and 1 GB, but the "
-"control file specifies %d bytes\n"
-msgstr[0] ""
-"WALセグメントのサイズは1MBと1GBの間の2の累乗でなければなりません、しかしコン"
-"トロールファイルでは%dバイトとなっています\n"
+msgid "source and target clusters are from different systems"
+msgstr "ソースクラスタとターゲットクラスタは異なるシステムのものです"
 
-#: pg_rewind.c:727
+#: pg_rewind.c:693
 #, c-format
-msgid ""
-"The program \"initdb\" is needed by %s but was\n"
-"not found in the same directory as \"%s\".\n"
-"Check your installation.\n"
-msgstr ""
-"%sには \"initdb\" プログラムが必要ですが、\"%s\"と同じディレクトリ\n"
-"にありませんでした。\n"
-"インストール状況を確認してください。\n"
+msgid "clusters are not compatible with this version of pg_rewind"
+msgstr "クラスタは、このバージョンのpg_rewindとの互換性がありません"
 
-#: pg_rewind.c:731
+#: pg_rewind.c:703
 #, c-format
-msgid ""
-"The program \"initdb\" was found by \"%s\"\n"
-"but was not the same version as %s.\n"
-"Check your installation.\n"
-msgstr ""
-"\"%s\"がプログラム \"initdb\" を見つけましたが、これは%sと同じ\n"
-"バージョンではありませんでした。\n"
-"インストレーションを検査してください。\n"
+msgid "target server needs to use either data checksums or \"wal_log_hints = on\""
+msgstr "ターゲットサーバーはデータチェックサムを利用している、または\"wal_log_hints = on\"である必要があります"
 
-#: pg_rewind.c:749
+#: pg_rewind.c:714
 #, c-format
-msgid "sync of target directory failed\n"
-msgstr "ターゲットディレクトリの同期が失敗しました\n"
+msgid "target server must be shut down cleanly"
+msgstr "ターゲットサーバーはきれいにシャットダウンされていなければなりません"
 
-#: timeline.c:76 timeline.c:82
+#: pg_rewind.c:724
 #, c-format
-msgid "syntax error in history file: %s\n"
-msgstr "履歴ファイル内の構文エラー: %s\n"
+msgid "source data directory must be shut down cleanly"
+msgstr "ソースデータディレクトリはきれいにシャットダウンされていなければなりません"
 
-#: timeline.c:77
+#: pg_rewind.c:771
 #, c-format
-msgid "Expected a numeric timeline ID.\n"
-msgstr "数字の時系列IDを想定しました。\n"
+msgid "%*s/%s kB (%d%%) copied"
+msgstr "%*s/%s kB (%d%%) コピーしました"
 
-#: timeline.c:83
+#: pg_rewind.c:834
 #, c-format
-msgid "Expected a write-ahead log switchpoint location.\n"
-msgstr "先行書き込みログの切替えポイントを想定しています。\n"
+msgid "invalid control file"
+msgstr "不正な制御ファイル"
+
+#: pg_rewind.c:918
+#, c-format
+msgid "could not find common ancestor of the source and target cluster's timelines"
+msgstr "ソースクラスタとターゲットクラスタのタイムラインの共通の祖先を見つけられません"
+
+#: pg_rewind.c:959
+#, c-format
+msgid "backup label buffer too small"
+msgstr "バックアップラベルのバッファが小さすぎます"
+
+#: pg_rewind.c:982
+#, c-format
+msgid "unexpected control file CRC"
+msgstr "想定外の制御ファイルCRCです"
+
+#: pg_rewind.c:994
+#, c-format
+msgid "unexpected control file size %d, expected %d"
+msgstr "想定外の制御ファイルのサイズ%d、想定は%d"
+
+#: pg_rewind.c:1003
+#, c-format
+msgid "WAL segment size must be a power of two between 1 MB and 1 GB, but the control file specifies %d byte"
+msgid_plural "WAL segment size must be a power of two between 1 MB and 1 GB, but the control file specifies %d bytes"
+msgstr[0] "WALセグメントのサイズ指定は1MBと1GBの間の2の累乗でなければなりません、しかしコントロールファイルでは%dバイトとなっています"
+
+#: pg_rewind.c:1042 pg_rewind.c:1112
+#, c-format
+msgid "program \"%s\" is needed by %s but was not found in the same directory as \"%s\""
+msgstr "%2$sには\"%1$s\"プログラムが必要ですが、\"%3$s\"と同じディレクトリにありませんでした。"
+
+#: pg_rewind.c:1045 pg_rewind.c:1115
+#, c-format
+msgid "program \"%s\" was found by \"%s\" but was not the same version as %s"
+msgstr "\"%2$s\"がプログラム\"%1$s\"を見つけましたが、これは%3$sと同じバージョンではありませんでした。"
+
+#: pg_rewind.c:1078
+#, c-format
+msgid "restore_command is not set in the target cluster"
+msgstr "ターゲットクラスタでrestore_commandが設定されていません"
+
+#: pg_rewind.c:1119
+#, c-format
+msgid "executing \"%s\" for target server to complete crash recovery"
+msgstr "ターゲットサーバーに対して\"%s\"を実行してクラッシュリカバリを完了させます"
+
+#: pg_rewind.c:1156
+#, c-format
+msgid "postgres single-user mode in target cluster failed"
+msgstr "ターゲットクラスタでのpostgresコマンドのシングルユーザーモード実行に失敗しました"
+
+#: pg_rewind.c:1157
+#, c-format
+msgid "Command was: %s"
+msgstr "コマンド: %s"
+
+#: timeline.c:75 timeline.c:81
+#, c-format
+msgid "syntax error in history file: %s"
+msgstr "履歴ファイル内の構文エラー: %s"
+
+#: timeline.c:76
+#, c-format
+msgid "Expected a numeric timeline ID."
+msgstr "数字のタイムラインIDを想定しました。"
+
+#: timeline.c:82
+#, c-format
+msgid "Expected a write-ahead log switchpoint location."
+msgstr "先行書き込みログの切り替え点の場所があるはずでした。"
+
+#: timeline.c:87
+#, c-format
+msgid "invalid data in history file: %s"
+msgstr "履歴ファイル内の不正なデータ: %s"
 
 #: timeline.c:88
 #, c-format
-msgid "invalid data in history file: %s\n"
-msgstr "履歴ファイル内の無効なデータ: %s\n"
+msgid "Timeline IDs must be in increasing sequence."
+msgstr "タイムラインIDは昇順でなければなりません"
 
-#: timeline.c:89
+#: timeline.c:108
 #, c-format
-msgid "Timeline IDs must be in increasing sequence.\n"
-msgstr "時系列IDは昇順の並びでなければなりません\n"
+msgid "invalid data in history file"
+msgstr "履歴ファイル内の無効なデータ"
 
 #: timeline.c:109
 #, c-format
-msgid "invalid data in history file\n"
-msgstr "履歴ファイル内の無効なデータ\n"
+msgid "Timeline IDs must be less than child timeline's ID."
+msgstr "タイムラインIDは子のタイムラインIDより小さくなければなりません。"
 
-#: timeline.c:110
-#, c-format
-msgid "Timeline IDs must be less than child timeline's ID.\n"
-msgstr "時系列IDは副時系列IDより小さくなければなりません。\n"
-
-#: xlogreader.c:299
+#: xlogreader.c:625
 #, c-format
 msgid "invalid record offset at %X/%X"
 msgstr "%X/%Xのレコードオフセットが無効です"
 
-#: xlogreader.c:307
+#: xlogreader.c:633
 #, c-format
 msgid "contrecord is requested by %X/%X"
 msgstr "%X/%Xではcontrecordが必要です"
 
-#: xlogreader.c:348 xlogreader.c:646
+#: xlogreader.c:674 xlogreader.c:1121
 #, c-format
 msgid "invalid record length at %X/%X: wanted %u, got %u"
-msgstr ""
-"%X/%Xのレコード長が無効です:長さは%uである必要がありますが、長さは%uでした"
+msgstr "%X/%Xのレコード長が無効です:長さは%uである必要がありますが、長さは%uでした"
 
-#: xlogreader.c:363
+#: xlogreader.c:703
+#, c-format
+msgid "out of memory while trying to decode a record of length %u"
+msgstr "長さ%uのレコードのデコード中のメモリ不足"
+
+#: xlogreader.c:725
 #, c-format
 msgid "record length %u at %X/%X too long"
 msgstr "%2$X/%3$Xのレコード長%1$uが大きすぎます"
 
-#: xlogreader.c:404
+#: xlogreader.c:774
 #, c-format
 msgid "there is no contrecord flag at %X/%X"
 msgstr "%X/%Xで contrecord フラグがありません"
 
-#: xlogreader.c:417
+#: xlogreader.c:787
 #, c-format
-msgid "invalid contrecord length %u at %X/%X"
-msgstr "%2$X/%3$Xのcontrecordの長さ %1$u が無効です"
+msgid "invalid contrecord length %u (expected %lld) at %X/%X"
+msgstr "%3$X/%4$Xの継続レコードの長さ%1$u(正しくは%2$lld)は不正です"
 
-#: xlogreader.c:654
+#: xlogreader.c:922
+#, c-format
+msgid "missing contrecord at %X/%X"
+msgstr "%X/%Xに継続レコードがありません"
+
+#: xlogreader.c:1129
 #, c-format
 msgid "invalid resource manager ID %u at %X/%X"
 msgstr "%2$X/%3$XのリソースマネージャID %1$uが無効です"
 
-#: xlogreader.c:668 xlogreader.c:685
+#: xlogreader.c:1142 xlogreader.c:1158
 #, c-format
 msgid "record with incorrect prev-link %X/%X at %X/%X"
 msgstr "直前のリンク%1$X/%2$Xが不正なレコードが%3$X/%4$Xにあります"
 
-#: xlogreader.c:722
+#: xlogreader.c:1194
 #, c-format
 msgid "incorrect resource manager data checksum in record at %X/%X"
 msgstr "%X/%Xのレコード内のリソースマネージャデータのチェックサムが不正です"
 
-#: xlogreader.c:759
+#: xlogreader.c:1231
 #, c-format
 msgid "invalid magic number %04X in log segment %s, offset %u"
-msgstr "ログセグメント%2$s、オフセット%3$uのマジック番号%1$04Xは無効です"
+msgstr "ログセグメント%2$s、オフセット%3$uのマジックナンバー%1$04Xは無効です"
 
-#: xlogreader.c:773 xlogreader.c:824
+#: xlogreader.c:1245 xlogreader.c:1286
 #, c-format
 msgid "invalid info bits %04X in log segment %s, offset %u"
 msgstr "ログセグメント %2$s、オフセット %3$u の情報ビット %1$04X は無効です"
 
-#: xlogreader.c:799
+#: xlogreader.c:1260
 #, c-format
-msgid ""
-"WAL file is from different database system: WAL file database system "
-"identifier is %s, pg_control database system identifier is %s"
-msgstr ""
-"WAL ファイルは異なるデータベースシステム由来ものです: WAL ファイルにおける"
-"データベースシステムの識別子は %s で、pg_control におけるデータベースシステム"
-"の識別子は %s です。"
+msgid "WAL file is from different database system: WAL file database system identifier is %llu, pg_control database system identifier is %llu"
+msgstr "WALファイルは異なるデータベースシステム由来のものです: WALファイルのデータベースシステム識別子は %lluで、pg_control におけるデータベースシステム識別子は %lluです"
 
-#: xlogreader.c:806
+#: xlogreader.c:1268
 #, c-format
-msgid ""
-"WAL file is from different database system: incorrect segment size in page "
-"header"
-msgstr ""
-"WAL ファイルは異なるデータベースシステム由来のものです: ページヘッダーのセグ"
-"メントサイズが正しくありません"
+msgid "WAL file is from different database system: incorrect segment size in page header"
+msgstr "WAL ファイルは異なるデータベースシステム由来のものです: ページヘッダーのセグメントサイズが正しくありません"
 
-#: xlogreader.c:812
+#: xlogreader.c:1274
 #, c-format
-msgid ""
-"WAL file is from different database system: incorrect XLOG_BLCKSZ in page "
-"header"
-msgstr ""
-"WAL ファイルは異なるデータベースシステム由来のものです: ページヘッダーの"
-"XLOG_BLCKSZが正しくありません"
+msgid "WAL file is from different database system: incorrect XLOG_BLCKSZ in page header"
+msgstr "WAL ファイルは異なるデータベースシステム由来のものです: ページヘッダーのXLOG_BLCKSZが正しくありません"
 
-#: xlogreader.c:843
+#: xlogreader.c:1305
 #, c-format
 msgid "unexpected pageaddr %X/%X in log segment %s, offset %u"
-msgstr ""
-"ログセグメント%3$s、オフセット%4$uのページアドレス%1$X/%2$Xは想定外です"
+msgstr "ログセグメント%3$s、オフセット%4$uのページアドレス%1$X/%2$Xは想定外です"
 
-#: xlogreader.c:868
+#: xlogreader.c:1330
 #, c-format
 msgid "out-of-sequence timeline ID %u (after %u) in log segment %s, offset %u"
-msgstr ""
-"ログセグメント%3$s、オフセット%4$uの時系列ID %1$u(%2$uの後)は順序に従っていま"
-"せん"
+msgstr "ログセグメント%3$s、オフセット%4$uの時系列ID %1$u(%2$uの後)は順序に従っていません"
 
-#: xlogreader.c:1113
+#: xlogreader.c:1735
 #, c-format
 msgid "out-of-order block_id %u at %X/%X"
 msgstr "block_id %uが%X/%Xで無効です"
 
-#: xlogreader.c:1136
+#: xlogreader.c:1759
 #, c-format
 msgid "BKPBLOCK_HAS_DATA set, but no data included at %X/%X"
 msgstr "BKPBLOCK_HAS_DATAが設定されていますが、%X/%Xにデータがありません"
 
-#: xlogreader.c:1143
+#: xlogreader.c:1766
 #, c-format
 msgid "BKPBLOCK_HAS_DATA not set, but data length is %u at %X/%X"
-msgstr "BKPBLOCK_HAS_DATAが設定されていませんが、%2$X/%3$Xのデータ長は%1$uです"
+msgstr "BKPBLOCK_HAS_DATAが設定されていませんが、%2$X/%3$Xのデータ長は%1$u"
 
-#: xlogreader.c:1179
+#: xlogreader.c:1802
 #, c-format
-msgid ""
-"BKPIMAGE_HAS_HOLE set, but hole offset %u length %u block image length %u at "
-"%X/%X"
-msgstr ""
-"BKPIMAGE_HAS_HOLEが設定されていますが、%4$X/%5$Xでホールオフセット%1$u、長"
-"さ%2$u、ブロックイメージ長%3$uです"
+msgid "BKPIMAGE_HAS_HOLE set, but hole offset %u length %u block image length %u at %X/%X"
+msgstr "BKPIMAGE_HAS_HOLEが設定されていますが、%4$X/%5$Xでホールオフセット%1$u、長さ%2$u、ブロックイメージ長%3$u"
 
-#: xlogreader.c:1195
+#: xlogreader.c:1818
 #, c-format
 msgid "BKPIMAGE_HAS_HOLE not set, but hole offset %u length %u at %X/%X"
-msgstr ""
-"BKPIMAGE_HAS_HOLEが設定されていませんが、%3$X/%4$Xにおけるホールオフセッ"
-"ト%1$uの長さが%2$uです"
+msgstr "BKPIMAGE_HAS_HOLEが設定されていませんが、%3$X/%4$Xにホールオフセット%1$u、長さ%2$u"
 
-#: xlogreader.c:1210
+#: xlogreader.c:1832
 #, c-format
-msgid "BKPIMAGE_IS_COMPRESSED set, but block image length %u at %X/%X"
-msgstr ""
-"BKPIMAGE_IS_COMPRESSEDが設定されていますが、%2$X/%3$Xにおいてブロックイメージ"
-"長が%1$uです"
+msgid "BKPIMAGE_COMPRESSED set, but block image length %u at %X/%X"
+msgstr "BKPIMAGE_COMPRESSEDが設定されていますが、%2$X/%3$Xにおいてブロックイメージ長が%1$uです"
 
-#: xlogreader.c:1225
+#: xlogreader.c:1847
 #, c-format
-msgid ""
-"neither BKPIMAGE_HAS_HOLE nor BKPIMAGE_IS_COMPRESSED set, but block image "
-"length is %u at %X/%X"
-msgstr ""
-"BKPIMAGE_HAS_HOLEもBKPIMAGE_IS_COMPRESSEDも設定されていませんが、%2$X/%3$Xに"
-"おいてブロックイメージ長が%1$uです"
+msgid "neither BKPIMAGE_HAS_HOLE nor BKPIMAGE_COMPRESSED set, but block image length is %u at %X/%X"
+msgstr "BKPIMAGE_HAS_HOLEもBKPIMAGE_COMPRESSEDも設定されていませんが、%2$X/%3$Xにおいてブロックイメージ長が%1$uです"
 
-#: xlogreader.c:1241
+#: xlogreader.c:1863
 #, c-format
 msgid "BKPBLOCK_SAME_REL set but no previous rel at %X/%X"
-msgstr ""
-"BKPBLOCK_SAME_RELが設定されていますが、%X/%Xにおいて以前のリレーションがあり"
-"ません"
+msgstr "BKPBLOCK_SAME_RELが設定されていますが、%X/%Xにおいて以前のリレーションがありません"
 
-#: xlogreader.c:1253
+#: xlogreader.c:1875
 #, c-format
 msgid "invalid block_id %u at %X/%X"
 msgstr "%2$X/%3$Xにおけるblock_id %1$uが無効です"
 
-#: xlogreader.c:1342
+#: xlogreader.c:1942
 #, c-format
 msgid "record with invalid length at %X/%X"
 msgstr "%X/%Xのレコードのサイズが無効です"
 
-#: xlogreader.c:1431
+#: xlogreader.c:1967
 #, c-format
-msgid "invalid compressed image at %X/%X, block %d"
-msgstr "%X/%X、ブロック %d での圧縮イメージが無効です"
+msgid "could not locate backup block with ID %d in WAL record"
+msgstr "WALレコード中のID %dのバックアップブロックを特定できませんでした"
 
-#~ msgid ""
-#~ "WAL file is from different database system: incorrect XLOG_SEG_SIZE in "
-#~ "page header"
-#~ msgstr ""
-#~ "WAL ファイルは異なるデータベースシステム由来のものです: ページヘッダーの"
-#~ "XLOG_SEG_SIZEが正しくありません"
+#: xlogreader.c:2051
+#, c-format
+msgid "could not restore image at %X/%X with invalid block %d specified"
+msgstr "%X/%Xで不正なブロック%dが指定されているためイメージが復元できませんでした"
+
+#: xlogreader.c:2058
+#, c-format
+msgid "could not restore image at %X/%X with invalid state, block %d"
+msgstr "%X/%Xでブロック%dのイメージが不正な状態であるため復元できませんでした"
+
+#: xlogreader.c:2085 xlogreader.c:2102
+#, c-format
+msgid "could not restore image at %X/%X compressed with %s not supported by build, block %d"
+msgstr "%1$X/%2$Xで、ブロック%4$dがこのビルドでサポートされない圧縮方式%3$sで圧縮されているため復元できませんでした"
+
+#: xlogreader.c:2111
+#, c-format
+msgid "could not restore image at %X/%X compressed with unknown method, block %d"
+msgstr "%X/%Xでブロック%dのイメージが不明な方式で圧縮されているため復元できませんでした"
+
+#: xlogreader.c:2119
+#, c-format
+msgid "could not decompress image at %X/%X, block %d"
+msgstr "%X/%Xのブロック%dが伸張できませんでした"

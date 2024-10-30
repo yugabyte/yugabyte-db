@@ -10,6 +10,13 @@ Create a K8s Cert Manager encryption in transit configuration in YugabyteDB Anyw
 yba eit k8s-cert-manager create [flags]
 ```
 
+### Examples
+
+```
+yba eit k8s-cert-manager create --name <config-name> \
+	--root-cert-file-path <root-cert-file-path>
+```
+
 ### Options
 
 ```

@@ -129,7 +129,7 @@ public class AppInit {
       throws ReflectiveOperationException {
     try {
       log.info("Yugaware Application has started");
-
+      setYbaVersion(ConfigHelper.getCurrentVersion(environment));
       if (environment.isTest()) {
         String dbDriverKey = "db.default.driver";
         if (config.hasPath(dbDriverKey)) {
@@ -205,7 +205,6 @@ public class AppInit {
         for (ExtraMigration m : ExtraMigration.getAll()) {
           m.run(extraMigrationManager);
         }
-
         // Import new local releases into release metadata
         releaseManager.importLocalReleases();
         releaseManager.updateCurrentReleases();
@@ -248,6 +247,7 @@ public class AppInit {
         taskManager.handleAllPendingTasks();
         taskManager.updateUniverseSoftwareUpgradeStateSet();
         taskManager.handlePendingConsistencyTasks();
+        taskManager.handleAutoRetryAbortedTasks();
 
         // Fail all incomplete support bundle creations.
         supportBundleCleanup.markAllRunningSupportBundlesFailed();
@@ -318,8 +318,6 @@ public class AppInit {
         } else {
           log.info("Completed initialization in " + elapsedStr + " seconds.");
         }
-
-        setYbaVersion(ConfigHelper.getCurrentVersion(environment));
 
         // Fix up DB paths again to handle any new files (ybc) that moved during AppInit.
         if (config.getBoolean("yb.fixPaths")) {

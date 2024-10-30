@@ -5,7 +5,6 @@
 package restore
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -20,6 +19,7 @@ import (
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/backup/restore"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ybatask"
 )
 
 // createRestoreCmd represents the universe backup command
@@ -27,6 +27,12 @@ var createRestoreCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Restore a YugabyteDB Anywhere universe backup",
 	Long:  "Restore an universe backup in YugabyteDB Anywhere",
+	Example: `yba backup restore create --universe-name <universe-name> \
+	--storage-config-name <storage-config-name> \
+	--keyspace-info \
+	"keyspace-name=<keyspace-name-1>;storage-location=<storage-location-1>;backup-type=ysql" \
+	--keyspace-info \
+	"keyspace-name=<keyspace-name-2>;storage-location=<storage-location-2>;backup-type=ysql"`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		universeNameFlag, err := cmd.Flags().GetString("universe-name")
 		if err != nil {
@@ -150,17 +156,21 @@ var createRestoreCmd = &cobra.Command{
 				))
 		}
 
+		enableVerboseLogs, err := cmd.Flags().GetBool("enable-verbose-logs")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		parallelism, err := cmd.Flags().GetInt("parallelism")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
 		backupInfos, err := cmd.Flags().GetStringArray("keyspace-info")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		data, err := json.Marshal(backupInfos)
-		if err != nil {
-			fmt.Println("Error marshalling:", err)
-			return
-		}
-		logrus.Debug(string(data))
 		var result []ybaclient.BackupStorageInfo = buildBackupInfoList(backupInfos)
 		requestBody := ybaclient.RestoreBackupParams{
 			UniverseUUID:          universeUUID,
@@ -168,15 +178,17 @@ var createRestoreCmd = &cobra.Command{
 			StorageConfigUUID:     util.GetStringPointer(storageUUID),
 			BackupStorageInfoList: &result,
 			KmsConfigUUID:         util.GetStringPointer(kmsConfigUUID),
+			EnableVerboseLogs:     util.GetBoolPointer(enableVerboseLogs),
+			Parallelism:           util.GetInt32Pointer(int32(parallelism)),
 		}
 
-		rCreate, response, err := authAPI.RestoreBackup().Backup(requestBody).Execute()
+		rTask, response, err := authAPI.RestoreBackup().Backup(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Restore", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		taskUUID := rCreate.GetTaskUUID()
+		taskUUID := rTask.GetTaskUUID()
 		msg := fmt.Sprintf("The restore task %s is in progress",
 			formatter.Colorize(taskUUID, formatter.GreenColor))
 
@@ -188,49 +200,54 @@ var createRestoreCmd = &cobra.Command{
 				if err != nil {
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
-
-				var limit int32 = 10
-				var offset int32 = 0
-				restoreAPIDirection := "DESC"
-				restoreAPISort := "createTime"
-
-				universeUUIDList := make([]string, 0)
-				if len(strings.TrimSpace(universeUUID)) > 0 {
-					universeUUIDList = append(universeUUIDList, universeUUID)
-				}
-
-				restoreAPIFilter := ybaclient.RestoreApiFilter{
-					UniverseUUIDList: universeUUIDList,
-				}
-
-				restoreAPIQuery := ybaclient.RestorePagedApiQuery{
-					Filter:    restoreAPIFilter,
-					Direction: restoreAPIDirection,
-					Limit:     limit,
-					Offset:    offset,
-					SortBy:    restoreAPISort,
-				}
-
-				restoreListRequest := authAPI.ListRestores().PageRestoresRequest(restoreAPIQuery)
-
-				// Execute restore list request
-				r, response, err := restoreListRequest.Execute()
-				if err != nil {
-					errMessage := util.ErrorFromHTTPResponse(
-						response, err, "Restore", "Create - Get Restore")
-					logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
-				}
-
-				restoreCtx := formatter.Context{
-					Command: "create",
-					Output:  os.Stdout,
-					Format:  restore.NewRestoreFormat(viper.GetString("output")),
-				}
-				restore.Write(restoreCtx, r.GetEntities())
 			}
-		} else {
-			logrus.Infoln(msg + "\n")
+			var limit int32 = 10
+			var offset int32 = 0
+			restoreAPIDirection := "DESC"
+			restoreAPISort := "createTime"
+
+			universeUUIDList := make([]string, 0)
+			if len(strings.TrimSpace(universeUUID)) > 0 {
+				universeUUIDList = append(universeUUIDList, universeUUID)
+			}
+
+			restoreAPIFilter := ybaclient.RestoreApiFilter{
+				UniverseUUIDList: universeUUIDList,
+			}
+
+			restoreAPIQuery := ybaclient.RestorePagedApiQuery{
+				Filter:    restoreAPIFilter,
+				Direction: restoreAPIDirection,
+				Limit:     limit,
+				Offset:    offset,
+				SortBy:    restoreAPISort,
+			}
+
+			restoreListRequest := authAPI.ListRestores().PageRestoresRequest(restoreAPIQuery)
+
+			// Execute restore list request
+			r, response, err := restoreListRequest.Execute()
+			if err != nil {
+				errMessage := util.ErrorFromHTTPResponse(
+					response, err, "Restore", "Create - Get Restore")
+				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			}
+
+			restoreCtx := formatter.Context{
+				Command: "list",
+				Output:  os.Stdout,
+				Format:  restore.NewRestoreFormat(viper.GetString("output")),
+			}
+			restore.Write(restoreCtx, r.GetEntities())
+			return
 		}
+		logrus.Infoln(msg + "\n")
+		taskCtx := formatter.Context{
+			Command: "create",
+			Output:  os.Stdout,
+			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
+		}
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
 
 	},
 }
@@ -336,13 +353,17 @@ func init() {
 			" The table-name-list attribute has to be specified as comma separated values. "+
 			formatter.Colorize("Keyspace name, storage-location and backup-type are required "+
 				"values. ", formatter.GreenColor)+
-			"The attribute use-tablespaces, selective-restore and table-name-list are optional values. "+
-			"Attributes selective-restore and table-name-list and are needed only for YCQL. "+
-			"The attribute use-tablespaces is to be used if needed only in the case of YSQL. "+
+			"The attributes use-tablespaces, selective-restore and table-name-list are optional. "+
+			"Attributes selective-restore and table-name-list are needed only for YCQL. "+
+			"The attribute use-tablespaces is needed only for YSQL. "+
 			"Example: --keyspace-info 'keyspace-name=cassandra1;storage-location=s3://bucket/location1;"+
 			"backup-type=ycql;selective-restore=true;table-name-list=table1,table2' "+
 			"--keyspace-info 'keyspace-name=postgres;storage-location=s3://bucket/location2"+
 			"backup-type=ysql;use-tablespaces=true'")
 	createRestoreCmd.MarkFlagRequired("keyspace-info")
+	createRestoreCmd.Flags().Bool("enable-verbose-logs", false,
+		"[Optional] Enable verbose logging while taking backup via \"yb_backup\" script. (default false)")
+	createRestoreCmd.Flags().Int("parallelism", 8,
+		"[Optional] Number of concurrent commands to run on nodes over SSH via \"yb_backup\" script.")
 
 }

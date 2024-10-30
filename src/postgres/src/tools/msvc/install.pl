@@ -1,3 +1,6 @@
+
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+
 #
 # Script that provides 'make install' functionality for msvc builds
 #
@@ -6,9 +9,8 @@
 use strict;
 use warnings;
 
-use File::Basename;
-use File::Spec;
-BEGIN  { use lib File::Spec->rel2abs(dirname(__FILE__)); }
+use FindBin;
+use lib $FindBin::RealBin;
 
 use Install qw(Install);
 

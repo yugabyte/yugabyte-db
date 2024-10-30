@@ -234,7 +234,8 @@ class CDCServiceImpl : public CDCServiceIf {
       CreateMetricsEntityIfNotFound create = CreateMetricsEntityIfNotFound::kTrue);
   Result<std::shared_ptr<xrepl::CDCSDKTabletMetrics>> GetCDCSDKTabletMetrics(
       const tablet::TabletPeer& tablet_peer, const xrepl::StreamId& stream_id,
-      CreateMetricsEntityIfNotFound create = CreateMetricsEntityIfNotFound::kTrue);
+      CreateMetricsEntityIfNotFound create = CreateMetricsEntityIfNotFound::kTrue,
+      const std::optional<std::string>& slot_name = std::nullopt);
 
   void RemoveXReplTabletMetrics(
       const xrepl::StreamId& stream_id, std::shared_ptr<tablet::TabletPeer> tablet_peer);
@@ -266,7 +267,7 @@ class CDCServiceImpl : public CDCServiceIf {
   void UpdateTabletMetrics(
       const GetChangesResponsePB& resp, const TabletStreamInfo& producer_tablet,
       const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const OpId& op_id,
-      const CDCRequestSource source_type, int64_t last_readable_index);
+      const StreamMetadata& stream_metadata, int64_t last_readable_index);
 
   void UpdateTabletXClusterMetrics(
       const GetChangesResponsePB& resp, const TabletStreamInfo& producer_tablet,
@@ -275,7 +276,8 @@ class CDCServiceImpl : public CDCServiceIf {
 
   void UpdateTabletCDCSDKMetrics(
       const GetChangesResponsePB& resp, const TabletStreamInfo& producer_tablet,
-      const std::shared_ptr<tablet::TabletPeer>& tablet_peer);
+      const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+      const std::optional<std::string>& slot_name = std::nullopt);
 
   // Retrieves the cdc_min_replicated_index for a given tablet.
   // Returns the min index that is still required for xCluster replication.

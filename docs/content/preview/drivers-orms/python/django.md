@@ -181,7 +181,7 @@ pip3 install django-yugabytedb
    python3 manage.py migrate
    ```
 
-   A users table should be created in your database. Use the [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) client shell to verify that the users table has been created.
+   A users table should be created in your database. Use the [ysqlsh](../../../api/ysqlsh/#starting-ysqlsh) client shell to verify that the users table has been created.
 
 ### Run the application
 
@@ -212,7 +212,7 @@ To run the application and insert a new row, execute the following steps.
    [{"userId":1,"firstName":"John","lastName":"Smith","email":"jsmith@yb.com"}]
    ```
 
-   You can also verify this using the [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) client shell.
+   You can also verify this using the [ysqlsh](../../../api/ysqlsh/#starting-ysqlsh) client shell.
 
 ## Learn more
 

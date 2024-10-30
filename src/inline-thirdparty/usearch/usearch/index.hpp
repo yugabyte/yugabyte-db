@@ -9,7 +9,7 @@
 
 #define USEARCH_VERSION_MAJOR 2
 #define USEARCH_VERSION_MINOR 15
-#define USEARCH_VERSION_PATCH 1
+#define USEARCH_VERSION_PATCH 3
 
 // Inferring C++ version
 // https://stackoverflow.com/a/61552074
@@ -27,6 +27,9 @@
 #define USEARCH_DEFINED_APPLE
 #elif defined(__linux__)
 #define USEARCH_DEFINED_LINUX
+#if defined(__ANDROID_API__)
+#define USEARCH_DEFINED_ANDROID
+#endif
 #endif
 
 // Inferring the compiler: Clang vs GCC
@@ -3172,6 +3175,18 @@ class index_gt {
 
     std::size_t memory_usage_per_node(level_t level) const noexcept { return node_bytes_(level); }
 
+    double inverse_log_connectivity() const {
+        return pre_.inverse_log_connectivity;
+    }
+
+    std::size_t neighbors_base_bytes() const {
+        return pre_.neighbors_base_bytes;
+    }
+
+    std::size_t neighbors_bytes() const {
+        return pre_.neighbors_bytes;
+    }
+
 #if defined(USEARCH_USE_PRAGMA_REGION)
 #pragma endregion
 
@@ -4472,7 +4487,7 @@ static join_result_t join(               //
 #endif
 
 // This file is part of the usearch inline third-party dependency of YugabyteDB.
-// Git repo: https://github.com/unum-cloud/usearch
-// Git commit: 191d9bb46fe5e2a44d1505ce7563ed51c7e55868
+// Git repo: https://github.com/yugabyte/usearch
+// Git tag: v2.15.3-yb-2
 //
 // See also src/inline-thirdparty/README.md.

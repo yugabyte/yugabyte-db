@@ -4,7 +4,7 @@ headerTitle: CREATE_REPLICATION_SLOT
 linkTitle: CREATE_REPLICATION_SLOT
 description: Use the CREATE_REPLICATION_SLOT statement to create a replication slot.
 menu:
-  preview:
+  preview_api:
     identifier: streaming_create_repl_slot
     parent: statements
 type: docs

@@ -13,9 +13,11 @@ import (
 
 var listProviderCmd = &cobra.Command{
 	Use:     "list",
+	Aliases: []string{"ls"},
 	GroupID: "action",
 	Short:   "List YugabyteDB Anywhere providers",
 	Long:    "List YugabyteDB Anywhere providers",
+	Example: `yba provider list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		providerCode, err := cmd.Flags().GetString("code")
 		if err != nil {

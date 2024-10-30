@@ -82,6 +82,10 @@ services:
         devops.home = "{{ installRoot }}/yb-platform/devops"
         swamper.targetPath = "{{ baseInstall }}/data/prometheus/swamper_targets"
         swamper.rulesPath = "{{ baseInstall }}/data/prometheus/swamper_rules"
+        metrics.scrape_interval = "{{ yamlPath "prometheus.scrapeInterval" }}"
+        metrics.scrape_interval_standby = "{{ yamlPath "prometheus.scrapeInterval" }}"
+        metrics.host = "{{ index (splitInput (yamlPath "host")) 0 }}"
+        metrics.port = "{{ yamlPath "prometheus.port" }}"
         {{ if eq (yamlPath "prometheus.enableHttps") "true" }}
         metrics.protocol = https
         metrics.url = "https://{{ index (splitInput (yamlPath "host")) 0 }}:{{ yamlPath "prometheus.port" }}/api/v1"

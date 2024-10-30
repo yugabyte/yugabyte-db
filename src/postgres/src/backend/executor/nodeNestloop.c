@@ -3,7 +3,7 @@
  * nodeNestloop.c
  *	  routines to support nest-loop joins
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -304,7 +304,7 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 	/*
 	 * Initialize result slot, type and projection.
 	 */
-	ExecInitResultTupleSlotTL(&nlstate->js.ps);
+	ExecInitResultTupleSlotTL(&nlstate->js.ps, &TTSOpsVirtual);
 	ExecAssignProjectionInfo(&nlstate->js.ps, NULL);
 
 	/*
@@ -332,7 +332,8 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 		case JOIN_ANTI:
 			nlstate->nl_NullInnerTupleSlot =
 				ExecInitNullTupleSlot(estate,
-									  ExecGetResultType(innerPlanState(nlstate)));
+									  ExecGetResultType(innerPlanState(nlstate)),
+									  &TTSOpsVirtual);
 			break;
 		default:
 			elog(ERROR, "unrecognized join type: %d",

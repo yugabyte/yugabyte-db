@@ -1472,7 +1472,8 @@ Result<TSDescriptorPtr> MasterHeartbeatServiceImpl::RegisterTServerOrRespond(
     // when that happens, we should re-bootstrap the TServer and bump up
     // it's incarnation id (similar to how instance_seqno behaves across restarts).
     LOG(INFO) << "Registering " << req.common().ts_instance().ShortDebugString();
-    server_->catalog_manager_impl()->ExportObjectLockInfo(resp->mutable_ddl_lock_entries());
+    server_->catalog_manager_impl()->ExportObjectLockInfo(
+        req.common().ts_instance().permanent_uuid(), resp->mutable_ddl_lock_entries());
     return std::move(*desc_result);
   }
   auto status = std::move(desc_result.status());
@@ -1507,6 +1508,7 @@ Result<TSDescriptorPtr> MasterHeartbeatServiceImpl::UpdateAndReturnTSDescriptorO
     return std::move(*desc_result);
   }
   auto status = std::move(desc_result.status());
+  // todo(zdrudi): be more precise about the error code here.
   if (status.IsNotFound()) {
     LOG(INFO) << Format(
         "Failed to lookup tablet server { $0 } as $1; Asking this server to re-register. Status "

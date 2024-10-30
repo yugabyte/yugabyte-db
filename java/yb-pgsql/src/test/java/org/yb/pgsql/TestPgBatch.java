@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.junit.After;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
@@ -151,6 +152,7 @@ public class TestPgBatch extends BasePgSQLTest {
 
   @Test
   public void testSchemaMismatchRetry() throws Throwable {
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
     setUpTable(2, RR);
     try (Connection c1 = getConnectionBuilder().connect();
         Connection c2 = getConnectionBuilder().connect();
@@ -158,6 +160,13 @@ public class TestPgBatch extends BasePgSQLTest {
         Statement s2 = c2.createStatement()) {
       // Run UPDATE statement for the sole purpose of a caching catalog version.
       s1.execute("UPDATE t SET v=2 WHERE k=0");
+      // With connection manager in round robin mode, UPDATE statement would run on backend 1,
+      // the below SELECT * statement will run on backend 2, ALTER TABLE on backend 3 and
+      // UPDATE batch statements on backend 1 again as in the test without connection manager.
+      // The next "UPDATE t SET v=2 WHERE k=0" is to bring test parity with connection manager.
+      if (isTestRunningWithConnectionManager()) {
+        s1.execute("UPDATE t SET v=2 WHERE k=0");
+      }
       // Add more than one statement to the batch to ensure that
       // YB treats this as batched execution mode.
       for (int i = 1; i <= 2; i++) {
@@ -179,6 +188,15 @@ public class TestPgBatch extends BasePgSQLTest {
       assertThrows(
           "Internal retries are not supported in batched execution mode",
            BatchUpdateException.class, () -> s1.executeBatch());
+    }
+  }
+
+  @After
+  public void resetFlags() throws Throwable {
+    // Re-enable heartbeats.
+    for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
+      assertTrue(miniCluster.getClient().setFlag(
+          hp, "TEST_tserver_disable_heartbeat", "false", true));
     }
   }
 

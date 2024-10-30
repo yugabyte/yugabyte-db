@@ -34,12 +34,12 @@ export type XClusterTable = YBTable &
 /**
  * A table which is in the replication config but dropped from the database.
  */
-export type XClusterDroppedTable = Omit<XClusterTableDetails, 'tableId'> &
+export type XClusterTableWithoutDetails = Omit<XClusterTableDetails, 'tableId'> &
   XClusterTableUiExtraMetadata & {
     tableUUID: string;
-    status: typeof XClusterTableStatus.DROPPED;
+    status: typeof XClusterTableStatus.DROPPED | typeof XClusterTableStatus.TABLE_INFO_MISSING;
   };
-export type XClusterReplicationTable = XClusterTable | XClusterDroppedTable;
+export type XClusterReplicationTable = XClusterTable | XClusterTableWithoutDetails;
 
 //------------------------------------------------------------------------------------
 // Table Selection Types

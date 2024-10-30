@@ -9,7 +9,7 @@ menu:
   preview:
     identifier: pg-extensions
     parent: explore-ysql-language-features
-    weight: 4400
+    weight: 1000
 aliases:
   - /preview/explore/ysql-language-features/advanced-features/extensions/
   - /preview/api/ysql/extensions/

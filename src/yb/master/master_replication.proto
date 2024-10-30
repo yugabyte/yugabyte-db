@@ -488,6 +488,16 @@ message UpdateConsumerOnProducerMetadataResponsePB {
   optional cdc.SchemaVersionsPB schema_versions = 4;
 }
 
+message InsertPackedSchemaForXClusterTargetRequestPB {
+  optional bytes table_id = 1;
+  optional SchemaPB packed_schema = 2;
+  optional uint32 current_schema_version = 3;
+}
+
+message InsertPackedSchemaForXClusterTargetResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 message GetXClusterSafeTimeRequestPB{}
 
 message GetXClusterSafeTimeResponsePB {
@@ -854,6 +864,8 @@ service MasterReplication {
       returns (UpdateConsumerOnProducerSplitResponsePB);
   rpc UpdateConsumerOnProducerMetadata(UpdateConsumerOnProducerMetadataRequestPB)
       returns (UpdateConsumerOnProducerMetadataResponsePB);
+  rpc InsertPackedSchemaForXClusterTarget(InsertPackedSchemaForXClusterTargetRequestPB)
+      returns (InsertPackedSchemaForXClusterTargetResponsePB);
 
   rpc GetUniverseReplications(GetUniverseReplicationsRequestPB)
       returns (GetUniverseReplicationsResponsePB);

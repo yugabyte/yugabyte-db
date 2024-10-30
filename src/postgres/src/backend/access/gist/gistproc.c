@@ -7,7 +7,7 @@
  * This gives R-tree behavior, with Guttman's poly-time split algorithm.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -17,7 +17,6 @@
  */
 #include "postgres.h"
 
-#include <float.h>
 #include <math.h>
 
 #include "access/gist.h"
@@ -25,12 +24,21 @@
 #include "utils/builtins.h"
 #include "utils/float.h"
 #include "utils/geo_decls.h"
+#include "utils/sortsupport.h"
 
 
 static bool gist_box_leaf_consistent(BOX *key, BOX *query,
-						 StrategyNumber strategy);
+									 StrategyNumber strategy);
 static bool rtree_internal_consistent(BOX *key, BOX *query,
-						  StrategyNumber strategy);
+									  StrategyNumber strategy);
+
+static uint64 point_zorder_internal(float4 x, float4 y);
+static uint64 part_bits32_by2(uint32 x);
+static uint32 ieee_float32_to_uint32(float f);
+static int	gist_bbox_zorder_cmp(Datum a, Datum b, SortSupport ssup);
+static Datum gist_bbox_zorder_abbrev_convert(Datum original, SortSupport ssup);
+static bool gist_bbox_zorder_abbrev_abort(int memtupcount, SortSupport ssup);
+
 
 /* Minimum accepted ratio of split */
 #define LIMIT_RATIO 0.3
@@ -56,7 +64,7 @@ rt_box_union(BOX *n, const BOX *a, const BOX *b)
  * Size of a BOX for penalty-calculation purposes.
  * The result can be +Infinity, but not NaN.
  */
-static double
+static float8
 size_box(const BOX *box)
 {
 	/*
@@ -77,20 +85,21 @@ size_box(const BOX *box)
 	 */
 	if (isnan(box->high.x) || isnan(box->high.y))
 		return get_float8_infinity();
-	return (box->high.x - box->low.x) * (box->high.y - box->low.y);
+	return float8_mul(float8_mi(box->high.x, box->low.x),
+					  float8_mi(box->high.y, box->low.y));
 }
 
 /*
  * Return amount by which the union of the two boxes is larger than
  * the original BOX's area.  The result can be +Infinity, but not NaN.
  */
-static double
+static float8
 box_penalty(const BOX *original, const BOX *new)
 {
 	BOX			unionbox;
 
 	rt_box_union(&unionbox, original, new);
-	return size_box(&unionbox) - size_box(original);
+	return float8_mi(size_box(&unionbox), size_box(original));
 }
 
 /*
@@ -264,7 +273,7 @@ typedef struct
 	/* Index of entry in the initial array */
 	int			index;
 	/* Delta between penalties of entry insertion into different groups */
-	double		delta;
+	float8		delta;
 } CommonEntry;
 
 /*
@@ -280,13 +289,13 @@ typedef struct
 
 	bool		first;			/* true if no split was selected yet */
 
-	double		leftUpper;		/* upper bound of left interval */
-	double		rightLower;		/* lower bound of right interval */
+	float8		leftUpper;		/* upper bound of left interval */
+	float8		rightLower;		/* lower bound of right interval */
 
 	float4		ratio;
 	float4		overlap;
 	int			dim;			/* axis of this split */
-	double		range;			/* width of general MBR projection to the
+	float8		range;			/* width of general MBR projection to the
 								 * selected axis */
 } ConsiderSplitContext;
 
@@ -295,7 +304,7 @@ typedef struct
  */
 typedef struct
 {
-	double		lower,
+	float8		lower,
 				upper;
 } SplitInterval;
 
@@ -305,7 +314,7 @@ typedef struct
 static int
 interval_cmp_lower(const void *i1, const void *i2)
 {
-	double		lower1 = ((const SplitInterval *) i1)->lower,
+	float8		lower1 = ((const SplitInterval *) i1)->lower,
 				lower2 = ((const SplitInterval *) i2)->lower;
 
 	return float8_cmp_internal(lower1, lower2);
@@ -317,7 +326,7 @@ interval_cmp_lower(const void *i1, const void *i2)
 static int
 interval_cmp_upper(const void *i1, const void *i2)
 {
-	double		upper1 = ((const SplitInterval *) i1)->upper,
+	float8		upper1 = ((const SplitInterval *) i1)->upper,
 				upper2 = ((const SplitInterval *) i2)->upper;
 
 	return float8_cmp_internal(upper1, upper2);
@@ -340,14 +349,14 @@ non_negative(float val)
  */
 static inline void
 g_box_consider_split(ConsiderSplitContext *context, int dimNum,
-					 double rightLower, int minLeftCount,
-					 double leftUpper, int maxLeftCount)
+					 float8 rightLower, int minLeftCount,
+					 float8 leftUpper, int maxLeftCount)
 {
 	int			leftCount,
 				rightCount;
 	float4		ratio,
 				overlap;
-	double		range;
+	float8		range;
 
 	/*
 	 * Calculate entries distribution ratio assuming most uniform distribution
@@ -370,8 +379,7 @@ g_box_consider_split(ConsiderSplitContext *context, int dimNum,
 	 * Ratio of split - quotient between size of lesser group and total
 	 * entries count.
 	 */
-	ratio = ((float4) Min(leftCount, rightCount)) /
-		((float4) context->entriesCount);
+	ratio = float4_div(Min(leftCount, rightCount), context->entriesCount);
 
 	if (ratio > LIMIT_RATIO)
 	{
@@ -385,11 +393,13 @@ g_box_consider_split(ConsiderSplitContext *context, int dimNum,
 		 * or less range with same overlap.
 		 */
 		if (dimNum == 0)
-			range = context->boundingBox.high.x - context->boundingBox.low.x;
+			range = float8_mi(context->boundingBox.high.x,
+							  context->boundingBox.low.x);
 		else
-			range = context->boundingBox.high.y - context->boundingBox.low.y;
+			range = float8_mi(context->boundingBox.high.y,
+							  context->boundingBox.low.y);
 
-		overlap = (leftUpper - rightLower) / range;
+		overlap = float8_div(float8_mi(leftUpper, rightLower), range);
 
 		/* If there is no previous selection, select this */
 		if (context->first)
@@ -445,20 +455,14 @@ g_box_consider_split(ConsiderSplitContext *context, int dimNum,
 
 /*
  * Compare common entries by their deltas.
- * (We assume the deltas can't be NaN.)
  */
 static int
 common_entry_cmp(const void *i1, const void *i2)
 {
-	double		delta1 = ((const CommonEntry *) i1)->delta,
+	float8		delta1 = ((const CommonEntry *) i1)->delta,
 				delta2 = ((const CommonEntry *) i2)->delta;
 
-	if (delta1 < delta2)
-		return -1;
-	else if (delta1 > delta2)
-		return 1;
-	else
-		return 0;
+	return float8_cmp_internal(delta1, delta2);
 }
 
 /*
@@ -532,7 +536,7 @@ gist_box_picksplit(PG_FUNCTION_ARGS)
 	context.first = true;		/* nothing selected yet */
 	for (dim = 0; dim < 2; dim++)
 	{
-		double		leftUpper,
+		float8		leftUpper,
 					rightLower;
 		int			i1,
 					i2;
@@ -729,7 +733,7 @@ gist_box_picksplit(PG_FUNCTION_ARGS)
 	 */
 	for (i = FirstOffsetNumber; i <= maxoff; i = OffsetNumberNext(i))
 	{
-		double		lower,
+		float8		lower,
 					upper;
 
 		/*
@@ -784,7 +788,7 @@ gist_box_picksplit(PG_FUNCTION_ARGS)
 		 * Calculate minimum number of entries that must be placed in both
 		 * groups, to reach LIMIT_RATIO.
 		 */
-		int			m = ceil(LIMIT_RATIO * (double) nentries);
+		int			m = ceil(LIMIT_RATIO * nentries);
 
 		/*
 		 * Calculate delta between penalties of join "common entries" to
@@ -793,8 +797,8 @@ gist_box_picksplit(PG_FUNCTION_ARGS)
 		for (i = 0; i < commonEntriesCount; i++)
 		{
 			box = DatumGetBoxP(entryvec->vector[commonEntries[i].index].key);
-			commonEntries[i].delta = Abs(box_penalty(leftBox, box) -
-										 box_penalty(rightBox, box));
+			commonEntries[i].delta = Abs(float8_mi(box_penalty(leftBox, box),
+												   box_penalty(rightBox, box)));
 		}
 
 		/*
@@ -902,13 +906,11 @@ gist_box_leaf_consistent(BOX *key, BOX *query, StrategyNumber strategy)
 													  PointerGetDatum(query)));
 			break;
 		case RTContainsStrategyNumber:
-		case RTOldContainsStrategyNumber:
 			retval = DatumGetBool(DirectFunctionCall2(box_contain,
 													  PointerGetDatum(key),
 													  PointerGetDatum(query)));
 			break;
 		case RTContainedByStrategyNumber:
-		case RTOldContainedByStrategyNumber:
 			retval = DatumGetBool(DirectFunctionCall2(box_contained,
 													  PointerGetDatum(key),
 													  PointerGetDatum(query)));
@@ -985,13 +987,11 @@ rtree_internal_consistent(BOX *key, BOX *query, StrategyNumber strategy)
 			break;
 		case RTSameStrategyNumber:
 		case RTContainsStrategyNumber:
-		case RTOldContainsStrategyNumber:
 			retval = DatumGetBool(DirectFunctionCall2(box_contain,
 													  PointerGetDatum(key),
 													  PointerGetDatum(query)));
 			break;
 		case RTContainedByStrategyNumber:
-		case RTOldContainedByStrategyNumber:
 			retval = DatumGetBool(DirectFunctionCall2(box_overlap,
 													  PointerGetDatum(key),
 													  PointerGetDatum(query)));
@@ -1108,10 +1108,10 @@ gist_circle_compress(PG_FUNCTION_ARGS)
 		BOX		   *r;
 
 		r = (BOX *) palloc(sizeof(BOX));
-		r->high.x = in->center.x + in->radius;
-		r->low.x = in->center.x - in->radius;
-		r->high.y = in->center.y + in->radius;
-		r->low.y = in->center.y - in->radius;
+		r->high.x = float8_pl(in->center.x, in->radius);
+		r->low.x = float8_mi(in->center.x, in->radius);
+		r->high.y = float8_pl(in->center.y, in->radius);
+		r->low.y = float8_mi(in->center.y, in->radius);
 
 		retval = (GISTENTRY *) palloc(sizeof(GISTENTRY));
 		gistentryinit(*retval, PointerGetDatum(r),
@@ -1149,10 +1149,10 @@ gist_circle_consistent(PG_FUNCTION_ARGS)
 	 * rtree_internal_consistent even at leaf nodes.  (This works in part
 	 * because the index entries are bounding boxes not circles.)
 	 */
-	bbox.high.x = query->center.x + query->radius;
-	bbox.low.x = query->center.x - query->radius;
-	bbox.high.y = query->center.y + query->radius;
-	bbox.low.y = query->center.y - query->radius;
+	bbox.high.x = float8_pl(query->center.x, query->radius);
+	bbox.low.x = float8_mi(query->center.x, query->radius);
+	bbox.high.y = float8_pl(query->center.y, query->radius);
+	bbox.low.y = float8_mi(query->center.y, query->radius);
 
 	result = rtree_internal_consistent(DatumGetBoxP(entry->key),
 									   &bbox, strategy);
@@ -1217,10 +1217,10 @@ gist_point_fetch(PG_FUNCTION_ARGS)
 	DatumGetFloat8(DirectFunctionCall2(point_distance, \
 									   PointPGetDatum(p1), PointPGetDatum(p2)))
 
-static double
+static float8
 computeDistance(bool isLeaf, BOX *box, Point *point)
 {
-	double		result = 0.0;
+	float8		result = 0.0;
 
 	if (isLeaf)
 	{
@@ -1238,9 +1238,9 @@ computeDistance(bool isLeaf, BOX *box, Point *point)
 		/* point is over or below box */
 		Assert(box->low.y <= box->high.y);
 		if (point->y > box->high.y)
-			result = point->y - box->high.y;
+			result = float8_mi(point->y, box->high.y);
 		else if (point->y < box->low.y)
-			result = box->low.y - point->y;
+			result = float8_mi(box->low.y, point->y);
 		else
 			elog(ERROR, "inconsistent point values");
 	}
@@ -1249,9 +1249,9 @@ computeDistance(bool isLeaf, BOX *box, Point *point)
 		/* point is to left or right of box */
 		Assert(box->low.x <= box->high.x);
 		if (point->x > box->high.x)
-			result = point->x - box->high.x;
+			result = float8_mi(point->x, box->high.x);
 		else if (point->x < box->low.x)
-			result = box->low.x - point->x;
+			result = float8_mi(box->low.x, point->x);
 		else
 			elog(ERROR, "inconsistent point values");
 	}
@@ -1259,7 +1259,7 @@ computeDistance(bool isLeaf, BOX *box, Point *point)
 	{
 		/* closest point will be a vertex */
 		Point		p;
-		double		subresult;
+		float8		subresult;
 
 		result = point_point_distance(point, &box->low);
 
@@ -1340,8 +1340,18 @@ gist_point_consistent(PG_FUNCTION_ARGS)
 	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
 	bool	   *recheck = (bool *) PG_GETARG_POINTER(4);
 	bool		result;
-	StrategyNumber strategyGroup = strategy / GeoStrategyNumberOffset;
+	StrategyNumber strategyGroup;
 
+	/*
+	 * We have to remap these strategy numbers to get this klugy
+	 * classification logic to work.
+	 */
+	if (strategy == RTOldBelowStrategyNumber)
+		strategy = RTBelowStrategyNumber;
+	else if (strategy == RTOldAboveStrategyNumber)
+		strategy = RTAboveStrategyNumber;
+
+	strategyGroup = strategy / GeoStrategyNumberOffset;
 	switch (strategyGroup)
 	{
 		case PointStrategyNumberGroup:
@@ -1382,8 +1392,7 @@ gist_point_consistent(PG_FUNCTION_ARGS)
 			{
 				POLYGON    *query = PG_GETARG_POLYGON_P(1);
 
-				result = DatumGetBool(DirectFunctionCall5(
-														  gist_poly_consistent,
+				result = DatumGetBool(DirectFunctionCall5(gist_poly_consistent,
 														  PointerGetDatum(entry),
 														  PolygonPGetDatum(query),
 														  Int16GetDatum(RTOverlapStrategyNumber),
@@ -1399,8 +1408,7 @@ gist_point_consistent(PG_FUNCTION_ARGS)
 
 					Assert(box->high.x == box->low.x
 						   && box->high.y == box->low.y);
-					result = DatumGetBool(DirectFunctionCall2(
-															  poly_contain_pt,
+					result = DatumGetBool(DirectFunctionCall2(poly_contain_pt,
 															  PolygonPGetDatum(query),
 															  PointPGetDatum(&box->high)));
 					*recheck = false;
@@ -1411,8 +1419,7 @@ gist_point_consistent(PG_FUNCTION_ARGS)
 			{
 				CIRCLE	   *query = PG_GETARG_CIRCLE_P(1);
 
-				result = DatumGetBool(DirectFunctionCall5(
-														  gist_circle_consistent,
+				result = DatumGetBool(DirectFunctionCall5(gist_circle_consistent,
 														  PointerGetDatum(entry),
 														  CirclePGetDatum(query),
 														  Int16GetDatum(RTOverlapStrategyNumber),
@@ -1428,8 +1435,7 @@ gist_point_consistent(PG_FUNCTION_ARGS)
 
 					Assert(box->high.x == box->low.x
 						   && box->high.y == box->low.y);
-					result = DatumGetBool(DirectFunctionCall2(
-															  circle_contain_pt,
+					result = DatumGetBool(DirectFunctionCall2(circle_contain_pt,
 															  CirclePGetDatum(query),
 															  PointPGetDatum(&box->high)));
 					*recheck = false;
@@ -1450,7 +1456,7 @@ gist_point_distance(PG_FUNCTION_ARGS)
 {
 	GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
 	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
-	double		distance;
+	float8		distance;
 	StrategyNumber strategyGroup = strategy / GeoStrategyNumberOffset;
 
 	switch (strategyGroup)
@@ -1469,25 +1475,11 @@ gist_point_distance(PG_FUNCTION_ARGS)
 	PG_RETURN_FLOAT8(distance);
 }
 
-/*
- * The inexact GiST distance method for geometric types that store bounding
- * boxes.
- *
- * Compute lossy distance from point to index entries.  The result is inexact
- * because index entries are bounding boxes, not the exact shapes of the
- * indexed geometric types.  We use distance from point to MBR of index entry.
- * This is a lower bound estimate of distance from point to indexed geometric
- * type.
- */
-static double
-gist_bbox_distance(GISTENTRY *entry, Datum query,
-				   StrategyNumber strategy, bool *recheck)
+static float8
+gist_bbox_distance(GISTENTRY *entry, Datum query, StrategyNumber strategy)
 {
-	double		distance;
+	float8		distance;
 	StrategyNumber strategyGroup = strategy / GeoStrategyNumberOffset;
-
-	/* Bounding box distance is always inexact. */
-	*recheck = true;
 
 	switch (strategyGroup)
 	{
@@ -1505,6 +1497,32 @@ gist_bbox_distance(GISTENTRY *entry, Datum query,
 }
 
 Datum
+gist_box_distance(PG_FUNCTION_ARGS)
+{
+	GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
+	Datum		query = PG_GETARG_DATUM(1);
+	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
+
+	/* Oid subtype = PG_GETARG_OID(3); */
+	/* bool	   *recheck = (bool *) PG_GETARG_POINTER(4); */
+	float8		distance;
+
+	distance = gist_bbox_distance(entry, query, strategy);
+
+	PG_RETURN_FLOAT8(distance);
+}
+
+/*
+ * The inexact GiST distance methods for geometric types that store bounding
+ * boxes.
+ *
+ * Compute lossy distance from point to index entries.  The result is inexact
+ * because index entries are bounding boxes, not the exact shapes of the
+ * indexed geometric types.  We use distance from point to MBR of index entry.
+ * This is a lower bound estimate of distance from point to indexed geometric
+ * type.
+ */
+Datum
 gist_circle_distance(PG_FUNCTION_ARGS)
 {
 	GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
@@ -1513,9 +1531,10 @@ gist_circle_distance(PG_FUNCTION_ARGS)
 
 	/* Oid subtype = PG_GETARG_OID(3); */
 	bool	   *recheck = (bool *) PG_GETARG_POINTER(4);
-	double		distance;
+	float8		distance;
 
-	distance = gist_bbox_distance(entry, query, strategy, recheck);
+	distance = gist_bbox_distance(entry, query, strategy);
+	*recheck = true;
 
 	PG_RETURN_FLOAT8(distance);
 }
@@ -1529,9 +1548,214 @@ gist_poly_distance(PG_FUNCTION_ARGS)
 
 	/* Oid subtype = PG_GETARG_OID(3); */
 	bool	   *recheck = (bool *) PG_GETARG_POINTER(4);
-	double		distance;
+	float8		distance;
 
-	distance = gist_bbox_distance(entry, query, strategy, recheck);
+	distance = gist_bbox_distance(entry, query, strategy);
+	*recheck = true;
 
 	PG_RETURN_FLOAT8(distance);
+}
+
+/*
+ * Z-order routines for fast index build
+ */
+
+/*
+ * Compute Z-value of a point
+ *
+ * Z-order (also known as Morton Code) maps a two-dimensional point to a
+ * single integer, in a way that preserves locality. Points that are close in
+ * the two-dimensional space are mapped to integer that are not far from each
+ * other. We do that by interleaving the bits in the X and Y components.
+ *
+ * Morton Code is normally defined only for integers, but the X and Y values
+ * of a point are floating point. We expect floats to be in IEEE format.
+ */
+static uint64
+point_zorder_internal(float4 x, float4 y)
+{
+	uint32		ix = ieee_float32_to_uint32(x);
+	uint32		iy = ieee_float32_to_uint32(y);
+
+	/* Interleave the bits */
+	return part_bits32_by2(ix) | (part_bits32_by2(iy) << 1);
+}
+
+/* Interleave 32 bits with zeroes */
+static uint64
+part_bits32_by2(uint32 x)
+{
+	uint64		n = x;
+
+	n = (n | (n << 16)) & UINT64CONST(0x0000FFFF0000FFFF);
+	n = (n | (n << 8)) & UINT64CONST(0x00FF00FF00FF00FF);
+	n = (n | (n << 4)) & UINT64CONST(0x0F0F0F0F0F0F0F0F);
+	n = (n | (n << 2)) & UINT64CONST(0x3333333333333333);
+	n = (n | (n << 1)) & UINT64CONST(0x5555555555555555);
+
+	return n;
+}
+
+/*
+ * Convert a 32-bit IEEE float to uint32 in a way that preserves the ordering
+ */
+static uint32
+ieee_float32_to_uint32(float f)
+{
+	/*----
+	 *
+	 * IEEE 754 floating point format
+	 * ------------------------------
+	 *
+	 * IEEE 754 floating point numbers have this format:
+	 *
+	 *   exponent (8 bits)
+	 *   |
+	 * s eeeeeeee mmmmmmmmmmmmmmmmmmmmmmm
+	 * |          |
+	 * sign       mantissa (23 bits)
+	 *
+	 * Infinity has all bits in the exponent set and the mantissa is all
+	 * zeros. Negative infinity is the same but with the sign bit set.
+	 *
+	 * NaNs are represented with all bits in the exponent set, and the least
+	 * significant bit in the mantissa also set. The rest of the mantissa bits
+	 * can be used to distinguish different kinds of NaNs.
+	 *
+	 * The IEEE format has the nice property that when you take the bit
+	 * representation and interpret it as an integer, the order is preserved,
+	 * except for the sign. That holds for the +-Infinity values too.
+	 *
+	 * Mapping to uint32
+	 * -----------------
+	 *
+	 * In order to have a smooth transition from negative to positive numbers,
+	 * we map floats to unsigned integers like this:
+	 *
+	 * x < 0 to range 0-7FFFFFFF
+	 * x = 0 to value 8000000 (both positive and negative zero)
+	 * x > 0 to range 8000001-FFFFFFFF
+	 *
+	 * We don't care to distinguish different kind of NaNs, so they are all
+	 * mapped to the same arbitrary value, FFFFFFFF. Because of the IEEE bit
+	 * representation of NaNs, there aren't any non-NaN values that would be
+	 * mapped to FFFFFFFF. In fact, there is a range of unused values on both
+	 * ends of the uint32 space.
+	 */
+	if (isnan(f))
+		return 0xFFFFFFFF;
+	else
+	{
+		union
+		{
+			float		f;
+			uint32		i;
+		}			u;
+
+		u.f = f;
+
+		/* Check the sign bit */
+		if ((u.i & 0x80000000) != 0)
+		{
+			/*
+			 * Map the negative value to range 0-7FFFFFFF. This flips the sign
+			 * bit to 0 in the same instruction.
+			 */
+			Assert(f <= 0);		/* can be -0 */
+			u.i ^= 0xFFFFFFFF;
+		}
+		else
+		{
+			/* Map the positive value (or 0) to range 80000000-FFFFFFFF */
+			u.i |= 0x80000000;
+		}
+
+		return u.i;
+	}
+}
+
+/*
+ * Compare the Z-order of points
+ */
+static int
+gist_bbox_zorder_cmp(Datum a, Datum b, SortSupport ssup)
+{
+	Point	   *p1 = &(DatumGetBoxP(a)->low);
+	Point	   *p2 = &(DatumGetBoxP(b)->low);
+	uint64		z1;
+	uint64		z2;
+
+	/*
+	 * Do a quick check for equality first. It's not clear if this is worth it
+	 * in general, but certainly is when used as tie-breaker with abbreviated
+	 * keys,
+	 */
+	if (p1->x == p2->x && p1->y == p2->y)
+		return 0;
+
+	z1 = point_zorder_internal(p1->x, p1->y);
+	z2 = point_zorder_internal(p2->x, p2->y);
+	if (z1 > z2)
+		return 1;
+	else if (z1 < z2)
+		return -1;
+	else
+		return 0;
+}
+
+/*
+ * Abbreviated version of Z-order comparison
+ *
+ * The abbreviated format is a Z-order value computed from the two 32-bit
+ * floats. If SIZEOF_DATUM == 8, the 64-bit Z-order value fits fully in the
+ * abbreviated Datum, otherwise use its most significant bits.
+ */
+static Datum
+gist_bbox_zorder_abbrev_convert(Datum original, SortSupport ssup)
+{
+	Point	   *p = &(DatumGetBoxP(original)->low);
+	uint64		z;
+
+	z = point_zorder_internal(p->x, p->y);
+
+#if SIZEOF_DATUM == 8
+	return (Datum) z;
+#else
+	return (Datum) (z >> 32);
+#endif
+}
+
+/*
+ * We never consider aborting the abbreviation.
+ *
+ * On 64-bit systems, the abbreviation is not lossy so it is always
+ * worthwhile. (Perhaps it's not on 32-bit systems, but we don't bother
+ * with logic to decide.)
+ */
+static bool
+gist_bbox_zorder_abbrev_abort(int memtupcount, SortSupport ssup)
+{
+	return false;
+}
+
+/*
+ * Sort support routine for fast GiST index build by sorting.
+ */
+Datum
+gist_point_sortsupport(PG_FUNCTION_ARGS)
+{
+	SortSupport ssup = (SortSupport) PG_GETARG_POINTER(0);
+
+	if (ssup->abbreviate)
+	{
+		ssup->comparator = ssup_datum_unsigned_cmp;
+		ssup->abbrev_converter = gist_bbox_zorder_abbrev_convert;
+		ssup->abbrev_abort = gist_bbox_zorder_abbrev_abort;
+		ssup->abbrev_full_comparator = gist_bbox_zorder_cmp;
+	}
+	else
+	{
+		ssup->comparator = gist_bbox_zorder_cmp;
+	}
+	PG_RETURN_VOID();
 }

@@ -305,8 +305,6 @@ class PgSysColumnRefFactory {
     switch (attr_num) {
       case PgSystemAttrNum::kSelfItemPointer:
         return PgColumn([](auto* syscols) { return &syscols->ctid; });
-      case PgSystemAttrNum::kObjectId:
-        return PgColumn([](auto* syscols) { return &syscols->oid; });
       case PgSystemAttrNum::kMinTransactionId:
         return PgColumn([](auto* syscols) { return &syscols->xmin; });
       case PgSystemAttrNum::kMinCommandId:
@@ -322,7 +320,8 @@ class PgSysColumnRefFactory {
       case PgSystemAttrNum::kYBIdxBaseTupleId:
         return YbColumn([](auto* syscols) { return &syscols->ybbasectid; });
       case PgSystemAttrNum::kYBUniqueIdxKeySuffix: [[fallthrough]];
-      case PgSystemAttrNum::kYBRowId:
+      case PgSystemAttrNum::kYBRowId: [[fallthrough]];
+      case PgSystemAttrNum::kPGInternalYBTupleId:
         break;
     }
     FATAL_INVALID_ENUM_VALUE(PgSystemAttrNum, attr_num);
@@ -830,6 +829,10 @@ PgColumnRef* PgColumnRef::Create(
     bool collate_is_valid_non_c,
     const PgTypeAttrs *type_attrs) {
   if (attr_num < 0) {
+    // Convert to wire protocol. See explanation in pg_system_attr.h.
+    if (attr_num == static_cast<int>(PgSystemAttrNum::kPGInternalYBTupleId)) {
+      attr_num = static_cast<int>(PgSystemAttrNum::kYBTupleId);
+    }
     auto factory = PgSysColumnRefFactory(
         arena, attr_num, type_entity, collate_is_valid_non_c, type_attrs);
     return factory(static_cast<PgSystemAttrNum>(attr_num));

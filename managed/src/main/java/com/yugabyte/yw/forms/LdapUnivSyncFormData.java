@@ -72,6 +72,9 @@ public class LdapUnivSyncFormData {
   @ApiModelProperty(value = "Use LDAP TLS")
   private Boolean useLdapTls;
 
+  @ApiModelProperty(value = "Use LDAP SSL")
+  private Boolean useLdapSsl;
+
   @ApiModelProperty(value = "Allow the API to create the LDAP groups as DB superusers")
   private Boolean createGroups = false;
 

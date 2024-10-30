@@ -10,6 +10,13 @@ Update a Kubernetes provider in YugabyteDB Anywhere
 yba provider kubernetes update [flags]
 ```
 
+### Examples
+
+```
+yba provider kuberenetes update --name <provider-name> \
+	--image-registry <image-registry>
+```
+
 ### Options
 
 ```

@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckFollowerLag;
 import com.yugabyte.yw.common.CustomerTaskManager;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.nodeui.MetricGroup;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -34,6 +35,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.ToString;
@@ -42,7 +44,7 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.yb.client.GetMasterHeartbeatDelaysResponse;
 import org.yb.client.YBClient;
-import org.yb.util.ServerInfo;
+import org.yb.util.PeerInfo;
 import play.libs.Json;
 
 @Singleton
@@ -154,8 +156,10 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
         log.debug(
             "Retrying task {} for universe {}", action.getTaskType(), universe.getUniverseUUID());
         customerTask =
-            customerTaskManager.retryCustomerTask(
-                customer.getUuid(), universeDetails.placementModificationTaskUuid);
+            Util.doWithCorrelationId(
+                id ->
+                    customerTaskManager.retryCustomerTask(
+                        customer.getUuid(), universeDetails.placementModificationTaskUuid));
       }
       if (customerTask == null) {
         return Optional.empty();
@@ -264,19 +268,19 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
             .getConfForScope(universe, UniverseConfKeys.autoMasterFailoverFollowerLagSoftThreshold)
             .toMillis();
     Map<String, Long> maybeFailedMasters = new HashMap<>();
-    List<ServerInfo> masters = getMasters(ybClient);
-    boolean isMasterLeaderPresent = masters.stream().anyMatch(ServerInfo::isLeader);
-    if (!isMasterLeaderPresent) {
+    List<PeerInfo> masters = getMasters(ybClient);
+    HostAndPort leader = ybClient.getLeaderMasterHostAndPort();
+    if (leader == null) {
       log.error("Cannot find a master leader in the universe {}", universe.getUniverseUUID());
       return maybeFailedMasters;
     }
     Map<String, Long> masterHeartbeatDelays = getMasterHeartbeatDelays(ybClient);
     masters.stream()
-        .filter(masterInfo -> !masterInfo.isLeader())
+        .filter(peerInfo -> !peerInfo.hasHost(leader.getHost()))
         .forEach(
-            masterInfo -> {
-              String masterUuid = masterInfo.getUuid();
-              String ipAddress = masterInfo.getHost();
+            peerInfo -> {
+              String masterUuid = peerInfo.getUuid();
+              String ipAddress = peerInfo.getLastKnownPrivateIps().get(0).getHost();
               NodeDetails node = universe.getNodeByAnyIP(ipAddress);
               if (!masterHeartbeatDelays.containsKey(masterUuid)) {
                 // The master heartbeat map does not contain the master, this is a discrepancy as
@@ -503,19 +507,22 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
     taskParams.clusters = universe.getUniverseDetails().clusters;
     taskParams.rootCA = universe.getUniverseDetails().rootCA;
     // Submit the task to initiate master failover.
-    UUID taskUUID = getCommissioner().submit(TaskType.MasterFailover, taskParams);
-    log.info(
-        "Submitted master failover for universe {} node {}, task uuid = {}.",
-        universe.getUniverseUUID(),
-        action.getNodeName(),
-        taskUUID);
-    return CustomerTask.create(
-        customer,
-        universe.getUniverseUUID(),
-        taskUUID,
-        CustomerTask.TargetType.Universe,
-        CustomerTask.TaskType.MasterFailover,
-        universe.getName());
+    return Util.doWithCorrelationId(
+        id -> {
+          UUID taskUUID = getCommissioner().submit(TaskType.MasterFailover, taskParams);
+          log.info(
+              "Submitted master failover for universe {} node {}, task uuid = {}.",
+              universe.getUniverseUUID(),
+              action.getNodeName(),
+              taskUUID);
+          return CustomerTask.create(
+              customer,
+              universe.getUniverseUUID(),
+              taskUUID,
+              CustomerTask.TargetType.Universe,
+              CustomerTask.TaskType.MasterFailover,
+              universe.getName());
+        });
   }
 
   private CustomerTask submitSyncMasterAddressesTask(Customer customer, Universe universe) {
@@ -524,18 +531,21 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
     taskParams.expectedUniverseVersion = universe.getVersion();
     taskParams.clusters = universe.getUniverseDetails().clusters;
     taskParams.rootCA = universe.getUniverseDetails().rootCA;
-    UUID taskUUID = getCommissioner().submit(TaskType.SyncMasterAddresses, taskParams);
-    log.info(
-        "Submitted sync master addresses task {} for universe {}",
-        taskUUID,
-        universe.getUniverseUUID());
-    return CustomerTask.create(
-        customer,
-        universe.getUniverseUUID(),
-        taskUUID,
-        CustomerTask.TargetType.Universe,
-        CustomerTask.TaskType.SyncMasterAddresses,
-        universe.getName());
+    return Util.doWithCorrelationId(
+        id -> {
+          UUID taskUUID = getCommissioner().submit(TaskType.SyncMasterAddresses, taskParams);
+          log.info(
+              "Submitted sync master addresses task {} for universe {}",
+              taskUUID,
+              universe.getUniverseUUID());
+          return CustomerTask.create(
+              customer,
+              universe.getUniverseUUID(),
+              taskUUID,
+              CustomerTask.TargetType.Universe,
+              CustomerTask.TaskType.SyncMasterAddresses,
+              universe.getName());
+        });
   }
 
   /**
@@ -563,11 +573,13 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
     }
   }
 
-  private List<ServerInfo> getMasters(YBClient ybClient) {
+  private List<PeerInfo> getMasters(YBClient ybClient) {
     try {
-      return ybClient.listMasters().getMasters();
+      return ybClient.listMasterRaftPeers().getPeersList().stream()
+          .filter(p -> p.getMemberType() == PeerInfo.MemberType.VOTER)
+          .collect(Collectors.toList());
     } catch (Exception e) {
-      String errMsg = String.format("Error in listing masters - %s", e.getMessage());
+      String errMsg = String.format("Error in listing master raft peers - %s", e.getMessage());
       log.error(errMsg);
       throw new RuntimeException(errMsg);
     }

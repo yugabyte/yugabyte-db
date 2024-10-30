@@ -120,9 +120,6 @@ DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 
 DECLARE_bool(use_client_to_server_encryption);
-DECLARE_string(certs_dir);
-DECLARE_string(certs_for_client_dir);
-DECLARE_string(cert_node_filename);
 DECLARE_string(ysql_hba_conf);
 DECLARE_string(metric_node_name);
 DECLARE_bool(enable_ysql_conn_mgr);
@@ -172,6 +169,20 @@ void SetProxyAddresses() {
     << "Bad pgsql_proxy_bind_address " << FLAGS_pgsql_proxy_bind_address << ": " << status;
     for (const auto& addr : bind_addresses) {
       if (addr.port() == PgProcessConf::kDefaultPort && addr.port() == FLAGS_ysql_conn_mgr_port) {
+        uint16_t preferred_port = 6433;
+        if (addr.port() != preferred_port) {
+          LOG(INFO) << "The connection manager and backend db ports are conflicting on "
+                << addr.port() << ". Trying port " << preferred_port << " for backend db.";
+          Endpoint preferred_sock_addr(boost::asio::ip::address_v4::loopback(), preferred_port);
+          Socket preferred_sock;
+          Status preferred_status = preferred_sock.Init(0);
+          if (preferred_status.ok() && preferred_sock.Bind(preferred_sock_addr, false).ok()) {
+            LOG(INFO) << "Successfully bound to port " << preferred_port << " for backend db.";
+            SetProxyAddress(&FLAGS_pgsql_proxy_bind_address, "YSQL", preferred_port, true);
+            break;
+          }
+        }
+
         LOG(INFO) << "The connection manager and backend db ports are conflicting on "
         << addr.port() << ". Assigning a random available port: " << freeport <<
         " to backend db and " << PgProcessConf::kDefaultPort << " to the connection manager";
@@ -186,34 +197,6 @@ void SetProxyAddresses() {
   LOG(INFO) << "ysql connection manager is enabled";
   LOG(INFO) << "Using pgsql_proxy_bind_address = " << FLAGS_pgsql_proxy_bind_address;
   LOG(INFO) << "Using ysql_connection_manager port = " << FLAGS_ysql_conn_mgr_port;
-}
-
-Status SetSslConf(const std::unique_ptr<TabletServer> &server,
-    yb::ProcessWrapperCommonConfig* config) {
-  config->certs_dir = FLAGS_certs_dir.empty()
-                          ? rpc::GetCertsDir(server->fs_manager()->GetDefaultRootDir())
-                          : FLAGS_certs_dir;
-  config->certs_for_client_dir =
-      FLAGS_certs_for_client_dir.empty() ? config->certs_dir : FLAGS_certs_for_client_dir;
-  config->enable_tls = FLAGS_use_client_to_server_encryption;
-
-  // Follow the same logic as elsewhere, check FLAGS_cert_node_filename then
-  // server_broadcast_addresses then rpc_bind_addresses.
-  if (!FLAGS_cert_node_filename.empty()) {
-    config->cert_base_name = FLAGS_cert_node_filename;
-    } else {
-      const auto server_broadcast_addresses =
-          HostPort::ParseStrings(server->options().server_broadcast_addresses, 0);
-      RETURN_NOT_OK(server_broadcast_addresses);
-      const auto rpc_bind_addresses =
-          HostPort::ParseStrings(server->options().rpc_opts.rpc_bind_addresses, 0);
-      RETURN_NOT_OK(rpc_bind_addresses);
-      config->cert_base_name = !server_broadcast_addresses->empty()
-                                           ? server_broadcast_addresses->front().host()
-                                           : rpc_bind_addresses->front().host();
-    }
-
-  return Status::OK();
 }
 
 // Runs the IO service in a loop until it is stopped. Invokes trigger_termination_fn if there is an
@@ -289,7 +272,8 @@ int TabletServerMain(int argc, char** argv) {
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(docdb::DocPgInit());
     auto& pg_process_conf = *pg_process_conf_result;
     pg_process_conf.master_addresses = tablet_server_options->master_addresses_flag;
-    LOG_AND_RETURN_FROM_MAIN_NOT_OK(SetSslConf(server, &pg_process_conf));
+    LOG_AND_RETURN_FROM_MAIN_NOT_OK(
+        pg_process_conf.SetSslConf(server->options(), *server->fs_manager()));
     LOG(INFO) << "Starting PostgreSQL server listening on "
               << pg_process_conf.listen_addresses << ", port " << pg_process_conf.pg_port;
 
@@ -307,7 +291,8 @@ int TabletServerMain(int argc, char** argv) {
     ysql_conn_mgr_conf.yb_tserver_key_ = UInt64ToString(
         server->GetSharedMemoryPostgresAuthKey());
 
-    LOG_AND_RETURN_FROM_MAIN_NOT_OK(SetSslConf(server, &ysql_conn_mgr_conf));
+    LOG_AND_RETURN_FROM_MAIN_NOT_OK(
+        ysql_conn_mgr_conf.SetSslConf(server->options(), *server->fs_manager()));
 
     if (FLAGS_use_client_to_server_encryption && !FLAGS_ysql_conn_mgr_use_unix_conn)
       LOG(FATAL) << "Client to server encryption can not be enabled "

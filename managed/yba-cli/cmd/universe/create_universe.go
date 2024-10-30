@@ -18,6 +18,7 @@ import (
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/universe"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ybatask"
 )
 
 var tserverGflagsString string
@@ -25,9 +26,10 @@ var v1 = viper.New()
 
 // createUniverseCmd represents the universe command
 var createUniverseCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create YugabyteDB Anywhere universe",
-	Long:  "Create an universe in YugabyteDB Anywhere",
+	Use:     "create",
+	Aliases: []string{"add"},
+	Short:   "Create YugabyteDB Anywhere universe",
+	Long:    "Create an universe in YugabyteDB Anywhere",
 	Example: `yba universe create -n <universe-name> --provider-code <provider-code> \
 	--provider-name <provider-name> --yb-db-version <YugbayteDB-version> \
 	--master-gflags \
@@ -37,7 +39,7 @@ var createUniverseCmd = &cobra.Command{
 	"{\"primary\": {\"<gflag-1>\": \"<value-1>\",\"<gflag-2>\": \"<value-2>\"},\
 	\"async\": {\"<gflag-1>\": \"<value-1>\",\"<gflag-2>\": \"<value-2>\"}}" \
 	--num-nodes 1 --replication-factor 1 \
-	--user-tags <tag1>=<value1>,<tag2>=<value2>`,
+	--user-tags <key-1>=<value-1>,<key-2>=<value-2>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 
 		config, err := cmd.Flags().GetString("config-template")
@@ -169,15 +171,15 @@ var createUniverseCmd = &cobra.Command{
 			})
 		}
 
-		rCreate, response, err := authAPI.CreateAllClusters().
+		rTask, response, err := authAPI.CreateAllClusters().
 			UniverseConfigureTaskParams(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		universeUUID := rCreate.GetResourceUUID()
-		taskUUID := rCreate.GetTaskUUID()
+		universeUUID := rTask.GetResourceUUID()
+		taskUUID := rTask.GetTaskUUID()
 
 		var universeData []ybaclient.UniverseResp
 
@@ -210,11 +212,15 @@ var createUniverseCmd = &cobra.Command{
 			}
 
 			universe.Write(universesCtx, universeData)
-
-		} else {
-			logrus.Infoln(msg + "\n")
+			return
 		}
-
+		logrus.Infoln(msg + "\n")
+		taskCtx := formatter.Context{
+			Command: "create",
+			Output:  os.Stdout,
+			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
+		}
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
 	},
 }
 
@@ -282,7 +288,7 @@ func init() {
 			"\"--master-gflags { \\\"master-gflag-key-1\\\":\\\"value-1\\\","+
 			"\\\"master-gflag-key-2\\\":\\\"value-2\\\" }\" or"+
 			"  \"--master-gflags \"master-gflag-key-1: value-1\nmaster-gflag-key-2"+
-			": value-2\nmaster-gflag-key-3: value3\".")
+			": value-2\nmaster-gflag-key-3: value-3\".")
 
 	createUniverseCmd.Flags().StringVar(&tserverGflagsString, "tserver-gflags", "",
 		"[Optional] TServer GFlags in map (JSON or YAML) format. "+
@@ -441,7 +447,7 @@ func init() {
 
 	createUniverseCmd.Flags().StringToString("user-tags",
 		map[string]string{}, "[Optional] User Tags for the DB instances. Provide "+
-			"as key=value pairs per flag. Example \"--user-tags "+
+			"as key-value pairs per flag. Example \"--user-tags "+
 			"name=test --user-tags owner=development\" OR "+
 			"\"--user-tags name=test,owner=development\".")
 	createUniverseCmd.Flags().String("kubernetes-universe-overrides-file-path", "",

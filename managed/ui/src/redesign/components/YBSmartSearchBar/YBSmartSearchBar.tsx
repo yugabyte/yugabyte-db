@@ -93,7 +93,8 @@ export const YBSmartSearchBar = ({
 
   const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     switch (event.key) {
-      case TAB_KEY: {
+      case TAB_KEY:
+      case ENTER_KEY: {
         event.preventDefault();
         const trimmedInput = inputText.trim();
         if (trimmedInput !== '') {
@@ -112,9 +113,6 @@ export const YBSmartSearchBar = ({
         }
         return;
       }
-      case ENTER_KEY:
-        event.preventDefault();
-        return;
       default:
         return;
     }

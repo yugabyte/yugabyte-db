@@ -159,7 +159,7 @@ The cluster you have created consists of two processes:
 - [YB-Master](../../architecture/yb-master/) keeps track of various metadata (list of tables, users, roles, permissions, and so on).
 - [YB-TServer](../../architecture/yb-tserver/) is responsible for the actual end user requests for data updates and queries.
 
-Using the YugabyteDB SQL shell, [ysqlsh](../../admin/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
+Using the YugabyteDB SQL shell, [ysqlsh](../../api/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
 
 To open the YSQL shell, run `ysqlsh`.
 
@@ -232,7 +232,7 @@ Perform the following to create a sample Java project:
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>jdbc-yugabytedb</artifactId>
-      <version>42.3.5-yb-8</version>
+      <version>42.7.3-yb-1</version>
     </dependency>
 
     <!-- https://mvnrepository.com/artifact/com.zaxxer/HikariCP -->

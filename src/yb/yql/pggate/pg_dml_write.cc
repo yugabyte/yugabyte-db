@@ -31,19 +31,28 @@
 namespace yb::pggate {
 
 PgDmlWrite::PgDmlWrite(
-    PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id,
-    bool is_region_local, YBCPgTransactionSetting transaction_setting, bool packed)
-    : PgDml(std::move(pg_session), table_id, is_region_local),
-      transaction_setting_(transaction_setting),
-      packed_(packed) {
+    const PgSession::ScopedRefPtr& pg_session, YBCPgTransactionSetting transaction_setting,
+    bool packed)
+    : PgDml(pg_session), transaction_setting_(transaction_setting), packed_(packed) {
 }
 
-Status PgDmlWrite::Prepare() {
+Status PgDmlWrite::Prepare(const PgObjectId& table_id, bool is_region_local) {
   // Setup descriptors for target and bind columns.
-  target_ = bind_ = PgTable(VERIFY_RESULT(LoadTable()));
+  target_ = bind_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id)));
 
-  // Allocate either INSERT, UPDATE, DELETE, or TRUNCATE_COLOCATED request.
-  AllocWriteRequest();
+  auto write_op = ArenaMakeShared<PgsqlWriteOp>(
+      arena_ptr(), &arena(),
+      /* need_transaction= */ transaction_setting_ == YBCPgTransactionSetting::YB_TRANSACTIONAL,
+      is_region_local);
+
+  write_req_ = std::shared_ptr<LWPgsqlWriteRequestPB>(write_op, &write_op->write_request());
+  write_req_->set_stmt_type(stmt_type());
+  write_req_->set_client(YQL_CLIENT_PGSQL);
+  write_req_->dup_table_id(table_id.GetYbTableId());
+  write_req_->set_schema_version(target_->schema_version());
+  write_req_->set_stmt_id(reinterpret_cast<uint64_t>(write_req_.get()));
+
+  doc_op_ = std::make_shared<PgDocWriteOp>(pg_session_, &target_, std::move(write_op));
   PrepareColumns();
   return Status::OK();
 }
@@ -142,23 +151,6 @@ Status PgDmlWrite::SetWriteTime(const HybridTime& write_time) {
   SCHECK(doc_op_.get() != nullptr, RuntimeError, "expected doc_op_ to be initialized");
   down_cast<PgDocWriteOp*>(doc_op_.get())->SetWriteTime(write_time);
   return Status::OK();
-}
-
-void PgDmlWrite::AllocWriteRequest() {
-  auto write_op = ArenaMakeShared<PgsqlWriteOp>(
-      arena_ptr(), &arena(),
-      /* need_transaction */
-      (transaction_setting_ == YBCPgTransactionSetting::YB_TRANSACTIONAL),
-      is_region_local_);
-
-  write_req_ = std::shared_ptr<LWPgsqlWriteRequestPB>(write_op, &write_op->write_request());
-  write_req_->set_stmt_type(stmt_type());
-  write_req_->set_client(YQL_CLIENT_PGSQL);
-  write_req_->dup_table_id(table_id_.GetYbTableId());
-  write_req_->set_schema_version(target_->schema_version());
-  write_req_->set_stmt_id(reinterpret_cast<uint64_t>(write_req_.get()));
-
-  doc_op_ = std::make_shared<PgDocWriteOp>(pg_session_, &target_, std::move(write_op));
 }
 
 Result<LWPgsqlExpressionPB*> PgDmlWrite::AllocColumnBindPB(PgColumn* col, PgExpr* expr) {

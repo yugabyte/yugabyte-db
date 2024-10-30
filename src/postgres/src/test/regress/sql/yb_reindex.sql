@@ -266,6 +266,12 @@ UPDATE pg_index SET indisvalid = false
 REINDEX (VERBOSE) INDEX yb_j_idx;
 \set VERBOSITY default
 
+-- unsupported command/options
+REINDEX INDEX CONCURRENTLY yb_j_idx;
+REINDEX (VERBOSE) INDEX CONCURRENTLY yb_j_idx;
+REINDEX (CONCURRENTLY) INDEX yb_j_idx;
+REINDEX (tablespace somespace) INDEX yb_j_idx;
+
 -- shared system index
 REINDEX INDEX pg_database_datname_index; -- fail
 -- make sure index isn't broken after failure
@@ -333,13 +339,24 @@ EXPLAIN (costs off)
 SELECT i FROM parted_odd WHERE i = (2 * 5);
 /*+IndexOnlyScan(parted_odd_i_idx)*/
 SELECT i FROM parted_odd WHERE i = (2 * 5);
+
+-- REINDEX fails if not all child indexes are marked invalid
 UPDATE pg_index SET indisvalid = false
     WHERE indexrelid = 'parted_i_idx'::regclass;
 UPDATE pg_index SET indisvalid = false
     WHERE indexrelid = 'parted_odd_i_idx'::regclass;
 \c
-REINDEX INDEX parted_i_idx;
+REINDEX INDEX parted_i_idx; -- fail
+UPDATE pg_index SET indisvalid = false
+    WHERE indexrelid = 'parted_even_i_idx'::regclass;
+\c
+REINDEX INDEX parted_i_idx; -- succeed
+-- we can also reindex just a child index
+UPDATE pg_index SET indisvalid = false
+    WHERE indexrelid = 'parted_odd_i_idx'::regclass;
+\c
 REINDEX INDEX parted_odd_i_idx;
+
 EXPLAIN (costs off)
 /*+IndexOnlyScan(parted_i_idx)*/
 SELECT i FROM parted WHERE i = (2 * 5);

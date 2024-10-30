@@ -2,7 +2,7 @@ package com.yugabyte.yw.models;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import autovalue.shaded.com.google.common.annotations.VisibleForTesting;
+import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.controllers.apiModels.CreateRelease;

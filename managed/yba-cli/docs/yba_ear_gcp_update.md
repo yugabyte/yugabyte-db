@@ -10,6 +10,13 @@ Update a GCP encryption at rest (EAR) configuration in YugabyteDB Anywhere
 yba ear gcp update [flags]
 ```
 
+### Examples
+
+```
+yba ear gcp update --name <config-name> \
+	--credentials-file-path <credentials-file-path>
+```
+
 ### Options
 
 ```

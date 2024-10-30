@@ -209,7 +209,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
       }
 
       try {
-        pollTaskProgress(ybcClient, taskId);
+        pollTaskProgress(ybcClient, taskId, nodeIp);
         handleBackupResult(taskId);
         if (isResumable) {
           restoreBackupParams.currentYbcTaskId = null;

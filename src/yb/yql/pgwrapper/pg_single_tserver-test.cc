@@ -992,6 +992,71 @@ TEST_P(PgFastBackwardScanTest, SimpleColocated) {
   RunSimpleTests();
 }
 
+// Covers https://github.com/yugabyte/yugabyte-db/issues/24118.
+TEST_F(PgSingleTServerTest, FastBackwardScanSnapshotIsolationIntentRead) {
+  // Disable backgorund compactions.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+
+  // Enable fast backward scans.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_fast_backward_scan) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_prevs_to_avoid_seek) = RandomUniformInt<int32_t>(-1, 5);
+
+  // Create DB.
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+
+  // A helper functor to execute a select statement for the test.
+  auto fetch_and_validate = [&conn](const std::string& expected) -> Status {
+    const auto result = VERIFY_RESULT(conn.FetchAllAsString(
+        "SELECT c_1, c_5, r FROM test WHERE h = 1 ORDER BY r DESC"));
+    SCHECK_EQ(result, expected, IllegalState, "Unexpected result");
+    return Status::OK();
+  };
+
+  // Create table.
+  constexpr auto kNumColumns = 9;
+  {
+    std::string stmt = "CREATE TABLE test(h int, r int, ";
+
+    for (auto i = 1; i <= kNumColumns; ++i) {
+      stmt += Format("c_$0 int, ", i);
+    }
+    stmt += "PRIMARY KEY(h, r asc));";
+    ASSERT_OK(conn.ExecuteFormat(stmt));
+  }
+
+  // Load data.
+  {
+    std::string stmt = "INSERT INTO test SELECT h_val, r_val";
+    for (auto i = 1; i <= kNumColumns; ++i) {
+      stmt += (i == 1) ? ", NULL" : Format(", $0", i);
+    }
+    stmt += Format(" FROM generate_series(1, 2) h_val, generate_series(1, 3) r_val;");
+    ASSERT_OK(conn.ExecuteFormat(stmt));
+    ASSERT_OK(fetch_and_validate("NULL, 5, 3; NULL, 5, 2; NULL, 5, 1"));
+  }
+
+  // Start transaction and make multiple updates for the same row.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.ExecuteFormat("UPDATE test SET c_9 = 1044 WHERE r = 3"));
+
+  const auto max_prevs = ANNOTATE_UNPROTECTED_READ(FLAGS_max_prevs_to_avoid_seek);
+  auto num_updates = 3 * (max_prevs <= 0 ? 3 : max_prevs);
+  LOG(INFO) << "max_prevs = " << max_prevs << ", num_updates = " << num_updates;
+
+  while (num_updates-- > 0) {
+    ASSERT_OK(conn.ExecuteFormat("UPDATE test SET c_5 = $0 WHERE r = 3", 2000 + num_updates));
+  }
+
+  ASSERT_OK(conn.ExecuteFormat("UPDATE test SET c_1 = 4096 WHERE h = 1 and r = 1"));
+  ASSERT_OK(fetch_and_validate("NULL, 2000, 3; NULL, 5, 2; 4096, 5, 1"));
+  ASSERT_OK(conn.CommitTransaction());
+
+  // Final validation.
+  ASSERT_OK(fetch_and_validate("NULL, 2000, 3; NULL, 5, 2; 4096, 5, 1"));
+}
+
 TEST_F_EX(PgSingleTServerTest, ColocatedJoinPerformance,
           PgSmallPrefetchTest) {
   constexpr int kNumRows = RegularBuildVsDebugVsSanitizers(10000, 1000, 100);

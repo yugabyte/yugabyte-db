@@ -188,6 +188,24 @@ ADD_YB_LIBRARY(pg_auto_analyze_service_proto
   NONLINK_DEPS ${TSERVER_YRPC_TGTS})
 
 #########################################
+# pg_cron_leader_service_proto
+#########################################
+
+YRPC_GENERATE(
+  TSERVER_YRPC_SRCS TSERVER_YRPC_HDRS TSERVER_YRPC_TGTS
+  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
+  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+  PROTO_FILES stateful_services/pg_cron_leader_service.proto)
+set(TSERVER_YRPC_LIBS
+  yrpc
+  yb_common_proto
+  protobuf)
+ADD_YB_LIBRARY(pg_cron_leader_service_proto
+  SRCS ${TSERVER_YRPC_SRCS}
+  DEPS ${TSERVER_YRPC_LIBS}
+  NONLINK_DEPS ${TSERVER_YRPC_TGTS})
+
+#########################################
 # tserver_util
 #########################################
 
@@ -242,6 +260,7 @@ set(TSERVER_SRCS
   tablet_server_options.cc
   tablet_service.cc
   tablet_validator.cc
+  ts_data_size_metrics.cc
   ts_local_lock_manager.cc
   ts_tablet_manager.cc
   tserver-path-handlers.cc

@@ -37,6 +37,28 @@ DECLARE_bool(allow_leader_balancing_dead_node);
 namespace yb {
 namespace master {
 
+namespace {
+Result<bool> IsReplicaRunning(const TabletId& tablet_id, const TabletReplica& replica) {
+  if (replica.state != tablet::UNKNOWN) {
+    return replica.state == tablet::RUNNING;
+  }
+  VLOG(3) << "Replica " << replica.ToString() << " has UNKNOWN state. Using consensus state ("
+          << PeerMemberType_Name(replica.member_type) << ") as a fallback";
+  switch (replica.member_type) {
+    case consensus::OBSERVER: FALLTHROUGH_INTENDED;
+    case consensus::VOTER:
+      return true;
+    case consensus::PRE_OBSERVER: FALLTHROUGH_INTENDED;
+    case consensus::PRE_VOTER:
+      return false;
+    default:
+      return STATUS_FORMAT(
+          IllegalState, "Unexpected member type $0 for peer $1 of tablet $2", replica.member_type,
+          replica.ts_desc->permanent_uuid(), tablet_id);
+  }
+}
+}  // namespace
+
 bool CBTabletMetadata::CanAddTSToMissingPlacements(
     const std::shared_ptr<TSDescriptor> ts_descriptor) const {
   for (const auto& under_replicated_ci : under_replicated_placements) {
@@ -179,6 +201,12 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
     const auto& ts_uuid = replica_it.first;
     const auto& replica = replica_it.second;
 
+    // Fill out leader info even if we are skipping this replica. Useful for under-replication to
+    // know if we have any leader for this tablet, even if outside of our cluster.
+    if (replica.role == PeerRole::LEADER) {
+      tablet_meta.leader_uuid = ts_uuid;
+    }
+
     if (ShouldSkipReplica(replica)) {
       continue;
     }
@@ -192,8 +220,7 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
     // getting the heartbeats from a certain tablet server, but we anticipate that to be a
     // temporary matter. We should monitor error logs for this and see that it never actually
     // becomes a problem!
-    VLOG(3) << "Obtained replica " << replica.ToString() << " for tablet "
-            << tablet_id;
+    VLOG(3) << "Obtained replica " << replica.ToString() << " for tablet " << tablet_id;
     if (per_ts_meta_.find(ts_uuid) == per_ts_meta_.end()) {
       return STATUS_SUBSTITUTE(LeaderNotReadyToServe, "Master leader has not yet received "
           "heartbeat from ts $0, either master just became leader or a network partition.",
@@ -224,21 +251,17 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
 
     // Fill leader info.
     if (replica.role == PeerRole::LEADER) {
-      tablet_meta.leader_uuid = ts_uuid;
       RETURN_NOT_OK(AddLeaderTablet(tablet_id, ts_uuid, replica.fs_data_dir));
     }
 
-    const tablet::RaftGroupStatePB& tablet_state = replica.state;
+    bool replica_is_running = VERIFY_RESULT(IsReplicaRunning(tablet_id, replica));
     const bool replica_is_stale = replica.IsStale();
-    VLOG(3) << "Tablet " << tablet_id << " for table " << table_id_
-              << " is in state " << RaftGroupStatePB_Name(tablet_state) << " on peer " << ts_uuid;
+    VLOG(3) << "Tablet " << tablet_id << " for table " << table_id_ << " is in state "
+            << RaftGroupStatePB_Name(replica.state) << " on peer " << ts_uuid;
 
-    // The 'UNKNOWN' tablet state was introduced as a pre-'RUNNING' state. Treat 'UNKNOWN' as a
-    // 'RUNNING' state to maintain the existing behavior.
-    if (tablet_state == tablet::UNKNOWN || tablet_state == tablet::RUNNING) {
+    if (replica_is_running) {
       RETURN_NOT_OK(AddRunningTablet(tablet_id, ts_uuid, replica.fs_data_dir));
-    } else if (!replica_is_stale &&
-                (tablet_state == tablet::BOOTSTRAPPING || tablet_state == tablet::NOT_STARTED)) {
+    } else if (!replica_is_stale && !replica_is_running) {
       // Keep track of transitioning state (not running, but not in a stopped or failed state).
       RETURN_NOT_OK(AddStartingTablet(tablet_id, ts_uuid));
       auto counter_it = meta_ts.path_to_starting_tablets_count.find(replica.fs_data_dir);

@@ -160,6 +160,12 @@ class LogCache {
 
   int64_t earliest_op_index() const;
 
+  Result<HybridTime> GetMinStartTimeRunningTxnsFromSegmentFooter(int64_t segment_number) const;
+
+  Result<int64_t> GetMaxReplicateIndexFromSegmentFooter(int64_t segment_number) const;
+
+  int64_t GetActiveSegmentNumber() const;
+
   // Dump the current contents of the cache to the log.
   void DumpToLog() const;
 
@@ -179,6 +185,8 @@ class LogCache {
   // Returns "NotFound" if the op has been GCed.
   // Returns another bad Status if the log index fails to load (eg. due to an IO error).
   Result<yb::OpId> LookupOpId(int64_t op_index) const;
+
+  Result<int64_t> LookupOpWalSegmentNumber (int64_t op_index) const;
 
   // Start memory tracking of following operations in case they are still present in cache.
   void TrackOperationsMemory(const OpIds& op_ids);

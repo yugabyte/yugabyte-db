@@ -47,6 +47,23 @@
         ansible_distribution_major_version == '8'
       tags: yb-prebuilt-ami
 
+- name: "Install polkit on AlmaLinux 9 machines"
+  hosts: "{{ yb_ansible_host }}"
+  strategy: linear
+  gather_facts: no
+  become: yes
+  become_method: sudo
+  vars:
+    air_gapped: "{{ air_gap | default(false) }}"
+  tasks:
+    - name: "Install polkit on AlmaLinux 9 family"
+      raw: >
+        (test -e /usr/bin/dnf) && (dnf install -y polkit)
+      when: >
+        not air_gapped and ansible_os_family == 'RedHat' and
+        ansible_distribution_major_version == '9'
+      tags: yb-prebuilt-ami
+
 - name: "Pre-provisioning tasks"
   hosts: "{{ yb_ansible_host }}"
   become: yes

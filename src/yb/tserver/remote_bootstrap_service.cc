@@ -56,6 +56,7 @@
 #include "yb/util/fault_injection.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -80,10 +81,20 @@ using namespace std::literals;
     } \
   } while (false)
 
-DEFINE_RUNTIME_uint64(remote_bootstrap_idle_timeout_ms, 2 * yb::MonoTime::kMillisecondsPerHour,
-              "Amount of time without activity before a remote bootstrap "
-              "session will expire, in millis");
+DEFINE_RUNTIME_AUTO_uint64(remote_bootstrap_idle_timeout_ms, kLocalVolatile,
+    static_cast<uint64_t>(2 * yb::MonoTime::kMillisecondsPerHour),
+    static_cast<uint64_t>(3 * yb::MonoTime::kMillisecondsPerMinute),
+    "Amount of time without activity before a remote bootstrap session which hasn't yet fetched "
+    "all data (hasn't called EndRemoteBootstrapSession) will expire, in millis.");
 TAG_FLAG(remote_bootstrap_idle_timeout_ms, hidden);
+
+DEFINE_RUNTIME_uint64(remote_bootstrap_successful_session_idle_timeout_ms,
+    2 * yb::MonoTime::kMillisecondsPerHour,
+    "Amount of time without activity before a remote bootstrap session that has fetched all data "
+    "(has called EndRemoteBootstrapSession, but not RemoveRemoteBootstrapSession yet) will expire, "
+    "in millis. Since the local bootstrap at the RBS dest might take a while, especially if the "
+    "the tablet is large, this flag is set in order of hrs.");
+TAG_FLAG(remote_bootstrap_successful_session_idle_timeout_ms, hidden);
 
 DEFINE_UNKNOWN_uint64(remote_bootstrap_timeout_poll_period_ms, 10000,
               "How often the remote_bootstrap service polls for expired "
@@ -112,6 +123,9 @@ DEFINE_test_flag(
 DEFINE_UNKNOWN_uint64(remote_bootstrap_change_role_timeout_ms, 15000,
               "Timeout for change role operation during remote bootstrap.");
 
+METRIC_DEFINE_gauge_int32(server, num_remote_bootstrap_sessions_serving_data,
+    "Number of active Remote Bootstrap Sessions transferring data", yb::MetricUnit::kUnits,
+    "Number of Remote Bootstrap Sessions served by this node that are actively transferring data.");
 namespace yb {
 namespace tserver {
 
@@ -148,6 +162,8 @@ RemoteBootstrapServiceImpl::RemoteBootstrapServiceImpl(
   CHECK_OK(Thread::Create("remote-bootstrap", "rb-session-exp",
                           &RemoteBootstrapServiceImpl::EndExpiredSessions, this,
                           &session_expiration_thread_));
+  num_sessions_serving_data_ = METRIC_num_remote_bootstrap_sessions_serving_data.Instantiate(
+      metric_entity, 0);
 }
 
 RemoteBootstrapServiceImpl::~RemoteBootstrapServiceImpl() {
@@ -341,7 +357,6 @@ void RemoteBootstrapServiceImpl::RemoveRemoteBootstrapSession(const std::string&
   LOG(INFO) << "Removing remote bootstrap session " << session_id << " on tablet " << session_id
             << " with peer " << it->second.session->requestor_uuid();
   sessions_.erase(it);
-  nsessions_.fetch_sub(1, std::memory_order_acq_rel);
 }
 
 void RemoteBootstrapServiceImpl::Shutdown() {
@@ -423,16 +438,17 @@ Result<scoped_refptr<RemoteBootstrapSession>> RemoteBootstrapServiceImpl::Create
       LOG(INFO) << "Beginning new remote bootstrap session on tablet " << tablet_id << " from peer "
                 << requestor_uuid << " at " << requestor_string << ": session id = " << session_id;
       session.reset(new RemoteBootstrapSession(
-          tablet_peer, session_id, requestor_uuid, &nsessions_, rbs_anchor_client));
+          tablet_peer, session_id, requestor_uuid, &nsessions_serving_data_, rbs_anchor_client));
       it = sessions_.emplace(session_id, SessionData{session, CoarseTimePoint()}).first;
-      auto new_nsessions = nsessions_.fetch_add(1, std::memory_order_acq_rel) + 1;
-      LOG_IF(DFATAL, implicit_cast<size_t>(new_nsessions) != sessions_.size())
-          << "nsessions_ " << new_nsessions << " !=  number of sessions " << sessions_.size();
+      num_sessions_serving_data_->Increment();
+      nsessions_serving_data_.fetch_add(1, std::memory_order_acq_rel);
     } else {
       session = it->second.session;
       LOG(INFO) << "Re-initializing existing remote bootstrap session on tablet " << tablet_id
                 << " from peer " << requestor_uuid << " at " << requestor_string
                 << ": session id = " << session_id;
+      // Since the session id is of the <dest peer id><tablet peer id><now>, re-use of a session
+      // should be rare. Hence, ignore updating nsessions_serving_data_ in this case.
     }
 
     s = it->second.ResetExpiration(error_code);
@@ -462,7 +478,10 @@ Status RemoteBootstrapServiceImpl::ValidateFetchRequestDataId(
 
 Status RemoteBootstrapServiceImpl::SessionData::ResetExpiration(
     RemoteBootstrapErrorPB::Code* app_error) {
-  expiration = CoarseMonoClock::now() + FLAGS_remote_bootstrap_idle_timeout_ms * 1ms;
+  auto timeout_delta = session->Succeeded()
+      ? FLAGS_remote_bootstrap_successful_session_idle_timeout_ms * 1ms
+      : FLAGS_remote_bootstrap_idle_timeout_ms * 1ms;
+  expiration = CoarseMonoClock::now() + timeout_delta;
   auto status = session->RefreshRemoteLogAnchorSessionAsync();
   if (!status.ok()) {
     *app_error = RemoteBootstrapErrorPB::REMOTE_LOG_ANCHOR_FAILURE;
@@ -481,9 +500,18 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSession(
   }
   auto session = it->second.session;
 
+  // The function is called in two paths -
+  // 1. After the rbs destination completes the fetch data phase
+  // 2. When this node is removing the rbs session source since it expired.
+  //
+  // nsessions_serving_data_ is updated exactly once either as part of 1 or 2. This holds true
+  // even when expiring a session that completed the fetch data phase.
   if (session_succeeded || session->Succeeded()) {
     if(!session->Succeeded()) {
       session->SetSuccess();
+      num_sessions_serving_data_->Decrement();
+      LOG_IF(DFATAL, nsessions_serving_data_.fetch_sub(1, std::memory_order_acq_rel) <= 0)
+          << "found nsessions_serving_data_ <= 0 when updating rbs session " << session_id;
 
       const auto total_bytes = session->rate_limiter().total_bytes();
       LOG(INFO) << std::fixed << std::setprecision(3) << "Remote bootstrap session with id "
@@ -512,21 +540,23 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSession(
     if (session->ShouldChangeRole()) {
       MonoTime deadline = MonoTime::Now() + MonoDelta::FromMilliseconds(
                                                 FLAGS_remote_bootstrap_change_role_timeout_ms);
-      for (;;) {
-        Status status = session->ChangeRole();
+      Status status;
+      do {
+        status = session->ChangeRole();
         if (status.ok()) {
           LOG(INFO) << "ChangeRole succeeded for bootstrap session " << session_id;
           break;
         }
         LOG(WARNING) << "ChangeRole failed for bootstrap session " << session_id
                      << ", error : " << status;
-        if (!status.IsLeaderHasNoLease() || MonoTime::Now() >= deadline) {
-          RemoteBootstrapErrorPB::Code app_error;
-          return it->second.ResetExpiration(&app_error);
-        }
-      }
+      } while (MonoTime::Now() < deadline && status.IsLeaderHasNoLease());
+      RemoteBootstrapErrorPB::Code app_error;
+      return it->second.ResetExpiration(&app_error);
     }
   } else {
+    num_sessions_serving_data_->Decrement();
+    LOG_IF(DFATAL, nsessions_serving_data_.fetch_sub(1, std::memory_order_acq_rel) <= 0)
+          << "found nsessions_serving_data_ <= 0 when updating rbs session " << session_id;
     LOG(ERROR) << "Remote bootstrap session " << session_id << " on tablet " << session->tablet_id()
                << " with peer " << session->requestor_uuid() << " failed. session_succeeded = "
                << session_succeeded;
@@ -538,20 +568,18 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSession(
 RemoteBootstrapServiceImpl::LogAnchorSessionData::LogAnchorSessionData(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     const std::shared_ptr<log::LogAnchor>& log_anchor_ptr)
-    : tablet_peer_(tablet_peer), log_anchor_ptr_(log_anchor_ptr) {
-  // the timeout period for remote bootstrap anchor session should be >> remote bootstrap session
-  // as we need to account for the additional latency for communication between the source serving
-  // the rbs requests and the tablet leader peer.
-  expiration_ = CoarseMonoClock::now() + FLAGS_remote_bootstrap_idle_timeout_ms * 2 * 1ms;
-}
+    : tablet_peer_(tablet_peer), log_anchor_ptr_(log_anchor_ptr) {}
 
 RemoteBootstrapServiceImpl::LogAnchorSessionData::~LogAnchorSessionData() {}
 
-void RemoteBootstrapServiceImpl::LogAnchorSessionData::ResetExpiration() {
-  // the timeout period for remote bootstrap anchor session should be >> remote bootstrap session
+void RemoteBootstrapServiceImpl::LogAnchorSessionData::ResetExpiration(bool session_succeeded) {
+  // The timeout period for remote bootstrap anchor session should be >> remote bootstrap session
   // as we need to account for the additional latency for communication between the source serving
   // the rbs requests and the tablet leader peer.
-  expiration_ = CoarseMonoClock::now() + FLAGS_remote_bootstrap_idle_timeout_ms * 2 * 1ms;
+  auto timeout_delta = session_succeeded
+      ? FLAGS_remote_bootstrap_successful_session_idle_timeout_ms * 1ms
+      : FLAGS_remote_bootstrap_idle_timeout_ms * 1ms;
+  expiration_ = CoarseMonoClock::now() + timeout_delta + 5s;
 }
 
 void RemoteBootstrapServiceImpl::RegisterLogAnchor(
@@ -596,13 +624,12 @@ void RemoteBootstrapServiceImpl::RegisterLogAnchor(
           requested_log_index, req->owner_info(), log_anchor_ptr.get());
       std::shared_ptr<LogAnchorSessionData> anchor_session_data(
           new LogAnchorSessionData(tablet_peer, log_anchor_ptr));
-      log_anchors_map_[req->owner_info()] = anchor_session_data;
+      it = log_anchors_map_.emplace(req->owner_info(), anchor_session_data).first;
       LOG(INFO) << "Beginning new remote log anchor session on tablet " << req->tablet_id()
                 << " with session id = " << req->owner_info();
     } else {
       tablet_peer = it->second->tablet_peer_;
       std::shared_ptr<log::LogAnchor> log_anchor_ptr(it->second->log_anchor_ptr_);
-      it->second->ResetExpiration();
       RPC_RETURN_NOT_OK(
           tablet_peer->log_anchor_registry()->UpdateRegistration(
               requested_log_index, log_anchor_ptr.get()),
@@ -613,6 +640,7 @@ void RemoteBootstrapServiceImpl::RegisterLogAnchor(
       LOG(INFO) << "Re-initializing existing remote log anchor session on tablet "
                 << req->tablet_id() << " with session id = " << req->owner_info();
     }
+    it->second->ResetExpiration(req->session_succeeded());
   }
 
   context.RespondSuccess();
@@ -632,7 +660,7 @@ void RemoteBootstrapServiceImpl::UpdateLogAnchor(
   const auto requested_log_index = req->op_id().index();
   std::shared_ptr<tablet::TabletPeer> tablet_peer(it->second->tablet_peer_);
   std::shared_ptr<log::LogAnchor> log_anchor_ptr(it->second->log_anchor_ptr_);
-  it->second->ResetExpiration();
+  it->second->ResetExpiration(req->session_succeeded());
   RPC_RETURN_NOT_OK(
       tablet_peer->log_anchor_registry()->UpdateRegistration(
           requested_log_index, log_anchor_ptr.get()),
@@ -658,7 +686,7 @@ void RemoteBootstrapServiceImpl::KeepLogAnchorAlive(
   }
   std::shared_ptr<tablet::TabletPeer> tablet_peer(it->second->tablet_peer_);
   std::shared_ptr<log::LogAnchor> log_anchor_ptr(it->second->log_anchor_ptr_);
-  it->second->ResetExpiration();
+  it->second->ResetExpiration(req->session_succeeded());
   context.RespondSuccess();
 }
 
@@ -696,7 +724,7 @@ void RemoteBootstrapServiceImpl::ChangePeerRole(
     }
 
     tablet_peer = it->second->tablet_peer_;
-    it->second->ResetExpiration();
+    it->second->ResetExpiration(true /* ChangeRole is only called for successful rbs sessions */);
   }
 
   RPC_RETURN_NOT_OK(
@@ -782,7 +810,8 @@ void RemoteBootstrapServiceImpl::EndExpiredSessions() {
 void RemoteBootstrapServiceImpl::DumpStatusHtml(std::ostream& out) {
   out << "<h1>Remote Bootstrap Sessions</h1>" << std::endl;
   out << "<table class='table table-striped'>" << std::endl;
-  out << "<tr><th> Tablet ID </th><th> Peer ID </th></tr>" << std::endl;
+  out << "<tr><th> Tablet ID </th><th> Peer ID </th><th> Time to expire </th></tr>" << std::endl;
+  auto now = CoarseMonoClock::Now();
   {
     std::lock_guard l(sessions_mutex_);
     for (const auto& [_, session_data] : sessions_) {
@@ -790,6 +819,7 @@ void RemoteBootstrapServiceImpl::DumpStatusHtml(std::ostream& out) {
       out << "<tr>"
             << "<td>" << session->tablet_id() << "</td>"
             << "<td>" << session->requestor_uuid() << "</td>"
+            << "<td>" << ToStringRelativeToNowOnly(session_data.expiration, now) << "</td>"
           << "</tr>";
     }
   }
@@ -800,6 +830,7 @@ void RemoteBootstrapServiceImpl::DumpStatusHtml(std::ostream& out) {
   out << "<tr>"
         << "<th> Owner Info [requestor_uuid-tablet_id-start_timestamp] </th>"
         << "<th> Anchored at Log Index </th>"
+        << "<th> Time to expire </th>"
       << "</tr>" << std::endl;
   {
     std::lock_guard l(log_anchors_mutex_);
@@ -808,6 +839,7 @@ void RemoteBootstrapServiceImpl::DumpStatusHtml(std::ostream& out) {
       out << "<tr>"
             << "<td>" << id << "</td>"
             << "<td>" << log_anchor->index() << "</td>"
+            << "<td>" << ToStringRelativeToNowOnly(session_data->expiration_, now) << "</td>"
           << "</tr>";
     }
   }

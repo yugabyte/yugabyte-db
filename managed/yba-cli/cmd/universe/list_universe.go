@@ -17,9 +17,11 @@ import (
 )
 
 var listUniverseCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List YugabyteDB Anywhere universes",
-	Long:  "List YugabyteDB Anywhere universes",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List YugabyteDB Anywhere universes",
+	Long:    "List YugabyteDB Anywhere universes",
+	Example: `yba universe list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 

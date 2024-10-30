@@ -89,12 +89,12 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
     Integer ybctid_size = 10 + 2 * (type_size + 1);
 
     stmt.execute(String.format("CREATE TABLE %1$s (k1 %2$s, k2 %2$s, v1 %2$s, v2 %2$s, " +
-                               "PRIMARY KEY (k1 ASC, k2 ASC));", table_name, type_name));
+                               "PRIMARY KEY (k1 ASC, k2 ASC))", table_name, type_name));
     stmt.execute(String.format("CREATE INDEX %1$s_index ON %1$s (v1 ASC, v2 ASC)",
                                table_name, type_name));
-    stmt.execute(String.format("INSERT INTO %1$s values(%2$s, %2$s, %2$s, %2$s);",
+    stmt.execute(String.format("INSERT INTO %1$s values(%2$s, %2$s, %2$s, %2$s)",
                                table_name, value));
-    stmt.execute(String.format("ANALYZE %1$s;", table_name));
+    stmt.execute(String.format("ANALYZE %1$s", table_name));
     testDocdbResultWidhEstimationHelper(stmt,
         String.format("SELECT k1 FROM %1$s", table_name),
         String.format("%1$s", table_name), value_size);
@@ -165,15 +165,13 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
      */
     Integer ybctid_size = 10 + 2 * (type_size + 3);
 
-    LOG.info(String.format("GAURAV : value_size = %d", value_size));
-
     stmt.execute(String.format("CREATE TABLE %1$s (k1 %2$s, k2 %2$s, v1 %2$s, v2 %2$s, " +
-                               "PRIMARY KEY (k1 ASC, k2 ASC));", table_name, type_name));
+                               "PRIMARY KEY (k1 ASC, k2 ASC))", table_name, type_name));
     stmt.execute(String.format("CREATE INDEX %1$s_index ON %1$s (v1 ASC, v2 ASC)",
                                table_name, type_name));
-    stmt.execute(String.format("INSERT INTO %1$s values(%2$s, %2$s, %2$s, %2$s);",
+    stmt.execute(String.format("INSERT INTO %1$s values(%2$s, %2$s, %2$s, %2$s)",
                                table_name, value));
-    stmt.execute(String.format("ANALYZE %1$s;", table_name));
+    stmt.execute(String.format("ANALYZE %1$s", table_name));
     testDocdbResultWidhEstimationHelper(stmt,
         String.format("SELECT k1 FROM %1$s", table_name),
         String.format("%1$s", table_name), value_size);
@@ -303,9 +301,9 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
   public void testDocdbResultWidthEstimationCompositeIndices() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE t_int_hash_range_key (h1 INT, h2 INT, r1 INT, r2 INT, " +
-                   "v1 INT, v2 INT, PRIMARY KEY ((h1, h2) HASH, r1 ASC, r2 ASC));");
-      stmt.execute("INSERT INTO t_int_hash_range_key values (1, 1, 1, 1, 1, 1);");
-      stmt.execute("ANALYZE t_int_hash_range_key;");
+                   "v1 INT, v2 INT, PRIMARY KEY ((h1, h2) HASH, r1 ASC, r2 ASC))");
+      stmt.execute("INSERT INTO t_int_hash_range_key values (1, 1, 1, 1, 1, 1)");
+      stmt.execute("ANALYZE t_int_hash_range_key");
       testDocdbResultWidhEstimationHelper(stmt, "SELECT h1 FROM t_int_hash_range_key",
           "t_int_hash_range_key", 5);
       testDocdbResultWidhEstimationHelper(stmt, "SELECT r1 FROM t_int_hash_range_key",
@@ -327,9 +325,9 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
 
       stmt.execute("CREATE TABLE t_int_numeric_hash_range_key (hi1 INT, hn2 NUMERIC(16, 8), " +
           "ri1 INT, rn2 NUMERIC(16, 8), vi1 INT, vn2 NUMERIC(16, 8), " +
-          "PRIMARY KEY ((hi1, hn2) HASH, ri1 ASC, rn2 ASC));");
-      stmt.execute("INSERT INTO t_int_numeric_hash_range_key values (1, 1, 1, 1, 1, 1);");
-      stmt.execute("ANALYZE t_int_numeric_hash_range_key;");
+          "PRIMARY KEY ((hi1, hn2) HASH, ri1 ASC, rn2 ASC))");
+      stmt.execute("INSERT INTO t_int_numeric_hash_range_key values (1, 1, 1, 1, 1, 1)");
+      stmt.execute("ANALYZE t_int_numeric_hash_range_key");
       testDocdbResultWidhEstimationHelper(stmt,
           "SELECT hi1 FROM t_int_numeric_hash_range_key",
           "t_int_numeric_hash_range_key", 5);
@@ -386,59 +384,59 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
      */
     try (Statement stmt = connection.createStatement()) {
 
-      stmt.execute("CREATE TYPE two_ints AS (i1 INTEGER, i2 INTEGER);");
-      stmt.execute("CREATE TABLE test_ints (v two_ints);");
-      stmt.execute("INSERT INTO test_ints values (ROW(1, 1));");
-      stmt.execute("ANALYZE test_ints;");
+      stmt.execute("CREATE TYPE two_ints AS (i1 INTEGER, i2 INTEGER)");
+      stmt.execute("CREATE TABLE test_ints (v two_ints)");
+      stmt.execute("INSERT INTO test_ints values (ROW(1, 1))");
+      stmt.execute("ANALYZE test_ints");
 
       testDocdbResultWidhEstimationHelper(stmt,
           "SELECT * FROM test_ints", "test_ints", 38);
       testDocdbResultWidhEstimationHelper(stmt,
           "SELECT (v).i1 FROM test_ints", "test_ints", 38);
 
-      stmt.execute("CREATE TABLE test_int_array (v int[4]);");
-      stmt.execute("INSERT INTO test_int_array values ('{1, 2, 3, 4}');");
-      stmt.execute("ANALYZE test_int_array;");
+      stmt.execute("CREATE TABLE test_int_array (v int[4])");
+      stmt.execute("INSERT INTO test_int_array values ('{1, 2, 3, 4}')");
+      stmt.execute("ANALYZE test_int_array");
 
       testDocdbResultWidhEstimationHelper(stmt,
           "SELECT * FROM test_int_array", "test_int_array", 46);
       testDocdbResultWidhEstimationHelper(stmt,
           "SELECT v[1] FROM test_int_array", "test_int_array", 46);
 
-      stmt.execute("CREATE TYPE two_numerics AS (n1 NUMERIC(8, 4), n2 NUMERIC(8, 4));");
-      stmt.execute("CREATE TABLE test_numerics (v two_numerics);");
-      stmt.execute("INSERT INTO test_numerics values (ROW(1234.1234, 1234.1234));");
-      stmt.execute("ANALYZE test_numerics;");
+      stmt.execute("CREATE TYPE two_numerics AS (n1 NUMERIC(8, 4), n2 NUMERIC(8, 4))");
+      stmt.execute("CREATE TABLE test_numerics (v two_numerics)");
+      stmt.execute("INSERT INTO test_numerics values (ROW(1234.1234, 1234.1234))");
+      stmt.execute("ANALYZE test_numerics");
 
       testDocdbResultWidhEstimationHelper(stmt,
           "SELECT * FROM test_numerics", "test_numerics", 44);
       testDocdbResultWidhEstimationHelper(stmt,
           "SELECT (v).n1 FROM test_numerics", "test_numerics", 44);
 
-      stmt.execute("CREATE TABLE test_numeric_array (v numeric(8, 4)[4]);");
+      stmt.execute("CREATE TABLE test_numeric_array (v numeric(8, 4)[4])");
       stmt.execute("INSERT INTO test_numeric_array values " +
-          "('{1234.1234, 2345.2345, 3456.3456, 4567.4567}');");
-      stmt.execute("ANALYZE test_numeric_array;");
+          "('{1234.1234, 2345.2345, 3456.3456, 4567.4567}')");
+      stmt.execute("ANALYZE test_numeric_array");
 
       testDocdbResultWidhEstimationHelper(stmt,
           "SELECT * FROM test_numeric_array", "test_numeric_array", 78);
       testDocdbResultWidhEstimationHelper(stmt,
           "SELECT v[1] FROM test_numeric_array", "test_numeric_array", 78);
 
-      stmt.execute("CREATE TYPE two_varchars AS (v1 VARCHAR(8), v2 VARCHAR(8));");
-      stmt.execute("CREATE TABLE test_varchars (v two_varchars);");
-      stmt.execute("INSERT INTO test_varchars values (ROW('abcdefgh', 'abcdefgh'));");
-      stmt.execute("ANALYZE test_varchars;");
+      stmt.execute("CREATE TYPE two_varchars AS (v1 VARCHAR(8), v2 VARCHAR(8))");
+      stmt.execute("CREATE TABLE test_varchars (v two_varchars)");
+      stmt.execute("INSERT INTO test_varchars values (ROW('abcdefgh', 'abcdefgh'))");
+      stmt.execute("ANALYZE test_varchars");
 
       testDocdbResultWidhEstimationHelper(stmt,
           "SELECT * FROM test_varchars", "test_varchars", 48);
       testDocdbResultWidhEstimationHelper(stmt,
           "SELECT (v).v1 FROM test_varchars", "test_varchars", 48);
 
-      stmt.execute("CREATE TABLE test_varchar_array (v varchar(4)[4]);");
+      stmt.execute("CREATE TABLE test_varchar_array (v varchar(4)[4])");
       stmt.execute("INSERT INTO test_varchar_array values " +
-          "('{\"abcd\", \"abcd\", \"abcd\", \"abcd\"}');");
-      stmt.execute("ANALYZE test_varchar_array;");
+          "('{\"abcd\", \"abcd\", \"abcd\", \"abcd\"}')");
+      stmt.execute("ANALYZE test_varchar_array");
 
       testDocdbResultWidhEstimationHelper(stmt,
           "SELECT * FROM test_varchar_array", "test_varchar_array", 62);
@@ -454,9 +452,9 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
      */
     try (Statement stmt = connection.createStatement()) {
 
-      stmt.execute("CREATE TABLE t_20955 (i1 INT, i2 INT, i3 INT);");
-      stmt.execute("INSERT INTO t_20955 values (1, 1, 1);");
-      stmt.execute("ANALYZE t_20955;");
+      stmt.execute("CREATE TABLE t_20955 (i1 INT, i2 INT, i3 INT)");
+      stmt.execute("INSERT INTO t_20955 values (1, 1, 1)");
+      stmt.execute("ANALYZE t_20955");
 
       /* Actual result 9 (1 byte for null indicator and 8 byte for int64 result */
       testAggregateFunctionsDocdbResultWidhEstimationHelper(stmt,
@@ -487,9 +485,9 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
      */
     try (Statement stmt = connection.createStatement()) {
 
-      stmt.execute("CREATE TABLE t_20956 (i1 INT, i2 INT, PRIMARY KEY (i1 ASC));");
-      stmt.execute("INSERT INTO t_20956 values (1, 1);");
-      stmt.execute("ANALYZE t_20956;");
+      stmt.execute("CREATE TABLE t_20956 (i1 INT, i2 INT, PRIMARY KEY (i1 ASC))");
+      stmt.execute("INSERT INTO t_20956 values (1, 1)");
+      stmt.execute("ANALYZE t_20956");
 
       /* Both filters on i1 are marked eligible to be pushed down as index
        * filters so we should only receive the value of i2 for the matching rows
@@ -502,6 +500,65 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
       testDocdbResultWidhEstimationHelper(stmt, "/*+IndexScan(t_20956)*/ SELECT i2 FROM t_20956 " +
           "WHERE i1 = 1 and i1 in (2, 3, 4)",
           "t_20956", 5);
+    }
+  }
+
+  @Test
+  public void testDocdbResultWidthEstimationSystemTablesYbctid() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      testDocdbResultWidhEstimationHelper(stmt, "SELECT 0 FROM pg_class",
+        "pg_class", 15);
+      testDocdbResultWidhEstimationHelper(stmt,
+        "/*+ IndexOnlyScan(pg_class pg_class_relname_nsp_index) */ SELECT 0 FROM pg_class",
+        "pg_class", 93);
+      testDocdbResultWidhEstimationHelper(stmt,
+        "/*+ IndexOnlyScan(pg_class pg_class_tblspc_relfilenode_index) */ SELECT 0 FROM pg_class",
+        "pg_class", 33);
+    }
+  }
+
+  @Test
+  public void testDocdbResultWidthEstimationExpressionIndexYbctid() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE test_table (v1 int, v2 int, v3 varchar(16), v4 varchar(32))");
+      stmt.execute("CREATE INDEX test_index_1 ON test_table (v1, (v1 + v2), v2, " +
+        "sqrt(v2), v3, (v3 || v4), v4)");
+      stmt.execute(
+        "CREATE INDEX test_index_2 ON test_table ((v1 + v2), sqrt(v2), (v3 || v4))");
+      stmt.execute(
+        "CREATE INDEX test_index_3 ON test_table ((v1::text || v2::text), " +
+        "(sqrt(v2)::text || v3 || v4))");
+      stmt.execute("INSERT INTO test_table (SELECT s, s, left(md5(random()::text), 16), " +
+        "md5(random()::text) FROM generate_series(1, 10000) s)");
+      stmt.execute("ANALYZE test_table");
+
+      testDocdbResultWidhEstimationHelper(stmt,
+        "/*+ SeqScan(test_table) */ SELECT 0 FROM test_table",
+        "test_table", 33);
+      testDocdbResultWidhEstimationHelper(stmt,
+        "/*+ IndexOnlyScan(test_table test_index_1) */ SELECT 0 FROM test_table",
+        "test_table", 178);
+      testDocdbResultWidhEstimationHelper(stmt,
+        "/*+ IndexOnlyScan(test_table test_index_2) */ SELECT 0 FROM test_table",
+        "test_table", 113);
+      testDocdbResultWidhEstimationHelper(stmt,
+        "/*+ IndexOnlyScan(test_table test_index_3) */ SELECT 0 FROM test_table",
+        "test_table", 127);
+
+      stmt.execute("CREATE INDEX test_index_4 ON test_table " +
+        "((sqrt(v1)::text || v3), (sqrt(v2)::text || v4))");
+
+      // Without running ANALYZE, the result width is incorrect for test_index_4
+      testDocdbResultWidhEstimationHelper(stmt,
+        "/*+ IndexOnlyScan(test_table test_index_4) */ SELECT 0 FROM test_table",
+        "test_table", 48);
+
+      stmt.execute("ANALYZE test_table");
+
+      // After running ANALYZE, result width is updated for test_index_4
+      testDocdbResultWidhEstimationHelper(stmt,
+        "/*+ IndexOnlyScan(test_table test_index_4) */ SELECT 0 FROM test_table",
+        "test_table", 136);
     }
   }
 }

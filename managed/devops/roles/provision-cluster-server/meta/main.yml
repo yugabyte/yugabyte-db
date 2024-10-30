@@ -23,8 +23,6 @@ dependencies:
     ssh_config:
       ssh_type: "{{ ssh_version | default('ssh') }}"
       enabled: "{{ cluster_server_vault|default(False) }}"
-      id_rsa: "{{ cluster_server_vault | get_value('id_rsa') }}"
-      id_rsa_pub: "{{ cluster_server_vault | get_value('id_rsa_pub') }}"
       sudo_user: "{{ yb_server_ssh_user | default(omit) }}"
       authorized_keys: "{{ cluster_server_vault | get_value('authorized_keys') }}"
 

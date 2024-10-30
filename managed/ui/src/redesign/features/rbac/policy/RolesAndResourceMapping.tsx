@@ -113,9 +113,10 @@ const useStyles = makeStyles((theme) => ({
 type RolesAndResourceMappingProps = {
   customTitle?: string;
   hideCustomRoles?: boolean;
+  hideConnectOnlyHelpText?: boolean;
 };
 
-export const RolesAndResourceMapping: FC<RolesAndResourceMappingProps> = ({ customTitle, hideCustomRoles = false }) => {
+export const RolesAndResourceMapping: FC<RolesAndResourceMappingProps> = ({ customTitle, hideCustomRoles = false, hideConnectOnlyHelpText = false }) => {
   const { isLoading: isRoleListLoading, data: roles } = useQuery('roles', getAllRoles, {
     select: (data) => data.data
   });
@@ -145,7 +146,7 @@ export const RolesAndResourceMapping: FC<RolesAndResourceMappingProps> = ({ cust
 
   if (isRoleListLoading || isUniverseListLoading) return <YBLoadingCircleIcon />;
 
-  const ConnectOnly = (
+  const ConnectOnly = hideConnectOnlyHelpText ? null : (
     <div className={classes.connectOnly}>
       <Trans t={t} i18nKey="connectOnly" components={{ b: <b /> }} />
     </div>

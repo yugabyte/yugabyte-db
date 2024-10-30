@@ -125,7 +125,7 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
     if (!subkeys.empty() && IsColumnId(static_cast<KeyEntryType>(subkeys[0]))) {
       if (key_data.key.empty() || key_data.write_time < packed_row_write_time_) {
         KeyEntryType entry_type = static_cast<KeyEntryType>(subkeys.consume_byte());
-        int64_t column_id_as_int64 = VERIFY_RESULT(FastDecodeSignedVarIntUnsafe(&subkeys));
+        int64_t column_id_as_int64 = VERIFY_RESULT(FastDecodeSignedVarInt(&subkeys));
         ColumnId column_id_ref;
         RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id_ref));
         if (subkeys.empty()) {

@@ -3103,179 +3103,6 @@ void MasterPathHandlers::HandleVersionInfoDump(
   jw.Protobuf(version_info);
 }
 
-void MasterPathHandlers::HandlePrettyLB(
-  const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-
-  std::stringstream *output = &resp->output;
-
-  // Don't render if there are more than 5 tservers.
-  auto descs = master_->ts_manager()->GetAllDescriptors();
-
-  if (descs.size() > 5) {
-    *output << "<div class='alert alert-warning'>"
-            << "Current configuration has more than 5 tservers. Not recommended"
-            << " to view this pretty display as it might not be rendered properly."
-            << "</div>";
-    return;
-  }
-
-  // Don't render if there is a lot of placement nesting.
-  std::unordered_set<std::string> clouds;
-  std::unordered_set<std::string> regions;
-  // Map of zone -> {tserver UUIDs}
-  // e.g. zone1 -> {ts1uuid, ts2uuid, ts3uuid}.
-  std::unordered_map<std::string, vector<std::string>> zones;
-  for (const auto& desc : descs) {
-    std::string uuid = desc->permanent_uuid();
-    std::string cloud = desc->GetCloudInfo().placement_cloud();
-    std::string region = desc->GetCloudInfo().placement_region();
-    std::string zone = desc->GetCloudInfo().placement_zone();
-
-    zones[zone].push_back(uuid);
-    clouds.insert(cloud);
-    regions.insert(region);
-  }
-
-  // If the we have more than 1 cloud or more than 1 region skip this page
-  // as currently it might not diplay prettily.
-  if (clouds.size() > 1 || regions.size() > 1 || zones.size() > 3) {
-    *output << "<div class='alert alert-warning'>"
-            << "Current placement has more than 1 cloud provider or 1 region or 3 zones. "
-            << "Not recommended to view this pretty display as it might not be rendered properly."
-            << "</div>";
-    return;
-  }
-
-  // Get the TServerTree.
-  // A map of tserver -> all tables with their tablets.
-  auto tserver_tree_result = CalculateTServerTree(4 /* max_table_count */);
-  if (!tserver_tree_result.ok()) {
-    *output << "<div class='alert alert-warning'>"
-            << "Current placement has more than 4 tables. Not recommended"
-            << " to view this pretty display as it might not be rendered properly."
-            << "</div>";
-    return;
-  }
-  auto& tserver_tree = *tserver_tree_result;
-
-  auto blacklist_result = master_->catalog_manager()->BlacklistSetFromPB();
-  BlacklistSet blacklist = blacklist_result.ok() ? *blacklist_result : BlacklistSet();
-
-  // A single zone.
-  int color_index = 0;
-  std::unordered_map<std::string, std::string> tablet_colors;
-
-  *output << "<div class='row'>\n";
-  for (const auto& zone : zones) {
-    // Panel for this Zone.
-    // Split the zones in proportion of the number of tservers in each zone.
-    *output << Format("<div class='col-lg-$0'>\n", 12*zone.second.size()/descs.size());
-
-    // Change the display of the panel if all tservers in this zone are down.
-    bool all_tservers_down = true;
-    for (const auto& tserver : zone.second) {
-      std::shared_ptr<TSDescriptor> desc;
-      if (!master_->ts_manager()->LookupTSByUUID(tserver, &desc)) {
-        continue;
-      }
-      all_tservers_down = all_tservers_down && !desc->IsLive();
-    }
-    string zone_panel_display = "panel-success";
-    if (all_tservers_down) {
-      zone_panel_display = "panel-danger";
-    }
-
-    *output << Format("<div class='panel $0'>\n", zone_panel_display);
-    *output << Format("<div class='panel-heading'>"
-                          "<h6 class='panel-title'>Zone: $0</h6></div>\n",
-                      EscapeForHtmlToString(zone.first));
-    *output << "<div class='row'>\n";
-
-    // Tservers for this panel.
-    for (const auto& tserver : zone.second) {
-      // Split tservers equally.
-      *output << Format("<div class='col-lg-$0'>\n", 12/(zone.second.size()));
-      std::shared_ptr<TSDescriptor> desc;
-      if (!master_->ts_manager()->LookupTSByUUID(tserver, &desc)) {
-        continue;
-      }
-
-      // Get the state of tserver.
-      bool ts_live = desc->IsLive();
-      // Get whether tserver is blacklisted.
-      bool blacklisted = desc->IsBlacklisted(blacklist);
-      string panel_type = "panel-success";
-      string icon_type = "fa-check";
-      if (!ts_live || blacklisted) {
-        panel_type = "panel-danger";
-        icon_type = "fa-times";
-      }
-      *output << Format("<div class='panel $0' style='margin-bottom: 0px'>\n", panel_type);
-
-      // Point to the tablet servers link.
-      auto reg = desc->GetRegistration();
-      *output << Format("<div class='panel-heading'>"
-                            "<h6 class='panel-title'><a href='$0://$1'>TServer - $1    "
-                            "<i class='fa $2'></i></a></h6></div>\n",
-                            GetProtocol(),
-                            EscapeForHtmlToString(
-                                GetHttpHostPortFromServerRegistration(reg)),
-                            icon_type);
-
-      *output << "<table class='table table-borderless table-hover'>\n";
-      for (const auto& table : tserver_tree[tserver]) {
-        *output << Format("<tr height='200px'>\n");
-        // Display the table name.
-        string tname = master_->catalog_manager()->GetTableInfo(table.first)->name();
-        // Link the table name to the corresponding table page on the master.
-        ServerRegistrationPB reg;
-        if (!master_->GetMasterRegistration(&reg).ok()) {
-          continue;
-        }
-        *output << Format("<td><h4><a href='$0://$1/table?id=$2'>"
-                              "<i class='fa fa-table'></i>    $3</a></h4>\n",
-                              GetProtocol(),
-                              EscapeForHtmlToString(GetHttpHostPortFromServerRegistration(reg)),
-                              UrlEncodeToString(table.first),
-                              EscapeForHtmlToString(tname));
-        // Replicas of this table.
-        for (const auto& replica : table.second) {
-          // All the replicas of the same tablet will have the same color, so
-          // look it up in the map if assigned, otherwise assign one from the pool.
-          if (tablet_colors.find(replica.tablet_id) == tablet_colors.end()) {
-            tablet_colors[replica.tablet_id] = kYBColorList[color_index];
-            color_index = (color_index + 1)%kYBColorList.size();
-          }
-
-          // Leaders and followers have different formatting.
-          // Leaders need to stand out.
-          if (replica.role == PeerRole::LEADER) {
-            *output << Format("<button type='button' class='btn btn-default'"
-                                "style='background-image:none; border: 6px solid $0; "
-                                "font-weight: bolder'>"
-                                "L</button>\n",
-                                tablet_colors[replica.tablet_id]);
-          } else {
-            *output << Format("<button type='button' class='btn btn-default'"
-                                "style='background-image:none; border: 4px dotted $0'>"
-                                "F</button>\n",
-                                tablet_colors[replica.tablet_id]);
-          }
-        }
-        *output << "</td>\n";
-        *output << "</tr>\n";
-      }
-      *output << "</table><!-- tserver-level-table -->\n";
-      *output << "</div><!-- tserver-level-panel -->\n";
-      *output << "</div><!-- tserver-level-spacing -->\n";
-    }
-    *output << "</div><!-- tserver-level-row -->\n";
-    *output << "</div><!-- zone-level-panel -->\n";
-    *output << "</div><!-- zone-level-spacing -->\n";
-  }
-  *output << "</div><!-- zone-level-row -->\n";
-}
-
 void MasterPathHandlers::HandleLoadBalancer(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream* output = &resp->output;
@@ -3405,10 +3232,6 @@ Status MasterPathHandlers::Register(Webserver* server) {
   RegisterLeaderOrRedirect(
       server, "/tablet-replication", "Tablet Replication Health",
       &MasterPathHandlers::HandleTabletReplicasPage, is_styled);
-
-  RegisterLeaderOrRedirect(
-      server, "/pretty-lb", "Load balancer Pretty Picture", &MasterPathHandlers::HandlePrettyLB,
-      is_styled);
 
   RegisterLeaderOrRedirect(
       server, "/load-distribution", "Load balancer View", &MasterPathHandlers::HandleLoadBalancer,
@@ -3560,6 +3383,9 @@ Status MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
     TabletInfos tablets = VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue));
     bool is_user_table = master_->catalog_manager()->IsUserCreatedTable(*table);
     for (const auto& tablet : tablets) {
+      if (tablet->LockForRead()->is_deleted()) {
+        continue;
+      }
       auto replication_locations = tablet->GetReplicaLocations();
       for (const auto& replica : *replication_locations) {
         auto& counts = (*tablet_map)[replica.first];
@@ -3616,6 +3442,9 @@ Result<MasterPathHandlers::TServerTree> MasterPathHandlers::CalculateTServerTree
     TabletInfos tablets = VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue));
 
     for (const auto& tablet : tablets) {
+      if (tablet->LockForRead()->is_deleted()) {
+        continue;
+      }
       auto replica_locations = tablet->GetReplicaLocations();
       for (const auto& replica : *replica_locations) {
         tserver_tree[replica.first][tablet->table()->id()].emplace_back(
@@ -3675,17 +3504,24 @@ void MasterPathHandlers::RenderLoadBalancerViewPanel(
     }
     const string& table_name = table_locked->name();
     const string& table_id = table->id();
-    auto tablet_count = table->TabletCount(IncludeInactive::kTrue);
+
+    std::unordered_set<TabletId> tablet_ids;
+    for (const auto& [_, table_tree] : tserver_tree) {
+      for (const auto& [_, replicas] : table_tree) {
+        for (const auto& replica : replicas) {
+          tablet_ids.insert(replica.tablet_id);
+        }
+      }
+    }
+    auto tablet_count = tablet_ids.size();
 
     *output << Format(
         "<tr>"
         "<td>$0</td>"
         "<td><a href=\"/table?id=$1\">$2</a></td>"
         "<td>$3</td>",
-        EscapeForHtmlToString(keyspace),
-        UrlEncodeToString(table_id),
-        EscapeForHtmlToString(table_name),
-        tablet_count);
+        EscapeForHtmlToString(keyspace), UrlEncodeToString(table_id),
+        EscapeForHtmlToString(table_name), tablet_count);
     for (auto& desc : descs) {
       uint64 num_replicas = 0;
       uint64 num_leaders = 0;

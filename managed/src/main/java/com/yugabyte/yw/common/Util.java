@@ -19,6 +19,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.logging.LogUtil;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.RequestContext;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
@@ -86,6 +87,7 @@ import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
@@ -94,6 +96,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.routines.InetAddressValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import play.libs.Json;
 
 public class Util {
@@ -1362,5 +1365,25 @@ public class Util {
 
   public static <T> Predicate<T> not(Predicate<T> t) {
     return t.negate();
+  }
+
+  public static <T> T doWithCorrelationId(Function<String, T> function) {
+    Map<String, String> originalContext = MDC.getCopyOfContextMap();
+    try {
+      String correlationId = UUID.randomUUID().toString();
+      Map<String, String> context = MDC.getCopyOfContextMap();
+      if (context == null) {
+        context = new HashMap<>();
+      }
+      context.put(LogUtil.CORRELATION_ID, correlationId);
+      MDC.setContextMap(context);
+      return function.apply(correlationId);
+    } finally {
+      if (MapUtils.isEmpty(originalContext)) {
+        MDC.clear();
+      } else {
+        MDC.setContextMap(originalContext);
+      }
+    }
   }
 }

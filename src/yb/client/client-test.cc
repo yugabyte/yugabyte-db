@@ -201,20 +201,14 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
 
     // Start minicluster and wait for tablet servers to connect to master.
     auto opts = MiniClusterOptions();
-    opts.num_tablet_servers = 3;
+    opts.num_tablet_servers = NumTabletServers();
     opts.num_masters = NumMasters();
-    cluster_.reset(new MiniCluster(opts));
+    cluster_ = std::make_unique<MiniCluster>(opts);
     ASSERT_OK(cluster_->Start());
 
     // Connect to the cluster.
     ASSERT_OK(InitClient());
-
-    // Create a keyspace;
-    ASSERT_OK(client_->CreateNamespace(kKeyspaceName));
-
-    ASSERT_NO_FATALS(CreateTable(kTableName, kNumTablets, &client_table_));
-    ASSERT_NO_FATALS(CreateTable(kTable2Name, 1, &client_table2_));
-    ASSERT_NO_FATALS(CreatePgSqlTable());
+    InitializeSchema();
   }
 
   void DoTearDown() override {
@@ -235,11 +229,24 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     return 1;
   }
 
+  virtual int NumTabletServers() {
+    return 3;
+  }
+
   virtual Status InitClient() {
     client_ = VERIFY_RESULT(YBClientBuilder()
         .add_master_server_addr(yb::ToString(cluster_->mini_master()->bound_rpc_addr()))
         .Build());
     return Status::OK();
+  }
+
+  virtual void InitializeSchema() {
+    // Create a keyspace;
+    ASSERT_OK(client_->CreateNamespace(kKeyspaceName));
+
+    ASSERT_NO_FATALS(CreateTable(kTableName, kNumTablets, &client_table_));
+    ASSERT_NO_FATALS(CreateTable(kTable2Name, 1, &client_table2_));
+    ASSERT_NO_FATALS(CreatePgSqlTable());
   }
 
   string GetFirstTabletId(YBTable* table) {
@@ -2196,22 +2203,15 @@ TEST_F(ClientTest, TestCreateDuplicateTable) {
               .Create().IsAlreadyPresent());
 }
 
-TEST_F(ClientTest, CreateTableWithoutTservers) {
-  DoTearDown();
+class ClientTestWithoutTabletServers : public ClientTest {
+ protected:
+  int NumTabletServers() override { return 0; }
 
-  YBMiniClusterTestBase::SetUp();
+  void InitializeSchema() override {}
+};
 
-  MiniClusterOptions options;
-  options.num_tablet_servers = 0;
-  // Start minicluster with only master (to simulate tserver not yet heartbeating).
-  cluster_.reset(new MiniCluster(options));
-  ASSERT_OK(cluster_->Start());
-
-  // Connect to the cluster.
-  client_ = ASSERT_RESULT(YBClientBuilder()
-      .add_master_server_addr(yb::ToString(cluster_->mini_master()->bound_rpc_addr()))
-      .Build());
-
+TEST_F(ClientTestWithoutTabletServers, CreateTableWithoutTservers) {
+  ASSERT_OK(client_->CreateNamespace(kKeyspaceName));
   std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
   Status s = table_creator->table_name(YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "foobar"))
       .schema(&schema_)

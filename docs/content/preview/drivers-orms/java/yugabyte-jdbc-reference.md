@@ -57,14 +57,14 @@ To get the driver and HikariPool from Maven, add the following dependencies to t
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>jdbc-yugabytedb</artifactId>
-  <version>42.3.5-yb-8</version>
+  <version>42.7.3-yb-1</version>
 </dependency>
 
 <!-- https://mvnrepository.com/artifact/com.zaxxer/HikariCP -->
 <dependency>
   <groupId>com.zaxxer</groupId>
   <artifactId>HikariCP</artifactId>
-  <version>4.0.3</version>
+  <version>5.0.1</version>
 </dependency>
 ```
 
@@ -74,8 +74,8 @@ To get the driver and HikariPool, add the following dependencies to the Gradle p
 
 ```java
 // https://mvnrepository.com/artifact/org.postgresql/postgresql
-implementation 'com.yugabyte:jdbc-yugabytedb:42.3.5-yb-8'
-implementation 'com.zaxxer:HikariCP:4.0.3'
+implementation 'com.yugabyte:jdbc-yugabytedb:42.7.3-yb-1'
+implementation 'com.zaxxer:HikariCP:5.0.1'
 ```
 
 Note that v4 of HikariCP is required because the YugabyteDB JDBC Driver requires Java 8.

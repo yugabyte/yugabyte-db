@@ -116,8 +116,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             status,
             percentComplete,
             responseJson);
-    TaskInfo taskInfo = TaskInfo.getOrBadRequest(task.getTaskUUID());
-    when(mockCommissioner.buildTaskStatus(eq(task), eq(taskInfo), any(), any()))
+    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any()))
         .thenReturn(Optional.of(responseJson));
     when(mockCommissioner.getUpdatingTaskUUIDsForTargets(any())).thenReturn(Collections.emptyMap());
     return task.getTaskUUID();
@@ -158,7 +157,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     // Set http context
     TestUtils.setFakeHttpContext(user);
     TaskInfo taskInfo = new TaskInfo(taskInfoType, null);
-    taskInfo.setTaskUUID(taskUUID);
+    taskInfo.setUuid(taskUUID);
     taskInfo.setTaskParams(Json.newObject());
     taskInfo.setOwner("");
     taskInfo.save();
@@ -225,7 +224,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
       responseJson.set("details", Json.toJson(details));
     }
 
-    return subTask.getTaskUUID();
+    return subTask.getUuid();
   }
 
   @Test
@@ -548,6 +547,9 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   public void testTaskHistoryLimit() {
     when(mockConfGetter.getConfForScope(any(Customer.class), eq(CustomerConfKeys.taskDbQueryLimit)))
         .thenReturn(25);
+    when(mockConfGetter.getConfForScope(
+            any(Customer.class), eq(CustomerConfKeys.taskInfoDbQueryBatchSize)))
+        .thenReturn(10);
     IntStream.range(0, 100)
         .forEach(
             i ->

@@ -253,6 +253,11 @@ class ExternalMiniCluster : public MiniClusterBase {
       const std::vector<std::string>& extra_flags = {},
       int num_drives = -1);
 
+  // Shuts down the tablet server(s) and removes it/them from the masters' ts registry.
+  Status RemoveTabletServer(const std::string& ts_uuid, MonoTime deadline);
+  Status RemoveTabletServers(
+      const std::vector<std::reference_wrapper<const std::string>>& ts_uuids, MonoTime deadline);
+
   // Start YB Controller servers for all the existing TSs.
   Status StartYbControllerServers();
 
@@ -503,6 +508,10 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Removes the given flag from the extra flags on all tablet servers. A restart is required
   // to get any effect of that change.
   void RemoveExtraFlagOnTServers(const std::string& flag);
+
+  // Adds the given flag to the extra flags on all servers. Also dynamically sets the flag on the
+  // running processes. Non runtime flags would still require a restart.
+  Status AddAndSetExtraFlag(const std::string& flag, const std::string& value);
 
   // Allocates a free port and stores a file lock guarding access to that port into an internal
   // array of file locks.

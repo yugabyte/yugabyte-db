@@ -4,7 +4,7 @@
  *	  prototypes for nodeAgg.c
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/nodeAgg.h
@@ -14,6 +14,7 @@
 #ifndef NODEAGG_H
 #define NODEAGG_H
 
+#include "access/parallel.h"
 #include "nodes/execnodes.h"
 
 
@@ -158,12 +159,12 @@ typedef struct AggStatePerTransData
 	 * re-initializing the unchanging fields; which isn't much, but it seems
 	 * worth the extra space consumption.
 	 */
-	FunctionCallInfoData transfn_fcinfo;
+	FunctionCallInfo transfn_fcinfo;
 
 	/* Likewise for serialization and deserialization functions */
-	FunctionCallInfoData serialfn_fcinfo;
+	FunctionCallInfo serialfn_fcinfo;
 
-	FunctionCallInfoData deserialfn_fcinfo;
+	FunctionCallInfo deserialfn_fcinfo;
 }			AggStatePerTransData;
 
 /*
@@ -280,6 +281,14 @@ typedef struct AggStatePerPhaseData
 	Sort	   *sortnode;		/* Sort node for input ordering for phase */
 
 	ExprState  *evaltrans;		/* evaluation of transition functions  */
+
+	/*----------
+	 * Cached variants of the compiled expression.
+	 * first subscript: 0: outerops; 1: TTSOpsMinimalTuple
+	 * second subscript: 0: no NULL check; 1: with NULL check
+	 *----------
+	 */
+	ExprState  *evaltrans_cache[2][2];
 }			AggStatePerPhaseData;
 
 /*
@@ -309,8 +318,16 @@ extern AggState *ExecInitAgg(Agg *node, EState *estate, int eflags);
 extern void ExecEndAgg(AggState *node);
 extern void ExecReScanAgg(AggState *node);
 
-extern Size hash_agg_entry_size(int numAggs);
+extern Size hash_agg_entry_size(int numTrans, Size tupleWidth,
+								Size transitionSpace);
+extern void hash_agg_set_limits(double hashentrysize, double input_groups,
+								int used_bits, Size *mem_limit,
+								uint64 *ngroups_limit, int *num_partitions);
 
-extern Datum aggregate_dummy(PG_FUNCTION_ARGS);
+/* parallel instrumentation support */
+extern void ExecAggEstimate(AggState *node, ParallelContext *pcxt);
+extern void ExecAggInitializeDSM(AggState *node, ParallelContext *pcxt);
+extern void ExecAggInitializeWorker(AggState *node, ParallelWorkerContext *pwcxt);
+extern void ExecAggRetrieveInstrumentation(AggState *node);
 
 #endif							/* NODEAGG_H */

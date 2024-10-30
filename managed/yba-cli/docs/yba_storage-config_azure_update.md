@@ -10,6 +10,13 @@ Update an Azure storage configuration in YugabyteDB Anywhere
 yba storage-config azure update [flags]
 ```
 
+### Examples
+
+```
+yba storage-config azure update --name <storage-configuration-name> \
+	--sas-token <sas-token>
+```
+
 ### Options
 
 ```

@@ -138,11 +138,11 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
 
   const log::SegmentSequence& log_segments() const { return log_segments_; }
 
-  void SetSuccess();
+  void SetSuccess() EXCLUDES(mutex_);
 
-  bool Succeeded();
+  bool Succeeded() EXCLUDES(mutex_);
 
-  bool ShouldChangeRole();
+  bool ShouldChangeRole() EXCLUDES(mutex_);
 
   // Change the peer's role to VOTER.
   Status ChangeRole();

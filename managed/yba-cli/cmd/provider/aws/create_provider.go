@@ -21,9 +21,10 @@ import (
 
 // createAWSProviderCmd represents the provider command
 var createAWSProviderCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create an AWS YugabyteDB Anywhere provider",
-	Long:  "Create an AWS provider in YugabyteDB Anywhere",
+	Use:     "create",
+	Aliases: []string{"add"},
+	Short:   "Create an AWS YugabyteDB Anywhere provider",
+	Long:    "Create an AWS provider in YugabyteDB Anywhere",
 	Example: `yba provider aws create -n <provider-name> \
 	--region region-name=us-west-2,vpc-id=<vpc-id>,sg-id=<security-group> \
 	--zone zone-name=us-west-2a,region-name=us-west-2,subnet=<subnet> \
@@ -192,18 +193,15 @@ var createAWSProviderCmd = &cobra.Command{
 			},
 		}
 
-		rCreate, response, err := authAPI.CreateProvider().
+		rTask, response, err := authAPI.CreateProvider().
 			CreateProviderRequest(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Provider: AWS", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		providerUUID := rCreate.GetResourceUUID()
-		taskUUID := rCreate.GetTaskUUID()
-
-		providerutil.WaitForCreateProviderTask(authAPI,
-			providerName, providerUUID, providerCode, taskUUID)
+		providerutil.WaitForCreateProviderTask(
+			authAPI, providerName, rTask, providerCode)
 	},
 }
 
@@ -256,13 +254,6 @@ func init() {
 			"Example: --zone zone-name=us-west-2a,region-name=us-west-2,subnet=<subnet-id>"+
 			" --zone zone-name=us-west-2b,region-name=us-west-2,subnet=<subnet-id>")
 
-	// createAWSProviderCmd.Flags().Bool("add-x86-default-image-bundle", false,
-	// 	"[Optional] Include Linux versions that are chosen and managed by"+
-	// 		" YugabyteDB Anywhere in the catalog. (default false)")
-	// createAWSProviderCmd.Flags().Bool("add-aarch6-default-image-bundle", false,
-	// 	"[Optional] Include Linux versions that are chosen and managed by"+
-	// 		" YugabyteDB Anywhere in the catalog. (default false)")
-
 	createAWSProviderCmd.Flags().StringArray("image-bundle", []string{},
 		"[Optional] Image bundles associated with AWS provider. "+
 			"Provide the following comma separated fields as key-value pairs: "+
@@ -284,11 +275,11 @@ func init() {
 			"\"image-bundle-name=<image-bundle-name>,region-name=<region-name>,"+
 			"machine-image=<machine-image>\". "+
 			formatter.Colorize(
-				"All are required key-value pairs.",
+				"Image bundle name and region name are required key-value pairs.",
 				formatter.GreenColor)+" Each --image-bundle definition "+
 			"must have atleast one corresponding --image-bundle-region-override "+
 			"definition for every region added."+
-			" Each image bundle can be added using separate --image-bundle-region-override flag. "+
+			" Each image bundle override can be added using separate --image-bundle-region-override flag. "+
 			"Example: --image-bundle <image-bundle-name>=<name>,"+
 			"<region-name>=<region-name>,<machine-image>=<machine-image>")
 
@@ -401,7 +392,7 @@ func buildAWSImageBundles(
 
 		if len(regionOverrides) < numberOfRegions {
 			logrus.Fatalf(formatter.Colorize(
-				"Machine Image must be provided for every region added.\n",
+				"Overrides must be provided for every region added.\n",
 				formatter.RedColor,
 			))
 		}
@@ -460,11 +451,6 @@ func buildAWSImageBundleRegionOverrides(
 				YbImage: util.GetStringPointer(override["machine-image"]),
 			}
 		}
-	}
-	if len(res) == 0 {
-		logrus.Fatalln(
-			formatter.Colorize("Machine Image not specified in image bundle.\n",
-				formatter.RedColor))
 	}
 	return res
 }

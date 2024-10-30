@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
-import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
+import { Box, FormHelperText, Typography } from '@material-ui/core';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { useQuery } from 'react-query';
 import { array, mixed, object, string } from 'yup';
@@ -29,6 +29,7 @@ import {
   NTPSetupType,
   ProviderCode,
   ProviderOperation,
+  SshPrivateKeyInputType,
   VPCSetupType,
   VPCSetupTypeLabel
 } from '../../constants';
@@ -71,6 +72,7 @@ import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxV
 import { CloudType } from '../../../../../redesign/helpers/dtos';
 import { ImageBundle } from '../../../../../redesign/features/universe/universe-form/utils/dto';
 import { GCPCreateFormErrFields } from './constants';
+import { SshPrivateKeyFormField } from '../../components/SshPrivateKeyField';
 
 interface GCPProviderCreateFormProps {
   createInfraProvider: CreateInfraProvider;
@@ -91,6 +93,8 @@ export interface GCPProviderCreateFormFieldValues {
   sshKeypairManagement: KeyPairManagement;
   sshKeypairName: string;
   sshPort: number;
+  sshPrivateKeyInputType: SshPrivateKeyInputType;
+  sshPrivateKeyContentText: string;
   sshPrivateKeyContent: File;
   sshUser: string;
   vpcSetupType: VPCSetupType;
@@ -128,9 +132,17 @@ const VALIDATION_SCHEMA = object().shape({
         'Network name cannot contain uppercase letters or special characters other than "-"'
       )
   }),
-  sshPrivateKeyContent: mixed().when('sshKeypairManagement', {
-    is: KeyPairManagement.SELF_MANAGED,
+  sshPrivateKeyContent: mixed().when(['sshKeypairManagement', 'sshPrivateKeyInputType'], {
+    is: (sshKeypairManagement, sshPrivateKeyInputType) =>
+      sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
+      sshPrivateKeyInputType === SshPrivateKeyInputType.UPLOAD_KEY,
     then: mixed().required('SSH private key is required.')
+  }),
+  sshPrivateKeyContentText: string().when(['sshKeypairManagement', 'sshPrivateKeyInputType'], {
+    is: (sshKeypairManagement, sshPrivateKeyInputType) =>
+      sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
+      sshPrivateKeyInputType === SshPrivateKeyInputType.PASTE_KEY,
+    then: string().required('SSH private key is required.')
   }),
   ntpServers: array().when('ntpSetupType', {
     is: NTPSetupType.SPECIFIED,
@@ -165,6 +177,7 @@ export const GCPProviderCreateForm = ({
     providerCredentialType: ProviderCredentialType.SPECIFIED_SERVICE_ACCOUNT,
     providerName: '',
     regions: [] as CloudVendorRegionField[],
+    sshPrivateKeyInputType: SshPrivateKeyInputType.UPLOAD_KEY,
     sshKeypairManagement: KeyPairManagement.YBA_MANAGED,
     sshPort: DEFAULT_SSH_PORT,
     vpcSetupType: VPCSetupType.EXISTING
@@ -224,14 +237,16 @@ export const GCPProviderCreateForm = ({
     }
 
     let sshPrivateKeyContent = '';
-    try {
-      sshPrivateKeyContent =
-        formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
-        formValues.sshPrivateKeyContent
+    if (formValues.sshPrivateKeyInputType === SshPrivateKeyInputType.UPLOAD_KEY) {
+      try {
+        sshPrivateKeyContent = formValues.sshPrivateKeyContent
           ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
           : '';
-    } catch (error) {
-      throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
+      } catch (error) {
+        throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
+      }
+    } else {
+      sshPrivateKeyContent = formValues.sshPrivateKeyContentText;
     }
 
     // Note: Backend expects `useHostVPC` to be true for both host instance VPC and specified VPC for
@@ -585,13 +600,9 @@ export const GCPProviderCreateForm = ({
                   </FormField>
                   <FormField>
                     <FieldLabel>SSH Private Key Content</FieldLabel>
-                    <YBDropZoneField
-                      name="sshPrivateKeyContent"
-                      control={formMethods.control}
-                      actionButtonText="Upload SSH Key PEM File"
-                      multipleFiles={false}
-                      showHelpText={false}
-                      disabled={isFormDisabled}
+                    <SshPrivateKeyFormField
+                      isFormDisabled={isFormDisabled}
+                      providerCode={ProviderCode.GCP}
                     />
                   </FormField>
                 </>

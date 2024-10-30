@@ -116,7 +116,12 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
 
   const getAlertTab = () => {
     return test?.adminAlertsConfig || released?.adminAlertsConfig ? (
-      <Tab eventKey="alertConfig" title="Alert Configurations" key="alert-configurations">
+      <Tab
+        eventKey="alertConfig"
+        title="Alert Configurations"
+        key="alert-configurations"
+        unmountOnExit
+      >
         <AlertConfigurationContainer
           defaultTab={AlertConfigurationTabs.Creation}
           activeTab={params.section}
@@ -129,7 +134,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
   const currentInstance = config?.instances.find((instance) => instance.is_local);
   const getHighAvailabilityTab = () => {
     return isAvailable(currentCustomer.data.features, 'administration.highAvailability') ? (
-      <Tab eventKey="ha" title="High Availability" key="high-availability">
+      <Tab eventKey="ha" title="High Availability" key="high-availability" unmountOnExit>
         <RbacValidator accessRequiredOn={ApiPermissionMap.GET_HA_CONFIG}>
           <YBTabsPanel
             defaultTab={HighAvailabilityTabs.REPLICATION}
@@ -185,7 +190,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
   const getUserManagementTab = () => {
     const { id, title, defaultTab } = USER_MANAGAEMENT_TAB;
     return (
-      <Tab eventKey={id} title={title} key={id}>
+      <Tab eventKey={id} title={title} key={id} unmountOnExit>
         <UserManagementContainer
           defaultTab={defaultTab}
           activeTab={params.section}
@@ -198,7 +203,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
   const getAdvancedTab = () => {
     const { id, title, defaultTab } = ADVANCED_TAB;
     return (
-      <Tab eventKey={id} title={title} key={id}>
+      <Tab eventKey={id} title={title} key={id} unmountOnExit>
         <RuntimeConfigContainer
           defaultTab={defaultTab}
           activeTab={params.section}
@@ -210,7 +215,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
 
   const getCustomCACertsTab = () => {
     return (
-      <Tab eventKey="custom-ca-certs" title="CA Certificates" key="CA_Certificates">
+      <Tab eventKey="custom-ca-certs" title="CA Certificates" key="CA_Certificates" unmountOnExit>
         <ListCACerts />
       </Tab>
     );
@@ -218,7 +223,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
 
   const getRbacTab = () => {
     return (
-      <Tab eventKey="rbac" title="Access Management" key="rbac">
+      <Tab eventKey="rbac" title="Access Management" key="rbac" unmountOnExit>
         <RBACContainer />
       </Tab>
     );

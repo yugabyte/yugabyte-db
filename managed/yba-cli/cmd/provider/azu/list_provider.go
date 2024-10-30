@@ -11,9 +11,11 @@ import (
 )
 
 var listAzureProviderCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List Azure YugabyteDB Anywhere providers",
-	Long:  "List Azure YugabyteDB Anywhere providers",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List Azure YugabyteDB Anywhere providers",
+	Long:    "List Azure YugabyteDB Anywhere providers",
+	Example: `yba provider azure list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		providerutil.ListProviderUtil(cmd, "Azure", util.AzureProviderType)
 

@@ -24,7 +24,7 @@ def main() -> None:
     if not os.path.exists(file_path):
         # Auto-create files of this form: .../regress/expected/yb_char.out
         # This is convenient so we can still get sane results when adding new tests.
-        if os.path.dirname(file_path).endswith('/regress/expected'):
+        if os.path.dirname(file_path).endswith('/expected'):
             with open(file_path, 'w') as output_file:
                 output_file.write(
                     '-- Automatically created by %s (new test?)\n' % os.path.basename(__file__))

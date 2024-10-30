@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
-import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
+import { Box, FormHelperText, Typography } from '@material-ui/core';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { useQuery } from 'react-query';
 import { array, mixed, object, string } from 'yup';
@@ -29,6 +29,7 @@ import {
   NTPSetupType,
   ProviderCode,
   ProviderOperation,
+  SshPrivateKeyInputType,
   VPCSetupType,
   VPCSetupTypeLabel
 } from '../../constants';
@@ -68,15 +69,8 @@ import { EditProvider } from '../ProviderEditView';
 import { VersionWarningBanner } from '../components/VersionWarningBanner';
 import { NTP_SERVER_REGEX } from '../constants';
 import { UniverseItem } from '../../providerView/providerDetails/UniverseTable';
-
-import {
-  GCPRegionMutation,
-  GCPAvailabilityZoneMutation,
-  YBProviderMutation,
-  GCPProvider,
-  GCPRegion,
-  ImageBundle
-} from '../../types';
+import { GCPCreateFormErrFields } from './constants';
+import { SshPrivateKeyFormField } from '../../components/SshPrivateKeyField';
 import {
   hasNecessaryPerm,
   RbacValidator
@@ -88,8 +82,16 @@ import {
 } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
+
+import {
+  GCPRegionMutation,
+  GCPAvailabilityZoneMutation,
+  YBProviderMutation,
+  GCPProvider,
+  GCPRegion,
+  ImageBundle
+} from '../../types';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
-import { GCPCreateFormErrFields } from './constants';
 
 interface GCPProviderEditFormProps {
   editProvider: EditProvider;
@@ -114,6 +116,8 @@ export interface GCPProviderEditFormFieldValues {
   sshKeypairManagement: KeyPairManagement;
   sshKeypairName: string;
   sshPort: number | null;
+  sshPrivateKeyInputType: SshPrivateKeyInputType;
+  sshPrivateKeyContentText: string;
   sshPrivateKeyContent: File;
   sshUser: string;
   version: number;
@@ -159,11 +163,26 @@ const VALIDATION_SCHEMA = object().shape({
       'SSH Keypair management choice is required.'
     )
   }),
-  sshPrivateKeyContent: mixed().when(['editSSHKeypair', 'sshKeypairManagement'], {
-    is: (editSSHKeypair, sshKeypairManagement) =>
-      editSSHKeypair && sshKeypairManagement === KeyPairManagement.SELF_MANAGED,
-    then: mixed().required('SSH private key is required.')
-  }),
+  sshPrivateKeyContent: mixed().when(
+    ['editSSHKeypair', 'sshKeypairManagement', 'sshPrivateKeyInputType'],
+    {
+      is: (editSSHKeypair, sshKeypairManagement, sshPrivateKeyInputType) =>
+        editSSHKeypair &&
+        sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
+        sshPrivateKeyInputType === SshPrivateKeyInputType.UPLOAD_KEY,
+      then: mixed().required('SSH private key is required.')
+    }
+  ),
+  sshPrivateKeyContentText: string().when(
+    ['editSSHKeypair', 'sshKeypairManagement', 'sshPrivateKeyInputType'],
+    {
+      is: (editSSHKeypair, sshKeypairManagement, sshPrivateKeyInputType) =>
+        editSSHKeypair &&
+        sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
+        sshPrivateKeyInputType === SshPrivateKeyInputType.PASTE_KEY,
+      then: string().required('SSH private key is required.')
+    }
+  ),
   ntpServers: array().when('ntpSetupType', {
     is: NTPSetupType.SPECIFIED,
     then: array().of(
@@ -692,22 +711,11 @@ export const GCPProviderEditForm = ({
                           fullWidth
                         />
                       </FormField>
-                      <FormField>
-                        <FieldLabel>SSH Private Key Content</FieldLabel>
-                        <YBDropZoneField
-                          name="sshPrivateKeyContent"
-                          control={formMethods.control}
-                          actionButtonText="Upload SSH Key PEM File"
-                          multipleFiles={false}
-                          showHelpText={false}
-                          disabled={getIsFieldDisabled(
-                            ProviderCode.GCP,
-                            'sshPrivateKeyContent',
-                            isFormDisabled,
-                            isProviderInUse
-                          )}
-                        />
-                      </FormField>
+                      <SshPrivateKeyFormField
+                        isFormDisabled={isFormDisabled}
+                        isProviderInUse={isProviderInUse}
+                        providerCode={ProviderCode.GCP}
+                      />
                     </>
                   )}
                 </>
@@ -864,6 +872,7 @@ const constructDefaultFormValues = (
     }))
   })),
   sshKeypairManagement: getLatestAccessKey(providerConfig.allAccessKeys)?.keyInfo.managementState,
+  sshPrivateKeyInputType: SshPrivateKeyInputType.UPLOAD_KEY,
   sshPort: providerConfig.details.sshPort ?? null,
   sshUser: providerConfig.details.sshUser ?? '',
   version: providerConfig.version,
@@ -895,14 +904,16 @@ const constructProviderPayload = async (
   const imageBundles = constructImageBundlePayload(formValues);
 
   let sshPrivateKeyContent = '';
-  try {
-    sshPrivateKeyContent =
-      formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
-      formValues.sshPrivateKeyContent
+  if (formValues.sshPrivateKeyInputType === SshPrivateKeyInputType.UPLOAD_KEY) {
+    try {
+      sshPrivateKeyContent = formValues.sshPrivateKeyContent
         ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
         : '';
-  } catch (error) {
-    throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
+    } catch (error) {
+      throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
+    }
+  } else {
+    sshPrivateKeyContent = formValues.sshPrivateKeyContentText;
   }
 
   // Note: Backend expects `useHostVPC` to be true for both host instance VPC and specified VPC for

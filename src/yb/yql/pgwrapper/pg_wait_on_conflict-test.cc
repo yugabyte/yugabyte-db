@@ -1368,7 +1368,7 @@ void PgWaitQueuesTest::TestMultiTabletFairness() const {
   }
 }
 
-TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(MultiTabletFairness)) {
+TEST_F(PgWaitQueuesTest, MultiTabletFairness) {
   TestMultiTabletFairness();
 }
 

@@ -615,6 +615,41 @@ TEST_F(LogTest, TestLogMetrics) {
   ASSERT_EQ(wal_size_old, wal_size_new);
 }
 
+// Verify presence of min_start_time_running_txns in footer of closed segments.
+void VerifyClosedSegmentsHaveMinStartTimeRunningTxns(const SegmentSequence& segments) {
+  VLOG(1) << "Found " << segments.size() << " log segments";
+  for (const auto& segment : segments) {
+    if (!segment->HasFooter()) {
+      VLOG(1) << "Footer for segment " << segment->header().sequence_number() << " not found";
+      continue;
+    }
+    ASSERT_TRUE(segment->footer().has_min_start_time_running_txns());
+    auto curr_seg_min_start_time_running_txns = segment->footer().min_start_time_running_txns();
+    // All closed segments will have Hybrid::kInitial as min_start_time_running_txns in the footer
+    // as the callback is empty.
+    VLOG(1) << "Footer for segment " << segment->header().sequence_number()
+            << " found with min_start_time_running_txns: "
+            << curr_seg_min_start_time_running_txns;
+    ASSERT_EQ(curr_seg_min_start_time_running_txns, HybridTime::kInitial.ToUint64());
+  }
+}
+
+// Verify min_start_time_running_txns in the copied segment is same as the original segment.
+void VerifyMinStartTimeRunningTxnsAfterCopy(
+    const scoped_refptr<ReadableLogSegment>& original_segment,
+    const scoped_refptr<ReadableLogSegment>& copied_segment) {
+  if (!original_segment->HasFooter() ||
+      !original_segment->footer().has_min_start_time_running_txns()) {
+    return;
+  }
+
+  ASSERT_TRUE(copied_segment->HasFooter());
+  ASSERT_TRUE(copied_segment->footer().has_min_start_time_running_txns());
+  ASSERT_EQ(
+      original_segment->footer().min_start_time_running_txns(),
+      copied_segment->footer().min_start_time_running_txns());
+}
+
 // Tests that segments roll over when max segment size is reached
 // and that the player plays all entries in the correct order.
 TEST_F(LogTest, TestSegmentRollover) {
@@ -638,6 +673,7 @@ TEST_F(LogTest, TestSegmentRollover) {
 
   ReadableLogSegmentPtr last_segment = ASSERT_RESULT(segments.back());
   ASSERT_FALSE(last_segment->HasFooter());
+  VerifyClosedSegmentsHaveMinStartTimeRunningTxns(segments);
   ASSERT_OK(log_->Close());
 
   std::unique_ptr<LogReader> reader;
@@ -647,6 +683,7 @@ TEST_F(LogTest, TestSegmentRollover) {
 
   last_segment = ASSERT_RESULT(segments.back());
   ASSERT_TRUE(last_segment->HasFooter());
+  VerifyClosedSegmentsHaveMinStartTimeRunningTxns(segments);
 
   size_t total_read = 0;
   for (const scoped_refptr<ReadableLogSegment>& entry : segments) {
@@ -1415,6 +1452,8 @@ TEST_F(LogTest, CopyTo) {
       auto& segment = *segment_it;
       auto& segment_copy = *segment_copy_it;
 
+      VerifyMinStartTimeRunningTxnsAfterCopy(segment, segment_copy);
+
       auto entries_result = segment->ReadEntries();
       ASSERT_OK(entries_result.status);
       auto entries_copy_result = segment_copy->ReadEntries();
@@ -1634,6 +1673,7 @@ TEST_F(LogTest, CopyUpTo) {
     size_t num_ops_copied = 0;
     std::map<int64_t, std::pair<OpId, LogEntryMetadata>> op_id_with_entry_meta_by_idx;
 
+    const ReadableLogSegmentPtr& last_copied_segment = ASSERT_RESULT(copied_segments.back());
     for (auto segment_it = segments.begin(), segment_copy_it = copied_segments.begin();
          segment_it != segments.end() && segment_copy_it != copied_segments.end();
          ++segment_it, ++segment_copy_it) {
@@ -1671,6 +1711,13 @@ TEST_F(LogTest, CopyUpTo) {
       }
       num_ops_copied += num_copied_segment_entries;
       ASSERT_EQ(has_replicated_entries, segment_copy->footer().has_close_timestamp_micros());
+
+      // Verify min_start_time_running_txns in footer of all segments except the last one as it
+      // could be truncated.
+      if (&segment_copy == &last_copied_segment) {
+        continue;
+      }
+      VerifyMinStartTimeRunningTxnsAfterCopy(segment, segment_copy);
     }
 
     if (num_ops_copied > copy_num_ops) {
@@ -1777,6 +1824,9 @@ TEST_F(LogTest, AsyncRolloverMarker) {
     return log_->allocation_state() == SegmentAllocationState::kAllocationFinished;
   }, 10s, "allocation finished"));
   ASSERT_EQ(log_->active_segment_sequence_number(), seq_no);
+  SegmentSequence segments;
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  VerifyClosedSegmentsHaveMinStartTimeRunningTxns(segments);
 
   AppendReplicateBatchToLog(kNumEntriesPerBatch, AppendSync::kTrue);
   ASSERT_EQ(log_->active_segment_sequence_number(), seq_no + 1);

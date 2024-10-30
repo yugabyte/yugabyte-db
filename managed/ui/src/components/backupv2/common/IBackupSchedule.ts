@@ -34,7 +34,8 @@ interface ScheduleTaskParams {
 export enum IBackupScheduleStatus {
   ACTIVE = 'Active',
   STOPPED = 'Stopped',
-  PAUSED = 'Paused'
+  PAUSED = 'Paused',
+  CREATING = 'Creating',
 }
 export interface IBackupSchedule extends Pick<IBackup, 'customerUUID' | 'universeUUID'> {
   scheduleUUID: string;

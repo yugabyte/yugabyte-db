@@ -74,7 +74,7 @@ To connect to your cluster, do the following:
     yugabyte=>
     ```
 
-> The command line interface (CLI) being used is called [ysqlsh](/preview/admin/ysqlsh/). ysqlsh is the CLI for interacting with YugabyteDB using the PostgreSQL-compatible [YSQL API](/preview/api/ysql/). Cloud Shell also supports [ycqlsh](/preview/admin/ycqlsh/), a CLI for the [YCQL API](/preview/api/ycql/).
+> The command line interface (CLI) being used is called [ysqlsh](/preview/api/ysqlsh/). ysqlsh is the CLI for interacting with YugabyteDB using the PostgreSQL-compatible [YSQL API](/preview/api/ysql/). Cloud Shell also supports [ycqlsh](/preview/api/ycqlsh/), a CLI for the [YCQL API](/preview/api/ycql/).
 >
 > For information on other ways to connect to your cluster, refer to [Connect to clusters](/preview/yugabyte-cloud/cloud-connect).
 

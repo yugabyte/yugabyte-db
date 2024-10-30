@@ -39,7 +39,7 @@ public class TestStatementsQtext extends BasePgSQLTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("ysql_pg_conf_csv", "pg_stat_statements.yb_qtext_size_limit=1kB");
+    appendToYsqlPgConf(flagMap, "pg_stat_statements.yb_qtext_size_limit=1kB");
     return flagMap;
   }
 

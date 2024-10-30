@@ -31,24 +31,24 @@ Get started with Yugabyte gRPC replication.
 
 For tutorials on streaming data to Kafka environments, including Amazon MSK, Azure Event Hubs, and Confluent Cloud, see [Kafka environments](/preview/tutorials/cdc-tutorials/).
 
-{{<lead link="./cdc-get-started">}}
-To learn how get started with the connector, see [Get started](./cdc-get-started).
+{{<lead link="./cdc-get-started/">}}
+[Get started](./cdc-get-started) using the connector.
 {{</lead>}}
 
 ## Monitoring
 
 You can monitor the activities and status of the deployed connectors using the http end points provided by YugabyteDB.
 
-{{<lead link="./cdc-monitor">}}
-To know more about how to monitor your CDC setup, see [Monitor](./cdc-monitor).
+{{<lead link="./cdc-monitor/">}}
+Learn how to [monitor](./cdc-monitor/) your CDC setup.
 {{</lead>}}
 
 ## YugabyteDB gRPC Connector
 
 To capture and stream your changes in YugabyteDB to an external system, you need a connector that can read the changes in YugabyteDB and stream it out. For this, you can use the YugabyteDB gRPC connector, which is based on the Debezium platform. The connector is deployed as a set of Kafka Connect-compatible connectors, so you first need to define a YugabyteDB connector configuration and then start the connector by adding it to Kafka Connect.
 
-{{<lead link="./debezium-connector-yugabytedb">}}
-To understand how the various features and configuration of the connector, see [YugabyteDB gRPC Connector](./debezium-connector-yugabytedb).
+{{<lead link="./debezium-connector-yugabytedb/">}}
+For reference documentation, see [YugabyteDB gRPC Connector](./debezium-connector-yugabytedb/).
 {{</lead>}}
 
 ## Known limitations

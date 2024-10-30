@@ -90,7 +90,7 @@ msgstr "another translated"
 
 ...
 </programlisting>
-    The msgid's are extracted from the program source.  (They need not
+    The msgid lines are extracted from the program source.  (They need not
     be, but this is the most common way.)  The msgstr lines are
     initially empty and are filled in with useful strings by the
     translator.  The strings can contain C-style escape characters and
@@ -113,7 +113,7 @@ msgstr "another translated"
     The #. style comments are extracted from the source file where the
     message is used.  Possibly the programmer has inserted information
     for the translator, such as about expected alignment.  The #:
-    comment indicates the exact location(s) where the message is used
+    comments indicate the exact locations where the message is used
     in the source.  The translator need not look at the program
     source, but can if there is doubt about the correct
     translation.  The #, comments contain flags that describe the
@@ -146,7 +146,7 @@ msgstr "another translated"
     someone has already done some translation work.  The files are
     named <filename><replaceable>language</replaceable>.po</filename>,
     where <replaceable>language</replaceable> is the
-    <ulink url="http://www.loc.gov/standards/iso639-2/php/English_list.php">
+    <ulink url="https://www.loc.gov/standards/iso639-2/php/English_list.php">
     ISO 639-1 two-letter language code (in lower case)</ulink>, e.g.,
     <filename>fr.po</filename> for French.  If there is really a need
     for more than one translation effort per language then the files
@@ -433,7 +433,7 @@ fprintf(stderr, gettext("panic level %d\n"), lvl);
   </sect2>
 
   <sect2 id="nls-guidelines">
-   <title>Message-writing Guidelines</title>
+   <title>Message-Writing Guidelines</title>
 
   <para>
    Here are some guidelines for writing messages that are easily

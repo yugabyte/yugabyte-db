@@ -4,7 +4,7 @@
  *	  prototypes for XLog support for backend/catalog/storage.c
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/storage_xlog.h
@@ -50,7 +50,7 @@ typedef struct xl_smgr_truncate
 	int			flags;
 } xl_smgr_truncate;
 
-extern void log_smgrcreate(RelFileNode *rnode, ForkNumber forkNum);
+extern void log_smgrcreate(const RelFileNode *rnode, ForkNumber forkNum);
 
 extern void smgr_redo(XLogReaderState *record);
 extern void smgr_desc(StringInfo buf, XLogReaderState *record);
