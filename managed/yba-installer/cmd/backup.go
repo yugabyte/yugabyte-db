@@ -32,8 +32,20 @@ func CreateBackupScript(outputPath string, dataDir string, excludePrometheus boo
 	}
 
 	args := []string{"create", "--output", outputPath, "--data_dir", dataDir, "--yba_installer"}
+	envVars := map[string]string{}
 	if excludePrometheus {
 		args = append(args, "--exclude_prometheus")
+	} else {
+		args = append(args, "--prometheus_port", viper.GetString("prometheus.port"))
+		if viper.GetBool("prometheus.enableHttps") {
+			args = append(args, "--prometheus_protocol", "https")
+		}
+		if viper.GetBool("prometheus.enableAuth") {
+			envVars = map[string]string {
+				"PROMETHEUS_USERNAME": viper.GetString("prometheus.authUsername"),
+				"PROMETHEUS_PASSWORD": viper.GetString("prometheus.authPassword"),
+			}
+		}
 	}
 	if excludeReleases {
 		args = append(args, "--exclude_releases")
@@ -62,16 +74,6 @@ func CreateBackupScript(outputPath string, dataDir string, excludePrometheus boo
 	} else {
 		args = append(args, "--pg_dump_path", plat.PgBin+"/pg_dump")
 		args = addPostgresArgs(args)
-	}
-	if viper.GetBool("prometheus.enableHttps") {
-		args = append(args, "--prometheus_protocol", "https")
-	}
-	envVars := map[string]string{}
-	if viper.GetBool("prometheus.enableAuth") {
-		envVars = map[string]string {
-			"PROMETHEUS_USERNAME": viper.GetString("prometheus.authUsername"),
-			"PROMETHEUS_PASSWORD": viper.GetString("prometheus.authPassword"),
-		}
 	}
 
 	log.Info("Creating a backup of your YugabyteDB Anywhere Installation.")
@@ -167,6 +169,9 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 		args = append(args, "--pg_restore_path", plat.PgBin+"/pg_restore")
 		args = addPostgresArgs(args)
 	}
+
+	// Add prometheus args
+	args = append(args, "--prometheus_port", viper.GetString("prometheus.port"))
 	if viper.GetBool("prometheus.enableHttps") {
 		args = append(args, "--prometheus_protocol", "https")
 	}
@@ -177,6 +182,7 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 			"PROMETHEUS_PASSWORD": viper.GetString("prometheus.authPassword"),
 		}
 	}
+
 	log.Info("Restoring a backup of your YugabyteDB Anywhere Installation.")
 	if out := shell.RunWithEnvVars(fileName, envVars, args...); !out.SucceededOrLog() {
 		log.Fatal("Restore script failed. May need to restart services.")
