@@ -12,6 +12,7 @@ import { useForm } from 'react-hook-form';
 import { AxiosResponse } from 'axios';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { find, isString, keys } from 'lodash';
+import clsx from 'clsx';
 import { useToggle } from 'react-use';
 import { Trans, useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
@@ -144,6 +145,9 @@ const useStyles = makeStyles((theme) => ({
   defaultRoleLabel: {
     display: 'flex',
     alignItems: 'center'
+  },
+  disabled: {
+    opacity: 0.6
   }
 }));
 
@@ -473,7 +477,9 @@ export const OIDCAuthNew = () => {
             label={t('oidcUseRoleMapping')}
             disabled={!oauthEnabled}
           />
-          <Typography variant="subtitle1">{t('infos.defaultRoleHelpText')}</Typography>
+          <Typography variant="subtitle1" className={clsx(!oauthEnabled && classes.disabled)}>
+            {t('infos.defaultRoleHelpText')}
+          </Typography>
           {enableRoleMapping ? (
             <YBAlert
               variant={AlertVariant.Info}
