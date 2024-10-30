@@ -19,9 +19,9 @@
   <div class="main-heading-with-version {{- if and (not $headingImage) (not $headingIcon) }} heading-without-image{{- end }}">
     {{- if and (.Site.Params.versions) (not .Params.unversioned) -}}
       <div class="header-version-dropdown dropdown-list">
-				<div class="dropdown">
-					{{- partial "navbar-version-selector.html" . -}}
-				</div>
+        <div class="dropdown">
+          {{- partial "navbar-version-selector.html" . -}}
+        </div>
       </div>
     {{- end -}}
     {{- if $headingImage -}}
