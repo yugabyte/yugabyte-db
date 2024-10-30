@@ -3,7 +3,6 @@ title: Create YugabyteDB universe deployments
 headerTitle: Create universes
 linkTitle: Create universes
 description: Create YugabyteDB universe deployments.
-image: /images/section_icons/index/deploy.png
 menu:
   v2.18_yugabyte-platform:
     parent: yugabytedb-anywhere

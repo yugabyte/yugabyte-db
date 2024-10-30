@@ -3,7 +3,6 @@ title: Administer YugabyteDB Anywhere
 headerTitle: Administer YugabyteDB Anywhere
 linkTitle: Administer
 description: Administer YugabyteDB Anywhere
-image: /images/section_icons/deploy/system.png
 headcontent:
 menu:
   v2.20_yugabyte-platform:
@@ -13,78 +12,42 @@ menu:
 type: indexpage
 ---
 
-<div class="row">
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="anywhere-rbac/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/rbac-model.png" aria-hidden="true" />
-        <div class="title">Manage YugabyteDB Anywhere users and roles</div>
-      </div>
-      <div class="body">
-       Invite team members to your account and manage their access.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Manage YugabyteDB Anywhere users and roles"
+    body="Invite team members to your account and manage their access."
+    href="anywhere-rbac/"
+    icon="fa-thin fa-user">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="ldap-authentication/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
-        <div class="title">Configure YugabyteDB Anywhere authentication</div>
-      </div>
-      <div class="body">
-       Use LDAP or OIDC for authentication in YugabyteDB Anywhere.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Configure YugabyteDB Anywhere authentication"
+    body="Use LDAP or OIDC for authentication in YugabyteDB Anywhere."
+    href="ldap-authentication/"
+    icon="fa-thin fa-lock">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="back-up-restore-yp/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Back up and restore YugabyteDB Anywhere</div>
-      </div>
-      <div class="body">
-        Back up and restore the YugabyteDB Anywhere server.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Back up and restore YugabyteDB Anywhere"
+    body="Back up and restore the YugabyteDB Anywhere server."
+    href="back-up-restore-yp/"
+    icon="fa-thin fa-arrow-down-to-bracket">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="high-availability/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/architecture/core_functions/ha.png" aria-hidden="true" />
-        <div class="title">Enable high availability</div>
-      </div>
-      <div class="body">
-        Configure standby instances of YugabyteDB Anywhere.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Enable high availability"
+    body="Configure standby instances of YugabyteDB Anywhere."
+    href="high-availability/"
+    icon="fa-thin fa-clone">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="manage-runtime-config/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/system.png" aria-hidden="true" />
-        <div class="title">Manage runtime configuration settings</div>
-      </div>
-      <div class="body">
-        Customize YugabyteDB Anywhere by changing default settings for the application, universes, and providers.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Manage runtime configuration settings"
+    body="Customize YugabyteDB Anywhere by changing default settings for the application, universes, and providers."
+    href="manage-runtime-config/"
+    icon="fa-thin fa-gear">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="shutdown/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/system.png" aria-hidden="true" />
-        <div class="title">Shutdown</div>
-      </div>
-      <div class="body">
-        Shut YugabyteDB Anywhere down gracefully.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Shutdown"
+    body="Shut YugabyteDB Anywhere down gracefully."
+    href="shutdown/"
+    icon="fa-thin fa-power-off">}}
 
-</div>
+{{</index/block>}}

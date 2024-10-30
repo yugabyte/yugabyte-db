@@ -25,45 +25,52 @@ resources:
 
 YugabyteDB Anywhere is a self-managed database-as-a-service offering from YugabyteDB that allows you to deploy and operate YugabyteDB universes at scale.
 
-Use YugabyteDB Anywhere to automate the deployment and management of YugabyteDB in your preferred environments (spanning on-prem, in the public cloud, and in Kubernetes) and topologies (single- and multi-region).
+Use YugabyteDB Anywhere to automate the deployment and management of YugabyteDB in your preferred environments (spanning on-prem, in the public cloud, and in Kubernetes) and topologies (single- and multi-region). [Learn more](./yba-overview/)
 
-{{< sections/2-boxes >}}
-  {{< sections/bottom-image-box
+## Install YugabyteDB Anywhere
+
+{{< sections/3-boxes >}}
+  {{< sections/3-box-card
+    title="Prepare"
+    description="Prepare your infrastructure, including cloud permissions, networking, and servers."
+    buttonText="Learn more"
+    buttonUrl="prepare/"
+  >}}
+
+  {{< sections/3-box-card
     title="Install"
     description="Install YugabyteDB Anywhere on any environment, including Kubernetes, public cloud, or private cloud."
     buttonText="Learn more"
     buttonUrl="install-yugabyte-platform/"
-    imageAlt="Yugabyte cloud" imageUrl="/images/homepage/yugabyte-in-cloud.svg"
   >}}
 
-  {{< sections/bottom-image-box
-    title="Configure"
-    description="Configure YugabyteDB Anywhere for deploying universes on various cloud providers."
+  {{< sections/3-box-card
+    title="Create providers"
+    description="Create the provider configurations that you will use to deploy universes."
     buttonText="Learn more"
     buttonUrl="configure-yugabyte-platform/"
-    imageAlt="Locally Laptop" imageUrl="/images/homepage/locally-laptop.svg"
   >}}
-{{< /sections/2-boxes >}}
+{{< /sections/3-boxes >}}
 
 ## Use YugabyteDB Anywhere
 
 {{< sections/3-boxes >}}
   {{< sections/3-box-card
-    title="Deploy"
+    title="Deploy universes"
     description="Deploy multi-region, multi-zone, and multi-cloud universes."
     buttonText="Deploy"
     buttonUrl="create-deployments/"
   >}}
 
   {{< sections/3-box-card
-    title="Manage"
+    title="Manage universes"
     description="Modify universes and their nodes, upgrade YugabyteDB software."
     buttonText="Manage"
     buttonUrl="manage-deployments/"
   >}}
 
   {{< sections/3-box-card
-    title="Back up"
+    title="Back up universes"
     description="Configure storage, back up and restore universe data."
     buttonText="Back up"
     buttonUrl="back-up-restore-universes/"

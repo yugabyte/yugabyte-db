@@ -3,7 +3,6 @@ title: Alerts and monitoring
 headerTitle: Alerts and monitoring
 linkTitle: Alerts and monitoring
 description: Use YugabyteDB Anywhere for alerts and monitoring of YugabyteDB universe data.
-image: /images/section_icons/manage/backup.png
 headcontent: Use YugabyteDB Anywhere for alerts and monitoring of YugabyteDB universe data.
 menu:
   v2.14_yugabyte-platform:

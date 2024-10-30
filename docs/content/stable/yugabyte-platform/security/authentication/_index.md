@@ -4,7 +4,6 @@ headerTitle: Database authentication
 linkTitle: Database authentication
 headcontent: Secure your YugabyteDB universes
 description: Database authentication in YugabyteDB Anywhere.
-image: /images/section_icons/index/secure.png
 menu:
   stable_yugabyte-platform:
     parent: security
