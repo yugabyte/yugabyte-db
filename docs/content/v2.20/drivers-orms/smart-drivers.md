@@ -180,7 +180,7 @@ Not specifying a priority is the equivalent of setting priority to 1.
 
 If you specify topology keys, you can additionally specify that connections only fall back to the nodes specified using the topology keys by setting the `fallback-to-topology-keys-only` property (JDBC smart driver only).
 
-The property `fallback-to-topology-keys-only` is ignored when either the `topology-keys` is empty, or when `load-balance` is set to `prefer-primary` or `prefer-rr`.
+The property `fallback-to-topology-keys-only` is ignored when either `topology-keys` is empty, or when `load-balance` is set to `prefer-primary` or `prefer-rr`.
 
 If no servers are available, the request may return with a failure.
 
