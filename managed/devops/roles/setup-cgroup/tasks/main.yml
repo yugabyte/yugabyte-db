@@ -16,6 +16,11 @@
 # to create and setup the cgroup. If we created the cgroup in ansible, it would be deleted when the
 # vm reboots. This instead ensures that the cgroup always exists before the tserver gets started
 - block:
+  - name: Determine system or user scope
+    stat:
+      path: "{{ yb_home_dir | default('/home/yugabyte') }}/.config/systemd/user/"
+    register: systemd_user
+
   - block:
     - set_fact:
         systemd_dir: "/etc/systemd/system"
