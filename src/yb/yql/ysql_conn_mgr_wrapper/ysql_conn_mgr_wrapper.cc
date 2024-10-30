@@ -72,6 +72,11 @@ DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_unix_conn, true,
     "'local all yugabyte trust' in hba.conf (set ysql_hba_conf_csv as 'local all yugabyte trust')."
     );
 
+DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_auth_backend, true,
+    "Enable the use of the auth-backend for authentication of logical connections. "
+    "When false, the older auth-passthrough implementation is used."
+    );
+
 namespace {
 
 bool ValidateMaxClientConn(const char* flag_name, uint32_t value) {

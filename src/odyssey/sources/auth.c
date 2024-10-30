@@ -664,11 +664,26 @@ int od_auth_frontend(od_client_t *client)
 	int rc;
 
 #ifdef YB_SUPPORT_FOUND
-	rc = yb_auth_via_auth_backend(client);
+	if (instance->config.yb_use_auth_backend)
+	{
+		rc = yb_auth_via_auth_backend(client);
 
-	/* AuthOk packet or Auth Failed FATAL response is already sent. */
-	if (rc == -1)
-		return -1;
+		/* Auth Failed FATAL response is already sent. */
+		if (rc == -1)
+			return -1;
+	}
+	else
+	{
+		rc = yb_execute_on_control_connection(
+			client, yb_auth_frontend_passthrough);
+
+		/* AuthOk packet or Auth Failed FATAL response is already sent. */
+		if (rc == -1)
+			return -1;
+
+		return 0;
+	}
+
 #else
 
 	switch (client->rule->auth_mode) {
@@ -1058,6 +1073,7 @@ int od_auth_backend(od_server_t *server, machine_msg_t *msg,
 		 */
 		assert(auth_type == 3 || auth_type == 5);
 		assert(client->yb_external_client != NULL);
+		assert(instance->config.yb_use_auth_backend);
 
 		kiwi_fe_type_t type;
 		od_client_t *external_client = client->yb_external_client;
