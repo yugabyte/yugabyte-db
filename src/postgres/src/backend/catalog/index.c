@@ -1041,7 +1041,7 @@ index_create(Relation heapRelation,
 					   tablegroupId,
 					   colocationId,
 					   tableSpaceId,
-					   InvalidOid /* pgTableId */,
+					   YbGetRelfileNodeId(indexRelation),
 					   InvalidOid /* oldRelfileNodeId */);
 	}
 

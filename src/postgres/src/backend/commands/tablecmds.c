@@ -1211,16 +1211,6 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	 */
 	CommandCounterIncrement();
 
-	if (IsYugaByteEnabled())
-	{
-		CheckIsYBSupportedRelationByKind(relkind);
-		YBCCreateTable(stmt, relname, relkind, descriptor, relationId,
-					   namespaceId, tablegroupId, colocation_id, tablespaceId,
-					   InvalidOid /* pgTableId */,
-					   InvalidOid /* oldRelfileNodeId */,
-					   false /* isTruncate */);
-	}
-
 	/*
 	 * Open the new relation and acquire exclusive lock on it.  This isn't
 	 * really necessary for locking out other backends (since they can't see
@@ -1228,6 +1218,17 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	 * complaining about deadlock risks.
 	 */
 	rel = relation_open(relationId, AccessExclusiveLock);
+
+	if (IsYugaByteEnabled())
+	{
+		CheckIsYBSupportedRelationByKind(relkind);
+		YBCCreateTable(stmt, relname, relkind, descriptor,
+					   relationId,
+					   namespaceId, tablegroupId, colocation_id, tablespaceId,
+					   YbGetRelfileNodeId(rel),
+					   InvalidOid /* oldRelfileNodeId */,
+					   false /* isTruncate */);
+	}
 
 	/*
 	 * Now add any newly specified column default and generation expressions

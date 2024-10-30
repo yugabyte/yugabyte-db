@@ -5455,7 +5455,7 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 				   RelationGetDescr(indexRel),
 				   indexRel->rd_indoption,
 				   reloptions,
-				   newRelfileNodeId,
+				   RelationGetRelid(indexRel),
 				   indexedRel,
 				   yb_copy_split_options ? YbGetSplitOptions(indexRel) : NULL,
 				   true /* skip_index_backfill */,
@@ -5463,7 +5463,7 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 				   indexRel->yb_table_properties->tablegroup_oid,
 				   InvalidOid /* colocation ID */,
 				   indexRel->rd_rel->reltablespace,
-				   RelationGetRelid(indexRel),
+				   newRelfileNodeId,
 				   YbGetRelfileNodeId(indexRel));
 
 	table_close(indexedRel, ShareLock);
@@ -5566,11 +5566,11 @@ YbRelationSetNewRelfileNode(Relation rel, Oid newRelfileNodeId,
 	ReleaseSysCache(tuple);
 	YBCCreateTable(dummyStmt, RelationGetRelationName(rel),
 					rel->rd_rel->relkind, RelationGetDescr(rel),
-					newRelfileNodeId,
+					RelationGetRelid(rel),
 					RelationGetNamespace(rel),
 					YbGetTableProperties(rel)->tablegroup_oid,
 					InvalidOid, rel->rd_rel->reltablespace,
-					RelationGetRelid(rel),
+					newRelfileNodeId,
 					rel->rd_rel->relfilenode,
 					is_truncate);
 

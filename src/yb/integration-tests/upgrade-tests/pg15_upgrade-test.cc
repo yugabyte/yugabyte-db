@@ -586,4 +586,208 @@ TEST_F(Pg15UpgradeTest, FunctionWithSemicolons) {
   }
 }
 
+TEST_F(Pg15UpgradeTest, Matviews) {
+  ASSERT_OK(ExecuteStatements(
+    {"CREATE TABLE t (v INT)",
+      "INSERT INTO t VALUES (1),(2),(3)",
+      "CREATE MATERIALIZED VIEW mv AS SELECT * FROM t",
+      "INSERT INTO t VALUES (4),(5),(6)",
+      "REFRESH MATERIALIZED VIEW mv"}));
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  auto check_matviews = [this](const size_t tserver) {
+    auto conn = ASSERT_RESULT(CreateConnToTs(tserver));
+    auto result = ASSERT_RESULT(conn.FetchRows<int32_t>("SELECT * FROM mv ORDER BY v"));
+    ASSERT_VECTORS_EQ(result, (decltype(result){1, 2, 3, 4, 5, 6}));
+  };
+  ASSERT_NO_FATALS(check_matviews(kMixedModeTserverPg15));
+  ASSERT_NO_FATALS(check_matviews(kMixedModeTserverPg11));
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  ASSERT_NO_FATALS(check_matviews(0));
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (7)"));
+  ASSERT_OK(conn.Execute("REFRESH MATERIALIZED VIEW mv"));
+  auto result = ASSERT_RESULT(conn.FetchRows<int>("SELECT * FROM mv ORDER BY v"));
+  ASSERT_VECTORS_EQ(result, (decltype(result){1, 2, 3, 4, 5, 6, 7}));
+}
+
+TEST_F(Pg15UpgradeTest, PartitionedTables) {
+  // Set up partitioned tables
+  ASSERT_OK(ExecuteStatements({
+    "CREATE TABLE t_r (v INT, z TEXT, PRIMARY KEY(v ASC)) PARTITION BY RANGE (v)",
+    "CREATE TABLE t_h (v INT, z TEXT, PRIMARY KEY(v ASC)) PARTITION BY HASH (v)",
+    "CREATE TABLE t_l (v INT, z TEXT, PRIMARY KEY(v ASC)) PARTITION BY LIST (v)",
+    "CREATE INDEX ON t_r (z)",
+    "CREATE INDEX ON t_h (z)",
+    "CREATE INDEX ON t_l (z)",
+    "CREATE TABLE t_r_1 PARTITION OF t_r FOR VALUES FROM (1) TO (3)",
+    "CREATE TABLE t_r_default (z TEXT, v INT NOT NULL)",
+    "ALTER TABLE t_r ATTACH PARTITION t_r_default DEFAULT",
+    "CREATE TABLE t_h_1 PARTITION OF t_h FOR VALUES WITH (MODULUS 2, REMAINDER 0)",
+    "CREATE TABLE t_h_default (z TEXT, v INT NOT NULL)",
+    "ALTER TABLE t_h ATTACH PARTITION t_h_default FOR VALUES WITH (MODULUS 2, REMAINDER 1)",
+    "CREATE TABLE t_l_1 PARTITION OF t_l FOR VALUES IN (1, 2)",
+    "CREATE TABLE t_l_default (z TEXT, v INT NOT NULL)",
+    "ALTER TABLE t_l ATTACH PARTITION t_l_default DEFAULT",
+    "INSERT INTO t_r VALUES (1, 'one'), (2, 'two'), (3, 'three')",
+    "INSERT INTO t_h VALUES (1, 'one'), (2, 'two'), (3, 'three')",
+    "INSERT INTO t_l VALUES (1, 'one'), (2, 'two'), (3, 'three')"
+  }));
+
+  // Perform some rewrites
+  for (const auto& table : {"t_r", "t_h", "t_l"}) {
+    ASSERT_OK(ExecuteStatements({
+    Format("ALTER TABLE $0 ALTER COLUMN z TYPE text USING (z || v)", table),
+    Format("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", table),
+    Format("ALTER TABLE $0 ADD PRIMARY KEY (v ASC)", table)
+    }));
+  }
+
+  enum class CheckType {
+    Initial,
+    MixedMode,
+    AfterUpgrade
+  };
+
+  auto check_partitions = [&](pgwrapper::PGConn& conn, CheckType check_type) {
+    for (const auto& table : {"t_r", "t_h", "t_l"}) {
+      auto result = ASSERT_RESULT((conn.FetchRows<int32_t, std::string>(
+          Format("SELECT * FROM $0 ORDER BY v", table))));
+
+      // Expected rows for each check type:
+      // Initial:
+      // | v | z     |
+      // |---|-------|
+      // | 1 | one1  |
+      // | 2 | two2  |
+      // | 3 | three3|
+      //
+      // MixedMode:
+      // | v | z     |
+      // |---|-------|
+      // | 1 | one1  |
+      // | 2 | two2  |
+      // | 3 | three3|
+      // | 4 | four4 |
+      //
+      // AfterUpgrade:
+      // | v | z     |
+      // |---|-------|
+      // | 1 | one1  |
+      // | 2 | two2  |
+      // | 3 | three3|
+      // | 4 | four4 |
+      // | 7 | seven7|
+      if (check_type == CheckType::Initial) {
+        ASSERT_VECTORS_EQ(result, (decltype(result){{1, "one1"}, {2, "two2"}, {3, "three3"}}));
+      } else if (check_type == CheckType::MixedMode) {
+        ASSERT_VECTORS_EQ(result, (decltype(result){{1, "one1"}, {2, "two2"}, {3, "three3"},
+            {4, "four4"}}));
+      } else if (check_type == CheckType::AfterUpgrade) {
+        ASSERT_VECTORS_EQ(result, (decltype(result){{1, "one1"}, {2, "two2"}, {3, "three3"},
+            {4, "four4"}, {7, "seven7"}}));
+      }
+
+      // Expected rows for all check types in the first partition:
+      // | v | z     |
+      // |---|-------|
+      // | 1 | one1  |
+      // | 2 | two2  |
+      auto result_partition_1 = ASSERT_RESULT((conn.FetchRows<int32_t, std::string>(
+          Format("SELECT * FROM $0_1 ORDER BY v", table))));
+      ASSERT_VECTORS_EQ(result_partition_1,
+          (decltype(result_partition_1){{1, "one1"}, {2, "two2"}}));
+
+      // Expected rows for all check types in the default partition:
+      // Initial:
+      // | z     | v |
+      // |-------|---|
+      // | three3| 3 |
+      //
+      // MixedMode:
+      // | z     | v |
+      // |-------|---|
+      // | three3| 3 |
+      // | four4 | 4 |
+      //
+      // AfterUpgrade:
+      // for t_h_default:
+      // | z     | v |
+      // |-------|---|
+      // | three3| 3 |
+      // | four4 | 4 |
+      // | seven7| 7 |
+      // for t_r_default and t_l_default:
+      // | z     | v |
+      // |-------|---|
+      // | three3| 3 |
+      // | seven7| 7 |
+      // for t_r_2 and t_l_2:
+      // | z     | v |
+      // |-------|---|
+      // | four4 | 4 |
+      auto result_partition_default = ASSERT_RESULT((conn.FetchRows<std::string, int32_t>(
+        Format("SELECT * FROM $0_default ORDER BY v", table))));
+      if (check_type == CheckType::Initial) {
+        ASSERT_VECTORS_EQ(result_partition_default,
+            (decltype(result_partition_default){{"three3", 3}}));
+      } else if (check_type == CheckType::MixedMode) {
+        ASSERT_VECTORS_EQ(result_partition_default,
+            (decltype(result_partition_default){{"three3", 3}, {"four4", 4}}));
+      } else if (check_type == CheckType::AfterUpgrade) {
+        if (strcmp(table, "t_h") == 0) {
+          ASSERT_VECTORS_EQ(result_partition_default,
+              (decltype(result_partition_default){{"three3", 3}, {"four4", 4}, {"seven7", 7}}));
+        } else {
+          ASSERT_VECTORS_EQ(result_partition_default,
+              (decltype(result_partition_default){{"three3", 3}, {"seven7", 7}}));
+          auto result_partition_2 = ASSERT_RESULT((conn.FetchRows<int32_t, std::string>(
+              Format("SELECT * FROM $0_2 ORDER BY v", table))));
+          ASSERT_VECTORS_EQ(result_partition_2, (decltype(result_partition_2){{4, "four4"}}));
+        }
+      }
+
+      auto result_z = ASSERT_RESULT((conn.FetchRows<std::string>(
+          Format("SELECT z FROM $0 WHERE z = 'three3'", table))));
+      ASSERT_VECTORS_EQ(result_z, (decltype(result_z){"three3"}));
+    }
+  };
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg15));
+    ASSERT_NO_FATALS(check_partitions(conn, CheckType::Initial));
+    // Insert new rows
+    ASSERT_OK(conn.Execute("INSERT INTO t_r VALUES (4, 'four4')"));
+    ASSERT_OK(conn.Execute("INSERT INTO t_h VALUES (4, 'four4')"));
+    ASSERT_OK(conn.Execute("INSERT INTO t_l VALUES (4, 'four4')"));
+
+    // Check partitions again with the new rows
+    ASSERT_NO_FATALS(check_partitions(conn, CheckType::MixedMode));
+  }
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg11));
+    ASSERT_NO_FATALS(check_partitions(conn, CheckType::MixedMode));
+    // Delete new rows
+    ASSERT_OK(conn.Execute("DELETE FROM t_r WHERE v = 4"));
+    ASSERT_OK(conn.Execute("DELETE FROM t_h WHERE v = 4"));
+    ASSERT_OK(conn.Execute("DELETE FROM t_l WHERE v = 4"));
+    ASSERT_NO_FATALS(check_partitions(conn, CheckType::Initial));
+  }
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_OK(conn.Execute("CREATE TABLE t_r_2 PARTITION OF t_r FOR VALUES FROM (4) TO (6)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE t_l_2 PARTITION OF t_l FOR VALUES IN (4, 5)"));
+    ASSERT_OK(conn.Execute("INSERT INTO t_r VALUES (4, 'four4'), (7, 'seven7')"));
+    ASSERT_OK(conn.Execute("INSERT INTO t_h VALUES (4, 'four4'), (7, 'seven7')"));
+    ASSERT_OK(conn.Execute("INSERT INTO t_l VALUES (4, 'four4'), (7, 'seven7')"));
+    ASSERT_NO_FATALS(check_partitions(conn, CheckType::AfterUpgrade));
+  }
+}
+
 }  // namespace yb
