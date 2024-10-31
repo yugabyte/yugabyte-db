@@ -22,6 +22,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
 #include "yb/util/pg_util.h"
 
@@ -41,6 +42,8 @@ DECLARE_uint32(ysql_conn_mgr_num_workers);
 DECLARE_uint32(ysql_conn_mgr_stats_interval);
 DECLARE_uint32(ysql_conn_mgr_min_conns_per_db);
 DECLARE_int32(ysql_max_connections);
+DECLARE_string(ysql_conn_mgr_log_settings);
+DECLARE_uint32(ysql_conn_mgr_server_lifetime);
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
@@ -139,8 +142,31 @@ void YsqlConnMgrConf::AddSslConfig(std::map<std::string, std::string>* ysql_conn
   (*ysql_conn_mgr_configs)["{%tls_cert_file%}"] = tls_cert_file;
 }
 
+void YsqlConnMgrConf::UpdateLogSettings(std::string& log_settings_str) {
+  std::stringstream ss(log_settings_str);
+  std::string setting;
+
+  while (std::getline(ss, setting, ',')) {
+    util::TrimStr(setting);
+    if (!setting.empty()) {
+      if (setting == "log_debug") {
+        log_debug_ = true;
+      } else if (setting == "log_config") {
+        log_config_ = true;
+      } else if (setting == "log_session") {
+        log_session_ = true;
+      } else if (setting == "log_query") {
+        log_query_ = true;
+      } else if (setting == "log_stats") {
+        log_stats_ = true;
+      }
+    }
+  }
+}
+
 std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
   const auto conf_file_path = JoinPathSegments(data_dir_, conf_file_name_);
+  UpdateLogSettings(FLAGS_ysql_conn_mgr_log_settings);
 
   // Config map
   std::map<std::string, std::string> ysql_conn_mgr_configs = {
@@ -159,8 +185,13 @@ std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
      std::to_string(FLAGS_ysql_conn_mgr_max_client_connections)},
     {"{%ysql_port%}", std::to_string(postgres_address_.port())},
     {"{%log_debug%}", BoolToString(log_debug_)},
+    {"{%log_config%}", BoolToString(log_config_)},
+    {"{%log_session%}", BoolToString(log_session_)},
+    {"{%log_query%}", BoolToString(log_query_)},
+    {"{%log_stats%}", BoolToString(log_stats_)},
     {"{%logtostderr%}", FLAGS_logtostderr ? "yes" : "no"},
     {"{%stats_interval%}", std::to_string(FLAGS_ysql_conn_mgr_stats_interval)},
+    {"{%server_lifetime%}", std::to_string(FLAGS_ysql_conn_mgr_server_lifetime)},
     {"{%min_pool_size%}", std::to_string(FLAGS_ysql_conn_mgr_min_conns_per_db)},
     {"{%yb_use_unix_socket%}", FLAGS_ysql_conn_mgr_use_unix_conn ? "" : "#"},
     {"{%yb_use_tcp_socket%}", FLAGS_ysql_conn_mgr_use_unix_conn ? "#" : ""},
@@ -229,9 +260,6 @@ void YsqlConnMgrConf::UpdateConfigFromGFlags() {
 
   CHECK_OK(postgres_address_.ParseString(
       FLAGS_pgsql_proxy_bind_address, pgwrapper::PgProcessConf().kDefaultPort));
-
-  // Use the log level of tserver flag `minloglevel`.
-  log_debug_ = (GetAtomicFlag(&FLAGS_minloglevel) <= 2) ? true : false;
 }
 
 YsqlConnMgrConf::YsqlConnMgrConf(const std::string& data_path) {
