@@ -13,15 +13,17 @@
 
 #include "yb/master/xcluster_consumer_registry_service.h"
 
-#include "yb/docdb/key_bounds.h"
-#include "yb/master/catalog_entity_info.h"
-#include "yb/master/xcluster_rpc_tasks.h"
-#include "yb/master/master_client.pb.h"
-#include "yb/master/master_ddl.pb.h"
-
 #include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/xcluster_util.h"
+
+#include "yb/docdb/key_bounds.h"
 #include "yb/dockv/partition.h"
+
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/xcluster_rpc_tasks.h"
 
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -108,6 +110,12 @@ Status ComputeTabletMapping(
   auto consumer_partitions_map = GetPartitionStartKeyConsumerTabletMapping(consumer_tablet_keys);
   if (TryCreateOptimizedTabletMapping(producer_tablet_keys, consumer_partitions_map, mutable_map)) {
     stream_entry->set_local_tserver_optimized(true);
+    if (xcluster::IsSequencesDataAlias(stream_entry->consumer_table_id())) {
+      // The streams for sequences_data transform the DB OID of replicated changes, which has the
+      // side effect of changing the hash and thus which tablet the change has to go to.
+      // Thus the changes from one producer tablet can end up going to all the consumer tablets.
+      stream_entry->set_local_tserver_optimized(false);
+    }
     return Status::OK();
   }
 
