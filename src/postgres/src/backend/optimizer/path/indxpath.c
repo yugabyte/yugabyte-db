@@ -780,7 +780,7 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	}
 
 	Assert(!bms_is_empty(unbatchablerelids) ||
-		   bms_equal(pclause_batched_inner_attnos, batched_inner_attnos));
+		   bms_is_subset(pclause_batched_inner_attnos, batched_inner_attnos));
 
 	bms_free(batched_inner_attnos);
 	bms_free(pclause_batched_inner_attnos);
