@@ -308,6 +308,45 @@ replace_outer_grouping(PlannerInfo *root, GroupingFunc *grp)
 	return retval;
 }
 
+static void
+yb_generate_batched_params(PlannerInfo *root, NestLoopParam *nlp, Param *param,
+						   Relids source_relids)
+{
+	if (!bms_is_subset(source_relids, root->yb_cur_batched_relids) ||
+		root->yb_cur_batch_no < 0)
+		return;
+	/*
+	 * Reserve the next
+	 * yb_bnl_batch_size params for batched instances of this var.
+	 */
+	for (size_t i = 1; i < yb_bnl_batch_size; i++)
+	{
+		generate_new_exec_param(root,
+								param->paramtype,
+								param->paramtypmod,
+								param->paramcollid);
+	}
+	nlp->yb_batch_size = yb_bnl_batch_size;
+}
+
+static void
+yb_adjust_param_for_batching(PlannerInfo *root, NestLoopParam *nlp,
+							 Param *param, Relids source_relids)
+{
+	if (nlp->yb_batch_size <= 1)
+		return;
+
+	if (!bms_is_subset(source_relids, root->yb_cur_batched_relids) ||
+		root->yb_cur_batch_no < 0)
+		return;
+
+	/*
+	 * This is a batched param. Adjust the paramid to point to the
+	 * appropriate batch.
+	 */
+	param->paramid += root->yb_cur_batch_no;
+}
+
 /*
  * Generate a Param node to replace the given Var,
  * which is expected to come from some upper NestLoop plan node.
@@ -335,15 +374,8 @@ replace_nestloop_param_var(PlannerInfo *root, Var *var)
 			param->paramcollid = var->varcollid;
 			param->location = var->location;
 
-			/*
-			 * This refers to a batched var. Offset by the appropriate
-			 * batch no.
-			 */
-			if (root->yb_cur_batch_no >= 0 &&
-				 bms_is_member(var->varno, root->yb_cur_batched_relids))
-			{
-				param->paramid += root->yb_cur_batch_no;
-			}
+			yb_adjust_param_for_batching(root, nlp, param,
+				bms_make_singleton(var->varno));
 			return param;
 		}
 	}
@@ -361,23 +393,9 @@ replace_nestloop_param_var(PlannerInfo *root, Var *var)
 	nlp->paramval = copyObject(var);
 	nlp->yb_batch_size = 1;
 	root->curOuterParams = lappend(root->curOuterParams, nlp);
-	
-	if (bms_is_member(var->varno, root->yb_cur_batched_relids) &&
-		root->yb_cur_batch_no >= 0)
-	{
-		/* 
-		 * If this is a param for a batched var then reserve the next
-		 * yb_bnl_batch_size params for batched instances of this var.
-		 */
-		for (size_t i = 1; i < yb_bnl_batch_size; i++)
-		{
-			generate_new_exec_param(root,
-									var->vartype,
-									var->vartypmod,
-									var->varcollid);
-		}
-		nlp->yb_batch_size = yb_bnl_batch_size;
-	}
+
+	yb_generate_batched_params(root, nlp, param,
+		bms_make_singleton(var->varno));
 
 	/* And return the replacement Param */
 	return param;
@@ -411,6 +429,8 @@ replace_nestloop_param_placeholdervar(PlannerInfo *root, PlaceHolderVar *phv)
 			param->paramtypmod = exprTypmod((Node *) phv->phexpr);
 			param->paramcollid = exprCollation((Node *) phv->phexpr);
 			param->location = -1;
+
+			yb_adjust_param_for_batching(root, nlp, param, phv->phrels);
 			return param;
 		}
 	}
@@ -427,6 +447,8 @@ replace_nestloop_param_placeholdervar(PlannerInfo *root, PlaceHolderVar *phv)
 	nlp->paramval = (Var *) copyObject(phv);
 	nlp->yb_batch_size = 1;
 	root->curOuterParams = lappend(root->curOuterParams, nlp);
+
+	yb_generate_batched_params(root, nlp, param, phv->phrels);
 
 	/* And return the replacement Param */
 	return param;
