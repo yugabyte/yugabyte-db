@@ -51,11 +51,13 @@ Currently, YugabyteDB doesn't run a background job like PostgreSQL autovacuum to
 
 ## Cost estimation
 
-For each potential execution plan, the optimizer calculates costs in terms of I/O, CPU usage, and memory consumption. These costs help the optimizer compare which plan would likely be the most efficient to execute given the current database state and query context. Some of the factors included in the cost estimation are:
+For each potential execution plan, the optimizer calculates costs in terms of I/O, CPU usage, and memory consumption. These costs help the optimizer compare which plan would likely be the most efficient to execute given the current database state and query context.
 
 {{<tip>}}
 These estimates can be seen when using the DEBUG option in the [EXPLAIN](../../../api/ysql/the-sql-language/statements/perf_explain) command as EXPLAIN (ANALYZE, DEBUG).
 {{</tip>}}
+
+Some of the factors included in the cost estimation are discussed below.
 
 ### Cost of data fetch
 
@@ -63,7 +65,7 @@ To estimate the cost of fetching a tuple from [DocDB](../../docdb/), factors suc
 
 ### Index scan
 
-As the primary key is part of the base table and that each [SST](../../docdb/lsm-sst) of the base table is sorted in the order of the primary key the primary index lookup cheaper compared to secondary index lookup. Depending on the type of query this distinction is considered.
+When an index is used, any additional columns needed for the query must be retrieved from the corresponding row in the main table, which can be more costly than scanning only the base table. However, this isn’t an issue if the index is a covering index. To determine the most efficient execution plan, the CBO compares the cost of an index scan with that of a main table scan.
 
 ### Pushdown to storage layer
 
