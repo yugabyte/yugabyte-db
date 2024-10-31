@@ -17,7 +17,6 @@
 
 #include "yb/ash/wait_state.h"
 
-#include "yb/client/callbacks.h"
 #include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/rejection_score_source.h"

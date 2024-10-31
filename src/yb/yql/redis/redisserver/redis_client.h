@@ -16,7 +16,6 @@
 #include <string>
 
 #include "yb/client/client_fwd.h"
-#include "yb/client/callbacks.h"
 
 #include "yb/yql/redis/redisserver/redis_fwd.h"
 

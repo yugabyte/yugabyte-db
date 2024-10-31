@@ -36,7 +36,6 @@
 
 #include <boost/range/iterator_range.hpp>
 
-#include "yb/client/callbacks.h"
 #include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/schema.h"
