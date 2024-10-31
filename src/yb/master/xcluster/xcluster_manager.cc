@@ -20,6 +20,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_status.h"
 #include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
 #include "yb/util/backoff_waiter.h"
@@ -58,7 +59,13 @@ DEFINE_test_flag(bool, force_automatic_ddl_replication_mode, false,
     "Make XClusterCreateOutboundReplicationGroup always use automatic instead of semi-automatic "
     "xCluster replication mode.");
 
-DEFINE_RUNTIME_bool(auto_add_new_index_to_bidirectional_xcluster, false,
+DEFINE_RUNTIME_AUTO_bool(ysql_auto_add_new_index_to_bidirectional_xcluster_infra, kExternal,
+    false, true,
+    "Determines if the system supports the capability of automatically adding ysql index to "
+    "bi-directional xCluster. NOTE: Do not change this flag directly. If you want to disable the "
+    "feature, use ysql_auto_add_new_index_to_bidirectional_xcluster instead.");
+
+DEFINE_RUNTIME_bool(ysql_auto_add_new_index_to_bidirectional_xcluster, true,
     "If the indexed table is part of a bi-directional xCluster setup, then automatically add new "
     "indexes for this table to replication. This flag must be set on both universes, and the index "
     "must be created concurrently on both universes.");
@@ -81,6 +88,11 @@ Status ValidateUniverseUUID(const RequestType& req, CatalogManager& catalog_mana
   }
 
   return Status::OK();
+}
+
+bool IsYsqlAutoAddNewIndexToBiDirectionalXClusterEnabled() {
+  return FLAGS_ysql_auto_add_new_index_to_bidirectional_xcluster_infra &&
+         FLAGS_ysql_auto_add_new_index_to_bidirectional_xcluster;
 }
 
 }  // namespace
@@ -729,6 +741,21 @@ bool XClusterManager::IsTableBiDirectionallyReplicated(const TableId& table_id) 
   // Replicating between 3 universes will need bi-directional xCluster A <=> B <=> C <=> A.
   return XClusterSourceManager::IsTableReplicated(table_id) &&
          XClusterTargetManager::IsTableReplicated(table_id);
+}
+
+bool XClusterManager::ShouldAutoAddIndexesToBiDirectionalXCluster(
+    const TableInfo& indexed_table) const {
+  if (!IsYsqlAutoAddNewIndexToBiDirectionalXClusterEnabled() ||
+      indexed_table.GetTableType() != PGSQL_TABLE_TYPE) {
+    return false;
+  }
+
+  auto table_id = indexed_table.id();
+  if (indexed_table.colocated()) {
+    table_id = indexed_table.LockForRead()->pb.parent_table_id();
+  }
+
+  return IsTableBiDirectionallyReplicated(table_id);
 }
 
 Status XClusterManager::HandleTabletSplit(

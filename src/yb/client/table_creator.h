@@ -175,6 +175,8 @@ class YBTableCreator {
   // returned.
   Status Create();
 
+  std::string ResponseNoticeMessage() const { return resp_notice_message_; }
+
  private:
   friend class YBClient;
 
@@ -244,6 +246,8 @@ class YBTableCreator {
   TableId xcluster_source_table_id_;
 
   const TransactionMetadata* txn_ = nullptr;
+
+  std::string resp_notice_message_;
 
   DISALLOW_COPY_AND_ASSIGN(YBTableCreator);
 };

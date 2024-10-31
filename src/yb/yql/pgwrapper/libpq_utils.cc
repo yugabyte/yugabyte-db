@@ -658,6 +658,13 @@ Result<PGResultPtr> PGConn::CopyEnd() {
   return PGResultPtr(PQgetResult(impl_.get()));
 }
 
+void PGConn::TEST_CaptureNoticeMessages() {
+  auto capture_notice = [](void* arg, const char* message) {
+    static_cast<PGConn*>(arg)->TEST_last_notice_msg_ = message;
+  };
+  PQsetNoticeProcessor(impl_.get(), capture_notice, this);
+}
+
 Result<std::string> ToString(const PGresult* result, int row, int column) {
   if (PQgetisnull(result, row, column)) {
     return "NULL";

@@ -342,6 +342,7 @@ message PgCreateTableRequestPB {
 
 message PgCreateTableResponsePB {
   AppStatusPB status = 1;
+  string notice_message = 2;
 }
 
 message PgCreateTablegroupRequestPB {

@@ -32,7 +32,6 @@ DECLARE_bool(TEST_disable_apply_committed_transactions);
 DECLARE_bool(TEST_xcluster_fail_table_create_during_bootstrap);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 DECLARE_bool(TEST_fail_universe_replication_merge);
-DECLARE_bool(auto_add_new_index_to_bidirectional_xcluster);
 DECLARE_string(ysql_yb_test_block_index_phase);
 DECLARE_int32(ysql_yb_index_state_flags_update_delay);
 
@@ -652,8 +651,6 @@ class XClusterBiDirectionalIndexTest : public XClusterYsqlNonTransactionalTest,
 
   void SetUp() override {
     YB_SKIP_TEST_IN_TSAN();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_add_new_index_to_bidirectional_xcluster) = true;
-
     XClusterYsqlNonTransactionalTest::SetUp();
 
     // Setup the reverse replication.
@@ -719,6 +716,9 @@ TEST_P(XClusterBiDirectionalIndexTest, CreateIndex) {
   // Create a dummy table on producer, so that the table ids for the indexes do not match.
   ASSERT_OK(producer_conn_->Execute("create type dummy"));
 
+  producer_conn_->TEST_CaptureNoticeMessages();
+  consumer_conn_->TEST_CaptureNoticeMessages();
+
   auto starting_backfill_sink = StringWaiterLogSink("starting backfill with timestamp:");
   // Create index on producer.
   auto producer_sync = AsyncCreateIndex(*producer_conn_);
@@ -737,6 +737,12 @@ TEST_P(XClusterBiDirectionalIndexTest, CreateIndex) {
   ASSERT_OK_PREPEND(producer_sync->Wait(), "CreateIndex on producer failed");
   ASSERT_OK_PREPEND(consumer_sync->Wait(), "CreateIndex on consumer failed");
   ASSERT_TRUE(starting_backfill_sink.IsEventOccurred());
+
+  const auto expected_notice =
+      "This index belongs to a table that is under bi-directional xCluster replication. Create the "
+      "index on the other xCluster universe parallelly in order for this DDL to complete.";
+  ASSERT_STR_CONTAINS(producer_conn_->TEST_GetLastNoticeMessage(), expected_notice);
+  ASSERT_STR_CONTAINS(consumer_conn_->TEST_GetLastNoticeMessage(), expected_notice);
 
   // The colocated table uses range partitioning so gets a index scan, whereas the non-colocated
   // table uses hash partitioning and does a seq scan.

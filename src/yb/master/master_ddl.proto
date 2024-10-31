@@ -134,6 +134,8 @@ message CreateTableResponsePB {
   optional MasterErrorPB error = 1;
 
   optional bytes table_id = 2;
+
+  optional string notice_message = 3;
 }
 
 message IsCreateTableDoneRequestPB {

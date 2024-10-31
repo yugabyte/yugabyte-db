@@ -1025,8 +1025,8 @@ YBCStatus YBCPgAddSplitBoundary(YBCPgStatement handle, YBCPgExpr *exprs, int exp
   return ToYBCStatus(pgapi->AddSplitBoundary(handle, exprs, expr_count));
 }
 
-YBCStatus YBCPgExecCreateTable(YBCPgStatement handle) {
-  return ToYBCStatus(pgapi->ExecCreateTable(handle));
+YBCStatus YBCPgExecCreateTable(YBCPgStatement handle, const char **notice_msg) {
+  return ToYBCStatus(pgapi->ExecCreateTable(handle, notice_msg));
 }
 
 YBCStatus YBCPgNewAlterTable(const YBCPgOid database_oid,
@@ -1232,8 +1232,8 @@ YBCStatus YBCPgCreateIndexSetVectorOptions(YBCPgStatement handle, YbPgVectorIdxO
   return ToYBCStatus(pgapi->CreateIndexSetVectorOptions(handle, options));
 }
 
-YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle) {
-  return ToYBCStatus(pgapi->ExecCreateIndex(handle));
+YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle, const char** notice_msg) {
+  return ToYBCStatus(pgapi->ExecCreateIndex(handle, notice_msg));
 }
 
 YBCStatus YBCPgNewDropIndex(const YBCPgOid database_oid,

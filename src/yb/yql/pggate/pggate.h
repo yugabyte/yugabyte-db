@@ -322,7 +322,7 @@ class PgApiImpl {
 
   Status AddSplitBoundary(PgStatement *handle, PgExpr **exprs, int expr_count);
 
-  Status ExecCreateTable(PgStatement *handle);
+  Status ExecCreateTable(PgStatement *handle, const char **notice_msg);
 
   Status NewAlterTable(const PgObjectId& table_id,
                        PgStatement **handle);
@@ -408,7 +408,7 @@ class PgApiImpl {
   Status CreateIndexAddSplitRow(PgStatement *handle, int num_cols,
                                 YBCPgTypeEntity **types, uint64_t *data);
 
-  Status ExecCreateIndex(PgStatement *handle);
+  Status ExecCreateIndex(PgStatement *handle, const char** notice_msg);
 
   Status NewDropIndex(const PgObjectId& index_id,
                       bool if_exist,

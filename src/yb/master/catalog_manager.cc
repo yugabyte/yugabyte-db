@@ -3824,6 +3824,12 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     TRACE("Locking indexed table");
     RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(
         indexed_table->LockForRead(), resp));
+
+    if (xcluster_manager_->ShouldAutoAddIndexesToBiDirectionalXCluster(*indexed_table)) {
+      resp->set_notice_message(
+          "This index belongs to a table that is under bi-directional xCluster replication. Create "
+          "the index on the other xCluster universe parallelly in order for this DDL to complete.");
+    }
   }
 
   // Validate schema.
