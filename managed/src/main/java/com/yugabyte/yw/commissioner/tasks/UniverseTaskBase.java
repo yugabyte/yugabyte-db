@@ -955,12 +955,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       if (isFirstTry()) {
         createFreezeUniverseTask(universeUuid, firstRunTxnCallback)
             .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
-        // Run to apply the change first before adding the rest of the subtasks.
-        getRunnableTask().runSubTasks();
       } else {
         createFreezeUniverseTask(universeUuid)
             .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
       }
+      // Run to apply the change first before adding the rest of the subtasks.
+      getRunnableTask().runSubTasks();
       return Universe.getOrBadRequest(universeUuid);
     } catch (RuntimeException e) {
       unlockUniverseForUpdate(universeUuid);
