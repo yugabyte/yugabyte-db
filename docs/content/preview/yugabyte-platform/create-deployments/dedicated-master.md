@@ -35,18 +35,17 @@ A YugabyteDB universe requires a number of YB-Master servers equal to the [repli
 
 When creating a universe, you have the following two options for YB-Master process placement:
 
-- **Place Masters on the same nodes as T-Servers** (Shared): In this mode, 15% of the total memory available on the node goes to YB-Master and 85% goes to YB-TServer. The memory allocation can be overridden using the `default_memory_limit_to_ram_ratio` flag.
+- **Place Masters on the same nodes as T-Servers** (Shared): This is the default. In this mode, 15% of the total memory available on the node goes to YB-Master and 85% goes to YB-TServer. The memory allocation can be overridden using the `default_memory_limit_to_ram_ratio` flag.
 
 - **Place Masters on dedicated nodes** (Dedicated Masters): In this mode, nodes dedicated to Master processes are selected at the time of "Create Universe" (or equivalently, during the `/universe_configure` REST API call). Placing YB-Masters on dedicated nodes eliminates the need to configure or share memory.
 
 For an existing universe, assigning new YB-Masters will start the new YB-master nodes and stop any existing ones.
 
-{{< note >}}
-The dedicated master placement feature:
+Dedicated master placement does not apply to read replicas, which have only YB-TServers.
 
-- applies to universes created via most cloud providers (such as AWS, GCP, Azure, and On-Premises), except the Kubernetes cloud provider.
-- does not apply to read replicas, which have only YB-TServers.
-{{< /note >}}
+## Prerequisites
+
+Dedicated master placement can be used with universes created via AWS, GCP, Azure, and On-Premises [provider configurations](../../configure-yugabyte-platform/); Kubernetes is not supported.
 
 ### Enable the Enable dedicated nodes configuration option
 
@@ -62,15 +61,13 @@ Configure YugabyteDB Anywhere to display the **Enable dedicated nodes** option a
 
 ## Create a universe with dedicated YB-Master nodes
 
-Before you start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Configure cloud provider](../../configure-yugabyte-platform/aws/), and [enabled the configuration option](#enable-the-enable-dedicated-nodes-configuration-option).
-
 To create a universe with dedicated YB-Master nodes, do the following:
 
 1. Navigate to **Universes**, click **Create Universe**, and enter the following configuration details in the universe creation form:
 
     - In the **Name** field, enter a name for your cluster.
 
-    - In the **Provider** field, select the cloud provider you configured.
+    - In the **Provider** field, select the provider you configured.
 
     - In the **Regions** field, select the regions where you want to deploy YB-TServer nodes.
 
