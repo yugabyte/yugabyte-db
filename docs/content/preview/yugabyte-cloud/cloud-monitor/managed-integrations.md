@@ -37,7 +37,7 @@ Currently, you can export data to the following tools.
 | [Prometheus](https://prometheus.io/docs/introduction/overview/) | | Yes |
 | [VictoriaMetrics](https://docs.victoriametrics.com/) {{<tags/feature/tp>}} | | Yes |
 | [Google Cloud Storage](https://cloud.google.com/storage) (GCS) | Database audit logs | |
-| [Dynatrace](https://www.dynatrace.com) | | Yes |
+<!--| [Dynatrace](https://www.dynatrace.com) | | Yes |-->
 
 ## Manage integrations
 
@@ -207,7 +207,7 @@ To create an export configuration, do the following:
 1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
 
-### Dynatrace
+<!--### Dynatrace
 
 The Dynatrace integration requires the following:
 
@@ -222,7 +222,7 @@ To create an export configuration, do the following:
 1. Enter your Dynatrace Access Token.
 1. Optionally, click **Download** to download the Dynatrace dashboard template. You can import this template in your Dynatrace account and use it as a starting point for visualizing your cluster data.
 1. Click **Test Configuration** to make sure your connection is working.
-1. Click **Create Configuration**.
+1. Click **Create Configuration**.-->
 
 ## Next steps
 
