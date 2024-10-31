@@ -13,6 +13,7 @@
 
 #include "yb/integration-tests/upgrade-tests/pg15_upgrade_test_base.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 namespace yb {
@@ -20,6 +21,12 @@ namespace yb {
 class Pg15UpgradeTest : public Pg15UpgradeTestBase {
  public:
   Pg15UpgradeTest() = default;
+
+  constexpr static auto kTemplate0 = "template0";
+  constexpr static auto kTemplate1 = "template1";
+  constexpr static auto kYugabyte = "yugabyte";
+  constexpr static auto kPostgres = "postgres";
+  constexpr static auto kSystemPlatform = "system_platform";
 };
 
 TEST_F(Pg15UpgradeTest, CheckVersion) {
@@ -320,39 +327,212 @@ TEST_F(Pg15UpgradeTest, Sequences) {
 }
 
 TEST_F(Pg15UpgradeTest, MultipleDatabases) {
-  ASSERT_OK(ExecuteStatement("CREATE DATABASE userdb"));
+  /* Cases:
+   * - We support creating / altering databases to disallow connections - but neither YB nor PG
+   *   support upgrading those databases. That is tested by DatabaseWithDisallowedConnections below.
+   * - We support setting config values for databases
+   * - We support setting owner for databases
+   * - We support setting connection limits for databases
+   * - We do not support tablespaces for databases:
+   *   CREATE DATABASE db_ts WITH TABLESPACE ts;
+   *   ERROR:  Value other than default for tablespace option is not yet supported
+   * - We do not support creating new template databases:
+   *   CREATE DATABASE db_template WITH IS_TEMPLATE = true;
+   *   ERROR:  Value other than default or false for is_template option is not yet supported
+   *
+   *   ALTER DATABASE db IS_TEMPLATE true;
+   *   ERROR:  Altering is_template option is not yet supported
+   */
 
-  auto create_table_with_row = [this](const std::string& db_name, const int value) {
-    auto conn = ASSERT_RESULT(cluster_->ConnectToDB(db_name));
-    ASSERT_OK(conn.Execute(Format("CREATE TABLE t (v INT)")));
-    ASSERT_OK(conn.Execute(Format("INSERT INTO t VALUES ($0)", value)));
+  static const auto kUser = "new_user";
+
+  static const auto kTempFileLimitFlag = "temp_file_limit";
+  static const auto kTempFileLimitValue = "123MB";
+  static const auto kDefaultTempFileLimitValue = "1GB";
+
+  static const auto kDatabaseWithConnLimit = "db_with_conn_limit";
+  static const auto kDatabaseWithConfig = "db_with_config";
+  static const auto kDatabaseWithOwner = "db_with_owner";
+
+  static const auto kDefaultConnLimit = -1;
+  static const auto kNewConnLimit = 10;
+
+  static const auto kAnyTserver = std::nullopt;
+
+  // YB_TODO(#24597): We don't yet support upgrading databases with incremented catalog versions.
+  // Work around this by ignoring the increment.
+  static const auto kMakeNextDdlStatementNonincrementing_YB_TODO_24597 =
+      "SET yb_make_next_ddl_statement_nonincrementing = true";
+
+  struct DbInfo {
+    std::string owner;
+    int conn_limit;
+    std::string temp_file_limit;
+    bool disallowed_conns;
+
+    DbInfo() {
+      owner = kPostgres;
+      conn_limit = kDefaultConnLimit;
+      temp_file_limit = kDefaultTempFileLimitValue;
+      disallowed_conns = false;
+    }
   };
-  ASSERT_NO_FATALS(create_table_with_row("system_platform", 1));
-  ASSERT_NO_FATALS(create_table_with_row("postgres", 10));
-  ASSERT_NO_FATALS(create_table_with_row("userdb", 100));
+
+  std::map<std::string, DbInfo> db_map;
+  {
+    // Populate the map with the databases and their properties.
+    std::vector<std::string> db_names = {
+      kTemplate0, kTemplate1, kSystemPlatform, kYugabyte, kPostgres,
+      kDatabaseWithConnLimit, kDatabaseWithConfig, kDatabaseWithOwner
+    };
+
+    std::transform(db_names.begin(), db_names.end(), std::inserter(db_map, db_map.end()),
+                  [](const auto db_name) { return std::make_pair(db_name, DbInfo()); });
+
+    db_map[kTemplate0].disallowed_conns = true;
+    db_map[kTemplate1].owner = kUser;
+    db_map[kTemplate1].temp_file_limit = kTempFileLimitValue;
+    db_map[kYugabyte].owner = kUser;
+    db_map[kYugabyte].temp_file_limit = kTempFileLimitValue;
+    db_map[kDatabaseWithOwner].owner = kUser;
+    db_map[kDatabaseWithConnLimit].conn_limit = kNewConnLimit;
+    db_map[kDatabaseWithConfig].temp_file_limit = kTempFileLimitValue;
+  }
+
+  // Create the databases with their properties. We could programmatically do this using the
+  // property map, but we want to check both the CREATE and ALTER DATABASE commands.
+  ASSERT_OK(ExecuteStatements({
+    Format("CREATE USER $0", kUser),
+    Format("CREATE DATABASE $0 WITH OWNER = $1", kDatabaseWithOwner,
+           db_map[kDatabaseWithOwner].owner),
+    Format("CREATE DATABASE $0 WITH CONNECTION LIMIT = $1", kDatabaseWithConnLimit,
+           db_map[kDatabaseWithConnLimit].conn_limit),
+
+    Format("CREATE DATABASE $0", kDatabaseWithConfig),
+    kMakeNextDdlStatementNonincrementing_YB_TODO_24597,
+    Format("ALTER DATABASE $0 SET $1 TO '$2'", kDatabaseWithConfig, kTempFileLimitFlag,
+           db_map[kDatabaseWithConfig].temp_file_limit),
+  }));
+
+  for (auto db_name : {kYugabyte, kTemplate1}) {
+    ASSERT_OK(ExecuteStatements({
+      kMakeNextDdlStatementNonincrementing_YB_TODO_24597,
+      Format("ALTER DATABASE $0 SET $1 = '$2'", db_name, kTempFileLimitFlag,
+             db_map[db_name].temp_file_limit),
+      kMakeNextDdlStatementNonincrementing_YB_TODO_24597,
+      Format("ALTER DATABASE $0 OWNER TO $1", db_name, db_map[db_name].owner)
+    }));
+  }
+
+  // Create tables in some databases.
+  {
+    int db_number = 0;
+    for (const auto& [db_name, db_info] : db_map) {
+      if (db_name.starts_with("template"))
+        continue;
+
+      auto conn = ASSERT_RESULT(cluster_->ConnectToDB(db_name));
+      ASSERT_OK(conn.Execute(Format("CREATE TABLE t (v INT)")));
+      ASSERT_OK(conn.Execute(Format("INSERT INTO t VALUES ($0)", std::pow(10, db_number++))));
+    }
+  }
+  int inserted_row_count = 1;
+
+  // Set up assertion lambdas.
+  auto add_row_check_rows = [this](const std::map<std::string, DbInfo>& dbs,
+                                   const std::optional<size_t> ts_id, const int count) {
+    int db_number = 0;
+    for (const auto& [db_name, db_info] : dbs) {
+      if (db_name.starts_with("template"))
+        continue;
+
+      auto conn = ASSERT_RESULT(cluster_->ConnectToDB(db_name, ts_id));
+
+      ASSERT_OK(conn.Execute(Format("INSERT INTO t VALUES ($0)", count * std::pow(10, db_number))));
+
+      // Generate a vector of numbers [1 * 10^db_number, 2 * 10^db_number, 3 * 10^db_number, ...]
+      std::vector<int> expected(count);
+      std::generate(expected.begin(), expected.end(), [n = 1, db_number]() mutable {
+          return std::pow(10, db_number) * n++;
+      });
+      auto result = ASSERT_RESULT(conn.FetchRows<int>("SELECT v FROM t ORDER BY v"));
+      ASSERT_VECTORS_EQ(expected, result);
+
+      db_number++;
+    }
+  };
+
+  auto check_dbs = [this, &db_map](std::optional<size_t> ts_id) {
+    // Check database owners and connection limits.
+    {
+      auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+      auto result = ASSERT_RESULT((conn.FetchRows<std::string, std::string, int>(
+          "SELECT datname, rolname, datconnlimit FROM pg_database "
+          "JOIN pg_roles r on r.oid = datdba "
+          "ORDER BY datname")));
+
+      decltype(result) db_owners_and_conn_limits;
+      for (const auto& [db_name, db_info] : db_map) {
+        db_owners_and_conn_limits.push_back({db_name, db_info.owner, db_info.conn_limit});
+      }
+
+      ASSERT_VECTORS_EQ(db_owners_and_conn_limits, result);
+    }
+
+    // Check database temp_file_limits.
+    {
+      for (const auto& [db_name, db_info] : db_map) {
+        if (db_info.disallowed_conns)
+          continue;
+
+        // It can sometimes take a few seconds for new connections to pick up the new value.
+        ASSERT_OK(WaitFor([this, &db_name = db_name, &expected = db_info.temp_file_limit]
+                          () -> Result<bool> {
+          auto conn = VERIFY_RESULT(cluster_->ConnectToDB(db_name));
+          auto result = VERIFY_RESULT(
+              conn.FetchRow<std::string>(Format("SHOW $0", kTempFileLimitFlag)));
+          return result == expected;
+        }, 10s, Format("$0 on $1 was not the expected value", kTempFileLimitFlag, db_name)));
+      }
+    }
+  };
+
+  // Validate the databases and table rows before, during, and after the upgrade.
+  ASSERT_NO_FATALS(check_dbs(kAnyTserver));
+
+  ASSERT_NO_FATALS(add_row_check_rows(db_map, kAnyTserver, ++inserted_row_count));
 
   ASSERT_OK(UpgradeClusterToMixedMode());
 
-  auto add_row_check_rows = [this](const std::string& db_name, const size_t tserver,
-                                   const int value, const std::vector<int>& expected) {
-    auto conn = ASSERT_RESULT(cluster_->ConnectToDB(db_name, tserver));
-    ASSERT_OK(conn.Execute(Format("INSERT INTO t VALUES ($0)", value)));
-    auto result = ASSERT_RESULT(conn.FetchRows<int>("SELECT v FROM t ORDER BY v"));
-    ASSERT_EQ(result, expected);
-  };
-  ASSERT_NO_FATALS(add_row_check_rows("system_platform", kMixedModeTserverPg15, 2, {1, 2}));
-  ASSERT_NO_FATALS(add_row_check_rows("postgres", kMixedModeTserverPg15, 20, {10, 20}));
-  ASSERT_NO_FATALS(add_row_check_rows("userdb", kMixedModeTserverPg15, 200, {100, 200}));
+  ASSERT_NO_FATALS(check_dbs(kMixedModeTserverPg11));
+  ASSERT_NO_FATALS(check_dbs(kMixedModeTserverPg15));
 
-  ASSERT_NO_FATALS(add_row_check_rows("system_platform", kMixedModeTserverPg11, 3, {1, 2, 3}));
-  ASSERT_NO_FATALS(add_row_check_rows("postgres", kMixedModeTserverPg11, 30, {10, 20, 30}));
-  ASSERT_NO_FATALS(add_row_check_rows("userdb", kMixedModeTserverPg11, 300, {100, 200, 300}));
+  ASSERT_NO_FATALS(add_row_check_rows(db_map, kMixedModeTserverPg11, ++inserted_row_count));
+  ASSERT_NO_FATALS(add_row_check_rows(db_map, kMixedModeTserverPg15, ++inserted_row_count));
 
   ASSERT_OK(FinalizeUpgradeFromMixedMode());
 
-  ASSERT_NO_FATALS(add_row_check_rows("system_platform", 0, 4, {1, 2, 3, 4}));
-  ASSERT_NO_FATALS(add_row_check_rows("postgres", 0, 40, {10, 20, 30, 40}));
-  ASSERT_NO_FATALS(add_row_check_rows("userdb", 0, 400, {100, 200, 300, 400}));
+  ASSERT_NO_FATALS(check_dbs(kAnyTserver));
+
+  ASSERT_NO_FATALS(add_row_check_rows(db_map, kAnyTserver, ++inserted_row_count));
+}
+
+TEST_F(Pg15UpgradeTest, DatabaseWithDisallowedConnections) {
+  static const auto kDatabaseDisallowedConnections = "db_with_disallowed_connections";
+
+  ASSERT_OK(ExecuteStatement(Format("CREATE DATABASE $0 WITH ALLOW_CONNECTIONS = FALSE",
+                                    kDatabaseDisallowedConnections)));
+
+  // Validate that we can't connect to the database.
+  {
+    auto result = cluster_->ConnectToDB(kDatabaseDisallowedConnections);
+    ASSERT_NOK_STR_CONTAINS(result,
+        Format("database \"$0\" is not currently accepting connections",
+               kDatabaseDisallowedConnections));
+  }
+
+  // Should fail because we don't support upgrading databases that disallow connections.
+  ASSERT_NOK_STR_CONTAINS(UpgradeClusterToMixedMode(), "Failed to run pg_upgrade");
 }
 
 TEST_F(Pg15UpgradeTest, Template1) {
