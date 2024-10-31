@@ -5,6 +5,7 @@ MongoError,ErrorName
 9,FailedToParse
 14,TypeMismatch
 15,Overflow
+16,InvalidLength
 20,IllegalOperation
 23,AlreadyInitialized
 26,NamespaceNotFound
@@ -66,6 +67,7 @@ MongoError,ErrorName
 15972,Location15972
 15976,Location15976
 15981,Location15981
+15998,Location15998
 16004,Location16004
 16006,Location16006
 16007,Location16007
@@ -261,6 +263,7 @@ MongoError,ErrorName
 40160,Location40160
 40169,Location40169
 40177,Location40177
+40181,Location40181
 40185,Location40185
 40191,Location40191
 40192,Location40192
@@ -276,6 +279,7 @@ MongoError,ErrorName
 40202,Location40202
 40218,Location40218
 40228,Location40228
+40229,Location40229
 40234,Location40234
 40235,Location40235
 40237,Location40237

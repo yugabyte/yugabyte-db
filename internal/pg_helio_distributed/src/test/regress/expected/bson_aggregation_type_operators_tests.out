@@ -1321,7 +1321,7 @@ SELECT bson_dollar_project(outDoc, '{"passed": {"$eq": ["$output", "$expected"]}
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toObjectId": {"input": ""}}}');
 ERROR:  Unsupported conversion from object to objectId in $convert with no onError value
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toObjectId": []}}');
-ERROR:  $toObjectId requires a single argument, got 0
+ERROR:  Expression $toObjectId takes exactly 1 arguments. 0 were passed in.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toObjectId": "this is a string"}}');
 ERROR:  Failed to parse objectId 'this is a string' in $convert with no onError value: Invalid string length for parsing to OID, expected 24 but found 16
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toObjectId": "asdsfsdzzzzsersdfrtghtsz"}}');
@@ -1333,7 +1333,7 @@ ERROR:  Failed to parse objectId '639926cee6bda3127f153bfZ' in $convert with no 
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toInt": {"input": ""}}}');
 ERROR:  Unsupported conversion from object to int in $convert with no onError value
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toInt": []}}');
-ERROR:  $toInt requires a single argument, got 0
+ERROR:  Expression $toInt takes exactly 1 arguments. 0 were passed in.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toInt": [{"$date": "2022-01-01T00:00:00.000Z"}]}}');
 ERROR:  Unsupported conversion from date to int in $convert with no onError value
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toInt": {"$numberDouble": "2147483648"}}}');
@@ -1373,7 +1373,7 @@ ERROR:  Failed to parse number '' in $convert with no onError value: No digits
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toLong": {"input": ""}}}');
 ERROR:  Unsupported conversion from object to long in $convert with no onError value
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toLong": []}}');
-ERROR:  $toLong requires a single argument, got 0
+ERROR:  Expression $toLong takes exactly 1 arguments. 0 were passed in.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toLong": {"$numberDouble": "9223372036854775808"}}}');
 ERROR:  Conversion would overflow target type in $convert with no onError value: 9.22337E+18
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toLong": {"$numberDouble": "Infinity"}}}');
@@ -1409,7 +1409,7 @@ ERROR:  Failed to parse number '' in $convert with no onError value: No digits
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDouble": {"input": ""}}}');
 ERROR:  Unsupported conversion from object to double in $convert with no onError value
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDouble": []}}');
-ERROR:  $toDouble requires a single argument, got 0
+ERROR:  Expression $toDouble takes exactly 1 arguments. 0 were passed in.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDouble": {"$numberDecimal": "1.8E309"}}}');
 ERROR:  Conversion would overflow target type in $convert with no onError value: 1.8E+309
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDouble": {"$numberDecimal": "-1.8E309"}}}');
@@ -1433,7 +1433,7 @@ ERROR:  Failed to parse number '' in $convert with no onError value: Empty strin
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDecimal": {"input": ""}}}');
 ERROR:  Unsupported conversion from object to decimal in $convert with no onError value
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDecimal": []}}');
-ERROR:  $toDecimal requires a single argument, got 0
+ERROR:  Expression $toDecimal takes exactly 1 arguments. 0 were passed in.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDecimal": "123423.8E6145" }}');
 ERROR:  Failed to parse number '123423.8E6145' in $convert with no onError value: Failed to parse string to decimal
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDecimal": "-123423.8E6145" }}');
@@ -1453,7 +1453,7 @@ ERROR:  Failed to parse number '' in $convert with no onError value: Empty strin
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toString": {"input": ""}}}');
 ERROR:  Unsupported conversion from object to string in $convert with no onError value
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toString": []}}');
-ERROR:  $toString requires a single argument, got 0
+ERROR:  Expression $toString takes exactly 1 arguments. 0 were passed in.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toString": {"$timestamp" : { "t": 1670981326, "i": 1 }}}}');
 ERROR:  Unsupported conversion from timestamp to string in $convert with no onError value
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toString": [[]]}}');
@@ -1464,7 +1464,7 @@ ERROR:  Unsupported conversion from array to string in $convert with no onError 
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDate": {"input": ""}}}');
 ERROR:  Unsupported conversion from object to date in $convert with no onError value
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDate": []}}');
-ERROR:  $toDate requires a single argument, got 0
+ERROR:  Expression $toDate takes exactly 1 arguments. 0 were passed in.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDate": [[]]}}');
 ERROR:  Unsupported conversion from array to date in $convert with no onError value
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDate": {"$numberDouble": "9223372036854775808"}}}');

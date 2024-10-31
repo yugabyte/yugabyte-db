@@ -98,6 +98,8 @@ select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":
 ERROR:  BSON field 'delete.deletes.extra' is an unknown field
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":0}],"ordered":1}');
 ERROR:  BSON field 'delete.ordered' is the wrong type 'int', expected type 'bool'
+select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":5}]}');
+ERROR:  The limit field in delete objects must be 0 or 1. Got 5
 -- Disallow writes to system.views
 select helio_api.delete('db', '{"delete":"system.views", "deletes":[{"q":{},"limit":0}]}');
 ERROR:  cannot write to db.system.views

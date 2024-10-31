@@ -288,7 +288,7 @@ BuildBatchInsertionSpec(bson_iter_t *insertCommandIter, pgbsonsequence *insertDo
 		{
 			if (!BSON_ITER_HOLDS_UTF8(insertCommandIter))
 			{
-				ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg("collection name has invalid type %s",
 									   BsonIterTypeName(insertCommandIter))));
 			}
@@ -345,7 +345,7 @@ BuildBatchInsertionSpec(bson_iter_t *insertCommandIter, pgbsonsequence *insertDo
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD),
 							errmsg("BSON field 'insert.%s' is an unknown field",
 								   field)));
 		}
@@ -353,7 +353,7 @@ BuildBatchInsertionSpec(bson_iter_t *insertCommandIter, pgbsonsequence *insertDo
 
 	if (collectionName == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40414),
 						errmsg("BSON field 'insert.insert' is missing but "
 							   "a required field")));
 	}
@@ -367,7 +367,7 @@ BuildBatchInsertionSpec(bson_iter_t *insertCommandIter, pgbsonsequence *insertDo
 
 	if (!hasDocuments)
 	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40414),
 						errmsg("BSON field 'insert.documents' is missing but "
 							   "a required field")));
 	}
@@ -376,7 +376,7 @@ BuildBatchInsertionSpec(bson_iter_t *insertCommandIter, pgbsonsequence *insertDo
 	if ((!hasSkippedDocuments && insertionCount == 0) ||
 		insertionCount > MaxWriteBatchSize)
 	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDLENGTH),
 						errmsg("Write batch sizes must be between 1 and %d. "
 							   "Got %d operations.", MaxWriteBatchSize, insertionCount)));
 	}

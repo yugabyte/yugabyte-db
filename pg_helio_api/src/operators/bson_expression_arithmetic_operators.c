@@ -22,13 +22,14 @@
 /* --------------------------------------------------------- */
 /* Type definitions */
 /* --------------------------------------------------------- */
-typedef void (*ProcessArithmeticSingleOperand)(const bson_value_t *currentValue,
-											   bson_value_t *result);
-typedef void (*ProcessArithmeticDualOperands)(void *state, bson_value_t *result);
-typedef bool (*ProcessArithmeticVariableOperands)(const bson_value_t *currentValue,
-												  void *state,
-												  bson_value_t *result, bool
-												  isFieldPathExpression);
+typedef void (*ProcessArithmeticOperatorOneOperand)(const bson_value_t *currentValue,
+													bson_value_t *result);
+typedef void (*ProcessArithmeticOperatorTwoOperands)(void *state, bson_value_t *result);
+typedef bool (*ProcessArithmeticOperatorVariableOperands)(const
+														  bson_value_t *currentValue,
+														  void *state,
+														  bson_value_t *result, bool
+														  isFieldPathExpression);
 
 /* State for $add operator */
 typedef struct DollarAddState
@@ -50,43 +51,44 @@ typedef enum RoundOperation
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
-static void ParseArithmeticSingleOperand(const bson_value_t *argument,
-										 AggregationExpressionData *data, const
-										 char *operatorName,
-										 ProcessArithmeticSingleOperand
-										 processOperatorFunc,
-										 ParseAggregationExpressionContext *context);
-static void ParseArithmeticDualOperands(const bson_value_t *argument,
-										AggregationExpressionData *data, const
-										char *operatorName,
-										ProcessArithmeticDualOperands
-										processArithmeticOperatorFunc,
-										ParseAggregationExpressionContext *context);
+static void ParseArithmeticOperatorOneOperand(const bson_value_t *argument,
+											  AggregationExpressionData *data, const
+											  char *operatorName,
+											  ProcessArithmeticOperatorOneOperand
+											  processOperatorFunc,
+											  ParseAggregationExpressionContext *context);
+static void ParseArithmeticOperatorTwoOperands(const bson_value_t *argument,
+											   AggregationExpressionData *data, const
+											   char *operatorName,
+											   ProcessArithmeticOperatorTwoOperands
+											   processArithmeticOperatorFunc,
+											   ParseAggregationExpressionContext *context);
 static void ParseDollarRoundAndTrunc(const bson_value_t *argument,
 									 AggregationExpressionData *data, const
 									 char *operatorName,
 									 ParseAggregationExpressionContext *context);
-static void ParseArithmeticVariableOperands(const bson_value_t *argument,
-											void *state,
-											AggregationExpressionData *data,
-											ProcessArithmeticVariableOperands
-											processOperatorFunc,
-											ParseAggregationExpressionContext *context);
-static void HandlePreParsedArithmeticSingleOperand(pgbson *doc, void *arguments,
-												   ExpressionResult *
-												   expressionResult,
-												   ProcessArithmeticSingleOperand
-												   processOperatorFunc);
-static void HandlePreParsedArithmeticDualOperands(pgbson *doc, void *arguments,
-												  ExpressionResult *
-												  expressionResult,
-												  ProcessArithmeticDualOperands
-												  processOperatorFunc);
+static void ParseArithmeticOperatorVariableOperands(const bson_value_t *argument,
+													void *state,
+													AggregationExpressionData *data,
+													ProcessArithmeticOperatorVariableOperands
+													processOperatorFunc,
+													ParseAggregationExpressionContext *
+													context);
+static void HandlePreParsedArithmeticOperatorOneOperand(pgbson *doc, void *arguments,
+														ExpressionResult *
+														expressionResult,
+														ProcessArithmeticOperatorOneOperand
+														processOperatorFunc);
+static void HandlePreParsedArithmeticOperatorTwoOperands(pgbson *doc, void *arguments,
+														 ExpressionResult *
+														 expressionResult,
+														 ProcessArithmeticOperatorTwoOperands
+														 processOperatorFunc);
 static void HandlePreParsedArithmeticVariableOperands(pgbson *doc, void *arguments,
 													  void *state,
 													  bson_value_t *result,
 													  ExpressionResult *expressionResult,
-													  ProcessArithmeticVariableOperands
+													  ProcessArithmeticOperatorVariableOperands
 													  processOperatorFunc);
 static bool ProcessDollarAdd(const bson_value_t *currentElement, void *state,
 							 bson_value_t *result,
@@ -139,8 +141,8 @@ ParseDollarAdd(const bson_value_t *argument, AggregationExpressionData *data,
 		.foundUndefined = false,
 	};
 
-	ParseArithmeticVariableOperands(argument, &state, data, ProcessDollarAdd,
-									context);
+	ParseArithmeticOperatorVariableOperands(argument, &state, data, ProcessDollarAdd,
+											context);
 
 	if (data->kind == AggregationExpressionKind_Constant)
 	{
@@ -195,8 +197,8 @@ ParseDollarMultiply(const bson_value_t *argument, AggregationExpressionData *dat
 	data->value.value_type = BSON_TYPE_INT32;
 	data->value.value.v_int32 = 1;
 
-	ParseArithmeticVariableOperands(argument, NULL, data, ProcessDollarMultiply,
-									context);
+	ParseArithmeticOperatorVariableOperands(argument, NULL, data, ProcessDollarMultiply,
+											context);
 }
 
 
@@ -230,8 +232,8 @@ void
 ParseDollarSubtract(const bson_value_t *argument, AggregationExpressionData *data,
 					ParseAggregationExpressionContext *context)
 {
-	ParseArithmeticDualOperands(argument, data, "$subtract",
-								ProcessDollarSubtract, context);
+	ParseArithmeticOperatorTwoOperands(argument, data, "$subtract",
+									   ProcessDollarSubtract, context);
 }
 
 
@@ -245,8 +247,8 @@ void
 HandlePreParsedDollarSubtract(pgbson *doc, void *arguments,
 							  ExpressionResult *expressionResult)
 {
-	HandlePreParsedArithmeticDualOperands(doc, arguments, expressionResult,
-										  ProcessDollarSubtract);
+	HandlePreParsedArithmeticOperatorTwoOperands(doc, arguments, expressionResult,
+												 ProcessDollarSubtract);
 }
 
 
@@ -258,8 +260,8 @@ void
 ParseDollarDivide(const bson_value_t *argument, AggregationExpressionData *data,
 				  ParseAggregationExpressionContext *context)
 {
-	ParseArithmeticDualOperands(argument, data, "$divide",
-								ProcessDollarDivide, context);
+	ParseArithmeticOperatorTwoOperands(argument, data, "$divide",
+									   ProcessDollarDivide, context);
 }
 
 
@@ -273,8 +275,8 @@ void
 HandlePreParsedDollarDivide(pgbson *doc, void *arguments,
 							ExpressionResult *expressionResult)
 {
-	HandlePreParsedArithmeticDualOperands(doc, arguments, expressionResult,
-										  ProcessDollarDivide);
+	HandlePreParsedArithmeticOperatorTwoOperands(doc, arguments, expressionResult,
+												 ProcessDollarDivide);
 }
 
 
@@ -288,8 +290,8 @@ void
 ParseDollarMod(const bson_value_t *argument, AggregationExpressionData *data,
 			   ParseAggregationExpressionContext *context)
 {
-	ParseArithmeticDualOperands(argument, data, "$mod",
-								ProcessDollarMod, context);
+	ParseArithmeticOperatorTwoOperands(argument, data, "$mod",
+									   ProcessDollarMod, context);
 }
 
 
@@ -302,8 +304,8 @@ void
 HandlePreParsedDollarMod(pgbson *doc, void *arguments,
 						 ExpressionResult *expressionResult)
 {
-	HandlePreParsedArithmeticDualOperands(doc, arguments, expressionResult,
-										  ProcessDollarMod);
+	HandlePreParsedArithmeticOperatorTwoOperands(doc, arguments, expressionResult,
+												 ProcessDollarMod);
 }
 
 
@@ -315,8 +317,8 @@ void
 ParseDollarPow(const bson_value_t *argument, AggregationExpressionData *data,
 			   ParseAggregationExpressionContext *context)
 {
-	ParseArithmeticDualOperands(argument, data, "$pow",
-								ProcessDollarPow, context);
+	ParseArithmeticOperatorTwoOperands(argument, data, "$pow",
+									   ProcessDollarPow, context);
 }
 
 
@@ -330,8 +332,8 @@ void
 HandlePreParsedDollarPow(pgbson *doc, void *arguments,
 						 ExpressionResult *expressionResult)
 {
-	HandlePreParsedArithmeticDualOperands(doc, arguments, expressionResult,
-										  ProcessDollarPow);
+	HandlePreParsedArithmeticOperatorTwoOperands(doc, arguments, expressionResult,
+												 ProcessDollarPow);
 }
 
 
@@ -343,8 +345,8 @@ void
 ParseDollarLog(const bson_value_t *argument, AggregationExpressionData *data,
 			   ParseAggregationExpressionContext *context)
 {
-	ParseArithmeticDualOperands(argument, data, "$log",
-								ProcessDollarLog, context);
+	ParseArithmeticOperatorTwoOperands(argument, data, "$log",
+									   ProcessDollarLog, context);
 }
 
 
@@ -358,8 +360,8 @@ void
 HandlePreParsedDollarLog(pgbson *doc, void *arguments,
 						 ExpressionResult *expressionResult)
 {
-	HandlePreParsedArithmeticDualOperands(doc, arguments, expressionResult,
-										  ProcessDollarLog);
+	HandlePreParsedArithmeticOperatorTwoOperands(doc, arguments, expressionResult,
+												 ProcessDollarLog);
 }
 
 
@@ -386,8 +388,8 @@ void
 HandlePreParsedDollarRound(pgbson *doc, void *arguments,
 						   ExpressionResult *expressionResult)
 {
-	HandlePreParsedArithmeticDualOperands(doc, arguments, expressionResult,
-										  ProcessDollarRound);
+	HandlePreParsedArithmeticOperatorTwoOperands(doc, arguments, expressionResult,
+												 ProcessDollarRound);
 }
 
 
@@ -414,8 +416,8 @@ void
 HandlePreParsedDollarTrunc(pgbson *doc, void *arguments,
 						   ExpressionResult *expressionResult)
 {
-	HandlePreParsedArithmeticDualOperands(doc, arguments, expressionResult,
-										  ProcessDollarTrunc);
+	HandlePreParsedArithmeticOperatorTwoOperands(doc, arguments, expressionResult,
+												 ProcessDollarTrunc);
 }
 
 
@@ -428,8 +430,8 @@ void
 ParseDollarCeil(const bson_value_t *argument, AggregationExpressionData *data,
 				ParseAggregationExpressionContext *context)
 {
-	ParseArithmeticSingleOperand(argument, data, "$ceil",
-								 ProcessDollarCeil, context);
+	ParseArithmeticOperatorOneOperand(argument, data, "$ceil",
+									  ProcessDollarCeil, context);
 }
 
 
@@ -444,8 +446,8 @@ void
 HandlePreParsedDollarCeil(pgbson *doc, void *arguments,
 						  ExpressionResult *expressionResult)
 {
-	HandlePreParsedArithmeticSingleOperand(doc, arguments, expressionResult,
-										   ProcessDollarCeil);
+	HandlePreParsedArithmeticOperatorOneOperand(doc, arguments, expressionResult,
+												ProcessDollarCeil);
 }
 
 
@@ -458,8 +460,8 @@ void
 ParseDollarFloor(const bson_value_t *argument, AggregationExpressionData *data,
 				 ParseAggregationExpressionContext *context)
 {
-	ParseArithmeticSingleOperand(argument, data, "$floor",
-								 ProcessDollarFloor, context);
+	ParseArithmeticOperatorOneOperand(argument, data, "$floor",
+									  ProcessDollarFloor, context);
 }
 
 
@@ -474,8 +476,8 @@ void
 HandlePreParsedDollarFloor(pgbson *doc, void *arguments,
 						   ExpressionResult *expressionResult)
 {
-	HandlePreParsedArithmeticSingleOperand(doc, arguments, expressionResult,
-										   ProcessDollarFloor);
+	HandlePreParsedArithmeticOperatorOneOperand(doc, arguments, expressionResult,
+												ProcessDollarFloor);
 }
 
 
@@ -487,8 +489,8 @@ void
 ParseDollarExp(const bson_value_t *argument, AggregationExpressionData *data,
 			   ParseAggregationExpressionContext *context)
 {
-	ParseArithmeticSingleOperand(argument, data, "$exp",
-								 ProcessDollarExp, context);
+	ParseArithmeticOperatorOneOperand(argument, data, "$exp",
+									  ProcessDollarExp, context);
 }
 
 
@@ -503,8 +505,8 @@ void
 HandlePreParsedDollarExp(pgbson *doc, void *arguments,
 						 ExpressionResult *expressionResult)
 {
-	HandlePreParsedArithmeticSingleOperand(doc, arguments, expressionResult,
-										   ProcessDollarExp);
+	HandlePreParsedArithmeticOperatorOneOperand(doc, arguments, expressionResult,
+												ProcessDollarExp);
 }
 
 
@@ -517,8 +519,8 @@ void
 ParseDollarSqrt(const bson_value_t *argument, AggregationExpressionData *data,
 				ParseAggregationExpressionContext *context)
 {
-	ParseArithmeticSingleOperand(argument, data, "$sqrt",
-								 ProcessDollarSqrt, context);
+	ParseArithmeticOperatorOneOperand(argument, data, "$sqrt",
+									  ProcessDollarSqrt, context);
 }
 
 
@@ -533,8 +535,8 @@ void
 HandlePreParsedDollarSqrt(pgbson *doc, void *arguments,
 						  ExpressionResult *expressionResult)
 {
-	HandlePreParsedArithmeticSingleOperand(doc, arguments, expressionResult,
-										   ProcessDollarSqrt);
+	HandlePreParsedArithmeticOperatorOneOperand(doc, arguments, expressionResult,
+												ProcessDollarSqrt);
 }
 
 
@@ -547,8 +549,8 @@ void
 ParseDollarLog10(const bson_value_t *argument, AggregationExpressionData *data,
 				 ParseAggregationExpressionContext *context)
 {
-	ParseArithmeticSingleOperand(argument, data, "$log10",
-								 ProcessDollarLog10, context);
+	ParseArithmeticOperatorOneOperand(argument, data, "$log10",
+									  ProcessDollarLog10, context);
 }
 
 
@@ -563,8 +565,8 @@ void
 HandlePreParsedDollarLog10(pgbson *doc, void *arguments,
 						   ExpressionResult *expressionResult)
 {
-	HandlePreParsedArithmeticSingleOperand(doc, arguments, expressionResult,
-										   ProcessDollarLog10);
+	HandlePreParsedArithmeticOperatorOneOperand(doc, arguments, expressionResult,
+												ProcessDollarLog10);
 }
 
 
@@ -579,8 +581,8 @@ void
 ParseDollarLn(const bson_value_t *argument, AggregationExpressionData *data,
 			  ParseAggregationExpressionContext *context)
 {
-	ParseArithmeticSingleOperand(argument, data, "$ln",
-								 ProcessDollarLn, context);
+	ParseArithmeticOperatorOneOperand(argument, data, "$ln",
+									  ProcessDollarLn, context);
 }
 
 
@@ -595,8 +597,8 @@ void
 HandlePreParsedDollarLn(pgbson *doc, void *arguments,
 						ExpressionResult *expressionResult)
 {
-	HandlePreParsedArithmeticSingleOperand(doc, arguments, expressionResult,
-										   ProcessDollarLn);
+	HandlePreParsedArithmeticOperatorOneOperand(doc, arguments, expressionResult,
+												ProcessDollarLn);
 }
 
 
@@ -608,8 +610,8 @@ void
 ParseDollarAbs(const bson_value_t *argument, AggregationExpressionData *data,
 			   ParseAggregationExpressionContext *context)
 {
-	ParseArithmeticSingleOperand(argument, data, "$abs",
-								 ProcessDollarAbs, context);
+	ParseArithmeticOperatorOneOperand(argument, data, "$abs",
+									  ProcessDollarAbs, context);
 }
 
 
@@ -623,18 +625,18 @@ void
 HandlePreParsedDollarAbs(pgbson *doc, void *arguments,
 						 ExpressionResult *expressionResult)
 {
-	HandlePreParsedArithmeticSingleOperand(doc, arguments, expressionResult,
-										   ProcessDollarAbs);
+	HandlePreParsedArithmeticOperatorOneOperand(doc, arguments, expressionResult,
+												ProcessDollarAbs);
 }
 
 
 /* Helper to parse arithmetic operators that take strictly single arguments. */
 static void
-ParseArithmeticSingleOperand(const bson_value_t *argument,
-							 AggregationExpressionData *data, const
-							 char *operatorName,
-							 ProcessArithmeticSingleOperand processOperatorFunc,
-							 ParseAggregationExpressionContext *context)
+ParseArithmeticOperatorOneOperand(const bson_value_t *argument,
+								  AggregationExpressionData *data, const
+								  char *operatorName,
+								  ProcessArithmeticOperatorOneOperand processOperatorFunc,
+								  ParseAggregationExpressionContext *context)
 {
 	int numOfRequiredArgs = 1;
 	AggregationExpressionData *parsedData = ParseFixedArgumentsForExpression(argument,
@@ -664,10 +666,10 @@ ParseArithmeticSingleOperand(const bson_value_t *argument,
 
 /* Helper to evaluate pre-parsed expressions of operators that take strictly single operands. */
 static void
-HandlePreParsedArithmeticSingleOperand(pgbson *doc, void *arguments,
-									   ExpressionResult *expressionResult,
-									   ProcessArithmeticSingleOperand
-									   processOperatorFunc)
+HandlePreParsedArithmeticOperatorOneOperand(pgbson *doc, void *arguments,
+											ExpressionResult *expressionResult,
+											ProcessArithmeticOperatorOneOperand
+											processOperatorFunc)
 {
 	AggregationExpressionData *argument = (AggregationExpressionData *) arguments;
 
@@ -685,11 +687,12 @@ HandlePreParsedArithmeticSingleOperand(pgbson *doc, void *arguments,
 
 /* Helper to parse arithmetic operators that take strictly two arguments. */
 static void
-ParseArithmeticDualOperands(const bson_value_t *argument,
-							AggregationExpressionData *data, const
-							char *operatorName,
-							ProcessArithmeticDualOperands processOperatorFunc,
-							ParseAggregationExpressionContext *context)
+ParseArithmeticOperatorTwoOperands(const bson_value_t *argument,
+								   AggregationExpressionData *data, const
+								   char *operatorName,
+								   ProcessArithmeticOperatorTwoOperands
+								   processOperatorFunc,
+								   ParseAggregationExpressionContext *context)
 {
 	int numOfRequiredArgs = 2;
 	List *arguments = ParseFixedArgumentsForExpression(argument,
@@ -726,10 +729,10 @@ ParseArithmeticDualOperands(const bson_value_t *argument,
 
 /* Helper to evaluate pre-parsed expressions of operators that take strictly two operands. */
 static void
-HandlePreParsedArithmeticDualOperands(pgbson *doc, void *arguments,
-									  ExpressionResult *expressionResult,
-									  ProcessArithmeticDualOperands
-									  processOperatorFunc)
+HandlePreParsedArithmeticOperatorTwoOperands(pgbson *doc, void *arguments,
+											 ExpressionResult *expressionResult,
+											 ProcessArithmeticOperatorTwoOperands
+											 processOperatorFunc)
 {
 	List *argumentList = (List *) arguments;
 	AggregationExpressionData *firstArg = list_nth(argumentList, 0);
@@ -853,11 +856,12 @@ ParseDollarRoundAndTrunc(const bson_value_t *argument,
 
 /* Helper to parse arithmetic operators that take variable number of operands. */
 void
-ParseArithmeticVariableOperands(const bson_value_t *argument,
-								void *state,
-								AggregationExpressionData *data,
-								ProcessArithmeticVariableOperands processOperatorFunc,
-								ParseAggregationExpressionContext *context)
+ParseArithmeticOperatorVariableOperands(const bson_value_t *argument,
+										void *state,
+										AggregationExpressionData *data,
+										ProcessArithmeticOperatorVariableOperands
+										processOperatorFunc,
+										ParseAggregationExpressionContext *context)
 {
 	bool areArgumentsConstant;
 	List *argumentsList = ParseVariableArgumentsForExpression(argument,
@@ -899,7 +903,7 @@ static void
 HandlePreParsedArithmeticVariableOperands(pgbson *doc, void *arguments, void *state,
 										  bson_value_t *result,
 										  ExpressionResult *expressionResult,
-										  ProcessArithmeticVariableOperands
+										  ProcessArithmeticOperatorVariableOperands
 										  processOperatorFunc)
 {
 	List *argumentList = (List *) arguments;

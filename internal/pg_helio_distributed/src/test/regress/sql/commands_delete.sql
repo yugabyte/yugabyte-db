@@ -33,6 +33,7 @@ select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"limit":0}]}');
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":[],"limit":0}]}');
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":0,"extra":1}]}');
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":0}],"ordered":1}');
+select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":5}]}');
 
 -- Disallow writes to system.views
 select helio_api.delete('db', '{"delete":"system.views", "deletes":[{"q":{},"limit":0}]}');

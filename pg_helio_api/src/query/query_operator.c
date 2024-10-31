@@ -948,9 +948,11 @@ IsValidBsonDocumentForDollarInOrNinOp(const bson_value_t *value)
 		{
 			const char *key = bson_iter_key(&iterator);
 
+			/* $ref/$id are valid for DBRef */
 			if (key[0] == '$')
 			{
-				return strcmp(key, "$regex") == 0;
+				return strcmp(key, "$regex") == 0 || strcmp(key, "$ref") == 0 ||
+					   strcmp(key, "$id") == 0;
 			}
 		}
 	}
@@ -1047,80 +1049,26 @@ CreateQualsFromQueryDocIterator(bson_iter_t *queryDocIterator,
  * else should be treated as a regular queryDocIterator.
  */
 static Expr *
-CreateQualsForDBRef(bson_iter_t *refIterator,
+CreateQualsForDBRef(const char *operatorName, bson_iter_t *refIterator,
 					BsonQueryOperatorContext *context,
 					const char *path)
 {
-	bson_value_t idValue = { 0 };
-	bson_value_t dbValue = { 0 };
-	bson_value_t refValue = *bson_iter_value(refIterator);
+	bson_value_t dbrefValue;
+	pgbson_writer writer;
+	PgbsonWriterInit(&writer);
+	PgbsonWriterAppendValue(&writer, operatorName, strlen(operatorName), bson_iter_value(
+								refIterator));
 
-	List *quals = NIL;
-	bool hasUnknownKey = false;
 	while (bson_iter_next(refIterator))
 	{
-		const char *key = bson_iter_key(refIterator);
-		if (strcmp(key, "$id") == 0)
-		{
-			idValue = *bson_iter_value(refIterator);
-		}
-		else if (strcmp(key, "$db") == 0)
-		{
-			dbValue = *bson_iter_value(refIterator);
-		}
-		else
-		{
-			hasUnknownKey = true;
-			break;
-		}
+		PgbsonWriterAppendIter(&writer, refIterator);
 	}
-
-	/*todo support optional fields */
-	if (hasUnknownKey)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
-						errmsg(
-							"unknown key for DBRef, only $ref, $id and $db are allowed")));
-	}
-
+	PgbsonWriterCopyDocumentDataToBsonValue(&writer, &dbrefValue);
 	const MongoQueryOperator *eqOperator = GetMongoQueryOperatorByQueryOperatorType(
 		QUERY_OPERATOR_EQ, context->inputType);
 
-	/* <path> : <value>, convert to = expression  */
-	StringInfo pathBuffer = makeStringInfo();
-	appendStringInfo(pathBuffer, "%s.$ref", path);
-	Expr *refExpr = CreateFuncExprForQueryOperator(context, pathBuffer->data,
-												   eqOperator, &refValue);
-	quals = lappend(quals, refExpr);
-
-	resetStringInfo(pathBuffer);
-	appendStringInfo(pathBuffer, "%s.$id", path);
-	Expr *idExpr = CreateFuncExprForQueryOperator(context, pathBuffer->data,
-												  eqOperator, &idValue);
-	quals = lappend(quals, idExpr);
-
-	resetStringInfo(pathBuffer);
-	appendStringInfo(pathBuffer, "%s.$db", path);
-	Expr *dbExpr;
-	if (dbValue.value_type != BSON_TYPE_EOD)
-	{
-		dbExpr = CreateFuncExprForQueryOperator(context, pathBuffer->data,
-												eqOperator, &dbValue);
-	}
-	else
-	{
-		/* to align with Atlas behavior */
-		const MongoQueryOperator *existOperator =
-			GetMongoQueryOperatorByQueryOperatorType(
-				QUERY_OPERATOR_EXISTS, context->inputType);
-		dbValue.value_type = BSON_TYPE_BOOL;
-		dbValue.value.v_bool = false;
-		dbExpr = CreateFuncExprForQueryOperator(context, pathBuffer->data,
-												existOperator, &dbValue);
-	}
-	quals = lappend(quals, dbExpr);
-	pfree(pathBuffer->data);
-	return make_ands_explicit(quals);
+	return CreateFuncExprForQueryOperator(context, path,
+										  eqOperator, &dbrefValue);
 }
 
 
@@ -2177,13 +2125,35 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 				return NULL;
 			}
 
-			if (strcmp(mongoOperatorName, "$ref") == 0)
+			if (strcmp(mongoOperatorName, "$ref") == 0 ||
+				strcmp(mongoOperatorName, "$id") == 0)
 			{
+				bool isRef = strcmp(mongoOperatorName, "$ref") == 0;
 				bson_iter_t refIterator = *operatorDocIterator;
-				if (bson_iter_next(&refIterator) && strcmp(bson_iter_key(&refIterator),
-														   "$id") == 0)
+
+				if (!bson_iter_next(&refIterator))
 				{
-					return CreateQualsForDBRef(operatorDocIterator, context, path);
+					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+										"unknown operator: %s",
+										mongoOperatorName),
+									errdetail_log("unknown operator: %s",
+												  mongoOperatorName)));
+				}
+
+				/*a special case for DBRef */
+				/*If queryDoc is a string like {'$id': '', '$ref': ''}, treat it as a DBRef as well */
+				if ((isRef && strcmp(bson_iter_key(&refIterator), "$id") == 0) ||
+					(!isRef && strcmp(bson_iter_key(&refIterator), "$ref") == 0))
+				{
+					return CreateQualsForDBRef(mongoOperatorName, operatorDocIterator,
+											   context, path);
+				}
+				else
+				{
+					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+										"unknown operator: %s", mongoOperatorName),
+									errdetail_log("unknown operator: %s",
+												  mongoOperatorName)));
 				}
 			}
 

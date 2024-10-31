@@ -286,11 +286,6 @@ EXECUTE distinctQueryWithFilter('db', 'distinct5', 'a', '{ "b": { "$ref": "disti
  { "values" : [ { "$numberInt" : "3" }, { "$numberInt" : "2" } ], "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
--- negative tests
-EXECUTE distinctQueryWithFilter('db', 'distinct5', 'a', '{ "b": { "$id": { "$oid" : "147f000000c1de008ec19cea" }, "$ref": "distinct6" } }');
-ERROR:  unknown operator: $id
-EXECUTE distinctQueryWithFilter('db', 'distinct5', 'a', '{ "b": { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19cea" }, "$un": "t" } }');
-ERROR:  unknown key for DBRef, only $ref, $id and $db are allowed
 -- optional parameter - $db
 SELECT helio_api.insert_one('db2', 'distinct7', '{ "d": 20, "b": { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ceb" }, "$db": "db" }}');
 NOTICE:  creating collection
@@ -319,3 +314,185 @@ EXECUTE distinctQueryWithFilter('db2', 'distinct7', 'd', '{ "b": { "$ref": "dist
  { "values" : [ { "$numberInt" : "30" } ], "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
+SELECT helio_api.insert_one('db2', 'distinct7', '{ "d": 1, "b": { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce1" }}}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db2', 'distinct7', '{ "d": 2, "b": { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce2" }}}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db2', 'distinct7', '{ "d": 3, "b": { "$id" : { "$oid" : "147f000000c1de008ec19ce3" }, "$ref" : "distinct6" }}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db2', 'distinct7', '{ "d": 4, "b": { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce4" }}}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db2', 'distinct7', '{ "d": 5, "b": { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce5" }}}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db2', 'distinct7', '{ "d": 6, "b": { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce6" }}}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db2', 'distinct7', '{ "d": 7, "b": { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce6" }, "$db": "db", "tt":1}}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- expect to get 3
+EXECUTE distinctQueryWithFilter('db2', 'distinct7', 'd', '{ "b": {"$id": { "$oid" : "147f000000c1de008ec19ce3" }, "$ref" : "distinct6"} }');
+                         bson_build_distinct_response                          
+---------------------------------------------------------------------
+ { "values" : [ { "$numberInt" : "3" } ], "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- expect to get 7
+EXECUTE distinctQueryWithFilter('db2', 'distinct7', 'd', '{ "b": { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ce6" },"$db": "db", "tt":1 } }');
+                         bson_build_distinct_response                          
+---------------------------------------------------------------------
+ { "values" : [ { "$numberInt" : "7" } ], "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- expect to get null
+EXECUTE distinctQueryWithFilter('db2', 'distinct7', 'd', '{ "b": { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ce6" },"$db": "db" } }');
+              bson_build_distinct_response               
+---------------------------------------------------------------------
+ { "values" : [  ], "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- expect to work in $in/$nin
+EXECUTE distinctQueryWithFilter('db2', 'distinct7', 'd', '{ "b": { "$in": [ { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ce6" },"$db": "db", "tt":1 }, { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ce4" }} ] } }');
+                                     bson_build_distinct_response                                      
+---------------------------------------------------------------------
+ { "values" : [ { "$numberInt" : "4" }, { "$numberInt" : "7" } ], "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+EXECUTE distinctQueryWithFilter('db2', 'distinct7', 'd', '{ "b": { "$nin": [ { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ce6" },"$db": "db", "tt":1 }, { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ce4" }} ] } }');
+                                                                                                  bson_build_distinct_response                                                                                                   
+---------------------------------------------------------------------
+ { "values" : [ { "$numberInt" : "3" }, { "$numberInt" : "6" }, { "$numberInt" : "2" }, { "$numberInt" : "20" }, { "$numberInt" : "5" }, { "$numberInt" : "30" }, { "$numberInt" : "1" } ], "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- index
+SELECT helio_api_internal.create_indexes_non_concurrently('db2', '{ "createIndexes": "distinct7", "indexes": [ { "key": { "b": 1 }, "name": "ref_idx" } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+ANALYZE;
+begin;
+SET LOCAL enable_seqscan to off;
+EXPLAIN (COSTS OFF, BUFFERS OFF, ANALYZE ON, TIMING OFF, SUMMARY OFF) EXECUTE distinctQueryWithFilter('db2', 'distinct7', 'd', '{ "b": { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ce4" } } }');
+                                                                                                QUERY PLAN                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 37 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 37 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate (actual rows=1 loops=1)
+               ->  HashAggregate (actual rows=1 loops=1)
+                     Group Key: helio_api_catalog.bson_distinct_unwind(collection.document, $3)
+                     Batches: 1  Memory Usage: 53kB
+                     ->  ProjectSet (actual rows=1 loops=1)
+                           ->  Result (actual rows=1 loops=1)
+                                 One-Time Filter: helio_api_catalog.bson_true_match($4)
+                                 ->  Bitmap Heap Scan on documents_6637_6630098 collection (actual rows=1 loops=1)
+                                       Recheck Cond: (document OPERATOR(helio_api_catalog.@=) '{ "b" : { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce4" } } }'::helio_core.bson)
+                                       Heap Blocks: exact=1
+                                       ->  Bitmap Index Scan on ref_idx (actual rows=1 loops=1)
+                                             Index Cond: (document OPERATOR(helio_api_catalog.@=) '{ "b" : { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce4" } } }'::helio_core.bson)
+(19 rows)
+
+EXPLAIN (COSTS OFF, BUFFERS OFF, ANALYZE ON, TIMING OFF, SUMMARY OFF) EXECUTE distinctQueryWithFilter('db2', 'distinct7', 'd', '{ "b": { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ce6" },"$db": "db", "tt":1 } }');
+                                                                                                                      QUERY PLAN                                                                                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 37 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 37 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate (actual rows=1 loops=1)
+               ->  HashAggregate (actual rows=1 loops=1)
+                     Group Key: helio_api_catalog.bson_distinct_unwind(collection.document, $3)
+                     Batches: 1  Memory Usage: 37kB
+                     ->  ProjectSet (actual rows=1 loops=1)
+                           ->  Result (actual rows=1 loops=1)
+                                 One-Time Filter: helio_api_catalog.bson_true_match($4)
+                                 ->  Bitmap Heap Scan on documents_6637_6630098 collection (actual rows=1 loops=1)
+                                       Recheck Cond: (document OPERATOR(helio_api_catalog.@=) '{ "b" : { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce6" }, "$db" : "db", "tt" : { "$numberInt" : "1" } } }'::helio_core.bson)
+                                       Heap Blocks: exact=1
+                                       ->  Bitmap Index Scan on ref_idx (actual rows=1 loops=1)
+                                             Index Cond: (document OPERATOR(helio_api_catalog.@=) '{ "b" : { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce6" }, "$db" : "db", "tt" : { "$numberInt" : "1" } } }'::helio_core.bson)
+(19 rows)
+
+EXPLAIN (COSTS OFF, BUFFERS OFF, ANALYZE ON, TIMING OFF, SUMMARY OFF) EXECUTE distinctQueryWithFilter('db2', 'distinct7', 'd', '{ "b": {"$id": { "$oid" : "147f000000c1de008ec19ce6" }, "$ref" : "distinct6"}}');
+                                                                                                QUERY PLAN                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 30 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 30 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate (actual rows=1 loops=1)
+               ->  HashAggregate (actual rows=0 loops=1)
+                     Group Key: helio_api_catalog.bson_distinct_unwind(collection.document, $3)
+                     Batches: 1  Memory Usage: 37kB
+                     ->  ProjectSet (actual rows=0 loops=1)
+                           ->  Result (actual rows=0 loops=1)
+                                 One-Time Filter: helio_api_catalog.bson_true_match($4)
+                                 ->  Bitmap Heap Scan on documents_6637_6630098 collection (actual rows=0 loops=1)
+                                       Recheck Cond: (document OPERATOR(helio_api_catalog.@=) '{ "b" : { "$id" : { "$oid" : "147f000000c1de008ec19ce6" }, "$ref" : "distinct6" } }'::helio_core.bson)
+                                       ->  Bitmap Index Scan on ref_idx (actual rows=0 loops=1)
+                                             Index Cond: (document OPERATOR(helio_api_catalog.@=) '{ "b" : { "$id" : { "$oid" : "147f000000c1de008ec19ce6" }, "$ref" : "distinct6" } }'::helio_core.bson)
+(18 rows)
+
+EXPLAIN (COSTS OFF, BUFFERS OFF, ANALYZE ON, TIMING OFF, SUMMARY OFF) EXECUTE distinctQueryWithFilter('db2', 'distinct7', 'd', '{ "b": { "$in": [ { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ce6" },"$db": "db", "tt":1 }, { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ce4" }} ] } }');
+                                                                                                                                                              QUERY PLAN                                                                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 44 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 44 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate (actual rows=1 loops=1)
+               ->  HashAggregate (actual rows=2 loops=1)
+                     Group Key: helio_api_catalog.bson_distinct_unwind(collection.document, $3)
+                     Batches: 1  Memory Usage: 37kB
+                     ->  ProjectSet (actual rows=2 loops=1)
+                           ->  Result (actual rows=2 loops=1)
+                                 One-Time Filter: helio_api_catalog.bson_true_match($4)
+                                 ->  Bitmap Heap Scan on documents_6637_6630098 collection (actual rows=2 loops=1)
+                                       Recheck Cond: (document OPERATOR(helio_api_catalog.@*=) '{ "b" : [ { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce6" }, "$db" : "db", "tt" : { "$numberInt" : "1" } }, { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce4" } } ] }'::helio_core.bson)
+                                       Heap Blocks: exact=1
+                                       ->  Bitmap Index Scan on ref_idx (actual rows=2 loops=1)
+                                             Index Cond: (document OPERATOR(helio_api_catalog.@*=) '{ "b" : [ { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce6" }, "$db" : "db", "tt" : { "$numberInt" : "1" } }, { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce4" } } ] }'::helio_core.bson)
+(19 rows)
+
+commit;

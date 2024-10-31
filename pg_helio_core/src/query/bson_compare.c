@@ -157,16 +157,10 @@ extension_bson_gte(PG_FUNCTION_ARGS)
 }
 
 
-/*
- * bson_unique_index_equal is a dummy function that is used by the runtime to represent a unique index comparison.
- * The operator is unused as it is always pushed into the RUM index for index evaluation.
- * Note we can't use bson_equal (which does a field by field semantic equality), nor dollar_equal since it expects
- * document @= filter (which is not the behavior seen for unique indexes). We need a custom commutative operator
- * that allows for index pushdown for unique.
- */
 Datum
 bson_unique_index_equal(PG_FUNCTION_ARGS)
 {
+	/* This function is left here for compatibility - do not use */
 	ereport(ERROR, errmsg(
 				"Unique equal should only be an operator pushed to the index."));
 }

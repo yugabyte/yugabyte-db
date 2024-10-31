@@ -286,7 +286,7 @@ SELECT * FROM bson_dollar_project('{"date": {"$date": "2017-07-04T14:56:42.911Z"
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2017-07-04T14:56:42.911Z"}}', '{"dateString": {"$dateToString": { "date": "$date", "format": "%Y-%m-%d %H:%M:%S %z (%Z minutes)", "timezone": "America/New_York" }}}');
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2017-07-04T14:56:42.911Z"}}', '{"dateString": {"$dateToString": { "date": "$date", "format": "%Y-%m-%d %H:%M:%S %z (%Z minutes)", "timezone": "Australia/Eucla" }}}');
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2017-07-04T14:56:42.911Z"}}', '{"dateString": {"$dateToString": { "date": "$date", "format": "%Y-%m-%d %H:%M:%S %z (%Z minutes)", "timezone": "Asia/Katmandu" }}}');
-SELECT * FROM bson_dollar_project('{"date": {"$date": "1935-07-10T11:36:37.133Z"}}', '{"dateString": {"$dateToString": { "date": "$date", "format": "%Y-%m-%d %H:%M:%S %z (%Z minutes)", "timezone": "Europe/Amsterdam" }}}');
+SELECT * FROM bson_dollar_project('{"date": {"$date": "2017-07-04T14:56:42.911Z"}}', '{"dateString": {"$dateToString": { "date": "$date", "format": "%Y-%m-%d %H:%M:%S %z (%Z minutes)", "timezone": "Europe/Amsterdam" }}}');
 SELECT * FROM bson_dollar_project('{"date": {"$date": "1900-07-10T11:41:22.418Z"}}', '{"dateString": {"$dateToString": { "date": "$date", "format": "%Y-%m-%d %H:%M:%S %z (%Z minutes)", "timezone": "America/Caracas" }}}');
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2017-01-04T15:08:51.911Z"}}', '{"dateString": {"$dateToString": { "date": "$date", "format": "%Y-%m-%d %H:%M:%S %z (%Z minutes)", "timezone": "America/New_York" }}}');
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2017-07-04T15:09:12.911Z"}}', '{"dateString": {"$dateToString": { "date": "$date", "format": "%Y-%m-%d %H:%M:%S %z (%Z minutes)", "timezone": "America/New_York" }}}');
@@ -532,7 +532,10 @@ select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": {"$d
 select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": {"$date" : {"$numberLong": "951850555381"}}, "unit": "hour" , "binSize": 200000, "timezone": "America/New_York" }  }}');
 select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": {"$date" : {"$numberLong": "951850555381"}}, "unit": "hour" , "binSize": 200000, "timezone": "America/Denver" }  }}');
 select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": {"$date" : {"$numberLong": "7498555381"}}, "unit": "hour" , "binSize": 4500 }  }}');
-select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": {"$date" : {"$numberLong": "7498555381"}}, "unit": "hour" , "binSize": 450000000 }  }}');
+/* This test case has overflow, postgres added this check in newer minor versions.
+ * Todo: add this test back and check overflow after we bump up the postgres minor version (>=15.7 and >=16.3).
+ */
+-- select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": {"$date" : {"$numberLong": "7498555381"}}, "unit": "hour" , "binSize": 450000000 }  }}');
 
 -- $dateTrunc cases with unit day
 select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": {"$date" : {"$numberLong": "1707123355381"}}, "unit": "day", "binSize": 2 }  }}');

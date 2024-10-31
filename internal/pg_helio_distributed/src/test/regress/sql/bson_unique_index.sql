@@ -113,3 +113,284 @@ set local helio_api.forceUseIndexIfAvailable to on;
 set local enable_seqscan TO off;
 EXPLAIN (COSTS OFF) SELECT document FROM helio_api.collection('db', 'queryuniqueindexsharded') WHERE document @@ '{ "a.b": { "$gt": 5 } }';
 ROLLBACK;
+
+-- create unique index with truncation
+
+SELECT string_agg(md5(random()::text), '_') AS longstring1 FROM generate_series(1, 100) \gset
+SELECT string_agg(md5(random()::text), '_') AS longstring2 FROM generate_series(1, 100) \gset
+SELECT string_agg(md5(random()::text), '_') AS longstring3 FROM generate_series(1, 100) \gset
+SELECT string_agg(md5(random()::text), '_') AS longstring4 FROM generate_series(1, 100) \gset
+
+SELECT length(:'longstring1');
+
+-- create without truncation
+DELETE FROM helio_data.documents_5600;
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "e": 1 }, "name": "rumConstraint1", "unique": 1, "unique": 1, "sparse": 1 }] }', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "e": 1, "f": 1 }, "name": "rumConstraint2", "unique": 1, "unique": 1, "sparse": 1 }] }', true);
+\d helio_data.documents_5600
+
+-- fails
+SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 1, "e": "%s", "f": 1 }', :'longstring1')::bson);
+SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 2, "e": [ "%s", "%s" ], "f": 1 }', :'longstring1', :'longstring2')::bson);
+
+
+-- create with truncation allowed and the new op-class disabled
+set helio_api.enable_large_unique_index_keys to on;
+set helio_api.enable_new_unique_opclass to off;
+CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "rumConstraint1", "rumConstraint2" ] }');
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "e": 1 }, "name": "rumConstraint1", "unique": 1, "unique": 1, "sparse": 1 }] }', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "e": 1, "f": 1 }, "name": "rumConstraint2", "unique": 1, "unique": 1, "sparse": 1 }] }', true);
+\d helio_data.documents_5600
+
+-- succeeds
+SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 1, "e": "%s", "f": 1 }', :'longstring1')::bson);
+
+-- unique conflict
+SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 2, "e": [ "%s", "%s" ], "f": 1 }', :'longstring1', :'longstring2')::bson);
+
+-- create with suffix post truncation - succeeds
+SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 3, "e": [ "%s-withsuffix", "%s" ], "f": 1 }', :'longstring1', :'longstring2')::bson);
+
+-- this should also fail
+SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 4, "e": "%s-withsuffix", "f": 1 }', :'longstring1')::bson);
+
+-- this will work.
+SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 5, "e": "%s-withsuffix", "f": 1 }', :'longstring2')::bson);
+
+-- this will fail (suffix match of array and string).
+SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 6, "e": [ "%s", "%s-withsuffix" ], "f": 1 }', :'longstring3', :'longstring2')::bson);
+
+-- create with truncation allowed and the new op-class enabled
+set helio_api.enable_large_unique_index_keys to on;
+set helio_api.enable_new_unique_opclass to on;
+DELETE FROM helio_data.documents_5600;
+CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "rumConstraint1", "rumConstraint2" ] }');
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "e": 1 }, "name": "rumConstraint1", "unique": 1, "unique": 1, "sparse": 1 }] }', true);
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "e": 1, "f": 1 }, "name": "rumConstraint2", "unique": 1, "unique": 1, "sparse": 1 }] }', true);
+\d helio_data.documents_5600
+
+-- succeeds
+SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 1, "e": "%s", "f": 1 }', :'longstring1')::bson);
+
+-- unique conflict
+SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 2, "e": [ "%s", "%s" ], "f": 1 }', :'longstring1', :'longstring2')::bson);
+
+-- create with suffix post truncation - succeeds
+SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 3, "e": [ "%s-withsuffix", "%s" ], "f": 1 }', :'longstring1', :'longstring2')::bson);
+
+-- this should also fail
+SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 4, "e": "%s-withsuffix", "f": 1 }', :'longstring1')::bson);
+
+-- this will work.
+SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 5, "e": "%s-withsuffix", "f": 1 }', :'longstring2')::bson);
+
+-- this will fail (suffix match of array and string).
+SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 6, "e": [ "%s", "%s-withsuffix" ], "f": 1 }', :'longstring3', :'longstring2')::bson);
+
+-- test truncated elements with numeric types of the same/different equivalent value. 
+SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 7, "e": { "path1": "%s", "path2": 1.0 }, "f": 1 }', :'longstring3')::bson);
+SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 8, "e": { "path1": "%s", "path2": { "$numberDecimal": "1.0" }}, "f": 1 }', :'longstring3')::bson);
+SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 9, "e": { "path1": "%s", "path2": { "$numberDecimal": "1.01" }}, "f": 1 }', :'longstring3')::bson);
+
+-- test composite sparse unique indexes: Should succeed since none of the documents have this path (sparse unique ignore)
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "g": 1, "h": 1 }, "name": "rumConstraint3", "unique": 1, "sparse": 1 }] }', true);
+
+-- works
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "g": 5, "h": 5 }');
+
+-- fails (unique cosntraint)
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "g": 5, "h": 5 }');
+
+-- works
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "g": 5 }');
+
+-- fails (unique constraint)
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "g": 5 }');
+
+-- works
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "h": 5 }');
+
+-- fails (unique constraint)
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "h": 5 }');
+
+-- reset test data
+set helio_api.enable_large_unique_index_keys to on;
+set helio_api.enable_new_unique_opclass to on;
+
+DELETE FROM helio_data.documents_5600;
+CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "rumConstraint1", "rumConstraint2", "rumConstraint3" ] }');
+
+\d helio_data.documents_5600
+
+-- test unique sparse composite index
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "key1": 1, "key2": 1 }, "name": "constraint1", "unique": 1, "sparse": 1 }] }', true);
+
+\d helio_data.documents_5600
+
+-- should succeed and generate terms for all combinations on both arrays
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": [1, 2, 3], "key2": [4, 5, 6] }');
+
+-- should fail due to terms permutation on both arrays
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": [1, 2, 3], "key2": [4, 5, 6] }');
+
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 1, "key2": 4 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 1, "key2": 5 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 1, "key2": 6 }');
+
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 2, "key2": 4 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 2, "key2": 5 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 2, "key2": 6 }');
+
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 3, "key2": 4 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 3, "key2": 5 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 3, "key2": 6 }');
+
+-- now test array permutations with missing key
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": [1, 2, 3, 4, 5] }');
+
+-- should fail with undefined permutations on missing key
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 1 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 2 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 3 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 4 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 5 }');
+
+-- should succeed with null permutations on missing key (sparse)
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 1, "key2": null }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 2, "key2": null }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 3, "key2": null }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 4, "key2": null }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 5, "key2": null }');
+
+-- should succeed due to new combinations
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 6 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 6, "key2": 1 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 6, "key2": 2 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 6, "key2": 3 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 6, "key2": 4 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key2": 1 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key2": 2 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key2": 3 }');
+
+-- should work because doesn't fall in unique constraint
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key3": [1, 2] }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key3": [1, 2] }');
+
+-- reset data
+set helio_api.enable_large_unique_index_keys to on;
+set helio_api.enable_new_unique_opclass to on;
+
+DELETE FROM helio_data.documents_5600;
+CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "constraint1" ] }');
+
+\d helio_data.documents_5600
+
+-- now test composite not-sparse unique index
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "key1": 1, "key2": 1 }, "name": "constraint1", "unique": true, "sparse": false }] }', true);
+
+\d helio_data.documents_5600
+
+-- test array permutations with missing key
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": [1, 2, 3, 4, 5] }');
+
+-- should fail with undefined permutations on missing key
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 1 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 2 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 3 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 4 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 5 }');
+
+-- should fail with null permutations on missing key (non-sparse)
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 1, "key2": null }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 2, "key2": null }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 3, "key2": null }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 4, "key2": null }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 5, "key2": null }');
+
+-- reset data
+set helio_api.enable_large_unique_index_keys to on;
+set helio_api.enable_new_unique_opclass to on;
+
+DELETE FROM helio_data.documents_5600;
+CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "constraint1" ] }');
+
+\d helio_data.documents_5600
+
+-- now test composite not-sparse unique index
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "a": 1, "b": 1, "c": 1 }, "name": "constraint1", "unique": true, "sparse": true }] }', true);
+
+\d helio_data.documents_5600
+
+-- should work
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": 1 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": 1, "b": 1 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": 1, "c": 1 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "b": 1, "c": 1 }');
+
+-- repeated documents won't matter because  they don't fall in the index (sparse)
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "z": 1 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "z": 1 }');
+
+-- should fail
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": 1 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": 1, "b": 1 }');
+
+-- reset data
+set helio_api.enable_large_unique_index_keys to on;
+set helio_api.enable_new_unique_opclass to on;
+
+DELETE FROM helio_data.documents_5600;
+CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "constraint1" ] }');
+
+\d helio_data.documents_5600
+
+-- now test composite not-sparse unique index
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "a": 1, "b": 1, "c": 1 }, "name": "constraint1", "unique": true, "sparse": false }] }', true);
+
+\d helio_data.documents_5600
+
+-- should work
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": 1 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": 1, "b": 1 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": 1, "c": 1 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "b": 1, "c": 1 }');
+
+-- repeated documents will matter because they fall in the index (non-sparse)
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "z": 1 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "z": 1 }');
+
+-- should fail
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": 1 }');
+SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": 1, "b": 1 }');
+
+-- test new op class (generate_unique_shard_document) for composite sparse indexes
+
+SELECT helio_api_internal.generate_unique_shard_document('{ "key1": 1, "key2": "b" }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true);
+
+SELECT helio_api_internal.generate_unique_shard_document('{ "key1": 1, "key3": "b" }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true);
+
+SELECT helio_api_internal.generate_unique_shard_document('{ "key1": [1, 2, 3, 4, 5] }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true);
+
+SELECT helio_api_internal.generate_unique_shard_document('{ "key1": [1, 2, 3, 4, 5], "key2": 3 }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true);
+
+SELECT helio_api_internal.generate_unique_shard_document('{ "key1": [1, 2, 3, 4, 5], "key2": ["a"] }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true);
+
+SELECT helio_api_internal.generate_unique_shard_document('{ "key1": "abobora", "key2": ["jabuticaba"] }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true);
+
+SELECT helio_api_internal.generate_unique_shard_document('{ "key3": "b" }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true);
+
+-- test new op class (generate_unique_shard_document) for composite not sparse indexes
+
+SELECT helio_api_internal.generate_unique_shard_document('{ "key1": 1, "key2": "b" }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false);
+
+SELECT helio_api_internal.generate_unique_shard_document('{ "key1": 1, "key3": "b" }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false);
+
+SELECT helio_api_internal.generate_unique_shard_document('{ "key1": [1, 2, 3, 4, 5] }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false);
+
+SELECT helio_api_internal.generate_unique_shard_document('{ "key1": [1, 2, 3, 4, 5], "key2": 3 }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false);
+
+SELECT helio_api_internal.generate_unique_shard_document('{ "key1": [1, 2, 3, 4, 5], "key2": ["a"] }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false);
+
+SELECT helio_api_internal.generate_unique_shard_document('{ "key1": "abobora", "key2": ["jabuticaba"] }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false);
+
+SELECT helio_api_internal.generate_unique_shard_document('{ "key3": "b" }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false);

@@ -421,7 +421,7 @@ PopulateDollarAddFieldsState(const bson_value_t *addFieldsValue,
 {
 	if (addFieldsValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40272), errmsg(
 							"$addFields should be a document")));
 	}
 
@@ -445,7 +445,7 @@ PopulateDollarReplaceRootState(const bson_value_t *replaceRootValue,
 {
 	if (replaceRootValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40229), errmsg(
 							"$replaceRoot should be a document")));
 	}
 
