@@ -8507,8 +8507,8 @@
           "type" : "string"
         },
         "nodeName" : {
-          "description" : "The node's name",
-          "example" : "India node",
+          "description" : "The node's name in a universe",
+          "example" : "universe_node1",
           "readOnly" : true,
           "type" : "string"
         },
@@ -8560,8 +8560,8 @@
           "uniqueItems" : true
         },
         "nodeName" : {
-          "description" : "Node name",
-          "example" : "India node",
+          "description" : "Node name in a universe",
+          "example" : "universe_node1",
           "readOnly" : true,
           "type" : "string"
         },
