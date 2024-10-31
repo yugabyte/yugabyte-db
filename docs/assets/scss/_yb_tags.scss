@@ -106,10 +106,10 @@
     left: calc(100% + 10px);
     opacity: 0;
     visibility: hidden;
-		transition: visibility,opacity 0.3s ease-in-out;
+    transition: visibility, opacity 0.3s ease-in-out;
     transform: translate(0, calc(-50% + 10px));
     transform-origin: center;
-    white-space: wrap;
+    white-space: normal;
     text-transform: none;
 
     &:before {
@@ -125,10 +125,23 @@
     }
   }
 
-  &.sts,
   &.lts {
     .popup-details {
       width: 150px;
+    }
+  }
+}
+
+.is-safari {
+  .td-content {
+    @media(min-width: 2500px) {
+      .tag.release {
+        line-height: 0.9;
+
+        .popup-details {
+          width: 200px;
+        }
+      }
     }
   }
 }
