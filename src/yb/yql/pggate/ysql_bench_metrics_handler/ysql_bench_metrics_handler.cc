@@ -60,37 +60,37 @@ static void PgPrometheusMetricsHandler(
       writer.WriteSingleEntry(
           prometheus_attr, "ysql_bench_average_latency",
           ysql_bench_metric_entry->average_latency, AggregationFunction::kSum,
-          kServerLevel),
+          kServerLevel, METRIC_TYPE_YSQL_BENCH),
       "Couldn't write text metrics for Prometheus");
   WARN_NOT_OK(
       writer.WriteSingleEntry(
           prometheus_attr, "ysql_bench_success_count",
           ysql_bench_metric_entry->success_count, AggregationFunction::kSum,
-          kServerLevel),
+          kServerLevel, METRIC_TYPE_YSQL_BENCH),
       "Couldn't write text metrics for Prometheus");
   WARN_NOT_OK(
       writer.WriteSingleEntry(
           prometheus_attr, "ysql_bench_failure_count",
           ysql_bench_metric_entry->failure_count, AggregationFunction::kSum,
-          kServerLevel),
+          kServerLevel, METRIC_TYPE_YSQL_BENCH),
       "Couldn't write text metrics for Prometheus");
   WARN_NOT_OK(
       writer.WriteSingleEntry(
           prometheus_attr, "ysql_bench_latency_sum",
           ysql_bench_metric_entry->latency_sum, AggregationFunction::kSum,
-          kServerLevel),
+          kServerLevel, METRIC_TYPE_YSQL_BENCH),
       "Couldn't write text metrics for Prometheus");
   WARN_NOT_OK(
       writer.WriteSingleEntry(
           prometheus_attr, "ysql_bench_success_count_sum",
           ysql_bench_metric_entry->success_count_sum, AggregationFunction::kSum,
-          kServerLevel),
+          kServerLevel, METRIC_TYPE_YSQL_BENCH),
       "Couldn't write text metrics for Prometheus");
   WARN_NOT_OK(
       writer.WriteSingleEntry(
           prometheus_attr, "ysql_bench_failure_count_sum",
           ysql_bench_metric_entry->failure_count_sum, AggregationFunction::kSum,
-          kServerLevel),
+          kServerLevel, METRIC_TYPE_YSQL_BENCH),
       "Couldn't write text metrics for Prometheus");
 }
 

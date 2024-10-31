@@ -22,7 +22,7 @@ namespace yb {
 class PrometheusMetricFilter {
  public:
   virtual AggregationLevels GetAggregationLevels(
-      const std::string& metric_name, AggregationLevels default_levels) = 0;
+      const std::string& metric_name, AggregationLevels default_aggregation_levels) = 0;
 
   virtual std::string Version() const = 0;
 
@@ -42,12 +42,16 @@ class PrometheusMetricFilterV1 : public PrometheusMetricFilter {
   explicit PrometheusMetricFilterV1(const MetricPrometheusOptions& opts);
 
   AggregationLevels GetAggregationLevels(
-      const std::string& metric_name, AggregationLevels default_levels) override;
+      const std::string& metric_name, AggregationLevels default_aggregation_levels) override;
 
   std::string Version() const override;
 
  private:
+  bool ShouldCollectMetric(const std::string& metric_name) const;
+
   const boost::regex priority_regex_;
+
+  const std::optional<std::vector<std::string>> general_metrics_allowlist_;
 };
 
 
@@ -56,7 +60,7 @@ class PrometheusMetricFilterV2 : public PrometheusMetricFilter {
   explicit PrometheusMetricFilterV2(const MetricPrometheusOptions& opts);
 
   AggregationLevels GetAggregationLevels(
-      const std::string& metric_name, AggregationLevels default_levels) override;
+      const std::string& metric_name, AggregationLevels default_aggregation_levels) override;
 
   std::string Version() const override;
 

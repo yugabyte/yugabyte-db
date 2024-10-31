@@ -3610,7 +3610,8 @@ TEST_P(PgOidCollisionTest, MaterializedViewPgOidCollisionFromTservers) {
 // -- danger OID: 16385 (same as table id of deleted table tbl)
 // Conn2: CREATE TABLE danger (k INT, v INT);
 // Conn2: INSERT INTO danger SELECT i, i from generate_series(1, 100) i;
-TEST_P(PgOidCollisionTest, MetaCachePgOidCollisionFromTservers) {
+// This test will fail in DEBUG builds because table ID reuse will trigger certain DCHECK failure.
+TEST_P(PgOidCollisionTest, YB_DISABLE_TEST_EXCEPT_RELEASE(MetaCachePgOidCollisionFromTservers)) {
   const bool ysql_enable_pg_per_database_oid_allocator = GetParam();
   RestartClusterWithOidAllocator(ysql_enable_pg_per_database_oid_allocator);
   const string dbname = "db2";

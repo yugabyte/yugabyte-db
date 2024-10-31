@@ -182,6 +182,7 @@ set(UTIL_SRCS
   memory/memory.cc
   metric_entity.cc
   metrics.cc
+  metrics_aggregator.cc
   metrics_writer.cc
   monotime.cc
   mutex.cc

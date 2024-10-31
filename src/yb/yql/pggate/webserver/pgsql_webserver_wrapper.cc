@@ -193,7 +193,7 @@ void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
   WARN_NOT_OK(
       pwriter->WriteSingleEntry(
           ysql_conn_mgr_prometheus_attr, "ysql_conn_mgr_num_pools", num_pools,
-          AggregationFunction::kSum, kServerLevel, "gauge",
+          AggregationFunction::kSum, kServerLevel, METRIC_TYPE_SERVER, "gauge",
           "Number of YSQL Connection Manager pools"),
       "Cannot publish Ysql Connection Manager metric to Prometheus-metrics endpoint");
 
@@ -201,8 +201,8 @@ void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
   WARN_NOT_OK(
       pwriter->WriteSingleEntry(
           ysql_conn_mgr_prometheus_attr, "ysql_conn_mgr_last_updated_timestamp",
-          last_updated_timestamp, AggregationFunction::kSum, kServerLevel, "gauge",
-          "Timestamp of last update to YSQL Connection Manager metrics"),
+          last_updated_timestamp, AggregationFunction::kSum, kServerLevel, METRIC_TYPE_SERVER,
+          "gauge", "Timestamp of last update to YSQL Connection Manager metrics"),
       "Cannot publish Ysql Connection Manager metric to Promotheus-metircs endpoint");
 
   // Iterate over stats collected for each DB (pool), publish them iteratively.
@@ -241,7 +241,7 @@ void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
       WARN_NOT_OK(
           pwriter->WriteSingleEntry(
               ysql_conn_mgr_prometheus_attr, entry.name, entry.value, AggregationFunction::kSum,
-              kServerLevel, entry.type, entry.help),
+              kServerLevel, METRIC_TYPE_SERVER, entry.type, entry.help),
           "Cannot publish Ysql Connection Manager metric to Prometheus-metrics endpoint");
     }
     // Clear the collected metrics for the metrics collected for the next pool.
@@ -500,10 +500,12 @@ static void PgPrometheusMetricsHandler(
     if (!table_name.empty()) {
       prometheus_attr["table_name"] = table_name;
     }
+    const auto& metric_entity_type = prometheus_attr["metric_type"];
     WARN_NOT_OK(
         writer.WriteSingleEntry(
             prometheus_attr, metric_name + "_count", ybpgm_table[i].calls,
-            AggregationFunction::kSum, kServerLevel, "counter", ybpgm_table[i].count_help),
+            AggregationFunction::kSum, kServerLevel, metric_entity_type,
+            "counter", ybpgm_table[i].count_help),
         "Couldn't write text metrics for Prometheus");
 
     // Skip over empty metrics.
@@ -511,7 +513,8 @@ static void PgPrometheusMetricsHandler(
       WARN_NOT_OK(
           writer.WriteSingleEntry(
               prometheus_attr, metric_name + "_sum", ybpgm_table[i].total_time,
-              AggregationFunction::kSum, kServerLevel, "counter", ybpgm_table[i].sum_help),
+              AggregationFunction::kSum, kServerLevel, metric_entity_type, "counter",
+              ybpgm_table[i].sum_help),
           "Couldn't write text metrics for Prometheus");
     }
     prometheus_attr.erase("table_name");

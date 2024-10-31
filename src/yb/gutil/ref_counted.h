@@ -70,6 +70,7 @@ class RefCountedBase {
 class RefCountedThreadSafeBase {
  public:
   bool HasOneRef() const;
+  bool HasTwoRef() const;
 
  protected:
   RefCountedThreadSafeBase() = default;
