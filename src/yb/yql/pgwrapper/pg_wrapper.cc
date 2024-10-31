@@ -318,6 +318,9 @@ DEFINE_NON_RUNTIME_string(ysql_conn_mgr_warmup_db, "yugabyte",
 DEFINE_NON_RUNTIME_string(ysql_cron_database_name, "yugabyte",
     "Database in which pg_cron metadata is kept.");
 
+DEFINE_NON_RUNTIME_bool(ysql_trust_local_yugabyte_connections, true,
+            "Trust YSQL connections via the local socket from the yugabyte user.");
+
 DECLARE_bool(enable_pg_cron);
 
 using gflags::CommandLineFlagInfo;
@@ -601,6 +604,15 @@ Result<string> WritePgHbaConfig(const PgProcessConf& conf) {
   if (lines.empty()) {
     LOG(WARNING) << "No hba configuration lines found, defaulting to trust all configuration.";
     lines.push_back("host all all all trust");
+  }
+
+  // Always allow local socket connections from the yugabyte user.
+  // This is used by ybc for backup and restores, and pg_upgrade for ysql major upgrades.
+  if (FLAGS_ysql_trust_local_yugabyte_connections) {
+    const auto trust_local_yugabyte = "local all yugabyte trust";
+    if (std::find(lines.begin(), lines.end(), trust_local_yugabyte) == lines.end()) {
+      lines.push_back("local all yugabyte trust");
+    }
   }
 
   // Add comments to the hba config file noting the internally hardcoded config line.
