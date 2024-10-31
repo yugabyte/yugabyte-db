@@ -22,8 +22,10 @@ pg_stats contains information such as the following:
 - **n_distinct**: Estimated number of distinct values in a column. Positive values are direct counts, while negative values indicate that the distinct count is a fraction of the total row count.
 - **most_common_vals**: Most frequently occurring values in a column.
 - **most_common_freqs**: Frequencies of the most common values.
+- **most_common_elems**: Most frequently occurring elements in an array column.
+- **most_common_elem_freqs**: Frequencies of the most elements in an array column.
 
-Ru  the following example to understand how you can use these statistics to improve queries and the data model.
+Run  the following examples to understand how you can use these statistics to improve queries and the data model.
 
 ## Setup
 
@@ -50,6 +52,7 @@ Create a users table:
 CREATE TABLE users (
     id int,
     name VARCHAR,
+    employed BOOLEAN,
     PRIMARY KEY(id)
 );
 ```
@@ -61,7 +64,7 @@ Add some data to your table so that you can correlate it during analysis.
 SELECT setseed(0.5); -- to help generate the same random values
 
 -- Insert 10,000 rows into the users table
-INSERT INTO users (id, name)
+INSERT INTO users (id, name, employed)
 SELECT
     id,
     CASE
@@ -78,7 +81,8 @@ SELECT
                 )[floor(random() * 9 + 1)::int]
             END
         )
-    END AS name
+    END AS name,
+    (ARRAY[true, false])[id % 2 + 1] AS employed
 FROM generate_series(1, 10000) AS id;
 ```
 
@@ -120,7 +124,7 @@ The preceding output shows the following:
 - **null_frac** shows that the fraction of null values is about 40%. (Recall that you tried to insert about 40% NULL values.)
 - **n_distinct** shows that there are about 10 distinct values in the name column.
 - **most_common_vals** shows the most commonly occurring values (other than NULL).
-- **most_common_freqs** shows the frequency with which the most common values occur. For example, Empty value occurs at 29.6%, John occurs at 3.0%, and so on.
+- **most_common_freqs** shows the frequency with which the most common values occur. For example, Empty value occurs at 29.6%, Jordan occurs at 3.5%, and so on.
 
 ## Partial indexes
 
@@ -136,11 +140,39 @@ This index will include only the valid values and as a result won't be skewed.
 
 ## Cardinality
 
-Given that there are only 9 distinct valid (without empty string) values (via **n_distinct**) in the `name` column, and the index uses HASH distribution,  it will be distributed across a maximum of 9 nodes, regardless of how many nodes are in the cluster. This is because each value is hashed to determine the tablet in which it should be stored, and there are only 9 distinct hashes. This is why you shouldn't create indexes on low cardinality columns like Booleans (2) or Days of week (7).
+If you fetch the stats on the `id` and `employed` columns as,
+
+```sql
+SELECT attname, null_frac, n_distinct, most_common_vals, most_common_freqs
+    FROM pg_stats
+    WHERE tablename='users' AND attname IN ('id', 'employed');
+```
+
+You will get an output like:
+
+```caddyfile{.nocopy}
+-[ RECORD 1 ]-----+----------
+attname           | id
+null_frac         | 0
+n_distinct        | -1
+most_common_vals  | null
+most_common_freqs | null
+
+-[ RECORD 2 ]-----+----------
+attname           | employed
+null_frac         | 0
+n_distinct        | 2
+most_common_vals  | {f,t}
+most_common_freqs | {0.5,0.5}
+```
+
+The `n_distinct = -1` value for the id column indicates that all IDs in the table are unique. A negative `n_distinct` value represents the ratio of distinct items to the total number of rows in the table.
+
+For the employed column, there are 2 distinct values. If an index is created on this column, it will be distributed across only 2 nodes, as the values will generate only 2 dinstinct hashes. This is the reason why you shouldn't create indexes on low cardinality columns like Booleans (2) or Days of week (7).
 
 ## Skewed data
 
-Ideally, your index/table should be reasonably distributed so that the nodes in the cluster process a similar amount of queries. Using pg_stats, you can quickly determine that valid names are only 30% of the dataset. If you create an index on this data, only 30% of the nodes will handle most of the queries, as 70% of the data is not queried.
+Ideally, your index/table should be reasonably distributed so that the nodes in the cluster process a similar amount of queries. Using pg_stats, you can quickly determine that empty names are about 30% of the dataset. If you create an index on this `name` that includes empty values, all the empty values will be one single node. Any queries for empty names will go to that one node. Depending on your usecase, this may or may not be ideal. In such scenarios you can consider a composite index involving more than one column.
 
 ## Composition of arrays
 
@@ -181,7 +213,7 @@ most_common_elems      | {action,comedy,romance,thriller}
 most_common_elem_freqs | {0.6,0.4,0.6,0.6,0.4,0.6,0}
 ```
 
-The results show that `action` occurs in 60% of the records (3 in this scenario) and `comedy` occurs in 40% of the records (2 in this scenario). These values can help you understand the distribution of your data.
+This indicates that action appears in 60% of the records (3 in this case) and comedy in 40% of the records (2 here), providing insight into the data distribution. Notice that there are 4 entries in the most_common_elems field but 7 entries in most_common_elem_freqs. The first 4 values correspond to the frequencies of the 4 most common elements, followed by the minimum and maximum element frequencies, with the last value representing the frequency of NULLs.
 
 ## Learn more
 
