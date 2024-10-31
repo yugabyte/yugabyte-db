@@ -79,13 +79,64 @@ const char* kDDLJsonManualReplication = "manual_replication";
 const char* kDDLPrepStmtManualInsert = "manual_replication_insert";
 const char* kDDLPrepStmtAlreadyProcessed = "already_processed_row";
 
-const std::unordered_set<std::string> kSupportedCommandTags{
+const std::unordered_set<std::string> kSupportedCommandTags {
+    // Relations
     "CREATE TABLE",
     "CREATE INDEX",
     "DROP TABLE",
     "DROP INDEX",
     "ALTER TABLE",
-    "ALTER INDEX"};
+    "ALTER INDEX",
+    // Pass thru DDLs
+    "CREATE AGGREGATE",
+    "CREATE CAST",
+    "CREATE COLLATION",
+    "CREATE DOMAIN",
+    "CREATE FUNCTION",
+    "CREATE OPERATOR",
+    "CREATE OPERATOR CLASS",
+    "CREATE OPERATOR FAMILY",
+    "CREATE POLICY",
+    "CREATE PROCEDURE",
+    "CREATE ROUTINE",
+    "CREATE RULE",
+    "CREATE SCHEMA",
+    "CREATE STATISTICS",
+    "CREATE TRIGGER",
+    "CREATE VIEW",
+    "ALTER AGGREGATE",
+    "ALTER CAST",
+    "ALTER COLLATION",
+    "ALTER DOMAIN",
+    "ALTER FUNCTION",
+    "ALTER OPERATOR",
+    "ALTER OPERATOR CLASS",
+    "ALTER OPERATOR FAMILY",
+    "ALTER POLICY",
+    "ALTER PROCEDURE",
+    "ALTER ROUTINE",
+    "ALTER RULE",
+    "ALTER SCHEMA",
+    "ALTER STATISTICS",
+    "ALTER TRIGGER",
+    "ALTER VIEW",
+    "DROP AGGREGATE",
+    "DROP CAST",
+    "DROP COLLATION",
+    "DROP DOMAIN",
+    "DROP FUNCTION",
+    "DROP OPERATOR",
+    "DROP OPERATOR CLASS",
+    "DROP OPERATOR FAMILY",
+    "DROP POLICY",
+    "DROP PROCEDURE",
+    "DROP ROUTINE",
+    "DROP RULE",
+    "DROP SCHEMA",
+    "DROP STATISTICS",
+    "DROP TRIGGER",
+    "DROP VIEW",
+};
 
 Result<rapidjson::Document> ParseSerializedJson(const std::string& raw_json_data) {
   SCHECK(!raw_json_data.empty(), InvalidArgument, "Received empty json to parse.");

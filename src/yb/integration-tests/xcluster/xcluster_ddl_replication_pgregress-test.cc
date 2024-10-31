@@ -147,4 +147,14 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressAlterTable) {
   ASSERT_OK(TestPgRegress("alter_table.sql", "alter_table2.sql"));
 }
 
+TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropPgOnlyDdls) {
+  // Tests create and drop of pass through ddls that dont require special handling.
+  ASSERT_OK(TestPgRegress("pgonly_ddls_create.sql", "pgonly_ddls_drop.sql"));
+}
+
+TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressAlterPgOnlyDdls) {
+  // Tests create and alters of pass through ddls that dont require special handling.
+  ASSERT_OK(TestPgRegress("pgonly_ddls_create.sql", "pgonly_ddls_alter.sql"));
+}
+
 }  // namespace yb
