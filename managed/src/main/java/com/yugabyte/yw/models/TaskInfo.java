@@ -374,11 +374,11 @@ public class TaskInfo extends Model {
    */
   @JsonIgnore
   public double getPercentCompleted() {
-    int numSubtasks = TaskInfo.find.query().where().eq("parent_uuid", getTaskUUID()).findCount();
+    if (getTaskState() == TaskInfo.State.Success) {
+      return 100.0;
+    }
+    int numSubtasks = TaskInfo.find.query().where().eq("parent_uuid", getUuid()).findCount();
     if (numSubtasks == 0) {
-      if (getTaskState() == TaskInfo.State.Success) {
-        return 100.0;
-      }
       return 0.0;
     }
     int numSubtasksCompleted =
