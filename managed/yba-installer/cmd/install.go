@@ -131,12 +131,12 @@ var installCmd = &cobra.Command{
 			log.Fatal(err.Error())
 		}
 
-		getAndPrintStatus()
+		getAndPrintStatus(state)
 		log.Info("Successfully installed YugabyteDB Anywhere!")
 	},
 }
 
-func getAndPrintStatus() {
+func getAndPrintStatus(state *ybactlstate.State) {
 	var statuses []common.Status
 	for _, name := range serviceOrder {
 		status, err := services[name].Status()
@@ -150,7 +150,7 @@ func getAndPrintStatus() {
 		}
 	}
 
-	common.PrintStatus(statuses...)
+	common.PrintStatus(state.CurrentStatus.String(), statuses...)
 }
 
 func init() {

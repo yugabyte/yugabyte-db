@@ -276,7 +276,7 @@ NOTE: THIS FEATURE IS EARLY ACCESS
 			}
 		}
 
-		common.PrintStatus(statuses...)
+		common.PrintStatus(state.CurrentStatus.String(), statuses...)
 		log.Info("Successfully installed YugabyteDB Anywhere!")
 
 		// Update state
