@@ -332,6 +332,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterOutboundReplicationGroups
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterOutboundReplicationGroupInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUniverseReplications);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUniverseReplicationInfo);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, WaitForReplicationDrain);
 
 #define YB_CLIENT_SPECIALIZE_SIMPLE_EX_EACH(i, data, set) YB_CLIENT_SPECIALIZE_SIMPLE_EX set
 
@@ -999,6 +1000,42 @@ Status YBClient::Data::WaitForBackfillIndexToFinish(
       "Timed out waiting for Backfill Index",
       std::bind(
           &YBClient::Data::IsBackfillIndexInProgress, this, client, table_id, index_id, _1, _2));
+}
+
+Result<bool> YBClient::Data::IsBackfillIndexStarted(
+    YBClient* client, const TableId& index_table_id, const TableId& indexed_table_id,
+    CoarseTimePoint deadline) {
+  YBTableInfo yb_table_info;
+  master::GetTableSchemaResponsePB resp;
+  RETURN_NOT_OK(GetTableSchema(
+      client, indexed_table_id, deadline, &yb_table_info, master::IncludeInactive::kFalse, &resp));
+
+  for (const auto& index : resp.indexes()) {
+    if (index.table_id() == index_table_id) {
+      SCHECK_FORMAT(
+          index.backfill_error_message().empty(), IllegalState, "Index $0 has backfill error: $1",
+          index_table_id, index.backfill_error_message());
+
+      auto index_permissions = index.index_permissions();
+
+      // Anything above INDEX_PERM_READ_WRITE_AND_DELETE means index is being deleted.
+      SCHECK_LE(
+          index_permissions, INDEX_PERM_READ_WRITE_AND_DELETE, IllegalState,
+          Format(
+              "Index permissions $0 for index $1 is unexpected",
+              IndexPermissions_Name(index_permissions), index_table_id));
+
+      // YSQL indexes start with permission INDEX_PERM_WRITE_AND_DELETE, and directly moves to
+      // INDEX_PERM_READ_WRITE_AND_DELETE. The actual stages are tracked in postgres fields
+      // indislive, indisready and indisvalid. So use index_permissions to determine if the index is
+      // currently backfilling.
+      return resp.is_backfilling() ||
+             index_permissions == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE;
+    }
+  }
+
+  // We can get here if the indexed table schema is not yet fully applied.
+  return false;
 }
 
 Result<master::GetBackfillStatusResponsePB> YBClient::Data::GetBackfillStatus(

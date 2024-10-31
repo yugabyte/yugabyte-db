@@ -67,6 +67,11 @@ Result<bool> ShouldAddTableToReplicationGroup(
     UniverseReplicationInfo& universe, const TableInfo& table_info,
     CatalogManager& catalog_manager);
 
+// Check if the table is part of the replication group.
+Result<bool> HasTable(
+    UniverseReplicationInfo& universe, const TableInfo& table_info,
+    CatalogManager& catalog_manager);
+
 Result<NamespaceId> GetProducerNamespaceId(
     UniverseReplicationInfo& universe, const NamespaceId& consumer_namespace_id);
 

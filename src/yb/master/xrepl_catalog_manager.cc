@@ -779,8 +779,13 @@ Status CatalogManager::CreateCDCStream(
     if (req->has_initial_state()) {
       initial_state = req->initial_state();
     }
+
+    Synchronizer sync;
     auto stream_id = VERIFY_RESULT(xcluster_manager_->CreateNewXClusterStreamForTable(
-        req->table_id(), cdc::StreamModeTransactional(req->transactional()), initial_state, epoch));
+        req->table_id(), cdc::StreamModeTransactional(req->transactional()), initial_state, epoch,
+        [&sync](const Status& status) { sync.AsStdStatusCallback()(status); }));
+    RETURN_NOT_OK(sync.Wait());
+
     resp->set_stream_id(stream_id.ToString());
     return Status::OK();
   }

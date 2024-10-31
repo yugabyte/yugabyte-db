@@ -681,6 +681,11 @@ Result<master::GetBackfillStatusResponsePB> YBClient::GetBackfillStatus(
   return data_->GetBackfillStatus(table_ids, deadline);
 }
 
+Result<bool> YBClient::IsBackfillIndexStarted(
+    const TableId& index_table_id, const TableId& indexed_table_id, CoarseTimePoint deadline) {
+  return data_->IsBackfillIndexStarted(this, index_table_id, indexed_table_id, deadline);
+}
+
 Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->DeleteTable(this,
@@ -2579,10 +2584,8 @@ Result<bool> YBClient::CheckIfPitrActive() {
   return data_->CheckIfPitrActive(deadline);
 }
 
-Result<std::vector<YBTableName>> YBClient::ListTables(const std::string& filter,
-                                                      bool exclude_ysql,
-                                                      const std::string& ysql_db_filter,
-                                                      bool skip_hidden) {
+Result<master::ListTablesResponsePB> YBClient::ListTables(
+    const std::string& filter, const std::string& ysql_db_filter) {
   ListTablesRequestPB req;
   ListTablesResponsePB resp;
 
@@ -2596,6 +2599,19 @@ Result<std::vector<YBTableName>> YBClient::ListTables(const std::string& filter,
   }
 
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTables);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  return resp;
+}
+
+Result<std::vector<YBTableName>> YBClient::ListTables(
+    const std::string& filter, bool exclude_ysql, const std::string& ysql_db_filter,
+    bool skip_hidden) {
+  auto resp = VERIFY_RESULT(ListTables(filter, ysql_db_filter));
+
   std::vector<YBTableName> result;
   result.reserve(resp.tables_size());
 

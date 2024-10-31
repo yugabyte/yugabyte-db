@@ -207,6 +207,15 @@ class YBClient::Data {
                                       const TableId& index_id,
                                       CoarseTimePoint deadline);
 
+  // Has the index entered the backfill stage yet?
+  // Returns true if the backfill has started or has already completed.
+  // Returns false if the index is not backfilling yet or is not yet part of the indexed table
+  // schema.
+  // Returns a bad Status if the index is being dropped, or it encountered a backfill error.
+  Result<bool> IsBackfillIndexStarted(
+      YBClient* client, const TableId& index_table_id, const TableId& indexed_table_id,
+      CoarseTimePoint deadline);
+
   Result<master::GetBackfillStatusResponsePB> GetBackfillStatus(
     const std::vector<std::string_view>& table_ids,
     const CoarseTimePoint deadline);

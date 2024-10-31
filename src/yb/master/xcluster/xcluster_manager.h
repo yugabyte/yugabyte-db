@@ -91,7 +91,9 @@ class XClusterManager : public XClusterManagerIf,
   Status GetXClusterSafeTime(
       const GetXClusterSafeTimeRequestPB* req, GetXClusterSafeTimeResponsePB* resp,
       rpc::RpcContext* rpc, const LeaderEpoch& epoch);
-  Result<HybridTime> GetXClusterSafeTime(const NamespaceId& namespace_id) const override;
+  Result<std::optional<HybridTime>> TryGetXClusterSafeTimeForBackfill(
+      const std::vector<TableId>& index_table_ids, const TableInfoPtr& indexed_table,
+      const LeaderEpoch& epoch) const override;
 
   Status GetXClusterSafeTimeForNamespace(
       const GetXClusterSafeTimeForNamespaceRequestPB* req,
@@ -249,6 +251,8 @@ class XClusterManager : public XClusterManagerIf,
   bool IsTableReplicated(const TableId& table_id) const;
 
   bool IsTableReplicationConsumer(const TableId& table_id) const override;
+
+  bool IsTableBiDirectionallyReplicated(const TableId& table_id) const override;
 
   Status HandleTabletSplit(
       const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids,

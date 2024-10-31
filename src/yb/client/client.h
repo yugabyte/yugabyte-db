@@ -351,6 +351,9 @@ class YBClient {
   Result<master::GetBackfillStatusResponsePB> GetBackfillStatus(
       const std::vector<std::string_view>& table_ids);
 
+  Result<bool> IsBackfillIndexStarted(
+      const TableId& index_table_id, const TableId& indexed_table_id, CoarseTimePoint deadline);
+
   // Delete the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
   Status DeleteTable(const YBTableName& table_name, bool wait = true);
@@ -738,6 +741,8 @@ class YBClient {
   // belong to.
   //
   // 'tables' is appended to only on success.
+  Result<master::ListTablesResponsePB> ListTables(
+      const std::string& filter, const std::string& ysql_db_filter);
   Result<std::vector<YBTableName>> ListTables(
       const std::string& filter = "",
       bool exclude_ysql = false,
@@ -748,8 +753,7 @@ class YBClient {
   //
   // 'tables' is appended to only on success.
   Result<std::vector<YBTableName>> ListUserTables(
-      const master::NamespaceIdentifierPB& ns_identifier,
-      bool include_indexes = false);
+      const master::NamespaceIdentifierPB& ns_identifier, bool include_indexes = false);
 
   Result<cdc::EnumOidLabelMap> GetPgEnumOidLabelMap(const NamespaceName& ns_name);
 
