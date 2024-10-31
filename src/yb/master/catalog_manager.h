@@ -52,6 +52,7 @@
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/restore_sys_catalog_state.h"
+#include "yb/master/ysql/ysql_catalog_config.h"
 #include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/transaction.h"
@@ -750,9 +751,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const std::unordered_set<xrepl::StreamId>& cdcsdk_stream_ids);
 
   Result<uint64_t> IncrementYsqlCatalogVersion() override;
-
-  // Records the fact that initdb has succesfully completed.
-  Status InitDbFinished(Status initdb_status, int64_t term);
 
   // Check if the initdb operation has been completed. This is intended for use by whoever wants
   // to wait for the cluster to be fully initialized, e.g. minicluster, YugaWare, etc.
@@ -1690,10 +1688,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status CreateTransactionAwareSnapshot(
       const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, CoarseTimePoint deadline);
 
-  scoped_refptr<SysConfigInfo> GetYsqlCatalogConfig() {
-    CHECK_NOTNULL(ysql_catalog_config_);
-    return ysql_catalog_config_;
-  }
+  YsqlCatalogConfig& GetYsqlCatalogConfig() { return ysql_catalog_config_; }
 
   InitialSysCatalogSnapshotWriter& AllocateAndGetInitialSysCatalogSnapshotWriter();
 
@@ -2321,9 +2316,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // depends on this leader lock.
   std::shared_ptr<ClusterConfigInfo> cluster_config_ = nullptr; // No GUARD, only write on load.
 
-  // YSQL Catalog information.
-  scoped_refptr<SysConfigInfo> ysql_catalog_config_ = nullptr; // No GUARD, only write on Load.
-
   // Transaction tables information.
   scoped_refptr<SysConfigInfo> transaction_tables_config_ =
       nullptr; // No GUARD, only write on Load.
@@ -2332,6 +2324,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Atomic32 closing_;
 
   SysCatalogTable* sys_catalog_;
+
+  // YSQL Catalog information.
+  YsqlCatalogConfig ysql_catalog_config_;
 
   // Mutex to avoid concurrent remote bootstrap sessions.
   std::mutex remote_bootstrap_mtx_;

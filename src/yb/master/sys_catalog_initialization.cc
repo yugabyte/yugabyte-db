@@ -20,6 +20,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/sys_catalog.h"
 
+#include "yb/master/ysql/ysql_catalog_config.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/tablet.h"
@@ -208,17 +209,11 @@ void SetDefaultInitialSysCatalogSnapshotFlags() {
 }
 
 Status MakeYsqlSysCatalogTablesTransactional(
-    TableIndex::TablesRange tables,
-    SysCatalogTable* sys_catalog,
-    SysConfigInfo* ysql_catalog_config,
-    const LeaderEpoch& epoch) {
-  {
-    auto ysql_catalog_config_lock = ysql_catalog_config->LockForRead();
-    const auto& ysql_catalog_config_pb = ysql_catalog_config_lock->pb.ysql_catalog_config();
-    if (ysql_catalog_config_pb.transactional_sys_catalog_enabled()) {
-      LOG(INFO) << "YSQL catalog tables are already transactional";
-      return Status::OK();
-    }
+    TableIndex::TablesRange tables, SysCatalogTable* sys_catalog,
+    YsqlCatalogConfig& ysql_catalog_config, const LeaderEpoch& epoch) {
+  if (ysql_catalog_config.IsTransactionalSysCatalogEnabled()) {
+    LOG(INFO) << "YSQL catalog tables are already transactional";
+    return Status::OK();
   }
 
   int num_updated_tables = 0;
@@ -280,15 +275,7 @@ Status MakeYsqlSysCatalogTablesTransactional(
     LOG(INFO) << "Made " << num_updated_tables << " YSQL sys catalog tables transactional";
   }
 
-  LOG(INFO) << "Marking YSQL system catalog as transactional in YSQL catalog config";
-  {
-    auto ysql_catalog_lock = ysql_catalog_config->LockForWrite();
-    auto* ysql_catalog_config_pb =
-        ysql_catalog_lock.mutable_data()->pb.mutable_ysql_catalog_config();
-    ysql_catalog_config_pb->set_transactional_sys_catalog_enabled(true);
-    RETURN_NOT_OK(sys_catalog->Upsert(epoch.leader_term, ysql_catalog_config));
-    ysql_catalog_lock.Commit();
-  }
+  RETURN_NOT_OK(ysql_catalog_config.SetTransactionalSysCatalogEnabled(epoch));
 
   return Status::OK();
 }

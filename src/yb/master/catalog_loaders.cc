@@ -649,9 +649,7 @@ Status SysConfigLoader::Visit(const std::string& config_type, const SysConfigEnt
     if (config_type == kSecurityConfigType) {
       catalog_manager_->permissions_manager()->SetSecurityConfigOnLoadUnlocked(config);
     } else if (config_type == kYsqlCatalogConfigType) {
-      LOG_IF(WARNING, catalog_manager_->ysql_catalog_config_ != nullptr)
-          << "Multiple sys config type " << config_type << " found";
-      catalog_manager_->ysql_catalog_config_ = config;
+      catalog_manager_->ysql_catalog_config_.SetConfig(config);
     } else if (config_type == kTransactionTablesConfigType) {
       LOG_IF(WARNING, catalog_manager_->transaction_tables_config_ != nullptr)
           << "Multiple sys config type " << config_type << " found";
