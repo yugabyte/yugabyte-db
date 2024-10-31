@@ -35,10 +35,6 @@ var startCmd = &cobra.Command{
 		if err != nil {
 			log.Fatal("unable to load yba installer state: " + err.Error())
 		}
-		if state.CurrentStatus != ybactlstate.InstalledStatus {
-			log.Fatal("cannot start services - need installed state got " +
-				state.CurrentStatus.String())
-		}
 
 		// Initialize if it has not already happened. Do this instead of normal start workflow
 		if !state.Initialized {
@@ -71,7 +67,7 @@ var startCmd = &cobra.Command{
 				log.Fatal("failed to update state: " + err.Error())
 			}
 			common.WaitForYBAReady(ybaCtl.Version())
-			getAndPrintStatus()
+			getAndPrintStatus(state)
 			// We can exit early, as initialize will also start the services
 			return
 		}
@@ -112,14 +108,6 @@ var stopCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		state, err := ybactlstate.Initialize()
-		if err != nil {
-			log.Fatal("unable to load yba installer state: " + err.Error())
-		}
-		if state.CurrentStatus != ybactlstate.InstalledStatus {
-			log.Fatal("cannot stop services - need installed state got " +
-				state.CurrentStatus.String())
-		}
 		if len(args) == 1 {
 			if err := services[args[0]].Stop(); err != nil {
 				log.Fatal("Failed to stop " + args[0] + ": " + err.Error())
@@ -153,14 +141,6 @@ var restartCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		state, err := ybactlstate.Initialize()
-		if err != nil {
-			log.Fatal("unable to load yba installer state: " + err.Error())
-		}
-		if state.CurrentStatus != ybactlstate.InstalledStatus {
-			log.Fatal("cannot restart services - need installed state got " +
-				state.CurrentStatus.String())
-		}
 		if len(args) == 1 {
 			if err := services[args[0]].Restart(); err != nil {
 				log.Fatal("Failed to restart " + args[0] + ": " + err.Error())

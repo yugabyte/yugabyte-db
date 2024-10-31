@@ -154,7 +154,7 @@ var upgradeCmd = &cobra.Command{
 				log.Fatal(status.Service + " is not running! upgrade failed")
 			}
 		}
-		common.PrintStatus(statuses...)
+		common.PrintStatus(state.CurrentStatus.String(), statuses...)
 		// Here ends the postgres minor version/no upgrade workflow
 
 		state.CurrentStatus = ybactlstate.InstalledStatus
