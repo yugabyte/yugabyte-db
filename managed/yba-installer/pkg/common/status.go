@@ -22,10 +22,10 @@ func IsHappyStatus(status Status) bool {
 }
 
 // PrintStatus will print the service status and other useful data
-func PrintStatus(statuses ...Status) {
+func PrintStatus(stateStatus string, statuses ...Status) {
 
 	// YBA-CTL Status
-	generalStatus()
+	generalStatus(stateStatus)
 	fmt.Fprintln(os.Stdout, "\nServices:")
 	// Service Status
 	statusHeader()
@@ -58,9 +58,9 @@ func statusHeader() {
 	fmt.Fprintln(StatusOutput, outString)
 }
 
-func generalStatus() {
+func generalStatus(stateStatus string) {
 	outString := "YBA Url" + " \t" + "Install Root" + " \t" + "yba-ctl config" + " \t" +
-		"yba-ctl Logs" + " \t"
+		"yba-ctl Logs" + " \t" + "YBA Installer State" + " \t"
 	hostnames := SplitInput(viper.GetString("host"))
 	if hostnames == nil || len(hostnames) == 0 {
 		log.Fatal("Could not read host in yba-ctl.yml")
@@ -70,7 +70,7 @@ func generalStatus() {
 		ybaUrl += fmt.Sprintf(":%d", viper.GetInt("platform.port"))
 	}
 	statusString := ybaUrl + " \t" + GetBaseInstall() + " \t" + InputFile() + " \t" +
-		YbactlLogFile() + " \t"
+		YbactlLogFile() + " \t" + stateStatus + " \t"
 
 	fmt.Fprintln(StatusOutput, outString)
 	fmt.Fprintln(StatusOutput, statusString)
