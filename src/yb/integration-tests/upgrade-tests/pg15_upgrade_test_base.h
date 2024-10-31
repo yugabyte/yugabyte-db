@@ -52,10 +52,12 @@ class Pg15UpgradeTestBase : public UpgradeTestBase {
   Result<pgwrapper::PGConn> CreateConnToTs(size_t ts_id);
 
   // Run a ysql statement via ysqlsh against a given tserver.
-  Result<std::string> ExecuteViaYsqlshOnTs(const std::string& sql_statement, size_t ts_id);
+  Result<std::string> ExecuteViaYsqlshOnTs(const std::string& sql_statement, size_t ts_id,
+                                           const std::string &db_name = "yugabyte");
 
   // Run a ysql statement via ysqlsh against a random tserver.
-  Result<std::string> ExecuteViaYsqlsh(const std::string& sql_statement);
+  Result<std::string> ExecuteViaYsqlsh(const std::string& sql_statement,
+                                       const std::string &db_name = "yugabyte");
 };
 
 }  // namespace yb

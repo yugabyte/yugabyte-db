@@ -566,26 +566,191 @@ TEST_F(Pg15UpgradeTest, DatabaseWithDisallowedConnections) {
 }
 
 TEST_F(Pg15UpgradeTest, Template1) {
+  /*
+   * The following statements are extracted from gram.y as CREATE statements that are allowed to run
+   * in template1. They are broken into multiple lists:
+   *
+   * Global objects: these will not be tested because they exist outside of a database:
+   * - CreateCastStmt
+   * - CreateGroupStmt
+   * - CreateRoleStmt
+   * - CreateTableSpaceStmt
+   * - CreateUserStmt
+   * - CreatedbStmt
+   *
+   * Database objects: these will not be tested because they are attributes of a database:
+   * - CreatePublicationStmt
+   *
+   * Table objects: these will not be tested because they are attributes of a table:
+   * - CreatePolicyStmt
+   * - CreateTrigStmt
+   * - CreateStatsStmt
+   *
+   * Broken statements: these will not be tested because the behavior is broken on both YB pg11 and
+   * YB pg15:
+   * - CreateMatViewStmt
+   *
+   * Complicated statements: these will be skipped for now because they are complicated to create:
+   * - CreateAmStmt
+   * - CreateOpClassStmt
+   * - CreateOpFamilyStmt
+   * - CreatePLangStmt
+   *
+   * The rest of the statements will be tested:
+   * - CreateDomainStmt
+   * - CreateEventTrigStmt
+   * - CreateExtensionStmt
+   * - CreateFunctionStmt
+   * - CreateSchemaStmt
+   */
+
+  const auto kPg11Database = "pg11_database";
+  const auto kPg15Database = "pg15_database";
+
+  static const auto kOddIntegerDomain = "odd_integer";
+  static const auto kEventTrigger = "template_event_trigger";
+  static const auto kAbortCommandFunction = "abort_command";
+  static const auto kExtension = "pgcrypto";
+  static const auto kExtensionFunction = "SELECT gen_salt('md5')";
+  static const auto kFunction = "template_function";
+  static const auto kSchema = "template_schema";
+  static const auto kFunctionInSchema = "template_function_in_schema";
+
+  const auto kAnyTserver = 0;
+
   {
-    auto conn = ASSERT_RESULT(cluster_->ConnectToDB("template1"));
-    ASSERT_OK(conn.Execute("CREATE FUNCTION template_function() "
-                           "RETURNS INT AS $$ SELECT 11 $$ LANGUAGE sql;"));
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB(kTemplate1));
+
+    ASSERT_OK(conn.ExecuteFormat("CREATE FUNCTION $0() "
+                           "RETURNS INT AS $$$$ SELECT 11 $$$$ LANGUAGE sql",
+                           kFunction));
+    ASSERT_OK(conn.ExecuteFormat("CREATE EXTENSION $0", kExtension));
+
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE OR REPLACE FUNCTION $0() "
+        "RETURNS event_trigger LANGUAGE plpgsql AS $$$$ "
+        "BEGIN RAISE EXCEPTION 'command % is disabled by event trigger', tg_tag; END; "
+        "$$$$",
+        kAbortCommandFunction));
+
+    ASSERT_OK(conn.ExecuteFormat("CREATE DOMAIN $0 AS INTEGER CHECK (VALUE % 2 <> 0)",
+                                 kOddIntegerDomain));
+    ASSERT_OK(conn.ExecuteFormat("CREATE EVENT TRIGGER $0 "
+                                 "ON ddl_command_start WHEN TAG IN ('DROP EXTENSION') "
+                                 "EXECUTE FUNCTION $1()",
+                                 kEventTrigger, kAbortCommandFunction));
+
+    ASSERT_OK(conn.ExecuteFormat("CREATE SCHEMA $0", kSchema));
+    ASSERT_OK(conn.ExecuteFormat("CREATE FUNCTION $0.$1() "
+                                 "RETURNS INT AS $$$$ SELECT 12 $$$$ LANGUAGE sql",
+                                 kSchema, kFunctionInSchema));
   }
+
+  ASSERT_OK(ExecuteStatement(Format("CREATE DATABASE $0", kPg11Database)));
+
+  auto check_objects = [this](const std::vector<std::string>& db_names, const size_t tserver) {
+    for (auto &db_name : db_names) {
+      auto conn = ASSERT_RESULT(cluster_->ConnectToDB(db_name, tserver));
+      // Select that the function is created and can be used as expected.
+      {
+        auto result = ASSERT_RESULT(conn.FetchRows<int>("SELECT template_function()"));
+        ASSERT_EQ(result, std::vector<int>({11}));
+      }
+      // Check that the domain is created and can be used as expected.
+      {
+        auto result = ASSERT_RESULT(conn.FetchRow<int>(Format("SELECT CAST(3 AS $0)",
+                                                              kOddIntegerDomain)));
+        ASSERT_EQ(result, 3);
+
+        auto bad_cast = conn.Execute(Format("SELECT CAST(4 AS $0)", kOddIntegerDomain));
+        ASSERT_NOK_STR_CONTAINS(bad_cast,
+            Format("value for domain $0 violates check constraint", kOddIntegerDomain));
+      }
+      // Check that the extension is created and a function from the extension can be called.
+      {
+        ASSERT_OK(conn.Fetch(kExtensionFunction));
+      }
+      // Event triggers run only on DDLs, which are disallowed during upgrade. So we can't directly
+      // test them, but we can check that they exist.
+      {
+        auto result = ASSERT_RESULT(ExecuteViaYsqlshOnTs("\\dy", tserver, db_name));
+        ASSERT_STR_CONTAINS(result, kEventTrigger);
+      }
+      // Check that objects created in the schema are visible only in that schema.
+      {
+        auto result = ASSERT_RESULT(ExecuteViaYsqlshOnTs("\\df", tserver, db_name));
+        ASSERT_STR_NOT_CONTAINS(result, kSchema);
+        ASSERT_STR_NOT_CONTAINS(result, kFunctionInSchema);
+
+        auto result_schema = ASSERT_RESULT(ExecuteViaYsqlshOnTs(Format("\\df $0.*", kSchema),
+                                                                      tserver, db_name));
+        ASSERT_STR_CONTAINS(result_schema, kSchema);
+        ASSERT_STR_CONTAINS(result_schema, kFunctionInSchema);
+      }
+    }
+  };
+
+  ASSERT_NO_FATALS(check_objects({kTemplate1, kPg11Database}, kAnyTserver));
+
   ASSERT_OK(UpgradeClusterToMixedMode());
 
-  auto check_function = [this](const std::string& db_name, const size_t tserver) {
-    auto conn = ASSERT_RESULT(cluster_->ConnectToDB(db_name, tserver));
-    auto result = ASSERT_RESULT(conn.FetchRows<int>("SELECT template_function()"));
-    ASSERT_EQ(result, std::vector<int>({11}));
-  };
-  ASSERT_NO_FATALS(check_function("template1", kMixedModeTserverPg15));
-  ASSERT_NO_FATALS(check_function("template1", kMixedModeTserverPg11));
+  for (auto tserver : {kMixedModeTserverPg11, kMixedModeTserverPg15})
+    ASSERT_NO_FATALS(check_objects({kTemplate1, kPg11Database}, tserver));
 
   ASSERT_OK(FinalizeUpgradeFromMixedMode());
 
-  ASSERT_OK(ExecuteStatement("CREATE DATABASE testdb"));
-  ASSERT_NO_FATALS(check_function("template1", 0));
-  ASSERT_NO_FATALS(check_function("testdb", 0));
+  ASSERT_OK(ExecuteStatement(Format("CREATE DATABASE $0", kPg15Database)));
+
+  ASSERT_NO_FATALS(check_objects({kTemplate1, kPg11Database, kPg15Database}, kAnyTserver));
+
+  /*
+   * Now drop the objects in each database. This validates that:
+   * 1. The objects can be dropped - this is a basic check that the objects are created / upgraded
+   *    correctly.
+   * 2. The objects created in template1 are copied to new databases, but are NOT shared.
+   */
+  for (const auto db_name : {kTemplate1, kPg11Database, kPg15Database}) {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB(db_name));
+
+    ASSERT_OK(conn.ExecuteFormat("DROP DOMAIN $0", kOddIntegerDomain));
+    ASSERT_OK(conn.ExecuteFormat("DROP FUNCTION $0", kFunction));
+
+    // Attempt to drop the extension. It fails to drop because the event trigger aborts the command.
+    {
+      auto blocked_drop = conn.ExecuteFormat("DROP EXTENSION $0", kExtension);
+      ASSERT_NOK_STR_CONTAINS(blocked_drop, "command DROP EXTENSION is disabled by event trigger");
+    }
+
+    // Drop the event trigger and its function.
+    {
+      auto no_cascade_drop = conn.ExecuteFormat("DROP FUNCTION $0", kAbortCommandFunction);
+      ASSERT_NOK_STR_CONTAINS(no_cascade_drop,
+          Format("cannot drop function $0() because other objects depend on it",
+                 kAbortCommandFunction));
+      ASSERT_STR_CONTAINS(no_cascade_drop.ToString(), kEventTrigger);
+
+      // CASCADE will drop the dependent objects.
+      ASSERT_OK(conn.ExecuteFormat("DROP FUNCTION $0 CASCADE", kAbortCommandFunction));
+    }
+
+    // Dropping the extension succeeds now, because the event trigger was dropped above.
+    ASSERT_OK(conn.ExecuteFormat("DROP EXTENSION $0", kExtension));
+
+    // Drop the schema and function in the schema.
+    {
+      auto no_cascade_drop = conn.ExecuteFormat("DROP SCHEMA $0", kSchema);
+      ASSERT_NOK_STR_CONTAINS(no_cascade_drop,
+          Format("cannot drop schema $0 because other objects depend on it", kSchema));
+      ASSERT_STR_CONTAINS(no_cascade_drop.ToString(), kFunctionInSchema);
+
+      // CASCADE will drop the dependent objects.
+      ASSERT_OK(conn.ExecuteFormat("DROP SCHEMA $0 CASCADE", kSchema));
+
+      // Validate that the function no longer exists.
+      auto all_functions = ASSERT_RESULT(ExecuteViaYsqlsh(Format("\\df *.*", kSchema), db_name));
+      ASSERT_STR_NOT_CONTAINS(all_functions, kFunctionInSchema);
+    }
+  }
 }
 
 TEST_F(Pg15UpgradeTest, FunctionWithSemicolons) {
