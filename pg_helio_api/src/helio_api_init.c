@@ -186,8 +186,8 @@ bool DefaultEnableLargeIndexKeys = DEFAULT_ENABLE_LARGE_INDEX_KEYS;
 #define DEFAULT_ENABLE_LARGE_UNIQUE_INDEX_KEYS false
 bool DefaultEnableLargeUniqueIndexKeys = DEFAULT_ENABLE_LARGE_UNIQUE_INDEX_KEYS;
 
-#define DEFAULT_ENABLE_NEW_UNIQUE_OPCLASS false
-bool DefaultEnableNewUniqueOpClass = DEFAULT_ENABLE_NEW_UNIQUE_OPCLASS;
+#define FORCE_ENABLE_NEW_UNIQUE_OPCLASS false
+bool ForceEnableNewUniqueOpClass = FORCE_ENABLE_NEW_UNIQUE_OPCLASS;
 
 #define DEFAULT_INDEX_TRUNCATION_LIMIT_OVERRIDE INT_MAX
 int IndexTruncationLimitOverride = DEFAULT_INDEX_TRUNCATION_LIMIT_OVERRIDE;
@@ -603,11 +603,12 @@ InitApiConfigurations(char *prefix)
 		NULL, &DefaultEnableLargeUniqueIndexKeys, DEFAULT_ENABLE_LARGE_UNIQUE_INDEX_KEYS,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
+	/* Deprecated, test only. Do not use in prod. */
 	DefineCustomBoolVariable(
-		"helio_api.enable_new_unique_opclass",
+		"helio_api.force_enable_new_unique_opclass",
 		gettext_noop(
 			"Testing GUC on Whether or not to enable the new opclass for large index keys on unique indexes."),
-		NULL, &DefaultEnableNewUniqueOpClass, DEFAULT_ENABLE_NEW_UNIQUE_OPCLASS,
+		NULL, &ForceEnableNewUniqueOpClass, FORCE_ENABLE_NEW_UNIQUE_OPCLASS,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomIntVariable(

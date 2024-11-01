@@ -334,136 +334,8 @@ SELECT length(:'longstring1');
    3299
 (1 row)
 
--- create without truncation
-DELETE FROM helio_data.documents_5600;
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "e": 1 }, "name": "rumConstraint1", "unique": 1, "unique": 1, "sparse": 1 }] }', true);
-                                                                                                   create_indexes_non_concurrently                                                                                                    
----------------------------------------------------------------------
- { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
-(1 row)
-
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "e": 1, "f": 1 }, "name": "rumConstraint2", "unique": 1, "unique": 1, "sparse": 1 }] }', true);
-                                                                                                   create_indexes_non_concurrently                                                                                                    
----------------------------------------------------------------------
- { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
-(1 row)
-
-\d helio_data.documents_5600
-                      Table "helio_data.documents_5600"
-     Column      |           Type           | Collation | Nullable | Default 
----------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
-Indexes:
-    "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
-    "documents_rum_index_5607" EXCLUDE USING helio_rum (document bson_rum_single_path_ops (path=e) WITH =?=, (ROW(shard_key_value, document)::shard_key_and_document) bson_rum_exclusion_ops (path=e) WITH =)
-    "documents_rum_index_5608" EXCLUDE USING helio_rum (document bson_rum_single_path_ops (path=e) WITH =?=, (ROW(shard_key_value, document)::shard_key_and_document) bson_rum_exclusion_ops (path=e) WITH =, document bson_rum_single_path_ops (path=f) WITH =?=, (ROW(shard_key_value, document)::shard_key_and_document) bson_rum_exclusion_ops (path=f) WITH =)
-Check constraints:
-    "shard_key_value_check" CHECK (shard_key_value = '5600'::bigint)
-
--- fails
-SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 1, "e": "%s", "f": 1 }', :'longstring1')::bson);
-                                                                                                                               insert_one                                                                                                                               
----------------------------------------------------------------------
- { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "261" }, "errmsg" : "index row size 3336 exceeds maximum 2712 for index \"documents_rum_index_5607_560002\"" } ] }
-(1 row)
-
-SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 2, "e": [ "%s", "%s" ], "f": 1 }', :'longstring1', :'longstring2')::bson);
-                                                                                                                               insert_one                                                                                                                               
----------------------------------------------------------------------
- { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "261" }, "errmsg" : "index row size 3336 exceeds maximum 2712 for index \"documents_rum_index_5607_560002\"" } ] }
-(1 row)
-
--- create with truncation allowed and the new op-class disabled
-set helio_api.enable_large_unique_index_keys to on;
-set helio_api.enable_new_unique_opclass to off;
-CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "rumConstraint1", "rumConstraint2" ] }');
-                         retval                          
----------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "3"} }
-(1 row)
-
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "e": 1 }, "name": "rumConstraint1", "unique": 1, "unique": 1, "sparse": 1 }] }', true);
-                                                                                                   create_indexes_non_concurrently                                                                                                    
----------------------------------------------------------------------
- { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
-(1 row)
-
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "e": 1, "f": 1 }, "name": "rumConstraint2", "unique": 1, "unique": 1, "sparse": 1 }] }', true);
-                                                                                                   create_indexes_non_concurrently                                                                                                    
----------------------------------------------------------------------
- { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
-(1 row)
-
-\d helio_data.documents_5600
-                      Table "helio_data.documents_5600"
-     Column      |           Type           | Collation | Nullable | Default 
----------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           | not null | now()
-Indexes:
-    "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
-    "documents_rum_index_5609" EXCLUDE USING helio_rum (document bson_rum_single_path_ops (path=e, tl='2691') WITH =?=, (ROW(shard_key_value, document)::shard_key_and_document) bson_rum_exclusion_ops (path=e) WITH =)
-    "documents_rum_index_5610" EXCLUDE USING helio_rum (document bson_rum_single_path_ops (path=e, tl='2691') WITH =?=, (ROW(shard_key_value, document)::shard_key_and_document) bson_rum_exclusion_ops (path=e) WITH =, document bson_rum_single_path_ops (path=f, tl='2691') WITH =?=, (ROW(shard_key_value, document)::shard_key_and_document) bson_rum_exclusion_ops (path=f) WITH =)
-Check constraints:
-    "shard_key_value_check" CHECK (shard_key_value = '5600'::bigint)
-
--- succeeds
-SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 1, "e": "%s", "f": 1 }', :'longstring1')::bson);
-                              insert_one                              
----------------------------------------------------------------------
- { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
-(1 row)
-
--- unique conflict
-SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 2, "e": [ "%s", "%s" ], "f": 1 }', :'longstring1', :'longstring2')::bson);
-                                                                                                                            insert_one                                                                                                                             
----------------------------------------------------------------------
- { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint1'" } ] }
-(1 row)
-
--- create with suffix post truncation - succeeds
-SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 3, "e": [ "%s-withsuffix", "%s" ], "f": 1 }', :'longstring1', :'longstring2')::bson);
-                              insert_one                              
----------------------------------------------------------------------
- { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
-(1 row)
-
--- this should also fail
-SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 4, "e": "%s-withsuffix", "f": 1 }', :'longstring1')::bson);
-                                                                                                                            insert_one                                                                                                                             
----------------------------------------------------------------------
- { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint1'" } ] }
-(1 row)
-
--- this will work.
-SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 5, "e": "%s-withsuffix", "f": 1 }', :'longstring2')::bson);
-                              insert_one                              
----------------------------------------------------------------------
- { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
-(1 row)
-
--- this will fail (suffix match of array and string).
-SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 6, "e": [ "%s", "%s-withsuffix" ], "f": 1 }', :'longstring3', :'longstring2')::bson);
-                                                                                                                            insert_one                                                                                                                             
----------------------------------------------------------------------
- { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'rumConstraint1'" } ] }
-(1 row)
-
 -- create with truncation allowed and the new op-class enabled
 set helio_api.enable_large_unique_index_keys to on;
-set helio_api.enable_new_unique_opclass to on;
-DELETE FROM helio_data.documents_5600;
-CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "rumConstraint1", "rumConstraint2" ] }');
-                         retval                          
----------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "3"} }
-(1 row)
-
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "e": 1 }, "name": "rumConstraint1", "unique": 1, "unique": 1, "sparse": 1 }] }', true);
                                                                                                    create_indexes_non_concurrently                                                                                                    
 ---------------------------------------------------------------------
@@ -486,8 +358,8 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexe
  creation_time   | timestamp with time zone |           | not null | now()
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
-    "documents_rum_index_5611" EXCLUDE USING helio_rum (generate_unique_shard_document(document, shard_key_value, '{ "e" : { "$numberInt" : "1" } }'::bson, true) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=e, tl='2691', generatenotfoundterm='true') WITH =?=)
-    "documents_rum_index_5612" EXCLUDE USING helio_rum (generate_unique_shard_document(document, shard_key_value, '{ "e" : { "$numberInt" : "1" }, "f" : { "$numberInt" : "1" } }'::bson, true) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=e, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=f, tl='2691', generatenotfoundterm='true') WITH =?=)
+    "documents_rum_index_5607" EXCLUDE USING helio_rum (generate_unique_shard_document(document, shard_key_value, '{ "e" : { "$numberInt" : "1" } }'::bson, true) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=e, tl='2691', generatenotfoundterm='true') WITH =?=)
+    "documents_rum_index_5608" EXCLUDE USING helio_rum (generate_unique_shard_document(document, shard_key_value, '{ "e" : { "$numberInt" : "1" }, "f" : { "$numberInt" : "1" } }'::bson, true) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=e, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=f, tl='2691', generatenotfoundterm='true') WITH =?=)
 Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = '5600'::bigint)
 
@@ -603,7 +475,6 @@ SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "h": 5 }');
 
 -- reset test data
 set helio_api.enable_large_unique_index_keys to on;
-set helio_api.enable_new_unique_opclass to on;
 DELETE FROM helio_data.documents_5600;
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "rumConstraint1", "rumConstraint2", "rumConstraint3" ] }');
                          retval                          
@@ -641,7 +512,7 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexe
  creation_time   | timestamp with time zone |           | not null | now()
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
-    "documents_rum_index_5614" EXCLUDE USING helio_rum (generate_unique_shard_document(document, shard_key_value, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=key1, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=key2, tl='2691', generatenotfoundterm='true') WITH =?=)
+    "documents_rum_index_5610" EXCLUDE USING helio_rum (generate_unique_shard_document(document, shard_key_value, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=key1, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=key2, tl='2691', generatenotfoundterm='true') WITH =?=)
 Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = '5600'::bigint)
 
@@ -846,7 +717,6 @@ SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key3": [1, 2] }');
 
 -- reset data
 set helio_api.enable_large_unique_index_keys to on;
-set helio_api.enable_new_unique_opclass to on;
 DELETE FROM helio_data.documents_5600;
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "constraint1" ] }');
                          retval                          
@@ -884,7 +754,7 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexe
  creation_time   | timestamp with time zone |           | not null | now()
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
-    "documents_rum_index_5615" EXCLUDE USING helio_rum (generate_unique_shard_document(document, shard_key_value, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=key1, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=key2, tl='2691', generatenotfoundterm='true') WITH =?=)
+    "documents_rum_index_5611" EXCLUDE USING helio_rum (generate_unique_shard_document(document, shard_key_value, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=key1, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=key2, tl='2691', generatenotfoundterm='true') WITH =?=)
 Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = '5600'::bigint)
 
@@ -959,7 +829,6 @@ SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 5, "key2": null
 
 -- reset data
 set helio_api.enable_large_unique_index_keys to on;
-set helio_api.enable_new_unique_opclass to on;
 DELETE FROM helio_data.documents_5600;
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "constraint1" ] }');
                          retval                          
@@ -997,7 +866,7 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexe
  creation_time   | timestamp with time zone |           | not null | now()
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
-    "documents_rum_index_5616" EXCLUDE USING helio_rum (generate_unique_shard_document(document, shard_key_value, '{ "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } }'::bson, true) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=a, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=b, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=c, tl='2691', generatenotfoundterm='true') WITH =?=)
+    "documents_rum_index_5612" EXCLUDE USING helio_rum (generate_unique_shard_document(document, shard_key_value, '{ "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } }'::bson, true) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=a, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=b, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=c, tl='2691', generatenotfoundterm='true') WITH =?=)
 Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = '5600'::bigint)
 
@@ -1054,7 +923,6 @@ SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": 1, "b": 1 }');
 
 -- reset data
 set helio_api.enable_large_unique_index_keys to on;
-set helio_api.enable_new_unique_opclass to on;
 DELETE FROM helio_data.documents_5600;
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "constraint1" ] }');
                          retval                          
@@ -1092,7 +960,7 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexe
  creation_time   | timestamp with time zone |           | not null | now()
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
-    "documents_rum_index_5617" EXCLUDE USING helio_rum (generate_unique_shard_document(document, shard_key_value, '{ "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } }'::bson, false) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=a, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=b, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=c, tl='2691', generatenotfoundterm='true') WITH =?=)
+    "documents_rum_index_5613" EXCLUDE USING helio_rum (generate_unique_shard_document(document, shard_key_value, '{ "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } }'::bson, false) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=a, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=b, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=c, tl='2691', generatenotfoundterm='true') WITH =?=)
 Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = '5600'::bigint)
 

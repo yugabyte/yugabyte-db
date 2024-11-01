@@ -9,7 +9,7 @@ CREATE OR REPLACE FUNCTION helio_api_internal.bson_unique_shard_path_equal(__COR
  LANGUAGE C STRICT IMMUTABLE PARALLEL SAFE
 AS 'MODULE_PATHNAME', $function$bson_unique_shard_path_equal$function$;
 
-CREATE FUNCTION helio_api_internal.gin_bson_unique_shard_extract_value(__CORE_SCHEMA__.bson, internal)
+CREATE OR REPLACE FUNCTION helio_api_internal.gin_bson_unique_shard_extract_value(__CORE_SCHEMA__.bson, internal)
  RETURNS internal
  LANGUAGE C STRICT IMMUTABLE
 AS 'MODULE_PATHNAME', $function$gin_bson_unique_shard_extract_value$function$;

@@ -123,48 +123,9 @@ SELECT string_agg(md5(random()::text), '_') AS longstring4 FROM generate_series(
 
 SELECT length(:'longstring1');
 
--- create without truncation
-DELETE FROM helio_data.documents_5600;
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "e": 1 }, "name": "rumConstraint1", "unique": 1, "unique": 1, "sparse": 1 }] }', true);
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "e": 1, "f": 1 }, "name": "rumConstraint2", "unique": 1, "unique": 1, "sparse": 1 }] }', true);
-\d helio_data.documents_5600
-
--- fails
-SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 1, "e": "%s", "f": 1 }', :'longstring1')::bson);
-SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 2, "e": [ "%s", "%s" ], "f": 1 }', :'longstring1', :'longstring2')::bson);
-
-
--- create with truncation allowed and the new op-class disabled
-set helio_api.enable_large_unique_index_keys to on;
-set helio_api.enable_new_unique_opclass to off;
-CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "rumConstraint1", "rumConstraint2" ] }');
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "e": 1 }, "name": "rumConstraint1", "unique": 1, "unique": 1, "sparse": 1 }] }', true);
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "e": 1, "f": 1 }, "name": "rumConstraint2", "unique": 1, "unique": 1, "sparse": 1 }] }', true);
-\d helio_data.documents_5600
-
--- succeeds
-SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 1, "e": "%s", "f": 1 }', :'longstring1')::bson);
-
--- unique conflict
-SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 2, "e": [ "%s", "%s" ], "f": 1 }', :'longstring1', :'longstring2')::bson);
-
--- create with suffix post truncation - succeeds
-SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 3, "e": [ "%s-withsuffix", "%s" ], "f": 1 }', :'longstring1', :'longstring2')::bson);
-
--- this should also fail
-SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 4, "e": "%s-withsuffix", "f": 1 }', :'longstring1')::bson);
-
--- this will work.
-SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 5, "e": "%s-withsuffix", "f": 1 }', :'longstring2')::bson);
-
--- this will fail (suffix match of array and string).
-SELECT helio_api.insert_one('db', 'queryuniqueindex', FORMAT('{ "_id": 6, "e": [ "%s", "%s-withsuffix" ], "f": 1 }', :'longstring3', :'longstring2')::bson);
-
 -- create with truncation allowed and the new op-class enabled
 set helio_api.enable_large_unique_index_keys to on;
-set helio_api.enable_new_unique_opclass to on;
-DELETE FROM helio_data.documents_5600;
-CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "rumConstraint1", "rumConstraint2" ] }');
+
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "e": 1 }, "name": "rumConstraint1", "unique": 1, "unique": 1, "sparse": 1 }] }', true);
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryuniqueindex", "indexes": [ { "key" : { "e": 1, "f": 1 }, "name": "rumConstraint2", "unique": 1, "unique": 1, "sparse": 1 }] }', true);
 \d helio_data.documents_5600
@@ -215,7 +176,6 @@ SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "h": 5 }');
 
 -- reset test data
 set helio_api.enable_large_unique_index_keys to on;
-set helio_api.enable_new_unique_opclass to on;
 
 DELETE FROM helio_data.documents_5600;
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "rumConstraint1", "rumConstraint2", "rumConstraint3" ] }');
@@ -278,7 +238,6 @@ SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key3": [1, 2] }');
 
 -- reset data
 set helio_api.enable_large_unique_index_keys to on;
-set helio_api.enable_new_unique_opclass to on;
 
 DELETE FROM helio_data.documents_5600;
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "constraint1" ] }');
@@ -309,7 +268,6 @@ SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 5, "key2": null
 
 -- reset data
 set helio_api.enable_large_unique_index_keys to on;
-set helio_api.enable_new_unique_opclass to on;
 
 DELETE FROM helio_data.documents_5600;
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "constraint1" ] }');
@@ -337,7 +295,6 @@ SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": 1, "b": 1 }');
 
 -- reset data
 set helio_api.enable_large_unique_index_keys to on;
-set helio_api.enable_new_unique_opclass to on;
 
 DELETE FROM helio_data.documents_5600;
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "constraint1" ] }');

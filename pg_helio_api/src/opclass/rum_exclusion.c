@@ -47,6 +47,7 @@
 #include <utils/typcache.h>
 
 #include "utils/helio_errors.h"
+#include "utils/version_utils.h"
 #include "opclass/helio_bson_gin_private.h"
 #include "opclass/helio_gin_index_mgmt.h"
 #include "metadata/metadata_cache.h"
@@ -57,7 +58,7 @@
 /* Forward declaration */
 /* --------------------------------------------------------- */
 
-extern bool DefaultEnableNewUniqueOpClass;
+extern bool ForceEnableNewUniqueOpClass;
 
 static pgbson * GetShardKeyAndDocument(HeapTupleHeader input, int64_t *shardKey);
 static IndexTraverseOption GetExclusionIndexTraverseOption(void *contextOptions,
@@ -290,13 +291,13 @@ Datum
 bson_unique_index_term_equal(PG_FUNCTION_ARGS)
 {
 	/* In this case, we presume that the index is correct (for recheck purposes) */
-	if (DefaultEnableNewUniqueOpClass)
+	if (ForceEnableNewUniqueOpClass || IsClusterVersionAtleastThis(1, 24, 0))
 	{
 		PG_RETURN_BOOL(true);
 	}
 
 	ereport(ERROR, errmsg(
-				"Unique index term equal should only be an operator pushed to the index."));
+				"Unique index term equal operator class function is not supported."));
 }
 
 
