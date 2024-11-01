@@ -389,11 +389,6 @@ TEST_F(Pg15UpgradeTest, MultipleDatabases) {
 
   static const auto kAnyTserver = std::nullopt;
 
-  // YB_TODO(#24597): We don't yet support upgrading databases with incremented catalog versions.
-  // Work around this by ignoring the increment.
-  static const auto kMakeNextDdlStatementNonincrementing_YB_TODO_24597 =
-      "SET yb_make_next_ddl_statement_nonincrementing = true";
-
   struct DbInfo {
     std::string owner;
     int conn_limit;
@@ -439,17 +434,14 @@ TEST_F(Pg15UpgradeTest, MultipleDatabases) {
            db_map[kDatabaseWithConnLimit].conn_limit),
 
     Format("CREATE DATABASE $0", kDatabaseWithConfig),
-    kMakeNextDdlStatementNonincrementing_YB_TODO_24597,
     Format("ALTER DATABASE $0 SET $1 TO '$2'", kDatabaseWithConfig, kTempFileLimitFlag,
            db_map[kDatabaseWithConfig].temp_file_limit),
   }));
 
   for (auto db_name : {kYugabyte, kTemplate1}) {
     ASSERT_OK(ExecuteStatements({
-      kMakeNextDdlStatementNonincrementing_YB_TODO_24597,
       Format("ALTER DATABASE $0 SET $1 = '$2'", db_name, kTempFileLimitFlag,
              db_map[db_name].temp_file_limit),
-      kMakeNextDdlStatementNonincrementing_YB_TODO_24597,
       Format("ALTER DATABASE $0 OWNER TO $1", db_name, db_map[db_name].owner)
     }));
   }
@@ -1025,4 +1017,11 @@ TEST_F(Pg15UpgradeTestWithAuth, UpgradeAuthEnabledUniverse) {
   ASSERT_NO_FATALS(TestSimpleTableUpgrade());
 }
 
+TEST_F(Pg15UpgradeTest, GlobalBreakingDDL) {
+  ASSERT_OK(ExecuteStatements(
+    {"CREATE USER test",
+     "DROP USER test"}));
+  ASSERT_OK(UpgradeClusterToMixedMode());
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+}
 }  // namespace yb
