@@ -1040,10 +1040,10 @@ DefineIndex(Oid relationId,
 				shdepFindImplicitTablegroup(tablespaceId, &tablegroupId);
 
 				/*
-				 * If we do not find a tablegroup corresponding to the given tablespace, we 
+				 * If we do not find a tablegroup corresponding to the given tablespace, we
 				 * would have to create one. We derive the name from tablespace OID.
 				 */
-				tablegroup_name = OidIsValid(tablegroupId) ? get_tablegroup_name(tablegroupId) : 
+				tablegroup_name = OidIsValid(tablegroupId) ? get_tablegroup_name(tablegroupId) :
 					get_implicit_tablegroup_name(tablespaceId);
 
 			}
@@ -1088,7 +1088,7 @@ DefineIndex(Oid relationId,
 				RoleSpec *spec = makeNode(RoleSpec);
 				spec->roletype = ROLESPEC_CSTRING;
 				spec->rolename = pstrdup("postgres");
-				
+
 				CreateTableGroupStmt *tablegroup_stmt = makeNode(CreateTableGroupStmt);
 				tablegroup_stmt->tablegroupname = tablegroup_name;
 				tablegroup_stmt->tablespacename = tablespace_name;
@@ -2109,6 +2109,10 @@ DefineIndex(Oid relationId,
 	else
 	{
 		elog(LOG, "committing pg_index tuple with indislive=true");
+		if (yb_test_block_index_phase[0] != '\0')
+			YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
+										"indislive",
+										"index state change indislive=true");
 		/*
 		 * No need to break (abort) ongoing txns since this is an online schema
 		 * change.
