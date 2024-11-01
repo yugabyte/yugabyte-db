@@ -145,3 +145,11 @@
     }
   }
 }
+
+.dropdown-list .dropdown-toggle:hover,
+.dropdown-list .dropdown-menu .dropdown-item:hover {
+  .popup-details {
+    opacity: 1;
+    visibility: visible;
+  }
+}
