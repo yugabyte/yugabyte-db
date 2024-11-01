@@ -8,9 +8,12 @@ pghost3=127.0.0.$((ip_start + 2))
 # TEST_always_return_consensus_info_for_succeeded_rpc=false is needed to upgrade a release build to
 # debug.
 common_pg15_flags="TEST_always_return_consensus_info_for_succeeded_rpc=false"
+# Set ysql_hba_conf to allow local socket connections. This is needed for older builds that do not
+# have D39564.
+ysql_hba_conf_flag='"ysql_hba_conf=""local all yugabyte trust,host all all all trust"""'
 # yb_enable_expression_pushdown=false is needed because the expression pushdown rewriter is not yet
 # implemented.
-common_tserver_flags='"ysql_pg_conf_csv=yb_enable_expression_pushdown=false"'
+common_tserver_flags=$ysql_hba_conf_flag',"ysql_pg_conf_csv=yb_enable_expression_pushdown=false"'
 
 # Downloads, runs, and pushds the directory for pg11.
 # Sets $pg11path to the pg11 directory.
@@ -49,7 +52,7 @@ run_and_pushd_pg11() {
 upgrade_masters() {
   for i in {1..3}; do
     yb_ctl restart_node $i --master \
-      --master_flags="TEST_online_pg11_to_pg15_upgrade=true,master_join_existing_universe=true,$common_pg15_flags"
+      --master_flags="$ysql_hba_conf_flag,TEST_online_pg11_to_pg15_upgrade=true,master_join_existing_universe=true,$common_pg15_flags"
   done
 }
 

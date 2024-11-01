@@ -179,16 +179,16 @@ Status RestartDaemonInVersion(T& daemon, const std::string& bin_path) {
   return daemon.Restart();
 }
 
-void AddFlagToCsvFlag(
+void AppendCsvFlagValue(
     std::vector<std::string>& flag_list, const std::string& flag_name,
-    const std::string& flag_to_add) {
+    const std::string& value_to_add) {
   for (auto& flag : flag_list) {
     if (flag.starts_with(Format("--$0=", flag_name))) {
-      flag += Format(",$0", flag_to_add);
+      flag += Format(",$0", value_to_add);
       return;
     }
   }
-  flag_list.push_back(Format("--$0=$1", flag_name, flag_to_add));
+  flag_list.push_back(Format("--$0=$1", flag_name, value_to_add));
 }
 
 // Add the flag_name to undefok list, so that it can be set on all versions even if the version does
@@ -197,7 +197,7 @@ void AddFlagToCsvFlag(
 void AddUnDefOkAndSetFlag(
     std::vector<std::string>& flag_list, const std::string& flag_name,
     const std::string& flag_value) {
-  AddFlagToCsvFlag(flag_list, "undefok", flag_name);
+  AppendCsvFlagValue(flag_list, "undefok", flag_name);
   flag_list.emplace_back(Format("--$0=$1", flag_name, flag_value));
 }
 
@@ -276,10 +276,24 @@ Status UpgradeTestBase::StartClusterInOldVersion() {
   return StartClusterInOldVersion(default_opts);
 }
 
-Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOptions& options) {
-  ExternalMiniClusterOptions opts = options;
+void UpgradeTestBase::SetUpOptions(ExternalMiniClusterOptions& opts) {
   opts.enable_ysql = true;
-  opts.daemon_bin_path = VERIFY_RESULT(DownloadAndGetBinPath(old_version_info_));
+  opts.daemon_bin_path = ASSERT_RESULT(DownloadAndGetBinPath(old_version_info_));
+
+  // There should be at least one tserver running on the same address as master.
+  // This will force all masters to run on 127.0.0.2 and tservers to run on 127.0.0.2, 127.0.0.4
+  // and 127.0.0.6.
+  opts.use_even_ips = true;
+
+  // Allow local socket connections for ysqlsh. This was added in newer versions as part of
+  // D39566.
+  std::string hba_conf_value = "local all yugabyte trust";
+  if (!opts.enable_ysql_auth) {
+    // Include the default allow all setting.
+    hba_conf_value += ",host all all all trust";
+  }
+  AppendCsvFlagValue(opts.extra_master_flags, "ysql_hba_conf_csv", hba_conf_value);
+  AppendCsvFlagValue(opts.extra_tserver_flags, "ysql_hba_conf_csv", hba_conf_value);
 
   // Disable TEST_always_return_consensus_info_for_succeeded_rpc since it is not upgrade safe.
   AddUnDefOkAndSetFlag(
@@ -287,9 +301,13 @@ Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOption
   AddUnDefOkAndSetFlag(
       opts.extra_tserver_flags, "TEST_always_return_consensus_info_for_succeeded_rpc", "false");
 
+  ExternalMiniClusterITestBase::SetUpOptions(opts);
+}
+
+Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOptions& options) {
   LOG(INFO) << "Starting cluster in version: " << old_version_info_.version;
 
-  RETURN_NOT_OK(ExternalMiniClusterITestBase::StartCluster(opts));
+  RETURN_NOT_OK(ExternalMiniClusterITestBase::StartCluster(options));
 
   old_version_bin_path_ = cluster_->GetDaemonBinPath();
   old_version_master_bin_path_ = cluster_->GetMasterBinaryPath();

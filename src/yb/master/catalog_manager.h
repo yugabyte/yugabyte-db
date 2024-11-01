@@ -1699,7 +1699,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       SysRowEntryType type, const std::string& item_id, const std::string& debug_string,
       QLWriteRequestPB::QLStmtType op_type);
 
-  Result<TSDescriptorPtr> GetClosestLiveTserver() const override;
+  Result<TSDescriptorPtr> GetClosestLiveTserver(bool* local_ts = nullptr) const override;
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.

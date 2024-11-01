@@ -132,6 +132,7 @@ struct ExternalMiniClusterOptions {
 #endif
 
   bool enable_ysql = false;
+  bool enable_ysql_auth = false;
 
   // Directory in which to store data.
   // Default: "", which auto-generates a unique path for this cluster.

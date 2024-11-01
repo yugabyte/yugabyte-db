@@ -20,6 +20,8 @@
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/pg_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 
@@ -224,13 +226,25 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
   auto se = ScopeExit([&pg_supervisor]() { pg_supervisor.Stop(); });
   RETURN_NOT_OK(pg_supervisor.Start());
 
-  auto closest_ts = VERIFY_RESULT(master_.catalog_manager()->GetClosestLiveTserver());
-  PgWrapper::PgUpgradeParams pg_upgrade_params{
-      .data_dir = pg_conf.data_dir,
-      .old_version_pg_address = VERIFY_RESULT(closest_ts->GetHostPort()).host(),
-      .old_version_pg_port = narrow_cast<uint16_t>(closest_ts->GetRegistration().pg_port()),
-      .new_version_pg_address = pg_conf.listen_addresses,
-      .new_version_pg_port = pg_conf.pg_port};
+  PgWrapper::PgUpgradeParams pg_upgrade_params;
+  pg_upgrade_params.data_dir = pg_conf.data_dir;
+  pg_upgrade_params.new_version_socket_dir =
+      PgDeriveSocketDir(HostPort(pg_conf.listen_addresses, pg_conf.pg_port));
+  pg_upgrade_params.new_version_pg_port = pg_conf.pg_port;
+
+  bool local_ts = false;
+  auto closest_ts = VERIFY_RESULT(master_.catalog_manager()->GetClosestLiveTserver(&local_ts));
+  auto closest_ts_hp = HostPort(
+      VERIFY_RESULT(closest_ts->GetHostPort()).host(),
+      narrow_cast<uint16_t>(closest_ts->GetRegistration().pg_port()));
+
+  if (local_ts) {
+    pg_upgrade_params.old_version_socket_dir = PgDeriveSocketDir(closest_ts_hp);
+  } else {
+    pg_upgrade_params.old_version_pg_address = closest_ts_hp.host();
+  }
+  pg_upgrade_params.old_version_pg_port = closest_ts_hp.port();
+
   RETURN_NOT_OK(PgWrapper::RunPgUpgrade(pg_upgrade_params));
 
   return Status::OK();

@@ -13354,7 +13354,11 @@ Result<TablegroupId> CatalogManager::GetTablegroupId(const TableId& table_id) {
   return tablegroup->id();
 }
 
-Result<TSDescriptorPtr> CatalogManager::GetClosestLiveTserver() const {
+Result<TSDescriptorPtr> CatalogManager::GetClosestLiveTserver(bool* local_ts) const {
+  if (local_ts) {
+    *local_ts = false;
+  }
+
   ServerRegistrationPB local_registration;
   RETURN_NOT_OK(master_->GetMasterRegistration(&local_registration));
 
@@ -13387,6 +13391,9 @@ Result<TSDescriptorPtr> CatalogManager::GetClosestLiveTserver() const {
       // If this tserver is on the same node as master pick it.
       for (const auto& addr : ts_info.registration().common().private_rpc_addresses()) {
         if (local_hosts.contains(addr.host())) {
+          if (local_ts) {
+            *local_ts = true;
+          }
           return desc;
         }
       }

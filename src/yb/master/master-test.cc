@@ -2778,10 +2778,12 @@ TEST_F(MasterStartUpTest, JoinExistingClusterUnsetWithoutMasterAddresses) {
 TEST_F(MasterTest, TestGetClosestLiveTserver) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5 * 60 * 1000;
 
+  bool local_ts = false;
   auto& catalog_manager = mini_master_->catalog_manager();
-  auto result = catalog_manager.GetClosestLiveTserver();
+  auto result = catalog_manager.GetClosestLiveTserver(&local_ts);
   // No valid tservers.
   ASSERT_NOK(result);
+  ASSERT_FALSE(local_ts);
 
   uint32 tserver_idx = 1;
   auto add_tserver = [this, &tserver_idx](
@@ -2805,23 +2807,25 @@ TEST_F(MasterTest, TestGetClosestLiveTserver) {
   {
     const auto tserver1_uuid = "uuid-1";
     ASSERT_OK(add_tserver(tserver1_uuid, "cloud2", "rack1", "zone", "host1"));
-    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver());
+    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver(&local_ts));
     ASSERT_EQ(closest_tserver->permanent_uuid(), tserver1_uuid);
+    ASSERT_FALSE(local_ts);
   }
 
   // Add tserver in same cloud, different region.
   {
     const auto tserver2_uuid = "uuid-2";
     ASSERT_OK(add_tserver(tserver2_uuid, "cloud1", "rack2", "zone", "host1"));
-    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver());
+    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver(&local_ts));
     ASSERT_EQ(closest_tserver->permanent_uuid(), tserver2_uuid);
+    ASSERT_FALSE(local_ts);
   }
 
   // Add tserver in same cloud, same region, different zone.
   {
     const auto tserver3_uuid = "uuid-3";
     ASSERT_OK(add_tserver(tserver3_uuid, "cloud1", "rack1", "zone2", "host1"));
-    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver());
+    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver(&local_ts));
     ASSERT_EQ(closest_tserver->permanent_uuid(), tserver3_uuid);
   }
 
@@ -2829,8 +2833,9 @@ TEST_F(MasterTest, TestGetClosestLiveTserver) {
   {
     const auto tserver4_uuid = "uuid-4";
     ASSERT_OK(add_tserver(tserver4_uuid, "cloud1", "rack1", "zone", "host1"));
-    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver());
+    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver(&local_ts));
     ASSERT_EQ(closest_tserver->permanent_uuid(), tserver4_uuid);
+    ASSERT_FALSE(local_ts);
   }
 
   // Add tserver in same host as master.
@@ -2840,8 +2845,9 @@ TEST_F(MasterTest, TestGetClosestLiveTserver) {
     auto master_host = master_registration.private_rpc_addresses().begin()->host();
     const auto tserver5_uuid = "uuid-5";
     ASSERT_OK(add_tserver(tserver5_uuid, "cloud1", "rack1", "zone", std::move(master_host)));
-    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver());
+    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver(&local_ts));
     ASSERT_EQ(closest_tserver->permanent_uuid(), tserver5_uuid);
+    ASSERT_TRUE(local_ts);
   }
 }
 

@@ -27,6 +27,65 @@ class Pg15UpgradeTest : public Pg15UpgradeTestBase {
   constexpr static auto kYugabyte = "yugabyte";
   constexpr static auto kPostgres = "postgres";
   constexpr static auto kSystemPlatform = "system_platform";
+
+  void TestSimpleTableUpgrade() {
+    const size_t kRowCount = 100;
+    // Create a table with 3 tablets and kRowCount rows so that each tablet has at least a few rows.
+    ASSERT_OK(ExecuteStatements(
+        {"CREATE TABLE t (a INT) SPLIT INTO 3 TABLETS",
+         Format("INSERT INTO t VALUES(generate_series(1, $0))", kRowCount)}));
+    static const auto kSelectFromTable = "SELECT * FROM t";
+
+    ASSERT_OK(UpgradeClusterToMixedMode());
+
+    {
+      auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg15));
+      auto count = ASSERT_RESULT(conn.Fetch(kSelectFromTable));
+      ASSERT_EQ(PQntuples(count.get()), kRowCount);
+    }
+    {
+      auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg11));
+      auto count = ASSERT_RESULT(conn.Fetch(kSelectFromTable));
+      ASSERT_EQ(PQntuples(count.get()), kRowCount);
+    }
+
+    ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+    // Verify row count from a random tserver.
+    {
+      auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+      auto count = ASSERT_RESULT(conn.Fetch(kSelectFromTable));
+      ASSERT_EQ(PQntuples(count.get()), kRowCount);
+    }
+  }
+
+  // Stops the tserver running on the yb-master leader node.
+  // The tserver must be restarted before the test completes for it to succeed the shutdown in the
+  // success case.
+  Result<ExternalTabletServer*> StopMasterLeaderTServer() {
+    const auto master = cluster_->GetLeaderMaster();
+    RETURN_NOT_OK(cluster_->SetFlag(
+        master, "tserver_unresponsive_timeout_ms", ToString(2000 * kTimeMultiplier)));
+
+    const auto num_tservers = cluster_->num_tablet_servers();
+    size_t master_tserver_idx = num_tservers;
+    const auto master_host = master->bound_rpc_addr().host();
+    for (size_t i = 0; i < num_tservers; ++i) {
+      if (cluster_->tablet_server(i)->bind_host() == master->bound_rpc_addr().host()) {
+        master_tserver_idx = i;
+        break;
+      }
+    }
+    SCHECK_NE(
+        master_tserver_idx, num_tservers, IllegalState,
+        Format("Tserver not found on master host $0", master_host));
+
+    auto master_tserver = cluster_->tablet_server(master_tserver_idx);
+    master_tserver->Shutdown();
+    RETURN_NOT_OK(cluster_->WaitForMasterToMarkTSDead(static_cast<int>(master_tserver_idx)));
+
+    return master_tserver;
+  }
 };
 
 TEST_F(Pg15UpgradeTest, CheckVersion) {
@@ -59,36 +118,7 @@ TEST_F(Pg15UpgradeTest, CheckVersion) {
   }
 }
 
-TEST_F(Pg15UpgradeTest, SimpleTable) {
-  const size_t kRowCount = 100;
-  // Create a table with 3 tablets and kRowCount rows so that each tablet has at least a few rows.
-  ASSERT_OK(ExecuteStatements(
-      {"CREATE TABLE t (a INT) SPLIT INTO 3 TABLETS",
-       Format("INSERT INTO t VALUES(generate_series(1, $0))", kRowCount)}));
-  static const auto kSelectFromTable = "SELECT * FROM t";
-
-  ASSERT_OK(UpgradeClusterToMixedMode());
-
-  {
-    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg15));
-    auto count = ASSERT_RESULT(conn.Fetch(kSelectFromTable));
-    ASSERT_EQ(PQntuples(count.get()), kRowCount);
-  }
-  {
-    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg11));
-    auto count = ASSERT_RESULT(conn.Fetch(kSelectFromTable));
-    ASSERT_EQ(PQntuples(count.get()), kRowCount);
-  }
-
-  ASSERT_OK(FinalizeUpgradeFromMixedMode());
-
-  // Verify row count from a random tserver.
-  {
-    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
-    auto count = ASSERT_RESULT(conn.Fetch(kSelectFromTable));
-    ASSERT_EQ(PQntuples(count.get()), kRowCount);
-  }
-}
+TEST_F(Pg15UpgradeTest, SimpleTable) { ASSERT_NO_FATALS(TestSimpleTableUpgrade()); }
 
 TEST_F(Pg15UpgradeTest, BackslashD) {
   ASSERT_OK(ExecuteStatement("CREATE TABLE t (a INT)"));
@@ -788,6 +818,46 @@ TEST_F(Pg15UpgradeTest, PartitionedTables) {
     ASSERT_OK(conn.Execute("INSERT INTO t_l VALUES (4, 'four4'), (7, 'seven7')"));
     ASSERT_NO_FATALS(check_partitions(conn, CheckType::AfterUpgrade));
   }
+}
+
+class Pg15UpgradeTestWithAuth : public Pg15UpgradeTest {
+ public:
+  Pg15UpgradeTestWithAuth() = default;
+
+  void SetUpOptions(ExternalMiniClusterOptions& opts) override {
+    opts.enable_ysql_auth = true;
+    Pg15UpgradeTest::SetUpOptions(opts);
+  }
+};
+
+// Make sure upgrade succeeds in non auth universes even if there is no tserver on the master node.
+TEST_F(Pg15UpgradeTest, NoTserverOnMasterNode) {
+  static const MonoDelta no_delay_between_nodes = 0s;
+  ASSERT_OK(RestartAllMastersInCurrentVersion(no_delay_between_nodes));
+
+  auto master_tserver = ASSERT_RESULT(StopMasterLeaderTServer());
+
+  ASSERT_OK(PerformYsqlMajorVersionUpgrade());
+  ASSERT_OK(master_tserver->Restart());
+  ASSERT_OK(WaitForClusterToStabilize());
+
+  ASSERT_OK(RestartAllTServersInCurrentVersion(no_delay_between_nodes));
+  ASSERT_OK(FinalizeUpgrade());
+}
+
+// Make sure upgrade fails in auth enabled universes if there is no tserver on the master node.
+TEST_F(Pg15UpgradeTestWithAuth, NoTserverOnMasterNode) {
+  static const MonoDelta no_delay_between_nodes = 0s;
+  ASSERT_OK(RestartAllMastersInCurrentVersion(no_delay_between_nodes));
+
+  auto master_tserver = ASSERT_RESULT(StopMasterLeaderTServer());
+
+  ASSERT_NOK_STR_CONTAINS(PerformYsqlMajorVersionUpgrade(), "Failed to run pg_upgrade");
+  ASSERT_OK(master_tserver->Restart());
+}
+
+TEST_F(Pg15UpgradeTestWithAuth, UpgradeAuthEnabledUniverse) {
+  ASSERT_NO_FATALS(TestSimpleTableUpgrade());
 }
 
 }  // namespace yb
