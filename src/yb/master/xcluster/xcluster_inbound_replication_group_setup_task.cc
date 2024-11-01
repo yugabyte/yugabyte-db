@@ -485,6 +485,7 @@ Status XClusterInboundReplicationGroupSetupTask::SetupReplicationGroup() {
 
     cdc::ProducerEntryPB producer_entry;
     producer_entry.mutable_master_addrs()->CopyFrom(source_masters_);
+    producer_entry.set_automatic_ddl_mode(automatic_ddl_mode_);
 
     if (FLAGS_enable_xcluster_auto_flag_validation) {
       auto auto_flag_config_version = VERIFY_RESULT(GetAutoFlagConfigVersionIfCompatible());

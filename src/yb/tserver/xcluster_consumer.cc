@@ -408,7 +408,8 @@ void XClusterConsumer::UpdateReplicationGroupInMemState(
         auto xCluster_tablet_info = xcluster::XClusterTabletInfo{
             .producer_tablet_info = {replication_group_id, stream_id, producer_tablet_id},
             .consumer_tablet_info = {consumer_tablet_id, stream_entry_pb.consumer_table_id()},
-            .disable_stream = producer_entry_pb.disable_stream()};
+            .disable_stream = producer_entry_pb.disable_stream(),
+            .automatic_ddl_mode = producer_entry_pb.automatic_ddl_mode()};
         producer_consumer_tablet_map_from_master_.emplace(std::move(xCluster_tablet_info));
       }
     }
@@ -518,7 +519,8 @@ void XClusterConsumer::TriggerPollForNewTablets() {
             auto_flags_version_handler_->GetAutoFlagsCompatibleVersion(
                 producer_tablet_info.replication_group_id),
             thread_pool_.get(), rpcs_.get(), local_client_, remote_clients_[replication_group_id],
-            this, last_compatible_consumer_schema_version, leader_term, get_leader_term_func_);
+            this, last_compatible_consumer_schema_version, leader_term, get_leader_term_func_,
+            entry.automatic_ddl_mode);
 
         if (ddl_queue_streams_.contains(producer_tablet_info.stream_id)) {
           xcluster_poller->InitDDLQueuePoller(
