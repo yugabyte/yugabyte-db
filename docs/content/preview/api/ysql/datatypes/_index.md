@@ -34,7 +34,7 @@ The following table lists the primitive and compound data types in YSQL.
 | [date](type_datetime/) | | Calendar date (year, month, day) |
 | [double precision](type_numeric) | [float8](type_numeric) | Double precision floating-point number (8 bytes) |
 | `inet` <sup>1</sup> | | IPv4 or IPv6 host address |
-| [integer](type_numeric) | [int`, `int4](type_numeric) | Signed four-byte integer |
+| [integer](type_numeric) | [int, int4](type_numeric) | Signed four-byte integer |
 | [interval [ fields ] [ (p) ]](type_datetime/) | | Time span |
 | [json](type_json/) <sup>1</sup> | | Textual JSON data |
 | [jsonb](type_json/) <sup>1</sup> | | JSON data, stored as decomposed binary |
