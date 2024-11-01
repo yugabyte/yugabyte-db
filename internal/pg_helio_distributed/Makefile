@@ -61,6 +61,9 @@ clean-sql:
 check:
 	$(MAKE) -C src/test all
 
+check-dist-minimal:
+	$(MAKE) -C src/test $@
+
 citus-indent:
 	citus_indent
 

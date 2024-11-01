@@ -29,6 +29,9 @@ define isolation_test
 	$(top_builddir)/src/test/isolation/pg_isolation_regress --dlpath=$(BASEPATH) $(EXTENSIONLOAD) --temp-instance ./tmp --temp-config ./isolation_postgresql.conf --host localhost --port 58071 $(1) $(2) || (cat regression.diffs && false)
 endef
 
+check-dist-minimal:
+	$(call common_test,--schedule=./minimal_schedule, $(EXTRA_TESTS))
+
 check-basic:
 	$(call common_test,--schedule=./basic_schedule --schedule=./basic_schedule_core)
 
