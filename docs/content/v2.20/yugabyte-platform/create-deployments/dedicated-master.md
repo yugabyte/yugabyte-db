@@ -13,7 +13,7 @@ rightNav:
   hideH3: true
 ---
 
-The default behavior when creating a universe is to locate [YB-Master](../../../architecture/yb-master/) and [YB-TServer](../../../architecture/yb-tserver/) processes on the same node. However, in some situations it's desirable to isolate the two processes on separate nodes, and dedicate additional resources to the YB-Master processes.
+The default behavior when creating a universe is to locate [YB-Master](../../../architecture/concepts/yb-master/) and [YB-TServer](../../../architecture/concepts/yb-tserver/) processes on the same node. However, in some situations it's desirable to isolate the two processes on separate nodes, and dedicate additional resources to the YB-Master processes.
 
 To place YB-Masters on dedicated nodes, you use the [Place Masters on dedicated nodes](#shared-and-dedicated-node-placement) option when creating a universe.
 
@@ -37,7 +37,7 @@ A YugabyteDB universe requires a number of YB-Master servers equal to the [repli
 
 When creating a universe, you have the following two options for YB-Master process placement:
 
-- **Place Masters on the same nodes as T-Servers** (Shared): This is the default. In this mode, 15% of the total memory available on the node goes to YB-Master and 85% goes to YB-TServer. (You can override the memory allocation using the [--default_memory_limit_to_ram_ratio](../../../reference/configuration/yb-tserver/#default-memory-limit-to-ram-ratio) flag.)
+- **Place Masters on the same nodes as T-Servers** (Shared): This is the default. In this mode, 15% of the total memory available on the node goes to YB-Master and 85% goes to YB-TServer. (You can override the memory allocation using the `--default_memory_limit_to_ram_ratio` flag.)
 
 - **Place Masters on dedicated nodes** (Dedicated Masters): In this mode, nodes dedicated to Master processes are selected when the universe is created (or equivalently, during the `/universe_configure` REST API call). Placing YB-Masters on dedicated nodes eliminates the need to configure or share memory.
 
