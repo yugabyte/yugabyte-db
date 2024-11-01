@@ -28,6 +28,27 @@ namespace master {
 class SetupUniverseReplicationRequestPB;
 class SetupUniverseReplicationResponsePB;
 
+struct XClusterSetupUniverseReplicationData {
+  xcluster::ReplicationGroupId replication_group_id;
+  google::protobuf::RepeatedPtrField<HostPortPB> source_masters;
+  std::vector<TableId> source_table_ids;
+  std::vector<TableId> target_table_ids;
+  std::vector<xrepl::StreamId> stream_ids;
+  bool transactional;
+  std::vector<NamespaceId> source_namespace_ids;
+  std::vector<NamespaceId> target_namespace_ids;
+  bool automatic_ddl_mode;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(
+        replication_group_id, source_masters, source_table_ids, target_table_ids, stream_ids,
+        transactional, source_namespace_ids, target_namespace_ids, automatic_ddl_mode);
+  }
+
+  bool StreamIdsProvided() const { return !stream_ids.empty(); }
+  bool TargetTableIdsProvided() const { return !target_table_ids.empty(); }
+};
+
 // Helper class to setup an inbound xCluster replication group.
 // StartSetup should be called to start the task.
 // On a successful setup, a UniverseReplication group will be created.
@@ -48,7 +69,7 @@ class XClusterInboundReplicationGroupSetupTaskIf {
 
 Result<std::shared_ptr<XClusterInboundReplicationGroupSetupTaskIf>>
 CreateSetupUniverseReplicationTask(
-    Master& master, CatalogManager& catalog_manager, const SetupUniverseReplicationRequestPB* req,
+    Master& master, CatalogManager& catalog_manager, XClusterSetupUniverseReplicationData&& data,
     const LeaderEpoch& epoch);
 
 Status ValidateMasterAddressesBelongToDifferentCluster(

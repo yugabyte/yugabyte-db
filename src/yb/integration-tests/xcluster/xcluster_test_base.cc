@@ -449,6 +449,8 @@ Status XClusterTestBase::ToggleUniverseReplication(
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
+  // Sleep a few seconds for the change to be propagated.
+  SleepFor(3s);
   return Status::OK();
 }
 

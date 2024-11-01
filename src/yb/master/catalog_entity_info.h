@@ -1256,6 +1256,8 @@ class UniverseReplicationInfo : public UniverseReplicationInfoBase,
 
   bool IsDbScoped() const;
 
+  bool IsAutomaticDdlMode() const;
+
  private:
   friend class RefCountedThreadSafe<UniverseReplicationInfo>;
   virtual ~UniverseReplicationInfo() = default;

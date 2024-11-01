@@ -94,6 +94,11 @@ class XClusterManagerIf {
       const AlterUniverseReplicationRequestPB* req, AlterUniverseReplicationResponsePB* resp,
       rpc::RpcContext* rpc, const LeaderEpoch& epoch) = 0;
 
+  virtual Status AddTableToReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id, const TableId& source_table_id,
+      const xrepl::StreamId& bootstrap_id, const std::optional<TableId>& target_table_id,
+      const LeaderEpoch& epoch) = 0;
+
   virtual Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
       const xcluster::ReplicationGroupId& replication_group_id, bool skip_health_check) = 0;
 

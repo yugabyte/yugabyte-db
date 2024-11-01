@@ -1333,6 +1333,10 @@ Status UniverseReplicationInfo::GetSetupUniverseReplicationErrorStatus() const {
 
 bool UniverseReplicationInfo::IsDbScoped() const { return LockForRead()->IsDbScoped(); }
 
+bool UniverseReplicationInfo::IsAutomaticDdlMode() const {
+  return LockForRead()->IsAutomaticDdlMode();
+}
+
 // ================================================================================================
 // PersistentUniverseReplicationBootstrapInfo
 // ================================================================================================
