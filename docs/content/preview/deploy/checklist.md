@@ -24,14 +24,14 @@ A YugabyteDB cluster consists of two distributed services - the [YB-TServer](../
 
 YugabyteDB internally replicates data in a consistent manner using the Raft consensus protocol to survive node failure without compromising data correctness. This distributed consensus replication is applied at a per-shard (also known as tablet) level similar to Google Spanner.
 
-The replication factor (RF) corresponds to the number of copies of the data. You need at least as many nodes as the RF, which means one node for RF1, three nodes for RF3, and so on. With a RF of 3, your cluster can tolerate one node failure. With a RF of 5, it can tolerate two node failures. More generally, if RF is n, YugabyteDB can survive (n - 1) / 2 failures without compromising correctness or availability of data.
+The replication factor (RF) corresponds to the number of copies of the data. You need at least as many nodes as the RF, which means one node for RF1, three nodes for RF3, and so on. With a RF of 3, your cluster can tolerate one node failure. With a RF of 5, it can tolerate two node failures. More generally, if RF is n, YugabyteDB can survive floor((n - 1) / 2) failures without compromising correctness or availability of data.
 
 When deploying a cluster, keep in mind the following:
 
-- The RF should be an odd number to ensure majority consensus can be established during failures.
 - The default replication factor is 3.
 - The number of YB-Master servers running in a cluster should match RF. Run each server on a separate machine to prevent losing availability on failures. You need to specify the RF using the `--replication_factor` flag when bringing up the YB-Master servers.
 - The number of YB-TServer servers running in the cluster should not be less than the RF. Run each server on a separate machine to prevent losing availability on failures.
+- An even RF number offers the same protection as its preceding odd number. For example both RF 4 and RF 3 can only tolerate the loss of only 1 node. So it's preferable to use an odd RF number to keep costs low.
 
 Note that YugabyteDB works with both hostnames or IP addresses. The latter are preferred at this point, as they are more extensively tested.
 
