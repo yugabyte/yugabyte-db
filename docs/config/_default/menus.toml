@@ -192,20 +192,18 @@
   weight = 8
   identifier = "yugabytedb-anywhere-api"
   parent = "yugabyte-apis"
-  url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
+  url = "/yugabyte-platform/anywhere-automation/anywhere-api/"
   [main.params]
     imageUrl = "/icons/server.svg"
-    newTab = true
 
 [[main]]
   name = "YugabyteDB Aeon API"
   weight = 9
   identifier = "yugabytedb-anaged-api"
   parent = "yugabyte-apis"
-  url = "https://api-docs.yugabyte.com/docs/managed-apis/"
+  url = "/yugabyte-cloud/managed-automation/managed-api/"
   [main.params]
     imageUrl = "/icons/cloud.svg"
-    newTab = true
 
 [[main]]
   name = "FAQ"
@@ -762,19 +760,17 @@
   name = "YugabyteDB Anywhere API"
   weight = 30
   identifier = "yugabytedb-anywhere-api"
-  url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
+  url = "/preview/yugabyte-platform/anywhere-automation/anywhere-api/"
   [preview_api.params]
     showSection = true
-    newTab = true
 
 [[preview_api]]
   name = "YugabyteDB Aeon API"
   weight = 31
   identifier = "yugabytedb-managed-api"
-  url = "https://api-docs.yugabyte.com/docs/managed-apis/"
+  url = "/preview/yugabyte-cloud/managed-automation/managed-api/"
   [preview_api.params]
     showSection = true
-    newTab = true
 
 ########## Menus (in preview) for releases section
 
@@ -1192,19 +1188,17 @@
   name = "YugabyteDB Anywhere API"
   weight = 30
   identifier = "yugabytedb-anywhere-api"
-  url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
+  url = "/stable/yugabyte-platform/anywhere-automation/anywhere-api/"
   [stable_api.params]
     showSection = true
-    newTab = true
 
 [[stable_api]]
   name = "YugabyteDB Aeon API"
   weight = 31
   identifier = "yugabytedb-managed-api"
-  url = "https://api-docs.yugabyte.com/docs/managed-apis/"
+  url = "/preview/yugabyte-cloud/managed-automation/managed-api/"
   [stable_api.params]
     showSection = true
-    newTab = true
 
 ########## Menus for 2.20
 

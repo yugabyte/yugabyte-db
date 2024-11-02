@@ -3,7 +3,6 @@ title: API reference (for YSQL and YCQL)
 headerTitle: APIs
 linkTitle: APIs
 description: YugabyteDB API reference for PostgreSQL-compatible YSQL and Cassandra-compatible YCQL
-image: /images/section_icons/index/api.png
 headcontent: YugabyteDB API reference
 menu:
   v2.14:
