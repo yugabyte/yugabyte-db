@@ -1874,6 +1874,11 @@ bson_maxminn_transition(PG_FUNCTION_ARGS, bool isMaxN)
 		 * For minN, we need to maintain a large root heap.
 		 * When currentValue is less than the top of the heap, we need to remove the top of the heap and insert currentValue.
 		 */
+
+		int64_t totalSize = sizeof(bson_value_t) * element + sizeof(BinaryHeapState) +
+							sizeof(BinaryHeap);
+		CheckAggregateIntermediateResultSize(totalSize);
+
 		currentState->heap = AllocateHeap(element, isMaxN == true ?
 										  HeapSortComparatorMaxN :
 										  HeapSortComparatorMinN);

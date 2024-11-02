@@ -136,3 +136,9 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "maxminn_te
 
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "maxminn_test5", "pipeline": [ { "$group": { "_id": "$gameId", "NScore":{"$maxN": {"input": "$score", "n": 100 } } } } ] }');
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "maxminn_test5", "pipeline": [ { "$group": { "_id": "$gameId", "NScore":{"$minN": {"input": "$score", "n": 100 } } } } ] }');
+
+/* $maxN are subject to the 100 MB limit */
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "maxminn_test1", "pipeline": [ { "$group": { "_id": "$gameId", "NScore":{"$maxN": {"input": "$score", "n": 12345678 } } } } ] }');
+
+/* $minN are subject to the 100 MB limit */
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "maxminn_test1", "pipeline": [ { "$group": { "_id": "$gameId", "NScore":{"$minN": {"input": "$score", "n": 12345678 } } } } ] }');

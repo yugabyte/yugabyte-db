@@ -604,3 +604,9 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "maxminn_te
  { "_id" : "G2", "NScore" : [ { "$numberInt" : "76" }, { "$numberInt" : "87" }, "port", [ [ { "$numberInt" : "7" }, { "$numberInt" : "8" } ], { "$numberInt" : "2" }, { "$numberInt" : "1" } ] ] }
 (2 rows)
 
+/* $maxN are subject to the 100 MB limit */
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "maxminn_test1", "pipeline": [ { "$group": { "_id": "$gameId", "NScore":{"$maxN": {"input": "$score", "n": 12345678 } } } } ] }');
+ERROR:  Size 395061744 is larger than maximum size allowed for an intermediate document 104857600
+/* $minN are subject to the 100 MB limit */
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "maxminn_test1", "pipeline": [ { "$group": { "_id": "$gameId", "NScore":{"$minN": {"input": "$score", "n": 12345678 } } } } ] }');
+ERROR:  Size 395061744 is larger than maximum size allowed for an intermediate document 104857600
