@@ -1,6 +1,6 @@
 ---
 title: YugabyteDB Aeon REST API
-headerTitle: REST API
+headerTitle: YugabyteDB Aeon REST API
 linkTitle: REST API
 description: REST API YugabyteDB Aeon.
 headcontent: Manage YugabyteDB Aeon accounts and deployments using the REST API
