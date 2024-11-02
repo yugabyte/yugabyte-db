@@ -1195,38 +1195,22 @@ void MasterHeartbeatServiceImpl::UpdateTabletReplicasAfterConfigChange(
     }
     const auto& ts_desc = *ts_desc_result;
 
-    // Do not update replicas in the NOT_STARTED or BOOTSTRAPPING state (unless they are stale).
-    bool use_existing = false;
-    const TabletReplica* existing_replica = nullptr;
-    auto it = prev_rl->find(ts_desc->permanent_uuid());
-    if (it != prev_rl->end()) {
-      existing_replica = &it->second;
-    }
-    if (existing_replica && peer.permanent_uuid() != sender_uuid) {
-      // IsStarting returns true if state == NOT_STARTED or state == BOOTSTRAPPING.
-      use_existing = existing_replica->IsStarting() && !existing_replica->IsStale();
-    }
-    if (use_existing) {
-      InsertOrDie(replica_locations.get(), ts_desc->permanent_uuid(),
-          *existing_replica);
-    } else {
-      // The RaftGroupStatePB in the report is only applicable to the replica that is owned by the
-      // sender. Initialize the other replicas with an unknown state.
-      const RaftGroupStatePB replica_state =
-          (sender_uuid == ts_desc->permanent_uuid()) ? report.state() : RaftGroupStatePB::UNKNOWN;
+    const TabletReplica* existing_replica = FindOrNull(*prev_rl, ts_desc->permanent_uuid());
+    // The RaftGroupStatePB in the report is only applicable to the replica that is owned by the
+    // sender. Initialize the other replicas with an unknown state.
+    const RaftGroupStatePB replica_state =
+        (sender_uuid == ts_desc->permanent_uuid()) ? report.state() : RaftGroupStatePB::UNKNOWN;
 
-      auto replica = CreateNewReplicaForLocalMemory(
-          ts_desc, &consensus_state, report, replica_state);
-      auto result = replica_locations.get()->insert({ts_desc->id(), replica});
-      LOG_IF(FATAL, !result.second) << "duplicate uuid: " << ts_desc->id();
-      if (existing_replica) {
-        result.first->second.UpdateDriveInfo(existing_replica->drive_info);
-        result.first->second.UpdateLeaderLeaseInfo(existing_replica->leader_lease_info);
-      }
+    auto replica = CreateNewReplicaForLocalMemory(ts_desc, &consensus_state, report, replica_state);
+    if (existing_replica) {
+      replica.UpdateDriveInfo(existing_replica->drive_info);
+      replica.UpdateLeaderLeaseInfo(existing_replica->leader_lease_info);
     }
+    auto result = replica_locations.get()->insert({ts_desc->id(), replica});
+    LOG_IF(FATAL, !result.second) << "duplicate uuid: " << ts_desc->id();
   }
 
-  // Update the local tablet replica set. This deviates from persistent state during bootstrapping.
+  // Update the local tablet replica set.
   catalog_manager_->SetTabletReplicaLocations(tablet, replica_locations);
 }
 
