@@ -3,7 +3,6 @@ title: Build apps using C# drivers and ORMs
 headerTitle: C#
 linkTitle: C#
 description: C# Drivers and ORMs support for YugabyteDB.
-image: fa-classic fa-hashtag
 menu:
   stable:
     identifier: csharp-drivers

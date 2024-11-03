@@ -4,7 +4,6 @@ headerTitle: Build multi-cloud applications
 linkTitle: Build multi-cloud applications
 description: Build applications that run on different clouds
 headcontent: Build applications that run on different clouds
-image: /images/section_icons/develop/api-icon.png
 menu:
   v2.20:
     identifier: build-multicloud-apps

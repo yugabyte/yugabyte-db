@@ -4,7 +4,6 @@ headerTitle: Drivers and ORMs
 linkTitle: Drivers and ORMs
 description: Connect your applications with supported drivers and ORMs
 headcontent: Connect applications with your database
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.18:
     identifier: drivers-orms

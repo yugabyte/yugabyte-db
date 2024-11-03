@@ -3,7 +3,6 @@ title: Migrate data
 headerTitle: Migrate data
 linkTitle: Migrate data
 description: Import and export data in YugabyteDB.
-image: /images/section_icons/manage/enterprise.png
 headcontent: Bulk export and import data from and to YugabyteDB
 menu:
   v2.18:

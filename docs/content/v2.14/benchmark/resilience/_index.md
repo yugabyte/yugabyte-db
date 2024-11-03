@@ -3,7 +3,6 @@ title: Benchmark resilience (fault tolerance)
 headerTitle: Resilience
 linkTitle: Resilience
 description: Benchmark YugabyteDB's ability to withstand component failure.
-image: /images/section_icons/explore/high_performance.png
 headcontent: Benchmarking the ability to withstand component failure
 menu:
   v2.14:

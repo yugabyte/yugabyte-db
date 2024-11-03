@@ -3,7 +3,6 @@ title: Architecture
 headerTitle: Architecture
 linkTitle: Architecture
 description: Learn about the YugabyteDB architecture, including query, transactions, sharding, replication, and storage layers.
-image: fa-sharp fa-thin fa-puzzle
 headcontent: Internals of query, transactions, sharding, replication, and storage layers
 aliases:
   - /architecture/layerered-architecture/

@@ -2,8 +2,7 @@
 title: Manage YugabyteDB
 headerTitle: Manage YugabyteDB
 linkTitle: Manage
-description: Manging YugabyteDB deployments
-image: /images/section_icons/quick_start/sample_apps.png
+description: Managing YugabyteDB deployments
 headcontent: Manage your YugabyteDB deployment
 menu:
   stable:

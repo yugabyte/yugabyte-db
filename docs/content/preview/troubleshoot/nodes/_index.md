@@ -3,7 +3,6 @@ title: Troubleshoot node-level issues
 headerTitle: Node-level issues
 linkTitle: Node-level issues
 description: Troubleshoot node-level issues
-image: /images/section_icons/quick_start/create_cluster.png
 headcontent: Diagnose and solve issues on an individual YugabyteDB node
 menu:
   preview:

@@ -3,7 +3,6 @@ title: Elixir drivers and ORMs
 headerTitle: Elixir
 linkTitle: Elixir
 description: Elixir Drivers and ORMs support for YugabyteDB.
-image: fa-classic fa-droplet
 menu:
   preview:
     identifier: elixir-drivers

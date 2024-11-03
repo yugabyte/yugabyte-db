@@ -2,7 +2,6 @@
 title: Learn application development
 linkTitle: Learn app development
 description: Learn to develop YugabyteDB applications
-image: /images/section_icons/develop/learn.png
 menu:
   v2.18:
     identifier: learn

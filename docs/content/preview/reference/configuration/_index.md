@@ -6,7 +6,6 @@ description: YugabyteDB configuration reference for core database services, incl
 headcontent: Configure core database services
 aliases:
   - /preview/reference
-image: /images/section_icons/deploy/enterprise/administer.png
 menu:
   preview:
     identifier: configuration

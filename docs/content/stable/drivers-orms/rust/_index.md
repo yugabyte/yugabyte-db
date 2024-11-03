@@ -3,7 +3,6 @@ title: Rust
 headerTitle: Rust
 linkTitle: Rust
 description: Rust Drivers and ORMs support for YugabyteDB.
-image: fa-brands fa-rust
 menu:
   stable:
     identifier: rust-drivers

@@ -4,7 +4,6 @@ headerTitle: Enable authentication
 linkTitle: Enable authentication
 description: Enable authentication.
 headcontent: Enable authentication to have clients provide valid credentials before they can connect to a YugabyteDB cluster.
-image: /images/section_icons/secure/authentication.png
 menu:
   v2.20:
     name: Enable authentication

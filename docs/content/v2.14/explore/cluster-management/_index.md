@@ -4,7 +4,6 @@ headerTitle: Cluster management
 linkTitle: Cluster management
 description: Cluster management in YugabyteDB
 headcontent: Cluster management in YugabyteDB
-image: /images/section_icons/manage/enterprise.png
 menu:
   v2.14:
     identifier: explore-cluster-management
