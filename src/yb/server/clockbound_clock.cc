@@ -34,7 +34,7 @@ extern "C" {
 static constexpr auto kAutoConfigNumClockboundCtxs = 0;
 
 // There are multiple levels of time synchronization in increasing order
-// of accuracy:
+// of accuracy.
 //
 // 1. Random NTP servers for time synchronization:
 //   If the cluster nodes use this method for time sync, do NOT use
