@@ -2,7 +2,6 @@
 title: Query Planner
 headerTitle: Query Planner / CBO
 linkTitle: Query Planner
-description: Understand the various methodologies used for joining multiple tables
 headcontent: Understand how the planner chooses the optimal path for query execution
 tags:
   feature: early-access
@@ -80,7 +79,7 @@ These estimates can be seen when using the DEBUG option in the [EXPLAIN](../../.
 
 Some of the factors included in the cost estimation are discussed below.
 
-1. **Cost of data fetch**
+1. **Data fetch**
 
     To estimate the cost of fetching a tuple from [DocDB](../../docdb/), factors such as the number of SST files that may need to be read, and the estimated number of [seeks](../../docdb/lsm-sst/#seek), [previous](../../docdb/lsm-sst/#previous), and [next](../../docdb/lsm-sst/#next) operations that may be executed in the LSM subsystem, are taken into account.
 
@@ -88,15 +87,15 @@ Some of the factors included in the cost estimation are discussed below.
 
     When an index is used, any additional columns needed for the query must be retrieved from the corresponding row in the main table, which can be more costly than scanning only the base table. However, this isn't an issue if the index is a covering index. To determine the most efficient execution plan, the CBO compares the cost of an index scan with that of a main table scan.
 
-1. Pushdown to storage layer
+1. **Pushdown to storage layer**
 
     CBO identifies possible operations that can be pushed down to the storage layer for aggregates, filters, and distinct clauses. This can considerably reduce network data transfer.
 
-1. Join strategies
+1. **Join strategies**
 
     For queries involving multiple tables, CBO evaluates the cost of different join strategies like [Nested loop](../join-strategies/#nested-loop-join), [BNL](../join-strategies/#batched-nested-loop-join-bnl), [Merge](../join-strategies/#merge-join), or [Hash](../join-strategies/#hash-join) join, as well as various join orders.
 
-1. Data transfer costs
+1. **Data transfer**
 
     The CBO estimates the size and number of tuples that will be transferred, with data sent in pages. The page size is determined by the configuration parameters [yb_fetch_row_limit](../../../reference/configuration/yb-tserver/#yb-fetch-row-limit) and [yb_fetch_size_limit](../../../reference/configuration/yb-tserver/#yb-fetch-size-limit). Because each page requires a network round trip for the request and response, the CBO also estimates the total number of pages that will be transferred. Note that the time spent transferring the data also depends on the network bandwidth.
 
