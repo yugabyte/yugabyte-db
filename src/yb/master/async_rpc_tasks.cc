@@ -108,24 +108,19 @@ using tserver::TabletServerErrorPB;
 // ============================================================================
 //  Class PickSpecificUUID.
 // ============================================================================
-Status PickSpecificUUID::PickReplica(TSDescriptor** ts_desc) {
-  shared_ptr<TSDescriptor> ts;
-  if (!master_->ts_manager()->LookupTSByUUID(ts_uuid_, &ts)) {
-    return STATUS(NotFound, "unknown tablet server id", ts_uuid_);
-  }
-  *ts_desc = ts.get();
-  return Status::OK();
+Result<TSDescriptorPtr> PickSpecificUUID::PickReplica() {
+  return master_->ts_manager()->LookupTSByUUID(ts_uuid_);
 }
 
 string ReplicaMapToString(const TabletReplicaMap& replicas) {
   string ret = "";
-  for (const auto& r : replicas) {
+  for (const auto& [ts_uuid, _] : replicas) {
     if (!ret.empty()) {
       ret += ", ";
     } else {
       ret += "(";
     }
-    ret += r.second.ts_desc->id();
+    ret += ts_uuid;
   }
   ret += ")";
   return ret;
@@ -138,9 +133,8 @@ PickLeaderReplica::PickLeaderReplica(const TabletInfoPtr& tablet)
     : tablet_(tablet) {
 }
 
-Status PickLeaderReplica::PickReplica(TSDescriptor** ts_desc) {
-  *ts_desc = VERIFY_RESULT(tablet_->GetLeader());
-  return Status::OK();
+Result<TSDescriptorPtr> PickLeaderReplica::PickReplica() {
+  return tablet_->GetLeader();
 }
 
 // ============================================================================
@@ -575,7 +569,8 @@ RetryingTSRpcTask::RetryingTSRpcTask(
       replica_picker_(std::move(replica_picker)) {}
 
 Status RetryingTSRpcTask::PickReplica() {
-  return replica_picker_->PickReplica(&target_ts_desc_);
+  target_ts_desc_ = VERIFY_RESULT(replica_picker_->PickReplica());
+  return Status::OK();
 }
 
 // Handle the actual work of the RPC callback. This is run on the master's worker
@@ -1012,10 +1007,7 @@ void AsyncPrepareDeleteTransactionTablet::UnregisterAsyncTaskCallback() {
 //  Class AsyncDeleteReplica.
 // ============================================================================
 Status AsyncDeleteReplica::SetPendingDelete(AddPendingDelete add_pending_delete) {
-  TSDescriptorPtr ts_desc;
-  if (!master_->ts_manager()->LookupTSByUUID(permanent_uuid_, &ts_desc)) {
-    return STATUS(IllegalState, Format("Could not find tserver with uuid $0", permanent_uuid_));
-  }
+  auto ts_desc = VERIFY_RESULT(master_->ts_manager()->LookupTSByUUID(permanent_uuid_));
 
   if (add_pending_delete) {
     ts_desc->AddPendingTabletDelete(tablet_id());

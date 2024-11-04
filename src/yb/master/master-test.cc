@@ -357,8 +357,9 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   auto descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   ASSERT_EQ(0, descs.size()) << "Should not have registered anything";
 
-  shared_ptr<TSDescriptor> ts_desc;
-  ASSERT_FALSE(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID, &ts_desc));
+  auto ts_desc_result = mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID);
+  ASSERT_NOK(ts_desc_result);
+  ASSERT_TRUE(ts_desc_result.status().IsNotFound()) << "status is: " << ts_desc_result.status();
 
   // Register the fake TS, without sending any tablet report.
   TSRegistrationPB fake_reg;
@@ -385,7 +386,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   ASSERT_EQ(fake_reg.DebugString(), reg.DebugString())
       << "Master got different registration";
 
-  ASSERT_TRUE(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID, &ts_desc));
+  auto ts_desc = ASSERT_RESULT(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID));
   ASSERT_EQ(ts_desc, descs[0]);
 
   // If the tablet server somehow lost the response to its registration RPC, it would
@@ -439,7 +440,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   ASSERT_EQ(1, descs.size()) << "Should still only have one TS registered";
 
-  ASSERT_TRUE(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID, &ts_desc));
+  ts_desc = ASSERT_RESULT(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID));
   ASSERT_EQ(ts_desc, descs[0]);
 
   // Ensure that the ListTabletServers shows the faked server.
@@ -506,7 +507,9 @@ void MasterTest::TestRegisterDistBroadcastDupPrivate(
 
   shared_ptr<TSDescriptor> ts_desc;
   for (auto& uuid : tsUUIDs) {
-    ASSERT_FALSE(mini_master_->master()->ts_manager()->LookupTSByUUID(uuid, &ts_desc));
+    auto result = mini_master_->master()->ts_manager()->LookupTSByUUID(uuid);
+    ASSERT_NOK(result);
+    ASSERT_TRUE(result.status().IsNotFound()) << "status is: " << result.status();
   }
 
   // Each tserver will have a distinct broadcast address but the same private_rpc_address.

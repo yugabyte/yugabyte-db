@@ -8196,11 +8196,11 @@ void CatalogManager::NotifyPrepareDeleteTransactionTabletFinished(
 void CatalogManager::NotifyTabletDeleteFinished(
     const TabletServerId& tserver_uuid, const TabletId& tablet_id, const TableInfoPtr& table,
     const LeaderEpoch& epoch, server::MonitoredTaskState task_state) {
-  shared_ptr<TSDescriptor> ts_desc;
-  if (!master_->ts_manager()->LookupTSByUUID(tserver_uuid, &ts_desc)) {
+  auto ts_desc_result = master_->ts_manager()->LookupTSByUUID(tserver_uuid);
+  if (!ts_desc_result.ok()) {
     LOG(WARNING) << "Unable to find tablet server " << tserver_uuid;
   } else {
-    auto num_removed = ts_desc->ClearPendingTabletDelete(tablet_id);
+    auto num_removed = ts_desc_result.get()->ClearPendingTabletDelete(tablet_id);
     if (num_removed == 0) {
       LOG(WARNING) << "Pending delete for tablet " << tablet_id << " in ts " << tserver_uuid
                    << " doesn't exist";
@@ -10460,9 +10460,9 @@ void CatalogManager::DeleteTabletReplicas(
   auto locations = tablet->GetReplicaLocations();
   LOG(INFO) << "Sending DeleteTablet for " << locations->size()
             << " replicas of tablet " << tablet->tablet_id();
-  for (const auto& r : *locations) {
+  for (const auto& [ts_uuid, _] : *locations) {
     SendDeleteTabletRequest(tablet->tablet_id(), TABLET_DATA_DELETED, boost::none, tablet->table(),
-                            r.second.ts_desc, msg, epoch, hide_only, keep_data);
+                            ts_uuid, msg, epoch, hide_only, keep_data);
   }
 }
 
@@ -10618,7 +10618,7 @@ void CatalogManager::SendDeleteTabletRequest(
     TabletDataState delete_type,
     const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
     const scoped_refptr<TableInfo>& table,
-    TSDescriptor* ts_desc,
+    const std::string& ts_uuid,
     const string& reason,
     const LeaderEpoch& epoch,
     HideOnly hide_only,
@@ -10628,12 +10628,12 @@ void CatalogManager::SendDeleteTabletRequest(
   }
   LOG_WITH_PREFIX(INFO)
       << (hide_only ? "Hiding" : "Deleting") << " tablet " << tablet_id << " on peer "
-      << ts_desc->permanent_uuid() << " with delete type "
+      << ts_uuid << " with delete type "
       << TabletDataState_Name(delete_type) << " (" << reason << ")";
   auto call = std::make_shared<AsyncDeleteReplica>(
-      master_, AsyncTaskPool(), ts_desc->permanent_uuid(), table, tablet_id, delete_type,
+      master_, AsyncTaskPool(), ts_uuid, table, tablet_id, delete_type,
       cas_config_opid_index_less_or_equal, epoch,
-      GetDeleteReplicaTaskThrottler(ts_desc->permanent_uuid()), reason);
+      GetDeleteReplicaTaskThrottler(ts_uuid), reason);
   if (hide_only) {
     call->set_hide_only(hide_only);
   }
@@ -10666,8 +10666,8 @@ void CatalogManager::SetTabletReplicaLocations(
 }
 
 void CatalogManager::UpdateTabletReplicaLocations(
-    const TabletInfoPtr& tablet, const TabletReplica& replica) {
-  tablet->UpdateReplicaLocations(replica);
+    const TabletInfoPtr& tablet, const std::string& ts_uuid, const TabletReplica& replica) {
+  tablet->UpdateReplicaLocations(ts_uuid, replica);
   tablet_locations_version_.fetch_add(1, std::memory_order_acq_rel);
 }
 
@@ -11693,15 +11693,18 @@ Status CatalogManager::BuildLocationsForTablet(
     }
 
     locs_pb->mutable_replicas()->Reserve(narrow_cast<int32_t>(locs->size()));
-    for (const auto& [_, tablet_replica] : *locs) {
+    for (const auto& [ts_uuid, tablet_replica] : *locs) {
       TabletLocationsPB_ReplicaPB* replica_pb = locs_pb->add_replicas();
       replica_pb->set_role(tablet_replica.role);
       replica_pb->set_member_type(tablet_replica.member_type);
       replica_pb->set_state(tablet_replica.state);
       TSInfoPB* out_ts_info = replica_pb->mutable_ts_info();
-      out_ts_info->set_permanent_uuid(tablet_replica.ts_desc->permanent_uuid());
-      CopyRegistration(tablet_replica.ts_desc->GetRegistration(), out_ts_info);
-      out_ts_info->set_placement_uuid(tablet_replica.ts_desc->placement_uuid());
+      out_ts_info->set_permanent_uuid(ts_uuid);
+      auto strong_ts_desc_ptr = tablet_replica.ts_desc.lock();
+      if (strong_ts_desc_ptr) {
+        CopyRegistration(strong_ts_desc_ptr->GetRegistration(), out_ts_info);
+        out_ts_info->set_placement_uuid(strong_ts_desc_ptr->placement_uuid());
+      }
     }
   } else if (cstate.IsInitialized()) {
     // If the locations were not cached.
@@ -12208,7 +12211,8 @@ int64_t CatalogManager::GetNumRelevantReplicas(const BlacklistPB& blacklist, boo
         continue;
       }
       for (const auto& host : blacklist.hosts()) {
-        if (replica.second.ts_desc->IsRunningOn(host)) {
+        auto ts_desc_ptr = replica.second.ts_desc.lock();
+        if (ts_desc_ptr && ts_desc_ptr->IsRunningOn(host)) {
           ++res;
           break;
         }

@@ -330,7 +330,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   struct StatefulServiceStatus {
     std::string service_name;
-    const TSDescriptor* hosting_node = nullptr;
+    TSDescriptorPtr hosting_node = nullptr;
     TableId service_table_id;
     TabletId service_tablet_id;
   };
@@ -577,7 +577,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                                tablet::TabletDataState delete_type,
                                const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
                                const scoped_refptr<TableInfo>& table,
-                               TSDescriptor* ts_desc,
+                               const std::string& ts_uuid,
                                const std::string& reason,
                                const LeaderEpoch& epoch,
                                HideOnly hide_only = HideOnly::kFalse,
@@ -591,7 +591,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   void SetTabletReplicaLocations(
       const TabletInfoPtr& tablet, const std::shared_ptr<TabletReplicaMap>& replica_locations);
-  void UpdateTabletReplicaLocations(const TabletInfoPtr& tablet, const TabletReplica& replica);
+  void UpdateTabletReplicaLocations(
+      const TabletInfoPtr& tablet, const std::string& ts_uuid, const TabletReplica& replica);
 
   void WakeBgTaskIfPendingUpdates();
 

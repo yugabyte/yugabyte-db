@@ -309,18 +309,12 @@ class PerTableLoadState {
   // Comparators used for sorting by load.
   bool CompareByUuid(const TabletServerId& a, const TabletServerId& b);
 
-  bool CompareByReplica(const TabletReplica& a, const TabletReplica& b);
-
   // Comparator functor to be able to wrap around the public but non-static compare methods that
   // end up using internal state of the class.
   struct Comparator {
     explicit Comparator(PerTableLoadState* state) : state_(state) {}
     bool operator()(const TabletServerId& a, const TabletServerId& b) {
       return state_->CompareByUuid(a, b);
-    }
-
-    bool operator()(const TabletReplica& a, const TabletReplica& b) {
-      return state_->CompareByReplica(a, b);
     }
 
     PerTableLoadState* state_;
@@ -342,7 +336,7 @@ class PerTableLoadState {
   // Get the load for a certain TS.
   size_t GetLeaderLoad(const TabletServerId& ts_uuid) const;
 
-  bool IsTsInLivePlacement(TSDescriptor* ts_desc) {
+  bool IsTsInLivePlacement(const TSDescriptorPtr& ts_desc) {
     return ts_desc->placement_uuid() == options_->live_placement_uuid;
   }
 

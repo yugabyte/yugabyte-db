@@ -408,7 +408,7 @@ TEST_P(LoadBalancerMockedCloudInfoSimilarityTest, TestChooseTabletInSameZone) {
   expected_to_ts = ts_descs_[5]->permanent_uuid();
   ASSERT_OK(TestAddLoad(placeholder, expected_from_ts, expected_to_ts, &actual_tablet_id));
 
-  const auto* moved_tablet_leader = ASSERT_RESULT(tablet_map_[actual_tablet_id]->GetLeader());
+  auto moved_tablet_leader = ASSERT_RESULT(tablet_map_[actual_tablet_id]->GetLeader());
   // If ignoring cloud info, we should move a tablet whose leader is not in zone c (by the order
   // of the tablets, the first non-leader tablet we encounter is tablet 1 and we do not expect
   // to replace it). Otherwise, we should pick the tablet whose leader IS in zone c.

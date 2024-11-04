@@ -222,7 +222,7 @@ class LoadBalancerMockedBase : public YBTest {
         auto ts_desc = ts_descs_[j];
         bool is_leader = i % ts_descs_.size() == j;
         PeerRole role = is_leader ? PeerRole::LEADER : PeerRole::FOLLOWER;
-        NewReplica(ts_desc.get(), state, role, &replica);
+        NewReplica(ts_desc, state, role, &replica);
         InsertOrDie(replica_map.get(), ts_desc->permanent_uuid(), replica);
       }
       // Set the replica locations directly into the tablet map.
@@ -296,13 +296,13 @@ class LoadBalancerMockedBase : public YBTest {
       ASSERT_EQ(expected_to_ts, to_ts);
     }
   }
-  void AddRunningReplica(TabletInfo* tablet, std::shared_ptr<TSDescriptor> ts_desc,
+  void AddRunningReplica(TabletInfo* tablet, const std::shared_ptr<TSDescriptor>& ts_desc,
                          bool is_live = true) {
     std::shared_ptr<TabletReplicaMap> replicas =
       std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
 
     TabletReplica replica;
-    NewReplica(ts_desc.get(), tablet::RaftGroupStatePB::RUNNING, PeerRole::FOLLOWER, &replica);
+    NewReplica(ts_desc, tablet::RaftGroupStatePB::RUNNING, PeerRole::FOLLOWER, &replica);
     InsertOrDie(replicas.get(), ts_desc->permanent_uuid(), replica);
     tablet->SetReplicaLocations(replicas);
   }
@@ -317,11 +317,11 @@ class LoadBalancerMockedBase : public YBTest {
   void MoveTabletLeader(TabletInfo* tablet, std::shared_ptr<TSDescriptor> ts_desc) {
     std::shared_ptr<TabletReplicaMap> replicas =
       std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
-    for (auto& replica : *replicas) {
-      if (replica.second.ts_desc->permanent_uuid() == ts_desc->permanent_uuid()) {
-        replica.second.role = PeerRole::LEADER;
+    for (auto& [ts_uuid, replica] : *replicas) {
+      if (ts_uuid == ts_desc->permanent_uuid()) {
+        replica.role = PeerRole::LEADER;
       } else {
-        replica.second.role = PeerRole::FOLLOWER;
+        replica.role = PeerRole::FOLLOWER;
       }
     }
     tablet->SetReplicaLocations(replicas);

@@ -584,7 +584,7 @@ Status XClusterSourceManager::CheckpointStreamsToEndOfWAL(
   cdc::BootstrapProducerRequestPB bootstrap_req;
   bootstrap_req.set_check_if_bootstrap_required(check_if_bootstrap_required);
 
-  master::TSDescriptor* ts_desc = nullptr;
+  master::TSDescriptorPtr ts_desc = nullptr;
   for (const auto& [table_id, stream_id] : table_streams) {
     VLOG(1) << "Checkpointing xcluster stream " << stream_id << " of table " << table_id;
 

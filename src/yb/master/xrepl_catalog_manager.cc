@@ -3505,7 +3505,7 @@ Status CatalogManager::BootstrapProducer(
   }
 
   cdc::BootstrapProducerRequestPB bootstrap_req;
-  master::TSDescriptor* ts = nullptr;
+  master::TSDescriptorPtr ts = nullptr;
   for (int i = 0; i < req->table_name_size(); i++) {
     string pg_schema_name = pg_database_type ? req->pg_schema_name(i) : "";
     auto table_info = GetTableInfoFromNamespaceNameAndTableName(

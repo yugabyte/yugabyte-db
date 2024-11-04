@@ -38,7 +38,8 @@ namespace yb {
 namespace master {
 
 namespace {
-Result<bool> IsReplicaRunning(const TabletId& tablet_id, const TabletReplica& replica) {
+Result<bool> IsReplicaRunning(
+    const std::string& ts_uuid, const TabletId& tablet_id, const TabletReplica& replica) {
   if (replica.state != tablet::UNKNOWN) {
     return replica.state == tablet::RUNNING;
   }
@@ -54,7 +55,7 @@ Result<bool> IsReplicaRunning(const TabletId& tablet_id, const TabletReplica& re
     default:
       return STATUS_FORMAT(
           IllegalState, "Unexpected member type $0 for peer $1 of tablet $2", replica.member_type,
-          replica.ts_desc->permanent_uuid(), tablet_id);
+          ts_uuid, tablet_id);
   }
 }
 }  // namespace
@@ -149,7 +150,11 @@ size_t PerTableLoadState::GetLeaderLoad(const TabletServerId& ts_uuid) const {
 }
 
 bool PerTableLoadState::ShouldSkipReplica(const TabletReplica& replica) {
-  bool is_replica_live = IsTsInLivePlacement(replica.ts_desc);
+  auto desc = replica.ts_desc.lock();
+  if (!desc) {
+    return true;
+  }
+  bool is_replica_live = IsTsInLivePlacement(desc);
   // Ignore read replica when balancing live nodes.
   if (options_->type == ReplicaType::kLive && !is_replica_live) {
     return true;
@@ -160,7 +165,7 @@ bool PerTableLoadState::ShouldSkipReplica(const TabletReplica& replica) {
   }
   // Ignore read replicas from other clusters.
   if (options_->type == ReplicaType::kReadOnly && !is_replica_live) {
-    const string& placement_uuid = replica.ts_desc->placement_uuid();
+    const string& placement_uuid = desc->placement_uuid();
     if (placement_uuid != options_->placement_uuid) {
       return true;
     }
@@ -197,10 +202,7 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
   size_t replica_size = GetReplicaSize(replica_map);
 
   // Set state information for both the tablet and the tablet server replicas.
-  for (const auto& replica_it : *replica_map) {
-    const auto& ts_uuid = replica_it.first;
-    const auto& replica = replica_it.second;
-
+  for (const auto& [ts_uuid, replica] : *replica_map) {
     // Fill out leader info even if we are skipping this replica. Useful for under-replication to
     // know if we have any leader for this tablet, even if outside of our cluster.
     if (replica.role == PeerRole::LEADER) {
@@ -254,7 +256,7 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
       RETURN_NOT_OK(AddLeaderTablet(tablet_id, ts_uuid, replica.fs_data_dir));
     }
 
-    bool replica_is_running = VERIFY_RESULT(IsReplicaRunning(tablet_id, replica));
+    bool replica_is_running = VERIFY_RESULT(IsReplicaRunning(ts_uuid, tablet_id, replica));
     const bool replica_is_stale = replica.IsStale();
     VLOG(3) << "Tablet " << tablet_id << " for table " << table_id_ << " is in state "
             << RaftGroupStatePB_Name(replica.state) << " on peer " << ts_uuid;
@@ -326,8 +328,10 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
   } else {
     // If we do have placement information, figure out how the load is distributed based on
     // placement blocks, for this tablet.
-    std::unordered_map<CloudInfoPB, vector<const TabletReplica*>, cloud_hash, cloud_equal_to>
-                                                                    placement_to_replicas;
+    std::unordered_map<
+        CloudInfoPB, vector<std::pair<TabletServerId, const TabletReplica*>>, cloud_hash,
+        cloud_equal_to>
+        placement_to_replicas;
     std::unordered_map<CloudInfoPB, int, cloud_hash, cloud_equal_to> placement_to_min_replicas;
     // Preset the min_replicas, so we know if we're missing replicas somewhere as well.
     for (const auto& pb : placement.placement_blocks()) {
@@ -336,29 +340,29 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
       placement_to_min_replicas[pb.cloud_info()] = pb.min_num_replicas();
     }
     // Now actually fill the structures with matching TSs.
-    for (auto& replica_entry : *replica_map) {
-      if (ShouldSkipReplica(replica_entry.second)) {
+    for (const auto& [ts_uuid, replica] : *replica_map) {
+      if (ShouldSkipReplica(replica)) {
         continue;
       }
 
-      auto ci = GetValidPlacement(replica_entry.first, &placement);
+      auto ci = GetValidPlacement(ts_uuid, &placement);
       if (ci.has_value()) {
-        placement_to_replicas[*ci].push_back(&replica_entry.second);
+        placement_to_replicas[*ci].emplace_back(ts_uuid, &replica);
       } else {
         // If placement does not match, we likely changed the config or the schema and this
         // tablet should no longer live on this tablet server.
-        VLOG(3) << "Replica " << replica_entry.first << " is in wrong placement";
-        tablet_meta.wrong_placement_tablet_servers.insert(replica_entry.first);
+        VLOG(3) << "Replica " << ts_uuid << " is in wrong placement";
+        tablet_meta.wrong_placement_tablet_servers.insert(ts_uuid);
       }
     }
 
     if (VLOG_IS_ON(3)) {
       std::stringstream out;
       out << "Dumping placement to replica map for tablet " << tablet_id;
-      for (const auto& p_to_r : placement_to_replicas) {
-        out << p_to_r.first.ShortDebugString() << ": {";
-        for (const auto& r : p_to_r.second) {
-          out << "  " << r->ToString();
+      for (const auto& [cloud_info, replicas] : placement_to_replicas) {
+        out << cloud_info.ShortDebugString() << ": {";
+        for (const auto& [_, replica] : replicas) {
+          out << "  " << replica->ToString();
         }
         out << "}";
       }
@@ -370,22 +374,20 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
     }
 
     // Loop over the data and populate extra replica as well as missing replica information.
-    for (const auto& entry : placement_to_replicas) {
-      const auto& cloud_info = entry.first;
-      const auto& replica_set = entry.second;
+    for (const auto& [cloud_info, replicas] : placement_to_replicas) {
       const size_t min_num_replicas = placement_to_min_replicas[cloud_info];
-      if (min_num_replicas > replica_set.size()) {
+      if (min_num_replicas > replicas.size()) {
         VLOG(3) << "Placement " << cloud_info.ShortDebugString() << " is under-replicated by"
-                << " " << min_num_replicas - replica_set.size() << " count";
+                << " " << min_num_replicas - replicas.size() << " count";
         // Placements that are under-replicated should be handled ASAP.
         tablet_meta.under_replicated_placements.insert(cloud_info);
-      } else if (tablet_meta.is_over_replicated && min_num_replicas < replica_set.size()) {
+      } else if (tablet_meta.is_over_replicated && min_num_replicas < replicas.size()) {
         // If this tablet is over-replicated, consider all the placements that have more than the
         // minimum number of tablets, as candidates for removing a replica.
         VLOG(3) << "Placement " << cloud_info.ShortDebugString() << " is over-replicated by"
-                << " " << replica_set.size() - min_num_replicas << " count";
-        for (auto& replica : replica_set) {
-          tablet_meta.over_replicated_tablet_servers.insert(replica->ts_desc->permanent_uuid());
+                << " " << replicas.size() - min_num_replicas << " count";
+        for (const auto& [ts_uuid, _] : replicas) {
+          tablet_meta.over_replicated_tablet_servers.insert(ts_uuid);
         }
       }
     }
@@ -432,7 +434,7 @@ void PerTableLoadState::UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc
     return;
   }
 
-  bool ts_in_live_placement = IsTsInLivePlacement(ts_desc.get());
+  bool ts_in_live_placement = IsTsInLivePlacement(ts_desc);
   switch (options_->type) {
     case ReplicaType::kLive: {
       if (!ts_in_live_placement) {
@@ -962,10 +964,6 @@ Status PerTableLoadState::AddDisabledByTSTablet(
           Format(uninitialized_ts_meta_format_msg_, ts_uuid, table_id_));
   per_ts_meta_.at(ts_uuid).disabled_by_ts_tablets.insert(tablet_id);
   return Status::OK();
-}
-
-bool PerTableLoadState::CompareByReplica(const TabletReplica& a, const TabletReplica& b) {
-  return CompareByUuid(a.ts_desc->permanent_uuid(), b.ts_desc->permanent_uuid());
 }
 
 } // namespace master
