@@ -166,9 +166,9 @@ most_common_vals  | {f,t}
 most_common_freqs | {0.5,0.5}
 ```
 
-The `n_distinct = -1` value for the id column indicates that all IDs in the table are unique. A negative `n_distinct` value represents the ratio of distinct items to the total number of rows in the table.
+The `n_distinct = -1` value for the `id` column indicates that all IDs in the table are unique. A negative `n_distinct` value represents the ratio of distinct items to the total number of rows in the table.
 
-For the employed column, there are 2 distinct values. If an index is created on this column, it will be distributed across only 2 nodes, as the values will generate only 2 dinstinct hashes. This is the reason why you shouldn't create indexes on low cardinality columns like Booleans (2) or Days of week (7).
+For the employed column, there are 2 distinct values. If an index is created on this column, it will be distributed across only 2 nodes, as the values will generate only 2 distinct hashes. This is the reason why you shouldn't create indexes on low cardinality columns like Booleans (2) or Days of week (7).
 
 ## Skewed data
 
@@ -213,7 +213,7 @@ most_common_elems      | {action,comedy,romance,thriller}
 most_common_elem_freqs | {0.6,0.4,0.6,0.6,0.4,0.6,0}
 ```
 
-This indicates that action appears in 60% of the records (3 in this case) and comedy in 40% of the records (2 here), providing insight into the data distribution. Notice that there are 4 entries in the `most_common_elems` field but 7 entries in `most_common_elem_freqs`. The first 4 values correspond to the frequencies of the 4 most common elements, followed by the minimum and maximum element frequencies, with the last value representing the frequency of NULLs.
+This indicates that action appears in 60% of the records (3 in this case) and comedy in 40% of the records (2 in this case), providing insight into the data distribution. Notice that there are 4 entries in the `most_common_elems` field but 7 entries in `most_common_elem_freqs`. The first 4 values correspond to the frequencies of the 4 most common elements, followed by the minimum and maximum element frequencies, with the last value representing the frequency of NULLs.
 
 ## Learn more
 
