@@ -146,7 +146,7 @@ For a full list of YugabyteDB Connector properties, refer to [Connector properti
 <div class="tab-content">
   <div id="confluent" class="tab-pane fade show active" role="tabpanel" aria-labelledby="confluent-tab">
 
-To stream data change events from YugabyteDB databases, first create a plugin in Confluent Cloud, then register the YugabyteDB connector with the plugin you created.
+To stream data change events from YugabyteDB databases, first create a plugin in Confluent Cloud, then register the YugabyteDB Connector with the plugin you created.
 
 To create a plugin:
 
@@ -229,10 +229,6 @@ On the cluster **Metrics** tab, you can view the following metrics:
 | cdcsdk_event_lag_micros   | Lag, calculated by subtracting the timestamp of the latest record in the WAL of a tablet from the last record sent to the connector. |
 | cdcsdk_expiry_time_ms     | The time left to read records from WAL is tracked by the Stream Expiry Time (ms). |
 
-## Manage CDC
-
-- connector upgrades
-
 ### Establish a replication connection to the database
 
 To be able to send [replication commands](https://www.postgresql.org/docs/11/protocol-replication.html) to the database, you need to make a replication connection by adding the `replication=database` connection parameter to the connection string.
@@ -248,6 +244,17 @@ To do this, [connect to your cluster](../../cloud-connect/connect-client-shell/)
     replication=database"
 ```
 
-### Remove CDC
-
 ## FAQ
+
+### How do I turn off CDC?
+
+To stop streaming changes, stop your connector on the client side. You don't need to make any changes to your YugabyteDB Aeon cluster, or drop your replication slots.
+
+### How do I upgrade the YugabyteDB Connector?
+
+To upgrade the YugabyteDB Connector for an existing CDC configuration:
+
+1. Download the latest Connector JAR file from [GitHub releases](https://github.com/yugabyte/debezium/releases/).
+1. Replace the older version with the new JAR file in your Kafka Connect environment.
+
+    For example, if you are using Confluent Cloud, upload the new JAR file to the plugin you created.
