@@ -101,7 +101,8 @@
         "(^[.]fossa[.]yml$)",
         "(^managed/.*[.]conf)",
         "(^src/postgres/)",
-        "(^[.]gitignore$)"
+        "(^[.]gitignore$)",
+        "(^.*[.]svg$)"
       ]
     },
     "pycodestyle": {
