@@ -133,7 +133,7 @@ The Prometheus integration requires the following:
     - Allow HTTP inbound traffic on port 80 for Prometheus endpoint URL (HTTP).
     - Allow HTTPS inbound traffic on port 443 for Prometheus endpoint URL (HTTPS).
 
-    See [Control traffic to your AWS resources using security groups](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html) in the AWS documentation.
+    See [Control traffic to your AWS resources using security groups](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html) in the AWS documentation, or [VPC firewall rules](https://cloud.google.com/firewall/docs/firewalls) in the Google Cloud documentation.
 
 - YugabyteDB Aeon cluster from which you want to export metrics
   - Cluster deployed in VPCs on AWS, or a VPC in GCP. See [VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc/).
