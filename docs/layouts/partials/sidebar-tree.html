@@ -10,15 +10,6 @@
 <div class="left-sidebar-wrap">
   <div class="left-sidebar-wrap-inner">
     <nav>
-      {{- if and .Site.Params.versions (not .Params.unversioned) -}}
-        <div class="dd-change-showmobile desktop-hide dropdown-list">
-          <ul>
-            <li class="nav-item dropdown">
-              {{- partial "navbar-version-selector.html" . -}}
-            </li>
-          </ul>
-        </div>
-      {{- end -}}
       <ul class="list pa0 nl2">
         {{- range $key, $value := .Site.Menus -}}
           {{- if eq $menuName $key -}}

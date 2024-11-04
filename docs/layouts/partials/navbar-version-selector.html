@@ -6,11 +6,11 @@
     {{ if hasPrefix $pagePermalink $versionUrl }}
       {{ $versionName = .version }}
       {{- if in .version "(Preview)" -}}
-        {{ $versionName = replace .version "(Preview)" "<span class='tag release preview'>Preview</span>" }}
+        {{ $versionName = replace .version "(Preview)" "<span class='tag release preview'>Preview <span class='popup-details'>Preview release - not for production</span></span>" }}
       {{- else if in .version "(STS)" -}}
-        {{ $versionName = replace .version "(STS)" "<span class='tag release sts'>STS</span>" }}
+        {{ $versionName = replace .version "(STS)" "<span class='tag release sts'>STS <span class='popup-details'>Stable release with standard-term support</span></span>" }}
       {{- else if in .version "(LTS)" -}}
-        {{ $versionName = replace .version "(LTS)" "<span class='tag release lts'>LTS</span>" }}
+        {{ $versionName = replace .version "(LTS)" "<span class='tag release lts'>LTS <span class='popup-details'>Stable release with long-term support</span></span>" }}
       {{ end }}
     {{ end }}
   {{ end }}
@@ -30,11 +30,11 @@
   {{ range .Site.Params.versions }}
     {{ $versionName := .version }}
     {{- if in .version "(Preview)" -}}
-      {{ $versionName = replace .version "(Preview)" "<span class='tag release preview'>Preview</span>" }}
+      {{ $versionName = replace .version "(Preview)" "<span class='tag release preview'>Preview <span class='popup-details'>Preview release - not for production</span></span>" }}
     {{- else if in .version "(STS)" -}}
-      {{ $versionName = replace .version "(STS)" "<span class='tag release sts'>STS</span>" }}
+      {{ $versionName = replace .version "(STS)" "<span class='tag release sts'>STS <span class='popup-details'>Stable release with standard-term support</span></span>" }}
     {{- else if in .version "(LTS)" -}}
-      {{ $versionName = replace .version "(LTS)" "<span class='tag release lts'>LTS</span>" }}
+      {{ $versionName = replace .version "(LTS)" "<span class='tag release lts'>LTS <span class='popup-details'>Stable release with long-term support</span></span>" }}
     {{- else if in .version "Unsupported" -}}
       {{ $path = "/" }}
     {{ end }}
