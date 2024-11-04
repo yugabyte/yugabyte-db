@@ -2496,13 +2496,16 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
   RETURN_NOT_OK(dockv::PartitionSchema::FromPB(
       table_info.partition_schema(), schema, &partition_schema));
 
-  metadata_->AddTable(
+  std::optional<qlexpr::IndexInfo> index_info;
+  if (table_info.has_index_info()) {
+    index_info.emplace(table_info.index_info());
+  }
+
+  return metadata_->AddTable(
       table_info.table_id(), table_info.namespace_name(), table_info.table_name(),
-      table_info.table_type(), schema, qlexpr::IndexMap(), partition_schema, boost::none,
+      table_info.table_type(), schema, qlexpr::IndexMap(), partition_schema, index_info,
       table_info.schema_version(), op_id, table_info.pg_table_id(),
       SkipTableTombstoneCheck(table_info.skip_table_tombstone_check()));
-
-  return Status::OK();
 }
 
 Status Tablet::AddTable(const TableInfoPB& table_info, const OpId& op_id) {

@@ -2975,6 +2975,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status RemoveTableFromCDCStreamMetadataAndMaps(
       const CDCStreamInfoPtr stream, const TableId table_id, const LeaderEpoch& epoch);
 
+  Result<ColocationId> ObtainColocationId(
+      const CreateTableRequestPB& req, const TablegroupInfo* tablegroup,
+      bool is_colocated_via_database, const NamespaceId& namespace_id,
+      const NamespaceName& namespace_name, const TableInfoPtr& indexed_table) REQUIRES(mutex_);
+
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
 

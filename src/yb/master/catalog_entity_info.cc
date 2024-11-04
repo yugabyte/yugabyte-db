@@ -950,6 +950,16 @@ TabletInfoPtr TableInfo::GetColocatedUserTablet() const {
   return nullptr;
 }
 
+std::vector<qlexpr::IndexInfo> TableInfo::GetIndexInfos() const {
+  std::vector<qlexpr::IndexInfo> result;
+  auto l = LockForRead();
+  result.reserve(l->pb.indexes().size());
+  for (const auto& index_info_pb : l->pb.indexes()) {
+    result.emplace_back(index_info_pb);
+  }
+  return result;
+}
+
 qlexpr::IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
   auto l = LockForRead();
   for (const auto& index_info_pb : l->pb.indexes()) {

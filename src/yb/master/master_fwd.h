@@ -82,6 +82,7 @@ class SnapshotState;
 class SysCatalogTable;
 class SysConfigInfo;
 class SysRowEntries;
+class TablegroupInfo;
 class TestAsyncRpcManager;
 class TSDescriptor;
 class TSManager;

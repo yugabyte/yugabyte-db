@@ -260,6 +260,8 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
     // Assume we need to delete this tablet until we find an active table using this tablet.
     bool should_delete_tablet = !tablet_deleted;
 
+    std::shared_ptr<std::atomic<size_t>> add_table_to_tablet_counter;
+    std::vector<std::shared_ptr<AsyncAddTableToTablet>> add_table_to_tablet_tasks;
     for (const auto& table_id : table_ids) {
       TableInfoPtr table = catalog_manager_->tables_->FindTableOrNull(table_id);
 
@@ -328,13 +330,23 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
 
         if (table->IsPreparing()) {
           DCHECK(!table->HasTasks(server::MonitoredTaskType::kAddTableToTablet));
+          if (!add_table_to_tablet_counter) {
+            add_table_to_tablet_counter = std::make_shared<std::atomic<size_t>>(0);
+          }
           auto call = std::make_shared<AsyncAddTableToTablet>(
               catalog_manager_->master_, catalog_manager_->AsyncTaskPool(), tablet, table,
-              state_->epoch);
+              state_->epoch, add_table_to_tablet_counter);
           table->AddTask(call);
-          WARN_NOT_OK(
-              catalog_manager_->ScheduleTask(call), "Failed to send AddTableToTablet request");
+          add_table_to_tablet_tasks.push_back(call);
         }
+      }
+    }
+
+    if (!add_table_to_tablet_tasks.empty()) {
+      *add_table_to_tablet_counter = add_table_to_tablet_tasks.size();
+      for (const auto& call : add_table_to_tablet_tasks) {
+        WARN_NOT_OK(
+            catalog_manager_->ScheduleTask(call), "Failed to send AddTableToTablet request");
       }
     }
 

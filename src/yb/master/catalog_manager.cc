@@ -3269,40 +3269,37 @@ Status ValidateCreateTableSchema(const Schema& schema, CreateTableResponsePB* re
 // Extract a colocation ID from request if explicitly passed, or generate a new valid one.
 // Will error if requested ID is taken or invalid.
 template<typename ContainsColocationIdFn>
-Result<ColocationId> ConceiveColocationId(const CreateTableRequestPB& req,
-                                          CreateTableResponsePB* resp,
-                                          ContainsColocationIdFn contains_colocation_id) {
-  ColocationId colocation_id;
-
+Result<ColocationId> ConceiveColocationId(
+    const CreateTableRequestPB& req, ContainsColocationIdFn contains_colocation_id) {
   if (req.has_colocation_id()) {
-    colocation_id = req.colocation_id();
-    if (colocation_id < kFirstNormalColocationId) {
-      Status s = STATUS_SUBSTITUTE(InvalidArgument,
-                                   "Colocation ID cannot be less than $0",
-                                   kFirstNormalColocationId);
-      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+    if (req.colocation_id() < kFirstNormalColocationId) {
+      return STATUS_EC_FORMAT(
+          InvalidArgument, MasterError(MasterErrorPB::INVALID_SCHEMA),
+          "Colocation ID cannot be less than $0", kFirstNormalColocationId);
     }
-    if (contains_colocation_id(colocation_id)) {
-      Status s =
-          STATUS_SUBSTITUTE(InvalidArgument,
-                            "Colocation group already contains a table with colocation ID $0",
-                            colocation_id);
-      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+    if (contains_colocation_id(req.colocation_id())) {
+      return STATUS_EC_FORMAT(
+          InvalidArgument, MasterError(MasterErrorPB::INVALID_SCHEMA),
+          "Colocation group already contains a table with colocation ID $0", req.colocation_id());
     }
-  } else {
-    // Generate a random colocation ID unique within colocation group.
-    colocation_id = 20000; // In agreement with sequential_colocation_ids flag.
-    do {
-      if (PREDICT_FALSE(FLAGS_TEST_sequential_colocation_ids)) {
-        colocation_id++;
-      } else {
-        // See comment on kFirstNormalColocationId.
-        colocation_id =
-            RandomUniformInt<ColocationId>(kFirstNormalColocationId,
-                                           std::numeric_limits<ColocationId>::max());
-      }
-    } while (contains_colocation_id(colocation_id));
+    return req.colocation_id();
   }
+
+  // Generate a random colocation ID unique within colocation group.
+  ColocationId colocation_id = kColocationIdNotSet;
+  if (FLAGS_TEST_sequential_colocation_ids) {
+    colocation_id = 20000;
+  }
+  do {
+    if (PREDICT_FALSE(FLAGS_TEST_sequential_colocation_ids)) {
+      colocation_id++;
+    } else {
+      // See comment on kFirstNormalColocationId.
+      colocation_id =
+          RandomUniformInt<ColocationId>(kFirstNormalColocationId,
+                                         std::numeric_limits<ColocationId>::max());
+    }
+  } while (contains_colocation_id(colocation_id));
 
   return colocation_id;
 }
@@ -3717,6 +3714,51 @@ Status PrintTableInfoForYsqlMajorVersionUpgrade(const scoped_refptr<TableInfo>& 
 
 }  // namespace
 
+Result<ColocationId> CatalogManager::ObtainColocationId(
+    const CreateTableRequestPB& req, const TablegroupInfo* tablegroup,
+    bool is_colocated_via_database, const NamespaceId& namespace_id,
+    const NamespaceName& namespace_name, const TableInfoPtr& indexed_table) {
+  if (tablegroup) {
+    return ConceiveColocationId(req, [tablegroup](auto colocation_id) {
+      return tablegroup->HasChildTable(colocation_id);
+    });
+  }
+
+  std::vector<TableId> table_ids;
+  if (is_colocated_via_database) {
+    auto it = colocated_db_tablets_map_.find(namespace_id);
+    if (it == colocated_db_tablets_map_.end()) {
+      return STATUS_FORMAT(
+          IllegalState, "Database $0 doesn't have a colocation tablet", namespace_name);
+    }
+    table_ids = it->second->GetTableIds();
+  } else if (req.index_info().has_vector_idx_options()) {
+    auto indexes = indexed_table->GetIndexInfos();
+    table_ids.reserve(indexes.size());
+    for (const auto& index : indexes) {
+      table_ids.push_back(index.table_id());
+    }
+  } else {
+    return STATUS(RuntimeError, "Unexpected colocation mode");
+  }
+
+  std::unordered_set<ColocationId> colocation_ids;
+  colocation_ids.reserve(table_ids.size());
+  for (const TableId& table_id : table_ids) {
+    DCHECK(!table_id.empty());
+    const auto colocated_table_info = GetTableInfoUnlocked(table_id);
+    if (!colocated_table_info) {
+      // Needed because of #11129, should be replaced with DCHECK after the fix.
+      continue;
+    }
+    colocation_ids.insert(colocated_table_info->GetColocationId());
+  }
+
+  return ConceiveColocationId(req, [&colocation_ids](auto colocation_id) {
+    return ContainsKey(colocation_ids, colocation_id);
+  });
+}
+
 // Create a new table.
 // See README file in this directory for a description of the design.
 Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
@@ -3788,7 +3830,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   CreateTableRequestPB req = *orig_req;
 
   // For index table, find the table info
-  scoped_refptr<TableInfo> indexed_table;
+  TableInfoPtr indexed_table;
   TableInfo::WriteLock indexed_table_write_lock;
   if (IsIndex(req)) {
     TRACE("Looking up indexed table");
@@ -3830,15 +3872,16 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     SharedLock lock(mutex_);
     is_colocated_via_database =
         (IsColocatedDbParentTableId(req.table_id()) ||
-         colocated_db_tablets_map_.find(ns->id()) != colocated_db_tablets_map_.end()) &&
+             colocated_db_tablets_map_.contains(namespace_id)) &&
         // Opt out of colocation if the request says so.
         (!req.has_is_colocated_via_database() || req.is_colocated_via_database()) &&
         // Opt out of colocation if the indexed table opted out of colocation.
         (!indexed_table || indexed_table->colocated());
   }
 
+  const bool is_vector_index = req.index_info().has_vector_idx_options();
   const bool colocated =
-      (is_colocated_via_database || req.has_tablegroup_id()) &&
+      (is_colocated_via_database || req.has_tablegroup_id() || is_vector_index) &&
       // Any tables created in the xCluster DDL replication extension should not be colocated.
       schema.SchemaName() != xcluster::kDDLQueuePgSchemaName;
   SCHECK(!colocated || req.has_table_id(),
@@ -3984,10 +4027,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   LOG(INFO) << "CreateTable with IndexInfo " << AsString(index_info);
 
-  scoped_refptr<TableInfo> table;
+  TableInfoPtr table;
   TabletInfos tablets;
-
-  TabletInfoPtr colocated_tablet = nullptr;
   {
     UniqueLock lock(mutex_);
     auto ns_lock = ns->LockForRead();
@@ -4050,7 +4091,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
     // Check whether this CREATE TABLE request which has a tablegroup_id is for a normal user table
     // or the request to create the parent table for the tablegroup.
-    YsqlTablegroupManager::TablegroupInfo* tablegroup = nullptr;
+    TablegroupInfo* tablegroup = nullptr;
     if (colocated && req.has_tablegroup_id()) {
       tablegroup = tablegroup_manager_->Find(req.tablegroup_id());
       bool is_parent = IsTablegroupParentTableId(req.table_id());
@@ -4068,48 +4109,14 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
 
     // Generate colocation ID in advance in order to fail before CreateTableInMemory is called.
-    ColocationId colocation_id = kColocationIdNotSet;
+    auto colocation_id = kColocationIdNotSet;
     if (joining_colocation_group) {
-      if (tablegroup) {
-        colocation_id = VERIFY_RESULT(
-            ConceiveColocationId(req, resp, [tablegroup](auto colocation_id) {
-              return tablegroup->HasChildTable(colocation_id);
-            }));
-      } else {
-        CHECK(is_colocated_via_database);
-        if (colocated_db_tablets_map_.find(ns->id()) == colocated_db_tablets_map_.end()) {
-          Status s = STATUS_SUBSTITUTE(IllegalState,
-                                       "Database $0 doesn't have a colocation tablet!",
-                                       namespace_name);
-          return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, s);
-        }
-        auto tablet = colocated_db_tablets_map_[ns->id()];
-        auto tablet_lock = tablet->LockForRead();
-        std::unordered_set<ColocationId> colocation_ids;
-        std::vector<TableId> table_ids;
-        if (tablet_lock.data().pb.hosted_tables_mapped_by_parent_id()) {
-          table_ids = tablet->GetTableIds();
-        } else {
-          table_ids.insert(
-              table_ids.end(), tablet_lock.data().pb.table_ids().begin(),
-              tablet_lock.data().pb.table_ids().end());
-        }
-        colocation_ids.reserve(table_ids.size());
-        for (const TableId& table_id : table_ids) {
-          DCHECK(!table_id.empty());
-          const auto colocated_table_info = GetTableInfoUnlocked(table_id);
-          if (!colocated_table_info) {
-            // Needed because of #11129, should be replaced with DCHECK after the fix.
-            continue;
-          }
-          colocation_ids.insert(colocated_table_info->GetColocationId());
-        }
-
-        colocation_id = VERIFY_RESULT(
-            ConceiveColocationId(req, resp, [&colocation_ids](auto colocation_id) {
-              return ContainsKey(colocation_ids, colocation_id);
-            }));
+      auto result = ObtainColocationId(
+          req, tablegroup, is_colocated_via_database, namespace_id, namespace_name, indexed_table);
+      if (!result.ok()) {
+        return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, result.status());
       }
+      colocation_id = *result;
     }
 
     RETURN_NOT_OK(CreateTableInMemory(
@@ -4156,15 +4163,19 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         }
       } else {
         // Adding a table to an existing colocation tablet.
-        auto tablet = tablegroup ?
-            tablegroup->tablet() :
-            colocated_db_tablets_map_[ns->id()];
+        if (is_vector_index) {
+          tablets = VERIFY_RESULT(indexed_table->GetTablets());
+        } else {
+          auto tablet = tablegroup ?
+              tablegroup->tablet() :
+              colocated_db_tablets_map_[ns->id()];
+          RSTATUS_DCHECK(
+              tablet->colocated(), InternalError,
+              Format("Colocation group tablet $0 should be marked as colocated",
+                     tablet->id()));
+          tablets.push_back(tablet);
+        }
         lock.unlock();
-        RSTATUS_DCHECK(
-            tablet->colocated(), InternalError,
-            Format("Colocation group tablet $0 should be marked as colocated",
-                   tablet->id()));
-        tablets.push_back(tablet);
 
         // If the request is to create a colocated index, need to aquired the write lock on the
         // indexed table before acquiring the write lock on the colocated tablet below to prevent
@@ -4175,25 +4186,27 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
           indexed_table_write_lock = indexed_table->LockForWrite();
         }
 
-        tablet->mutable_metadata()->StartMutation();
-        if (tablet->mutable_metadata()->mutable_dirty()->pb.hosted_tables_mapped_by_parent_id()) {
-          table->mutable_metadata()->mutable_dirty()->pb.set_parent_table_id(
-              tablet->mutable_metadata()->mutable_dirty()->pb.table_id());
-          colocated_tablet = tablet;
-        } else {
-          tablet->mutable_metadata()->mutable_dirty()->pb.add_table_ids(table->id());
+        auto& table_pb = table->mutable_metadata()->mutable_dirty()->pb;
+        for (auto& tablet : tablets) {
+          tablet->mutable_metadata()->StartMutation();
+          auto& tablet_pb = tablet->mutable_metadata()->mutable_dirty()->pb;
+          if (table_pb.parent_table_id().empty()) {
+            table_pb.set_parent_table_id(tablet_pb.table_id());
+          } else {
+            RSTATUS_DCHECK_EQ(table_pb.parent_table_id(), tablet_pb.table_id(), RuntimeError,
+                              "Different table ids in tablets");
+          }
         }
 
-        CHECK(colocation_id != kColocationIdNotSet);
-        table->mutable_metadata()->mutable_dirty()->
-            pb.mutable_schema()->mutable_colocated_table_id()->set_colocation_id(colocation_id);
+        CHECK_NE(colocation_id, kColocationIdNotSet);
+        table_pb.mutable_schema()->mutable_colocated_table_id()->set_colocation_id(colocation_id);
 
         // TODO(zdrudi): In principle if the hosted_tables_mapped_by_parent_id field is set we could
         // avoid writing the tablets and even avoid any tablet mutations here at all. However
         // table->AddTablet assumes the tablet has a write in progress and checkfails if it doesn't.
-        RETURN_NOT_OK(table->AddTablet(tablet));
-        table->mutable_metadata()->mutable_dirty()->pb.set_parent_table_id(
-            tablet->mutable_metadata()->mutable_dirty()->pb.table_id());
+        for (const auto& tablet : tablets) {
+          RETURN_NOT_OK(table->AddTablet(tablet));
+        }
 
         if (tablegroup) {
           lock.lock();
@@ -4201,7 +4214,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         }
       }
     }
-
   }
 
   // For create transaction table requests with tablespace id, save the tablespace id.
@@ -4291,7 +4303,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         index_info.set_index_permissions(INDEX_PERM_DELETE_ONLY);
       }
     }
-    if (!indexed_table->colocated()) {
+    if (!indexed_table_write_lock.locked()) {
       TRACE("Locking indexed table");
       indexed_table_write_lock = indexed_table->LockForWrite();
     }
@@ -4308,23 +4320,28 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   for (const auto& tablet : tablets) {
     tablet->mutable_metadata()->CommitMutation();
-  }
-  // Add the table id to the in-memory vector of table ids on TabletInfo.
-  if (colocated_tablet) {
-    colocated_tablet->AddTableId(table->id());
+    // Add the table id to the in-memory vector of table ids on TabletInfo.
+    if (joining_colocation_group) {
+      tablet->AddTableId(table->id());
+    }
   }
 
   if (joining_colocation_group) {
-    auto call =
-      std::make_shared<AsyncAddTableToTablet>(master_, AsyncTaskPool(), tablets[0], table, epoch);
-    table->AddTask(call);
-    WARN_NOT_OK(ScheduleTask(call), "Failed to send AddTableToTablet request");
-    if (FLAGS_TEST_duplicate_addtabletotablet_request) {
-      auto duplicate_call =
-        std::make_shared<AsyncAddTableToTablet>(master_, AsyncTaskPool(), tablets[0], table, epoch);
-      table->AddTask(duplicate_call);
-      WARN_NOT_OK(
-          ScheduleTask(duplicate_call), "Failed to send duplicate AddTableToTablet request");
+    auto counter = std::make_shared<std::atomic<size_t>>(tablets.size());
+    auto duplicate_counter = FLAGS_TEST_duplicate_addtabletotablet_request
+        ? std::make_shared<std::atomic<size_t>>(tablets.size()) : nullptr;
+    for (auto& tablet : tablets) {
+      auto call = std::make_shared<AsyncAddTableToTablet>(
+          master_, AsyncTaskPool(), tablet, table, epoch, counter);
+      table->AddTask(call);
+      WARN_NOT_OK(ScheduleTask(call), "Failed to send AddTableToTablet request");
+      if (FLAGS_TEST_duplicate_addtabletotablet_request) {
+        auto duplicate_call = std::make_shared<AsyncAddTableToTablet>(
+            master_, AsyncTaskPool(), tablet, table, epoch, duplicate_counter);
+        table->AddTask(duplicate_call);
+        WARN_NOT_OK(
+            ScheduleTask(duplicate_call), "Failed to send duplicate AddTableToTablet request");
+      }
     }
   }
 
@@ -13023,7 +13040,7 @@ Status CatalogManager::PromoteTableToRunningState(
   SCHECK(
       l.mutable_data()->IsPreparing(), IllegalState,
       "Table $0 should be in PREPARING state. Current state: $1", table_info->ToString(),
-      l.mutable_data()->pb.state());
+      SysTablesEntryPB_State_Name(l.mutable_data()->pb.state()));
   l.mutable_data()->pb.set_state(SysTablesEntryPB::RUNNING);
   RETURN_NOT_OK_PREPEND(
       sys_catalog_->Upsert(epoch, table_info.get()), "Promote table to RUNNING state");

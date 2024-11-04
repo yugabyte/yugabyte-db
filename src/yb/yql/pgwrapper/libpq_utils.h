@@ -80,7 +80,8 @@ template<class T>
 concept BasePGType =
     IsPGNonNeg<T> || IsPGIntType<T> || IsPGFloatType<T> ||
     std::is_same_v<T, bool> || std::is_same_v<T, std::string> || std::is_same_v<T, char> ||
-    std::is_same_v<T, PGOid> || std::is_same_v<T, Uuid> || std::is_same_v<T, MonoDelta>;
+    std::is_same_v<T, PGOid> || std::is_same_v<T, Uuid> || std::is_same_v<T, MonoDelta> ||
+    std::is_same_v<T, std::vector<float>>;
 
 template<class T>
 concept OptionalPGType = StdOptionalType<T> && BasePGType<typename T::value_type>;
