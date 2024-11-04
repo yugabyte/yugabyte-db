@@ -20,9 +20,9 @@ YugabyteDB's [synchronous replication](../replication/) can be used to tolerate 
 
 However, synchronous replication has two important drawbacks when used this way:
 
-- __High write latency__: each write must achieve consensus across at least two data centers, which means at least one round trip between data centers.  This can add tens or even hundreds of milliseconds of extra latency in a multi-region deployment.
+- _High write latency_: each write must achieve consensus across at least two data centers, which means at least one round trip between data centers.  This can add tens or even hundreds of milliseconds of extra latency in a multi-region deployment.
 
-- __Need for at least three data centers__: because consensus requires an odd number of fault domains so ties can be broken, at least three data centers must be used, which adds operational cost.
+- _Need for at least three data centers_: to tolerate the failure of `f` fault domains, you need at least `2f + 1` fault domains. So, to survive the loss of one data center, you need at least three data centers, which adds operational cost. See [fault tolerance](../replication/#fault-tolerance) for more information.
 
 As an alternative, YugabyteDB provides asynchronous replication that replicates data between two or more separate universes.  It does not suffer from the drawbacks of synchronous replication: because it is done in the background, it does not impact write latency, and because it does not use consensus it does not require a third data center.
 
