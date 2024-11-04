@@ -3,7 +3,6 @@ title: Going beyond SQL
 linkTitle: Going beyond SQL
 description: Going beyond SQL
 headcontent: Explore YSQL exclusive features.
-image: /images/section_icons/api/ysql.png
 menu:
   v2.20:
     identifier: going-beyond-sql

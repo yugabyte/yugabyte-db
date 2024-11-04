@@ -3,7 +3,6 @@ title: Migrate data
 headerTitle: Migrate data
 linkTitle: Migrate
 description: Import and export data in YugabyteDB.
-image: fa-thin fa-cloud-binary
 headcontent: Export data and schema from other databases and import into YugabyteDB
 menu:
   stable:

@@ -3,7 +3,6 @@ title: Java drivers, ORMs, and frameworks
 headerTitle: Java
 linkTitle: Java
 description: Java drivers and ORMs support for YugabyteDB.
-image: fa-brands fa-java
 aliases:
   - /preview/integrations/jdbc-drivers/
 menu:

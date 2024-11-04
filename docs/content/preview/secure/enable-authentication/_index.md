@@ -4,7 +4,6 @@ headerTitle: Enable authentication
 linkTitle: Enable authentication
 description: Enable authentication.
 headcontent: Enable authentication to have clients provide valid credentials before they can connect
-image: fa-thin fa-user-lock
 menu:
   preview:
     name: Enable authentication

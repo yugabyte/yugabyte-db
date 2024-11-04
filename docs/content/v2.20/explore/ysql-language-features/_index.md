@@ -4,7 +4,6 @@ headerTitle: SQL features
 linkTitle: SQL features
 description: Explore core SQL features in YSQL
 headcontent: Explore core SQL features in YSQL
-image: /images/section_icons/api/ysql.png
 menu:
   v2.20:
     identifier: explore-ysql-language-features

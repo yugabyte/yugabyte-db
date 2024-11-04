@@ -4,7 +4,6 @@ headerTitle: Indexes and constraints
 linkTitle: Indexes and constraints
 description: Using indexes and constraints in YugabyteDB YCQL
 headcontent: Explore indexes and constraints in YCQL
-image: /images/section_icons/explore/monitoring.png
 menu:
   v2.20:
     identifier: explore-indexes-constraints-ycql

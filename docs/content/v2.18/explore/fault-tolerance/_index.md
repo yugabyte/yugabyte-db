@@ -4,7 +4,6 @@ headerTitle: Continuous availability
 linkTitle: Continuous availability
 description: Simulate fault tolerance and resilience in a local YugabyteDB database universe.
 headcontent: Highly available and fault tolerant
-image: /images/section_icons/explore/fault_tolerance.png
 menu:
   v2.18:
     identifier: fault-tolerance

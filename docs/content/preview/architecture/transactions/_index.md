@@ -3,7 +3,6 @@ title: DocDB transactions layer
 headerTitle: DocDB transactions layer
 linkTitle: Transactions
 description: DocDB transactions layer
-image: fa-sharp fa-thin fa-money-bill-transfer
 headcontent: Understand how distributed transactions work
 aliases:
   - /architecture/transactions/

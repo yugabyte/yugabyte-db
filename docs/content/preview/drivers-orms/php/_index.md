@@ -3,7 +3,6 @@ title: PHP
 headerTitle: PHP
 linkTitle: PHP
 description: PHP Drivers and ORMs support for YugabyteDB.
-image: fa-brands fa-php
 menu:
   preview:
     identifier: php-drivers
