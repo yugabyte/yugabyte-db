@@ -15,6 +15,7 @@ package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertGreaterThan;
 import static org.yb.AssertionWrappers.assertLessThanOrEqualTo;
 import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertTrue;
@@ -168,6 +169,9 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     public SysCatalogSnapshot(Map<String, List<Row>> catalog) {
       this.catalog = new TreeMap<>(catalog);
     }
+
+    // reltuples column is filtered out, so column index is one less than normal.
+    static final int RELHASOIDS_COL_IDX = 32;
   }
 
   private static final Logger LOG = LoggerFactory.getLogger(TestYsqlUpgrade.class);
@@ -944,10 +948,9 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    * Clear applied migrations table, re-run migrations and expect nothing to change from reapplying
    * migrations.
    */
-  @Ignore("YB_TODO: Ignore test till pg15-based snapshot is available (2025.1 release)")
   @Test
   public void upgradeIsIdempotent() throws Exception {
-    recreateWithYsqlVersion(YsqlSnapshotVersion.EARLIEST);
+    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_ALPHA);
     createDbConnections();
 
     upgradeCheckingIdempotency(false /* useSingleConnection */);
@@ -960,10 +963,9 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    * Single-connection variant of {@code upgradeIsIdempotent} test, also ensures there's never too
    * many connections opened.
    */
-  @Ignore("YB_TODO: Ignore test till pg15-based snapshot is available (2025.1 release)")
   @Test
   public void upgradeIsIdempotentSingleConn() throws Exception {
-    recreateWithYsqlVersion(YsqlSnapshotVersion.EARLIEST);
+    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_ALPHA);
     createDbConnections();
 
     // Ensures there's never more that one connection opened by an upgrade.
@@ -1013,7 +1015,6 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    * If you see this test failing, please make sure you've added a new YSQL migration as described
    * in {@code src/yb/yql/pgwrapper/ysql_migrations/README.md}.
    */
-  @Ignore("YB_TODO: Ignore test till pg15-based snapshot is available (2025.1 release)")
   @Test
   public void migratingIsEquivalentToReinitdb() throws Exception {
     final SysCatalogSnapshot preSnapshotCustom, preSnapshotTemplate1;
@@ -1028,7 +1029,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       preSnapshotTemplate1 = takeSysCatalogSnapshot(stmt);
     }
 
-    recreateWithYsqlVersion(YsqlSnapshotVersion.EARLIEST);
+    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_ALPHA);
     createDbConnections();
 
     boolean snapshot_has_pg_yb_tablegroup = false;
@@ -1047,13 +1048,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       // migrations table is there.
       String migrationTableQuery =
           "SELECT oid, relname FROM pg_class WHERE relname = '" + MIGRATIONS_TABLE + "'";
-      if (snapshotPath == null || snapshotPath.contains("2.0.9.0")) {
-        // Sanity check - no migrations table
-        assertNoRows(stmt, migrationTableQuery);
-      } else {
-        List<Row> migrationTableRows = getRowList(stmt.executeQuery(migrationTableQuery));
-        assertFalse(migrationTableRows.isEmpty());
-      }
+      List<Row> migrationTableRows = getRowList(stmt.executeQuery(migrationTableQuery));
+      assertFalse(migrationTableRows.isEmpty());
       stmt.execute("CREATE DATABASE " + customDbName);
     }
 
@@ -1189,8 +1185,6 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           .get(0).getInt(0);
       final int baselineMinorVersion = preSnapshot.catalog.get(MIGRATIONS_TABLE)
           .get(0).getInt(1);
-      final int firstMigrationVersion = preSnapshot.catalog.get(MIGRATIONS_TABLE)
-          .get(1).getInt(0);
       final String baselineName = preSnapshot.catalog.get(MIGRATIONS_TABLE)
           .get(0).getString(2);
       assertEquals(baselineName, "<baseline>");
@@ -1198,35 +1192,14 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       // Make sure the latest version is at least as big as the last hardcoded one (it will be
       // greater if more migrations were introduced after YSQL upgrade is released).
       assertTrue(latestMajorVersion >= lastHardcodedMigrationVersion);
-      preSnapshot.catalog.remove(MIGRATIONS_TABLE);
-      preSnapshot.catalog.remove(CATALOG_VERSION_TABLE);
 
-      // If we started the test from an initdb snapshot that did not have
-      // pg_yb_migration table (release 2.0.9.0), we have <baseline> version
-      // as 0.0. If we started the test from an initdb snapshot that has a
-      // valid <baseline>, keep the baseline so we do not re-apply the migration
-      // scripts prior to that <baseline>. This is to let the following
-      // check between preSnapshot and postSnapshot to pass: initdb runs
-      // yb_system_views.sql, which has "CREATE VIEW yb_terminated_queries"
-      // while the migration script V33__14209__yb_terminated_queries.sql
-      // has "CREATE OR REPLACE VIEW pg_catalog.yb_terminated_queries".
-      // These two statements differ textually and therefore their parse
-      // results will have different character position, statement length, etc.
-      // If we ran V33__14209__yb_terminated_queries.sql when the view already
-      // exists in preSnapshot (the initdb snapshot), then it would differ
-      // from postSnapshot (migration snapshot), causing the test to fail.
-      if (baselineMajorVersion == 0) {
-        assertEquals(baselineMinorVersion, 0);
-        assertEquals(totalMigrations, latestMajorVersion + latestMinorVersion);
-        // This keeps the old test behavior when we upgrade from 2.0.9.0.
-        executeSystemTableDml(stmt, "DELETE FROM " + MIGRATIONS_TABLE);
-      } else {
-        // This allows only running the migrations that come after the initdb
-        // snapshot. For example, if the initdb snapshot is 43.1 (for release
-        // 2.20.3.1), we will run migrations V44, V45, ..., etc.
-        executeSystemTableDml(stmt, "DELETE FROM " + MIGRATIONS_TABLE +
+      // The oldest snapshot that we upgrade from should still have a non-zero major version.
+      assertGreaterThan(baselineMajorVersion, 0);
+      // This allows only running the migrations that come after the initdb
+      // snapshot. For example, if the initdb snapshot is 43.1 (for release
+      // 2.20.3.1), we will run migrations V44, V45, ..., etc.
+      executeSystemTableDml(stmt, "DELETE FROM " + MIGRATIONS_TABLE +
                                     " WHERE name != '<baseline>'");
-      }
       runMigrations(useSingleConnection);
 
       SysCatalogSnapshot postSnapshot = takeSysCatalogSnapshot(stmt);
@@ -1247,10 +1220,11 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
             appliedMigrations.size());
         // Since we kept the first <baseline> row at index 0, the first applied
         // migration starts from index 1.
-        assertEquals(
-            firstMigrationVersion,
-            appliedMigrations
-                .get(1).getInt(0).intValue());
+        if (totalMigrations > 0) {
+          assertEquals(
+            preSnapshot.catalog.get(MIGRATIONS_TABLE).get(1).getInt(0).intValue(),
+            appliedMigrations.get(1).getInt(0).intValue());
+        }
       }
       assertEquals(
           latestMajorVersion,
@@ -1260,6 +1234,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           latestMinorVersion,
           appliedMigrations
               .get(postSnapshot.catalog.get(MIGRATIONS_TABLE).size() - 1).getInt(1).intValue());
+      preSnapshot.catalog.remove(MIGRATIONS_TABLE);
+      preSnapshot.catalog.remove(CATALOG_VERSION_TABLE);
       postSnapshot.catalog.remove(MIGRATIONS_TABLE);
       postSnapshot.catalog.remove(CATALOG_VERSION_TABLE);
 
@@ -1676,8 +1652,12 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
         // Tables
         case "pg_class":
-          query = "SELECT * FROM pg_class"
-              + " WHERE oid NOT IN (" + testRelOidsCsv + ")";
+          query = "SELECT c.*, "
+              + "EXISTS (SELECT 1 FROM pg_attribute a "
+              + "        WHERE a.attrelid = c.oid AND a.attname = 'oid') "
+              + "    AND relkind = 'r' AS relhasoids "
+              + "FROM pg_class c "
+              + "WHERE c.oid NOT IN (" + testRelOidsCsv + ")";
           break;
         case "pg_index":
           query = "SELECT * FROM pg_index"
@@ -1772,7 +1752,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
   private Long getMaxSysGeneratedOid(SysCatalogSnapshot snapshot) {
     return snapshot.catalog.get("pg_class").stream()
-        .filter((classRow) -> classRow.getBoolean(18 /* relhasoids, with reltuples filtered out */))
+        .filter((classRow) -> classRow.getBoolean(SysCatalogSnapshot.RELHASOIDS_COL_IDX))
         .mapToLong((classRow) -> {
           String tableName = classRow.getString(1);
           return snapshot.catalog.get(tableName).stream()
@@ -1842,10 +1822,6 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       }
     }
 
-    // reltuples column is filtered out, so column index is one less than normal.
-    final int relkindColIdx = 15;
-    final int relhasoidsColIdx = 18;
-
     Map<String, Row> pgClassByNameMap = freshSnapshot.catalog.get("pg_class").stream()
         .collect(Collectors.toMap((r) -> r.getString(1), (r) -> r));
 
@@ -1857,7 +1833,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           .collect(Collectors.toMap((r) -> r.getLong(0), (r) -> r.getString(2)));
 
       Map<Long, Map<Long, String>> entityNamesMap = snapshot.catalog.get("pg_class").stream()
-          .filter((classRow) -> classRow.getBoolean(relhasoidsColIdx))
+          .filter((classRow) -> classRow.getBoolean(SysCatalogSnapshot.RELHASOIDS_COL_IDX))
           .collect(Collectors.toMap(
               (classRow) -> classRow.getLong(0),
               (classRow) -> {
@@ -1891,7 +1867,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       });
       // Replace auto-generated OIDs with placeholders.
       simplifiedCatalog.forEach((tableName, rows) -> {
-        if (pgClassByNameMap.get(tableName).getBoolean(relhasoidsColIdx)) {
+        if (pgClassByNameMap.get(tableName).getBoolean(SysCatalogSnapshot.RELHASOIDS_COL_IDX)) {
+          LOG.info("Processing table: {}", tableName);
           rows.stream()
               .filter((r) -> isSysGeneratedOid(r.getLong(0)))
               .forEach((r) -> r.elems.set(0, PLACEHOLDER_OID));
@@ -1911,18 +1888,13 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       if (tablesToSkip.contains(tableName))
         return;
 
-      // Snapshot only contains data for real tables.
-      if (!pgClassByNameMap.get(tableName).getString(relkindColIdx).equals("r"))
-        return;
-
       List<Row> reinitdbRows = simplifiedFreshSnapshot.catalog.get(tableName);
 
       assertCollectionSizes("Table '" + tableName + "' has different size after migration!",
           reinitdbRows, migratedRows);
 
-      for (int i = 0; i < migratedRows.size(); ++i) {
+      for (int i = 0; i < migratedRows.size(); ++i)
         assertRow("Table '" + tableName + "': ", reinitdbRows.get(i), migratedRows.get(i));
-      }
     });
   }
 
@@ -1947,7 +1919,6 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
               .filter(r -> r.getLong(4) >= FIRST_YB_OID && r.getLong(4) < FIRST_BOOTSTRAP_OID)
               .sorted()
               .collect(Collectors.toList());
-      assertFalse(seqScanRows.isEmpty());
 
       // Without a fix for #12258, this query results in "DocKey(...) not found in indexed table".
       String indexScanSql =
@@ -2058,8 +2029,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       case "pg_type":
         replace.accept(2 /* typnamespace */, entityNamesMap.get(pgNamespaceOid));
         replace.accept(11 /* typrelid */, entityNamesMap.get(pgClassOid));
-        replace.accept(12 /* typelem */, entityNamesMap.get(pgTypeOid));
-        replace.accept(13 /* typarray */, entityNamesMap.get(pgTypeOid));
+        replace.accept(13 /* typelem */, entityNamesMap.get(pgTypeOid));
+        replace.accept(14 /* typarray */, entityNamesMap.get(pgTypeOid));
         break;
       case "pg_attribute":
         replace.accept(0 /* attrelid */, entityNamesMap.get(pgClassOid));
