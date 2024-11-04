@@ -18,7 +18,7 @@ RBAC is also available with fine-grained control over access to universes. Fine-
 
 ## Users and roles
 
-As a Super Admin or Admin, you can invite new users and manage existing users for your YugabyteDB Anywhere instance. How you add and modify users varies depending on whether you have enabled fine-grained RBAC {{<tags/feature/ea>}}. You can only assign, create, and modify custom roles if fine-grained RBAC is enabled.
+As a Super Admin or Admin, you can invite new users and manage existing users for your YugabyteDB Anywhere instance. How you add and modify users varies depending on whether you have enabled [fine-grained RBAC](#fine-grained-rbac) {{<tags/feature/ea>}}. You can only assign, create, and modify custom roles if fine-grained RBAC is enabled.
 
 A user can interact with a YugabyteDB Anywhere instance via the UI or [REST API](../../anywhere-automation/anywhere-api/).
 
