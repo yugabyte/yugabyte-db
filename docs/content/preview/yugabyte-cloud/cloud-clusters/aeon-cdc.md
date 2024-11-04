@@ -229,6 +229,8 @@ On the cluster **Metrics** tab, you can view the following metrics:
 | cdcsdk_event_lag_micros   | Lag, calculated by subtracting the timestamp of the latest record in the WAL of a tablet from the last record sent to the connector. |
 | cdcsdk_expiry_time_ms     | The time left to read records from WAL is tracked by the Stream Expiry Time (ms). |
 
+## Manage CDC
+
 ### Establish a replication connection to the database
 
 To be able to send [replication commands](https://www.postgresql.org/docs/11/protocol-replication.html) to the database, you need to make a replication connection by adding the `replication=database` connection parameter to the connection string.
