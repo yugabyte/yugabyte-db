@@ -1,0 +1,401 @@
+SET search_path TO helio_api_catalog, helio_core;
+SET citus.next_shard_id TO 340000;
+SET helio_api.next_collection_id TO 34000;
+SET helio_api.next_collection_index_id TO 34000;
+-- create entries with accid == 1, 2, val == 3, 4
+with r1 AS (SELECT FORMAT('{ "accid": %s, "val": %s }', ((s % 2) + 1), ((s % 2) + 3))::json as textVal from generate_series(1, 25000) s),
+r2 AS (SELECT json_build_object('insert', 'fast_scan_tests', 'documents', json_agg(r1.textVal)) AS jsonObj FROM r1)
+SELECT helio_api.insert('db', (r2.jsonObj)::text::bson) FROM r2;
+NOTICE:  creating collection
+                                           insert                                           
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""25000"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT helio_api.insert_one('db', 'fast_scan_tests', '{ "accid": 1, "val": 5 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+DO $$
+DECLARE v_output record;
+BEGIN
+    FOR i IN 1..5 LOOP        
+        with r1 AS (SELECT FORMAT('{ "accid": %s, "val": %s }', ((s % 2) + 1), ((s % 2) + 3))::json from generate_series(1, 15000) s),
+        r2 AS (SELECT json_build_object('insert', 'fast_scan_tests', 'documents', json_agg(r1)) AS jsonObj FROM r1)
+        SELECT helio_api.insert('db', (r2.jsonObj)::text::bson) INTO v_output FROM r2;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+SELECT helio_api.insert_one('db', 'fast_scan_tests', '{ "accid": 1, "val": 5 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- create entries with accid == 3, 4, val == 5, 6
+SELECT helio_api.insert_one('db', 'fast_scan_tests', '{ "accid": 2, "val": 6 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+DO $$
+DECLARE v_output record;
+BEGIN
+    FOR i IN 1..5 LOOP        
+        with r1 AS (SELECT FORMAT('{ "accid": %s, "val": %s }', ((s % 2) + 3), ((s % 2) + 5))::json from generate_series(1, 15000) s),
+        r2 AS (SELECT json_build_object('insert', 'fast_scan_tests', 'documents', json_agg(r1)) AS jsonObj FROM r1)
+        SELECT helio_api.insert('db', (r2.jsonObj)::text::bson) INTO v_output FROM r2;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+SELECT helio_api.insert_one('db', 'fast_scan_tests', '{ "accid": 2, "val": 6 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "fast_scan_tests", "indexes": [ { "key": { "accid": 1, "val": 1 }, "name": "myIdx1" }]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "fast_scan_tests", "filter": { "accid": { "$in": [ 1, 2 ] }, "val": { "$in": [ 5, 6 ] } }, "projection": { "_id": 0 }, "limit": 10 }');
+                               document                               
+---------------------------------------------------------------------
+ { "accid" : { "$numberInt" : "1" }, "val" : { "$numberInt" : "5" } }
+ { "accid" : { "$numberInt" : "1" }, "val" : { "$numberInt" : "5" } }
+ { "accid" : { "$numberInt" : "2" }, "val" : { "$numberInt" : "6" } }
+ { "accid" : { "$numberInt" : "2" }, "val" : { "$numberInt" : "6" } }
+(4 rows)
+
+BEGIN;
+set local client_min_messages to DEBUG3;
+set local rum.enable_semifast_scan to off;
+SELECT document FROM bson_aggregation_find('db', '{ "find": "fast_scan_tests", "filter": { "accid": { "$in": [ 1, 2 ] }, "val": { "$in": [ 5, 6 ] } }, "projection": { "_id": 0 }, "limit": 10 }');
+DEBUG:  Distributed planning for a fast-path router query
+DEBUG:  Creating router plan
+DEBUG:  query has a single distribution column value: 34000
+DEBUG:  Number of loops for scan 5 partialEntries 0
+                               document                               
+---------------------------------------------------------------------
+ { "accid" : { "$numberInt" : "1" }, "val" : { "$numberInt" : "5" } }
+ { "accid" : { "$numberInt" : "1" }, "val" : { "$numberInt" : "5" } }
+ { "accid" : { "$numberInt" : "2" }, "val" : { "$numberInt" : "6" } }
+ { "accid" : { "$numberInt" : "2" }, "val" : { "$numberInt" : "6" } }
+(4 rows)
+
+set local rum.enable_semifast_scan to on;
+SELECT document FROM bson_aggregation_find('db', '{ "find": "fast_scan_tests", "filter": { "accid": { "$in": [ 1, 2 ] }, "val": { "$in": [ 5, 6 ] } }, "projection": { "_id": 0 }, "limit": 10 }');
+DEBUG:  Distributed planning for a fast-path router query
+DEBUG:  Creating router plan
+DEBUG:  query has a single distribution column value: 34000
+DEBUG:  Number of loops for scan 5 partialEntries 0
+                               document                               
+---------------------------------------------------------------------
+ { "accid" : { "$numberInt" : "1" }, "val" : { "$numberInt" : "5" } }
+ { "accid" : { "$numberInt" : "1" }, "val" : { "$numberInt" : "5" } }
+ { "accid" : { "$numberInt" : "2" }, "val" : { "$numberInt" : "6" } }
+ { "accid" : { "$numberInt" : "2" }, "val" : { "$numberInt" : "6" } }
+(4 rows)
+
+ROLLBACK;
+-- add 1 doc that matches against the docs above
+SELECT helio_api.insert_one('db', 'fast_scan_tests', '{ "accid": 2, "val": 200 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+BEGIN;
+set local client_min_messages to DEBUG3;
+set local rum.enable_semifast_scan to on;
+SELECT document FROM bson_aggregation_find('db', '{ "find": "fast_scan_tests", "filter": { "val": 200, "accid": { "$ne": null } }, "projection": { "_id": 0 }, "limit": 10 }');
+DEBUG:  Distributed planning for a fast-path router query
+DEBUG:  Creating router plan
+DEBUG:  query has a single distribution column value: 34000
+DEBUG:  Number of loops for scan 2 partialEntries 0
+                                document                                
+---------------------------------------------------------------------
+ { "accid" : { "$numberInt" : "2" }, "val" : { "$numberInt" : "200" } }
+(1 row)
+
+ROLLBACK;
+-- create a query to force a partialMatch scan
+BEGIN;
+set local client_min_messages to DEBUG3;
+SELECT document FROM bson_aggregation_find('db', '{ "find": "fast_scan_tests", "filter": { "val": 200, "accid": { "$gt": { "$minKey": 1 } } }, "projection": { "_id": 0 }, "limit": 10 }');
+DEBUG:  Distributed planning for a fast-path router query
+DEBUG:  Creating router plan
+DEBUG:  query has a single distribution column value: 34000
+DEBUG:  Beginning iterate on comparePartial TIDBitmap
+DEBUG:  ScanEntry TidBitmap end, lossy pages 0
+DEBUG:  Number of loops for scan 2 partialEntries 25005
+                                document                                
+---------------------------------------------------------------------
+ { "accid" : { "$numberInt" : "2" }, "val" : { "$numberInt" : "200" } }
+(1 row)
+
+ROLLBACK;
+BEGIN;
+set local client_min_messages to DEBUG3;
+-- test bitmap codepath.
+set local helio_api.enableRumIndexScan to off;
+set local helio_api.forceRumIndexScantoBitmapHeapScan to on;
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_count('db', '{ "count": "fast_scan_tests", "query": { "accid": 1, "val": { "$gt": 0 } } }');
+DEBUG:  constraint value: '34000'::bigint
+DEBUG:  shard count after pruning for documents_34000: 1
+DEBUG:  Creating router plan
+DEBUG:  query has a single distribution column value: 34000
+                                                                                                                                                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                                                                                                                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
+   Output: remote_scan.document
+   Task Count: 1
+   Tuple data received from nodes: 24 bytes
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT helio_api_internal.bson_dollar_merge_documents(helio_core.bson_repath_and_build('n'::text, helio_api_catalog.bsonsum('{ "" : { "$numberInt" : "1" } }'::helio_core.bson)), '{ "ok" : { "$numberDouble" : "1.0" } }'::helio_core.bson) AS document FROM (SELECT collection.document FROM helio_data.documents_34000_340005 collection WHERE ((collection.document OPERATOR(helio_api_catalog.#=) '{ "accid" : { "$numberInt" : "1" } }'::helio_core.bsonquery) AND (collection.document OPERATOR(helio_api_catalog.#>) '{ "val" : { "$numberInt" : "0" } }'::helio_core.bsonquery) AND (collection.shard_key_value OPERATOR(pg_catalog.=) '34000'::bigint))) agg_stage_1
+         Tuple data received from node: 24 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate (actual rows=1 loops=1)
+               Output: helio_api_internal.bson_dollar_merge_documents(helio_core.bson_repath_and_build('n'::text, helio_api_catalog.bsonsum('{ "" : { "$numberInt" : "1" } }'::helio_core.bson)), '{ "ok" : { "$numberDouble" : "1.0" } }'::helio_core.bson)
+               ->  Bitmap Heap Scan on helio_data.documents_34000_340005 collection (actual rows=12502 loops=1)
+                     Recheck Cond: ((collection.document OPERATOR(helio_api_catalog.@=) '{ "accid" : { "$numberInt" : "1" } }'::helio_core.bson) AND (collection.document OPERATOR(helio_api_catalog.@>) '{ "val" : { "$numberInt" : "0" } }'::helio_core.bson))
+                     Heap Blocks: exact=335
+                     ->  Bitmap Index Scan on "myIdx1" (actual rows=12502 loops=1)
+                           Index Cond: ((collection.document OPERATOR(helio_api_catalog.@=) '{ "accid" : { "$numberInt" : "1" } }'::helio_core.bson) AND (collection.document OPERATOR(helio_api_catalog.@>) '{ "val" : { "$numberInt" : "0" } }'::helio_core.bson))
+(16 rows)
+
+ROLLBACK;
+-- Same query works with bitmap optimization
+BEGIN;
+set local client_min_messages to DEBUG3;
+-- test bitmap codepath.
+set local helio_api.enableRumIndexScan to off;
+set local helio_api.forceRumIndexScantoBitmapHeapScan to on;
+set local rum.enable_semifast_bitmap to on;
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_count('db', '{ "count": "fast_scan_tests", "query": { "accid": 1, "val": { "$gt": 0 } } }');
+DEBUG:  constraint value: '34000'::bigint
+DEBUG:  shard count after pruning for documents_34000: 1
+DEBUG:  Creating router plan
+DEBUG:  query has a single distribution column value: 34000
+                                                                                                                                                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                                                                                                                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
+   Output: remote_scan.document
+   Task Count: 1
+   Tuple data received from nodes: 24 bytes
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT helio_api_internal.bson_dollar_merge_documents(helio_core.bson_repath_and_build('n'::text, helio_api_catalog.bsonsum('{ "" : { "$numberInt" : "1" } }'::helio_core.bson)), '{ "ok" : { "$numberDouble" : "1.0" } }'::helio_core.bson) AS document FROM (SELECT collection.document FROM helio_data.documents_34000_340005 collection WHERE ((collection.document OPERATOR(helio_api_catalog.#=) '{ "accid" : { "$numberInt" : "1" } }'::helio_core.bsonquery) AND (collection.document OPERATOR(helio_api_catalog.#>) '{ "val" : { "$numberInt" : "0" } }'::helio_core.bsonquery) AND (collection.shard_key_value OPERATOR(pg_catalog.=) '34000'::bigint))) agg_stage_1
+         Tuple data received from node: 24 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate (actual rows=1 loops=1)
+               Output: helio_api_internal.bson_dollar_merge_documents(helio_core.bson_repath_and_build('n'::text, helio_api_catalog.bsonsum('{ "" : { "$numberInt" : "1" } }'::helio_core.bson)), '{ "ok" : { "$numberDouble" : "1.0" } }'::helio_core.bson)
+               ->  Bitmap Heap Scan on helio_data.documents_34000_340005 collection (actual rows=12502 loops=1)
+                     Recheck Cond: ((collection.document OPERATOR(helio_api_catalog.@=) '{ "accid" : { "$numberInt" : "1" } }'::helio_core.bson) AND (collection.document OPERATOR(helio_api_catalog.@>) '{ "val" : { "$numberInt" : "0" } }'::helio_core.bson))
+                     Heap Blocks: exact=335
+                     ->  Bitmap Index Scan on "myIdx1" (actual rows=12502 loops=1)
+                           Index Cond: ((collection.document OPERATOR(helio_api_catalog.@=) '{ "accid" : { "$numberInt" : "1" } }'::helio_core.bson) AND (collection.document OPERATOR(helio_api_catalog.@>) '{ "val" : { "$numberInt" : "0" } }'::helio_core.bson))
+(16 rows)
+
+ROLLBACK;
+BEGIN;
+set local client_min_messages to DEBUG3;
+-- test bitmap codepath.
+set local helio_api.enableRumIndexScan to off;
+set local helio_api.forceRumIndexScantoBitmapHeapScan to on;
+set local rum.enable_semifast_bitmap to on;
+set local rum.semifast_bitmap_workmem to 8;
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_count('db', '{ "count": "fast_scan_tests", "query": { "accid": 1, "val": { "$gt": 0 } } }');
+DEBUG:  constraint value: '34000'::bigint
+DEBUG:  shard count after pruning for documents_34000: 1
+DEBUG:  Creating router plan
+DEBUG:  query has a single distribution column value: 34000
+                                                                                                                                                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                                                                                                                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
+   Output: remote_scan.document
+   Task Count: 1
+   Tuple data received from nodes: 24 bytes
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT helio_api_internal.bson_dollar_merge_documents(helio_core.bson_repath_and_build('n'::text, helio_api_catalog.bsonsum('{ "" : { "$numberInt" : "1" } }'::helio_core.bson)), '{ "ok" : { "$numberDouble" : "1.0" } }'::helio_core.bson) AS document FROM (SELECT collection.document FROM helio_data.documents_34000_340005 collection WHERE ((collection.document OPERATOR(helio_api_catalog.#=) '{ "accid" : { "$numberInt" : "1" } }'::helio_core.bsonquery) AND (collection.document OPERATOR(helio_api_catalog.#>) '{ "val" : { "$numberInt" : "0" } }'::helio_core.bsonquery) AND (collection.shard_key_value OPERATOR(pg_catalog.=) '34000'::bigint))) agg_stage_1
+         Tuple data received from node: 24 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate (actual rows=1 loops=1)
+               Output: helio_api_internal.bson_dollar_merge_documents(helio_core.bson_repath_and_build('n'::text, helio_api_catalog.bsonsum('{ "" : { "$numberInt" : "1" } }'::helio_core.bson)), '{ "ok" : { "$numberDouble" : "1.0" } }'::helio_core.bson)
+               ->  Bitmap Heap Scan on helio_data.documents_34000_340005 collection (actual rows=12502 loops=1)
+                     Recheck Cond: ((collection.document OPERATOR(helio_api_catalog.@=) '{ "accid" : { "$numberInt" : "1" } }'::helio_core.bson) AND (collection.document OPERATOR(helio_api_catalog.@>) '{ "val" : { "$numberInt" : "0" } }'::helio_core.bson))
+                     Heap Blocks: exact=335
+                     ->  Bitmap Index Scan on "myIdx1" (actual rows=12502 loops=1)
+                           Index Cond: ((collection.document OPERATOR(helio_api_catalog.@=) '{ "accid" : { "$numberInt" : "1" } }'::helio_core.bson) AND (collection.document OPERATOR(helio_api_catalog.@>) '{ "val" : { "$numberInt" : "0" } }'::helio_core.bson))
+(16 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_count('db', '{ "count": "fast_scan_tests", "query": { "accid": 1, "val": { "$not": { "$lte": 0 } } } }');
+DEBUG:  constraint value: '34000'::bigint
+DEBUG:  shard count after pruning for documents_34000: 1
+DEBUG:  Creating router plan
+DEBUG:  query has a single distribution column value: 34000
+                                                                                                                                                                                                                                                                                                                                            QUERY PLAN                                                                                                                                                                                                                                                                                                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
+   Output: remote_scan.document
+   Task Count: 1
+   Tuple data received from nodes: 24 bytes
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT helio_api_internal.bson_dollar_merge_documents(helio_core.bson_repath_and_build('n'::text, helio_api_catalog.bsonsum('{ "" : { "$numberInt" : "1" } }'::helio_core.bson)), '{ "ok" : { "$numberDouble" : "1.0" } }'::helio_core.bson) AS document FROM (SELECT collection.document FROM helio_data.documents_34000_340005 collection WHERE ((collection.document OPERATOR(helio_api_catalog.#=) '{ "accid" : { "$numberInt" : "1" } }'::helio_core.bsonquery) AND helio_api_internal.bson_dollar_not_lte(collection.document, '{ "val" : { "$numberInt" : "0" } }'::helio_core.bson) AND (collection.shard_key_value OPERATOR(pg_catalog.=) '34000'::bigint))) agg_stage_1
+         Tuple data received from node: 24 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate (actual rows=1 loops=1)
+               Output: helio_api_internal.bson_dollar_merge_documents(helio_core.bson_repath_and_build('n'::text, helio_api_catalog.bsonsum('{ "" : { "$numberInt" : "1" } }'::helio_core.bson)), '{ "ok" : { "$numberDouble" : "1.0" } }'::helio_core.bson)
+               ->  Bitmap Heap Scan on helio_data.documents_34000_340005 collection (actual rows=12502 loops=1)
+                     Recheck Cond: ((collection.document OPERATOR(helio_api_catalog.@=) '{ "accid" : { "$numberInt" : "1" } }'::helio_core.bson) AND (collection.document OPERATOR(helio_api_internal.@!<=) '{ "val" : { "$numberInt" : "0" } }'::helio_core.bson))
+                     Heap Blocks: exact=335
+                     ->  Bitmap Index Scan on "myIdx1" (actual rows=12502 loops=1)
+                           Index Cond: ((collection.document OPERATOR(helio_api_catalog.@=) '{ "accid" : { "$numberInt" : "1" } }'::helio_core.bson) AND (collection.document OPERATOR(helio_api_internal.@!<=) '{ "val" : { "$numberInt" : "0" } }'::helio_core.bson))
+(16 rows)
+
+ROLLBACK;
+BEGIN;
+set local client_min_messages to DEBUG3;
+-- test bitmap codepath.
+set local helio_api.enableRumIndexScan to off;
+set local helio_api.forceRumIndexScantoBitmapHeapScan to on;
+set local rum.enable_semifast_bitmap to on;
+set local rum.semifast_bitmap_workmem to 8;
+SELECT document FROM bson_aggregation_count('db', '{ "count": "fast_scan_tests", "query": { "accid": 1, "val": { "$gt": 0 } } }');
+DEBUG:  constraint value: '34000'::bigint
+DEBUG:  shard count after pruning for documents_34000: 1
+DEBUG:  Creating router plan
+DEBUG:  query has a single distribution column value: 34000
+DEBUG:  Beginning iterate on comparePartial TIDBitmap
+DEBUG:  Number of loops for scan 25002 partialEntries 25005
+DEBUG:  ScanEntry TidBitmap end, lossy pages 262
+                                 document                                 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "12502" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+set local rum.semifast_bitmap_workmem to DEFAULT;
+SELECT document FROM bson_aggregation_count('db', '{ "count": "fast_scan_tests", "query": { "accid": 1, "val": { "$gt": 0 } } }');
+DEBUG:  constraint value: '34000'::bigint
+DEBUG:  shard count after pruning for documents_34000: 1
+DEBUG:  Creating router plan
+DEBUG:  query has a single distribution column value: 34000
+DEBUG:  Beginning iterate on comparePartial TIDBitmap
+DEBUG:  Number of loops for scan 25002 partialEntries 25005
+DEBUG:  ScanEntry TidBitmap end, lossy pages 0
+                                 document                                 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "12502" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+set local rum.semifast_bitmap_workmem to 8;
+SELECT document FROM bson_aggregation_count('db', '{ "count": "fast_scan_tests", "query": { "accid": 1, "val": { "$not": { "$lte": 0 } } } }');
+DEBUG:  constraint value: '34000'::bigint
+DEBUG:  shard count after pruning for documents_34000: 1
+DEBUG:  Creating router plan
+DEBUG:  query has a single distribution column value: 34000
+DEBUG:  Beginning iterate on comparePartial TIDBitmap
+DEBUG:  ScanEntry TidBitmap end, lossy pages 0
+DEBUG:  Number of loops for scan 25003 partialEntries 0
+                                 document                                 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "12502" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+set local rum.semifast_bitmap_workmem to DEFAULT;
+SELECT document FROM bson_aggregation_count('db', '{ "count": "fast_scan_tests", "query": { "accid": 1, "val": { "$not": { "$lte": 0 } } } }');
+DEBUG:  constraint value: '34000'::bigint
+DEBUG:  shard count after pruning for documents_34000: 1
+DEBUG:  Creating router plan
+DEBUG:  query has a single distribution column value: 34000
+DEBUG:  Beginning iterate on comparePartial TIDBitmap
+DEBUG:  ScanEntry TidBitmap end, lossy pages 0
+DEBUG:  Number of loops for scan 25003 partialEntries 0
+                                 document                                 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "12502" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+set local rum.semifast_bitmap_workmem to 8;
+SELECT document FROM bson_aggregation_count('db', '{ "count": "fast_scan_tests", "query": { "accid": 1, "val": { "$not": { "$gt": 0 } } } }');
+DEBUG:  constraint value: '34000'::bigint
+DEBUG:  shard count after pruning for documents_34000: 1
+DEBUG:  Creating router plan
+DEBUG:  query has a single distribution column value: 34000
+DEBUG:  Beginning iterate on comparePartial TIDBitmap
+DEBUG:  Number of loops for scan 25003 partialEntries 25005
+DEBUG:  ScanEntry TidBitmap end, lossy pages 262
+                               document                               
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+set local rum.semifast_bitmap_workmem to DEFAULT;
+SELECT document FROM bson_aggregation_count('db', '{ "count": "fast_scan_tests", "query": { "accid": 1, "val": { "$not": { "$gt": 0 } } } }');
+DEBUG:  constraint value: '34000'::bigint
+DEBUG:  shard count after pruning for documents_34000: 1
+DEBUG:  Creating router plan
+DEBUG:  query has a single distribution column value: 34000
+DEBUG:  Beginning iterate on comparePartial TIDBitmap
+DEBUG:  Number of loops for scan 25003 partialEntries 25005
+DEBUG:  ScanEntry TidBitmap end, lossy pages 0
+                               document                               
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+ROLLBACK;
+-- insert 1K docs each with a unique value
+DO $$
+DECLARE v_output record;
+BEGIN
+    FOR i IN 1..5 LOOP        
+        with r1 AS (SELECT FORMAT('{ "accid": %s, "val": %s }', s, s)::json AS doc from generate_series(20000, 21000) s),
+        r2 AS (SELECT json_build_object('insert', 'fast_scan_tests', 'documents', json_agg(r1.doc)) AS jsonObj FROM r1)
+        SELECT helio_api.insert('db', (r2.jsonObj)::text::bson) INTO v_output FROM r2;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+-- now generate a $in query that matches 1K items of accid and 1 item of val.
+SELECT FORMAT('{ "find": "fast_scan_tests", "filter": %s, "projection": { "_id": 0 }, "limit": 10 }', json_build_object('accid', json_build_object('$in', json_agg(s)), 'val', 20500)) FROM generate_series(20400, 20600) s \gset
+BEGIN;
+set local client_min_messages to DEBUG2;
+set local rum.enable_semifast_scan to off;
+SELECT document FROM bson_aggregation_find('db', :'format');
+DEBUG:  Distributed planning for a fast-path router query
+DEBUG:  Creating router plan
+DEBUG:  query has a single distribution column value: 34000
+DEBUG:  Number of loops for scan 10 partialEntries 0
+                                   document                                   
+---------------------------------------------------------------------
+ { "accid" : { "$numberInt" : "20500" }, "val" : { "$numberInt" : "20500" } }
+ { "accid" : { "$numberInt" : "20500" }, "val" : { "$numberInt" : "20500" } }
+ { "accid" : { "$numberInt" : "20500" }, "val" : { "$numberInt" : "20500" } }
+ { "accid" : { "$numberInt" : "20500" }, "val" : { "$numberInt" : "20500" } }
+ { "accid" : { "$numberInt" : "20500" }, "val" : { "$numberInt" : "20500" } }
+(5 rows)
+
+set local rum.enable_semifast_scan to on;
+SELECT document FROM bson_aggregation_find('db', :'format');
+DEBUG:  Distributed planning for a fast-path router query
+DEBUG:  Creating router plan
+DEBUG:  query has a single distribution column value: 34000
+DEBUG:  Number of loops for scan 10 partialEntries 0
+                                   document                                   
+---------------------------------------------------------------------
+ { "accid" : { "$numberInt" : "20500" }, "val" : { "$numberInt" : "20500" } }
+ { "accid" : { "$numberInt" : "20500" }, "val" : { "$numberInt" : "20500" } }
+ { "accid" : { "$numberInt" : "20500" }, "val" : { "$numberInt" : "20500" } }
+ { "accid" : { "$numberInt" : "20500" }, "val" : { "$numberInt" : "20500" } }
+ { "accid" : { "$numberInt" : "20500" }, "val" : { "$numberInt" : "20500" } }
+(5 rows)
+
+ROLLBACK;

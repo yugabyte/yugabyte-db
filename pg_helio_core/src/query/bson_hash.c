@@ -32,17 +32,9 @@
 #define BSON_FIXED_LENGTH_FIELD_HASH(field, seed) \
 	BSON_VARIABLE_LENGTH_FIELD_HASH(&(field), sizeof(field), seed)
 
-static uint64 HashCombineUint32AsUint64(uint64 left, uint64 right);
 static uint64 HashNumber(double number, int64 seed);
 static uint64 HashBytesUint64(const uint8_t *bytes, uint32_t bytesLength, int64 seed);
-static uint64 HashBytesUint32AsUint64(const uint8_t *bytes, uint32_t bytesLength, int64
-									  seed);
-static uint64 BsonHashCompare(bson_iter_t *bsonIterValue,
-							  uint64 (*hash_bytes_func)(const uint8_t *bytes, uint32_t
-														bytesLength,
-														int64 seed),
-							  uint64 (*hash_combine_func)(uint64 left, uint64 right),
-							  int64 seed);
+
 static uint64_t HashBsonValueCompare(const bson_value_t *value,
 									 uint64 (*hash_bytes_func)(const uint8_t *bytes,
 															   uint32_t bytesLength, int64
@@ -100,39 +92,6 @@ extension_bson_hash_int8(PG_FUNCTION_ARGS)
 	PG_FREE_IF_COPY(bson, 0);
 
 	return result;
-}
-
-
-uint64
-HashBsonComparableExtended(bson_iter_t *bsonIterValue, int64 seed)
-{
-	return BsonHashCompare(bsonIterValue, HashBytesUint64,
-						   hash_combine64, seed);
-}
-
-
-uint32_t
-HashBsonComparable(bson_iter_t *bsonIterValue, uint32_t seed)
-{
-	return (uint32_t) BsonHashCompare(bsonIterValue,
-									  HashBytesUint32AsUint64,
-									  HashCombineUint32AsUint64, seed);
-}
-
-
-uint64
-HashBsonValueComparableExtended(const bson_value_t *bsonIterValue, int64 seed)
-{
-	return HashBsonValueCompare(bsonIterValue, HashBytesUint64,
-								hash_combine64, seed);
-}
-
-
-uint32_t
-HashBsonValueComparable(const bson_value_t *bsonIterValue, uint32_t seed)
-{
-	return (uint32_t) HashBsonValueCompare(bsonIterValue, HashBytesUint32AsUint64,
-										   HashCombineUint32AsUint64, seed);
 }
 
 
@@ -447,7 +406,7 @@ BsonValueHashUint32(const bson_value_t *bsonValue)
 /*
  * Hash as uint32 but represented as uint64.
  */
-static uint64
+uint64
 HashBytesUint32AsUint64(const uint8_t *bytes, uint32_t bytesLength, int64 seed)
 {
 	return hash_bytes(bytes, bytesLength);
@@ -457,14 +416,14 @@ HashBytesUint32AsUint64(const uint8_t *bytes, uint32_t bytesLength, int64 seed)
 /*
  * Combine hash as uint32 but represented as uint64.
  */
-static uint64
+uint64
 HashCombineUint32AsUint64(uint64 left, uint64 right)
 {
 	return hash_combine((uint32_t) left, (uint32_t) right);
 }
 
 
-static uint64
+uint64
 BsonHashCompare(bson_iter_t *bsonIterValue,
 				uint64 (*hash_bytes_func)(const uint8_t *bytes, uint32_t bytesLength,
 										  int64 seed),

@@ -35,8 +35,7 @@ pgbson * ProcessAggregationPipelineUpdate(pgbson *sourceDoc,
 
 const struct BsonIntermediatePathNode * GetOperatorUpdateState(pgbson *updateSpec,
 															   pgbson *querySpec,
-															   pgbson *arrayFilters,
-															   bool isUpsert);
+															   pgbson *arrayFilters);
 pgbson * ProcessUpdateOperatorWithState(pgbson *sourceDoc,
 										const struct BsonIntermediatePathNode *
 										updateState,

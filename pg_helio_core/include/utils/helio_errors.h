@@ -1047,12 +1047,4 @@ typedef int HelioErrorEreportCode;
 
 #define ERRCODE_HELIO_LOCATION31465 MAKE_SQLSTATE('M', '0', '0', 'D', 'M')
 
-#define ERRCODE_HELIO_LOCATION40181 MAKE_SQLSTATE('M', '0', '0', 'D', 'N')
-
-#define ERRCODE_HELIO_INVALIDLENGTH MAKE_SQLSTATE('M', '0', '0', 'D', 'O')
-
-#define ERRCODE_HELIO_LOCATION15998 MAKE_SQLSTATE('M', '0', '0', 'D', 'P')
-
-#define ERRCODE_HELIO_LOCATION40229 MAKE_SQLSTATE('M', '0', '0', 'D', 'Q')
-
 #endif

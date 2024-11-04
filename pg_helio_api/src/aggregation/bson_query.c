@@ -273,7 +273,7 @@ ProcessIdInQuery(void *context, const char *path, const bson_value_t *value)
 	{
 		if (idContext->errorOnConflict)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_NOTSINGLEVALUEFIELD),
+			ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 							errmsg(
 								"cannot infer query fields to set, path '_id' is matched twice")));
 		}

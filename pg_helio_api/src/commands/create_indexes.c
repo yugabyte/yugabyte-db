@@ -226,9 +226,7 @@ extern bool ForceIndexTermTruncation;
 extern int IndexTruncationLimitOverride;
 extern int MaxWildcardIndexKeySize;
 extern bool DefaultEnableLargeIndexKeys;
-extern bool DefaultEnableLargeUniqueIndexKeys;
 extern bool SkipFailOnCollation;
-extern bool DefaultEnableNewUniqueOpClass;
 
 #define WILDCARD_INDEX_SUFFIX "$**"
 #define DOT_WILDCARD_INDEX_SUFFIX "." WILDCARD_INDEX_SUFFIX
@@ -316,7 +314,6 @@ static void ThrowSingleTextIndexAllowedError(const IndexSpec *
 static bool SetIndexesAsBuildInProgress(List *indexIdList, int *firstNotMarkedIndex);
 static void UnsetIndexesAsBuildInProgress(List *indexIdList);
 static LOCKTAG LockTagForInProgressIndexBuild(int indexId);
-static const char * GenerateUniqueProjectionSpec(IndexDefKey *indexKey);
 static TryCreateIndexesResult * TryCreateCollectionIndexes(uint64 collectionId,
 														   List *indexDefList,
 														   List *indexIdList,
@@ -1825,6 +1822,13 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 			ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 							errmsg(
 								"enableLargeIndexKeys is only supported with regular indexes.")));
+		}
+
+		if (indexDef->unique != BoolIndexOption_Undefined)
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
+							errmsg(
+								"Cannot specify unique with enableLargeIndexKeys.")));
 		}
 	}
 
@@ -4371,12 +4375,14 @@ CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int inde
 							 ApiDataSchemaName, collectionId);
 		}
 
-		bool enableLargeIndexKeys = DefaultEnableLargeUniqueIndexKeys;
 		if (indexDef->enableLargeIndexKeys == BoolIndexOption_True)
 		{
-			enableLargeIndexKeys = true;
+			ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
+							errmsg(
+								"enableLargeIndexKeys with unique indexes is not supported yet")));
 		}
 
+		bool enableLargeIndexKeys = false;
 		appendStringInfo(cmdStr,
 						 " ADD CONSTRAINT " MONGO_DATA_TABLE_INDEX_NAME_FORMAT
 						 " EXCLUDE USING %s_rum (%s) %s%s%s",
@@ -4850,6 +4856,7 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 {
 	StringInfo indexExprStr = makeStringInfo();
 
+
 	char *languageOptionKey = "";
 	char *languageOptionValue = "";
 	char *languageOverrideKey = "";
@@ -4869,28 +4876,6 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 	bool firstColumnWritten = false;
 	char indexTermSizeLimitArg[22] = { 0 };
 	bool enableTruncation = enableLargeIndexKeys || ForceIndexTermTruncation;
-
-	bool usingNewUniqueIndexOpClass = unique && DefaultEnableNewUniqueOpClass &&
-									  enableLargeIndexKeys;
-
-	/* For unique with truncation, instead of creating a unique hash for every column, we simply create a single
-	 * value with a new operator that handles unique constraints. That way for a composite unique index, we support
-	 * up to 31 columns (instead of 16 without truncation). Here we want to produce a term that incorporates the
-	 * shard key as well as the document term such that we produce something that is relatively collision resistant
-	 * This would avoid runtime rechecks for uniqueness.
-	 */
-	if (usingNewUniqueIndexOpClass)
-	{
-		appendStringInfo(indexExprStr,
-						 "%s.generate_unique_shard_document(document, shard_key_value, '%s'::%s.bson, %s) %s.bson_rum_unique_shard_path_ops WITH OPERATOR(%s.=#=)",
-						 HelioApiInternalSchemaName,
-						 GenerateUniqueProjectionSpec(indexDefKey),
-						 CoreSchemaName,
-						 sparse ? "true" : "false",
-						 HelioApiInternalSchemaName,
-						 HelioApiInternalSchemaName);
-		firstColumnWritten = true;
-	}
 
 	if (list_length(indexDefKey->keyPathList) == 0)
 	{
@@ -5011,11 +4996,10 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 								"or a non-root wildcard index")));
 		}
 
-		if (enableLargeIndexKeys || ForceIndexTermTruncation)
+		/* We can't truncate terms on unique indexes as that would break uniqueness checks. */
+		if (!unique && (enableLargeIndexKeys || ForceIndexTermTruncation))
 		{
-			/* unique indexes must use compound index limit */
-			uint32_t indexTermSizeLimit = (unique || list_length(
-											   indexDefKey->keyPathList) > 1) ?
+			uint32_t indexTermSizeLimit = list_length(indexDefKey->keyPathList) > 1 ?
 										  COMPOUND_INDEX_TERM_SIZE_LIMIT :
 										  SINGLE_PATH_INDEX_TERM_SIZE_LIMIT;
 			sprintf(indexTermSizeLimitArg, ",tl=%u", ComputeIndexTermLimit(
@@ -5033,23 +5017,6 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 			{
 				case MongoIndexKind_Regular:
 				{
-					bool generateNotFoundTerm = false;
-					if (unique)
-					{
-						if (sparse)
-						{
-							/* When using the new op class, generate the notFound
-							 * term with the new op class.
-							 */
-							generateNotFoundTerm = usingNewUniqueIndexOpClass;
-						}
-						else
-						{
-							generateNotFoundTerm = true;
-						}
-					}
-
-
 					appendStringInfo(indexExprStr,
 									 "%s document %s.bson_rum_single_path_ops(path=%s%s%s%s)",
 									 firstColumnWritten ? "," : "",
@@ -5058,24 +5025,22 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 									 indexKeyPath->isWildcard ? ",iswildcard=true" : "",
 									 indexTermSizeLimitArg,
 
-									 generateNotFoundTerm ?
-									 ", generateNotFoundTerm=true" :
+					                 /* We generate a term for paths that are not found only in the case of
+					                  * unique non-sparse indexes */
+									 unique && !sparse ? ", generateNotFoundTerm=true" :
 									 "");
 					if (unique)
 					{
 						appendStringInfo(indexExprStr, " WITH OPERATOR(%s.=?=)",
 										 ApiCatalogSchemaName);
 
-						if (!usingNewUniqueIndexOpClass)
-						{
-							/* Add a unique hash path for this column that includes the shard key */
-							appendStringInfo(indexExprStr,
-											 ", ((shard_key_value, document)::%s.shard_key_and_document) "
-											 "%s.bson_rum_exclusion_ops(path=%s) WITH OPERATOR(%s.=)",
-											 ApiCatalogSchemaName, ApiCatalogSchemaName,
-											 quote_literal_cstr(keyPath),
-											 ApiCatalogSchemaName);
-						}
+						/* Add a unique hash path for this column that includes the shard key */
+						appendStringInfo(indexExprStr,
+										 ", ((shard_key_value, document)::%s.shard_key_and_document) "
+										 "%s.bson_rum_exclusion_ops(path=%s) WITH OPERATOR(%s.=)",
+										 ApiCatalogSchemaName, ApiCatalogSchemaName,
+										 quote_literal_cstr(keyPath),
+										 ApiCatalogSchemaName);
 					}
 
 					break;
@@ -5722,60 +5687,4 @@ IndexSupportsTruncation(IndexDef *indexDef)
 		   !indexDef->key->has2dsphereIndex &&
 		   !indexDef->key->hasCosmosIndexes &&
 		   indexDef->expireAfterSeconds == NULL;
-}
-
-
-static const char *
-GenerateUniqueProjectionSpec(IndexDefKey *indexDefKey)
-{
-	ListCell *keyPathCell = NULL;
-	pgbson_writer writer;
-	PgbsonWriterInit(&writer);
-	foreach(keyPathCell, indexDefKey->keyPathList)
-	{
-		IndexDefKeyPath *indexKeyPath = (IndexDefKeyPath *) lfirst(keyPathCell);
-		char *keyPath = (char *) indexKeyPath->path;
-
-		switch (indexKeyPath->indexKind)
-		{
-			case MongoIndexKind_Regular:
-			{
-				if (indexKeyPath->isWildcard)
-				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
-									errmsg("Cannot create wildcard unique indexes")));
-				}
-
-				PgbsonWriterAppendInt32(&writer, keyPath, -1, 1);
-				break;
-			}
-
-			case MongoIndexKind_Hashed:
-			{
-				/* This should have been validated but do one more sanity check */
-				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
-								errmsg("Cannot create unique hashed indexes")));
-				break;
-			}
-
-			case MongoIndexKind_Text:
-			{
-				/* This should have been validated but do one more sanity check */
-				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
-								errmsg("Cannot create unique text indexes")));
-				break;
-			}
-
-			default:
-			{
-				ereport(ERROR, (errmsg("Unknown mongo index kind for unique indexes %d",
-									   indexKeyPath->indexKind)));
-				break;
-			}
-		}
-	}
-
-	/* Now get the pgbson */
-	pgbson *bson = PgbsonWriterGetPgbson(&writer);
-	return PgbsonToHexadecimalString(bson);
 }

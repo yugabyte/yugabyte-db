@@ -610,7 +610,7 @@ FindShardKeyFieldValuesForQuery(bson_iter_t *queryDocument,
 			if (!BSON_ITER_HOLDS_ARRAY(queryDocument) ||
 				!bson_iter_recurse(queryDocument, &andIterator))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 								errmsg("Could not iterate through query document "
 									   "$and.")));
 			}
@@ -621,7 +621,7 @@ FindShardKeyFieldValuesForQuery(bson_iter_t *queryDocument,
 				if (!BSON_ITER_HOLDS_DOCUMENT(&andIterator) ||
 					!bson_iter_recurse(&andIterator, &andElementIterator))
 				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+					ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 									errmsg("Could not iterate through elements within "
 										   "$and query.")));
 				}

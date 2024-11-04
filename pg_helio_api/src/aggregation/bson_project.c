@@ -789,7 +789,7 @@ GetBsonValueForReplaceRoot(bson_iter_t *replaceRootIterator, bson_value_t *value
 		/* Mongo behavior: replaceRoot spec can't have anything other field than "newRoot" */
 		if (strcmp(path, "newRoot") != 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD),
+			ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 							errmsg(
 								"BSON fields '$replaceRoot.%s' is an unknown field",
 								path)));
@@ -801,7 +801,7 @@ GetBsonValueForReplaceRoot(bson_iter_t *replaceRootIterator, bson_value_t *value
 
 	if (!replaceRootFound)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40414),
+		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 						errmsg(
 							"BSON field '$replaceRoot.newRoot' is missing but a required field")));
 	}
@@ -1690,7 +1690,7 @@ BuildBsonUnsetPathTree(const bson_value_t *pathSpecification)
 			}
 			else
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31120),
+				ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 								errmsg(
 									"$unset specification must be a string or an array containing only string values")));
 			}
@@ -1698,7 +1698,7 @@ BuildBsonUnsetPathTree(const bson_value_t *pathSpecification)
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31002),
+		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 						errmsg("$unset specification must be a string or an array")));
 	}
 

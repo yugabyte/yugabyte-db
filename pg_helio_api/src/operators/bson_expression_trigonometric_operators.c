@@ -23,23 +23,23 @@
 /* --------------------------------------------------------- */
 /* Type definitions */
 /* --------------------------------------------------------- */
-typedef void (*ProcessTrigOperatorOneOperand)(const bson_value_t *currentValue,
-											  bson_value_t *result);
+typedef void (*ProcessTrigSingleOperand)(const bson_value_t *currentValue,
+										 bson_value_t *result);
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
-static void HandlePreParsedTrigOperatorOneOperand(pgbson *doc,
-												  void *arguments,
-												  ExpressionResult *expressionResult,
-												  const char *operatorName,
-												  ProcessTrigOperatorOneOperand
-												  processOperatorFunc);
-static void ParseTrigOperatorOneOperand(const bson_value_t *argument,
-										AggregationExpressionData *data,
-										const char *operatorName,
-										ParseAggregationExpressionContext *parseContext,
-										ProcessTrigOperatorOneOperand processOperatorFunc);
+static void HandlePreParsedTrigOperatorSingleOperand(pgbson *doc,
+													 void *arguments,
+													 ExpressionResult *expressionResult,
+													 const char *operatorName,
+													 ProcessTrigSingleOperand
+													 processOperatorFunc);
+static void ParseTrigOperatorSingleOperand(const bson_value_t *argument,
+										   AggregationExpressionData *data,
+										   const char *operatorName,
+										   ParseAggregationExpressionContext *parseContext,
+										   ProcessTrigSingleOperand processOperatorFunc);
 static void ProcessDollarDegreesToRadians(const bson_value_t *currentValue,
 										  bson_value_t *result);
 static void ProcessDollarRadiansToDegrees(const bson_value_t *currentValue,
@@ -60,7 +60,7 @@ static void ProcessDollarAcosh(const bson_value_t *currentValue, bson_value_t *r
 static void ProcessDollarAtanh(const bson_value_t *currentValue, bson_value_t *result);
 static void ApplyTrigOperator(bson_value_t *currentValue,
 							  bson_value_t *result,
-							  const char *operatorName, ProcessTrigOperatorOneOperand
+							  const char *operatorName, ProcessTrigSingleOperand
 							  processOperatorFunc);
 
 /*
@@ -71,8 +71,8 @@ void
 ParseDollarDegreesToRadians(const bson_value_t *argument, AggregationExpressionData *data,
 							ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorOneOperand(argument, data, "$degreesToRadians", parseContext,
-								ProcessDollarDegreesToRadians);
+	ParseTrigOperatorSingleOperand(argument, data, "$degreesToRadians", parseContext,
+								   ProcessDollarDegreesToRadians);
 }
 
 
@@ -85,9 +85,9 @@ void
 HandlePreParsedDollarDegreesToRadians(pgbson *doc, void *arguments,
 									  ExpressionResult *expressionResult)
 {
-	HandlePreParsedTrigOperatorOneOperand(doc, arguments, expressionResult,
-										  "$degreesToRadians",
-										  ProcessDollarDegreesToRadians);
+	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult,
+											 "$degreesToRadians",
+											 ProcessDollarDegreesToRadians);
 }
 
 
@@ -99,8 +99,8 @@ void
 ParseDollarRadiansToDegrees(const bson_value_t *argument, AggregationExpressionData *data,
 							ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorOneOperand(argument, data, "$radiansToDegrees", parseContext,
-								ProcessDollarRadiansToDegrees);
+	ParseTrigOperatorSingleOperand(argument, data, "$radiansToDegrees", parseContext,
+								   ProcessDollarRadiansToDegrees);
 }
 
 
@@ -113,9 +113,9 @@ void
 HandlePreParsedDollarRadiansToDegrees(pgbson *doc, void *arguments,
 									  ExpressionResult *expressionResult)
 {
-	HandlePreParsedTrigOperatorOneOperand(doc, arguments, expressionResult,
-										  "$radiansToDegrees",
-										  ProcessDollarRadiansToDegrees);
+	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult,
+											 "$radiansToDegrees",
+											 ProcessDollarRadiansToDegrees);
 }
 
 
@@ -127,8 +127,8 @@ void
 ParseDollarSin(const bson_value_t *argument, AggregationExpressionData *data,
 			   ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorOneOperand(argument, data, "$sin",
-								parseContext, ProcessDollarSin);
+	ParseTrigOperatorSingleOperand(argument, data, "$sin",
+								   parseContext, ProcessDollarSin);
 }
 
 
@@ -140,8 +140,8 @@ ParseDollarSin(const bson_value_t *argument, AggregationExpressionData *data,
 void
 HandlePreParsedDollarSin(pgbson *doc, void *arguments, ExpressionResult *expressionResult)
 {
-	HandlePreParsedTrigOperatorOneOperand(doc, arguments, expressionResult, "$sin",
-										  ProcessDollarSin);
+	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult, "$sin",
+											 ProcessDollarSin);
 }
 
 
@@ -153,8 +153,8 @@ void
 ParseDollarCos(const bson_value_t *argument, AggregationExpressionData *data,
 			   ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorOneOperand(argument, data, "$cos", parseContext,
-								ProcessDollarCos);
+	ParseTrigOperatorSingleOperand(argument, data, "$cos", parseContext,
+								   ProcessDollarCos);
 }
 
 
@@ -166,8 +166,8 @@ ParseDollarCos(const bson_value_t *argument, AggregationExpressionData *data,
 void
 HandlePreParsedDollarCos(pgbson *doc, void *arguments, ExpressionResult *expressionResult)
 {
-	HandlePreParsedTrigOperatorOneOperand(doc, arguments, expressionResult, "$cos",
-										  ProcessDollarCos);
+	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult, "$cos",
+											 ProcessDollarCos);
 }
 
 
@@ -179,8 +179,8 @@ void
 ParseDollarTan(const bson_value_t *argument, AggregationExpressionData *data,
 			   ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorOneOperand(argument, data, "$tan",
-								parseContext, ProcessDollarTan);
+	ParseTrigOperatorSingleOperand(argument, data, "$tan",
+								   parseContext, ProcessDollarTan);
 }
 
 
@@ -192,8 +192,8 @@ ParseDollarTan(const bson_value_t *argument, AggregationExpressionData *data,
 void
 HandlePreParsedDollarTan(pgbson *doc, void *arguments, ExpressionResult *expressionResult)
 {
-	HandlePreParsedTrigOperatorOneOperand(doc, arguments, expressionResult, "$tan",
-										  ProcessDollarTan);
+	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult, "$tan",
+											 ProcessDollarTan);
 }
 
 
@@ -205,8 +205,8 @@ void
 ParseDollarSinh(const bson_value_t *argument, AggregationExpressionData *data,
 				ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorOneOperand(argument, data, "$sinh",
-								parseContext, ProcessDollarSinh);
+	ParseTrigOperatorSingleOperand(argument, data, "$sinh",
+								   parseContext, ProcessDollarSinh);
 }
 
 
@@ -219,8 +219,8 @@ void
 HandlePreParsedDollarSinh(pgbson *doc, void *arguments,
 						  ExpressionResult *expressionResult)
 {
-	HandlePreParsedTrigOperatorOneOperand(doc, arguments, expressionResult, "$sinh",
-										  ProcessDollarSinh);
+	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult, "$sinh",
+											 ProcessDollarSinh);
 }
 
 
@@ -232,8 +232,8 @@ void
 ParseDollarCosh(const bson_value_t *argument, AggregationExpressionData *data,
 				ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorOneOperand(argument, data, "$cosh", parseContext,
-								ProcessDollarCosh);
+	ParseTrigOperatorSingleOperand(argument, data, "$cosh", parseContext,
+								   ProcessDollarCosh);
 }
 
 
@@ -246,8 +246,8 @@ void
 HandlePreParsedDollarCosh(pgbson *doc, void *arguments,
 						  ExpressionResult *expressionResult)
 {
-	HandlePreParsedTrigOperatorOneOperand(doc, arguments, expressionResult, "$cosh",
-										  ProcessDollarCosh);
+	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult, "$cosh",
+											 ProcessDollarCosh);
 }
 
 
@@ -259,8 +259,8 @@ void
 ParseDollarTanh(const bson_value_t *argument, AggregationExpressionData *data,
 				ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorOneOperand(argument, data, "$tanh", parseContext,
-								ProcessDollarTanh);
+	ParseTrigOperatorSingleOperand(argument, data, "$tanh", parseContext,
+								   ProcessDollarTanh);
 }
 
 
@@ -273,8 +273,8 @@ void
 HandlePreParsedDollarTanh(pgbson *doc, void *arguments,
 						  ExpressionResult *expressionResult)
 {
-	HandlePreParsedTrigOperatorOneOperand(doc, arguments, expressionResult, "$tanh",
-										  ProcessDollarTanh);
+	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult, "$tanh",
+											 ProcessDollarTanh);
 }
 
 
@@ -286,8 +286,8 @@ void
 ParseDollarAsin(const bson_value_t *argument, AggregationExpressionData *data,
 				ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorOneOperand(argument, data, "$asin",
-								parseContext, ProcessDollarAsin);
+	ParseTrigOperatorSingleOperand(argument, data, "$asin",
+								   parseContext, ProcessDollarAsin);
 }
 
 
@@ -300,8 +300,8 @@ void
 HandlePreParsedDollarAsin(pgbson *doc, void *arguments,
 						  ExpressionResult *expressionResult)
 {
-	HandlePreParsedTrigOperatorOneOperand(doc, arguments, expressionResult, "$asin",
-										  ProcessDollarAsin);
+	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult, "$asin",
+											 ProcessDollarAsin);
 }
 
 
@@ -313,8 +313,8 @@ void
 ParseDollarAcos(const bson_value_t *argument, AggregationExpressionData *data,
 				ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorOneOperand(argument, data, "$acos",
-								parseContext, ProcessDollarAcos);
+	ParseTrigOperatorSingleOperand(argument, data, "$acos",
+								   parseContext, ProcessDollarAcos);
 }
 
 
@@ -327,8 +327,8 @@ void
 HandlePreParsedDollarAcos(pgbson *doc, void *arguments,
 						  ExpressionResult *expressionResult)
 {
-	HandlePreParsedTrigOperatorOneOperand(doc, arguments, expressionResult, "$acos",
-										  ProcessDollarAcos);
+	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult, "$acos",
+											 ProcessDollarAcos);
 }
 
 
@@ -340,8 +340,8 @@ void
 ParseDollarAtan(const bson_value_t *argument, AggregationExpressionData *data,
 				ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorOneOperand(argument, data, "$atan",
-								parseContext, ProcessDollarAtan);
+	ParseTrigOperatorSingleOperand(argument, data, "$atan",
+								   parseContext, ProcessDollarAtan);
 }
 
 
@@ -354,8 +354,8 @@ void
 HandlePreParsedDollarAtan(pgbson *doc, void *arguments,
 						  ExpressionResult *expressionResult)
 {
-	HandlePreParsedTrigOperatorOneOperand(doc, arguments, expressionResult, "$atan",
-										  ProcessDollarAtan);
+	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult, "$atan",
+											 ProcessDollarAtan);
 }
 
 
@@ -431,8 +431,8 @@ void
 ParseDollarAsinh(const bson_value_t *argument, AggregationExpressionData *data,
 				 ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorOneOperand(argument, data, "$asinh",
-								parseContext, ProcessDollarAsinh);
+	ParseTrigOperatorSingleOperand(argument, data, "$asinh",
+								   parseContext, ProcessDollarAsinh);
 }
 
 
@@ -445,8 +445,8 @@ void
 HandlePreParsedDollarAsinh(pgbson *doc, void *arguments,
 						   ExpressionResult *expressionResult)
 {
-	HandlePreParsedTrigOperatorOneOperand(doc, arguments, expressionResult, "$asinh",
-										  ProcessDollarAsinh);
+	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult, "$asinh",
+											 ProcessDollarAsinh);
 }
 
 
@@ -458,8 +458,8 @@ void
 ParseDollarAcosh(const bson_value_t *argument, AggregationExpressionData *data,
 				 ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorOneOperand(argument, data, "$acosh",
-								parseContext, ProcessDollarAcosh);
+	ParseTrigOperatorSingleOperand(argument, data, "$acosh",
+								   parseContext, ProcessDollarAcosh);
 }
 
 
@@ -472,8 +472,8 @@ void
 HandlePreParsedDollarAcosh(pgbson *doc, void *arguments,
 						   ExpressionResult *expressionResult)
 {
-	HandlePreParsedTrigOperatorOneOperand(doc, arguments, expressionResult, "$acosh",
-										  ProcessDollarAcosh);
+	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult, "$acosh",
+											 ProcessDollarAcosh);
 }
 
 
@@ -485,8 +485,8 @@ void
 ParseDollarAtanh(const bson_value_t *argument, AggregationExpressionData *data,
 				 ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorOneOperand(argument, data, "$atanh",
-								parseContext, ProcessDollarAtanh);
+	ParseTrigOperatorSingleOperand(argument, data, "$atanh",
+								   parseContext, ProcessDollarAtanh);
 }
 
 
@@ -499,8 +499,8 @@ void
 HandlePreParsedDollarAtanh(pgbson *doc, void *arguments,
 						   ExpressionResult *expressionResult)
 {
-	HandlePreParsedTrigOperatorOneOperand(doc, arguments, expressionResult, "$atanh",
-										  ProcessDollarAtanh);
+	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult, "$atanh",
+											 ProcessDollarAtanh);
 }
 
 
@@ -508,11 +508,11 @@ HandlePreParsedDollarAtanh(pgbson *doc, void *arguments,
  * Evaluates the output of a trig expression with 1 operand.
  */
 static void
-HandlePreParsedTrigOperatorOneOperand(pgbson *doc,
-									  void *arguments,
-									  ExpressionResult *expressionResult,
-									  const char *operatorName,
-									  ProcessTrigOperatorOneOperand processOperatorFunc)
+HandlePreParsedTrigOperatorSingleOperand(pgbson *doc,
+										 void *arguments,
+										 ExpressionResult *expressionResult,
+										 const char *operatorName,
+										 ProcessTrigSingleOperand processOperatorFunc)
 {
 	AggregationExpressionData *argument = (AggregationExpressionData *) arguments;
 
@@ -530,11 +530,11 @@ HandlePreParsedTrigOperatorOneOperand(pgbson *doc,
 
 
 static void
-ParseTrigOperatorOneOperand(const bson_value_t *argument,
-							AggregationExpressionData *data,
-							const char *operatorName,
-							ParseAggregationExpressionContext *parseContext,
-							ProcessTrigOperatorOneOperand processOperatorFunc)
+ParseTrigOperatorSingleOperand(const bson_value_t *argument,
+							   AggregationExpressionData *data,
+							   const char *operatorName,
+							   ParseAggregationExpressionContext *parseContext,
+							   ProcessTrigSingleOperand processOperatorFunc)
 {
 	int numOfRequiredArgs = 1;
 	AggregationExpressionData *parsedData = ParseFixedArgumentsForExpression(argument,
@@ -567,7 +567,7 @@ static void
 ApplyTrigOperator(bson_value_t *currentValue,
 				  bson_value_t *result,
 				  const char *operatorName,
-				  ProcessTrigOperatorOneOperand processOperatorFunc)
+				  ProcessTrigSingleOperand processOperatorFunc)
 {
 	if (IsExpressionResultNullOrUndefined(currentValue))
 	{

@@ -485,7 +485,7 @@ BuildUpdates(BatchUpdateSpec *spec)
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40414),
+		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 						errmsg("BSON field 'update.updates' is missing but is "
 							   "a required field")));
 	}
@@ -493,7 +493,7 @@ BuildUpdates(BatchUpdateSpec *spec)
 	int updateCount = list_length(updates);
 	if (updateCount == 0 || updateCount > MaxWriteBatchSize)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDLENGTH),
+		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 						errmsg("Write batch sizes must be between 1 and %d. "
 							   "Got %d operations.", MaxWriteBatchSize, updateCount),
 						errdetail_log("Write batch sizes must be between 1 and %d. "
@@ -524,7 +524,7 @@ BuildBatchUpdateSpec(bson_iter_t *updateCommandIter, pgbsonsequence *updateDocs)
 		{
 			if (!BSON_ITER_HOLDS_UTF8(updateCommandIter))
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+				ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 								errmsg("collection name has invalid type %s",
 									   BsonIterTypeName(updateCommandIter))));
 			}
@@ -563,7 +563,7 @@ BuildBatchUpdateSpec(bson_iter_t *updateCommandIter, pgbsonsequence *updateDocs)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD),
+			ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 							errmsg("BSON field 'update.%s' is an unknown field",
 								   field)));
 		}
@@ -571,7 +571,7 @@ BuildBatchUpdateSpec(bson_iter_t *updateCommandIter, pgbsonsequence *updateDocs)
 
 	if (collectionName == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40414),
+		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 						errmsg("BSON field 'update.update' is missing but "
 							   "a required field")));
 	}
@@ -714,25 +714,25 @@ BuildUpdateSpec(bson_iter_t *updateIter)
 		else if (strcmp(field, "collation") == 0)
 		{
 			/* We error on collation by default unlike FindAndModify. So we don't need to condition on EnableCollation GUC here. */
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							errmsg("BSON field 'update.updates.collation' is not yet "
 								   "supported")));
 		}
 		else if (strcmp(field, "hint") == 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							errmsg("BSON field 'update.updates.hint' is not yet "
 								   "supported")));
 		}
 		else if (strcmp(field, "comment") == 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							errmsg("BSON field 'update.updates.comment' is not yet "
 								   "supported")));
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD),
+			ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 							errmsg("BSON field 'update.updates.%s' is an unknown field",
 								   field)));
 		}
@@ -740,14 +740,14 @@ BuildUpdateSpec(bson_iter_t *updateIter)
 
 	if (query == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40414),
+		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 						errmsg("BSON field 'update.updates.q' is missing but "
 							   "a required field")));
 	}
 
 	if (update == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40414),
+		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 						errmsg("BSON field 'update.updates.u' is missing but "
 							   "a required field")));
 	}
@@ -850,7 +850,6 @@ DoMultiUpdate(MongoCollection *collection, List *updates, text *transactionId,
 	PG_CATCH();
 	{
 		MemoryContextSwitchTo(oldContext);
-		FlushErrorState();
 
 		/* Abort the inner transaction */
 		RollbackAndReleaseCurrentSubTransaction();
@@ -913,6 +912,7 @@ DoSingleUpdate(MongoCollection *collection, UpdateSpec *updateSpec, text *transa
 		batchResult->writeErrors = lappend(batchResult->writeErrors,
 										   GetWriteErrorFromErrorData(errorData,
 																	  updateIndex));
+
 		isSuccess = false;
 	}
 	PG_END_TRY();
@@ -1099,7 +1099,7 @@ ProcessUpdate(MongoCollection *collection, UpdateSpec *updateSpec,
 		if (DetermineUpdateType(update) == UpdateType_ReplaceDocument)
 		{
 			/* Mongo does not support this case */
-			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+			ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 							errmsg("multi update is not supported for "
 								   "replacement-style update")));
 		}
@@ -1679,7 +1679,7 @@ ProcessUnshardedUpdateBatchWorker(MongoCollection *collection, List *updates, bo
 	int updateCount = list_length(updates);
 	if (updateCount == 0 || updateCount > MaxWriteBatchSize)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDLENGTH),
+		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 						errmsg("Write batch sizes must be between 1 and %d. "
 							   "Got %d operations.", MaxWriteBatchSize, updateCount),
 						errdetail_log("Write batch sizes must be between 1 and %d. "
@@ -1705,7 +1705,7 @@ SerializeUnshardedUpdateParams(const bson_value_t *updateSpec, bool isOrdered)
 {
 	if (updateSpec != NULL && updateSpec->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40414),
+		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 						errmsg("BSON field 'update.updates' is missing but is "
 							   "a required field")));
 	}

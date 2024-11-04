@@ -433,8 +433,7 @@ BuildBsonUpdateMetadata(BsonUpdateMetadata *metadata, pgbson *updateSpec,
 		case UpdateType_Operator:
 		{
 			metadata->operatorState = GetOperatorUpdateState(updateSpec, querySpec,
-															 arrayFilters,
-															 buildSourceDocOnUpsert);
+															 arrayFilters);
 			break;
 		}
 
@@ -518,7 +517,7 @@ DetermineUpdateType(pgbson *updateSpec)
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
 							"Update should be a document or an array")));
 	}
 }

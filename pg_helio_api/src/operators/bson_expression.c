@@ -241,8 +241,7 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	{ "$cond", NULL, &ParseDollarCond, &HandlePreParsedDollarCond,
 	  FEATURE_AGG_OPERATOR_COND },
 	{ "$const", NULL, &ParseDollarLiteral, NULL, FEATURE_AGG_OPERATOR_CONST }, /* $const effectively same as $literal */
-	{ "$convert", NULL, &ParseDollarConvert, &HandlePreParsedDollarConvert,
-	  FEATURE_AGG_OPERATOR_CONVERT },
+	{ "$convert", &HandleDollarConvert, NULL, NULL, FEATURE_AGG_OPERATOR_CONVERT },
 	{ "$cos", NULL, &ParseDollarCos, &HandlePreParsedDollarCos,
 	  FEATURE_AGG_OPERATOR_COS },
 	{ "$cosh", NULL, &ParseDollarCosh, &HandlePreParsedDollarCosh,
@@ -303,9 +302,8 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	{ "$indexOfCP", NULL, &ParseDollarIndexOfCP, &HandlePreParsedDollarIndexOfCP,
 	  FEATURE_AGG_OPERATOR_INDEXOFCP },
 	{ "$isArray", NULL, &ParseDollarIsArray, &HandlePreParsedDollarIsArray,
-	  FEATURE_AGG_OPERATOR_ISARRAY }, { "$isNumber", NULL, &ParseDollarIsNumber,
-										&HandlePreParsedDollarIsNumber,
-										FEATURE_AGG_OPERATOR_ISNUMBER },
+	  FEATURE_AGG_OPERATOR_ISARRAY },
+	{ "$isNumber", &HandleDollarIsNumber, NULL, NULL, FEATURE_AGG_OPERATOR_ISNUMBER },
 	{ "$isoDayOfWeek", NULL, &ParseDollarIsoDayOfWeek, &HandlePreParsedDollarIsoDayOfWeek,
 	  FEATURE_AGG_OPERATOR_ISODAYOFWEEK },
 	{ "$isoWeek", NULL, &ParseDollarIsoWeek, &HandlePreParsedDollarIsoWeek,
@@ -444,26 +442,19 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	  FEATURE_AGG_OPERATOR_TAN },
 	{ "$tanh", NULL, &ParseDollarTanh, &HandlePreParsedDollarTanh,
 	  FEATURE_AGG_OPERATOR_TANH },
-	{ "$toBool", NULL, &ParseDollarToBool, &HandlePreParsedDollarToBool,
-	  FEATURE_AGG_OPERATOR_TOBOOL },
-	{ "$toDate", NULL, &ParseDollarToDate, &HandlePreParsedDollarToDate,
-	  FEATURE_AGG_OPERATOR_TODATE },
-	{ "$toDecimal", NULL, &ParseDollarToDecimal, &HandlePreParsedDollarToDecimal,
-	  FEATURE_AGG_OPERATOR_TODECIMAL },
-	{ "$toDouble", NULL, &ParseDollarToDouble, &HandlePreParsedDollarToDouble,
-	  FEATURE_AGG_OPERATOR_TODOUBLE },
+	{ "$toBool", &HandleDollarToBool, NULL, NULL, FEATURE_AGG_OPERATOR_TOBOOL },
+	{ "$toDate", &HandleDollarToDate, NULL, NULL, FEATURE_AGG_OPERATOR_TODATE },
+	{ "$toDecimal", &HandleDollarToDecimal, NULL, NULL, FEATURE_AGG_OPERATOR_TODECIMAL },
+	{ "$toDouble", &HandleDollarToDouble, NULL, NULL, FEATURE_AGG_OPERATOR_TODOUBLE },
 	{ "$toHashedIndexKey", NULL, &ParseDollarToHashedIndexKey,
 	  &HandlePreParsedDollarToHashedIndexKey, FEATURE_AGG_OPERATOR_TOHASHEDINDEXKEY },
-	{ "$toInt", NULL, &ParseDollarToInt, &HandlePreParsedDollarToInt,
-	  FEATURE_AGG_OPERATOR_TOINT },
-	{ "$toLong", NULL, &ParseDollarToLong, &HandlePreParsedDollarToLong,
-	  FEATURE_AGG_OPERATOR_TOLONG },
+	{ "$toInt", &HandleDollarToInt, NULL, NULL, FEATURE_AGG_OPERATOR_TOINT },
+	{ "$toLong", &HandleDollarToLong, NULL, NULL, FEATURE_AGG_OPERATOR_TOLONG },
 	{ "$toLower", NULL, &ParseDollarToLower, &HandlePreParsedDollarToLower,
 	  FEATURE_AGG_OPERATOR_TOLOWER },
-	{ "$toObjectId", NULL, &ParseDollarToObjectId, &HandlePreParsedDollarToObjectId,
+	{ "$toObjectId", &HandleDollarToObjectId, NULL, NULL,
 	  FEATURE_AGG_OPERATOR_TOOBJECTID },
-	{ "$toString", NULL, &ParseDollarToString, &HandlePreParsedDollarToString,
-	  FEATURE_AGG_OPERATOR_TOSTRING },
+	{ "$toString", &HandleDollarToString, NULL, NULL, FEATURE_AGG_OPERATOR_TOSTRING },
 	{ "$toUpper", NULL, &ParseDollarToUpper, &HandlePreParsedDollarToUpper,
 	  FEATURE_AGG_OPERATOR_TOUPPER },
 	{ "$trim", NULL, &ParseDollarTrim, &HandlePreParsedDollarTrim,
@@ -474,8 +465,7 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	  FEATURE_AGG_OPERATOR_TSINCREMENT },
 	{ "$tsSecond", NULL, &ParseDollarTsSecond, &HandlePreParsedDollarTsSecond,
 	  FEATURE_AGG_OPERATOR_TSSECOND },
-	{ "$type", NULL, &ParseDollarType, &HandlePreParsedDollarType,
-	  FEATURE_AGG_OPERATOR_TYPE },
+	{ "$type", &HandleDollarType, NULL, NULL, FEATURE_AGG_OPERATOR_TYPE },
 	{ "$unsetField", NULL, &ParseDollarUnsetField, &HandlePreParsedDollarUnsetField,
 	  FEATURE_AGG_OPERATOR_UNSETFIELD },
 	{ "$week", NULL, &ParseDollarWeek, &HandlePreParsedDollarWeek,
@@ -1725,7 +1715,7 @@ ReportOperatorExpressonSyntaxError(const char *fieldA, bson_iter_t *fieldBIter, 
 {
 	if (bson_iter_key_len(fieldBIter) == 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
 							"FieldPath cannot be constructed with empty string.")));
 	}
 
@@ -1734,7 +1724,7 @@ ReportOperatorExpressonSyntaxError(const char *fieldA, bson_iter_t *fieldBIter, 
 	if (!performOperatorCheck || (bson_iter_key_len(fieldBIter) > 1 && bson_iter_key(
 									  fieldBIter)[0] == '$'))
 	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40181), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
 							"an expression operator specification must contain exactly one field, found 2 fields '%s' and '%s'.",
 							fieldA,
 							bson_iter_key(fieldBIter))));
@@ -3258,7 +3248,7 @@ ParseDocumentAggregationExpressionData(const bson_value_t *value,
 
 		if (bson_iter_next(&docIter))
 		{
-			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40181), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
 								"an expression operator specification must contain exactly one field, found 2 fields '%s' and '%s'.",
 								operatorKey,
 								bson_iter_key(&docIter))));

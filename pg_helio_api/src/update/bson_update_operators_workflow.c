@@ -236,8 +236,7 @@ typedef void (*HandleUpdateOperatorUpdateBsonTree)(BsonIntermediatePathNode *tre
 												   WriteUpdatedValuesFunc updateFunc,
 												   UpdateOperatorGetFuncState stateFunc,
 												   const PositionalUpdateSpec *
-												   positionalSpec,
-												   bool isUpsert);
+												   positionalSpec);
 
 /* The declaration of the Mongo update operators */
 typedef struct
@@ -328,8 +327,7 @@ NotifyRemovedField_HookType notify_remove_field_hook = NULL;
 
 static void ReadUpdateSpecAndUpdateTree(bson_iter_t *updateIterator,
 										BsonIntermediatePathNode *root,
-										const PositionalUpdateSpec *positionalSpec,
-										bool isUpsert);
+										const PositionalUpdateSpec *positionalSpec);
 
 /* Tree building functions */
 static void ValidateSpecPathForUpdateTree(const StringView *updatePath);
@@ -338,20 +336,17 @@ static bool UpdateParentDataInTree(const BsonPathNode *node, bool markAsIncludeA
 static void HandleBasicUpdateTree(BsonIntermediatePathNode *tree, bson_iter_t *updateSpec,
 								  WriteUpdatedValuesFunc valuesFunc,
 								  UpdateOperatorGetFuncState stateFunc,
-								  const PositionalUpdateSpec *positionalSpec,
-								  bool isUpsert);
+								  const PositionalUpdateSpec *positionalSpec);
 static void HandleRenameUpdateTree(BsonIntermediatePathNode *tree,
 								   bson_iter_t *updateSpec,
 								   WriteUpdatedValuesFunc valuesFunc,
 								   UpdateOperatorGetFuncState stateFunc,
-								   const PositionalUpdateSpec *positionalSpec,
-								   bool isUpsert);
+								   const PositionalUpdateSpec *positionalSpec);
 static void HandleUnsetUpdateTree(BsonIntermediatePathNode *tree,
 								  bson_iter_t *updateSpec,
 								  WriteUpdatedValuesFunc valuesFunc,
 								  UpdateOperatorGetFuncState stateFunc,
-								  const PositionalUpdateSpec *positionalSpec,
-								  bool isUpsert);
+								  const PositionalUpdateSpec *positionalSpec);
 static BsonIntermediatePathNode * CreateUpdateIntermediateNode(const StringView *path,
 															   const char *relativePath,
 															   void *state);
@@ -365,12 +360,6 @@ static const BsonPathNode * HandleNodeExistsInTree(const BsonPathNode *existing,
 static void ValidateNodePathInTree(const StringView *path, const char *relativePath);
 static PositionalData GetNodePositionalDataFromPath(const StringView *path,
 													const BsonUpdateTreeState *state);
-static void HandleSetOnInsertUpdateTree(BsonIntermediatePathNode *tree,
-										bson_iter_t *updateSpec,
-										WriteUpdatedValuesFunc valuesFunc,
-										UpdateOperatorGetFuncState stateFunc,
-										const PositionalUpdateSpec *positionalSpec,
-										bool isUpsert);
 
 /* Positional filter expression functions */
 static uint32_t ArrayFiltersKeyHash(const void *key, Size keysize);
@@ -436,7 +425,7 @@ static MongoUpdateOperatorSpec MongoUpdateOperators[] =
 	{ "$push", HandleBasicUpdateTree, HandleUpdateDollarPush, NULL },
 	{ "$pop", HandleBasicUpdateTree, HandleUpdateDollarPop, NULL },
 	{ "$rename", HandleRenameUpdateTree, HandleUpdateDollarRename, NULL },
-	{ "$setOnInsert", HandleSetOnInsertUpdateTree, HandleUpdateDollarSetOnInsert, NULL },
+	{ "$setOnInsert", HandleBasicUpdateTree, HandleUpdateDollarSetOnInsert, NULL },
 	{ "$pullAll", HandleBasicUpdateTree, HandleUpdateDollarPullAll, NULL },
 	{ "$addToSet", HandleBasicUpdateTree, HandleUpdateDollarAddToSet, NULL },
 	{ "$mul", HandleBasicUpdateTree, HandleUpdateDollarMul, NULL },
@@ -640,8 +629,7 @@ IsAnErrorForIntermediateNodeOfDollarRenameOp(const BsonPathNode *
  * and can be reused in processing document updates.
  */
 const BsonIntermediatePathNode *
-GetOperatorUpdateState(pgbson *updateSpec, pgbson *querySpec,
-					   pgbson *arrayFilters, bool isUpsert)
+GetOperatorUpdateState(pgbson *updateSpec, pgbson *querySpec, pgbson *arrayFilters)
 {
 	bson_iter_t updateIterator;
 	PgbsonInitIteratorAtPath(updateSpec, "", &updateIterator);
@@ -663,7 +651,7 @@ GetOperatorUpdateState(pgbson *updateSpec, pgbson *querySpec,
 	BsonUpdateIntermediatePathNode *root = palloc0(
 		sizeof(BsonUpdateIntermediatePathNode));
 	ReadUpdateSpecAndUpdateTree(&updateIterator, &root->base,
-								&positionalSpec, isUpsert);
+								&positionalSpec);
 
 	PostValidateArrayFilters(arrayFilterHash, updateSpec);
 	hash_destroy(arrayFilterHash);
@@ -868,8 +856,7 @@ UpdateArrayWriterFinalize(UpdateOperatorWriter *writer, UpdateArrayWriter *array
 static void
 ReadUpdateSpecAndUpdateTree(bson_iter_t *updateIterator,
 							BsonIntermediatePathNode *root,
-							const PositionalUpdateSpec *positionalSpec,
-							bool isUpsert)
+							const PositionalUpdateSpec *positionalSpec)
 {
 	/* Add the _id as the first node with leaf excluded */
 	bson_value_t excludeValue;
@@ -922,8 +909,7 @@ ReadUpdateSpecAndUpdateTree(bson_iter_t *updateIterator,
 												   updateWriterFunc,
 												   MongoUpdateOperators[i].
 												   updateWriterGetState,
-												   positionalSpec,
-												   isUpsert);
+												   positionalSpec);
 
 			operatorFound = true;
 		}
@@ -1014,8 +1000,7 @@ static void
 HandleBasicUpdateTree(BsonIntermediatePathNode *tree, bson_iter_t *updateSpec,
 					  WriteUpdatedValuesFunc valuesFunc,
 					  UpdateOperatorGetFuncState stateFunc,
-					  const PositionalUpdateSpec *positionalSpec,
-					  bool isUpsert)
+					  const PositionalUpdateSpec *positionalSpec)
 {
 	while (bson_iter_next(updateSpec))
 	{
@@ -1081,8 +1066,7 @@ static void
 HandleRenameUpdateTree(BsonIntermediatePathNode *tree, bson_iter_t *updateSpec,
 					   WriteUpdatedValuesFunc valuesFunc,
 					   UpdateOperatorGetFuncState stateFunc,
-					   const PositionalUpdateSpec *positionalSpec,
-					   bool isUpsert)
+					   const PositionalUpdateSpec *positionalSpec)
 {
 	bool treatLeafDataAsConstant = true;
 	ParseAggregationExpressionContext parseContext = { 0 };
@@ -1203,8 +1187,7 @@ HandleUnsetUpdateTree(BsonIntermediatePathNode *tree,
 					  bson_iter_t *updateSpec,
 					  WriteUpdatedValuesFunc valuesFunc,
 					  UpdateOperatorGetFuncState stateFunc,
-					  const PositionalUpdateSpec *positionalSpec,
-					  bool isUpsert)
+					  const PositionalUpdateSpec *positionalSpec)
 {
 	bool treatLeafDataAsConstant = true;
 	ParseAggregationExpressionContext parseContext = { 0 };
@@ -1236,26 +1219,6 @@ HandleUnsetUpdateTree(BsonIntermediatePathNode *tree,
 			HandleNodeExistsInTree(node, updatePathView.string, value, &updateTreeState);
 		}
 	}
-}
-
-
-/*
- * $setOnInsert is a no-op for non-upserts. For upserts, handle it like a basic update tree.
- */
-static void
-HandleSetOnInsertUpdateTree(BsonIntermediatePathNode *tree, bson_iter_t *updateSpec,
-							WriteUpdatedValuesFunc valuesFunc,
-							UpdateOperatorGetFuncState stateFunc,
-							const PositionalUpdateSpec *positionalSpec,
-							bool isUpsert)
-{
-	if (!isUpsert)
-	{
-		return;
-	}
-
-	HandleBasicUpdateTree(tree, updateSpec, valuesFunc, stateFunc,
-						  positionalSpec, isUpsert);
 }
 
 

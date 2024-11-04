@@ -76,6 +76,10 @@ select helio_api.insert_one('db', 'distinct6', '{ "_id": { "$oid" : "147f000000c
 EXECUTE distinctQueryWithFilter('db', 'distinct5', 'a', '{ "b": { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ceb" } } }');
 EXECUTE distinctQueryWithFilter('db', 'distinct5', 'a', '{ "b": { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19cea" } } }');
 
+-- negative tests
+EXECUTE distinctQueryWithFilter('db', 'distinct5', 'a', '{ "b": { "$id": { "$oid" : "147f000000c1de008ec19cea" }, "$ref": "distinct6" } }');
+EXECUTE distinctQueryWithFilter('db', 'distinct5', 'a', '{ "b": { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19cea" }, "$un": "t" } }');
+
 -- optional parameter - $db
 SELECT helio_api.insert_one('db2', 'distinct7', '{ "d": 20, "b": { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ceb" }, "$db": "db" }}');
 SELECT helio_api.insert_one('db2', 'distinct7', '{ "d": 30, "b": { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ceb" }}}');
@@ -83,35 +87,3 @@ SELECT helio_api.insert_one('db2', 'distinct7', '{ "d": 30, "b": { "$ref" : "dis
 EXECUTE distinctQueryWithFilter('db2', 'distinct7', 'd', '{ "b": { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ceb" }, "$db": "db" } }');
 -- expect to get 30
 EXECUTE distinctQueryWithFilter('db2', 'distinct7', 'd', '{ "b": { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ceb" } } }');
-
-SELECT helio_api.insert_one('db2', 'distinct7', '{ "d": 1, "b": { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce1" }}}');
-SELECT helio_api.insert_one('db2', 'distinct7', '{ "d": 2, "b": { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce2" }}}');
-SELECT helio_api.insert_one('db2', 'distinct7', '{ "d": 3, "b": { "$id" : { "$oid" : "147f000000c1de008ec19ce3" }, "$ref" : "distinct6" }}');
-SELECT helio_api.insert_one('db2', 'distinct7', '{ "d": 4, "b": { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce4" }}}');
-SELECT helio_api.insert_one('db2', 'distinct7', '{ "d": 5, "b": { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce5" }}}');
-SELECT helio_api.insert_one('db2', 'distinct7', '{ "d": 6, "b": { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce6" }}}');
-SELECT helio_api.insert_one('db2', 'distinct7', '{ "d": 7, "b": { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce6" }, "$db": "db", "tt":1}}');
-
--- expect to get 3
-EXECUTE distinctQueryWithFilter('db2', 'distinct7', 'd', '{ "b": {"$id": { "$oid" : "147f000000c1de008ec19ce3" }, "$ref" : "distinct6"} }');
-
--- expect to get 7
-EXECUTE distinctQueryWithFilter('db2', 'distinct7', 'd', '{ "b": { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ce6" },"$db": "db", "tt":1 } }');
-
--- expect to get null
-EXECUTE distinctQueryWithFilter('db2', 'distinct7', 'd', '{ "b": { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ce6" },"$db": "db" } }');
-
--- expect to work in $in/$nin
-EXECUTE distinctQueryWithFilter('db2', 'distinct7', 'd', '{ "b": { "$in": [ { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ce6" },"$db": "db", "tt":1 }, { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ce4" }} ] } }');
-EXECUTE distinctQueryWithFilter('db2', 'distinct7', 'd', '{ "b": { "$nin": [ { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ce6" },"$db": "db", "tt":1 }, { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ce4" }} ] } }');
-
--- index
-SELECT helio_api_internal.create_indexes_non_concurrently('db2', '{ "createIndexes": "distinct7", "indexes": [ { "key": { "b": 1 }, "name": "ref_idx" } ] }', true);
-ANALYZE;
-begin;
-SET LOCAL enable_seqscan to off;
-EXPLAIN (COSTS OFF, BUFFERS OFF, ANALYZE ON, TIMING OFF, SUMMARY OFF) EXECUTE distinctQueryWithFilter('db2', 'distinct7', 'd', '{ "b": { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ce4" } } }');
-EXPLAIN (COSTS OFF, BUFFERS OFF, ANALYZE ON, TIMING OFF, SUMMARY OFF) EXECUTE distinctQueryWithFilter('db2', 'distinct7', 'd', '{ "b": { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ce6" },"$db": "db", "tt":1 } }');
-EXPLAIN (COSTS OFF, BUFFERS OFF, ANALYZE ON, TIMING OFF, SUMMARY OFF) EXECUTE distinctQueryWithFilter('db2', 'distinct7', 'd', '{ "b": {"$id": { "$oid" : "147f000000c1de008ec19ce6" }, "$ref" : "distinct6"}}');
-EXPLAIN (COSTS OFF, BUFFERS OFF, ANALYZE ON, TIMING OFF, SUMMARY OFF) EXECUTE distinctQueryWithFilter('db2', 'distinct7', 'd', '{ "b": { "$in": [ { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ce6" },"$db": "db", "tt":1 }, { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ce4" }} ] } }');
-commit;

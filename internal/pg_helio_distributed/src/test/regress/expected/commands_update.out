@@ -143,7 +143,7 @@ begin;
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$lte":3}},"u":{"b":0},"multi":true}]}');
                                                                                                                                                              update                                                                                                                                                              
 ---------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""50331677"" }, ""errmsg"" : ""multi update is not supported for replacement-style update"" } ] }",f)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""33685634"" }, ""errmsg"" : ""multi update is not supported for replacement-style update"" } ] }",f)
 (1 row)
 
 rollback;

@@ -889,10 +889,10 @@ SELECT * FROM bson_dollar_project('{"date": {"$date": "2017-07-04T14:56:42.911Z"
  { "dateString" : "2017-07-04 20:41:42 +0545 (345 minutes)" }
 (1 row)
 
-SELECT * FROM bson_dollar_project('{"date": {"$date": "2017-07-04T14:56:42.911Z"}}', '{"dateString": {"$dateToString": { "date": "$date", "format": "%Y-%m-%d %H:%M:%S %z (%Z minutes)", "timezone": "Europe/Amsterdam" }}}');
-                     bson_dollar_project                      
+SELECT * FROM bson_dollar_project('{"date": {"$date": "1935-07-10T11:36:37.133Z"}}', '{"dateString": {"$dateToString": { "date": "$date", "format": "%Y-%m-%d %H:%M:%S %z (%Z minutes)", "timezone": "Europe/Amsterdam" }}}');
+                     bson_dollar_project                     
 ---------------------------------------------------------------------
- { "dateString" : "2017-07-04 16:56:42 +0200 (120 minutes)" }
+ { "dateString" : "1935-07-10 12:36:37 +0100 (60 minutes)" }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"date": {"$date": "1900-07-10T11:41:22.418Z"}}', '{"dateString": {"$dateToString": { "date": "$date", "format": "%Y-%m-%d %H:%M:%S %z (%Z minutes)", "timezone": "America/Caracas" }}}');
@@ -1774,10 +1774,12 @@ select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": {"$d
  { "result" : { "$date" : { "$numberLong" : "7084800000" } } }
 (1 row)
 
-/* This test case has overflow, postgres added this check in newer minor versions.
- * Todo: add this test back and check overflow after we bump up the postgres minor version (>=15.7 and >=16.3).
- */
--- select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": {"$date" : {"$numberLong": "7498555381"}}, "unit": "hour" , "binSize": 450000000 }  }}');
+select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": {"$date" : {"$numberLong": "7498555381"}}, "unit": "hour" , "binSize": 450000000 }  }}');
+                         bson_dollar_project                          
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "-1619053315200000" } } }
+(1 row)
+
 -- $dateTrunc cases with unit day
 select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": {"$date" : {"$numberLong": "1707123355381"}}, "unit": "day", "binSize": 2 }  }}');
                        bson_dollar_project                        
