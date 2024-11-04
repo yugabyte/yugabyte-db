@@ -25,7 +25,7 @@ pg_stats contains information such as the following:
 - **most_common_elems**: Most frequently occurring elements in an array column.
 - **most_common_elem_freqs**: Frequencies of the most elements in an array column.
 
-Run  the following examples to understand how you can use these statistics to improve queries and the data model.
+Run the following examples to understand how you can use these statistics to improve queries and the data model.
 
 ## Setup
 
@@ -140,7 +140,7 @@ This index will include only the valid values and as a result won't be skewed.
 
 ## Cardinality
 
-If you fetch the stats on the `id` and `employed` columns as,
+If you fetch the statistics on the `id` and `employed` columns as follows:
 
 ```sql
 SELECT attname, null_frac, n_distinct, most_common_vals, most_common_freqs
@@ -148,7 +148,7 @@ SELECT attname, null_frac, n_distinct, most_common_vals, most_common_freqs
     WHERE tablename='users' AND attname IN ('id', 'employed');
 ```
 
-You will get an output like:
+You will get an output similar to the following:
 
 ```caddyfile{.nocopy}
 -[ RECORD 1 ]-----+----------
@@ -198,7 +198,7 @@ Now, run ANALYZE on the above table as follows:
 ANALYZE labels;
 ```
 
-You can fetch the stats for the elements as follows:
+You can fetch the statistics for the elements as follows:
 
 ```sql
 SELECT attname, most_common_elems, most_common_elem_freqs FROM pg_stats WHERE tablename = 'labels' AND attname = 'tags';
@@ -213,7 +213,7 @@ most_common_elems      | {action,comedy,romance,thriller}
 most_common_elem_freqs | {0.6,0.4,0.6,0.6,0.4,0.6,0}
 ```
 
-This indicates that action appears in 60% of the records (3 in this case) and comedy in 40% of the records (2 here), providing insight into the data distribution. Notice that there are 4 entries in the most_common_elems field but 7 entries in most_common_elem_freqs. The first 4 values correspond to the frequencies of the 4 most common elements, followed by the minimum and maximum element frequencies, with the last value representing the frequency of NULLs.
+This indicates that action appears in 60% of the records (3 in this case) and comedy in 40% of the records (2 here), providing insight into the data distribution. Notice that there are 4 entries in the `most_common_elems` field but 7 entries in `most_common_elem_freqs`. The first 4 values correspond to the frequencies of the 4 most common elements, followed by the minimum and maximum element frequencies, with the last value representing the frequency of NULLs.
 
 ## Learn more
 
