@@ -375,7 +375,7 @@ const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus, disabledFlags
           <Col md={6} className="split-container">
             {renderFlagList()}
           </Col>
-          <Col md={6} className="split-container add-border-left">
+          <Col md={6} className="detail-container add-border-left">
             {renderFlagDetails()}
           </Col>
         </Row>
