@@ -117,6 +117,12 @@ struct BlockBasedTableOptions {
 
   // If non-NULL use the specified cache for compressed blocks.
   // If NULL, rocksdb will not use a compressed block cache.
+  // 'block_cache_compressed' should be nullptr for now. If you want to configure it,
+  // the logic for generating the block cache key prefix must be modified.
+  // With 'block_cache_compressed' enabled, data will be put into the block cache
+  // during file generation. However, both the mtime and the CRC32 of the
+  // meta-block required for generating the block cache key prefix are not
+  // available during this process.
   std::shared_ptr<Cache> block_cache_compressed = nullptr;
 
   // Approximate size of user data packed per block, in bytes. Note that the

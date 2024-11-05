@@ -25,6 +25,7 @@
 
 DECLARE_double(cache_single_touch_ratio);
 DECLARE_bool(cache_overflow_single_touch);
+DECLARE_bool(TEST_allow_table_option_compressed_block_cache);
 
 namespace rocksdb {
 
@@ -181,6 +182,7 @@ TEST_F(DBBlockCacheTest, TestWithoutCompressedBlockCache) {
 
 #ifdef SNAPPY
 TEST_F(DBBlockCacheTest, TestWithCompressedBlockCache) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_allow_table_option_compressed_block_cache) = true;
   ReadOptions read_options;
   auto table_options = GetTableOptions();
   auto options = GetOptions(table_options);

@@ -66,6 +66,7 @@
 #include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
+#include "yb/rocksdb/utilities/checkpoint.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/string_util.h"
@@ -3028,6 +3029,43 @@ TEST_F(TableTest, MiddleOfMiddleKey) {
   delete db;
 }
 
+// Open the first DB and generate some keys. Then open the second DB using a checkpoint
+// from the first one. Verify that both databases share the same block cache key prefix.
+TEST_F(TableTest, YB_LINUX_ONLY_TEST(BlockCacheWithHardlink)) {
+  BlockBasedTableOptions table_options;
+  table_options.block_size = 1024;
+  table_options.block_cache = NewLRUCache(16_MB / FLAGS_cache_single_touch_ratio);
+
+  rocksdb::Options options;
+  options.compaction_style = rocksdb::kCompactionStyleNone;
+  options.num_levels = 1;
+  options.create_if_missing = true;
+  options.table_factory.reset(NewBlockBasedTableFactory(table_options));
+
+  const std::string kDBPath = test::TmpDir() + "/hardlink";
+  ASSERT_OK(DestroyDB(kDBPath, options));
+  rocksdb::DB* db;
+  ASSERT_OK(rocksdb::DB::Open(options, kDBPath, &db));
+
+  GenerateSSTFile(db, 0, 10);
+
+  const auto mkey = ASSERT_RESULT(db->GetMiddleKey());
+  const auto tw_1 = ASSERT_RESULT(db->TEST_GetLargestSstTableReader());
+  auto* table_reader_1 = dynamic_cast<BlockBasedTable*>(tw_1);
+  ASSERT_TRUE(table_reader_1->TEST_KeyInCache(ReadOptions(), mkey));
+
+  LOG(INFO) << "Opening checkpoint db";
+  auto checkpoint_dir = kDBPath + "/checkpoints";
+  ASSERT_OK(checkpoint::CreateCheckpoint(db, checkpoint_dir));
+  rocksdb::DB* checkpoint_db;
+  ASSERT_OK(rocksdb::DB::Open(options, checkpoint_dir, &checkpoint_db));
+  const auto tw_2 = ASSERT_RESULT(checkpoint_db->TEST_GetLargestSstTableReader());
+  auto* table_reader_2 = dynamic_cast<BlockBasedTable*>(tw_2);
+  ASSERT_TRUE(table_reader_2->TEST_KeyInCache(ReadOptions(), mkey));
+
+  delete db;
+  delete checkpoint_db;
+}
 }  // namespace rocksdb
 
 int main(int argc, char** argv) {
