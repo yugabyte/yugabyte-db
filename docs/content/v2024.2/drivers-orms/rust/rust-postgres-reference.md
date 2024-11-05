@@ -5,8 +5,6 @@ linkTitle: Rust Drivers
 description: Rust postgres Smart Driver for YSQL
 tags:
   other: ysql
-aliases:
-  - /preview/reference/drivers/rust/rust-postgres-reference/
 menu:
   v2024.2:
     name: Rust Drivers

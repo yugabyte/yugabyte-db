@@ -5,8 +5,6 @@ linkTitle: Node.js Drivers
 description: YugabyteDB node-postgres smart driver for YSQL
 tags:
   other: ysql
-aliases:
-  - /preview/reference/drivers/nodejs/yugabyte-pg-reference/
 menu:
   v2024.2:
     name: Node.js Drivers
