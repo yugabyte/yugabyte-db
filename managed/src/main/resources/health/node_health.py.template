@@ -480,7 +480,7 @@ def wrap_command(command_str):
     return "timeout {} bash -c 'set -o pipefail; {}'".format(CMD_TIMEOUT_SEC, command_str)
 
 
-def has_errors(str):
+def check_for_errors(str):
     return str is not None and str.startswith('Error')
 
 
@@ -565,7 +565,7 @@ class NodeChecker():
         found_error = False
         output = self.get_disk_utilization()
         msgs = []
-        if has_errors(output):
+        if check_for_errors(output):
             return e.fill_and_return_entry([output], has_error=True)
 
         # Do not process the headers.
@@ -643,7 +643,7 @@ class NodeChecker():
             return e.fill_and_return_warning_entry(["OpenSSL is not installed, skipped"])
 
         output = self.get_certificate_expiration_date(cert_path)
-        if has_errors(output):
+        if check_for_errors(output):
             return e.fill_and_return_entry([output], has_error=True)
 
         if output == 'File not found':
@@ -805,7 +805,7 @@ class NodeChecker():
             cmd = 'curl -s -L --insecure {}'.format(endpoint)
 
         output = self._check_output(cmd).strip()
-        if has_errors(output):
+        if check_for_errors(output):
             logging.info("HTTP request to {} returned error: {}".format(endpoint, output))
             return None
         return output
@@ -889,7 +889,7 @@ class NodeChecker():
                 '-mmin -{}'.format(FATAL_TIME_THRESHOLD_MINUTES),
                 log_severity)
             output = self._check_output(cmd)
-            if has_errors(output):
+            if check_for_errors(output):
                 return e.fill_and_return_entry([output], has_error=True)
 
             log_files = self.check_logs_find_output(output)
@@ -924,7 +924,7 @@ class NodeChecker():
             yb_cores_dir, yb_cores_dir,
             '-mmin -{}'.format(FATAL_TIME_THRESHOLD_MINUTES))
         output = self._check_output(cmd)
-        if has_errors(output):
+        if check_for_errors(output):
             return e.fill_and_return_entry([output], has_error=True)
 
         files = []
@@ -993,11 +993,11 @@ class NodeChecker():
         else:
             e = self._new_metric_entry("Uptime", process)
         uptime = self.get_uptime_for_process(process)
-        if has_errors(uptime):
+        if check_for_errors(uptime):
             return e.fill_and_return_entry([uptime], has_error=True)
 
         boot_time = self.get_boot_time_for_process(process)
-        if has_errors(boot_time):
+        if check_for_errors(boot_time):
             return e.fill_and_return_entry([boot_time], has_error=True)
 
         if uptime is None or not uptime:
@@ -1210,7 +1210,7 @@ class NodeChecker():
         logging.info("Checking node exporter on node {}".format(self.node))
         e = self._new_metric_entry("Node exporter")
         output = self.get_command_for_process("node_exporter")
-        if has_errors(output):
+        if check_for_errors(output):
             return e.fill_and_return_entry([output], has_error=True)
         metric = Metric.from_definition(YB_NODE_CUSTOM_NODE_METRICS)
         running = ('node_exporter' in output)
@@ -1248,7 +1248,7 @@ class NodeChecker():
                awk '\"'\"'{print $1}'\"'\"' /proc/sys/fs/file-nr"
         output = self._check_output(cmd)
 
-        if has_errors(output):
+        if check_for_errors(output):
             return e.fill_and_return_entry([output], has_error=True)
 
         counts = output.split('\n')
@@ -1406,9 +1406,8 @@ class NodeChecker():
 
         key = str(self.tserver_index * 100 + 1)
         output = []
-        statement = "insert into write_read_test values ({}) on conflict do nothing; \
-                     select from write_read_test where id = {}; \
-                     delete from write_read_test where id = {};".format(key, key, key)
+        statement = "insert into write_read_test values ({}) on conflict (id) \
+                     do update set id = {} returning id;".format(key, key)
         cmd = "{} -c \"{}\"".format(ysqlsh_cmd, statement)
         output = self._check_output(cmd).strip()
 
@@ -1416,7 +1415,7 @@ class NodeChecker():
             # Old system without read write table
             # It's metric-only check, hence we do set has_error=False to avoid retries
             return e.fill_and_return_entry(["Test table does not exist"], has_error=False)
-        if 'DELETE 1' in output:
+        if 'INSERT 0 1' in output:
             metric.add_value(1)
             return e.fill_and_return_entry([], has_error=False, metrics=[metric])
 
@@ -1492,20 +1491,55 @@ class NodeChecker():
 
     def check_ddl_atomicity(self):
         logging.info("Checking DDL atomicity on node {}".format(self.node))
+
+        result, recheck_table_uuids = self.check_ddl_atomicity_internal([])
+
+        if not recheck_table_uuids:
+            return result
+
+        result, recheck_table_uuids = self.check_ddl_atomicity_internal(recheck_table_uuids)
+        return result
+
+
+    def check_ddl_atomicity_internal(self, recheck_table_uuids):
+        logging.info("Checking DDL atomicity on node {}".format(self.node))
         e = self._new_entry("DDL atomicity")
         metric = Metric.from_definition(YB_DDL_ATOMICITY_CHECK)
+        tables_with_errors = []
+
+        tserver_pid = self.get_process_pid_by_name(TSERVER)
+        if tserver_pid is None:
+            metric.add_value(0)
+            return (e.fill_and_return_entry(["TServer is not running on this node"],
+                                           has_error=True,
+                                           metrics=[metric]), [])
 
         try:
             ysqlsh_cmd = self.create_ysqlsh_command("")
         except RuntimeError as re:
             metric.add_value(0)
-            return e.fill_and_return_entry([str(re)], has_error=True, metrics=[metric])
+            return (e.fill_and_return_entry([str(re)], has_error=True, metrics=[metric]), [])
 
         errors = []
         try:
             # Get table data
-            tables_output = (json.loads(self.http_request(
-                "{}/api/v1/tables".format(self.master_leader_url))))
+            tables_response = self.http_request(
+                "{}/api/v1/tables".format(self.master_leader_url))
+            if not tables_response:
+                metric.add_value(0)
+                return (e.fill_and_return_entry(
+                    ['Master Leader HTTP endpoint is not running'],
+                    has_error=True,
+                    metrics=[metric]), [])
+            try:
+                tables_output = json.loads(tables_response)
+            except Exception as ex:
+                logging.warning("Tables HTTP API response is not a valid json: %s", tables_response)
+                metric.add_value(0)
+                return (e.fill_and_return_entry(
+                    ['Tables HTTP API response is not a valid json'],
+                    has_error=True,
+                    metrics=[metric]), [])
             table_data_json = tables_output["user"]
             table_data_json += tables_output["index"]
 
@@ -1521,7 +1555,7 @@ class NodeChecker():
                 if pg_oid == "" or table["hidden"]:
                     continue
                 # Extract table oid
-                yb_pg_table_oid = str(int(table["uuid"][-4:], 16))
+                yb_pg_table_oid = str(int(table["uuid"][-8:], 16))
 
                 # Add table to the database's list in the dictionary
                 if dbname not in db_tables:
@@ -1536,10 +1570,27 @@ class NodeChecker():
                      (SELECT relname, oid, relfilenode FROM pg_class WHERE oid >= 16384) t;")
 
                 # Fetch all user tables from pg_class for the database
-                pg_class_output = json.loads(self._check_output(pg_class_cmd).strip())
+                pg_class_output = self._check_output(pg_class_cmd).strip()
+
+                if check_for_errors(pg_class_output):
+                    metric.add_value(0)
+                    return (e.fill_and_return_entry(
+                        ["Failed to retrieve pg_class info: {}".format(pg_class_output)],
+                        has_error=True,
+                        metrics=[metric]), [])
+                try:
+                    pg_class_json = json.loads(pg_class_output)
+                except Exception as ex:
+                    logging.warning("pg_class query returned invalid json: %s",
+                                    pg_class_output)
+                    metric.add_value(0)
+                    return (e.fill_and_return_entry(
+                        ['pg_class query returned invalid json'],
+                        has_error=True,
+                        metrics=[metric]), [])
                 pg_class_oid_tableinfo_dict = {}
                 # Use relfilenode if it exists (as the table may be rewritten)
-                for table in pg_class_output:
+                for table in pg_class_json:
                     if table['relfilenode'] != '0':
                         pg_class_oid_tableinfo_dict[table['relfilenode']] = table
                     else:
@@ -1548,18 +1599,42 @@ class NodeChecker():
                 pg_attribute_cmd = "{}{} -t -c \"{}\"".format(ysqlsh_cmd, dbname,
                     "SELECT json_agg(row_to_json(t)) FROM \
                      (SELECT attname, attrelid FROM pg_attribute WHERE attrelid >= 16384) t;")
-                pg_attribute_output = json.loads(self._check_output(pg_attribute_cmd).strip())
+
+                pg_attribute_output = self._check_output(pg_attribute_cmd).strip()
+
+                if check_for_errors(pg_attribute_output):
+                    metric.add_value(0)
+                    return (e.fill_and_return_entry(
+                        ["Failed to retrieve pg_attribute info: {}".format(pg_attribute_output)],
+                        has_error=True,
+                        metrics=[metric]), [])
+
+                try:
+                    pg_attribute_json = json.loads(pg_attribute_output)
+                except Exception as ex:
+                    logging.warning("pg_attribute query returned invalid json: %s",
+                                    pg_attribute_output)
+                    metric.add_value(0)
+                    return (e.fill_and_return_entry(
+                        ['pg_attribute query returned invalid json'],
+                        has_error=True,
+                        metrics=[metric]), [])
                 pg_attribute_attrelid_attnames_dict = defaultdict(list)
-                for attribute in pg_attribute_output:
+                for attribute in pg_attribute_json:
                     (pg_attribute_attrelid_attnames_dict[attribute['attrelid']]
                         .append(attribute['attname']))
 
                 # Iterate through each table
                 for tablename, pg_oid, yb_pg_table_oid, tableid in tables:
+                    if recheck_table_uuids and tableid not in recheck_table_uuids:
+                        # This is a recheck in case DDL happened during the previous check.
+                        # Just test particular tables.
+                        continue
                     # Check if the table exists in pg_class
                     if yb_pg_table_oid not in pg_class_oid_tableinfo_dict:
                         # Note: on versions older than 2024.1, the oid in this log
                         # will refer to the relfilenode for materialized views.
+                        tables_with_errors.append(tableid)
                         errors.append(("Table {} with oid {} and uuid {} does not exist in "
                                        "database {} - ORPHANED TABLE NEEDS TO BE DROPPED")
                                        .format(tablename, pg_oid, tableid, dbname))
@@ -1572,14 +1647,32 @@ class NodeChecker():
                     pg_oid = pg_class_entry['oid']
 
                     if tablename != pg_class_entry['relname']:
+                        tables_with_errors.append(tableid)
                         errors.append(("Table {} with oid {} and uuid {} exists in {} but has a "
                                        "mismatched table name - TABLE NAME NEEDS TO BE FIXED")
                                        .format(tablename, pg_oid, tableid, dbname))
                         continue
 
                     # Get columns
-                    table_schema_json = json.loads(self.http_request(
-                        "{}/api/v1/table?id={}".format(self.master_leader_url, tableid)))
+                    table_schema_response = self.http_request(
+                        "{}/api/v1/table?id={}".format(self.master_leader_url, tableid))
+                    if not table_schema_response:
+                        metric.add_value(0)
+                        return (e.fill_and_return_entry(
+                            ['Master Leader HTTP endpoint is not running'],
+                            has_error=True,
+                            metrics=[metric]), [])
+
+                    try:
+                        table_schema_json = json.loads(table_schema_response)
+                    except Exception as ex:
+                        logging.warning("Table HTTP API response is not a valid json: %s",
+                                         table_schema_response)
+                        metric.add_value(0)
+                        return (e.fill_and_return_entry(
+                            ['Table HTTP API response is not a valid json'],
+                            has_error=True,
+                            metrics=[metric]), [])
                     columns = [html.unescape(
                         column['column']) for column in table_schema_json["columns"]]
                     # Check if each column exists in pg_attribute
@@ -1588,13 +1681,18 @@ class NodeChecker():
                             or column == "ybidxbasectid"):
                             continue
                         if column not in pg_attribute_attrelid_attnames_dict[pg_oid]:
+                            tables_with_errors.append(tableid)
                             errors.append(("Column {} does not exist in table {} in database {} - "
                                            "ORPHANED COLUMN NEEDS TO BE DROPPED")
                                            .format(column, tablename, dbname))
                             continue
         except Exception as ex:
+            logging.exception('Got exception on while performing DDL Atomicity check')
             metric.add_value(0)
-            return e.fill_and_return_entry([str(ex)], has_error=True, metrics=[metric])
+            return (e.fill_and_return_entry(
+                ["Unexpected error occurred"],
+                has_error=True,
+                metrics=[metric]), [])
 
         has_errors = len(errors) > 0
         if has_errors:
@@ -1605,7 +1703,8 @@ class NodeChecker():
         else:
             msgs = ["No errors found"]
         metric.add_value(0 if has_errors else 1)
-        return e.fill_and_return_entry(msgs, has_error=has_errors, metrics=[metric])
+        return (e.fill_and_return_entry(msgs, has_error=has_errors, metrics=[metric]),
+                tables_with_errors)
 
     def check_openssl_availability(self):
         cmd = "which openssl &>/dev/null; echo $?"
@@ -1613,7 +1712,7 @@ class NodeChecker():
         logging.info("OpenSSL installed state for node %s: %s",  self.node, output)
 
         return {"ssl_installed:" + self.node: (output == "0")
-                if not has_errors(output) else None}
+                if not check_for_errors(output) else None}
 
     def check_yb_controller_availability(self):
         controller_cli = '{}/bin/yb-controller-cli'.format(self.yb_controller_dir())
