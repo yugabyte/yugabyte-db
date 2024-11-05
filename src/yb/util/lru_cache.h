@@ -73,6 +73,11 @@ class LRUCache {
     return erase(key);
   }
 
+  template<class Key>
+  bool contains(const Key& key) const {
+    return impl_.template get<IdTag>().contains(key);
+  }
+
   // Erase by usage order iterator
   const_iterator erase(const_iterator pos) {
     return impl_.erase(pos);

@@ -170,6 +170,10 @@ class YBTableCreator {
   // returned.
   Status Create();
 
+  const std::string& get_table_id() const {
+    return table_id_;
+  }
+
  private:
   friend class YBClient;
 
