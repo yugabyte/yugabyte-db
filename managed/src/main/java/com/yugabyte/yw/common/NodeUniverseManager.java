@@ -133,7 +133,7 @@ public class NodeUniverseManager extends DevopsBase {
       List<String> sourceNodeFiles,
       String targetLocalFile) {
     universeLock.acquireLock(universe.getUniverseUUID());
-    String filesListFilePath = "";
+    String filesListFilePath = "", remoteFilesListPath = "";
     try {
       List<String> actionArgs = new ArrayList<>();
       // yb_home_dir denotes a custom starting directory for the remote file. (Eg: ~/, /mnt/d0,
@@ -147,8 +147,14 @@ public class NodeUniverseManager extends DevopsBase {
             "Could not create temp file while downloading node file for universe "
                 + universe.getUniverseUUID().toString());
       }
+      remoteFilesListPath =
+          getRemoteTmpDir(node, universe)
+              + "/"
+              + Paths.get(filesListFilePath).getFileName().toString();
       actionArgs.add("--source_node_files_path");
       actionArgs.add(filesListFilePath);
+      actionArgs.add("--remote_node_files_path");
+      actionArgs.add(remoteFilesListPath);
 
       actionArgs.add("--target_local_file");
       actionArgs.add(targetLocalFile);
