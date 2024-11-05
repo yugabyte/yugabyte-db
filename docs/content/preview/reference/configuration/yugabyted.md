@@ -717,7 +717,7 @@ For more advanced examples, see [Examples](#examples).
 : The IP or DNS address of the existing yugabyted server that the new yugabyted server will join, or if the server was restarted, rejoin. The join flag accepts IP addresses, DNS names, or labels with correct [DNS syntax](https://en.wikipedia.org/wiki/Domain_Name_System#Domain_name_syntax,_internationalization) (that is, letters, numbers, and hyphens).
 
 --config *path-to-config-file*
-: yugabyted advanced configuration file path. Refer to [Advanced flags](#advanced-flags).
+: yugabyted advanced configuration file path. Refer to [Use a configuration file](#use-a-configuration-file).
 
 --base_dir *base-directory*
 : The directory where yugabyted stores data, configurations, and logs. Must be an absolute path.
