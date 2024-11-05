@@ -9666,6 +9666,7 @@
           "$ref" : "#/definitions/CloudInfo"
         },
         "enableNodeAgent" : {
+          "readOnly" : true,
           "type" : "boolean"
         },
         "installNodeExporter" : {
