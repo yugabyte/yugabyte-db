@@ -693,6 +693,14 @@ Create a single-node locally and join other nodes that are part of the same clus
 ./bin/yugabyted start --join=host:port,[host:port]
 ```
 
+Create a single-node locally and set advanced flags using a configuration file:
+
+```sh
+./bin/yugabyted start --config /path/to/configuration-file
+```
+
+For more advanced examples, see [Examples](#examples).
+
 #### Flags
 
 -h | --help
@@ -704,8 +712,8 @@ Create a single-node locally and join other nodes that are part of the same clus
 --join *master-ip*
 : The IP or DNS address of the existing yugabyted server that the new yugabyted server will join, or if the server was restarted, rejoin. The join flag accepts IP addresses, DNS names, or labels with correct [DNS syntax](https://en.wikipedia.org/wiki/Domain_Name_System#Domain_name_syntax,_internationalization) (that is, letters, numbers, and hyphens).
 
---config *config-file*
-: Yugabyted configuration file path. Refer to [Advanced flags](#advanced-flags).
+--config *path-to-config-file*
+: yugabyted advanced configuration file path. Refer to [Use a configuration file](#use-a-configuration-file).
 
 --base_dir *base-directory*
 : The directory where yugabyted stores data, configurations, and logs. Must be an absolute path.
@@ -752,7 +760,7 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 
 #### Advanced flags
 
-Advanced flags can be set by using the configuration file in the `--config` flag. The advanced flags support for the `start` command is as follows:
+The advanced flags supported by the `start` command are as follows:
 
 --ycql_port *ycql-port*
 : The port on which YCQL will run.
@@ -799,6 +807,33 @@ Advanced flags can be set by using the configuration file in the `--config` flag
 : The directory from where yugabyted reads initialization scripts.
 : Script format - YSQL `.sql`, YCQL `.cql`.
 : Initialization scripts are executed in sorted name order.
+
+#### Use a configuration file
+
+You can set advanced flags using a configuration file, specified using the `--config` flag. The configuration file is a JSON file with advanced flags and the corresponding values you want to set. For example, you could start a node using a configuration file as follows:
+
+1. Create a configuration file.
+
+    ```sh
+    vi ~/yugabyted.conf
+    ```
+
+1. Configure the desired advanced flags in the file. For example:
+
+    ```json
+    {
+        "master_webserver_port": 7100,
+        "tserver_webserver_port": 9100,
+        "master_flags": "ysql_enable_packed_row=true,ysql_beta_features=true",
+        "Tserver_flags": "ysql_enable_packed_row=true,ysql_beta_features=true,yb_enable_read_committed_isolation=true,enable_deadlock_detection=true,enable_wait_queues=true",
+    }
+    ```
+
+1. Start the node using the config flag.
+
+    ```sh
+    ./bin/yugabyted start --config ~/yugabyted.conf
+    ```
 
 #### Deprecated flags
 
