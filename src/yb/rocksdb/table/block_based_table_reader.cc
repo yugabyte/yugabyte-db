@@ -298,6 +298,8 @@ struct BlockBasedTable::Rep {
 
   DataIndexLoadMode data_index_load_mode = static_cast<DataIndexLoadMode>(0);
   yb::MemTrackerPtr mem_tracker;
+  // The checksum of the meta block used to construct block cache key prefix.
+  uint32_t meta_block_checksum;
 };
 
 struct BlockBasedTable::BlockRetrievalInfo {
@@ -485,12 +487,12 @@ void BlockBasedTable::SetupCacheKeyPrefix(Rep* rep,
   reader_with_cache_prefix->compressed_cache_key_prefix.size = 0;
   if (rep->table_options.block_cache != nullptr) {
     GenerateCachePrefix(rep->table_options.block_cache.get(),
-        reader_with_cache_prefix->reader->file(),
+        reader_with_cache_prefix->reader->file(), rep->meta_block_checksum,
         &reader_with_cache_prefix->cache_key_prefix);
   }
   if (rep->table_options.block_cache_compressed != nullptr) {
     GenerateCachePrefix(rep->table_options.block_cache_compressed.get(),
-        reader_with_cache_prefix->reader->file(),
+        reader_with_cache_prefix->reader->file(), rep->meta_block_checksum,
         &reader_with_cache_prefix->compressed_cache_key_prefix);
   }
 }
@@ -601,13 +603,15 @@ Status BlockBasedTable::Open(const ImmutableCFOptions& ioptions,
   rep->footer = footer;
   rep->index_type = table_options.index_type;
   rep->hash_index_allow_collision = table_options.hash_index_allow_collision;
-  SetupCacheKeyPrefix(rep, rep->base_reader_with_cache_prefix.get());
   unique_ptr<BlockBasedTable> new_table(new BlockBasedTable(rep));
 
   // Read meta index
   std::unique_ptr<Block> meta;
   std::unique_ptr<InternalIterator> meta_iter;
   RETURN_NOT_OK(ReadMetaBlock(rep, &meta, &meta_iter));
+
+  // cache key prefix needs the checksum of meta-block populated by ReadMetaBlock
+  SetupCacheKeyPrefix(rep, rep->base_reader_with_cache_prefix.get());
 
   RETURN_NOT_OK(new_table->ReadPropertiesBlock(meta_iter.get()));
 
@@ -902,6 +906,16 @@ Status BlockBasedTable::ReadMetaBlock(Rep* rep,
         " block %s", s.ToString().c_str());
     return s;
   }
+
+  // Instead of reading the checksum of the meta-block from disk, it is simpler and more
+  // efficient to compute it based on the block data. Some benefits include:
+  // (1) Minimizing changes: Reading the checksum from disk would require modifications in many
+  //     functions.
+  // (2) The function is executed only once when a file is opened, so the overhead is minimal.
+  // (3) Checksum calculation is limited to the meta-block, ensuring that reading other blocks
+  //     remains unaffected.
+  rep->meta_block_checksum = block_based_table::ComputeChecksumForBlockCacheKey(
+      rep->table_options.checksum, Slice(meta->data(), meta->size()));
 
   *meta_block = std::move(meta);
   // meta block uses bytewise comparator.
