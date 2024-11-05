@@ -312,7 +312,7 @@ delete_db_backup() {
 }
 
 create_backup() {
-  now=$(date +"%y-%m-%d-%H-%M")
+  now=$(date -u +"%y-%m-%d-%H-%M")
   output_path="${1}"
   data_dir="${2}"
   exclude_prometheus="${3}"
