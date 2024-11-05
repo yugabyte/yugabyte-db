@@ -3,6 +3,8 @@ title: Running the TPC-C performance benchmark
 headerTitle: Run the TPC-C performance benchmark
 linkTitle: Run benchmark
 headcontent: Detailed steps to run the TPCC benchmark
+aliases:
+  - /stable/benchmark/tpcc-ysql/
 menu:
   v2024.2:
     identifier: tpcc-ysql

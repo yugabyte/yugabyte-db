@@ -4,6 +4,8 @@ headerTitle: xCluster Replication
 linkTitle: xCluster Replication
 description: Enable xCluster Replication between universes
 headContent: Active universe with standby using xCluster deployment
+aliases:
+  - /stable/yugabyte-platform/create-deployments/async-replication-platform
 menu:
   v2024.2_yugabyte-platform:
     parent: manage-deployments
