@@ -277,7 +277,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
         finished_waiting_latency_(*finished_waiting_latency),
         unlocked_(locks->Unlock()),
         deadline_(deadline) {
-    DCHECK(txn_start_us || id.IsNil());
+    LOG_IF_WITH_PREFIX(DFATAL, !txn_start_us && !id.IsNil()) << "Expected non-zero txn_start_us";
     VLOG_WITH_PREFIX(4) << "Constructed waiter";
   }
 
