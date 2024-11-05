@@ -6873,7 +6873,7 @@ yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
 		}
 		else
 		{
-			/* 
+			/*
 			 * Add 1 byte for null indicator and 8 bytes for size of the ybctid.
 			 */
 			ybctid_width += 9;
@@ -6891,10 +6891,10 @@ yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
 						TupleDescAttr(baserel->rd_att, i + 1);
 					if (att->attlen < 0)
 					{
-						/* 
+						/*
 						 * attlen is negative if the attribute has variable
 						 * length. Add 1 byte because DocDB uses double
-						 * null termination. 
+						 * null termination.
 						 */
 						++ybctid_width;
 					}
@@ -6902,10 +6902,10 @@ yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
 				else if (index->indexkeys[i] > 0) /* Index key is user column */
 				{
 					/*
-					 * For each key column, add 1 byte for value type and 
+					 * For each key column, add 1 byte for value type and
 					 * estimated average width of the column.
 					 */
-					ybctid_width += 
+					ybctid_width +=
 						get_attavgwidth(baserel_oid, index->indexkeys[i]) + 1;
 
 					Relation 	baserel = table_open(baserel_oid, NoLock);
@@ -6913,10 +6913,10 @@ yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
 						TupleDescAttr(baserel->rd_att, index->indexkeys[i] - 1);
 					if (att->attlen < 0)
 					{
-						/* 
+						/*
 						 * attlen is negative if the attribute has variable
 						 * length. Add 1 byte because DocDB uses double
-						 * null termination. 
+						 * null termination.
 						 */
 						++ybctid_width;
 					}
@@ -6929,7 +6929,7 @@ yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
 
 			if (index->nhashcolumns > 0)
 			{
-				/* 
+				/*
 				 * If there were hash and range keys, then the key is prefixed
 				 * with a 16 bit hash value of the hash columns. Add 1 byte
 				 * for the hash value type and 2 bytes for the hash value. Also
@@ -6940,7 +6940,7 @@ yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
 
 			if (!is_primary_index)
 			{
-				/* 
+				/*
 				 * In the secondary index, the ybctid of the base table is part of
 				 * the secondary index key. It is stored in string encoded format.
 				 */
@@ -7003,7 +7003,7 @@ yb_get_docdb_result_width(Path *path, PlannerInfo* root, bool is_index_path,
 
 	/* DocDB returns ybctid in the following cases,
 	 * * Queries where no column is projected and no local filters are present
-     *   and sequential scan is used.
+	 *	 and sequential scan is used.
 	 *   eg. `SELECT 0 FROM test` or
 	 *       `SELECT true FROM test WHERE v1 > 0` where the filter on v1 is
 	 *         pushed down to DocDB.
@@ -7250,7 +7250,7 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 												   baserel, reloid);
 	path->yb_plan_info.estimated_docdb_result_width = docdb_result_width;
 	num_result_pages = yb_get_num_result_pages(remote_filtered_rows,
-										 	   docdb_result_width);
+											   docdb_result_width);
 	num_seeks = num_result_pages;
 	num_nexts = (num_result_pages - 1) + (baserel->tuples - 1);
 
@@ -7543,7 +7543,7 @@ yb_estimate_seeks_nexts_in_index_scan(PlannerInfo *root,
 					 *
 					 * seek(-inf) -> (1, 1)
 					 *     nexts until (1, 15) <-- Doesn't match filter.
-				     * seek (1, inf) -> (2, 1)
+					 * seek (1, inf) -> (2, 1)
 					 *     nexts until (2, 15) <-- Doesn't match filter
 					 * seek (2, inf) -> (3, 1)
 					 */
@@ -8018,7 +8018,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 			clauselist_selectivity(root, all_conditions_and_remote_filters,
 								   baserel->relid, JOIN_INNER, NULL);
 	else
-	 	all_conditions_and_remote_filters_selectivity = 1.0;
+		all_conditions_and_remote_filters_selectivity = 1.0;
 
 	double num_docdb_result_rows = clamp_row_est(
 		index->rel->tuples * all_conditions_and_remote_filters_selectivity);

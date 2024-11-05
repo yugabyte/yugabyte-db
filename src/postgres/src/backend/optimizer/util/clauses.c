@@ -5278,7 +5278,7 @@ typedef struct replace_varnos_context
 } replace_varnos_context;
 
 static Node *yb_copy_replace_varnos_mutator(Node *node,
-							   				replace_varnos_context *context)
+											replace_varnos_context *context)
 {
 	if (node == NULL)
 		return NULL;
@@ -5305,5 +5305,5 @@ Expr *yb_copy_replace_varnos(Expr *expr, Index oldvarno, Index newvarno)
 	ctx.oldvarno = oldvarno;
 	ctx.newvarno = newvarno;
 	return (Expr *) yb_copy_replace_varnos_mutator((Node *) expr,
-								   			  	   (void *) &ctx);
+												   (void *) &ctx);
 }

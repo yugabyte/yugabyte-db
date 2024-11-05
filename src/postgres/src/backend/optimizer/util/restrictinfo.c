@@ -469,7 +469,7 @@ restriction_is_securely_promotable(RestrictInfo *restrictinfo,
 		return false;
 }
 
-/* 
+/*
  * Add a given batched RestrictInfo to rinfo if it hasn't already been added.
  */
 void add_batched_rinfo(RestrictInfo *rinfo, RestrictInfo *batched)
@@ -480,7 +480,7 @@ void add_batched_rinfo(RestrictInfo *rinfo, RestrictInfo *batched)
 		RestrictInfo *current = lfirst(lc);
 		/* If we already have a batched clause with this LHS we don't bother.*/
 		if (equal(get_leftop(current->clause), get_leftop(batched->clause)))
-			return;	
+			return;
 	}
 
 	rinfo->yb_batched_rinfo = lappend(rinfo->yb_batched_rinfo, batched);

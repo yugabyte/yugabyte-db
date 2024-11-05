@@ -205,7 +205,7 @@ yb_is_const_clause_for_distinct_pushdown(PlannerInfo *root,
 										 IndexOptInfo *index,
 										 List *index_clauses,
 										 int indexcol,
-				   						 Expr *indexkey)
+										 Expr *indexkey)
 {
 	ListCell *lc;
 

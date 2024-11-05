@@ -1726,7 +1726,7 @@ get_appendrel_parampathinfo(RelOptInfo *appendrel, Relids required_outer)
 
 ParamPathInfo *
 yb_find_batched_param_path_info(RelOptInfo *rel, Relids required_outer,
-					 					  Relids yb_required_batched_outer)
+								Relids yb_required_batched_outer)
 {
 	ListCell   *lc;
 

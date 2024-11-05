@@ -733,7 +733,7 @@ YbComputeAffectedEntitiesForRelation(ModifyTable *modifyTable,
 	 * be updated.
 	 */
 	YbUpdateComputeIndexColumnReferences(rel, maybe_modified_cols, map,
-										 affected_entities, 
+										 affected_entities,
 										 modifyTable->yb_skip_entities,
 										 &nentities);
 
@@ -758,7 +758,7 @@ YbComputeAffectedEntitiesForRelation(ModifyTable *modifyTable,
 	qsort(affected_entities->col_info_list /* what to sort? */,
 		  nfields /* how many? */,
 		  sizeof(struct YbUpdateColInfo) /* how is it stored? */,
-		  YbQsortCompareColRefsList) /* how to sort? */; 
+		  YbQsortCompareColRefsList) /* how to sort? */;
 
 	/* Finally create the update matrix */
 	YbPopulateUpdateMatrix(affected_entities, nentities, nfields);
