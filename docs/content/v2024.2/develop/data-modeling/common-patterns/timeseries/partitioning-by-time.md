@@ -5,7 +5,7 @@ linkTitle: Partition data by time
 description: Partition data for efficient data management
 headcontent: Partition data for efficient data management
 aliases:
-   - /preview/common-patterns/timeseries/partitioning-by-time/
+   - /stable/common-patterns/timeseries/partitioning-by-time/
 tags:
   other: ysql
 menu:
