@@ -369,6 +369,8 @@ class DBImpl : public DB {
 
   int TEST_NumTotalRunningCompactions();
 
+  size_t TEST_NumNotStartedCompactionsUnlocked(CompactionSizeKind compaction_size_kind);
+
   int TEST_NumRunningFlushes();
 
   int TEST_NumBackgroundCompactionsScheduled();
@@ -379,6 +381,10 @@ class DBImpl : public DB {
   void TEST_LockMutex();
 
   void TEST_UnlockMutex();
+
+  InstrumentedMutex* TEST_mutex() {
+    return &mutex_;
+  }
 
   // REQUIRES: mutex locked
   void* TEST_BeginWrite();
@@ -667,8 +673,8 @@ class DBImpl : public DB {
   // hold the data set.
   Status ReFitLevel(ColumnFamilyData* cfd, int level, int target_level = -1);
 
-  // helper functions for adding and removing from flush & compaction queues
-  bool AddToCompactionQueue(ColumnFamilyData* cfd);
+  // Helper functions for adding and removing from flush & compaction queues.
+  void MaybeAddToCompactionQueue(ColumnFamilyData* cfd, bool use_priority_thread_pool);
   std::unique_ptr<Compaction> PopFirstFromSmallCompactionQueue();
   std::unique_ptr<Compaction> PopFirstFromLargeCompactionQueue();
   bool IsEmptyCompactionQueue();
@@ -676,7 +682,7 @@ class DBImpl : public DB {
   ColumnFamilyData* PopFirstFromFlushQueue();
 
   // Compaction is marked as large based on options, so cannot be static or free function.
-  bool IsLargeCompaction(const Compaction& compaction);
+  CompactionSizeKind GetCompactionSizeKind(const Compaction& compaction);
 
   // helper function to call after some of the logs_ were synced
   void MarkLogsSynced(uint64_t up_to, bool synced_dir, const Status& status);
@@ -889,8 +895,8 @@ class DBImpl : public DB {
   // invariant(column family present in flush_queue_ <==>
   // ColumnFamilyData::pending_flush_ == true)
   std::deque<ColumnFamilyData*> flush_queue_;
-  // invariant(column family present in compaction_queue_ <==>
-  // ColumnFamilyData::pending_compaction_ == true)
+  // invariant(number of column families in compaction_queue_ ==
+  // ColumnFamilyData::num_pending_compactions_)
   std::deque<std::unique_ptr<Compaction>> small_compaction_queue_;
   std::deque<std::unique_ptr<Compaction>> large_compaction_queue_;
   int unscheduled_flushes_;

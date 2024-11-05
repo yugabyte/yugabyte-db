@@ -740,6 +740,10 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
     thread_creation_failure_probability_ = probability;
   }
 
+  std::mutex* TEST_mutex() {
+    return &mutex_;
+  }
+
  private:
   std::string StateToStringUnlocked() REQUIRES(mutex_) {
     return Format(
@@ -904,7 +908,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
   void NotifyStateChangedTo(
       const PriorityThreadPoolInternalTask& task,
       const PriorityThreadPoolTaskState state) REQUIRES(mutex_) {
-    task.task()->UpdateStatsStateChangedTo(state);
+    task.task()->StateChangedTo(state);
     if (prioritize_by_group_no_
         && state == PriorityThreadPoolTaskState::kRunning) {
       ++active_tasks_per_group_[task.group_no()];
@@ -917,7 +921,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
   void NotifyStateChangedFrom(
       const PriorityThreadPoolInternalTask& task,
       const PriorityThreadPoolTaskState state) REQUIRES(mutex_) {
-    task.task()->UpdateStatsStateChangedFrom(state);
+    task.task()->StateChangedFrom(state);
     if (prioritize_by_group_no_
         && state == PriorityThreadPoolTaskState::kRunning) {
       --active_tasks_per_group_[task.group_no()];
@@ -1077,6 +1081,10 @@ void PriorityThreadPool::TEST_SetThreadCreationFailureProbability(double probabi
 
 size_t PriorityThreadPool::TEST_num_tasks_pending() {
   return impl_->TEST_num_tasks_pending();
+}
+
+std::mutex* PriorityThreadPool::TEST_mutex() {
+  return impl_->TEST_mutex();
 }
 
 } // namespace yb
