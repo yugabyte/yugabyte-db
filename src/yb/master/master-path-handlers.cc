@@ -42,6 +42,7 @@
 
 #include <boost/date_time/posix_time/time_formatters.hpp>
 
+#include "yb/common/common_consensus_util.h"
 #include "yb/common/xcluster_util.h"
 
 #include "yb/common/common_types_util.h"
@@ -3347,12 +3348,18 @@ string MasterPathHandlers::RaftConfigToHtml(
           : "UNKNOWN";
       html << Format("  <li><b>LEADER: $0 ($1)</b></li>\n", location_html, leader_lease_status);
       if (leader_lease_info.leader_lease_status == consensus::LeaderLeaseStatus::HAS_LEASE) {
-        // Get the remaining milliseconds of the current valid lease.
-        const auto now_usec = boost::posix_time::microseconds(
-            master_->clock()->Now().GetPhysicalValueMicros());
-        auto ht_lease_usec = boost::posix_time::microseconds(leader_lease_info.ht_lease_expiration);
-        auto diff = ht_lease_usec - now_usec;
-        html << Format("Remaining ht_lease (may be stale): $0 ms<br>\n", diff.total_milliseconds());
+        auto ht_lease_exp = leader_lease_info.ht_lease_expiration;
+        if (ht_lease_exp == consensus::kInfiniteHybridTimeLeaseExpiration) {
+          html << "Remaining ht_lease: +INF(RF1)<br>\n";
+        } else {
+          // Get the remaining milliseconds of the current valid lease.
+          const auto now_usec = boost::posix_time::microseconds(
+              master_->clock()->Now().GetPhysicalValueMicros());
+          auto ht_lease_usec = boost::posix_time::microseconds(ht_lease_exp);
+          auto diff = ht_lease_usec - now_usec;
+          html << Format("Remaining ht_lease (may be stale): $0 ms<br>\n",
+                         diff.total_milliseconds());
+        }
       } else if (leader_lease_info.heartbeats_without_leader_lease > 0) {
         html << Format(
             "Cannot replicate lease for past <b><font color='red'>$0</font></b> heartbeats<br>",

@@ -36,6 +36,7 @@
 
 #include "yb/cdc/xcluster_types.h"
 #include "yb/common/colocated_util.h"
+#include "yb/common/common_consensus_util.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/schema_pbutil.h"
@@ -119,10 +120,18 @@ void TabletReplica::UpdateLeaderLeaseInfo(const TabletLeaderLeaseInfo& info) {
   const bool initialized = leader_lease_info.initialized;
   const auto old_lease_exp = leader_lease_info.ht_lease_expiration;
   leader_lease_info = info;
-  leader_lease_info.ht_lease_expiration =
-      info.leader_lease_status == consensus::LeaderLeaseStatus::HAS_LEASE
-          ? std::max(info.ht_lease_expiration, old_lease_exp)
-          : 0;
+  leader_lease_info.ht_lease_expiration = 0;
+  if (info.leader_lease_status == consensus::LeaderLeaseStatus::HAS_LEASE) {
+    if (old_lease_exp == consensus::kInfiniteHybridTimeLeaseExpiration) {
+      // It's originally RF-1, so there are two possibilities:
+      // 1. It's still RF-1, and the new lease expiration is the same as the old one.
+      // 2. It's changed to RF>1, and the new lease expiration is less than the old one.
+      // In both cases, we can accept the new lease expiration.
+      leader_lease_info.ht_lease_expiration = info.ht_lease_expiration;
+    } else {
+      leader_lease_info.ht_lease_expiration = std::max(info.ht_lease_expiration, old_lease_exp);
+    }
+  }
   leader_lease_info.initialized = initialized || info.initialized;
 }
 

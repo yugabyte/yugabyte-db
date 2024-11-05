@@ -1304,7 +1304,7 @@ void MasterHeartbeatServiceImpl::ProcessTabletMetadata(
     return;
   }
   auto& tablet = *tablet_result;
-  MicrosTime ht_lease_exp = 0;
+  MicrosTime new_ht_lease_exp = 0;
   uint64 new_heartbeats_without_leader_lease = 0;
   consensus::LeaderLeaseStatus leader_lease_status =
       consensus::LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
@@ -1318,13 +1318,20 @@ void MasterHeartbeatServiceImpl::ProcessTabletMetadata(
       leader_lease_status = leader_info.leader_lease_status();
       leader_lease_info_initialized = true;
       if (leader_info.leader_lease_status() == consensus::LeaderLeaseStatus::HAS_LEASE) {
-        ht_lease_exp = leader_info.ht_lease_expiration();
+        auto ht_lease_exp = leader_info.ht_lease_expiration();
+        auto current_ht_lease_exp = existing_leader_lease_info->ht_lease_expiration;
         // If the reported ht lease from the leader is expired for more than
         // FLAGS_maximum_tablet_leader_lease_expired_secs, the leader shouldn't be treated
         // as a valid leader.
-        if (ht_lease_exp >= existing_leader_lease_info->ht_lease_expiration &&
+        // If the tablet has been changed from RF1 to any RF>1, the newly reported ht_lease_exp
+        // is always less than that reported when it was RF1 (kInfiniteHybridTimeLeaseExpiration).
+        // We should also treat such ht_lease_exp as valid.
+        // See https://github.com/yugabyte/yugabyte-db/issues/24575.
+        if ((ht_lease_exp >= current_ht_lease_exp ||
+                 current_ht_lease_exp == consensus::kInfiniteHybridTimeLeaseExpiration) &&
             !IsHtLeaseExpiredForTooLong(
                 master_->clock()->Now().GetPhysicalValueMicros(), ht_lease_exp)) {
+          new_ht_lease_exp = ht_lease_exp;
           tablet->UpdateLastTimeWithValidLeader();
         }
       } else {
@@ -1336,7 +1343,7 @@ void MasterHeartbeatServiceImpl::ProcessTabletMetadata(
   TabletLeaderLeaseInfo leader_lease_info{
         leader_lease_info_initialized,
         leader_lease_status,
-        ht_lease_exp,
+        new_ht_lease_exp,
         new_heartbeats_without_leader_lease};
   TabletReplicaDriveInfo drive_info{
         storage_metadata.sst_file_size(),
