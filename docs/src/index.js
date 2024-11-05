@@ -163,11 +163,17 @@ $(document).ready(() => {
    * Main (Header) Nav.
    */
   (() => {
-    const closeTopbar = document.querySelector('.info-topbar-close');
-    if (closeTopbar) {
-      closeTopbar.addEventListener('click', () => {
-        document.querySelector('.info-topbar').classList.add('closed');
-      });
+    const infoTopbar = document.querySelector('.info-topbar');
+    if (infoTopbar) {
+      document.querySelector('.td-content').classList.add('with-topbar');
+
+      const closeTopbar = document.querySelector('.info-topbar-close');
+      if (closeTopbar) {
+        closeTopbar.addEventListener('click', () => {
+          document.querySelector('.info-topbar').classList.add('closed');
+          document.querySelector('.td-content').classList.remove('with-topbar');
+        });
+      }
     }
 
     // Active main Nav.
