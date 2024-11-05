@@ -15,7 +15,7 @@ rightnav:
   hideH4: true
 ---
 
-The query planner is responsible for determining the most efficient way to execute a given SQL query. The optimizer component of the planner generates various plans of execution and determines the optimal path by taking into consideration the costs associated various factors like index lookups, scans, CPU usage, network latency, and so on. YugabyteDB supports 3 different types of optimizers. The primary component that calculates these values is the cost-based optimizer (CBO).
+The query planner is responsible for determining the most efficient way to execute a given SQL query. TThe planner's optimizer calculates the costs of different execution plans, taking into account factors like index lookups, table scans, CPU usage, and network latency. It then selects the most cost-effective path for query execution. YugabyteDB supports 3 different types of optimizers. The query planner, also known as CBO comprises primarily of selectivity estimation and cost modeling. We have implemented a new cost model for YugabyteDB which improves the accuracy of the CBO.
 
 ## Rule-based optimizer
 
@@ -63,7 +63,7 @@ To optimize the search for the best plan, CBO uses a dynamic programming-based a
 
 ### Statistics gathering
 
-The optimizer relies on accurate statistics about the tables, including the number of rows, the distribution of data in columns, and the cardinality of results from operations. These statistics are essential for estimating the costs of various query plans accurately. These statistics are gathered by the [ANALYZE](../../../api/ysql/the-sql-language/statements/cmd_analyze/) command and are provided in a display-friendly format by the [pg_stats](../../../architecture/system-catalog/#data-statistics) view.
+The optimizer relies on accurate statistics about the tables, including the number of rows, the distribution of data in columns, and the cardinality of results from operations. These statistics are essential for estimating the selectivity of filters and costs of various query plans accurately. These statistics are gathered by the [ANALYZE](../../../api/ysql/the-sql-language/statements/cmd_analyze/) command and are provided in a display-friendly format by the [pg_stats](../../../architecture/system-catalog/#data-statistics) view.
 
 {{< note title="Run ANALYZE manually" >}}
 Currently, YugabyteDB doesn't run a background job like PostgreSQL autovacuum to analyze the tables. To collect or update statistics, run the ANALYZE command manually. If you have enabled CBO, you must run ANALYZE on user tables after data load for the CBO to create optimal execution plans. Multiple projects are in progress to trigger this automatically.
@@ -81,7 +81,7 @@ Some of the factors included in the cost estimation are discussed below.
 
 1. **Data fetch**
 
-    To estimate the cost of fetching a tuple from [DocDB](../../docdb/), factors such as the number of SST files that may need to be read, and the estimated number of [seeks](../../docdb/lsm-sst/#seek), [previous](../../docdb/lsm-sst/#previous), and [next](../../docdb/lsm-sst/#next) operations that may be executed in the LSM subsystem, are taken into account.
+    To estimate the cost of fetching a tuple from [DocDB](../../docdb/),  CBO takes into account factors such as the number of SST files that may need to be read, and the estimated number of [seeks](../../docdb/lsm-sst/#seek), [previous](../../docdb/lsm-sst/#previous), and [next](../../docdb/lsm-sst/#next) operations that may be executed in the LSM subsystem, are taken into account.
 
 1. **Index scan**
 
@@ -108,24 +108,6 @@ After the optimal plan is determined, YugabyteDB generates a detailed execution 
 ## Plan caching
 
 The execution plans are cached for prepared statements to avoid overheads associated with repeated parsing of statements.
-
-## Switching to the default CBO
-
-In case you need to switch back to the default cost model after trying out YugabyteDB cost model, you need to follow these instructions.
-
-1. Turn of the base scans cost model as follows:
-
-      ```sql
-      SET yb_enable_base_scans_cost_model = FALSE;
-      ```
-
-1. Reset statistics collected with the ANALYZE command as follows:
-
-      ```sql
-      SELECT yb_reset_analyze_statistics ( table_oid );
-      ```
-
-      If table_oid is NULL, this function resets the statistics for all the tables in the current database that the user can analyze.
 
 ## Learn more
 
