@@ -1647,7 +1647,7 @@ class NodeChecker():
                 if pg_oid == "" or table["hidden"]:
                     continue
                 # Extract table oid
-                yb_pg_table_oid = str(int(table["uuid"][-4:], 16))
+                yb_pg_table_oid = str(int(table["uuid"][-8:], 16))
 
                 # Add table to the database's list in the dictionary
                 if dbname not in db_tables:
