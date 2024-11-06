@@ -2350,11 +2350,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   protected Map<UUID, Map<ServerType, String>> getPerAZGflagsChecksumMap(
       String universeName, Cluster cluster) {
     Map<UUID, Map<ServerType, String>> perAZServerTypeGflagsChecksumMap = new HashMap<>();
-    UserIntent newIntent = cluster.userIntent;
-    PlacementInfo newPI = cluster.placementInfo;
+    UserIntent userIntent = cluster.userIntent;
+    PlacementInfo pI = cluster.placementInfo;
     boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
-    KubernetesPlacement newPlacement = new KubernetesPlacement(newPI, isReadOnlyCluster);
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(newIntent.provider));
+    KubernetesPlacement newPlacement = new KubernetesPlacement(pI, isReadOnlyCluster);
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
     boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
     boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
     for (Entry<UUID, Map<String, String>> entry : newPlacement.configs.entrySet()) {
