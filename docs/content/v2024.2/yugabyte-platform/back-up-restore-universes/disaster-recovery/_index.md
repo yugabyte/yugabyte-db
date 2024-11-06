@@ -4,8 +4,6 @@ headerTitle: xCluster Disaster Recovery
 linkTitle: Disaster recovery
 description: Enable deployment using transactional (active-standby) replication between universes
 headContent: Fail over to a replica universe in case of unplanned outages
-tags:
-  feature: early-access
 menu:
   v2024.2_yugabyte-platform:
     parent: back-up-restore-universes
