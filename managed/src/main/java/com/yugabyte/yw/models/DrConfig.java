@@ -165,6 +165,14 @@ public class DrConfig extends Model {
         .orElseThrow(() -> new IllegalStateException("No active xCluster config found"));
   }
 
+  public boolean hasActiveXClusterConfig() {
+    if (xClusterConfigs.isEmpty()) {
+      return false;
+    }
+
+    return xClusterConfigs.stream().anyMatch(config -> !config.isSecondary());
+  }
+
   @JsonIgnore
   public XClusterConfig getFailoverXClusterConfig() {
     return xClusterConfigs.stream().filter(XClusterConfig::isSecondary).findFirst().orElse(null);
