@@ -36,7 +36,7 @@ You should perform these actions in a specific order, depending on whether perfo
 
   {{% /tab %}}
 
-  {{% tab header="Semi-automatic schema change mode" lang="semi-automated-schema-changes" %}}
+  {{% tab header="Semi-automatic schema change mode" lang="semi-automatic-schema-changes" %}}
 
 For each DDL statement:
 
