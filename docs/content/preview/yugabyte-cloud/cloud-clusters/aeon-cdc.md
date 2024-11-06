@@ -48,6 +48,8 @@ For more information, refer to [How the connector works](../../../explore/change
 
 By default, you have a maximum of two active replication slots. If you need more slots, contact {{% support-cloud %}}.
 
+CDC is not available for Sandbox clusters.
+
 ## Configure change data capture
 
 YugabyteDB Aeon clusters are already configured to support CDC. To create streams and begin propagating changes, first configure the YugabyteDB connector settings using a JSON file containing the connector configuration properties. This includes the connection parameters for your YugabyteDB Aeon cluster.
