@@ -2587,6 +2587,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_fail_all_drops", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("When set, all drops will fail"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_fail_all_drops,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_test_fail_next_inc_catalog_version", PGC_USERSET,DEVELOPER_OPTIONS,
 			gettext_noop("When set, the next increment catalog version will "
 						 "fail right before it's done. This only works when "
