@@ -20,6 +20,7 @@ When DDL changes are made to databases in replication for xCluster disaster reco
 You should perform these actions in a specific order, depending on whether performing a CREATE, DROP, ALTER, and so forth, as indicated by the sequence number of the operation in the table below.
 
 
+{{<tabpane text=true >}}
 {{}} {{% tab header="Manual Schema Changes mode" lang="manual-schema-changes" %}}
 
 | DDL | Step 1 | Step 2 | Step 3 |
@@ -44,6 +45,7 @@ For each DDL statement,
 After both steps are complete, the YugabyteDB Anywhere UI should reflect any added/removed tables in the Tables listing for this DR configuration.
 
 {{% /tab %}} {{}}
+{{</tabpane >}}
 
 In addition, keep in mind the following:
 
