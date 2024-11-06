@@ -77,6 +77,7 @@
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
+#include "yb/util/lru_cache.h"
 #include "yb/util/rw_mutex.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/threadpool.h"
@@ -628,6 +629,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Map from tablet ID to tablet
   TabletMap tablet_map_ GUARDED_BY(mutex_);
+  // A cache of the most recently deleted tablets. Only includes tablets deleted with argument
+  // TABLET_DATA_DELETED. Used to reject certain requests on recently deleted tablets, such as
+  // StartRemoteBootstrap.
+  LRUCache<TabletId> deleted_tablet_ids_ GUARDED_BY(mutex_);
 
   // Map from table ID to count of children in data and wal directories.
   TableDiskAssignmentMap table_data_assignment_map_ GUARDED_BY(dir_assignment_mutex_);
