@@ -277,7 +277,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
         finished_waiting_latency_(*finished_waiting_latency),
         unlocked_(locks->Unlock()),
         deadline_(deadline) {
-    DCHECK(txn_start_us || id.IsNil());
+    LOG_IF_WITH_PREFIX(DFATAL, !txn_start_us && !id.IsNil()) << "Expected non-zero txn_start_us";
     VLOG_WITH_PREFIX(4) << "Constructed waiter";
   }
 
@@ -491,12 +491,16 @@ struct WaitingTxn : public std::enable_shared_from_this<WaitingTxn> {
   }
 
   void SignalWaitQueueShutdown() EXCLUDES(mutex_) {
+    rpc::RpcCommandPtr rpc_to_abort = nullptr;
     {
       UniqueLock l(mutex_);
       if (handle_ != rpcs_.InvalidHandle()) {
-        (**handle_).Abort();
+        rpc_to_abort = *handle_;
       }
       is_wait_queue_shutting_down_ = true;
+    }
+    if (rpc_to_abort) {
+      rpc_to_abort->Abort();
     }
     for (const auto& waiter : PurgeWaiters()) {
       waiter->SignalWaitQueueShutdown();
@@ -1617,8 +1621,8 @@ class WaitQueue::Impl {
       return;
     }
     waiter_runner_.CompleteShutdown();
-    SharedLock l(mutex_);
     rpcs_.Shutdown();
+    SharedLock l(mutex_);
     LOG_IF(DFATAL, !shutting_down_)
         << "Called CompleteShutdown() while not in shutting_down_ state.";
     LOG_IF(DFATAL, !blocker_status_.empty())

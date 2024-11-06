@@ -11,7 +11,6 @@
 // under the License.
 //
 
-#include "yb/client/callbacks.h"
 #include "yb/client/client.h"
 
 #include "yb/consensus/log.h"

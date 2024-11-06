@@ -577,3 +577,25 @@ export const getChangedPorts = (
 
   return { oldPorts, newPorts };
 };
+
+// Any changes from security config, we can detect it here
+export const getSecurityConfigChanges = (
+  currentClusterConfig?: Cluster,
+  newClusterConfig?: Cluster
+) => {
+  const isNewIPEnabled = newClusterConfig?.userIntent?.assignPublicIP;
+  const isCurrentIPEnabled = currentClusterConfig?.userIntent?.assignPublicIP;
+  const hasChanged = isNewIPEnabled !== isCurrentIPEnabled;
+  return { hasChanged, isNewIPEnabled, isCurrentIPEnabled };
+};
+
+// Any changes from advanced config, we can detect it here
+export const getAdvancedConfigChanges = (
+  currentClusterConfig?: Cluster,
+  newClusterConfig?: Cluster
+) => {
+  const newArnString = newClusterConfig?.userIntent?.awsArnString;
+  const currentArnString = currentClusterConfig?.userIntent?.awsArnString;
+  const hasChanged = currentArnString !== newArnString;
+  return { hasChanged, currentArnString, newArnString };
+};

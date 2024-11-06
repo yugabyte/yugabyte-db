@@ -697,6 +697,14 @@ Create a single-node locally and join other nodes that are part of the same clus
 ./bin/yugabyted start --join=host:port,[host:port]
 ```
 
+Create a single-node locally and set advanced flags using a configuration file:
+
+```sh
+./bin/yugabyted start --config /path/to/configuration-file
+```
+
+For more advanced examples, see [Examples](#examples).
+
 #### Flags
 
 -h | --help
@@ -708,8 +716,8 @@ Create a single-node locally and join other nodes that are part of the same clus
 --join *master-ip*
 : The IP or DNS address of the existing yugabyted server that the new yugabyted server will join, or if the server was restarted, rejoin. The join flag accepts IP addresses, DNS names, or labels with correct [DNS syntax](https://en.wikipedia.org/wiki/Domain_Name_System#Domain_name_syntax,_internationalization) (that is, letters, numbers, and hyphens).
 
---config *config-file*
-: Yugabyted configuration file path. Refer to [Advanced flags](#advanced-flags).
+--config *path-to-config-file*
+: yugabyted advanced configuration file path. Refer to [Use a configuration file](#use-a-configuration-file).
 
 --base_dir *base-directory*
 : The directory where yugabyted stores data, configurations, and logs. Must be an absolute path.
@@ -751,12 +759,12 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 : Enable or disable the backup daemon with yugabyted start. Default: `false`
 : If you start a cluster using the `--backup_daemon` flag, you also need to download and extract the [YB Controller release](https://downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the yugabyte-{{< yb-version version="preview" >}} release directory.
 
---enable_pg_parity_tech_preview *PostgreSQL-compatibilty*
+--enable_pg_parity_early_access *PostgreSQL-compatibilty*
 : Enable Enhanced PostgreSQL Compatibility Mode. Default: `false`
 
 #### Advanced flags
 
-Advanced flags can be set by using the configuration file in the `--config` flag. The advanced flags support for the `start` command is as follows:
+The advanced flags supported by the `start` command are as follows:
 
 --ycql_port *ycql-port*
 : The port on which YCQL will run.
@@ -803,6 +811,33 @@ Advanced flags can be set by using the configuration file in the `--config` flag
 : The directory from where yugabyted reads initialization scripts.
 : Script format - YSQL `.sql`, YCQL `.cql`.
 : Initialization scripts are executed in sorted name order.
+
+#### Use a configuration file
+
+You can set advanced flags using a configuration file, specified using the `--config` flag. The configuration file is a JSON file with advanced flags and the corresponding values you want to set. For example, you could start a node using a configuration file as follows:
+
+1. Create a configuration file.
+
+    ```sh
+    vi ~/yugabyted.conf
+    ```
+
+1. Configure the desired advanced flags in the file. For example:
+
+    ```json
+    {
+        "master_webserver_port": 7100,
+        "tserver_webserver_port": 9100,
+        "master_flags": "ysql_enable_packed_row=true,ysql_beta_features=true",
+        "Tserver_flags": "ysql_enable_packed_row=true,ysql_beta_features=true,yb_enable_read_committed_isolation=true,enable_deadlock_detection=true,enable_wait_queues=true",
+    }
+    ```
+
+1. Start the node using the config flag.
+
+    ```sh
+    ./bin/yugabyted start --config ~/yugabyted.conf
+    ```
 
 #### Deprecated flags
 

@@ -61,7 +61,7 @@ extern void YBCCreateTable(CreateStmt *stmt,
 						   Oid tablegroupId,
 						   Oid colocationId,
 						   Oid tablespaceId,
-						   Oid pgTableId,
+						   Oid relfileNodeId,
 						   Oid oldRelfileNodeId,
 						   bool isTruncate);
 
@@ -82,7 +82,7 @@ extern void YBCCreateIndex(const char *indexName,
 						   Oid tablegroupId,
 						   Oid colocationId,
 						   Oid tablespaceId,
-						   Oid pgTableId,
+						   Oid indexRelfileNodeId,
 						   Oid oldRelfileNodeId);
 
 extern void YBCBindCreateIndexColumns(YBCPgStatement handle,

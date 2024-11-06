@@ -136,7 +136,8 @@ public class CloudProviderHandler {
         }
       }
     }
-    if (reqProvider.getCloudCode() != kubernetes && !config.getBoolean("yb.cloud.enabled")) {
+    if (reqProvider.getCloudCode() != kubernetes
+        && !config.getBoolean("yb.internal.disable_node_agent_provider_property")) {
       // Always enable for non-k8s providers.
       reqProvider.getDetails().setEnableNodeAgent(true);
     }

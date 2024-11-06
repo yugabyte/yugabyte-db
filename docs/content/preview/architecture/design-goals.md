@@ -4,7 +4,6 @@ headerTitle: Design goals
 linkTitle: Design goals
 description: Learn the design goals that drive the building of YugabyteDB
 headcontent: Goals and ideas considered during designing YugabyteDB
-image: fa-sharp fa-thin fa-lightbulb-exclamation-on
 menu:
   preview:
     identifier: architecture-design-goals

@@ -3,7 +3,6 @@ title: DocDB sharding layer
 headerTitle: DocDB sharding layer
 linkTitle: Sharding
 description: Learn about sharding strategies, hash and range sharding, colocated tables, and table splitting.
-image: fa-sharp fa-thin fa-grip-vertical
 headcontent: Learn about sharding strategies, hash and range sharding, colocated tables, and table splitting.
 menu:
   stable:

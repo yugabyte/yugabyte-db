@@ -1253,4 +1253,6 @@ SortByDir YbGetIndexKeySortOrdering(Relation indexRel);
 
 bool YbUseUnsafeTruncate(Relation rel);
 
+extern bool yb_ysql_conn_mgr_superuser_existed;
+
 #endif /* PG_YB_UTILS_H */

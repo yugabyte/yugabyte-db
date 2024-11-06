@@ -163,6 +163,9 @@ def add_download_file_subparser(subparsers, command, parent):
     parser.add_argument('--source_node_files_path', type=str,
                         help='File containing source files to download (separated by new line)',
                         required=True)
+    parser.add_argument('--remote_node_files_path', type=str,
+                        help='File containing source files to download on the remote server',
+                        required=True)
     parser.add_argument('--target_local_file', type=str,
                         help='Target file to save source to',
                         required=True)
@@ -171,11 +174,11 @@ def add_download_file_subparser(subparsers, command, parent):
 def download_file_node(args, client):
     # Name is irrelevant as long as it doesn't already exist
     tar_file_name = args.node_name + "-" + str(uuid.uuid4()) + ".tar.gz"
-    target_node_files_path = args.source_node_files_path
+    target_node_files_path = args.remote_node_files_path
 
     # "node_utils.sh/create_tar_file" file takes parameters:
     # [home_dir, tar_file_name, file_list_text_path]
-    cmd = [args.source_node_files_path]
+    cmd = [target_node_files_path]
     client.put_file(args.source_node_files_path, target_node_files_path)
     cmd.insert(0, tar_file_name)
     cmd.insert(0, args.yb_home_dir)

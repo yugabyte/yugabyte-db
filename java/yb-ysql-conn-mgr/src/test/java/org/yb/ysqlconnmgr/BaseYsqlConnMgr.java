@@ -50,6 +50,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   private static final String DEFAULT_PG_USER = "yugabyte";
   protected static final int STATS_UPDATE_INTERVAL = 2;
   private boolean warmup_random_mode = true;
+  private static boolean ysql_conn_mgr_superuser_sticky = false;
 
   protected static final String DISABLE_TEST_WITH_ASAN =
         "Test is not working correctly with asan build";
@@ -62,7 +63,8 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     builder.numTservers(NUM_TSERVER);
     builder.replicationFactor(NUM_TSERVER);
     builder.addCommonTServerFlag("ysql_conn_mgr_dowarmup", "false");
-    builder.addCommonTServerFlag("ysql_conn_mgr_superuser_sticky", "false");
+    builder.addCommonTServerFlag("ysql_conn_mgr_superuser_sticky",
+      Boolean.toString(ysql_conn_mgr_superuser_sticky));
     if (warmup_random_mode) {
       builder.addCommonTServerFlag(
       "TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "random");
@@ -104,12 +106,10 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   }
 
   protected void enableStickySuperuserConnsAndRestartCluster() throws Exception {
-    Map<String, String> tsFlagMap = getTServerFlags();
-    tsFlagMap.put("ysql_conn_mgr_superuser_sticky", "true");
-    Map<String, String> masterFlagMap = getMasterFlags();
+    ysql_conn_mgr_superuser_sticky = true;
     destroyMiniCluster();
     waitForProperShutdown();
-    createMiniCluster(masterFlagMap, tsFlagMap);
+    createMiniCluster();
     waitForDatabaseToStart();
   }
 

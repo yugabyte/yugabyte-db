@@ -3,7 +3,6 @@ title: Manage YugabyteDB
 headerTitle: Manage
 linkTitle: Manage
 description:
-image: /images/section_icons/quick_start/sample_apps.png
 headcontent:
 menu:
   v2.14:

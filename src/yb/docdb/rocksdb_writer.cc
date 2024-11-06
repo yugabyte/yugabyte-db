@@ -341,7 +341,6 @@ Status TransactionalWriter::operator()(
     reverse_value_prefix = replicated_batches_state_;
   }
   AddIntent<kNumKeyParts>(transaction_id_, key_parts, value, handler_, reverse_value_prefix);
-
   return Status::OK();
 }
 
@@ -503,6 +502,7 @@ Status IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
 }
 
 ApplyIntentsContext::ApplyIntentsContext(
+    const TabletId& tablet_id,
     const TransactionId& transaction_id,
     const ApplyTransactionState* apply_state,
     const SubtxnSet& aborted,
@@ -514,6 +514,7 @@ ApplyIntentsContext::ApplyIntentsContext(
     rocksdb::DB* intents_db)
     : IntentsWriterContext(transaction_id),
       FrontierSchemaVersionUpdater(schema_packing_provider),
+      tablet_id_(tablet_id),
       apply_state_(apply_state),
       // In case we have passed in a non-null apply_state, its aborted set will have been loaded
       // from persisted apply state, and the passed in aborted set will correspond to the aborted
@@ -640,7 +641,7 @@ Result<bool> ApplyIntentsContext::Entry(
     RegisterRecord();
 
     YB_TRANSACTION_DUMP(
-        ApplyIntent, transaction_id(), intent.doc_path.size(), intent.doc_path,
+        ApplyIntent, tablet_id_, transaction_id(), intent.doc_path.size(), intent.doc_path,
         commit_ht_, write_id_, decoded_value.body);
 
     RETURN_NOT_OK(UpdateSchemaVersion(intent.doc_path, decoded_value.body));
@@ -674,6 +675,14 @@ Status FrontierSchemaVersionUpdater::UpdateSchemaVersion(Slice key, Slice value)
   if (VERIFY_RESULT(decoder.DecodeCotableId(&cotable_id))) {
     schema_version_colocation_id_ = 0;
     if (cotable_id != schema_version_table_) {
+      Status s = schema_packing_provider_->CheckCotablePacking(
+          cotable_id, schema_version, HybridTime::kMax);
+      if (PREDICT_FALSE(!s.ok())) {
+        LOG_WITH_FUNC(DFATAL)
+            << Format("Check cotable packing for cotable $0 with schema version $1 failed: $2",
+                      cotable_id, schema_version, s);
+        return s;
+      }
       FlushSchemaVersion();
       schema_version_table_ = cotable_id;
     }
@@ -681,6 +690,14 @@ Status FrontierSchemaVersionUpdater::UpdateSchemaVersion(Slice key, Slice value)
     ColocationId colocation_id = 0;
     if (VERIFY_RESULT(decoder.DecodeColocationId(&colocation_id))) {
       if (colocation_id != schema_version_colocation_id_) {
+        Status s = schema_packing_provider_->CheckColocationPacking(
+            colocation_id, schema_version, HybridTime::kMax);
+        if (PREDICT_FALSE(!s.ok())) {
+          LOG_WITH_FUNC(DFATAL)
+            << Format("Check colocation packing for colocation $0 with schema version $1"
+                      "failed: $2",
+                      colocation_id, schema_version, s);
+        }
         FlushSchemaVersion();
         cotable_id = VERIFY_RESULT(schema_packing_provider_->ColocationPacking(
             colocation_id, kLatestSchemaVersion, HybridTime::kMax)).cotable_id;

@@ -48,13 +48,15 @@ export const UserAuth = (props) => {
         <>
           <div className="ua-tab-container">
             {TABS.map(({ label, id }) => {
-              return <div
-                key={id}
-                className={clsx('ua-tab-item', id === activeTab && 'ua-active-tab')}
-                onClick={(e) => handleTabSelect(e, id)}
-              >
-                {label}
-              </div>;
+              return (
+                <div
+                  key={id}
+                  className={clsx('ua-tab-item', id === activeTab && 'ua-active-tab')}
+                  onClick={(e) => handleTabSelect(e, id)}
+                >
+                  {label}
+                </div>
+              );
             })}
           </div>
           <div className="ua-sec-divider" />

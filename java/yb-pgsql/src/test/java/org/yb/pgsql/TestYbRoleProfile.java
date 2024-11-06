@@ -256,18 +256,14 @@ public class TestYbRoleProfile extends BasePgSQLTest {
   }
 
   @Test
-  @Ignore // YB_TODO: Enable test when recreateWithYsqlVersion is working.
   public void testProfilesOnOldDbVersion() throws Exception {
     Assume.assumeFalse("Skipping this test for Ysql Connection Manager",
         connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR);
 
     /*
-    * There are two operations that might result in an error if the profile catalogs don't exist:
-    *  1. logging in, because auth.c tries to get the user's profile if it exists
-    *  2. running profile commands.
-    * We can simply test this by logging in (which should behave as normal) and running a command.
+    * Test that profiles work on the oldest available pg15 snapshot.
     */
-    recreateWithYsqlVersion(YsqlSnapshotVersion.EARLIEST);
+    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_ALPHA);
 
     try (Connection conn = getConnectionBuilder().withDatabase("template1")
                                                  .withTServer(0)
@@ -275,9 +271,7 @@ public class TestYbRoleProfile extends BasePgSQLTest {
                                                  .withPassword(DEFAULT_PG_PASS)
                                                  .connect();
          Statement stmt = conn.createStatement()) {
-      runInvalidQuery(stmt,
-                      "CREATE PROFILE p LIMIT FAILED_LOGIN_ATTEMPTS 3",
-                      "Login profile system catalogs do not exist");
+      stmt.execute("CREATE PROFILE p LIMIT FAILED_LOGIN_ATTEMPTS 3");
     }
   }
 

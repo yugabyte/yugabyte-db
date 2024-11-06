@@ -12,6 +12,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -27,14 +28,22 @@ public class YbcBackupNodeRetriever {
   private final LinkedBlockingQueue<String> universeTserverIPs;
   private final Universe universe;
   private final YbcManager ybcManager;
+  private final AtomicBoolean poolInitialized;
+  private final Map<UUID, ParallelBackupState> backupDBStates;
 
-  public YbcBackupNodeRetriever(Universe universe, int parallelism) {
+  public YbcBackupNodeRetriever(
+      Universe universe, int parallelism, Map<UUID, ParallelBackupState> backupDBStates) {
     this.universeTserverIPs = new LinkedBlockingQueue<>(parallelism);
     this.universe = universe;
     this.ybcManager = StaticInjectorHolder.injector().instanceOf(YbcManager.class);
+    this.poolInitialized = new AtomicBoolean(false);
+    this.backupDBStates = backupDBStates;
   }
 
-  public void initializeNodePoolForBackups(Map<UUID, ParallelBackupState> backupDBStates) {
+  public synchronized void initializeNodePoolForBackups() {
+    if (poolInitialized.get()) {
+      return;
+    }
     Set<String> nodeIPsAlreadyAssigned =
         backupDBStates.entrySet().stream()
             .filter(
@@ -59,6 +68,7 @@ public class YbcBackupNodeRetriever {
             nodeIPsAlreadyAssigned.size() + universeTserverIPs.size());
       }
     }
+    poolInitialized.set(true);
   }
 
   public String getNodeIpForBackup() {

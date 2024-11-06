@@ -77,10 +77,10 @@ class MasterHeartbeatITest : public YBTableTestBase {
 };
 
 master::TSToMasterCommonPB MakeTSToMasterCommonPB(
-    master::TSDescriptor* ts, std::optional<int64_t> seqno) {
+    const master::TSDescriptor& ts, std::optional<int64_t> seqno) {
   master::TSToMasterCommonPB common;
-  common.mutable_ts_instance()->set_permanent_uuid(ts->permanent_uuid());
-  common.mutable_ts_instance()->set_instance_seqno(seqno ? *seqno : ts->latest_seqno());
+  common.mutable_ts_instance()->set_permanent_uuid(ts.permanent_uuid());
+  common.mutable_ts_instance()->set_instance_seqno(seqno ? *seqno : ts.latest_seqno());
   return common;
 }
 
@@ -250,7 +250,7 @@ TEST_F(MasterHeartbeatITest, IgnoreEarlierHeartbeatFromSameTSProcess) {
       proxy_cache_.get(), mini_cluster_->mini_master()->bound_rpc_addr());
   auto cluster_config = ASSERT_RESULT(catalog_mgr.GetClusterConfig());
   master::TSHeartbeatRequestPB req;
-  *req.mutable_common() = MakeTSToMasterCommonPB(ts.get(), ts->latest_seqno());
+  *req.mutable_common() = MakeTSToMasterCommonPB(*ts, ts->latest_seqno());
   req.set_universe_uuid(cluster_config.universe_uuid());
   const auto original_latest_report_seqno = ts->latest_report_seqno();
   *req.mutable_tablet_report() = MakeTabletReportPBWithNewLeader(
@@ -336,7 +336,7 @@ TEST_F(MasterHeartbeatITest, ProcessHeartbeatAfterTSRestart) {
   master::TSHeartbeatRequestPB req;
   ASSERT_GT(ts->latest_report_seqno(), 0);
   // Use a later sequence number to simulate the tserver restarting.
-  *req.mutable_common() = MakeTSToMasterCommonPB(ts.get(), ts->latest_seqno() + 10);
+  *req.mutable_common() = MakeTSToMasterCommonPB(*ts, ts->latest_seqno() + 10);
   req.set_universe_uuid(cluster_config.universe_uuid());
   *req.mutable_registration() = ts->GetTSRegistrationPB();
   *req.mutable_tablet_report() = MakeTabletReportPBWithNewLeader(
@@ -422,7 +422,7 @@ TEST_F(MasterHeartbeatITest, TestRegistrationThroughRaftPersisted) {
 
   auto cluster_config = ASSERT_RESULT(catalog_mgr.GetClusterConfig());
   master::TSHeartbeatRequestPB req;
-  *req.mutable_common() = MakeTSToMasterCommonPB(reporting_ts, reporting_ts->latest_seqno());
+  *req.mutable_common() = MakeTSToMasterCommonPB(*reporting_ts, reporting_ts->latest_seqno());
   req.set_universe_uuid(cluster_config.universe_uuid());
 
   *req.mutable_tablet_report() = MakeTabletReportPBWithNewPeer(

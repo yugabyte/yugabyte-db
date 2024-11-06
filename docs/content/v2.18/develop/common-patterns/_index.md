@@ -4,7 +4,6 @@ headerTitle: Common patterns
 linkTitle: Common patterns
 description: Build on Common patterns
 headcontent: Design robust and efficient applications using common patterns
-image: /images/section_icons/architecture/distributed_acid.png
 menu:
   v2.18:
     identifier: common-patterns

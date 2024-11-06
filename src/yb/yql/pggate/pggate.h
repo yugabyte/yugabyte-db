@@ -322,7 +322,7 @@ class PgApiImpl {
 
   Status AddSplitBoundary(PgStatement *handle, PgExpr **exprs, int expr_count);
 
-  Status ExecCreateTable(PgStatement *handle);
+  Status ExecCreateTable(PgStatement *handle, const char **notice_msg);
 
   Status NewAlterTable(const PgObjectId& table_id,
                        PgStatement **handle);
@@ -408,7 +408,7 @@ class PgApiImpl {
   Status CreateIndexAddSplitRow(PgStatement *handle, int num_cols,
                                 YBCPgTypeEntity **types, uint64_t *data);
 
-  Status ExecCreateIndex(PgStatement *handle);
+  Status ExecCreateIndex(PgStatement *handle, const char** notice_msg);
 
   Status NewDropIndex(const PgObjectId& index_id,
                       bool if_exist,
@@ -719,6 +719,18 @@ class PgApiImpl {
       const PgExplicitRowLockParams& params, bool is_region_local,
       PgExplicitRowLockErrorInfo& error_info);
   Status FlushExplicitRowLockIntents(PgExplicitRowLockErrorInfo& error_info);
+
+  // INSERT ... ON CONFLICT batching ---------------------------------------------------------------
+  Status AddInsertOnConflictKey(
+      PgOid table_id, const Slice& ybctid, const YBCPgInsertOnConflictKeyInfo& info);
+  YBCPgInsertOnConflictKeyState InsertOnConflictKeyExists(PgOid table_id, const Slice& ybctid);
+  Result<YBCPgInsertOnConflictKeyInfo> DeleteInsertOnConflictKey(
+      PgOid table_id, const Slice& ybctid);
+  Result<YBCPgInsertOnConflictKeyInfo> DeleteNextInsertOnConflictKey();
+  uint64_t GetInsertOnConflictKeyCount();
+  void AddInsertOnConflictKeyIntent(PgOid table_id, const Slice& ybctid);
+  void ClearInsertOnConflictCache();
+  //------------------------------------------------------------------------------------------------
 
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);

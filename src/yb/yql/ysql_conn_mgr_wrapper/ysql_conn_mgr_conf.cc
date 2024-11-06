@@ -30,6 +30,7 @@
 
 DECLARE_bool(logtostderr);
 DECLARE_bool(ysql_conn_mgr_use_unix_conn);
+DECLARE_bool(ysql_conn_mgr_use_auth_backend);
 DECLARE_uint32(ysql_conn_mgr_port);
 DECLARE_uint32(ysql_conn_mgr_max_client_connections);
 DECLARE_uint32(ysql_conn_mgr_max_conns_per_db);
@@ -194,6 +195,7 @@ std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%min_pool_size%}", std::to_string(FLAGS_ysql_conn_mgr_min_conns_per_db)},
     {"{%yb_use_unix_socket%}", FLAGS_ysql_conn_mgr_use_unix_conn ? "" : "#"},
     {"{%yb_use_tcp_socket%}", FLAGS_ysql_conn_mgr_use_unix_conn ? "#" : ""},
+    {"{%yb_use_auth_backend%}", BoolToString(FLAGS_ysql_conn_mgr_use_auth_backend)},
     {"{%unix_socket_dir%}",
       PgDeriveSocketDir(postgres_address_)}}; // Return unix socket
             //  file path = "/tmp/.yb.host_ip:port"
@@ -262,10 +264,15 @@ void YsqlConnMgrConf::UpdateConfigFromGFlags() {
 
 YsqlConnMgrConf::YsqlConnMgrConf(const std::string& data_path) {
   data_dir_ = JoinPathSegments(data_path, "yb-data", "tserver");
-  log_file_ = JoinPathSegments(FLAGS_log_dir, "ysql-conn-mgr.log");
   pid_file_ = JoinPathSegments(data_path, "yb-data", "tserver", "ysql-conn-mgr.pid");
   ysql_pgconf_file_ = JoinPathSegments(data_path, "pg_data", "ysql_pg.conf");
 
+  // Generate the log file name based on the current time.
+  auto now = std::time(/* arg= */ nullptr);
+  auto* tm = std::localtime(&now);
+  char buffer[64];
+  buffer[strftime(buffer, sizeof(buffer), "ysqlconnmgr-%Y-%m-%d_%H%M%S.log", tm)] = 0;
+  log_file_ = JoinPathSegments(FLAGS_log_dir, buffer);
 
   UpdateConfigFromGFlags();
 

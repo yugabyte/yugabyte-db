@@ -145,6 +145,15 @@ class PgCronTest : public MiniClusterTestWithClient<ExternalMiniCluster> {
     return conn->FetchRow<pgwrapper::PGUint64>(Format("SELECT COUNT(*) FROM $0", table_name));
   }
 
+  Status WaitForRowCountAbove(int64_t min_count) {
+    return WaitFor(
+        [this, &min_count]() -> Result<bool> {
+          const auto row_count = VERIFY_RESULT(GetRowCount());
+          return row_count > min_count;
+        },
+        kTimeout, Format("Wait for row count to be above $0", min_count));
+  }
+
   Status WaitForDataInPgCronLeaderTable() {
     auto table_name =
         stateful_service::GetStatefulServiceTableName(StatefulServiceKind::PG_CRON_LEADER);
@@ -540,6 +549,37 @@ TEST_F(PgCronTest, FailBeforeStoringLastMinute) {
 
   row_count = ASSERT_RESULT(GetRowCount());
   ASSERT_GT(row_count, 0);
+}
+
+TEST_F(PgCronTest, DeactivateRunningJob) {
+  ASSERT_OK(Schedule1SecInsertJob());
+  // Start a job that will run for a long time.
+  auto sleep_job_id = ASSERT_RESULT(ScheduleJob("Sleep Job", "1 second", "SELECT pg_sleep(1000)"));
+
+  ASSERT_OK(WaitForRowCountAbove(0));
+
+  auto is_sleep_job_running = [this, sleep_job_id]() -> Result<bool> {
+    return VERIFY_RESULT(conn_->FetchRow<pgwrapper::PGUint64>(Format(
+               "SELECT COUNT(*) FROM cron.job_run_details WHERE jobid = $0 AND status = 'running'",
+               sleep_job_id))) > 0;
+  };
+
+  {
+    const auto is_running = ASSERT_RESULT(is_sleep_job_running());
+    ASSERT_TRUE(is_running);
+  }
+
+  // Deactivating the sleep job should stop it immediately.
+  ASSERT_OK(conn_->FetchFormat("SELECT cron.alter_job($0, active:=false)", sleep_job_id));
+
+  // Wait for the change to get picked up and sleep job to get canceled.
+  ASSERT_OK(WaitFor(
+      [&is_sleep_job_running]() -> Result<bool> { return !VERIFY_RESULT(is_sleep_job_running()); },
+      kTimeout, "Wait for sleeping job to get killed"));
+
+  // Make sure the other job is still running.
+  const auto initial_row_count = ASSERT_RESULT(GetRowCount());
+  ASSERT_OK(WaitForRowCountAbove(initial_row_count));
 }
 
 }  // namespace yb

@@ -13,11 +13,11 @@ type: docs
 
 YugabyteDB Anywhere allows you to create a universe spanning multiple geographic regions.
 
-For example, you can deploy a universe across Oregon (US-West) and South Carolina (US-East). Once deployed, you can connect to each node and perform a variety of tasks.
+For example, you can deploy a universe across Oregon (US-West), South Carolina (US-East), and Tokyo (Asia-Northeast).
 
 ## Prerequisites
 
-Before you can start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Configure a cloud provider](/preview/yugabyte-platform/configure-yugabyte-platform/).
+Before you start creating a universe, ensure that you have created a provider configuration as described in [Create provider configurations](../../configure-yugabyte-platform/).
 
 ## Create a universe
 
@@ -27,15 +27,15 @@ After you have configured a cloud provider, such as, for example [Google Cloud P
 
 - In the **Provider** field, select the cloud provider you configured.
 
-- Use the **Regions** field to enter **Oregon** and **South Carolina**.
+- Use the **Regions** field to select the regions where you want to deploy nodes.
 
 - Choose the **Linux version** to be provisioned on the nodes of the universe.
 
-- In the **Instance Type** field, select **n1-standard-8**.
+- In the **Instance Type** field, select a suitable instance type; these will vary depending on the cloud provider.
 
   ![Create multi-region universe1 on GCP](/images/yp/create-deployments/create-multi-region-uni1.png)
 
-- Provide any other desired settings for **Security Configurations**, and **Advanced Configuration**.
+- Provide any other desired settings for [Security Configurations](../create-universe-multi-zone/#security-configurations), and [Advanced Configuration](../create-universe-multi-zone/#advanced-configuration).
 
 - For **G-Flags**, click **Add Flags**, **Add to Master**, and add the following flags for Master:
 

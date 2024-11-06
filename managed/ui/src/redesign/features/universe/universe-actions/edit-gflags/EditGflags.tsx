@@ -330,6 +330,7 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
           flex={1}
           height="100%"
           data-testid="EditGflags-Modal"
+          style={{ scrollbarWidth: 'none' }}
         >
           {asyncClusterCopy && (
             <Box className={classes.toggleContainer}>

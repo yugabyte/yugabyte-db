@@ -253,7 +253,7 @@ var migrations map[int]migrator = map[int]migrator{
 	asRoot:               migrateAsRootConfig,
 	ybaWait:              migrateYbaWait,
 	initialized:          migrateInitialized,
-	asRootRetry:					migrateAsRootConfig,
+	asRootRetry:          migrateAsRootConfig,
 }
 
 func getMigrationHandler(toSchema int) migrator {

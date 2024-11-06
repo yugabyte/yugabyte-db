@@ -173,6 +173,7 @@ set(MASTER_SRCS
   yql_views_vtable.cc
   yql_virtual_table.cc
   yql_vtable_iterator.cc
+  ysql/ysql_catalog_config.cc
   ysql/ysql_initdb_major_upgrade_handler.cc
   ysql_backends_manager.cc
   ysql_ddl_handler.cc

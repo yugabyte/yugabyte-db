@@ -40,10 +40,6 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
 
   void SetUp() override {
     XClusterYsqlTestBase::SetUp();
-    // Make sure we use new databases so the database OIDs will differ in automatic mode.
-    // This ensures that the sequence_data aliases will be different in the two universes.
-    // See XClusterYsqlTestBase::SetUpClusters() for the code that does this.
-    namespace_name = "new_db";
   }
 
   std::vector<TableId> ExtractTableIds(const master::GetUniverseReplicationResponsePB& resp) {
@@ -90,6 +86,11 @@ TEST_F(XClusterDBScopedTest, TestCreateWithCheckpoint) {
   SetupParams param;
   param.num_producer_tablets = {};
   param.num_consumer_tablets = {};
+  if (UseAutomaticMode()) {
+    // Make sure we can connect sequence streams across different OIDs.
+    param.use_different_database_oids = true;
+    namespace_name = "db_with_different_oids";
+  }
   ASSERT_OK(SetUpClusters(param));
 
   ASSERT_NOK_STR_CONTAINS(
@@ -107,8 +108,7 @@ TEST_F(XClusterDBScopedTest, TestCreateWithCheckpoint) {
   ASSERT_NOK(CreateReplicationFromCheckpoint("bad-master-addr"));
   ASSERT_OK(ClearFailedUniverse(consumer_cluster_));
 
-  ASSERT_NOK_STR_CONTAINS(
-      CreateReplicationFromCheckpoint(), "Could not find matching table for new_db.test_table_0");
+  ASSERT_NOK_STR_CONTAINS(CreateReplicationFromCheckpoint(), "Could not find matching table");
   ASSERT_OK(ClearFailedUniverse(consumer_cluster_));
 
   auto consumer_table_name = ASSERT_RESULT(CreateYsqlTable(

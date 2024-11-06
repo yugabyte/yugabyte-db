@@ -1380,71 +1380,50 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   }
 
   public void installYbcOnThePods(
-      String universeName,
       Set<NodeDetails> servers,
       boolean isReadOnlyCluster,
       String ybcSoftwareVersion,
       Map<String, String> ybcGflags) {
     SubTaskGroup ybcUpload =
-        createSubTaskGroup(
-            KubernetesCommandExecutor.CommandType.COPY_PACKAGE.getSubTaskGroupName());
-    createKubernetesYbcExecutorTask(
-        ybcUpload,
-        universeName,
-        KubernetesCommandExecutor.CommandType.COPY_PACKAGE,
-        servers,
-        isReadOnlyCluster,
-        ybcSoftwareVersion,
-        ybcGflags);
+        createSubTaskGroup(KubernetesCommandExecutor.CommandType.COPY_PACKAGE.getSubTaskGroupName())
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    createKubernetesYbcCopyPackageTask(
+        ybcUpload, servers, isReadOnlyCluster, ybcSoftwareVersion, ybcGflags);
     getRunnableTask().addSubTaskGroup(ybcUpload);
   }
 
   public void performYbcAction(
       Set<NodeDetails> servers, boolean isReadOnlyCluster, String command) {
     SubTaskGroup ybcAction =
-        createSubTaskGroup(KubernetesCommandExecutor.CommandType.YBC_ACTION.getSubTaskGroupName());
-    createKubernetesYbcExecutorTask(
-        ybcAction,
-        KubernetesCommandExecutor.CommandType.YBC_ACTION,
-        servers,
-        isReadOnlyCluster,
-        command);
+        createSubTaskGroup(KubernetesCommandExecutor.CommandType.YBC_ACTION.getSubTaskGroupName())
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+    createKubernetesYbcActionTask(ybcAction, servers, isReadOnlyCluster, command);
     getRunnableTask().addSubTaskGroup(ybcAction);
   }
 
   // Create Kubernetes Executor task for copying YBC package and conf file to the pod
-  public void createKubernetesYbcExecutorTask(
+  public void createKubernetesYbcCopyPackageTask(
       SubTaskGroup subTaskGroup,
-      String universeName,
-      KubernetesCommandExecutor.CommandType commandType,
       Set<NodeDetails> servers,
       boolean isReadOnlyCluster,
       String ybcSoftwareVersion,
       Map<String, String> ybcGflags) {
     for (NodeDetails node : servers) {
-      KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
       Cluster primaryCluster = taskParams().getPrimaryCluster();
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
       if (primaryCluster == null) {
         primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
       }
-      params.commandType = commandType;
-      params.setUniverseUUID(taskParams().getUniverseUUID());
-      params.ybcServerName = node.nodeName;
-      params.setYbcSoftwareVersion(ybcSoftwareVersion);
-      params.ybcGflags = ybcGflags;
       List<Cluster> readOnlyClusters = taskParams().getReadOnlyClusters();
       if (isReadOnlyCluster && readOnlyClusters.size() == 0) {
         readOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
       }
-      params.providerUUID =
+      UUID providerUUID =
           isReadOnlyCluster
               ? UUID.fromString(readOnlyClusters.get(0).userIntent.provider)
               : UUID.fromString(primaryCluster.userIntent.provider);
-      KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
-      task.initialize(params);
-      task.setUserTaskUUID(getUserTaskUUID());
-      subTaskGroup.addSubTask(task);
+      createKubernetesYbcCopyPackageSubTask(
+          subTaskGroup, node, providerUUID, ybcSoftwareVersion, ybcGflags);
     }
   }
 
@@ -1512,14 +1491,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   }
 
   // Create Kubernetes Executor task for perform ybc
-  public void createKubernetesYbcExecutorTask(
+  public void createKubernetesYbcActionTask(
       SubTaskGroup subTaskGroup,
-      KubernetesCommandExecutor.CommandType commandType,
       Set<NodeDetails> servers,
       boolean isReadOnlyCluster,
       String command) {
     for (NodeDetails node : servers) {
-      KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
       Cluster primaryCluster = taskParams().getPrimaryCluster();
       List<Cluster> readOnlyClusters = taskParams().getReadOnlyClusters();
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
@@ -1529,19 +1506,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       if (isReadOnlyCluster && readOnlyClusters.size() == 0) {
         readOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
       }
-      params.commandType = commandType;
-      params.setUniverseUUID(taskParams().getUniverseUUID());
-      params.ybcServerName = node.nodeName;
-      params.isReadOnlyCluster = isReadOnlyCluster;
-      params.providerUUID =
+      UUID providerUUID =
           isReadOnlyCluster
               ? UUID.fromString(readOnlyClusters.get(0).userIntent.provider)
               : UUID.fromString(primaryCluster.userIntent.provider);
-      params.command = command;
-      KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
-      task.initialize(params);
-      task.setUserTaskUUID(getUserTaskUUID());
-      subTaskGroup.addSubTask(task);
+      createKubernetesYbcActionSubTask(
+          subTaskGroup, node, providerUUID, isReadOnlyCluster, command);
     }
   }
 
@@ -2380,11 +2350,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   protected Map<UUID, Map<ServerType, String>> getPerAZGflagsChecksumMap(
       String universeName, Cluster cluster) {
     Map<UUID, Map<ServerType, String>> perAZServerTypeGflagsChecksumMap = new HashMap<>();
-    UserIntent newIntent = cluster.userIntent;
-    PlacementInfo newPI = cluster.placementInfo;
+    UserIntent userIntent = cluster.userIntent;
+    PlacementInfo pI = cluster.placementInfo;
     boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
-    KubernetesPlacement newPlacement = new KubernetesPlacement(newPI, isReadOnlyCluster);
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(newIntent.provider));
+    KubernetesPlacement newPlacement = new KubernetesPlacement(pI, isReadOnlyCluster);
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
     boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
     boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
     for (Entry<UUID, Map<String, String>> entry : newPlacement.configs.entrySet()) {

@@ -4,7 +4,6 @@ headerTitle: Audit logging
 linkTitle: Audit logging
 description: Audit logging in YugabyteDB.
 headcontent: Trace statements and configure audit logging
-image: fa-thin fa-calculator
 menu:
   stable:
     identifier: audit-logging

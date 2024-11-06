@@ -2981,10 +2981,12 @@ Status CatalogManager::GetCDCDBStreamInfo(
 
 Status CatalogManager::ListCDCStreams(
     const ListCDCStreamsRequestPB* req, ListCDCStreamsResponsePB* resp) {
-  scoped_refptr<TableInfo> table;
   bool filter_table = req->has_table_id();
+  TableId table_id;
   if (filter_table) {
-    table = VERIFY_RESULT(FindTableById(req->table_id()));
+    table_id = req->table_id();
+    auto stripped_table_id = xcluster::StripSequencesDataAliasIfPresent(table_id);
+    RETURN_NOT_OK(FindTableById(stripped_table_id));
   }
 
   SharedLock lock(mutex_);
@@ -2999,7 +3001,7 @@ Status CatalogManager::ListCDCStreams(
     }
 
     if (filter_table && entry.second->table_id().size() > 0 &&
-        table->id() != entry.second->table_id().Get(0)) {
+        table_id != entry.second->table_id().Get(0)) {
       continue;  // Skip deleting/deleted streams and streams from other tables.
     }
 
@@ -3503,7 +3505,7 @@ Status CatalogManager::BootstrapProducer(
   }
 
   cdc::BootstrapProducerRequestPB bootstrap_req;
-  master::TSDescriptor* ts = nullptr;
+  master::TSDescriptorPtr ts = nullptr;
   for (int i = 0; i < req->table_name_size(); i++) {
     string pg_schema_name = pg_database_type ? req->pg_schema_name(i) : "";
     auto table_info = GetTableInfoFromNamespaceNameAndTableName(
@@ -3963,7 +3965,8 @@ Status CatalogManager::WaitForReplicationDrain(
         proxy_to_request;
     for (const auto& stream : streams) {
       for (const auto& table_id : stream->table_id()) {
-        auto table_info = VERIFY_RESULT(FindTableById(table_id));
+        auto stripped_table_id = xcluster::StripSequencesDataAliasIfPresent(table_id);
+        auto table_info = VERIFY_RESULT(FindTableById(stripped_table_id));
         RSTATUS_DCHECK(table_info != nullptr, NotFound, "Table ID not found: " + table_id);
 
         for (const auto& tablet : VERIFY_RESULT(table_info->GetTablets())) {

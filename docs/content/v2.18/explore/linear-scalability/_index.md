@@ -4,7 +4,6 @@ headerTitle: Horizontal scalability
 linkTitle: Horizontal scalability
 description: Horizontal scalability in YugabyteDB.
 headcontent: Handle larger workloads by adding nodes to your cluster
-image: /images/section_icons/explore/linear_scalability.png
 menu:
   v2.18:
     identifier: explore-scalability

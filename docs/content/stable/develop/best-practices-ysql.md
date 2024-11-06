@@ -27,7 +27,7 @@ For more details, see [Build global applications](../build-global-apps).
 Colocated tables optimize latency and performance for data access by reducing the need for additional trips across the network for small tables. Additionally, it reduces the overhead of creating a tablet for every relation (tables, indexes, and so on) and their storage per node.
 
 {{<lead link="../../explore/colocation/">}}
-For more details, see [colocation](../../explore/colocation/).
+For more details, see [Colocation](../../explore/colocation/).
 {{</lead>}}
 
 ## Faster reads with covering indexes
@@ -42,7 +42,7 @@ For more details, see [Avoid trips to the table with covering indexes](https://w
 
 ## Faster writes with partial indexes
 
-A partial index is an index that is built on a subset of a table and includes only rows that satisfy the condition specified in the `WHERE` clause. This speeds up any writes to the table and reduces the size of the index, thereby improving speed for read queries that use the index.
+A partial index is an index that is built on a subset of a table and includes only rows that satisfy the condition specified in the WHERE clause. This speeds up any writes to the table and reduces the size of the index, thereby improving speed for read queries that use the index.
 
 {{<lead link="../../explore/ysql-language-features/indexes-constraints/partial-index-ysql/">}}
 For more details, see [Partial indexes](../../explore/ysql-language-features/indexes-constraints/partial-index-ysql/).
@@ -50,7 +50,7 @@ For more details, see [Partial indexes](../../explore/ysql-language-features/ind
 
 ## Distinct keys with unique indexes
 
-If you need values in some of the columns to be unique, you can specify your index as `UNIQUE`.
+If you need values in some of the columns to be unique, you can specify your index as UNIQUE.
 
 When a unique index is applied to two or more columns, the combined values in these columns can't be duplicated in multiple rows. Note that because a NULL value is treated as a distinct value, you can have multiple NULL values in a column with a unique index.
 
@@ -70,7 +70,7 @@ For a demo, see the YugabyteDB Friday Tech Talk on [Scaling sequences with serve
 
 ## Fast single-row transactions
 
-Common scenarios of updating rows and fetching the results in multiple statements can lead to multiple round-trips between the application and server. In many cases, rewriting these statements as single statements using the `RETURNING` clause will lead to lower latencies as YugabyteDB has optimizations to make single statements faster. For example, the following statements:
+Common scenarios of updating rows and fetching the results in multiple statements can lead to multiple round-trips between the application and server. In many cases, rewriting these statements as single statements using the RETURNING clause will lead to lower latencies as YugabyteDB has optimizations to make single statements faster. For example, the following statements:
 
 ```sql
 SELECT v FROM txndemo WHERE k=1 FOR UPDATE;
@@ -127,7 +127,7 @@ INSERT INTO users(name,surname) VALUES ('bill', 'jane'), ('billy', 'bob'), ('joe
 
 ## UPSERT multiple rows wherever possible
 
-PostgreSQL and YSQL enable you to do upserts using the `INSERT ON CONFLICT` clause. Similar to multi-row inserts, you can also batch multiple upserts in a single `INSERT ON CONFLICT` statement for better performance.
+PostgreSQL and YSQL enable you to do upserts using the INSERT ON CONFLICT clause. Similar to multi-row inserts, you can also batch multiple upserts in a single INSERT ON CONFLICT statement for better performance.
 
 In case the row already exists, you can access the existing values using `EXCLUDED.<column_name>` in the query.
 
@@ -186,12 +186,10 @@ For more information, see [Connection pooling](../../drivers-orms/smart-drivers/
 
 YugabyteDB includes a built-in connection pooler, YSQL Connection Manager {{<tags/feature/tp>}}, which provides the same connection pooling advantages as other external pooling solutions, but without many of their limitations. As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
 
-{{<tip>}}
 For more information, refer to the following:
 
 - [YSQL Connection Manager](../../explore/going-beyond-sql/connection-mgr-ysql/)
 - [Built-in Connection Manager Turns Key PostgreSQL Weakness into a Strength](https://www.yugabyte.com/blog/connection-pooling-management/)
-{{</tip>}}
 
 ## Re-use query plans with prepared statements
 
@@ -203,7 +201,7 @@ For more details, see [Prepared statements in PL/pgSQL](https://dev.to/aws-heroe
 
 ## Large scans and batch jobs
 
-Use `BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE` for batch or long-running jobs, which need a consistent snapshot of the database without interfering, or being interfered with by other transactions.
+Use BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE for batch or long-running jobs, which need a consistent snapshot of the database without interfering, or being interfered with by other transactions.
 
 {{<lead link="../../develop/learn/transactions/transactions-performance-ysql/#large-scans-and-batch-jobs">}}
 For more details, see [Large scans and batch jobs](../../develop/learn/transactions/transactions-performance-ysql/#large-scans-and-batch-jobs).
@@ -213,7 +211,7 @@ For more details, see [Large scans and batch jobs](../../develop/learn/transacti
 
 Use the [JSONB](../../api/ysql/datatypes/type_json) datatype to model JSON data; that is, data that doesn't have a set schema but has a truly dynamic schema.
 
-JSONB in YSQL is the same as the [JSONB](https://www.postgresql.org/docs/11/datatype-json.html) datatype in PostgreSQL.
+JSONB in YSQL is the same as the [JSONB datatype in PostgreSQL](https://www.postgresql.org/docs/11/datatype-json.html).
 
 You can use JSONB to group less interesting or less frequently accessed columns of a table.
 
@@ -232,7 +230,7 @@ YSQL also supports JSONB expression indexes, which can be used to speed up data 
 
 ## Paralleling across tablets
 
-For large or batch `SELECT`s or `DELETE`s that have to scan all tablets, you can parallelize your operation by creating queries that affect only a specific part of the tablet using the `yb_hash_code` function.
+For large or batch SELECT or DELETE that have to scan all tablets, you can parallelize your operation by creating queries that affect only a specific part of the tablet using the `yb_hash_code` function.
 
 {{<lead link="../../api/ysql/exprs/func_yb_hash_code/#distributed-parallel-queries">}}
 For more details, see [Distributed parallel queries](../../api/ysql/exprs/func_yb_hash_code/#distributed-parallel-queries).
@@ -248,7 +246,7 @@ Big columns add up when you select full or multiple rows. For consistent latency
 
 ## Column size limit
 
-For consistent latency or performance, it is recommended to size columns in the 2MB range or less even though an individual column or row limit is supported till `32MB`.
+For consistent latency or performance, it is recommended to size columns in the 2MB range or less even though an individual column or row limit is supported till 32MB.
 
 ## TRUNCATE tables instead of DELETE
 
@@ -262,13 +260,13 @@ Currently, TRUNCATE is not transactional. Also, similar to PostgreSQL, TRUNCATE 
 
 Each table and index is split into tablets and each tablet has overhead. The more tablets you need, the bigger your universe will need to be. See [allowing for tablet replica overheads](#allowing-for-tablet-replica-overheads) for how the number of tablets affects how big your universe needs to be.
 
-Each table and index consists of several tablets based on the [`--ysql_num_shards_per_tserver`](../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) flag.
+Each table and index consists of several tablets based on the [--ysql_num_shards_per_tserver](../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) flag.
 
 You can try one of the following methods to reduce the number of tablets:
 
 - Use [colocation](../../explore/colocation/) to group small tables into 1 tablet.
-- Reduce number of tablets-per-table using [`--ysql_num_shards_per_tserver`](../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) flag.
-- Use [`SPLIT INTO`](../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause when creating a table.
+- Reduce number of tablets-per-table using the [--ysql_num_shards_per_tserver](../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) flag.
+- Use the [SPLIT INTO](../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause when creating a table.
 - Start with few tablets and use [automatic tablet splitting](../../architecture/docdb-sharding/tablet-splitting/).
 
 Note that multiple tablets can allow work to proceed in parallel so you may not want every table to have only one tablet.
@@ -283,9 +281,9 @@ The overhead is proportional to the number of tablet replicas so 500 tablet repl
 
 Additional memory will be required for supporting caches and the like if the tablets are being actively used. We recommend provisioning an extra 6200 MiB of memory for each 1000 tablet replicas on a node to handle these cases; that is, a TServer should have 7000 MiB of RAM allocated to it for each 1000 tablet replicas it may be expected to support.
 
-Manually provisioning the amount of memory each TServer uses can be done using the [`--memory_limit_hard_bytes`](../../reference/configuration/yb-tserver/#memory-limit-hard-bytes) or [`--default_memory_limit_to_ram_ratio`](../../reference/configuration/yb-tserver/#default-memory-limit-to-ram-ratio) flags.  Manually provisioning is a bit tricky as you need to take in account how much memory the kernel needs as well as Postgres and any master process that is going to be colocated with the TServer.
+Manually provisioning the amount of memory each TServer uses can be done using the [--memory_limit_hard_bytes](../../reference/configuration/yb-tserver/#memory-limit-hard-bytes) or [--default_memory_limit_to_ram_ratio](../../reference/configuration/yb-tserver/#default-memory-limit-to-ram-ratio) flags.  Manually provisioning is a bit tricky as you need to take into account how much memory the kernel needs as well as the postgres and any master process that is going to be colocated with the TServer.
 
-Accordingly, it is recommended that you instead use the new [`--use_memory_defaults_optimized_for_ysql`](../../reference/configuration/yb-tserver/#use-memory-defaults-optimized-for-ysql) flag, which gives you good memory division settings for using YSQL optimized for your node's size.  Consult the table there showing node RAM versus maximum tablet replicas to see how big of a node you will need based on how many tablet replicas per server you want supported.
+Accordingly, it is recommended that you instead use the [--use_memory_defaults_optimized_for_ysql](../../reference/configuration/yb-tserver/#use-memory-defaults-optimized-for-ysql) flag, which gives you good memory division settings for using YSQL optimized for your node's size. Consult the table showing node RAM versus maximum tablet replicas to see how big of a node you will need based on how many tablet replicas per server you want supported.
 
 ## Settings for CI and CD integration tests
 
@@ -295,4 +293,4 @@ You can set certain flags to increase performance using YugabyteDB in CI and CD 
 - Set the flag `--yb_num_shards_per_tserver=1`. Reducing the number of shards lowers overhead when creating or dropping YSQL tables, and writing or reading small amounts of data.
 - Use colocated databases in YSQL. Colocation lowers overhead when creating or dropping YSQL tables, and writing or reading small amounts of data.
 - Set the flag `--replication_factor=1` for test scenarios, as keeping the data three way replicated (default) is not necessary. Reducing that to 1 reduces space usage and increases performance.
-- Use `TRUNCATE table1,table2,table3..tablen;` instead of `CREATE TABLE`, and `DROP TABLE` between test cases.
+- Use `TRUNCATE table1,table2,table3..tablen;` instead of CREATE TABLE, and DROP TABLE between test cases.

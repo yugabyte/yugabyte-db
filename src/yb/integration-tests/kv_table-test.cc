@@ -19,7 +19,6 @@
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 
-#include "yb/client/callbacks.h"
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/tablet_server.h"

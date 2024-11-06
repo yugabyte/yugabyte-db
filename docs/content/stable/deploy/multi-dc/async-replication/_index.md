@@ -4,7 +4,6 @@ headerTitle: xCluster deployment
 linkTitle: xCluster deployments
 description: Deploy unidirectional (master-follower) or bidirectional (multi-master) replication between universes
 headContent: Unidirectional (master-follower) and bidirectional (multi-master) replication
-image: /images/section_icons/explore/planet_scale.png
 menu:
   stable:
     identifier: async-replication

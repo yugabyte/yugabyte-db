@@ -922,6 +922,7 @@ TEST_F(TabletSplitITest, TestLogCopySetsCloseTimestampInFooter) {
   const auto follower2_id = cluster_->mini_tablet_server(follower2_idx)->server()->permanent_uuid();
 
   cluster_->mini_tablet_server(follower1_idx)->Shutdown();
+  LOG(INFO) << "Shutting down TS " << follower1_id;
 
   ASSERT_OK(catalog_mgr->TEST_SplitTablet(tablet, split_hash_code));
   ASSERT_OK(WaitForTabletSplitCompletion(
@@ -951,21 +952,11 @@ TEST_F(TabletSplitITest, TestLogCopySetsCloseTimestampInFooter) {
     log::SegmentSequence segments;
     ASSERT_OK(peer->log()->GetLogReader()->GetSegmentsSnapshot(&segments));
     for (const auto& segment : segments) {
-      if (!segment->HasFooter()) {
-        continue;
+      if (segment->HasFooter()) {
+        ASSERT_TRUE(segment->footer().has_close_timestamp_micros())
+            << "T " << peer->tablet_id() << " P " << peer->permanent_uuid()
+            << ": Expected valid close timestamp for segment with footer.";
       }
-      auto entries_copy_result = segment->ReadEntries();
-      ASSERT_OK(entries_copy_result.status);
-      bool has_replicated_entries = false;
-      for (const auto& entry : entries_copy_result.entries) {
-        if (entry->has_replicate()) {
-          has_replicated_entries = true;
-          break;
-        }
-      }
-      ASSERT_EQ(has_replicated_entries, segment->footer().has_close_timestamp_micros())
-          << "T " << peer->tablet_id() << " P " << peer->permanent_uuid()
-          << ": Expected valid close timestamp for segment with replicated entries.";
     }
   }
 }

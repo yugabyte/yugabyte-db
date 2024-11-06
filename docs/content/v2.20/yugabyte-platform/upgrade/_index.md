@@ -3,7 +3,6 @@ title: Upgrade YugabyteDB Anywhere
 headerTitle: Upgrade YugabyteDB Anywhere
 linkTitle: Upgrade
 description: Upgrade YugabyteDB Anywhere.
-image: /images/section_icons/quick_start/install.png
 menu:
   v2.20_yugabyte-platform:
     parent: yugabytedb-anywhere

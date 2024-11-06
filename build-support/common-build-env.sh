@@ -1985,8 +1985,8 @@ find_or_download_ysql_snapshots() {
   # Just one snapshot for now.
   # (disabling a code checker error about a singular loop iteration)
   # shellcheck disable=SC2043
-  for ver in "2.0.9.0"; do
-    for bt in "release" "debug"; do
+  for ver in "2.25.0.0-pg15-alpha-2"; do
+    for bt in "release" "sanitizers" "mac"; do
       local name="${prefix}_${ver}_${bt}"
       if [[ ! -d "$YSQL_SNAPSHOTS_DIR_PARENT/$name" ]]; then
         local url="${repo_url}/releases/download/v${ver}/${name}.tar.gz"

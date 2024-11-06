@@ -109,7 +109,7 @@ Status ExecContext::PrepareChildTransaction(
   auto threshold = MonoDelta::FromMilliseconds(FLAGS_cql_prepare_child_threshold_ms);
   CoarseTimePoint future_deadline;
   // If timeout 2 times greater than threshold, then use half of timeout for create child.
-  if (now + threshold * 2 < deadline) {
+  if (threshold != MonoDelta::kZero && now + threshold * 2 < deadline) {
     future_deadline = now + (deadline - now) / 2;
   } else {
     future_deadline = std::min(deadline, now + threshold);

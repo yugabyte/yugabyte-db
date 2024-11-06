@@ -82,34 +82,34 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1 RIGHT JOIN prt2 t2 ON t1.a = t2.b WHE
 -- full outer join, with placeholder vars
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT 50 phv, * FROM prt1 WHERE prt1.b = 0) t1 FULL JOIN (SELECT 75 phv, * FROM prt2 WHERE prt2.a = 0) t2 ON (t1.a = t2.b) WHERE t1.phv = t1.a OR t2.phv = t2.b ORDER BY t1.a, t2.b;
-                            QUERY PLAN
-------------------------------------------------------------------
+                           QUERY PLAN
+----------------------------------------------------------------
  Sort
-   Sort Key: prt1_p1.a, prt2_p1.b
+   Sort Key: prt1.a, prt2.b
    ->  Append
          ->  Hash Full Join
-               Hash Cond: (prt1_p1.a = prt2_p1.b)
-               Filter: (((50) = prt1_p1.a) OR ((75) = prt2_p1.b))
-               ->  Seq Scan on prt1_p1
+               Hash Cond: (prt1_1.a = prt2_1.b)
+               Filter: (((50) = prt1_1.a) OR ((75) = prt2_1.b))
+               ->  Seq Scan on prt1_p1 prt1_1
                      Storage Filter: (b = 0)
                ->  Hash
-                     ->  Seq Scan on prt2_p1
+                     ->  Seq Scan on prt2_p1 prt2_1
                            Storage Filter: (a = 0)
          ->  Hash Full Join
-               Hash Cond: (prt1_p2.a = prt2_p2.b)
-               Filter: (((50) = prt1_p2.a) OR ((75) = prt2_p2.b))
-               ->  Seq Scan on prt1_p2
+               Hash Cond: (prt1_2.a = prt2_2.b)
+               Filter: (((50) = prt1_2.a) OR ((75) = prt2_2.b))
+               ->  Seq Scan on prt1_p2 prt1_2
                      Storage Filter: (b = 0)
                ->  Hash
-                     ->  Seq Scan on prt2_p2
+                     ->  Seq Scan on prt2_p2 prt2_2
                            Storage Filter: (a = 0)
          ->  Hash Full Join
-               Hash Cond: (prt1_p3.a = prt2_p3.b)
-               Filter: (((50) = prt1_p3.a) OR ((75) = prt2_p3.b))
-               ->  Seq Scan on prt1_p3
+               Hash Cond: (prt1_3.a = prt2_3.b)
+               Filter: (((50) = prt1_3.a) OR ((75) = prt2_3.b))
+               ->  Seq Scan on prt1_p3 prt1_3
                      Storage Filter: (b = 0)
                ->  Hash
-                     ->  Seq Scan on prt2_p3
+                     ->  Seq Scan on prt2_p3 prt2_3
                            Storage Filter: (a = 0)
 (27 rows)
 
@@ -151,36 +151,25 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1 WHERE a < 450) t1 LEFT JO
 
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1 WHERE a < 450) t1 FULL JOIN (SELECT * FROM prt2 WHERE b > 250) t2 ON t1.a = t2.b WHERE t1.b = 0 OR t2.a = 0 ORDER BY t1.a, t2.b;
-                         QUERY PLAN
-------------------------------------------------------------
+                     QUERY PLAN
+-----------------------------------------------------
  Sort
-   Sort Key: prt1_p1.a, b
-   ->  Append
-         ->  Hash Full Join
-               Hash Cond: (prt1_p1.a = b)
-               Filter: ((prt1_p1.b = 0) OR (a = 0))
-               ->  Seq Scan on prt1_p1
+   Sort Key: prt1.a, prt2.b
+   ->  Hash Full Join
+         Hash Cond: (prt1.a = prt2.b)
+         Filter: ((prt1.b = 0) OR (prt2.a = 0))
+         ->  Append
+               ->  Seq Scan on prt1_p1 prt1_1
                      Storage Filter: (a < 450)
-               ->  Hash
-                     ->  Result
-                           One-Time Filter: false
-         ->  Hash Full Join
-               Hash Cond: (prt1_p2.a = prt2_p2.b)
-               Filter: ((prt1_p2.b = 0) OR (prt2_p2.a = 0))
-               ->  Seq Scan on prt1_p2
+               ->  Seq Scan on prt1_p2 prt1_2
                      Storage Filter: (a < 450)
-               ->  Hash
-                     ->  Seq Scan on prt2_p2
+         ->  Hash
+               ->  Append
+                     ->  Seq Scan on prt2_p2 prt2_1
                            Storage Filter: (b > 250)
-         ->  Hash Full Join
-               Hash Cond: (prt2_p3.b = a)
-               Filter: ((b = 0) OR (prt2_p3.a = 0))
-               ->  Seq Scan on prt2_p3
-                     Storage Filter: (b > 250)
-               ->  Hash
-                     ->  Result
-                           One-Time Filter: false
-(27 rows)
+                     ->  Seq Scan on prt2_p3 prt2_2
+                           Storage Filter: (b > 250)
+(16 rows)
 
 SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1 WHERE a < 450) t1 FULL JOIN (SELECT * FROM prt2 WHERE b > 250) t2 ON t1.a = t2.b WHERE t1.b = 0 OR t2.a = 0 ORDER BY t1.a, t2.b;
   a  |  c   |  b  |  c
@@ -221,19 +210,19 @@ SELECT sum(t1.a), avg(t1.a), sum(t1.b), avg(t1.b) FROM prt1 t1 WHERE NOT EXISTS 
  Aggregate
    ->  Append
          ->  Hash Anti Join
-               Hash Cond: (t1.a = t2.b)
-               ->  Seq Scan on prt1_p1 t1
-               ->  Hash
-                     ->  Seq Scan on prt2_p1 t2
-         ->  Hash Anti Join
                Hash Cond: (t1_1.a = t2_1.b)
-               ->  Seq Scan on prt1_p2 t1_1
+               ->  Seq Scan on prt1_p1 t1_1
                ->  Hash
-                     ->  Seq Scan on prt2_p2 t2_1
+                     ->  Seq Scan on prt2_p1 t2_1
+         ->  Hash Anti Join
+               Hash Cond: (t1_2.a = t2_2.b)
+               ->  Seq Scan on prt1_p2 t1_2
+               ->  Hash
+                     ->  Seq Scan on prt2_p2 t2_2
          ->  Nested Loop Anti Join
-               ->  Seq Scan on prt1_p3 t1_2
-               ->  Index Only Scan using iprt2_p3_b on prt2_p3 t2_2
-                     Index Cond: (b = t1_2.a)
+               ->  Seq Scan on prt1_p3 t1_3
+               ->  Index Only Scan using iprt2_p3_b on prt2_p3 t2_3
+                     Index Cond: (b = t1_3.a)
 (16 rows)
 
 SELECT sum(t1.a), avg(t1.a), sum(t1.b), avg(t1.b) FROM prt1 t1 WHERE NOT EXISTS (SELECT 1 FROM prt2 t2 WHERE t1.a = t2.b);
@@ -253,29 +242,29 @@ SELECT * FROM prt1 t1 LEFT JOIN LATERAL
    Sort Key: t1.a
    ->  Append
          ->  Nested Loop Left Join
-               ->  Seq Scan on prt1_p1 t1
+               ->  Seq Scan on prt1_p1 t1_1
                      Storage Filter: (b = 0)
                ->  Nested Loop
-                     ->  Index Only Scan using iprt1_p1_a on prt1_p1 t2
-                           Index Cond: (a = t1.a)
-                     ->  Index Scan using iprt2_p1_b on prt2_p1 t3
-                           Index Cond: (b = t2.a)
-         ->  Nested Loop Left Join
-               ->  Seq Scan on prt1_p2 t1_1
-                     Storage Filter: (b = 0)
-               ->  Nested Loop
-                     ->  Index Only Scan using iprt1_p2_a on prt1_p2 t2_1
+                     ->  Index Only Scan using iprt1_p1_a on prt1_p1 t2_1
                            Index Cond: (a = t1_1.a)
-                     ->  Index Scan using iprt2_p2_b on prt2_p2 t3_1
+                     ->  Index Scan using iprt2_p1_b on prt2_p1 t3_1
                            Index Cond: (b = t2_1.a)
          ->  Nested Loop Left Join
-               ->  Seq Scan on prt1_p3 t1_2
+               ->  Seq Scan on prt1_p2 t1_2
                      Storage Filter: (b = 0)
                ->  Nested Loop
-                     ->  Index Only Scan using iprt1_p3_a on prt1_p3 t2_2
+                     ->  Index Only Scan using iprt1_p2_a on prt1_p2 t2_2
                            Index Cond: (a = t1_2.a)
-                     ->  Index Scan using iprt2_p3_b on prt2_p3 t3_2
+                     ->  Index Scan using iprt2_p2_b on prt2_p2 t3_2
                            Index Cond: (b = t2_2.a)
+         ->  Nested Loop Left Join
+               ->  Seq Scan on prt1_p3 t1_3
+                     Storage Filter: (b = 0)
+               ->  Nested Loop
+                     ->  Index Only Scan using iprt1_p3_a on prt1_p3 t2_3
+                           Index Cond: (a = t1_3.a)
+                     ->  Index Scan using iprt2_p3_b on prt2_p3 t3_3
+                           Index Cond: (b = t2_3.a)
 (27 rows)
 
 SELECT * FROM prt1 t1 LEFT JOIN LATERAL
@@ -415,49 +404,49 @@ SELECT t1.a, t1.c, t2.b, t2.c, t3.a + t3.b, t3.c FROM (prt1 t1 LEFT JOIN prt2 t2
 -- make sure these go to null as expected
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.phv, t2.b, t2.phv, t3.a + t3.b, t3.phv FROM ((SELECT 50 phv, * FROM prt1 WHERE prt1.b = 0) t1 FULL JOIN (SELECT 75 phv, * FROM prt2 WHERE prt2.a = 0) t2 ON (t1.a = t2.b)) FULL JOIN (SELECT 50 phv, * FROM prt1_e WHERE prt1_e.c = 0) t3 ON (t1.a = (t3.a + t3.b)/2) WHERE t1.a = t1.phv OR t2.b = t2.phv OR (t3.a + t3.b)/2 = t3.phv ORDER BY t1.a, t2.b, t3.a + t3.b;
-                                                   QUERY PLAN
-----------------------------------------------------------------------------------------------------------------
+                                                 QUERY PLAN
+------------------------------------------------------------------------------------------------------------
  Sort
-   Sort Key: prt1_p1.a, prt2_p1.b, ((prt1_e_p1.a + prt1_e_p1.b))
+   Sort Key: prt1.a, prt2.b, ((prt1_e.a + prt1_e.b))
    ->  Append
          ->  Hash Full Join
-               Hash Cond: (prt1_p1.a = ((prt1_e_p1.a + prt1_e_p1.b) / 2))
-               Filter: ((prt1_p1.a = (50)) OR (prt2_p1.b = (75)) OR (((prt1_e_p1.a + prt1_e_p1.b) / 2) = (50)))
+               Hash Cond: (prt1_1.a = ((prt1_e_1.a + prt1_e_1.b) / 2))
+               Filter: ((prt1_1.a = (50)) OR (prt2_1.b = (75)) OR (((prt1_e_1.a + prt1_e_1.b) / 2) = (50)))
                ->  Hash Full Join
-                     Hash Cond: (prt1_p1.a = prt2_p1.b)
-                     ->  Seq Scan on prt1_p1
+                     Hash Cond: (prt1_1.a = prt2_1.b)
+                     ->  Seq Scan on prt1_p1 prt1_1
                            Storage Filter: (b = 0)
                      ->  Hash
-                           ->  Seq Scan on prt2_p1
+                           ->  Seq Scan on prt2_p1 prt2_1
                                  Storage Filter: (a = 0)
                ->  Hash
-                     ->  Seq Scan on prt1_e_p1
+                     ->  Seq Scan on prt1_e_p1 prt1_e_1
                            Storage Filter: (c = 0)
          ->  Hash Full Join
-               Hash Cond: (prt1_p2.a = ((prt1_e_p2.a + prt1_e_p2.b) / 2))
-               Filter: ((prt1_p2.a = (50)) OR (prt2_p2.b = (75)) OR (((prt1_e_p2.a + prt1_e_p2.b) / 2) = (50)))
+               Hash Cond: (prt1_2.a = ((prt1_e_2.a + prt1_e_2.b) / 2))
+               Filter: ((prt1_2.a = (50)) OR (prt2_2.b = (75)) OR (((prt1_e_2.a + prt1_e_2.b) / 2) = (50)))
                ->  Hash Full Join
-                     Hash Cond: (prt1_p2.a = prt2_p2.b)
-                     ->  Seq Scan on prt1_p2
+                     Hash Cond: (prt1_2.a = prt2_2.b)
+                     ->  Seq Scan on prt1_p2 prt1_2
                            Storage Filter: (b = 0)
                      ->  Hash
-                           ->  Seq Scan on prt2_p2
+                           ->  Seq Scan on prt2_p2 prt2_2
                                  Storage Filter: (a = 0)
                ->  Hash
-                     ->  Seq Scan on prt1_e_p2
+                     ->  Seq Scan on prt1_e_p2 prt1_e_2
                            Storage Filter: (c = 0)
          ->  Hash Full Join
-               Hash Cond: (prt1_p3.a = ((prt1_e_p3.a + prt1_e_p3.b) / 2))
-               Filter: ((prt1_p3.a = (50)) OR (prt2_p3.b = (75)) OR (((prt1_e_p3.a + prt1_e_p3.b) / 2) = (50)))
+               Hash Cond: (prt1_3.a = ((prt1_e_3.a + prt1_e_3.b) / 2))
+               Filter: ((prt1_3.a = (50)) OR (prt2_3.b = (75)) OR (((prt1_e_3.a + prt1_e_3.b) / 2) = (50)))
                ->  Hash Full Join
-                     Hash Cond: (prt1_p3.a = prt2_p3.b)
-                     ->  Seq Scan on prt1_p3
+                     Hash Cond: (prt1_3.a = prt2_3.b)
+                     ->  Seq Scan on prt1_p3 prt1_3
                            Storage Filter: (b = 0)
                      ->  Hash
-                           ->  Seq Scan on prt2_p3
+                           ->  Seq Scan on prt2_p3 prt2_3
                                  Storage Filter: (a = 0)
                ->  Hash
-                     ->  Seq Scan on prt1_e_p3
+                     ->  Seq Scan on prt1_e_p3 prt1_e_3
                            Storage Filter: (c = 0)
 (42 rows)
 
@@ -586,31 +575,31 @@ INSERT INTO prt2_m SELECT i, i, i % 25 FROM generate_series(0, 599, 3) i;
 ANALYZE prt2_m;
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1_m WHERE prt1_m.c = 0) t1 FULL JOIN (SELECT * FROM prt2_m WHERE prt2_m.c = 0) t2 ON (t1.a = (t2.b + t2.a)/2 AND t2.b = (t1.a + t1.b)/2) ORDER BY t1.a, t2.b;
-                                                             QUERY PLAN
-------------------------------------------------------------------------------------------------------------------------------------
+                                                          QUERY PLAN
+------------------------------------------------------------------------------------------------------------------------------
  Sort
-   Sort Key: prt1_m_p1.a, prt2_m_p1.b
+   Sort Key: prt1_m.a, prt2_m.b
    ->  Append
          ->  Hash Full Join
-               Hash Cond: ((prt1_m_p1.a = ((prt2_m_p1.b + prt2_m_p1.a) / 2)) AND (((prt1_m_p1.a + prt1_m_p1.b) / 2) = prt2_m_p1.b))
-               ->  Seq Scan on prt1_m_p1
+               Hash Cond: ((prt1_m_1.a = ((prt2_m_1.b + prt2_m_1.a) / 2)) AND (((prt1_m_1.a + prt1_m_1.b) / 2) = prt2_m_1.b))
+               ->  Seq Scan on prt1_m_p1 prt1_m_1
                      Storage Filter: (c = 0)
                ->  Hash
-                     ->  Seq Scan on prt2_m_p1
+                     ->  Seq Scan on prt2_m_p1 prt2_m_1
                            Storage Filter: (c = 0)
          ->  Hash Full Join
-               Hash Cond: ((prt1_m_p2.a = ((prt2_m_p2.b + prt2_m_p2.a) / 2)) AND (((prt1_m_p2.a + prt1_m_p2.b) / 2) = prt2_m_p2.b))
-               ->  Seq Scan on prt1_m_p2
+               Hash Cond: ((prt1_m_2.a = ((prt2_m_2.b + prt2_m_2.a) / 2)) AND (((prt1_m_2.a + prt1_m_2.b) / 2) = prt2_m_2.b))
+               ->  Seq Scan on prt1_m_p2 prt1_m_2
                      Storage Filter: (c = 0)
                ->  Hash
-                     ->  Seq Scan on prt2_m_p2
+                     ->  Seq Scan on prt2_m_p2 prt2_m_2
                            Storage Filter: (c = 0)
          ->  Hash Full Join
-               Hash Cond: ((prt1_m_p3.a = ((prt2_m_p3.b + prt2_m_p3.a) / 2)) AND (((prt1_m_p3.a + prt1_m_p3.b) / 2) = prt2_m_p3.b))
-               ->  Seq Scan on prt1_m_p3
+               Hash Cond: ((prt1_m_3.a = ((prt2_m_3.b + prt2_m_3.a) / 2)) AND (((prt1_m_3.a + prt1_m_3.b) / 2) = prt2_m_3.b))
+               ->  Seq Scan on prt1_m_p3 prt1_m_3
                      Storage Filter: (c = 0)
                ->  Hash
-                     ->  Seq Scan on prt2_m_p3
+                     ->  Seq Scan on prt2_m_p3 prt2_m_3
                            Storage Filter: (c = 0)
 (24 rows)
 
@@ -824,42 +813,40 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_l t1 RIGHT JOIN prt2_l t2 ON t1.a = t2.b
 -- full join
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1_l WHERE prt1_l.b = 0) t1 FULL JOIN (SELECT * FROM prt2_l WHERE prt2_l.a = 0) t2 ON (t1.a = t2.b AND t1.c = t2.c) ORDER BY t1.a, t2.b;
-                                                     QUERY PLAN
---------------------------------------------------------------------------------------------------------------------
+                                             QUERY PLAN
+----------------------------------------------------------------------------------------------------
  Sort
-   Sort Key: prt1_l_p1.a, prt2_l_p1.b
+   Sort Key: prt1_l.a, prt2_l.b
    ->  Append
          ->  Hash Full Join
-               Hash Cond: ((prt1_l_p1.a = prt2_l_p1.b) AND ((prt1_l_p1.c)::text = (prt2_l_p1.c)::text))
-               ->  Seq Scan on prt1_l_p1
+               Hash Cond: ((prt1_l_1.a = prt2_l_1.b) AND ((prt1_l_1.c)::text = (prt2_l_1.c)::text))
+               ->  Seq Scan on prt1_l_p1 prt1_l_1
                      Storage Filter: (b = 0)
                ->  Hash
-                     ->  Seq Scan on prt2_l_p1
+                     ->  Seq Scan on prt2_l_p1 prt2_l_1
                            Storage Filter: (a = 0)
          ->  Hash Full Join
-               Hash Cond: ((prt1_l_p2_p1.a = prt2_l_p2_p1.b) AND ((prt1_l_p2_p1.c)::text = (prt2_l_p2_p1.c)::text))
-               ->  Seq Scan on prt1_l_p2_p1
+               Hash Cond: ((prt1_l_2.a = prt2_l_2.b) AND ((prt1_l_2.c)::text = (prt2_l_2.c)::text))
+               ->  Seq Scan on prt1_l_p2_p1 prt1_l_2
                      Storage Filter: (b = 0)
                ->  Hash
-                     ->  Seq Scan on prt2_l_p2_p1
+                     ->  Seq Scan on prt2_l_p2_p1 prt2_l_2
                            Storage Filter: (a = 0)
          ->  Hash Full Join
-               Hash Cond: ((prt1_l_p2_p2.a = prt2_l_p2_p2.b) AND ((prt1_l_p2_p2.c)::text = (prt2_l_p2_p2.c)::text))
-               ->  Seq Scan on prt1_l_p2_p2
+               Hash Cond: ((prt1_l_3.a = prt2_l_3.b) AND ((prt1_l_3.c)::text = (prt2_l_3.c)::text))
+               ->  Seq Scan on prt1_l_p2_p2 prt1_l_3
                      Storage Filter: (b = 0)
                ->  Hash
-                     ->  Seq Scan on prt2_l_p2_p2
+                     ->  Seq Scan on prt2_l_p2_p2 prt2_l_3
                            Storage Filter: (a = 0)
          ->  Hash Full Join
-               Hash Cond: ((prt1_l_p3_p1.a = prt2_l_p3_p1.b) AND ((prt1_l_p3_p1.c)::text = (prt2_l_p3_p1.c)::text))
-               ->  Append
-                     ->  Seq Scan on prt1_l_p3_p1
-                           Storage Filter: (b = 0)
+               Hash Cond: ((prt1_l_4.a = prt2_l_4.b) AND ((prt1_l_4.c)::text = (prt2_l_4.c)::text))
+               ->  Seq Scan on prt1_l_p3_p1 prt1_l_4
+                     Storage Filter: (b = 0)
                ->  Hash
-                     ->  Append
-                           ->  Seq Scan on prt2_l_p3_p1
-                                 Storage Filter: (a = 0)
-(33 rows)
+                     ->  Seq Scan on prt2_l_p3_p1 prt2_l_4
+                           Storage Filter: (a = 0)
+(31 rows)
 
 SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1_l WHERE prt1_l.b = 0) t1 FULL JOIN (SELECT * FROM prt2_l WHERE prt2_l.a = 0) t2 ON (t1.a = t2.b AND t1.c = t2.c) ORDER BY t1.a, t2.b;
   a  |  c   |  b  |  c
@@ -916,11 +903,11 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1_l WHERE a = 1 AND a = 2) 
  Hash Left Join
    Hash Cond: ((t2.b = a) AND (t2.a = b) AND ((t2.c)::text = (c)::text))
    ->  Append
-         ->  Seq Scan on prt2_l_p1 t2
-         ->  Seq Scan on prt2_l_p2_p1 t2_1
-         ->  Seq Scan on prt2_l_p2_p2 t2_2
-         ->  Seq Scan on prt2_l_p3_p1 t2_3
-         ->  Seq Scan on prt2_l_p3_p2 t2_4
+         ->  Seq Scan on prt2_l_p1 t2_1
+         ->  Seq Scan on prt2_l_p2_p1 t2_2
+         ->  Seq Scan on prt2_l_p2_p2 t2_3
+         ->  Seq Scan on prt2_l_p3_p1 t2_4
+         ->  Seq Scan on prt2_l_p3_p2 t2_5
    ->  Hash
          ->  Result
                One-Time Filter: false
@@ -972,14 +959,14 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt4_n t2 WHERE t1.a = t2.a;
  Hash Join
    Hash Cond: (t1.a = t2.a)
    ->  Append
-         ->  Seq Scan on prt1_p1 t1
-         ->  Seq Scan on prt1_p2 t1_1
-         ->  Seq Scan on prt1_p3 t1_2
+         ->  Seq Scan on prt1_p1 t1_1
+         ->  Seq Scan on prt1_p2 t1_2
+         ->  Seq Scan on prt1_p3 t1_3
    ->  Hash
          ->  Append
-               ->  Seq Scan on prt4_n_p1 t2
-               ->  Seq Scan on prt4_n_p2 t2_1
-               ->  Seq Scan on prt4_n_p3 t2_2
+               ->  Seq Scan on prt4_n_p1 t2_1
+               ->  Seq Scan on prt4_n_p2 t2_2
+               ->  Seq Scan on prt4_n_p3 t2_3
 (11 rows)
 
 /*+Set(yb_bnl_batch_size 1024) YbBatchedNL(t1 t2)*/ EXPLAIN (COSTS OFF)
@@ -989,15 +976,15 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt4_n t2 WHERE t1.a = t2.a;
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.a)
    ->  Append
-         ->  Seq Scan on prt4_n_p1 t2
-         ->  Seq Scan on prt4_n_p2 t2_1
-         ->  Seq Scan on prt4_n_p3 t2_2
+         ->  Seq Scan on prt4_n_p1 t2_1
+         ->  Seq Scan on prt4_n_p2 t2_2
+         ->  Seq Scan on prt4_n_p3 t2_3
    ->  Append
-         ->  Index Scan using iprt1_p1_a on prt1_p1 t1
+         ->  Index Scan using iprt1_p1_a on prt1_p1 t1_1
                Index Cond: (a = ANY (ARRAY[t2.a, $1, $2, ..., $1023]))
-         ->  Index Scan using iprt1_p2_a on prt1_p2 t1_1
+         ->  Index Scan using iprt1_p2_a on prt1_p2 t1_2
                Index Cond: (a = ANY (ARRAY[t2.a, $1, $2, ..., $1023]))
-         ->  Index Scan using iprt1_p3_a on prt1_p3 t1_2
+         ->  Index Scan using iprt1_p3_a on prt1_p3 t1_3
                Index Cond: (a = ANY (ARRAY[t2.a, $1, $2, ..., $1023]))
 (13 rows)
 
@@ -1026,14 +1013,14 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_m t1 LEFT JOIN prt2_m t2 ON t1.a = t2.b;
  Hash Left Join
    Hash Cond: (t1.a = t2.b)
    ->  Append
-         ->  Seq Scan on prt1_m_p1 t1
-         ->  Seq Scan on prt1_m_p2 t1_1
-         ->  Seq Scan on prt1_m_p3 t1_2
+         ->  Seq Scan on prt1_m_p1 t1_1
+         ->  Seq Scan on prt1_m_p2 t1_2
+         ->  Seq Scan on prt1_m_p3 t1_3
    ->  Hash
          ->  Append
-               ->  Seq Scan on prt2_m_p1 t2
-               ->  Seq Scan on prt2_m_p2 t2_1
-               ->  Seq Scan on prt2_m_p3 t2_2
+               ->  Seq Scan on prt2_m_p1 t2_1
+               ->  Seq Scan on prt2_m_p2 t2_2
+               ->  Seq Scan on prt2_m_p3 t2_3
 (11 rows)
 
 -- equi-join between non-key columns does not qualify for partitionwise join
@@ -1044,14 +1031,14 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_m t1 LEFT JOIN prt2_m t2 ON t1.c = t2.c;
  Hash Left Join
    Hash Cond: (t1.c = t2.c)
    ->  Append
-         ->  Seq Scan on prt1_m_p1 t1
-         ->  Seq Scan on prt1_m_p2 t1_1
-         ->  Seq Scan on prt1_m_p3 t1_2
+         ->  Seq Scan on prt1_m_p1 t1_1
+         ->  Seq Scan on prt1_m_p2 t1_2
+         ->  Seq Scan on prt1_m_p3 t1_3
    ->  Hash
          ->  Append
-               ->  Seq Scan on prt2_m_p1 t2
-               ->  Seq Scan on prt2_m_p2 t2_1
-               ->  Seq Scan on prt2_m_p3 t2_2
+               ->  Seq Scan on prt2_m_p1 t2_1
+               ->  Seq Scan on prt2_m_p2 t2_2
+               ->  Seq Scan on prt2_m_p3 t2_3
 (11 rows)
 
 -- partitionwise join can not be applied between tables with different
@@ -1071,13 +1058,13 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_n t1 FULL JOIN prt1 t2 ON (t1.c = t2.c);
  Hash Full Join
    Hash Cond: ((t2.c)::text = (t1.c)::text)
    ->  Append
-         ->  Seq Scan on prt1_p1 t2
-         ->  Seq Scan on prt1_p2 t2_1
-         ->  Seq Scan on prt1_p3 t2_2
+         ->  Seq Scan on prt1_p1 t2_1
+         ->  Seq Scan on prt1_p2 t2_2
+         ->  Seq Scan on prt1_p3 t2_3
    ->  Hash
          ->  Append
-               ->  Seq Scan on prt1_n_p1 t1
-               ->  Seq Scan on prt1_n_p2 t1_1
+               ->  Seq Scan on prt1_n_p1 t1_1
+               ->  Seq Scan on prt1_n_p2 t1_2
 (10 rows)
 
 --

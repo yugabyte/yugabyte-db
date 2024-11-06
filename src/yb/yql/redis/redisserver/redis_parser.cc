@@ -18,7 +18,6 @@
 
 #include <boost/algorithm/string.hpp>
 
-#include "yb/client/callbacks.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/redis_protocol.pb.h"

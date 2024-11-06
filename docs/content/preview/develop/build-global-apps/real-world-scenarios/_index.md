@@ -3,7 +3,6 @@ title: Real world scenarios
 linkTitle: Real world scenarios
 description: Mix & match common design patterns to achieve advanced patterns
 headContent: Mix & match common design patterns to achieve advanced patterns
-image: /images/section_icons/architecture/distributed_acid.png
 aliases:
   - /preview/develop/realworld-apps/iot-spark-kafka-ksql/
   - /develop/realworld-apps/iot-spark-kafka/

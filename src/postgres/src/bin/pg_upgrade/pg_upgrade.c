@@ -138,14 +138,15 @@ main(int argc, char **argv)
 	output_check_banner(live_check);
 
 	/*
-	 * This checks for Postgres versions.
-	 * The check isn't relevant to Yugabyte right now.
+	 * YB: The check for Postgres versions is performed at higher layers.
+	 * Socket directories are explicitly set from input arguments.
 	 */
 	if (!is_yugabyte_enabled())
+	{
 		check_cluster_versions();
-
-	get_sock_dir(&old_cluster, live_check);
-	get_sock_dir(&new_cluster, false);
+		get_sock_dir(&old_cluster, live_check);
+		get_sock_dir(&new_cluster, false);
+	}
 
 	/*
 	 * This checks for global state information initialized

@@ -3,7 +3,6 @@ title: Install
 headerTitle: Install YugabyteDB Anywhere
 linkTitle: Install
 description: Install YugabyteDB Anywhere and prepare universe nodes.
-image: /images/section_icons/quick_start/install.png
 headcontent: Install YugabyteDB Anywhere to begin creating and managing deployments.
 menu:
   v2.20_yugabyte-platform:

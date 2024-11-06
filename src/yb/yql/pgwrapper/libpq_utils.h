@@ -80,7 +80,8 @@ template<class T>
 concept BasePGType =
     IsPGNonNeg<T> || IsPGIntType<T> || IsPGFloatType<T> ||
     std::is_same_v<T, bool> || std::is_same_v<T, std::string> || std::is_same_v<T, char> ||
-    std::is_same_v<T, PGOid> || std::is_same_v<T, Uuid> || std::is_same_v<T, MonoDelta>;
+    std::is_same_v<T, PGOid> || std::is_same_v<T, Uuid> || std::is_same_v<T, MonoDelta> ||
+    std::is_same_v<T, std::vector<float>>;
 
 template<class T>
 concept OptionalPGType = StdOptionalType<T> && BasePGType<typename T::value_type>;
@@ -330,6 +331,14 @@ class PGConn {
     CopyPut(value.c_str(), value.length());
   }
 
+  // Store the notice message returned by the server for testing purposes.
+  void TEST_CaptureNoticeMessages();
+
+  // TEST_CaptureNoticeMessages must be called.
+  // Only the last notice message emitted by the server is stored.
+  // Value does not get reset when new statements are executed.
+  std::string TEST_GetLastNoticeMessage() const { return TEST_last_notice_msg_; }
+
   PGconn* get() {
     return impl_.get();
   }
@@ -345,6 +354,7 @@ class PGConn {
   PGConnPtr impl_;
   bool simple_query_protocol_;
   std::unique_ptr<CopyData> copy_data_;
+  std::string TEST_last_notice_msg_;
 };
 
 // Settings to pass to PGConnBuilder.

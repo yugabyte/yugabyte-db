@@ -97,6 +97,12 @@ public class AutoMasterFailoverScheduler {
       Customer customer = Customer.getOrBadRequest(customerUuid);
       AutoMasterFailoverScheduler scheduler =
           runtime.getInjector().getInstance(AutoMasterFailoverScheduler.class);
+      AutoMasterFailover automatedMasterFailover =
+          runtime.getInjector().getInstance(AutoMasterFailover.class);
+      if (!runPrecheck(runtime, customer)) {
+        // Return null future to signal skip if precheck fails.
+        return null;
+      }
       return CompletableFuture.runAsync(
           () -> {
             Optional<Universe> universeOptional = Universe.maybeGet(universeUuid);
@@ -118,8 +124,6 @@ public class AutoMasterFailoverScheduler {
                 try {
                   log.debug(
                       "Running auto master failover for universe {}", universe.getUniverseUUID());
-                  AutoMasterFailover automatedMasterFailover =
-                      runtime.getInjector().getInstance(AutoMasterFailover.class);
                   String detectScheduleName =
                       scheduler.getDetectMasterFailureScheduleName(universe);
                   Optional<JobSchedule> optional =
@@ -140,7 +144,7 @@ public class AutoMasterFailoverScheduler {
                   }
 
                   automatedMasterFailover
-                      .maybeFailoverMaster(customer, universe, runtime)
+                      .maybeSubmitFailoverMasterTask(customer, universe, runtime)
                       .ifPresent(
                           tf -> {
                             if (tf.getTaskState() != TaskInfo.State.Success) {
@@ -165,6 +169,25 @@ public class AutoMasterFailoverScheduler {
             }
           },
           scheduler.failoverExecutor);
+    }
+
+    private boolean runPrecheck(RuntimeParams runtime, Customer customer) {
+      Optional<Universe> optional = Universe.maybeGet(universeUuid);
+      if (!optional.isPresent()) {
+        // Delete the schedule promptly.
+        runtime.getJobScheduler().deleteSchedule(runtime.getJobSchedule().getUuid());
+        return false;
+      }
+      if (failoverJobType != FailoverJobType.DETECT_MASTER_FAILURE) {
+        // Check if the actual fail-over job is still valid.
+        Action action =
+            runtime
+                .getInjector()
+                .getInstance(AutoMasterFailover.class)
+                .getAllowedMasterFailoverAction(customer, optional.get(), true /*submissionCheck*/);
+        return action.getActionType() != ActionType.NONE;
+      }
+      return true;
     }
   }
 
@@ -415,7 +438,9 @@ public class AutoMasterFailoverScheduler {
       disableSchedule(customer, failoverScheduleName, true);
       return;
     }
-    Action action = autoMasterFailover.getAllowedMasterFailoverAction(customer, universe);
+    Action action =
+        autoMasterFailover.getAllowedMasterFailoverAction(
+            customer, universe, false /*submitCheck*/);
     if (action.getActionType() == ActionType.NONE) {
       // No fail-over action can be performed.
       disableSchedule(customer, failoverScheduleName, true);

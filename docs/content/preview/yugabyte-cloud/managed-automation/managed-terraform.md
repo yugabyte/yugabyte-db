@@ -1,6 +1,6 @@
 ---
 title: YugabyteDB Aeon Terraform Provider
-headerTitle: Terraform Provider
+headerTitle: YugabyteDB Aeon Terraform Provider
 linkTitle: Terraform Provider
 description: Terraform Provider for YugabyteDB Aeon.
 headcontent: Manage YugabyteDB Aeon accounts and deployments using the Terraform Provider

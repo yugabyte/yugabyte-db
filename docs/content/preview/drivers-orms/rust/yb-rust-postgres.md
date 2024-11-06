@@ -3,7 +3,6 @@ title: YugabyteDB Rust-Postgres Smart Driver
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Rust application using YugabyteDB Rust-Postgres Smart Driver for YSQL
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
     identifier: rust-postgres-driver

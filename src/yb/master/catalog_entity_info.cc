@@ -76,6 +76,8 @@ namespace master {
 // ================================================================================================
 
 string TabletReplica::ToString() const {
+  auto shared_desc_p = ts_desc.lock();
+  const auto& ts_uuid = shared_desc_p ? shared_desc_p->id() : "<TS_REMOVED>";
   return Format(
       "{ ts_desc: $0, "
       "state: $1, "
@@ -87,7 +89,7 @@ string TabletReplica::ToString() const {
       "full_compaction_state: $7, "
       "last_full_compaction_time: $8, "
       "time since update: $9ms }",
-      ts_desc->id(),
+      ts_uuid,
       tablet::RaftGroupStatePB_Name(state),
       PeerRole_Name(role),
       consensus::PeerMemberType_Name(member_type),
@@ -149,14 +151,26 @@ class TabletInfo::LeaderChangeReporter {
 
   ~LeaderChangeReporter() {
     auto new_leader = info_->GetLeaderUnlocked();
-    if (old_leader_ != new_leader) {
-      LOG(INFO) << "T " << info_->tablet_id() << ": Leader changed from "
-                << yb::ToString(old_leader_) << " to " << yb::ToString(new_leader);
+    if (new_leader && old_leader_) {
+      if (old_leader_.get()->id() != new_leader.get()->id()) {
+        LOG(INFO) << "T " << info_->tablet_id() << ": Leader changed from "
+                  << yb::ToString(old_leader_) << " to " << yb::ToString(new_leader);
+      }
+    } else {
+      auto old_leader_freed = !old_leader_.ok() && old_leader_.status().IsIllegalState();
+      auto new_leader_freed = !new_leader.ok() && new_leader.status().IsIllegalState();
+      if (old_leader_freed || new_leader_freed) {
+        LOG(WARNING) << Format(
+                            "TSDescriptor object freed but references to this TS remain in tablet "
+                            "$0 ($1 leader of this tablet)",
+                            info_->id(), old_leader_freed ? "old" : "new");
+      }
     }
   }
+
  private:
   TabletInfo* info_;
-  TSDescriptor* old_leader_;
+  Result<TSDescriptorPtr> old_leader_;
 };
 
 TabletInfo::TabletInfo(const scoped_refptr<TableInfo>& table, TabletId tablet_id)
@@ -225,13 +239,9 @@ Status TabletInfo::GetLeaderNotFoundStatus() const {
       ToString(), replica_locations_->size(), *replica_locations_);
 }
 
-Result<TSDescriptor*> TabletInfo::GetLeader() const {
+Result<TSDescriptorPtr> TabletInfo::GetLeader() const {
   std::lock_guard l(lock_);
-  auto result = GetLeaderUnlocked();
-  if (result) {
-    return result;
-  }
-  return GetLeaderNotFoundStatus();
+  return GetLeaderUnlocked();
 }
 
 Result<TabletReplicaDriveInfo> TabletInfo::GetLeaderReplicaDriveInfo() const {
@@ -256,13 +266,19 @@ Result<TabletLeaderLeaseInfo> TabletInfo::GetLeaderLeaseInfoIfLeader(
   return it->second.leader_lease_info;
 }
 
-TSDescriptor* TabletInfo::GetLeaderUnlocked() const {
+Result<TSDescriptorPtr> TabletInfo::GetLeaderUnlocked() const {
   for (const auto& pair : *replica_locations_) {
     if (pair.second.role == PeerRole::LEADER) {
-      return pair.second.ts_desc;
+      auto desc = pair.second.ts_desc.lock();
+      if (desc) {
+        return desc;
+      }
+      return STATUS_FORMAT(
+          IllegalState, "TSDescriptor for ts $0, currently leader of tablet $1, has been freed",
+          pair.first, id());
     }
   }
-  return nullptr;
+  return GetLeaderNotFoundStatus();
 }
 
 std::shared_ptr<const TabletReplicaMap> TabletInfo::GetReplicaLocations() const {
@@ -270,18 +286,18 @@ std::shared_ptr<const TabletReplicaMap> TabletInfo::GetReplicaLocations() const 
   return replica_locations_;
 }
 
-void TabletInfo::UpdateReplicaLocations(const TabletReplica& replica) {
+void TabletInfo::UpdateReplicaLocations(const std::string& ts_uuid, const TabletReplica& replica) {
   std::lock_guard l(lock_);
   LeaderChangeReporter leader_change_reporter(this);
   last_update_time_ = MonoTime::Now();
   // Make a new shared_ptr, copying the data, to ensure we don't race against access to data from
   // clients that already have the old shared_ptr.
   replica_locations_ = std::make_shared<TabletReplicaMap>(*replica_locations_);
-  auto it = replica_locations_->find(replica.ts_desc->id());
+  auto it = replica_locations_->find(ts_uuid);
   if (it == replica_locations_->end()) {
     LOG(INFO) << Format("TS $0 reported replica $1 but it does not exist in the replica map. "
         "Adding it to the map. Replica map before adding new replica: $2",
-        replica.ts_desc->id(), replica, replica_locations_);
+        ts_uuid, replica, replica_locations_);
     return;
   }
   it->second.UpdateFrom(replica);
@@ -932,6 +948,16 @@ TabletInfoPtr TableInfo::GetColocatedUserTablet() const {
     return tablets_.begin()->second.lock();
   }
   return nullptr;
+}
+
+std::vector<qlexpr::IndexInfo> TableInfo::GetIndexInfos() const {
+  std::vector<qlexpr::IndexInfo> result;
+  auto l = LockForRead();
+  result.reserve(l->pb.indexes().size());
+  for (const auto& index_info_pb : l->pb.indexes()) {
+    result.emplace_back(index_info_pb);
+  }
+  return result;
 }
 
 qlexpr::IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {

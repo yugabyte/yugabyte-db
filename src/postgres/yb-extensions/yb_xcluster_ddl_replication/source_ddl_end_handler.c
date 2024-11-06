@@ -15,7 +15,19 @@
 #include "source_ddl_end_handler.h"
 
 #include "catalog/pg_attrdef_d.h"
+#include "catalog/pg_cast_d.h"
+#include "catalog/pg_collation_d.h"
 #include "catalog/pg_constraint_d.h"
+#include "catalog/pg_conversion_d.h"
+#include "catalog/pg_namespace_d.h"
+#include "catalog/pg_operator_d.h"
+#include "catalog/pg_opclass_d.h"
+#include "catalog/pg_opfamily_d.h"
+#include "catalog/pg_policy_d.h"
+#include "catalog/pg_proc_d.h"
+#include "catalog/pg_rewrite_d.h"
+#include "catalog/pg_statistic_ext.h"
+#include "catalog/pg_trigger_d.h"
 #include "catalog/pg_type_d.h"
 #include "executor/spi.h"
 #include "json_util.h"
@@ -36,6 +48,40 @@
 #define SQL_DROP_OBJECT_TYPE_COLUMN_ID 3
 #define SQL_DROP_SCHEMA_NAME_COLUMN_ID 4
 #define SQL_DROP_OBJECT_NAME_COLUMN_ID 5
+
+#define ALLOWED_DDL_LIST \
+	X(CMDTAG_CREATE_AGGREGATE) \
+	X(CMDTAG_CREATE_CAST) \
+	X(CMDTAG_CREATE_COLLATION) \
+	X(CMDTAG_CREATE_DOMAIN) \
+	X(CMDTAG_CREATE_FUNCTION) \
+	X(CMDTAG_CREATE_OPERATOR) \
+	X(CMDTAG_CREATE_OPERATOR_CLASS) \
+	X(CMDTAG_CREATE_OPERATOR_FAMILY) \
+	X(CMDTAG_CREATE_POLICY) \
+	X(CMDTAG_CREATE_PROCEDURE) \
+	X(CMDTAG_CREATE_ROUTINE) \
+	X(CMDTAG_CREATE_RULE) \
+	X(CMDTAG_CREATE_SCHEMA) \
+	X(CMDTAG_CREATE_STATISTICS) \
+	X(CMDTAG_CREATE_TRIGGER) \
+	X(CMDTAG_CREATE_VIEW) \
+	X(CMDTAG_ALTER_AGGREGATE) \
+	X(CMDTAG_ALTER_CAST) \
+	X(CMDTAG_ALTER_COLLATION) \
+	X(CMDTAG_ALTER_DOMAIN) \
+	X(CMDTAG_ALTER_FUNCTION) \
+	X(CMDTAG_ALTER_OPERATOR) \
+	X(CMDTAG_ALTER_OPERATOR_CLASS) \
+	X(CMDTAG_ALTER_OPERATOR_FAMILY) \
+	X(CMDTAG_ALTER_POLICY) \
+	X(CMDTAG_ALTER_PROCEDURE) \
+	X(CMDTAG_ALTER_ROUTINE) \
+	X(CMDTAG_ALTER_RULE) \
+	X(CMDTAG_ALTER_SCHEMA) \
+	X(CMDTAG_ALTER_STATISTICS) \
+	X(CMDTAG_ALTER_TRIGGER) \
+	X(CMDTAG_ALTER_VIEW)
 
 typedef struct NewRelMapEntry
 {
@@ -77,6 +123,22 @@ IsPrimaryIndex(Relation rel)
 	return (rel->rd_rel->relkind == RELKIND_INDEX ||
 			rel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX) &&
 		   YBIsCoveredByMainTable(rel);
+}
+
+bool
+IsPassThroughDdlSupported(const char *command_tag_name)
+{
+	if (command_tag_name == NULL || *command_tag_name == '\0')
+		return false;
+
+	CommandTag command_tag = GetCommandTagEnum(command_tag_name);
+	switch (command_tag)
+	{
+		#define X(CMD_TAG_VALUE) case CMD_TAG_VALUE: return true;
+		ALLOWED_DDL_LIST
+		#undef X
+		default: return false;
+	}
 }
 
 bool
@@ -181,8 +243,12 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		else if (command_tag == CMDTAG_ALTER_TABLE ||
 				 command_tag == CMDTAG_ALTER_INDEX)
 		{
-      // TODO(jhe): May need finer grained control over ALTER TABLE commands.
-	    should_replicate_ddl |= ShouldReplicateAlterReplication(obj_id);
+			// TODO(jhe): May need finer grained control over ALTER TABLE commands.
+			should_replicate_ddl |= ShouldReplicateAlterReplication(obj_id);
+		}
+		else if (IsPassThroughDdlSupported(command_tag_name))
+		{
+			should_replicate_ddl = true;
 		}
 		else
 		{
@@ -250,10 +316,10 @@ ProcessSourceEventTriggerDroppedObjects()
 				/*
 				 * Since this trigger only happens after the objects are already
 				 * deleted, there is not that much that we can validate here.
-         * If required for certain checks, we could:
-         * - make a call to yb-master for any docdb metadata via pggate.
-         * - or could modify pg_event_trigger_dropped_objects / create
-         *   yb_event_trigger_dropped_objects to provide the data we require.
+				 * If required for certain checks, we could:
+				 * - make a call to yb-master for any docdb metadata via pggate.
+				 * - or could modify pg_event_trigger_dropped_objects / create
+				 *   yb_event_trigger_dropped_objects to provide the data we require.
 				 */
 
 				/*
@@ -267,7 +333,17 @@ ProcessSourceEventTriggerDroppedObjects()
 										   kManualReplicationErrorMsg)));
 				switch_fallthrough();
 			case AttrDefaultRelationId:
+			case CastRelationId:
+			case CollationRelationId:
 			case ConstraintRelationId:
+			case ConversionRelationId:
+			case OperatorClassRelationId:
+			case OperatorFamilyRelationId:
+			case OperatorRelationId:
+			case PolicyRelationId:
+			case ProcedureRelationId:
+			case StatisticExtRelationId:
+			case TriggerRelationId:
 			case TypeRelationId:
 				should_replicate_ddl = true;
 				break;

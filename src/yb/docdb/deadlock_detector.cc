@@ -434,8 +434,8 @@ class RemoteDeadlockResolver : public std::enable_shared_from_this<RemoteDeadloc
             &req,
             [shared_this = shared_from(this), txn_id = id]
                 (const auto& status, const auto& resp) {
-              LOG_WITH_FUNC(INFO) << "Abort deadlocked transaction request for " << txn_id
-                                  << " completed: " << resp.ShortDebugString();
+              VLOG_WITH_FUNC(1) << "Abort deadlocked transaction request for " << txn_id
+                                << " completed: " << resp.ShortDebugString();
               shared_this->rpcs_->Unregister(shared_this->handle_);
               shared_this->callback_();
             }),
@@ -818,7 +818,7 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
     auto deadlock_msg = Format(
         "Transaction $0 aborted due to a deadlock: $1",
         newest_txn_id.ToString(), deadlock_debug_msg.str());
-    LOG_WITH_PREFIX(INFO) << deadlock_msg;
+    VLOG_WITH_PREFIX(1) << deadlock_msg;
 
     if (newest_txn_id.IsNil()) {
       LOG(DFATAL) << "Deadlock detected, but no transaction was properly decoded - "
@@ -966,10 +966,10 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
         controller_->CheckProbeActive(local_blocking_txn_id, blocking_subtxn_set);
     // If no subtxn of the blocker txn's blocking_subtxn_set is active, drop the probe.
     if (!blocking_probe_status.ok()) {
-      LOG_WITH_PREFIX_AND_FUNC(INFO)
-              << "Dropping probe_num: " << probe_num << ", waiter: " << probe_origin_txn_id
-              << ", blocked on: " << local_blocking_txn_id << " with inactive/aborted"
-              << " subtxns:" << yb::ToString(blocking_subtxn_set) << ".";
+      VLOG_WITH_PREFIX_AND_FUNC(1)
+          << "Dropping probe_num: " << probe_num << ", waiter: " << probe_origin_txn_id
+          << ", blocked on: " << local_blocking_txn_id << " with inactive/aborted"
+          << " subtxns:" << yb::ToString(blocking_subtxn_set) << ".";
       return blocking_probe_status;
     }
 
@@ -988,11 +988,11 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
         //       active subtxn in its blocking_subtxn_set.
         auto probe_originating_txn = created_probes_.Get(probe_num);
         if (!probe_originating_txn) {
-          LOG_WITH_PREFIX_AND_FUNC(INFO) << "Did not find probe_num: " << probe_num;
+          VLOG_WITH_PREFIX_AND_FUNC(1) << "Did not find probe_num: " << probe_num;
           return nullptr;
         }
         if (*probe_originating_txn == local_blocking_txn_id) {
-          LOG_WITH_PREFIX_AND_FUNC(INFO)
+          VLOG_WITH_PREFIX_AND_FUNC(1)
               << "Found deadlock: probe_num: " << probe_num << ", waiter: " << probe_origin_txn_id
               << ", blocked on: " << local_blocking_txn_id
               << " with subtxn(s): " << yb::ToString(blocking_subtxn_set);
@@ -1004,7 +1004,7 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
 
           return nullptr;
         }
-        LOG_WITH_PREFIX_AND_FUNC(INFO)
+        VLOG_WITH_PREFIX_AND_FUNC(1)
             << "Found probe_num " << probe_num
             << " with different transaction_id "<< *probe_originating_txn << " "
             << "than blocker " << local_blocking_txn_id << ". Not marking as deadlock.";

@@ -11,9 +11,10 @@
 // under the License.
 
 #include "yb/cdc/cdc_producer.h"
+#include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/xrepl_stream_metadata.h"
 
-#include "yb/cdc/cdc_service.pb.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
@@ -64,15 +65,37 @@ using tablet::TransactionParticipant;
 
 namespace {
 
+Result<bool> ShouldReplicateKey(
+    const dockv::SubDocKey& decoded_key, const StreamMetadata& stream_metadata) {
+  auto db_oid_to_get_sequences_for = stream_metadata.GetDbOidToGetSequencesFor();
+  if (!db_oid_to_get_sequences_for) {
+    return true;
+  }
+
+  auto hashed_group = decoded_key.doc_key().hashed_group();
+  SCHECK_EQ(
+      hashed_group.size(), 2, IllegalState,
+      "sequences_data expected to have two primary hash columns");
+  SCHECK(
+      hashed_group[0].IsInt64(), IllegalState,
+      "sequences_data expected to have first primary column of type Int64; actual type: $0",
+      hashed_group[0].type());
+  return hashed_group[0].GetInt64() == *db_oid_to_get_sequences_for;
+}
+
 Status PopulateWriteRecord(
     const consensus::LWReplicateMsg& msg, const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-    GetChangesResponsePB* resp) {
+    const StreamMetadata& stream_metadata, GetChangesResponsePB* resp) {
   const auto& batch = msg.write().write_batch();
   auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
   // Write batch may contain records from different rows.
   // For xCluster, we need to split the batch into 1 CDC record per row of the table.
   // We'll use DocDB key hash to identify the records that belong to the same row.
+  //
+  // For sequence_data tablets, we are going to skip pairs whose primary key refers to DB OIDs other
+  // than the one we are supposed to be returning (db_oid_to_get_sequences_for).
   Slice prev_key;
+  bool skipping_prev_key = false;  // Are we skipping primary keys matching prev_key?
   CDCRecordPB* record = nullptr;
   for (const auto& write_pair : batch.write_pairs()) {
     Slice key = write_pair.key();
@@ -86,12 +109,22 @@ Status PopulateWriteRecord(
     // Compare key hash with previously seen key hash to determine whether the write pair
     // is part of the same row or not.
     Slice primary_key(key.data(), key_size);
+    if (skipping_prev_key && prev_key == primary_key) {
+      continue;
+    }
     if (prev_key != primary_key) {
-      // Write pair contains record for different row. Create a new CDCRecord in this case.
-      record = resp->add_records();
+      prev_key = primary_key;
+      skipping_prev_key = false;
       Slice sub_doc_key = key;
       dockv::SubDocKey decoded_key;
       RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, dockv::HybridTimeRequired::kFalse));
+      if (!VERIFY_RESULT(ShouldReplicateKey(decoded_key, stream_metadata))) {
+        skipping_prev_key = true;
+        continue;
+      }
+
+      // Write pair contains record for different row. Create a new CDCRecord in this case.
+      record = resp->add_records();
 
       // For xCluster, populate serialized data from WAL, to avoid unnecessary deserializing on
       // producer and re-serializing on consumer.
@@ -124,9 +157,8 @@ Status PopulateWriteRecord(
         }
       }
     }
-    prev_key = primary_key;
-    DCHECK(record);
 
+    DCHECK(record);
     auto kv_pair = record->add_changes();
     kv_pair->set_key(write_pair.key().ToBuffer());
     kv_pair->mutable_value()->set_binary_value(write_pair.value().ToBuffer());
@@ -341,7 +373,7 @@ Status GetChangesForXCluster(
         RETURN_NOT_OK(PopulateTransactionRecord(msg, tablet_peer, resp));
         break;
       case consensus::OperationType::WRITE_OP:
-        RETURN_NOT_OK(PopulateWriteRecord(msg, tablet_peer, resp));
+        RETURN_NOT_OK(PopulateWriteRecord(msg, tablet_peer, *stream_metadata, resp));
         break;
       case consensus::OperationType::SPLIT_OP:
         RETURN_NOT_OK(

@@ -611,7 +611,11 @@
         "modalTitle": "Confirm Full Move Update",
         "submitLabel": "Do full move",
         "modalDescription": "This operation will migrate this universe and all its data to a completely new set of nodes.",
-        "likeToProceed": "Would you like to proceed?"
+        "likeToProceed": "Would you like to proceed?",
+        "assignPublicIP": "Assign Public IP",
+        "instanceProfileARN": "Instance Profile ARN",
+        "enabled": "Enabled",
+        "disabled": "Disabled"
       },
       "validation": {
         "confirmPassword": "Passwords should match",
@@ -2495,15 +2499,15 @@
         "groupClaim": "Groups Claim",
         "displayJWTToken": "Display JWT token on login",
         "oidcProviderConfig": "Add OIDC Provider configuration ",
-        "oidcUseRoleMapping": "Use OIDC Groups for role authentication and authorization",
+        "oidcUseRoleMapping": "Use OIDC Groups for authentication and authorization",
         "roles": {
           "title": "Role Settings",
           "userRoleSettings": "Advanced Settings",
           "userDefaultRole": "Default Role",
           "connectOnly": "Connect Only",
           "readOnly": "Read Only",
-          "alertText": "To map OIDC groups to YugabyteDB Anywhere roles, go to the <a>Groups tab</a>.",
-          "groupOverrideWarning": "<b>Note:</b> Turning this ON will override previously assigned user roles."
+          "alertText": "To map OIDC groups to YugabyteDB Anywhere roles, go to the <a>Groups tab</a>",
+          "groupOverrideWarning": "<b>Note:</b> Turning this ON will override roles previously assigned to individual users"
         },
         "messages": {
           "oidcEnabled": "OIDC authentication is enabled",

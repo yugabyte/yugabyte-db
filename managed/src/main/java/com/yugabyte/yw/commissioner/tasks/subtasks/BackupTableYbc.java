@@ -98,6 +98,9 @@ public class BackupTableYbc extends YbcTaskBase {
               taskParams().getKeyspace(),
               taskParams().backupParamsIdentifier);
 
+      // Initialise node-pool for backups
+      taskParams().nodeRetriever.initializeNodePoolForBackups();
+
       // Wait on node-ip
       if (StringUtils.isBlank(taskParams().nodeIp)) {
         taskParams().nodeIp = taskParams().nodeRetriever.getNodeIpForBackup();

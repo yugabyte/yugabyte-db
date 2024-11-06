@@ -4,7 +4,6 @@ headerTitle: Deploy on Kubernetes
 linkTitle: Kubernetes
 description: Deploy YugabyteDB clusters natively on Kubernetes with various providers
 headcontent: Deploy YugabyteDB natively on Kubernetes
-image: /images/section_icons/deploy/kubernetes.png
 menu:
   stable:
     identifier: deploy-kubernetes

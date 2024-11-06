@@ -254,11 +254,11 @@ public class TestPgConfiguration extends BasePgSQLTest {
     try (Connection connection = tsConnBldr.withUser("su")
         .withPassword("pass").connect();
          Statement statement = connection.createStatement()) {
-      assertQuery(
-          statement,
-          "SELECT type, database, user_name, address, netmask, auth_method" +
-              " FROM pg_hba_file_rules ORDER BY line_number",
-          new Row("host", Arrays.asList("all"), Arrays.asList("all"), "all", null, "md5"));
+      assertQuery(statement,
+          "SELECT type, database, user_name, address, netmask, auth_method"
+              + " FROM pg_hba_file_rules ORDER BY line_number",
+          new Row("host", Arrays.asList("all"), Arrays.asList("all"), "all", null, "md5"),
+          new Row("local", Arrays.asList("all"), Arrays.asList("yugabyte"), null, null, "trust"));
     }
   }
 

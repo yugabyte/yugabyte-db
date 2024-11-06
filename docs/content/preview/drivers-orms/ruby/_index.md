@@ -3,7 +3,6 @@ title: Ruby
 headerTitle: Ruby
 linkTitle: Ruby
 description: Ruby Drivers and ORMs support for YugabyteDB.
-image: fa-regular fa-gem
 menu:
   preview:
     identifier: ruby-drivers

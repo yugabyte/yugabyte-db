@@ -211,6 +211,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   protected static final int CONN_MGR_WARMUP_BACKEND_COUNT = 3;
 
+  protected static boolean ysql_conn_mgr_superuser_sticky = false;
+
   // CQL and Redis settings, will be reset before each test via resetSettings method.
   protected boolean startCqlProxy = false;
   protected boolean startRedisProxy = false;
@@ -351,7 +353,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       builder.enableYsqlConnMgr(true);
       builder.addCommonTServerFlag("ysql_conn_mgr_stats_interval",
         Integer.toString(CONNECTIONS_STATS_UPDATE_INTERVAL_SECS));
-      builder.addCommonTServerFlag("ysql_conn_mgr_superuser_sticky", "false");
+      builder.addCommonTServerFlag("ysql_conn_mgr_superuser_sticky",
+        Boolean.toString(ysql_conn_mgr_superuser_sticky));
+      builder.addCommonTServerFlag("TEST_ysql_conn_mgr_dowarmup_all_pools_mode",
+        warmupMode.toString().toLowerCase());
     }
   }
 
@@ -653,10 +658,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       return;
     }
 
-    Map<String, String> tsFlagMap = getTServerFlags();
-    tsFlagMap.put("ysql_conn_mgr_superuser_sticky", "true");
-    Map<String, String> masterFlagMap = getMasterFlags();
-    restartClusterWithFlags(masterFlagMap, tsFlagMap);
+    ysql_conn_mgr_superuser_sticky = true;
+    restartCluster();
   }
 
   protected
@@ -665,12 +668,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       return;
     }
 
-    Map<String, String> tsFlagMap = getTServerFlags();
-    tsFlagMap.put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode",
-      wm.toString().toLowerCase());
     warmupMode = wm;
-    Map<String, String> masterFlagMap = getMasterFlags();
-    restartClusterWithFlags(masterFlagMap, tsFlagMap);
+    restartCluster();
   }
 
   protected boolean isConnMgrWarmupRoundRobinMode() {

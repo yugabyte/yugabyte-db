@@ -97,8 +97,9 @@ class PgWrapper : public ProcessWrapper {
   struct PgUpgradeParams {
     std::string data_dir;
     std::string old_version_pg_address;
+    std::string old_version_socket_dir;
     uint16_t old_version_pg_port;
-    std::string new_version_pg_address;
+    std::string new_version_socket_dir;
     uint16_t new_version_pg_port;
   };
 

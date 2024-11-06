@@ -146,5 +146,11 @@ void YBCCreateSysCatalogTable(const char *table_name,
 	}
 	YBCAddSysCatalogColumns(yb_stmt, tupdesc, pkey_idx, /* key */ false);
 
-	HandleYBStatus(YBCPgExecCreateTable(yb_stmt));
+	const char *notice_msg;
+	HandleYBStatus(YBCPgExecCreateTable(yb_stmt, &notice_msg));
+	if (notice_msg)
+	{
+		ereport(NOTICE, (errmsg("%s", notice_msg)));
+		pfree((void *) notice_msg);
+	}
 }

@@ -4,7 +4,6 @@ headerTitle: Indexes
 linkTitle: Indexes
 description: Using indexes in YugabyteDB YSQL
 headcontent: Explore indexes and constraints in YSQL
-image: /images/section_icons/explore/monitoring.png
 menu:
   stable:
     identifier: explore-indexes-constraints-ysql

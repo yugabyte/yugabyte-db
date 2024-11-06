@@ -192,20 +192,18 @@
   weight = 8
   identifier = "yugabytedb-anywhere-api"
   parent = "yugabyte-apis"
-  url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
+  url = "/yugabyte-platform/anywhere-automation/anywhere-api/"
   [main.params]
     imageUrl = "/icons/server.svg"
-    newTab = true
 
 [[main]]
   name = "YugabyteDB Aeon API"
   weight = 9
   identifier = "yugabytedb-anaged-api"
   parent = "yugabyte-apis"
-  url = "https://api-docs.yugabyte.com/docs/managed-apis/"
+  url = "/yugabyte-cloud/managed-automation/managed-api/"
   [main.params]
     imageUrl = "/icons/cloud.svg"
-    newTab = true
 
 [[main]]
   name = "FAQ"
@@ -762,19 +760,17 @@
   name = "YugabyteDB Anywhere API"
   weight = 30
   identifier = "yugabytedb-anywhere-api"
-  url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
+  url = "/preview/yugabyte-platform/anywhere-automation/anywhere-api/"
   [preview_api.params]
     showSection = true
-    newTab = true
 
 [[preview_api]]
   name = "YugabyteDB Aeon API"
   weight = 31
   identifier = "yugabytedb-managed-api"
-  url = "https://api-docs.yugabyte.com/docs/managed-apis/"
+  url = "/preview/yugabyte-cloud/managed-automation/managed-api/"
   [preview_api.params]
     showSection = true
-    newTab = true
 
 ########## Menus (in preview) for releases section
 
@@ -1192,19 +1188,125 @@
   name = "YugabyteDB Anywhere API"
   weight = 30
   identifier = "yugabytedb-anywhere-api"
-  url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
+  url = "/stable/yugabyte-platform/anywhere-automation/anywhere-api/"
   [stable_api.params]
     showSection = true
-    newTab = true
 
 [[stable_api]]
   name = "YugabyteDB Aeon API"
   weight = 31
   identifier = "yugabytedb-managed-api"
-  url = "https://api-docs.yugabyte.com/docs/managed-apis/"
+  url = "/preview/yugabyte-cloud/managed-automation/managed-api/"
   [stable_api.params]
     showSection = true
-    newTab = true
+
+########## Menus for v2024.2
+
+[["v2024.2"]]
+  name = "YugabyteDB"
+  weight = 2
+  identifier = "yugabytedb"
+  url = "/v2024.2/"
+  ["v2024.2".params]
+    classes = "separator"
+    showSection = true
+
+[["v2024.2"]]
+  name = "Quick Start"
+  weight = 4
+  identifier = "quick-start"
+  url = "/preview/quick-start-yugabytedb-managed/"
+  ["v2024.2".params]
+    showSection = true
+    hideChildren = true
+
+[["v2024.2"]]
+  name = "Explore"
+  weight = 5
+  identifier = "explore"
+  url = "/v2024.2/explore/"
+  ["v2024.2".params]
+    showSection = true
+
+[["v2024.2"]]
+  name = "Develop"
+  weight = 6
+  identifier = "develop"
+  url = "/v2024.2/develop/"
+  ["v2024.2".params]
+    showSection = true
+
+[["v2024.2"]]
+  name = "Secure"
+  weight = 8
+  identifier = "secure"
+  url = "/v2024.2/secure/"
+  ["v2024.2".params]
+    showSection = true
+
+[["v2024.2"]]
+  name = "Launch and Manage"
+  weight = 9
+  identifier = "launch-and-manage"
+  url = "/v2024.2/launch-and-manage/"
+  ["v2024.2".params]
+    showSection = true
+
+[["v2024.2"]]
+  name = "Troubleshoot"
+  parent = "launch-and-manage"
+  url = "/preview/troubleshoot/"
+
+[["v2024.2"]]
+  name = "Benchmark"
+  weight = 10
+  identifier = "benchmark"
+  url = "/v2024.2/benchmark/"
+  ["v2024.2".params]
+    showSection = true
+
+[["v2024.2"]]
+  name = "Reference"
+  weight = 12
+  identifier = "reference"
+  ["v2024.2".params]
+    showSection = true
+
+[["v2024.2"]]
+  name = "Misc"
+  identifier = "misc"
+  parent = "reference"
+
+[["v2024.2"]]
+  name = "YEDIS"
+  weight = 1
+  url = "/preview/yedis/"
+  parent = "misc"
+
+[["v2024.2"]]
+  name = "Legal"
+  weight = 2
+  url = "/preview/legal/"
+  parent = "misc"
+
+[["v2024.2"]]
+  name = "Contribute"
+  weight = 13
+  identifier = "contribute"
+  url = "/preview/contribute/"
+  ["v2024.2".params]
+    showSection = true
+
+######### Menus (in "v2024.2") for YB Anywhere section
+
+[["v2024.2_yugabyte-platform"]]
+  name = "YugabyteDB Anywhere"
+  weight = 2
+  identifier = "yugabytedb-anywhere"
+  ["v2024.2_yugabyte-platform".params]
+    classes = "separator"
+    showSection = true
+    hideLink = true
 
 ########## Menus for 2.20
 

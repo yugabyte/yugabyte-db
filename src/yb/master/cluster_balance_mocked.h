@@ -104,7 +104,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     state_->options_->placement_uuid = placement_uuid;
   }
 
-  void ResetOptions() { SetOptions(LIVE, ""); }
+  void ResetOptions() { SetOptions(ReplicaType::kLive, ""); }
 
   Options options_;
   TSDescriptorVector ts_descs_;

@@ -2275,6 +2275,10 @@ StartTransaction(void)
 	YBStartTransaction(s);
 
 	s->ybUncommittedStickyObjectCount = 0;
+
+	/* Check for superuser history to determine stickiness of connection */
+	if (YbIsClientYsqlConnMgr() && OidIsValid(s->prevUser))
+		yb_ysql_conn_mgr_superuser_existed = yb_ysql_conn_mgr_superuser_existed || superuser();
 	ShowTransactionState("StartTransaction");
 }
 

@@ -4,7 +4,6 @@ headerTitle: Launch and Manage
 linkTitle: Launch and Manage
 description:
 headcontent:
-image: /images/section_icons/index/quick_start.png
 type: indexpage
 ---
 

@@ -3,7 +3,6 @@ title: YugabyteDB Query Layer (YQL)
 headerTitle: Query layer
 linkTitle: YQL - Query layer
 description: Understand how a query is processed
-image: fa-sharp fa-thin fa-language
 menu:
   stable:
     identifier: architecture-query-layer

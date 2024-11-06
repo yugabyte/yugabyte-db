@@ -854,7 +854,11 @@ Status XClusterYsqlTestBase::SetUpClusters() {
 Status XClusterYsqlTestBase::SetUpClusters(const SetupParams& params) {
   SCHECK(
       !params.is_colocated || namespace_name != "yugabyte", IllegalState,
-      "yugabyte is a non colocated database. Set namespace_name to a different value");
+      "yugabyte is a non-colocated database. Set namespace_name to a different value");
+  SCHECK(
+      !params.use_different_database_oids || namespace_name != "yugabyte", IllegalState,
+      "yugabyte is an existing database and cannot be caused to have different OIDs. Set "
+      "namespace_name to a different value");
 
   RETURN_NOT_OK(Initialize(params.replication_factor, params.num_masters));
 
@@ -864,10 +868,10 @@ Status XClusterYsqlTestBase::SetUpClusters(const SetupParams& params) {
           "Num consumer tables: $0 num producer tables: $1 must be equal.",
           params.num_consumer_tablets.size(), params.num_producer_tablets.size()));
 
-  if (UseAutomaticMode()) {
-    // For automatic mode tests, create an extra universe on the consumer before creating the test
-    // universe so the databases will have different OIDs and thus namespace IDs between the
-    // consumer and producer universes.
+  if (params.use_different_database_oids) {
+    // Create an extra database on the consumer before creating the
+    // test database so the databases will have different OIDs and
+    // thus namespace IDs between the consumer and producer universes.
     RETURN_NOT_OK(CreateDatabase(&consumer_cluster_, "gratuitous_db", false));
   }
 
@@ -898,6 +902,13 @@ Status XClusterYsqlTestBase::SetUpClusters(const SetupParams& params) {
     }
     return Status::OK();
   }));
+
+  if (params.use_different_database_oids) {
+    SCHECK_NE(
+        VERIFY_RESULT(GetNamespaceId(producer_client(), namespace_name)),
+        VERIFY_RESULT(GetNamespaceId(consumer_client(), namespace_name)), InternalError,
+        "Unable to use different OIDs for the source and target databases");
+  }
 
   return PostSetUp();
 }
@@ -952,7 +963,7 @@ Status XClusterYsqlTestBase::AddNamespaceToXClusterReplication(
 }
 
 Status XClusterYsqlTestBase::WaitForCreateReplicationToFinish(
-    const std::string& target_master_addresses) {
+    const std::string& target_master_addresses, std::vector<NamespaceName> namespace_names) {
   RETURN_NOT_OK(LoggedWaitFor(
       [this, &target_master_addresses]() -> Result<bool> {
         auto result = VERIFY_RESULT(
@@ -966,12 +977,13 @@ Status XClusterYsqlTestBase::WaitForCreateReplicationToFinish(
       MonoDelta::FromSeconds(kRpcTimeout), __func__));
 
   // Wait for the xcluster safe time to propagate to the tserver nodes.
-  return WaitForSafeTimeToAdvanceToNow();
+  return WaitForSafeTimeToAdvanceToNow(namespace_names);
 }
 
 Status XClusterYsqlTestBase::CreateReplicationFromCheckpoint(
     const std::string& target_master_addresses,
-    const xcluster::ReplicationGroupId& replication_group_id) {
+    const xcluster::ReplicationGroupId& replication_group_id,
+    std::vector<NamespaceName> namespace_names) {
   RETURN_NOT_OK(SetupCertificates(replication_group_id));
 
   auto master_addr = target_master_addresses;
@@ -982,7 +994,7 @@ Status XClusterYsqlTestBase::CreateReplicationFromCheckpoint(
   RETURN_NOT_OK(client::XClusterClient(*producer_client())
                     .CreateXClusterReplicationFromCheckpoint(replication_group_id, master_addr));
 
-  return WaitForCreateReplicationToFinish(master_addr);
+  return WaitForCreateReplicationToFinish(master_addr, namespace_names);
 }
 
 }  // namespace yb

@@ -96,7 +96,7 @@ Result<BuildInfo> GetBuildInfoForVersion(const std::string& version) {
 }
 
 // Download and extract the old version if it does not already exist, and return the old version bin
-// path. A ready.txt file is places in the bin directory to indicate that the old version is ready
+// path. A ready.txt file is placed in the bin directory to indicate that the old version is ready
 // for use.
 Result<std::string> DownloadAndGetBinPath(const BuildInfo& build_info) {
   std::string arch = "linux";
@@ -179,16 +179,16 @@ Status RestartDaemonInVersion(T& daemon, const std::string& bin_path) {
   return daemon.Restart();
 }
 
-void AddFlagToCsvFlag(
+void AppendCsvFlagValue(
     std::vector<std::string>& flag_list, const std::string& flag_name,
-    const std::string& flag_to_add) {
+    const std::string& value_to_add) {
   for (auto& flag : flag_list) {
     if (flag.starts_with(Format("--$0=", flag_name))) {
-      flag += Format(",$0", flag_to_add);
+      flag += Format(",$0", value_to_add);
       return;
     }
   }
-  flag_list.push_back(Format("--$0=$1", flag_name, flag_to_add));
+  flag_list.push_back(Format("--$0=$1", flag_name, value_to_add));
 }
 
 // Add the flag_name to undefok list, so that it can be set on all versions even if the version does
@@ -197,7 +197,7 @@ void AddFlagToCsvFlag(
 void AddUnDefOkAndSetFlag(
     std::vector<std::string>& flag_list, const std::string& flag_name,
     const std::string& flag_value) {
-  AddFlagToCsvFlag(flag_list, "undefok", flag_name);
+  AppendCsvFlagValue(flag_list, "undefok", flag_name);
   flag_list.emplace_back(Format("--$0=$1", flag_name, flag_value));
 }
 
@@ -211,6 +211,26 @@ Status SetYsqlMajorUpgradeFlagOnMasters(ExternalMiniCluster& cluster, bool enabl
   return Status::OK();
 }
 
+// This is a pg15 version which supports upgrade only from certain versions.
+// Check if the given version is supported for upgrade.
+bool IsUpgradeSupported(const std::string& from_version) {
+  auto parts = StringSplit(from_version, '.');
+  CHECK_GE(parts.size(), 2);
+  int major = std::stoi(parts[0]);
+  auto minor = std::stoi(parts[1]);
+  CHECK_GT(major, 0);
+  CHECK_GT(minor, 0);
+
+  // Stable releases in the older 2 dot numbering scheme are not supported.
+  // Only preview release after 2.25 are supported.
+  if (major == 2) {
+    return minor >= 25;
+  }
+
+  // Only 2024.2.0.0 and later are supported.
+  return major > 2024 || (major == 2024 && minor >= 2);
+}
+
 }  // namespace
 
 UpgradeTestBase::UpgradeTestBase(const std::string& from_version)
@@ -220,12 +240,6 @@ UpgradeTestBase::UpgradeTestBase(const std::string& from_version)
 }
 
 void UpgradeTestBase::SetUp() {
-  // TODO: Convert this to a minimum version check with a <
-  if (old_version_info_.version != kBuild_2024_2_0_0) {
-    test_skipped_ = true;
-    GTEST_SKIP() << "PG15 upgrade is only supported from version " << kBuild_2024_2_0_0;
-  }
-
   if (IsSanitizer()) {
     test_skipped_ = true;
     GTEST_SKIP() << "Upgrade testing not supported with sanitizers";
@@ -243,11 +257,15 @@ void UpgradeTestBase::SetUp() {
                  << " for this OS architecture and build type";
   }
 
+  if (!IsUpgradeSupported(old_version_info_.version)) {
+    test_skipped_ = true;
+    GTEST_SKIP() << "PG15 upgrade not supported from version " << old_version_info_.version;
+  }
+
   ExternalMiniClusterITestBase::SetUp();
 
   VersionInfo::GetVersionInfoPB(&current_version_info_);
   LOG(INFO) << "Current version: " << current_version_info_.DebugString();
-  ASSERT_NE(old_version_info_.version, current_version_info_.version_number());
 }
 
 Status UpgradeTestBase::StartClusterInOldVersion() {
@@ -258,10 +276,24 @@ Status UpgradeTestBase::StartClusterInOldVersion() {
   return StartClusterInOldVersion(default_opts);
 }
 
-Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOptions& options) {
-  ExternalMiniClusterOptions opts = options;
+void UpgradeTestBase::SetUpOptions(ExternalMiniClusterOptions& opts) {
   opts.enable_ysql = true;
-  opts.daemon_bin_path = VERIFY_RESULT(DownloadAndGetBinPath(old_version_info_));
+  opts.daemon_bin_path = ASSERT_RESULT(DownloadAndGetBinPath(old_version_info_));
+
+  // There should be at least one tserver running on the same address as master.
+  // This will force all masters to run on 127.0.0.2 and tservers to run on 127.0.0.2, 127.0.0.4
+  // and 127.0.0.6.
+  opts.use_even_ips = true;
+
+  // Allow local socket connections for ysqlsh. This was added in newer versions as part of
+  // D39566.
+  std::string hba_conf_value = "local all yugabyte trust";
+  if (!opts.enable_ysql_auth) {
+    // Include the default allow all setting.
+    hba_conf_value += ",host all all all trust";
+  }
+  AppendCsvFlagValue(opts.extra_master_flags, "ysql_hba_conf_csv", hba_conf_value);
+  AppendCsvFlagValue(opts.extra_tserver_flags, "ysql_hba_conf_csv", hba_conf_value);
 
   // Disable TEST_always_return_consensus_info_for_succeeded_rpc since it is not upgrade safe.
   AddUnDefOkAndSetFlag(
@@ -269,9 +301,13 @@ Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOption
   AddUnDefOkAndSetFlag(
       opts.extra_tserver_flags, "TEST_always_return_consensus_info_for_succeeded_rpc", "false");
 
+  ExternalMiniClusterITestBase::SetUpOptions(opts);
+}
+
+Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOptions& options) {
   LOG(INFO) << "Starting cluster in version: " << old_version_info_.version;
 
-  RETURN_NOT_OK(ExternalMiniClusterITestBase::StartCluster(opts));
+  RETURN_NOT_OK(ExternalMiniClusterITestBase::StartCluster(options));
 
   old_version_bin_path_ = cluster_->GetDaemonBinPath();
   old_version_master_bin_path_ = cluster_->GetMasterBinaryPath();
@@ -289,6 +325,8 @@ Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOption
   rpc.set_timeout(kTimeout);
   RETURN_NOT_OK(
       cluster_->GetLeaderMasterProxy<server::GenericServiceProxy>().GetStatus(req, &resp, &rpc));
+  LOG(INFO) << "From version: " << resp.status().version_info().DebugString();
+
   is_ysql_major_version_upgrade_ = resp.status().version_info().ysql_major_version() !=
                                    current_version_info_.ysql_major_version();
 

@@ -3,8 +3,7 @@ title: YugabyteDB Anywhere Security
 headerTitle: Security
 linkTitle: Security
 description: Secure YugabyteDB Anywhere and YugabyteDB universes.
-image: /images/section_icons/index/secure.png
-headcontent: Secure YugabyteDB Anywhere and your YugabyteDB universes.
+headcontent: Secure YugabyteDB Anywhere and your YugabyteDB universes
 aliases:
   - /preview/yugabyte-platform/security/network-security/
   - /preview/yugabyte-platform/security/customize-ports/

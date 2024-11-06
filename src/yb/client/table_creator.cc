@@ -394,23 +394,25 @@ Status YBTableCreator::Create() {
   auto deadline = CoarseMonoClock::Now() +
                   (timeout_.Initialized() ? timeout_ : client_->default_admin_operation_timeout());
 
-  auto s = client_->data_->CreateTable(
-      client_, req, *schema_, deadline, &table_id_);
+  auto result = client_->data_->CreateTable(client_, req, *schema_, deadline, &table_id_);
 
-  if (!s.ok() && !s.IsAlreadyPresent()) {
-      RETURN_NOT_OK_PREPEND(s, strings::Substitute("Error creating $0 $1 on the master",
-                                                   object_type, table_name_.ToString()));
+  if (!result.ok() && !result.status().IsAlreadyPresent()) {
+    RETURN_NOT_OK_PREPEND(
+        result.status(),
+        strings::Substitute(
+            "Error creating $0 $1 on the master", object_type, table_name_.ToString()));
   }
 
   // A client is possible to send out duplicate CREATE TABLE requests to master due to network
   // latency issue, server too busy issue or other reasons.
   if (PREDICT_FALSE(FLAGS_TEST_duplicate_create_table_request)) {
-    s = client_->data_->CreateTable(
-        client_, req, *schema_, deadline, &table_id_);
+    auto second_result = client_->data_->CreateTable(client_, req, *schema_, deadline, &table_id_);
 
-    if (!s.ok() && !s.IsAlreadyPresent()) {
-        RETURN_NOT_OK_PREPEND(s, strings::Substitute("Error creating $0 $1 on the master",
-                                                      object_type, table_name_.ToString()));
+    if (!second_result.ok() && !second_result.status().IsAlreadyPresent()) {
+      RETURN_NOT_OK_PREPEND(
+          second_result.status(),
+          strings::Substitute(
+              "Error creating $0 $1 on the master", object_type, table_name_.ToString()));
     }
   }
 
@@ -434,12 +436,14 @@ Status YBTableCreator::Create() {
     }
   }
 
-  if (s.ok() && !FLAGS_client_suppress_created_logs) {
-    LOG(INFO) << "Created " << object_type << " " << table_name_.ToString()
-              << " of type " << TableType_Name(table_type_);
+  resp_notice_message_ = VERIFY_RESULT(std::move(result)).notice_message();
+
+  if (!FLAGS_client_suppress_created_logs) {
+    LOG(INFO) << "Created " << object_type << " " << table_name_.ToString() << " of type "
+              << TableType_Name(table_type_);
   }
 
-  return s;
+  return Status::OK();
 }
 
 } // namespace client

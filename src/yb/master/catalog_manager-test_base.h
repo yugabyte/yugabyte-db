@@ -172,7 +172,8 @@ void SetupClusterConfig(
 }
 
 void NewReplica(
-    TSDescriptor* ts_desc, tablet::RaftGroupStatePB state, PeerRole role, TabletReplica* replica) {
+    const TSDescriptorPtr& ts_desc, tablet::RaftGroupStatePB state, PeerRole role,
+    TabletReplica* replica) {
   replica->ts_desc = ts_desc;
   replica->state = state;
   replica->role = role;
@@ -231,7 +232,7 @@ void SimulateSetLeaderReplicas(
       auto replicas = std::make_shared<TabletReplicaMap>();
       TabletReplica new_leader_replica;
       NewReplica(
-          ts_descs[i].get(), tablet::RaftGroupStatePB::RUNNING, PeerRole::LEADER,
+          ts_descs[i], tablet::RaftGroupStatePB::RUNNING, PeerRole::LEADER,
           &new_leader_replica);
       InsertOrDie(replicas.get(), ts_descs[i]->permanent_uuid(), new_leader_replica);
       tablets[tablet_idx++]->SetReplicaLocations(replicas);

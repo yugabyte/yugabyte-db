@@ -96,7 +96,7 @@ Status Pg15UpgradeTestBase::ExecuteStatement(const std::string& sql_statement) {
 }
 
 Result<std::string> Pg15UpgradeTestBase::ExecuteViaYsqlshOnTs(
-    const std::string& sql_statement, size_t ts_id) {
+    const std::string& sql_statement, size_t ts_id, const std::string &db_name) {
   // tserver could have restarted recently. Create a connection which will wait till the pg process
   // is up.
   RETURN_NOT_OK(CreateConnToTs(ts_id));
@@ -104,6 +104,7 @@ Result<std::string> Pg15UpgradeTestBase::ExecuteViaYsqlshOnTs(
   auto tserver = cluster_->tablet_server(ts_id);
   std::vector<std::string> args;
   args.push_back(GetPgToolPath("ysqlsh"));
+  args.push_back(db_name);
   args.push_back("--host");
   args.push_back(tserver->bind_host());
   args.push_back("--port");
@@ -121,9 +122,10 @@ Result<std::string> Pg15UpgradeTestBase::ExecuteViaYsqlshOnTs(
   return output;
 }
 
-Result<std::string> Pg15UpgradeTestBase::ExecuteViaYsqlsh(const std::string& sql_statement) {
+Result<std::string> Pg15UpgradeTestBase::ExecuteViaYsqlsh(const std::string& sql_statement,
+                                                          const std::string &db_name) {
   auto node_index = RandomUniformInt<size_t>(0, cluster_->num_tablet_servers() - 1);
-  return ExecuteViaYsqlshOnTs(sql_statement, node_index);
+  return ExecuteViaYsqlshOnTs(sql_statement, node_index, db_name);
 }
 
 }  // namespace yb

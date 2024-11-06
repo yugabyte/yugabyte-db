@@ -149,11 +149,7 @@ struct FullCompactionStatus {
 // Information on a current replica of a tablet.
 // This is copyable so that no locking is needed.
 struct TabletReplica {
-  // todo(zdrudi): this is not safe because we can free TSDescriptor objects now. Safe-ish for now
-  // because we look at these structs to verify no raw pointers exist before freeing any
-  // TSDescriptor object.
-  // https://github.com/yugabyte/yugabyte-db/issues/24044
-  TSDescriptor* ts_desc;
+  std::weak_ptr<TSDescriptor> ts_desc;
   tablet::RaftGroupStatePB state;
   PeerRole role;
   consensus::PeerMemberType member_type;
@@ -254,12 +250,12 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
   // update the tablet locations version.
   void SetReplicaLocations(std::shared_ptr<TabletReplicaMap> replica_locations);
   std::shared_ptr<const TabletReplicaMap> GetReplicaLocations() const;
-  Result<TSDescriptor*> GetLeader() const;
+  Result<TSDescriptorPtr> GetLeader() const;
   Result<TabletReplicaDriveInfo> GetLeaderReplicaDriveInfo() const;
   Result<TabletLeaderLeaseInfo> GetLeaderLeaseInfoIfLeader(const std::string& ts_uuid) const;
 
   // Replaces a replica in replica_locations_ map if it exists. Otherwise, it adds it to the map.
-  void UpdateReplicaLocations(const TabletReplica& replica);
+  void UpdateReplicaLocations(const std::string& ts_uuid, const TabletReplica& replica);
 
   // Updates a replica in replica_locations_ map if it exists.
   void UpdateReplicaInfo(const std::string& ts_uuid,
@@ -329,7 +325,7 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
   class LeaderChangeReporter;
   friend class LeaderChangeReporter;
 
-  TSDescriptor* GetLeaderUnlocked() const REQUIRES_SHARED(lock_);
+  Result<TSDescriptorPtr> GetLeaderUnlocked() const REQUIRES_SHARED(lock_);
   Status GetLeaderNotFoundStatus() const REQUIRES_SHARED(lock_);
 
   const TabletId tablet_id_;
@@ -686,6 +682,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Get info of the specified index.
   qlexpr::IndexInfo GetIndexInfo(const TableId& index_id) const;
+  std::vector<qlexpr::IndexInfo> GetIndexInfos() const;
 
   // Returns true if all tablets of the table are deleted.
   Result<bool> AreAllTabletsDeleted() const;

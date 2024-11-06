@@ -3,7 +3,6 @@ title: Back up and restore universes
 headerTitle: Back up and restore universes
 linkTitle: Back up universes
 description: Use YugabyteDB Anywhere to back up and restore YugabyteDB universe data.
-image: fa-light fa-life-ring
 headcontent: Use YugabyteDB Anywhere to back up and restore YugabyteDB universes and data
 menu:
   stable_yugabyte-platform:

@@ -34,8 +34,8 @@
 
 #include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/tablet/tablet_error.h"
+#include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_error.h"
-#include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
@@ -43,6 +43,7 @@
 #include "yb/util/status_format.h"
 
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
+DECLARE_bool(TEST_online_pg11_to_pg15_upgrade);
 
 namespace yb::tserver {
 
@@ -306,7 +307,12 @@ class CatalogVersionChecker {
 
   template<class PB>
   Status operator()(const PB& request) {
-    if (!(request.has_ysql_db_catalog_version() || request.has_ysql_catalog_version())) {
+    /*
+     * Disable catalog version checks during major version upgrade,
+     * as we don't expect the catalog version to be incremented during the upgrade.
+     */
+    if (!(request.has_ysql_db_catalog_version() || request.has_ysql_catalog_version())
+        || tablet_server_.IsInYsqlMajorUpgrade()) {
       return Status::OK();
     }
     SCHECK(!(request.has_ysql_db_catalog_version() && request.has_ysql_catalog_version()),

@@ -34,4 +34,8 @@ std::size_t ProducerTabletInfo::Hash::operator()(const ProducerTabletInfo& p) co
   return hash;
 }
 
+std::string ConsumerTabletInfo::ToString() const {
+  return Format("{ consumer tablet ID: $0 table ID: $1 }", tablet_id, table_id);
+}
+
 }  // namespace yb::xcluster

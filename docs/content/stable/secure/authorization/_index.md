@@ -4,7 +4,6 @@ headerTitle: Role-based access control
 linkTitle: Role-based access control
 description: Enable authorization using role-based access control in YugabyteDB.
 headcontent: Authorize users using role-based access control
-image: fa-thin fa-user-group-crown
 menu:
   stable:
     identifier: authorization

@@ -6,7 +6,13 @@ import { Box, Theme, Typography, makeStyles } from '@material-ui/core';
 import { InstanceTags } from './InstanceTags';
 import { CommunicationPorts } from './CommunicationPorts';
 import { YBModal } from '../../../../components';
-import { getAsyncCluster, getChangedPorts, getPrimaryCluster } from '../utils/helpers';
+import {
+  getAdvancedConfigChanges,
+  getAsyncCluster,
+  getChangedPorts,
+  getPrimaryCluster,
+  getSecurityConfigChanges
+} from '../utils/helpers';
 import { Cluster, MasterPlacementMode, UniverseDetails } from '../utils/dto';
 import { isNonEmptyObject } from '../../../../../utils/ObjectUtils';
 
@@ -52,7 +58,14 @@ export const FullMoveModal: FC<FMModalProps> = ({
   const oldCommunicationPorts = oldConfigData?.communicationPorts;
   const newCommunicationPorts = newConfigData?.communicationPorts;
   const changedPorts = getChangedPorts(oldCommunicationPorts, newCommunicationPorts);
-
+  const securityConfigChanges = getSecurityConfigChanges(
+    getPrimaryCluster(oldConfigData),
+    getPrimaryCluster(newConfigData)
+  );
+  const advancedConfigChanges = getAdvancedConfigChanges(
+    getPrimaryCluster(oldConfigData),
+    getPrimaryCluster(newConfigData)
+  );
   const renderConfig = (cluster: Cluster, isNew: boolean) => {
     const { placementInfo, userIntent } = cluster;
     return (
@@ -107,6 +120,44 @@ export const FullMoveModal: FC<FMModalProps> = ({
               <>{<InstanceTags tags={newInstanceTags!} />}</>
             ) : (
               <>{<InstanceTags tags={oldInstanceTags!} />}</>
+            )}
+          </Box>
+        )}
+        {securityConfigChanges?.hasChanged && (
+          <Box mt={2}>
+            {isNew ? (
+              <>
+                <b>{t('universeForm.fullMoveModal.assignPublicIP')}</b>
+                &nbsp;
+                {securityConfigChanges.isNewIPEnabled
+                  ? t('universeForm.fullMoveModal.enabled')
+                  : t('universeForm.fullMoveModal.disabled')}
+              </>
+            ) : (
+              <>
+                <b>{t('universeForm.fullMoveModal.assignPublicIP')}</b>
+                &nbsp;
+                {securityConfigChanges.isCurrentIPEnabled
+                  ? t('universeForm.fullMoveModal.enabled')
+                  : t('universeForm.fullMoveModal.disabled')}
+              </>
+            )}
+          </Box>
+        )}
+        {advancedConfigChanges?.hasChanged && (
+          <Box mt={2}>
+            {isNew ? (
+              <>
+                <b>{t('universeForm.fullMoveModal.instanceProfileARN')}</b>
+                &nbsp;
+                {advancedConfigChanges.newArnString}
+              </>
+            ) : (
+              <>
+                <b>{t('universeForm.fullMoveModal.instanceProfileARN')}</b>
+                &nbsp;
+                {advancedConfigChanges.currentArnString}
+              </>
             )}
           </Box>
         )}

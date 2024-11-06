@@ -89,8 +89,11 @@ constexpr auto kInterval = 6s;
 constexpr auto kRetention = RegularBuildVsDebugVsSanitizers(12min, 20min, 12min);
 constexpr auto kHistoryRetentionIntervalSec = 5;
 constexpr auto kCleanupSplitTabletsInterval = 1s;
-const std::string old_sys_catalog_snapshot_path = "/opt/yb-build/ysql-sys-catalog-snapshots/";
-const std::string old_sys_catalog_snapshot_name = "initial_sys_catalog_snapshot_2.0.9.0";
+const std::string sys_catalog_snapshot_path = "/opt/yb-build/ysql-sys-catalog-snapshots/";
+constexpr char pg15_old_sys_catalog_snapshot_name[] =
+    "initial_sys_catalog_snapshot_2.25.0.0-pg15-alpha-2";
+constexpr char pg11_old_sys_catalog_snapshot_name[] =
+    "initial_sys_catalog_snapshot_2.0.9.0";
 
 Result<double> MinuteStringToSeconds(const std::string_view& min_str) {
   std::vector<Slice> args;
@@ -3305,7 +3308,8 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, SysCatalogRetentionWithFastPitr,
   }
 }
 
-class YbAdminSnapshotScheduleUpgradeTestWithYsql : public YbAdminSnapshotScheduleTestWithYsql {
+template<const char* initial_sys_catalog_snapshot_name>
+class YbAdminSnapshotScheduleUpgradeTestWithYsqlBase : public YbAdminSnapshotScheduleTestWithYsql {
   std::vector<std::string> ExtraMasterFlags() override {
     // To speed up tests.
     std::string build_type;
@@ -3313,19 +3317,29 @@ class YbAdminSnapshotScheduleUpgradeTestWithYsql : public YbAdminSnapshotSchedul
     // In the version of YugabyteDB where the old sys catalog snapshot was generated, the debug
     // build had a column representation now used only in ASAN and TSAN builds. See
     // src/yb/common/column_id.h file history for details.
-    build_type = "debug";
+    build_type = "sanitizers";
+#elif defined __APPLE__
+    // Mac builds have a different snapshot due to different system collations.
+    build_type = "mac";
 #else
+    // Debug and release Linux builds use the "release" snapshot.
     build_type = "release";
 #endif
-    std::string old_sys_catalog_snapshot_full_path =
-        old_sys_catalog_snapshot_path + old_sys_catalog_snapshot_name + "_" + build_type;
+    std::string initial_sys_catalog_snapshot_full_path =
+        sys_catalog_snapshot_path + initial_sys_catalog_snapshot_name + "_" + build_type;
     return { "--snapshot_coordinator_cleanup_delay_ms=1000",
              "--snapshot_coordinator_poll_interval_ms=500",
              "--enable_automatic_tablet_splitting=true",
              "--enable_transactional_ddl_gc=false",
-             "--initial_sys_catalog_snapshot_path="+old_sys_catalog_snapshot_full_path };
+             "--initial_sys_catalog_snapshot_path=" + initial_sys_catalog_snapshot_full_path };
   }
 };
+
+using YbAdminSnapshotScheduleUpgradeTestWithYsql =
+    YbAdminSnapshotScheduleUpgradeTestWithYsqlBase<pg15_old_sys_catalog_snapshot_name>;
+
+using YbAdminSnapshotScheduleUpgradeTestWithYsqlPg11 =
+    YbAdminSnapshotScheduleUpgradeTestWithYsqlBase<pg11_old_sys_catalog_snapshot_name>;
 
 TEST_F(YbAdminSnapshotScheduleUpgradeTestWithYsql,
        PgsqlTestOldSysCatalogSnapshot) {
@@ -3349,7 +3363,7 @@ TEST_F(YbAdminSnapshotScheduleUpgradeTestWithYsql,
 }
 
 TEST_F(
-    YbAdminSnapshotScheduleUpgradeTestWithYsql,
+    YbAdminSnapshotScheduleUpgradeTestWithYsqlPg11,
     YB_DISABLE_TEST_IN_SANITIZERS(PgsqlTestMigrationFromEarliestSysCatalogSnapshot)) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));

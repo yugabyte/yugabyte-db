@@ -4,7 +4,6 @@ headerTitle: Audit logging
 linkTitle: Audit logging
 description: Audit logging in YugabyteDB.
 headcontent: Audit logging in YugabyteDB.
-image: /images/section_icons/secure/authorization.png
 menu:
   v2.14:
     identifier: audit-logging
