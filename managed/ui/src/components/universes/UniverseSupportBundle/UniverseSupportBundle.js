@@ -93,7 +93,7 @@ export const UniverseSupportBundle = (props) => {
   }, [supportBundles, listSupportBundle, universeDetails.universeUUID]);
 
   const saveSupportBundle = (universeUUID) => {
-    dispatch(crateSupportBundle(universeUUID, payload)).then(() => {
+    dispatch(crateSupportBundle(universeUUID, payload)).then((response) => {
       if (response.error) {
         if (response?.payload?.response?.status === 403)
           toast.error(RBAC_ERR_MSG_NO_PERM, { autoClose: 3000 });
