@@ -42,7 +42,7 @@ Ensure the universes have the following characteristics:
 
 Prepare your database and tables on the DR primary. The DR primary can be empty or have data. If the DR primary has a lot of data, the DR setup will take longer because the data must be copied in full to the DR replica before on-going asynchronous replication starts.
 
-On the DR replica, create a database with the same name as that on the DR primary. During initial DR setup, you don't need to create objects on the DR replica. DR performs a full copy of the data to be replicated on the DR primary, and automatically creates tables and objects, and restores data on the DR replica from the DR primary.
+On the DR replica, create a database with the same name as that on the DR primary. During initial DR setup in [Manual Schema Changes](../#manual-schema-changes) mode, you don't need to create objects on the DR replica. In this mode, DR performs a full copy of the data to be replicated on the DR primary, and automatically creates tables and objects, and restores data on the DR replica from the DR primary. However, in [Semi-automated Schema Changes](../#semi-automated-schema-changes) mode, you need to create all objects (tables, indexes etc) on the DR replica exactly the same way as the DR primary prior to setting up xcluster DR.
 
 After DR is configured, the DR replica will only be available for reads.
 
