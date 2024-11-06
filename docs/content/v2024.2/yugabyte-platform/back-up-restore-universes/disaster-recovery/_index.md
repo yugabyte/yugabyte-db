@@ -103,11 +103,11 @@ You don't need to make any changes to the YugabyteDB Anywhere DR configuration. 
 To learn more, watch [Simplified schema management with xCluster DB Scoped](https://www.youtube.com/watch?v=vYyn2OUSZFE)
 {{</lead>}}
 
-In general, the semi-automated schema change mode is recommended for all new DR configurations. When possible, existing DR configurations should be deleted and re-created using this new mode to reduce the operational burden of DDL changes.
+In general, the semi-automatic schema change mode is recommended for all new DR configurations. When possible, existing DR configurations should be deleted and re-created using this new mode to reduce the operational burden of DDL changes.
 
 #### Prerequisites
 
-Semi-automated schema change mode is used for any xCluster DR configuration when the following pre-requisites are met at setup time:
+Semi-automatic schema change mode is used for any xCluster DR configuration when the following pre-requisites are met at setup time:
 
 - Both DR primary and replica are running YugabyteDB v2024.1.3 or later.
 - By default, semi-automatic schema change mode is not enabled. To enable the feature, set the **DB scoped xCluster replication creation** Global runtime configuration option (config key `yb.xcluster.db_scoped.creationEnabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
