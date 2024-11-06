@@ -401,12 +401,6 @@ HandleGraphLookup(const bson_value_t *existingValue, Query *query,
 {
 	ReportFeatureUsage(FEATURE_STAGE_GRAPH_LOOKUP);
 
-	if (IsCollationApplicable(context->collationString))
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED), errmsg(
-							"collation is not supported with $graphLookup yet")));
-	}
-
 	GraphLookupArgs graphArgs;
 	memset(&graphArgs, 0, sizeof(GraphLookupArgs));
 	ParseGraphLookupStage(existingValue, &graphArgs);
@@ -3477,11 +3471,12 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
 }
 
 
-/* Builds teh graph lookup FuncExpr bson_expression_get(document, '{ "connectToField": { "$makeArray": "$inputExpression" } }' )
+/* Builds the graph lookup FuncExpr bson_expression_get(document, '{ "connectToField": { "$makeArray": "$inputExpression" } }' )
  */
 static FuncExpr *
 BuildInputExpressionForQuery(Expr *origExpr, const StringView *connectToField, const
-							 bson_value_t *inputExpression, Expr *variableContext)
+							 bson_value_t *inputExpression,
+							 AggregationPipelineBuildContext *context)
 {
 	pgbson_writer expressionWriter;
 	PgbsonWriterInit(&expressionWriter);
@@ -3494,16 +3489,23 @@ BuildInputExpressionForQuery(Expr *origExpr, const StringView *connectToField, c
 	/* { "$makeArray: $inputExpression } */
 	PgbsonWriterAppendValue(&makeArrayWriter, "$makeArray", 10, inputExpression);
 	PgbsonWriterEndDocument(&expressionWriter, &makeArrayWriter);
+
+	if (IsCollationApplicable(context->collationString))
+	{
+		PgbsonWriterAppendUtf8(&expressionWriter, "collation", 9,
+							   context->collationString);
+	}
+
 	pgbson *inputExpr = PgbsonWriterGetPgbson(&expressionWriter);
 	Const *falseConst = (Const *) MakeBoolValueConst(false);
 	List *inputExprArgs;
 	Oid functionOid;
 
-	if (variableContext != NULL)
+	if (context->variableSpec != NULL)
 	{
 		functionOid = BsonExpressionGetWithLetFunctionOid();
 		inputExprArgs = list_make4(origExpr, MakeBsonConst(inputExpr),
-								   falseConst, variableContext);
+								   falseConst, context->variableSpec);
 	}
 	else
 	{
@@ -3527,7 +3529,7 @@ BuildInputExpressionForQuery(Expr *origExpr, const StringView *connectToField, c
 static AttrNumber
 AddInputExpressionToQuery(Query *query, StringView *fieldName, const
 						  bson_value_t *inputExpression,
-						  Expr *variableContext)
+						  AggregationPipelineBuildContext *context)
 {
 	/* Now, add the expression value projector to the left query */
 	TargetEntry *origEntry = linitial(query->targetList);
@@ -3538,7 +3540,7 @@ AddInputExpressionToQuery(Query *query, StringView *fieldName, const
 	 */
 	FuncExpr *inputFuncExpr = BuildInputExpressionForQuery(origEntry->expr, fieldName,
 														   inputExpression,
-														   variableContext);
+														   context);
 	bool resjunk = false;
 	AttrNumber expressionResultNumber = 2;
 	TargetEntry *entry = makeTargetEntry((Expr *) inputFuncExpr, expressionResultNumber,
@@ -3612,7 +3614,7 @@ ProcessGraphLookupCore(Query *query, AggregationPipelineBuildContext *context,
 	/* First add the input expression to the input query */
 	AddInputExpressionToQuery(query, &lookupArgs->connectToField,
 							  &lookupArgs->inputExpression,
-							  context->variableSpec);
+							  context);
 
 	/* Create the final query: Since the higher query is in a CTE - push this one down. */
 	context->numNestedLevels++;
@@ -3898,7 +3900,8 @@ GenerateRecursiveCaseQuery(AggregationPipelineBuildContext *parentContext,
 	FuncExpr *inputExpr = BuildInputExpressionForQuery((Expr *) leftDocVar,
 													   &args->connectToField,
 													   &args->connectFromFieldExpression,
-													   parentContext->variableSpec);
+													   parentContext);
+
 	FuncExpr *initialMatchFunc = makeFuncExpr(BsonInMatchFunctionId(), BOOLOID,
 											  list_make2(firstEntry->expr, inputExpr),
 											  InvalidOid, InvalidOid,

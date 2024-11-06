@@ -1562,12 +1562,168 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search6
  { "_id" : "cAT", "a" : { "b" : "cAT" } }
 (9 rows)
 
--- unsupported $graphLookup 
+-- $graphLookup 
+SELECT helio_api.insert_one('db','ci_search7', '{"_id": "alice", "pet" : "dog" }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','ci_search7', '{"_id": "bob", "pet" : "cat" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','ci_search8', '{"_id": "DOG", "name" : "DOG" }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','ci_search8', '{"_id": "dog", "name" : "dog" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','ci_search8', '{"_id": "CAT", "name" : "CAT" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','ci_search8', '{"_id": "cAT", "name" : "cAT" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+BEGIN;
+SET LOCAL helio_api.enableCollation TO on;
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "ci_search7", "pipeline": [ { "$graphLookup": { "from": "ci_search8", "startWith": "$pet", "connectFromField": "name", "connectToField": "_id", "as": "destinations", "depthField": "depth" } } ],  "collation": { "locale": "en", "strength" : 3} }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT helio_api_internal.bson_dollar_merge_documents(document, "addFields") AS document FROM (SELECT "graphLookupBase_stage_1".document, COALESCE((SELECT COALESCE(helio_api_catalog.bson_array_agg(agg_stage_sub_1_0.document, 'destinations'::text), '{ "destinations" : [  ] }'::helio_core.bson) AS document FROM (WITH RECURSIVE "graphLookupRecurseStage" AS (SELECT "*TLOCRN*".document, "*TLOCRN*".depth, "*TLOCRN*"."baseDocId", false AS is_cycle, ARRAY[ROW("*TLOCRN*"."baseDocId")] AS path FROM (SELECT collection_0_2.document, '{ "depth" : { "$numberInt" : "0" } }'::helio_core.bson AS depth, helio_api_catalog.bson_expression_get(collection_0_2.document, '{ "_id" : "$_id" }'::helio_core.bson) AS "baseDocId" FROM helio_data.documents_7997_7990140 collection_0_2 WHERE ((collection_0_2.shard_key_value OPERATOR(pg_catalog.=) '7997'::bigint) AND helio_api_catalog.bson_dollar_in(collection_0_2.document, "graphLookupBase_stage_1"."inputExpr"))) "*TLOCRN*"(document, depth, "baseDocId") UNION ALL SELECT "*TROCRN*".document, "*TROCRN*".depth, "*TROCRN*"."baseDocId", CASE WHEN (ROW("*TROCRN*"."baseDocId") OPERATOR(pg_catalog.=) ANY ("*TROCRN*".path)) THEN true ELSE false END AS is_cycle, array_cat("*TROCRN*".path, ARRAY[ROW("*TROCRN*"."baseDocId")]) AS path FROM (SELECT collection_0_2.document, helio_api_catalog.bson_dollar_add_fields("lookupRecursive_stage_1".depth, '{ "depth" : { "$add" : [ "$depth", { "$numberInt" : "1" } ] } }'::helio_core.bson) AS depth, helio_api_catalog.bson_expression_get(collection_0_2.document, '{ "_id" : "$_id" }'::helio_core.bson) AS "baseDocId", "lookupRecursive_stage_1".is_cycle, "lookupRecursive_stage_1".path FROM helio_data.documents_7997_7990140 collection_0_2, "graphLookupRecurseStage" "lookupRecursive_stage_1" WHERE ((collection_0_2.shard_key_value OPERATOR(pg_catalog.=) '7997'::bigint) AND helio_api_catalog.bson_dollar_in(collection_0_2.document, helio_api_catalog.bson_expression_get("lookupRecursive_stage_1".document, '{ "_id" : { "$makeArray" : "$name" }, "collation" : "en-u-ks-level3" }'::helio_core.bson, false)))) "*TROCRN*"(document, depth, "baseDocId", is_cycle, path) WHERE ("*TROCRN*".is_cycle OPERATOR(pg_catalog.<>) true)) SELECT DISTINCT ON ("graphLookup_stage_2"."baseDocId") helio_api_internal.bson_dollar_merge_documents("graphLookup_stage_2".document, "graphLookup_stage_2".depth) AS document FROM "graphLookupRecurseStage" "graphLookup_stage_2" ORDER BY "graphLookup_stage_2"."baseDocId", "graphLookup_stage_2".depth) agg_stage_sub_1_0), '{ "destinations" : [  ] }'::helio_core.bson) AS "addFields" FROM (SELECT collection.document, helio_api_catalog.bson_expression_get(collection.document, '{ "_id" : { "$makeArray" : "$pet" }, "collation" : "en-u-ks-level3" }'::helio_core.bson, false) AS "inputExpr" FROM helio_data.documents_7996_7990122 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '7996'::bigint)) "graphLookupBase_stage_1") "graphLookup_stage_1"
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on helio_data.documents_7996_7990122 collection
+               Output: helio_api_internal.bson_dollar_merge_documents(collection.document, COALESCE((SubPlan 2), '{ "destinations" : [  ] }'::helio_core.bson))
+               Recheck Cond: (collection.shard_key_value = '7996'::bigint)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '7996'::bigint)
+               SubPlan 2
+                 ->  Aggregate
+                       Output: COALESCE(helio_api_catalog.bson_array_agg((helio_api_internal.bson_dollar_merge_documents("graphLookup_stage_2".document, "graphLookup_stage_2".depth)), 'destinations'::text), '{ "destinations" : [  ] }'::helio_core.bson)
+                       ->  Unique
+                             Output: (helio_api_internal.bson_dollar_merge_documents("graphLookup_stage_2".document, "graphLookup_stage_2".depth)), "graphLookup_stage_2"."baseDocId", "graphLookup_stage_2".depth
+                             CTE graphLookupRecurseStage
+                               ->  Recursive Union
+                                     ->  Bitmap Heap Scan on helio_data.documents_7997_7990140 collection_0_2
+                                           Output: collection_0_2.document, '{ "depth" : { "$numberInt" : "0" } }'::helio_core.bson, helio_api_catalog.bson_expression_get(collection_0_2.document, '{ "_id" : "$_id" }'::helio_core.bson, false), false, ARRAY[ROW(helio_api_catalog.bson_expression_get(collection_0_2.document, '{ "_id" : "$_id" }'::helio_core.bson, false))]
+                                           Recheck Cond: (collection_0_2.shard_key_value = '7997'::bigint)
+                                           Filter: (collection_0_2.document OPERATOR(helio_api_catalog.@*=) helio_api_catalog.bson_expression_get(collection.document, '{ "_id" : { "$makeArray" : "$pet" }, "collation" : "en-u-ks-level3" }'::helio_core.bson, false))
+                                           ->  Bitmap Index Scan on _id_
+                                                 Index Cond: (collection_0_2.shard_key_value = '7997'::bigint)
+                                     ->  Nested Loop
+                                           Output: collection_0_2_1.document, helio_api_catalog.bson_dollar_add_fields("lookupRecursive_stage_1".depth, '{ "depth" : { "$add" : [ "$depth", { "$numberInt" : "1" } ] } }'::helio_core.bson), helio_api_catalog.bson_expression_get(collection_0_2_1.document, '{ "_id" : "$_id" }'::helio_core.bson, false), CASE WHEN (ROW(helio_api_catalog.bson_expression_get(collection_0_2_1.document, '{ "_id" : "$_id" }'::helio_core.bson, false)) = ANY ("lookupRecursive_stage_1".path)) THEN true ELSE false END, array_cat("lookupRecursive_stage_1".path, ARRAY[ROW(helio_api_catalog.bson_expression_get(collection_0_2_1.document, '{ "_id" : "$_id" }'::helio_core.bson, false))])
+                                           Join Filter: helio_api_catalog.bson_dollar_in(collection_0_2_1.document, helio_api_catalog.bson_expression_get("lookupRecursive_stage_1".document, '{ "_id" : { "$makeArray" : "$name" }, "collation" : "en-u-ks-level3" }'::helio_core.bson, false))
+                                           ->  WorkTable Scan on "graphLookupRecurseStage" "lookupRecursive_stage_1"
+                                                 Output: "lookupRecursive_stage_1".document, "lookupRecursive_stage_1".depth, "lookupRecursive_stage_1"."baseDocId", "lookupRecursive_stage_1".is_cycle, "lookupRecursive_stage_1".path
+                                                 Filter: (NOT "lookupRecursive_stage_1".is_cycle)
+                                           ->  Materialize
+                                                 Output: collection_0_2_1.document
+                                                 ->  Bitmap Heap Scan on helio_data.documents_7997_7990140 collection_0_2_1
+                                                       Output: collection_0_2_1.document
+                                                       Recheck Cond: (collection_0_2_1.shard_key_value = '7997'::bigint)
+                                                       ->  Bitmap Index Scan on _id_
+                                                             Index Cond: (collection_0_2_1.shard_key_value = '7997'::bigint)
+                             ->  Sort
+                                   Output: (helio_api_internal.bson_dollar_merge_documents("graphLookup_stage_2".document, "graphLookup_stage_2".depth)), "graphLookup_stage_2"."baseDocId", "graphLookup_stage_2".depth
+                                   Sort Key: "graphLookup_stage_2"."baseDocId", "graphLookup_stage_2".depth
+                                   ->  CTE Scan on "graphLookupRecurseStage" "graphLookup_stage_2"
+                                         Output: helio_api_internal.bson_dollar_merge_documents("graphLookup_stage_2".document, "graphLookup_stage_2".depth), "graphLookup_stage_2"."baseDocId", "graphLookup_stage_2".depth
+(43 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "ci_search7", "pipeline": [ { "$graphLookup": { "from": "ci_search8", "startWith": "$pet", "connectFromField": "name", "connectToField": "_id", "as": "destinations", "depthField": "depth" } } ],  "collation": { "locale": "en", "strength" : 3} }');
+                                                           document                                                           
+---------------------------------------------------------------------
+ { "_id" : "alice", "pet" : "dog", "destinations" : [ { "_id" : "dog", "name" : "dog", "depth" : { "$numberInt" : "0" } } ] }
+ { "_id" : "bob", "pet" : "cat", "destinations" : [  ] }
+(2 rows)
+
+END;
 SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "ci_search6", "pipeline": [ { "$graphLookup": { "from": "ci_search6", "startWith": "$a.b", "connectFromField": "a.b", "connectToField": "a.b", "as": "destinations", "depthField": "depth" } } ],  "collation": { "locale": "en", "strength" : 1} }');
-ERROR:  collation is not supported with $graphLookup yet
+                                                                                                                                                                                                                         document                                                                                                                                                                                                                          
+---------------------------------------------------------------------
+ { "_id" : "DOG", "a" : { "b" : "DOG" }, "destinations" : [ { "_id" : "DOG", "a" : { "b" : "DOG" }, "depth" : { "$numberInt" : "0" } }, { "_id" : "DoG", "a" : { "b" : "DoG" }, "depth" : { "$numberInt" : "0" } }, { "_id" : "Dog", "a" : { "b" : "Dog" }, "depth" : { "$numberInt" : "0" } }, { "_id" : "dOg", "a" : { "b" : "dOg" }, "depth" : { "$numberInt" : "0" } }, { "_id" : "dog", "a" : { "b" : "dog" }, "depth" : { "$numberInt" : "0" } } ] }
+ { "_id" : "dog", "a" : { "b" : "dog" }, "destinations" : [ { "_id" : "DOG", "a" : { "b" : "DOG" }, "depth" : { "$numberInt" : "0" } }, { "_id" : "DoG", "a" : { "b" : "DoG" }, "depth" : { "$numberInt" : "0" } }, { "_id" : "Dog", "a" : { "b" : "Dog" }, "depth" : { "$numberInt" : "0" } }, { "_id" : "dOg", "a" : { "b" : "dOg" }, "depth" : { "$numberInt" : "0" } }, { "_id" : "dog", "a" : { "b" : "dog" }, "depth" : { "$numberInt" : "0" } } ] }
+ { "_id" : "Cat", "a" : { "b" : "Cat" }, "destinations" : [ { "_id" : "Cat", "a" : { "b" : "Cat" }, "depth" : { "$numberInt" : "0" } }, { "_id" : "cAT", "a" : { "b" : "cAT" }, "depth" : { "$numberInt" : "0" } } ] }
+ { "_id" : "Dog", "a" : { "b" : "Dog" }, "destinations" : [ { "_id" : "DOG", "a" : { "b" : "DOG" }, "depth" : { "$numberInt" : "0" } }, { "_id" : "DoG", "a" : { "b" : "DoG" }, "depth" : { "$numberInt" : "0" } }, { "_id" : "Dog", "a" : { "b" : "Dog" }, "depth" : { "$numberInt" : "0" } }, { "_id" : "dOg", "a" : { "b" : "dOg" }, "depth" : { "$numberInt" : "0" } }, { "_id" : "dog", "a" : { "b" : "dog" }, "depth" : { "$numberInt" : "0" } } ] }
+ { "_id" : "cAT", "a" : { "b" : "cAT" }, "destinations" : [ { "_id" : "Cat", "a" : { "b" : "Cat" }, "depth" : { "$numberInt" : "0" } }, { "_id" : "cAT", "a" : { "b" : "cAT" }, "depth" : { "$numberInt" : "0" } } ] }
+ { "_id" : "DoG", "a" : { "b" : "DoG" }, "destinations" : [ { "_id" : "DOG", "a" : { "b" : "DOG" }, "depth" : { "$numberInt" : "0" } }, { "_id" : "DoG", "a" : { "b" : "DoG" }, "depth" : { "$numberInt" : "0" } }, { "_id" : "Dog", "a" : { "b" : "Dog" }, "depth" : { "$numberInt" : "0" } }, { "_id" : "dOg", "a" : { "b" : "dOg" }, "depth" : { "$numberInt" : "0" } }, { "_id" : "dog", "a" : { "b" : "dog" }, "depth" : { "$numberInt" : "0" } } ] }
+ { "_id" : "dOg", "a" : { "b" : "dOg" }, "destinations" : [ { "_id" : "DOG", "a" : { "b" : "DOG" }, "depth" : { "$numberInt" : "0" } }, { "_id" : "DoG", "a" : { "b" : "DoG" }, "depth" : { "$numberInt" : "0" } }, { "_id" : "Dog", "a" : { "b" : "Dog" }, "depth" : { "$numberInt" : "0" } }, { "_id" : "dOg", "a" : { "b" : "dOg" }, "depth" : { "$numberInt" : "0" } }, { "_id" : "dog", "a" : { "b" : "dog" }, "depth" : { "$numberInt" : "0" } } ] }
+(7 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "ci_search7", "pipeline": [ { "$graphLookup": { "from": "ci_search8", "startWith": "$pet", "connectFromField": "name", "connectToField": "_id", "as": "destinations", "depthField": "depth" } } ],  "collation": { "locale": "en", "strength" : 1} }');
+                                                                                             document                                                                                              
+---------------------------------------------------------------------
+ { "_id" : "alice", "pet" : "dog", "destinations" : [ { "_id" : "DOG", "name" : "DOG", "depth" : { "$numberInt" : "0" } }, { "_id" : "dog", "name" : "dog", "depth" : { "$numberInt" : "0" } } ] }
+ { "_id" : "bob", "pet" : "cat", "destinations" : [ { "_id" : "CAT", "name" : "CAT", "depth" : { "$numberInt" : "0" } }, { "_id" : "cAT", "name" : "cAT", "depth" : { "$numberInt" : "0" } } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "ci_search7", "pipeline": [ { "$graphLookup": { "from": "ci_search8", "startWith": "$pet", "connectFromField": "name", "connectToField": "_id", "as": "destinations", "depthField": "depth" } } ],  "collation": { "locale": "en", "strength" : 2} }');
+                                                                                             document                                                                                              
+---------------------------------------------------------------------
+ { "_id" : "alice", "pet" : "dog", "destinations" : [ { "_id" : "DOG", "name" : "DOG", "depth" : { "$numberInt" : "0" } }, { "_id" : "dog", "name" : "dog", "depth" : { "$numberInt" : "0" } } ] }
+ { "_id" : "bob", "pet" : "cat", "destinations" : [ { "_id" : "CAT", "name" : "CAT", "depth" : { "$numberInt" : "0" } }, { "_id" : "cAT", "name" : "cAT", "depth" : { "$numberInt" : "0" } } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "ci_search7", "pipeline": [ { "$graphLookup": { "from": "ci_search8", "startWith": "$pet", "connectFromField": "name", "connectToField": "_id", "as": "destinations", "depthField": "depth" } } ],  "collation": { "locale": "fr", "strength" : 1, "alternate": "shifted" } }');
+                                                                                             document                                                                                              
+---------------------------------------------------------------------
+ { "_id" : "alice", "pet" : "dog", "destinations" : [ { "_id" : "DOG", "name" : "DOG", "depth" : { "$numberInt" : "0" } }, { "_id" : "dog", "name" : "dog", "depth" : { "$numberInt" : "0" } } ] }
+ { "_id" : "bob", "pet" : "cat", "destinations" : [ { "_id" : "CAT", "name" : "CAT", "depth" : { "$numberInt" : "0" } }, { "_id" : "cAT", "name" : "cAT", "depth" : { "$numberInt" : "0" } } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "ci_search7", "pipeline": [ { "$graphLookup": { "from": "ci_search8", "startWith": "$pet", "connectFromField": "name", "connectToField": "_id", "as": "destinations", "depthField": "depth" } } ],  "collation": { "locale": "hi", "strength" : 2, "caseFirst": "lower" } }');
+                                                                                             document                                                                                              
+---------------------------------------------------------------------
+ { "_id" : "alice", "pet" : "dog", "destinations" : [ { "_id" : "DOG", "name" : "DOG", "depth" : { "$numberInt" : "0" } }, { "_id" : "dog", "name" : "dog", "depth" : { "$numberInt" : "0" } } ] }
+ { "_id" : "bob", "pet" : "cat", "destinations" : [ { "_id" : "CAT", "name" : "CAT", "depth" : { "$numberInt" : "0" } }, { "_id" : "cAT", "name" : "cAT", "depth" : { "$numberInt" : "0" } } ] }
+(2 rows)
+
+--- $graphLookup on sharded collection: unsupported
+SELECT helio_api.shard_collection('db', 'ci_search7', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT helio_api.shard_collection('db', 'ci_search8', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "ci_search7", "pipeline": [ { "$graphLookup": { "from": "ci_search8", "startWith": "$pet", "connectFromField": "name", "connectToField": "_id", "as": "destinations", "depthField": "depth" } } ],  "collation": { "locale": "fr", "strength" : 1, "alternate": "shifted" } }');
+ERROR:  $graphLookup with 'from' on a sharded collection is not supported
 -- unsupported $merge 
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search6", "pipeline": [{"$merge" : { "into": "ci_search7", "whenMatched" : "replace" }} ], "collation": { "locale": "en", "strength" : 1} }');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search6", "pipeline": [{"$merge" : { "into": "ci_search9", "whenMatched" : "replace" }} ], "collation": { "locale": "en", "strength" : 1} }');
 ERROR:  collation is not supported with $merge yet
 SELECT helio_api.shard_collection('db', 'ci_search6', '{ "_id": "hashed" }', false);
  shard_collection 
@@ -1597,42 +1753,42 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
-   ->  Distributed Subplan 271_1
+   ->  Distributed Subplan 337_1
          ->  Custom Scan (Citus Adaptive)
                Output: remote_scan.document, remote_scan.lookup_filter
                Task Count: 8
                Tasks Shown: One of 8
                ->  Task
-                     Query: SELECT document, helio_api_internal.bson_dollar_lookup_extract_filter_expression(document, '{ "_id" : "_id", "collation" : "en-u-ks-level1" }'::helio_core.bson) AS lookup_filter FROM helio_data.documents_7995_7990120 collection WHERE true
+                     Query: SELECT document, helio_api_internal.bson_dollar_lookup_extract_filter_expression(document, '{ "_id" : "_id", "collation" : "en-u-ks-level1" }'::helio_core.bson) AS lookup_filter FROM helio_data.documents_7995_7990168 collection WHERE true
                      Node: host=localhost port=58070 dbname=regression
-                     ->  Seq Scan on helio_data.documents_7995_7990120 collection
+                     ->  Seq Scan on helio_data.documents_7995_7990168 collection
                            Output: document, helio_api_internal.bson_dollar_lookup_extract_filter_expression(document, '{ "_id" : "_id", "collation" : "en-u-ks-level1" }'::helio_core.bson)
-   ->  Distributed Subplan 271_2
+   ->  Distributed Subplan 337_2
          ->  Custom Scan (Citus Adaptive)
                Output: remote_scan.document
                Task Count: 8
                Tasks Shown: One of 8
                ->  Task
-                     Query: SELECT document FROM helio_data.documents_7995_7990120 collection_0_1 WHERE helio_api_catalog.bson_dollar_in(document, '{ "a.b" : [ "cat", "dog" ], "collation" : "en-u-ks-level1" }'::helio_core.bson)
+                     Query: SELECT document FROM helio_data.documents_7995_7990168 collection_0_1 WHERE helio_api_catalog.bson_dollar_in(document, '{ "a.b" : [ "cat", "dog" ], "collation" : "en-u-ks-level1" }'::helio_core.bson)
                      Node: host=localhost port=58070 dbname=regression
-                     ->  Seq Scan on helio_data.documents_7995_7990120 collection_0_1
+                     ->  Seq Scan on helio_data.documents_7995_7990168 collection_0_1
                            Output: document
                            Filter: (collection_0_1.document OPERATOR(helio_api_catalog.@*=) '{ "a.b" : [ "cat", "dog" ], "collation" : "en-u-ks-level1" }'::helio_core.bson)
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT helio_api_internal.bson_dollar_merge_documents(lookup_stage_1.document, "lookupRight_stage_1".document) AS document FROM ((SELECT intermediate_result.document, intermediate_result.lookup_filter FROM read_intermediate_result('271_1'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson, lookup_filter helio_core.bson)) lookup_stage_1 LEFT JOIN LATERAL (SELECT COALESCE(helio_api_catalog.bson_array_agg(lookup_right_query_stage_0.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('271_2'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson)) lookup_right_query_stage_0 WHERE helio_api_internal.bson_dollar_lookup_join_filter(lookup_right_query_stage_0.document, lookup_stage_1.lookup_filter, '_id'::text)) "lookupRight_stage_1" ON (true))
+         Query: SELECT helio_api_internal.bson_dollar_merge_documents(lookup_stage_1.document, "lookupRight_stage_1".document) AS document FROM ((SELECT intermediate_result.document, intermediate_result.lookup_filter FROM read_intermediate_result('337_1'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson, lookup_filter helio_core.bson)) lookup_stage_1 LEFT JOIN LATERAL (SELECT COALESCE(helio_api_catalog.bson_array_agg(lookup_right_query_stage_0.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('337_2'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson)) lookup_right_query_stage_0 WHERE helio_api_internal.bson_dollar_lookup_join_filter(lookup_right_query_stage_0.document, lookup_stage_1.lookup_filter, '_id'::text)) "lookupRight_stage_1" ON (true))
          Node: host=localhost port=58070 dbname=regression
          ->  Nested Loop Left Join
                Output: helio_api_internal.bson_dollar_merge_documents(intermediate_result.document, (COALESCE(helio_api_catalog.bson_array_agg(intermediate_result_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson)))
                ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
                      Output: intermediate_result.document, intermediate_result.lookup_filter
-                     Function Call: read_intermediate_result('271_1'::text, 'binary'::citus_copy_format)
+                     Function Call: read_intermediate_result('337_1'::text, 'binary'::citus_copy_format)
                ->  Aggregate
                      Output: COALESCE(helio_api_catalog.bson_array_agg(intermediate_result_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson)
                      ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result_1
                            Output: intermediate_result_1.document
-                           Function Call: read_intermediate_result('271_2'::text, 'binary'::citus_copy_format)
+                           Function Call: read_intermediate_result('337_2'::text, 'binary'::citus_copy_format)
                            Filter: helio_api_internal.bson_dollar_lookup_join_filter(intermediate_result_1.document, intermediate_result.lookup_filter, '_id'::text)
 (39 rows)
 
@@ -1659,42 +1815,42 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
-   ->  Distributed Subplan 279_1
+   ->  Distributed Subplan 345_1
          ->  Custom Scan (Citus Adaptive)
                Output: remote_scan.document, remote_scan.lookup_filter
                Task Count: 8
                Tasks Shown: One of 8
                ->  Task
-                     Query: SELECT document, helio_api_internal.bson_dollar_lookup_extract_filter_expression(document, '{ "a.b" : "a.b", "collation" : "en-u-ks-level1" }'::helio_core.bson) AS lookup_filter FROM helio_data.documents_7995_7990120 collection WHERE true
+                     Query: SELECT document, helio_api_internal.bson_dollar_lookup_extract_filter_expression(document, '{ "a.b" : "a.b", "collation" : "en-u-ks-level1" }'::helio_core.bson) AS lookup_filter FROM helio_data.documents_7995_7990168 collection WHERE true
                      Node: host=localhost port=58070 dbname=regression
-                     ->  Seq Scan on helio_data.documents_7995_7990120 collection
+                     ->  Seq Scan on helio_data.documents_7995_7990168 collection
                            Output: document, helio_api_internal.bson_dollar_lookup_extract_filter_expression(document, '{ "a.b" : "a.b", "collation" : "en-u-ks-level1" }'::helio_core.bson)
-   ->  Distributed Subplan 279_2
+   ->  Distributed Subplan 345_2
          ->  Custom Scan (Citus Adaptive)
                Output: remote_scan.document
                Task Count: 8
                Tasks Shown: One of 8
                ->  Task
-                     Query: SELECT document FROM helio_data.documents_7995_7990120 collection_0_1 WHERE helio_api_catalog.bson_dollar_in(document, '{ "a.b" : [ "cat", "dog" ], "collation" : "en-u-ks-level1" }'::helio_core.bson)
+                     Query: SELECT document FROM helio_data.documents_7995_7990168 collection_0_1 WHERE helio_api_catalog.bson_dollar_in(document, '{ "a.b" : [ "cat", "dog" ], "collation" : "en-u-ks-level1" }'::helio_core.bson)
                      Node: host=localhost port=58070 dbname=regression
-                     ->  Seq Scan on helio_data.documents_7995_7990120 collection_0_1
+                     ->  Seq Scan on helio_data.documents_7995_7990168 collection_0_1
                            Output: document
                            Filter: (collection_0_1.document OPERATOR(helio_api_catalog.@*=) '{ "a.b" : [ "cat", "dog" ], "collation" : "en-u-ks-level1" }'::helio_core.bson)
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT helio_api_internal.bson_dollar_merge_documents(lookup_stage_1.document, "lookupRight_stage_1".document) AS document FROM ((SELECT intermediate_result.document, intermediate_result.lookup_filter FROM read_intermediate_result('279_1'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson, lookup_filter helio_core.bson)) lookup_stage_1 LEFT JOIN LATERAL (SELECT COALESCE(helio_api_catalog.bson_array_agg(lookup_right_query_stage_0.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('279_2'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson)) lookup_right_query_stage_0 WHERE helio_api_internal.bson_dollar_lookup_join_filter(lookup_right_query_stage_0.document, lookup_stage_1.lookup_filter, 'a.b'::text)) "lookupRight_stage_1" ON (true))
+         Query: SELECT helio_api_internal.bson_dollar_merge_documents(lookup_stage_1.document, "lookupRight_stage_1".document) AS document FROM ((SELECT intermediate_result.document, intermediate_result.lookup_filter FROM read_intermediate_result('345_1'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson, lookup_filter helio_core.bson)) lookup_stage_1 LEFT JOIN LATERAL (SELECT COALESCE(helio_api_catalog.bson_array_agg(lookup_right_query_stage_0.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('345_2'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson)) lookup_right_query_stage_0 WHERE helio_api_internal.bson_dollar_lookup_join_filter(lookup_right_query_stage_0.document, lookup_stage_1.lookup_filter, 'a.b'::text)) "lookupRight_stage_1" ON (true))
          Node: host=localhost port=58070 dbname=regression
          ->  Nested Loop Left Join
                Output: helio_api_internal.bson_dollar_merge_documents(intermediate_result.document, (COALESCE(helio_api_catalog.bson_array_agg(intermediate_result_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson)))
                ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
                      Output: intermediate_result.document, intermediate_result.lookup_filter
-                     Function Call: read_intermediate_result('279_1'::text, 'binary'::citus_copy_format)
+                     Function Call: read_intermediate_result('345_1'::text, 'binary'::citus_copy_format)
                ->  Aggregate
                      Output: COALESCE(helio_api_catalog.bson_array_agg(intermediate_result_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::helio_core.bson)
                      ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result_1
                            Output: intermediate_result_1.document
-                           Function Call: read_intermediate_result('279_2'::text, 'binary'::citus_copy_format)
+                           Function Call: read_intermediate_result('345_2'::text, 'binary'::citus_copy_format)
                            Filter: helio_api_internal.bson_dollar_lookup_join_filter(intermediate_result_1.document, intermediate_result.lookup_filter, 'a.b'::text)
 (39 rows)
 
@@ -1720,11 +1876,7 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search6
  { "_id" : "cAT", "a" : { "b" : "cAT" } }
 (9 rows)
 
--- unsupported $graphLookup 
-SELECT document FROM bson_aggregation_pipeline('db',
-    '{ "aggregate": "ci_search6", "pipeline": [ { "$graphLookup": { "from": "ci_search6", "startWith": "$a.b", "connectFromField": "a.b", "connectToField": "a.b", "as": "destinations", "depthField": "depth" } } ],  "collation": { "locale": "en", "strength" : 1} }');
-ERROR:  collation is not supported with $graphLookup yet
--- unsupported $merge 
+-- unsupported $merge
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search6", "pipeline": [{"$merge" : { "into": "ci_search7", "whenMatched" : "replace" }} ], "collation": { "locale": "en", "strength" : 1} }');
 ERROR:  collation is not supported with $merge yet
 RESET helio_api.enableCollation;

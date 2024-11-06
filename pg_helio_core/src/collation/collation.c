@@ -33,7 +33,7 @@ typedef struct
 
 /*
  *
- * Pre-initialized 2D array that represets `locale` string. Array[0][0] represents locale 'aa', Array[0][1] represents locale 'ab' and so on.
+ * Pre-initialized 2D array that represents `locale` string. Array[0][0] represents locale 'aa', Array[0][1] represents locale 'ab' and so on.
  * Note that locales are case-sensitive.
  *
  * Following are the meaning of the array values:
@@ -47,8 +47,8 @@ typedef struct
  * So, when we look up code for locale prefix 'fr' and get a code 'A', we know that the locale could only be 'fr' or 'fr_CA'.
  * With the help of this matrix we can efficiently tell,
  *  (1) fr is supported, when we get code 'A' and check that the input code length is 2.
- *  (2) fr_CA is supported, when we get code 'A', and we do a string comaprison with 'fr_CA' when code length > 2
- *  (3) fr_US is not supported, when we get code 'A', and we do a string comaprison with 'fr_CA' when code length > 2
+ *  (2) fr_CA is supported, when we get code 'A', and we do a string comparison with 'fr_CA' when code length > 2
+ *  (3) fr_US is not supported, when we get code 'A', and we do a string comparison with 'fr_CA' when code length > 2
  * The same logic applies for all the following special codes. There are some three letter codes that follow the same framework.
  *
  * 'A' -> fr, fr_CA
@@ -245,7 +245,7 @@ inline static bool CheckIfValidLocale(const char *locale);
 inline static void ThrowInvalidLocaleError(const char *locale);
 
 /*
- *  This takes a mongo collation document and convert to postgre locate string
+ *  This takes a mongo collation document and convert to postgres locale string
  *  e.g., en-u-ks-level1-kc-false-kf-upper-kn-false, and use that to perform
  *  comparisons.
  *

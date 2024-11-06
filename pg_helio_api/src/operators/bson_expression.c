@@ -34,6 +34,7 @@
 #include "utils/feature_counter.h"
 #include "utils/hashset_utils.h"
 #include "utils/fmgr_utils.h"
+#include "collation/collation.h"
 
 
 /* --------------------------------------------------------- */
@@ -81,6 +82,7 @@ typedef struct BsonExpressionPartitionByFieldsGetState
 	BsonProjectionQueryState *projectionTreeState;
 } BsonExpressionPartitionByFieldsGetState;
 
+extern bool EnableCollation;
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -575,11 +577,13 @@ PG_FUNCTION_INFO_V1(bson_expression_map);
 /*
  * bson_expression_get evaluates a bson expression from a given
  * document. This follows operator expressions as per mongo aggregation expressions.
- * The input is expected to be a single value bson document
+ * The input is expected to be a bson document with a single value
  * e.g. { "sum": "$a.b"}
- * The output is a bson document that contains the evaluation of that field
+ * or a bson document with two values of which the second is the collation spec
+ * e.g. { "sum": "$a.b", "collation": "en-u-ks-level1" }
+ * The output is a bson document that contains the evaluation of the first field
  * e.g. { "sum": [ 1, 2, 3 ] }
- *
+ * and the collation spec, if any.
  * If nullOnEmpty parameter is set, "null" is written when a path in the expression
  * is not found in the input document. Following is an example showing why we need
  * this distinction. The caller (Gateway) is expected to set it correctly based on
@@ -615,7 +619,18 @@ bson_expression_get(PG_FUNCTION_ARGS)
 	BsonExpressionGetState expressionData;
 	memset(&expressionData, 0, sizeof(BsonExpressionGetState));
 
-	PgbsonToSinglePgbsonElement(expression, &expressionElement);
+	/* A collation string may be passed through to be pushed down to other functions such as bson_dollar_in for $graphLookup*/
+	const char *collationString = NULL;
+	bson_iter_t iter;
+	if (EnableCollation && PgbsonInitIteratorAtPath(expression, "collation", &iter))
+	{
+		collationString = PgbsonToSinglePgbsonElementWithCollation(
+			(pgbson *) expression, &expressionElement);
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(expression, &expressionElement);
+	}
 
 	const BsonExpressionGetState *state;
 	SetCachedFunctionStateMultiArgs(
@@ -645,6 +660,31 @@ bson_expression_get(PG_FUNCTION_ARGS)
 											  state->variableContext, isNullOnEmpty);
 
 	pgbson *returnedBson = PgbsonWriterGetPgbson(&writer);
+
+	/* Add the collation, if any, to the returned bson */
+	/* so it can be extracted by other functions that utilize it from bson_expression_get. */
+	/* For example: the comparison filter for bson_dollar_in used in $graphLookup */
+	if (IsCollationApplicable(collationString))
+	{
+		pgbson_writer returnedWriter;
+		PgbsonWriterInit(&returnedWriter);
+
+		bson_value_t getValue = ConvertPgbsonToBsonValue(returnedBson);
+		bson_iter_t pathValueIter;
+		BsonValueInitIterator(&getValue, &pathValueIter);
+
+		while (bson_iter_next(&pathValueIter))
+		{
+			const bson_value_t *pathValue = bson_iter_value(&pathValueIter);
+			PgbsonWriterAppendValue(&returnedWriter, bson_iter_key(&pathValueIter),
+									bson_iter_key_len(&pathValueIter), pathValue);
+		}
+
+		PgbsonWriterAppendUtf8(&returnedWriter, "collation", 9,
+							   collationString);
+
+		returnedBson = PgbsonWriterGetPgbson(&returnedWriter);
+	}
 
 	PG_FREE_IF_COPY(document, 0);
 	PG_RETURN_POINTER(returnedBson);
