@@ -1,4 +1,4 @@
----
+<!---
 title: ybm CLI db-audit-logs-exporter resource
 headerTitle: ybm db-audit-logs-exporter
 linkTitle: db-audit-logs-exporter
@@ -10,7 +10,8 @@ menu:
     parent: managed-cli-reference
     weight: 20
 type: docs
----
+private: true
+--->
 
 Use the `db-audit-logs-exporter` resource to configure [database audit logs](../../../../cloud-monitor/logging-export/) for export to third-party tools.
 
