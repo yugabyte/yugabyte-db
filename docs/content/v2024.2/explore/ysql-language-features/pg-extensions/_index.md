@@ -58,4 +58,4 @@ YugabyteDB supports the following additional extensions, some of which you must 
 | pg_stat_monitor | Pre-bundled | A PostgreSQL query performance monitoring tool, based on the PostgreSQL pg_stat_statements module.<br/>For more information, see the [pg_stat_monitor](https://docs.percona.com/pg-stat-monitor/index.html) documentation. |
 | [pgvector](extension-pgvector) | Pre-bundled | Allows you to store and query vectors, for use in vector similarity searching. |
 | [postgresql-hll](extension-postgresql-hll) | Pre-bundled | Adds the data type `hll`, which is a HyperLogLog data structure. |
-| [pg_partman](extension-pgpartman/) | Pre-bundled | Creates and manages both time-based and serial-based table partition sets.|
+| [pg_partman](extension-pgpartman/) | Pre-bundled | Creates and manages time-based and serial-based table partition sets.|
