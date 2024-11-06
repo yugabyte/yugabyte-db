@@ -42,6 +42,11 @@ public class WaitForYbcServer extends UniverseTaskBase {
   }
 
   @Override
+  public String getName() {
+    return super.getName() + "(" + taskParams().nodeNameList + ")";
+  }
+
+  @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     Set<NodeDetails> nodeDetailsSet =

@@ -250,10 +250,40 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public Set<String> deleteServiceNames;
     // Only set false for create universe case initially
     public boolean masterJoinExistingCluster = true;
+
+    public String getTaskDetails() {
+      String details = String.format("Command: %s", commandType);
+      switch (commandType) {
+        case CREATE_NAMESPACE:
+        case APPLY_SECRET:
+          details += String.format(", Namespace: %s", namespace);
+          break;
+        case HELM_INIT:
+        case HELM_INSTALL:
+        case HELM_UPGRADE:
+        case HELM_DELETE:
+          details += String.format(", Helm Release: %s, Namespace: %s", helmReleaseName, namespace);
+          break;
+        case COPY_PACKAGE:
+          details += String.format(", YBC Server: %s", ybcServerName);
+          break;
+        case YBC_ACTION:
+          details += String.format(", action: %s, YBC Server: %s", command, ybcServerName);
+          break;
+        default:
+          break;
+      }
+      return details;
+    }
   }
 
   protected KubernetesCommandExecutor.Params taskParams() {
     return (KubernetesCommandExecutor.Params) taskParams;
+  }
+
+  @Override
+  public String getName() {
+    return super.getName() + "(" + taskParams().getTaskDetails() + ")";
   }
 
   protected Map<String, String> getConfig() {
