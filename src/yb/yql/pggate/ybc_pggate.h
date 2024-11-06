@@ -773,6 +773,19 @@ YBCPgExplicitRowLockStatus YBCAddExplicitRowLockIntent(
     const YBCPgExplicitRowLockParams *params, bool is_region_local);
 YBCPgExplicitRowLockStatus YBCFlushExplicitRowLockIntents();
 
+// INSERT ... ON CONFLICT batching -----------------------------------------------------------------
+YBCStatus YBCPgAddInsertOnConflictKey(const YBCPgYBTupleIdDescriptor* tupleid,
+                                      YBCPgInsertOnConflictKeyInfo* info);
+YBCStatus YBCPgInsertOnConflictKeyExists(const YBCPgYBTupleIdDescriptor* tupleid,
+                                         YBCPgInsertOnConflictKeyState* res);
+YBCStatus YBCPgDeleteInsertOnConflictKey(const YBCPgYBTupleIdDescriptor* tupleid,
+                                         YBCPgInsertOnConflictKeyInfo* info);
+YBCStatus YBCPgDeleteNextInsertOnConflictKey(YBCPgInsertOnConflictKeyInfo* info);
+YBCStatus YBCPgAddInsertOnConflictKeyIntent(const YBCPgYBTupleIdDescriptor* tupleid);
+void YBCPgClearInsertOnConflictCache();
+uint64_t YBCPgGetInsertOnConflictKeyCount();
+//--------------------------------------------------------------------------------------------------
+
 bool YBCIsInitDbModeEnvVarSet();
 
 // This is called by initdb. Used to customize some behavior.

@@ -95,8 +95,15 @@ struct TableYbctid {
   TableYbctid(PgOid table_id_, std::string ybctid_)
       : table_id(table_id_), ybctid(std::move(ybctid_)) {}
 
+  explicit TableYbctid(const LightweightTableYbctid& lightweight)
+      : TableYbctid(lightweight.table_id, std::string(lightweight.ybctid)) {}
+
   operator LightweightTableYbctid() const {
     return LightweightTableYbctid(table_id, static_cast<std::string_view>(ybctid));
+  }
+
+  std::string ToString() const {
+    return Format("{ table_id: $0, ybctid: $1 }", table_id, ybctid);
   }
 
   PgOid table_id;
@@ -138,6 +145,9 @@ using TableYbctidSetHelper =
 using MemoryOptimizedTableYbctidSet = TableYbctidSetHelper<MemoryOptimizedTableYbctid>;
 using TableYbctidSet = TableYbctidSetHelper<TableYbctid>;
 using TableYbctidVector = std::vector<TableYbctid>;
+
+template <class U>
+using TableYbctidMap = std::unordered_map<TableYbctid, U, TableYbctidHasher, TableYbctidComparator>;
 
 class TableYbctidVectorProvider {
  public:
