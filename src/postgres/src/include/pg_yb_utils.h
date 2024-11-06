@@ -612,6 +612,9 @@ extern bool yb_test_system_catalogs_creation;
  */
 extern bool yb_test_fail_next_ddl;
 
+/* If set to true, all drop commands will fail. */
+extern bool yb_test_fail_all_drops;
+
 /*
  * If set to true, next increment catalog version operation will fail and
  * reset this back to false.

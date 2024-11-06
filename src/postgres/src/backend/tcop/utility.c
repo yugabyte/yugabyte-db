@@ -1819,6 +1819,12 @@ ProcessUtilitySlow(ParseState *pstate,
 static void
 ExecDropStmt(DropStmt *stmt, bool isTopLevel)
 {
+	if (yb_test_fail_all_drops && isTopLevel)
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("TEST: failed drop operation as requested"),
+				 errhint("GUC yb_test_fail_all_drops is set to true.")));
+
 	switch (stmt->removeType)
 	{
 		case OBJECT_INDEX:
