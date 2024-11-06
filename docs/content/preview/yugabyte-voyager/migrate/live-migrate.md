@@ -978,7 +978,7 @@ Note that after you end the migration, you will *not* be able to continue furthe
 
 Refer to [end migration](../../reference/end-migration/) for more details on the arguments.
 
-### Delete the ybvoyager user
+### Delete the ybvoyager user (Optional)
 
 After migration, all the migrated objects (tables, views, and so on) are owned by the `ybvoyager` user. Transfer the ownership of the objects to some other user (for example, `yugabyte`) and then delete the `ybvoyager` user. For example, do the following:
 
