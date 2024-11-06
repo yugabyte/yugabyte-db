@@ -15,9 +15,12 @@ type: docs
 When DDL changes are made to databases in replication for xCluster disaster recovery (DR) (such as creating, altering, or dropping tables or partitions), the changes must be:
 
 - performed at the SQL level on both the DR primary and replica, and then
-- updated at the YugabyteDB Anywhere level in the DR configuration.
+- In [Manual Schema Changes mode](../disaster-recovery#manual-schema-changes), also updated at the YugabyteDB Anywhere level in the DR configuration.
 
 You should perform these actions in a specific order, depending on whether performing a CREATE, DROP, ALTER, and so forth, as indicated by the sequence number of the operation in the table below.
+
+
+{{}} {{% tab header="Manual Schema Changes mode" lang="manual-schema-changes" %}}
 
 | DDL | Step 1 | Step 2 | Step 3 |
 | :-- | :----- | :----- | :----- |
@@ -29,6 +32,18 @@ You should perform these actions in a specific order, depending on whether perfo
 | ALTER TABLE or INDEX | Execute&nbsp;on&nbsp;Replica | Execute on Primary | No changes needed |
 | ALTER TABLE<br>ADD CONSTRAINT UNIQUE | Execute on Primary | Execute on Replica | [Reconcile configuration](#reconcile-configuration) |
 | ALTER TABLE<br>DROP CONSTRAINT<br>(unique constraints only) | Execute on Replica | Execute on Primary | [Reconcile configuration](#reconcile-configuration) |
+
+{{% /tab %}} {{}}
+
+{{}} {{% tab header="Semi-automated Schema Changes mode" lang="semi-automated-schema-changes" %}}
+
+For each DDL statement,
+1. Execute the DDL on the DR primary, waiting for it to complete.
+2. Execute the DDL on the DR replica, waiting for it to complete.
+
+After both steps are complete, the YugabyteDB Anywhere UI should reflect any added/removed tables in the Tables listing for this DR configuration.
+
+{{% /tab %}} {{}}
 
 In addition, keep in mind the following:
 
