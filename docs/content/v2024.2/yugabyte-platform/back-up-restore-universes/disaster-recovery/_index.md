@@ -64,7 +64,7 @@ Blog: [Using YugabyteDB xCluster DR for PostgreSQL Disaster Recovery in Azure](h
 
 ## Limitations
 
-- Currently, replication of DDL (SQL-level changes such as creating or dropping tables or indexes) is not supported. For more details on the steps involved in propagating DDL changes from the DR primary to the DR replica, see the section on [Schema Change mode](#semiautomatic) below.
+- Currently, replication of DDL (SQL-level changes such as creating or dropping tables or indexes) is not supported. For more details on how to propagate DDL changes from the DR primary to the DR replica, see [Schema change modes](#schema-change-mode-for-xcluster-dr).
 
 - DR setup (and other operations that require making a full copy from DR primary to DR replica, such as adding tables with data to replication, resuming replication after an extended network outage, and so on) may fail with the error `database "<database_name>" is being accessed by other users`.
 
@@ -76,40 +76,47 @@ Blog: [Using YugabyteDB xCluster DR for PostgreSQL Disaster Recovery in Azure](h
 
 For more information on the YugabyteDB xCluster implementation and its limitations, refer to [xCluster implementation limitations](../../../architecture/docdb-replication/async-replication/#limitations).
 
-## Schema Change mode for xcluster DR
+## Schema change modes
 
-YBA supports setting up xcluster DR in either of two schema change modes, which differ in the steps required to replicate DDL operations from the DR primary to the DR replica.
+You can set up xCluster DR to use one of two schema change modes, which differ in the steps required to replicate DDL operations from the DR primary to the DR replica.
 
-### Manual Schema Changes
+### Manual schema changes
 
-In this mode, table and index-level schema changes must be performed in a specific order on 
-1. The DR primary universe
-1. The DR replica universe, and
+In this mode, table and index-level schema changes must be performed in a specific order as follows:
+
+1. The DR primary universe.
+1. The DR replica universe.
 1. In some cases, they must also be updated on the YugabyteDB Anywhere DR configuration.
 
-The exact sequence of these operations for each type of Schema Change (DDL) is described at [Manage tables and indexes](./disaster-recovery-tables/).
+The exact sequence of these operations for each type of Schema Change (DDL) is described in [Manage tables and indexes](./disaster-recovery-tables/).
 
-### Semi-automated Schema Changes (Early Access)
+### Semi-automatic schema changes
 
-In this mode, table and index-level schema changes operations must be performed in the same order on
-1. The DR primary universe, and
-2. The DR replica universe
+Semi-automatic schema changes are {{<tags/feature/ea>}}. In this mode, table and index-level schema changes operations must be performed in the same order as follows:
 
-No changes need to be performed on the YugabyteDB Anywhere DR configuration. The exact sequence of these operations for each type of Schema Change is described at Manage tables and indexes](./disaster-recovery-tables/). For more details on this mode, refer to [this tech talk](https://www.youtube.com/watch?v=vYyn2OUSZFE).
+1. The DR primary universe.
+2. The DR replica universe.
 
-In general, the semi-automated schema change mode is recommended for all new DR configurations. When possible, existing DR configurations should be deleted and re-created in this new mode to reduce the operational burden of DDL changes. 
+You don't need to make any changes to the YugabyteDB Anywhere DR configuration. The exact sequence of these operations for each type of schema change is described in [Manage tables and indexes](./disaster-recovery-tables/).
 
-Semi-automated schema change mode is used for any xcluster DR configuration when the following pre-requisites are met at setup time.
+{{<lead link="https://www.youtube.com/watch?v=vYyn2OUSZFE">}}
+To learn more, watch [Simplified schema management with xCluster DB Scoped](https://www.youtube.com/watch?v=vYyn2OUSZFE)
+{{</lead>}}
 
-1. Both DR primary and universe are running YugabyteDB software version >= 2024.1.3.
-2. The global runtime configuration yb.xcluster.db_scoped.enabled is set to true to enable the Early Access feature.
+In general, the semi-automated schema change mode is recommended for all new DR configurations. When possible, existing DR configurations should be deleted and re-created using this new mode to reduce the operational burden of DDL changes.
+
+#### Prerequisites
+
+Semi-automated schema change mode is used for any xCluster DR configuration when the following pre-requisites are met at setup time:
+
+- Both DR primary and replica are running YugabyteDB v2024.1.3 or later.
+- By default, semi-automatic schema change mode is not enabled. To enable the feature, set the **DB scoped xCluster replication creation** Global runtime configuration option (config key `yb.xcluster.db_scoped.creationEnabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
 
 ## Upgrading universes in DR
 
 When [upgrading universes](../../manage-deployments/upgrade-software-install/) in DR replication, you should upgrade and finalize the DR replica before upgrading and finalizing the DR primary.
 
 Note that switchover operations can potentially fail if the DR primary and replica are at different versions.
-
 
 ## xCluster DR vs xCluster Replication
 
