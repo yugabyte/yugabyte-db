@@ -97,7 +97,9 @@ In this mode, table and index-level schema changes operations must be performed 
 
 No changes need to be performed on the YugabyteDB Anywhere DR configuration. The exact sequence of these operations for each type of Schema Change is described at Manage tables and indexes](./disaster-recovery-tables/). For more details on this mode, refer to [this tech talk](https://www.youtube.com/watch?v=vYyn2OUSZFE).
 
-In general, the semi-automated schema change mode is recommended for all new DR configurations. When possible, existing DR configurations should be deleted and re-created in this new mode to reduce the operational burden of DDL changes. Semi-automated schema change mode is used for any xcluster DR configuration when the following pre-requisites are met.
+In general, the semi-automated schema change mode is recommended for all new DR configurations. When possible, existing DR configurations should be deleted and re-created in this new mode to reduce the operational burden of DDL changes. 
+
+Semi-automated schema change mode is used for any xcluster DR configuration when the following pre-requisites are met at setup time.
 
 1. Both DR primary and universe are running YugabyteDB software version >= 2024.1.3.
 2. The global runtime configuration yb.xcluster.db_scoped.enabled is set to true to enable the Early Access feature.
