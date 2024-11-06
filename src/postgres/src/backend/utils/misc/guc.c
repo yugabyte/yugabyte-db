@@ -2655,7 +2655,7 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"yb_skip_redundant_update_ops", PGC_SIGHUP, QUERY_TUNING_OTHER,
 			gettext_noop("Enables the comparison of old and new values of columns specified in the "
-						 "SET clause of YSQL UPDATE queries to skip redundant secondary index " 
+						 "SET clause of YSQL UPDATE queries to skip redundant secondary index "
 						 "updates and redundant constraint checks."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
@@ -5268,8 +5268,9 @@ static struct config_string ConfigureNamesString[] =
 	{
 		{"yb_test_block_index_phase", PGC_SIGHUP, DEVELOPER_OPTIONS,
 			gettext_noop("Block the given index creation phase."),
-			gettext_noop("Valid values are \"indisready\", \"backfill\", "
-						 " and \"postbackfill\". Any other value is ignored."),
+			gettext_noop("Valid values are \"indislive\", \"indisready\", "
+						 "\"backfill\", and \"postbackfill\". "
+						 "Any other value is ignored."),
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_test_block_index_phase,

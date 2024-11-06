@@ -837,6 +837,19 @@ YbExecUpdateIndexTuples(TupleTableSlot *slot,
 		indexInfo = indexInfoArray[i];
 
 		/*
+		 * If the index is not yet ready for insert we shouldn't attempt to
+		 * add new entries, but should delete the old entry from a live index,
+		 * because newer transaction may have seen it ready, and inserted the
+		 * record into the index.
+		 */
+		if (!indexInfo->ii_ReadyForInserts)
+		{
+			if (indexRelation->rd_index->indislive)
+				deleteIndexes = lappend_int(deleteIndexes, i);
+			continue;
+		}
+
+		/*
 		 * Check for partial index -
 		 * There are four different update scenarios for an index with a predicate:
 		 * 1. Both the old and new tuples satisfy the predicate - In this case, the index tuple
