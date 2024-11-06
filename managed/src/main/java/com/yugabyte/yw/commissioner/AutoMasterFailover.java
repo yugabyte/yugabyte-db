@@ -156,9 +156,12 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
             "Retrying task {} for universe {}", action.getTaskType(), universe.getUniverseUUID());
         customerTask =
             Util.doWithCorrelationId(
-                id ->
-                    customerTaskManager.retryCustomerTask(
-                        customer.getUuid(), universeDetails.placementModificationTaskUuid));
+                id -> {
+                  CustomerTask cTask =
+                      customerTaskManager.retryCustomerTask(
+                          customer.getUuid(), universeDetails.placementModificationTaskUuid);
+                  return cTask.updateWithBackgroundUser();
+                });
       }
       if (customerTask == null) {
         return Optional.empty();
@@ -541,7 +544,7 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
               universe.getUniverseUUID(),
               action.getNodeName(),
               taskUUID);
-          return CustomerTask.create(
+          return CustomerTask.createWithBackgroundUser(
               customer,
               universe.getUniverseUUID(),
               taskUUID,
@@ -564,7 +567,7 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
               "Submitted sync master addresses task {} for universe {}",
               taskUUID,
               universe.getUniverseUUID());
-          return CustomerTask.create(
+          return CustomerTask.createWithBackgroundUser(
               customer,
               universe.getUniverseUUID(),
               taskUUID,

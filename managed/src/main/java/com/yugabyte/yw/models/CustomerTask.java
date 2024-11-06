@@ -53,6 +53,7 @@ import play.data.validation.Constraints;
 @Setter
 public class CustomerTask extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTask.class);
+  public static final String BACKGROUND_TASK_USER = "YBA";
 
   public enum TargetType {
     @EnumValue("Universe")
@@ -772,7 +773,8 @@ public class CustomerTask extends Model {
       TargetType targetType,
       TaskType type,
       String targetName) {
-    return create(customer, targetUUID, taskUUID, targetType, type, targetName, null, "YBA");
+    return create(
+        customer, targetUUID, taskUUID, targetType, type, targetName, null, BACKGROUND_TASK_USER);
   }
 
   public static CustomerTask get(Long id) {
@@ -799,6 +801,16 @@ public class CustomerTask extends Model {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid Customer Task UUID: " + taskUUID);
     }
     return customerTask;
+  }
+
+  public static Optional<CustomerTask> maybeGet(UUID taskUUID) {
+    return CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOneOrEmpty();
+  }
+
+  public CustomerTask updateWithBackgroundUser() {
+    setUserEmail(BACKGROUND_TASK_USER);
+    update();
+    return this;
   }
 
   public String getFriendlyDescription() {
