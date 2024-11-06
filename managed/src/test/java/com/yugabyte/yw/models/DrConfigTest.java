@@ -4,10 +4,11 @@ package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -138,8 +139,8 @@ public class DrConfigTest extends FakeDBApplication {
             new PitrParams(),
             sourceDbId1);
     drConfig.setXClusterConfigs(new ArrayList<>());
-    assertEquals(false, drConfig.hasActiveXClusterConfig());
-    assertThrows(IllegalStateException.class, () -> drConfig.getActiveXClusterConfig());
+    assertFalse(drConfig.hasActiveXClusterConfig());
+    assertThrows(IllegalStateException.class, drConfig::getActiveXClusterConfig);
   }
 
   @Test
@@ -153,18 +154,19 @@ public class DrConfigTest extends FakeDBApplication {
             backupRequestParams,
             new PitrParams(),
             sourceDbId1);
-    assertEquals(true, drConfig.hasActiveXClusterConfig());
-    try {
-      drConfig.getActiveXClusterConfig();
-    } catch (Exception e) {
-      fail();
-    }
+    assertTrue(drConfig.hasActiveXClusterConfig());
+    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
+    assertNotNull(xClusterConfig);
+
+    xClusterConfig.setSecondary(true);
+    xClusterConfig.update();
+    assertFalse(drConfig.hasActiveXClusterConfig());
+    assertThrows(IllegalStateException.class, drConfig::getActiveXClusterConfig);
   }
 
   @Test
   public void testDrConfigHasNoActiveXClusterConfig() {
     Set<String> sourceDbId1 = Set.of("db1");
-    Set<String> sourceDbId2 = Set.of("db2");
     DrConfig drConfig =
         DrConfig.create(
             "replication1",
@@ -182,7 +184,7 @@ public class DrConfigTest extends FakeDBApplication {
       xClusterConfig.update();
     }
 
-    assertEquals(false, drConfig.hasActiveXClusterConfig());
-    assertThrows(IllegalStateException.class, () -> drConfig.getActiveXClusterConfig());
+    assertFalse(drConfig.hasActiveXClusterConfig());
+    assertThrows(IllegalStateException.class, drConfig::getActiveXClusterConfig);
   }
 }
