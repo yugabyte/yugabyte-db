@@ -143,10 +143,6 @@ This component collects a fingerprint of the YBA data. The metadata is collected
 - Users metadata
 - Instance_type metadata (sizing info, cores)
 - Customer_task table metadata
-- Audit logs
-- HA metadata
-- xCluster metadata
-- Tasks metadata
 
 An example of the YBA metadata directory structure is as follows:
 
@@ -194,24 +190,15 @@ Node agent logs generated in the YugabyteDB nodes (if node agent is enabled).
 
 #### Core Files
 
-The Core Files component collects all the core files and mitigates two issues that may happen when collecting files such as the following:
+If you select the Core Files option (the default), the support bundle will include all core files generated within the specified date range.
 
-- Files can be very large (for example, 200GB+)
-- There can be a huge number of files (for example, when a crashloop happens)
+When the Core Files option is selected, you can specify the following additional options:
 
-Core files are filtered by date. So, only the files created within the support bundle date range are collected.
+- Maximum number of recent core files: In some instances (for example, when a crashloop happens), there can be a large number of files. Specify the maximum number of files to include; YugabyteDB Anywhere collects the most recent files up to this value (default is 1).
 
-When you create a support bundle, if you select the Core Files component (by default, the component is selected), there are two optional Core files properties:
+- Maximum core file size: Specify the maximum file size for core files to be collected, in bytes. Only core files smaller than the specified size are collected (default is 25000000000 bytes (25GB)).
 
-- Maximum number of recent core files: YugabyteDB Anywhere (YBA) collects the most recent "N" number of files. "N" is set to a default value of collecting 1 file.
-
-- Maximum core file size: This field collects the recent core files only if the core file size is below the specified size limit. It is set to a default value of 25000000000 bytes (25GB).
-
-YBA also provides a runtime flag `yb.support_bundle.allow_cores_collection`, which is used to globally disable cores collection across any new support bundles generated on the platform. This flag can only be set by the SuperAdmin and is true by default.
-
-#### Manifest file
-
-This component includes a `manifest.json` file that contains the parameters that were used to create the support bundle.
+You can disable core collection globally by setting the global runtime configuration flag `yb.support_bundle.allow_cores_collection` to false. You must be a Super Admin to set global runtime configuration flags.
 
 #### YB-Controller logs
 
@@ -243,22 +230,6 @@ Note that YBA will only collect files if you have sufficient permissions to requ
   - Secrets.txt (Includes only secret names and not the actual value)
   - Statefulsets.yaml
   - Persistentvolumeclaims.yaml
-
-#### Prometheus metrics
-
-This component collects Prometheus metrics (Promdump collection) for a given universe. You can select the duration of collection and the metrics to collect from the Support Bundle UI for Prometheus metrics.
-
-A brief description of each metric is as follows:
-
-- Master Export: Enables or disables collection of the metrics for the Yugabyte Master process.
-- Node Export: Enables or disables collection of the `node_exporter` OS level metrics.
-- Platform: Enables or disables collection of the Platform metrics produced by YBA.
-- Prometheus: Enables or disables collection of the Prometheus metrics produced by the YBA Prometheus.
-- TServer Export: Enables or disables collection of the metrics for the Yugabyte Tablet server. These metrics are scraped from the TServer process, and mostly cover the storage layer.
-- YSQL Export: Enables or disables collection of the metrics for the Postgres-compatible YSQL query layer.
-- YCQL Export: Enables or disables collection of the metrics for the Cassandra-compatible YCQL query layer.
-
-The Prometheus dumps are stored in JSON files in the `support_bundle/YBA/promdump` directory.
 
 </details>
 

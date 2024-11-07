@@ -140,6 +140,10 @@ This component collects a fingerprint of the YBA data. The metadata is collected
 - Users metadata
 - Instance_type metadata (sizing info, cores)
 - Customer_task table metadata
+- Audit logs
+- High availability metadata
+- xCluster metadata
+- Tasks metadata
 
 An example of the YBA metadata directory structure is as follows:
 
@@ -187,18 +191,19 @@ Node agent logs generated in the YugabyteDB nodes (if node agent is enabled).
 
 #### Core Files
 
-The Core Files component collects all the core files and mitigates two issues that may happen when collecting files such as the following:
+If you select the Core Files option (the default), the support bundle will include all core files generated within the specified date range.
 
-- Files can be very large (for example, 200GB+)
-- There can be a huge number of files (for example, when a crashloop happens)
+When the Core Files option is selected, you can specify the following additional options:
 
-When you create a support bundle, if you select the Core Files component (by default, the component is selected), there are two optional Core files properties:
+- Maximum number of recent core files: In some instances (for example, when a crashloop happens), there can be a large number of files. Specify the maximum number of files to include; YugabyteDB Anywhere collects the most recent files up to this value (default is 1).
 
-- Maximum number of recent core files: YugabyteDB Anywhere (YBA) collects the most recent "N" number of files. "N" is set to a default value of collecting 1 file.
+- Maximum core file size: Specify the maximum file size for core files to be collected, in bytes. Only core files smaller than the specified size are collected (default is 25000000000 bytes (25GB)).
 
-- Maximum core file size: This field collects the recent core files only if the core file size is below the specified size limit. It is set to a default value of 25000000000 bytes (25GB).
+You can disable core collection globally by setting the global runtime configuration flag `yb.support_bundle.allow_cores_collection` to false. You must be a Super Admin to set global runtime configuration flags.
 
-YBA also provides a runtime flag `yb.support_bundle.allow_cores_collection`, which is used to globally disable cores collection across any new support bundles generated on the platform. This flag can only be set by the SuperAdmin and is true by default.
+#### Manifest file
+
+The `manifest.json` file, which contains the parameters that were used to create the support bundle.
 
 #### YB-Controller logs
 
@@ -230,6 +235,22 @@ Note that YBA will only collect files if you have sufficient permissions to requ
   - Secrets.txt (Includes only secret names and not the actual value)
   - Statefulsets.yaml
   - Persistentvolumeclaims.yaml
+
+#### Prometheus metrics
+
+The Prometheus metrics for the selected universe. You can customize the timeframe and the metrics to collect.
+
+You can include the following metrics with the support bundle:
+
+- Master Export - YB-Master metrics.
+- Node Export - node_exporter OS level metrics.
+- Platform - YugabyteDB Anywhere metrics.
+- Prometheus - YugabyteDB Anywhere Prometheus metrics.
+- TServer Export - YB-TServer metrics; these are scraped from the TServer processes, and mostly cover the storage layer.
+- YSQL Export - YSQL query layer metrics.
+- YCQL Export - YCQL query layer metrics.
+
+The Prometheus metrics are stored in JSON files in the `support_bundle/YBA/promdump` directory.
 
 </details>
 
