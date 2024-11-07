@@ -523,9 +523,16 @@ public class NodeManager extends DevopsBase {
       }
 
       if (providerDetails.installNodeExporter) {
+        Universe universe = Universe.getOrBadRequest(setupServerParams.getUniverseUUID());
+        NodeDetails node = universe.getNode(setupServerParams.nodeName);
+        int nodeExporterPort =
+            node != null
+                ? node.nodeExporterPort
+                : setupServerParams.communicationPorts.nodeExporterPort;
+
         subCommand.add("--install_node_exporter");
         subCommand.add("--node_exporter_port");
-        subCommand.add(Integer.toString(setupServerParams.communicationPorts.nodeExporterPort));
+        subCommand.add(Integer.toString(nodeExporterPort));
         subCommand.add("--node_exporter_user");
         subCommand.add(providerDetails.nodeExporterUser);
       }

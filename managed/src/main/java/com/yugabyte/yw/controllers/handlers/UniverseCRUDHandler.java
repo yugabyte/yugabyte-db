@@ -1199,15 +1199,8 @@ public class UniverseCRUDHandler {
     // Set the node exporter config based on the provider
     UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
     boolean installNodeExporter = universeDetails.extraDependencies.installNodeExporter;
-    int nodeExporterPort = universeDetails.communicationPorts.nodeExporterPort;
     String nodeExporterUser = universeDetails.nodeExporterUser;
     taskParams.extraDependencies.installNodeExporter = installNodeExporter;
-    taskParams.communicationPorts.nodeExporterPort = nodeExporterPort;
-
-    for (NodeDetails node : taskParams.nodeDetailsSet) {
-      node.nodeExporterPort = nodeExporterPort;
-    }
-
     if (installNodeExporter) {
       taskParams.nodeExporterUser = nodeExporterUser;
     }
