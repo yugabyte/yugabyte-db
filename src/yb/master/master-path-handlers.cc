@@ -1830,7 +1830,8 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
     if (!show_deleted_tablets && tablet->LockForRead()->is_deleted()) {
       continue;
     }
-    auto sorted_locations = TabletReplicaMapToSortedVector(*tablet->GetReplicaLocations());
+    std::shared_ptr<const TabletReplicaMap> tablet_replica_map = tablet->GetReplicaLocations();
+    auto sorted_locations = TabletReplicaMapToSortedVector(*tablet_replica_map);
     auto l = tablet->LockForRead();
 
     dockv::Partition partition;
@@ -2110,7 +2111,8 @@ void MasterPathHandlers::HandleTablePageJSON(const Webserver::WebRequest& req,
   jw.String("tablets");
   jw.StartArray();
   for (const TabletInfoPtr& tablet : tablets) {
-    auto sorted_locations = TabletReplicaMapToSortedVector(*tablet->GetReplicaLocations());
+    std::shared_ptr<const TabletReplicaMap> tablet_replica_map = tablet->GetReplicaLocations();
+    auto sorted_locations = TabletReplicaMapToSortedVector(*tablet_replica_map);
     auto l = tablet->LockForRead();
 
     dockv::Partition partition;
