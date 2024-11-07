@@ -121,6 +121,8 @@ DEFINE_test_flag(bool, simulate_cannot_enable_compactions, false,
 DEFINE_test_flag(int32, delay_clearing_fully_applied_ms, 0,
     "Amount of time to delay clearing the fully applied schema.");
 
+DECLARE_bool(auto_add_new_index_to_bidirectional_xcluster);
+
 namespace yb {
 namespace master {
 

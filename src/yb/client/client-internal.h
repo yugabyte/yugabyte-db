@@ -124,9 +124,11 @@ class YBClient::Data {
       YBClient* client, const std::string& source_namespace_id, uint32_t clone_seq_no,
       CoarseTimePoint deadline);
 
-  Result<master::CreateTableResponsePB> CreateTable(
-      YBClient* client, const master::CreateTableRequestPB& req, const YBSchema& schema,
-      CoarseTimePoint deadline, std::string* table_id);
+  Status CreateTable(YBClient* client,
+                     const master::CreateTableRequestPB& req,
+                     const YBSchema& schema,
+                     CoarseTimePoint deadline,
+                     std::string* table_id);
 
   // Take one of table id or name.
   Status IsCreateTableInProgress(YBClient* client,

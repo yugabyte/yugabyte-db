@@ -223,8 +223,9 @@ TEST_F(PggateTestTableSize, TestMissingTablets) {
                                                DataType::INT64, true, true));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "id", ++col_count,
                                                DataType::INT32, false, true));
-
-  ExecCreateTableTransaction(pg_stmt);
+  BeginDDLTransaction();
+  CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
+  CommitDDLTransaction();
 
   YBCPgDeleteStatement(pg_stmt);
 

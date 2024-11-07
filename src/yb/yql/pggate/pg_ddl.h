@@ -193,8 +193,6 @@ class PgCreateTable : public PgDdl {
   // Execute.
   virtual Status Exec();
 
-  const char* get_notice_msg();
-
  protected:
   virtual Status AddColumnImpl(
       const char *attr_name, int attr_num, int attr_ybtype, int pg_type_oid, bool is_hash,
@@ -202,7 +200,6 @@ class PgCreateTable : public PgDdl {
 
  private:
   tserver::PgCreateTableRequestPB req_;
-  std::string notice_msg_;
 };
 
 class PgDropTable : public PgDdl {

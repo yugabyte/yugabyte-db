@@ -260,8 +260,6 @@ class XClusterManager : public XClusterManagerIf,
 
   bool IsTableBiDirectionallyReplicated(const TableId& table_id) const override;
 
-  bool ShouldAutoAddIndexesToBiDirectionalXCluster(const TableInfo& indexed_table) const override;
-
   Status HandleTabletSplit(
       const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids,
       const LeaderEpoch& epoch) override;

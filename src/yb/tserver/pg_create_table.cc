@@ -57,8 +57,8 @@ static constexpr const char* const kPgSequenceIsCalledColName = "is_called";
 
 } // namespace
 
-PgCreateTable::PgCreateTable(const PgCreateTableRequestPB& req, PgCreateTableResponsePB* resp)
-    : req_(req), resp_(resp) {}
+PgCreateTable::PgCreateTable(const PgCreateTableRequestPB& req) : req_(req) {
+}
 
 Status PgCreateTable::Prepare() {
   table_name_ = client::YBTableName(
@@ -223,8 +223,6 @@ Status PgCreateTable::Exec(
     return STATUS_FORMAT(
         InvalidArgument, "Invalid table definition: $0",
         s.ToString(false /* include_file_and_line */, false /* include_code */));
-  } else {
-    resp_->set_notice_message(table_creator->ResponseNoticeMessage());
   }
 
   return Status::OK();

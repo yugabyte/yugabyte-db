@@ -813,20 +813,13 @@ Status PgApiImpl::AddSplitBoundary(PgStatement *handle, PgExpr **exprs, int expr
   return STATUS(InvalidArgument, "Invalid statement handle");
 }
 
-Status PgApiImpl::ExecCreateTable(PgStatement* handle, const char** notice_msg) {
+Status PgApiImpl::ExecCreateTable(PgStatement *handle) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_TABLE)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
   pg_session_->SetDdlHasSyscatalogChanges();
-  auto create_table_handle = down_cast<PgCreateTable*>(handle);
-  RETURN_NOT_OK(create_table_handle->Exec());
-
-  if (notice_msg) {
-    *notice_msg = create_table_handle->get_notice_msg();
-  }
-
-  return Status::OK();
+  return down_cast<PgCreateTable*>(handle)->Exec();
 }
 
 Status PgApiImpl::NewAlterTable(const PgObjectId& table_id,
@@ -1143,20 +1136,13 @@ Status PgApiImpl::CreateIndexSetVectorOptions(PgStatement *handle, YbPgVectorIdx
   return down_cast<PgCreateTable*>(handle)->SetVectorOptions(options);
 }
 
-Status PgApiImpl::ExecCreateIndex(PgStatement* handle, const char** notice_msg) {
+Status PgApiImpl::ExecCreateIndex(PgStatement *handle) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_INDEX)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
   pg_session_->SetDdlHasSyscatalogChanges();
-  auto create_table_handle = down_cast<PgCreateTable*>(handle);
-  RETURN_NOT_OK(create_table_handle->Exec());
-
-  if (notice_msg) {
-    *notice_msg = create_table_handle->get_notice_msg();
-  }
-
-  return Status::OK();
+  return down_cast<PgCreateTable*>(handle)->Exec();
 }
 
 Status PgApiImpl::NewDropIndex(const PgObjectId& index_id,

@@ -831,15 +831,8 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			handle, desc, split_options, primary_key,
 			is_colocated_via_database, is_tablegroup, ybrowid_mode);
 	}
-
-	const char *notice_msg = NULL;
 	/* Create the table. */
-	HandleYBStatus(YBCPgExecCreateTable(handle, &notice_msg));
-	if (notice_msg)
-	{
-		ereport(NOTICE, (errmsg("%s", notice_msg)));
-		pfree((void *) notice_msg);
-	}
+	HandleYBStatus(YBCPgExecCreateTable(handle));
 }
 
 void
@@ -1184,14 +1177,8 @@ YBCCreateIndex(const char *indexName,
 		CreateIndexHandleSplitOptions(handle, indexTupleDesc, split_options, coloptions,
 		                              indexInfo->ii_NumIndexKeyAttrs);
 
-	const char *notice_msg = NULL;
 	/* Create the index. */
-	HandleYBStatus(YBCPgExecCreateIndex(handle, &notice_msg));
-	if (notice_msg)
-	{
-		ereport(NOTICE, (errmsg("%s", notice_msg)));
-		pfree((void *) notice_msg);
-	}
+	HandleYBStatus(YBCPgExecCreateIndex(handle));
 }
 
 static Node *

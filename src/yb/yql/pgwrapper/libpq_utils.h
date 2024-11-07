@@ -331,14 +331,6 @@ class PGConn {
     CopyPut(value.c_str(), value.length());
   }
 
-  // Store the notice message returned by the server for testing purposes.
-  void TEST_CaptureNoticeMessages();
-
-  // TEST_CaptureNoticeMessages must be called.
-  // Only the last notice message emitted by the server is stored.
-  // Value does not get reset when new statements are executed.
-  std::string TEST_GetLastNoticeMessage() const { return TEST_last_notice_msg_; }
-
   PGconn* get() {
     return impl_.get();
   }
@@ -354,7 +346,6 @@ class PGConn {
   PGConnPtr impl_;
   bool simple_query_protocol_;
   std::unique_ptr<CopyData> copy_data_;
-  std::string TEST_last_notice_msg_;
 };
 
 // Settings to pass to PGConnBuilder.

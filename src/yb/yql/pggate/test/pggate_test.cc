@@ -230,11 +230,7 @@ void PggateTest::CommitTransaction() {
 
 void PggateTest::ExecCreateTableTransaction(YBCPgStatement pg_stmt) {
   BeginDDLTransaction();
-  const char* notice_msg;
-  CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt, &notice_msg));
-  if (notice_msg) {
-    LOG(INFO) << "Notice: " << notice_msg;
-  }
+  CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
   CommitDDLTransaction();
 }
 

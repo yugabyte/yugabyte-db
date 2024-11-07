@@ -106,9 +106,6 @@ class XClusterManagerIf {
 
   virtual bool IsTableBiDirectionallyReplicated(const TableId& table_id) const = 0;
 
-  virtual bool ShouldAutoAddIndexesToBiDirectionalXCluster(
-      const TableInfo& indexed_table) const = 0;
-
  protected:
   virtual ~XClusterManagerIf() = default;
 };

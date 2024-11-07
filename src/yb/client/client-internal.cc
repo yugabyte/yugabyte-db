@@ -488,9 +488,11 @@ Status YBClient::Data::GetTabletServer(YBClient* client,
   return Status::OK();
 }
 
-Result<CreateTableResponsePB> YBClient::Data::CreateTable(
-    YBClient* client, const CreateTableRequestPB& req, const YBSchema& schema,
-    CoarseTimePoint deadline, string* table_id) {
+Status YBClient::Data::CreateTable(YBClient* client,
+                                   const CreateTableRequestPB& req,
+                                   const YBSchema& schema,
+                                   CoarseTimePoint deadline,
+                                   string* table_id) {
   CreateTableResponsePB resp;
 
   int attempts = 0;
@@ -565,14 +567,14 @@ Result<CreateTableResponsePB> YBClient::Data::CreateTable(
         }
       }
 
-      return resp;
+      return Status::OK();
     }
 
     return StatusFromPB(resp.error().status());
   }
 
-  RETURN_NOT_OK(s);
-  return resp;
+  // Use the status only if the response has no error.
+  return s;
 }
 
 Status YBClient::Data::IsCreateTableInProgress(YBClient* client,

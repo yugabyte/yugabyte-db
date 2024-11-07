@@ -48,9 +48,10 @@ DEFINE_RUNTIME_bool(xcluster_wait_on_ddl_alter, true,
 DEFINE_RUNTIME_uint32(add_new_index_to_bidirectional_xcluster_timeout_secs, 10 * 60,
     "Time in seconds within which index must be created on other universe when the indexed table "
     "is part of bidirectional xCluster replication. Applies only when "
-    "--ysql_auto_add_new_index_to_bidirectional_xcluster is set.");
+    "--auto_add_new_index_to_bidirectional_xcluster "
+    "is set.");
 
-DECLARE_bool(ysql_auto_add_new_index_to_bidirectional_xcluster);
+DECLARE_bool(auto_add_new_index_to_bidirectional_xcluster);
 DECLARE_uint64(max_clock_skew_usec);
 
 namespace yb::master {
@@ -1346,10 +1347,12 @@ Result<std::optional<HybridTime>> XClusterTargetManager::TryGetXClusterSafeTimeF
   const bool is_colocated = indexed_table->colocated();
   auto indexed_table_id = indexed_table->id();
 
-  if (master_.xcluster_manager()->ShouldAutoAddIndexesToBiDirectionalXCluster(*indexed_table)) {
-    if (is_colocated) {
-      indexed_table_id = indexed_table->LockForRead()->pb.parent_table_id();
-    }
+  if (is_colocated) {
+    indexed_table_id = indexed_table->LockForRead()->pb.parent_table_id();
+  }
+
+  if (FLAGS_auto_add_new_index_to_bidirectional_xcluster &&
+      xcluster_manager.IsTableBiDirectionallyReplicated(indexed_table_id)) {
     auto backfill_ht = VERIFY_RESULT_PREPEND(
         PrepareAndGetBackfillTimeForBiDirectionalIndex(index_table_ids, indexed_table_id, epoch),
         "Failed while preparing index for xCluster");
