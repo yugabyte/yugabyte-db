@@ -190,7 +190,7 @@ public class DrConfigController extends AuthenticatedController {
         confGetter.getConfForScope(
             sourceUniverse, UniverseConfKeys.dbScopedXClusterCreationEnabled);
     if (isDbScoped) {
-      XClusterUtil.dbScopedXClusterPreChecks(sourceUniverse, targetUniverse);
+      XClusterUtil.dbScopedXClusterPreChecks(sourceUniverse, targetUniverse, createForm.dbs);
     }
 
     if (Objects.isNull(createForm.pitrParams)) {
@@ -1801,6 +1801,7 @@ public class DrConfigController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "The list of new databases to add/remove is empty.");
     }
+    XClusterUtil.checkDbScopedNonEmptyDbs(newDatabaseIds);
 
     XClusterConfigController.verifyTaskAllowed(xClusterConfig, TaskType.EditXClusterConfig);
 

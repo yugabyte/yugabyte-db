@@ -8,6 +8,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterNamespaceConfig;
 import com.yugabyte.yw.models.XClusterTableConfig;
+import java.util.Set;
 
 public class XClusterUtil {
   public static final String MINIMUM_VERSION_DB_XCLUSTER_SUPPORT_STABLE = "2024.1.3.0-b105";
@@ -81,8 +82,19 @@ public class XClusterUtil {
     }
   }
 
-  public static void dbScopedXClusterPreChecks(Universe sourceUniverse, Universe targetUniverse) {
+  public static void checkDbScopedNonEmptyDbs(Set<String> dbIds) {
+    if (dbIds.isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "No databases were passed in. Db scoped XCluster does not support replication with no"
+              + " databases.");
+    }
+  }
+
+  public static void dbScopedXClusterPreChecks(
+      Universe sourceUniverse, Universe targetUniverse, Set<String> dbIds) {
     checkDbScopedXClusterSupported(sourceUniverse, targetUniverse);
+    checkDbScopedNonEmptyDbs(dbIds);
 
     // TODO: Validate dbIds passed in exist on source universe.
     // TODO: Validate namespace names exist on both source and target universe.
