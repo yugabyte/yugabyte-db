@@ -2491,7 +2491,7 @@ void od_frontend(void *arg)
 	/* cleanup */
 
 cleanup:
-#ifdef YB_SUPPORT_FOUND
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
 	/* clean shared memory associated with the client */
 	if (client->client_id != 0)
 		yb_execute_on_control_connection(client, yb_clean_shmem);
