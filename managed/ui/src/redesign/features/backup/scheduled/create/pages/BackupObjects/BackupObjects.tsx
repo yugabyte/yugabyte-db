@@ -32,7 +32,7 @@ import { YBReactSelectField } from '../../../../../../../components/configRedesi
 import { GetUniverseUUID } from '../../../ScheduledBackupUtils';
 import { fetchTablesInUniverse } from '../../../../../../../actions/xClusterReplication';
 
-import { BACKUP_API_TYPES, ITable } from '../../../../../../../components/backupv2';
+import { BACKUP_API_TYPES, Backup_Options_Type, ITable } from '../../../../../../../components/backupv2';
 import { getValidationSchema } from './BackupObjectsValidation';
 
 const useStyles = makeStyles(() => ({
@@ -129,7 +129,7 @@ const BackupObjects = forwardRef<PageRef>((_, forwardRef) => {
 
   const groupByTableType = groupBy(
     [
-      ... intersectionWith(Default_Keyspace_database_options, tablesInUniverse, (a, b) => a.tableType === b.tableType),
+      ...intersectionWith(Default_Keyspace_database_options, tablesInUniverse, (a, b) => a.tableType === b.tableType),
       ...uniqBy(tablesInUniverse, (table: ITable) => table.keySpace)
     ],
     (t) => t.tableType
@@ -164,6 +164,8 @@ const BackupObjects = forwardRef<PageRef>((_, forwardRef) => {
             setValue('keyspace', (selectedOption as unknown) as BackupObjectsModel['keyspace'], {
               shouldValidate: true
             });
+            setValue('selectedTables', [], { shouldValidate: true });
+            setValue('tableBackupType', Backup_Options_Type.ALL, { shouldValidate: true });
           }}
           defaultValue={selectedKeyspace}
           components={{
