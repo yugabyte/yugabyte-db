@@ -44,6 +44,8 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [Unsupported datatypes by YugabyteDB](#unsupported-datatypes-by-yugabytedb)
 - [Unsupported datatypes by Voyager during live migration](#unsupported-datatypes-by-voyager-during-live-migration)
 - [XID functions is not supported](#xid-functions-is-not-supported)
+- [REFERENCING clause for triggers](#referencing-clause-for-triggers)
+- [BEFORE ROW triggers on partitioned tables](#before-row-triggers-on-partitioned-tables)
 
 ### Adding primary key to a partitioned table results in an error
 
@@ -1093,3 +1095,135 @@ CREATE TABLE xid_example (
 ```
 
 ---
+
+
+### REFERENCING clause for triggers
+
+**GitHub**: [Issue #1668](https://github.com/yugabyte/yugabyte-db/issues/1668)
+
+**Description**: If you have have the REFERENCING clause (transititon tables) in triggers in source schema, it will fail in import schema as it is not supported by YugabyteDB.
+
+```output
+ERROR:  REFERENCING clause (transition tables) not supported yet
+```
+
+**Workaround**: No workaround as of now.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE projects (
+    id SERIAL PRIMARY KEY,
+    name TEXT,
+    region TEXT
+);
+
+CREATE OR REPLACE FUNCTION log_deleted_projects()
+RETURNS TRIGGER AS $$
+BEGIN
+    --logic to use the old_table for deleted rows
+    SELECT id, name, region FROM old_table;
+
+END;
+$$ LANGUAGE plpgsql
+
+
+CREATE TRIGGER projects_loose_fk_trigger
+AFTER DELETE ON projects
+REFERENCING OLD TABLE AS old_table
+FOR EACH STATEMENT                                                        
+EXECUTE FUNCTION log_deleted_projects();
+```
+
+---
+
+### BEFORE ROW triggers on partitioned tables 
+
+**GitHub**: [Issue #24830](https://github.com/yugabyte/yugabyte-db/issues/24830)
+
+**Description**: If you have have the BEFORE ROW triggers on partitioned tables in source schema, it will fail in import schema as it is not supported by YugabyteDB yet.
+
+```output
+ERROR: Partitioned tables cannot have BEFORE / FOR EACH ROW triggers.
+```
+
+**Workaround**: Create this trigger on the individual partitions.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE test_partition_trigger (
+    id INT,
+    val TEXT,
+    PRIMARY KEY (id)
+) PARTITION BY RANGE (id);
+
+CREATE TABLE test_partition_trigger_part1 PARTITION OF test_partition_trigger
+    FOR VALUES FROM (1) TO (100);
+
+CREATE TABLE test_partition_trigger_part2 PARTITION OF test_partition_trigger
+    FOR VALUES FROM (100) TO (200);
+
+CREATE OR REPLACE FUNCTION check_and_modify_val()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Check if id is even; if not, modify `val` to indicate an odd ID
+    IF (NEW.id % 2) <> 0 THEN
+        NEW.val := 'Odd ID';
+    END IF;
+
+    -- Return the row with modifications (if any)
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER before_insert_check
+BEFORE INSERT ON test_partition_trigger
+FOR EACH ROW
+EXECUTE FUNCTION check_and_modify_val();
+```
+
+Suggested schema -
+
+```sql
+
+CREATE TABLE test_partition_trigger (
+    id INT,
+    val TEXT,
+    PRIMARY KEY (id)
+) PARTITION BY RANGE (id);
+
+CREATE TABLE test_partition_trigger_part1 PARTITION OF test_partition_trigger
+    FOR VALUES FROM (1) TO (100);
+
+CREATE TABLE test_partition_trigger_part2 PARTITION OF test_partition_trigger
+    FOR VALUES FROM (100) TO (200);
+
+CREATE OR REPLACE FUNCTION check_and_modify_val()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Check if id is even; if not, modify `val` to indicate an odd ID
+    IF (NEW.id % 2) <> 0 THEN
+        NEW.val := 'Odd ID';
+    END IF;
+
+    -- Return the row with modifications (if any)
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER before_insert_check
+BEFORE INSERT ON test_partition_trigger_part1
+FOR EACH ROW
+EXECUTE FUNCTION check_and_modify_val();
+
+CREATE TRIGGER before_insert_check
+BEFORE INSERT ON test_partition_trigger_part2
+FOR EACH ROW
+EXECUTE FUNCTION check_and_modify_val();
+
+```

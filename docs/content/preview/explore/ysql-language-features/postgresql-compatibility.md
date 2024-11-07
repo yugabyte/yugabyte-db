@@ -208,3 +208,6 @@ The following PostgreSQL features are not supported in YugabyteDB:
 | Indexes on complex datatypes such as INET, CITEXT, JSONB, ARRAYs, and so on.| {{<issue 9698>}}, {{<issue 23829>}}, {{<issue 17017>}} |
 | %TYPE syntax in Functions/Procedures/Triggers|{{<issue 23619>}}|
 | Storage parameters on indexes or constraints|{{<issue 23467>}}|
+| REFERENCING clause for triggers | {{<issue 1668>}}|
+| BEFORE ROW triggers for partitioned tables | {{issue 24830}}|
+
