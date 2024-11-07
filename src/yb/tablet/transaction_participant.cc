@@ -1894,6 +1894,12 @@ class TransactionParticipant::Impl
       TransactionalBatchData&& last_batch_data,
       OneWayBitmap&& replicated_batches,
       const ApplyStateWithCommitHt* pending_apply) override {
+    auto start_time = metadata.start_time;
+    auto replay_start_time = MinReplayTxnStartTime();
+    if (start_time && replay_start_time && start_time < replay_start_time) {
+      return;
+    }
+
     MinRunningNotifier min_running_notifier(&applier_);
     std::lock_guard lock(mutex_);
     auto txn = std::make_shared<RunningTransaction>(
