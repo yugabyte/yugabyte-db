@@ -4,7 +4,6 @@ headerTitle: Explore YugabyteDB
 linkTitle: Explore
 headcontent: Learn about YugabyteDB features, with examples
 description: Explore the features of YugabyteDB on macOS, Linux, Docker, and Kubernetes.
-image: fa-sharp fa-thin fa-magnifying-glass-waveform
 aliases:
   - /preview/explore/high-performance/
   - /preview/explore/planet-scale/

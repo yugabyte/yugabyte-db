@@ -394,6 +394,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       } else {
         other->metadata_.start_time = other->read_point_.Now();
       }
+      other->metadata_.pg_txn_start_us = metadata_.pg_txn_start_us;
       state_.store(TransactionState::kAborted, std::memory_order_release);
     }
     DoAbort(TransactionRpcDeadline(), transaction);

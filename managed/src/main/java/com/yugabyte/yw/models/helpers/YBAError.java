@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonValue;
@@ -11,6 +13,7 @@ import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
+import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.util.Objects;
 import lombok.EqualsAndHashCode;
@@ -20,7 +23,10 @@ import lombok.Getter;
 @EqualsAndHashCode
 /** YBA error for internal operations. */
 public class YBAError {
+  @ApiModelProperty(value = "Error code", accessMode = READ_ONLY)
   private Code code;
+
+  @ApiModelProperty(value = "Error message", accessMode = READ_ONLY)
   private String message;
 
   @JsonCreator

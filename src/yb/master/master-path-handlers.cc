@@ -160,6 +160,24 @@ std::optional<uint64_t> ToUnsignedOrNullopt(int64_t val) {
     return val;
   }
 }
+
+std::string TSDescriptorToHtml(const std::string& ts_uuid,
+                               std::optional<ConstRefWrap<master::TSDescriptor>> desc,
+                               const std::string& tablet_id) {
+  if (!desc) {
+    return EscapeForHtmlToString(ts_uuid);
+  }
+  auto public_http_hp = GetPublicHttpHostPort(desc->get().GetRegistration());
+  if (!public_http_hp) {
+    return EscapeForHtmlToString(ts_uuid);
+  }
+  return Format("<a href=\"$0://$1/tablet?id=$2\">$3</a>",
+                GetProtocol(),
+                EscapeForHtmlToString(HostPortPBToString(*public_http_hp)),
+                UrlEncodeToString(tablet_id),
+                EscapeForHtmlToString(public_http_hp->host()));
+}
+
 }  // namespace
 
 using consensus::RaftPeerPB;
@@ -1605,8 +1623,21 @@ void MasterPathHandlers::HandleNamespacesJSON(const Webserver::WebRequest& req,
 
 namespace {
 
-bool CompareByHost(const TabletReplica& a, const TabletReplica& b) {
-    return a.ts_desc->permanent_uuid() < b.ts_desc->permanent_uuid();
+bool CompareByHost(
+    const TsUuidAndTabletReplica& a,
+    const TsUuidAndTabletReplica& b) {
+  return a.first.get() < b.first.get();
+}
+
+std::vector<TsUuidAndTabletReplica>
+TabletReplicaMapToSortedVector(const TabletReplicaMap& replicas) {
+  std::vector<TsUuidAndTabletReplica> sorted_replicas;
+  sorted_replicas.reserve(replicas.size());
+  for (const auto& [ts_uuid, replica] : replicas) {
+    sorted_replicas.push_back(std::pair(std::cref(ts_uuid), replica));
+  }
+  std::sort(sorted_replicas.begin(), sorted_replicas.end(), &CompareByHost);
+  return sorted_replicas;
 }
 
 }  // anonymous namespace
@@ -1799,11 +1830,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
     if (!show_deleted_tablets && tablet->LockForRead()->is_deleted()) {
       continue;
     }
-    auto locations = tablet->GetReplicaLocations();
-    vector<TabletReplica> sorted_locations;
-    AppendValuesFromMap(*locations, &sorted_locations);
-    std::sort(sorted_locations.begin(), sorted_locations.end(), &CompareByHost);
-
+    auto sorted_locations = TabletReplicaMapToSortedVector(*tablet->GetReplicaLocations());
     auto l = tablet->LockForRead();
 
     dockv::Partition partition;
@@ -1880,35 +1907,38 @@ void JsonOutputSchemaTable(const Schema& schema, JsonWriter* jw) {
   jw->EndArray();
 }
 
-string TSDescriptorToJson(const TSDescriptor& desc,
+string TSDescriptorToJson(const std::string& ts_uuid,
+                          const std::optional<ConstRefWrap<TSDescriptor>> desc,
                           const std::string& tablet_id) {
-  auto reg = desc.GetRegistration();
-
-  auto public_http_hp = GetPublicHttpHostPort(reg);
-  if (public_http_hp) {
-    return Format(
-        "$0://$1/tablet?id=$2",
-        GetProtocol(),
-        HostPortPBToString(*public_http_hp),
-        UrlEncodeToString(tablet_id));
-  } else {
-    return EscapeForHtmlToString(desc.permanent_uuid());
+  if (!desc) {
+    return EscapeForHtmlToString(ts_uuid);
   }
+  auto public_http_hp = GetPublicHttpHostPort(desc->get().GetRegistration());
+  if (!public_http_hp) {
+    return EscapeForHtmlToString(ts_uuid);
+  }
+  return Format("$0://$1/tablet?id=$2",
+                GetProtocol(),
+                HostPortPBToString(*public_http_hp),
+                UrlEncodeToString(tablet_id));
 }
 
-void RaftConfigToJson(const std::vector<TabletReplica>& locations,
-                      const std::string& tablet_id,
-                      JsonWriter *jw) {
+void RaftConfigToJson(
+    const std::vector<TsUuidAndTabletReplica>&
+        locations,
+    const std::string& tablet_id, JsonWriter* jw) {
   jw->String("locations");
   jw->StartArray();
-  for (const TabletReplica& location : locations) {
+  for (const auto& [ts_uuid, replica] : locations) {
     jw->StartObject();
     jw->String("uuid");
-    jw->String(location.ts_desc->permanent_uuid());
+    jw->String(ts_uuid);
     jw->String("role");
-    jw->String(PeerRole_Name(location.role));
+    jw->String(PeerRole_Name(replica.role));
     jw->String("location");
-    jw->String(TSDescriptorToJson(*location.ts_desc, tablet_id));
+    auto ts_desc_ptr = replica.ts_desc.lock();
+    jw->String(
+        TSDescriptorToJson(ts_uuid, opt_cref(ts_desc_ptr), tablet_id));
     jw->EndObject();
   }
   jw->EndArray();
@@ -2080,11 +2110,7 @@ void MasterPathHandlers::HandleTablePageJSON(const Webserver::WebRequest& req,
   jw.String("tablets");
   jw.StartArray();
   for (const TabletInfoPtr& tablet : tablets) {
-    auto locations = tablet->GetReplicaLocations();
-    vector<TabletReplica> sorted_locations;
-    AppendValuesFromMap(*locations, &sorted_locations);
-    std::sort(sorted_locations.begin(), sorted_locations.end(), &CompareByHost);
-
+    auto sorted_locations = TabletReplicaMapToSortedVector(*tablet->GetReplicaLocations());
     auto l = tablet->LockForRead();
 
     dockv::Partition partition;
@@ -2235,8 +2261,12 @@ vector<string> GetTabletUnderReplicatedPlacements(
     }
 
     // Decrement counters in the relevant placement.
-    auto& ts_desc = replica.ts_desc;
-    VLOG_WITH_FUNC(1) << "Processing tablet replica on TS " << ts_desc->permanent_uuid();
+    auto ts_desc = replica.ts_desc.lock();
+    if (!ts_desc) {
+      LOG(WARNING) << Format("Descriptor for ts $0 is no longer valid", ts_uuid);
+      continue;
+    }
+    VLOG_WITH_FUNC(1) << "Processing tablet replica on TS " << ts_uuid;
     for (auto* placement : placements) {
       if (placement->placement_uuid() == ts_desc->placement_uuid()) {
         VLOG_WITH_FUNC(1) << "TS matches placement id " << placement->placement_uuid();
@@ -3298,15 +3328,16 @@ Status MasterPathHandlers::Register(Webserver* server) {
   return Status::OK();
 }
 
-string MasterPathHandlers::RaftConfigToHtml(const std::vector<TabletReplica>& locations,
-                                            const std::string& tablet_id) const {
+string MasterPathHandlers::RaftConfigToHtml(
+    const std::vector<TsUuidAndTabletReplica>& locations, const std::string& tablet_id) const {
   stringstream html;
 
   html << "<ul>\n";
-  for (const TabletReplica& location : locations) {
-    string location_html = TSDescriptorToHtml(*location.ts_desc, tablet_id);
-    if (location.role == PeerRole::LEADER) {
-      auto leader_lease_info = location.leader_lease_info;
+  for (const auto& [ts_uuid, replica] : locations) {
+    auto ts_desc_ptr = replica.ts_desc.lock();
+    string location_html = TSDescriptorToHtml(ts_uuid.get(), opt_cref(ts_desc_ptr), tablet_id);
+    if (replica.role == PeerRole::LEADER) {
+      auto leader_lease_info = replica.leader_lease_info;
       // The master might haven't received any heartbeats containing this leader yet.
       // Set the status to UNKNOWN.
       auto leader_lease_status = leader_lease_info.initialized
@@ -3327,29 +3358,12 @@ string MasterPathHandlers::RaftConfigToHtml(const std::vector<TabletReplica>& lo
       }
     } else {
       html << Format("  <li>$0: $1</li>\n",
-                         PeerRole_Name(location.role), location_html);
+                         PeerRole_Name(replica.role), location_html);
     }
-    html << Format("UUID: $0\n", location.ts_desc->permanent_uuid());
+    html << Format("UUID: $0\n", ts_uuid);
   }
   html << "</ul>\n";
   return html.str();
-}
-
-string MasterPathHandlers::TSDescriptorToHtml(const TSDescriptor& desc,
-                                              const std::string& tablet_id) const {
-  auto reg = desc.GetRegistration();
-
-  auto public_http_hp = GetPublicHttpHostPort(reg);
-  if (public_http_hp) {
-    return Format(
-        "<a href=\"$0://$1/tablet?id=$2\">$3</a>",
-        GetProtocol(),
-        EscapeForHtmlToString(HostPortPBToString(*public_http_hp)),
-        UrlEncodeToString(tablet_id),
-        EscapeForHtmlToString(public_http_hp->host()));
-  } else {
-    return EscapeForHtmlToString(desc.permanent_uuid());
-  }
 }
 
 string MasterPathHandlers::RegistrationToHtml(

@@ -99,7 +99,7 @@ DEFINE_UNKNOWN_bool(ysql_disable_server_file_access, false,
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_profile, false, "Enable PROFILE feature.");
 
-DEFINE_test_flag(string, ysql_conn_mgr_dowarmup_all_pools_mode, "random",
+DEFINE_test_flag(string, ysql_conn_mgr_dowarmup_all_pools_mode, "none",
   "Enable precreation of server connections in every pool in Ysql Connection Manager and "
   "choose the mode of attachment of idle server connections to clients to serve their queries. "
   "ysql_conn_mgr_dowarmup is responsible for creating server connections only in "
@@ -1025,8 +1025,8 @@ YBCStatus YBCPgAddSplitBoundary(YBCPgStatement handle, YBCPgExpr *exprs, int exp
   return ToYBCStatus(pgapi->AddSplitBoundary(handle, exprs, expr_count));
 }
 
-YBCStatus YBCPgExecCreateTable(YBCPgStatement handle) {
-  return ToYBCStatus(pgapi->ExecCreateTable(handle));
+YBCStatus YBCPgExecCreateTable(YBCPgStatement handle, const char **notice_msg) {
+  return ToYBCStatus(pgapi->ExecCreateTable(handle, notice_msg));
 }
 
 YBCStatus YBCPgNewAlterTable(const YBCPgOid database_oid,
@@ -1232,8 +1232,8 @@ YBCStatus YBCPgCreateIndexSetVectorOptions(YBCPgStatement handle, YbPgVectorIdxO
   return ToYBCStatus(pgapi->CreateIndexSetVectorOptions(handle, options));
 }
 
-YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle) {
-  return ToYBCStatus(pgapi->ExecCreateIndex(handle));
+YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle, const char** notice_msg) {
+  return ToYBCStatus(pgapi->ExecCreateIndex(handle, notice_msg));
 }
 
 YBCStatus YBCPgNewDropIndex(const YBCPgOid database_oid,
@@ -1904,6 +1904,53 @@ YBCPgExplicitRowLockStatus YBCFlushExplicitRowLockIntents() {
   result.ybc_status = ToYBCStatus(pgapi->FlushExplicitRowLockIntents(result.error_info));
   return result;
 }
+
+// INSERT ... ON CONFLICT batching -----------------------------------------------------------------
+YBCStatus YBCPgAddInsertOnConflictKey(const YBCPgYBTupleIdDescriptor* tupleid,
+                                      YBCPgInsertOnConflictKeyInfo* info) {
+  return ProcessYbctid(*tupleid, [info](auto table_id, const auto& ybctid) {
+    return pgapi->AddInsertOnConflictKey(
+        table_id, ybctid, info ? *info : YBCPgInsertOnConflictKeyInfo());
+  });
+}
+
+YBCStatus YBCPgInsertOnConflictKeyExists(const YBCPgYBTupleIdDescriptor* tupleid,
+                                         YBCPgInsertOnConflictKeyState* res) {
+  return ProcessYbctid(*tupleid, [res](auto table_id, const auto& ybctid) {
+    *res = pgapi->InsertOnConflictKeyExists(table_id, ybctid);
+    return Status::OK();
+  });
+}
+
+YBCStatus YBCPgDeleteInsertOnConflictKey(const YBCPgYBTupleIdDescriptor* tupleid,
+                                         YBCPgInsertOnConflictKeyInfo* info) {
+  return ProcessYbctid(*tupleid, [info](auto table_id, const auto& ybctid) {
+    auto result = VERIFY_RESULT(pgapi->DeleteInsertOnConflictKey(table_id, ybctid));
+    *info = result;
+    return (Status) Status::OK();
+  });
+}
+
+YBCStatus YBCPgDeleteNextInsertOnConflictKey(YBCPgInsertOnConflictKeyInfo* info) {
+  return ExtractValueFromResult(pgapi->DeleteNextInsertOnConflictKey(), info);
+}
+
+YBCStatus YBCPgAddInsertOnConflictKeyIntent(const YBCPgYBTupleIdDescriptor* tupleid) {
+  return ProcessYbctid(*tupleid, [](auto table_id, const auto& ybctid) {
+    pgapi->AddInsertOnConflictKeyIntent(table_id, ybctid);
+    return Status::OK();
+  });
+}
+
+void YBCPgClearInsertOnConflictCache() {
+  pgapi->ClearInsertOnConflictCache();
+}
+
+uint64_t YBCPgGetInsertOnConflictKeyCount() {
+  return pgapi->GetInsertOnConflictKeyCount();
+}
+
+//--------------------------------------------------------------------------------------------------
 
 bool YBCIsInitDbModeEnvVarSet() {
   static bool cached_value = false;

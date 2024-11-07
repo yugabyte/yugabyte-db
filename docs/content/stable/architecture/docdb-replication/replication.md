@@ -22,13 +22,20 @@ YugabyteDB replicates data across [fault domains](../../key-concepts#fault-domai
 
 The fault tolerance (FT) of a YugabyteDB cluster is the maximum number of fault domain failures it can survive while continuing to preserve correctness of data. Fault tolerance and replication factor are correlated as follows:
 
-* To achieve a FT of `f` fault domains, the primary cluster has to be configured with a RF of (2f + 1).
+* To achieve a FT of `f` fault domains, the primary cluster has to be configured with a RF of at least `2f + 1`.
 
 The following diagram shows a cluster with FT 1. Data is replicated across 3 nodes, and the cluster can survive the failure of one fault domain. To make the cluster able to survive the failure of a zone or region, you would place the nodes in different zones or regions.
 
 ![Raft group](/images/architecture/replication/raft-group.png)
 
-To survive the outage of 2 fault domains, a cluster needs 2 * 2 + 1 fault domains (RF = 5). While the 2 fault domains are offline, the remaining 3 fault domains can continue to serve reads and writes without interruption. Clusters with an RF of 1 can tolerate 0 faults.
+To survive the outage of 2 fault domains, a cluster needs at least 2 * 2 + 1 fault domains; that is, an RF of 5. With RF >= 5, if 2 fault domains are offline, the remaining 3 fault domains can continue to serve reads and writes without interruption.
+
+| Replication factor | Fault tolerance | Can survive failure of |
+| :--- | :--- | :--- |
+| 1 or 2 | 0 | 0 fault domains |
+| 3 or 4 | 1 | 1 fault domain |
+| 5 or 6 | 2 | 2 fault domains |
+| 7 or 8 | 3 | 3 fault domains |
 
 ## Tablet peers
 

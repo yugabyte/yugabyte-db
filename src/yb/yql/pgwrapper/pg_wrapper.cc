@@ -101,8 +101,8 @@ TAG_FLAG(pg_stat_statements_enabled, advanced);
 TAG_FLAG(pg_stat_statements_enabled, hidden);
 
 // Top-level postgres configuration flags.
-DEFINE_UNKNOWN_bool(ysql_enable_auth, false,
-              "True to enforce password authentication for all connections");
+DEFINE_NON_RUNTIME_bool(ysql_enable_auth, false,
+    "True to enforce password authentication for all connections");
 
 // Catch-all postgres configuration flags.
 DEFINE_RUNTIME_string(ysql_pg_conf_csv, "",
@@ -317,6 +317,9 @@ DEFINE_NON_RUNTIME_string(ysql_conn_mgr_warmup_db, "yugabyte",
 
 DEFINE_NON_RUNTIME_string(ysql_cron_database_name, "yugabyte",
     "Database in which pg_cron metadata is kept.");
+
+DEFINE_NON_RUNTIME_bool(ysql_trust_local_yugabyte_connections, true,
+            "Trust YSQL connections via the local socket from the yugabyte user.");
 
 DECLARE_bool(enable_pg_cron);
 
@@ -601,6 +604,15 @@ Result<string> WritePgHbaConfig(const PgProcessConf& conf) {
   if (lines.empty()) {
     LOG(WARNING) << "No hba configuration lines found, defaulting to trust all configuration.";
     lines.push_back("host all all all trust");
+  }
+
+  // Always allow local socket connections from the yugabyte user.
+  // This is used by ybc for backup and restores, and pg_upgrade for ysql major upgrades.
+  if (FLAGS_ysql_trust_local_yugabyte_connections) {
+    const auto trust_local_yugabyte = "local all yugabyte trust";
+    if (std::find(lines.begin(), lines.end(), trust_local_yugabyte) == lines.end()) {
+      lines.push_back("local all yugabyte trust");
+    }
   }
 
   // Add comments to the hba config file noting the internally hardcoded config line.
@@ -898,11 +910,18 @@ Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
   std::vector<std::string> args{
       program_path,
       "--new-datadir", param.data_dir,
-      "--old-host", param.old_version_pg_address,
-      "--old-port", ToString(param.old_version_pg_port),
-      "--new-host", param.new_version_pg_address,
+      "--username", "yugabyte",
+      "--new-socketdir", param.new_version_socket_dir,
       "--new-port", ToString(param.new_version_pg_port),
-      "--username", "yugabyte"};
+      "--old-port", ToString(param.old_version_pg_port)};
+
+  if (!param.old_version_socket_dir.empty()) {
+    args.push_back("--old-socketdir");
+    args.push_back(param.old_version_socket_dir);
+  } else {
+    args.push_back("--old-host");
+    args.push_back(param.old_version_pg_address);
+  }
 
   LOG(INFO) << "Launching pg_upgrade: " << AsString(args);
   Subprocess subprocess(program_path, args);

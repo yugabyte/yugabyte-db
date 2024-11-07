@@ -12,6 +12,7 @@ import { useForm } from 'react-hook-form';
 import { AxiosResponse } from 'axios';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { find, isString, keys } from 'lodash';
+import clsx from 'clsx';
 import { useToggle } from 'react-use';
 import { Trans, useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
@@ -32,7 +33,12 @@ import { YBLoadingCircleIcon } from '../../../../components/common/indicators';
 import { setShowJWTTokenInfo, setSSO } from '../../../../config';
 import { isRbacEnabled } from '../../rbac/common/RbacUtils';
 import { RbacValidator } from '../../rbac/common/RbacApiPermValidator';
-import { escapeStr, TOAST_OPTIONS, UserDefaultRoleOptions } from '../UserAuthUtils';
+import {
+  escapeStr,
+  OIDC_FEATURE_ENHANCEMENT_KEY,
+  TOAST_OPTIONS,
+  UserDefaultRoleOptions
+} from '../UserAuthUtils';
 import { RunTimeConfigEntry } from '../../universe/universe-form/utils/dto';
 import { api } from '../../universe/universe-form/utils/api';
 import { Action } from '../../rbac';
@@ -144,6 +150,9 @@ const useStyles = makeStyles((theme) => ({
   defaultRoleLabel: {
     display: 'flex',
     alignItems: 'center'
+  },
+  disabled: {
+    opacity: 0.6
   }
 }));
 
@@ -232,6 +241,7 @@ export const OIDCAuthNew = () => {
   const [showMetadataModel, toggleMetadataModal] = useToggle(false);
   const [showOIDCDisableModal, toggleOIDCDisableModal] = useToggle(false);
   const [initialData, setInitialData] = useState<Partial<OIDCFormProps>>({});
+  const [showDisplayJWTToken, toggleDisplayJWTToken] = useToggle(false);
 
   const queryClient = useQueryClient();
 
@@ -245,6 +255,10 @@ export const OIDCAuthNew = () => {
         Object.entries(formData).forEach(([key, value]) => {
           setValue((key as unknown) as keyof OIDCFormProps, value, { shouldValidate: false });
         });
+        toggleDisplayJWTToken(
+          data?.configEntries?.find((config) => config.key === OIDC_FEATURE_ENHANCEMENT_KEY)
+            ?.value === 'true'
+        );
       }
     }
   );
@@ -439,18 +453,20 @@ export const OIDCAuthNew = () => {
             disabled={!oauthEnabled}
             data-testid="oidcRefreshTokenEndpoint"
           />
-          <YBToggleField
-            control={control}
-            name="showJWTInfoOnLogin"
-            label={
-              <>
-                {t('displayJWTToken')}
-                {toolTip(t('infos.jwtTokenURL'))}
-              </>
-            }
-            disabled={!oauthEnabled}
-            data-testid="showJWTInfoOnLogin"
-          />
+          {showDisplayJWTToken && (
+            <YBToggleField
+              control={control}
+              name="showJWTInfoOnLogin"
+              label={
+                <>
+                  {t('displayJWTToken')}
+                  {toolTip(t('infos.jwtTokenURL'))}
+                </>
+              }
+              disabled={!oauthEnabled}
+              data-testid="showJWTInfoOnLogin"
+            />
+          )}
           <YBButton
             variant="secondary"
             className={classes.oidcProviderConfig}
@@ -473,7 +489,9 @@ export const OIDCAuthNew = () => {
             label={t('oidcUseRoleMapping')}
             disabled={!oauthEnabled}
           />
-          <Typography variant="subtitle1">{t('infos.defaultRoleHelpText')}</Typography>
+          <Typography variant="subtitle1" className={clsx(!oauthEnabled && classes.disabled)}>
+            {t('infos.defaultRoleHelpText')}
+          </Typography>
           {enableRoleMapping ? (
             <YBAlert
               variant={AlertVariant.Info}

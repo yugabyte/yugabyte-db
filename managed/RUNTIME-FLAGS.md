@@ -138,6 +138,7 @@
 | "Allow Editing of in-use Linux Versions" | "yb.edit_provider.new.allow_used_bundle_edit" | "GLOBAL" | "Caution: If enabled, YBA will blindly allow editing the name/AMI associated with the bundle, without propagating it to the in-use Universes" | "Boolean" |
 | "Enable DB Audit Logging" | "yb.universe.audit_logging_enabled" | "GLOBAL" | "If this flag is enabled, user will be able to create telemetry providers and enable/disable DB audit logging on universes." | "Boolean" |
 | "Allow users to enable or disable connection pooling" | "yb.universe.allow_connection_pooling" | "GLOBAL" | "If this flag is enabled, user will be able to enable/disable connection pooling on universes." | "Boolean" |
+| "Enable RBAC for Groups" | "yb.security.group_mapping_rbac_support" | "GLOBAL" | "Map LDAP/OIDC groups to custom roles defined by RBAC." | "Boolean" |
 | "Enable Per Process Metrics" | "yb.ui.feature_flags.enable_per_process_metrics" | "GLOBAL" | "Enable Per Process Metrics" | "Boolean" |
 | "Support bundle prometheus dump range" | "yb.support_bundle.default_prom_dump_range" | "GLOBAL" | "The start-end duration to collect the prometheus dump inside the support bundle (in minutes)" | "Integer" |
 | "Number of cloud YBA backups to retain" | "yb.auto_yba_backups.num_cloud_retention" | "GLOBAL" | "When continuous backups feature is enabled only the most recent n backups will be retained in the storage bucket" | "Integer" |
@@ -259,6 +260,15 @@
 | "Enable Clock Sync check" | "yb.wait_for_clock_sync.enabled" | "UNIVERSE" | "Enable Clock Sync check" | "Boolean" |
 | "Enable YBC" | "ybc.universe.enabled" | "UNIVERSE" | "Enable YBC for universes during software upgrade" | "Boolean" |
 | "Target Node Disk Usage Percentage" | "yb.checks.node_disk_size.target_usage_percentage" | "UNIVERSE" | "Percentage of current disk usage that may consume on the target nodes" | "Integer" |
+| "Enable Automated Master Failover" | "yb.auto_master_failover.enabled" | "UNIVERSE" | "Enable Automated Master Failover for universes in background process" | "Boolean" |
+| "Master Follower Lag Soft Threshold" | "yb.auto_master_failover.master_follower_lag_soft_threshold" | "UNIVERSE" | "Master follower lag soft threshold for potential master failure" | "Duration" |
+| "Master Follower Lag Hard Threshold" | "yb.auto_master_failover.master_follower_lag_hard_threshold" | "UNIVERSE" | "Master follower lag hard threshold for definite master failure" | "Duration" |
+| "Stop multiple nodes in az simultaneously during upgrade" | "yb.task.upgrade.batch_roll_enabled" | "UNIVERSE" | "Stop multiple nodes in az simultaneously during upgrade" | "Boolean" |
+| "Stop multiple nodes in az simultaneously during upgrade (in k8s)" | "yb.task.upgrade.batch_roll_enabled_k8s" | "UNIVERSE" | "Stop multiple nodes in az simultaneously during upgrade (in k8s)" | "Boolean" |
+| "Max percent of nodes to roll simultaneously during upgrade" | "yb.task.upgrade.batch_roll_auto_percent" | "UNIVERSE" | "Max percent of nodes to roll simultaneously during upgrade" | "Integer" |
+| "Max number of nodes to roll simultaneously during upgrade" | "yb.task.upgrade.batch_roll_auto_number" | "UNIVERSE" | "Max number of nodes to roll simultaneously during upgrade" | "Integer" |
+| "Automated Master Failover Detection Interval" | "yb.auto_master_failover.detect_interval" | "UNIVERSE" | "Automated master failover detection interval for a universe in background process" | "Duration" |
+| "Automated Sync Master Addresses Task Delay" | "yb.auto_master_failover.sync_master_addrs_task_delay" | "UNIVERSE" | "Automated sync master addresses task submission delay for a universe in background process" | "Duration" |
 | "CPU usage alert aggregation interval" | "yb.alert.cpu_usage_interval_secs" | "UNIVERSE" | "CPU usage alert aggregation interval in seconds." | "Integer" |
 | "Enable health checks for time drift between nodes" | "yb.health_checks.check_clock_time_drift" | "UNIVERSE" | "Enable health checks for time drift between nodes." | "Boolean" |
 | "Time drift threshold for warning health check" | "yb.health_checks.time_drift_wrn_threshold_ms" | "UNIVERSE" | "Threshold to raise a warning when time drift exceeds this amount" | "Integer" |

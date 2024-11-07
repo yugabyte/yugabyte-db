@@ -4,7 +4,6 @@ headerTitle: Secure
 linkTitle: Secure
 description: Secure your deployment of YugabyteDB.
 headcontent: Secure your deployment of YugabyteDB
-image: fa-thin fa-building-lock
 type: indexpage
 ---
 

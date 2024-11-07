@@ -3,7 +3,6 @@ title: YugabyteDB Anywhere releases
 headerTitle: YugabyteDB Anywhere releases
 linkTitle: YugabyteDB Anywhere releases
 description: An overview of YugabyteDB Anywhere releases, including preview and current stable releases.
-image: /images/section_icons/index/quick_start.png
 type: indexpage
 showRightNav: true
 cascade:

@@ -1,6 +1,6 @@
 ---
 title: YugabyteDB Anywhere REST API
-headerTitle: REST API
+headerTitle: YugabyteDB Anywhere REST API
 linkTitle: REST API
 description: REST API YugabyteDB Anywhere.
 headcontent: Manage YugabyteDB Anywhere accounts and deployments using the REST API

@@ -4,7 +4,6 @@ headerTitle: Indexes and constraints
 linkTitle: Indexes and constraints
 description: Explore indexes and constraints in YSQL and YCQL
 headcontent: Explore indexes and constraints in YSQL and YCQL
-image: /images/section_icons/explore/monitoring.png
 menu:
   v2.14:
     identifier: explore-indexes-constraints

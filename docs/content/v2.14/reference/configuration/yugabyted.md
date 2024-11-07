@@ -98,7 +98,7 @@ yugabyted start --join=host:port,[host:port]
 : The IP address of the existing `yugabyted` server to which the new `yugabyted` server will join.
 
 --config *config-file*
-: Yugabyted configuration file path.
+: yugabyted advanced configuration file path. Refer to [Advanced flags](#advanced-flags).
 
 --base_dir *base-directory*
 : The directory where yugabyted stores data, configurations, and logs. Must be an absolute path.
@@ -185,7 +185,7 @@ Use the `yugabyted stop` command to stop a YugabyteDB cluster.
 #### Syntax
 
 ```sh
-Usage: yugabyted stop [-h] [--config CONFIG] [--data_dir DATA_DIR]
+Usage: yugabyted stop [-h] [--data_dir DATA_DIR]
                                [--base_dir BASE_DIR]
 ```
 
@@ -195,7 +195,7 @@ Usage: yugabyted stop [-h] [--config CONFIG] [--data_dir DATA_DIR]
 : Print the command line help and exit.
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server that needs to be stopped.
+: Used with the [start command](#start) only.
 
 --data_dir *data-directory*
 : The data directory for the yugabyted server that needs to be stopped.
@@ -212,7 +212,7 @@ Use the `yugabyted destroy` command to delete a cluster.
 #### Syntax
 
 ```sh
-Usage: yugabyted destroy [-h] [--config CONFIG] [--data_dir DATA_DIR]
+Usage: yugabyted destroy [-h] [--data_dir DATA_DIR]
                                 [--base_dir BASE_DIR]
 ```
 
@@ -222,7 +222,7 @@ Usage: yugabyted destroy [-h] [--config CONFIG] [--data_dir DATA_DIR]
 : Print the command line help and exit.
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server that needs to be destroyed.
+: Used with the [start command](#start) only.
 
 --data_dir *data-directory*
 : The data directory for the yugabyted server that needs to be destroyed.
@@ -239,7 +239,7 @@ Use the `yugabyted status` command to check the status.
 #### Syntax
 
 ```sh
-Usage: yugabyted status [-h] [--config CONFIG] [--data_dir DATA_DIR]
+Usage: yugabyted status [-h] [--data_dir DATA_DIR]
                                  [--base_dir BASE_DIR]
 ```
 
@@ -249,7 +249,7 @@ Usage: yugabyted status [-h] [--config CONFIG] [--data_dir DATA_DIR]
 : Print the command line help and exit.
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server whose status is desired.
+: Used with the [start command](#start) only.
 
 --data_dir *data-directory*
 : The data directory for the yugabyted server whose status is desired.
@@ -266,7 +266,7 @@ Use the `yugabyted version` command to check the version number.
 #### Syntax
 
 ```sh
-Usage: yugabyted version [-h] [--config CONFIG] [--data_dir DATA_DIR]
+Usage: yugabyted version [-h] [--data_dir DATA_DIR]
                                   [--base_dir BASE_DIR]
 ```
 
@@ -276,7 +276,7 @@ Usage: yugabyted version [-h] [--config CONFIG] [--data_dir DATA_DIR]
 : Print the command line help and exit.
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server whose version is desired.
+: Used with the [start command](#start) only.
 
 --data_dir *data-directory*
 : The data directory for the yugabyted server whose version is desired.
@@ -293,7 +293,7 @@ Use the `yugabyted collect_logs` command to generate a zipped file with all logs
 #### Syntax
 
 ```sh
-Usage: yugabyted collect_logs [-h] [--config CONFIG]
+Usage: yugabyted collect_logs [-h]
                                        [--data_dir DATA_DIR]
                                        [--base_dir BASE_DIR]
 ```
@@ -304,7 +304,7 @@ Usage: yugabyted collect_logs [-h] [--config CONFIG]
 : Print the command line help and exit.
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server whose logs are desired.
+: Used with the [start command](#start) only.
 
 --data_dir *data-directory*
 : The data directory for the yugabyted server whose logs are desired.

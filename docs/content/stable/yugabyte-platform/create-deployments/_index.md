@@ -3,7 +3,6 @@ title: Create YugabyteDB universe deployments
 headerTitle: Create universes
 linkTitle: Create universes
 description: Create YugabyteDB universe deployments.
-image: fa-thin fa-cloud-plus
 menu:
   stable_yugabyte-platform:
     parent: yugabytedb-anywhere

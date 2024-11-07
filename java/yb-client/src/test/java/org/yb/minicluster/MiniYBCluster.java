@@ -562,19 +562,21 @@ public class MiniYBCluster implements AutoCloseable {
     String filenamePrefix = "initial_sys_catalog_snapshot_";
     String filename;
     switch (ver) {
-      case EARLIEST:
-        filename = filenamePrefix + "2.0.9.0";
+      case PG15_ALPHA:
+        filename = filenamePrefix + "2.25.0.0-pg15-alpha-2";
         break;
       case LATEST:
         throw new IllegalArgumentException("LATEST snapshot does not need a custom path");
       default:
         throw new IllegalArgumentException("Unknown snapshot version: " + ver);
     }
-    // In the version of YugabyteDB where the EARLIEST snapshot was generated, the debug build had
-    // a column representation now used only in ASAN and TSAN builds. See src/yb/common/column_id.h
-    // file history for details.
-    filename =
-        filename + "_" + (BuildTypeUtil.isASAN() || BuildTypeUtil.isTSAN() ? "debug" : "release");
+    // ASAN and TSAN builds have a different column representation.
+    // Mac builds have a different snapshot due to different system collations.
+    boolean isSanitizerBuild = BuildTypeUtil.isASAN() || BuildTypeUtil.isTSAN();
+    String snapshotType = isSanitizerBuild ? "sanitizers" :
+                         SystemUtil.IS_MAC ? "mac" :
+                         "release";
+    filename = filename + "_" + snapshotType;
     File file = new File(YSQL_SNAPSHOTS_DIR, filename);
     Preconditions.checkState(file.exists(),
         "Snapshot %s is not found in %s, should've been downloaded by the build script!",

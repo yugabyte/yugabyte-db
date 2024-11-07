@@ -323,11 +323,6 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
             && universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL;
 
     if (ysqlMajorVersionUpgrade) {
-      // This is a temp check and it will be removed once we have solution from DB team.
-      if (universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth) {
-        throw new PlatformServiceException(
-            Status.INTERNAL_SERVER_ERROR, "YSQL Auth is not supported with PG15 upgrade");
-      }
 
       // This is a temp check and it will be removed once we have solution from DB team.
       if (universe.getUniverseDetails().getPrimaryCluster().userIntent.dedicatedNodes) {

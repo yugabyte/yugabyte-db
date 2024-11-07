@@ -57,4 +57,19 @@ NOTE:
       https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.0.0-b58/yugabyte-2024.2.0.0-d78199a0d53b4ab2bd86e6805a46a38fad783ba2-release-clang-darwin-arm64.tar.gz
     </darwin_release_arm64>
   </build>
+  <build version="2.25.0.0">
+    <build_number>b90</build_number>
+    <linux_debug_x86>
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2.25.0.0-b90/yugabyte-2.25.0.0-f8c1527b35082b0c629c3763138ea115d58153b6-debug-clang17-centos-x86_64.tar.gz
+    </linux_debug_x86>
+    <linux_release_x86>
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2.25.0.0-b90/yugabyte-2.25.0.0-f8c1527b35082b0c629c3763138ea115d58153b6-release-clang17-centos-x86_64.tar.gz
+    </linux_release_x86>
+    <darwin_debug_arm64>
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2.25.0.0-b90/yugabyte-2.25.0.0-f8c1527b35082b0c629c3763138ea115d58153b6-debug-clang-darwin-arm64.tar.gz
+    </darwin_debug_arm64>
+    <darwin_release_arm64>
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2.25.0.0-b90/yugabyte-2.25.0.0-f8c1527b35082b0c629c3763138ea115d58153b6-release-clang-darwin-arm64.tar.gz
+    </darwin_release_arm64>
+  </build>
 </builds>

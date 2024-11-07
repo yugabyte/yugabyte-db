@@ -4,7 +4,6 @@ headerTitle: Resiliency, high availability, and fault tolerance
 linkTitle: Resiliency
 description: Simulate fault tolerance and resilience in a local YugabyteDB database universe.
 headcontent: Survive and recover from outages
-image: /images/section_icons/explore/fault_tolerance.png
 menu:
   v2.20:
     identifier: fault-tolerance

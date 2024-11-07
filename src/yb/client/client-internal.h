@@ -124,11 +124,9 @@ class YBClient::Data {
       YBClient* client, const std::string& source_namespace_id, uint32_t clone_seq_no,
       CoarseTimePoint deadline);
 
-  Status CreateTable(YBClient* client,
-                     const master::CreateTableRequestPB& req,
-                     const YBSchema& schema,
-                     CoarseTimePoint deadline,
-                     std::string* table_id);
+  Result<master::CreateTableResponsePB> CreateTable(
+      YBClient* client, const master::CreateTableRequestPB& req, const YBSchema& schema,
+      CoarseTimePoint deadline, std::string* table_id);
 
   // Take one of table id or name.
   Status IsCreateTableInProgress(YBClient* client,
@@ -512,9 +510,7 @@ class YBClient::Data {
 
   bool IsMultiMaster();
 
-  void StartShutdown();
-
-  void CompleteShutdown();
+  void Shutdown();
 
   void DoSetMasterServerProxy(
       CoarseTimePoint deadline, bool skip_resolution, bool wait_for_leader_election);

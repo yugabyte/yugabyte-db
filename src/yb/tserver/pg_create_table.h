@@ -31,7 +31,7 @@ namespace tserver {
 
 class PgCreateTable {
  public:
-  explicit PgCreateTable(const PgCreateTableRequestPB& req);
+  explicit PgCreateTable(const PgCreateTableRequestPB& req, PgCreateTableResponsePB* resp);
 
   Status Prepare();
   Status Exec(
@@ -52,6 +52,7 @@ class PgCreateTable {
   size_t PrimaryKeyRangeColumnCount() const;
 
   const PgCreateTableRequestPB& req_;
+  PgCreateTableResponsePB* const resp_;
   client::YBTableName table_name_;
   boost::optional<dockv::YBHashSchema> hash_schema_;
   std::vector<std::string> range_columns_;

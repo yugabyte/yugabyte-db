@@ -116,7 +116,7 @@ public class Util {
   public static final String REDACT = "REDACTED";
   public static final String KEY_LOCATION_SUFFIX = "/backup_keys.json";
   public static final String SYSTEM_PLATFORM_DB = "system_platform";
-  public static final String WRITE_READ_TABLE = "write_read_table";
+  public static final String WRITE_READ_TABLE = "write_read_test";
   public static final int YB_SCHEDULER_INTERVAL = 2;
   public static final String DEFAULT_YB_SSH_USER = "yugabyte";
   public static final String DEFAULT_SUDO_SSH_USER = "centos";

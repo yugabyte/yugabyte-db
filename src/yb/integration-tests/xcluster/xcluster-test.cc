@@ -959,7 +959,7 @@ TEST_P(XClusterTest, SetupUniverseReplicationWithProducerBootstrapId) {
     return true;
   };
   ASSERT_OK(WaitFor(
-      [&]() { return data_replicated_correctly(); }, MonoDelta::FromSeconds(20),
+      [&]() { return data_replicated_correctly(); }, MonoDelta::FromSeconds(60 * kTimeMultiplier),
       "IsDataReplicatedCorrectly"));
 }
 

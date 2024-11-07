@@ -123,6 +123,8 @@ od_retcode_t od_counter_free(od_counter_t *t)
 
 void od_counter_inc(od_counter_t *t, od_counter_item_t item)
 {
+	if (t == NULL)
+		return;
 	od_counter_item_t key = od_hash_item(t, item);
 	/*
 	 * prevent concurrent access to

@@ -37,8 +37,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include <boost/optional/optional_fwd.hpp>
-
 #include "yb/common/common_fwd.h"
 #include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
@@ -137,7 +135,7 @@ struct TableInfo {
             TableType table_type,
             const Schema& schema,
             const qlexpr::IndexMap& index_map,
-            const boost::optional<qlexpr::IndexInfo>& index_info,
+            const std::optional<qlexpr::IndexInfo>& index_info,
             SchemaVersion schema_version,
             dockv::PartitionSchema partition_schema,
             TableId pg_table_id,
@@ -517,18 +515,19 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
       const SchemaVersion version, const std::string& namespace_name,
       const std::string& table_name, const OpId& op_id, const TableId& table_id = "");
 
-  void AddTable(const std::string& table_id,
-                const std::string& namespace_name,
-                const std::string& table_name,
-                const TableType table_type,
-                const Schema& schema,
-                const qlexpr::IndexMap& index_map,
-                const dockv::PartitionSchema& partition_schema,
-                const boost::optional<qlexpr::IndexInfo>& index_info,
-                const SchemaVersion schema_version,
-                const OpId& op_id,
-                const TableId& pg_table_id,
-                const SkipTableTombstoneCheck skip_table_tombstone_check) EXCLUDES(data_mutex_);
+  Status AddTable(
+      const std::string& table_id,
+      const std::string& namespace_name,
+      const std::string& table_name,
+      const TableType table_type,
+      const Schema& schema,
+      const qlexpr::IndexMap& index_map,
+      const dockv::PartitionSchema& partition_schema,
+      const std::optional<qlexpr::IndexInfo>& index_info,
+      const SchemaVersion schema_version,
+      const OpId& op_id,
+      const TableId& pg_table_id,
+      const SkipTableTombstoneCheck skip_table_tombstone_check) EXCLUDES(data_mutex_);
 
   void RemoveTable(const TableId& table_id, const OpId& op_id);
 
@@ -690,6 +689,12 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
       const Uuid& cotable_id, uint32_t schema_version, HybridTime history_cutoff) override;
 
   Result<docdb::CompactionSchemaInfo> ColocationPacking(
+      ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) override;
+
+  Status CheckCotablePacking(
+      const Uuid& cotable_id, uint32_t schema_version, HybridTime history_cutoff) override;
+
+  Status CheckColocationPacking(
       ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) override;
 
   std::unordered_set<StatefulServiceKind> GetHostedServiceList() const;

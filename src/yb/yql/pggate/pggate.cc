@@ -813,13 +813,20 @@ Status PgApiImpl::AddSplitBoundary(PgStatement *handle, PgExpr **exprs, int expr
   return STATUS(InvalidArgument, "Invalid statement handle");
 }
 
-Status PgApiImpl::ExecCreateTable(PgStatement *handle) {
+Status PgApiImpl::ExecCreateTable(PgStatement* handle, const char** notice_msg) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_TABLE)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
   pg_session_->SetDdlHasSyscatalogChanges();
-  return down_cast<PgCreateTable*>(handle)->Exec();
+  auto create_table_handle = down_cast<PgCreateTable*>(handle);
+  RETURN_NOT_OK(create_table_handle->Exec());
+
+  if (notice_msg) {
+    *notice_msg = create_table_handle->get_notice_msg();
+  }
+
+  return Status::OK();
 }
 
 Status PgApiImpl::NewAlterTable(const PgObjectId& table_id,
@@ -1136,13 +1143,20 @@ Status PgApiImpl::CreateIndexSetVectorOptions(PgStatement *handle, YbPgVectorIdx
   return down_cast<PgCreateTable*>(handle)->SetVectorOptions(options);
 }
 
-Status PgApiImpl::ExecCreateIndex(PgStatement *handle) {
+Status PgApiImpl::ExecCreateIndex(PgStatement* handle, const char** notice_msg) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_INDEX)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
   pg_session_->SetDdlHasSyscatalogChanges();
-  return down_cast<PgCreateTable*>(handle)->Exec();
+  auto create_table_handle = down_cast<PgCreateTable*>(handle);
+  RETURN_NOT_OK(create_table_handle->Exec());
+
+  if (notice_msg) {
+    *notice_msg = create_table_handle->get_notice_msg();
+  }
+
+  return Status::OK();
 }
 
 Status PgApiImpl::NewDropIndex(const PgObjectId& index_id,
@@ -1968,6 +1982,7 @@ bool PgApiImpl::IsRestartReadPointRequested() {
 
 Status PgApiImpl::CommitPlainTransaction() {
   DCHECK(pg_session_->explicit_row_lock_buffer().IsEmpty());
+  DCHECK(pg_session_->insert_on_conflict_buffer().IsEmpty());
   pg_session_->InvalidateForeignKeyReferenceCache();
   RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
   return pg_txn_manager_->CommitPlainTransaction();
@@ -2130,6 +2145,44 @@ Status PgApiImpl::FlushExplicitRowLockIntents(PgExplicitRowLockErrorInfo& error_
   ExplicitRowLockErrorInfoAdapter adapter(error_info);
   return pg_session_->explicit_row_lock_buffer().Flush(adapter);
 }
+
+// INSERT ... ON CONFLICT batching -----------------------------------------------------------------
+Status PgApiImpl::AddInsertOnConflictKey(
+    PgOid table_id, const Slice& ybctid, const YBCPgInsertOnConflictKeyInfo& info) {
+  return pg_session_->insert_on_conflict_buffer().AddIndexKey(
+      LightweightTableYbctid(table_id, ybctid), info);
+}
+
+YBCPgInsertOnConflictKeyState PgApiImpl::InsertOnConflictKeyExists(
+    PgOid table_id, const Slice& ybctid) {
+  return pg_session_->insert_on_conflict_buffer().IndexKeyExists(
+      LightweightTableYbctid(table_id, ybctid));
+}
+
+uint64_t PgApiImpl::GetInsertOnConflictKeyCount() {
+  return pg_session_->insert_on_conflict_buffer().GetNumIndexKeys();
+}
+
+Result<YBCPgInsertOnConflictKeyInfo> PgApiImpl::DeleteInsertOnConflictKey(
+    PgOid table_id, const Slice& ybctid) {
+  return pg_session_->insert_on_conflict_buffer().DeleteIndexKey(
+      LightweightTableYbctid(table_id, ybctid));
+}
+
+Result<YBCPgInsertOnConflictKeyInfo> PgApiImpl::DeleteNextInsertOnConflictKey() {
+  return pg_session_->insert_on_conflict_buffer().DeleteNextIndexKey();
+}
+
+void PgApiImpl::AddInsertOnConflictKeyIntent(PgOid table_id, const Slice& ybctid) {
+  pg_session_->insert_on_conflict_buffer().AddIndexKeyIntent(
+      LightweightTableYbctid(table_id, ybctid));
+}
+
+void PgApiImpl::ClearInsertOnConflictCache() {
+  pg_session_->insert_on_conflict_buffer().Clear();
+}
+
+//--------------------------------------------------------------------------------------------------
 
 void PgApiImpl::SetTimeout(int timeout_ms) {
   pg_session_->SetTimeout(timeout_ms);
@@ -2307,6 +2360,7 @@ void PgApiImpl::ClearSessionState() {
   pg_session_->InvalidateForeignKeyReferenceCache();
   pg_session_->DropBufferedOperations();
   pg_session_->explicit_row_lock_buffer().Clear();
+  pg_session_->insert_on_conflict_buffer().Clear();
 }
 
 bool PgApiImpl::IsCronLeader() const { return tserver_shared_object_->IsCronLeader(); }

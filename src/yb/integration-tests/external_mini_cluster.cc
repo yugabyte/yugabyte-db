@@ -539,6 +539,9 @@ Result<ExternalMasterPtr> ExternalMiniCluster::StartMaster(
   if (opts_.enable_ysql) {
     flags.push_back("--enable_ysql=true");
     flags.push_back("--master_auto_run_initdb");
+    if (opts_.enable_ysql_auth) {
+      flags.push_back("--ysql_enable_auth=true");
+    }
   } else {
     flags.push_back("--enable_ysql=false");
   }
@@ -1431,6 +1434,9 @@ Status ExternalMiniCluster::AddTabletServer(
   vector<string> flags = opts_.extra_tserver_flags;
   if (opts_.enable_ysql) {
     flags.push_back("--enable_ysql=true");
+    if (opts_.enable_ysql_auth) {
+      flags.push_back("--ysql_enable_auth=true");
+    }
   } else {
     flags.push_back("--enable_ysql=false");
   }
@@ -2122,9 +2128,15 @@ Result<pgwrapper::PGConn> ExternalMiniCluster::ConnectToDB(
   LOG(INFO) << "Connecting to PG database " << db_name << " on tserver " << *node_index;
 
   auto* ts = tablet_server(*node_index);
-  return pgwrapper::PGConnBuilder(
-             {.host = ts->bind_host(), .port = ts->pgsql_rpc_port(), .dbname = db_name})
-      .Connect(simple_query_protocol);
+
+  auto settings = pgwrapper::PGConnSettings{
+      .host = ts->bind_host(), .port = ts->pgsql_rpc_port(), .dbname = db_name};
+
+  if (opts_.enable_ysql_auth) {
+    settings.user = "yugabyte";
+    settings.password = "yugabyte";
+  }
+  return pgwrapper::PGConnBuilder(settings).Connect(simple_query_protocol);
 }
 
 namespace {

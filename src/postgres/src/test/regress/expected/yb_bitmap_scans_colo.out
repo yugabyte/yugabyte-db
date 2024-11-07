@@ -1004,7 +1004,7 @@ SELECT * FROM test_limit WHERE a < 200 LIMIT 10;
          ->  Bitmap Index Scan on test_limit_a_idx (actual rows=199 loops=1)
                Index Cond: (a < 200)
                Storage Table Rows Scanned: 199
-               Storage Index Read Requests: 20
+               Storage Index Read Requests: 3
                Storage Index Rows Scanned: 199
 (9 rows)
 

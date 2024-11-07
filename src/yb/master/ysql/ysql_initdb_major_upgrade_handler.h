@@ -23,6 +23,7 @@ class ThreadPool;
 
 namespace master {
 struct LeaderEpoch;
+class YsqlCatalogConfig;
 
 // Helper class to handle global initdb and major version upgrade for YSQL.
 // Only one operation can be run at a time.
@@ -80,14 +81,12 @@ class YsqlInitDBAndMajorUpgradeHandler {
 
   Status PerformMajorUpgrade(const DbNameToOidList& db_name_to_oid_list, const LeaderEpoch& epoch);
 
-  Status MajorVersionCatalogUpgradeFinished(const Status& upgrade_status, const LeaderEpoch& epoch);
-
   Status RunRollbackMajorVersionUpgrade(const LeaderEpoch& epoch);
-
-  Status ResetNextVerInitdbStatus(const LeaderEpoch& epoch);
 
   // Get the address to a live tserver process that is closest to the master.
   Result<std::string> GetClosestLiveTserverAddress();
+
+  YsqlCatalogConfig& GetYsqlCatalogConfig();
 
   Master& master_;
   CatalogManager& catalog_manager_;

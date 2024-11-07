@@ -4,7 +4,6 @@ headerTitle: YCQL features
 linkTitle: YCQL features
 description: Explore core features in YCQL
 headcontent: Explore core features in YCQL
-image: /images/section_icons/api/ycql.png
 menu:
   v2.18:
     identifier: explore-ycql-language

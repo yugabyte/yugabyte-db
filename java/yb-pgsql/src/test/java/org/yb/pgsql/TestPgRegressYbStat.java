@@ -13,6 +13,7 @@
 
 package org.yb.pgsql;
 
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
@@ -27,6 +28,7 @@ public class TestPgRegressYbStat extends BasePgRegressTest {
     return 1800;
   }
 
+  @Ignore("#24297 - skipping until yb_terminated_queries is enabled")
   @Test
   public void testYbStat() throws Exception {
     // (DB-13032) This test touches system tables, so enable stickiness for

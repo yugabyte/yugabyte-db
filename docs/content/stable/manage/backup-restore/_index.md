@@ -3,7 +3,6 @@ title: Back up and restore data
 headerTitle: Backup and restore
 linkTitle: Backup and restore
 description: Back up and restore YugabyteDB
-image: fa-light fa-life-ring
 headcontent: Create backups and restore your data
 menu:
   stable:

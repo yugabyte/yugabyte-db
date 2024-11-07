@@ -31,6 +31,8 @@ DECLARE_int32(load_balancer_max_concurrent_tablet_remote_bootstraps);
 
 DECLARE_int32(load_balancer_max_concurrent_tablet_remote_bootstraps_per_table);
 
+DECLARE_int32(load_balancer_max_inbound_remote_bootstraps_per_tserver);
+
 DECLARE_int32(load_balancer_max_over_replicated_tablets);
 
 DECLARE_int32(load_balancer_max_concurrent_adds);
@@ -45,10 +47,9 @@ namespace yb {
 namespace master {
 
 // enum for replica type, either live (synchronous) or read only (timeline consistent)
-enum ReplicaType {
-  LIVE,
-  READ_ONLY,
-};
+YB_DEFINE_ENUM(ReplicaType,
+  (kLive)
+  (kReadOnly));
 
 struct CBTabletMetadata {
   bool is_missing_replicas() { return is_under_replicated || !under_replicated_placements.empty(); }
@@ -175,25 +176,33 @@ struct Options {
     if (kMaxConcurrentLeaderMovesPerTable == -1) {
       kMaxConcurrentLeaderMovesPerTable = kMaxConcurrentLeaderMoves;
     }
+    if (kMaxTabletRemoteBootstraps < 0) {
+      kMaxTabletRemoteBootstraps = std::numeric_limits<int>::max();
+    }
   }
   virtual ~Options() {}
 
   std::string ToString() {
-    std::string out = Format(
-        "{ MinLoadVarianceToBalance: $0, AllowLimitStartingTablets: $1, "
-        "MaxTabletRemoteBootstraps: $2, MaxTabletRemoteBootstrapsPerTable: $3, "
-        "AllowLimitOverReplicatedTablets: $4, MaxOverReplicatedTablets: $5, "
-        "MaxConcurrentRemovals: $6, ",
-        kMinLoadVarianceToBalance, kAllowLimitStartingTablets, kMaxTabletRemoteBootstraps,
-        kMaxTabletRemoteBootstrapsPerTable, kAllowLimitOverReplicatedTablets,
-        kMaxOverReplicatedTablets, kMaxConcurrentRemovals);
+    std::vector<std::pair<std::string, int>> lb_params = {
+      {"AllowLimitStartingTablets", kAllowLimitStartingTablets},
+      {"MaxTabletRemoteBootstraps", kMaxTabletRemoteBootstraps},
+      {"MaxTabletRemoteBootstrapsPerTable", kMaxTabletRemoteBootstrapsPerTable},
+      {"MaxInboundRemoteBootstrapsPerTs", kMaxInboundRemoteBootstrapsPerTs},
+      {"AllowLimitOverReplicatedTablets", kAllowLimitOverReplicatedTablets},
+      {"MaxOverReplicatedTablets", kMaxOverReplicatedTablets},
+      {"MaxConcurrentRemovals", kMaxConcurrentRemovals},
+      {"MaxConcurrentAdds", kMaxConcurrentAdds},
+      {"MaxConcurrentLeaderMoves", kMaxConcurrentLeaderMoves},
+      {"MaxConcurrentLeaderMovesPerTable", kMaxConcurrentLeaderMovesPerTable}};
 
-    out += Format("MaxConcurrentAdds: $0, MaxConcurrentLeaderMoves: $1, "
-                  "MaxConcurrentLeaderMovesPerTable: $2, ReplicaType: $3, "
-                  "LivePlacementUUID: $4, Read Replica Placement UUID: $5}",
-                  kMaxConcurrentAdds, kMaxConcurrentLeaderMoves, kMaxConcurrentLeaderMovesPerTable,
-                  type, live_placement_uuid, placement_uuid);
-    return out;
+    std::stringstream out;
+    for (const auto& param : lb_params) {
+      out << Format("$0: $1, ", param.first, param.second);
+    }
+    out << Format("ReplicaType: $0, ", type);
+    out << Format("LivePlacementUUID: $0, ", live_placement_uuid);
+    out << Format("Read Replica Placement UUID: $0", placement_uuid);
+    return out.str();
   }
 
   // If variance between load on TS goes past this number, we should try to balance.
@@ -212,6 +221,10 @@ struct Options {
   // this.
   int kMaxTabletRemoteBootstrapsPerTable =
       FLAGS_load_balancer_max_concurrent_tablet_remote_bootstraps_per_table;
+
+  // Max bootstrapping tablets per tablet server.
+  int kMaxInboundRemoteBootstrapsPerTs =
+      FLAGS_load_balancer_max_inbound_remote_bootstraps_per_tserver;
 
   // Whether to limit the number of tablets that have more peers than configured at any given
   // time.
@@ -296,18 +309,12 @@ class PerTableLoadState {
   // Comparators used for sorting by load.
   bool CompareByUuid(const TabletServerId& a, const TabletServerId& b);
 
-  bool CompareByReplica(const TabletReplica& a, const TabletReplica& b);
-
   // Comparator functor to be able to wrap around the public but non-static compare methods that
   // end up using internal state of the class.
   struct Comparator {
     explicit Comparator(PerTableLoadState* state) : state_(state) {}
     bool operator()(const TabletServerId& a, const TabletServerId& b) {
       return state_->CompareByUuid(a, b);
-    }
-
-    bool operator()(const TabletReplica& a, const TabletReplica& b) {
-      return state_->CompareByReplica(a, b);
     }
 
     PerTableLoadState* state_;
@@ -329,7 +336,7 @@ class PerTableLoadState {
   // Get the load for a certain TS.
   size_t GetLeaderLoad(const TabletServerId& ts_uuid) const;
 
-  bool IsTsInLivePlacement(TSDescriptor* ts_desc) {
+  bool IsTsInLivePlacement(const TSDescriptorPtr& ts_desc) {
     return ts_desc->placement_uuid() == options_->live_placement_uuid;
   }
 

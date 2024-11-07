@@ -102,7 +102,7 @@ class TSManager {
   // Lookup the tablet server descriptor for the given UUID.
   // Returns false if the TS has never registered.
   // Otherwise, *desc is set and returns true.
-  bool LookupTSByUUID(const std::string& uuid, TSDescriptorPtr* desc);
+  Result<TSDescriptorPtr> LookupTSByUUID(const std::string& uuid);
 
   // Register a tserver that is not already registered but is in the raft config of a tablet report
   // encountered during ts heartbeat processing. This should not be necessary once registration is

@@ -15,7 +15,7 @@ import {
   HelmOverridesError,
   UniverseResource,
   YBSoftwareMetadata,
-  ImageBundle,
+  ImageBundle
 } from './dto';
 import { EditGflagPayload } from '../../universe-actions/edit-gflags/GflagHelper';
 import { ArchitectureType } from '../../../../../components/configRedesign/providerRedesign/constants';
@@ -42,7 +42,7 @@ export enum QUERY_KEY {
 
 export const DBReleasesQueryKey = {
   ALL: ['DBReleases'],
-  provider: (providerUuid: string) => [...DBReleasesQueryKey.ALL, 'provider', providerUuid],
+  provider: (providerUuid: string) => [...DBReleasesQueryKey.ALL, 'provider', providerUuid]
 };
 
 const DEFAULT_RUNTIME_GLOBAL_SCOPE = '00000000-0000-0000-0000-000000000000';
@@ -77,24 +77,34 @@ class ApiService {
     return axios.get<RunTimeConfig>(requestUrl).then((resp) => resp.data);
   };
 
-  setRunTimeConfig = ({ key, value, scope = DEFAULT_RUNTIME_GLOBAL_SCOPE }: { key: string, value: any, scope?: string }) => {
+  setRunTimeConfig = ({
+    key,
+    value,
+    scope = DEFAULT_RUNTIME_GLOBAL_SCOPE
+  }: {
+    key: string;
+    value: any;
+    scope?: string;
+  }) => {
     const cUUID = localStorage.getItem('customerId');
     const headers = {
       'Content-Type': 'text/plain'
     };
-    return axios.put(
-      `${ROOT_URL}/customers/${cUUID}/runtime_config/${scope}/key/${key}`,
-      value,
-      {
-        headers
-      }
-    );
-  }
+    return axios.put(`${ROOT_URL}/customers/${cUUID}/runtime_config/${scope}/key/${key}`, value, {
+      headers
+    });
+  };
 
-  deleteRunTimeConfig = ({ key, scope = DEFAULT_RUNTIME_GLOBAL_SCOPE }: { key: string, scope?: string }) => {
+  deleteRunTimeConfig = ({
+    key,
+    scope = DEFAULT_RUNTIME_GLOBAL_SCOPE
+  }: {
+    key: string;
+    scope?: string;
+  }) => {
     const cUUID = localStorage.getItem('customerId');
     return axios.delete(`${ROOT_URL}/customers/${cUUID}/runtime_config/${scope}/key/${key}`);
-  }
+  };
 
   fetchUniverse = (universeId: string): Promise<Universe> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeId}`;
@@ -162,9 +172,16 @@ class ApiService {
     return axios.post<Universe>(requestUrl, data).then((resp) => resp.data);
   };
 
-  getInstanceTypes = (providerId?: string, zones: string[] = [], arch = null): Promise<InstanceType[]> => {
+  getInstanceTypes = (
+    providerId?: string,
+    zones: string[] = [],
+    arch = null
+  ): Promise<InstanceType[]> => {
     if (providerId) {
-      const requestUrl = new URL(`${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerId}/instance_types`, document.baseURI);
+      const requestUrl = new URL(
+        `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerId}/instance_types`,
+        document.baseURI
+      );
       if (zones.length) {
         zones.forEach((item) => {
           requestUrl.searchParams.append('zone', encodeURIComponent(item));
@@ -179,15 +196,25 @@ class ApiService {
     }
   };
 
-  getDBVersions = (includeMetadata = false, arch = null, isReleasesEnabled: boolean): Promise<string[] | Record<string, YBSoftwareMetadata>> => {
-    const requestUrl = isReleasesEnabled ? `${ROOT_URL}/customers/${this.getCustomerId()}/ybdb_release` : `${ROOT_URL}/customers/${this.getCustomerId()}/releases`;
-    const params = isReleasesEnabled ? { deployment_type: arch } : {
-      includeMetadata,
-      arch
-    };
-    return axios.get<string[] | Record<string, YBSoftwareMetadata>>(requestUrl, {
-      params
-    }).then((resp) => resp.data);
+  getDBVersions = (
+    includeMetadata = false,
+    arch = null,
+    isReleasesEnabled: boolean
+  ): Promise<string[] | Record<string, YBSoftwareMetadata>> => {
+    const requestUrl = isReleasesEnabled
+      ? `${ROOT_URL}/customers/${this.getCustomerId()}/ybdb_release`
+      : `${ROOT_URL}/customers/${this.getCustomerId()}/releases`;
+    const params = isReleasesEnabled
+      ? { deployment_type: arch }
+      : {
+          includeMetadata,
+          arch
+        };
+    return axios
+      .get<string[] | Record<string, YBSoftwareMetadata>>(requestUrl, {
+        params
+      })
+      .then((resp) => resp.data);
   };
 
   getDBVersionsByProvider = (providerId?: string): Promise<string[]> => {
@@ -231,15 +258,20 @@ class ApiService {
   // check if exception was caused by canceling previous request
   isRequestCancelError(error: unknown): boolean {
     return axios.isCancel(error);
-  };
+  }
 
-  getLinuxVersions = (providerUUID: string, arch: ArchitectureType | null = null): Promise<ImageBundle[]> => {
+  getLinuxVersions = (
+    providerUUID: string,
+    arch: ArchitectureType | null = null
+  ): Promise<ImageBundle[]> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}/image_bundle`;
-    return axios.get<ImageBundle[]>(requestUrl, {
-      params: {
-        arch
-      }
-    }).then((resp) => resp.data);
+    return axios
+      .get<ImageBundle[]>(requestUrl, {
+        params: {
+          arch
+        }
+      })
+      .then((resp) => resp.data);
   };
 }
 

@@ -728,8 +728,7 @@ explain (analyze, costs off, summary off, timing off)  execute q1 (1,1);
 
 explain (analyze, costs off, summary off, timing off)  execute q1 (2,2);
 
--- Try with no matching partitions. One subplan should remain in this case,
--- but it shouldn't be executed.
+-- Try with no matching partitions.
 explain (analyze, costs off, summary off, timing off)  execute q1 (0,0);
 
 deallocate q1;
@@ -747,7 +746,6 @@ execute q1 (1,2,3,4);
 explain (analyze, costs off, summary off, timing off)  execute q1 (1,2,2,0);
 
 -- Both partitions allowed by IN clause, then both excluded again by <> clauses.
--- One subplan will remain in this case, but it should not be executed.
 explain (analyze, costs off, summary off, timing off)  execute q1 (1,2,2,1);
 
 -- Ensure Params that evaluate to NULL properly prune away all partitions

@@ -4,7 +4,6 @@ headerTitle: Deploy YugabyteDB
 linkTitle: Deploy
 description: Deploy to any public cloud or private data center of your choice.
 headcontent: Deploy to the public cloud or private data center of your choice
-image: /images/section_icons/index/deploy.png
 menu:
   v2.18:
     identifier: deploy

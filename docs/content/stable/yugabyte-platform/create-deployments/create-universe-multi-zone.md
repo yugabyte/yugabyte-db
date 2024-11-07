@@ -28,13 +28,13 @@ type: docs
 
 </ul>
 
-YugabyteDB Anywhere allows you to create a universe in one geographic region across multiple availability zones using one of the cloud providers.
+YugabyteDB Anywhere allows you to create a universe in one geographic region across multiple availability zones using a provider configuration.
 
 For specific scenarios such as creating large numbers of tables, high rates of DDL change, and so on, consider creating a universe with dedicated nodes for YB-Master processes. Refer to [Create a universe with dedicated nodes](../dedicated-master/) for more details.
 
 ## Prerequisites
 
-Before you start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Create cloud provider configuration](../../configure-yugabyte-platform/).
+Before you start creating a universe, ensure that you have created a provider configuration as described in [Create provider configurations](../../configure-yugabyte-platform/).
 
 ## Create a universe
 

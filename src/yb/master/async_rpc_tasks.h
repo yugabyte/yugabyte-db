@@ -86,11 +86,7 @@ class TSPicker {
   TSPicker() {}
   virtual ~TSPicker() {}
 
-  // Sets *ts_desc to the tablet server to contact for the next RPC.
-  //
-  // This assumes that TSDescriptors are never deleted by the master,
-  // so the caller does not take ownership of the returned pointer.
-  virtual Status PickReplica(TSDescriptor** ts_desc) = 0;
+  virtual Result<TSDescriptorPtr> PickReplica() = 0;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(TSPicker);
@@ -103,7 +99,7 @@ class PickSpecificUUID : public TSPicker {
   PickSpecificUUID(Master* master, std::string ts_uuid)
       : master_(master), ts_uuid_(std::move(ts_uuid)) {}
 
-  Status PickReplica(TSDescriptor** ts_desc) override;
+  Result<TSDescriptorPtr> PickReplica() override;
 
  private:
   Master* const master_;
@@ -118,7 +114,7 @@ class PickLeaderReplica : public TSPicker {
  public:
   explicit PickLeaderReplica(const TabletInfoPtr& tablet);
 
-  Status PickReplica(TSDescriptor** ts_desc) override;
+  Result<TSDescriptorPtr> PickReplica() override;
 
  private:
   const TabletInfoPtr tablet_;
@@ -308,7 +304,7 @@ class RetryingTSRpcTask : public RetryingRpcTask {
   virtual Status PickReplica() override;
 
   const std::unique_ptr<TSPicker> replica_picker_;
-  TSDescriptor* target_ts_desc_ = nullptr;
+  TSDescriptorPtr target_ts_desc_ = nullptr;
 
   std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
   std::shared_ptr<tserver::TabletServerAdminServiceProxy> ts_admin_proxy_;
@@ -875,7 +871,8 @@ class AsyncAddTableToTablet : public RetryingTSRpcTaskWithTable {
  public:
   AsyncAddTableToTablet(
       Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
-      const scoped_refptr<TableInfo>& table, LeaderEpoch epoch);
+      const scoped_refptr<TableInfo>& table, LeaderEpoch epoch,
+      const std::shared_ptr<std::atomic<size_t>>& task_counter);
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kAddTableToTablet;
@@ -895,6 +892,7 @@ class AsyncAddTableToTablet : public RetryingTSRpcTaskWithTable {
   const TabletId tablet_id_;
   tserver::AddTableToTabletRequestPB req_;
   tserver::AddTableToTabletResponsePB resp_;
+  std::shared_ptr<std::atomic<size_t>> task_counter_;
 };
 
 // Task to remove a table from a tablet. Catalog Manager uses this task to send the request to the

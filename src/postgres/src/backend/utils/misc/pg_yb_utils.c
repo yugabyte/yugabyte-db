@@ -5205,8 +5205,7 @@ static bool YbIsConnectionMadeStickyUsingGUC()
 	 * priority.
 	 */
 	yb_ysql_conn_mgr_superuser_existed = yb_ysql_conn_mgr_superuser_existed ||
-		session_auth_is_superuser ||
-		(IsTransactionState() && superuser());
+		session_auth_is_superuser;
 	return yb_ysql_conn_mgr_sticky_guc = yb_ysql_conn_mgr_sticky_guc ||
 		(YbIsSuperuserConnSticky() && yb_ysql_conn_mgr_superuser_existed);
 }
@@ -5455,7 +5454,7 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 				   RelationGetDescr(indexRel),
 				   indexRel->rd_indoption,
 				   reloptions,
-				   newRelfileNodeId,
+				   RelationGetRelid(indexRel),
 				   indexedRel,
 				   yb_copy_split_options ? YbGetSplitOptions(indexRel) : NULL,
 				   true /* skip_index_backfill */,
@@ -5463,7 +5462,7 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 				   indexRel->yb_table_properties->tablegroup_oid,
 				   InvalidOid /* colocation ID */,
 				   indexRel->rd_rel->reltablespace,
-				   RelationGetRelid(indexRel),
+				   newRelfileNodeId,
 				   YbGetRelfileNodeId(indexRel));
 
 	table_close(indexedRel, ShareLock);
@@ -5566,11 +5565,11 @@ YbRelationSetNewRelfileNode(Relation rel, Oid newRelfileNodeId,
 	ReleaseSysCache(tuple);
 	YBCCreateTable(dummyStmt, RelationGetRelationName(rel),
 					rel->rd_rel->relkind, RelationGetDescr(rel),
-					newRelfileNodeId,
+					RelationGetRelid(rel),
 					RelationGetNamespace(rel),
 					YbGetTableProperties(rel)->tablegroup_oid,
 					InvalidOid, rel->rd_rel->reltablespace,
-					RelationGetRelid(rel),
+					newRelfileNodeId,
 					rel->rd_rel->relfilenode,
 					is_truncate);
 
@@ -5678,4 +5677,20 @@ bool YbUseUnsafeTruncate(Relation rel)
 {
 	return IsYBRelation(rel) &&
 		(IsSystemRelation(rel) || !yb_enable_alter_table_rewrite);
+}
+
+
+/*
+ * Given a table attribute number, get a corresponding index attribute number.
+ * Throw an error if it is not found.
+ */
+AttrNumber
+YbGetIndexAttnum(Relation index, AttrNumber table_attno)
+{
+	for (int i = 0; i < IndexRelationGetNumberOfAttributes(index); ++i)
+	{
+		if (table_attno == index->rd_index->indkey.values[i])
+			return i + 1;
+	}
+	elog(ERROR, "column is not in index");
 }

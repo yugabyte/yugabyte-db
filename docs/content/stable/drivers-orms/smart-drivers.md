@@ -42,7 +42,7 @@ YugabyteDB smart drivers have the following key features.
 | [Cluster aware](#cluster-aware-load-balancing) | Smart drivers perform automatic uniform connection load balancing<br/>After the driver establishes an initial connection, it fetches the list of available servers from the cluster and distributes connections evenly across these servers. |
 | [Node type aware](#node-type-aware-load-balancing) | If your cluster has read replicas, distribute connections based on the node type (primary or read replica). (Not supported by all smart drivers.) |
 | [Topology aware](#topology-aware-load-balancing) | If you want to restrict connections to particular geographies to achieve lower latency, you can target specific regions, zones, and fallback zones across which to balance connections. |
-| [Configurable refresh interval](#servers-refresh-interval) | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable (with the exception of Python). |
+| [Configurable&nbsp;refresh interval](#servers-refresh-interval) | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable (with the exception of Python). |
 | [Connection pooling](#connection-pooling) | Like the upstream driver, smart drivers support popular connection pooling solutions. |
 
 ## Overview
@@ -97,7 +97,7 @@ A connection works as follows:
 
 #### Enable load balancing
 
-To enable cluster-aware load balancing, you set the load balance connection parameter to `true` in the connection URL or the connection string (DSN style).
+To enable cluster-aware load balancing, you set the load balance connection parameter to `true` or `any` (the default is false) in the connection URL or the connection string (DSN style).
 
 For example, using the Go smart driver, you would enable load balancing as follows:
 
@@ -113,21 +113,9 @@ For connections to be distributed equally, the application must use the same con
 
 Note that, for load balancing, the nodes in the universe must be accessible. If, for example, the cluster has multiple regions deployed in separate VPCs, your application would need access to all the regions, typically via peering.
 
-#### Servers refresh interval
+#### Node type-aware load balancing
 
-To change the frequency with which the driver fetches an updated list of servers, specify the server refresh interval parameter.
-
-For example, using the Go smart driver, you can change the interval to four minutes (specified in seconds) as follows:
-
-```go
-"postgres://username:password@host:5433/database_name?load_balance=true&yb_servers_refresh_interval=240"
-```
-
-(Note that currently this feature is not available in the YugabyteDB Python Smart Driver.)
-
-### Node type-aware load balancing
-
-If your cluster has read replicas, smart drivers can distribute connections based on the node type - primary or read replica. If a cluster has read replicas, you may want to load balance connections to the read replica nodes, or exclude them.
+If your cluster has read replicas, smart drivers can distribute (or exclude) connections based on the node type - primary or read replica.
 
 To support this, the load balance property accepts the following additional values.
 
@@ -139,7 +127,19 @@ To support this, the load balance property accepts the following additional valu
 | prefer&#8209;primary | Create connections equally across primary nodes. If none are available, create them equally across the available read replica nodes. |
 | prefer-rr | Create connections equally across read replica nodes. If none are available, create them equally across the available primary nodes. |
 
-The default value for the load balance property remains `false`.
+To see how nodes would be selected for connections using these values, see [Order of node selection for new connections](#order-of-node-selection-for-new-connections).
+
+### Servers refresh interval
+
+To change the frequency with which the driver fetches an updated list of servers, specify the server refresh interval parameter.
+
+For example, using the Go smart driver, you can change the interval to four minutes (specified in seconds) as follows:
+
+```go
+"postgres://username:password@host:5433/database_name?load_balance=true&yb_servers_refresh_interval=240"
+```
+
+(Note that currently this feature is not available in the YugabyteDB Python Smart Driver.)
 
 ### Topology-aware load balancing
 
@@ -179,59 +179,66 @@ To specify fallback locations if a location is unavailable, add `:n` to the topo
 
 Not specifying a priority is the equivalent of setting priority to 1.
 
-If you specify topology keys, you can additionally specify that connections only fall back to those nodes using the `fallback-to-topology-keys-only` property (JDBC smart driver only).
+If you specify topology keys, you can additionally specify that connections only fall back to the nodes specified using the topology keys by setting the `fallback-to-topology-keys-only` property (JDBC smart driver only).
+
+The property `fallback-to-topology-keys-only` is ignored when either `topology-keys` is empty, or when `load-balance` is set to `prefer-primary` or `prefer-rr`.
 
 If no servers are available, the request may return with a failure.
 
 ### Order of node selection for new connections
 
-Consider a cluster with three primary nodes across three zones (zoneA, zoneB, and zoneC); and three read replica nodes in zoneB, zoneC, and zoneD.
+Consider a hypothetical setup where a YugabyteDB cluster has nodes in a single region _region1_ of cloud _cloud1_ with three primary nodes across three zones (_zoneA_, _zoneB_, and _zoneC_); and three read replica nodes across zones _zoneB_, _zoneC_, and _zoneD_.
 
 The following shows how nodes are selected for new connections, depending on the load balance and topology key settings.
 
+(The property names used in the example are for the JDBC smart driver; use the equivalent for your preferred language.)
+
+#### No topology keys
+
+When `topology-keys` is not specified, nodes are selected as follows.
+
+| Load balance setting | Connect to |
+| :--- | :--- |
+| true / any | Any nodes in entire cluster |
+| only-primary | <ol><li>Primary nodes in entire cluster</li><li>Else, fail</li> |
+| only-rr | <ol><li>Read Replica nodes in entire cluster</li><li>Else, fail</li> |
+| prefer-primary | <ol><li>Primary nodes in entire cluster</li><li>Else, read replica nodes in entire cluster</li> |
+| prefer-rr | <ol><li>Read Replica nodes in entire cluster</li><li>Else, primary nodes in entire cluster</li> |
+
+#### Topology keys
+
+When `topology-keys` is specified as `cloud1.region1.zoneA:1,cloud1.region1.zoneB:2`, nodes are selected as follows.
+
 {{<tabpane text=true >}}
-{{% tab header="No topology keys" lang="no-keys" %}}
+{{% tab header="Default" lang="fallback-false" %}}
 
-When no topology keys are specified, nodes are selected as follows.
+If topology keys are specified, by default (that is, `fallback-to-topology-keys-only` is false), nodes are selected as follows.
 
 | Load balance setting | Connect to |
 | :--- | :--- |
-| true / any | Any node in all zones |
-| only-primary | Primary nodes in all zones |
-| only-rr | Read replica nodes in all zones |
-| prefer-primary | Primary nodes in all zones, with fallback to read replica nodes |
-| prefer-rr | Read replica nodes in all zones, with fallback to primary nodes |
+| true / any | <ol><li>Any nodes in zoneA</li><li>Else, any nodes in zoneB</li><li>Else, any nodes in entire cluster |
+| only-primary | <ol><li>Primary nodes in zoneA</li><li>Else, primary nodes in zoneB</li><li>Else, primary nodes in entire cluster</li><li>Else, fail |
+| only-rr | <ol><li>Read replica nodes in zoneB</li><li>Else, read replica nodes in entire cluster</li><li>Else, fail |
+| prefer-primary | <ol><li>Primary nodes in zoneA</li><li>Else, primary nodes in zoneB</li><li>Else, primary nodes in entire cluster</li><li>Else, read replica nodes in entire cluster |
+| prefer-rr | <ol><li>Read replica nodes in zoneB</li><li>Else, read replica nodes in entire cluster</li><li>Else, primary nodes in entire cluster |
 
 {{% /tab %}}
-{{% tab header="Topology keys" lang="100-wh" %}}
+{{% tab header="Fall back to topology keys only" lang="fallback-true" %}}
 
-When topology keys are specified as zoneA:1, zoneB:2, nodes are selected as follows.
-
-| Load balance setting | Connect to |
-| :--- | :--- |
-| true / any | <ol><li>Any nodes in zoneA</li><li>If none, then any nodes in zoneB</li><li>If none, then any nodes in entire cluster (all zones) |
-| only-primary | <ol><li>Primary nodes in zoneA</li><li>If none, then primary nodes in zoneB</li><li>If none, then primary nodes in entire cluster (all zones)</li><li>If none, fail |
-| only-rr | <ol><li>Read replica nodes in zoneB</li><li>If none, read replica nodes in entire cluster (all zones)</li><li>If none, fail |
-| prefer-primary | <ol><li>Primary nodes in zoneA</li><li>If none, primary nodes in zoneB</li><li>If none, then primary nodes in entire cluster</li><li>If none, then read replica nodes in entire cluster |
-| prefer-rr | <ol><li>Read replica nodes in zoneB</li><li>If none, read replica nodes in entire cluster</li><li>If none, then primary nodes in entire cluster |
-
-{{% /tab %}}
-{{% tab header="Fall back to topology keys" lang="100-wh" %}}
-
-When topology keys are specified as zoneA:1, zoneB:2, and fallback to topology keys only is true, nodes are selected as follows.
+If topology keys are specified, and `fallback-to-topology-keys-only` is true, nodes are selected as follows.
 
 | Load balance setting | Connect to |
 | :--- | :--- |
-| true / any | <ol><li>Any nodes in zoneA</li><li>If none, then any nodes in zoneB</li><li>If none, then fail |
-| only-primary | <ol><li>Primary nodes in zoneA</li><li>If none, then primary nodes in zoneB</li><li>If none, fail |
-| only-rr | <ol><li>Read replica nodes in zoneB</li><li>If none, fail |
-| prefer-primary | <ol><li>Primary nodes in zoneA</li><li>If none, primary nodes in zoneB</li><li>If none, then primary nodes in entire cluster</li><li>If none, then read replica nodes in entire cluster |
-| prefer-rr | <ol><li>Read replica nodes in zoneB</li><li>If none, read replica nodes in entire cluster</li><li>If none, then primary nodes in entire cluster |
+| true / any | <ol><li>Any nodes in zoneA</li><li>Else, any nodes in zoneB</li><li>Else, fail |
+| only-primary | <ol><li>Primary nodes in zoneA</li><li>Else, primary nodes in zoneB</li><li>Else, fail |
+| only-rr | <ol><li>Read replica nodes in zoneB</li><li>Else, fail |
+| prefer-primary | fallback-to-topology-keys-only is ignored:<ol><li>Primary nodes in zoneA</li><li>Else, primary nodes in zoneB</li><li>Else, primary nodes in entire cluster</li><li>Else, read replica nodes in entire cluster |
+| prefer-rr | fallback-to-topology-keys-only is ignored:<ol><li>Read replica nodes in zoneB</li><li>Else, read replica nodes in entire cluster</li><li>Else, primary nodes in entire cluster |
 
 {{% /tab %}}
 {{</tabpane >}}
 
-### Connection pooling
+## Connection pooling
 
 Smart drivers can be configured with popular pooling solutions such as Hikari and Tomcat. Different pools can be configured with different load balancing policies if required. For example, an application can configure one pool with topology awareness for one region and its availability zones, and configure another pool to communicate with a completely different region.
 
@@ -281,6 +288,6 @@ For more information on using TLS/SSL in YugabyteDB Aeon, refer to [Encryption i
 ## Learn more
 
 - YugabyteDB Friday Tech Talk: [PostgreSQL Smart Drivers](https://youtu.be/FbXrRdB_4u0)
-- [Smart driver FAQ](../../faq/smart-drivers-faq/)
+- [Smart driver FAQ](/preview/faq/smart-drivers-faq/)
 - Smart driver [architecture documentation](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 - Blog: [Node.js Smart Drivers for YugabyteDB: Why You Should Care](https://www.yugabyte.com/blog/node-js-smart-drivers-for-yugabytedb/)

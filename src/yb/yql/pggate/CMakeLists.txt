@@ -26,6 +26,7 @@ add_subdirectory(ysql_bench_metrics_handler)
 
 # PGGate API library.
 set(PGGATE_SRCS
+    insert_on_conflict_buffer.cc
     pg_callbacks.cc
     pg_client.cc
     pg_column.cc

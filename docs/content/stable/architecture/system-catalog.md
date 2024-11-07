@@ -2,7 +2,6 @@
 title: System catalog tables and views
 linkTitle: System catalog
 headcontent: Tables and views that show information about the database
-image: fa-sharp fa-thin fa-album-collection
 menu:
   stable:
     identifier: architecture-system-catalog

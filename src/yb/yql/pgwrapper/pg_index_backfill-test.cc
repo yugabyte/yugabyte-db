@@ -2290,4 +2290,68 @@ TEST_F_EX(PgIndexBackfillTest,
   ASSERT_EQ(rows, (decltype(rows){{1, 2}, {3, 5}}));
 }
 
+class PgIndexBackfillReadCommitted : public PgIndexBackfillTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
+  }
+};
+
+// Test for https://github.com/yugabyte/yugabyte-db/issues/24313
+// Verify that concurrent updates do not leave phantom entries in the index
+TEST_F_EX(PgIndexBackfillTest, PhantomIdxEntry, PgIndexBackfillReadCommitted) {
+  constexpr int64_t kNumRows = 10;
+  const IndexStateFlags index_live_flags{IndexStateFlag::kIndIsLive};
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int, t text)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (generate_series(1, $1), 'a')",
+                                 kTableName, kNumRows));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "indislive"));
+  thread_holder_.AddThreadFunctor([this] {
+    LOG(INFO) << "Begin create index thread";
+    auto create_idx_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    ASSERT_OK(create_idx_conn.ExecuteFormat("CREATE INDEX $0 ON $1(t)", kIndexName, kTableName));
+    LOG(INFO) << "Create index thread has been completed";
+  });
+  // There's no reliable indicator that index build has stopped before 'indislive' phase, just give
+  // the index creation thread some extra time.
+  SleepFor(MonoDelta::FromMilliseconds(RegularBuildVsSanitizers(5000, 60000)));
+  auto other_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  // The index shouldn't be visible
+  ASSERT_FALSE(ASSERT_RESULT(IsAtTargetIndexStateFlags(kIndexName, IndexStateFlags{})));
+  // Start transaction and make sure it is in progress
+  LOG(INFO) << "Begin older txn";
+  ASSERT_OK(other_conn.Execute("BEGIN"));
+  const std::string query = Format("SELECT t FROM $0 WHERE i = $1", kTableName, 1);
+  auto rows = ASSERT_RESULT((other_conn.FetchRows<std::string>(query)));
+  ASSERT_EQ(rows, (decltype(rows){{"a"}}));
+  // Allow index build to proceed to the next phase
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "indisready"));
+  ASSERT_OK(WaitForIndexStateFlags(index_live_flags, kIndexName));
+  // New transaction can see the index and add 'b' into it
+  LOG(INFO) << "Update record by newer txn";
+  ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET t = 'b' WHERE i = $1", kTableName, 2));
+  // If old transaction use cached metadata, it does not see index, so don't replace 'b' with 'c'
+  // index record b becomes phantom
+  LOG(INFO) << "Update record by older txn";
+  ASSERT_OK(other_conn.ExecuteFormat("UPDATE $0 SET t = 'c' WHERE i = $1", kTableName, 2));
+  ASSERT_OK(other_conn.Execute("COMMIT"));
+  // New transaction attempts to replace 'c' with 'd' but if there's the phantom record, it only
+  // inserts 'd'
+  LOG(INFO) << "Update record by newer txn again";
+  ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET t = 'd' WHERE i = $1", kTableName, 2));
+  ASSERT_TRUE(ASSERT_RESULT(IsAtTargetIndexStateFlags(kIndexName, index_live_flags)));
+  // Make sure catalog versions differ
+  // Complete the index build
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
+  thread_holder_.Stop();
+  // Check rowcount
+  const std::string count_query = Format("SELECT count(t) FROM $0 WHERE t = 'b'", kTableName);
+  ASSERT_OK(WaitForIndexScan(count_query));
+  LOG(INFO) << "Check for phantom record";
+  auto idx_count = ASSERT_RESULT((conn_->FetchRow<PGUint64>(count_query)));
+  // Phantom entry makes count 1
+  ASSERT_EQ(idx_count, 0);
+}
+
 } // namespace yb::pgwrapper

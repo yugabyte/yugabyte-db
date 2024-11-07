@@ -573,8 +573,6 @@ typedef struct ResultRelInfo
 	 *   - ri_YbFlushResultRelInfo: for partitioned tables, this is set on the
 	 *     root's ResultRelInfo to point to the partition that is in flushing
 	 *     mode.
-	 *   - ri_YbConflictMap: the map used for constraint checking of ON
-	 *     CONFLICT decisions.
 	 * If ri_NumSlots == ri_BatchSize when trying to add another slot to the
 	 * batch or ExecPendingInserts is requested, enter flushing mode.
 	 * ri_YbFlushCurrentSlotIdx > 0 indicates flushing mode is still ongoing.
@@ -583,7 +581,6 @@ typedef struct ResultRelInfo
 	int			ri_YbFlushCurrentSlotIdx;
 	int			ri_YbFlushNumSlots;
 	struct ResultRelInfo *ri_YbFlushResultRelInfo;
-	struct yb_insert_on_conflict_batching_hash **ri_YbConflictMap;
 } ResultRelInfo;
 
 /*

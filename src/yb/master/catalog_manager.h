@@ -52,6 +52,7 @@
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/restore_sys_catalog_state.h"
+#include "yb/master/ysql/ysql_catalog_config.h"
 #include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/transaction.h"
@@ -329,7 +330,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   struct StatefulServiceStatus {
     std::string service_name;
-    const TSDescriptor* hosting_node = nullptr;
+    TSDescriptorPtr hosting_node = nullptr;
     TableId service_table_id;
     TabletId service_tablet_id;
   };
@@ -576,7 +577,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                                tablet::TabletDataState delete_type,
                                const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
                                const scoped_refptr<TableInfo>& table,
-                               TSDescriptor* ts_desc,
+                               const std::string& ts_uuid,
                                const std::string& reason,
                                const LeaderEpoch& epoch,
                                HideOnly hide_only = HideOnly::kFalse,
@@ -590,7 +591,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   void SetTabletReplicaLocations(
       const TabletInfoPtr& tablet, const std::shared_ptr<TabletReplicaMap>& replica_locations);
-  void UpdateTabletReplicaLocations(const TabletInfoPtr& tablet, const TabletReplica& replica);
+  void UpdateTabletReplicaLocations(
+      const TabletInfoPtr& tablet, const std::string& ts_uuid, const TabletReplica& replica);
 
   void WakeBgTaskIfPendingUpdates();
 
@@ -750,9 +752,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const std::unordered_set<xrepl::StreamId>& cdcsdk_stream_ids);
 
   Result<uint64_t> IncrementYsqlCatalogVersion() override;
-
-  // Records the fact that initdb has succesfully completed.
-  Status InitDbFinished(Status initdb_status, int64_t term);
 
   // Check if the initdb operation has been completed. This is intended for use by whoever wants
   // to wait for the cluster to be fully initialized, e.g. minicluster, YugaWare, etc.
@@ -1690,10 +1689,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status CreateTransactionAwareSnapshot(
       const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, CoarseTimePoint deadline);
 
-  scoped_refptr<SysConfigInfo> GetYsqlCatalogConfig() {
-    CHECK_NOTNULL(ysql_catalog_config_);
-    return ysql_catalog_config_;
-  }
+  YsqlCatalogConfig& GetYsqlCatalogConfig() { return ysql_catalog_config_; }
 
   InitialSysCatalogSnapshotWriter& AllocateAndGetInitialSysCatalogSnapshotWriter();
 
@@ -1704,7 +1700,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       SysRowEntryType type, const std::string& item_id, const std::string& debug_string,
       QLWriteRequestPB::QLStmtType op_type);
 
-  Result<TSDescriptorPtr> GetClosestLiveTserver() const override;
+  Result<TSDescriptorPtr> GetClosestLiveTserver(bool* local_ts = nullptr) const override;
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -2321,9 +2317,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // depends on this leader lock.
   std::shared_ptr<ClusterConfigInfo> cluster_config_ = nullptr; // No GUARD, only write on load.
 
-  // YSQL Catalog information.
-  scoped_refptr<SysConfigInfo> ysql_catalog_config_ = nullptr; // No GUARD, only write on Load.
-
   // Transaction tables information.
   scoped_refptr<SysConfigInfo> transaction_tables_config_ =
       nullptr; // No GUARD, only write on Load.
@@ -2332,6 +2325,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Atomic32 closing_;
 
   SysCatalogTable* sys_catalog_;
+
+  // YSQL Catalog information.
+  YsqlCatalogConfig ysql_catalog_config_;
 
   // Mutex to avoid concurrent remote bootstrap sessions.
   std::mutex remote_bootstrap_mtx_;
@@ -2978,6 +2974,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status RemoveTableFromCDCStreamMetadataAndMaps(
       const CDCStreamInfoPtr stream, const TableId table_id, const LeaderEpoch& epoch);
+
+  Result<ColocationId> ObtainColocationId(
+      const CreateTableRequestPB& req, const TablegroupInfo* tablegroup,
+      bool is_colocated_via_database, const NamespaceId& namespace_id,
+      const NamespaceName& namespace_name, const TableInfoPtr& indexed_table) REQUIRES(mutex_);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};

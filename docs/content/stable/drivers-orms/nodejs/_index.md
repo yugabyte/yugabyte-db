@@ -3,7 +3,6 @@ title: Node.js drivers and ORMs
 headerTitle: Node.js
 linkTitle: Node.js
 description: Node.js Drivers and ORMs support for YugabyteDB.
-image: fa-brands fa-node-js
 menu:
   stable:
     identifier: nodejs-drivers

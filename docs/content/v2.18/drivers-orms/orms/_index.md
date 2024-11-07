@@ -4,7 +4,6 @@ headerTitle: Build applications using ORMs
 linkTitle: Build apps using ORMs
 description: Build a REST application using ORMs with YugabyteDB
 headcontent: Learn how to use your favorite ORM with YugabyteDB
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.18:
     identifier: orm-tutorials

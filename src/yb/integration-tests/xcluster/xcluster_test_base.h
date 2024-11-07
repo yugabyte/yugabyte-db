@@ -333,8 +333,9 @@ class XClusterTestBase : public YBTest {
   // Wait for the xcluster safe time to advance to the given time on all TServers.
   Status WaitForSafeTime(const NamespaceId& namespace_id, const HybridTime& min_safe_time);
 
-  // Wait for the xcluster safe time to advance to Now on all TServers.
-  virtual Status WaitForSafeTimeToAdvanceToNow();
+  // Wait for the xcluster safe time to advance to Now on all TServers for the given namespaces.
+  // The empty list (the default) means just the namespace namespace_name.
+  virtual Status WaitForSafeTimeToAdvanceToNow(std::vector<NamespaceName> namespace_names = {});
 
   Status VerifyReplicationError(
       const std::string& consumer_table_id, const xrepl::StreamId& stream_id,

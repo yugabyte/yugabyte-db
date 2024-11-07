@@ -511,13 +511,12 @@ CreateTableHandleSplitOptions(YBCPgStatement handle, TupleDesc desc,
 }
 
 /*
- * The fields pgTableId and oldRelfileNodeId are used during table rewrite.
- * During table rewrite, pgTableId is used to relay to DocDB the pg table OID,
- * so that DocDB has a mapping from the table to the correct pg table OID.
- * oldRelfileNodeId is used to construct the old DocDB table ID that
- * corresponds to the rewritten table. This is used to determine if the
- * table being rewritten is a part of xCluster replication (if it is, the
- * rewrite operation must fail).
+ * The DocDB table is created using the relfileNodeId OID. The relationId is
+ * sent to DocDB to be stored as the pg table id.
+ * During table rewrite, oldRelfileNodeId is used to construct the old
+ * DocDB table ID that corresponds to the rewritten table.
+ * This is used to determine if the table being rewritten is a part of xCluster
+ * replication (if it is, the rewrite operation must fail).
  * tableName is used to specify the name of the DocDB table. For a typical
  * CREATE TABLE command, the tableName is the same as stmt->relation->relname.
  * However, during table rewrites, stmt->relation points to the new transient
@@ -527,7 +526,7 @@ CreateTableHandleSplitOptions(YBCPgStatement handle, TupleDesc desc,
 void
 YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			   Oid relationId, Oid namespaceId, Oid tablegroupId,
-			   Oid colocationId, Oid tablespaceId, Oid pgTableId,
+			   Oid colocationId, Oid tablespaceId, Oid relfileNodeId,
 			   Oid oldRelfileNodeId, bool isTruncate)
 {
 	bool is_internal_rewrite = oldRelfileNodeId != InvalidOid;
@@ -803,7 +802,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 									   schema_name,
 									   tableName,
 									   databaseId,
-									   relationId,
+									   relfileNodeId,
 									   is_shared_relation,
 									   is_sys_catalog_table,
 									   false, /* if_not_exists */
@@ -813,7 +812,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 									   colocationId,
 									   tablespaceId,
 									   is_matview,
-									   pgTableId,
+									   relationId,
 									   oldRelfileNodeId,
 									   isTruncate,
 									   &handle));
@@ -832,8 +831,15 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			handle, desc, split_options, primary_key,
 			is_colocated_via_database, is_tablegroup, ybrowid_mode);
 	}
+
+	const char *notice_msg = NULL;
 	/* Create the table. */
-	HandleYBStatus(YBCPgExecCreateTable(handle));
+	HandleYBStatus(YBCPgExecCreateTable(handle, &notice_msg));
+	if (notice_msg)
+	{
+		ereport(NOTICE, (errmsg("%s", notice_msg)));
+		pfree((void *) notice_msg);
+	}
 }
 
 void
@@ -1111,8 +1117,9 @@ YBCBindCreateIndexColumns(YBCPgStatement handle,
 }
 
 /*
- * Similar to YBCCreateTable, pgTableId and oldRelfileNodeId are used during
- * table rewrite.
+ * Similar to YBCCreateTable, the DocDB table for the index is created using
+ * indexRelfileNodeId, indexId is sent to DocDB to be stored as the
+ * pg table id, and oldRelfileNodeId is used during table rewrite.
  */
 void
 YBCCreateIndex(const char *indexName,
@@ -1128,7 +1135,7 @@ YBCCreateIndex(const char *indexName,
 			   Oid tablegroupId,
 			   Oid colocationId,
 			   Oid tablespaceId,
-			   Oid pgTableId,
+			   Oid indexRelfileNodeId,
 			   Oid oldRelfileNodeId)
 {
 	Oid namespaceId = RelationGetNamespace(rel);
@@ -1150,7 +1157,7 @@ YBCCreateIndex(const char *indexName,
 									   schema_name,
 									   indexName,
 									   YBCGetDatabaseOid(rel),
-									   indexId,
+									   indexRelfileNodeId,
 									   YbGetRelfileNodeId(rel),
 									   rel->rd_rel->relisshared,
 									   is_sys_catalog_index,
@@ -1162,7 +1169,7 @@ YBCCreateIndex(const char *indexName,
 									   tablegroupId,
 									   colocationId,
 									   tablespaceId,
-									   pgTableId,
+									   indexId,
 									   oldRelfileNodeId,
 									   &handle));
 
@@ -1177,8 +1184,14 @@ YBCCreateIndex(const char *indexName,
 		CreateIndexHandleSplitOptions(handle, indexTupleDesc, split_options, coloptions,
 		                              indexInfo->ii_NumIndexKeyAttrs);
 
+	const char *notice_msg = NULL;
 	/* Create the index. */
-	HandleYBStatus(YBCPgExecCreateIndex(handle));
+	HandleYBStatus(YBCPgExecCreateIndex(handle, &notice_msg));
+	if (notice_msg)
+	{
+		ereport(NOTICE, (errmsg("%s", notice_msg)));
+		pfree((void *) notice_msg);
+	}
 }
 
 static Node *

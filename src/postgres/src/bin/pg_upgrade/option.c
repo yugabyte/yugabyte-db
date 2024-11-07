@@ -53,13 +53,14 @@ parseCommandLine(int argc, char *argv[])
 		{"link", no_argument, NULL, 'k'},
 		{"retain", no_argument, NULL, 'r'},
 		{"jobs", required_argument, NULL, 'j'},
-		{"socketdir", required_argument, NULL, 's'},
 		{"verbose", no_argument, NULL, 'v'},
 		{"clone", no_argument, NULL, 1},
 
 		/* Yugabyte flags */
 		{"old-host", required_argument, NULL, 'h'},
 		{"new-host", required_argument, NULL, 'H'},
+		{"old-socketdir", required_argument, NULL, 's'},
+		{"new-socketdir", required_argument, NULL, 'S'},
 		{NULL, 0, NULL, 0}
 	};
 	int			option;			/* Command line option */
@@ -102,7 +103,7 @@ parseCommandLine(int argc, char *argv[])
 	if (os_user_effective_id == 0)
 		pg_fatal("%s: cannot be run as root\n", os_info.progname);
 
-	while ((option = getopt_long(argc, argv, "d:D:b:B:ch:H:j:kNo:O:p:P:rs:U:v",
+	while ((option = getopt_long(argc, argv, "d:D:b:B:ch:H:j:kNo:O:p:P:rs:S:U:v",
 								 long_options, &optindex)) != -1)
 	{
 		switch (option)
@@ -188,7 +189,11 @@ parseCommandLine(int argc, char *argv[])
 				break;
 
 			case 's':
-				user_opts.socketdir = pg_strdup(optarg);
+				old_cluster.sockdir = pg_strdup(optarg);
+				break;
+
+			case 'S':
+				new_cluster.sockdir = pg_strdup(optarg);
 				break;
 
 			case 'U':
@@ -297,11 +302,14 @@ usage(void)
 	printf(_("  -p, --old-port=PORT           old cluster port number (default %d)\n"), old_cluster.port);
 	printf(_("  -P, --new-port=PORT           new cluster port number (default %d)\n"), new_cluster.port);
 	printf(_("  -r, --retain                  retain SQL and log files after success\n"));
-	printf(_("  -s, --socketdir=DIR           socket directory to use (default current dir.)\n"));
 	printf(_("  -U, --username=NAME           cluster superuser (default \"%s\")\n"), os_info.user);
 	printf(_("  -v, --verbose                 enable verbose internal logging\n"));
 	printf(_("  -V, --version                 display version information, then exit\n"));
 	printf(_("  --clone                       clone instead of copying files to new cluster\n"));
+	printf(_("  -h, --old-host=HOST           old cluster host address\n"));
+	printf(_("  -H, --new-host=HOST           new cluster host address\n"));
+	printf(_("  -s, --old-socketdir=DIR       old cluster socket directory\n"));
+	printf(_("  -S, --new-socketdir=DIR       new cluster socket directory\n"));
 	printf(_("  -?, --help                    show this help, then exit\n"));
 	printf(_("\n"
 			 "Before running pg_upgrade you must:\n"
@@ -463,6 +471,9 @@ adjust_data_dir(ClusterInfo *cluster)
 void
 get_sock_dir(ClusterInfo *cluster, bool live_check)
 {
+	/* In Yugabyte socket directory are specified via the input arguments. */
+	Assert(!is_yugabyte_enabled());
+
 #if defined(HAVE_UNIX_SOCKETS) && !defined(WIN32)
 	if (!live_check)
 		cluster->sockdir = user_opts.socketdir;

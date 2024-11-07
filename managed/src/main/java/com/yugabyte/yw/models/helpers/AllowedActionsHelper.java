@@ -14,6 +14,7 @@ import static com.yugabyte.yw.common.NodeActionType.START_MASTER;
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.PRIMARY;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Live;
 
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -64,6 +65,16 @@ public class AllowedActionsHelper {
     if (nodeActionAllowedErr != null) {
       LOG.trace(nodeActionAllowedErr);
       return false;
+    }
+    if (universe
+        .getUniverseDetails()
+        .getPrimaryCluster()
+        .userIntent
+        .providerType
+        .equals(CloudType.kubernetes)) {
+      if (nodeActionType == NodeActionType.REPLACE) {
+        return false;
+      }
     }
     return true;
   }

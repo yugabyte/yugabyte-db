@@ -128,6 +128,10 @@ class RemoteBootstrapClient : public RemoteClientBase {
 
   Status DownloadRocksDBFiles();
 
+  // Check whether local disk has enough disk space for rocksdb files in 'new_superblock'
+  Status CheckDiskSpace(const tablet::RaftGroupReplicaSuperBlockPB& new_superblock,
+                        const std::string& rocksdb_dir);
+
   // Total number of remote bootstrap sessions. Used to calculate the transmission rate across all
   // the sessions.
   bool downloaded_wal_ = false;     // WAL segments downloaded.

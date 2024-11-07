@@ -2,7 +2,6 @@
 title: Distributed Data modeling
 linkTitle: Data modeling
 description: Learn to develop YugabyteDB applications
-image: fa-sharp fa-light fa-objects-column
 menu:
   stable:
     identifier: data-modeling

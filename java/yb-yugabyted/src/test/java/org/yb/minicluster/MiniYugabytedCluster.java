@@ -740,15 +740,19 @@ public class MiniYugabytedCluster implements AutoCloseable {
         String filenamePrefix = "initial_sys_catalog_snapshot_";
         String filename;
         switch (ver) {
-            case EARLIEST:
-                filename = filenamePrefix + "2.0.9.0";
+            case PG15_ALPHA:
+                filename = filenamePrefix + "2.25.0.0-pg15-alpha-2";
                 break;
             case LATEST:
                 throw new IllegalArgumentException("LATEST snapshot does not need a custom path");
             default:
                 throw new IllegalArgumentException("Unknown snapshot version: " + ver);
         }
-        filename = filename + "_" + (BuildTypeUtil.isRelease() ? "release" : "debug");
+        boolean isSanitizerBuild = BuildTypeUtil.isASAN() || BuildTypeUtil.isTSAN();
+        String snapshotType = isSanitizerBuild ? "sanitizers" :
+                             SystemUtil.IS_MAC ? "mac" :
+                             "release";
+        filename = filename + "_" + snapshotType;
         File file = new File(YSQL_SNAPSHOTS_DIR, filename);
         Preconditions.checkState(file.exists(),
                 "Snapshot %s is not found in %s, should've been downloaded by the build script!",

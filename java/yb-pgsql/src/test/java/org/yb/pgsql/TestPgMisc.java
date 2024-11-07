@@ -46,7 +46,7 @@ public class TestPgMisc extends BasePgSQLTest {
 
   @Test
   public void testTemplateConnectionWithOldInitdb() throws Exception {
-    recreateWithYsqlVersion(YsqlSnapshotVersion.EARLIEST);
+    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_ALPHA);
 
     ConnectionBuilder templateCb =
         getConnectionBuilder().withTServer(0).withDatabase("template1");

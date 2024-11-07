@@ -235,11 +235,10 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
           NotSupported, "Table is deleted; ignoring for splitting. table_id: $0", table->id());
     }
 
-    if (l->is_index() && l->pb.index_info().has_vector_idx_options() &&
-        l->pb.index_info().vector_idx_options().idx_type() == PgVectorIndexType::DUMMY) {
+    if (l->is_index() && l->pb.index_info().has_vector_idx_options()) {
       return STATUS_FORMAT(
           NotSupported,
-          "Tablet splitting is not supported for dummy vector index tables, table_id: $0",
+          "Tablet splitting is not supported for vector index tables, table_id: $0",
           table->id());
     }
   }
@@ -510,14 +509,13 @@ Status AllReplicasHaveFinishedCompaction(const TabletReplicaMap& replicas) {
 Status CheckLiveReplicasForSplit(
     const TabletId& tablet_id, const TabletReplicaMap& replicas, size_t rf) {
   size_t live_replicas = 0;
-  for (const auto& pair : replicas) {
-    const auto& replica = pair.second;
+  for (const auto& [ts_uuid, replica] : replicas) {
     if (replica.member_type == consensus::PRE_VOTER) {
       return STATUS_FORMAT(NotSupported,
                            "One tablet peer is doing RBS as PRE_VOTER, "
                            "tablet_id: $1, peer_uuid: $2, current RAFT state: $3",
-                            tablet_id, pair.second.ts_desc->permanent_uuid(),
-                            RaftGroupStatePB_Name(pair.second.state));
+                            tablet_id, ts_uuid,
+                            RaftGroupStatePB_Name(replica.state));
     }
     if (replica.member_type == consensus::VOTER) {
       live_replicas++;
@@ -525,8 +523,8 @@ Status CheckLiveReplicasForSplit(
         return STATUS_FORMAT(NotSupported,
                              "At least one tablet peer not running, "
                              "tablet_id: $0, peer_uuid: $1, current RAFT state: $2",
-                             tablet_id, pair.second.ts_desc->permanent_uuid(),
-                             RaftGroupStatePB_Name(pair.second.state));
+                             tablet_id, ts_uuid,
+                             RaftGroupStatePB_Name(replica.state));
       }
     }
   }

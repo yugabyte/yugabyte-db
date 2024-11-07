@@ -4,7 +4,6 @@ headerTitle: Build an application
 linkTitle: Build an application
 description: Build an application using your favorite programming language.
 headcontent: Use your favorite programming language to build an application that uses YSQL or YCQL APIs.
-image: /images/section_icons/develop/api-icon.png
 menu:
   v2.18:
     identifier: build-apps

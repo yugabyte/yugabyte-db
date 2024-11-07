@@ -253,7 +253,7 @@ public abstract class AbstractTaskBase implements ITask {
   }
 
   protected SubTaskGroup createSubTaskGroup(String name, boolean ignoreErrors) {
-    return createSubTaskGroup(name, SubTaskGroupType.Invalid);
+    return createSubTaskGroup(name, SubTaskGroupType.Invalid, ignoreErrors);
   }
 
   protected SubTaskGroup createSubTaskGroup(String name, SubTaskGroupType subTaskGroupType) {

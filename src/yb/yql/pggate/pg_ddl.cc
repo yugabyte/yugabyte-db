@@ -28,6 +28,7 @@
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pggate/pg_client.h"
+#include "yb/yql/pggate/util/ybc-internal.h"
 
 DEFINE_test_flag(int32, user_ddl_operation_timeout_sec, 0,
                  "Adjusts the timeout for a DDL operation from the YBClient default, if non-zero.");
@@ -279,7 +280,12 @@ Status PgCreateTable::AddSplitBoundary(PgExpr **exprs, int expr_count) {
 }
 
 Status PgCreateTable::Exec() {
-  RETURN_NOT_OK(pg_session_->pg_client().CreateTable(&req_, DdlDeadline()));
+  auto resp = VERIFY_RESULT(pg_session_->pg_client().CreateTable(req_, DdlDeadline()));
+
+  if (!resp.notice_message().empty()) {
+    notice_msg_ = resp.notice_message();
+  }
+
   auto base_table_id = PgObjectId::FromPB(req_.base_table_id());
   if (base_table_id.IsValid()) {
     pg_session_->InvalidateTableCache(base_table_id, InvalidateOnPgClient::kFalse);
@@ -297,6 +303,10 @@ void PgCreateTable::SetupIndex(
 StmtOp PgCreateTable::stmt_op() const {
   return PgObjectId::FromPB(req_.base_table_id()).IsValid()
       ? StmtOp::STMT_CREATE_INDEX : StmtOp::STMT_CREATE_TABLE;
+}
+
+const char* PgCreateTable::get_notice_msg() {
+  return notice_msg_.empty() ? nullptr : YBCPAllocStdString(notice_msg_);
 }
 
 //--------------------------------------------------------------------------------------------------

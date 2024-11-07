@@ -122,26 +122,29 @@ public class CreateBackup extends UniverseTaskBase {
         getRunnableTask().reset();
 
         if (isFirstTry()) {
-          if (ybcBackup
-              && universe.isYbcEnabled()
-              && !universe
-                  .getUniverseDetails()
-                  .getYbcSoftwareVersion()
-                  .equals(ybcManager.getStableYbcVersion())) {
-
-            if (universe
+          if (ybcBackup && universe.isYbcEnabled()) {
+            if (!universe
                 .getUniverseDetails()
-                .getPrimaryCluster()
-                .userIntent
-                .providerType
-                .equals(Common.CloudType.kubernetes)) {
-              createUpgradeYbcTaskOnK8s(
-                      params().getUniverseUUID(), ybcManager.getStableYbcVersion())
-                  .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+                .getYbcSoftwareVersion()
+                .equals(ybcManager.getStableYbcVersion())) {
+              if (universe
+                  .getUniverseDetails()
+                  .getPrimaryCluster()
+                  .userIntent
+                  .providerType
+                  .equals(Common.CloudType.kubernetes)) {
+                createUpgradeYbcTaskOnK8s(
+                        params().getUniverseUUID(), ybcManager.getStableYbcVersion())
+                    .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+              } else {
+                createUpgradeYbcTask(
+                        params().getUniverseUUID(), ybcManager.getStableYbcVersion(), true)
+                    .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+              }
             } else {
-              createUpgradeYbcTask(
-                      params().getUniverseUUID(), ybcManager.getStableYbcVersion(), true)
-                  .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+              // Try re-install ybc if ping check fails
+              // Skip upgrade case, since upgrade will anyway re-configure it
+              handleUnavailableYbcServers(universe, ybcManager);
             }
           }
         }

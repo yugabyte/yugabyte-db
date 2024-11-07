@@ -138,15 +138,15 @@ Result<TSDescriptorPtr> TSManager::LookupTS(const NodeInstancePB& instance) cons
   return desc;
 }
 
-bool TSManager::LookupTSByUUID(const std::string& uuid,
-                               TSDescriptorPtr* ts_desc) {
+Result<TSDescriptorPtr> TSManager::LookupTSByUUID(const std::string& uuid) {
   SharedLock<decltype(map_lock_)> l(map_lock_);
   auto maybe_desc = LookupTSInternalUnlocked(uuid);
   if (!maybe_desc || (*maybe_desc)->IsReplaced()) {
-    return false;
+    return STATUS_FORMAT(NotFound, "Tablet server $0 $1",
+                         uuid,
+                         maybe_desc ? "is replaced" : "not in ts descriptor map");
   }
-  *ts_desc = std::move(maybe_desc).value();
-  return true;
+  return std::move(maybe_desc).value();
 }
 
 std::optional<TSDescriptorPtr> TSManager::LookupTSInternalUnlocked(
@@ -575,6 +575,12 @@ std::unordered_map<std::string, TSDescriptorPtr>&& TSDescriptorLoader::TakeMap()
 }
 
 Status TSDescriptorLoader::Visit(const std::string& id, const SysTabletServerEntryPB& metadata) {
+  // The RegisteredThroughHeartbeat parameter controls how last_heartbeat_ is initialized.
+  // If true, last_heartbeat_ is set to now. If false, last_heartbeat_ is an uninitialized MonoTime.
+  // Use true here because:
+  //   1. if the tserver is live, the only reasonable time to mark it as unresponsive is
+  //      tserver_unresponsive_timeout_ms from now.
+  //   2. if the tserver is unresponsive, this field doesn't matter.
   DCHECK(metadata.persisted())
       << "All TS descriptors written to the sys catalog should have their persisted bit set.";
   auto desc =

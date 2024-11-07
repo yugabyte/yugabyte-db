@@ -3,7 +3,6 @@ title: Automation in YugabyteDB Anywhere
 headerTitle: Automation
 linkTitle: Automation
 description: Automation tools for YugabyteDB Anywhere.
-image: /images/section_icons/explore/administer.png
 headcontent: Manage YugabyteDB Anywhere accounts and deployments using automation
 menu:
   preview_yugabyte-platform:

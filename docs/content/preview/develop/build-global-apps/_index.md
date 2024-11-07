@@ -4,7 +4,6 @@ headerTitle: Build global applications
 linkTitle: Build global applications
 description: Build globally distributed applications.
 headcontent: Learn how to design globally distributed applications using simple patterns
-image: /images/section_icons/architecture/distributed_acid.png
 menu:
   preview:
     identifier: build-global-apps

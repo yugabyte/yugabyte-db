@@ -600,21 +600,6 @@ class TransactionParticipant::Impl
     return min_start_ht_cdc_unstreamed_txns_;
   }
 
-  HybridTime GetMinStartTimeAmongAllRunningTransactions() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    for (const auto& transaction : transactions_.get<StartTimeTag>()) {
-      auto const& transaction_status = transaction->last_known_status();
-      if (transaction->local_commit_time() == HybridTime::kInvalid &&
-          transaction_status != TransactionStatus::ABORTED) {
-        return transaction->start_ht();
-      }
-    }
-
-    VLOG_WITH_PREFIX(2) << "Running txns: " << transactions_.size()
-                        << ", returning HybridTime::kInvalid for min start time among running txns";
-    return HybridTime::kInvalid;
-  }
-
   OpId GetHistoricalMaxOpId() {
     return historical_max_op_id.load();
   }
@@ -2730,10 +2715,6 @@ OpId TransactionParticipant::GetLatestCheckPoint() const {
 
 HybridTime TransactionParticipant::GetMinStartHTCDCUnstreamedTxns() const {
   return impl_->GetMinStartHTCDCUnstreamedTxns();
-}
-
-HybridTime TransactionParticipant::GetMinStartTimeAmongAllRunningTransactions() const {
-  return impl_->GetMinStartTimeAmongAllRunningTransactions();
 }
 
 OpId TransactionParticipant::GetHistoricalMaxOpId() const {

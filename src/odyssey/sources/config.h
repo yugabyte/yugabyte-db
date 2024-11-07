@@ -76,6 +76,9 @@ struct od_config {
 	int coroutine_stack_size;
 	char *hba_file;
 	od_list_t listen;
+
+	/* YB */
+	int yb_use_auth_backend;
 };
 
 void od_config_init(od_config_t *);
