@@ -11,6 +11,7 @@
 #include <utils/guc.h>
 #include <limits.h>
 
+#include "index_am/helio_rum.h"
 #include "metadata/collection.h"
 #include "io/helio_bson_core.h"
 #include "lib/stringinfo.h"
@@ -40,6 +41,8 @@ GetDistributedApplicationName_HookType get_distributed_application_name_hook = N
 IsChangeStreamEnabledAndCompatible is_changestream_enabled_and_compatible_hook = NULL;
 IsNtoReturnSupported_HookType is_n_to_return_supported_hook = NULL;
 EnsureMetadataTableReplicated_HookType ensure_metadata_table_replicated_hook = NULL;
+GetIndexAmRoutine_HookType get_index_amroutine_hook = NULL;
+GetMultiAndBitmapIndexFunc_HookType get_multi_and_bitmap_func_hook = NULL;
 
 /*
  * Single node scenario is always a metadata coordinator
@@ -313,4 +316,35 @@ EnsureMetadataTableReplicated(const char *tableName)
 	}
 
 	/* Single node default - it's always replicated */
+}
+
+
+/* This function returns the rum handler index routine, if the hook to get it is implemented it just calls into it. */
+IndexAmRoutine *
+GetHelioIndexAmRoutine(PG_FUNCTION_ARGS)
+{
+	if (get_index_amroutine_hook != NULL)
+	{
+		return get_index_amroutine_hook(fcinfo);
+	}
+
+	return GetRumIndexHandler(fcinfo);
+}
+
+
+/* This function loads and returns the multiandgetbitmap function implementation from the default index handler.
+ * If the hook is implemented to return it, it just calls into it.
+ */
+void *
+GetMultiAndBitmapIndexFunc()
+{
+	if (get_multi_and_bitmap_func_hook != NULL)
+	{
+		return get_multi_and_bitmap_func_hook();
+	}
+
+	bool missingOk = false;
+	void **ignoreLibFileHandle = NULL;
+	return load_external_function("$libdir/rum", "multiandgetbitmap", !missingOk,
+								  ignoreLibFileHandle);
 }

@@ -14,6 +14,7 @@
 #define EXTENSION_API_HOOKS_DEF_H
 
 #include "api_hooks_common.h"
+#include <access/amapi.h>
 #include <nodes/parsenodes.h>
 
 /* Section: General Extension points */
@@ -157,6 +158,12 @@ extern IsNtoReturnSupported_HookType is_n_to_return_supported_hook;
 
 typedef void (*EnsureMetadataTableReplicated_HookType)(const char *);
 extern EnsureMetadataTableReplicated_HookType ensure_metadata_table_replicated_hook;
+
+typedef IndexAmRoutine *(*GetIndexAmRoutine_HookType)(PG_FUNCTION_ARGS);
+extern GetIndexAmRoutine_HookType get_index_amroutine_hook;
+
+typedef void *(*GetMultiAndBitmapIndexFunc_HookType)(void);
+extern GetMultiAndBitmapIndexFunc_HookType get_multi_and_bitmap_func_hook;
 
 extern bool DefaultInlineWriteOperations;
 #endif

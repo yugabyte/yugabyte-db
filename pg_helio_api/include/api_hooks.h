@@ -11,6 +11,8 @@
 #ifndef EXTENSION_API_HOOKS_H
 #define EXTENSION_API_HOOKS_H
 
+#include <access/amapi.h>
+
 #include "api_hooks_common.h"
 #include "metadata/collection.h"
 
@@ -143,4 +145,15 @@ bool IsChangeStreamFeatureAvailableAndCompatible(void);
  * Ensure the given metadata catalog table is replicated.
  */
 void EnsureMetadataTableReplicated(const char *tableName);
+
+/*
+ * Get current IndexAmRoutine for the index handler.
+ */
+IndexAmRoutine *GetHelioIndexAmRoutine(PG_FUNCTION_ARGS);
+
+/*
+ * Gets the multi and bitmap function for multi index join implemented on a specific index handler.
+ */
+void * GetMultiAndBitmapIndexFunc(void);
+
 #endif

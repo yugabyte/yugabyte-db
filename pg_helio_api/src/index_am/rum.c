@@ -18,8 +18,10 @@
 #include <utils/lsyscache.h>
 #include "math.h"
 
+#include "api_hooks.h"
 #include "planner/mongo_query_operator.h"
 #include "opclass/helio_gin_index_mgmt.h"
+#include "index_am/helio_rum.h"
 #include "metadata/metadata_cache.h"
 
 
@@ -29,12 +31,6 @@ extern bool ForceUseIndexIfAvailable;
 /* Forward declaration */
 /* --------------------------------------------------------- */
 
-static void extension_rumcostestimate(PlannerInfo *root, IndexPath *path, double
-									  loop_count,
-									  Cost *indexStartupCost, Cost *indexTotalCost,
-									  Selectivity *indexSelectivity,
-									  double *indexCorrelation,
-									  double *indexPages);
 static bool IsIndexIsValidForQuery(IndexPath *path);
 static bool MatchClauseWithIndexForFuncExpr(IndexPath *path, int32_t indexcol,
 											Oid funcId, List *args);
@@ -57,6 +53,14 @@ PG_FUNCTION_INFO_V1(extensionrumhandler);
  */
 Datum
 extensionrumhandler(PG_FUNCTION_ARGS)
+{
+	IndexAmRoutine *indexRoutine = GetHelioIndexAmRoutine(fcinfo);
+	PG_RETURN_POINTER(indexRoutine);
+}
+
+
+IndexAmRoutine *
+GetRumIndexHandler(PG_FUNCTION_ARGS)
 {
 	bool missingOk = false;
 	void **ignoreLibFileHandle = NULL;
@@ -82,7 +86,7 @@ extensionrumhandler(PG_FUNCTION_ARGS)
 	}
 
 	indexRoutine->amcostestimate = extension_rumcostestimate;
-	PG_RETURN_POINTER(indexRoutine);
+	return indexRoutine;
 }
 
 
@@ -99,7 +103,7 @@ extensionrumhandler(PG_FUNCTION_ARGS)
  * build_index_paths). In this case, we need to check that at least one predicate matches the
  * index for the index to be considered.
  */
-static void
+void
 extension_rumcostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 						  Cost *indexStartupCost, Cost *indexTotalCost,
 						  Selectivity *indexSelectivity, double *indexCorrelation,

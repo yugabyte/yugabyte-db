@@ -25,6 +25,7 @@
 #include <access/relscan.h>
 #include <access/genam.h>
 
+#include "api_hooks.h"
 #include "io/helio_bson_core.h"
 #include "customscan/helio_custom_scan.h"
 #include "customscan/custom_scan_registrations.h"
@@ -48,6 +49,8 @@ typedef struct RumCustomJoinInputState
 {
 	/* Must be the first field */
 	ExtensibleNode extensible;
+
+	int32_t limit;
 } RumCustomJoinInputState;
 
 
@@ -71,7 +74,8 @@ extern bool EnableMultiIndexRumJoin;
  * This is off for the public rum release.
  */
 bool HasCustomRumFunctions = false;
-static int64 (*MultiAndGetBitmapFunc) (IndexScanDesc *, int32, TIDBitmap *) = NULL;
+static int64 (*MultiAndGetBitmapFunc) (IndexScanDesc *, int32, TIDBitmap *, int,
+									   int32_t *) = NULL;
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -103,8 +107,9 @@ static void OutInputRumJoinScanNode(StringInfo str, const struct
 static bool EqualUnsupportedExtensionRumJoinScanNode(const struct ExtensibleNode *a,
 													 const struct ExtensibleNode *b);
 static CustomPath * CreateCustomJoinPathCore(BitmapHeapPath *bitmapAndPath,
-											 RelOptInfo *rel, RangeTblEntry *rte);
-static void InitializeBitmapHeapScanState(BitmapHeapScanState *scanState);
+											 RelOptInfo *rel, RangeTblEntry *rte,
+											 PlannerInfo *root);
+static void InitializeBitmapHeapScanState(BitmapHeapScanState *scanState, int32_t limit);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -148,13 +153,9 @@ static const ExtensibleNodeMethods InputQueryStateMethods =
 void
 RegisterRumJoinScanNodes(void)
 {
-	bool missingOk = !HasCustomRumFunctions;
-	void **ignoreLibFileHandle = NULL;
-	MultiAndGetBitmapFunc =
-		load_external_function("$libdir/rum", "multiandgetbitmap", !missingOk,
-							   ignoreLibFileHandle);
+	MultiAndGetBitmapFunc = GetMultiAndBitmapIndexFunc();
 
-	/* Only add the custom scan IF the function is available in the build of rum */
+	/* Only add the custom scan IF the function is available */
 	if (MultiAndGetBitmapFunc != NULL)
 	{
 		RegisterExtensibleNodeMethods(&InputQueryStateMethods);
@@ -173,7 +174,7 @@ CreateRumJoinScanPathForBitmapAnd(PlannerInfo *root, RelOptInfo *rel,
 {
 	if (EnableMultiIndexRumJoin && MultiAndGetBitmapFunc != NULL)
 	{
-		return (Path *) CreateCustomJoinPathCore(heapPath, rel, rte);
+		return (Path *) CreateCustomJoinPathCore(heapPath, rel, rte, root);
 	}
 	else
 	{
@@ -206,7 +207,7 @@ IsRumJoinScanPath(Path *path)
  */
 static CustomPath *
 CreateCustomJoinPathCore(BitmapHeapPath *bitmapAndPath, RelOptInfo *rel,
-						 RangeTblEntry *rte)
+						 RangeTblEntry *rte, PlannerInfo *root)
 {
 	/* wrap the path in a custom path */
 	Path *inputPath = &bitmapAndPath->path;
@@ -254,6 +255,7 @@ CreateCustomJoinPathCore(BitmapHeapPath *bitmapAndPath, RelOptInfo *rel,
 	RumCustomJoinInputState *joinState = palloc0(sizeof(RumCustomJoinInputState));
 	joinState->extensible.extnodename = InputContinuationNodeName;
 	joinState->extensible.type = T_ExtensibleNode;
+	joinState->limit = (int32_t) root->limit_tuples;
 	customPath->custom_private = list_make1(joinState);
 
 	return customPath;
@@ -398,7 +400,14 @@ ExtensionRumJoinScanNext(CustomScanState *node)
 			(BitmapHeapScanState *) extensionScanState->innerScanState;
 		if (!scanStateInner->initialized)
 		{
-			InitializeBitmapHeapScanState(scanStateInner);
+			int32_t limit = 0;
+			if (extensionScanState->inputState->limit > 0 &&
+				scanStateInner->ss.ps.qual == NULL)
+			{
+				limit = extensionScanState->inputState->limit;
+			}
+
+			InitializeBitmapHeapScanState(scanStateInner, limit);
 		}
 
 		extensionScanState->initializedInnerTidBitmap = true;
@@ -448,7 +457,10 @@ ExtensionRumJoinScanReScanCustomScan(CustomScanState *node)
 static void
 ExtensionRumJoinScanExplainCustomScan(CustomScanState *node, List *ancestors,
 									  ExplainState *es)
-{ }
+{
+	HelioRumCustomJoinScanState *queryScanState = (HelioRumCustomJoinScanState *) node;
+	ExplainPropertyInteger("Limit", "tuples", queryScanState->inputState->limit, es);
+}
 
 
 /*
@@ -497,14 +509,26 @@ ReadRumJoinScannNode(struct ExtensibleNode *node)
 }
 
 
+/* Function that gets the bitmap and from the plan and calls into the index handler multiandbitmap function. */
 static TIDBitmap *
-ExecuteMultiProcBitmapRumAnd(PlanState *innerPlan)
+ExecuteMultiProcBitmapRumAnd(PlanState *innerPlan, int32_t limit)
 {
 	TIDBitmap *tbm = tbm_create(work_mem * 1024L, NULL);
 
 	BitmapAndState *andState = (BitmapAndState *) innerPlan;
 
+	if (andState->ps.instrument)
+	{
+		InstrStartNode(andState->ps.instrument);
+	}
+
 	IndexScanDesc *scanArray = palloc(sizeof(IndexScanDesc) * andState->nplans);
+	int32_t *scanInstr = NULL;
+	if (andState->ps.instrument)
+	{
+		scanInstr = palloc0(sizeof(int32_t) * andState->nplans);
+	}
+
 	for (int i = 0; i < andState->nplans; i++)
 	{
 		BitmapIndexScanState *indexScanState =
@@ -512,16 +536,30 @@ ExecuteMultiProcBitmapRumAnd(PlanState *innerPlan)
 		scanArray[i] = indexScanState->biss_ScanDesc;
 	}
 
-	MultiAndGetBitmapFunc(scanArray, andState->nplans, tbm);
+	int64 nTuples = MultiAndGetBitmapFunc(scanArray, andState->nplans, tbm, limit,
+										  scanInstr);
+
+	if (andState->ps.instrument)
+	{
+		InstrStopNode(andState->ps.instrument, nTuples);
+		for (int i = 0; i < andState->nplans; i++)
+		{
+			BitmapIndexScanState *indexScanState =
+				(BitmapIndexScanState *) andState->bitmapplans[i];
+			InstrStartNode(indexScanState->ss.ps.instrument);
+			InstrStopNode(indexScanState->ss.ps.instrument, scanInstr[i]);
+		}
+	}
 
 	return tbm;
 }
 
 
+/* Sets the scan state to the begining of the bitmap after getting it from the index handler multiandbitmap function. */
 static void
-RunBitmapSerialScan(BitmapHeapScanState *scanState)
+RunBitmapSerialScan(BitmapHeapScanState *scanState, int32_t limit)
 {
-	TIDBitmap *tbm = ExecuteMultiProcBitmapRumAnd(outerPlanState(scanState));
+	TIDBitmap *tbm = ExecuteMultiProcBitmapRumAnd(outerPlanState(scanState), limit);
 
 	if (!tbm || !IsA(tbm, TIDBitmap))
 	{
@@ -543,8 +581,10 @@ RunBitmapSerialScan(BitmapHeapScanState *scanState)
 }
 
 
+/* Entry point to the custom scan. It calls into our serial scan handler, which sets the bitmap and initializes it
+ * using the index handler multiandbitmap function. */
 static void
-InitializeBitmapHeapScanState(BitmapHeapScanState *scanState)
+InitializeBitmapHeapScanState(BitmapHeapScanState *scanState, int32_t limit)
 {
 	if (scanState->pstate)
 	{
@@ -555,7 +595,7 @@ InitializeBitmapHeapScanState(BitmapHeapScanState *scanState)
 	}
 	else
 	{
-		RunBitmapSerialScan(scanState);
+		RunBitmapSerialScan(scanState, limit);
 	}
 
 	scanState->initialized = true;
