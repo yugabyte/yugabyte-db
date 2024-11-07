@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
@@ -325,7 +326,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     verifyPayload();
   }
 
-  // @Test
+  @Test
   public void testIncreaseRFPrimary() throws InterruptedException {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.numNodes = 3;
@@ -334,6 +335,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     Universe universe = createUniverse(userIntent);
     initYSQL(universe);
     initAndStartPayload(universe);
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.enableRFChange.getKey(), "true");
     Thread.sleep(500);
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getPrimaryCluster();
@@ -350,6 +352,21 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
             Universe.getOrBadRequest(universe.getUniverseUUID()),
             universe.getUniverseDetails());
     TaskInfo taskInfo = waitForTask(taskID, universe);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    cluster = universe.getUniverseDetails().getPrimaryCluster();
+    cluster.userIntent.instanceType = INSTANCE_TYPE_CODE_2;
+    PlacementInfoUtil.updateUniverseDefinition(
+        universe.getUniverseDetails(),
+        customer.getId(),
+        cluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    verifyNodeModifications(universe, 3, 3);
+    taskID =
+        universeCRUDHandler.update(
+            customer,
+            Universe.getOrBadRequest(universe.getUniverseUUID()),
+            universe.getUniverseDetails());
+    taskInfo = waitForTask(taskID, universe);
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     verifyUniverseTaskSuccess(taskInfo);
     verifyUniverseState(universe);

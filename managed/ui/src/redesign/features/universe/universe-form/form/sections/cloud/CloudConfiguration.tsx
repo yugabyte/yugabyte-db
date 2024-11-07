@@ -56,7 +56,10 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
   const useK8CustomResourcesObject = runtimeConfigs?.configEntries?.find(
     (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.USE_K8_CUSTOM_RESOURCES_FEATURE_FLAG
   );
-  const isRfChangeEnabled = false;
+  const isRfChangeEnabled = runtimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.RF_CHANGE_FEATURE_FLAG
+  )?.value === 'true';
+
   const useK8CustomResources = !!(useK8CustomResourcesObject?.value === 'true');
   const isDedicatedNodesEnabled = !!(enableDedicatedNodesObject?.value === 'true');
 

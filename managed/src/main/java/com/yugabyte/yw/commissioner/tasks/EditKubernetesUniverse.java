@@ -190,6 +190,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         Cluster currCluster = universeDetails.getClusterByUuid(cluster.uuid);
         validateEditParams(cluster, currCluster);
       }
+      boolean primaryRFChange =
+          universeDetails.getPrimaryCluster().userIntent.replicationFactor
+              != primaryCluster.userIntent.replicationFactor;
 
       // Update the user intent.
       // This writes new state of nodes to DB.
@@ -231,6 +234,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           // Updating cluster in DB
           createUpdateUniverseIntentTask(cluster);
         }
+      }
+
+      if (primaryRFChange) {
+        createMasterLeaderStepdownTask();
       }
 
       // Update the swamper target file.

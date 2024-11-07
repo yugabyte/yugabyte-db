@@ -74,7 +74,8 @@ export const RuntimeConfigKey = {
   ENABLE_AUTO_MASTER_FAILOVER: 'yb.auto_master_failover.enabled',
   ENABLE_ROLLBACK_SUPPORT: 'yb.upgrade.enable_rollback_support',
   PER_PROCESS_METRICS_FEATURE_FLAG: 'yb.ui.feature_flags.enable_per_process_metrics',
-  ENABLE_CONNECTION_POOLING: 'yb.universe.allow_connection_pooling'
+  ENABLE_CONNECTION_POOLING: 'yb.universe.allow_connection_pooling',
+  RF_CHANGE_FEATURE_FLAG: 'yb.ui.feature_flags.enable_rf_change'
 } as const;
 
 /**
