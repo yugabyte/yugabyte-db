@@ -1032,4 +1032,6 @@ static inline bool YbIsNormalDbOidReserved(Oid db_oid) {
 	return db_oid == kYBCPgSequencesDataDatabaseOid;
 }
 
+extern AttrNumber YbGetIndexAttnum(Relation index, AttrNumber table_attno);
+
 #endif /* PG_YB_UTILS_H */

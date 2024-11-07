@@ -413,3 +413,11 @@ UPDATE child_2 SET v = (v - 1000000) * 2 + 1000000 WHERE k <= 5001; -- should fa
 
 UPDATE child_1 SET v = v * 2 WHERE k < 5001;
 UPDATE child_2 SET v = (v - 1000000) * 2 + 1000000 WHERE k < 5001;
+
+-- Test foreign key on unique index such that column orders in fk and unique constraints differ.
+CREATE TABLE pk(id INT, name INT, add INT, PRIMARY KEY (id, name, add), UNIQUE (name, id));
+CREATE TABLE fk(id INT, name INT, FOREIGN KEY(id, name) REFERENCES pk(id, name));
+INSERT INTO pk VALUES (1, 500, 1000);
+INSERT INTO fk VALUES (1, 500);
+INSERT INTO fk VALUES (500, 1); -- should fail
+SELECT * from fk;

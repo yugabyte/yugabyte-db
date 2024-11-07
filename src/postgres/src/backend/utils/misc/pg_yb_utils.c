@@ -4323,3 +4323,18 @@ YbReadWholeFile(const char *filename, int* length, int elevel)
 	buf[*length] = '\0';
 	return buf;
 }
+
+/*
+ * Given a table attribute number, get a corresponding index attribute number.
+ * Throw an error if it is not found.
+ */
+AttrNumber
+YbGetIndexAttnum(Relation index, AttrNumber table_attno)
+{
+	for (int i = 0; i < IndexRelationGetNumberOfAttributes(index); ++i)
+	{
+		if (table_attno == index->rd_index->indkey.values[i])
+			return i + 1;
+	}
+	elog(ERROR, "column is not in index");
+}
