@@ -28,29 +28,25 @@ To change the configuration of a universe, do the following:
 
 1. Navigate to your universe and choose **Actions > Edit Universe** to display the **Edit universe** page.
 
-   ![Edit universe](/images/ee/edit-univ-220.png)
+    ![Edit universe](/images/ee/edit-univ-220.png)
 
 1. Update the configuration.
 
-   Using the **Edit Universe** page, you can modify the following:
+    Using the **Edit Universe** page, you can modify the following:
 
-   - **Cloud Configuration**
-     - **Regions** - Select any region configured in the provider used to deploy the universe.
-     - [Master Placement](../../create-deployments/dedicated-master/).
-     - **Total Nodes** and **Availability Zones** - As you add nodes, they are automatically distributed among the availability zones; you can also add, configure, and remove availability zones.
-   - **Instance Configuration**
+    - **Cloud Configuration**
+        - **Regions** - Select any region configured in the provider used to deploy the universe.
+        - [Master Placement](../../create-deployments/dedicated-master/).
+        - **Total Nodes** and **Availability Zones** - As you add nodes, they are automatically distributed among the availability zones; you can also add, configure, and remove availability zones.
+    - **Instance Configuration**
+        - **Instance Type** and **Volume Info Size** - Change instance type and storage volume size as configured in the provider. In some cases, these operations are available as a [smart resize](#smart-resize).
+        - **Storage Type** and **Volume Info Count** - For cloud providers, you can also change the storage volume count and type. On AWS, you can additionally change throughput and IOPS.
+    - **Advanced Configuration**
+        - **Override Deployment Ports** - Can override deployment ports such as Master/TServer RPC and HTTP ports. In addition to that, can override Node Exporter port as well.
 
-     - **Instance Type** and **Volume Info Size** - Change instance type and storage volume size as configured in the provider. In some cases, these operations are available as a [smart resize](#smart-resize).
+    - [User Tags](../instance-tags/). Changing tags doesn't require any node restarts or data migration.
 
-     - **Storage Type** and **Volume Info Count** - For cloud providers, you can also change the storage volume count and type. On AWS, you can additionally change throughput and IOPS.
-
-   - **Advanced Configuration**
-
-     - **Override Deployment Ports** - Can override deployment ports such as Master/TServer RPC and HTTP ports. In addition to that, can override Node Exporter port as well.
-
-   - [User Tags](../instance-tags/). Changing tags doesn't require any node restarts or data migration.
-
-   Note that you can't change the replication factor of a universe.
+    Note that you can't change the replication factor of a universe.
 
 1. Click **Save**.
 
@@ -66,11 +62,11 @@ Smart resize is available for the following operations:
 
 - Change the Instance type.
 
-  Note that smart resize is not available when changing the instance type from an AWS EBS-backed instance type (like c5.xlarge) to a local storage-backed instance type (like i3.xlarge), or vice-versa.
+    Note that smart resize is not available when changing the instance type from an AWS EBS-backed instance type (like c5.xlarge) to a local storage-backed instance type (like i3.xlarge), or vice-versa.
 
 - Increase the Volume disk size.
 
-  Note that smart resize is not available with Azure ultra disks, or when decreasing the volume size.
+    Note that smart resize is not available with Azure ultra disks, or when decreasing the volume size.
 
 - Both together.
 
