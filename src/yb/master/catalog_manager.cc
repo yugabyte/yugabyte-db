@@ -1454,6 +1454,9 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
 
   xcluster_manager_->Clear();
 
+  // This is unnecessary if persist_tserver_registry is set.
+  // But persist_tserver_registry is a runtime flag so we keep this here to
+  // simplify system behaviour if the flag is changed during runtime.
   auto descs = master_->ts_manager()->GetAllDescriptors();
   for (const auto& ts_desc : descs) {
     ts_desc->set_has_tablet_report(false);

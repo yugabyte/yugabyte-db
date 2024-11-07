@@ -922,13 +922,9 @@ bool MasterHeartbeatServiceImpl::ProcessCommittedConsensusState(
   // TS is removed from the config while it is remote bootstrapping. In this case, we must ignore
   // the heartbeats to avoid incorrectly adding this TS to the config in
   // UpdateTabletReplicaInLocalMemory.
-  bool found_ts_in_config = false;
-  for (const auto& peer : cstate.config().peers()) {
-    if (peer.permanent_uuid() == ts_desc->permanent_uuid()) {
-      found_ts_in_config = true;
-      break;
-    }
-  }
+  auto found_ts_in_config = std::ranges::any_of(
+      cstate.config().peers(),
+      [&ts_desc](const auto& peer) { return peer.permanent_uuid() == ts_desc->permanent_uuid(); });
   if (!found_ts_in_config) {
     LOG(WARNING) << Format("Ignoring heartbeat from tablet server that is not part of reported "
         "consensus config. ts_desc: $0, cstate: $1.", *ts_desc, cstate);

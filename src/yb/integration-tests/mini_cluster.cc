@@ -735,6 +735,14 @@ Status MiniCluster::WaitForAllTabletServers() {
 
 Result<std::vector<std::shared_ptr<master::TSDescriptor>>> MiniCluster::WaitForTabletServerCount(
     size_t count, bool live_only) {
+  // Put the mini tservers into a map to simplify checking whether the master leader knows about
+  // them.
+  std::unordered_map<std::string, int64_t> mini_cluster_tservers;
+  for (const auto& mini_ts : mini_tablet_servers_) {
+    const auto& ts = mini_ts->server();
+    mini_cluster_tservers.emplace(std::make_pair(ts->instance_pb().permanent_uuid(),
+                                            ts->instance_pb().instance_seqno()));
+  }
   Stopwatch sw;
   sw.start();
   while (sw.elapsed().wall_seconds() < FLAGS_TEST_mini_cluster_registration_wait_time_sec) {
@@ -745,19 +753,12 @@ Result<std::vector<std::shared_ptr<master::TSDescriptor>>> MiniCluster::WaitForT
         // GetAllDescriptors() may return servers that are no longer online.
         // Do a second step of verification to verify that the descs that we got
         // are aligned (same uuid/seqno) with the TSs that we have in the cluster.
-        size_t match_count = 0;
-        for (const shared_ptr<TSDescriptor>& desc : descs) {
-          for (auto mini_tablet_server : mini_tablet_servers_) {
-            auto ts = mini_tablet_server->server();
-            if (ts->instance_pb().permanent_uuid() == desc->permanent_uuid() &&
-                ts->instance_pb().instance_seqno() == desc->latest_seqno()) {
-              if (!live_only || desc->IsLive()) {
-                match_count++;
-              }
-              break;
-            }
-          }
-        }
+        size_t match_count =
+            std::ranges::count_if(descs, [&mini_cluster_tservers, &live_only](const auto& desc) {
+              auto it = mini_cluster_tservers.find(desc->permanent_uuid());
+              return it != mini_cluster_tservers.end() && it->second == desc->latest_seqno() &&
+                     desc->has_tablet_report() && (!live_only || desc->IsLive());
+            });
 
         if (match_count == count) {
           LOG(INFO) << count << " TS(s) registered with Master after "
