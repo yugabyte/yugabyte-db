@@ -254,10 +254,13 @@ ybcinbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
 	buildstate.index_tuples = 0;
 	buildstate.backfill_write_time = NULL;
 	/*
-	 * Primary key index is an implicit part of the base table in Yugabyte.
+	 * YB: Primary key index is an implicit part of the base table in Yugabyte.
 	 * We don't need to scan the base table to build a primary key index. (#8024)
+	 * We also don't need to build YB indexes during a major version upgrade,
+	 * as we simply link the old DocDB table on master.
 	 */
-	if (!index->rd_index->indisprimary)
+	if (!index->rd_index->indisprimary &&
+		!(IsYugaByteEnabled() && IsBinaryUpgrade))
 	{
 		heap_tuples = yb_table_index_build_scan(heap, index, indexInfo, true,
 												ybcinbuildCallback, &buildstate,

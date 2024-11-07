@@ -1024,4 +1024,75 @@ TEST_F(Pg15UpgradeTest, GlobalBreakingDDL) {
   ASSERT_OK(UpgradeClusterToMixedMode());
   ASSERT_OK(FinalizeUpgradeFromMixedMode());
 }
+
+TEST_F(Pg15UpgradeTest, Indexes) {
+  ASSERT_OK(ExecuteStatements(
+    {"CREATE TABLE t1 (a int)",
+     "INSERT INTO t1 VALUES (1),(2),(3),(4),(5)",
+     "CREATE INDEX i1 ON t1 (a)",
+
+     "CREATE TABLE t2 (a int)",
+     "INSERT INTO t2 VALUES (1),(2),(3),(4),(5)",
+     "CREATE UNIQUE INDEX i2 ON t2 (a)",
+
+     "CREATE TABLE t3 (a int)",
+     "INSERT INTO t3 VALUES (1),(2),(3),(4),(5)",
+     "CREATE INDEX i3 ON t3 (a ASC)",
+
+     "CREATE TABLE t4 (a int)",
+     "INSERT INTO t4 VALUES (1),(2),(3),(4),(5)",
+     "CREATE INDEX i4 ON t4 (a DESC)",
+     }));
+
+  auto check_indexes = [&](pgwrapper::PGConn& conn, const std::vector<int>& values_to_check) {
+    // Check hash based indexes (i1, i2).
+    for (const auto& value : values_to_check) {
+      for (const auto& table : {"t1", "t2"}) {
+        auto query = Format("SELECT a FROM $0 WHERE a = $1", table, value);
+        ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+        auto result = ASSERT_RESULT(conn.FetchRows<int>(query));
+        ASSERT_VECTORS_EQ(result, std::vector<int>{value});
+      }
+    }
+
+    // Check range based indexes (i3, i4).
+    for (const auto& table : {"t3", "t4"}) {
+      auto query = Format("SELECT a FROM $0 WHERE a >= 1", table);
+      ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+      auto result = ASSERT_RESULT(conn.FetchRows<int>(query));
+      if (table == std::string("t4")) {
+        // DESC index (i4) on table t4.
+        std::vector<int> reversed_values(values_to_check.rbegin(), values_to_check.rend());
+        ASSERT_VECTORS_EQ(result, reversed_values);
+      } else {
+        ASSERT_VECTORS_EQ(result, values_to_check);
+      }
+    }
+  };
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg15));
+    for (const auto& table : {"t1", "t2", "t3", "t4"}) {
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (15)", table));
+    }
+    ASSERT_NO_FATALS(check_indexes(conn, {1, 2, 3, 4, 5, 15}));
+  }
+
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg11));
+    for (const auto& table : {"t1", "t2", "t3", "t4"}) {
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (11)", table));
+    }
+    ASSERT_NO_FATALS(check_indexes(conn, {1, 2, 3, 4, 5, 11, 15}));
+  }
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_NO_FATALS(check_indexes(conn, {1, 2, 3, 4, 5, 11, 15}));
+  }
+}
 }  // namespace yb
