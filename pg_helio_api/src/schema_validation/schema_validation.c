@@ -16,6 +16,55 @@
 #include "utils/helio_errors.h"
 
 extern bool EnableSchemaValidation;
+PG_FUNCTION_INFO_V1(command_schema_validation_against_update);
+
+/*
+ * command_schema_validation_against_update validates source_document/target_document against a schema validator while updating
+ * select __API_SCHEMA_INTERNAL__.schema_validation_against_update(expr_eval_state, target_document, source_document, is_moderate);
+ * @param expr_eval_state: The expression evaluation state for the schema validator passed in as a bytea.
+ * @param target_document: Updated document.
+ * @param source_document: The document to be updated.
+ * @param is_moderate: If false, only validate newDocument against the schema validator. if true, validate document if newDocument does not match the schema validator.
+ * @return: true if the documents passes schema validation.
+ */
+Datum
+command_schema_validation_against_update(PG_FUNCTION_ARGS)
+{
+	if (!EnableSchemaValidation)
+	{
+		PG_RETURN_BOOL(true);
+	}
+
+	bytea *evalStateBytea = PG_GETARG_BYTEA_P(0);
+	if (evalStateBytea == NULL)
+	{
+		PG_RETURN_BOOL(true);
+	}
+
+	ExprEvalState *evalState = (ExprEvalState *) VARDATA(evalStateBytea);
+	if (evalState == NULL)
+	{
+		PG_RETURN_BOOL(true);
+	}
+
+	pgbson *targetDocument = PG_GETARG_PGBSON(1);
+	bool isModerate = PG_GETARG_BOOL(3);
+
+	if (!isModerate)
+	{
+		bson_value_t newDocumentValue = ConvertPgbsonToBsonValue(targetDocument);
+		ValidateSchemaOnDocumentInsert(evalState, &newDocumentValue);
+	}
+	else
+	{
+		pgbson *sourceDocument = PG_GETARG_MAYBE_NULL_PGBSON(2);
+		ValidateSchemaOnDocumentUpdate(ValidationLevel_Moderate, evalState,
+									   sourceDocument, targetDocument);
+	}
+
+	PG_RETURN_BOOL(true);
+}
+
 
 /*
  * Prepare for schema validation.
@@ -47,8 +96,7 @@ PrepareForSchemaValidation(pgbson *schemaValidationInfo, MemoryContext memoryCon
  * If the validation action is set to warn, we do nothing and would not call this function.
  */
 void
-ValidateSchemaOnDocumentInsert(ExprEvalState *evalState, const
-							   bson_value_t *document)
+ValidateSchemaOnDocumentInsert(ExprEvalState *evalState, const bson_value_t *document)
 {
 	bool shouldRecurseIfArray = false;
 	bool matched = EvalBooleanExpressionAgainstValue(evalState, document,
@@ -58,5 +106,44 @@ ValidateSchemaOnDocumentInsert(ExprEvalState *evalState, const
 		/* native mongo return additional information about the cause of the failure */
 		ereport(ERROR, (errcode(ERRCODE_HELIO_DOCUMENTFAILEDVALIDATION),
 						errmsg("Document failed validation")));
+	}
+}
+
+
+/*
+ * Validate documents with the schema validator during updates.
+ * If validationAction is 'warn', skip validation.
+ * Validation Levels:
+ *  - strict: The target document must fully comply with the schema.
+ *  - moderate: The target document need not comply if the source document does not match the schema.
+ */
+void
+ValidateSchemaOnDocumentUpdate(ValidationLevels validationLevel,
+							   ExprEvalState *evalState,
+							   pgbson *sourceDocument, pgbson *targetDocument)
+{
+	bool shouldRecurseIfArray = false;
+	bson_value_t targetDocumentValue = ConvertPgbsonToBsonValue(targetDocument);
+	bool matched = EvalBooleanExpressionAgainstValue(evalState, &targetDocumentValue,
+													 shouldRecurseIfArray);
+	if (!matched)
+	{
+		if (validationLevel == ValidationLevel_Strict)
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_DOCUMENTFAILEDVALIDATION),
+							errmsg("Document failed validation")));
+		}
+		else if (sourceDocument != NULL && validationLevel == ValidationLevel_Moderate)
+		{
+			bson_value_t sourceDocumentValue = ConvertPgbsonToBsonValue(sourceDocument);
+			matched = EvalBooleanExpressionAgainstValue(evalState, &sourceDocumentValue,
+														shouldRecurseIfArray);
+
+			if (matched)
+			{
+				ereport(ERROR, (errcode(ERRCODE_HELIO_DOCUMENTFAILEDVALIDATION),
+								errmsg("Document failed validation")));
+			}
+		}
 	}
 }

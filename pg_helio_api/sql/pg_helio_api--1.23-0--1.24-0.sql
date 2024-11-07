@@ -15,4 +15,5 @@ SET search_path TO helio_api;
 #include "udfs/commands_diagnostic/index_stats--1.24-0.sql"
 #include "udfs/aggregation/bson_coercion_compat--1.24-0.sql"
 
+#include "udfs/schema_validation/schema_validation--1.24-0.sql"
 RESET search_path;

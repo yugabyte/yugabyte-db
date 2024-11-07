@@ -12,10 +12,50 @@
 #define BSON_EXPR_EVAL_H
 
 #include "io/helio_bson_core.h"
+#include <nodes/execnodes.h>
 
 typedef struct FuncExpr FuncExpr;
 
-typedef struct ExprEvalState ExprEvalState;
+/*
+ * State tracking necessary objects to evaluate a function
+ * against multiple datums. Reused across multiple expression
+ * executions.
+ */
+typedef struct ExprEvalState
+{
+	/*
+	 * Executor state that is retained for execution for the functions (PG Internal state).
+	 * This tracks parameters, query JIT state, memory contexts per row etc.
+	 */
+	EState *estate;
+
+	/*
+	 * State that tracks the compiled and JITed expression. Holds the IL steps and function
+	 * calls to be evaluated for the expression.
+	 */
+	ExprState *exprState;
+
+	/*
+	 * Holds the slots that will have the data for each row (Evaluation of expression requires
+	 * a tuple table slot holding the Datums that are inputs to the expression).
+	 * This will be updated per execution with the current tuple (datum) being evaluated.
+	 */
+	TupleTableSlot *tupleSlot;
+
+	/*
+	 * The Expression context used by PG (Internal state) for expression evaluation.
+	 * This holds per evaluation execution state including the incoming tuple table slot
+	 * and is mutated during the execution of the expression. This will be reset per
+	 * execution of the expression.
+	 */
+	ExprContext *exprContext;
+
+	/*
+	 * Pre-allocated memory for the array of datums placed in the tuple table slot.
+	 * This array can be reused across executions of the expression.
+	 */
+	Datum *datums;
+}ExprEvalState;
 
 ExprEvalState * GetExpressionEvalState(const bson_value_t *expression,
 									   MemoryContext memoryContext);

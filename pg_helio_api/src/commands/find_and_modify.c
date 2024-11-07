@@ -500,8 +500,11 @@ ProcessFindAndModifySpec(MongoCollection *collection, FindAndModifySpec *spec,
 
 		UpdateOneResult updateOneResult = { 0 };
 		bool forceInlineWrites = false;
+
+		/*todo: constrct evalState to support schema validation in command find_and_modify */
+		ExprEvalState *emptyEvalState = NULL;
 		UpdateOne(collection, &updateOneParams, shardKeyHash, transactionId,
-				  &updateOneResult, forceInlineWrites);
+				  &updateOneResult, forceInlineWrites, emptyEvalState);
 
 		bool performedUpdateOrUpsert = updateOneResult.isRowUpdated ||
 									   updateOneResult.upsertedObjectId != NULL;

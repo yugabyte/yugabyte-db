@@ -13,6 +13,7 @@
 #include <postgres.h>
 
 #include "metadata/collection.h"
+#include "operators/bson_expr_eval.h"
 
 
 /*
@@ -51,6 +52,9 @@ typedef struct
 
 	/* array filters specified in the update */
 	pgbson *arrayFilters;
+
+	/* whether to bypass document validation */
+	bool bypassDocumentValidation;
 } UpdateOneParams;
 
 
@@ -85,6 +89,6 @@ typedef struct
 
 void UpdateOne(MongoCollection *collection, UpdateOneParams *updateOneParams,
 			   int64 shardKeyHash, text *transactionId, UpdateOneResult *result,
-			   bool forceInlineWrites);
+			   bool forceInlineWrites, ExprEvalState *state);
 
 #endif

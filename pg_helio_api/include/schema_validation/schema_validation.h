@@ -13,11 +13,27 @@
 
 #include "metadata/collection.h"
 #include "operators/bson_expr_eval.h"
+extern bool EnableSchemaValidation;
 
 ExprEvalState * PrepareForSchemaValidation(pgbson *schemaValidationInfo, MemoryContext
 										   memoryContext);
 
 void ValidateSchemaOnDocumentInsert(ExprEvalState *evalState, const
 									bson_value_t *document);
+
+void ValidateSchemaOnDocumentUpdate(ValidationLevels validationLevelText,
+									ExprEvalState *evalState,
+									pgbson *sourceDocument, pgbson *targetDocument);
+
+/* Inline function that determines whether to perform schema validation */
+inline bool
+CheckSchemaValidationEnabled(MongoCollection *collection, bool bypassDocumentValidation)
+{
+	return EnableSchemaValidation && collection->schemaValidator.validationLevel !=
+		   ValidationLevel_Off && !bypassDocumentValidation &&
+		   collection->schemaValidator.validator != NULL &&
+		   collection->schemaValidator.validationAction == ValidationAction_Error;
+}
+
 
 #endif

@@ -94,14 +94,22 @@
 #include "utils/feature_counter.h"
 #include "utils/query_utils.h"
 #include "utils/version_utils.h"
+#include "schema_validation/schema_validation.h"
 
 #include "api_hooks.h"
 
 /* from tid.c */
 #define DatumGetItemPointer(X) ((ItemPointer) DatumGetPointer(X))
 #define ItemPointerGetDatum(X) PointerGetDatum(X)
+#define NeedExistingDocForValidation(state, collection) \
+	((state != NULL) && \
+	 (collection->schemaValidator.validationLevel == ValidationLevel_Moderate))
 
 extern int NumBsonDocumentsUpdated;
+
+/* This guc is temporary and is used to handle whether the parameter “bypassDocumentValidation” could be set in the request command.*/
+extern bool EnableBypassDocumentValidation;
+extern bool EnableSchemaValidation;
 
 /*
  * UpdateSpec describes a single update operation.
@@ -208,6 +216,9 @@ typedef struct
 
 	/* The optional shard level table OID for the update */
 	Oid shardTableOid;
+
+	/* False by default. It can be set to true in request command. */
+	bool bypassDocumentValidation;
 } BatchUpdateSpec;
 
 
@@ -245,6 +256,9 @@ typedef struct
 		UpdateOneParams updateOne;
 		bson_value_t updateBatch;
 	} param;
+
+	/* False by default. It can be set to true in request command. */
+	bool bypassDocumentValidation;
 } WorkerUpdateParam;
 
 
@@ -259,33 +273,41 @@ static UpdateSpec * BuildUpdateSpec(bson_iter_t *updateIterator);
 static void ProcessBatchUpdate(MongoCollection *collection,
 							   BatchUpdateSpec *batchSpec,
 							   text *transactionId,
-							   BatchUpdateResult *batchResult);
+							   BatchUpdateResult *batchResult,
+							   ExprEvalState *stateForSchemaValidation);
 static void ProcessBatchUpdateCore(MongoCollection *collection, List *updates,
 								   text *transactionId, BatchUpdateResult *batchResult,
-								   bool isOrdered, bool forceInlineWrites);
+								   bool isOrdered, bool forceInlineWrites,
+								   ExprEvalState *stateForSchemaValidation);
 static pgbson * ProcessBatchUpdateUnsharded(MongoCollection *collection,
 											BatchUpdateSpec *batchSpec,
 											text *transactionId, bool *hasWriteErrors);
 static void ProcessUpdate(MongoCollection *collection, UpdateSpec *updateSpec,
 						  text *transactionId, UpdateResult *result,
-						  bool forceInlineWrites);
+						  bool forceInlineWrites,
+						  ExprEvalState *stateForSchemaValidation);
 static UpdateAllMatchingDocsResult UpdateAllMatchingDocuments(MongoCollection *collection,
 															  pgbson *query,
 															  pgbson *update,
 															  pgbson *arrayFilters, bool
 															  hasShardKeyValueFilter,
-															  int64 shardKeyHash);
+															  int64 shardKeyHash,
+															  ExprEvalState *
+															  stateForSchemaValidation);
 static void CallUpdateOne(MongoCollection *collection, UpdateOneParams *updateOneParams,
 						  int64 shardKeyHash, text *transactionId,
-						  UpdateOneResult *result, bool forceInlineWrites);
+						  UpdateOneResult *result, bool forceInlineWrites,
+						  ExprEvalState *stateForSchemaValidation);
 static void UpdateOneInternal(MongoCollection *collectionId,
 							  UpdateOneParams *updateOneParams,
-							  int64 shardKeyHash, UpdateOneResult *result);
+							  int64 shardKeyHash, UpdateOneResult *result,
+							  ExprEvalState *stateForSchemaValidation);
 static void UpdateOneInternalWithRetryRecord(MongoCollection *collection, int64
 											 shardKeyHash,
 											 text *transactionId,
 											 UpdateOneParams *updateOneParams,
-											 UpdateOneResult *result);
+											 UpdateOneResult *result,
+											 ExprEvalState *stateForSchemaValidation);
 static bool SelectUpdateCandidate(uint64 collectionId, const char *shardTableName, int64
 								  shardKeyHash, pgbson *query,
 								  pgbson *update, pgbson *arrayFilters, pgbson *sort,
@@ -299,9 +321,11 @@ static bool DeleteDocumentByTID(uint64 collectionId, int64 shardKeyHash,
 static void UpdateOneObjectId(MongoCollection *collection,
 							  UpdateOneParams *updateOneParams,
 							  bson_value_t *objectId, text *transactionId,
-							  UpdateOneResult *result);
+							  UpdateOneResult *result,
+							  ExprEvalState *stateForSchemaValidation);
 static pgbson * UpsertDocument(MongoCollection *collection, pgbson *update,
-							   pgbson *query, pgbson *arrayFilters);
+							   pgbson *query, pgbson *arrayFilters,
+							   ExprEvalState *stateForSchemaValidation);
 static List * ValidateQueryAndUpdateDocuments(BatchUpdateSpec *batchSpec);
 static pgbson * BuildResponseMessage(BatchUpdateResult *batchResult);
 static void BuildUpdates(BatchUpdateSpec *spec);
@@ -314,14 +338,16 @@ static pgbson * SerializeUpdateOneResult(UpdateOneResult *result);
 static pgbson * SerializeUpdateOneParams(UpdateOneParams *params, pgbson *shardKeyBson);
 static void DeserializeUpdateOneResult(pgbson *resultBson, UpdateOneResult *result);
 static pgbson * SerializeUnshardedUpdateParams(const bson_value_t *updateSpec,
-											   bool isOrdered);
+											   bool isOrdered, bool
+											   bypassDocumentValidation);
 static Datum CallUpdateWorker(MongoCollection *collection, pgbson *serializedSpec,
 							  pgbsonsequence *updateDocs, int64 shardKeyHash,
 							  text *transactionId);
 static pgbson * ProcessUnshardedUpdateBatchWorker(MongoCollection *collection,
 												  List *updates, bool isOrdered,
 												  int64 shardKeyHash,
-												  text *transactionId);
+												  text *transactionId,
+												  ExprEvalState *stateForSchemaValidation);
 static void CallUpdateWorkerForUpdateOne(MongoCollection *collection,
 										 UpdateOneParams *updateOneParams,
 										 int64 shardKeyHash, text *transactionId,
@@ -432,13 +458,29 @@ command_update(PG_FUNCTION_ARGS)
 		collection->shardTableName[0] = '\0';
 	}
 
+	/*
+	 * for unsharded collections, we can push the whole update to the worker directly
+	 * so we don't create eval state here.
+	 */
+	ExprEvalState *state = NULL;
+
 	bool hasWriteErrors = false;
 	pgbson *result = NULL;
 	if (DefaultInlineWriteOperations ||
 		collection->shardKey != NULL || collection->shardTableName[0] != '\0')
 	{
+		/* Document validation occurs regardless of whether the validation action is set to error or warn.
+		 * If validation fails and the action is error, an error is thrown; if the action is warn, a warning is logged.
+		 * Since we do not need to log a warning in this context, we will avoid calling ValidateSchemaOnDocumentInsert when the validation action is set to warn.
+		 */
+		if (CheckSchemaValidationEnabled(collection, batchSpec->bypassDocumentValidation))
+		{
+			state = PrepareForSchemaValidation(collection->schemaValidator.validator,
+											   CurrentMemoryContext);
+		}
+
 		ProcessBatchUpdate(collection, batchSpec, transactionId,
-						   &batchResult);
+						   &batchResult, state);
 		result = BuildResponseMessage(&batchResult);
 		hasWriteErrors = batchResult.writeErrors != NIL;
 	}
@@ -447,6 +489,11 @@ command_update(PG_FUNCTION_ARGS)
 		/* Unsharded and the shard table is in a remote node we can push the whole batch to the worker directly. */
 		result = ProcessBatchUpdateUnsharded(collection, batchSpec, transactionId,
 											 &hasWriteErrors);
+	}
+
+	if (EnableSchemaValidation && state != NULL)
+	{
+		FreeExprEvalState(state, CurrentMemoryContext);
 	}
 
 	values[0] = PointerGetDatum(result);
@@ -514,6 +561,7 @@ BuildBatchUpdateSpec(bson_iter_t *updateCommandIter, pgbsonsequence *updateDocs)
 {
 	const char *collectionName = NULL;
 	bool isOrdered = true;
+	bool bypassDocumentValidation = false;
 
 	bson_value_t updateValue = { 0 };
 	while (bson_iter_next(updateCommandIter))
@@ -550,6 +598,19 @@ BuildBatchUpdateSpec(bson_iter_t *updateCommandIter, pgbsonsequence *updateDocs)
 
 			isOrdered = bson_iter_bool(updateCommandIter);
 		}
+		else if (strcmp(field, "bypassDocumentValidation") == 0)
+		{
+			/* TODO: unsupport by default */
+			if (!EnableBypassDocumentValidation)
+			{
+				continue;
+			}
+
+			EnsureTopLevelFieldType("update.bypassDocumentValidation", updateCommandIter,
+									BSON_TYPE_BOOL);
+
+			bypassDocumentValidation = bson_iter_bool(updateCommandIter);
+		}
 		else if (IsCommonSpecIgnoredField(field))
 		{
 			elog(DEBUG1, "Unrecognized command field: update.%s", field);
@@ -583,6 +644,7 @@ BuildBatchUpdateSpec(bson_iter_t *updateCommandIter, pgbsonsequence *updateDocs)
 	batchSpec->updateValue = updateValue;
 	batchSpec->updateSequence = updateDocs;
 	batchSpec->isOrdered = isOrdered;
+	batchSpec->bypassDocumentValidation = bypassDocumentValidation;
 
 	return batchSpec;
 }
@@ -800,7 +862,7 @@ UpdateResultInBatch(BatchUpdateResult *batchResult, UpdateResult *updateResult,
 static bool
 DoMultiUpdate(MongoCollection *collection, List *updates, text *transactionId,
 			  BatchUpdateResult *batchResult, int updateIndex, bool forceInlineWrites,
-			  int *recordsUpdated)
+			  int *recordsUpdated, ExprEvalState *stateForSchemaValidation)
 {
 	/*
 	 * Execute the query inside a sub-transaction, so we can restore order
@@ -829,7 +891,7 @@ DoMultiUpdate(MongoCollection *collection, List *updates, text *transactionId,
 			UpdateSpec *updateSpec = lfirst(updateCell);
 			UpdateResult updateResult = { 0 };
 			ProcessUpdate(collection, updateSpec, transactionId, &updateResult,
-						  forceInlineWrites);
+						  forceInlineWrites, stateForSchemaValidation);
 			UpdateResultInBatch(&batchResultInner, &updateResult, oldContext,
 								updateInnerIndex);
 			updateInnerIndex++;
@@ -869,7 +931,8 @@ DoMultiUpdate(MongoCollection *collection, List *updates, text *transactionId,
  */
 static bool
 DoSingleUpdate(MongoCollection *collection, UpdateSpec *updateSpec, text *transactionId,
-			   BatchUpdateResult *batchResult, int updateIndex, bool forceInlineWrites)
+			   BatchUpdateResult *batchResult, int updateIndex, bool forceInlineWrites,
+			   ExprEvalState *volatile stateForSchemaValidation)
 {
 	/*
 	 * Execute the query inside a sub-transaction, so we can restore order
@@ -890,7 +953,7 @@ DoSingleUpdate(MongoCollection *collection, UpdateSpec *updateSpec, text *transa
 	PG_TRY();
 	{
 		ProcessUpdate(collection, updateSpec, transactionId, &updateResult,
-					  forceInlineWrites);
+					  forceInlineWrites, stateForSchemaValidation);
 
 		/* Commit the inner transaction, return to outer xact context */
 		ReleaseCurrentSubTransaction();
@@ -955,7 +1018,9 @@ ProcessBatchUpdateUnsharded(MongoCollection *collection, BatchUpdateSpec *batchS
 									  NULL;
 
 	pgbson *updateSpecs = SerializeUnshardedUpdateParams(updateValue,
-														 batchSpec->isOrdered);
+														 batchSpec->isOrdered,
+														 batchSpec->
+														 bypassDocumentValidation);
 
 	/* since this is unsharded, the keyHash is just the collection id. */
 	int shardKeyHash = collection->collectionId;
@@ -970,7 +1035,7 @@ ProcessBatchUpdateUnsharded(MongoCollection *collection, BatchUpdateSpec *batchS
 static void
 ProcessBatchUpdateCore(MongoCollection *collection, List *updates, text *transactionId,
 					   BatchUpdateResult *batchResult, bool isOrdered,
-					   bool forceInlineWrites)
+					   bool forceInlineWrites, ExprEvalState *stateForSchemaValidation)
 {
 	batchResult->ok = 1;
 	batchResult->rowsMatched = 0;
@@ -1004,7 +1069,7 @@ ProcessBatchUpdateCore(MongoCollection *collection, List *updates, text *transac
 			int incrementCount = 0;
 			isSuccess = DoMultiUpdate(collection, updates, subTransactionId,
 									  batchResult, updateIndex, forceInlineWrites,
-									  &incrementCount);
+									  &incrementCount, stateForSchemaValidation);
 			if (!isSuccess || incrementCount == 0)
 			{
 				hasBatchUpdateFailed = true;
@@ -1020,7 +1085,8 @@ ProcessBatchUpdateCore(MongoCollection *collection, List *updates, text *transac
 		updateCell = list_nth_cell(updates, updateIndex);
 		UpdateSpec *updateSpec = lfirst(updateCell);
 		isSuccess = DoSingleUpdate(collection, updateSpec, subTransactionId,
-								   batchResult, updateIndex, forceInlineWrites);
+								   batchResult, updateIndex, forceInlineWrites,
+								   stateForSchemaValidation);
 		updateIndex++;
 
 		if (!isSuccess && isOrdered)
@@ -1045,7 +1111,8 @@ ProcessBatchUpdateCore(MongoCollection *collection, List *updates, text *transac
  */
 static void
 ProcessBatchUpdate(MongoCollection *collection, BatchUpdateSpec *batchSpec,
-				   text *transactionId, BatchUpdateResult *batchResult)
+				   text *transactionId, BatchUpdateResult *batchResult,
+				   ExprEvalState *stateForSchemaValidation)
 {
 	BuildUpdates(batchSpec);
 	List *updates = batchSpec->updates;
@@ -1064,7 +1131,7 @@ ProcessBatchUpdate(MongoCollection *collection, BatchUpdateSpec *batchSpec,
 	/* We are in sharded scenario so we need to go through the planner to do the writes and then call the worker. */
 	bool forceInlineWrites = false;
 	ProcessBatchUpdateCore(collection, updates, transactionId, batchResult, isOrdered,
-						   forceInlineWrites);
+						   forceInlineWrites, stateForSchemaValidation);
 }
 
 
@@ -1074,7 +1141,8 @@ ProcessBatchUpdate(MongoCollection *collection, BatchUpdateSpec *batchSpec,
  */
 static void
 ProcessUpdate(MongoCollection *collection, UpdateSpec *updateSpec,
-			  text *transactionId, UpdateResult *result, bool forceInlineWrites)
+			  text *transactionId, UpdateResult *result, bool forceInlineWrites,
+			  ExprEvalState *stateForSchemaValidation)
 {
 	pgbson *query = updateSpec->updateOneParams.query;
 	pgbson *update = updateSpec->updateOneParams.update;
@@ -1111,7 +1179,7 @@ ProcessUpdate(MongoCollection *collection, UpdateSpec *updateSpec,
 		UpdateAllMatchingDocsResult updateAllResult = UpdateAllMatchingDocuments(
 			collection, query, update, arrayFilters,
 			hasShardKeyValueFilter,
-			shardKeyHash);
+			shardKeyHash, stateForSchemaValidation);
 
 		result->rowsMatched = updateAllResult.matchedDocs;
 		result->rowsModified = updateAllResult.rowsUpdated;
@@ -1127,7 +1195,8 @@ ProcessUpdate(MongoCollection *collection, UpdateSpec *updateSpec,
 			 */
 			result->performedUpsert = true;
 			result->upsertedObjectId = UpsertDocument(collection, update, query,
-													  arrayFilters);
+													  arrayFilters,
+													  stateForSchemaValidation);
 		}
 	}
 	else
@@ -1144,7 +1213,8 @@ ProcessUpdate(MongoCollection *collection, UpdateSpec *updateSpec,
 			 * data.
 			 */
 			UpdateOne(collection, &updateSpec->updateOneParams, shardKeyHash,
-					  transactionId, &updateOneResult, forceInlineWrites);
+					  transactionId, &updateOneResult, forceInlineWrites,
+					  stateForSchemaValidation);
 		}
 		else if (isUpsert)
 		{
@@ -1177,7 +1247,7 @@ ProcessUpdate(MongoCollection *collection, UpdateSpec *updateSpec,
 				 */
 				UpdateOneObjectId(collection, &updateSpec->updateOneParams,
 								  &idFromQueryDocument, transactionId,
-								  &updateOneResult);
+								  &updateOneResult, stateForSchemaValidation);
 			}
 			else
 			{
@@ -1209,7 +1279,8 @@ ProcessUpdate(MongoCollection *collection, UpdateSpec *updateSpec,
 static UpdateAllMatchingDocsResult
 UpdateAllMatchingDocuments(MongoCollection *collection, pgbson *queryDoc,
 						   pgbson *updateDoc, pgbson *arrayFilters,
-						   bool hasShardKeyValueFilter, int64 shardKeyHash)
+						   bool hasShardKeyValueFilter, int64 shardKeyHash,
+						   ExprEvalState *schemaValidationExprEvalState)
 {
 	pgbson *objectIdFilter = GetObjectIdFilterFromQueryDocument(queryDoc);
 
@@ -1225,9 +1296,9 @@ UpdateAllMatchingDocuments(MongoCollection *collection, pgbson *queryDoc,
 
 	StringInfoData updateQuery;
 	int argCount = 3;
-	Oid argTypes[5];
-	Datum argValues[5];
-	char argNulls[5];
+	Oid argTypes[6];
+	Datum argValues[6];
+	char argNulls[6];
 
 	UpdateAllMatchingDocsResult result;
 	memset(&result, 0, sizeof(UpdateAllMatchingDocsResult));
@@ -1255,36 +1326,140 @@ UpdateAllMatchingDocuments(MongoCollection *collection, pgbson *queryDoc,
 	 * value if no update is needed is with the multi CTE approach mentioned above, which is a lot slower.
 	 *
 	 */
-	appendStringInfo(&updateQuery,
-					 "WITH u AS (UPDATE %s.%s"
-					 " SET document = (SELECT COALESCE(newDocument, document)"
-					 " FROM %s.bson_update_document(document, $2::%s, "
-					 "$1::%s, $3::%s, %s)) WHERE document OPERATOR(%s.@@) $1::%s ",
-					 ApiDataSchemaName, tableName,
-					 ApiInternalSchemaName,
-					 FullBsonTypeName, FullBsonTypeName, FullBsonTypeName,
-					 "false",
-					 ApiCatalogSchemaName,
-					 FullBsonTypeName);
-
-
-	if (hasShardKeyValueFilter)
+	if (EnableSchemaValidation && schemaValidationExprEvalState != NULL &&
+		IsClusterVersionAtleastThis(1, 24, 0))
 	{
-		appendStringInfoString(&updateQuery, "AND shard_key_value = $4 ");
+		/*
+		 * If schemaValidationExprEvalState is not NULL, we need to validate the document against the schema.
+		 * We do this by calling the schema_validation_against_update function which will return true if the document matches the schema.
+		 * We then use this result to determine if the document should be updated or not.
+		 * We use the same approach as above, but we add a CTE to validate the document against the schema.
+		 * A tricky here is that sourceDoc is not always necessary, only if validation level is moderate and newDoc does not match the schema.
+		 * So there is a conditional to add sourceDoc to the CTE if validation level is moderate.
+		 * The preformance of this approach is not ideal, but it is the best we can do with the current architecture.
+		 * WITH filtered_documents AS (
+		 * SELECT
+		 * object_id,
+		 * shard_key_value,
+		 * document,
+		 * (
+		 *  SELECT COALESCE(newDocument, document)
+		 *  FROM bson_update_document(
+		 *      document,
+		 *      $2::bson,
+		 *      $1::bson,
+		 *      $3::bson,
+		 *      false
+		 *  ) AS newDocument
+		 * ) AS newDocument
+		 * FROM documents_
+		 * WHERE document OPERATOR(@@) $1::bson
+		 * AND shard_key_value = $4
+		 * ),
+		 * v AS (
+		 * SELECT
+		 * object_id,
+		 * shard_key_value,
+		 * newDocument,
+		 * helio_api_internal.schema_validation_against_update($5, filtered_documents.newDocument, filtered_documents.document, false)
+		 * FROM filtered_documents
+		 * ),
+		 * u AS (
+		 * UPDATE documents_
+		 * SET document = newDocument
+		 * FROM v
+		 * WHERE documents_.object_id OPERATOR(=) v.object_id
+		 * AND documents_.shard_key_value = v.shard_key_value
+		 * RETURNING bson_update_returned_value(documents_.shard_key_value) AS updated
+		 * )
+		 * SELECT
+		 * (SELECT COUNT(*) FROM filtered_documents) AS total_count,
+		 * SUM(updated) AS total_updated
+		 * FROM u;
+		 */
+		appendStringInfo(&updateQuery,
+						 "WITH filtered_documents AS ("
+						 "SELECT object_id, shard_key_value, document, (SELECT COALESCE(newDocument, document)"
+						 " FROM %s.bson_update_document(document, $2::%s, "
+						 "$1::%s, $3::%s, %s)) as newDocument FROM %s.%s"
+						 " WHERE document OPERATOR(%s.@@) $1::%s ", ApiInternalSchemaName,
+						 FullBsonTypeName, FullBsonTypeName,
+						 FullBsonTypeName, "false", ApiDataSchemaName,
+						 tableName, ApiCatalogSchemaName, FullBsonTypeName);
+
+
+		if (hasShardKeyValueFilter)
+		{
+			appendStringInfoString(&updateQuery, "AND shard_key_value = $4 ");
+		}
+
+		if (objectIdFilter != NULL)
+		{
+			appendStringInfo(&updateQuery, "AND object_id OPERATOR(%s.=) $%d::%s",
+							 CoreSchemaName,
+							 hasShardKeyValueFilter ? 5 : 4,
+							 FullBsonTypeName);
+		}
+
+		int paramIndex = hasShardKeyValueFilter ? objectIdFilter != NULL ? 6 : 5 :
+						 objectIdFilter != NULL ? 5 : 4;
+
+		if (collection->schemaValidator.validationLevel == ValidationLevel_Moderate)
+		{
+			appendStringInfo(&updateQuery,
+							 "), v as (select object_id, shard_key_value, newDocument, %s.schema_validation_against_update($%d, filtered_documents.newDocument, filtered_documents.document, true) from filtered_documents), ",
+							 ApiInternalSchemaName, paramIndex);
+		}
+		else
+		{
+			appendStringInfo(&updateQuery,
+							 "), v as (select object_id, shard_key_value, newDocument, %s.schema_validation_against_update($%d, filtered_documents.newDocument, filtered_documents.document, false) from filtered_documents), ",
+							 ApiInternalSchemaName, paramIndex);
+		}
+
+		appendStringInfo(&updateQuery,
+						 " u as (update %s.%s set document = newDocument from v where %s.%s.object_id OPERATOR(%s.=) v.object_id and %s.%s.shard_key_value = v.shard_key_value",
+						 ApiDataSchemaName, tableName,
+						 ApiDataSchemaName, tableName,
+						 CoreSchemaName, ApiDataSchemaName, tableName);
+
+		appendStringInfo(&updateQuery,
+						 " RETURNING %s.bson_update_returned_value(%s.%s.shard_key_value) as updated)"
+						 " SELECT (SELECT COUNT(*) FROM filtered_documents) as total_count, SUM(updated) FROM u",
+						 ApiInternalSchemaName, ApiDataSchemaName, tableName);
 	}
-
-	if (objectIdFilter != NULL)
+	else
 	{
-		appendStringInfo(&updateQuery, "AND object_id OPERATOR(%s.=) $%d::%s",
-						 CoreSchemaName,
-						 hasShardKeyValueFilter ? 5 : 4,
+		appendStringInfo(&updateQuery,
+						 "WITH u AS (UPDATE %s.%s"
+						 " SET document = (SELECT COALESCE(newDocument, document)"
+						 " FROM %s.bson_update_document(document, $2::%s, "
+						 "$1::%s, $3::%s, %s)) WHERE document OPERATOR(%s.@@) $1::%s ",
+						 ApiDataSchemaName, tableName,
+						 ApiInternalSchemaName,
+						 FullBsonTypeName, FullBsonTypeName, FullBsonTypeName,
+						 "false",
+						 ApiCatalogSchemaName,
 						 FullBsonTypeName);
-	}
 
-	appendStringInfo(&updateQuery,
-					 " RETURNING %s.bson_update_returned_value(shard_key_value) as updated)"
-					 " SELECT COUNT(*), SUM(updated) FROM u",
-					 ApiInternalSchemaName);
+		if (hasShardKeyValueFilter)
+		{
+			appendStringInfoString(&updateQuery, "AND shard_key_value = $4 ");
+		}
+
+		if (objectIdFilter != NULL)
+		{
+			appendStringInfo(&updateQuery, "AND object_id OPERATOR(%s.=) $%d::%s",
+							 CoreSchemaName,
+							 hasShardKeyValueFilter ? 5 : 4,
+							 FullBsonTypeName);
+		}
+
+		appendStringInfo(&updateQuery,
+						 " RETURNING %s.bson_update_returned_value(shard_key_value) as updated)"
+						 " SELECT COUNT(*), SUM(updated) FROM u",
+						 ApiInternalSchemaName);
+	}
 
 	/* we use bytea because bson may not have the same OID on all nodes */
 	argTypes[0] = BYTEAOID;
@@ -1327,9 +1502,20 @@ UpdateAllMatchingDocuments(MongoCollection *collection, pgbson *queryDoc,
 		argNulls[objectIdParamIndex] = ' ';
 		argCount++;
 	}
-	else
+
+	if (schemaValidationExprEvalState != NULL)
 	{
-		argNulls[objectIdParamIndex] = 'n';
+		int paramIndex = hasShardKeyValueFilter ? objectIdFilter != NULL ? 5 : 4 :
+						 objectIdFilter != NULL ? 4 : 3;
+		bytea *input_bytea = (bytea *) palloc(VARHDRSZ + sizeof(ExprEvalState));
+		SET_VARSIZE(input_bytea, VARHDRSZ + sizeof(ExprEvalState));
+		memcpy(VARDATA(input_bytea), schemaValidationExprEvalState,
+			   sizeof(ExprEvalState));
+
+		argTypes[paramIndex] = BYTEAOID;
+		argValues[paramIndex] = PointerGetDatum(input_bytea);
+		argNulls[paramIndex] = ' ';
+		argCount++;
 	}
 
 	bool readOnly = false;
@@ -1383,10 +1569,10 @@ UpdateAllMatchingDocuments(MongoCollection *collection, pgbson *queryDoc,
 void
 UpdateOne(MongoCollection *collection, UpdateOneParams *updateOneParams,
 		  int64 shardKeyHash, text *transactionId, UpdateOneResult *result,
-		  bool forceInlineWrites)
+		  bool forceInlineWrites, ExprEvalState *stateForSchemaValidation)
 {
 	CallUpdateOne(collection, updateOneParams, shardKeyHash, transactionId, result,
-				  forceInlineWrites);
+				  forceInlineWrites, stateForSchemaValidation);
 
 	/* check for shard key value changes */
 	if (result->reinsertDocument)
@@ -1408,7 +1594,7 @@ UpdateOne(MongoCollection *collection, UpdateOneParams *updateOneParams,
 static void
 CallUpdateOne(MongoCollection *collection, UpdateOneParams *updateOneParams,
 			  int64 shardKeyHash, text *transactionId, UpdateOneResult *result,
-			  bool forceInlineWrites)
+			  bool forceInlineWrites, ExprEvalState *stateForSchemaValidation)
 {
 	/* If we can simply call the updateOne here, don't bother trying to spin up an SPI runtime
 	 * to call UpdateOne again.
@@ -1422,17 +1608,20 @@ CallUpdateOne(MongoCollection *collection, UpdateOneParams *updateOneParams,
 		{
 			UpdateOneInternalWithRetryRecord(collection, shardKeyHash,
 											 transactionId, updateOneParams,
-											 result);
+											 result, stateForSchemaValidation);
 		}
 		else
 		{
 			UpdateOneInternal(collection, updateOneParams,
-							  shardKeyHash, result);
+							  shardKeyHash, result, stateForSchemaValidation);
 		}
 	}
 	else
 	{
 		/* Otherwise, call the worker via worker update one */
+		/* pass down bypassDocumentValidation to updateOne*/
+		updateOneParams->bypassDocumentValidation = !EnableSchemaValidation ||
+													stateForSchemaValidation == NULL;
 		CallUpdateWorkerForUpdateOne(collection, updateOneParams, shardKeyHash,
 									 transactionId, result);
 	}
@@ -1528,7 +1717,8 @@ CallUpdateWorkerForUpdateOne(MongoCollection *collection,
 static void
 UpdateOneInternalWithRetryRecord(MongoCollection *collection, int64 shardKeyHash,
 								 text *transactionId, UpdateOneParams *updateOneParams,
-								 UpdateOneResult *result)
+								 UpdateOneResult *result,
+								 ExprEvalState *stateForSchemaValidation)
 {
 	RetryableWriteResult writeResult;
 
@@ -1554,7 +1744,7 @@ UpdateOneInternalWithRetryRecord(MongoCollection *collection, int64 shardKeyHash
 	{
 		/* no retry record exists, update the row and get the object ID */
 		UpdateOneInternal(collection, updateOneParams, shardKeyHash,
-						  result);
+						  result, stateForSchemaValidation);
 
 		pgbson *objectId = NULL;
 
@@ -1618,9 +1808,24 @@ command_update_worker(PG_FUNCTION_ARGS)
 	memset(&params, 0, sizeof(WorkerUpdateParam));
 	DeserializeUpdateWorkerSpec(updateInternalSpec, &params);
 
-	MongoCollection mongoCollection = { 0 };
-	UpdateMongoCollectionUsingIds(&mongoCollection, collectionId, shardOid);
-	mongoCollection.shardKey = params.shardKeyBson;
+	MongoCollection *mongoCollection = GetMongoCollectionByColId(collectionId, NoLock);
+	UpdateMongoCollectionUsingIds(mongoCollection, collectionId, shardOid);
+
+	mongoCollection->shardKey = params.shardKeyBson;
+
+	/* Document validation occurs regardless of whether the validation action is set to error or warn.
+	 * If validation fails and the action is error, an error is thrown; if the action is warn, a warning is logged.
+	 * Since we do not need to log a warning in this context, we will avoid calling ValidateSchemaOnDocumentInsert when the validation action is set to warn.
+	 * To reduce unnecessary overhead, we create evalState separately for updateOne and updateBatch.
+	 */
+	ExprEvalState *stateForSchemaValidation = NULL;
+
+	if (CheckSchemaValidationEnabled(mongoCollection, params.bypassDocumentValidation))
+	{
+		stateForSchemaValidation = PrepareForSchemaValidation(
+			mongoCollection->schemaValidator.validator,
+			CurrentMemoryContext);
+	}
 
 	if (params.isUpdateOne)
 	{
@@ -1630,18 +1835,25 @@ command_update_worker(PG_FUNCTION_ARGS)
 		if (transactionId != NULL)
 		{
 			/* transaction ID specified, use retryable write path */
-			UpdateOneInternalWithRetryRecord(&mongoCollection, shardKeyHash,
+			UpdateOneInternalWithRetryRecord(mongoCollection, shardKeyHash,
 											 transactionId,
-											 &params.param.updateOne, &result);
+											 &params.param.updateOne, &result,
+											 stateForSchemaValidation);
 		}
 		else
 		{
 			/* no transaction ID specified, do regular update */
-			UpdateOneInternal(&mongoCollection, &params.param.updateOne,
-							  shardKeyHash, &result);
+			UpdateOneInternal(mongoCollection, &params.param.updateOne,
+							  shardKeyHash, &result, stateForSchemaValidation);
 		}
 
 		pgbson *serializedResult = SerializeUpdateOneResult(&result);
+
+		if (EnableSchemaValidation && stateForSchemaValidation != NULL)
+		{
+			FreeExprEvalState(stateForSchemaValidation, CurrentMemoryContext);
+		}
+
 		PG_RETURN_POINTER(serializedResult);
 	}
 
@@ -1659,10 +1871,17 @@ command_update_worker(PG_FUNCTION_ARGS)
 		updates = BuildUpdateSpecList(&arrayIter, &hasUpsertIgnore);
 	}
 
-	pgbson *result = ProcessUnshardedUpdateBatchWorker(&mongoCollection,
+	pgbson *result = ProcessUnshardedUpdateBatchWorker(mongoCollection,
 													   updates, params.isOrdered,
 													   shardKeyHash,
-													   transactionId);
+													   transactionId,
+													   stateForSchemaValidation);
+
+	if (EnableSchemaValidation && stateForSchemaValidation != NULL)
+	{
+		FreeExprEvalState(stateForSchemaValidation, CurrentMemoryContext);
+	}
+
 	PG_RETURN_POINTER(result);
 }
 
@@ -1674,7 +1893,8 @@ command_update_worker(PG_FUNCTION_ARGS)
 static pgbson *
 ProcessUnshardedUpdateBatchWorker(MongoCollection *collection, List *updates, bool
 								  isOrdered,
-								  int64 shardKeyHash, text *transactionId)
+								  int64 shardKeyHash, text *transactionId,
+								  ExprEvalState *stateForSchemaValidation)
 {
 	int updateCount = list_length(updates);
 	if (updateCount == 0 || updateCount > MaxWriteBatchSize)
@@ -1693,7 +1913,7 @@ ProcessUnshardedUpdateBatchWorker(MongoCollection *collection, List *updates, bo
 	BatchUpdateResult batchUpdateResult;
 	memset(&batchUpdateResult, 0, sizeof(BatchUpdateResult));
 	ProcessBatchUpdateCore(collection, updates, transactionId, &batchUpdateResult,
-						   isOrdered, forceInlineWrites);
+						   isOrdered, forceInlineWrites, stateForSchemaValidation);
 
 	return SerializeBatchUpdateResult(&batchUpdateResult);
 }
@@ -1701,7 +1921,8 @@ ProcessUnshardedUpdateBatchWorker(MongoCollection *collection, List *updates, bo
 
 /* Serializes the update spec if any and if it is ordered or not as a pgbson to send to the worker. */
 static pgbson *
-SerializeUnshardedUpdateParams(const bson_value_t *updateSpec, bool isOrdered)
+SerializeUnshardedUpdateParams(const bson_value_t *updateSpec, bool isOrdered, bool
+							   bypassDocumentValidation)
 {
 	if (updateSpec != NULL && updateSpec->value_type != BSON_TYPE_ARRAY)
 	{
@@ -1724,6 +1945,8 @@ SerializeUnshardedUpdateParams(const bson_value_t *updateSpec, bool isOrdered)
 	}
 
 	PgbsonWriterAppendBool(&innerWriter, "isOrdered", -1, isOrdered);
+	PgbsonWriterAppendBool(&innerWriter, "bypassDocumentValidation", -1,
+						   bypassDocumentValidation);
 	PgbsonWriterEndDocument(&writer, &innerWriter);
 
 	return PgbsonWriterGetPgbson(&writer);
@@ -1753,6 +1976,9 @@ SerializeUpdateOneParams(UpdateOneParams *params, pgbson *shardKeyBson)
 	PgbsonWriterAppendDocument(&writer, "update", -1, params->update);
 
 	PgbsonWriterAppendBool(&writer, "isUpsert", -1, params->isUpsert != 0);
+
+	PgbsonWriterAppendBool(&writer, "bypassDocumentValidation", -1,
+						   params->bypassDocumentValidation);
 
 	if (params->sort != NULL)
 	{
@@ -1805,6 +2031,21 @@ DeserializeUpdateUnshardedWorkerSpec(const bson_value_t *value, WorkerUpdatePara
 
 			params->isOrdered = BsonValueAsBool(bson_iter_value(&iter));
 		}
+		else if (strcmp(key, "bypassDocumentValidation") == 0)
+		{
+			if (!EnableBypassDocumentValidation)
+			{
+				continue;
+			}
+
+			if (!BSON_ITER_HOLDS_BOOL(&iter))
+			{
+				ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR), (errmsg(
+																		   "Update worker expects updateUnsharded.bypassDocumentValidation to be a bool."))));
+			}
+
+			params->bypassDocumentValidation = BsonValueAsBool(bson_iter_value(&iter));
+		}
 		else
 		{
 			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR), (errmsg(
@@ -1833,6 +2074,7 @@ DeserializeUpdateWorkerSpec(pgbson *updateInternalSpec,
 
 	params->shardKeyBson = NULL;
 	params->isUpdateOne = false;
+	params->bypassDocumentValidation = false;
 
 	/* The top level is a pgbsonelement describing a type of update
 	 * Right now the only supported mode is single doc update (updateOne)
@@ -1896,6 +2138,10 @@ DeserializeUpdateWorkerSpec(pgbson *updateInternalSpec,
 		{
 			updateOneParams->returnDocument =
 				(UpdateReturnValue) bson_iter_int32(&internalIter);
+		}
+		else if (strcmp(key, "bypassDocumentValidation") == 0)
+		{
+			params->bypassDocumentValidation = bson_iter_bool(&internalIter);
 		}
 	}
 }
@@ -2001,7 +2247,8 @@ DeserializeUpdateOneResult(pgbson *resultBson, UpdateOneResult *result)
  */
 static void
 UpdateOneInternal(MongoCollection *collection, UpdateOneParams *updateOneParams,
-				  int64 shardKeyHash, UpdateOneResult *result)
+				  int64 shardKeyHash, UpdateOneResult *result,
+				  ExprEvalState *stateForSchemaValidation)
 {
 	/* initialize result */
 	result->isRowUpdated = false;
@@ -2014,7 +2261,9 @@ UpdateOneInternal(MongoCollection *collection, UpdateOneParams *updateOneParams,
 	UpdateCandidate updateCandidate = { 0 };
 
 	bool getExistingDoc = updateOneParams->returnDocument != UPDATE_RETURNS_NONE ||
-						  updateOneParams->returnFields != NULL;
+						  updateOneParams->returnFields != NULL ||
+						  NeedExistingDocForValidation(stateForSchemaValidation,
+													   collection);
 	bool foundDocument = SelectUpdateCandidate(collection->collectionId,
 											   collection->shardTableName,
 											   shardKeyHash,
@@ -2041,6 +2290,12 @@ UpdateOneInternal(MongoCollection *collection, UpdateOneParams *updateOneParams,
 			int64 newShardKeyHash =
 				ComputeShardKeyHashForDocument(collection->shardKey,
 											   collection->collectionId, newDoc);
+
+			if (EnableSchemaValidation && stateForSchemaValidation != NULL)
+			{
+				bson_value_t newDocValue = ConvertPgbsonToBsonValue(newDoc);
+				ValidateSchemaOnDocumentInsert(stateForSchemaValidation, &newDocValue);
+			}
 
 			if (newShardKeyHash == shardKeyHash)
 			{
@@ -2085,6 +2340,18 @@ UpdateOneInternal(MongoCollection *collection, UpdateOneParams *updateOneParams,
 				ComputeShardKeyHashForDocument(collection->shardKey,
 											   collection->collectionId,
 											   updatedPgbson);
+
+			if (EnableSchemaValidation && stateForSchemaValidation != NULL)
+			{
+				pgbson *sourceDocument = updateCandidate.originalDocument != (Datum) 0
+										 ? DatumGetPgBson(
+					updateCandidate.originalDocument)
+										 : NULL;
+				ValidateSchemaOnDocumentUpdate(
+					collection->schemaValidator.validationLevel, stateForSchemaValidation,
+					sourceDocument,
+					updatedPgbson);
+			}
 
 			if (newShardKeyHash == shardKeyHash)
 			{
@@ -2463,7 +2730,7 @@ DeleteDocumentByTID(uint64 collectionId, int64 shardKeyHash, ItemPointer tid)
 static void
 UpdateOneObjectId(MongoCollection *collection, UpdateOneParams *updateOneParams,
 				  bson_value_t *objectId, text *transactionId,
-				  UpdateOneResult *result)
+				  UpdateOneResult *result, ExprEvalState *stateForSchemaValidation)
 {
 	/* initialize result */
 	result->isRowUpdated = false;
@@ -2512,7 +2779,7 @@ UpdateOneObjectId(MongoCollection *collection, UpdateOneParams *updateOneParams,
 
 		bool forceInlineWrites = false;
 		CallUpdateOne(collection, updateOneParams, shardKeyValue,
-					  transactionId, result, forceInlineWrites);
+					  transactionId, result, forceInlineWrites, stateForSchemaValidation);
 
 		if (result->isRowUpdated || result->updateSkipped)
 		{
@@ -2541,7 +2808,8 @@ UpdateOneObjectId(MongoCollection *collection, UpdateOneParams *updateOneParams,
  */
 static pgbson *
 UpsertDocument(MongoCollection *collection, pgbson *update,
-			   pgbson *query, pgbson *arrayFilters)
+			   pgbson *query, pgbson *arrayFilters,
+			   ExprEvalState *stateForSchemaValidation)
 {
 	pgbson *emptyDocument = PgbsonInitEmpty();
 	pgbson *newDoc = BsonUpdateDocument(emptyDocument, update, query, arrayFilters);
@@ -2551,6 +2819,12 @@ UpsertDocument(MongoCollection *collection, pgbson *update,
 									   newDoc);
 
 	pgbson *objectId = PgbsonGetDocumentId(newDoc);
+
+	if (EnableSchemaValidation && stateForSchemaValidation != NULL)
+	{
+		bson_value_t newDocValue = ConvertPgbsonToBsonValue(newDoc);
+		ValidateSchemaOnDocumentInsert(stateForSchemaValidation, &newDocValue);
+	}
 
 	InsertDocument(collection->collectionId, collection->shardTableName, newShardKeyHash,
 				   objectId, newDoc);

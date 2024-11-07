@@ -80,7 +80,6 @@ SELECT helio_api.insert('schema_validation_insertion', '{"insert":"col2", "docum
  ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
 (1 row)
 
-set helio_api.enableBypassDocumentValidation = false;
 ---------------------------------------------simple case-----------------------------------------------------
 -- field 
 SELECT helio_api.create_collection_view('schema_validation_insertion', '{ "create": "col3", "validator": {"a":{"$type":"int"}}}');
@@ -201,4 +200,233 @@ SELECT shard_key_value, object_id, document from helio_api.collection('schema_va
   4322365043291501017 | { "" : "1" }    | { "_id" : "1", "a" : { "$numberInt" : "1" } }
   5505078723908235407 | { "" : "1001" } | { "_id" : "1001", "a" : "world" }
 (8 rows)
+
+---------------------------------------------update-----------------------------------------------------
+-- sharded collection test
+-- will succeed as validationAction is warn
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":1},"u":{"$set":{"a":"one"}}}]}');
+                                                               update                                                               
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+-- set validation action to error
+SELECT helio_api.coll_mod('schema_validation_insertion', 'col3', '{"collMod":"col3", "validationAction": "error"}');
+             coll_mod              
+---------------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- should throw error
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":4},"u":{"$set":{"a":"four"}}}]}');
+                                                                                                                                              update                                                                                                                                              
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+-- should succeed
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":3},"u":{"$set":{"a":300}}}]}');
+                                                               update                                                               
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+-- upsert succeeded
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":"abc"},"u":{"$set":{"_id":500, "a":500}}, "upsert":true}]}');
+                                                                                                                  update                                                                                                                   
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""500"" } } ] }",t)
+(1 row)
+
+-- upsert failed
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":"abc"},"u":{"$set":{"a":"abcd"}}, "upsert":true}]}');
+                                                                                                                                              update                                                                                                                                              
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+-- should succeed with bypassDocumentValidation
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":4},"u":{"$set":{"a":"four"}}}], "bypassDocumentValidation": true}');
+                                                               update                                                               
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+-- multiple updates
+-- throw error as multi update is not allowed on sharded collection
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":2},"u":{"$set":{"a":200}}, "multi":true} ]}');
+                                                                                                                                                                             update                                                                                                                                                                             
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""319029277"" }, ""errmsg"" : ""Invalid write detected. Please validate the collection and/or shard key being written to"" } ] }",f)
+(1 row)
+
+SELECT shard_key_value, object_id, document from helio_api.collection('schema_validation_insertion','col3');
+   shard_key_value    |             object_id             |                               document                               
+---------------------------------------------------------------------
+ -1389566185330078543 | { "" : "1002" }                   | { "_id" : "1002", "a" : { "$numberInt" : "2" } }
+ -1389566185330078543 | { "" : "3" }                      | { "_id" : "3", "a" : { "$numberInt" : "2" } }
+  2996843418540442358 | { "" : "4" }                      | { "_id" : "4", "a" : { "$numberInt" : "300" } }
+  5126337298865006124 | { "" : "5" }                      | { "_id" : "5", "a" : "four" }
+  6587320470102004679 | { "" : { "$numberInt" : "500" } } | { "_id" : { "$numberInt" : "500" }, "a" : { "$numberInt" : "500" } }
+  5505078723908235407 | { "" : "1001" }                   | { "_id" : "1001", "a" : "world" }
+  3587377943449965360 | { "" : "7" }                      | { "_id" : "7", "a" : "hello" }
+  1786987034919379147 | { "" : "2" }                      | { "_id" : "2", "a" : { "$numberInt" : "5" } }
+  1872533437322552880 | { "" : "1" }                      | { "_id" : "1", "a" : "one" }
+(9 rows)
+
+-- will throw error as validationLevel is strict
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":"four"},"u":{"$set":{"a":"fourty"}}} ]}');
+                                                                                                                                              update                                                                                                                                              
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+-- moderate case
+SELECT helio_api.coll_mod('schema_validation_insertion', 'col3', '{"collMod":"col3", "validationLevel": "moderate"}');
+             coll_mod              
+---------------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- will succeed as validationLevel is moderate
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":"four"},"u":{"$set":{"a":"fourty"}}} ]}');
+                                                               update                                                               
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+SELECT shard_key_value, object_id, document from helio_api.collection('schema_validation_insertion','col3');
+   shard_key_value    |             object_id             |                               document                               
+---------------------------------------------------------------------
+  3501436727987220735 | { "" : "5" }                      | { "_id" : "5", "a" : "fourty" }
+ -1389566185330078543 | { "" : "1002" }                   | { "_id" : "1002", "a" : { "$numberInt" : "2" } }
+ -1389566185330078543 | { "" : "3" }                      | { "_id" : "3", "a" : { "$numberInt" : "2" } }
+  2996843418540442358 | { "" : "4" }                      | { "_id" : "4", "a" : { "$numberInt" : "300" } }
+  6587320470102004679 | { "" : { "$numberInt" : "500" } } | { "_id" : { "$numberInt" : "500" }, "a" : { "$numberInt" : "500" } }
+  5505078723908235407 | { "" : "1001" }                   | { "_id" : "1001", "a" : "world" }
+  3587377943449965360 | { "" : "7" }                      | { "_id" : "7", "a" : "hello" }
+  1786987034919379147 | { "" : "2" }                      | { "_id" : "2", "a" : { "$numberInt" : "5" } }
+  1872533437322552880 | { "" : "1" }                      | { "_id" : "1", "a" : "one" }
+(9 rows)
+
+-- batch update
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":500},"u":{"$set":{"a":5000}}}, {"q":{"a":"four"},"u":{"$set":{"a":"fourty"}}}, {"q":{"a":6},"u":{"$set":{"a":600, "_id":600}}, "upsert": true}, {"q":{"a":"string"},"u":{"$set":{"a":"str"}}, "upsert":true} ]}');
+                                                                                                                                                                                                 update                                                                                                                                                                                                  
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""2""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""2"" }, ""_id"" : { ""$numberInt"" : ""600"" } } ], ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""3"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+ 
+--unsharded collection test
+SELECT helio_api.create_collection_view('schema_validation_insertion', '{ "create": "col4", "validator": {"a":{"$type":"int"}}, "validationLevel": "strict", "validationAction": "warn"}');
+NOTICE:  creating collection
+         create_collection_view         
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert('schema_validation_insertion', '{"insert":"col4", "documents":[{"_id":"1", "a":1}, {"_id":"2", "a":2}, {"_id":"3", "a":3}]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT helio_api.insert('schema_validation_insertion', '{"insert":"col4", "documents":[{"_id":"4", "a":"hello"}]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+-- will succeed as validationAction is warn
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":1},"u":{"$set":{"a":"one"}}}]}');
+                                                               update                                                               
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+SELECT helio_api.coll_mod('schema_validation_insertion', 'col4', '{"collMod":"col4", "validationAction": "error"}');
+             coll_mod              
+---------------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- should throw error
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":2},"u":{"$set":{"a":"one"}}}]}');
+                                                                                                                                              update                                                                                                                                              
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+-- should succeed
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":3},"u":{"$set":{"a":300}}}]}');
+                                                               update                                                               
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+-- upsert succeeded
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":"abc"},"u":{"$set":{"_id":500, "a":500}}, "upsert":true}]}');
+                                                                                                                  update                                                                                                                   
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""500"" } } ] }",t)
+(1 row)
+
+-- upsert failed
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":"abc"},"u":{"$set":{"a":"abcd"}}, "upsert":true}]}');
+                                                                                                                                              update                                                                                                                                              
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+-- should succeed with bypassDocumentValidation
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":2},"u":{"$set":{"a":"one"}}}], "bypassDocumentValidation": true}');
+                                                               update                                                               
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+-- multiple updates
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":"one"},"u":{"$set":{"a":200}}, "multi":true} ]}');
+                                                               update                                                               
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""2""}, ""n"" : { ""$numberLong"" : ""2""} }",t)
+(1 row)
+
+-- will throw error 
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":300},"u":{"$set":{"a":"th"}}, "multi":true} ]}');
+                                                                                                                                              update                                                                                                                                              
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+-- will throw error as validationLevel is strict
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":"hello"},"u":{"$set":{"a":"world"}}} ]}');
+                                                                                                                                              update                                                                                                                                              
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""525074461"" }, ""errmsg"" : ""Document failed validation"" } ] }",f)
+(1 row)
+
+-- moderate case
+SELECT helio_api.coll_mod('schema_validation_insertion', 'col4', '{"collMod":"col4", "validationLevel": "moderate"}');
+             coll_mod              
+---------------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- will succeed as validationLevel is moderate
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":"hello"},"u":{"$set":{"a":"ten"}}} ]}');
+                                                               update                                                               
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+SELECT shard_key_value, object_id, document from helio_api.collection('schema_validation_insertion','col4');
+ shard_key_value |             object_id             |                               document                               
+---------------------------------------------------------------------
+          177716 | { "" : "1" }                      | { "_id" : "1", "a" : { "$numberInt" : "200" } }
+          177716 | { "" : "2" }                      | { "_id" : "2", "a" : { "$numberInt" : "200" } }
+          177716 | { "" : "3" }                      | { "_id" : "3", "a" : { "$numberInt" : "300" } }
+          177716 | { "" : "4" }                      | { "_id" : "4", "a" : "ten" }
+          177716 | { "" : { "$numberInt" : "500" } } | { "_id" : { "$numberInt" : "500" }, "a" : { "$numberInt" : "500" } }
+(5 rows)
 

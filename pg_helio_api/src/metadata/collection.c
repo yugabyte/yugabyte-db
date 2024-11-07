@@ -384,6 +384,13 @@ GetMongoCollectionByColId(uint64 collectionId, LOCKMODE lockMode)
 																CollectionsCacheContext);
 	}
 
+	if (collection.schemaValidator.validator != NULL)
+	{
+		collection.schemaValidator.validator =
+			CopyPgbsonIntoMemoryContext(collection.schemaValidator.validator,
+										CollectionsCacheContext);
+	}
+
 	/* add to relation ID -> collection hash */
 	entryByRelId = hash_search(RelationIdToCollectionHash, &(collection.relationId),
 							   HASH_ENTER, &foundInCache);
@@ -771,7 +778,7 @@ GetMongoCollectionFromCatalogById(uint64 collectionId, Oid relationId,
 	Datum argValues[1];
 
 	memset(collection, 0, sizeof(MongoCollection));
-
+	MemoryContext outerContext = CurrentMemoryContext;
 	SPI_connect();
 
 	initStringInfo(&query);
@@ -848,7 +855,7 @@ GetMongoCollectionFromCatalogById(uint64 collectionId, Oid relationId,
 				/* The pgbson returned by DatumGetPointer doesn't have 4B VARHDR, add it with cloning func */
 				validator = PgbsonCloneFromPgbson(validator);
 				collection->schemaValidator.validator =
-					CopyPgbsonIntoMemoryContext(validator, CurrentMemoryContext);
+					CopyPgbsonIntoMemoryContext(validator, outerContext);
 			}
 
 			/* validation level stored as text */

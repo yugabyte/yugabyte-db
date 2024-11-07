@@ -734,13 +734,11 @@ ProcessBatchInsertion(MongoCollection *collection, BatchInsertionSpec *batchSpec
 
 	ExprEvalState *evalState = NULL;
 
-	/* In MongoDB, document validation occurs regardless of whether the validation action is set to error or warn.
+	/* Document validation occurs regardless of whether the validation action is set to error or warn.
 	 * If validation fails and the action is error, an error is thrown; if the action is warn, a warning is logged.
 	 * Since we do not need to log a warning in this context, we will avoid calling ValidateSchemaOnDocumentInsert when the validation action is set to warn.
 	 */
-	if (EnableSchemaValidation && !batchSpec->bypassDocumentValidation &&
-		collection->schemaValidator.validator != NULL &&
-		collection->schemaValidator.validationAction == ValidationAction_Error)
+	if (CheckSchemaValidationEnabled(collection, batchSpec->bypassDocumentValidation))
 	{
 		evalState = PrepareForSchemaValidation(collection->schemaValidator.validator,
 											   CurrentMemoryContext);

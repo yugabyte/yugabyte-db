@@ -37,10 +37,6 @@ SELECT helio_api.insert('schema_validation_insertion', '{"insert":"col2", "docum
 SELECT helio_api.insert('schema_validation_insertion', '{"insert":"col2", "documents":[{"_id":"2", "a":1}]}');
 set helio_api.enableBypassDocumentValidation = true;
 SELECT helio_api.insert('schema_validation_insertion', '{"insert":"col2", "documents":[{"_id":"2", "a":1}], "bypassDocumentValidation": true}');
-set helio_api.enableBypassDocumentValidation = false;
-
-
-
 
 ---------------------------------------------simple case-----------------------------------------------------
 -- field 
@@ -68,3 +64,68 @@ SELECT helio_api.coll_mod('schema_validation_insertion', 'col3', '{"collMod":"co
 SELECT helio_api.insert('schema_validation_insertion','{"insert":"col3", "documents":[{"_id":"7", "a":"hello"}]}');
 -- 6 document should be inserted
 SELECT shard_key_value, object_id, document from helio_api.collection('schema_validation_insertion','col3') ORDER BY shard_key_value, object_id;
+
+
+---------------------------------------------update-----------------------------------------------------
+-- sharded collection test
+-- will succeed as validationAction is warn
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":1},"u":{"$set":{"a":"one"}}}]}');
+-- set validation action to error
+SELECT helio_api.coll_mod('schema_validation_insertion', 'col3', '{"collMod":"col3", "validationAction": "error"}');
+-- should throw error
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":4},"u":{"$set":{"a":"four"}}}]}');
+-- should succeed
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":3},"u":{"$set":{"a":300}}}]}');
+-- upsert succeeded
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":"abc"},"u":{"$set":{"_id":500, "a":500}}, "upsert":true}]}');
+-- upsert failed
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":"abc"},"u":{"$set":{"a":"abcd"}}, "upsert":true}]}');
+-- should succeed with bypassDocumentValidation
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":4},"u":{"$set":{"a":"four"}}}], "bypassDocumentValidation": true}');
+
+-- multiple updates
+-- throw error as multi update is not allowed on sharded collection
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":2},"u":{"$set":{"a":200}}, "multi":true} ]}');
+SELECT shard_key_value, object_id, document from helio_api.collection('schema_validation_insertion','col3');
+
+-- will throw error as validationLevel is strict
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":"four"},"u":{"$set":{"a":"fourty"}}} ]}');
+-- moderate case
+SELECT helio_api.coll_mod('schema_validation_insertion', 'col3', '{"collMod":"col3", "validationLevel": "moderate"}');
+-- will succeed as validationLevel is moderate
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":"four"},"u":{"$set":{"a":"fourty"}}} ]}');
+SELECT shard_key_value, object_id, document from helio_api.collection('schema_validation_insertion','col3');
+-- batch update
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col3", "updates":[{"q":{"a":500},"u":{"$set":{"a":5000}}}, {"q":{"a":"four"},"u":{"$set":{"a":"fourty"}}}, {"q":{"a":6},"u":{"$set":{"a":600, "_id":600}}, "upsert": true}, {"q":{"a":"string"},"u":{"$set":{"a":"str"}}, "upsert":true} ]}');
+ 
+--unsharded collection test
+SELECT helio_api.create_collection_view('schema_validation_insertion', '{ "create": "col4", "validator": {"a":{"$type":"int"}}, "validationLevel": "strict", "validationAction": "warn"}');
+SELECT helio_api.insert('schema_validation_insertion', '{"insert":"col4", "documents":[{"_id":"1", "a":1}, {"_id":"2", "a":2}, {"_id":"3", "a":3}]}');
+SELECT helio_api.insert('schema_validation_insertion', '{"insert":"col4", "documents":[{"_id":"4", "a":"hello"}]}');
+-- will succeed as validationAction is warn
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":1},"u":{"$set":{"a":"one"}}}]}');
+SELECT helio_api.coll_mod('schema_validation_insertion', 'col4', '{"collMod":"col4", "validationAction": "error"}');
+-- should throw error
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":2},"u":{"$set":{"a":"one"}}}]}');
+-- should succeed
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":3},"u":{"$set":{"a":300}}}]}');
+-- upsert succeeded
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":"abc"},"u":{"$set":{"_id":500, "a":500}}, "upsert":true}]}');
+-- upsert failed
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":"abc"},"u":{"$set":{"a":"abcd"}}, "upsert":true}]}');
+-- should succeed with bypassDocumentValidation
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":2},"u":{"$set":{"a":"one"}}}], "bypassDocumentValidation": true}');
+
+-- multiple updates
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":"one"},"u":{"$set":{"a":200}}, "multi":true} ]}');
+-- will throw error 
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":300},"u":{"$set":{"a":"th"}}, "multi":true} ]}');
+
+-- will throw error as validationLevel is strict
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":"hello"},"u":{"$set":{"a":"world"}}} ]}');
+-- moderate case
+SELECT helio_api.coll_mod('schema_validation_insertion', 'col4', '{"collMod":"col4", "validationLevel": "moderate"}');
+-- will succeed as validationLevel is moderate
+SELECT helio_api.update('schema_validation_insertion', '{"update":"col4", "updates":[{"q":{"a":"hello"},"u":{"$set":{"a":"ten"}}} ]}');
+
+SELECT shard_key_value, object_id, document from helio_api.collection('schema_validation_insertion','col4');
