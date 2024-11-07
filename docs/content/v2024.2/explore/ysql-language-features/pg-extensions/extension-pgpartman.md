@@ -73,7 +73,7 @@ SELECT partman.create_parent(
 - p_type - Either 'native' or 'partman'.
 
   - native - Use the native partitioning methods that are built into PostgreSQL 10+.
-  - partman - Create a trigger-based partition set (deprecated)
+  - partman - Create a trigger-based partition set (disabled in YugabyteDB)
 
 - p_interval – The time interval or integer range for each partition. For example, daily, hourly, monthly, and so on.
 - p_premake – The number of partitions to create in advance to support new inserts.
@@ -90,11 +90,11 @@ For a complete description of the `create_parent` function, see [Creation Functi
 For more information, see [tables](https://github.com/yugabyte/yugabyte-db/blob/master/src/postgres/third-party-extensions/pg_partman/doc/pg_partman.md#tables) in pg_partman documentation.
 {{</lead>}}
 
-`part_config` table is used to make decisions about:
+`part_config` table can be used to make decisions about:
 
 - What new partitions to create?
 - Which old partitions to drop or detach from the partition set?
-- Updates to the table re-configure the partition maintenance
+- What table updates are required?
 
 An example is as follows:
 
@@ -106,6 +106,14 @@ SELECT parent_table, control, partition_interval, premake, retention FROM partma
  parent_table  |  control   | partition_interval | premake | retention
 ---------------+------------+--------------------+---------+-----------
  public.orders | order_date | 1 mon              |       5 |
+```
+
+You can update the part_config table as follows:
+
+```sql
+UPDATE partman.part_config
+SET partition_interval = 2 months
+WHERE parent_table = 'public.orders';
 ```
 
 ### Partition maintenance with pg_cron
@@ -156,3 +164,10 @@ You can schedule the pg_partman function `run_maintenance` which automatically c
     ```
 
 ## Limitations
+
+Following are limitations with the pg_partman extension enabled in YugabyteDB.
+
+### Disable other partition methods except native
+
+Non-native partitioning refers to the traditional method of partitioning tables before PostgreSQL introduced native declarative partitioning in version 10. It uses table inheritance and triggers to route data to the appropriate child tables.
+
