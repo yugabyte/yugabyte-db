@@ -899,7 +899,7 @@ case $command in
           shift 2
           ;;
         -h|--db_host)
-          db_host=$2
+          db_host=$(echo "$2" | sed 's/^\[\(.*\)\]$/\1/')
           shift 2
           ;;
         -P|--db_port)
@@ -911,7 +911,7 @@ case $command in
           shift
           ;;
         -n|--prometheus_host)
-          prometheus_host=$2
+          prometheus_host=$(echo "$2" | sed 's/^\[\(.*\)\]$/\1/')
           shift 2
           ;;
         -t|--prometheus_port)
@@ -1022,7 +1022,7 @@ case $command in
           shift 2
           ;;
         -h|--db_host)
-          db_host=$2
+          db_host=$(echo "$2" | sed 's/^\[\(.*\)\]$/\1/')
           shift 2
           ;;
         -P|--db_port)
@@ -1030,7 +1030,7 @@ case $command in
           shift 2
           ;;
         -n|--prometheus_host)
-          prometheus_host=$2
+          prometheus_host=$(echo "$2" | sed 's/^\[\(.*\)\]$/\1/')
           shift 2
           ;;
         -t|--prometheus_port)
