@@ -136,7 +136,7 @@ DEFINE_RUNTIME_bool(skip_flushed_entries_in_first_replayed_segment, true,
             "If applicable, only replay entries that are not flushed to RocksDB or necessary "
             "to bootstrap retryable requests in the first replayed wal segment.");
 
-DEFINE_RUNTIME_bool(use_bootstrap_intent_ht_filter, true,
+DEFINE_RUNTIME_bool(use_bootstrap_intent_ht_filter, false,
                     "Use min replay txn start time filter for bootstrap.");
 
 DECLARE_int32(retryable_request_timeout_secs);

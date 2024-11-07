@@ -109,7 +109,7 @@ DEFINE_RUNTIME_AUTO_bool(cdc_write_post_apply_metadata, kLocalPersisted, false, 
     "Write post-apply transaction metadata to intentsdb for transaction that have been applied but "
     " have not yet been streamed by CDC.");
 
-DEFINE_RUNTIME_bool(cdc_immediate_transaction_cleanup, true,
+DEFINE_RUNTIME_bool(cdc_immediate_transaction_cleanup, false,
     "Clean up transactions from memory after apply, even if its changes have not yet been "
     "streamed by CDC.");
 DEFINE_test_flag(int32, stopactivetxns_sleep_in_abort_cb_ms, 0,
