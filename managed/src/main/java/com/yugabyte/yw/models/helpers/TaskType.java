@@ -1066,7 +1066,9 @@ public enum TaskType {
 
   UpdateUniverseFields(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseFields.class),
 
-  RunNodeCommand(com.yugabyte.yw.commissioner.tasks.subtasks.RunNodeCommand.class);
+  RunNodeCommand(com.yugabyte.yw.commissioner.tasks.subtasks.RunNodeCommand.class),
+
+  MasterLeaderStepdown(com.yugabyte.yw.commissioner.tasks.subtasks.MasterLeaderStepdown.class);
 
   private final Class<? extends ITask> taskClass;
 

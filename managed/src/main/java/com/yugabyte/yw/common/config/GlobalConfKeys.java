@@ -1500,4 +1500,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Claim in the ID token containing the list of groups. Default value: \"groups\"",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Boolean> enableRFChange =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_rf_change",
+          ScopeType.GLOBAL,
+          "Enable RF Change For Existing Universes",
+          "Enable RF change for existing universes through edit universe flow",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL, ConfKeyTags.FEATURE_FLAG));
 }

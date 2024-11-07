@@ -70,6 +70,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ManageAlertDefinitions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageLoadBalancerGroup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.MarkUniverseForHealthScriptReUpload;
+import com.yugabyte.yw.commissioner.tasks.subtasks.MasterLeaderStepdown;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
 import com.yugabyte.yw.commissioner.tasks.subtasks.NodeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
@@ -4877,6 +4878,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SubTaskGroup subTaskGroup = createSubTaskGroup("WaitForTServerHeartBeats");
     WaitForTServerHeartBeats task = createTask(WaitForTServerHeartBeats.class);
     WaitForTServerHeartBeats.Params params = new WaitForTServerHeartBeats.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createMasterLeaderStepdownTask() {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("MasterLeaderStepdown");
+    MasterLeaderStepdown task = createTask(MasterLeaderStepdown.class);
+    MasterLeaderStepdown.Params params = new MasterLeaderStepdown.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     task.initialize(params);
     subTaskGroup.addSubTask(task);
