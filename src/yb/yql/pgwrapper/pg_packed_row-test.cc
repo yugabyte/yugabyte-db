@@ -1054,6 +1054,31 @@ TEST_P(PgPackedRowTest, RestorePITRSnapshotAfterOldSchemaGC) {
   ASSERT_OK(snapshot_util_->RestoreSnapshot(snapshot_id, hybrid_time));
 }
 
+TEST_P(PgPackedRowTest, DisableRepackUpdatedColumns) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test(v1 INT, v2 INT) SPLIT INTO 1 TABLETS"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 1)"));
+  ASSERT_OK(conn.Execute("UPDATE test SET v2 = 3"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+  ASSERT_OK(cluster_->CompactTablets());
+}
+
+TEST_P(PgPackedRowTest, DisableRepackWithNewSchema) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test(v1 INT, v2 INT) SPLIT INTO 1 TABLETS"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 1)"));
+  ASSERT_OK(conn.Execute(
+      "ALTER TABLE test ADD COLUMN v3 TIMESTAMP DEFAULT CURRENT_TIMESTAMP NULL"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+  ASSERT_OK(cluster_->CompactTablets());
+}
+
 INSTANTIATE_TEST_SUITE_P(
     PackingVersion, PgPackedRowTest, ::testing::ValuesIn(dockv::kPackedRowVersionArray),
     PackedRowVersionToString);
