@@ -23,3 +23,17 @@ func (a *AuthAPIClient) GetListOfReleases(includeMetadata bool) (
 		GetListOfReleases(a.ctx, a.CustomerUUID).
 		IncludeMetadata(includeMetadata)
 }
+
+// ListNewReleases API to fetch list of new releases
+func (a *AuthAPIClient) ListNewReleases() (
+	ybaclient.NewReleaseManagementApiApiListNewReleasesRequest,
+) {
+	return a.APIClient.NewReleaseManagementApi.ListNewReleases(a.ctx, a.CustomerUUID)
+}
+
+// GetNewRelease API to fetch list of new releases
+func (a *AuthAPIClient) GetNewRelease(rUUID string) (
+	ybaclient.NewReleaseManagementApiApiGetNewReleaseRequest,
+) {
+	return a.APIClient.NewReleaseManagementApi.GetNewRelease(a.ctx, a.CustomerUUID, rUUID)
+}

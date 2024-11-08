@@ -14,7 +14,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/eit"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider"
-	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/releases"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/release"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/runtimeconfiguration"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/storageconfiguration"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/task"
@@ -95,7 +95,7 @@ func init() {
 	rootCmd.AddCommand(auth.AuthCmd)
 	rootCmd.AddCommand(auth.LoginCmd)
 	rootCmd.AddCommand(auth.RegisterCmd)
-	rootCmd.AddCommand(releases.ReleasesCmd)
+	rootCmd.AddCommand(release.ReleaseCmd)
 	rootCmd.AddCommand(provider.ProviderCmd)
 	rootCmd.AddCommand(universe.UniverseCmd)
 	rootCmd.AddCommand(storageconfiguration.StorageConfigurationCmd)

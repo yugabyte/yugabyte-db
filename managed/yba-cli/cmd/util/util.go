@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/sirupsen/logrus"
@@ -384,4 +385,12 @@ func RemoveComponentFromSlice(sliceInterface interface{}, index int) interface{}
 		}
 	}
 	return slice
+}
+
+// FromEpochMilli converts epoch in milliseconds to time.Time
+func FromEpochMilli(millis int64) time.Time {
+	// Convert milliseconds to seconds and nanoseconds
+	seconds := millis / 1000
+	nanos := (millis % 1000) * int64(time.Millisecond)
+	return time.Unix(seconds, nanos)
 }
