@@ -25,7 +25,7 @@ To run the docs site locally and edit the docs, you'll need:
 
     Xcode is many gigabytes. Install the command-line tools unless you actually need the full Xcode.
 
-* [**Node.js**](https://nodejs.org/en/download/) LTS (16) using [NVM](https://github.com/nvm-sh/nvm?tab=readme-ov-file#install--update-script) : `nvm install 16.14.0`
+* [**Node.js**](https://nodejs.org/en/download/) LTS (20) using [NVM](https://github.com/nvm-sh/nvm?tab=readme-ov-file#install--update-script) : `nvm install 20.15.1`
 
   <!-- * Using Homebrew: `brew install node@16` -->
 
