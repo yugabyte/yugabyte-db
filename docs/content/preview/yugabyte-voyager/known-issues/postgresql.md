@@ -1143,7 +1143,7 @@ EXECUTE FUNCTION log_deleted_projects();
 
 **GitHub**: [Issue #24830](https://github.com/yugabyte/yugabyte-db/issues/24830)
 
-**Description**: If you have have the BEFORE ROW triggers on partitioned tables in source schema, it will fail in import schema as it is not supported by YugabyteDB yet.
+**Description**: If you have the BEFORE ROW triggers on partitioned tables in source schema, the trigger creation will fail in import schema as it is not currently supported in YugabyteDB.
 
 ```output
 ERROR: Partitioned tables cannot have BEFORE / FOR EACH ROW triggers.
