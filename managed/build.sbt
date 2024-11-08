@@ -219,7 +219,7 @@ libraryDependencies ++= Seq(
   "org.projectlombok" % "lombok" % "1.18.26",
   "com.squareup.okhttp3" % "okhttp" % "4.12.0",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.17.2",
-  "com.nimbusds" % "nimbus-jose-jwt" % "9.37.2",
+  "com.nimbusds" % "nimbus-jose-jwt" % "7.9",
   "io.kamon" %% "kamon-bundle" % "2.5.9",
   "io.kamon" %% "kamon-prometheus" % "2.5.9",
   "org.unix4j" % "unix4j-command" % "0.6",

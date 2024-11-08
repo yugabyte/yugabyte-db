@@ -128,6 +128,7 @@ public class ThirdPartyLoginHandler {
       user.setRole(userRole);
       user.setUserType(UserType.oidc);
     } else {
+      log.info("Adding new user with email: " + email);
       user = Users.create(email, getRandomPassword(), userRole, custUUID, false, UserType.oidc);
     }
 
@@ -154,6 +155,7 @@ public class ThirdPartyLoginHandler {
       OidcProfile profile = (OidcProfile) getProfile(request);
       JWT idToken = profile.getIdToken();
       List<String> groups;
+      String groupsClaim = confGetter.getGlobalConf(GlobalConfKeys.oidcGroupClaim);
 
       // If the IdP is Azure we need to fetch groups from Microsoft endpoint since group names are
       // not returned in ID token
@@ -163,13 +165,16 @@ public class ThirdPartyLoginHandler {
                 idToken.getJWTClaimsSet().getStringClaim("oid"),
                 profile.getAccessToken().toAuthorizationHeader());
       } else {
-        groups =
-            idToken
-                .getJWTClaimsSet()
-                .getStringListClaim(confGetter.getGlobalConf(GlobalConfKeys.oidcGroupClaim));
+        groups = idToken.getJWTClaimsSet().getStringListClaim(groupsClaim);
       }
       // return if groups claim not found in token
-      if (groups == null) {
+      if (groups == null || groups.isEmpty()) {
+        String msg =
+            String.format(
+                "Failed to fetch groups from ID token for user: %s. Please make sure field %s is"
+                    + " present in the ID token. User will be assigned the default role.",
+                getEmailFromCtx(request), groupsClaim);
+        log.warn(msg);
         return roles;
       }
       log.info("List of user's groups = {}", groups.toString());
@@ -207,6 +212,7 @@ public class ThirdPartyLoginHandler {
    * @return The list of group names.
    */
   private List<String> getMsGroupsList(String userID, String authHeader) {
+    log.info("Trying to fetch group memberships from Microsoft endpoint.");
     String url = String.format(MS_MEMBEROF_API, userID);
     Map<String, String> headers = new HashMap<>();
     headers.put("Authorization", authHeader);
