@@ -35,6 +35,7 @@
 
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(enable_wait_queues);
+DECLARE_int32(ysql_tablespace_info_refresh_secs);
 
 using namespace std::literals;
 using std::string;
@@ -50,7 +51,8 @@ using tserver::TabletServerServiceProxy;
 void PgLocksTestBase::SetUp() {
   // Enable wait-queues and deadlock detection.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
-
+  // Reduce time spent waiting for tablespace refresh.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_tablespace_info_refresh_secs) = 1;
   PgMiniTestBase::SetUp();
   InitTransactionManagerAndPool();
   // Wait for system.transactions to be created.

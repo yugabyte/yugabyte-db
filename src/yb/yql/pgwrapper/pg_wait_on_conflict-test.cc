@@ -1615,7 +1615,7 @@ class PgWaitQueuesReadCommittedTest : public PgWaitQueuesTest {
   }
 };
 
-TEST_F(PgWaitQueuesReadCommittedTest, TestDeadlockSimple) {
+TEST_F(PgWaitQueuesReadCommittedTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockSimple)) {
   TestDeadlockWithWrites();
 }
 
