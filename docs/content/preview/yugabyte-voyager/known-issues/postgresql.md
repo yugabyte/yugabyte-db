@@ -1107,7 +1107,7 @@ CREATE TABLE xid_example (
 ERROR:  REFERENCING clause (transition tables) not supported yet
 ```
 
-**Workaround**: No workaround as of now.
+**Workaround**: Currently, there is no workaround.
 
 **Example**
 
