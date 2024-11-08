@@ -254,9 +254,9 @@ DEFINE_RUNTIME_bool(enable_xcluster_timed_based_wal_retention, true,
     "If true, enable time-based WAL retention for tables with xCluster "
     "by using --cdc_wal_retention_time_secs.");
 
-DEFINE_RUNTIME_AUTO_bool(store_min_start_ht_running_txns, kLocalPersisted, false, true,
-                         "If enabled, minimum start hybrid time among running txns will be "
-                         "persisted in the segment footer during closing of the segment.");
+DEFINE_RUNTIME_bool(store_min_start_ht_running_txns, false,
+                    "If enabled, minimum start hybrid time among running txns will be "
+                    "persisted in the segment footer during closing of the segment.");
 
 static std::string kSegmentPlaceholderFilePrefix = ".tmp.newsegment";
 static std::string kSegmentPlaceholderFileTemplate = kSegmentPlaceholderFilePrefix + "XXXXXX";

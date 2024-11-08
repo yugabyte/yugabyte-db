@@ -69,6 +69,7 @@ DECLARE_bool(TEST_simulate_abrupt_server_restart);
 DECLARE_bool(TEST_skip_file_close);
 DECLARE_int64(reuse_unclosed_segment_threshold_bytes);
 DECLARE_int32(min_segment_size_bytes_to_rollover_at_flush);
+DECLARE_bool(store_min_start_ht_running_txns);
 
 namespace yb {
 namespace log {
@@ -653,6 +654,7 @@ void VerifyMinStartTimeRunningTxnsAfterCopy(
 // Tests that segments roll over when max segment size is reached
 // and that the player plays all entries in the correct order.
 TEST_F(LogTest, TestSegmentRollover) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_store_min_start_ht_running_txns) = true;
   BuildLog();
   // Set a small segment size so that we have roll overs.
   log_->SetMaxSegmentSizeForTests(990);

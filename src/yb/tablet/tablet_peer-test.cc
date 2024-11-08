@@ -93,6 +93,7 @@ DECLARE_bool(quick_leader_election_on_create);
 DECLARE_bool(TEST_pause_before_copying_bootstrap_state);
 DECLARE_bool(TEST_pause_before_flushing_bootstrap_state);
 DECLARE_bool(TEST_pause_before_submitting_flush_bootstrap_state);
+DECLARE_bool(store_min_start_ht_running_txns);
 
 namespace yb {
 namespace tablet {
@@ -576,6 +577,7 @@ void VerifyNonDecreasingTxnStartTimeInClosedSegments(const log::SegmentSequence&
 }
 
 TEST_F(TabletPeerTest, TestMinStartTimeRunningTxnsOnLogSegmentRollover) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_store_min_start_ht_running_txns) = true;
   google::SetVLOGLevel("tablet_peer-test*", 1);
   ConsensusBootstrapInfo info;
   ASSERT_OK(StartPeer(info));

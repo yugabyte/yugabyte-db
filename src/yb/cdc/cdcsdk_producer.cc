@@ -92,7 +92,7 @@ DEFINE_NON_RUNTIME_int64(
     "ConsistentStreamSafeTime for CDCSDK by resolving all committed intetns");
 
 DEFINE_RUNTIME_bool(cdc_read_wal_segment_by_segment,
-                    true,
+                    false,
                     "When this flag is set to true, GetChanges will read the WAL segment by "
                     "segment. If valid records are found in the first segment, GetChanges will "
                     "return these records in response. If no valid records are found then next "

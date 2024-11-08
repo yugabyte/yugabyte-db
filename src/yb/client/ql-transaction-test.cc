@@ -85,6 +85,7 @@ DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_skip_remove_intent);
 DECLARE_uint64(log_segment_size_bytes);
+DECLARE_bool(store_min_start_ht_running_txns);
 
 namespace yb {
 namespace client {
@@ -1864,6 +1865,7 @@ TEST_F_EX(
     QLTransactionTest, LogSegmentRolloverWithSingleRunningTxn,
     QLTransactionTestWithSegmentRollover) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_process_apply) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_store_min_start_ht_running_txns) = true;
 
   auto& table_name = table_->name();
 
@@ -1896,6 +1898,7 @@ TEST_F_EX(
 
 TEST_F_EX(
     QLTransactionTest, LogSegmentRolloverWithMultipleTxns, QLTransactionTestWithSegmentRollover) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_store_min_start_ht_running_txns) = true;
   auto table_name = table_->name();
   int num_txns = 10;
   for (int i = 0; i != num_txns; i++) {
