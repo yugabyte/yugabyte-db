@@ -517,9 +517,16 @@ YbIsInsertOnConflictReadBatchingEnabled(ResultRelInfo *resultRelInfo)
 {
 	/*
 	 * TODO(jason): figure out how to enable triggers.
-	 * TODO(jason): disable (or handle) NULLS NOT DISTINCT indexes once that is
-	 * officially allowed.
 	 */
+	/*
+	 * TODO(GH#24834): Enable INSERT ON CONFLICT batching for null-not-distinct
+	 * indexes.
+	 */
+	for (int i = 0; i < resultRelInfo->ri_NumIndices; i++)
+	{
+		if (resultRelInfo->ri_IndexRelationInfo[i]->ii_NullsNotDistinct)
+			return false;
+	}
 	return (IsYBRelation(resultRelInfo->ri_RelationDesc) &&
 			!IsCatalogRelation(resultRelInfo->ri_RelationDesc) &&
 			resultRelInfo->ri_BatchSize > 1 &&

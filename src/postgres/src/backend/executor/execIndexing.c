@@ -1252,7 +1252,11 @@ check_exclusion_or_unique_constraint(Relation heap, Relation index,
 		ScanKeyEntryInitialize(&scankeys[i],
 							   isnull[i] ? SK_ISNULL | SK_SEARCHNULL : 0,
 							   i + 1,
-							   constr_strats[i],
+							   /*
+								* YB expects invalid strategy for NULL search.
+								* See YbShouldPushdownScanPrimaryKey.
+								*/
+							   isnull[i] ? InvalidStrategy : constr_strats[i],
 							   InvalidOid,
 							   index_collations[i],
 							   constr_procs[i],
@@ -1734,27 +1738,19 @@ yb_batch_fetch_conflicting_rows(int idx, ResultRelInfo *resultRelInfo,
 					   values,
 					   isnull);
 
-		/*
-		 * If any of the input values are NULL, and the index uses the default
-		 * nulls-are-distinct mode, the constraint check is assumed to pass (i.e.,
-		 * we assume the operators are strict).  Otherwise, we interpret the
-		 * constraint as specifying IS NULL for each column whose input value is
-		 * NULL.
-		 */
-		if (!indexInfo->ii_NullsNotDistinct)
+		Assert(!indexInfo->ii_NullsNotDistinct);
+
+		bool found_null = false;
+		for (int j = 0; j < indnkeyatts; j++)
 		{
-			bool found_null = false;
-			for (int j = 0; j < indnkeyatts; j++)
+			if (isnull[j])
 			{
-				if (isnull[j])
-				{
-					found_null = true;
-					break;
-				}
+				found_null = true;
+				break;
 			}
-			if (found_null)
-				continue;
 		}
+		if (found_null)
+			continue;
 
 		if (indnkeyatts == 1)
 		{

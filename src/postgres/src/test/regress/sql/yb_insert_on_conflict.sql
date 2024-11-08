@@ -172,23 +172,36 @@ SELECT * FROM ioc_defaults ORDER BY b, c;
 -- Reset.
 DELETE FROM ab_tab WHERE a IS null;
 DROP INDEX ioc_defaults_bc_idx;
+TRUNCATE ioc_defaults;
+
 -- NULLS NOT DISTINCT
 DROP INDEX ah_idx;
 CREATE UNIQUE INDEX NONCONCURRENTLY ah_idx ON ab_tab (a HASH) NULLS NOT DISTINCT;
-/* TODO(jason): uncomment when NULLS NOT DISTINCT is supported
+INSERT INTO ab_tab VALUES (123, null), (456, null) ON CONFLICT DO NOTHING;
 INSERT INTO ab_tab VALUES (null, null);
 INSERT INTO ab_tab VALUES (null, null) ON CONFLICT DO NOTHING;
 -- Multiple rows with NULL values should semantically be treated as the same logical row.
 INSERT INTO ab_tab VALUES (null, 1), (null, 2) ON CONFLICT DO NOTHING;
 INSERT INTO ab_tab VALUES (null, 1), (null, 2) ON CONFLICT (a) DO UPDATE SET b = EXCLUDED.b;
 SELECT * FROM ab_tab WHERE a IS NULL ORDER BY b;
--- Similarly, columns with default NULL values should be treated as distinct rows.
+DELETE FROM ab_tab;
+-- Similarly, columns with default NULL values should be treated as the same logical row.
 CREATE UNIQUE INDEX NONCONCURRENTLY ioc_defaults_bc_idx ON ioc_defaults (b, c) NULLS NOT DISTINCT;
-INSERT INTO ioc_defaults VALUES (1), (1) ON CONFLICT (b, c) DO UPDATE SET a = EXCLUDED.a;
+INSERT INTO ioc_defaults VALUES (1);
+INSERT INTO ioc_defaults VALUES (2), (3) ON CONFLICT (b, c) DO UPDATE SET a = EXCLUDED.a;
 SELECT * FROM ioc_defaults ORDER BY b, c;
 -- Reset.
 DROP INDEX ioc_defaults_bc_idx;
-*/
+TRUNCATE ioc_defaults;
+
+-- Index key attributes > 1
+CREATE TABLE ab_tab2 (a int, b int);
+CREATE UNIQUE INDEX NONCONCURRENTLY ah_idx2 ON ab_tab2 ((a, b) HASH) NULLS NOT DISTINCT;
+INSERT INTO ab_tab2 VALUES (123, null), (456, null) ON CONFLICT DO NOTHING;
+INSERT INTO ab_tab2 VALUES (null, null);
+INSERT INTO ab_tab2 VALUES (123, null), (456, null), (null, 5), (null, null) ON CONFLICT DO NOTHING;
+SELECT * FROM ab_tab2 ORDER BY a, b;
+DELETE FROM ab_tab2;
 
 --- Partitioned table
 CREATE TABLE pp (i serial, j int, UNIQUE (j)) PARTITION BY RANGE (j);
