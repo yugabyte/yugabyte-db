@@ -1101,7 +1101,7 @@ CREATE TABLE xid_example (
 
 **GitHub**: [Issue #1668](https://github.com/yugabyte/yugabyte-db/issues/1668)
 
-**Description**: If you have have the REFERENCING clause (transititon tables) in triggers in source schema, it will fail in import schema as it is not supported by YugabyteDB.
+**Description**: If you have the REFERENCING clause (transition tables) in triggers in source schema, the trigger creation will fail in import schema as it is not currently supported in YugabyteDB.
 
 ```output
 ERROR:  REFERENCING clause (transition tables) not supported yet
