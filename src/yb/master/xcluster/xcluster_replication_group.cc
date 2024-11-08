@@ -309,13 +309,6 @@ Result<bool> ShouldAddTableToReplicationGroup(
     CatalogManager& catalog_manager) {
   const auto& table_pb = table_info.old_pb();
 
-  SCHECK(
-      !table_info.IsColocationParentTable(), IllegalState,
-      Format(
-          "Colocated parent tables can only be added during the initial xCluster replication "
-          "setup: $0",
-          table_info.ToString()));
-
   if (!IsTableEligibleForXClusterReplication(table_info)) {
     return false;
   }
@@ -346,6 +339,13 @@ Result<bool> ShouldAddTableToReplicationGroup(
       return false;
     }
   }
+
+  SCHECK(
+      !table_info.IsColocationParentTable(), IllegalState,
+      Format(
+          "Colocated parent tables can only be added during the initial xCluster replication "
+          "setup: $0",
+          table_info.ToString()));
 
   // Skip if the table has already been added to this replication group.
   return !VERIFY_RESULT(HasTable(universe, table_info, catalog_manager));

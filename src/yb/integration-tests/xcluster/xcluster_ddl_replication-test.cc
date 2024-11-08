@@ -590,4 +590,26 @@ TEST_F(XClusterDDLReplicationAddDropColumnTest, AddDropColumns) {
   }
 }
 
+// Make sure we can create Colocated db and table on both clusters that is not affected by an the
+// replication of a different database.
+TEST_F(XClusterDDLReplicationTest, CreateNonXClusterColocatedDb) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  const auto kColocatedDB = "colocated_db";
+  const auto kCreateTableStmt = "CREATE TABLE tbl1(a int)";
+  const auto kInsertStmt = "INSERT INTO tbl1 VALUES (1)";
+
+  ASSERT_OK(CreateDatabase(&consumer_cluster_, kColocatedDB, /*colocated=*/true));
+  auto c_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(kColocatedDB));
+  ASSERT_OK(c_conn.Execute(kCreateTableStmt));
+  ASSERT_OK(c_conn.Execute(kInsertStmt));
+
+  ASSERT_OK(CreateDatabase(&producer_cluster_, kColocatedDB, /*colocated=*/true));
+  auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(kColocatedDB));
+  ASSERT_OK(p_conn.Execute(kCreateTableStmt));
+  ASSERT_OK(p_conn.Execute(kInsertStmt));
+}
+
 }  // namespace yb
