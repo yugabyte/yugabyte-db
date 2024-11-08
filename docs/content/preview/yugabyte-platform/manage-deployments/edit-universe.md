@@ -42,7 +42,7 @@ To change the configuration of a universe, do the following:
         - **Instance Type** and **Volume Info Size** - Change instance type and storage volume size as configured in the provider. In some cases, these operations are available as a [smart resize](#smart-resize).
         - **Storage Type** and **Volume Info Count** - For cloud providers, you can also change the storage volume count and type. On AWS, you can additionally change throughput and IOPS.
     - **Advanced Configuration**
-        - **Override Deployment Ports** - Can override deployment ports such as Master/TServer RPC and HTTP ports. In addition to that, can override Node Exporter port as well.
+        - **Override Deployment Ports** - You can change the Master and TServer HTTP and RPC ports, and the Prometheus Node Exporter port.
 
     - [User Tags](../instance-tags/). Changing tags doesn't require any node restarts or data migration.
 
