@@ -24,9 +24,12 @@
 
 #include "yb/common/types.h"
 
+#include "yb/util/metrics.h"
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+
+DECLARE_bool(cql_revert_to_partial_microsecond_support);
 
 namespace yb {
 namespace ql {
@@ -160,6 +163,11 @@ Status PTBcall::Analyze(SemContext *sem_context) {
     // Use the builtin-function opcode since this is a regular builtin call.
     bfopcode_ = static_cast<int32_t>(bfopcode);
 
+    if (FLAGS_cql_revert_to_partial_microsecond_support && (*name_ == "currenttimestamp")) {
+      if (sem_context->ql_metrics_) {
+        IncrementCounter(sem_context->ql_metrics_->microseconds_timestamps_used_);
+      }
+    }
     if (*name_ == "cql_cast" || *name_ == "tojson") {
       // Argument must be of primitive type for these operators.
       for (const PTExpr::SharedPtr &expr : exprs) {

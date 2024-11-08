@@ -34,10 +34,10 @@ Analyzer::~Analyzer() {
 
 //--------------------------------------------------------------------------------------------------
 
-Status Analyzer::Analyze(ParseTreePtr parse_tree) {
+Status Analyzer::Analyze(ParseTreePtr parse_tree, const QLMetrics *ql_metrics) {
   ParseTree *ptree = parse_tree.get();
   DCHECK(ptree != nullptr) << "Parse tree is null";
-  sem_context_ = std::make_unique<SemContext>(std::move(parse_tree), ql_env_);
+  sem_context_ = std::make_unique<SemContext>(std::move(parse_tree), ql_env_, ql_metrics);
   Status s = ptree->Analyze(sem_context_.get());
   if (PREDICT_FALSE(!s.ok())) {
     // When a statement is parsed for the first time, semantic analysis may fail because stale
