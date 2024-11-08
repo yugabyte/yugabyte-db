@@ -1187,7 +1187,7 @@ FOR EACH ROW
 EXECUTE FUNCTION check_and_modify_val();
 ```
 
-Suggested schema -
+Suggested change to the schema is as follows:
 
 ```sql
 
