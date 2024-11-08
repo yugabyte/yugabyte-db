@@ -320,7 +320,7 @@ Status Executor::PTExprToPB(const PTConstText *const_pt, QLValuePB *const_pb) {
       return const_pt->ToString(const_pb->mutable_string_value());
     case InternalType::kTimestampValue: {
       int64_t value = 0;
-      RETURN_NOT_OK(const_pt->ToTimestamp(&value));
+      RETURN_NOT_OK(const_pt->ToTimestamp(&value, ql_metrics_));
       const_pb->set_timestamp_value(value);
       break;
     }
