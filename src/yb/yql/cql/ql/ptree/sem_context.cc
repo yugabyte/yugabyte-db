@@ -50,11 +50,11 @@ using client::YBSchema;
 
 //--------------------------------------------------------------------------------------------------
 
-SemContext::SemContext(ParseTreePtr parse_tree, QLEnv *ql_env)
+SemContext::SemContext(ParseTreePtr parse_tree, QLEnv *ql_env, const QLMetrics *ql_metrics)
     : ProcessContext(std::move(parse_tree)),
+      ql_metrics_(ql_metrics),
       symtab_(PTempMem()),
-      ql_env_(ql_env) {
-}
+      ql_env_(ql_env) {}
 
 SemContext::~SemContext() {
 }

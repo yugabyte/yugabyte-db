@@ -24,6 +24,7 @@
 
 #include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 #include "yb/yql/cql/ql/ptree/process_context.h"
+#include "yb/yql/cql/ql/ql_processor.h"
 
 namespace yb {
 namespace ql {
@@ -66,8 +67,10 @@ class SemContext : public ProcessContext {
 
   //------------------------------------------------------------------------------------------------
   // Constructor & destructor.
-  SemContext(ParseTreePtr parse_tree, QLEnv *ql_env);
+  SemContext(ParseTreePtr parse_tree, QLEnv *ql_env, const QLMetrics *ql_metrics);
   virtual ~SemContext();
+
+  const QLMetrics *ql_metrics_;
 
   // Memory pool for semantic analysis of the parse tree of a statement.
   MemoryContext *PSemMem() const;
