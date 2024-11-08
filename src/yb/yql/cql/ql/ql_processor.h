@@ -61,6 +61,8 @@ class QLMetrics {
   scoped_refptr<yb::Histogram> ql_transaction_;
 
   scoped_refptr<yb::Histogram> ql_response_size_bytes_;
+
+  scoped_refptr<Counter> microseconds_timestamps_used_;
 };
 
 class QLProcessor : public Rescheduler {
