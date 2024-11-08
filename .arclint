@@ -92,17 +92,15 @@
         "(^java/yb-client/src/test/java/org/yb/client/TestYBClient[.]java$)",
         "(^cmake_modules/cotire[.]cmake$)",
         "(^cmake_modules/FindBoost[.]cmake$)",
-        "(^README[.]md$)",
         "(^java/pom[.]xml$)",
         "(^.*[.]patch$)",
         "(java/yb-cdc/pom.xml)",
-        "(java/yb-cdc/README.md)",
-        "(^docs/.*[.]md$)",
         "(^[.]fossa[.]yml$)",
         "(^managed/.*[.]conf)",
         "(^src/postgres/)",
         "(^[.]gitignore$)",
-        "(^.*[.]svg$)"
+        "(^.*[.]svg$)",
+        "(^.*[.]md$)"
       ]
     },
     "pycodestyle": {
