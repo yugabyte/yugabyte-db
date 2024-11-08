@@ -186,7 +186,7 @@ class PackedRowData {
     return Status::OK();
   }
 
-  void StartPacking(
+  Status StartPacking(
       const Slice& internal_key, size_t doc_key_size,
       const EncodedDocHybridTime& encoded_doc_ht,
       size_t new_doc_key_serial) {
@@ -196,7 +196,7 @@ class PackedRowData {
     control_fields_size_ = 0;
     encoded_doc_ht_ = encoded_doc_ht;
     old_value_slice_ = Slice();
-    InitPacker();
+    return InitPacker();
   }
 
   void InitKey(
@@ -288,7 +288,10 @@ class PackedRowData {
       // CotablePacking returns desired packed row type, so keep type extracted from actual row.
       old_packing_.packed_row_version = packed_row_version;
     }
-    InitPacker();
+    if (!new_packing_.packed_row_version.has_value()) {
+      new_packing_.packed_row_version = old_packing_.packed_row_version;
+    }
+    RETURN_NOT_OK(InitPacker());
     switch (*old_packing_.packed_row_version) {
       case dockv::PackedRowVersion::kV1:
         CreateOldRowDecoderHelper<dockv::PackedRowDecoderV1>();
@@ -305,7 +308,10 @@ class PackedRowData {
     old_row_decoder_.emplace<Decoder>(*old_packing_.schema_packing, old_value_slice_.data());
   }
 
-  void InitPacker() {
+  Status InitPacker() {
+    if (!new_packing_.packed_row_version.has_value()) {
+      return STATUS(IllegalState, "Packed row version is not set");
+    }
     packing_started_ = true;
     if (!packer_) {
       auto packed_row_version = *new_packing_.packed_row_version;
@@ -317,14 +323,16 @@ class PackedRowData {
       switch (packed_row_version) {
         case dockv::PackedRowVersion::kV1:
           InitPackerHelper<dockv::RowPackerV1>();
-          break;
+          return Status::OK();
         case dockv::PackedRowVersion::kV2:
           InitPackerHelper<dockv::RowPackerV2>();
-          break;
+          return Status::OK();
       }
+      FATAL_INVALID_ENUM_VALUE(dockv::PackedRowVersion, packed_row_version);
     } else {
       CHECK(false);
     }
+    return Status::OK();
   }
 
   template <class Packer>
@@ -977,10 +985,11 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
           << ", can have other data before: " << CanHaveOtherDataBefore(encoded_doc_ht)
           << ", start packing: " << start_packing;
       if (start_packing) {
-        packed_row_.StartPacking(internal_key, doc_key_size, encoded_doc_ht, doc_key_serial_);
+        RETURN_NOT_OK(packed_row_.StartPacking(
+            internal_key, doc_key_size, encoded_doc_ht, doc_key_serial_));
         AssignPrevSubDocKey(key.cdata(), same_bytes);
       }
-      if (packed_row_.active()) {
+      if (packed_row_.can_start_packing() && packed_row_.active()) {
         if (key_type == dockv::KeyEntryType::kSystemColumnId &&
             column_id == dockv::KeyEntryValue::kLivenessColumn.GetColumnId()) {
           return Status::OK();
