@@ -84,6 +84,40 @@ SELECT * FROM helio_api_internal.bson_dollar_merge_join('{"a" : 1, "b" : 2}',  h
 ERROR:  $merge write error: 'on' field cannot be missing, null, undefined or an array
 SELECT * FROM helio_api_internal.bson_dollar_merge_fail_when_not_matched('{"a" : "this is a dummy bson"}', 'this is dummy text'::TEXT);
 ERROR:  $merge could not find a matching document in the target collection for at least one document in the source collection
+--  Merge with default option
+SELECT helio_api.insert_one('defDb','defSrc',' { "_id" :  1, "a" : 1 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('defDb','defSrc',' { "_id" :  2, "a" : 2 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('defDb','defTar',' { "_id" :  1, "b" : 2 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('defDb', '{ "aggregate": "defSrc", "pipeline": [  {"$merge" : { "into": "defTar" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                            cursorpage                                                            | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "defDb.defSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT document FROM helio_api.collection('defDb', 'defTar');
+                                            document                                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" } }
+(2 rows)
+
 -- simplest test case working
 SELECT helio_api.insert('db', '{"insert":"salaries", "documents":[
    { "_id" : 1, "employee": "Ant", "salary": 100000, "fiscal_year": 2017 },
@@ -1177,19 +1211,19 @@ NOTICE:  creating collection
                                                                                                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                                                                                                   
 ---------------------------------------------------------------------
  Custom Scan (Citus MERGE INTO ...)  (cost=0.00..0.00 rows=0 width=0)
-   MERGE INTO documents_7899 method: pull to coordinator
+   MERGE INTO documents_7902 method: pull to coordinator
    ->  Custom Scan (Citus Adaptive)  (cost=0.00..0.00 rows=0 width=0)
          Output: remote_scan.document, remote_scan.target_shard_key_value, remote_scan.generated_object_id, remote_scan.extracted_4
          Task Count: 1
          Tasks Shown: All
          ->  Task
-               Query: SELECT document, target_shard_key_value, generated_object_id, extracted_4 FROM (SELECT collection.document, '7899'::bigint AS target_shard_key_value, helio_api_internal.bson_dollar_merge_generate_object_id(collection.document) AS generated_object_id, helio_api_internal.bson_dollar_extract_merge_filter(collection.document, '_id'::text) AS extracted_4 FROM helio_data.documents_7898_7850695 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '7898'::bigint)) citus_insert_select_subquery
+               Query: SELECT document, target_shard_key_value, generated_object_id, extracted_4 FROM (SELECT collection.document, '7902'::bigint AS target_shard_key_value, helio_api_internal.bson_dollar_merge_generate_object_id(collection.document) AS generated_object_id, helio_api_internal.bson_dollar_extract_merge_filter(collection.document, '_id'::text) AS extracted_4 FROM helio_data.documents_7901_7850698 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '7901'::bigint)) citus_insert_select_subquery
                Node: host=localhost port=58070 dbname=regression
-               ->  Bitmap Heap Scan on helio_data.documents_7898_7850695 collection  (cost=4.18..12.66 rows=4 width=104)
-                     Output: collection.document, '7899'::bigint, helio_api_internal.bson_dollar_merge_generate_object_id(collection.document), helio_api_internal.bson_dollar_extract_merge_filter(collection.document, '_id'::text)
-                     Recheck Cond: (collection.shard_key_value = '7898'::bigint)
+               ->  Bitmap Heap Scan on helio_data.documents_7901_7850698 collection  (cost=4.18..12.66 rows=4 width=104)
+                     Output: collection.document, '7902'::bigint, helio_api_internal.bson_dollar_merge_generate_object_id(collection.document), helio_api_internal.bson_dollar_extract_merge_filter(collection.document, '_id'::text)
+                     Recheck Cond: (collection.shard_key_value = '7901'::bigint)
                      ->  Bitmap Index Scan on _id_  (cost=0.00..4.18 rows=4 width=0)
-                           Index Cond: (collection.shard_key_value = '7898'::bigint)
+                           Index Cond: (collection.shard_key_value = '7901'::bigint)
 (14 rows)
 
 --explain when merge is not first stage of pipeline
@@ -1197,17 +1231,17 @@ EXPLAIN VERBOSE SELECT document FROM bson_aggregation_pipeline('db', '{ "aggrega
                                                                                                                                                                                                                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                
 ---------------------------------------------------------------------
  Custom Scan (Citus MERGE INTO ...)  (cost=0.00..0.00 rows=0 width=0)
-   MERGE INTO documents_7899 method: pull to coordinator
+   MERGE INTO documents_7902 method: pull to coordinator
    ->  Custom Scan (Citus Adaptive)  (cost=0.00..0.00 rows=0 width=0)
          Output: remote_scan.document, remote_scan.target_shard_key_value, remote_scan.generated_object_id, remote_scan.extracted_4
          Task Count: 1
          Tasks Shown: All
          ->  Task
-               Query: SELECT document, target_shard_key_value, generated_object_id, extracted_4 FROM (SELECT collection.document, '7899'::bigint AS target_shard_key_value, helio_api_internal.bson_dollar_merge_generate_object_id(collection.document) AS generated_object_id, helio_api_internal.bson_dollar_extract_merge_filter(collection.document, '_id'::text) AS extracted_4 FROM helio_data.documents_7898_7850695 collection WHERE ((collection.document OPERATOR(helio_api_catalog.#=) '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bsonquery) AND (collection.object_id OPERATOR(helio_core.=) '{ "" : { "$numberInt" : "1" } }'::helio_core.bson) AND (collection.shard_key_value OPERATOR(pg_catalog.=) '7898'::bigint))) citus_insert_select_subquery
+               Query: SELECT document, target_shard_key_value, generated_object_id, extracted_4 FROM (SELECT collection.document, '7902'::bigint AS target_shard_key_value, helio_api_internal.bson_dollar_merge_generate_object_id(collection.document) AS generated_object_id, helio_api_internal.bson_dollar_extract_merge_filter(collection.document, '_id'::text) AS extracted_4 FROM helio_data.documents_7901_7850698 collection WHERE ((collection.document OPERATOR(helio_api_catalog.#=) '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bsonquery) AND (collection.object_id OPERATOR(helio_core.=) '{ "" : { "$numberInt" : "1" } }'::helio_core.bson) AND (collection.shard_key_value OPERATOR(pg_catalog.=) '7901'::bigint))) citus_insert_select_subquery
                Node: host=localhost port=58070 dbname=regression
-               ->  Index Scan using _id_ on helio_data.documents_7898_7850695 collection  (cost=0.00..0.01 rows=1 width=104)
-                     Output: collection.document, '7899'::bigint, helio_api_internal.bson_dollar_merge_generate_object_id(collection.document), helio_api_internal.bson_dollar_extract_merge_filter(collection.document, '_id'::text)
-                     Index Cond: ((collection.shard_key_value = '7898'::bigint) AND (collection.object_id OPERATOR(helio_core.=) '{ "" : { "$numberInt" : "1" } }'::helio_core.bson))
+               ->  Index Scan using _id_ on helio_data.documents_7901_7850698 collection  (cost=0.00..0.01 rows=1 width=104)
+                     Output: collection.document, '7902'::bigint, helio_api_internal.bson_dollar_merge_generate_object_id(collection.document), helio_api_internal.bson_dollar_extract_merge_filter(collection.document, '_id'::text)
+                     Index Cond: ((collection.shard_key_value = '7901'::bigint) AND (collection.object_id OPERATOR(helio_core.=) '{ "" : { "$numberInt" : "1" } }'::helio_core.bson))
 (12 rows)
 
 -- Let's look at explain plan for sharded collection
@@ -1221,16 +1255,16 @@ EXPLAIN VERBOSE SELECT document FROM bson_aggregation_pipeline('db', '{ "aggrega
                                                                                                                                                             QUERY PLAN                                                                                                                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus MERGE INTO ...)  (cost=0.00..0.00 rows=0 width=0)
-   MERGE INTO documents_7899 method: repartition
+   MERGE INTO documents_7902 method: repartition
    ->  Custom Scan (Citus Adaptive)  (cost=0.00..0.00 rows=100000 width=104)
          Output: remote_scan.document, remote_scan.target_shard_key_value, remote_scan.generated_object_id, remote_scan.extracted_4
          Task Count: 8
          Tasks Shown: One of 8
          ->  Task
-               Query: SELECT document, '7899'::bigint AS target_shard_key_value, helio_api_internal.bson_dollar_merge_generate_object_id(document) AS generated_object_id, helio_api_internal.bson_dollar_extract_merge_filter(document, '_id'::text) AS extracted_4 FROM helio_data.documents_7898_7850722 collection WHERE true
+               Query: SELECT document, '7902'::bigint AS target_shard_key_value, helio_api_internal.bson_dollar_merge_generate_object_id(document) AS generated_object_id, helio_api_internal.bson_dollar_extract_merge_filter(document, '_id'::text) AS extracted_4 FROM helio_data.documents_7901_7850728 collection WHERE true
                Node: host=localhost port=58070 dbname=regression
-               ->  Seq Scan on helio_data.documents_7898_7850722 collection  (cost=0.00..1.01 rows=1 width=104)
-                     Output: document, '7899'::bigint, helio_api_internal.bson_dollar_merge_generate_object_id(document), helio_api_internal.bson_dollar_extract_merge_filter(document, '_id'::text)
+               ->  Seq Scan on helio_data.documents_7901_7850728 collection  (cost=0.00..1.01 rows=1 width=104)
+                     Output: document, '7902'::bigint, helio_api_internal.bson_dollar_merge_generate_object_id(document), helio_api_internal.bson_dollar_extract_merge_filter(document, '_id'::text)
 (11 rows)
 
 -- Let's look at explain plan for when on field is indexed
@@ -1251,16 +1285,16 @@ EXPLAIN VERBOSE SELECT document FROM bson_aggregation_pipeline('db', '{ "aggrega
                                                                                                                                                            QUERY PLAN                                                                                                                                                           
 ---------------------------------------------------------------------
  Custom Scan (Citus MERGE INTO ...)  (cost=0.00..0.00 rows=0 width=0)
-   MERGE INTO documents_7899 method: repartition
+   MERGE INTO documents_7902 method: repartition
    ->  Custom Scan (Citus Adaptive)  (cost=0.00..0.00 rows=100000 width=104)
          Output: remote_scan.document, remote_scan.target_shard_key_value, remote_scan.generated_object_id, remote_scan.extracted_4
          Task Count: 8
          Tasks Shown: One of 8
          ->  Task
-               Query: SELECT document, '7899'::bigint AS target_shard_key_value, helio_api_internal.bson_dollar_merge_generate_object_id(document) AS generated_object_id, helio_api_internal.bson_dollar_extract_merge_filter(document, 'a'::text) AS extracted_4 FROM helio_data.documents_7898_7850722 collection WHERE true
+               Query: SELECT document, '7902'::bigint AS target_shard_key_value, helio_api_internal.bson_dollar_merge_generate_object_id(document) AS generated_object_id, helio_api_internal.bson_dollar_extract_merge_filter(document, 'a'::text) AS extracted_4 FROM helio_data.documents_7901_7850728 collection WHERE true
                Node: host=localhost port=58070 dbname=regression
-               ->  Seq Scan on helio_data.documents_7898_7850722 collection  (cost=0.00..1.01 rows=1 width=104)
-                     Output: document, '7899'::bigint, helio_api_internal.bson_dollar_merge_generate_object_id(document), helio_api_internal.bson_dollar_extract_merge_filter(document, 'a'::text)
+               ->  Seq Scan on helio_data.documents_7901_7850728 collection  (cost=0.00..1.01 rows=1 width=104)
+                     Output: document, '7902'::bigint, helio_api_internal.bson_dollar_merge_generate_object_id(document), helio_api_internal.bson_dollar_extract_merge_filter(document, 'a'::text)
 (11 rows)
 
 -- source and target are same
@@ -1284,9 +1318,9 @@ SELECT * FROM  aggregate_cursor_first_page('db', '{ "aggregate": "AsSourceAsTarg
 (1 row)
 
 SELECT document FROM helio_api.collection('db', 'AsSourceAsTarget');
-                      document                      
+                                                    document                                                    
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "new" : "data" }
+ { "_id" : { "$numberInt" : "1" }, "new" : "data", "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } }
 (1 row)
 
 -- Negative tests : Invalid input

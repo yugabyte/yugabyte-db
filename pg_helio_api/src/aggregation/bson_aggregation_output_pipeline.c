@@ -61,9 +61,9 @@
  */
 typedef enum WhenMatchedAction
 {
-	WhenMatched_REPLACE = 0,
-	WhenMatched_KEEPEXISTING = 1,
-	WhenMatched_MERGE = 2,
+	WhenMatched_MERGE = 0,
+	WhenMatched_REPLACE = 1,
+	WhenMatched_KEEPEXISTING = 2,
 	WhenMatched_FAIL = 3,
 	WhenMatched_PIPELINE = 4,
 	WhenMatched_LET = 5

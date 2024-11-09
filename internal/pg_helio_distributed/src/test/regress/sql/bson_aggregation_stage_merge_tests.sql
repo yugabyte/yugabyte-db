@@ -34,6 +34,14 @@ SELECT * FROM helio_api_internal.bson_dollar_merge_join('{"a" : 1, "b" : 2}',  h
 SELECT * FROM helio_api_internal.bson_dollar_merge_join('{"a" : 1, "b" : 2}',  helio_api_internal.bson_dollar_extract_merge_filter('{"a" : null}','a' ::TEXT), 'a'::TEXT);
 SELECT * FROM helio_api_internal.bson_dollar_merge_fail_when_not_matched('{"a" : "this is a dummy bson"}', 'this is dummy text'::TEXT);
 
+--  Merge with default option
+SELECT helio_api.insert_one('defDb','defSrc',' { "_id" :  1, "a" : 1 }', NULL);
+SELECT helio_api.insert_one('defDb','defSrc',' { "_id" :  2, "a" : 2 }', NULL);
+SELECT helio_api.insert_one('defDb','defTar',' { "_id" :  1, "b" : 2 }', NULL);
+SELECT * FROM aggregate_cursor_first_page('defDb', '{ "aggregate": "defSrc", "pipeline": [  {"$merge" : { "into": "defTar" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+SELECT document FROM helio_api.collection('defDb', 'defTar');
+
+
 
 -- simplest test case working
 SELECT helio_api.insert('db', '{"insert":"salaries", "documents":[
