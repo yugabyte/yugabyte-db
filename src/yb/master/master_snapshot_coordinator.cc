@@ -761,21 +761,33 @@ class MasterSnapshotCoordinator::Impl {
         restore_at, GetCurrentHybridTime(), InvalidArgument,
         Format("Cannot restore to $0 since it is in the future", restore_at));
 
-    TxnSnapshotId snapshot_id = TxnSnapshotId::Nil();
+    auto try_get_suitable_snapshot = [this, &schedule_id, &restore_at, leader_term, &deadline]()
+        -> Result<TxnSnapshotId> {
+      // First check if a suitable snapshot already exists.
+      auto result = FindSnapshotSuitableForRestoreAt(schedule_id, restore_at);
+      if (result.ok()) return result;
+      if (!result.status().IsNotFound()) return result.status();
 
-    // First check if a suitable snapshot already exists.
-    auto snapshot_result = FindSnapshotSuitableForRestoreAt(schedule_id, restore_at);
-    if (snapshot_result.ok()) {
-      snapshot_id = *snapshot_result;
-    } else if (!snapshot_result.status().IsNotFound()) {
-      return snapshot_result.status();
-    } else {
       // If a suitable snapshot does not exist, try to create one.
-      VERIFY_RESULT(CreateForSchedule(schedule_id, leader_term, deadline));
-      snapshot_id = VERIFY_RESULT(FindSnapshotSuitableForRestoreAt(schedule_id, restore_at));
-    }
+      return CreateForSchedule(schedule_id, leader_term, deadline);
+    };
 
-    return WaitForSnapshotToComplete(snapshot_id, restore_at, deadline);
+    // Try to find a suitable snapshot for restore, retrying if a snapshot is currently being
+    // created.
+    while (CoarseMonoClock::now() < deadline) {
+      auto result = try_get_suitable_snapshot();
+      if (result.ok()) {
+        return WaitForSnapshotToComplete(*result, restore_at, deadline);
+      } else if (MasterError(result.status()) == MasterErrorPB::PARALLEL_SNAPSHOT_OPERATION) {
+        continue;
+      } else {
+        return result.status();
+      }
+    }
+    return STATUS_FORMAT(
+        TimedOut,
+        "Timed out trying to find or create a snapshot for schedule $0 that covers time $1",
+        schedule_id, restore_at);
   }
 
   Status RestoreSnapshotSchedule(
