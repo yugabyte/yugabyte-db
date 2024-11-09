@@ -143,7 +143,7 @@ pub(crate) fn peek_parquet_writer_context() -> Option<&'static mut ParquetWriter
     unsafe { PARQUET_WRITER_CONTEXT_STACK.last_mut() }
 }
 
-pub(crate) fn pop_parquet_writer_context(throw_error: bool) -> Option<ParquetWriterContext> {
+pub(crate) fn pop_parquet_writer_context(throw_error: bool) {
     let mut current_parquet_writer_context = unsafe { PARQUET_WRITER_CONTEXT_STACK.pop() };
 
     if current_parquet_writer_context.is_none() {
@@ -158,10 +158,8 @@ pub(crate) fn pop_parquet_writer_context(throw_error: bool) -> Option<ParquetWri
             PgSqlErrorCode::ERRCODE_INTERNAL_ERROR,
             "parquet writer context stack is already empty"
         );
-
-        None
     } else {
-        current_parquet_writer_context.take()
+        current_parquet_writer_context.take();
     }
 }
 
@@ -282,10 +280,7 @@ extern "C" fn copy_shutdown(dest: *mut DestReceiver) {
     parquet_dest.cleanup();
 
     let throw_error = true;
-    let current_parquet_writer_context = pop_parquet_writer_context(throw_error);
-    current_parquet_writer_context
-        .expect("current parquet writer context is not found")
-        .close();
+    pop_parquet_writer_context(throw_error);
 }
 
 #[pg_guard]
