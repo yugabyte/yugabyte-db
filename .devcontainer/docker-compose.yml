@@ -1,0 +1,32 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: sleep infinity
+    network_mode: host
+    volumes:
+      - ..:/workspace
+      - ${USERPROFILE}${HOME}/.ssh:/home/rust/.ssh:ro
+      - ${USERPROFILE}${HOME}/.ssh/known_hosts:/home/rust/.ssh/known_hosts:rw
+      - ${USERPROFILE}${HOME}/.gitconfig:/home/rust/.gitconfig:ro
+      - ${USERPROFILE}${HOME}/.aws:/home/rust/.aws:ro
+    env_file:
+      - .env
+    cap_add:
+      - SYS_PTRACE
+    depends_on:
+      - minio
+
+  minio:
+    image: minio/minio
+    env_file:
+      - .env
+    network_mode: host
+    command: server /data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "http://localhost:9000"]
+      interval: 6s
+      timeout: 2s
+      retries: 3

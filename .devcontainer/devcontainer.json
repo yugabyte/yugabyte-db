@@ -1,7 +1,10 @@
 {
-    "build": {
-        "dockerfile": "Dockerfile"
-    },
+    "name": "pg_parquet Dev Environment",
+    "dockerComposeFile": "docker-compose.yml",
+    "service": "app",
+    "workspaceFolder": "/workspace",
+    "postStartCommand": "bash .devcontainer/create-test-buckets.sh",
+    "postAttachCommand": "sudo chown -R rust /workspace",
     "customizations": {
         "vscode": {
             "extensions": [
@@ -14,12 +17,5 @@
                 "henriiik.docker-linter"
             ]
         }
-    },
-    "postStartCommand": "bash .devcontainer/scripts/setup-minio.sh",
-    "forwardPorts": [
-        5432
-    ],
-    "capAdd": [
-        "SYS_PTRACE"
-    ]
+    }
 }

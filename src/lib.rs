@@ -1494,8 +1494,6 @@ mod tests {
 
     #[pg_test]
     fn test_s3_object_store_from_env() {
-        dotenvy::from_path("/tmp/.env").unwrap();
-
         let test_bucket_name: String =
             std::env::var("AWS_S3_TEST_BUCKET").expect("AWS_S3_TEST_BUCKET not found");
 
@@ -1509,8 +1507,6 @@ mod tests {
 
     #[pg_test]
     fn test_s3_object_store_from_config_file() {
-        dotenvy::from_path("/tmp/.env").unwrap();
-
         let test_bucket_name: String =
             std::env::var("AWS_S3_TEST_BUCKET").expect("AWS_S3_TEST_BUCKET not found");
 
@@ -1566,8 +1562,6 @@ mod tests {
         // set the current user to the regular user
         Spi::run("SET SESSION AUTHORIZATION regular_user;").unwrap();
 
-        dotenvy::from_path("/tmp/.env").unwrap();
-
         let test_bucket_name: String =
             std::env::var("AWS_S3_TEST_BUCKET").expect("AWS_S3_TEST_BUCKET not found");
 
@@ -1607,8 +1601,6 @@ mod tests {
 
         // set the current user to the regular user
         Spi::run("SET SESSION AUTHORIZATION regular_user;").unwrap();
-
-        dotenvy::from_path("/tmp/.env").unwrap();
 
         let test_bucket_name: String =
             std::env::var("AWS_S3_TEST_BUCKET").expect("AWS_S3_TEST_BUCKET not found");

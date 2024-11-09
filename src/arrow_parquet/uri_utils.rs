@@ -90,9 +90,6 @@ fn object_store_with_location(uri: &Url, copy_from: bool) -> (Arc<dyn ObjectStor
 }
 
 async fn get_s3_object_store(bucket_name: &str) -> AmazonS3 {
-    // try loading environment vars from the .env file
-    dotenvy::from_path("/tmp/.env").ok();
-
     let mut aws_s3_builder = AmazonS3Builder::new().with_bucket_name(bucket_name);
 
     let is_test_running = std::env::var("PG_PARQUET_TEST").is_ok();
