@@ -1838,26 +1838,28 @@ class NodeChecker():
             Metric.from_definition(YB_NODE_NTP_SERVICE_STATUS)
         ]
         service_status = get_ntp_service_status()
+        service_error = service_status == 0
+        msgs = ["Ntp service is%s running" % " not" if service_error else ""]
         metrics[1].add_value(service_status)
         drift_ms = get_clock_drift_ms()
         # Returns error string on failure, int on success
         if isinstance(drift_ms, str):
-          return e.fill_and_return_entry([drift_ms], has_error=True, metrics=metrics)
+          msgs.append(drift_ms)
+          return e.fill_and_return_entry(msgs, has_error=True, metrics=metrics)
         metrics[0].add_value(drift_ms)
-        errors = []
         if drift_ms > self.time_drift_err_threshold:
-            errors.append("Node clock drift is {} ms, over {} ms".format(
+            msgs.append("Node clock drift is {} ms, over {} ms".format(
                 drift_ms, self.time_drift_err_threshold))
-            return e.fill_and_return_entry(errors, has_error=True, metrics=metrics)
+            return e.fill_and_return_entry(msgs, has_error=True, metrics=metrics)
         if drift_ms > self.time_drift_wrn_threshold:
-            errors.append("Node clock drift is {} ms, over {} ms".format(
+            msgs.append("Node clock drift is {} ms, over {} ms".format(
                 drift_ms, self.time_drift_wrn_threshold))
-            return e.fill_and_return_warning_entry(errors, metrics=metrics)
+            if service_error:
+                return e.fill_and_return_entry(msgs, has_error=True, metrics=metrics)
+            return e.fill_and_return_warning_entry(msgs, metrics=metrics)
 
-        service_error = service_status == 0
-        return e.fill_and_return_entry(
-            ["%s ms" % drift_ms, "ntp service is%s running" % " not" if service_error else ""],
-            has_error=service_error, metrics=metrics)
+        msgs.append("%s ms" % drift_ms)
+        return e.fill_and_return_entry(msgs, has_error=service_error, metrics=metrics)
 
     def check_process_stats(self, process_name):
         metrics = [Metric.from_definition(YB_PROCESS_CPU_SECONDS_TOTAL),
