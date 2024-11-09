@@ -45,6 +45,9 @@ mod tests {
     use crate::type_compat::fallback_to_text::FallbackToText;
     use crate::type_compat::geometry::Geometry;
     use crate::type_compat::map::Map;
+    use crate::type_compat::pg_arrow_type_conversions::{
+        DEFAULT_UNBOUNDED_NUMERIC_PRECISION, DEFAULT_UNBOUNDED_NUMERIC_SCALE,
+    };
     use pgrx::pg_sys::Oid;
     use pgrx::{
         composite_type,
@@ -275,6 +278,54 @@ mod tests {
         }
     }
 
+    fn test_assert_float(expected_result: Vec<Option<f32>>, result: Vec<Option<f32>>) {
+        for (expected, actual) in expected_result.into_iter().zip(result.into_iter()) {
+            if expected.is_none() {
+                assert!(actual.is_none());
+            }
+
+            if expected.is_some() {
+                assert!(actual.is_some());
+
+                let expected = expected.unwrap();
+                let actual = actual.unwrap();
+
+                if expected.is_nan() {
+                    assert!(actual.is_nan());
+                } else if expected.is_infinite() {
+                    assert!(actual.is_infinite());
+                    assert!(expected.is_sign_positive() == actual.is_sign_positive());
+                } else {
+                    assert_eq!(expected, actual);
+                }
+            }
+        }
+    }
+
+    fn test_assert_double(expected_result: Vec<Option<f64>>, result: Vec<Option<f64>>) {
+        for (expected, actual) in expected_result.into_iter().zip(result.into_iter()) {
+            if expected.is_none() {
+                assert!(actual.is_none());
+            }
+
+            if expected.is_some() {
+                assert!(actual.is_some());
+
+                let expected = expected.unwrap();
+                let actual = actual.unwrap();
+
+                if expected.is_nan() {
+                    assert!(actual.is_nan());
+                } else if expected.is_infinite() {
+                    assert!(actual.is_infinite());
+                    assert!(expected.is_sign_positive() == actual.is_sign_positive());
+                } else {
+                    assert_eq!(expected, actual);
+                }
+            }
+        }
+    }
+
     fn test_helper<T: IntoDatum + FromDatum + Debug + PartialEq>(test_table: TestTable<T>) {
         let test_result = test_common(test_table);
         test_assert(test_result.expected, test_result.result);
@@ -327,35 +378,77 @@ mod tests {
     }
 
     #[pg_test]
-    fn test_flaot4() {
+    fn test_float4() {
         let test_table = TestTable::<f32>::new("float4".into());
-        test_table.insert("INSERT INTO test_expected (a) VALUES (1.0), (2.23213123), (null);");
-        test_helper(test_table);
+        test_table.insert("INSERT INTO test_expected (a) VALUES (1.0), (2.23213123), (null), ('nan'), ('infinity'), ('-infinity');");
+
+        let TestResult { expected, result } = test_common(test_table);
+
+        let expected = expected.into_iter().map(|(val,)| val).collect::<Vec<_>>();
+        let result = result.into_iter().map(|(val,)| val).collect::<Vec<_>>();
+        test_assert_float(expected, result);
     }
 
     #[pg_test]
     fn test_float4_array() {
         let test_table = TestTable::<Vec<Option<f32>>>::new("float4[]".into());
         test_table.insert(
-            "INSERT INTO test_expected (a) VALUES (array[1.123,2.2,null]), (null), (array[1]), (array[]::float4[]);",
+            "INSERT INTO test_expected (a) VALUES (array[1.123,2.2,null,'nan','infinity','-infinity']), (null), (array[1]), (array[]::float4[]);",
         );
-        test_helper(test_table);
+
+        let TestResult { expected, result } = test_common(test_table);
+
+        for ((expected,), (result,)) in expected.into_iter().zip(result.into_iter()) {
+            if expected.is_none() {
+                assert!(result.is_none());
+            }
+
+            if expected.is_some() {
+                assert!(result.is_some());
+
+                let expected = expected.unwrap();
+                let result = result.unwrap();
+
+                test_assert_float(expected, result);
+            }
+        }
     }
 
     #[pg_test]
-    fn test_flaot8() {
+    fn test_float8() {
         let test_table = TestTable::<f64>::new("float8".into());
-        test_table.insert("INSERT INTO test_expected (a) VALUES (1.0), (2.23213123), (null);");
-        test_helper(test_table);
+        test_table.insert("INSERT INTO test_expected (a) VALUES (1.0), (2.23213123), (null), ('nan'), ('infinity'), ('-infinity');");
+
+        let TestResult { expected, result } = test_common(test_table);
+
+        let expected = expected.into_iter().map(|(val,)| val).collect::<Vec<_>>();
+        let result = result.into_iter().map(|(val,)| val).collect::<Vec<_>>();
+        test_assert_double(expected, result);
     }
 
     #[pg_test]
     fn test_float8_array() {
         let test_table = TestTable::<Vec<Option<f64>>>::new("float8[]".into());
         test_table.insert(
-            "INSERT INTO test_expected (a) VALUES (array[1.123,2.2,null]), (null), (array[1]), (array[]::float8[]);",
+            "INSERT INTO test_expected (a) VALUES (array[1.123,2.2,null,'nan','infinity','-infinity']), (null), (array[1]), (array[]::float8[]);",
         );
-        test_helper(test_table);
+
+        let TestResult { expected, result } = test_common(test_table);
+
+        for ((expected,), (result,)) in expected.into_iter().zip(result.into_iter()) {
+            if expected.is_none() {
+                assert!(result.is_none());
+            }
+
+            if expected.is_some() {
+                assert!(result.is_some());
+
+                let expected = expected.unwrap();
+                let result = result.unwrap();
+
+                test_assert_double(expected, result);
+            }
+        }
     }
 
     #[pg_test]
@@ -866,15 +959,79 @@ mod tests {
     }
 
     #[pg_test]
-    fn test_numeric() {
-        let test_table = TestTable::<AnyNumeric>::new("numeric(10,4)".into());
+    fn test_small_numeric() {
+        let attribute_schema_getter = || -> Vec<(Option<i32>, Option<i32>, String, String)> {
+            Spi::connect(|client| {
+                let parquet_schema_command = "select precision, scale, logical_type, type_name from parquet.schema('/tmp/test.parquet') WHERE name = 'a';";
+
+                let tup_table = client.select(parquet_schema_command, None, None).unwrap();
+                let mut results = Vec::new();
+
+                for row in tup_table {
+                    let precision = row["precision"].value::<i32>().unwrap();
+                    let scale = row["scale"].value::<i32>().unwrap();
+                    let logical_type = row["logical_type"].value::<String>().unwrap().unwrap();
+                    let physical_type = row["type_name"].value::<String>().unwrap().unwrap();
+
+                    results.push((precision, scale, logical_type, physical_type));
+                }
+
+                results
+            })
+        };
+
+        // (P <= 9) => INT32
+        let test_table = TestTable::<AnyNumeric>::new("numeric(9,4)".into());
         test_table
             .insert("INSERT INTO test_expected (a) VALUES (0.0), (.0), (1.), (+1.020), (-2.12313), (.3), (4), (null);");
         test_helper(test_table);
+
+        let attribute_schema = attribute_schema_getter();
+        assert_eq!(attribute_schema.len(), 1);
+        assert_eq!(
+            attribute_schema[0],
+            (Some(9), Some(4), "DECIMAL".to_string(), "INT32".to_string())
+        );
+
+        // (9 < P <= 18) => INT64
+        let test_table = TestTable::<AnyNumeric>::new("numeric(18,4)".into());
+        test_table
+            .insert("INSERT INTO test_expected (a) VALUES (0.0), (.0), (1.), (+1.020), (-2.12313), (.3), (4), (null);");
+        test_helper(test_table);
+
+        let attribute_schema = attribute_schema_getter();
+        assert_eq!(attribute_schema.len(), 1);
+        assert_eq!(
+            attribute_schema[0],
+            (
+                Some(18),
+                Some(4),
+                "DECIMAL".to_string(),
+                "INT64".to_string()
+            )
+        );
+
+        // (18 < P <= 38) => FIXED_LEN_BYTE_ARRAY(9-16)
+        let test_table = TestTable::<AnyNumeric>::new("numeric(38,4)".into());
+        test_table
+            .insert("INSERT INTO test_expected (a) VALUES (0.0), (.0), (1.), (+1.020), (-2.12313), (.3), (4), (null);");
+        test_helper(test_table);
+
+        let attribute_schema = attribute_schema_getter();
+        assert_eq!(attribute_schema.len(), 1);
+        assert_eq!(
+            attribute_schema[0],
+            (
+                Some(38),
+                Some(4),
+                "DECIMAL".to_string(),
+                "FIXED_LEN_BYTE_ARRAY".to_string()
+            )
+        );
     }
 
     #[pg_test]
-    fn test_numeric_array() {
+    fn test_small_numeric_array() {
         let test_table = TestTable::<Vec<Option<AnyNumeric>>>::new("numeric(10,4)[]".into());
         test_table.insert(
             "INSERT INTO test_expected (a) VALUES (array[0.0,.0,1.,+1.020,-2.12313,.3,4,null]), (null), (array[]::numeric(10,4)[]);",
@@ -883,8 +1040,11 @@ mod tests {
     }
 
     #[pg_test]
-    fn test_huge_numeric() {
-        let test_table = TestTable::<FallbackToText>::new("numeric(100,4)".into());
+    fn test_large_numeric() {
+        let large_precision = DEFAULT_UNBOUNDED_NUMERIC_PRECISION + 1;
+
+        let test_table =
+            TestTable::<FallbackToText>::new(format!("numeric({},4)", large_precision));
         test_table.insert(
             "INSERT INTO test_expected (a) VALUES (0.0), (.0), (1.), (+1.020), (2.12313), (3), (null);",
         );
@@ -892,10 +1052,146 @@ mod tests {
     }
 
     #[pg_test]
-    fn test_huge_numeric_array() {
-        let test_table = TestTable::<Vec<Option<FallbackToText>>>::new("numeric(100,4)[]".into());
+    fn test_large_numeric_array() {
+        let large_precision = DEFAULT_UNBOUNDED_NUMERIC_PRECISION + 1;
+
+        let test_table = TestTable::<Vec<Option<FallbackToText>>>::new(format!(
+            "numeric({},4)[]",
+            large_precision
+        ));
         test_table.insert(
             "INSERT INTO test_expected (a) VALUES (array[0.0,.0,1.,1.020,2.12313,3,null]), (null), (array[]::numeric(100,4)[]);",
+        );
+        test_helper(test_table);
+    }
+
+    #[pg_test]
+    fn test_unbounded_numeric() {
+        let test_table = TestTable::<AnyNumeric>::new("numeric".into());
+        test_table.insert(
+            "INSERT INTO test_expected (a) VALUES (0.0), (.0), (1.), (+1.02), (2.12), (3), (null);",
+        );
+        test_helper(test_table);
+
+        let parquet_schema_command =
+            "select precision, scale, logical_type, type_name from parquet.schema('/tmp/test.parquet') WHERE name = 'a';";
+
+        let attribute_schema = Spi::connect(|client| {
+            let tup_table = client.select(parquet_schema_command, None, None).unwrap();
+            let mut results = Vec::new();
+
+            for row in tup_table {
+                let precision = row["precision"].value::<i32>().unwrap();
+                let scale = row["scale"].value::<i32>().unwrap();
+                let logical_type = row["logical_type"].value::<String>().unwrap().unwrap();
+                let physical_type = row["type_name"].value::<String>().unwrap().unwrap();
+
+                results.push((precision, scale, logical_type, physical_type));
+            }
+
+            results
+        });
+
+        assert_eq!(attribute_schema.len(), 1);
+        assert_eq!(
+            attribute_schema[0],
+            (
+                Some(DEFAULT_UNBOUNDED_NUMERIC_PRECISION as _),
+                Some(DEFAULT_UNBOUNDED_NUMERIC_SCALE as _),
+                "DECIMAL".to_string(),
+                "FIXED_LEN_BYTE_ARRAY".to_string()
+            )
+        );
+    }
+
+    #[pg_test]
+    fn test_unbounded_numeric_array() {
+        let test_table = TestTable::<Vec<Option<AnyNumeric>>>::new("numeric[]".into());
+        test_table.insert(
+            "INSERT INTO test_expected (a) VALUES (array[0.0,.0,1.,1.02,2.12,3,null]), (null), (array[]::numeric[]);",
+        );
+        test_helper(test_table);
+
+        let parquet_schema_command =
+            "select precision, scale, logical_type, type_name from parquet.schema('/tmp/test.parquet') WHERE name = 'a' ORDER BY logical_type;";
+
+        let attribute_schema = Spi::connect(|client| {
+            let tup_table = client.select(parquet_schema_command, None, None).unwrap();
+            let mut results = Vec::new();
+
+            for row in tup_table {
+                let precision = row["precision"].value::<i32>().unwrap();
+                let scale = row["scale"].value::<i32>().unwrap();
+                let logical_type = row["logical_type"].value::<String>().unwrap().unwrap();
+                let physical_type = row["type_name"].value::<String>().unwrap();
+
+                results.push((precision, scale, logical_type, physical_type));
+            }
+
+            results
+        });
+
+        assert_eq!(attribute_schema.len(), 2);
+        assert_eq!(
+            attribute_schema[0],
+            (
+                Some(DEFAULT_UNBOUNDED_NUMERIC_PRECISION as _),
+                Some(DEFAULT_UNBOUNDED_NUMERIC_SCALE as _),
+                "DECIMAL".to_string(),
+                Some("FIXED_LEN_BYTE_ARRAY".to_string())
+            )
+        );
+        assert_eq!(attribute_schema[1], (None, None, "LIST".to_string(), None));
+    }
+
+    #[pg_test]
+    #[should_panic(
+        expected = "numeric value contains 23 digits before decimal point, which exceeds max allowed integral digits 22 during copy to parquet"
+    )]
+    fn test_invalid_unbounded_numeric_integral_digits() {
+        let invalid_integral_digits =
+            DEFAULT_UNBOUNDED_NUMERIC_PRECISION - DEFAULT_UNBOUNDED_NUMERIC_SCALE + 1;
+
+        let copy_to_command = format!(
+            "copy (select (repeat('1', {}) || '.2')::numeric as a) to '/tmp/test.parquet'",
+            invalid_integral_digits
+        );
+
+        Spi::run(&copy_to_command).unwrap();
+    }
+
+    #[pg_test]
+    #[should_panic(
+        expected = "numeric value contains 17 digits after decimal point, which exceeds max allowed decimal digits 16 during copy to parquet"
+    )]
+    fn test_invalid_unbounded_numeric_decimal_digits() {
+        let invalid_decimal_digits = DEFAULT_UNBOUNDED_NUMERIC_SCALE + 1;
+
+        let copy_to_command = format!(
+            "copy (select ('2.' || repeat('1', {}) )::numeric as a) to '/tmp/test.parquet'",
+            invalid_decimal_digits
+        );
+
+        Spi::run(&copy_to_command).unwrap();
+    }
+
+    #[cfg(feature = "pg14")]
+    #[pg_test]
+    #[should_panic = "NUMERIC scale -2 must be between 0 and precision 5"]
+    fn test_numeric_negative_scale() {
+        let test_table = TestTable::<AnyNumeric>::new("numeric(5,-2)".into());
+        test_table.insert(
+            "INSERT INTO test_expected (a) VALUES (1234567.1231244), (123.23223), (12.0), (-12.12303), (null), (0);",
+        );
+        test_helper(test_table);
+    }
+
+    #[cfg(not(feature = "pg14"))]
+    #[pg_test]
+    fn test_numeric_negative_scale() {
+        let test_table = TestTable::<AnyNumeric>::new("numeric(5,-2)".into());
+        test_table.insert(
+            "INSERT INTO test_expected (a) VALUES (1234567.1231244), (123.23223), (12.0), (-12.12303), (null), (0);",
         );
         test_helper(test_table);
     }

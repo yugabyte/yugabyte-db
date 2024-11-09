@@ -1,11 +1,13 @@
-use std::ffi::{CStr, CString};
+use core::panic;
+use std::ffi::CStr;
 
+use arrow::datatypes::{Decimal128Type, DecimalType};
 use pgrx::{
     datum::{Date, Interval, Time, TimeWithTimeZone, Timestamp, TimestampWithTimeZone},
-    direct_function_call, pg_sys, AnyNumeric, IntoDatum,
+    direct_function_call, ereport,
+    pg_sys::{self, AsPgCStr},
+    AnyNumeric, IntoDatum, Numeric,
 };
-
-pub(crate) const MAX_DECIMAL_PRECISION: usize = 38;
 
 pub(crate) fn date_to_i32(date: Date) -> i32 {
     // PG epoch is (2000-01-01). Convert it to Unix epoch (1970-01-01). +10957 days
@@ -167,86 +169,40 @@ pub(crate) fn i64_to_timetz(i64_timetz: i64) -> TimeWithTimeZone {
         .unwrap_or_else(|e| panic!("{}", e))
 }
 
-pub(crate) fn numeric_to_i128(numeric: AnyNumeric) -> i128 {
-    // obtain numeric's string representation
-    // cannot use numeric_send because byte representation is not compatible with parquet's decimal
-    let numeric_str: &CStr = unsafe {
-        direct_function_call(pg_sys::numeric_out, &[numeric.into_datum()])
-            .expect("cannot convert numeric to bytes")
+pub(crate) fn numeric_to_i128(numeric: AnyNumeric, typmod: i32, col_name: &str) -> i128 {
+    let numeric_str = if is_unbounded_numeric_typmod(typmod) {
+        let rescaled_unbounded_numeric = rescale_unbounded_numeric_or_error(numeric, col_name);
+
+        format!("{}", rescaled_unbounded_numeric)
+    } else {
+        // format returns a string representation of the numeric value based on numeric_out
+        format!("{}", numeric)
     };
-    let numeric_str = numeric_str
-        .to_str()
-        .expect("numeric string is an invalid CString");
 
-    let sign = if numeric_str.starts_with('-') { -1 } else { 1 };
+    let normalized_numeric_str = numeric_str.replace('.', "");
 
-    // remove sign as we already stored it. we also remove the decimal point
-    // since arrow decimal expects a i128 representation of the decimal
-    let numeric_str = numeric_str.replace(['-', '+', '.'], "");
-
-    let numeric_digits = numeric_str
-        .chars()
-        .map(|c| c.to_digit(10).expect("not a valid digit") as i8);
-
-    // convert digits into arrow decimal
-    let mut decimal: i128 = 0;
-    for digit in numeric_digits.into_iter() {
-        decimal = decimal * 10 + digit as i128;
-    }
-    decimal *= sign;
-
-    decimal
+    normalized_numeric_str
+        .parse::<i128>()
+        .expect("invalid decimal")
 }
 
-pub(crate) fn i128_to_numeric(i128_decimal: i128, scale: usize) -> AnyNumeric {
-    let sign = if i128_decimal < 0 { "-" } else { "" };
-    let i128_decimal = i128_decimal.abs();
-
-    // calculate decimal digits
-    let mut decimal_digits = vec![];
-    let mut decimal = i128_decimal;
-    while decimal > 0 {
-        let digit = (decimal % 10) as i8;
-        decimal_digits.push(digit);
-        decimal /= 10;
-    }
-
-    // get fraction as string
-    let fraction = decimal_digits
-        .iter()
-        .take(scale)
-        .map(|v| v.to_string())
-        .rev()
-        .reduce(|acc, v| acc + &v)
-        .unwrap_or_default();
-
-    // get integral as string
-    let integral = decimal_digits
-        .iter()
-        .skip(scale)
-        .map(|v| v.to_string())
-        .rev()
-        .reduce(|acc, v| acc + &v)
-        .unwrap_or_default();
-
-    // create numeric string representation
-    let numeric_str = if integral.is_empty() && fraction.is_empty() {
-        "0".into()
-    } else {
-        format!("{}{}.{}", sign, integral, fraction)
-    };
-
-    // numeric_in would not validate the numeric string when typmod is -1
-    let typmod = -1;
+pub(crate) fn i128_to_numeric(
+    decimal: i128,
+    precision: u32,
+    scale: u32,
+    typmod: i32,
+) -> AnyNumeric {
+    // format decimal via arrow since it is consistent with PG's numeric formatting
+    let numeric_str = Decimal128Type::format_decimal(decimal, precision as _, scale as _);
 
     // compute numeric from string representation
     let numeric: AnyNumeric = unsafe {
-        let numeric_str = CString::new(numeric_str).expect("numeric cstring is invalid");
+        let numeric_cstring = CStr::from_ptr(numeric_str.as_pg_cstr());
 
         direct_function_call(
             pg_sys::numeric_in,
             &[
-                numeric_str.into_datum(),
+                numeric_cstring.into_datum(),
                 0.into_datum(),
                 typmod.into_datum(),
             ],
@@ -257,14 +213,127 @@ pub(crate) fn i128_to_numeric(i128_decimal: i128, scale: usize) -> AnyNumeric {
     numeric
 }
 
-// taken from PG's numeric.c
-#[inline]
-pub(crate) fn extract_precision_from_numeric_typmod(typmod: i32) -> usize {
-    (((typmod - pg_sys::VARHDRSZ as i32) >> 16) & 0xffff) as usize
+// unbounded_numeric_value_digits returns the number of integral and decimal digits in an unbounded numeric value.
+fn unbounded_numeric_value_digits(numeric_str: &str) -> (usize, usize) {
+    let numeric_str = numeric_str.replace(['-', '+'], "");
+
+    let has_decimal_point = numeric_str.contains('.');
+
+    if has_decimal_point {
+        let parts = numeric_str.split('.').collect::<Vec<_>>();
+        (parts[0].len(), parts[1].len())
+    } else {
+        (numeric_str.as_str().len(), 0)
+    }
 }
 
-// taken from PG's numeric.c
+fn rescale_unbounded_numeric_or_error(
+    unbounded_numeric: AnyNumeric,
+    col_name: &str,
+) -> Numeric<DEFAULT_UNBOUNDED_NUMERIC_PRECISION, DEFAULT_UNBOUNDED_NUMERIC_SCALE> {
+    let unbounded_numeric_str = format!("{}", unbounded_numeric);
+
+    let (n_integral_digits, n_scale_digits) =
+        unbounded_numeric_value_digits(&unbounded_numeric_str);
+
+    // we need to do error checks before rescaling since rescaling to a lower scale
+    // silently truncates the value
+    if n_integral_digits > DEFAULT_UNBOUNDED_NUMERIC_MAX_INTEGRAL_DIGITS as _ {
+        ereport!(
+            pgrx::PgLogLevel::ERROR,
+            pgrx::PgSqlErrorCode::ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE,
+            format!(
+                "numeric value contains {} digits before decimal point, which exceeds max allowed integral digits {} during copy to parquet",
+                n_integral_digits, DEFAULT_UNBOUNDED_NUMERIC_MAX_INTEGRAL_DIGITS
+            ),
+            format!(
+                "Consider specifying precision and scale for column \"{}\". Replace type \"numeric\" to \"numeric(P,S)\".",
+                col_name
+            ),
+        );
+    } else if n_scale_digits > DEFAULT_UNBOUNDED_NUMERIC_SCALE as _ {
+        ereport!(
+            pgrx::PgLogLevel::ERROR,
+            pgrx::PgSqlErrorCode::ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE,
+            format!(
+                "numeric value contains {} digits after decimal point, which exceeds max allowed decimal digits {} during copy to parquet",
+                n_scale_digits, DEFAULT_UNBOUNDED_NUMERIC_SCALE
+            ),
+            format!(
+                "Consider specifying precision and scale for column \"{}\". Replace type \"numeric\" to \"numeric(P,S)\".",
+                col_name
+            ),
+        );
+    }
+
+    unbounded_numeric
+        .rescale::<DEFAULT_UNBOUNDED_NUMERIC_PRECISION, DEFAULT_UNBOUNDED_NUMERIC_SCALE>()
+        .unwrap_or_else(|e| panic!("{}", e))
+}
+
+const MAX_NUMERIC_PRECISION: u32 = 38;
+pub(crate) const DEFAULT_UNBOUNDED_NUMERIC_PRECISION: u32 = MAX_NUMERIC_PRECISION;
+pub(crate) const DEFAULT_UNBOUNDED_NUMERIC_SCALE: u32 = 16;
+pub(crate) const DEFAULT_UNBOUNDED_NUMERIC_MAX_INTEGRAL_DIGITS: u32 =
+    DEFAULT_UNBOUNDED_NUMERIC_PRECISION - DEFAULT_UNBOUNDED_NUMERIC_SCALE;
+
+// should_write_numeric_as_text determines whether a numeric datum should be written as text.
+// It is written as text when precision is greater than MAX_NUMERIC_PRECISION e.g. "numeric(50, 10)"
+pub(crate) fn should_write_numeric_as_text(precision: u32) -> bool {
+    precision > MAX_NUMERIC_PRECISION
+}
+
+// extract_precision_and_scale_from_numeric_typmod extracts precision and scale from numeric typmod
+// with the following rules:
+// - If typmod is -1, it means unbounded numeric, so we use default precision and scale.
+// - Even if PG allows negative scale, arrow does not. We adjust precision by adding abs(scale) to it,
+//   and set scale to 0.
+//
+// It always returns non-negative precision and scale due to the above rule.
+pub(crate) fn extract_precision_and_scale_from_numeric_typmod(typmod: i32) -> (u32, u32) {
+    // if typmod is -1, it means unbounded numeric, so we use default precision and scale
+    if is_unbounded_numeric_typmod(typmod) {
+        return (
+            DEFAULT_UNBOUNDED_NUMERIC_PRECISION,
+            DEFAULT_UNBOUNDED_NUMERIC_SCALE,
+        );
+    }
+
+    let mut precision = extract_precision_from_numeric_typmod(typmod);
+    let mut scale = extract_scale_from_numeric_typmod(typmod);
+
+    // Even if PG allows negative scale, arrow does not. We adjust precision by adding scale to it.
+    if scale < 0 {
+        adjust_precision_and_scale_if_negative_scale(&mut precision, &mut scale);
+    }
+
+    debug_assert!(precision >= 0);
+    debug_assert!(scale >= 0);
+
+    (precision as _, scale as _)
+}
+
 #[inline]
-pub(crate) fn extract_scale_from_numeric_typmod(typmod: i32) -> usize {
-    ((((typmod - pg_sys::VARHDRSZ as i32) & 0x7ff) ^ 1024) - 1024) as usize
+fn extract_precision_from_numeric_typmod(typmod: i32) -> i32 {
+    // taken from PG's numeric.c
+    (((typmod - pg_sys::VARHDRSZ as i32) >> 16) & 0xffff) as _
+}
+
+#[inline]
+fn extract_scale_from_numeric_typmod(typmod: i32) -> i32 {
+    // taken from PG's numeric.c
+    (((typmod - pg_sys::VARHDRSZ as i32) & 0x7ff) ^ 1024) - 1024
+}
+
+// adjust_precision_and_scale_if_negative_scale adjusts precision and scale if scale is negative.
+// Even if PG allows negative scale, arrow does not. We adjust precision by adding scale to it.
+fn adjust_precision_and_scale_if_negative_scale(precision: &mut i32, scale: &mut i32) {
+    if *scale < 0 {
+        *precision += scale.abs();
+        *scale = 0;
+    }
+}
+
+fn is_unbounded_numeric_typmod(typmod: i32) -> bool {
+    typmod == -1
 }

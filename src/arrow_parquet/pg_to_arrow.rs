@@ -23,8 +23,7 @@ use crate::{
         geometry::{is_postgis_geometry_type, Geometry},
         map::{is_map_type, Map},
         pg_arrow_type_conversions::{
-            extract_precision_from_numeric_typmod, extract_scale_from_numeric_typmod,
-            MAX_DECIMAL_PRECISION,
+            extract_precision_and_scale_from_numeric_typmod, should_write_numeric_as_text,
         },
     },
 };
@@ -65,8 +64,8 @@ pub(crate) struct PgToArrowAttributeContext {
     is_geometry: bool,
     is_map: bool,
     attribute_contexts: Option<Vec<PgToArrowAttributeContext>>,
-    scale: Option<usize>,
-    precision: Option<usize>,
+    scale: Option<u32>,
+    precision: Option<u32>,
 }
 
 impl PgToArrowAttributeContext {
@@ -126,8 +125,9 @@ impl PgToArrowAttributeContext {
         let precision;
         let scale;
         if attribute_typoid == NUMERICOID {
-            precision = Some(extract_precision_from_numeric_typmod(typmod));
-            scale = Some(extract_scale_from_numeric_typmod(typmod));
+            let (p, s) = extract_precision_and_scale_from_numeric_typmod(typmod);
+            precision = Some(p);
+            scale = Some(s);
         } else {
             precision = None;
             scale = None;
@@ -274,7 +274,7 @@ fn to_arrow_primitive_array(
                 .precision
                 .expect("missing precision in context");
 
-            if precision > MAX_DECIMAL_PRECISION {
+            if should_write_numeric_as_text(precision) {
                 reset_fallback_to_text_context(attribute_context.typoid, attribute_context.typmod);
 
                 to_arrow_primitive_array!(FallbackToText, tuples, attribute_context)
@@ -359,7 +359,7 @@ fn to_arrow_list_array(
                 .precision
                 .expect("missing precision in context");
 
-            if precision > MAX_DECIMAL_PRECISION {
+            if should_write_numeric_as_text(precision) {
                 reset_fallback_to_text_context(attribute_context.typoid, attribute_context.typmod);
 
                 to_arrow_list_array!(pgrx::Array<FallbackToText>, tuples, attribute_context)

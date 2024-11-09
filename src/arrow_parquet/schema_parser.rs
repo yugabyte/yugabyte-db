@@ -18,8 +18,7 @@ use crate::{
         geometry::is_postgis_geometry_type,
         map::is_map_type,
         pg_arrow_type_conversions::{
-            extract_precision_from_numeric_typmod, extract_scale_from_numeric_typmod,
-            MAX_DECIMAL_PRECISION,
+            extract_precision_and_scale_from_numeric_typmod, should_write_numeric_as_text,
         },
     },
 };
@@ -213,10 +212,9 @@ fn parse_primitive_schema(
         INT4OID => Field::new(elem_name, arrow::datatypes::DataType::Int32, true),
         INT8OID => Field::new(elem_name, arrow::datatypes::DataType::Int64, true),
         NUMERICOID => {
-            let precision = extract_precision_from_numeric_typmod(typmod);
-            let scale = extract_scale_from_numeric_typmod(typmod);
+            let (precision, scale) = extract_precision_and_scale_from_numeric_typmod(typmod);
 
-            if precision > MAX_DECIMAL_PRECISION {
+            if should_write_numeric_as_text(precision) {
                 Field::new(elem_name, arrow::datatypes::DataType::Utf8, true)
             } else {
                 Field::new(

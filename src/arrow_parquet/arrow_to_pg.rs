@@ -24,8 +24,7 @@ use crate::{
         geometry::{is_postgis_geometry_type, Geometry},
         map::{is_map_type, Map},
         pg_arrow_type_conversions::{
-            extract_precision_from_numeric_typmod, extract_scale_from_numeric_typmod,
-            MAX_DECIMAL_PRECISION,
+            extract_precision_and_scale_from_numeric_typmod, should_write_numeric_as_text,
         },
     },
 };
@@ -66,8 +65,8 @@ pub(crate) struct ArrowToPgAttributeContext {
     is_map: bool,
     attribute_contexts: Option<Vec<ArrowToPgAttributeContext>>,
     attribute_tupledesc: Option<PgTupleDesc<'static>>,
-    precision: Option<usize>,
-    scale: Option<usize>,
+    precision: Option<u32>,
+    scale: Option<u32>,
 }
 
 impl ArrowToPgAttributeContext {
@@ -127,8 +126,9 @@ impl ArrowToPgAttributeContext {
         let precision;
         let scale;
         if attribute_typoid == NUMERICOID {
-            precision = Some(extract_precision_from_numeric_typmod(typmod));
-            scale = Some(extract_scale_from_numeric_typmod(typmod));
+            let (p, s) = extract_precision_and_scale_from_numeric_typmod(typmod);
+            precision = Some(p);
+            scale = Some(s);
         } else {
             precision = None;
             scale = None;
@@ -263,7 +263,7 @@ fn to_pg_nonarray_datum(
                 .precision
                 .expect("missing precision in context");
 
-            if precision > MAX_DECIMAL_PRECISION {
+            if should_write_numeric_as_text(precision) {
                 reset_fallback_to_text_context(attribute_context.typoid, attribute_context.typmod);
 
                 to_pg_datum!(
@@ -415,7 +415,7 @@ fn to_pg_array_datum(
                 .precision
                 .expect("missing precision in context");
 
-            if precision > MAX_DECIMAL_PRECISION {
+            if should_write_numeric_as_text(precision) {
                 reset_fallback_to_text_context(attribute_context.typoid, attribute_context.typmod);
 
                 to_pg_datum!(

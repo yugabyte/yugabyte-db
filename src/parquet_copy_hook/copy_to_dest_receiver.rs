@@ -22,6 +22,14 @@ use crate::{
 };
 
 #[repr(C)]
+struct CopyToParquetOptions {
+    pub row_group_size: i64,
+    pub row_group_size_bytes: i64,
+    pub compression: PgParquetCompression,
+    pub compression_level: i32,
+}
+
+#[repr(C)]
 struct CopyToParquetDestReceiver {
     dest: DestReceiver,
     natts: usize,
@@ -31,10 +39,7 @@ struct CopyToParquetDestReceiver {
     collected_tuple_size: i64,
     collected_tuple_column_sizes: *mut i64,
     uri: *const c_char,
-    compression: PgParquetCompression,
-    compression_level: i32,
-    row_group_size: i64,
-    row_group_size_bytes: i64,
+    copy_options: CopyToParquetOptions,
     per_copy_context: MemoryContext,
 }
 
@@ -75,11 +80,11 @@ impl CopyToParquetDestReceiver {
     }
 
     fn collected_tuples_exceeds_row_group_size(&self) -> bool {
-        self.collected_tuple_count >= self.row_group_size
+        self.collected_tuple_count >= self.copy_options.row_group_size
     }
 
     fn collected_tuples_exceeds_row_group_size_bytes(&self) -> bool {
-        self.collected_tuple_size >= self.row_group_size_bytes
+        self.collected_tuple_size >= self.copy_options.row_group_size_bytes
     }
 
     fn collected_tuples_exceeds_max_col_size(&self, tuple_column_sizes: &[i32]) -> bool {
@@ -196,9 +201,9 @@ extern "C" fn copy_startup(dest: *mut DestReceiver, _operation: i32, tupledesc: 
 
     let uri = parse_uri(uri);
 
-    let compression = parquet_dest.compression;
+    let compression = parquet_dest.copy_options.compression;
 
-    let compression_level = parquet_dest.compression_level;
+    let compression_level = parquet_dest.copy_options.compression_level;
 
     // parquet writer context is used throughout the COPY TO operation.
     // This might be put into ParquetCopyDestReceiver, but it's hard to preserve repr(C).
@@ -348,10 +353,10 @@ pub extern "C" fn create_copy_to_parquet_dest_receiver(
     parquet_dest.collected_tuple_count = 0;
     parquet_dest.collected_tuples = std::ptr::null_mut();
     parquet_dest.collected_tuple_column_sizes = std::ptr::null_mut();
-    parquet_dest.row_group_size = row_group_size;
-    parquet_dest.row_group_size_bytes = row_group_size_bytes;
-    parquet_dest.compression = compression;
-    parquet_dest.compression_level = compression_level;
+    parquet_dest.copy_options.row_group_size = row_group_size;
+    parquet_dest.copy_options.row_group_size_bytes = row_group_size_bytes;
+    parquet_dest.copy_options.compression = compression;
+    parquet_dest.copy_options.compression_level = compression_level;
     parquet_dest.per_copy_context = per_copy_context;
 
     unsafe { std::mem::transmute(parquet_dest) }

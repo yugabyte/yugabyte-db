@@ -22,7 +22,10 @@ impl PgTypeToArrowArray<AnyNumeric> for Vec<Option<AnyNumeric>> {
 
         let numerics = self
             .into_iter()
-            .map(|numeric| numeric.map(numeric_to_i128))
+            .map(|numeric| {
+                numeric
+                    .map(|numeric| numeric_to_i128(numeric, context.typmod, context.field.name()))
+            })
             .collect::<Vec<_>>();
 
         let numeric_array = Decimal128Array::from(numerics)
@@ -43,7 +46,10 @@ impl PgTypeToArrowArray<AnyNumeric> for Vec<Option<Vec<Option<AnyNumeric>>>> {
             .into_iter()
             .flatten()
             .flatten()
-            .map(|numeric| numeric.map(numeric_to_i128))
+            .map(|numeric| {
+                numeric
+                    .map(|numeric| numeric_to_i128(numeric, context.typmod, context.field.name()))
+            })
             .collect::<Vec<_>>();
 
         let precision = context

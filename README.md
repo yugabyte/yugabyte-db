@@ -225,7 +225,12 @@ There is currently only one GUC parameter to enable/disable the `pg_parquet`:
 | `crunchy_map`(5)  | GROUP                     | MAP              |
 
 > [!WARNING]
-> - (1) The `numeric` types with <= `38` precision is represented as `FIXED_LEN_BYTE_ARRAY(16)` with `DECIMAL(128)` logical type. The `numeric` types with > `38` precision is represented as `BYTE_ARRAY` with `STRING` logical type.
+> - (1) `numeric` type is written the smallest possible memory width to parquet file as follows:
+>    * `numeric(P <= 9, S)` is represented as `INT32` with `DECIMAL` logical type
+>    * `numeric(9 < P <= 18, S)` is represented as `INT64` with `DECIMAL` logical type
+>    * `numeric(18 < P <= 38, S)` is represented as `FIXED_LEN_BYTE_ARRAY(9-16)` with `DECIMAL` logical type
+>    * `numeric(38 < P, S)` is represented as `BYTE_ARRAY` with `STRING` logical type
+>    * `numeric` is allowed by Postgres. (precision and scale not specified). These are represented by a default precision (38) and scale (16) instead of writing them as string. You get runtime error if your table tries to read or write a numeric value which is not allowed by the default precision and scale (22 integral digits before decimal point, 16 digits after decimal point).
 > - (2) The `date` type is represented according to `Unix epoch` when writing to Parquet files. It is converted back according to `PostgreSQL epoch` when reading from Parquet files.
 > - (3) The `timestamptz` and `timetz` types are adjusted to `UTC` when writing to Parquet files. They are converted back with `UTC` timezone when reading from Parquet files.
 > - (4) The `geometry` type is represented as `BYTE_ARRAY` encoded as `WKB` when `postgis` extension is created. Otherwise, it is represented as `BYTE_ARRAY` with `STRING` logical type.
