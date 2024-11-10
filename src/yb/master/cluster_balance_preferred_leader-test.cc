@@ -211,7 +211,7 @@ TEST_F(TestLoadBalancerPreferredLeader, TestReadOnlyLoadBalancing) {
   // First we make sure that no load balancing happens during the live iteration.
   ASSERT_NOK(TestAddLoad("", "", ""));
 
-  cb_.SetOptions(READ_ONLY, read_only_placement_uuid);
+  cb_.SetOptions(ReplicaType::kReadOnly, read_only_placement_uuid);
   ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
   // Now load balance a read_only replica.
   string expected_from_ts = ts_descs_[3]->permanent_uuid();
@@ -253,7 +253,7 @@ TEST_F(TestLoadBalancerPreferredLeader, TestLeaderBalancingWithReadOnly) {
   string placeholder;
   ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
 
-  cb_.SetOptions(READ_ONLY, read_only_placement_uuid);
+  cb_.SetOptions(ReplicaType::kReadOnly, read_only_placement_uuid);
   ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
   ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
   cb_.ResetOptions();
