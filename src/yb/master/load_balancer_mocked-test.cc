@@ -712,6 +712,26 @@ TEST_F(LoadBalancerMockedTest, TestLeaderOverReplication) {
   TestRemoveLoad(tablets_[0]->tablet_id(), "");
 }
 
+TEST_F(LoadBalancerMockedTest, LimitRbsPerTserver) {
+  GetOptions()->kMaxInboundRemoteBootstrapsPerTs = 1;
+  PrepareTestStateMultiAz();
+  // Remove all replicas from ts2.
+  for (const auto& tablet : tablets_) {
+    RemoveReplica(tablet.get(), ts_descs_[2]);
+  }
+
+  // Add another tserver in zone c.
+  ts_descs_.push_back(SetupTS("3333", "c"));
+
+  // Load balancer should add a replica to ts2, then ts3, then stop because of the inbound RBS
+  // limit.
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_OK(TestAddLoad("", "", ts_descs_[2]->permanent_uuid()));
+  ASSERT_OK(TestAddLoad("", "", ts_descs_[3]->permanent_uuid()));
+  ASSERT_EQ(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)), false);
+}
+
 TEST_F(LoadBalancerMockedTest, TestLeaderBlacklist) {
   LOG(INFO) << "Testing moving overloaded leaders";
   PrepareTestStateMultiAz();

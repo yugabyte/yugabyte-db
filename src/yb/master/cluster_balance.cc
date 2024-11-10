@@ -56,8 +56,10 @@ DEFINE_RUNTIME_int32(leader_balance_unresponsive_timeout_ms, 3 * 1000,
     "tablet server before considering it unresponsive. Unresponsive servers are "
     "excluded from leader balancing.");
 
-DEFINE_RUNTIME_int32(load_balancer_max_concurrent_tablet_remote_bootstraps, 10,
-    "Maximum number of tablets being remote bootstrapped across the cluster.");
+DEFINE_RUNTIME_int32(load_balancer_max_concurrent_tablet_remote_bootstraps, -1,
+    "Maximum number of tablets being remote bootstrapped across the cluster. If set to -1, there "
+    "is no global limit on the number of concurrent remote bootstraps (per-table or per-tserver "
+    "limits still apply).");
 
 DEFINE_RUNTIME_int32(load_balancer_max_concurrent_tablet_remote_bootstraps_per_table, 2,
     "Maximum number of tablets being remote bootstrapped for any table. The maximum "
@@ -65,6 +67,10 @@ DEFINE_RUNTIME_int32(load_balancer_max_concurrent_tablet_remote_bootstraps_per_t
     "load_balancer_max_concurrent_tablet_remote_bootstraps. This flag is meant to prevent "
     "a single table use all the available remote bootstrap sessions and starving other "
     "tables.");
+
+DEFINE_RUNTIME_int32(load_balancer_max_inbound_remote_bootstraps_per_tserver, 4,
+    "Maximum number of tablets simultaneously remote bootstrapping on a tserver. Past this value, "
+    "the load balancer will not add tablets to this tserver.");
 
 DEFINE_RUNTIME_int32(load_balancer_max_over_replicated_tablets, 1,
     "Maximum number of running tablet replicas that are allowed to be over the configured "
@@ -232,9 +238,9 @@ Status ClusterLoadBalancer::PopulateReplicationInfo(
     const scoped_refptr<TableInfo>& table, const ReplicationInfoPB& replication_info) {
   PlacementInfoPB pb;
 
-  if (state_->options_->type == LIVE) {
+  if (state_->options_->type == ReplicaType::kLive) {
     pb.CopyFrom(replication_info.live_replicas());
-  } else if (state_->options_->type == READ_ONLY) {
+  } else if (state_->options_->type == ReplicaType::kReadOnly) {
     if (replication_info.read_replicas_size() == 0) {
       // Should not reach here as tables that should not have read replicas should
       // have already been skipped before reaching here.
@@ -423,7 +429,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
     VLOG(2) << Format("Replication info for table $0: $1", table_id,
         replication_info->ShortDebugString());
 
-    if (options->type == READ_ONLY) {
+    if (options->type == ReplicaType::kReadOnly) {
       if (replication_info->read_replicas_size() == 0) {
         // The table has a replication policy without any read replicas present.
         // The LoadBalancer is handling read replicas in this run, so this
@@ -715,7 +721,7 @@ void ClusterLoadBalancer::RunLoadBalancer(const LeaderEpoch& epoch) {
       std::make_unique<Options>();
   Options* options_ent = options_unique_ptr.get();
   // First, we load balance the live cluster.
-  options_ent->type = LIVE;
+  options_ent->type = ReplicaType::kLive;
   if (config.replication_info().live_replicas().has_placement_uuid()) {
     options_ent->placement_uuid = config.replication_info().live_replicas().placement_uuid();
     options_ent->live_placement_uuid = options_ent->placement_uuid;
@@ -726,7 +732,7 @@ void ClusterLoadBalancer::RunLoadBalancer(const LeaderEpoch& epoch) {
   RunLoadBalancerWithOptions(options_ent);
 
   // Then, we balance all read-only clusters.
-  options_ent->type = READ_ONLY;
+  options_ent->type = ReplicaType::kReadOnly;
   for (int i = 0; i < config.replication_info().read_replicas_size(); i++) {
     const PlacementInfoPB& read_only_cluster = config.replication_info().read_replicas(i);
     options_ent->placement_uuid = read_only_cluster.placement_uuid();
@@ -1824,7 +1830,7 @@ Status ClusterLoadBalancer::SendReplicaChanges(
 }
 
 consensus::PeerMemberType ClusterLoadBalancer::GetDefaultMemberType() {
-  if (state_->options_->type == LIVE) {
+  if (state_->options_->type == ReplicaType::kLive) {
     return consensus::PeerMemberType::PRE_VOTER;
   } else {
     return consensus::PeerMemberType::PRE_OBSERVER;
