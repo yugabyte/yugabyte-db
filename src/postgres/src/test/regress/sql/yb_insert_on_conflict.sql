@@ -274,6 +274,15 @@ SELECT * FROM varlen ORDER BY t;
 -- Reset.
 TRUNCATE varlen;
 
+--- Generated column as arbiter index
+CREATE UNIQUE INDEX NONCONCURRENTLY ON varlen (b);
+INSERT INTO varlen VALUES ('a');
+INSERT INTO varlen VALUES ('a'), ('a') ON CONFLICT (b) DO UPDATE SET t = 'b';
+INSERT INTO varlen VALUES ('a'), ('a') ON CONFLICT (b) DO UPDATE SET t = EXCLUDED.t || 'z';
+INSERT INTO varlen VALUES ('az'), ('az') ON CONFLICT (b) DO UPDATE SET t = varlen.t || 'z';
+
+SELECT * FROM varlen ORDER BY t;
+
 --- ON CONFLICT DO UPDATE edge cases with PRIMARY KEY as arbiter index
 CREATE TABLE ioc (i int, PRIMARY KEY (i ASC));
 BEGIN;
