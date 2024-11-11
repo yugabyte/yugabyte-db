@@ -169,4 +169,17 @@ typedef void *(*GetMultiAndBitmapIndexFunc_HookType)(void);
 extern GetMultiAndBitmapIndexFunc_HookType get_multi_and_bitmap_func_hook;
 
 extern bool DefaultInlineWriteOperations;
+
+/*
+ * Hook for customizing the validation of vector query spec.
+ */
+typedef struct VectorSearchOptions VectorSearchOptions;
+typedef void
+(*TryCustomParseAndValidateVectorQuerySpec_HookType)(const char *key,
+													 const bson_value_t *value,
+													 VectorSearchOptions *
+													 vectorSearchOptions);
+extern TryCustomParseAndValidateVectorQuerySpec_HookType
+	try_custom_parse_and_validate_vector_query_spec_hook;
+
 #endif

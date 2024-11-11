@@ -19,6 +19,7 @@
 #include "api_hooks_def.h"
 #include "utils/query_utils.h"
 #include "utils/helio_errors.h"
+#include "vector/vector_spec.h"
 
 
 IsMetadataCoordinator_HookType is_metadata_coordinator_hook = NULL;
@@ -44,6 +45,8 @@ EnsureMetadataTableReplicated_HookType ensure_metadata_table_replicated_hook = N
 PostSetupCluster_HookType post_setup_cluster_hook = NULL;
 GetIndexAmRoutine_HookType get_index_amroutine_hook = NULL;
 GetMultiAndBitmapIndexFunc_HookType get_multi_and_bitmap_func_hook = NULL;
+TryCustomParseAndValidateVectorQuerySpec_HookType
+	try_custom_parse_and_validate_vector_query_spec_hook = NULL;
 
 /*
  * Single node scenario is always a metadata coordinator
@@ -362,4 +365,21 @@ GetMultiAndBitmapIndexFunc()
 	void **ignoreLibFileHandle = NULL;
 	return load_external_function("$libdir/rum", "multiandgetbitmap", !missingOk,
 								  ignoreLibFileHandle);
+}
+
+
+/*
+ * Try to validate vector query spec by customized logic.
+ */
+void
+TryCustomParseAndValidateVectorQuerySpec(const char *key,
+										 const bson_value_t *value,
+										 VectorSearchOptions *vectorSearchOptions)
+{
+	if (try_custom_parse_and_validate_vector_query_spec_hook != NULL)
+	{
+		try_custom_parse_and_validate_vector_query_spec_hook(key,
+															 value,
+															 vectorSearchOptions);
+	}
 }

@@ -17,6 +17,7 @@
 #include <utils/syscache.h>
 #include <commands/defrem.h>
 
+#include "api_hooks.h"
 #include "io/helio_bson_core.h"
 #include "utils/helio_errors.h"
 #include "metadata/metadata_cache.h"
@@ -25,6 +26,7 @@
 #include "vector/vector_planner.h"
 #include "vector/vector_utilities.h"
 #include "vector/vector_spec.h"
+
 
 /* --------------------------------------------------------- */
 /* Data-types */
@@ -35,6 +37,10 @@ extern SearchQueryEvalDataWorker *VectorEvaluationData;
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
+
+static Expr * GenerateVectorExractionExprFromQueryWithCast(Node *vectorQuerySpecNode,
+														   FuncExpr *vectorCastFunc);
+
 static Oid GetSimilarityOperatorOidByFamilyOid(Oid operatorFamilyOid, Oid
 											   accessMethodOid);
 
@@ -323,6 +329,10 @@ IsMatchingVectorIndex(Relation indexRelation, const char *queryVectorPath,
  * A predefined "Cast" function that the index uses, and a pointer to the
  * PG index, generates a vector sort Operator that can be pushed down to
  * that specified index.
+ * e.g.
+ *      vector(mongo_catalog.bson_extract_vector(document, 'v_path'), 3, true)
+ *      <->
+ *      vector(mongo_catalog.bson_extract_vector('{ "vector" : [8.0, 1.0, 9.0], "k" : 2, "path" : "v"}', 'vector'), 3, true)
  */
 Expr *
 GenerateVectorSortExpr(const char *queryVectorPath,
@@ -336,49 +346,29 @@ GenerateVectorSortExpr(const char *queryVectorPath,
 
 	/* ApiCatalogSchemaName.bson_extract_vector(document, 'elem') */
 	List *args = list_make2(documentExpr, vectorSimilarityIndexPathConst);
-	Expr *vectorExractionFunc = (Expr *) makeFuncExpr(
+	Expr *vectorExractionFromDocFunc = (Expr *) makeFuncExpr(
 		ApiCatalogBsonExtractVectorFunctionId(), VectorTypeId(),
 		args, InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
 
-	List *castArgsLeft = list_make3(vectorExractionFunc,
+	List *castArgsLeft = list_make3(vectorExractionFromDocFunc,
 									lsecond(vectorCastFunc->args),
 									lthird(vectorCastFunc->args));
-	Expr *vectorExractionFuncWithCast = (Expr *) makeFuncExpr(
+	Expr *vectorExractionFromDocFuncWithCast = (Expr *) makeFuncExpr(
 		vectorCastFunc->funcid, vectorCastFunc->funcresulttype, castArgsLeft,
 		InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
 
+	/* To generate the vector extraction function from the query */
 	/* ApiCatalogSchemaName.bson_extract_vector('{ "path" : "myname", "vector": [8.0, 1.0, 9.0], "k": 10 }', 'vector') */
-	Datum const_value = CStringGetTextDatum("vector");
-
-	Const *queryText = makeConst(TEXTOID, -1, /*typemod value*/ InvalidOid,
-								 -1, /* length of the pointer type*/
-								 const_value, false /*constisnull*/,
-								 false /* constbyval*/);
-	List *queryArgs = list_make2(vectorQuerySpecNode, queryText);
-	Expr *vectorExractionFromQueryFunc =
-		(Expr *) makeFuncExpr(
-			ApiCatalogBsonExtractVectorFunctionId(),
-			VectorTypeId(),
-			queryArgs,
-			InvalidOid, InvalidOid,
-			COERCE_EXPLICIT_CALL);
-
-	List *castArgsRight = list_make3(
-		vectorExractionFromQueryFunc,
-		lsecond(vectorCastFunc->args),
-		lthird(vectorCastFunc->args));
 	Expr *vectorExractionFromQueryFuncWithCast =
-		(Expr *) makeFuncExpr(vectorCastFunc->funcid, vectorCastFunc->funcresulttype,
-							  castArgsRight, InvalidOid,
-							  InvalidOid,
-							  COERCE_EXPLICIT_CALL);
+		GenerateVectorExractionExprFromQueryWithCast(
+			vectorQuerySpecNode, vectorCastFunc);
 
 	Oid similaritySearchOpOid = GetSimilarityOperatorOidByFamilyOid(
 		indexRelation->rd_opfamily[0], indexRelation->rd_rel->relam);
 
 	OpExpr *opExpr = (OpExpr *) make_opclause(
 		similaritySearchOpOid, FLOAT8OID,
-		false, vectorExractionFuncWithCast, vectorExractionFromQueryFuncWithCast,
+		false, vectorExractionFromDocFuncWithCast, vectorExractionFromQueryFuncWithCast,
 		InvalidOid, InvalidOid);
 	return (Expr *) opExpr;
 }
@@ -432,6 +422,45 @@ TrySetDefaultSearchParamForCustomScan(SearchQueryEvalData *querySearchData)
 /* --------------------------------------------------------- */
 /* Private methods */
 /* --------------------------------------------------------- */
+
+/*
+ * Generate the expr for extracting the vector from the query spec
+ * e.g.
+ *      ApiCatalogSchemaName.bson_extract_vector('{ "path" : "myname", "vector": [8.0, 1.0, 9.0], "k": 10 }', 'vector')
+ */
+static Expr *
+GenerateVectorExractionExprFromQueryWithCast(Node *vectorQuerySpecNode,
+											 FuncExpr *vectorCastFunc)
+{
+	/* we extract the vector from the query */
+	Datum const_value = CStringGetTextDatum("vector");
+
+	Const *queryText = makeConst(TEXTOID, -1, /*typemod value*/ InvalidOid,
+								 -1,     /* length of the pointer type*/
+								 const_value, false /*constisnull*/,
+								 false /* constbyval*/);
+	List *queryArgs = list_make2(vectorQuerySpecNode, queryText);
+	Expr *vectorExractionFromQueryFunc =
+		(Expr *) makeFuncExpr(
+			ApiCatalogBsonExtractVectorFunctionId(),
+			VectorTypeId(),
+			queryArgs,
+			InvalidOid, InvalidOid,
+			COERCE_EXPLICIT_CALL);
+
+	List *castArgs = list_make3(
+		vectorExractionFromQueryFunc,
+		lsecond(vectorCastFunc->args),
+		lthird(vectorCastFunc->args));
+	Expr *vectorExractionFromQueryFuncWithCast =
+		(Expr *) makeFuncExpr(vectorCastFunc->funcid, vectorCastFunc->funcresulttype,
+							  castArgs, InvalidOid,
+							  InvalidOid,
+							  COERCE_EXPLICIT_CALL);
+
+	return vectorExractionFromQueryFuncWithCast;
+}
+
 
 static Oid
 GetSimilarityOperatorOidByFamilyOid(Oid operatorFamilyOid, Oid accessMethodOid)

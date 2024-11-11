@@ -163,4 +163,13 @@ IndexAmRoutine *GetHelioIndexAmRoutine(PG_FUNCTION_ARGS);
  */
 void * GetMultiAndBitmapIndexFunc(void);
 
+
+/*
+ * Hook for customizing the validation of vector query spec.
+ */
+typedef struct VectorSearchOptions VectorSearchOptions;
+void TryCustomParseAndValidateVectorQuerySpec(const char *key,
+											  const bson_value_t *value,
+											  VectorSearchOptions *vectorSearchOptions);
+
 #endif

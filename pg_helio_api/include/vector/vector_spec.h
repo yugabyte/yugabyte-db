@@ -72,6 +72,9 @@ typedef struct VectorSearchOptions
 	/* it's the query spec pgbson that we pass to the bson_extract_vector() method to get the float[] vector. */
 	pgbson *searchSpecPgbson;
 
+	/* the bson value for the query vector */
+	bson_value_t queryVectorValue;
+
 	/* the length of the query vector */
 	int32_t queryVectorLength;
 
@@ -86,6 +89,9 @@ typedef struct VectorSearchOptions
 
 	/* filter bson */
 	bson_value_t filterBson;
+
+	/* score bson */
+	bson_value_t scoreBson;
 
 	/* The vector access method oid */
 	Oid vectorAccessMethodOid;

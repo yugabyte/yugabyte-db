@@ -45,14 +45,6 @@ typedef struct BsonPositionalQueryQual
 	bool isEmptyElemMatch;
 } BsonPositionalQueryQual;
 
-/*
- * A list of BsonPositionalQueryQual for each
- * qualifier found within a top level query.
- */
-typedef struct BsonPositionalQueryData
-{
-	List *queryQuals;
-} BsonPositionalQueryData;
 
 /*
  * State passed to TraverseBson When traversing a source

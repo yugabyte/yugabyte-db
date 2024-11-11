@@ -13,6 +13,15 @@
 
 typedef struct BsonPositionalQueryData BsonPositionalQueryData;
 
+/*
+ * A list of BsonPositionalQueryQual for each
+ * qualifier found within a top level query.
+ */
+typedef struct BsonPositionalQueryData
+{
+	List *queryQuals;
+} BsonPositionalQueryData;
+
 BsonPositionalQueryData * GetPositionalQueryData(const pgbson *query);
 
 int32_t MatchPositionalQueryAgainstDocument(const BsonPositionalQueryData *data,

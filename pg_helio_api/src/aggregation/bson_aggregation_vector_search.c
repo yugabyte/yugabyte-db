@@ -45,6 +45,7 @@
 #include "vector/vector_common.h"
 #include "vector/vector_spec.h"
 #include "vector/vector_utilities.h"
+#include "api_hooks.h"
 
 /* --------------------------------------------------------- */
 /* Data-types */
@@ -113,11 +114,7 @@ static void ParseAndValidateCosmosSearchQuerySpec(const pgbson *vectorSearchSpec
 												  VectorSearchOptions *vectorSearchOptions);
 
 static void ParseAndValidateVectorQuerySpecCore(const pgbson *vectorSearchSpecPgbson,
-												char **queryVectorPath,
-												int32_t *resultCount,
-												int32_t *queryVectorLength,
-												bson_value_t *filterBson,
-												bson_value_t *scoreBson);
+												VectorSearchOptions *vectorSearchOptions);
 
 static Expr * GenerateScoreExpr(const Expr *orderVar, Oid similaritySearchOpOid);
 
@@ -948,7 +945,6 @@ ParseAndValidateMongoNativeVectorSearchSpec(const bson_value_t *nativeVectorSear
 
 	pgbson_writer writer;
 	PgbsonWriterInit(&writer);
-	const bson_value_t *vectorValue = NULL;
 
 	while (bson_iter_next(&nativeVectorSearchIter))
 	{
@@ -978,7 +974,7 @@ ParseAndValidateMongoNativeVectorSearchSpec(const bson_value_t *nativeVectorSear
 									"Length of the query vector cannot exceed %d",
 									VECTOR_MAX_DIMENSIONS)));
 			}
-			vectorValue = value;
+			vectorSearchOptions->queryVectorValue = *value;
 			PgbsonWriterAppendValue(&writer, "vector", 6, value);
 		}
 		else if (strcmp(key, "numCandidates") == 0)
@@ -1063,7 +1059,8 @@ ParseAndValidateMongoNativeVectorSearchSpec(const bson_value_t *nativeVectorSear
 								key)));
 		}
 	}
-	if (vectorSearchOptions->searchPath == NULL || vectorValue == NULL ||
+	if (vectorSearchOptions->searchPath == NULL ||
+		vectorSearchOptions->queryVectorValue.value_type == BSON_TYPE_EOD ||
 		vectorSearchOptions->resultCount < 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
@@ -1239,14 +1236,9 @@ HandleVectorSearchCore(Query *query, VectorSearchOptions *vectorSearchOptions,
  */
 static void
 ParseAndValidateVectorQuerySpecCore(const pgbson *vectorSearchSpecPgbson,
-									char **queryVectorPath,
-									int32_t *resultCount,
-									int32_t *queryVectorLength,
-									bson_value_t *filterBson,
-									bson_value_t *scoreBson)
+									VectorSearchOptions *vectorSearchOptions)
 {
 	bson_iter_t specIter;
-	const bson_value_t *vectorValue = NULL;
 
 	PgbsonInitIterator(vectorSearchSpecPgbson, &specIter);
 	while (bson_iter_next(&specIter))
@@ -1256,17 +1248,16 @@ ParseAndValidateVectorQuerySpecCore(const pgbson *vectorSearchSpecPgbson,
 
 		if (strcmp(key, "path") == 0)
 		{
-			const bson_value_t *pathValue = value;
-			if (pathValue->value_type != BSON_TYPE_UTF8)
+			if (value->value_type != BSON_TYPE_UTF8)
 			{
 				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"$path must be a text value")));
 			}
 
-			*queryVectorPath = pstrdup(pathValue->value.v_utf8.str);
+			vectorSearchOptions->searchPath = pstrdup(value->value.v_utf8.str);
 
-			if (queryVectorPath == NULL)
+			if (vectorSearchOptions->searchPath == NULL)
 			{
 				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
@@ -1275,22 +1266,23 @@ ParseAndValidateVectorQuerySpecCore(const pgbson *vectorSearchSpecPgbson,
 		}
 		else if (strcmp(key, "vector") == 0)
 		{
-			vectorValue = value;
-			if (!BsonValueHoldsNumberArray(vectorValue, queryVectorLength))
+			vectorSearchOptions->queryVectorValue = *value;
+			if (!BsonValueHoldsNumberArray(&vectorSearchOptions->queryVectorValue,
+										   &vectorSearchOptions->queryVectorLength))
 			{
 				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"$vector must be an array of numbers.")));
 			}
 
-			if (*queryVectorLength == 0)
+			if (vectorSearchOptions->queryVectorLength == 0)
 			{
 				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"$vector cannot be an empty array.")));
 			}
 
-			if (*queryVectorLength > VECTOR_MAX_DIMENSIONS)
+			if (vectorSearchOptions->queryVectorLength > VECTOR_MAX_DIMENSIONS)
 			{
 				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
@@ -1307,16 +1299,16 @@ ParseAndValidateVectorQuerySpecCore(const pgbson *vectorSearchSpecPgbson,
 									"$k must be an integer value.")));
 			}
 
-			*resultCount = BsonValueAsInt32(value);
+			vectorSearchOptions->resultCount = BsonValueAsInt32(value);
 
-			if (*resultCount < 1)
+			if (vectorSearchOptions->resultCount < 1)
 			{
 				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"$k must be a positive integer.")));
 			}
 		}
-		else if (filterBson != NULL && strcmp(key, "filter") == 0)
+		else if (strcmp(key, "filter") == 0)
 		{
 			if (!EnableVectorPreFilter)
 			{
@@ -1334,9 +1326,9 @@ ParseAndValidateVectorQuerySpecCore(const pgbson *vectorSearchSpecPgbson,
 									"$filter must be a document value.")));
 			}
 
-			*filterBson = *value;
+			vectorSearchOptions->filterBson = *value;
 		}
-		else if (scoreBson != NULL && strcmp(key, "score") == 0)
+		else if (strcmp(key, "score") == 0)
 		{
 			if (!BSON_ITER_HOLDS_DOCUMENT(&specIter))
 			{
@@ -1345,25 +1337,32 @@ ParseAndValidateVectorQuerySpecCore(const pgbson *vectorSearchSpecPgbson,
 									"$score must be a document value.")));
 			}
 
-			*scoreBson = *value;
+			vectorSearchOptions->scoreBson = *value;
+		}
+		else
+		{
+			/* Custom hook for parsing and validating vector query spec */
+			TryCustomParseAndValidateVectorQuerySpec(key,
+													 value,
+													 vectorSearchOptions);
 		}
 	}
 
-	if (*queryVectorPath == NULL)
+	if (vectorSearchOptions->searchPath == NULL)
 	{
 		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg(
 							"$path is required field for using a vector index.")));
 	}
 
-	if (vectorValue == NULL)
+	if (vectorSearchOptions->queryVectorValue.value_type == BSON_TYPE_EOD)
 	{
 		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg(
 							"$vector is required field for using a vector index.")));
 	}
 
-	if (*resultCount < 0)
+	if (vectorSearchOptions->resultCount < 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg(
@@ -1403,11 +1402,7 @@ ParseAndValidateCosmosSearchQuerySpec(const pgbson *vectorSearchSpecPgbson,
 									  VectorSearchOptions *vectorSearchOptions)
 {
 	ParseAndValidateVectorQuerySpecCore(vectorSearchSpecPgbson,
-										&vectorSearchOptions->searchPath,
-										&vectorSearchOptions->resultCount,
-										&vectorSearchOptions->queryVectorLength,
-										&vectorSearchOptions->filterBson,
-										NULL);
+										vectorSearchOptions);
 }
 
 
@@ -1435,16 +1430,10 @@ static void
 ParseAndValidateKnnBetaQuerySpec(const pgbson *vectorSearchSpecPgbson,
 								 VectorSearchOptions *vectorSearchOptions)
 {
-	bson_value_t filterBson = { 0 };
-	bson_value_t scoreBson = { 0 };
-
 	ParseAndValidateVectorQuerySpecCore(vectorSearchSpecPgbson,
-										&vectorSearchOptions->searchPath,
-										&vectorSearchOptions->resultCount,
-										&vectorSearchOptions->queryVectorLength,
-										&filterBson,
-										&scoreBson);
+										vectorSearchOptions);
 
+	bson_value_t filterBson = vectorSearchOptions->filterBson;
 	if (filterBson.value_type != BSON_TYPE_EOD && !IsBsonValueEmptyDocument(&filterBson))
 	{
 		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
@@ -1452,6 +1441,7 @@ ParseAndValidateKnnBetaQuerySpec(const pgbson *vectorSearchSpecPgbson,
 							"$filter is not supported for knnBeta queries.")));
 	}
 
+	bson_value_t scoreBson = vectorSearchOptions->scoreBson;
 	if (scoreBson.value_type != BSON_TYPE_EOD && !IsBsonValueEmptyDocument(&scoreBson))
 	{
 		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),

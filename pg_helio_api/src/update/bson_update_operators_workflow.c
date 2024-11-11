@@ -37,17 +37,6 @@
 static const StringView PositionalType_AllString = { .string = "$[]", .length = 3 };
 static const StringView PositionalFilterString = { .string = "$", .length = 1 };
 
-/* WriteUpdatedValuesFunc function takes an existing value in the current document,
- * applies the update mutation pertinent to that operator, and writes the updated
- * value to the writer
- */
-typedef void (*WriteUpdatedValuesFunc)(const bson_value_t *existingValue,
-									   UpdateOperatorWriter *writer,
-									   const bson_value_t *updateValue,
-									   void *updateNodeContext,
-									   const UpdateSetValueState *setValueState,
-									   const CurrentDocumentState *state);
-
 /*
  * TREE DATA STRUCTURES
  * The following data structures are used to build the Update tree.
@@ -185,20 +174,6 @@ typedef struct QueryFilterPathAndValue
 } QueryFilterPathAndValue;
 
 
-/* Any positional metadata available during building the update spec for
- * target documents */
-typedef struct PositionalUpdateSpec
-{
-	/* The input query spec - used when evaluating $ positional operators */
-	pgbson *querySpec;
-
-	/* hashmap of char* to bson_value_t* */
-	HTAB *arrayFilters;
-
-	/* The processed positional query data from the original querySpec */
-	BsonPositionalQueryData *processedQuerySpec;
-} PositionalUpdateSpec;
-
 /*
  * State passed during the tree building phase to allow for the tree-nodes
  * to be constructed correctly.
@@ -213,52 +188,6 @@ typedef struct BsonUpdateTreeState
 
 	const PositionalUpdateSpec *positionalSpec;
 } BsonUpdateTreeState;
-
-/* OPERATOR DEFINITIONS
- * These types specify how to build operators and define all supported
- * update operators.
- */
-
-/*
- * An optional function to retrieve operator specific state given a specific
- * updateSpec value.
- */
-typedef void *(*UpdateOperatorGetFuncState)(const bson_value_t *tree);
-
-/*
- * HandleUpdateOperatorUpdateBsonTree takes a specific update operator document
- * and constructs the update tree. The function is also given a pointer to the
- * function that will apply the update on the target document - this can be cached
- * into the tree so we don't need to look up this data again.
- */
-typedef void (*HandleUpdateOperatorUpdateBsonTree)(BsonIntermediatePathNode *tree,
-												   bson_iter_t *updateSpec,
-												   WriteUpdatedValuesFunc updateFunc,
-												   UpdateOperatorGetFuncState stateFunc,
-												   const PositionalUpdateSpec *
-												   positionalSpec,
-												   bool isUpsert);
-
-/* The declaration of the Mongo update operators */
-typedef struct
-{
-	/* The name of the update operator e.g. $set */
-	const char *operatorName;
-
-	/* Function that handles parsing the update Spec for the operator
-	 * and updates the tree with the set of paths being updated
-	 */
-	HandleUpdateOperatorUpdateBsonTree updateTreeFunc;
-
-	/* Function that writes the updated values into the target writer
-	 * for a given document
-	 */
-	WriteUpdatedValuesFunc updateWriterFunc;
-
-	/* An optional function for retreiving state pertinent to the
-	 * update node value */
-	UpdateOperatorGetFuncState updateWriterGetState;
-} MongoUpdateOperatorSpec;
 
 
 /* OPERATOR WRITER TYPES:
@@ -444,8 +373,14 @@ static MongoUpdateOperatorSpec MongoUpdateOperators[] =
 	{ "$currentDate", HandleBasicUpdateTree, HandleUpdateDollarCurrentDate, NULL },
 	{ "$pull", HandleBasicUpdateTree, HandleUpdateDollarPull, HandlePullWriterGetState },
 	{ NULL, NULL, NULL, NULL },
+	{ NULL, NULL, NULL, NULL },
+	{ NULL, NULL, NULL, NULL },
 };
 
+static const int MaxNumberOfUpdateOperators = sizeof(MongoUpdateOperators) /
+											  sizeof(MongoUpdateOperatorSpec);
+
+static int NumberOfUpdateOperators = MaxNumberOfUpdateOperators - 3;
 
 /*
  * Helper function to cast a node as an update intermediate node.
@@ -634,6 +569,46 @@ IsAnErrorForIntermediateNodeOfDollarRenameOp(const BsonPathNode *
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
+
+/*
+ * Registers an update operator for customed update operations.
+ */
+void
+RegisterUpdateOperatorExtension(const MongoUpdateOperatorSpec *extensibleDefinition)
+{
+	if (!process_shared_preload_libraries_in_progress)
+	{
+		ereport(ERROR, (errmsg(
+							"Update operator extensions can only be added during shared_preload_libraries")));
+	}
+
+
+	if (NumberOfUpdateOperators == MaxNumberOfUpdateOperators - 1)
+	{
+		ereport(ERROR, (errmsg("Max update operator extensions registered reached.")));
+	}
+
+	if (extensibleDefinition->operatorName == NULL)
+	{
+		ereport(ERROR, (errmsg("No operator name specified for extensible definition")));
+	}
+
+	if (extensibleDefinition->updateTreeFunc == NULL)
+	{
+		ereport(ERROR, (errmsg("No updateTreeFunc for operator name %s",
+							   extensibleDefinition->operatorName)));
+	}
+
+	if (extensibleDefinition->updateWriterFunc == NULL)
+	{
+		ereport(ERROR, (errmsg("No updateWriterFunc for operator name %s",
+							   extensibleDefinition->operatorName)));
+	}
+
+	MongoUpdateOperators[NumberOfUpdateOperators] = *extensibleDefinition;
+	NumberOfUpdateOperators++;
+}
+
 
 /*
  * Builds an immutable update tree that is constructed once per query
