@@ -1536,4 +1536,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable RF change for existing universes through edit universe flow",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL, ConfKeyTags.FEATURE_FLAG));
+  public static final ConfKeyInfo<Integer> waitForK8sGFlagSyncSec =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.wait_for_gflag_sync_sec",
+          ScopeType.GLOBAL,
+          "Wait for GFlag Sync in K8s universe",
+          "Wait for GFlag Sync in K8s universe",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

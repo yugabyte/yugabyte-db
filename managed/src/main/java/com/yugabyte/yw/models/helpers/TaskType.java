@@ -9,8 +9,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodesAreSafeToTakeDown;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitStartingFromTime;
-import com.yugabyte.yw.commissioner.tasks.upgrade.PauseKubernetesUniverse;
-import com.yugabyte.yw.commissioner.tasks.upgrade.ResumeKubernetesUniverse;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.CustomerTask;
 import java.lang.reflect.Field;
@@ -956,6 +954,9 @@ public enum TaskType {
   KubernetesWaitForPod(com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod.class),
 
   KubernetesCheckNumPod(com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckNumPod.class),
+
+  PodDisruptionBudgetPolicy(
+      com.yugabyte.yw.commissioner.tasks.subtasks.PodDisruptionBudgetPolicy.class),
 
   SetActiveUniverseKeys(com.yugabyte.yw.commissioner.tasks.subtasks.SetActiveUniverseKeys.class),
 

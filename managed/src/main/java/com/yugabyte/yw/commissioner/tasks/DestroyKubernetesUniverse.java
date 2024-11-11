@@ -136,6 +136,11 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
             .setSubTaskGroupType(SubTaskGroupType.DeletingBackup);
       }
 
+      if (universe.getUniverseDetails().useNewHelmNamingStyle) {
+        createPodDisruptionBudgetPolicyTask(true /* deletePDB */)
+            .setSubTaskGroupType(SubTaskGroupType.RemovingPodDisruptionBudgetPolicy);
+      }
+
       // cleanup the supportBundles if any
       deleteSupportBundle(universe.getUniverseUUID());
 

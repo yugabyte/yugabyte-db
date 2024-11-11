@@ -77,6 +77,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.NodeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade;
+import com.yugabyte.yw.commissioner.tasks.subtasks.PodDisruptionBudgetPolicy;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PromoteAutoFlags;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RebootServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveNodeAgent;
@@ -6880,6 +6881,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     MarkSourceMetric task = createTask(MarkSourceMetric.class);
     task.initialize(params);
     // Add it to the task list.
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createPodDisruptionBudgetPolicyTask(boolean deletePDB) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("PodDisruptionBudgetPolicy");
+    PodDisruptionBudgetPolicy.Params params = new PodDisruptionBudgetPolicy.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.deletePDB = deletePDB;
+    PodDisruptionBudgetPolicy task = createTask(PodDisruptionBudgetPolicy.class);
+    task.initialize(params);
+    task.setUserTaskUUID(getUserTaskUUID());
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
