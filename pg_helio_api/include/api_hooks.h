@@ -147,6 +147,13 @@ bool IsChangeStreamFeatureAvailableAndCompatible(void);
 void EnsureMetadataTableReplicated(const char *tableName);
 
 /*
+ * The hook allows the extension to do any additional setup
+ * after the cluster has been initialized or upgraded.
+ */
+void PostSetupClusterHook(bool isInitialize);
+
+
+/*
  * Get current IndexAmRoutine for the index handler.
  */
 IndexAmRoutine *GetHelioIndexAmRoutine(PG_FUNCTION_ARGS);

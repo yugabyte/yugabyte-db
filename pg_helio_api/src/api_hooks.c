@@ -41,6 +41,7 @@ GetDistributedApplicationName_HookType get_distributed_application_name_hook = N
 IsChangeStreamEnabledAndCompatible is_changestream_enabled_and_compatible_hook = NULL;
 IsNtoReturnSupported_HookType is_n_to_return_supported_hook = NULL;
 EnsureMetadataTableReplicated_HookType ensure_metadata_table_replicated_hook = NULL;
+PostSetupCluster_HookType post_setup_cluster_hook = NULL;
 GetIndexAmRoutine_HookType get_index_amroutine_hook = NULL;
 GetMultiAndBitmapIndexFunc_HookType get_multi_and_bitmap_func_hook = NULL;
 
@@ -316,6 +317,20 @@ EnsureMetadataTableReplicated(const char *tableName)
 	}
 
 	/* Single node default - it's always replicated */
+}
+
+
+/*
+ * The hook allows the extension to do any additional setup
+ * after the cluster has been initialized or upgraded.
+ */
+void
+PostSetupClusterHook(bool isInitialize)
+{
+	if (post_setup_cluster_hook != NULL)
+	{
+		return post_setup_cluster_hook(isInitialize);
+	}
 }
 
 

@@ -277,6 +277,9 @@ SetupCluster(bool isInitialize)
 									&isNull);
 	}
 
+	/* we call the post setup cluster hook to allow the extension to do any additional setup */
+	PostSetupClusterHook(isInitialize);
+
 	TriggerInvalidateClusterMetadata();
 	return true;
 }
