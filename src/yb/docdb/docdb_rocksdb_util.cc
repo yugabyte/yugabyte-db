@@ -110,6 +110,12 @@ DEFINE_UNKNOWN_uint64(rocksdb_max_file_size_for_compaction, 0,
 // db_max_flushing_bytes will be actual default.
 DEFINE_NON_RUNTIME_int32(rocksdb_max_write_buffer_number, 100500,
              "Maximum number of write buffers that are built up in memory.");
+
+// The manifest file persists min/max schema versions in flushed frontiers. A default 10MB limit
+// enables us to support a ~200k colocated tables/1500 databases in the syscatalog tablet
+DEFINE_NON_RUNTIME_uint64(rocksdb_max_manifest_file_size, 10_MB,
+             "Maximum size of manifest file before which it is consolidated");
+
 DECLARE_int64(db_block_size_bytes);
 
 DEFINE_UNKNOWN_int64(db_filter_block_size_bytes, 64_KB,
@@ -609,6 +615,8 @@ void InitRocksDBOptions(
   if (FLAGS_num_reserved_small_compaction_threads != -1) {
     options->num_reserved_small_compaction_threads = FLAGS_num_reserved_small_compaction_threads;
   }
+
+  options->max_manifest_file_size = FLAGS_rocksdb_max_manifest_file_size;
 
   // Since the flag validator for FLAGS_compression_type will fail if the result of this call is not
   // OK, this CHECK_RESULT should never fail and is safe.
