@@ -4570,6 +4570,16 @@ AddSortedGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
 
 	Const *sortArrayConst = makeConst(GetBsonArrayTypeOid(), -1, InvalidOid, -1,
 									  PointerGetDatum(arrayValue), false, false);
+
+	/* Cast documentExpr from helio_core.bson to bson to ensure type */
+	/* correctness for accumulators that require bson. */
+	if (EnableLetSupport && BsonTypeId() != HelioCoreBsonTypeId())
+	{
+		documentExpr = (Expr *) makeRelabelType(documentExpr, BsonTypeId(), -1,
+												InvalidOid,
+												COERCE_IMPLICIT_CAST);
+	}
+
 	Aggref *aggref = CreateMultiArgAggregate(aggregateFunctionOid,
 											 list_make2(documentExpr, sortArrayConst),
 											 list_make2_oid(BsonTypeId(),

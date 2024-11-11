@@ -244,6 +244,31 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
  { "_id" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "9" } }
 (1 row)
 
+-- $group (with sorted accumulators)
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [{ "$addFields": {"newField": "new"} }, { "$sort": { "_id": 1} }, { "$group": { "_id" : "$$varRef", "c": { "$sum": "$$varRef" }, "first": { "$first" : "$a.b" } } } ], "let": { "varRef": 3 } }');
+                                                                    document                                                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "9" }, "first" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [{ "$addFields": {"newField": "new"} }, { "$sort": { "_id": 1} }, { "$group": { "_id" : "$$varRef", "c": { "$sum": "$$varRef" }, "last": { "$last" : "$a.b" } } } ], "let": { "varRef": 3 } }');
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "9" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [{ "$set": {"newField": "new"} }, { "$sort": { "_id": 1} }, { "$group": { "_id": "$$varRef", "top": {"$top": {"output": [ "$_id" ], "sortBy": { "_id": 1 }}}}} ], "let": { "varRef": 3 } }');
+                      document                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "top" : [ "1" ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [{ "$set": {"newField": "new"} }, { "$sort": { "_id": 1} }, { "$group": { "_id": "$$varRef", "bottom": {"$bottom": {"output": [ "$_id" ], "sortBy": { "_id": 1 }}}}} ], "let": { "varRef": 3 } }');
+                        document                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "bottom" : [ "3" ] }
+(1 row)
+
 -- $project
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$project": { "_id": 1, "newField" : "$$varRef", "c": { "$lt": [ "$_id", "$$varRef" ] } }} ], "let": { "varRef": 3 } }');
                              document                              
@@ -757,6 +782,31 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
                              document                             
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "9" } }
+(1 row)
+
+-- $group (with sorted accumulators)
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [{ "$addFields": {"newField": "new"} }, { "$sort": { "_id": 1} }, { "$group": { "_id" : "$$varRef", "c": { "$sum": "$$varRef" }, "first": { "$first" : "$a.b" } } } ], "let": { "varRef": 3 } }');
+                                                                    document                                                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "9" }, "first" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [{ "$addFields": {"newField": "new"} }, { "$sort": { "_id": 1} }, { "$group": { "_id" : "$$varRef", "c": { "$sum": "$$varRef" }, "last": { "$last" : "$a.b" } } } ], "let": { "varRef": 3 } }');
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "9" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [{ "$set": {"newField": "new"} }, { "$sort": { "_id": 1} }, { "$group": { "_id": "$$varRef", "top": {"$top": {"output": [ "$_id" ], "sortBy": { "_id": 1 }}}}} ], "let": { "varRef": 3 } }');
+                      document                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "top" : [ "1" ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [{ "$set": {"newField": "new"} }, { "$sort": { "_id": 1} }, { "$group": { "_id": "$$varRef", "bottom": {"$bottom": {"output": [ "$_id" ], "sortBy": { "_id": 1 }}}}} ], "let": { "varRef": 3 } }');
+                        document                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "bottom" : [ "3" ] }
 (1 row)
 
 -- $project
