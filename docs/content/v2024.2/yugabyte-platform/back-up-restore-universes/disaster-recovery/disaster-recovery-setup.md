@@ -164,7 +164,7 @@ The following statuses [trigger an alert](#set-up-replication-lag-alerts).
 | Extra Table On Target | The table is newly created on the DR replica but it is not in replication yet. |
 | Error | The table is no longer replicating. This could be due to an issue such as a prolonged network partition. As a result, replication of the table can't continue, and you will need to [restart replication](#restart-replication). |
 | Missing op ID | The same as Error, but reported by the TServer. In this case, the replication is broken and cannot continue because the write-ahead-logs are garbage collected before they were replicated to the other universe and you will need to [restart replication](#restart-replication).|
-| Schema mismatch | The schema was updated on the table (on either of the universes) and replication is paused until the same schema change is made to the other universe. |
+| Schema&nbsp;mismatch | The schema was updated on the table (on either of the universes) and replication is paused until the same schema change is made to the other universe. |
 | Missing table | For colocated tables, only the parent table is in the replication group; any child table that is part of the colocation will also be replicated. This error is displayed for a parent colocated table if a child table only exists on the DR primary. Create the same table on the DR replica. |
 | Auto flag config mismatch | Replication has stopped because one of the universes is running a version of YugabyteDB that is incompatible with the other. This can happen when upgrading universes that are in replication. Upgrade the other universe to the same version. |
 
