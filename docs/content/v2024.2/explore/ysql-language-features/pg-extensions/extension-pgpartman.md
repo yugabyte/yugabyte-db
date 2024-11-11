@@ -114,7 +114,7 @@ SET partition_interval = 2 months
 WHERE parent_table = 'public.orders';
 ```
 
-### Partition maintenance using pg_cron
+### Maintain partitions using pg_cron
 
 [pg_cron](../extension-pgcron) is a cron-based job scheduler for PostgreSQL that runs inside a database as an extension.
 

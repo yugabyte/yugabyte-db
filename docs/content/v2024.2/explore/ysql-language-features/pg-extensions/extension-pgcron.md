@@ -144,4 +144,4 @@ $$);
 
 ## Learn more
 
-- [Partition maintenance with pg_cron and pg_partman](../extension-pgpartman/#partition-maintenance-with-pg-cron)
+[Maintain partitions using pg_cron](../extension-pgpartman/#maintain-partitions-using-pg-cron)
