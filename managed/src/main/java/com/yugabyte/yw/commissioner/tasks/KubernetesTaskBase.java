@@ -763,9 +763,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         getUniverse(),
         SubTaskGroupType.ConfigureUniverse);
     if (serverType.equals(ServerType.EITHER)) {
-      createWaitForServersTasks(tserverNodes, ServerType.TSERVER)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       createWaitForServersTasks(masterNodes, ServerType.MASTER)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      SubTaskGroup setEncKeys =
+          createSetActiveUniverseKeysTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      getRunnableTask().addSubTaskGroup(setEncKeys);
+      createWaitForServersTasks(tserverNodes, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     } else if (serverType.equals(ServerType.TSERVER)) {
       createWaitForServersTasks(tserverNodes, ServerType.TSERVER)
@@ -773,6 +776,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     } else if (serverType.equals(ServerType.MASTER)) {
       createWaitForServersTasks(masterNodes, ServerType.MASTER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      SubTaskGroup setEncKeys =
+          createSetActiveUniverseKeysTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      getRunnableTask().addSubTaskGroup(setEncKeys);
     }
   }
 
