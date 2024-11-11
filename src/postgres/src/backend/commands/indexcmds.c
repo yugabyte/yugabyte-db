@@ -1051,8 +1051,9 @@ DefineIndex(Oid relationId,
 			{
 				/*
 				 * In yb_binary_restore if tablespaceId is not valid but
-				 * binary_upgrade_next_tablegroup_oid is valid, that implies we are
-				 * restoring without tablespace information.
+				 * binary_upgrade_next_tablegroup_oid is valid, that implies either:
+				 * 1. it is a default tablespace.
+				 * 2. we are restoring without tablespace information.
 				 * In this case all tables are restored to default tablespace,
 				 * while maintaining the colocation properties, and tablegroup's name
 				 * will be colocation_restore_tablegroupId, while default tablegroup's
@@ -1067,6 +1068,10 @@ DefineIndex(Oid relationId,
 			}
 			else if (yb_binary_restore && OidIsValid(tablegroupId))
 			{
+				/*
+				 * This case handles Primary Key's tablegroup id. The variable
+				 * tablegroupId stores the tablegroupId of the parent table.
+				 */
 				tablegroup_name = get_tablegroup_name(tablegroupId);
 			}
 			else
@@ -1097,6 +1102,14 @@ DefineIndex(Oid relationId,
 				tablegroupId = CreateTableGroup(tablegroup_stmt);
 			}
 		}
+		/*
+		 * Reset the binary_upgrade params as these are not needed anymore (only
+		 * required in CreateTableGroup), to ensure these parameter values are
+		 * not reused in subsequent unrelated statements.
+		 */
+		binary_upgrade_next_tablegroup_oid = InvalidOid;
+		binary_upgrade_next_tablegroup_default = false;
+
 
 		if (stmt->split_options)
 		{
@@ -2610,8 +2623,8 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 										 accessMethodId);
 
 		/*
-	 	 * In Yugabyte mode, disallow some built-in operator classes if the column has non-C
-	 	 * collation.
+		 * In Yugabyte mode, disallow some built-in operator classes if the column has non-C
+		 * collation.
 		 */
 		if (IsYugaByteEnabled() &&
 			YBIsCollationValidNonC(attcollation) &&
@@ -2725,9 +2738,9 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			}
 			else if (colOptionP[attn] == INDOPTION_HASH)
 				ereport(NOTICE,
-                		(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-                  		 errmsg("nulls sort ordering option is ignored, "
-                        		"NULLS FIRST/NULLS LAST not allowed for a HASH column")));
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						 errmsg("nulls sort ordering option is ignored, "
+								"NULLS FIRST/NULLS LAST not allowed for a HASH column")));
 			else if (attribute->nulls_ordering == SORTBY_NULLS_FIRST)
 				colOptionP[attn] |= INDOPTION_NULLS_FIRST;
 		}
