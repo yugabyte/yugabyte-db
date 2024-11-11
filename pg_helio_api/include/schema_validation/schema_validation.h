@@ -26,7 +26,7 @@ void ValidateSchemaOnDocumentUpdate(ValidationLevels validationLevelText,
 									pgbson *sourceDocument, pgbson *targetDocument);
 
 /* Inline function that determines whether to perform schema validation */
-inline bool
+static inline bool
 CheckSchemaValidationEnabled(MongoCollection *collection, bool bypassDocumentValidation)
 {
 	return EnableSchemaValidation && collection->schemaValidator.validationLevel !=
