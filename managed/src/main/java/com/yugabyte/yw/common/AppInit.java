@@ -53,10 +53,10 @@ import com.yugabyte.yw.scheduler.Scheduler;
 import io.ebean.DB;
 import io.prometheus.client.hotspot.DefaultExports;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import play.Application;
@@ -268,7 +268,12 @@ public class AppInit {
                 });
         armReleaseThread.start();
 
-        updateSensitiveGflagsforRedaction(releaseManager, gFlagsValidation, configHelper);
+        Thread flagsThread =
+            new Thread(
+                () -> {
+                  updateSensitiveGflagsforRedaction(releaseManager, gFlagsValidation, configHelper);
+                });
+        flagsThread.start();
 
         // initialize prometheus exports
         DefaultExports.initialize();
@@ -357,13 +362,17 @@ public class AppInit {
 
   private void updateSensitiveGflagsforRedaction(
       ReleaseManager releaseManager, GFlagsValidation gFlagsValidation, ConfigHelper configHelper) {
-    Set<String> sensitiveGflags = new HashSet<>();
-    Map<String, Object> updatedReleases = new HashMap<>();
+    Set<String> sensitiveGflags = ConcurrentHashMap.newKeySet();
+    Map<String, Object> updatedReleases = new ConcurrentHashMap<>();
     boolean update[] = {false};
     releaseManager
         .getReleaseMetadata()
+        .entrySet()
+        .parallelStream()
         .forEach(
-            (version, r) -> {
+            (entry) -> {
+              String version = entry.getKey();
+              Object r = entry.getValue();
               ReleaseMetadata rm = releaseManager.metadataFromObject(r);
               if (rm.sensitiveGflags == null) {
                 update[0] = true;
