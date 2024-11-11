@@ -732,7 +732,7 @@ DeleteAllMatchingDocuments(MongoCollection *collection, pgbson *queryDoc,
 	initStringInfo(&deleteQuery);
 	appendStringInfo(&deleteQuery, "DELETE FROM ");
 
-	if (collection->shardTableName != NULL && collection->shardTableName[0] != '\0')
+	if (collection->shardTableName[0] != '\0')
 	{
 		appendStringInfo(&deleteQuery, " %s.%s", ApiDataSchemaName,
 						 collection->shardTableName);
@@ -1073,7 +1073,7 @@ DeleteOneInternal(MongoCollection *collection, DeleteOneParams *deleteOneParams,
 	initStringInfo(&selectQuery);
 	appendStringInfo(&selectQuery, "WITH s AS MATERIALIZED (SELECT ctid FROM ");
 
-	if (collection->shardTableName != NULL && collection->shardTableName[0] != '\0')
+	if (collection->shardTableName[0] != '\0')
 	{
 		appendStringInfo(&selectQuery, " %s.%s", ApiDataSchemaName,
 						 collection->shardTableName);
@@ -1130,7 +1130,7 @@ DeleteOneInternal(MongoCollection *collection, DeleteOneParams *deleteOneParams,
 	initStringInfo(&deleteQuery);
 	appendStringInfo(&deleteQuery, "%s DELETE FROM", selectQuery.data);
 
-	if (collection->shardTableName != NULL && collection->shardTableName[0] != '\0')
+	if (collection->shardTableName[0] != '\0')
 	{
 		appendStringInfo(&deleteQuery, " %s.%s", ApiDataSchemaName,
 						 collection->shardTableName);

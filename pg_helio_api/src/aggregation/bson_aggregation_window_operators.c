@@ -1692,9 +1692,10 @@ HandleDollarCountWindowOperator(const bson_value_t *opValue,
 
 	bson_value_t newOpValue =
 	{
-		value_type: BSON_TYPE_INT32,
-		value: { v_int32: 1 }
+		.value_type = BSON_TYPE_INT32,
+		.value = { .v_int32 = 1 }
 	};
+
 
 	return GetSimpleBsonExpressionGetWindowFunc(&newOpValue, context,
 												BsonSumAggregateFunctionOid());

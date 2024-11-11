@@ -213,8 +213,8 @@ HandlePreParsedDollarMultiply(pgbson *doc, void *arguments,
 {
 	bson_value_t result =
 	{
-		value_type: BSON_TYPE_INT32,
-		value: { v_int32: 1 }
+		.value_type = BSON_TYPE_INT32,
+		.value = { .v_int32 = 1 }
 	};
 
 	HandlePreParsedArithmeticVariableOperands(doc, arguments, NULL, &result,
