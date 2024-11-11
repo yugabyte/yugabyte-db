@@ -398,6 +398,7 @@ PgSession::PgSession(
       pg_txn_manager_(std::move(pg_txn_manager)),
       ybctid_reader_(std::move(ybctid_reader)),
       explicit_row_lock_buffer_(aux_ybctid_container_provider_, ybctid_reader_),
+      insert_on_conflict_buffer_(),
       metrics_(stats_state),
       pg_callbacks_(pg_callbacks),
       buffer_(

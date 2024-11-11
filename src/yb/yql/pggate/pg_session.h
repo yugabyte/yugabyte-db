@@ -34,6 +34,7 @@
 #include "yb/util/oid_generator.h"
 #include "yb/util/result.h"
 
+#include "yb/yql/pggate/insert_on_conflict_buffer.h"
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_doc_metrics.h"
 #include "yb/yql/pggate/pg_explicit_row_lock_buffer.h"
@@ -238,6 +239,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   ExplicitRowLockBuffer& explicit_row_lock_buffer() { return explicit_row_lock_buffer_; }
 
+  InsertOnConflictBuffer& insert_on_conflict_buffer() { return insert_on_conflict_buffer_; }
+
   Result<int> TabletServerCount(bool primary_only = false);
 
   // Sets the specified timeout in the rpc service.
@@ -342,6 +345,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   OidSet fk_intent_region_local_tables_;
 
   ExplicitRowLockBuffer explicit_row_lock_buffer_;
+  InsertOnConflictBuffer insert_on_conflict_buffer_;
 
   PgDocMetrics metrics_;
 

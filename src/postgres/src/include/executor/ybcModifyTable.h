@@ -238,6 +238,9 @@ extern Datum YBCGetYBTupleIdFromTuple(Relation rel,
 									  HeapTuple tuple,
 									  TupleDesc tupleDesc);
 
+extern YBCPgYBTupleIdDescriptor*
+YBCBuildNonNullUniqueIndexYBTupleId(Relation unique_index, Datum *values);
+
 /*
  * Returns if a table has secondary indices.
  */

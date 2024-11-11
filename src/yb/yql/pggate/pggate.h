@@ -726,6 +726,18 @@ class PgApiImpl {
       PgExplicitRowLockErrorInfo& error_info);
   Status FlushExplicitRowLockIntents(PgExplicitRowLockErrorInfo& error_info);
 
+  // INSERT ... ON CONFLICT batching ---------------------------------------------------------------
+  Status AddInsertOnConflictKey(
+      PgOid table_id, const Slice& ybctid, const YBCPgInsertOnConflictKeyInfo& info);
+  YBCPgInsertOnConflictKeyState InsertOnConflictKeyExists(PgOid table_id, const Slice& ybctid);
+  Result<YBCPgInsertOnConflictKeyInfo> DeleteInsertOnConflictKey(
+      PgOid table_id, const Slice& ybctid);
+  Result<YBCPgInsertOnConflictKeyInfo> DeleteNextInsertOnConflictKey();
+  uint64_t GetInsertOnConflictKeyCount();
+  void AddInsertOnConflictKeyIntent(PgOid table_id, const Slice& ybctid);
+  void ClearInsertOnConflictCache();
+  //------------------------------------------------------------------------------------------------
+
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 

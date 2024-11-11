@@ -79,7 +79,6 @@
 #include "catalog/pg_depend.h"
 #include "catalog/pg_shdepend.h"
 #include "catalog/yb_catalog_version.h"
-#include "executor/ybInsertOnConflictBatchingMap.h"
 #include "executor/ybcModifyTable.h"
 #include "executor/ybOptimizeModifyTable.h"
 #include "parser/parsetree.h"
@@ -94,6 +93,20 @@ typedef struct ModifyTableContext
 	ModifyTableState *mtstate;
 	EState	   *estate;
 } ModifyTableContext;
+
+/*
+ * An enum to indicate the phase of the INSERT ... ON CONFLICT operation.
+ * The DO UPDATE action has two phases: one corresponding to the the insertionn
+ * of the row, and the other corresponding to the update of the row.
+ * The DO NOTHING action does not make this distinction and is represented by a
+ * single phase.
+ */
+typedef enum YbInsertOnConflictPhase
+{
+	DO_NOTHING,
+	DO_UPDATE_INSERT_PHASE,
+	DO_UPDATE_UPDATE_PHASE
+} YbInsertOnConflictPhase;
 
 static void ExecPendingInserts(ModifyTableContext *context,
 							   YBCPgStatement blockInsertStmt);
@@ -135,8 +148,7 @@ static bool YbExecCheckIndexConstraints(EState *estate,
 										ResultRelInfo *resultRelInfo,
 										TupleTableSlot *slot,
 										TupleTableSlot **ybConflictSlot,
-										OnConflictAction onconflict);
-static void YbDestroyAllInsertOnConflictMaps(ResultRelInfo *resultRelInfo);
+										YbInsertOnConflictPhase phase);
 
 /*
  * Verify that the tuples to be produced by INSERT or UPDATE match the
@@ -1510,6 +1522,21 @@ ExecUpdate(ModifyTableState *mtstate,
 			 */
 			ExecWithCheckOptions(WCO_RLS_UPDATE_CHECK, resultRelInfo, slot, estate);
 		}
+
+		/*
+		 * YB: For an ON CONFLICT DO UPDATE query with read batching enabled, insert the
+		 * keys corresponding to the arbiter indexes into the intent cache. Since
+		 * the DO UPDATE clause can modify the index keys that it conflicts on, the
+		 * keys are inserted at this stage, and cannot be inserted previously.
+		 * Reusing the YbExecCheckIndexConstraints function to avoid code
+		 * duplication. This incurs an extra invocation of FormIndexDatum per
+		 * arbiter index, which is notable for expression indexes.
+		 * TODO(kramanathan): Optimize this by forming the tuple ID from the slot.
+		 */
+		if (YbIsInsertOnConflictReadBatchingEnabled(resultRelInfo))
+			YbExecCheckIndexConstraints(estate, resultRelInfo, slot,
+										NULL /* ybConflictSlot */,
+										DO_UPDATE_UPDATE_PHASE);
 
 
 		/*
@@ -3078,13 +3105,6 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 															 eflags);
 		}
 
-		/*
-		 * YB: make sure ri_YbConflictMap is initialized to NULL so that that
-		 * can be used to indicate when INSERT ON CONFLICT batching is not
-		 * supported.
-		 */
-		resultRelInfo->ri_YbConflictMap = NULL;
-
 		resultRelInfo++;
 		i++;
 	}
@@ -3482,6 +3502,12 @@ ExecEndModifyTable(ModifyTableState *node)
 	int			i;
 
 	/*
+	 * Free up the insert on conflict buffer. The key cache is already expected
+	 * to be empty.
+	 */
+	YBCPgClearInsertOnConflictCache();
+
+	/*
 	 * Allow any FDWs to shut down
 	 */
 	for (i = 0; i < node->mt_nplans; i++)
@@ -3673,9 +3699,6 @@ YbAddSlotToBatch(ModifyTableContext *context,
 		if (IsYBRelation(resultRelInfo->ri_RelationDesc))
 		{
 			Assert(YbIsInsertOnConflictReadBatchingEnabled(resultRelInfo));
-			resultRelInfo->ri_YbConflictMap =
-				palloc0(sizeof(struct yb_insert_on_conflict_batching_hash *) *
-							   resultRelInfo->ri_NumIndices);
 		}
 	}
 
@@ -3845,7 +3868,10 @@ YbFlushSlotsFromBatch(ModifyTableContext *context,
 		 */
 		CHECK_FOR_INTERRUPTS();
 		if (!YbExecCheckIndexConstraints(estate, resultRelInfo, slot,
-										 &ybConflictSlot, onconflict))
+										 &ybConflictSlot,
+										 (onconflict == ONCONFLICT_UPDATE ?
+										  DO_UPDATE_INSERT_PHASE :
+										  DO_NOTHING)))
 		{
 			/* committed conflict tuple found */
 
@@ -3857,6 +3883,8 @@ YbFlushSlotsFromBatch(ModifyTableContext *context,
 									 &conflictTid, planSlot, slot,
 									 context->estate, canSetTag,
 									 &returning, ybConflictSlot);
+				ExecDropSingleTupleTableSlot(ybConflictSlot);
+				ybConflictSlot = NULL;
 				InstrCountTuples2(&mtstate->ps, 1);
 			}
 			else
@@ -3876,11 +3904,8 @@ YbFlushSlotsFromBatch(ModifyTableContext *context,
 				// YugaByte does not use Postgres transaction control code.
 				InstrCountTuples2(&mtstate->ps, 1);
 			}
-			/*
-			 * Reset ybConflictSlot.  Should not free it since it is owned
-			 * by the map.
-			 */
-			ybConflictSlot = NULL;
+
+			Assert(!ybConflictSlot);
 			/*
 			 * Restore scantuple.
 			 */
@@ -3977,7 +4002,21 @@ YbFlushSlotsFromBatch(ModifyTableContext *context,
 	resultRelInfo->ri_YbFlushCurrentSlotIdx = 0;
 	if (resultRelInfo->ri_RootResultRelInfo)
 		resultRelInfo->ri_RootResultRelInfo->ri_YbFlushResultRelInfo = 0;
-	YbDestroyAllInsertOnConflictMaps(resultRelInfo);
+
+	/*
+	 * Drop the slots stored by the batch-read operation one by one. Doing this
+	 * here (rather than in pggate) keeps all the slot management code in one
+	 * place: slots are allocated in execIndexing and deallocated in this
+	 * function.
+	 */
+	YBCPgInsertOnConflictKeyInfo info = {NULL};
+	uint64_t key_count = YBCPgGetInsertOnConflictKeyCount();
+	for (uint64_t i = 0; i < key_count; i++)
+	{
+		HandleYBStatus(YBCPgDeleteNextInsertOnConflictKey(&info));
+		if (info.slot)
+			ExecDropSingleTupleTableSlot(info.slot);
+	}
 
 	/*
 	 * Restore es_insert_pending_result_relations and
@@ -3994,12 +4033,14 @@ YbExecCheckIndexConstraints(EState *estate,
 							ResultRelInfo *resultRelInfo,
 							TupleTableSlot *slot,
 							TupleTableSlot **ybConflictSlot,
-							OnConflictAction onconflict)
+							YbInsertOnConflictPhase phase)
 {
 	int			i;
 	int			numIndices;
 	RelationPtr relationDescs;
 	IndexInfo **indexInfoArray;
+	List		*arbiterIndexes;
+	YBCPgInsertOnConflictKeyState keyState;
 
 	/*
 	 * Lossy or not, we recheck the condition since we don't know which
@@ -4017,13 +4058,18 @@ YbExecCheckIndexConstraints(EState *estate,
 	relationDescs = resultRelInfo->ri_IndexRelationDescs;
 	indexInfoArray = resultRelInfo->ri_IndexRelationInfo;
 
+	numIndices = resultRelInfo->ri_NumIndices;
+	arbiterIndexes = resultRelInfo->ri_onConflictArbiterIndexes;
+
 	for (i = 0; i < numIndices; i++)
 	{
-		if (!resultRelInfo->ri_YbConflictMap[i])
-			continue;
-
 		Relation index = relationDescs[i];
 		IndexInfo *indexInfo = indexInfoArray[i];
+
+		if (!YbShouldCheckUniqueOrExclusionIndex(indexInfo, index,
+												 resultRelInfo->ri_RelationDesc,
+												 arbiterIndexes))
+			continue;
 
 		/* Check for partial index */
 		if (indexInfo->ii_Predicate != NIL)
@@ -4043,54 +4089,98 @@ YbExecCheckIndexConstraints(EState *estate,
 					   isnull);
 
 		/*
+		 * If one or more index key columns are NULL, then the lookup of this
+		 * key in the cache can be skipped as it will yield no matches.
+		 * Consequently, any lookups will only yield the KEY_NOT_FOUND state.
+		 * For similar reasons, inserting this key into the intent cache can
+		 * also be skipped as the KEY_JUST_INSERTED branch will not be executed.
+		 */
+		if (YbIsAnyIndexKeyColumnNull(indexInfo, isnull))
+			continue;
+
+		/*
 		 * Assume the map's equality check is sufficient.  If it might differ
 		 * with a full-blown index_recheck_constraint (or equivalent that takes
 		 * nulls into account for NULLS NOT DISTINCT), that could be a problem.
 		 * TODO(jason): revisit when exclusion constraint is supported.
 		 */
-		Assert(!*ybConflictSlot);
-		if (YbInsertOnConflictBatchingMapLookup(resultRelInfo->ri_YbConflictMap[i],
-												IndexRelationGetNumberOfKeyAttributes(index),
-												values,
-												isnull,
-												ybConflictSlot))
+		YBCPgYBTupleIdDescriptor *descr =
+			YBCBuildNonNullUniqueIndexYBTupleId(index, values);
+
+		/*
+		 * If this function is invoked from YbExecUpdateAct, we can skip the
+		 * map lookup because:
+		 * - KEY_READ is not of any significance because we have crossed the
+		 *   conflict checking stage.
+		 * - We do not throw an error corresponding to "row affect a second
+		 *   time". This is to remain consistent with vanilla postgres. Thus,
+		 *   KEY_JUST_INSERTED is also not of any significance.
+		 * - We insert the key into the intent map corresponding to
+		 *   KEY_NOT_FOUND.
+		 */
+		if (phase == DO_UPDATE_UPDATE_PHASE)
 		{
-			/*
-			 * We found an existing row.  In case it is just-inserted, throw an
-			 * error.
-			 */
-			if (!*ybConflictSlot && onconflict == ONCONFLICT_UPDATE)
-			{
-				/* YB: error message copied from ExecOnConflictUpdate. */
+			HandleYBStatus(YBCPgAddInsertOnConflictKeyIntent(descr));
+			continue;
+		}
+
+		HandleYBStatus(YBCPgInsertOnConflictKeyExists(descr, &keyState));
+
+		switch (keyState)
+		{
+			case KEY_READ:
+				/*
+				 * We found an existing row. If the on-conflict action is:
+				 * - DO NOTHING, there is nothing more to be done.
+				 * - DO UPDATE and we are in the INSERT phase, we give the
+				 *		caller an opportunity to update the tuple by setting the
+				 *		conflict slot to point to the tuple that we just read.
+				 * - DO UPDATE and we are in the UPDATE phase -> this is the
+				 *		equivalent of a duplicate key violation, but we let the
+				 *		storage layer report this because the caller could have
+				 *		opted for deferred constraint checking.
+				 *
+				 */
+
+				if (phase == DO_UPDATE_INSERT_PHASE)
+				{
+					Assert(ybConflictSlot && !*ybConflictSlot);
+					YBCPgInsertOnConflictKeyInfo info = {NULL};
+					HandleYBStatus(YBCPgDeleteInsertOnConflictKey(descr, &info));
+					Assert(info.slot);
+					*ybConflictSlot = info.slot;
+				}
+
+				return false;
+
+			case KEY_JUST_INSERTED:
+				/*
+				 * We found an existing row that was inserted earlier by this
+				 * command. Throw an error if the on-conflict action is DO
+				 * UPDATE.
+				 * Clear the INSERT ... ON CONFLICT buffer. We don't have to
+				 * worry about clearing the slots populated in the buffer as the
+				 * upper layers will handle that.
+				 *
+				 * YB: error message copied from ExecOnConflictUpdate.
+				 */
+				if (phase == DO_NOTHING)
+					return false;
+
+				YBCPgClearInsertOnConflictCache();
+
 				ereport(ERROR,
-						(errcode(ERRCODE_CARDINALITY_VIOLATION),
-				/* translator: %s is a SQL command name */
-						 errmsg("%s command cannot affect row a second time",
-								"ON CONFLICT DO UPDATE"),
-						 errhint("Ensure that no rows proposed for insertion within the same command have duplicate constrained values.")));
-			}
-			/* Otherwise, let the caller handle the ON CONFLICT path. */
-			return false;
+					(errcode(ERRCODE_CARDINALITY_VIOLATION),
+					/* translator: %s is a SQL command name */
+					errmsg("%s command cannot affect row a second time", "ON CONFLICT DO UPDATE"),
+					errhint("Ensure that no rows proposed for insertion within the same command have duplicate constrained values.")));
+
+			case KEY_NOT_FOUND:
+				/* Tuple is going to be inserted. Add to intent map. */
+				HandleYBStatus(YBCPgAddInsertOnConflictKeyIntent(descr));
 		}
 	}
+
+	/* The key was not found in any of the arbiter indexes. */
 	return true;
-}
-
-static void
-YbDestroyAllInsertOnConflictMaps(ResultRelInfo *resultRelInfo)
-{
-	int			i;
-	int			numIndices;
-
-	numIndices = resultRelInfo->ri_NumIndices;
-
-	for (i = 0; i < numIndices; i++)
-	{
-		if (resultRelInfo->ri_YbConflictMap[i])
-		{
-			YbInsertOnConflictBatchingMapDestroy(
-				resultRelInfo->ri_YbConflictMap[i]);
-			resultRelInfo->ri_YbConflictMap[i] = NULL;
-		}
-	}
 }

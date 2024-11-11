@@ -1908,6 +1908,53 @@ YBCPgExplicitRowLockStatus YBCFlushExplicitRowLockIntents() {
   return result;
 }
 
+// INSERT ... ON CONFLICT batching -----------------------------------------------------------------
+YBCStatus YBCPgAddInsertOnConflictKey(const YBCPgYBTupleIdDescriptor* tupleid,
+                                      YBCPgInsertOnConflictKeyInfo* info) {
+  return ProcessYbctid(*tupleid, [info](auto table_id, const auto& ybctid) {
+    return pgapi->AddInsertOnConflictKey(
+        table_id, ybctid, info ? *info : YBCPgInsertOnConflictKeyInfo());
+  });
+}
+
+YBCStatus YBCPgInsertOnConflictKeyExists(const YBCPgYBTupleIdDescriptor* tupleid,
+                                         YBCPgInsertOnConflictKeyState* res) {
+  return ProcessYbctid(*tupleid, [res](auto table_id, const auto& ybctid) {
+    *res = pgapi->InsertOnConflictKeyExists(table_id, ybctid);
+    return Status::OK();
+  });
+}
+
+YBCStatus YBCPgDeleteInsertOnConflictKey(const YBCPgYBTupleIdDescriptor* tupleid,
+                                         YBCPgInsertOnConflictKeyInfo* info) {
+  return ProcessYbctid(*tupleid, [info](auto table_id, const auto& ybctid) {
+    auto result = VERIFY_RESULT(pgapi->DeleteInsertOnConflictKey(table_id, ybctid));
+    *info = result;
+    return (Status) Status::OK();
+  });
+}
+
+YBCStatus YBCPgDeleteNextInsertOnConflictKey(YBCPgInsertOnConflictKeyInfo* info) {
+  return ExtractValueFromResult(pgapi->DeleteNextInsertOnConflictKey(), info);
+}
+
+YBCStatus YBCPgAddInsertOnConflictKeyIntent(const YBCPgYBTupleIdDescriptor* tupleid) {
+  return ProcessYbctid(*tupleid, [](auto table_id, const auto& ybctid) {
+    pgapi->AddInsertOnConflictKeyIntent(table_id, ybctid);
+    return Status::OK();
+  });
+}
+
+void YBCPgClearInsertOnConflictCache() {
+  pgapi->ClearInsertOnConflictCache();
+}
+
+uint64_t YBCPgGetInsertOnConflictKeyCount() {
+  return pgapi->GetInsertOnConflictKeyCount();
+}
+
+//--------------------------------------------------------------------------------------------------
+
 bool YBCIsInitDbModeEnvVarSet() {
   static bool cached_value = false;
   static bool cached = false;

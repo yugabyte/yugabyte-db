@@ -839,6 +839,16 @@ typedef struct PgThreadLocalRegexpCache {
 
 typedef void (*YBCPgThreadLocalRegexpCacheCleanup)(YBCPgThreadLocalRegexpCache*);
 
+typedef struct YbInsertOnConflictKeyInfo {
+  void *slot;
+} YBCPgInsertOnConflictKeyInfo;
+
+typedef enum YbInsertOnConflictKeyState {
+  KEY_NOT_FOUND,
+  KEY_READ,
+  KEY_JUST_INSERTED,
+} YBCPgInsertOnConflictKeyState;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
