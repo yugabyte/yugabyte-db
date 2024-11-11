@@ -24,7 +24,7 @@ showRightNav: true
 type: indexpage
 ---
 
-Being able to scale a distributed system is essential to reliably and efficiently meeting the increasing demands of users, workloads, and data. Scalability is central the design and maintenance of distributed systems. You need it to ensure systems can handle increasing workloads, provide high availability, optimize resource usage, adapt to changing requirements, and accommodate future growth.
+Being able to scale a distributed system is essential to reliably and efficiently meeting the increasing demands of users, workloads, and data. Scalability is central to the design and maintenance of distributed systems. You need it to ensure systems can handle increasing workloads, provide high availability, optimize resource usage, adapt to changing requirements, and accommodate future growth.
 
 Depending on your business, you may need to scale for a variety of reasons:
 
