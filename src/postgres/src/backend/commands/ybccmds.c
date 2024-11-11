@@ -1951,17 +1951,13 @@ YBCDropReplicationSlot(const char *slot_name)
 
 /*
  * Returns an of relfilenodes corresponding to input table_oids array.
+ * It is the responsibility of the caller to allocate and free the memory for relfilenodes.
  */
-static Oid *
-YBCGetRelfileNodes(Oid *table_oids, size_t num_relations)
+static void
+YBCGetRelfileNodes(Oid *table_oids, size_t num_relations, Oid* relfilenodes)
 {
-	Oid			*relfilenodes;
-
-	relfilenodes = palloc(sizeof(Oid) * num_relations);
 	for (size_t table_idx = 0; table_idx < num_relations; table_idx++)
 		relfilenodes[table_idx] = YbGetRelfileNodeIdFromRelId(table_oids[table_idx]);
-
-	return relfilenodes;
 }
 
 void
@@ -1971,10 +1967,13 @@ YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,
 	Assert(MyDatabaseId);
 
 	Oid *relfilenodes;
-	relfilenodes = YBCGetRelfileNodes(relations, numrelations);
+	relfilenodes = palloc(sizeof(Oid) * numrelations);
+	YBCGetRelfileNodes(relations, numrelations, relfilenodes);
 
 	HandleYBStatus(YBCPgInitVirtualWalForCDC(stream_id, MyDatabaseId, relations,
 											 relfilenodes, numrelations));
+
+	pfree(relfilenodes);
 }
 
 void
@@ -1984,11 +1983,14 @@ YBCUpdatePublicationTableList(const char *stream_id, Oid *relations,
 	Assert(MyDatabaseId);
 
 	Oid *relfilenodes;
-	relfilenodes = YBCGetRelfileNodes(relations, numrelations);
+	relfilenodes = palloc(sizeof(Oid) * numrelations);
+	YBCGetRelfileNodes(relations, numrelations, relfilenodes);
 
 	HandleYBStatus(YBCPgUpdatePublicationTableList(stream_id, MyDatabaseId,
 												   relations, relfilenodes,
 												   numrelations));
+
+	pfree(relfilenodes);
 }
 
 void

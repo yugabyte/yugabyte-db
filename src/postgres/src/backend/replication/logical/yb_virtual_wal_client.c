@@ -577,8 +577,11 @@ CleanupAckedTransactions(XLogRecPtr confirmed_flush)
 		next = lnext(cell);
 
 		if (txn->commit_lsn <= confirmed_flush)
+		{
 			unacked_transactions =
 				list_delete_cell(unacked_transactions, cell, NULL /* prev */);
+			pfree(txn);
+		}
 		else
 			break;
 	}
