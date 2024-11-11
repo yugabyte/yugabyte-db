@@ -30,14 +30,6 @@ Ensure the universes have the following characteristics:
 
     PITR is used by DR during failover to restore the database to a consistent state. Note that if the DR replica universe already has PITR configured, that configuration is replaced by the DR configuration.
 
-    You can change the retention period for PITR used for DR by changing the following [runtime configuration](../../../administer-yugabyte-platform/manage-runtime-config/):
-
-    ```sh
-    yb.xcluster.transactional.pitr.default_retention_period
-    ```
-
-    The default value is 3 days.
-
 Prepare your database and tables on the DR primary. Make sure the database and tables aren't already being used for xCluster replication; databases and tables can only be used in one replication at a time. The DR primary can be empty or have data. If the DR primary has a lot of data, the DR setup will take longer because the data must be copied in full to the DR replica before on-going asynchronous replication starts.
 
 On the DR replica, create a database with the same name as that on the DR primary. During initial DR setup, you don't need to create objects on the DR replica. DR performs a full copy of the data to be replicated on the DR primary, and automatically creates tables and objects, and restores data on the DR replica from the DR primary.
@@ -151,27 +143,30 @@ The status will be _Not Reported_ momentarily after the replication configuratio
 
 If the replication lag has increased so much that resuming or continuing replication cannot be accomplished via WAL logs but instead requires making another full copy from DR primary to DR replica, the status is shown as _Error: the table's replication stream is broken_, and [restarting the replication](#restart-replication) is required for those tables. If a lag alert is enabled on the replication, you are notified when the lag is behind the specified limit, in which case you may open the table on the replication view to check if any of these tables have their replication status as Error.
 
-If YugabyteDB Anywhere is unable to obtain the status (for example, due to a heavy workload being run on the universe) the status for that table will be _UnableToFetch_. You may refresh the page to retry gathering information.
+If YugabyteDB Anywhere is unable to obtain the status (for example, due to a heavy workload being run on the universe) the status for that table will be _Unable To Fetch_. You may refresh the page to retry gathering information.
 
 | Status | Description |
 | :--- | :--- |
-| Updating | The table is undergoing changes, such as being added to or removed from replication. |
+| In Progress | The table is undergoing changes, such as being added to or removed from replication. |
 | Bootstrapping | The table is undergoing a full copy; that is, being backed up from the DR primary and being restored to the DR replica. |
 | Validated | The table passes pre-checks and is eligible to be added to replication. |
-| Running | The table is being replicated. |
+| Operational | The table is being replicated. |
 
 The following statuses [trigger an alert](#set-up-replication-lag-alerts).
 
 | Status | Description |
 | :--- | :--- |
 | Failed | The table failed to be added to replication. |
-| Error | The table is no longer replicating. This could be due to an issue such as a prolonged network partition. As a result, replication of the table can't continue, and you will need to restart replication. |
-| Warning | The table is in replication, but the replication lag is more than the maximum acceptable lag defined during the replication setup, or the lag is not being reported. |
-| DroppedFromSource | The table was in replication, but dropped from the DR primary. If you are using Manual mode, you need to remove it manually from the config. If you are using Semi-automatic mode, you don't need to remove it manually. |
-| DroppedFromTarget | The table was in replication, but was dropped from the DR replica. If you are using Manual mode, you need to remove it manually from the config. If you are using Semi-automatic mode, you don't need to remove it manually. |
-| ExtraTableOnSource | The table is newly created on the DR primary but is not in replication yet. |
-| ExtraTableOnTarget | The table is newly created on the DR replica but it is not in replication yet. |
-| ReplicationError | The table is in replication, but issues have been reported by the master leader node of the DR replica. In this case you should check the list `replicationStatusErrors` to see the associated errors.<ul><li>MISSING_OP: The same as the `Error` status but reported by the TServer. In this case, the replication is broken and cannot continue because the write-ahead-logs are garbage collected before they were replicated to the other universe and a replication restart is required.</li><li>SCHEMA_MISMATCH: A schema was updated on the table (on either of the universes) and replication is paused until the same schema change is made to the other universe.</li><li>MISSING_TABLE: For colocated tables, only the parent table is in the replication group; any child table that is part of the colocation will also be replicated. This error is displayed for a parent colocated table if a child table only exists on the DR primary. Create the same table on the DR replica.</li><li>AUTO_FLAG_CONFIG_MISMATCH: Replication has stopped because one of the universes is running a version of YugabyteDB that is incompatible with the other. This can happen when upgrading universes that are in replication. Upgrade the other universe to the same version.</li></ul> |
+| Warning | The table is in replication, but the replication lag is more than the [maximum acceptable lag](#set-up-replication-lag-alerts), or the lag is not being reported. |
+| Dropped From Source | The table was in replication, but dropped from the DR primary without first being [removed from replication](../disaster-recovery-tables/#tables). If you are using Manual mode, you need to remove it manually from the configuration. In Semi-automatic mode, you don't need to remove it manually. |
+| Dropped From Target | The table was in replication, but was dropped from the DR replica without first being [removed from replication](../disaster-recovery-tables/#tables). If you are using Manual mode, you need to remove it manually from the configuration. In Semi-automatic mode, you don't need to remove it manually. |
+| Extra Table On Source | The table is newly created on the DR primary but is not in replication yet. |
+| Extra Table On Target | The table is newly created on the DR replica but it is not in replication yet. |
+| Error | The table is no longer replicating. This could be due to an issue such as a prolonged network partition. As a result, replication of the table can't continue, and you will need to [restart replication](#restart-replication). |
+| Missing op ID | The same as Error, but reported by the TServer. In this case, the replication is broken and cannot continue because the write-ahead-logs are garbage collected before they were replicated to the other universe and you will need to [restart replication](#restart-replication).|
+| Schema mismatch | The schema was updated on the table (on either of the universes) and replication is paused until the same schema change is made to the other universe. |
+| Missing table | For colocated tables, only the parent table is in the replication group; any child table that is part of the colocation will also be replicated. This error is displayed for a parent colocated table if a child table only exists on the DR primary. Create the same table on the DR replica. |
+| Auto flag config mismatch | Replication has stopped because one of the universes is running a version of YugabyteDB that is incompatible with the other. This can happen when upgrading universes that are in replication. Upgrade the other universe to the same version. |
 
 ### Set up replication lag alerts
 
