@@ -1782,7 +1782,7 @@ class WaitQueue::Impl {
           waiter_info->set_has_additional_waiting_locks(true);
           break;
         }
-        ParsedIntent parsed_intent {
+        dockv::ParsedIntent parsed_intent {
           .doc_path = intent_key.AsSlice(),
           .types = intent_data.types,
           .doc_ht = Slice(),

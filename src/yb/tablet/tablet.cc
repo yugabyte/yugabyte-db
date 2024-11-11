@@ -1377,7 +1377,7 @@ void Tablet::CompleteShutdown(
   CompleteShutdownRocksDBs(op_pauses);
 
   {
-    std::lock_guard lock(full_compaction_token_mutex_);
+    std::lock_guard compaction_lock(full_compaction_token_mutex_);
     if (full_compaction_task_pool_token_) {
       full_compaction_task_pool_token_->Shutdown();
     }
@@ -1892,13 +1892,11 @@ Status Tablet::HandlePgsqlReadRequest(
       *metrics_, *regulardb_statistics_, *intentsdb_statistics_,
       pgsql_read_request.metrics_capture(), result->response);
 
-  auto status = DoHandlePgsqlReadRequest(
+  return DoHandlePgsqlReadRequest(
       &scoped_read_operation, metrics_scope.metrics(),
       read_operation_data.WithStatistics(metrics_scope.statistics()),
       is_explicit_request_read_time, pgsql_read_request, transaction_metadata,
       subtransaction_metadata, result);
-
-  return status;
 }
 
 Status Tablet::DoHandlePgsqlReadRequest(
@@ -1922,15 +1920,19 @@ Status Tablet::DoHandlePgsqlReadRequest(
   if (pgsql_read_request.has_get_tablet_key_ranges_request()) {
     status = ProcessPgsqlGetTableKeyRangesRequest(pgsql_read_request, result);
   } else {
-    Result<TransactionOperationContext> txn_op_ctx =
-        CreateTransactionOperationContext(
-            transaction_metadata,
-            table_info->schema().table_properties().is_ysql_catalog_table(),
-            &subtransaction_metadata);
-    RETURN_NOT_OK(txn_op_ctx);
-    status = ProcessPgsqlReadRequest(
-        read_operation_data, is_explicit_request_read_time, pgsql_read_request, table_info,
-        *txn_op_ctx, storage, *scoped_read_operation, result);
+    auto txn_op_ctx = VERIFY_RESULT(CreateTransactionOperationContext(
+        transaction_metadata,
+        table_info->schema().table_properties().is_ysql_catalog_table(),
+        &subtransaction_metadata));
+    docdb::PgsqlReadOperationData data = {
+      .read_operation_data = read_operation_data,
+      .is_explicit_request_read_time = is_explicit_request_read_time,
+      .request = pgsql_read_request,
+      .txn_op_context = txn_op_ctx,
+      .ql_storage = storage,
+      .pending_op = *scoped_read_operation,
+    };
+    status = ProcessPgsqlReadRequest(data, table_info, result);
   }
 
   // Assert the table is a Postgres table.
@@ -4101,8 +4103,7 @@ Status Tablet::CreateReadIntents(
     if (table_info == nullptr || table_info->table_id != pgsql_read.table_id()) {
       table_info = VERIFY_RESULT(metadata_->GetTableInfo(pgsql_read.table_id()));
     }
-    docdb::PgsqlReadOperation doc_op(pgsql_read, txn_op_ctx);
-    RETURN_NOT_OK(doc_op.GetIntents(table_info->schema(), level, write_batch));
+    RETURN_NOT_OK(docdb::GetIntents(pgsql_read, table_info->schema(), level, write_batch));
   }
 
   return Status::OK();
@@ -4689,7 +4690,7 @@ Status PopulateLockInfoFromIntent(
     Slice key, Slice val, const TableInfoProvider& table_info_provider,
     const std::map<TransactionId, SubtxnSet>& aborted_subtxn_info,
     TransactionLockInfoManager* lock_info_manager, uint32_t max_txn_locks) {
-  auto parsed_intent = VERIFY_RESULT(docdb::ParseIntentKey(key, val));
+  auto parsed_intent = VERIFY_RESULT(dockv::ParseIntentKey(key, val));
   auto decoded_value = VERIFY_RESULT(dockv::DecodeIntentValue(
       val, nullptr /* verify_transaction_id_slice */, HasStrong(parsed_intent.types)));
 

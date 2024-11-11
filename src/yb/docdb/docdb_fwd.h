@@ -65,6 +65,7 @@ struct KeyBounds;
 template <typename T>
 struct LockBatchEntry;
 struct ObjectLockPrefix;
+struct PgsqlReadOperationData;
 struct ReadOperationData;
 
 using DocKeyHash = uint16_t;

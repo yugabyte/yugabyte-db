@@ -427,7 +427,8 @@ Result<ApplyTransactionState> GetIntentsBatch(
             return ApplyTransactionState{};
           }
 
-          auto intent = VERIFY_RESULT(ParseIntentKey(intent_iter.key(), transaction_id_slice));
+          auto intent = VERIFY_RESULT(dockv::ParseIntentKey(
+              intent_iter.key(), transaction_id_slice));
 
           if (intent.types.Test(dockv::IntentType::kStrongWrite)) {
             auto decoded_value = VERIFY_RESULT(dockv::DecodeIntentValue(

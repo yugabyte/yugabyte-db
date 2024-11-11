@@ -585,7 +585,7 @@ Result<bool> ApplyIntentsContext::Entry(
     return false;
   }
 
-  auto intent = VERIFY_RESULT(ParseIntentKey(value, transaction_id().AsSlice()));
+  auto intent = VERIFY_RESULT(dockv::ParseIntentKey(value, transaction_id().AsSlice()));
 
   if (intent.types.Test(dockv::IntentType::kStrongWrite)) {
     const Slice transaction_id_slice = transaction_id().AsSlice();

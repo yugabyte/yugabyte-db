@@ -134,20 +134,6 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
                                  CoarseTimePoint deadline,
                                  ResolutionCallback callback);
 
-struct ParsedIntent {
-  // Intent DocPath.
-  Slice doc_path;
-  dockv::IntentTypeSet types;
-  // Intent doc hybrid time.
-  Slice doc_ht;
-};
-
-// Parses the intent pointed to by intent_iter to a ParsedIntent.
-// Intent is encoded as Prefix + DocPath + IntentType + DocHybridTime.
-// `transaction_id_source` could be larger that 16 bytes, it is not problem here, because it is
-// used for error reporting.
-Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_source);
-
 std::string DebugIntentKeyToString(Slice intent_key);
 
 // Abstarct class to enable fetching table info from parsed intents while populating lock info in
@@ -163,7 +149,7 @@ class TableInfoProvider {
 // lock_info pointer. parsed_intent is expected to have a hybrid time by default. If not,
 // intent_has_ht needs to be set to false for the function to not return an error status.
 Status PopulateLockInfoFromParsedIntent(
-    const ParsedIntent& parsed_intent, const dockv::DecodedIntentValue& decoded_value,
+    const dockv::ParsedIntent& parsed_intent, const dockv::DecodedIntentValue& decoded_value,
     const TableInfoProvider& table_info_provider, LockInfoPB* lock_info,
     bool intent_has_ht = true);
 

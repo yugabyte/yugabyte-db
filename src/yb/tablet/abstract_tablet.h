@@ -117,14 +117,10 @@ class AbstractTablet {
                                                   const size_t row_count,
                                                   PgsqlResponsePB* response) const = 0;
 
-  Status ProcessPgsqlReadRequest(const docdb::ReadOperationData& read_operation_data,
-                                 bool is_explicit_request_read_time,
-                                 const PgsqlReadRequestPB& pgsql_read_request,
-                                 const std::shared_ptr<TableInfo>& table_info,
-                                 const TransactionOperationContext& txn_op_context,
-                                 const docdb::YQLStorageIf& ql_storage,
-                                 std::reference_wrapper<const ScopedRWOperation> pending_op,
-                                 PgsqlReadRequestResult* result);
+  Status ProcessPgsqlReadRequest(
+      const docdb::PgsqlReadOperationData& op_data,
+      const TableInfoPtr& table_info,
+      PgsqlReadRequestResult* result);
 
   virtual bool IsTransactionalRequest(bool is_ysql_request) const = 0;
 
