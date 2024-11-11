@@ -129,6 +129,6 @@ jobs:
         if: ${{ env.PG_MAJOR }} == 17
         uses: codecov/codecov-action@v4
         with:
-          fail_ci_if_error: false
+          fail_ci_if_error: true
           files: ./lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}
