@@ -303,8 +303,8 @@ export const EditConnectionPoolModal: FC<ConnectionPoolProps> = ({
                           <Box flex={1} display={'flex'} width="300px">
                             <YBInput
                               value={value}
-                              disabled={!overRidePortsValue || isItKubernetesUniverse}
                               onChange={onChange}
+                              disabled={!overRidePortsValue || isItKubernetesUniverse}
                               onBlur={(event) => {
                                 let port =
                                   Number(event.target.value.replace(/\D/g, '')) ||
@@ -315,6 +315,7 @@ export const EditConnectionPoolModal: FC<ConnectionPoolProps> = ({
                               inputProps={{
                                 'data-testid': `EditConnectionPoolModal-Input-${item.id}}`
                               }}
+                              trimWhitespace={false}
                             />
                           </Box>
                         </Box>

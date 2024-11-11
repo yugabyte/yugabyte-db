@@ -427,6 +427,7 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({
                               inputProps={{
                                 'data-testid': 'EnableYCQLModal-Input-yqlServerHttpPort'
                               }}
+                              trimWhitespace={false}
                             />
                           </Box>
                         </Box>
@@ -450,7 +451,6 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({
                               {t(`universeForm.advancedConfig.yqlServerRpcPort`)}
                             </YBLabel>
                           </Box>
-
                           <Box flex={1} display={'flex'} width="300px">
                             <YBInput
                               disabled={rotateYCQLPasswordValue || !overridePortsValue}
@@ -466,6 +466,7 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({
                               inputProps={{
                                 'data-testid': 'EnableYCQLModal-Input-yqlServerRpcPort'
                               }}
+                              trimWhitespace={false}
                             />
                           </Box>
                         </Box>
