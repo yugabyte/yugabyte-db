@@ -22,10 +22,8 @@
 
 namespace yb::pggate {
 
-class PgUpdate : public PgDmlWrite {
+class PgUpdate final : public PgStatementLeafBase<PgDmlWrite, StmtOp::kUpdate> {
  public:
-  StmtOp stmt_op() const override { return StmtOp::STMT_UPDATE; }
-
   static Result<std::unique_ptr<PgUpdate>> Make(
       const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool is_region_local,
       YBCPgTransactionSetting transaction_setting) {
@@ -36,7 +34,7 @@ class PgUpdate : public PgDmlWrite {
 
  private:
   PgUpdate(const PgSession::ScopedRefPtr& pg_session, YBCPgTransactionSetting transaction_setting)
-      : PgDmlWrite(pg_session, transaction_setting) {}
+      : BaseType(pg_session, transaction_setting) {}
 
   PgsqlWriteRequestPB::PgsqlStmtType stmt_type() const override {
     return PgsqlWriteRequestPB::PGSQL_UPDATE;

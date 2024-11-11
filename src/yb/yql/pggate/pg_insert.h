@@ -22,10 +22,8 @@
 
 namespace yb::pggate {
 
-class PgInsert : public PgDmlWrite {
+class PgInsert final : public PgStatementLeafBase<PgDmlWrite, StmtOp::kInsert> {
  public:
-  StmtOp stmt_op() const override { return StmtOp::STMT_INSERT; }
-
   void SetUpsertMode() {
     write_req_->set_stmt_type(PgsqlWriteRequestPB::PGSQL_UPSERT);
   }
@@ -46,7 +44,7 @@ class PgInsert : public PgDmlWrite {
   PgInsert(
       const PgSession::ScopedRefPtr& pg_session, YBCPgTransactionSetting transaction_setting,
       bool packed)
-      : PgDmlWrite(pg_session, transaction_setting, packed) {}
+      : BaseType(pg_session, transaction_setting, packed) {}
 
   PgsqlWriteRequestPB::PgsqlStmtType stmt_type() const override {
     return PgsqlWriteRequestPB::PGSQL_INSERT;

@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include <optional>
+#include <memory>
 
 #include "yb/util/result.h"
 
@@ -22,10 +22,8 @@
 
 namespace yb::pggate {
 
-class PgTruncateColocated : public PgDmlWrite {
+class PgTruncateColocated final : public PgStatementLeafBase<PgDmlWrite, StmtOp::kTruncate> {
  public:
-  StmtOp stmt_op() const override { return StmtOp::STMT_TRUNCATE; }
-
   static Result<std::unique_ptr<PgTruncateColocated>> Make(
       const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool is_region_local,
       YBCPgTransactionSetting transaction_setting) {
@@ -38,7 +36,7 @@ class PgTruncateColocated : public PgDmlWrite {
  private:
   PgTruncateColocated(
       const PgSession::ScopedRefPtr& pg_session, YBCPgTransactionSetting transaction_setting)
-      : PgDmlWrite(pg_session, transaction_setting) {}
+      : BaseType(pg_session, transaction_setting) {}
 
   PgsqlWriteRequestPB::PgsqlStmtType stmt_type() const override {
     return PgsqlWriteRequestPB::PGSQL_TRUNCATE_COLOCATED;

@@ -22,10 +22,8 @@
 
 namespace yb::pggate {
 
-class PgDelete : public PgDmlWrite {
+class PgDelete final : public PgStatementLeafBase<PgDmlWrite, StmtOp::kDelete> {
  public:
-  StmtOp stmt_op() const override { return StmtOp::STMT_DELETE; }
-
   void SetIsPersistNeeded(bool is_persist_needed) {
     write_req_->set_is_delete_persist_needed(is_persist_needed);
   }
@@ -41,7 +39,7 @@ class PgDelete : public PgDmlWrite {
  private:
   PgDelete(
       const PgSession::ScopedRefPtr& pg_session, YBCPgTransactionSetting transaction_setting)
-      : PgDmlWrite(pg_session, transaction_setting) {}
+      : BaseType(pg_session, transaction_setting) {}
 
   PgsqlWriteRequestPB::PgsqlStmtType stmt_type() const override {
     return PgsqlWriteRequestPB::PGSQL_DELETE;

@@ -131,7 +131,7 @@ class PgSamplePicker : public PgSelectIndex {
 };
 
 PgSample::PgSample(const PgSession::ScopedRefPtr& pg_session)
-    : PgDmlRead(pg_session) {}
+    : BaseType(pg_session) {}
 
 Status PgSample::Prepare(
     const PgObjectId& table_id, bool is_region_local, int targrows,

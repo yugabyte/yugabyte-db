@@ -1112,7 +1112,7 @@ YBCStatus YBCPgSetDBCatalogCacheVersion(
 }
 
 YBCStatus YBCPgDmlModifiesRow(YBCPgStatement handle, bool *modifies_row) {
-  return ToYBCStatus(pgapi->DmlModifiesRow(handle, modifies_row));
+  return ExtractValueFromResult(pgapi->DmlModifiesRow(handle), modifies_row);
 }
 
 YBCStatus YBCPgSetIsSysCatalogVersionChange(YBCPgStatement handle) {
@@ -1346,8 +1346,7 @@ YBCStatus YBCPgDmlBindHashCodes(
   const auto start = MakeBound(start_type, start_value);
   const auto end = MakeBound(end_type, end_value);
   DCHECK(start || end);
-  pgapi->DmlBindHashCode(handle, start, end);
-  return YBCStatusOK();
+  return ToYBCStatus(pgapi->DmlBindHashCode(handle, start, end));
 }
 
 YBCStatus YBCPgDmlBindRange(YBCPgStatement handle,

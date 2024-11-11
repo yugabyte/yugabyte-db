@@ -57,8 +57,6 @@ namespace yb::pggate {
 
 class PgDmlRead : public PgDml {
  public:
-  [[nodiscard]] StmtOp stmt_op() const override { return StmtOp::STMT_SELECT; }
-
   // Allocate binds.
   virtual void PrepareBinds();
 
