@@ -758,8 +758,9 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 		{
 			/*
 			 * In yb_binary_restore if tablespaceId is not valid but
-			 * binary_upgrade_next_tablegroup_oid is valid, that implies we are
-			 * restoring without tablespace information.
+			 * binary_upgrade_next_tablegroup_oid is valid, that implies either:
+			 * 1. it is a default tablespace.
+			 * 2. we are restoring without tablespace information.
 			 * In this case all tables are restored to default tablespace,
 			 * while maintaining the colocation properties, and tablegroup's name
 			 * will be colocation_restore_tablegroupId, while default tablegroup's
@@ -800,6 +801,13 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			tablegroupId = CreateTableGroup(tablegroup_stmt);
 			stmt->tablegroupname = pstrdup(tablegroup_name);
 		}
+		/*
+		 * Reset the binary_upgrade params as these are not needed anymore (only
+		 * required in CreateTableGroup), to ensure these parameter values are
+		 * not reused in subsequent unrelated statements.
+		 */
+		binary_upgrade_next_tablegroup_oid = InvalidOid;
+		binary_upgrade_next_tablegroup_default = false;
 
 		/* Record dependency between the table and tablegroup. */
 		ObjectAddress myself, tablegroup;
@@ -1065,10 +1073,10 @@ YbUnsafeTruncate(Relation rel)
 /* Utility function to handle split points */
 static void
 CreateIndexHandleSplitOptions(YBCPgStatement handle,
-                              TupleDesc desc,
-                              OptSplit *split_options,
-                              int16 * coloptions,
-                              int numIndexKeyAttrs)
+							  TupleDesc desc,
+							  OptSplit *split_options,
+							  int16 * coloptions,
+							  int numIndexKeyAttrs)
 {
 	/* Address both types of split options */
 	switch (split_options->split_type)
@@ -1216,7 +1224,7 @@ YBCCreateIndex(const char *indexName,
 	/* Handle SPLIT statement, if present */
 	if (split_options)
 		CreateIndexHandleSplitOptions(handle, indexTupleDesc, split_options, coloptions,
-		                              indexInfo->ii_NumIndexKeyAttrs);
+									  indexInfo->ii_NumIndexKeyAttrs);
 
 	/* Create the index. */
 	HandleYBStatus(YBCPgExecCreateIndex(handle));

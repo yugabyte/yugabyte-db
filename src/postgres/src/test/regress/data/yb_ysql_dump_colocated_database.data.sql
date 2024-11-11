@@ -55,6 +55,9 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16410'::pg_catalog.
 
 -- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid
 SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16387'::pg_catalog.oid);
+
+-- For YB colocation backup without tablespace information, must preserve default tablegroup tables
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_default(true);
 CREATE TABLE public.htest (
     k1 integer,
     k2 text,
@@ -86,6 +89,12 @@ SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16414'::pg_catalog.
 -- For binary upgrade, must preserve pg_class oids
 SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16413'::pg_catalog.oid);
 
+
+-- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16387'::pg_catalog.oid);
+
+-- For YB colocation backup without tablespace information, must preserve default tablegroup tables
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_default(true);
 CREATE TABLE public.htest_1 PARTITION OF public.htest
 FOR VALUES WITH (modulus 2, remainder 0)
 WITH (colocation_id='234567');
@@ -115,6 +124,12 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16384'::pg_catalog.
 -- For binary upgrade, must preserve pg_class oids
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16388'::pg_catalog.oid);
 
+
+-- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16387'::pg_catalog.oid);
+
+-- For YB colocation backup without tablespace information, must preserve default tablegroup tables
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_default(true);
 CREATE TABLE public.tbl (
     k integer NOT NULL,
     v integer,
@@ -147,6 +162,12 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16390'::pg_catalog.
 -- For binary upgrade, must preserve pg_class oids
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16393'::pg_catalog.oid);
 
+
+-- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16387'::pg_catalog.oid);
+
+-- For YB colocation backup without tablespace information, must preserve default tablegroup tables
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_default(true);
 CREATE TABLE public.tbl2 (
     k integer NOT NULL,
     v integer,
@@ -243,6 +264,12 @@ SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16417'::pg_catalog.
 -- For binary upgrade, must preserve pg_class oids
 SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16416'::pg_catalog.oid);
 
+
+-- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16387'::pg_catalog.oid);
+
+-- For YB colocation backup without tablespace information, must preserve default tablegroup tables
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_default(true);
 CREATE TABLE public.tbl5 (
     k integer,
     v integer
@@ -324,6 +351,12 @@ ALTER TABLE ONLY public.tbl5
 -- For binary upgrade, must preserve pg_class oids
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16398'::pg_catalog.oid);
 
+
+-- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16387'::pg_catalog.oid);
+
+-- For YB colocation backup without tablespace information, must preserve default tablegroup tables
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_default(true);
 CREATE INDEX NONCONCURRENTLY partial_idx ON public.tbl2 USING lsm (k ASC, v DESC) WITH (colocation_id=40001) WHERE ((k > 10) AND (k < 20) AND (v > 200));
 
 
@@ -335,6 +368,12 @@ CREATE INDEX NONCONCURRENTLY partial_idx ON public.tbl2 USING lsm (k ASC, v DESC
 -- For binary upgrade, must preserve pg_class oids
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16397'::pg_catalog.oid);
 
+
+-- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16387'::pg_catalog.oid);
+
+-- For YB colocation backup without tablespace information, must preserve default tablegroup tables
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_default(true);
 CREATE UNIQUE INDEX NONCONCURRENTLY partial_unique_idx ON public.tbl USING lsm (v DESC) WITH (colocation_id=40000) WHERE ((v >= 100) AND (v <= 200));
 
 
@@ -346,6 +385,12 @@ CREATE UNIQUE INDEX NONCONCURRENTLY partial_unique_idx ON public.tbl USING lsm (
 -- For binary upgrade, must preserve pg_class oids
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16396'::pg_catalog.oid);
 
+
+-- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16387'::pg_catalog.oid);
+
+-- For YB colocation backup without tablespace information, must preserve default tablegroup tables
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_default(true);
 CREATE INDEX NONCONCURRENTLY tbl2_v2_idx ON public.tbl2 USING lsm (v2 ASC) WITH (colocation_id=20004);
 
 
@@ -368,6 +413,12 @@ CREATE UNIQUE INDEX NONCONCURRENTLY tbl3_v_idx ON public.tbl3 USING lsm (v HASH)
 -- For binary upgrade, must preserve pg_class oids
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16395'::pg_catalog.oid);
 
+
+-- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16387'::pg_catalog.oid);
+
+-- For YB colocation backup without tablespace information, must preserve default tablegroup tables
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_default(true);
 CREATE UNIQUE INDEX NONCONCURRENTLY tbl_v_idx ON public.tbl USING lsm (v DESC) WITH (colocation_id=20003);
 
 

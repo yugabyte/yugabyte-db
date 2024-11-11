@@ -140,12 +140,6 @@ static SimpleOidList table_exclude_oids = {NULL, NULL};
 static SimpleStringList tabledata_exclude_patterns = {NULL, NULL};
 static SimpleOidList tabledata_exclude_oids = {NULL, NULL};
 
-/*
- * The string list records tablespaces used if the dumped database is
- * a colocated database.
- */
-static SimpleStringList colocated_database_tablespaces = {NULL, NULL};
-
 
 char		g_opaque_type[10];	/* name for the opaque type */
 
@@ -16057,12 +16051,9 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		 */
 		if (is_colocated_database && !is_legacy_colocated_database
 			&& (tbinfo->relkind == RELKIND_RELATION || tbinfo->relkind == RELKIND_MATVIEW
-				|| tbinfo->relkind == RELKIND_PARTITIONED_TABLE)
-			&& yb_properties && yb_properties->is_colocated
-			&& (!simple_string_list_member(&colocated_database_tablespaces, tbinfo->reltablespace)
-			|| dopt->outputNoTablespaces))
+				|| tbinfo->relkind == RELKIND_PARTITIONED_TABLE) && yb_properties
+			&& yb_properties->is_colocated)
 		{
-			simple_string_list_append(&colocated_database_tablespaces, tbinfo->reltablespace);
 			/*
 			 * Set the next implicit tablegroup oid in a colocated database.
 			 * It's mandatory to reuse the old tablegroup oid to match tablegroup parent table
@@ -16073,15 +16064,13 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			appendPQExpBuffer(q,
 							  "SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('%u'::pg_catalog.oid);\n",
 							  yb_properties->tablegroup_oid);
-			if (dopt->outputNoTablespaces)
+
+			if(strcmp(yb_properties->tablegroup_name, "default") == 0)
 			{
-				if(strcmp(yb_properties->tablegroup_name, "default") == 0)
-				{
-					appendPQExpBufferStr(q,
-									"\n-- For YB colocation backup without tablespace information, must preserve default tablegroup tables\n");
-					appendPQExpBuffer(q,
-						"SELECT pg_catalog.binary_upgrade_set_next_tablegroup_default(true);\n");
-				}
+				appendPQExpBufferStr(q,
+									 "\n-- For YB colocation backup without tablespace information, must preserve default tablegroup tables\n");
+				appendPQExpBuffer(q,
+								  "SELECT pg_catalog.binary_upgrade_set_next_tablegroup_default(true);\n");
 			}
 		}
 
@@ -16930,7 +16919,7 @@ dumpIndex(Archive *fout, IndxInfo *indxinfo)
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 indxinfo->dobj.catId.oid, true);
 
-		if (dopt->outputNoTablespaces && is_colocated_database && !is_legacy_colocated_database)
+		if (is_colocated_database && !is_legacy_colocated_database)
 		{
 			YbTableProperties yb_properties;
 			yb_properties = (YbTableProperties) pg_malloc(sizeof(YbTablePropertiesData));

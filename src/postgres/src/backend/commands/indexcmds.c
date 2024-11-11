@@ -779,57 +779,70 @@ DefineIndex(Oid relationId,
 			tablegroup_name = OidIsValid(tablegroupId) ? get_tablegroup_name(tablegroupId) :
 				get_implicit_tablegroup_name(tablespaceId);
 
-		}
-		else if (yb_binary_restore && OidIsValid(binary_upgrade_next_tablegroup_oid))
-		{
-			/*
-			 * In yb_binary_restore if tablespaceId is not valid but
-			 * binary_upgrade_next_tablegroup_oid is valid, that implies we are
-			 * restoring without tablespace information.
-			 * In this case all tables are restored to default tablespace,
-			 * while maintaining the colocation properties, and tablegroup's name
-			 * will be colocation_restore_tablegroupId, while default tablegroup's
-			 * name would still be default.
-			 */
-			tablegroup_name = binary_upgrade_next_tablegroup_default ?
-								DEFAULT_TABLEGROUP_NAME :
-								get_restore_tablegroup_name(
-									binary_upgrade_next_tablegroup_oid);
-			binary_upgrade_next_tablegroup_default = false;
-			tablegroupId = get_tablegroup_oid(tablegroup_name, true);
-		}
-		else if (yb_binary_restore && OidIsValid(tablegroupId))
-		{
-			tablegroup_name = get_tablegroup_name(tablegroupId);
-		}
-		else
-		{
-			tablegroup_name = DEFAULT_TABLEGROUP_NAME;
-			tablegroupId = get_tablegroup_oid(tablegroup_name, true);
-		}
+			}
+			else if (yb_binary_restore && OidIsValid(binary_upgrade_next_tablegroup_oid))
+			{
+				/*
+				 * In yb_binary_restore if tablespaceId is not valid but
+				 * binary_upgrade_next_tablegroup_oid is valid, that implies either:
+				 * 1. it is a default tablespace.
+				 * 2. we are restoring without tablespace information.
+				 * In this case all tables are restored to default tablespace,
+				 * while maintaining the colocation properties, and tablegroup's name
+				 * will be colocation_restore_tablegroupId, while default tablegroup's
+				 * name would still be default.
+				 */
+				tablegroup_name = binary_upgrade_next_tablegroup_default ?
+									DEFAULT_TABLEGROUP_NAME :
+									get_restore_tablegroup_name(
+										binary_upgrade_next_tablegroup_oid);
+				binary_upgrade_next_tablegroup_default = false;
+				tablegroupId = get_tablegroup_oid(tablegroup_name, true);
+			}
+			else if (yb_binary_restore && OidIsValid(tablegroupId))
+			{
+				/*
+				 * This case handles Primary Key's tablegroup id. The variable
+				 * tablegroupId stores the tablegroupId of the parent table.
+				 */
+				tablegroup_name = get_tablegroup_name(tablegroupId);
+			}
+			else
+			{
+				tablegroup_name = DEFAULT_TABLEGROUP_NAME;
+				tablegroupId = get_tablegroup_oid(tablegroup_name, true);
+			}
 
 		char *tablespace_name = OidIsValid(tablespaceId) ? get_tablespace_name(tablespaceId) :
 			NULL;
 
-		/* Tablegroup doesn't exist, so create it. */
-		if (!OidIsValid(tablegroupId))
-		{
-			/*
-			 * Regardless of the current user, let postgres be the owner of the
-			 * implicit tablegroup in a colocated database.
-			 */
-			RoleSpec *spec = makeNode(RoleSpec);
-			spec->roletype = ROLESPEC_CSTRING;
-			spec->rolename = pstrdup("postgres");
+			/* Tablegroup doesn't exist, so create it. */
+			if (!OidIsValid(tablegroupId))
+			{
+				/*
+				 * Regardless of the current user, let postgres be the owner of the
+				 * implicit tablegroup in a colocated database.
+				 */
+				RoleSpec *spec = makeNode(RoleSpec);
+				spec->roletype = ROLESPEC_CSTRING;
+				spec->rolename = pstrdup("postgres");
 
-			CreateTableGroupStmt *tablegroup_stmt = makeNode(CreateTableGroupStmt);
-			tablegroup_stmt->tablegroupname = tablegroup_name;
-			tablegroup_stmt->tablespacename = tablespace_name;
-			tablegroup_stmt->implicit = true;
-			tablegroup_stmt->owner = spec;
-			tablegroupId = CreateTableGroup(tablegroup_stmt);
+				CreateTableGroupStmt *tablegroup_stmt = makeNode(CreateTableGroupStmt);
+				tablegroup_stmt->tablegroupname = tablegroup_name;
+				tablegroup_stmt->tablespacename = tablespace_name;
+				tablegroup_stmt->implicit = true;
+				tablegroup_stmt->owner = spec;
+				tablegroupId = CreateTableGroup(tablegroup_stmt);
+			}
 		}
-	}
+		/*
+		 * Reset the binary_upgrade params as these are not needed anymore (only
+		 * required in CreateTableGroup), to ensure these parameter values are
+		 * not reused in subsequent unrelated statements.
+		 */
+		binary_upgrade_next_tablegroup_oid = InvalidOid;
+		binary_upgrade_next_tablegroup_default = false;
+
 
 	if (stmt->split_options)
 	{
@@ -2053,8 +2066,8 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 										 accessMethodId);
 
 		/*
-	 	 * In Yugabyte mode, disallow some built-in operator classes if the column has non-C
-	 	 * collation.
+		 * In Yugabyte mode, disallow some built-in operator classes if the column has non-C
+		 * collation.
 		 */
 		if (IsYugaByteEnabled() &&
 			YBIsCollationValidNonC(attcollation) &&
@@ -2148,9 +2161,9 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			}
 			else if (colOptionP[attn] == INDOPTION_HASH)
 				ereport(NOTICE,
-                		(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-                  		 errmsg("nulls sort ordering option is ignored, "
-                        		"NULLS FIRST/NULLS LAST not allowed for a HASH column")));
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						 errmsg("nulls sort ordering option is ignored, "
+								"NULLS FIRST/NULLS LAST not allowed for a HASH column")));
 			else if (attribute->nulls_ordering == SORTBY_NULLS_FIRST)
 				colOptionP[attn] |= INDOPTION_NULLS_FIRST;
 		}
