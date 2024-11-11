@@ -315,6 +315,7 @@ export const EditConnectionPoolModal: FC<ConnectionPoolProps> = ({
                               inputProps={{
                                 'data-testid': `EditConnectionPoolModal-Input-${item.id}}`
                               }}
+                              trimWhitespace={false}
                             />
                           </Box>
                         </Box>

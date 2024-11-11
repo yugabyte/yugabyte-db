@@ -427,6 +427,7 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({
                               inputProps={{
                                 'data-testid': 'EnableYCQLModal-Input-yqlServerHttpPort'
                               }}
+                              trimWhitespace={false}
                             />
                           </Box>
                         </Box>
@@ -465,6 +466,7 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({
                               inputProps={{
                                 'data-testid': 'EnableYCQLModal-Input-yqlServerRpcPort'
                               }}
+                              trimWhitespace={false}
                             />
                           </Box>
                         </Box>
