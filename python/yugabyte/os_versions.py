@@ -13,7 +13,7 @@
 import re
 
 
-UBUNTU_OS_TYPE_RE = re.compile(r'^(ubuntu)([0-9]{2})([0-9]{2})$')
+UBUNTU_OS_TYPE_RE = re.compile(r'^(ubuntu)([0-9]{2})\.?([0-9]{2})$')
 RHEL_FAMILY_RE = re.compile(r'^(almalinux|centos|rhel)([0-9]+)$')
 
 
@@ -25,12 +25,29 @@ def adjust_os_type(os_type: str) -> str:
     return os_type
 
 
-def is_compatible_os(archive_os: str, target_os: str) -> bool:
+def is_compatible_os(archive_os: str, target_os: str, allow_older: bool) -> bool:
     """
     Check if two combinations of OS name and version are compatible.
     """
-    rhel_like1 = RHEL_FAMILY_RE.match(archive_os)
-    rhel_like2 = RHEL_FAMILY_RE.match(target_os)
-    if rhel_like1 and rhel_like2 and rhel_like1.group(2) == rhel_like2.group(2):
+    if archive_os == target_os:
         return True
-    return archive_os == target_os
+
+    rhel_archive = RHEL_FAMILY_RE.match(archive_os)
+    rhel_target = RHEL_FAMILY_RE.match(target_os)
+    if rhel_archive and rhel_target and rhel_archive.group(2) == rhel_target.group(2):
+        return True
+    if rhel_archive and rhel_target and allow_older:
+        if int(rhel_archive.group(2)) < int(rhel_target.group(2)):
+            return True
+
+    ubuntu_archive = UBUNTU_OS_TYPE_RE.match(archive_os)
+    ubuntu_target = UBUNTU_OS_TYPE_RE.match(target_os)
+    if ubuntu_archive and ubuntu_target and ubuntu_archive.group(2) == ubuntu_target.group(2):
+        # Redundant, since there is only one ubuntu OS in regexp, unless minor version diff.
+        return True
+    if ubuntu_archive and ubuntu_target and allow_older:
+        # Ignoring minor version, we expect they are compatible (and we always use stable 04).
+        if int(ubuntu_archive.group(2)) < int(ubuntu_target.group(2)):
+            return True
+
+    return False
