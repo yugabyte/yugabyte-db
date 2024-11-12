@@ -516,4 +516,5 @@ void yb_handle_fatalforlogicalconnection_pkt(od_client_t *client,
 	}
 
 	yb_forward_fatal_msg(client, msg);
+	machine_msg_free(msg);
 }
