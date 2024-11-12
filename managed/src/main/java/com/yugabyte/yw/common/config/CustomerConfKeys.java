@@ -68,7 +68,7 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "Proxy Endpoint Timeout",
           "todo",
           ConfDataType.DurationType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 
   public static final ConfKeyInfo<Duration> perfRecommendationRetentionDuration =
       new ConfKeyInfo<>(

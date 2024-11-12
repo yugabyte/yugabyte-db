@@ -16,8 +16,8 @@ public class ConfDataTypeTest {
 
   @Test
   public void tagListParse() {
-    List<ConfKeyTags> list = new ArrayList<>(Arrays.asList(ConfKeyTags.PUBLIC, ConfKeyTags.BETA));
-    assertTrue(list.equals(parseTagsList("[\"PUBLIC\",\"BETA\"]")));
+    List<ConfKeyTags> list = new ArrayList<>(Arrays.asList(ConfKeyTags.PUBLIC));
+    assertTrue(list.equals(parseTagsList("[\"PUBLIC\"]")));
     // Strings should be enclosed within double quotes
     assertPlatformException(() -> parseTagsList("[Three,Sample,String]"));
     assertPlatformException(() -> parseTagsList("[\"Invalid\",\"tags\"]"));

@@ -4022,7 +4022,7 @@
         },
         "tags" : {
           "items" : {
-            "enum" : [ "PUBLIC", "INTERNAL", "BETA", "FEATURE_FLAG" ],
+            "enum" : [ "PUBLIC", "INTERNAL", "FEATURE_FLAG" ],
             "type" : "string"
           },
           "type" : "array"

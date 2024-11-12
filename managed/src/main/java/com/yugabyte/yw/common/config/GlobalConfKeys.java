@@ -53,7 +53,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Use New Helm Naming",
           "TODO - Leave this for feature owners to fill in",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 
   public static final ConfKeyInfo<Boolean> usek8sCustomResources =
       new ConfKeyInfo<>(
@@ -62,7 +62,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Specify custom CPU/memory values for k8s universes",
           "Use custom CPU/Memory for kubernetes nodes. Once enabled, shouldn't be disabled.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 
   public static final ConfKeyInfo<Boolean> useSingleZone =
       new ConfKeyInfo<>(
@@ -193,7 +193,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Audit Verify Logging",
           "TODO - Leave this for feature owners to fill in",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   // TODO(): Add correct metadata
   public static final ConfKeyInfo<Boolean> auditOutputToStdout =
       new ConfKeyInfo<>(
@@ -202,7 +202,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Audit Log Output to Stdout",
           "TODO - Leave this for feature owners to fill in",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   // TODO(): Add correct metadata
   public static final ConfKeyInfo<Boolean> auditOutputToFile =
       new ConfKeyInfo<>(
@@ -211,7 +211,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Audit Log Output to File",
           "TODO - Leave this for feature owners to fill in",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   // TODO(): Add correct metadata
   public static final ConfKeyInfo<String> auditRolloverPattern =
       new ConfKeyInfo<>(
@@ -220,7 +220,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Audit Log Rollover Pattern",
           "TODO - Leave this for feature owners to fill in",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   // TODO(): Add correct metadata
   public static final ConfKeyInfo<String> auditMaxHistory =
       new ConfKeyInfo<>(
@@ -229,7 +229,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Audit Log Max History",
           "TODO - Leave this for feature owners to fill in",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> auditLogFileNamePrefix =
       new ConfKeyInfo<>(
           "yb.audit.log.fileNamePrefix",
@@ -238,7 +238,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Flag to set a custom prefix for the audit log files. "
               + "Can only be set through audit_logging_config API.",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.BETA, ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> supportBundleK8sEnabled =
       new ConfKeyInfo<>(
           "yb.support_bundle.k8s_enabled",
@@ -469,7 +469,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Start Master On Stop Node",
           "Auto-start master process on a similar available node on stopping a master node",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> startMasterOnRemoveNode =
       new ConfKeyInfo<>(
           "yb.start_master_on_remove_node",
@@ -477,7 +477,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Start Master On Remove Node",
           "Auto-start master process on a similar available node on removal of a master node",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static ConfKeyInfo<Boolean> useLdap =
       new ConfKeyInfo<>(
           "yb.security.ldap.use_ldap",
@@ -678,7 +678,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Supress Error",
           "If set, suppresses exceptions to be thrown as part of FS <-> DB sync on YBA startup",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<Long> fsStatelessMaxFileSizeBytes =
       new ConfKeyInfo<>(
           "yb.fs_stateless.max_file_size_bytes",
@@ -686,7 +686,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Max File Size",
           "Maximum size of file that can be persisted in DB",
           ConfDataType.LongType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<Integer> fsStatelessMaxFilesCountPersist =
       new ConfKeyInfo<>(
           "yb.fs_stateless.max_files_count_persist",
@@ -694,7 +694,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Max Files Persist",
           "Maximum number of files that can be persisted in DB",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<Boolean> disableSyncDbToFsStartup =
       new ConfKeyInfo<>(
           "yb.fs_stateless.disable_sync_db_to_fs_startup",
@@ -702,7 +702,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Sync DB State to FS",
           "If disables does not syncs the files in DB to FS on every YBA startup",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<Duration> taskGcCheckInterval =
       new ConfKeyInfo<>(
           "yb.taskGC.gc_check_interval",
@@ -861,7 +861,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enables extra logging",
           "Enables extra logging for task params and request body",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> applicationLogFileNamePrefix =
       new ConfKeyInfo<>(
           "yb.logging.fileNamePrefix",
@@ -870,7 +870,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Flag to set a custom prefix for the application log files. "
               + "Can only be set through logging_config API.",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.BETA, ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> fixDatabaseFullPaths =
       new ConfKeyInfo<>(
           "yb.fixPaths",
@@ -945,7 +945,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Customer UUID to use with Kubernentes Operator",
           "Customer UUID to use with Kubernentes Operator, do not change once set",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> KubernetesOperatorEnabled =
       new ConfKeyInfo<>(
           "yb.kubernetes.operator.enabled",
@@ -953,7 +953,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable Kubernentes Operator",
           "Enable Kubernentes Operator, requires restart to take effect",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> KubernetesOperatorNamespace =
       new ConfKeyInfo<>(
           "yb.kubernetes.operator.namespace",
@@ -962,7 +962,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Change the namespace kubernetes operator listens on. By default, all namespaces "
               + "are watched. Requires restart to take effect",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> acceptableClockSkewWaitEnabled =
       new ConfKeyInfo<>(
           "yb.wait_for_clock_sync.inline_enabled",
@@ -1220,7 +1220,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Crash YBA if Kubernentes Operator thread fails",
           "If Kubernetes Operator thread fails, crash YBA",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> xclusterBootstrapRequiredRpcMaxThreads =
       new ConfKeyInfo<>(
           "yb.xcluster.is_bootstrap_required_rpc_pool.max_threads",
@@ -1247,7 +1247,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Kubernetes provider validation",
           "Enable the Kubernetes provider quick validation",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> maxYbcUpgradePollResultTries =
       new ConfKeyInfo<>(
           "ybc.upgrade.poll_result_tries",
@@ -1363,7 +1363,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "XCluster Sync Scheduler Interval",
           "Interval at which the XCluster Sync Scheduler runs",
           ConfDataType.DurationType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> xClusterMetricsSchedulerInterval =
       new ConfKeyInfo<>(
           "yb.xcluster.xcluster_metrics_scheduler_interval",
@@ -1371,7 +1371,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "XCluster Metrics Scheduler Interval",
           "Interval at which the XCluster Metrics Scheduler runs",
           ConfDataType.DurationType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> ybcClientMaxUnavailableRetries =
       new ConfKeyInfo<>(
           "ybc.client_settings.max_unavailable_retries",
@@ -1379,7 +1379,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Max retries on UNAVAILABLE status",
           "Max client side retries when server returns UNAVAILABLE status",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> ybcClientWaitEachUnavailableRetryMs =
       new ConfKeyInfo<>(
           "ybc.client_settings.wait_each_unavailable_retry_ms",
@@ -1388,7 +1388,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Wait( in milliseconds ) between client side retries when server returns UNAVAILABLE"
               + " status",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> ybcClientMaxInboundMsgSize =
       new ConfKeyInfo<>(
           "ybc.client_settings.max_inbound_msg_size_bytes",
@@ -1396,7 +1396,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Max size of YB-Controller RPC response",
           "Max size( in bytes ) of YB-Controller RPC response",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> ybcClientDeadlineMs =
       new ConfKeyInfo<>(
           "ybc.client_settings.deadline_ms",
@@ -1405,7 +1405,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Wait( in milliseconds ) for YB-Controller RPC response before throwing client-side"
               + " DEADLINE_EXCEEDED",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> ybcClientKeepAlivePingsMs =
       new ConfKeyInfo<>(
           "ybc.client_settings.keep_alive_ping_ms",
@@ -1413,7 +1413,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Wait between each KeepAlive ping to YB-Controller server",
           "Wait( in milliseconds ) between each KeepAlive ping to YB-Controller server",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> ybcClientKeepAlivePingsTimeoutMs =
       new ConfKeyInfo<>(
           "ybc.client_settings.keep_alive_ping_timeout_ms",
@@ -1422,7 +1422,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Wait( in milliseconds ) for KeepAlive ping response from YB-Controller server before"
               + " throwing UNAVAILABLE",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   // Also need rbac to be on for this key to have effect.
   public static final ConfKeyInfo<Boolean> groupMappingRbac =
       new ConfKeyInfo<>(
