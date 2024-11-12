@@ -976,6 +976,7 @@ DoSingleUpdate(MongoCollection *collection, UpdateSpec *updateSpec, text *transa
 		batchResult->writeErrors = lappend(batchResult->writeErrors,
 										   GetWriteErrorFromErrorData(errorData,
 																	  updateIndex));
+		FreeErrorData(errorData);
 		isSuccess = false;
 	}
 	PG_END_TRY();
