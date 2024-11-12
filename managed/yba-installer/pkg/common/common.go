@@ -449,8 +449,7 @@ func extractPlatformSupportPackageAndYugabundle(vers string) error {
 	}
 
 	if HasSudoAccess() {
-		userName := viper.GetString("service_username")
-		if err := Chown(GetSoftwareRoot(), userName, userName, true); err != nil {
+		if err := SetSoftwarePermissions(); err != nil {
 			return err
 		}
 	}
