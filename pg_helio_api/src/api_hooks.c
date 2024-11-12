@@ -354,14 +354,13 @@ GetHelioIndexAmRoutine(PG_FUNCTION_ARGS)
  * If the hook is implemented to return it, it just calls into it.
  */
 void *
-GetMultiAndBitmapIndexFunc()
+GetMultiAndBitmapIndexFunc(bool missingOk)
 {
 	if (get_multi_and_bitmap_func_hook != NULL)
 	{
 		return get_multi_and_bitmap_func_hook();
 	}
 
-	bool missingOk = false;
 	void **ignoreLibFileHandle = NULL;
 	return load_external_function("$libdir/rum", "multiandgetbitmap", !missingOk,
 								  ignoreLibFileHandle);

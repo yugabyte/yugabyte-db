@@ -153,7 +153,8 @@ static const ExtensibleNodeMethods InputQueryStateMethods =
 void
 RegisterRumJoinScanNodes(void)
 {
-	MultiAndGetBitmapFunc = GetMultiAndBitmapIndexFunc();
+	bool missingOk = !HasCustomRumFunctions;
+	MultiAndGetBitmapFunc = GetMultiAndBitmapIndexFunc(missingOk);
 
 	/* Only add the custom scan IF the function is available */
 	if (MultiAndGetBitmapFunc != NULL)
