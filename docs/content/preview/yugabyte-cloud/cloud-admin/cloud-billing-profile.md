@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-Review your usage and charges, manage your plan, and manage your billing information using the **Usage & Billing** page.
+Review your usage and charges, manage your plan, and manage your billing information on the **Usage & Billing** page.
 
 Yugabyte bills for its services as follows:
 
@@ -25,23 +25,59 @@ For information on YugabyteDB Aeon plans and add-ons, refer to [YugabyteDB Prici
 
 ![Usage & Billing tab](/images/yb-cloud/cloud-admin-billing.png)
 
-The **Usage & Billing** page has the following tabs: **Usage**, **Plan**, **Invoices**, and **Billing Information**.
+The **Usage & Billing** page has the following tabs: **Usage**, **Plan**, **Profile & Payment Methods**, and **Invoices**.
 
 ## Usage
 
-Use this section to review your usage by cluster over time. You can view cumulative and daily usage of the following:
+Use this section to review your usage, per billing period, by cluster, over time. You can view cumulative and daily usage of the following:
 
-- cluster compute (vCPU hours)
-- disk storage
-- disk IOPS
-- cloud backup storage
-- data transfer
+- Cluster compute (vCPU hours)
+- Disk storage
+- Disk IOPS
+- Cloud backup storage
+- Data transfer
 
 ## Plan
 
-Use this section to subscribe to a plan, or review your plan details, including any add-ons.
+Use this section to subscribe to a plan, manage an existing plan (including adding add-ons), and review plan details.
 
-To make changes to your plan, contact {{% support-cloud %}}.
+To make changes to your plan, click **Manage Plan** or **Add to Plan**.
+
+You can subscribe to the Standard or Professional plan, upgrade a plan from Standard to Professional, or add add-ons. For other changes, contact {{% support-cloud %}}.
+
+## Profile & Payment Methods
+
+Use this section to manage your contact information and payment method. You can pay using a credit card, or other payment methods such as debit, ACH, and invoicing.
+
+Credit cards are self service. <!--For other payment methods, create your billing profile and set the **Billing Options** to **Other**; after you create your profile, contact {{% support-cloud %}} to set up payment.-->
+
+If you want to switch from paying by credit card to another method, contact {{% support-cloud %}}.
+
+### Add or edit your Billing Profile
+
+To add or change your billing profile:
+
+1. On the **Usage & Billing** page, select **Profile & Payment Methods** and click **Edit Billing Profile** to display the **Edit Billing Profile** sheet. If you haven't yet created a billing profile, click **Create Billing Profile**.
+1. Edit your contact information.
+1. If you are creating your billing profile, enter your credit card details. <!--For other payment methods, set the **Billing Options** to **Other**. You can only set the **Billing Options** if you are creating your profile.-->
+1. Click **Save**.
+
+### Manage credit cards
+
+To add a credit card:
+
+1. On the **Usage & Billing** page, select **Profile & Payment Methods** and click **Add Card** to display the **Add Credit Card** dialog.
+1. Enter your credit card details.
+1. To use the card as the default for payment, choose **Set as default credit card**.
+1. Click **Save**.
+
+To delete a card, click the **Delete** icon, then click **Confirm**. You cannot delete the default card.
+
+To change the default for payment, in the Card list, select the **Default Card** option for the card.
+
+### View credits and discounts
+
+The **Credits and Discounts** section displays any credits applied to your account, including the end date, days left, amount used, and amount remaining. Credits are automatically applied to the next invoice.
 
 ## Invoices
 
@@ -49,27 +85,24 @@ Your invoice is generated at the end of each month. The amount is charged automa
 
 **Invoices** lists your active and past invoices, along with a running total of usage for the current billing period. To review a specific invoice, select it in **Invoice History**.
 
-### Active Invoice
+### Active Invoice Summary
 
-Shows the billing details for the current billing cycle, including:
+Shows a summary for the current billing cycle, including:
 
 - Running total - running total of the amount you owe in the current billing period; Yugabyte updates this once a day.
-- Billing option - your billing plan (pay-as-you-go or subscription).
 - Billing period - the start and end date of the current billing period. Your first billing period starts the day you created your billing profile and ends on the last day of the month; subsequent periods start on the first day of the month and end on the last.
 - Previous invoice - the amount of the previous invoice.
-- Last billed on - the date of the previous invoice.
-- This time last month - the amount owing on the same day in the previous billing period (for example, if the current day is the 13th, this displays the amount that was owed on the 13th of last month).
 
-Click **Invoice Details** to view the invoice [Summary](#invoice-summary) for the active invoice.
+Click **Invoice Details** to view the [Summary](#invoice-summary) for the active invoice.
 
 ### Usage Breakdown
 
 Shows a breakdown of costs for the current billing cycle. YugabyteDB Aeon billing is based on your actual usage across the following dimensions:
 
-- vCPU Minutes
-- Disk Storage
 - Backup Storage
 - Data Transfer
+- vCPU Minutes
+- Disk Storage
 - Disk IOPS
 
 ### Invoice History
@@ -93,18 +126,18 @@ To download the invoice as a PDF, click the **Download** icon.
 
 ### Invoice summary
 
-To view invoice details, select an invoice in **Invoice History** to display its **Summary**.
+To view invoice details, select an invoice in **Invoice History**.
 
 To download the invoice as a PDF, click **Download Invoice**.
 
 **Summary** shows the following invoice details:
 
-- Total - the amount you owe in the billing period (or running total in the current billing period; Yugabyte updates the running total once a day).
-- Billing option - your billing plan (pay-as-you-go or subscription).
+- Plan, Price, and Billing option - your plan type and how you are charged (pay-as-you-go or subscription).
 - Billing period - the start and end date of the current billing period. Your first billing period starts the day you created your billing profile and ends on the last day of the month; subsequent periods start on the first day of the month and end on the last.
+- Total billable amount due - the amount you owe in the billing period net of remaining credits. For active invoices, Running total in the current billing period, which Yugabyte updates once a day.
 - Previous invoice - the amount of the previous invoice.
 - Last billed on - the date of the previous invoice.
-- This time last month - the amount owing on the same day in the previous billing period (for example, if the current day is the 13th, this displays the amount that was owed on the 13th of last month.
+- This time last month - the amount owing on the same day in the previous billing period (for example, if the current day is the 13th, this displays the amount that was owed on the 13th of last month).
 - Payment status - whether the invoice was paid.
 - Payment date - the date the invoice was paid.
 - Payment method - the payment method used to pay the invoice.
@@ -122,37 +155,3 @@ To download the invoice as a PDF, click **Download Invoice**.
 - Data transfer usage in GB, price, and amount.
 
 For information on how your invoice is costed, refer to [Cluster costs](../cloud-billing-costs/).
-
-## Billing Information
-
-Use this section to manage your contact information and payment method. You can pay using a credit card, or other payment methods such as debit, ACH, and invoicing.
-
-Credit cards are self service. <!--For other payment methods, create your billing profile and set the **Billing Options** to **Other**; after you create your profile, contact {{% support-cloud %}} to set up payment.-->
-
-If you want to switch from paying by credit card to another method, contact {{% support-cloud %}}.
-
-### Add or edit your Billing Profile
-
-To add or change your billing profile:
-
-1. On the **Usage & Billing** page, select **Billing Information** and click **Edit Billing Profile** to display the **Edit Billing Profile** sheet. If you haven't yet created a billing profile, click **Create Billing Profile**.
-1. Edit your contact information.
-1. If you are creating your billing profile, enter your credit card details. <!--For other payment methods, set the **Billing Options** to **Other**. You can only set the **Billing Options** if you are creating your profile.-->
-1. Click **Save**.
-
-### Manage credit cards
-
-To add a credit card:
-
-1. On the **Usage & Billing** page, select **Billing Information** and click **Add Card** to display the **Add Credit Card** dialog.
-1. Enter your credit card details.
-1. To use the card as the default for payment, choose **Set as default credit card**.
-1. Click **Save**.
-
-To delete a card, click the **Delete** icon, then click **Confirm**. You cannot delete the default card.
-
-To change the default for payment, in the Card list, select the **Default Card** option for the card.
-
-### View credits and discounts
-
-The **Credits and Discounts** section displays any credits applied to your account, including the end date, days left, amount used, and amount remaining. Credits are automatically applied to the next invoice.
