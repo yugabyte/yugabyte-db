@@ -1022,10 +1022,25 @@ func KeepMostRecentFiles(folderPath string, regexPattern string, toKeep int) err
 }
 
 func SetAllPermissions() error {
+	if err := SetSoftwarePermissions(); err != nil {
+		return err
+	}
+	if err := SetDataPermissions(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func SetSoftwarePermissions() error {
 	userName := viper.GetString("service_username")
 	if err := Chown(GetSoftwareDir(), userName, userName, true); err != nil {
 		return err
 	}
+	return nil
+}
+
+func SetDataPermissions() error {
+	userName := viper.GetString("service_username")
 	if err := Chown(GetDataRoot(), userName, userName, true); err != nil {
 		return err
 	}

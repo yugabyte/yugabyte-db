@@ -4,7 +4,6 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
@@ -45,8 +44,7 @@ var startCmd = &cobra.Command{
 			if preflight.ShouldFail(results) {
 				log.Fatal("preflight failed")
 			}
-			userName := viper.GetString("service_username")
-			if err := common.Chown(common.GetDataRoot(), userName, userName, true); err != nil {
+			if err := common.SetDataPermissions(); err != nil {
 				log.Fatal("Failed to change ownership of data directory: " + err.Error())
 			}
 			log.Info("Initializing YBA before starting services")
