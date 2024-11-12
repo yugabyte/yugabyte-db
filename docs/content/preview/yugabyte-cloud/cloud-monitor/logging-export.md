@@ -7,7 +7,7 @@ headcontent: Export PostgreSQL logs from YugabyteDB Aeon clusters
 menu:
   preview_yugabyte-cloud:
     identifier: export-logs
-    parent: cloud-monitor
+    parent: managed-integrations
     weight: 610
 type: docs
 ---
