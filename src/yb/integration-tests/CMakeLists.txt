@@ -119,7 +119,8 @@ target_link_libraries(integration-tests
   master_test_common
   master_proto
   cdc_test_util
-  test_echo_service_proto)
+  test_echo_service_proto
+  tools_test_utils)
 
 add_dependencies(integration-tests
   "${YB_MASTER_DYNAMIC_EXE_NAME}"

@@ -225,7 +225,9 @@ Status XClusterTestBase::CreateDatabase(
 }
 
 Status XClusterTestBase::DropDatabase(Cluster& cluster, const std::string& namespace_name) {
-  auto conn = VERIFY_RESULT(cluster.Connect());
+  // Connect to template1 so we can delete yugabyte database if desired (you cannot DROP a database
+  // you are connected to).
+  auto conn = VERIFY_RESULT(cluster.ConnectToDB("template1"));
   return conn.ExecuteFormat("DROP DATABASE $0", namespace_name);
 }
 

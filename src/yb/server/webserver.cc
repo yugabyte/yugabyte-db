@@ -110,8 +110,13 @@ DEFINE_RUNTIME_bool(
     "http request to https to avoid man-in-the-middle attacks. The original http request is never "
     "sent.");
 
-DEFINE_test_flag(
-    bool, mini_cluster_mode, false, "Enable special fixes for MiniCluster test cluster.");
+// This flag is used to give different internal mini cluster TServers different values of flags like
+// --tserver_master_addrs at least as far as seen via the /varz endpoint; this is necessary because
+// yb-controller uses this endpoint to figure out information on how to contact TServers and
+// masters.
+DEFINE_test_flag(bool, use_custom_varz, false,
+    "Cause /varz endpoint of TServers to output for selected gflags their values at "
+    "startup rather than their current values.");
 
 namespace yb {
 
@@ -635,7 +640,7 @@ sq_callback_result_t Webserver::Impl::RunPathHandler(const PathHandler& handler,
     BuildArgumentMap(request_info->query_string, &req.parsed_args);
   }
 
-  if (FLAGS_TEST_mini_cluster_mode) {
+  if (FLAGS_TEST_use_custom_varz) {
     // Pass custom G-flags into the request handler.
     req.parsed_args["TEST_custom_varz"] = opts_.TEST_custom_varz;
   }

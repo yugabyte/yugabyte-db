@@ -102,7 +102,7 @@ DEFINE_RUNTIME_uint32(max_prometheus_metric_entries, UINT32_MAX,
     "Thus, the actual number of metric entries returned might be smaller than the limit.");
 
 DECLARE_bool(track_stack_traces);
-DECLARE_bool(TEST_mini_cluster_mode);
+DECLARE_bool(TEST_use_custom_varz);
 
 namespace yb {
 
@@ -219,10 +219,11 @@ void ConvertFlagsToJson(
 std::unordered_map<FlagType, std::vector<FlagInfo>> GetFlagInfos(
     const Webserver::WebRequest& req, Webserver* webserver, bool filter_default_flags) {
   std::map<std::string, std::string> custom_varz;
-  if (FLAGS_TEST_mini_cluster_mode) {
+  if (FLAGS_TEST_use_custom_varz) {
     const string* custom_varz_ptr = FindOrNull(req.parsed_args, "TEST_custom_varz");
     if (custom_varz_ptr != nullptr) {
-      SplitStringToMapUsing(*custom_varz_ptr, "\n", &custom_varz);
+      // Note that Split does not ignore empty components so flags with value "" work.
+      custom_varz = strings::Split(*custom_varz_ptr, "\n");
     }
   }
 

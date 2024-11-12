@@ -40,7 +40,8 @@ void XClusterDDLReplicationTestBase::SetUp() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_log_queries) = true;
 }
 
-Status XClusterDDLReplicationTestBase::SetUpClusters(bool is_colocated) {
+Status XClusterDDLReplicationTestBase::SetUpClusters(
+    bool is_colocated, bool start_yb_controller_servers) {
   if (is_colocated) {
     namespace_name = "colocated_test_db";
   }
@@ -54,6 +55,7 @@ Status XClusterDDLReplicationTestBase::SetUpClusters(bool is_colocated) {
       .num_masters = 1,
       .ranged_partitioned = false,
       .is_colocated = is_colocated,
+      .start_yb_controller_servers = start_yb_controller_servers,
   };
   return XClusterYsqlTestBase::SetUpClusters(kDefaultParams);
 }
@@ -75,6 +77,65 @@ Status XClusterDDLReplicationTestBase::CheckpointReplicationGroupWithoutRequirin
               << bootstrap_required;
   }
   return Status::OK();
+}
+
+Status XClusterDDLReplicationTestBase::CreateReplicationFromCheckpointUsingBackupRestore(
+    const std::string& target_master_addresses,
+    const xcluster::ReplicationGroupId& replication_group_id,
+    std::vector<NamespaceName> namespace_names, std::function<Status()> between_backup_and_restore,
+    std::function<Status()> after_restore) {
+  RETURN_NOT_OK(SetupCertificates(replication_group_id));
+
+  auto master_addr = target_master_addresses;
+  if (master_addr.empty()) {
+    master_addr = consumer_cluster()->GetMasterAddresses();
+  }
+  if (namespace_names.empty()) {
+    namespace_names = {namespace_name};
+  }
+
+  auto BackupDir = [&](NamespaceName namespace_name) {
+    return GetTempDir(Format("backup_$0", namespace_name));
+  };
+
+  // Backup databases from producer.
+  for (const auto& namespace_name : namespace_names) {
+    RETURN_NOT_OK(RunBackupCommand(
+        {"--backup_location", BackupDir(namespace_name), "--keyspace",
+         Format("ysql.$0", namespace_name), "create"},
+        &*producer_cluster_.mini_cluster_));
+  }
+
+  RETURN_NOT_OK(between_backup_and_restore());
+
+  // Restore to new databases on the consumer.
+  for (const auto& namespace_name : namespace_names) {
+    (void)DropDatabase(consumer_cluster_, namespace_name);
+    RETURN_NOT_OK(RunBackupCommand(
+        {"--backup_location", BackupDir(namespace_name), "--keyspace",
+         Format("ysql.$0", namespace_name), "restore"},
+        &*consumer_cluster_.mini_cluster_));
+  }
+
+  RETURN_NOT_OK(after_restore());
+
+  RETURN_NOT_OK(client::XClusterClient(*producer_client())
+                    .CreateXClusterReplicationFromCheckpoint(replication_group_id, master_addr));
+
+  return WaitForCreateReplicationToFinish(master_addr, namespace_names);
+}
+
+Status XClusterDDLReplicationTestBase::RunBackupCommand(
+    const std::vector<std::string>& args, MiniClusterBase* cluster) {
+  if (UseYbController()) {
+    return tools::RunYbControllerCommand(cluster, *tmp_dir_, args);
+  }
+  // We should have skipped this test but just in case fail here.
+  ADD_FAILURE()
+      << "This test does not work with yb_backup.py; did you forget to skip this in that case?";
+  return STATUS(
+      IllegalState,
+      "XClusterDDLReplicationTestBase::RunBackupCommand does not work with yb_backup.py");
 }
 
 Result<std::shared_ptr<client::YBTable>> XClusterDDLReplicationTestBase::GetProducerTable(
