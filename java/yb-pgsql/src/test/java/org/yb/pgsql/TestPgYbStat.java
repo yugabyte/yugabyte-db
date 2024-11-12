@@ -263,7 +263,11 @@ public class TestPgYbStat extends BasePgSQLTest {
     // We need to restart the cluster to wipe the state currently contained in yb_terminated_queries
     // that can potentially be leftover from another test in this class. This would let us start
     // with a clean slate.
-    restartCluster();
+    if (isTestRunningWithConnectionManager()) {
+      setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
+    } else {
+      restartCluster();
+    }
 
     final ArrayList<Connection> connections = createConnections(2);
     final Connection connection1 = connections.get(0);
