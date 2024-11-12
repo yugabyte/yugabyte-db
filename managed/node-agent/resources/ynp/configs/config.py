@@ -84,22 +84,6 @@ def parse_config(ynp_config):
     return convert_dotted_keys_to_nested(config_dict)
 
 
-def _validate_uid_in_use(uid):
-    """Check if the given UID exists in /etc/passwd."""
-    try:
-        pwd.getpwuid(uid)
-        return True
-    except KeyError:
-        return False
-
-
 def validate_config(config):
     # Validate the config file provided by the user.
-    for key in config:
-        if key == 'CreateYugabyteUser':
-            # Check whether the user id specified is free or not.
-            user_id = int(config['CreateYugabyteUser'].get('yb_user_id'))
-            if _validate_uid_in_use(user_id):
-                print(f"User ID {user_id} is already in use.")
-                sys.exit(1)
     return
