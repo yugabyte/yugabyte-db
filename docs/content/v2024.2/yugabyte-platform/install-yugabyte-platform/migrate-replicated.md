@@ -90,6 +90,8 @@ If Replicated is using HTTPS, migrate as follows:
 
 Failovers are only possible after you finish the migration on both the primary and standby.
 
+If your node has a timezone that is not UTC, in place migration requires changing the timezone to UTC. If this is not possible, you can follow the same instructions as below.
+
 If Replicated is using HTTP, you need to remove the standbys and delete the high availability configuration before migrating. Migrate as follows:
 
 1. [Remove the standby instances](../../administer-yugabyte-platform/high-availability/#remove-a-standby-instance).
