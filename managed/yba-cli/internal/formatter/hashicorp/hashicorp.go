@@ -7,6 +7,7 @@ package hashicorp
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	ybaclient "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
@@ -181,7 +182,8 @@ func (c *EARContext) KeyName() string {
 
 // TTL fetches HCV TTL
 func (c *EARContext) TTL() string {
-	return fmt.Sprintf("%d", c.Hashicorp.HcVaultTTL)
+	ttl := util.FromEpochMilli(c.Hashicorp.HcVaultTTL)
+	return ttl.Format(time.RFC1123Z)
 }
 
 // TTLExpiry fetches HCV TTL expiry
