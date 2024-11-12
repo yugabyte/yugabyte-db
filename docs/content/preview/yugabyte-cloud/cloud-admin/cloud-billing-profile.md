@@ -25,7 +25,7 @@ For information on YugabyteDB Aeon plans and add-ons, refer to [YugabyteDB Prici
 
 ![Usage & Billing tab](/images/yb-cloud/cloud-admin-billing.png)
 
-The **Usage & Billing** page has the following tabs: **Usage**, **Plan**, **Invoices**, and **Billing Information**.
+The **Usage & Billing** page has the following tabs: **Usage**, **Plan**, **Profile & Payment Methods**, and **Invoices**.
 
 ## Usage
 
@@ -44,6 +44,40 @@ Use this section to subscribe to a plan, manage an existing plan (including addi
 To make changes to your plan, click **Manage Plan** or **Add to Plan**.
 
 You can subscribe to the Standard or Professional plan, upgrade a plan from Standard to Professional, or add add-ons. For other changes, contact {{% support-cloud %}}.
+
+## Profile & Payment Methods
+
+Use this section to manage your contact information and payment method. You can pay using a credit card, or other payment methods such as debit, ACH, and invoicing.
+
+Credit cards are self service. <!--For other payment methods, create your billing profile and set the **Billing Options** to **Other**; after you create your profile, contact {{% support-cloud %}} to set up payment.-->
+
+If you want to switch from paying by credit card to another method, contact {{% support-cloud %}}.
+
+### Add or edit your Billing Profile
+
+To add or change your billing profile:
+
+1. On the **Usage & Billing** page, select **Profile & Payment Methods** and click **Edit Billing Profile** to display the **Edit Billing Profile** sheet. If you haven't yet created a billing profile, click **Create Billing Profile**.
+1. Edit your contact information.
+1. If you are creating your billing profile, enter your credit card details. <!--For other payment methods, set the **Billing Options** to **Other**. You can only set the **Billing Options** if you are creating your profile.-->
+1. Click **Save**.
+
+### Manage credit cards
+
+To add a credit card:
+
+1. On the **Usage & Billing** page, select **Profile & Payment Methods** and click **Add Card** to display the **Add Credit Card** dialog.
+1. Enter your credit card details.
+1. To use the card as the default for payment, choose **Set as default credit card**.
+1. Click **Save**.
+
+To delete a card, click the **Delete** icon, then click **Confirm**. You cannot delete the default card.
+
+To change the default for payment, in the Card list, select the **Default Card** option for the card.
+
+### View credits and discounts
+
+The **Credits and Discounts** section displays any credits applied to your account, including the end date, days left, amount used, and amount remaining. Credits are automatically applied to the next invoice.
 
 ## Invoices
 
@@ -121,37 +155,3 @@ To download the invoice as a PDF, click **Download Invoice**.
 - Data transfer usage in GB, price, and amount.
 
 For information on how your invoice is costed, refer to [Cluster costs](../cloud-billing-costs/).
-
-## Billing Information
-
-Use this section to manage your contact information and payment method. You can pay using a credit card, or other payment methods such as debit, ACH, and invoicing.
-
-Credit cards are self service. <!--For other payment methods, create your billing profile and set the **Billing Options** to **Other**; after you create your profile, contact {{% support-cloud %}} to set up payment.-->
-
-If you want to switch from paying by credit card to another method, contact {{% support-cloud %}}.
-
-### Add or edit your Billing Profile
-
-To add or change your billing profile:
-
-1. On the **Usage & Billing** page, select **Billing Information** and click **Edit Billing Profile** to display the **Edit Billing Profile** sheet. If you haven't yet created a billing profile, click **Create Billing Profile**.
-1. Edit your contact information.
-1. If you are creating your billing profile, enter your credit card details. <!--For other payment methods, set the **Billing Options** to **Other**. You can only set the **Billing Options** if you are creating your profile.-->
-1. Click **Save**.
-
-### Manage credit cards
-
-To add a credit card:
-
-1. On the **Usage & Billing** page, select **Billing Information** and click **Add Card** to display the **Add Credit Card** dialog.
-1. Enter your credit card details.
-1. To use the card as the default for payment, choose **Set as default credit card**.
-1. Click **Save**.
-
-To delete a card, click the **Delete** icon, then click **Confirm**. You cannot delete the default card.
-
-To change the default for payment, in the Card list, select the **Default Card** option for the card.
-
-### View credits and discounts
-
-The **Credits and Discounts** section displays any credits applied to your account, including the end date, days left, amount used, and amount remaining. Credits are automatically applied to the next invoice.
