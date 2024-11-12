@@ -400,6 +400,18 @@ Status XClusterManager::IsXClusterBootstrapRequired(
   return Status::OK();
 }
 
+Status XClusterManager::XClusterEnsureSequenceUpdatesAreInWal(
+    const XClusterEnsureSequenceUpdatesAreInWalRequestPB* req,
+    XClusterEnsureSequenceUpdatesAreInWalResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id, namespace_ids);
+
+  std::vector<NamespaceId> namespace_ids{req->namespace_ids().begin(), req->namespace_ids().end()};
+  return EnsureSequenceUpdatesAreInWal(
+      xcluster::ReplicationGroupId(req->replication_group_id()), namespace_ids);
+}
+
 Status XClusterManager::GetXClusterStreams(
     const GetXClusterStreamsRequestPB* req, GetXClusterStreamsResponsePB* resp,
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {

@@ -167,6 +167,10 @@ class XClusterManager : public XClusterManagerIf,
   Status IsXClusterBootstrapRequired(
       const IsXClusterBootstrapRequiredRequestPB* req, IsXClusterBootstrapRequiredResponsePB* resp,
       rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+  Status XClusterEnsureSequenceUpdatesAreInWal(
+      const XClusterEnsureSequenceUpdatesAreInWalRequestPB* req,
+      XClusterEnsureSequenceUpdatesAreInWalResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
   Status GetXClusterStreams(
       const GetXClusterStreamsRequestPB* req, GetXClusterStreamsResponsePB* resp,
       rpc::RpcContext* rpc, const LeaderEpoch& epoch);

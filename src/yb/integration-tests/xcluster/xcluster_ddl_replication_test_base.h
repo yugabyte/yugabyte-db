@@ -40,16 +40,15 @@ class XClusterDDLReplicationTestBase : public XClusterYsqlTestBase {
   }
 
   // Unlike the previous method, this one does not fail if bootstrap is required.
-  Status CheckpointReplicationGroupWithoutRequiringNoBootstrapNeeded(
-      const std::vector<NamespaceName>& namespace_names);
+  Status CheckpointReplicationGroupOnNamespaces(const std::vector<NamespaceName>& namespace_names);
 
   // A empty list for namespace_names (the default) means just the namespace namespace_name.
-  Status CreateReplicationFromCheckpointUsingBackupRestore(
-      const std::string& target_master_addresses = {},
-      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId,
-      std::vector<NamespaceName> namespace_names = {},
-      std::function<Status()> between_backup_and_restore = [](){ return Status::OK(); },
-      std::function<Status()> after_restore = [](){ return Status::OK(); });
+  // Saves backups in TmpDir directories.
+  Status BackupFromProducer(std::vector<NamespaceName> namespace_names = {});
+
+  // A empty list for namespace_names (the default) means just the namespace namespace_name.
+  // Restores backups saved by BackupFromProducer.
+  Status RestoreToConsumer(std::vector<NamespaceName> namespace_names = {});
 
   Status RunBackupCommand(const std::vector<std::string>& args, MiniClusterBase* cluster);
 

@@ -1015,6 +1015,9 @@ Status XClusterYsqlTestBase::CreateReplicationFromCheckpoint(
   if (master_addr.empty()) {
     master_addr = consumer_cluster()->GetMasterAddresses();
   }
+  if (namespace_names.empty()) {
+    namespace_names = {namespace_name};
+  }
 
   RETURN_NOT_OK(client::XClusterClient(*producer_client())
                     .CreateXClusterReplicationFromCheckpoint(replication_group_id, master_addr));

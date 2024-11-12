@@ -113,6 +113,10 @@ class XClusterSourceManager {
       const xcluster::ReplicationGroupId& replication_group_id,
       const NamespaceId& namespace_id) const;
 
+  Status EnsureSequenceUpdatesAreInWal(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::vector<NamespaceId>& namespace_ids) const;
+
   // If opt_table_names is empty, all tables in the namespace are returned.
   Result<std::optional<NamespaceCheckpointInfo>> GetXClusterStreams(
       const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
