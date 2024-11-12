@@ -177,7 +177,8 @@ The following example shows an unsupported operation using non-native partitioni
 
 ```sql
 CREATE SCHEMA partman;
-n WITH SCHEMA partman;
+
+CREATE EXTENSION pg_partman WITH SCHEMA partman;
 
 CREATE TABLE orders (
   order_id SERIAL,
