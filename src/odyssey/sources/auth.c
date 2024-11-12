@@ -1052,6 +1052,8 @@ int od_auth_backend(od_server_t *server, machine_msg_t *msg,
 	rc = kiwi_fe_read_auth(machine_msg_data(msg), machine_msg_size(msg),
 			       &auth_type, salt, &auth_data, &auth_data_size);
 	if (rc == -1) {
+		if (client->yb_is_authenticating)
+			machine_msg_free(msg);
 		od_error(&instance->logger, "auth", NULL, server,
 			 "failed to parse authentication message");
 		return -1;
@@ -1061,8 +1063,10 @@ int od_auth_backend(od_server_t *server, machine_msg_t *msg,
 	if (client->yb_is_authenticating)
 	{
 		/* AuthenticationOk */
-		if (auth_type == 0)
+		if (auth_type == 0) {
+			machine_msg_free(msg);
 			return 0;
+		}
 
 		/*
 		 * AuthenticationCleartextPassword and AuthenticationMD5Password.

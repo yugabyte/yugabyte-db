@@ -251,7 +251,9 @@ static inline machine_msg_t *od_read(od_io_t *io, uint32_t time_ms)
 
 	return msg;
 }
-
+/*
+ * YB NOTE: od_write also frees up msg object.
+ */
 static inline int od_write(od_io_t *io, machine_msg_t *msg)
 {
 	return machine_write(io->io, msg, UINT32_MAX);
