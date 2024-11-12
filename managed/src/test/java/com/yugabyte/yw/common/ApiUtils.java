@@ -602,7 +602,7 @@ public class ApiUtils {
   }
 
   public static UserIntent getTestUserIntent(Region r, Provider p, InstanceType i, int numNodes) {
-    return getTestUserIntent(r, p, i, numNodes, 100, 0);
+    return getTestUserIntent(r, p, i, numNodes, 100, 50);
   }
 
   public static UserIntent getTestUserIntent(

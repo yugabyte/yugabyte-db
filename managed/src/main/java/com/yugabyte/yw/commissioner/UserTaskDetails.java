@@ -284,7 +284,10 @@ public class UserTaskDetails {
     CreatePodDisruptionBudgetPolicy,
 
     // Remove Pod Disruption Budget Policy
-    RemovingPodDisruptionBudgetPolicy
+    RemovingPodDisruptionBudgetPolicy,
+
+    // Validate after upgrade
+    PostUpdateValidations
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -663,6 +666,10 @@ public class UserTaskDetails {
       case RemovingPodDisruptionBudgetPolicy:
         title = "Removing Pod Disruption Budget Policy";
         description = "Removing Pod Disruption Budget Policy";
+        break;
+      case PostUpdateValidations:
+        title = "Validating after updates";
+        description = "Validating updates applied correctly";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

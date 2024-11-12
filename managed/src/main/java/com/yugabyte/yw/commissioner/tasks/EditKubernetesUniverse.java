@@ -324,13 +324,24 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
     // Update disk size if there is a change
-    boolean diskSizeChanged =
+    boolean tserverDiskSizeChanged =
         !curIntent.deviceInfo.volumeSize.equals(newIntent.deviceInfo.volumeSize);
-    if (diskSizeChanged) {
-      log.info(
-          "Creating task for disk size change from {} to {}",
-          curIntent.deviceInfo.volumeSize,
-          newIntent.deviceInfo.volumeSize);
+    boolean masterDiskSizeChanged =
+        !(curIntent.masterDeviceInfo == null)
+            && !curIntent.masterDeviceInfo.volumeSize.equals(newIntent.masterDeviceInfo.volumeSize);
+    if (tserverDiskSizeChanged || masterDiskSizeChanged) {
+      if (tserverDiskSizeChanged) {
+        log.info(
+            "Creating task for tserver disk size change from {} to {}",
+            curIntent.deviceInfo.volumeSize,
+            newIntent.deviceInfo.volumeSize);
+      }
+      if (masterDiskSizeChanged) {
+        log.info(
+            "Creating task for master disk size change from {} to {}",
+            curIntent.masterDeviceInfo.volumeSize,
+            newIntent.masterDeviceInfo.volumeSize);
+      }
       createResizeDiskTask(
           universe.getName(),
           curPlacement,
@@ -340,6 +351,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           newNamingStyle,
           universe.isYbcEnabled(),
           universe.getUniverseDetails().getYbcSoftwareVersion(),
+          tserverDiskSizeChanged,
+          masterDiskSizeChanged,
           supportsNonRestartGflagsUpgrade /* usePreviousGflagsChecksum */);
     }
 
@@ -841,6 +854,52 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     createSwamperTargetUpdateTask(false /* removeFile */);
   }
 
+  protected void createResizeDiskTask(
+      String universeName,
+      KubernetesPlacement placement,
+      String masterAddresses,
+      UserIntent userIntent,
+      boolean isReadOnlyCluster,
+      boolean newNamingStyle,
+      boolean enableYbc,
+      String ybcSoftwareVersion,
+      boolean tserverDiskSizeChanged,
+      boolean masterDiskSizeChanged,
+      boolean usePreviousGflagsChecksum) {
+    // For non-restart way of master addresses change, we get the previous STS
+    // gflags checksum value. For disk resize case, if STS is deleted and task fails,
+    // need to have the checksum value available.
+    if (usePreviousGflagsChecksum) {
+      persistGflagsChecksumInTaskParams(universeName);
+    }
+    if (masterDiskSizeChanged && !isReadOnlyCluster) {
+      createResizeDiskTask(
+          universeName,
+          placement,
+          masterAddresses,
+          userIntent,
+          isReadOnlyCluster,
+          newNamingStyle,
+          enableYbc,
+          ybcSoftwareVersion,
+          usePreviousGflagsChecksum,
+          ServerType.MASTER);
+    }
+    if (tserverDiskSizeChanged) {
+      createResizeDiskTask(
+          universeName,
+          placement,
+          masterAddresses,
+          userIntent,
+          isReadOnlyCluster,
+          newNamingStyle,
+          enableYbc,
+          ybcSoftwareVersion,
+          usePreviousGflagsChecksum,
+          ServerType.TSERVER);
+    }
+  }
+
   /**
    * Add disk resize tasks for each AZ in given cluster placement. Call this for each cluster of the
    * universe.
@@ -854,13 +913,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       boolean newNamingStyle,
       boolean enableYbc,
       String ybcSoftwareVersion,
-      boolean usePreviousGflagsChecksum) {
-    // For non-restart way of master addresses change, we get the previous STS
-    // gflags checksum value. For disk resize case, if STS is deleted and task fails,
-    // need to have the checksum value available.
-    if (usePreviousGflagsChecksum) {
-      persistGflagsChecksumInTaskParams(universeName);
-    }
+      boolean usePreviousGflagsChecksum,
+      ServerType serverType) {
     Cluster newCluster =
         isReadOnlyCluster
             ? taskParams().getReadOnlyClusters().get(0)
@@ -874,10 +928,38 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     // 2. Patch PVC to new disk size
     // 3. Run helm upgrade so that new StatefulSet is created with updated disk size.
     // The newly created statefulSet also claims the already running pods.
-    String newDiskSizeGi = String.format("%dGi", userIntent.deviceInfo.volumeSize);
+    String newDiskSizeGi =
+        String.format(
+            "%dGi",
+            serverType == ServerType.TSERVER
+                ? userIntent.deviceInfo.volumeSize
+                : userIntent.masterDeviceInfo.volumeSize);
     String softwareVersion = userIntent.ybSoftwareVersion;
     UUID providerUUID = UUID.fromString(userIntent.provider);
     Provider provider = Provider.getOrBadRequest(providerUUID);
+
+    // Subtask groups( ignore Errors is false by default )
+    SubTaskGroup validateExpansion =
+        createSubTaskGroup(
+            KubernetesCheckVolumeExpansion.getSubTaskGroupName(), SubTaskGroupType.PreflightChecks);
+    SubTaskGroup stsDelete =
+        createSubTaskGroup(
+            KubernetesCommandExecutor.CommandType.STS_DELETE.getSubTaskGroupName(),
+            SubTaskGroupType.ResizingDisk);
+    SubTaskGroup pvcExpand =
+        createSubTaskGroup(
+            KubernetesCommandExecutor.CommandType.PVC_EXPAND_SIZE.getSubTaskGroupName(),
+            SubTaskGroupType.ResizingDisk,
+            true /* ignoreErrors */);
+    SubTaskGroup helmUpgrade =
+        createSubTaskGroup(
+            KubernetesCommandExecutor.CommandType.HELM_UPGRADE.getSubTaskGroupName(),
+            SubTaskGroupType.HelmUpgrade);
+    SubTaskGroup postExpansionValidate =
+        createSubTaskGroup(
+            KubernetesPostExpansionCheckVolume.getSubTaskGroupName(),
+            SubTaskGroupType.PostUpdateValidations);
+
     for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
 
       UUID azUUID = entry.getKey();
@@ -900,7 +982,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           KubernetesUtil.needsExpandPVC(
               namespace,
               helmReleaseName,
-              "yb-tserver",
+              serverType == ServerType.TSERVER ? "yb-tserver" : "yb-master" /* appName */,
               newNamingStyle,
               newDiskSizeGi,
               azConfig,
@@ -918,47 +1000,65 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         // do it again. We go straight to helm upgrade.
         // This is to make sure we recreate sts with the new disk size to make sure we don't leave
         // pods in orphan state.
-        createTaskToValidateExpansion(
-            universeName, azConfig, azName, isReadOnlyCluster, newNamingStyle, providerUUID);
+        // Add subtask to validateExpansion subtask group
+        validateExpansion.addSubTask(
+            createTaskToValidateExpansion(
+                universeName,
+                azConfig,
+                azName,
+                isReadOnlyCluster,
+                newNamingStyle,
+                providerUUID,
+                serverType));
         // create the three tasks to update volume size
-        createSingleKubernetesExecutorTaskForServerType(
-            universeName,
-            KubernetesCommandExecutor.CommandType.STS_DELETE,
-            azPI,
-            azName,
-            masterAddresses,
-            softwareVersion,
-            ServerType.TSERVER,
-            azConfig,
-            0,
-            0,
-            null,
-            null,
-            isReadOnlyCluster,
-            null,
-            newDiskSizeGi,
-            false,
-            enableYbc,
-            ybcSoftwareVersion);
-        createSingleKubernetesExecutorTaskForServerType(
-            universeName,
-            KubernetesCommandExecutor.CommandType.PVC_EXPAND_SIZE,
-            azPI,
-            azName,
-            masterAddresses,
-            softwareVersion,
-            ServerType.TSERVER,
-            azConfig,
-            0,
-            0,
-            null,
-            null,
-            isReadOnlyCluster,
-            null,
-            newDiskSizeGi,
-            true,
-            enableYbc,
-            ybcSoftwareVersion);
+        // Add subtask to stsDelete subtask group
+        stsDelete.addSubTask(
+            getSingleKubernetesExecutorTaskForServerTypeTask(
+                universeName,
+                KubernetesCommandExecutor.CommandType.STS_DELETE,
+                azPI,
+                azName,
+                masterAddresses,
+                softwareVersion,
+                serverType,
+                azConfig,
+                0 /* masterPartition */,
+                0 /* tserverPartition */,
+                null /* universeOverrides */,
+                null /* azOverrides */,
+                isReadOnlyCluster,
+                null /* podName */,
+                newDiskSizeGi,
+                enableYbc,
+                ybcSoftwareVersion,
+                false /* usePreviousGflagsChecksum */,
+                null /* previousGflagsChecksumMap */,
+                false /* useNewMasterDiskSize */,
+                false /* useNewTserverDiskSize */));
+        // Add subtask to pvcExpand subtask group
+        pvcExpand.addSubTask(
+            getSingleKubernetesExecutorTaskForServerTypeTask(
+                universeName,
+                KubernetesCommandExecutor.CommandType.PVC_EXPAND_SIZE,
+                azPI,
+                azName,
+                masterAddresses,
+                softwareVersion,
+                serverType,
+                azConfig,
+                0 /* masterPartition */,
+                0 /* tserverPartition */,
+                null /* universeOverrides */,
+                null /* azOverrides */,
+                isReadOnlyCluster,
+                null /* podName */,
+                newDiskSizeGi,
+                enableYbc,
+                ybcSoftwareVersion,
+                false /* usePreviousGflagsChecksum */,
+                null /* previousGflagsChecksumMap */,
+                false /* useNewMasterDiskSize */,
+                false /* useNewTserverDiskSize */));
       }
       // This helm upgrade will only create the new statefulset with the new disk size, nothing else
       // should change here and this is idempotent, since its a helm_upgrade.
@@ -977,47 +1077,59 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       if (azOverridesPerAZ == null) {
         azOverridesPerAZ = new HashMap<String, Object>();
       }
-      createSingleKubernetesExecutorTaskForServerType(
-          universeName,
-          KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
-          azPI,
-          azName,
-          masterAddresses,
-          softwareVersion,
-          ServerType.TSERVER,
-          azConfig,
-          0,
-          0,
-          universeOverrides,
-          azOverridesPerAZ,
-          isReadOnlyCluster,
-          null,
-          newDiskSizeGi,
-          false,
-          enableYbc,
-          ybcSoftwareVersion,
-          usePreviousGflagsChecksum,
-          previousGflagsChecksumMap);
-      createPostExpansionValidateTask(
-          universeName,
-          azConfig,
-          azName,
-          isReadOnlyCluster,
-          newNamingStyle,
-          providerUUID,
-          newDiskSizeGi);
+      // Add subtask to helmUpgrade subtask group
+      helmUpgrade.addSubTask(
+          getSingleKubernetesExecutorTaskForServerTypeTask(
+              universeName,
+              KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
+              azPI,
+              azName,
+              masterAddresses,
+              softwareVersion,
+              serverType,
+              azConfig,
+              0 /* masterPartition */,
+              0 /* tserverPartition */,
+              universeOverrides,
+              azOverridesPerAZ,
+              isReadOnlyCluster,
+              null /* podName */,
+              newDiskSizeGi,
+              enableYbc,
+              ybcSoftwareVersion,
+              usePreviousGflagsChecksum,
+              previousGflagsChecksumMap,
+              true /* useNewMasterDiskSize */,
+              serverType == ServerType.TSERVER ? true : false /* useNewTserverDiskSize */));
+      // Add subtask to postExpansionValidate subtask group
+      postExpansionValidate.addSubTask(
+          createPostExpansionValidateTask(
+              universeName,
+              azConfig,
+              azName,
+              isReadOnlyCluster,
+              newNamingStyle,
+              providerUUID,
+              newDiskSizeGi,
+              serverType));
+    }
+    if (validateExpansion.getSubTaskCount() > 0) {
+      getRunnableTask().addSubTaskGroup(validateExpansion);
+      getRunnableTask().addSubTaskGroup(stsDelete);
+      getRunnableTask().addSubTaskGroup(pvcExpand);
+      getRunnableTask().addSubTaskGroup(helmUpgrade);
+      getRunnableTask().addSubTaskGroup(postExpansionValidate);
     }
   }
 
-  private void createTaskToValidateExpansion(
+  private KubernetesCheckVolumeExpansion createTaskToValidateExpansion(
       String universeName,
       Map<String, String> config,
       String azName,
       boolean isReadOnlyCluster,
       boolean newNamingStyle,
-      UUID providerUUID) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup(KubernetesCheckVolumeExpansion.getSubTaskGroupName());
+      UUID providerUUID,
+      ServerType serverType) {
     KubernetesCheckVolumeExpansion.Params params = new KubernetesCheckVolumeExpansion.Params();
     params.config = config;
     params.newNamingStyle = newNamingStyle;
@@ -1038,23 +1150,21 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             azName,
             isReadOnlyCluster,
             taskParams().useNewHelmNamingStyle);
+    params.serverType = serverType;
     KubernetesCheckVolumeExpansion task = createTask(KubernetesCheckVolumeExpansion.class);
     task.initialize(params);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return task;
   }
 
-  private void createPostExpansionValidateTask(
+  private KubernetesPostExpansionCheckVolume createPostExpansionValidateTask(
       String universeName,
       Map<String, String> config,
       String azName,
       boolean isReadOnlyCluster,
       boolean newNamingStyle,
       UUID providerUUID,
-      String newDiskSizeGi) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor()
-            .createSubTaskGroup(KubernetesPostExpansionCheckVolume.getSubTaskGroupName());
+      String newDiskSizeGi,
+      ServerType serverType) {
     KubernetesPostExpansionCheckVolume.Params params =
         new KubernetesPostExpansionCheckVolume.Params();
     params.config = config;
@@ -1077,10 +1187,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             azName,
             isReadOnlyCluster,
             taskParams().useNewHelmNamingStyle);
+    params.serverType = serverType;
     KubernetesPostExpansionCheckVolume task = createTask(KubernetesPostExpansionCheckVolume.class);
     task.initialize(params);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return task;
   }
 
   protected void persistGflagsChecksumInTaskParams(String universeName) {
