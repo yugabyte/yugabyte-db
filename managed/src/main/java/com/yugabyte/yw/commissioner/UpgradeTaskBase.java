@@ -175,7 +175,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE
         && nodesToBeRestarted != null
         && !nodesToBeRestarted.isEmpty()
-        && !taskParams().skipNodeChecks) {
+        && !isSkipPrechecks()) {
       Optional<NodeDetails> nonLive =
           nodesToBeRestarted.getAllNodes().stream()
               .filter(n -> n.state != NodeState.Live)
@@ -193,6 +193,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         }
       }
     }
+  }
+
+  protected boolean isSkipPrechecks() {
+    return taskParams().skipNodeChecks;
   }
 
   private RollMaxBatchSize getCurrentRollBatchSize(Universe universe) {
@@ -214,7 +218,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
   @Override
   protected void addBasicPrecheckTasks() {
-    if (isFirstTry()) {
+    if (isFirstTry() && !isSkipPrechecks()) {
       verifyClustersConsistency();
     }
   }
@@ -615,12 +619,12 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       boolean hasPrimaryNodes = false;
       for (NodeDetails node : nodeList) {
         hasPrimaryNodes = hasPrimaryNodes || node.isInPlacement(primaryId);
-        if (!taskParams().skipNodeChecks) {
+        if (!isSkipPrechecks()) {
           createNodePrecheckTasks(
               node, processTypes, subGroupType, true, context.targetSoftwareVersion);
         }
       }
-      if (activeRole && hasPrimaryNodes && !taskParams().skipNodeChecks) {
+      if (activeRole && hasPrimaryNodes && !isSkipPrechecks()) {
         createCheckNodesAreSafeToTakeDownTask(
             Collections.singletonList(MastersAndTservers.from(nodeList, processTypes)),
             getTargetSoftwareVersion(),

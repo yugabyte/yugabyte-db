@@ -67,6 +67,19 @@ public class ResizeNode extends UpgradeTaskBase {
     addBasicPrecheckTasks();
   }
 
+  @Override
+  protected boolean isSkipPrechecks() {
+    NodesToApply nodesToApply = calclulateNodesToApply();
+    if (!nodesToApply.applyGFlagsToAllNodes
+        && nodesToApply.instanceChangingNodes.isEmpty()
+        && nodesToApply.tserversToUpgradeGFlags.isEmpty()
+        && nodesToApply.mastersToUpgradeGFlags.isEmpty()
+        && !nodesToApply.justModifyDeviceNodes.isEmpty()) {
+      return true;
+    }
+    return super.isSkipPrechecks();
+  }
+
   private static class NodesToApply {
     LinkedHashSet<NodeDetails> instanceChangingNodes = new LinkedHashSet<>();
     List<NodeDetails> justModifyDeviceNodes = new ArrayList<>();

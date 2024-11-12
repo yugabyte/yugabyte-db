@@ -58,6 +58,7 @@ import junitparams.Parameters;
 import junitparams.converters.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.time.DateUtils;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -519,9 +520,16 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(true, false);
+    for (TaskInfo subTask : taskInfo.getSubTasks()) {
+      if (subTask.getTaskType() == TaskType.CheckNodesAreSafeToTakeDown
+          || subTask.getTaskType() == TaskType.CheckForClusterServers
+          || subTask.getTaskType() == TaskType.CheckUnderReplicatedTablets) {
+        Assert.fail();
+      }
+    }
 
     initMockUpgrade()
-        .precheckTasks(getPrecheckTasks(false))
+        .precheckTasks(new TaskType[0])
         .upgradeRound(UpgradeTaskParams.UpgradeOption.NON_RESTART_UPGRADE)
         .tserverTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
         .applyToTservers()
