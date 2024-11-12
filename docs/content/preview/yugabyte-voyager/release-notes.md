@@ -13,7 +13,7 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
-## v1.8.5 - November 11, 2024
+## v1.8.5 - November 12, 2024
 
 ### Enhancements
 
