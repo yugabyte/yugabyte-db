@@ -18,7 +18,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 ### Enhancements
 
 - The guardrail checks to validate source/target database permissions, verify binary dependencies, and check database version compatibility for PostgreSQL in all voyager commands are now enabled by default.
-- UI/UX improvements in the PostgreSQL permission grant script and new checks are added for replication slots, foreign keys, and triggers in PostgreSQL guardrails.
+- UI/UX improvements in the PostgreSQL permission grant script (`yb-voyager-pg-grant-migration-permissions.sql`) and new checks are added for replication slots, foreign keys, and triggers in PostgreSQL guardrails.
 - Object names are scrollable in the analyze schema HTML report for improved navigation.
 - Added constraint names and their corresponding table names when reporting unsupported features related to deferrable and exclusion constraints.
 - Added reporting for the REFERENCING clause for triggers and BEFORE ROW triggers on partitioned tables in the analyze-schema and assess-migration reports.
@@ -32,10 +32,8 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 ### Known issues
 
-- The [assess-migration](../reference/assess-migration/) command will fail if the [pg_stat_statements](../../explore/ysql-language-features/pg-extensions/extension-pgstatstatements/) extension is created in a non-public schema, due to the Unsupported Query Constructs feature.
-To bypass this issue, set the environment variable `REPORT_UNSUPPORTED_QUERY_CONSTRUCTS=false`, which disables the feature and proceeds with the command execution.
-
-### New features
+- The [assess-migration](../reference/assess-migration/) command will fail if the [pg_stat_statements](../../explore/ysql-language-features/pg-extensions/extension-pgstatstatements/) extension is created in a non-public schema, due to the "Unsupported Query Constructs" feature.
+To bypass this issue, set the environment variable `REPORT_UNSUPPORTED_QUERY_CONSTRUCTS=false`, which disables the "Unsupported Query Constructs" feature and proceeds with the command execution.
 
 ## v1.8.4 - October 29, 2024
 
