@@ -20,6 +20,9 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/client/table_info.h"
+#include "yb/client/yb_table_name.h"
+
 #include "yb/common/common_flags.h"
 #include "yb/common/pgsql_error.h"
 
@@ -1186,6 +1189,17 @@ TEST_F(PgMiniTest, BigSelect) {
 }
 
 TEST_F(PgMiniTest, MoveMaster) {
+  for (;;) {
+    client::YBTableName transactions_table_name(
+        YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+    auto result = client_->GetYBTableInfo(transactions_table_name);
+    if (result.ok()) {
+      LOG(INFO) << "Transactions table info: " << result->table_id;
+      break;
+    }
+    LOG(INFO) << "Waiting for transactions table";
+    std::this_thread::sleep_for(1s);
+  }
   ShutdownAllMasters(cluster_.get());
   cluster_->mini_master(0)->set_pass_master_addresses(false);
   ASSERT_OK(StartAllMasters(cluster_.get()));
@@ -1196,7 +1210,7 @@ TEST_F(PgMiniTest, MoveMaster) {
     auto status = conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)");
     WARN_NOT_OK(status, "Failed to create table");
     return status.ok();
-  }, 15s, "Create table"));
+  }, 15s * kTimeMultiplier, "Create table"));
 }
 
 TEST_F(PgMiniTest, DDLWithRestart) {
