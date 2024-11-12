@@ -230,5 +230,9 @@ bool MasterTabletServer::SkipCatalogVersionChecks() {
   return master_->catalog_manager()->SkipCatalogVersionChecks();
 }
 
+const std::string& MasterTabletServer::permanent_uuid() const {
+  return master_->permanent_uuid();
+}
+
 } // namespace master
 } // namespace yb

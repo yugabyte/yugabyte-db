@@ -6231,8 +6231,8 @@ Status CatalogManager::DeleteIndexInfoFromTable(
   return Status::OK();
 }
 
-void CatalogManager::AcquireObjectLocks(
-    const tserver::AcquireObjectLockRequestPB* req, tserver::AcquireObjectLockResponsePB* resp,
+void CatalogManager::AcquireObjectLocksGlobal(
+    const AcquireObjectLocksGlobalRequestPB* req, AcquireObjectLocksGlobalResponsePB* resp,
     rpc::RpcContext rpc) {
   VLOG(0) << __PRETTY_FUNCTION__;
   if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
@@ -6244,8 +6244,8 @@ void CatalogManager::AcquireObjectLocks(
   object_lock_info_manager_->LockObject(*req, resp, std::move(rpc));
 }
 
-void CatalogManager::ReleaseObjectLocks(
-    const tserver::ReleaseObjectLockRequestPB* req, tserver::ReleaseObjectLockResponsePB* resp,
+void CatalogManager::ReleaseObjectLocksGlobal(
+    const ReleaseObjectLocksGlobalRequestPB* req, ReleaseObjectLocksGlobalResponsePB* resp,
     rpc::RpcContext rpc) {
   VLOG(0) << __PRETTY_FUNCTION__;
   if (!FLAGS_TEST_enable_object_locking_for_table_locks) {

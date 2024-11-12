@@ -76,6 +76,8 @@
 #include "yb/server/clock.h"
 
 #include "yb/tserver/pg_client.pb.h"
+#include "yb/tserver/tserver.pb.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/monotime.h"
@@ -1052,6 +1054,9 @@ class YBClient {
   int64_t GetRaftConfigOpidIndex(const TabletId& tablet_id);
 
   void RequestAbortAllRpcs();
+
+  Status AcquireObjectLocksGlobal(const tserver::AcquireObjectLockRequestPB& lock_req);
+  Status ReleaseObjectLocksGlobal(const tserver::ReleaseObjectLockRequestPB& release_req);
 
  private:
   class Data;
