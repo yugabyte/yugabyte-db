@@ -1493,6 +1493,7 @@ class UniverseDetail extends Component {
                   <>
                     <SecurityMenu
                       backToMainMenu={backToMainMenu}
+                      isItKubernetesUniverse={isItKubernetesUniverse}
                       allowedTasks={allowedTasks}
                       showTLSConfigurationModal={showTLSConfigurationModal}
                       editTLSAvailability={editTLSAvailability}
