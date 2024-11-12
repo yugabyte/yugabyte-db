@@ -46,9 +46,9 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [XID functions is not supported](#xid-functions-is-not-supported)
 - [REFERENCING clause for triggers](#referencing-clause-for-triggers)
 - [BEFORE ROW triggers on partitioned tables](#before-row-triggers-on-partitioned-tables)
-- [Unsupported query construct: Advisory locks](#unsupported-query-construct-advisory-locks)
-- [Unsupported query construct: System columns](#unsupported-query-construct-system-columns)
-- [Unsupported query construct: XML functions](#unsupported-query-construct-xml-functions)
+- [Advisory locks is not yet implemented](#advisory-locks-is-not-yet-implemented)
+- [System columns is not yet supported](#system-columns-is-not-yet-supported)
+- [XML functions is not yet supported](#xml-functions-is-not-yet-supported)
 
 ### Adding primary key to a partitioned table results in an error
 
@@ -1232,7 +1232,7 @@ EXECUTE FUNCTION check_and_modify_val();
 
 ---
 
-### Unsupported query construct: Advisory locks
+### Advisory locks is not yet implemented
 
 **GitHub**: [Issue #3642](https://github.com/yugabyte/yugabyte-db/issues/3642)
 
@@ -1251,7 +1251,7 @@ HINT:  If the app doesn't need strict functionality, this error can be silenced 
 
 ---
 
-### Unsupported query construct: System columns
+### System columns is not yet supported
 
 **GitHub**: [Issue #24843](https://github.com/yugabyte/yugabyte-db/issues/24843)
 
@@ -1269,7 +1269,7 @@ ERROR:  System column "xmin" is not supported yet
 
 ---
 
-### Unsupported query construct: XML functions
+### XML functions is not yet supported
 
 **GitHub**: [Issue #1043](https://github.com/yugabyte/yugabyte-db/issues/1043)
 
