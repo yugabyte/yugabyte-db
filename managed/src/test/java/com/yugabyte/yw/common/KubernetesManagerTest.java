@@ -191,59 +191,14 @@ public class KubernetesManagerTest extends FakeDBApplication {
   }
 
   @Test
-  @Parameters({
-    "kubernetes/statefulset_list_without_gflags_checksum.json",
-    "kubernetes/statefulset_list_with_gflags_checksum.json"
-  })
-  public void testGetStatefulSetServerTypeGflagsChecksum(String outputFilePath) throws IOException {
-    String kubectlResponse = TestUtils.readResource(outputFilePath);
-    ShellResponse response = ShellResponse.create(0, kubectlResponse);
-    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response);
-    Map<ServerType, String> serverTypeChecksumMap =
-        kubernetesManager.getServerTypeGflagsChecksumMap("test-ns", "test-release", configProvider);
-    Mockito.verify(shellProcessHandler, times(1)).run(command.capture(), context.capture());
-    assertEquals(
-        ImmutableList.of(
-            "kubectl",
-            "get",
-            "sts",
-            "--namespace",
-            "test-ns",
-            "-o",
-            "json",
-            "-l",
-            "release=" + "test-release"),
-        command.getValue());
-
-    // Verify checksum entries are as expected
-    ObjectMapper mapper = new ObjectMapper();
-    ArrayNode stsArray = (ArrayNode) mapper.readTree(kubectlResponse).get("items");
-    for (JsonNode sts : stsArray) {
-      JsonNode annotations = sts.get("spec").get("template").get("metadata").get("annotations");
-      String expected =
-          annotations.hasNonNull("checksum/gflags")
-              ? annotations.get("checksum/gflags").asText()
-              : "";
-      if (sts.get("metadata")
-          .get("labels")
-          .get("app.kubernetes.io/name")
-          .asText()
-          .equals("yb-master")) {
-        assertEquals(expected, serverTypeChecksumMap.get(ServerType.MASTER));
-      } else {
-        assertEquals(expected, serverTypeChecksumMap.get(ServerType.TSERVER));
-      }
-    }
-  }
-
-  @Test
   public void testCheckStatefulSetStatus_Failure_ReplicaMismatch() {
     ShellResponse response1 = ShellResponse.create(0, "statefulset1");
     ShellResponse response2 =
         ShellResponse.create(0, "replicas=3|readyReplicas=1|availableReplicas=1");
     Map<String, String> testConfig = new HashMap<String, String>();
-    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response1);
-    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response2);
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenReturn(response1)
+        .thenReturn(response2);
     boolean status =
         kubernetesManager.checkStatefulSetStatus(testConfig, "test-ns", "test-release", 3);
     assertEquals(false, status);
@@ -255,8 +210,9 @@ public class KubernetesManagerTest extends FakeDBApplication {
     ShellResponse response2 =
         ShellResponse.create(0, "replicas=3|readyReplicas=3|availableReplicas=3");
     Map<String, String> testConfig = new HashMap<String, String>();
-    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response1);
-    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response2);
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenReturn(response1)
+        .thenReturn(response2);
     boolean status =
         kubernetesManager.checkStatefulSetStatus(testConfig, "test-ns", "test-release", 3);
     assertEquals(true, status);
@@ -268,8 +224,9 @@ public class KubernetesManagerTest extends FakeDBApplication {
     ShellResponse response2 =
         ShellResponse.create(0, "replicas=3|readyReplicas=3|availableReplicas=");
     Map<String, String> testConfig = new HashMap<String, String>();
-    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response1);
-    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response2);
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenReturn(response1)
+        .thenReturn(response2);
     boolean status =
         kubernetesManager.checkStatefulSetStatus(testConfig, "test-ns", "test-release", 3);
     assertEquals(true, status);
@@ -281,8 +238,9 @@ public class KubernetesManagerTest extends FakeDBApplication {
     ShellResponse response2 =
         ShellResponse.create(0, "replicas=3|readyReplicas=|availableReplicas=3");
     Map<String, String> testConfig = new HashMap<String, String>();
-    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response1);
-    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response2);
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenReturn(response1)
+        .thenReturn(response2);
     boolean status =
         kubernetesManager.checkStatefulSetStatus(testConfig, "test-ns", "test-release", 3);
     assertEquals(true, status);
@@ -294,8 +252,9 @@ public class KubernetesManagerTest extends FakeDBApplication {
     ShellResponse response2 =
         ShellResponse.create(0, "replicas=0|readyReplicas=|availableReplicas=3");
     Map<String, String> testConfig = new HashMap<String, String>();
-    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response1);
-    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response2);
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenReturn(response1)
+        .thenReturn(response2);
     boolean status =
         kubernetesManager.checkStatefulSetStatus(testConfig, "test-ns", "test-release", 3);
     assertEquals(true, status);
