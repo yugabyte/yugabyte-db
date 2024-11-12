@@ -17,12 +17,12 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 ### Enhancements
 
-- The guardrails checks to validate source/target database permissions, verify binary dependencies, and check database version compatibility for PostgreSQL in all voyager commands is now enabled by default.
+- The guardrail checks to validate source/target database permissions, verify binary dependencies, and check database version compatibility for PostgreSQL in all voyager commands are now enabled by default.
 - UI/UX improvements in the PostgreSQL permission grant script and new checks are added for replication slots, foreign keys, and triggers in PostgreSQL guardrails.
 - Object names are scrollable in the analyze schema HTML report for improved navigation.
 - Added constraint names and their corresponding table names when reporting unsupported features related to deferrable and exclusion constraints.
 - Added reporting for the REFERENCING clause for triggers and BEFORE ROW triggers on partitioned tables in the analyze-schema and assess-migration reports.
-- Added functionality to include documentation links for unsupported query constructs in the assessment report.
+- Added documentation links for unsupported query constructs in the assessment report.
 - Standardized the format of data sent to the yugabyted control plane via the assess-migration command, ensuring consistent presentation across various sections of the report, such as Unsupported Features, Unsupported Datatypes, and Unsupported Query Constructs.
 
 ### Bug fixes
