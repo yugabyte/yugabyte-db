@@ -3276,14 +3276,15 @@ Result<ColocationId> ConceiveColocationId(
     const CreateTableRequestPB& req, ContainsColocationIdFn contains_colocation_id) {
   if (req.has_colocation_id()) {
     if (req.colocation_id() < kFirstNormalColocationId) {
-      return STATUS_EC_FORMAT(
-          InvalidArgument, MasterError(MasterErrorPB::INVALID_SCHEMA),
-          "Colocation ID cannot be less than $0", kFirstNormalColocationId);
+      return STATUS_FORMAT(
+          InvalidArgument, "Colocation ID cannot be less than $0", kFirstNormalColocationId)
+          .CloneAndAddErrorCode(MasterError(MasterErrorPB::INVALID_SCHEMA));
     }
     if (contains_colocation_id(req.colocation_id())) {
-      return STATUS_EC_FORMAT(
-          InvalidArgument, MasterError(MasterErrorPB::INVALID_SCHEMA),
-          "Colocation group already contains a table with colocation ID $0", req.colocation_id());
+      return STATUS_FORMAT(
+          InvalidArgument, "Colocation group already contains a table with colocation ID $0",
+          req.colocation_id())
+          .CloneAndAddErrorCode(MasterError(MasterErrorPB::INVALID_SCHEMA));
     }
     return req.colocation_id();
   }

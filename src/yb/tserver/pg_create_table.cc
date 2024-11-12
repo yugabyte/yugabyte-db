@@ -220,9 +220,7 @@ Status PgCreateTable::Exec(
       }
       return STATUS(InvalidArgument, "Duplicate table");
     }
-    return STATUS_FORMAT(
-        InvalidArgument, "Invalid table definition: $0",
-        s.ToString(false /* include_file_and_line */, false /* include_code */));
+    return STATUS_FORMAT(InvalidArgument, "Invalid table definition: $0", s.message());
   }
 
   return Status::OK();
