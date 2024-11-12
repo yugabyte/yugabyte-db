@@ -38,8 +38,6 @@ DEFINE_RUNTIME_bool(xcluster_skip_health_check_on_replication_setup, false,
 DEFINE_test_flag(bool, exit_unfinished_deleting, false,
     "Whether to exit part way through the deleting universe process.");
 
-DECLARE_bool(auto_add_new_index_to_bidirectional_xcluster);
-
 namespace yb::master {
 
 namespace {
