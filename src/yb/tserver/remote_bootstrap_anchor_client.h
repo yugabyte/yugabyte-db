@@ -63,13 +63,14 @@ class RemoteBootstrapAnchorClient : public RefCountedThreadSafe<RemoteBootstrapA
       rpc::ProxyCache* proxy_cache,
       const HostPort& tablet_leader_peer_addr);
 
-  Status RegisterLogAnchor(const std::string& tablet_id, const int64_t& log_index);
+  Status RegisterLogAnchor(
+      const std::string& tablet_id, const int64_t& log_index, bool session_succeeded);
 
-  Status UpdateLogAnchorAsync(const int64_t& log_index);
+  Status UpdateLogAnchorAsync(const int64_t& log_index, bool session_succeeded);
 
   Status UnregisterLogAnchor();
 
-  Status KeepLogAnchorAliveAsync();
+  Status KeepLogAnchorAliveAsync(bool session_succeeded);
 
   Status ChangePeerRole();
 

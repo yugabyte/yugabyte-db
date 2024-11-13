@@ -775,6 +775,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Gauge for the number of tablet peers this TServer can support
   scoped_refptr<yb::AtomicGauge<int64_t>> ts_supportable_tablet_peers_metric_;
 
+  // Gauge tracking number of peers on this tserver actively undergoing RBS.
+  scoped_refptr<yb::AtomicGauge<uint64_t>> num_tablet_peers_undergoing_rbs_;
+
   mutable simple_spinlock snapshot_schedule_allowed_history_cutoff_mutex_;
   std::unordered_map<SnapshotScheduleId, HybridTime, SnapshotScheduleIdHash>
       snapshot_schedule_allowed_history_cutoff_

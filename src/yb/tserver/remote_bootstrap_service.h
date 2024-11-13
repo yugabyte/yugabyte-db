@@ -136,7 +136,7 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
 
     ~LogAnchorSessionData();
 
-    void ResetExpiration();
+    void ResetExpiration(bool session_succeeded);
 
     std::shared_ptr<tablet::TabletPeer> tablet_peer_;
 
@@ -192,7 +192,13 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
   // Protects sessions_ and session_expirations_ maps.
   mutable std::mutex sessions_mutex_;
   SessionMap sessions_ GUARDED_BY(sessions_mutex_);
-  std::atomic<int32> nsessions_ GUARDED_BY(sessions_mutex_) = {0};
+  // Count of sessions that are in the phase of actively serving data over the network. We use this
+  // for rate limiting instead of sessions_.size() so as to avoid rbs dest peers in the local
+  // bootstrap phase unecessarily throttle the available bandwidth.
+  std::atomic<int32> nsessions_serving_data_ GUARDED_BY(sessions_mutex_) = {0};
+  // Metric tracking RBS sessions actively using the bandwidth on this node to transfer data.
+  // Set to reflect nsessions_serving_data_.
+  scoped_refptr<yb::AtomicGauge<int32>> num_sessions_serving_data_;
 
   mutable std::mutex log_anchors_mutex_;
   LogAnchorsMap log_anchors_map_ GUARDED_BY(log_anchors_mutex_);
