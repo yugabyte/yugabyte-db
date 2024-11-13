@@ -253,6 +253,15 @@ message TSHeartbeatRequestPB {
       xcluster_consumer_replication_status = 23;
 }
 
+message ClientOperationLeaseUpdatePB {
+  optional fixed64 lease_deadline_ht = 1;
+  optional bool new_lease = 2;
+  optional uint64 lease_epoch = 3;
+  // TODO: If this ends up being too big, consider adding a way to break this up
+  // into multiple messages.
+  optional tserver.DdlLockEntriesPB ddl_lock_entries = 4;
+}
+
 message TSHeartbeatResponsePB {
   optional MasterErrorPB error = 1;
 
@@ -323,9 +332,7 @@ message TSHeartbeatResponsePB {
 
   optional string universe_uuid = 25;
 
-  // TODO: If this ends up being too big, consider adding a way to break this up
-  // into multiple messages.
-  optional tserver.DdlLockEntriesPB ddl_lock_entries = 26;
+  optional ClientOperationLeaseUpdatePB op_lease_update = 26;
 }
 
 service MasterHeartbeat {

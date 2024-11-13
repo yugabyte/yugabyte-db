@@ -467,9 +467,9 @@ Status Heartbeater::Thread::TryHeartbeat() {
       auto universe_uuid = VERIFY_RESULT(UniverseUuid::FromString(resp.universe_uuid()));
       RETURN_NOT_OK(server_->ValidateAndMaybeSetUniverseUuid(universe_uuid));
     }
-    if (resp.has_ddl_lock_entries()) {
+    if (resp.has_op_lease_update()) {
       WARN_NOT_OK(
-          server_->BootstrapDdlObjectLocks(resp),
+          server_->BootstrapDdlObjectLocks(resp.op_lease_update()),
           "Error bootstrapping object locks. Not expected.");
     }
 

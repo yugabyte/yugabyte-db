@@ -607,6 +607,13 @@ void RetryingTSRpcTask::DoRpcCallback() {
           << "TS " << target_ts_desc_->id() << " catalog lease expired. Assume backends"
           << " on that TS will be resolved to sufficient catalog version";
       TransitionToCompleteState();
+    } else if (
+        type() == MonitoredTaskType::kObjectLock &&
+        !target_ts_desc_->HasLiveClientOperationLease()) {
+      LOG(WARNING) << "TS " << target_ts_desc_->id()
+                   << " no longer has a live lease. Ignoring this tserver for object lock task "
+                   << description() << ", rpc status: " << rpc_.status();
+      TransitionToCompleteState();
     }
   } else if (state() != MonitoredTaskState::kAborted) {
     HandleResponse(attempt_);  // Modifies state_.
