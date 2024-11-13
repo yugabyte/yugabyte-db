@@ -215,8 +215,8 @@ void RpcRetrier::DoRetry(RpcCommand* rpc, const Status& status) {
     if (deadline_ != CoarseTimePoint::max()) {
       auto now = CoarseMonoClock::Now();
       if (deadline_ < now) {
-        string err_str = Format(
-          "$0 passed its deadline $1 (passed: $2)", *rpc, deadline_, now - start_);
+        string err_str = Format("$0 passed its deadline $1 (passed $2 of $3)",
+                                *rpc, deadline_, now - start_, deadline_ - start_);
         if (!last_error_.ok()) {
           SubstituteAndAppend(&err_str, ": $0", last_error_.ToString());
         }
@@ -274,10 +274,10 @@ void RpcRetrier::Abort() {
 }
 
 std::string RpcRetrier::ToString() const {
-  return Format("{ task_id: $0 state: $1 deadline: $2 }",
+  return Format("{ task_id: $0 state: $1 deadline: $2 (passed $3 of $4) }",
                 task_id_.load(std::memory_order_acquire),
                 state_.load(std::memory_order_acquire),
-                deadline_);
+                deadline_, CoarseMonoClock::Now() - start_, deadline_ - start_);
 }
 
 RpcController* RpcRetrier::PrepareController() {
