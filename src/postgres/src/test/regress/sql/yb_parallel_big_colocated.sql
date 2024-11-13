@@ -50,5 +50,14 @@ SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_name like '
 SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_name like 'Customer #4_' ORDER BY pc_phone DESC;
 reset enable_sort;
 
+-- forced parallel scan by PK
+set parallel_setup_cost=0;
+set parallel_tuple_cost=0;
+EXPLAIN (costs off)
+SELECT * FROM pcustomer WHERE pc_id = 42;
+SELECT * FROM pcustomer WHERE pc_id = 42;
+reset parallel_setup_cost;
+reset parallel_tuple_cost;
+
 DROP TABLE pcustomer;
 
