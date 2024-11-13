@@ -94,7 +94,7 @@ Failovers are only possible after you finish the migration on both the primary a
 
 #### Replicated uses HTTP
 
-If Replicated is using HTTP, you need to remove the standbys and delete the high availability configuration before migrating. Migrate as follows:
+If Replicated is using HTTP (or any servers are configured with a timezone that is not UTC), you need to remove the standbys and delete the high availability configuration before migrating. Migrate as follows:
 
 1. [Remove the standby instances](../../administer-yugabyte-platform/high-availability/#remove-a-standby-instance).
 1. On the active instance, navigate to **Admin > High Availability** and click **Delete Configuration**.
