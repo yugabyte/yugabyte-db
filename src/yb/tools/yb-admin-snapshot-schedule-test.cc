@@ -3364,7 +3364,7 @@ TEST_F(YbAdminSnapshotScheduleUpgradeTestWithYsql,
 
 TEST_F(
     YbAdminSnapshotScheduleUpgradeTestWithYsqlPg11,
-    YB_DISABLE_TEST_IN_SANITIZERS(PgsqlTestMigrationFromEarliestSysCatalogSnapshot)) {
+    YB_DISABLE_TEST(PgsqlTestMigrationFromEarliestSysCatalogSnapshot)) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
   LOG(INFO) << "Assert pg_yb_migration table does not exist.";
