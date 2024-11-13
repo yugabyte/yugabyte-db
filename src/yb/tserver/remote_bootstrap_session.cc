@@ -672,7 +672,7 @@ void RemoteBootstrapSession::EnsureRateLimiterIsInitialized() {
 
 Status RemoteBootstrapSession::RefreshRemoteLogAnchorSessionAsync() {
   if (rbs_anchor_client_ && rbs_anchor_session_created_) {
-    RETURN_NOT_OK(rbs_anchor_client_->KeepLogAnchorAliveAsync());
+    RETURN_NOT_OK(rbs_anchor_client_->KeepLogAnchorAliveAsync(Succeeded()));
   }
   return Status::OK();
 }
@@ -706,8 +706,8 @@ void RemoteBootstrapSession::InitRateLimiter() {
 Status RemoteBootstrapSession::RegisterRemoteLogAnchorUnlocked() {
   if (rbs_anchor_client_) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "index=" << remote_log_anchor_index_;
-    RETURN_NOT_OK(rbs_anchor_client_->RegisterLogAnchor(tablet_peer_->tablet_id(),
-                                                        remote_log_anchor_index_));
+    RETURN_NOT_OK(rbs_anchor_client_->RegisterLogAnchor(
+        tablet_peer_->tablet_id(), remote_log_anchor_index_, succeeded_));
     rbs_anchor_session_created_ = true;
   }
   return Status::OK();
@@ -716,7 +716,7 @@ Status RemoteBootstrapSession::RegisterRemoteLogAnchorUnlocked() {
 Status RemoteBootstrapSession::UpdateRemoteLogAnchorUnlocked() {
   if (rbs_anchor_client_) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "index=" << remote_log_anchor_index_;
-    RETURN_NOT_OK(rbs_anchor_client_->UpdateLogAnchorAsync(remote_log_anchor_index_));
+    RETURN_NOT_OK(rbs_anchor_client_->UpdateLogAnchorAsync(remote_log_anchor_index_, succeeded_));
   }
   return Status::OK();
 }
