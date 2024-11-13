@@ -52,7 +52,7 @@ var updateHashicorpVaultEITCmd = &cobra.Command{
 			Label:             configName,
 			CertType:          util.HashicorpVaultCertificateType,
 			CertContent:       "pki",
-			HcVaultCertParams: hcvParams,
+			HcVaultCertParams: &hcvParams,
 		}
 
 		eitutil.UpdateEITUtil(

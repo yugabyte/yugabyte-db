@@ -107,7 +107,7 @@ var createCustomCAEITCmd = &cobra.Command{
 			Label:          configName,
 			CertType:       util.CustomCertHostPathCertificateType,
 			CertContent:    *rootCertContent,
-			CustomCertInfo: customCertInfo,
+			CustomCertInfo: &customCertInfo,
 		}
 
 		eitutil.CreateEITUtil(authAPI, configName, util.CustomCertHostPathCertificateType, requestBody)
