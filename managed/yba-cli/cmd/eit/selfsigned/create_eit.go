@@ -69,7 +69,7 @@ var createSelfSignedEITCmd = &cobra.Command{
 			Label:       configName,
 			CertType:    util.SelfSignedCertificateType,
 			CertContent: *rootCertContent,
-			KeyContent:  *keyContent,
+			KeyContent:  keyContent,
 		}
 
 		eitutil.CreateEITUtil(authAPI, configName, util.SelfSignedCertificateType, requestBody)
