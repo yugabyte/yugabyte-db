@@ -37,9 +37,21 @@ To customize flags of the read replica of a universe that has a read replica clu
 
 Depending on the flag, the universe may need to be restarted to apply the changes. You can apply changes as follows:
 
-- Immediately using a rolling restart.
+- Immediately using a rolling restart, or [rolling restart in batches](#rolling-restart-in-batches).
 - Immediately using a concurrent restart.
 - Immediately apply any changes that do not require a restart and wait until the next time the universe is restarted to apply the remaining changes.
+
+### Rolling restart in batches
+
+If you have a multi-zone universe with multiple nodes per zone, you can choose a **Max batch size** (default is 1) for rolling restarts as per the following illustration:
+
+![Rolling restart in batches](/images/ee/rolling-restart-batch.png)
+
+This means YBA can operate on batches of nodes per availability zone instead of one node at a time.
+YBA supports this rolling batch feature which is currently {{<tags/feature/ea>}} for TServer nodes, but Master nodes are always updated individually.
+The specified batch size is automatically applied to read replica as well (if it exists). Before running the operation, YBA synchronizes with the database to verify that the batch size is safe to use and will automatically fall back to a single node at a time if verification fails.
+
+As the feature is not enabled by default, set the **Stop multiple nodes in az simultaneously during upgrade** Global runtime configuration option for VMs (config key `yb.task.upgrade.batch_roll_enabled`), or the **Stop multiple nodes in az simultaneously during upgrade (in k8s)** Global runtime configuration option for Kubernetes (config key `yb.task.upgrade.batch_roll_enabled_k8s`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global runtime configuration settings.
 
 ### Add flags
 

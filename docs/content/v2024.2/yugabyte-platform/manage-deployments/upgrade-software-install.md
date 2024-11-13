@@ -39,6 +39,17 @@ You perform a rolling upgrade on a live universe deployment as follows:
 
     ![Upgrade Database](/images/yb-platform/upgrade/upgrade-database.png)
 
+    **Rolling batch upgrades** <br/>
+    If you have a multi-zone universe with multiple nodes per zone, you can choose a **Max batch size** (default is 1) for rolling upgrades as per the following illustration:
+
+    ![Upgrade nodes in batches](/images/yb-platform/upgrade/rolling-batch-upgrade.png)
+
+    This means YBA can operate on batches of nodes per availability zone instead of one node at a time.
+    YBA supports this rolling batch feature which is currently {{<tags/feature/ea>}} for TServer nodes, but Master nodes are always upgraded individually.
+    The specified batch size is automatically applied to read replica as well (if it exists). Before running the operation, YBA synchronizes with the database to verify that the batch size is safe to use and will automatically fall back to a single node at a time if verification fails.
+
+    As the feature is not enabled by default, set the **Stop multiple nodes in az simultaneously during upgrade** Global runtime configuration option for VMs (config key `yb.task.upgrade.batch_roll_enabled`), or the **Stop multiple nodes in az simultaneously during upgrade (in k8s)** Global runtime configuration option for Kubernetes (config key `yb.task.upgrade.batch_roll_enabled_k8s`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global runtime configuration settings.
+
 1. Choose the target version you want to upgrade to.
 
     {{< note title="Downgrading" >}}
