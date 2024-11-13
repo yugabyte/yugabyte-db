@@ -127,8 +127,7 @@ class XClusterTableSetupTask : public MultiStepMonitoredTask {
 
   void SetupStreams();
 
-  Status PopulateTableStreamEntry(
-      const TableId& target_table_id, const SchemaVersion& target_schema_version);
+  Status PopulateTableStreamEntry(const TableId& target_table_id);
 
   void GetStreamCallback(
       std::shared_ptr<TableId> received_table_id,

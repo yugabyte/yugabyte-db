@@ -93,7 +93,6 @@ DECLARE_int32(replication_factor);
 DECLARE_int32(rpc_workers_limit);
 DECLARE_int32(tablet_server_svc_queue_length);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
-DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint64(ysql_packed_row_size_limit);
@@ -1266,7 +1265,6 @@ TEST_F(XClusterYsqlTest, SimpleReplicationWithRangedPartitionsAndUnevenTabletCou
 }
 
 TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
-  SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
   // Used for faster VerifyReplicationError.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 1000;
@@ -1464,7 +1462,6 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
 }
 
 TEST_F(XClusterYsqlTest, ReplicationWithCreateIndexDDL) {
-  SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_disable_index_backfill) = false;
   string new_column = "alt";
   constexpr auto kIndexName = "TestIndex";

@@ -193,11 +193,6 @@ class XClusterConsumer : public XClusterConsumerIf {
       GUARDED_BY(master_data_mutex_);
   std::unordered_set<xrepl::StreamId> ddl_queue_streams_ GUARDED_BY(master_data_mutex_);
 
-  // Pair of validated_schema_version and last_compatible_consumer_schema_version.
-  using SchemaVersionMapping = std::pair<uint32_t, uint32_t>;
-  std::unordered_map<xrepl::StreamId, SchemaVersionMapping> stream_to_schema_version_
-      GUARDED_BY(master_data_mutex_);
-
   cdc::StreamSchemaVersionMap stream_schema_version_map_ GUARDED_BY(master_data_mutex_);
 
   cdc::StreamColocatedSchemaVersionMap stream_colocated_schema_version_map_

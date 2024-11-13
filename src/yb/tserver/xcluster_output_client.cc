@@ -156,16 +156,6 @@ void XClusterOutputClient::MarkFailedUnlocked(const std::string& reason, const S
   xcluster_poller_->MarkFailed(reason, status);
 }
 
-void XClusterOutputClient::SetLastCompatibleConsumerSchemaVersion(SchemaVersion schema_version) {
-  std::lock_guard lock(lock_);
-  if (schema_version != cdc::kInvalidSchemaVersion &&
-      schema_version > last_compatible_consumer_schema_version_) {
-    LOG_WITH_PREFIX(INFO) << "Last compatible consumer schema version updated to  "
-                          << schema_version;
-    last_compatible_consumer_schema_version_ = schema_version;
-  }
-}
-
 void XClusterOutputClient::UpdateSchemaVersionMappings(
     const cdc::XClusterSchemaVersionMap& schema_version_map,
     const cdc::ColocatedSchemaVersionMap& colocated_schema_version_map) {
@@ -200,7 +190,6 @@ void XClusterOutputClient::ApplyChanges(std::shared_ptr<cdc::GetChangesResponseP
     op_id_ = poller_resp->checkpoint().op_id();
     error_status_ = Status::OK();
     done_processing_ = false;
-    wait_for_version_ = 0;
     processed_record_count_ = 0;
     record_count_ = poller_resp->records_size();
     ResetWriteInterface(&write_strategy_);
@@ -412,8 +401,6 @@ Status XClusterOutputClient::ProcessRecord(
   for (const auto& tablet_id : tablet_ids) {
     SCHECK(!IsOffline(), Aborted, "$0$1", LogPrefix(), "xCluster output client went offline");
 
-    // Find the last_compatible_consumer_schema_version for each record as it may be different
-    // for different records depending on the colocation id.
     cdc::XClusterSchemaVersionMap schema_versions_map;
     if (PREDICT_TRUE(FLAGS_xcluster_enable_packed_rows_support) &&
         !record.changes().empty() &&
@@ -814,7 +801,6 @@ void XClusterOutputClient::HandleResponse() {
   if (response.status.ok()) {
     response.last_applied_op_id = op_id_;
     response.processed_record_count = processed_record_count_;
-    response.wait_for_version = wait_for_version_;
   }
   op_id_ = consensus::MinimumOpId();
   processed_record_count_ = 0;

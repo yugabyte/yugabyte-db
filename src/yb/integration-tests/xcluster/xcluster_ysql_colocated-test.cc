@@ -26,7 +26,6 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/util/backoff_waiter.h"
 
-DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_bool(ysql_legacy_colocated_database_creation);
 DECLARE_bool(ysql_enable_packed_row);
 
@@ -72,7 +71,6 @@ class XClusterYsqlColocatedTest : public XClusterYsqlTestBase {
   }
 
   Status TestDatabaseReplication(bool compact = false, bool use_transaction = false) {
-    SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
     constexpr auto kRecordBatch = 5;
     auto count = 0;
     constexpr int kNTabletsPerColocatedTable = 1;

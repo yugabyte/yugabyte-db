@@ -164,13 +164,6 @@ class XClusterTargetManager {
       const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids,
       const LeaderEpoch& epoch) EXCLUDES(table_stream_ids_map_mutex_);
 
-  Status ValidateNewSchema(const TableInfo& table_info, const Schema& consumer_schema) const
-      EXCLUDES(table_stream_ids_map_mutex_);
-
-  Status ResumeStreamsAfterNewSchema(
-      const TableInfo& table_info, SchemaVersion consumer_schema_version, const LeaderEpoch& epoch)
-      EXCLUDES(table_stream_ids_map_mutex_);
-
   Status SetupUniverseReplication(
       const SetupUniverseReplicationRequestPB* req, SetupUniverseReplicationResponsePB* resp,
       const LeaderEpoch& epoch);
@@ -228,8 +221,6 @@ class XClusterTargetManager {
 
   std::unordered_map<xcluster::ReplicationGroupId, xrepl::StreamId> GetStreamIdsForTable(
       const TableId& table_id) const EXCLUDES(table_stream_ids_map_mutex_);
-
-  Status ProcessPendingSchemaChanges(const LeaderEpoch& epoch);
 
   Result<HybridTime> PrepareAndGetBackfillTimeForBiDirectionalIndex(
       const std::vector<TableId>& index_table_ids, const TableId& indexed_table,

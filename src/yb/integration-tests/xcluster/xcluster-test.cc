@@ -132,7 +132,6 @@ DECLARE_int32(transaction_table_num_tablets);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_bool(use_client_to_server_encryption);
 DECLARE_bool(use_node_to_node_encryption);
-DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_bool(TEST_xcluster_disable_delete_old_pollers);
 DECLARE_bool(enable_log_retention_by_op_idx);
 DECLARE_bool(TEST_xcluster_disable_poller_term_check);
@@ -2208,8 +2207,6 @@ TEST_P(XClusterTest, TestProducerUniverseExpansion) {
 }
 
 TEST_P(XClusterTest, TestAlterDDLBasic) {
-  SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
-
   uint32_t replication_factor = 1;
   // Use just one tablet here to more easily catch lower-level write issues with this test.
   ASSERT_OK(SetUpWithParams({1}, replication_factor));
@@ -2283,8 +2280,6 @@ TEST_P(XClusterTest, TestAlterDDLBasic) {
 }
 
 TEST_P(XClusterTest, TestAlterDDLWithRestarts) {
-  SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
-
   uint32_t replication_factor = 3;
   ASSERT_OK(SetUpWithParams({1}, {1}, replication_factor, 2, 3));
 
@@ -3939,8 +3934,6 @@ TEST_F_EX(XClusterTest, DeleteWithoutStreamCleanup, XClusterTestNoParam) {
 }
 
 TEST_F_EX(XClusterTest, DeleteWhenSourceIsDown, XClusterTestNoParam) {
-  SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
-
   // Create 2 tables with 3 tablets each.
   ASSERT_OK(SetUpWithParams({3, 3}, /*replication_factor=*/3));
   ASSERT_OK(SetupReplication());

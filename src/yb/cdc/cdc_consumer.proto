@@ -45,16 +45,6 @@ message ProducerTabletListPB {
   repeated bytes end_key = 3;
 }
 
-message ProducerSchemaPB {
-  // The last Producer schema version that was EquivalentForDataCopy with this Consumer.
-  uint32 validated_schema_version = 1;
-  // The upcoming Producer schema for ingest.  If present, Consumer needs ALTER for compatibility.
-  uint32 pending_schema_version = 2;
-  SchemaPB pending_schema = 3;
-  // The last Consumer schema version that was EquivalentForDataCopy with this Producer
-  uint32 last_compatible_consumer_schema_version = 4;
-}
-
 message SchemaVersionsPB {
   uint32 current_producer_schema_version = 1;
   uint32 current_consumer_schema_version = 2;
@@ -68,7 +58,8 @@ message StreamEntryPB {
   string consumer_table_id = 2;
   string producer_table_id = 3;
   bool local_tserver_optimized = 4;
-  ProducerSchemaPB producer_schema = 5;
+  // ProducerSchemaPB producer_schema
+  reserved 5;
 
   // Producer consumer schema versions
   SchemaVersionsPB schema_versions = 6;

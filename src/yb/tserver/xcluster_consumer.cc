@@ -307,7 +307,6 @@ void XClusterConsumer::HandleMasterHeartbeatResponse(
   ddl_queue_streams_.clear();
   stream_schema_version_map_.clear();
   stream_colocated_schema_version_map_.clear();
-  stream_to_schema_version_.clear();
   min_schema_version_map_.clear();
 
   for (const auto& [replication_group_id_str, producer_entry_pb] :
@@ -352,11 +351,6 @@ void XClusterConsumer::UpdateReplicationGroupInMemState(
     if (stream_entry_pb.is_ddl_queue_table()) {
       LOG(INFO) << Format("Stream $0 is a ddl_queue stream", stream_id);
       ddl_queue_streams_.insert(stream_id);
-    }
-    if (stream_entry_pb.has_producer_schema()) {
-      stream_to_schema_version_[stream_id] = std::make_pair(
-          stream_entry_pb.producer_schema().validated_schema_version(),
-          stream_entry_pb.producer_schema().last_compatible_consumer_schema_version());
     }
 
     if (stream_entry_pb.has_schema_versions()) {
@@ -495,12 +489,6 @@ void XClusterConsumer::TriggerPollForNewTablets() {
           remote_clients_[replication_group_id] = std::move(*remote_client);
         }
 
-        SchemaVersion last_compatible_consumer_schema_version = cdc::kInvalidSchemaVersion;
-        auto schema_version = FindOrNull(stream_to_schema_version_, producer_tablet_info.stream_id);
-        if (schema_version) {
-          last_compatible_consumer_schema_version = schema_version->second;
-        }
-
         // Now create the poller.
         bool use_local_tserver =
             streams_with_local_tserver_optimization_.contains(producer_tablet_info.stream_id);
@@ -519,8 +507,7 @@ void XClusterConsumer::TriggerPollForNewTablets() {
             auto_flags_version_handler_->GetAutoFlagsCompatibleVersion(
                 producer_tablet_info.replication_group_id),
             thread_pool_.get(), rpcs_.get(), local_client_, remote_clients_[replication_group_id],
-            this, last_compatible_consumer_schema_version, leader_term, get_leader_term_func_,
-            entry.automatic_ddl_mode);
+            this, leader_term, get_leader_term_func_, entry.automatic_ddl_mode);
 
         if (ddl_queue_streams_.contains(producer_tablet_info.stream_id)) {
           xcluster_poller->InitDDLQueuePoller(
@@ -557,12 +544,6 @@ void XClusterConsumer::TriggerPollForNewTablets() {
 
 void XClusterConsumer::UpdatePollerSchemaVersionMaps(
     std::shared_ptr<XClusterPoller> xcluster_poller, const xrepl::StreamId& stream_id) const {
-  auto compatible_schema_version = FindOrNull(stream_to_schema_version_, stream_id);
-  if (compatible_schema_version) {
-    xcluster_poller->ScheduleSetSchemaVersionIfNeeded(
-        compatible_schema_version->first, compatible_schema_version->second);
-  }
-
   auto schema_versions = FindOrNull(stream_schema_version_map_, stream_id);
   if (schema_versions) {
     xcluster_poller->UpdateSchemaVersions(*schema_versions);

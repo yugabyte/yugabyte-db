@@ -745,8 +745,7 @@ Status XClusterTableSetupTask::ProcessTable(
   schema_versions->set_current_producer_schema_version(source_info->schema.version());
   schema_versions->set_current_consumer_schema_version(target_schema.version());
 
-  RETURN_NOT_OK(
-      PopulateTableStreamEntry(target_schema.identifier().table_id(), target_schema.version()));
+  RETURN_NOT_OK(PopulateTableStreamEntry(target_schema.identifier().table_id()));
 
   return ValidateBootstrapAndSetupStreams();
 }
@@ -758,7 +757,7 @@ Status XClusterTableSetupTask::ProcessTableWithoutSchemaValidation() {
   schema_versions->set_current_producer_schema_version(0);
   schema_versions->set_current_consumer_schema_version(0);
 
-  RETURN_NOT_OK(PopulateTableStreamEntry(*target_table_id_, 0));
+  RETURN_NOT_OK(PopulateTableStreamEntry(*target_table_id_));
 
   return ValidateBootstrapAndSetupStreams();
 }
@@ -835,10 +834,7 @@ Status XClusterTableSetupTask::ProcessTablegroup(
                                           ? GetColocationParentTableId(target_tablegroup_id)
                                           : GetTablegroupParentTableId(target_tablegroup_id);
 
-  auto target_schema_version =
-      VERIFY_RESULT(parent_task_->catalog_manager_.GetTableSchemaVersion(target_parent_table_id));
-
-  RETURN_NOT_OK(PopulateTableStreamEntry(target_parent_table_id, target_schema_version));
+  RETURN_NOT_OK(PopulateTableStreamEntry(target_parent_table_id));
 
   return ValidateBootstrapAndSetupStreams();
 }
@@ -971,9 +967,8 @@ Result<GetTableSchemaResponsePB> XClusterTableSetupTask::ValidateSourceSchemaAnd
   return table_schema_resp;
 }
 
-Status XClusterTableSetupTask::PopulateTableStreamEntry(
-    const TableId& target_table_id, const SchemaVersion& target_schema_version) {
-  VLOG_WITH_PREFIX_AND_FUNC(1) << YB_STRUCT_TO_STRING(target_table_id, target_schema_version);
+Status XClusterTableSetupTask::PopulateTableStreamEntry(const TableId& target_table_id) {
+  VLOG_WITH_PREFIX_AND_FUNC(1) << YB_STRUCT_TO_STRING(target_table_id);
 
   SCHECK(
       !parent_task_->xcluster_manager_.IsTableReplicationConsumer(target_table_id), IllegalState,
@@ -984,15 +979,6 @@ Status XClusterTableSetupTask::PopulateTableStreamEntry(
   auto& stream_entry = table_setup_info_.stream_entry;
   stream_entry.set_consumer_table_id(target_table_id);
   stream_entry.set_producer_table_id(source_table_id_);
-
-  RSTATUS_DCHECK_NE(
-      target_schema_version, cdc::kInvalidSchemaVersion, IllegalState,
-      Format(
-          "Invalid target schema version for source table $0, target table $1", source_table_id_,
-          target_table_id));
-
-  stream_entry.mutable_producer_schema()->set_last_compatible_consumer_schema_version(
-      target_schema_version);
 
   if (parent_task_->data_.automatic_ddl_mode) {
     // Mark this stream as special if it is for the ddl_queue table.
