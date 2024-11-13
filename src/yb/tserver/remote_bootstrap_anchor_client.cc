@@ -61,14 +61,15 @@ RemoteBootstrapAnchorClient::RemoteBootstrapAnchorClient(
   proxy_.reset(new RemoteBootstrapServiceProxy(proxy_cache, tablet_leader_peer_addr));
 }
 
-Status RemoteBootstrapAnchorClient::RegisterLogAnchor(const string& tablet_id,
-                                                      const int64_t& log_index) {
+Status RemoteBootstrapAnchorClient::RegisterLogAnchor(
+    const string& tablet_id, const int64_t& log_index, bool session_succeeded) {
   RegisterLogAnchorRequestPB req;
   req.set_tablet_id(tablet_id);
   auto* op_id_ptr = req.mutable_op_id();
   op_id_ptr->set_term(-1 /* unused */);
   op_id_ptr->set_index(log_index);
   req.set_owner_info(owner_info_);
+  req.set_session_succeeded(session_succeeded);
 
   RegisterLogAnchorResponsePB resp;
 
@@ -109,7 +110,8 @@ void RemoteBootstrapAnchorClient::SetLogAnchorRefreshStatus(
   }
 }
 
-Status RemoteBootstrapAnchorClient::UpdateLogAnchorAsync(const int64_t& log_index) {
+Status RemoteBootstrapAnchorClient::UpdateLogAnchorAsync(
+    const int64_t& log_index, bool session_succeeded) {
   // Check if the last call to update log anchor failed. if so, return the status.
   RETURN_NOT_OK(ProcessLogAnchorRefreshStatus());
 
@@ -118,6 +120,7 @@ Status RemoteBootstrapAnchorClient::UpdateLogAnchorAsync(const int64_t& log_inde
   op_id_ptr->set_term(-1 /* unused */);
   op_id_ptr->set_index(log_index);
   req.set_owner_info(owner_info_);
+  req.set_session_succeeded(session_succeeded);
 
   const std::shared_ptr<UpdateLogAnchorResponsePB>
       shared_resp_ptr = std::make_shared<UpdateLogAnchorResponsePB>();
@@ -142,12 +145,13 @@ Status RemoteBootstrapAnchorClient::UpdateLogAnchorAsync(const int64_t& log_inde
   return Status::OK();
 }
 
-Status RemoteBootstrapAnchorClient::KeepLogAnchorAliveAsync() {
+Status RemoteBootstrapAnchorClient::KeepLogAnchorAliveAsync(bool session_succeeded) {
   // Check if the last call to refresh log anchor session failed. if so, return the status.
   RETURN_NOT_OK(ProcessLogAnchorRefreshStatus());
 
   KeepLogAnchorAliveRequestPB req;
   req.set_owner_info(owner_info_);
+  req.set_session_succeeded(session_succeeded);
 
   const std::shared_ptr<KeepLogAnchorAliveResponsePB>
       shared_resp_ptr = std::make_shared<KeepLogAnchorAliveResponsePB>();

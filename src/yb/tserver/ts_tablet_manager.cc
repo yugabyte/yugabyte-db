@@ -385,6 +385,10 @@ METRIC_DEFINE_gauge_int64(server, ts_supportable_tablet_peers,
     "Number of tablet peers that this TServer can support based on available RAM and cores or -1 "
     "if no tablet limit in effect.");
 
+METRIC_DEFINE_gauge_uint64(server, num_tablet_peers_undergoing_rbs,
+    "Number of Tablet Peers on the TServer undergoing remote bootstrap", MetricUnit::kUnits,
+    "Number of Tablet Peers on the TServer undergoing remote bootstrap i.e actively RBSing peers.");
+
 THREAD_POOL_METRICS_DEFINE(server, admin_triggered_compaction_pool,
     "Thread pool for admin-triggered tablet compaction jobs.");
 
@@ -581,6 +585,8 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
       server_->metric_entity(), GetNumSupportableTabletPeers());
   ts_open_metadata_time_us_ =
       METRIC_ts_open_metadata_time_us.Instantiate(server_->metric_entity(), 0);
+  num_tablet_peers_undergoing_rbs_ = METRIC_num_tablet_peers_undergoing_rbs.Instantiate(
+      server->metric_entity(), 0);
 
   mem_manager_ = std::make_shared<TabletMemoryManager>(
       &tablet_options_,
@@ -1511,8 +1517,10 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   // populates bootstrap_source_addresses_ before looking up the tablet. Define this
   // ScopeExit before calling RegisterRemoteClientAndLookupTablet so that if it fails,
   // we cleanup as expected.
+  num_tablet_peers_undergoing_rbs_->Increment();
   auto decrement_num_session = ScopeExit([this, &private_addr]() {
     DecrementRemoteSessionCount(private_addr, &remote_bootstrap_clients_);
+    num_tablet_peers_undergoing_rbs_->Decrement();
   });
   TabletPeerPtr old_tablet_peer = VERIFY_RESULT(RegisterRemoteClientAndLookupTablet(
       tablet_id, private_addr, kLogPrefix, &remote_bootstrap_clients_,

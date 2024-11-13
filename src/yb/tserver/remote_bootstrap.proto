@@ -316,6 +316,9 @@ message RegisterLogAnchorRequestPB {
   // The 'index' field of op_id should be set to the log index where the anchor needs to be
   // registered at. The 'term' field of op_id is ignored.
   required OpIdPB op_id = 3;
+
+  // Indicates whether the rbs dest was able to suucessfully fetch all the data from the source.
+  optional bool session_succeeded = 4;
 }
 
 message RegisterLogAnchorResponsePB {}
@@ -328,6 +331,9 @@ message UpdateLogAnchorRequestPB {
   // The 'index' field of op_id should be set to the log index where the anchor needs to be
   // updated to. The 'term' field of op_id is ignored.
   required OpIdPB op_id = 2;
+
+  // Indicates whether the rbs dest was able to suucessfully fetch all the data from the source.
+  optional bool session_succeeded = 3;
 }
 
 message UpdateLogAnchorResponsePB {}
@@ -344,6 +350,11 @@ message KeepLogAnchorAliveRequestPB {
   // RemoteBootstrapSession session_id that was used earlier to initiate a
   // RemoteBootstrapAnchor request.
   required bytes owner_info = 1;
+
+  // Indicates whether the rbs dest was able to suucessfully fetch all the data from the source.
+  // This state is used to determine the amount by which the session's expiration time should be
+  // bumped up on the leader peer.
+  optional bool session_succeeded = 2;
 }
 
 message KeepLogAnchorAliveResponsePB {}
