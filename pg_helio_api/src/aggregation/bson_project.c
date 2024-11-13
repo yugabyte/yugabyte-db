@@ -167,6 +167,8 @@ static void PostProcessParseProjectNode(void *state, const StringView *path,
 static pgbson * ProjectGeonearDocument(const GeonearDistanceState *state,
 									   pgbson *document);
 static void SetVariableSpec(ExpressionVariableContext **state, pgbson *variableSpec);
+static inline bool IsBsonDollarProjectFunctionOid(Oid functionOid);
+static inline bool IsBsonDollarAddFieldsFunctionOid(Oid functionOid);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -1056,14 +1058,16 @@ TryInlineProjection(Node *currentExprNode, Oid functionOid, const
 	}
 
 	FuncExpr *currentExpr = (FuncExpr *) currentExprNode;
-	if (currentExpr->funcid != BsonDollarProjectFunctionOid() &&
-		currentExpr->funcid != BsonDollarAddFieldsFunctionOid())
+
+	if (!(IsBsonDollarProjectFunctionOid(currentExpr->funcid) ||
+		  IsBsonDollarAddFieldsFunctionOid(
+			  currentExpr->funcid)))
 	{
 		return false;
 	}
 
-	if (currentExpr->funcid == BsonDollarProjectFunctionOid() &&
-		functionOid == BsonDollarAddFieldsFunctionOid())
+	if (IsBsonDollarProjectFunctionOid(currentExpr->funcid) &&
+		IsBsonDollarAddFieldsFunctionOid(functionOid))
 	{
 		MemoryContext tempContext = AllocSetContextCreate(CurrentMemoryContext,
 														  "projection context",
@@ -1165,7 +1169,16 @@ TryInlineProjection(Node *currentExprNode, Oid functionOid, const
 
 		pgbson *targetBson = PgbsonWriterGetPgbson(&writer);
 		projectConst->constvalue = PointerGetDatum(targetBson);
-		currentExpr->funcid = functionOid;
+
+		if (currentExpr->funcid == BsonDollarProjectWithLetFunctionOid() && functionOid ==
+			BsonDollarAddFieldsFunctionOid())
+		{
+			currentExpr->funcid = BsonDollarAddFieldsWithLetFunctionOid();
+		}
+		else
+		{
+			currentExpr->funcid = functionOid;
+		}
 
 		MemoryContextDelete(tempContext);
 		return true;
@@ -2313,4 +2326,20 @@ ProjectGeonearDocument(const GeonearDistanceState *state, pgbson *document)
 									projectNonMatchingField,
 									&projectDocState, isInNestedArray);
 	return PgbsonWriterGetPgbson(&writer);
+}
+
+
+static inline bool
+IsBsonDollarProjectFunctionOid(Oid functionOid)
+{
+	return (functionOid == BsonDollarProjectFunctionOid() || functionOid ==
+			BsonDollarProjectWithLetFunctionOid());
+}
+
+
+static inline bool
+IsBsonDollarAddFieldsFunctionOid(Oid functionOid)
+{
+	return (functionOid == BsonDollarAddFieldsFunctionOid() || functionOid ==
+			BsonDollarAddFieldsWithLetFunctionOid());
 }
