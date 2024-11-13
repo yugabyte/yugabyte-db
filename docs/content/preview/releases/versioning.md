@@ -45,10 +45,7 @@ On rare occasions, YugabyteDB may issue a hot fix release. Hot fix releases are 
 
 ### Stable release convention prior to v2024.1
 
-For releases prior to v2024.1, including releases in LTS (long-term support) and STS (standard-term support) release series (for example, v2.20), denoted by `MAJOR.EVEN` versioning, introduce fully tested new features and changes added after the last stable release. A stable release series is based on the preceding preview release series. For example, the v2.16 STS release series is based on the v2.15 preview release series.
-
-Features in stable releases are considered to be {{<tags/feature/ga>}} unless marked otherwise.
-Patch and revision releases in a stable release series (`MAJOR.EVEN`) include bug fixes and revisions that do not break backward compatibility.
+For releases prior to v2024.1, YugabyteDB used the `MAJOR.EVEN` numbering scheme (instead of `YYYY.N`) to denote stable releases. Apart from the numbering scheme, release policies, including for maintenance and patch releases, are otherwise identical. A stable release series is based on the preceding preview release series. For example, the v2.16 STS release series is based on the v2.15 preview release series.
 
 ## Preview releases
 
