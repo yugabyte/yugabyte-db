@@ -38,7 +38,4 @@ check-basic:
 check-test-output:
 	./validate_test_output.sh
 
-check-dist-minimal:
-	$(call common_test,--schedule=./basic_schedule --schedule=./minimal_schedule, $(EXTRA_TESTS))
-
 all: check-basic check-test-output
