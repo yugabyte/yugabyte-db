@@ -264,24 +264,6 @@ image:
   pullSecret: "mycustomregistry-pull-secret"
 ```
 
-### Configure readiness probes
-
-Readiness probes provide readiness checks for your Kubernetes deployment.
-
-You can enable them as follows:
-
-```yaml
-master:
-  readinessProbe:
-    enabled: true
-
-tserver:
-  readinessProbe:
-    enabled: true
-```
-
-For more information, refer to [Readiness probes](../../../../deploy/kubernetes/single-zone/oss/helm-chart/#readiness-probes).
-
 ### Configure load balancer
 
 By default, a load balancer is created to enable access to YugabyteDB Anywhere. You can configure an internal load balancer, configure a DNS name, or disable the load balancer altogether.
