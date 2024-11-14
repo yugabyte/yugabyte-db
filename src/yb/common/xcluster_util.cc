@@ -27,6 +27,10 @@ constexpr char kSequencesDataAliasTableIdMid[] = ".sequences_data_for.";
 
 // How many characters a normal TableId (e.g., no suffixes) takes up.
 constexpr int kTableIdSize = 32;
+
+constexpr std::string_view kTabletIdColumnSequencePrefix  = "sequence.";
+constexpr std::string_view kTabletIdColumnSeparator = ".";
+
 }  // namespace
 
 ReplicationGroupId GetAlterReplicationGroupId(const ReplicationGroupId& replication_group_id) {
@@ -73,6 +77,93 @@ Result<NamespaceId> GetReplicationNamespaceBelongsTo(const TableId& table_id) {
     return GetNamespaceIdFromYsqlTableId(table_id);
   }
   return table_id.substr(kTableIdSize + strlen(kSequencesDataAliasTableIdMid));
+}
+
+Result<SafeTimeTablePK> SafeTimeTablePK::FromProducerTabletInfo(const ProducerTabletInfo& info) {
+  return SafeTimeTablePK::FromProducerTabletInfo(
+      info.replication_group_id, info.tablet_id, info.table_id);
+}
+
+Result<SafeTimeTablePK> SafeTimeTablePK::FromProducerTabletInfo(
+    const xcluster::ReplicationGroupId& replication_group_id, const std::string& producer_tablet_id,
+    const std::string& producer_table_id) {
+  SafeTimeTablePK result;
+  result.replication_group_id_ = replication_group_id;
+  result.tablet_id_ = producer_tablet_id;
+  if (IsSequencesDataAlias(producer_table_id)) {
+    result.sequences_data_namespace_id_ =
+        VERIFY_RESULT(GetReplicationNamespaceBelongsTo(producer_table_id));
+  }
+  return result;
+}
+
+Result<SafeTimeTablePK> SafeTimeTablePK::FromSafeTimeTableRow(
+    const xcluster::ReplicationGroupId& replication_group_id_column_value,
+    const std::string& tablet_id_column_value) {
+  SafeTimeTablePK result;
+  result.replication_group_id_ = replication_group_id_column_value;
+  RSTATUS_DCHECK(
+      !result.replication_group_id_.empty(), IllegalState,
+      "Safe time table replication group ID column is empty");
+  if (!tablet_id_column_value.starts_with(kTabletIdColumnSequencePrefix)) {
+    result.tablet_id_ = tablet_id_column_value;
+    RSTATUS_DCHECK(
+        !result.tablet_id_.empty(), IllegalState, "Safe time table tablet ID column is empty");
+  } else {
+    size_t namespace_id_start = kTabletIdColumnSequencePrefix.size();
+    size_t separator_position =
+        tablet_id_column_value.find(kTabletIdColumnSeparator, namespace_id_start);
+    if (separator_position != std::string::npos) {
+      result.sequences_data_namespace_id_ = tablet_id_column_value.substr(
+          namespace_id_start, separator_position - namespace_id_start);
+      result.tablet_id_ =
+          tablet_id_column_value.substr(separator_position + kTabletIdColumnSeparator.size());
+    }
+    RSTATUS_DCHECK(
+        !result.tablet_id_.empty() && !result.sequences_data_namespace_id_.empty(), IllegalState,
+        Format(
+            "Safe time table tablet ID column starts with '$0' but is not in the form $0$1$2$3: $4",
+            kTabletIdColumnSequencePrefix, "<namespace_id>", kTabletIdColumnSeparator,
+            "<tablet_id>", tablet_id_column_value));
+  }
+  return result;
+}
+
+xcluster::ReplicationGroupId SafeTimeTablePK::replication_group_id_column_value() const {
+  return replication_group_id_;
+}
+
+TabletId SafeTimeTablePK::tablet_id_column_value() const {
+  if (sequences_data_namespace_id_.empty()) {
+    return tablet_id_;
+  }
+  return Format(
+      "$0$1$2$3", kTabletIdColumnSequencePrefix, sequences_data_namespace_id_,
+      kTabletIdColumnSeparator, tablet_id_);
+}
+
+xcluster::ReplicationGroupId SafeTimeTablePK::replication_group_id() const {
+  return replication_group_id_;
+}
+
+TabletId SafeTimeTablePK::tablet_id() const { return tablet_id_; }
+
+NamespaceId SafeTimeTablePK::TEST_sequences_data_namespace_id() const {
+  return sequences_data_namespace_id_;
+}
+
+bool SafeTimeTablePK::operator==(const SafeTimeTablePK& rhs) const {
+  return replication_group_id_ == rhs.replication_group_id_ && tablet_id_ == rhs.tablet_id_ &&
+         sequences_data_namespace_id_ == rhs.sequences_data_namespace_id_;
+}
+
+bool SafeTimeTablePK::operator<(const SafeTimeTablePK& rhs) const {
+  return std::tie(replication_group_id_, tablet_id_, sequences_data_namespace_id_) <
+         std::tie(rhs.replication_group_id_, rhs.tablet_id_, rhs.sequences_data_namespace_id_);
+}
+
+std::string SafeTimeTablePK::ToString() const {
+  return YB_CLASS_TO_STRING(replication_group_id, tablet_id, sequences_data_namespace_id);
 }
 
 }  // namespace yb::xcluster

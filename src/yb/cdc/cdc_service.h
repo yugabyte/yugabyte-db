@@ -104,6 +104,7 @@ using TableIdToStreamIdMap =
     std::unordered_map<TableId, std::pair<TabletId, std::unordered_set<xrepl::StreamId>>>;
 using RollBackTabletIdCheckpointMap =
     std::unordered_map<const std::string*, std::pair<int64_t, OpId>>;
+
 class CDCServiceImpl : public CDCServiceIf {
  public:
   CDCServiceImpl(
