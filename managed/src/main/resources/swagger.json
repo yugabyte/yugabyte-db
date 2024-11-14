@@ -30619,7 +30619,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
+              "$ref" : "#/definitions/YBPCreateSuccess"
             }
           }
         },
@@ -30627,7 +30627,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
+              "$ref" : "#/definitions/YBPCreateSuccess"
             }
           }
         },
@@ -30698,13 +30698,19 @@
           "required" : false
         } ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPCreateSuccess"
+            }
           }
         },
         "responsesObject" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPCreateSuccess"
+            }
           }
         },
         "security" : [ {

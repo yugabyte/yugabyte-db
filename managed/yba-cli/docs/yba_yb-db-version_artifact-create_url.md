@@ -1,19 +1,26 @@
-## yba yb-db-version
+## yba yb-db-version artifact-create url
 
-Manage YugabyteDB versions
+Fetch metadata of a new YugabyteDB version from a URL
 
 ### Synopsis
 
-Manage YugabyteDB versions
+Fetch metadata of a new version of YugabyteDB from a URL. Use the output of this command in the "yba yb-db-version create" command.
 
 ```
-yba yb-db-version [flags]
+yba yb-db-version artifact-create url [flags]
+```
+
+### Examples
+
+```
+yba yb-db-version artifact-create url --url <url>
 ```
 
 ### Options
 
 ```
-  -h, --help   help for yb-db-version
+      --url string   [Required] URL of the release
+  -h, --help         help for url
 ```
 
 ### Options inherited from parent commands
@@ -32,10 +39,5 @@ yba yb-db-version [flags]
 
 ### SEE ALSO
 
-* [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
 * [yba yb-db-version artifact-create](yba_yb-db-version_artifact-create.md)	 - Fetch artifact metadata for a version of YugabyteDB
-* [yba yb-db-version create](yba_yb-db-version_create.md)	 - Create a YugabyteDB version entry on YugabyteDB Anywhere
-* [yba yb-db-version delete](yba_yb-db-version_delete.md)	 - Delete a YugabyteDB version
-* [yba yb-db-version describe](yba_yb-db-version_describe.md)	 - Describe a YugabyteDB version
-* [yba yb-db-version list](yba_yb-db-version_list.md)	 - List YugabyteDB versions
 

@@ -6,6 +6,7 @@ package release
 
 import (
 	"github.com/spf13/cobra"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/release/artifact"
 )
 
 // ReleaseCmd set of commands are used to perform operations on releasess
@@ -23,5 +24,6 @@ func init() {
 	ReleaseCmd.AddCommand(listReleaseCmd)
 	ReleaseCmd.AddCommand(describeReleaseCmd)
 	ReleaseCmd.AddCommand(deleteReleaseCmd)
-	// ReleaseCmd.AddCommand(createReleaseCmd)
+	ReleaseCmd.AddCommand(createReleaseCmd)
+	ReleaseCmd.AddCommand(artifact.ArtifactReleaseCmd)
 }
