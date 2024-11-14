@@ -23,55 +23,6 @@
   }
 
   /**
-   * Decode the cookie and return the appropriate cookie value if found
-   * Otherwise empty string is returned.
-   *
-   * return string
-   */
-  function ybGetCookie(cname) {
-    const cookieName = `${cname}=`;
-    const decodedCookie = decodeURIComponent(document.cookie);
-    const splittedCookie = decodedCookie.split(';');
-    const splittedLength = splittedCookie.length;
-
-    let checkCookie = '';
-    let fetchCookie = 0;
-    let matchedCookie = '';
-
-    while (fetchCookie < splittedLength) {
-      checkCookie = splittedCookie[fetchCookie];
-      while (checkCookie.charAt(0)) {
-        if (checkCookie.charAt(0) === ' ') {
-          checkCookie = checkCookie.substring(1);
-        } else {
-          break;
-        }
-      }
-
-      if (checkCookie.indexOf(cookieName) === 0) {
-        matchedCookie = checkCookie.substring(cookieName.length, checkCookie.length);
-        break;
-      }
-
-      fetchCookie += 1;
-    }
-
-    return matchedCookie;
-  }
-
-  /**
-   * Create Cookie.
-   */
-  function ybSetCookie(name, value, monthToLive = 3) {
-    let cookie = `${name}=${encodeURIComponent(value)}; max-age=${(monthToLive * 30 * (24 * 60 * 60))}; path=/`;
-    if (location.hostname !== 'localhost') {
-      cookie += '; secure=true';
-    }
-
-    document.cookie = cookie;
-  }
-
-  /**
    * Get leftMenu toggle Show.
    */
   function ybSideNavVisibility(status) {
@@ -96,8 +47,8 @@
         maxWidth: '60px',
       });
     } else {
-      if (ybGetCookie('leftMenuWidth')) {
-        preWidth = ybGetCookie('leftMenuWidth');
+      if (window.yugabyteGetCookie && window.yugabyteGetCookie('leftMenuWidth')) {
+        preWidth = window.yugabyteGetCookie('leftMenuWidth');
       }
 
       if (navSidebar.getAttribute('data-pwidth')) {
@@ -141,11 +92,16 @@
   }
 
   const currentLink = document.querySelector('.left-sidebar-wrap nav:not(.fixed-nav) > ul a.current');
-  const leftNavVisible = ybGetCookie('leftMenuShowHide');
-  const leftNavWidth = ybGetCookie('leftMenuWidth');
   const navSidebar = document.querySelector('aside.td-sidebar');
   const sidenavCollapse = document.querySelector('.side-nav-collapse-toggle-2');
   const sidenavExpand = document.querySelector('.left-sidebar-wrap');
+
+  let leftNavVisible = '';
+  let leftNavWidth = '';
+  if (window.yugabyteGetCookie) {
+    leftNavVisible = window.yugabyteGetCookie('leftMenuShowHide');
+    leftNavWidth = window.yugabyteGetCookie('leftMenuWidth');
+  }
 
   if (!navSidebar) {
     return;
@@ -183,13 +139,19 @@
     navSidebar.classList.toggle('stick-bar');
     navSidebar.classList.add('toggled-sidebar');
     if (navSidebar.classList.contains('stick-bar')) {
-      ybSetCookie('leftMenuShowHide', 'hide', 3);
       ybSideNavVisibility('hide');
       sidenavExpand.classList.add('click-to-expand');
+
+      if (window.yugabyteSetCookie) {
+        window.yugabyteSetCookie('leftMenuShowHide', 'hide', 3);
+      }
     } else {
-      ybSetCookie('leftMenuShowHide', 'show', 3);
       ybSideNavVisibility('show');
       sidenavExpand.classList.remove('click-to-expand');
+
+      if (window.yugabyteSetCookie) {
+        window.yugabyteSetCookie('leftMenuShowHide', 'show', 3);
+      }
     }
   });
 

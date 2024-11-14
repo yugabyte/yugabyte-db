@@ -3,18 +3,6 @@ import Clipboard from 'clipboard';
 const $ = window.jQuery;
 
 /**
- * Create Cookie.
- */
-function setCookie(name, value, monthToLive) {
-  let cookie = `${name}=${encodeURIComponent(value)}; max-age=${(monthToLive * 30 * (24 * 60 * 60))}; path=/`;
-  if (location.hostname !== 'localhost') {
-    cookie += '; secure=true';
-  }
-
-  document.cookie = cookie;
-}
-
-/**
  * Show popup when the text limit exceed in Pills.
  */
 function popupOnPills() {
@@ -252,8 +240,10 @@ $(document).ready(() => {
 
       $(document).unbind('mousemove');
       if ($('body').hasClass('dragging')) {
-        setCookie('leftMenuWidth', mouseMoveX, 3);
-        setCookie('leftMenuShowHide', '', 3);
+        if (window.yugabyteSetCookie) {
+          window.yugabyteSetCookie('leftMenuWidth', mouseMoveX, 3);
+          window.yugabyteSetCookie('leftMenuShowHide', '', 3);
+        }
       }
 
       $('body').removeClass('dragging');
@@ -623,7 +613,9 @@ $(window).resize(() => {
   $('.td-main .td-sidebar').attr('style', '');
   $('.td-main #dragbar').attr('style', '');
   $('.td-main').attr('style', '');
-  setTimeout(() => {
-    setCookie('leftMenuWidth', 300, 3);
-  }, 1000);
+  if (window.yugabyteSetCookie) {
+    setTimeout(() => {
+      window.yugabyteSetCookie('leftMenuWidth', 300, 3);
+    }, 1000);
+  }
 });

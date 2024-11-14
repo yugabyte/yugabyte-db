@@ -9,32 +9,6 @@ import algoliasearch from 'algoliasearch';
   const searchInput = document.getElementById('search-query');
 
   /**
-   * Decode the cookie and return the appropriate cookie value if found
-   * Otherwise empty string is returned.
-   *
-   * return string
-   */
-  function getCookie(cname) {
-    const splittedCookie = document.cookie.split(';');
-    const splittedLength = splittedCookie.length;
-
-    let fetchCookie = 0;
-    let matchedCookie = '';
-
-    while (fetchCookie < splittedLength) {
-      const cookiePair = splittedCookie[fetchCookie].split('=');
-      if (cname === cookiePair[0].trim() && cookiePair[1].trim() !== '') {
-        matchedCookie = decodeURIComponent(cookiePair[1]);
-        break;
-      }
-
-      fetchCookie += 1;
-    }
-
-    return matchedCookie;
-  }
-
-  /**
    * Provided name value from the Query param either from URL or with the passed
    * search query.
    */
@@ -125,7 +99,11 @@ import algoliasearch from 'algoliasearch';
       }
 
       if (objectId !== '' && queryId !== '' && hitPosition > 0) {
-        let userTokenValue = getCookie('_ga');
+        let userTokenValue = '';
+        if (window.yugabyteGetCookie) {
+          userTokenValue = window.yugabyteGetCookie('_ga');
+        }
+
         if (userTokenValue === '') {
           userTokenValue = 'noToken';
         }
