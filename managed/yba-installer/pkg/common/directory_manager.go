@@ -32,8 +32,7 @@ import (
 * Data directory: /opt/yugabyte/data
 * Active Symlink: /opt/yugabyte/software/active
 *
-* GetInstallRoot will return the CORRECT install root for our workflow (one or two)
-# GetBaseInstall will return the base install. NOTE: the config has this as "installRoot"
+# GetBaseInstall will return the installRoot
 */
 
 // ALl of our install files and directories.
@@ -76,7 +75,7 @@ func DataVersionFile() string {
 	return filepath.Join(GetDataRoot(), dataVersionFileName)
 }
 
-// GetInstallRoot returns the InstallRoot where YBA is installed.
+// GetSoftwareRoot returns the version specific directory inside of installRoot/software
 func GetSoftwareRoot() string {
 	return dm.WorkingDirectory()
 }
