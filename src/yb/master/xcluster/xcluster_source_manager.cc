@@ -787,7 +787,7 @@ Status XClusterSourceManager::DoProcessHiddenTablets() {
                                        const TableId& table_id,
                                        const TabletId& tablet_id) -> Result<const TableHideInfo&> {
     if (table_hide_infos.contains(table_id)) {
-      return &table_hide_infos[table_id];
+      return table_hide_infos[table_id];
     }
 
     TableHideInfo table_hide_info;
@@ -832,7 +832,7 @@ Status XClusterSourceManager::DoProcessHiddenTablets() {
 
     table_hide_infos[table_id] = std::move(table_hide_info);
 
-    return &table_hide_infos[table_id];
+    return table_hide_infos[table_id];
   };
 
   for (auto& [tablet_id, hidden_tablet] : hidden_tablets) {

@@ -203,7 +203,7 @@ void AsyncTabletSnapshotOp::Finished(const Status& status) {
     }
     callback_(status);
   } else {
-    callback_(&resp_);
+    callback_(resp_);
   }
 }
 
