@@ -1930,8 +1930,10 @@ Status Tablet::DoHandlePgsqlReadRequest(
       // TODO(vector_index) Temporary use index_doc_read_context to pass doc_read_context for
       // indexed table. Should be changed when postgres will send all vector index queries in
       // index_request.
-      index_table_id = table_info->index_info->indexed_table_id();
-      vector_index_table_id = table_info->table_id;
+      if (table_info->index_info) {
+        index_table_id = table_info->index_info->indexed_table_id();
+        vector_index_table_id = table_info->table_id;
+      }
     }
     auto index_doc_read_context = !index_table_id.empty()
         ? VERIFY_RESULT(GetDocReadContext(index_table_id)) : nullptr;
@@ -2557,6 +2559,9 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
         new_indexes->reserve(indexes->size() + 1);
         *new_indexes = *indexes;
         new_indexes->push_back(it->second);
+        std::sort(new_indexes->begin(), new_indexes->end(), [](const auto& lhs, const auto& rhs) {
+          return lhs->column_id() < rhs->column_id();
+        });
         indexes = std::move(new_indexes);
       } else {
         indexes = std::make_shared<std::vector<docdb::VectorIndexPtr>>(1, it->second);

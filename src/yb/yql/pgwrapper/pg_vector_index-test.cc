@@ -18,6 +18,8 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/util/backoff_waiter.h"
+
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(ysql_enable_packed_row);
 
@@ -26,8 +28,6 @@ namespace yb::pgwrapper {
 class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterface<bool> {
  protected:
   void SetUp() override {
-    // TODO(vector_index) Remove when packed row support is implemented.
-    FLAGS_ysql_enable_packed_row = false;
     PgMiniTestBase::SetUp();
   }
 
@@ -56,33 +56,42 @@ void PgVectorIndexTest::TestSimple() {
       colocated ? "ybdummyann" : "ybhnsw"));
 
   size_t num_found_peers = 0;
-  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
-  for (const auto& peer : peers) {
-    auto tablet = ASSERT_RESULT(peer->shared_tablet_safe());
-    if (tablet->table_type() != TableType::PGSQL_TABLE_TYPE) {
-      continue;
-    }
-    auto& metadata = *tablet->metadata();
-    auto tables = metadata.GetAllColocatedTables();
-    tablet::TableInfoPtr main_table_info;
-    tablet::TableInfoPtr index_table_info;
-    for (const auto& table_id : tables) {
-      auto table_info = ASSERT_RESULT(metadata.GetTableInfo(table_id));
-      LOG(INFO) << "Table: " << table_info->ToString();
-      if (table_info->table_name == "test") {
-        main_table_info = table_info;
-      } else if (table_info->index_info) {
-        index_table_info = table_info;
+  auto check_tablets = [this, &num_found_peers]() -> Result<bool> {
+    num_found_peers = 0;
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+    for (const auto& peer : peers) {
+      auto tablet = VERIFY_RESULT(peer->shared_tablet_safe());
+      if (tablet->table_type() != TableType::PGSQL_TABLE_TYPE) {
+        continue;
       }
+      auto& metadata = *tablet->metadata();
+      auto tables = metadata.GetAllColocatedTables();
+      tablet::TableInfoPtr main_table_info;
+      tablet::TableInfoPtr index_table_info;
+      for (const auto& table_id : tables) {
+        auto table_info = VERIFY_RESULT(metadata.GetTableInfo(table_id));
+        LOG(INFO) << "Table: " << table_info->ToString();
+        if (table_info->table_name == "test") {
+          main_table_info = table_info;
+        } else if (table_info->index_info) {
+          index_table_info = table_info;
+        }
+      }
+      if (!main_table_info) {
+        continue;
+      }
+      ++num_found_peers;
+      if (!index_table_info) {
+        return false;
+      }
+      SCHECK_EQ(
+        index_table_info->index_info->indexed_table_id(), main_table_info->table_id,
+        IllegalState, "Wrong indexed table");
     }
-    if (!main_table_info) {
-      continue;
-    }
-    ++num_found_peers;
-    ASSERT_ONLY_NOTNULL(index_table_info);
-    ASSERT_EQ(index_table_info->index_info->indexed_table_id(), main_table_info->table_id);
-  }
+    return true;
+  };
 
+  ASSERT_OK(WaitFor(check_tablets, 10s * kTimeMultiplier, "Index created on all tablets"));
   ASSERT_NE(num_found_peers, 0);
 
   ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, '[1.0, 0.5, 0.25]')"));

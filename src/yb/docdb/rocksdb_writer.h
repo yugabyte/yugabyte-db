@@ -199,6 +199,10 @@ class FrontierSchemaVersionUpdater {
 
   void SetFrontiers(ConsensusFrontiers* frontiers) { frontiers_ = frontiers; }
 
+  SchemaPackingProvider* schema_packing_provider() const {
+    return schema_packing_provider_;
+  }
+
  protected:
   Status UpdateSchemaVersion(Slice key, Slice value);
   void FlushSchemaVersion();
@@ -207,7 +211,7 @@ class FrontierSchemaVersionUpdater {
   }
 
  private:
-  SchemaPackingProvider* schema_packing_provider_;
+  SchemaPackingProvider* const schema_packing_provider_;
   Uuid schema_version_table_ = Uuid::Nil();
   ColocationId schema_version_colocation_id_ = 0;
   SchemaVersion min_schema_version_ = std::numeric_limits<SchemaVersion>::max();
@@ -241,6 +245,8 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
  private:
   Result<bool> StoreApplyState(const Slice& key, rocksdb::DirectWriteHandler* handler);
   Status ProcessVectorIndexes(Slice key, Slice value);
+  template <class Decoder>
+  Status ProcessVectorIndexesForPackedRow(Slice key, Slice value);
 
   const TabletId& tablet_id_;
   const ApplyTransactionState* apply_state_;

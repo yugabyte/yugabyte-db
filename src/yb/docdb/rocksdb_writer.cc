@@ -27,6 +27,8 @@
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/intent.h"
+#include "yb/dockv/packed_value.h"
+#include "yb/dockv/schema_packing.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/walltime.h"
@@ -678,8 +680,36 @@ Status ApplyIntentsContext::ProcessVectorIndexes(Slice key, Slice value) {
           << "Unexpected entry type: " << entry_type << " in " << key.ToDebugHexString();
     }
   } else {
-    LOG(FATAL)
-        << "Support packed row: " << key.ToDebugHexString() << ", " << value.ToDebugHexString();
+    auto packed_row_version = dockv::GetPackedRowVersion(value);
+    RSTATUS_DCHECK(packed_row_version.has_value(), Corruption,
+                   "Full row with non packed value: $0 -> $1",
+                   key.ToDebugHexString(), value.ToDebugHexString());
+    switch (*packed_row_version) {
+      case dockv::PackedRowVersion::kV1:
+        return ProcessVectorIndexesForPackedRow<dockv::PackedRowDecoderV1>(key, value);
+      case dockv::PackedRowVersion::kV2:
+        return ProcessVectorIndexesForPackedRow<dockv::PackedRowDecoderV2>(key, value);
+    }
+    FATAL_INVALID_ENUM_VALUE(dockv::PackedRowVersion, *packed_row_version);
+  }
+  return Status::OK();
+}
+
+template <class Decoder>
+Status ApplyIntentsContext::ProcessVectorIndexesForPackedRow(Slice key, Slice value) {
+  value.consume_byte();
+
+  auto schema_version = narrow_cast<SchemaVersion>(VERIFY_RESULT(FastDecodeUnsignedVarInt(&value)));
+
+  auto& schema_packing = *VERIFY_RESULT(schema_packing_provider()->CotablePacking(
+      Uuid::Nil(), schema_version, HybridTime::kMax)).schema_packing;
+  Decoder decoder(schema_packing, value.data());
+  for (size_t i = 0; i != vector_indexes_->size(); ++i) {
+    auto column_value = decoder.FetchValue((*vector_indexes_)[i]->column_id());
+    vector_index_batches_[i].push_back(VectorIndexInsertEntry {
+      .key = KeyBuffer(key),
+      .value = ValueBuffer(*column_value),
+    });
   }
   return Status::OK();
 }
