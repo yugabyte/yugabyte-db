@@ -19,6 +19,7 @@
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/pg_shared_mem_pool.h"
+#include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
 
@@ -207,6 +208,39 @@ TEST_F_EX(PgSharedMemTest, LongRead, PgSharedMemBigTimeoutTest) {
   auto result = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT * FROM t"));
   ASSERT_EQ(result, 1);
   ASSERT_OK(conn.CommitTransaction());
+}
+
+TEST_F(PgSharedMemTest, ConnectionShutdown) {
+  {
+    auto conn = ASSERT_RESULT(Connect());
+
+    ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+    ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1)"));
+  }
+
+  auto threads_before = CountManagedThreads();
+  size_t threads_mid = 0;
+  constexpr size_t kNumIterations = 16;
+
+  for (int i = 0; i != kNumIterations; ++i) {
+    auto conn = ASSERT_RESULT(Connect());
+    auto result = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t"));
+    ASSERT_EQ(result, "1");
+    if (i == kNumIterations / 2) {
+      threads_mid = CountManagedThreads();
+    }
+  }
+
+  std::this_thread::sleep_for(1s);
+
+  auto threads_after = CountManagedThreads();
+
+  LOG(INFO) << "Threads: " << threads_before << ", " << threads_mid << ", " << threads_after;
+
+  ASSERT_LE(threads_after, threads_mid);
+
+  auto* client_service = cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientService();
+  ASSERT_LE(client_service->TEST_SessionsCount(), 1);
 }
 
 } // namespace yb::pgwrapper

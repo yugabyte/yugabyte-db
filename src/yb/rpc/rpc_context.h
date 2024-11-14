@@ -310,6 +310,7 @@ class RpcContext {
 
   // Closes connection that received this request.
   void CloseConnection();
+  void ListenConnectionShutdown(const std::function<void()>& listener);
 
   std::string ToString() const;
 

@@ -256,6 +256,10 @@ void RpcContext::CloseConnection() {
       << "Could not schedule a reactor task to close a connection: " << closing_status;
 }
 
+void RpcContext::ListenConnectionShutdown(const std::function<void()>& listener) {
+  call_->connection()->ListenShutdown(listener);
+}
+
 std::string RpcContext::ToString() const {
   return call_->ToString();
 }

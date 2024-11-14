@@ -253,6 +253,7 @@ class ThreadMgr {
   void RemoveThread(const pthread_t& pthread_id, const string& category);
 
   void RenderThreadGroup(const std::string& group, std::ostream& output);
+  uint64_t ReadThreadsRunning();
 
  private:
   // Container class for any details we want to capture about a thread
@@ -305,7 +306,6 @@ class ThreadMgr {
 
   // Metric callbacks.
   uint64_t ReadThreadsStarted();
-  uint64_t ReadThreadsRunning();
 
   // Webpage callback; prints all threads by category
   void ThreadPathHandler(const WebCallbackRegistry::WebRequest& args,
@@ -927,6 +927,10 @@ CDSAttacher::~CDSAttacher() {
 
 void RenderAllThreadStacks(std::ostream& output) {
   thread_manager->RenderThreadGroup(kAllGroups, output);
+}
+
+size_t CountManagedThreads() {
+  return thread_manager->ReadThreadsRunning();
 }
 
 } // namespace yb
