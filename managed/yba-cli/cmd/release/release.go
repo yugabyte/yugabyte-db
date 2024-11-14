@@ -22,6 +22,6 @@ var ReleaseCmd = &cobra.Command{
 func init() {
 	ReleaseCmd.AddCommand(listReleaseCmd)
 	ReleaseCmd.AddCommand(describeReleaseCmd)
-	//  ReleaseCmd.AddCommand(deleteReleaseCmd)
-	//  ReleaseCmd.AddCommand(createReleaseCmd)
+	ReleaseCmd.AddCommand(deleteReleaseCmd)
+	// ReleaseCmd.AddCommand(createReleaseCmd)
 }

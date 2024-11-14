@@ -37,3 +37,24 @@ func (a *AuthAPIClient) GetNewRelease(rUUID string) (
 ) {
 	return a.APIClient.NewReleaseManagementApi.GetNewRelease(a.ctx, a.CustomerUUID, rUUID)
 }
+
+// CreateNewRelease API to create new release
+func (a *AuthAPIClient) CreateNewRelease() (
+	ybaclient.NewReleaseManagementApiApiCreateNewReleaseRequest,
+) {
+	return a.APIClient.NewReleaseManagementApi.CreateNewRelease(a.ctx, a.CustomerUUID)
+}
+
+// DeleteNewRelease API to delete new release
+func (a *AuthAPIClient) DeleteNewRelease(rUUID string) (
+	ybaclient.NewReleaseManagementApiApiDeleteNewReleaseRequest,
+) {
+	return a.APIClient.NewReleaseManagementApi.DeleteNewRelease(a.ctx, a.CustomerUUID, rUUID)
+}
+
+// UpdateNewRelease API to update new release
+func (a *AuthAPIClient) UpdateNewRelease(rUUID string) (
+	ybaclient.NewReleaseManagementApiApiUpdateNewReleaseRequest,
+) {
+	return a.APIClient.NewReleaseManagementApi.UpdateNewRelease(a.ctx, a.CustomerUUID, rUUID)
+}

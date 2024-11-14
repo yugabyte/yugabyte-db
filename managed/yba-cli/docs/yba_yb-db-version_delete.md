@@ -1,19 +1,28 @@
-## yba yb-db-version
+## yba yb-db-version delete
 
-Manage YugabyteDB versions
+Delete a YugabyteDB version
 
 ### Synopsis
 
-Manage YugabyteDB versions
+Delete a version in YugabyteDB Anywhere
 
 ```
-yba yb-db-version [flags]
+yba yb-db-version delete [flags]
+```
+
+### Examples
+
+```
+yba yb-db-version delete --version <version>
 ```
 
 ### Options
 
 ```
-  -h, --help   help for yb-db-version
+  -v, --version string           [Required] The YugabyteDB version to be deleted.
+      --deployment-type string   [Optional] Deployment type of the YugabyteDB version. Allowed values: x86_64, aarch64, kubernetes
+  -f, --force                    [Optional] Bypass the prompt for non-interactive usage.
+  -h, --help                     help for delete
 ```
 
 ### Options inherited from parent commands
@@ -32,8 +41,5 @@ yba yb-db-version [flags]
 
 ### SEE ALSO
 
-* [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
-* [yba yb-db-version delete](yba_yb-db-version_delete.md)	 - Delete a YugabyteDB version
-* [yba yb-db-version describe](yba_yb-db-version_describe.md)	 - Describe a YugabyteDB version
-* [yba yb-db-version list](yba_yb-db-version_list.md)	 - List YugabyteDB versions
+* [yba yb-db-version](yba_yb-db-version.md)	 - Manage YugabyteDB versions
 
