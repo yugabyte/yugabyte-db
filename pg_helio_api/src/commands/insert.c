@@ -1149,6 +1149,77 @@ InsertDocument(uint64 collectionId, const char *shardTableName,
 }
 
 
+/*
+ * Inserts a document with the given shardKeyValue and object_id, and on conflict
+ * with the _id index, replaces the document (Similar to upsert behavior)
+ */
+bool
+InsertOrReplaceDocument(uint64 collectionId, const char *shardTableName, int64
+						shardKeyValue,
+						pgbson *objectId, pgbson *document)
+{
+	StringInfoData query;
+	const int argCount = 3;
+	Oid argTypes[3];
+	Datum argValues[3];
+	int spiStatus PG_USED_FOR_ASSERTS_ONLY = 0;
+
+	SPI_connect();
+
+	initStringInfo(&query);
+	appendStringInfo(&query, "INSERT INTO %s.", ApiDataSchemaName);
+
+	if (shardTableName != NULL && shardTableName[0] != '\0')
+	{
+		appendStringInfoString(&query, shardTableName);
+	}
+	else
+	{
+		appendStringInfo(&query, "documents_" UINT64_FORMAT, collectionId);
+	}
+
+	appendStringInfo(&query, " (shard_key_value, object_id, document) "
+							 " VALUES ($1, %s.bson_from_bytea($2), "
+							 "%s.bson_from_bytea($3))",
+					 CoreSchemaName, CoreSchemaName);
+
+	if (shardTableName != NULL && shardTableName[0] != '\0')
+	{
+		/* Direct shard - we need to extract tableId_shardId as a suffix */
+		/* Prefix length is the length of documents_ */
+		const int prefixLength = 10;
+		const char *shardSuffix = shardTableName + prefixLength;
+		appendStringInfo(&query, " ON CONFLICT ON CONSTRAINT collection_pk_%s"
+								 " DO UPDATE set document = %s.bson_from_bytea($3)",
+						 shardSuffix, CoreSchemaName);
+	}
+	else
+	{
+		appendStringInfo(&query, " ON CONFLICT ON CONSTRAINT collection_pk_" UINT64_FORMAT
+						 " DO UPDATE set document = %s.bson_from_bytea($3)", collectionId,
+						 CoreSchemaName);
+	}
+
+	argTypes[0] = INT8OID;
+	argValues[0] = Int64GetDatum(shardKeyValue);
+	argTypes[1] = BYTEAOID;
+	argValues[1] = PointerGetDatum(CastPgbsonToBytea(objectId));
+	argTypes[2] = BYTEAOID;
+	argValues[2] = PointerGetDatum(CastPgbsonToBytea(document));
+
+	SPIPlanPtr plan = GetSPIQueryPlanWithLocalShard(collectionId, shardTableName,
+													QUERY_ID_INSERT, query.data, argTypes,
+													argCount);
+
+	spiStatus = SPI_execute_plan(plan, argValues, NULL, false, 1);
+	pfree(query.data);
+
+	SPI_finish();
+
+	return spiStatus == SPI_OK_INSERT || spiStatus == SPI_OK_UPDATE;
+}
+
+
 bool
 InsertDocumentToTempCollection(MongoCollection *collection, int64 shardKeyValue,
 							   pgbson *document)

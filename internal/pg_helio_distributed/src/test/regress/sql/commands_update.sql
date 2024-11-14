@@ -618,3 +618,13 @@ select helio_api.update('update', '{"update":"single", "updates":[{"q":{"$or" : 
 select helio_api.update('update', '{"update":"single", "updates":[{"q":{"$and" : [{"$or" : [{"x": 10},{"$expr" : {"$gte": ["$c", 100]}}, {"y": 10}]}]},"u":{"$set": {"a" :10}},"upsert":true}]}');
 select helio_api.update('update', '{"update":"single", "updates":[{"q":{"$expr": {"$gt" : ["$x",10]}},"u":{},"upsert":true}]}');
 select helio_api.update('update', '{"update":"single", "updates":[{"q":{"$and" : [{"a": 10}, {"$or" : [{"x": 10},{"$expr" : {"$gte": ["$c", 100]}}, {"y": 10}]}, {"b":11} ]},"u":{"$set": {"a" :10}},"upsert":true}]}');
+
+-- test update with upsert
+BEGIN;
+set helio_api.useLocalExecutionShardQueries to off;
+SELECT helio_api.update('update', '{ "update": "single", "updates": [ { "q": { "_id":8010 }, "u": { "value": "1" }, "upsert": true }] }');
+
+SELECT helio_api.shard_collection('update', 'single', '{ "_id": "hashed" }', false);
+
+SELECT helio_api.update('update', '{ "update": "single", "updates": [ { "q": { "_id":8011 }, "u": { "value": "1" }, "upsert": true }] }');
+ROLLBACK;

@@ -1586,8 +1586,8 @@ UpdateOne(MongoCollection *collection, UpdateOneParams *updateOneParams,
 		/* extract object ID */
 		pgbson *objectId = PgbsonGetDocumentId(result->reinsertDocument);
 
-		InsertDocument(collection->collectionId, collection->shardTableName,
-					   newShardKeyHash, objectId, result->reinsertDocument);
+		InsertOrReplaceDocument(collection->collectionId, collection->shardTableName,
+								newShardKeyHash, objectId, result->reinsertDocument);
 	}
 }
 
@@ -2301,8 +2301,9 @@ UpdateOneInternal(MongoCollection *collection, UpdateOneParams *updateOneParams,
 			if (newShardKeyHash == shardKeyHash)
 			{
 				/* shard key unchanged, upsert now */
-				InsertDocument(collection->collectionId, collection->shardTableName,
-							   newShardKeyHash, objectId, newDoc);
+				InsertOrReplaceDocument(collection->collectionId,
+										collection->shardTableName,
+										newShardKeyHash, objectId, newDoc);
 
 				result->reinsertDocument = NULL;
 			}
@@ -2827,8 +2828,9 @@ UpsertDocument(MongoCollection *collection, pgbson *update,
 		ValidateSchemaOnDocumentInsert(stateForSchemaValidation, &newDocValue);
 	}
 
-	InsertDocument(collection->collectionId, collection->shardTableName, newShardKeyHash,
-				   objectId, newDoc);
+	InsertOrReplaceDocument(collection->collectionId, collection->shardTableName,
+							newShardKeyHash,
+							objectId, newDoc);
 
 	return objectId;
 }
