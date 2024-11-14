@@ -14,7 +14,7 @@ type: docs
 
 ## Automatic YB-Master failover
 
-{{<tags/feature/ea>}} YugabyteDB Anywhere can automatically detect YB-Master servers that are not responding to the master leader, as well as Master servers that are lagging WAL operations.
+{{<tags/feature/ea>}} To avoid under-replication, YugabyteDB Anywhere can automatically detect YB-Master servers that are not responding to the master leader, as well as master servers that are lagging WAL operations, and fail over to another available node.
 
 ### Prerequisites
 
@@ -24,30 +24,42 @@ type: docs
 
 ### Failover
 
-When YugabyteDB Anywhere detects an unresponsive master in a universe, it displays a message on the universe **Overview** indicating a potential master failure, and indicating the time remaining until auto failover. If the problem is fixed during this time, the warning is dismissed. You can also opt to snooze the failover.
+Automatic master failover works as follows:
 
-A master is declared failed or potentially failed when one of the following conditions are met
+1. When active, by default YugabyteDB Anywhere checks universe masters every minute to see if they respond.
 
-- The Master heartbeat delay is greater than the threshold.
-- Maximum tablet follower lag is greater than the threshold.
+    You can customize this interval using the universe runtime configuration option `yb.auto_master_failover.detect_interval`.
+
+1. YugabyteDB Anywhere declares a master is failed or potentially failed when one of the following conditions are met:
+
+    - The Master heartbeat delay is greater than the threshold.
+    - Maximum tablet follower lag is greater than the threshold.
+
+1. When YugabyteDB Anywhere detects an unresponsive master in a universe, it displays a message on the universe **Overview** indicating a potential master failure, and indicating the time remaining until auto failover (by default, this is 30 minutes).
 
     The warning is displayed when a master lags more than the threshold defined by the universe runtime configuration option `yb.auto_master_failover.master_follower_lag_soft_threshold`.
 
-    The master failover task is triggered when the lag exceeds the hard threshold defined by the universe runtime configuration option `yb.auto_master_failover.master_follower_lag_hard_threshold`.
+    You can configure the time to failover using the universe runtime configuration option `yb.auto_master_failover.master_follower_lag_hard_threshold`.
 
-For a universe to successfully fail over Masters, the following must be true:
+1. During this time, you can investigate and porentially fix the problem.
 
-- The universe is not paused.
-- The universe is not locked (that is, another locking operation is running).
-- All nodes are live; that is, there aren't any stopped, removed, or decommissioned nodes.
+    If you fix the problem, the warning is dismissed, and YugabyteDB Anywhere returns to monitoring the universe.
 
-After starting up a new master on a different node in the same availability zone as the failed master, YugabyteDB Anywhere waits for you to recover any failed VMs, including the failed master VM, so that it can update the master address configuration on those VMs. Follow the steps in [Replace a live or unreachable node](#replace-a-live-or-unreachable-node).
+    You can also opt to snooze the failover.
 
-You can set the delay for post auto master failover using the universe runtime configuration option `yb.auto_master_failover.sync_master_addrs_task_delay`. The reference start time is calculated from the time that YugabyteDB Anywhere finds that all processes are running fine on all the VMs.
+1. Failover is triggered if the time expires and the issue hasn't been fixed.
 
-The interval of the watcher is determined by the universe runtime configuration option `yb.auto_master_failover.detect_interval`.
+    For a universe to successfully fail over masters, the following must be true:
 
-For Master Failover, if the task fails, a retry is made automatically. The retry limit is set by the universe runtime configuration option `yb.auto_master_failover.max_task_retries`. Post failover, there is no retry limit as it is a critical operation.
+    - The universe is not paused.
+    - The universe is not locked (that is, another locking operation is running).
+    - All nodes are live; that is, there aren't any stopped, removed, or decommissioned nodes.
+
+1. After starting up a new master on a different node in the same availability zone as the failed master, YugabyteDB Anywhere waits for you to recover any failed VMs, including the failed master VM, so that it can update the master address configuration on those VMs. Follow the steps in [Replace a live or unreachable node](#replace-a-live-or-unreachable-node).
+
+    You can set the delay for post automatic master failover using the universe runtime configuration option `yb.auto_master_failover.sync_master_addrs_task_delay`. The reference start time is calculated from the time that YugabyteDB Anywhere finds that all processes are running fine on all the VMs.
+
+For master failover, if the task fails, a retry is made automatically. The retry limit is set by the universe runtime configuration option `yb.auto_master_failover.max_task_retries`. Post failover, there is no retry limit as it is a critical operation.
 
 ## Replace a live or unreachable node
 
