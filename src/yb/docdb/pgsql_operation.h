@@ -148,22 +148,22 @@ struct PgsqlReadOperationData {
   const docdb::ReadOperationData& read_operation_data;
   bool is_explicit_request_read_time;
   const PgsqlReadRequestPB& request;
+  const DocReadContext& doc_read_context;
+  const DocReadContext* index_doc_read_context;
   const TransactionOperationContext& txn_op_context;
   const docdb::YQLStorageIf& ql_storage;
   const ScopedRWOperation& pending_op;
+  VectorIndexPtr vector_index;
 };
 
 class PgsqlReadOperation : public DocExprExecutor {
  public:
   // Construct and access methods.
   PgsqlReadOperation(std::reference_wrapper<const PgsqlReadOperationData> data,
-                     std::reference_wrapper<const DocReadContext> doc_read_context,
-                     const DocReadContext* index_doc_read_context,
                      WriteBuffer* result_buffer,
                      HybridTime* restart_read_ht)
-      : data_(data), request_(data_.request), doc_read_context_(doc_read_context),
-        index_doc_read_context_(index_doc_read_context),
-        result_buffer_(result_buffer), restart_read_ht_(restart_read_ht) {
+      : data_(data), request_(data_.request), result_buffer_(result_buffer),
+        restart_read_ht_(restart_read_ht) {
   }
 
   const PgsqlReadRequestPB& request() const { return data_.request; }
@@ -191,10 +191,11 @@ class PgsqlReadOperation : public DocExprExecutor {
   Result<std::tuple<size_t, bool>> ExecuteScalar();
 
   // Execute a READ operator for a given vector search.
-  Result<std::tuple<size_t, bool>> ExecuteVectorSearch();
+  Result<std::tuple<size_t, bool>> ExecuteVectorSearch(
+      const DocReadContext& doc_read_context, const PgVectorReadOptionsPB& vector_idx_options);
 
   // Execute a READ operator for a given batch of keys.
-  Result<size_t> ExecuteBatchKeys(KeyProvider* key_provider);
+  Result<size_t> ExecuteBatchKeys(KeyProvider* key_provider, bool use_indexed_table = false);
 
   Result<std::tuple<size_t, bool>> ExecuteSample();
 
@@ -212,6 +213,7 @@ class PgsqlReadOperation : public DocExprExecutor {
   Result<bool> SetPagingState(
       YQLRowwiseIteratorIf* iter, const Schema& schema, const ReadHybridTime& read_time);
 
+  Result<size_t> ExecuteVectorLSMSearch(const PgVectorReadOptionsPB& vector_idx_options);
   void InitTargetEncoders(
       const google::protobuf::RepeatedPtrField<PgsqlExpressionPB>& targets,
       const dockv::PgTableRow& table_row);
@@ -219,8 +221,6 @@ class PgsqlReadOperation : public DocExprExecutor {
   //------------------------------------------------------------------------------------------------
   const PgsqlReadOperationData& data_;
   const PgsqlReadRequestPB& request_;
-  const DocReadContext& doc_read_context_;
-  const DocReadContext* index_doc_read_context_;
   WriteBuffer* const result_buffer_;
   HybridTime* const restart_read_ht_;
 

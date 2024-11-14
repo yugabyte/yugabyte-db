@@ -22,6 +22,8 @@
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/pgsql_operation.h"
 
+#include "yb/qlexpr/index.h"
+
 #include "yb/tablet/read_result.h"
 #include "yb/tablet/tablet_metadata.h"
 
@@ -77,21 +79,11 @@ Status AbstractTablet::HandleQLReadRequest(
 
 Status AbstractTablet::ProcessPgsqlReadRequest(
     const docdb::PgsqlReadOperationData& op_data,
-    const std::shared_ptr<TableInfo>& table_info,
     PgsqlReadRequestResult* result) {
   const auto& pgsql_read_request = op_data.request;
   // Form a schema of columns that are referenced by this query.
-  const auto doc_read_context = table_info->doc_read_context;
-  std::string indexed_table_id;
-  if (pgsql_read_request.has_index_request()) {
-    indexed_table_id = pgsql_read_request.index_request().table_id();
-  }
-  const auto index_doc_read_context = !indexed_table_id.empty()
-      ? VERIFY_RESULT(GetDocReadContext(indexed_table_id)) : nullptr;
 
-  docdb::PgsqlReadOperation doc_op(
-      op_data, *doc_read_context, index_doc_read_context.get(), result->rows_data,
-      &result->restart_read_ht);
+  docdb::PgsqlReadOperation doc_op(op_data, result->rows_data, &result->restart_read_ht);
 
   TRACE("Start Execute");
   auto fetched_rows = doc_op.Execute();

@@ -103,7 +103,7 @@ class UsearchIndex :
   }
 
   Status DoSaveToFile(const std::string& path) {
-    // TODO(lsm) Reload via memory mapped file
+    // TODO(vector_index) Reload via memory mapped file
     if (!index_.save(output_file_t(path.c_str()))) {
       return STATUS_FORMAT(IOError, "Failed to save index to file: $0", path);
     }

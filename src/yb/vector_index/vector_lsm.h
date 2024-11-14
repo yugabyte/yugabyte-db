@@ -131,7 +131,7 @@ class VectorLSM {
 
   Status Insert(
       std::vector<InsertEntry> entries, HybridTime write_time,
-      const rocksdb::UserFrontiers& value);
+      const rocksdb::UserFrontiers* frontiers);
 
   Result<SearchResults> Search(const Vector& query_vector, const SearchOptions& options) const;
 

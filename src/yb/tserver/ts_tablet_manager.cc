@@ -2076,7 +2076,10 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         .metadata_cache = metadata_cache,
         .get_min_xcluster_schema_version =
             std::bind(&TabletServer::GetMinXClusterSchemaVersion, server_, _1, _2),
-        .messenger = server_->messenger()};
+        .messenger = server_->messenger(),
+        // TODO(vector_index) find the best thread pool for this purpose
+        .rpc_thread_pool = raft_notifications_pool(),
+    };
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
       .listener = tablet_peer->status_listener(),

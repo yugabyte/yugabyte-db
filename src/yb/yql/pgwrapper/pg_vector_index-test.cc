@@ -18,26 +18,42 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 
+DECLARE_bool(TEST_skip_process_apply);
+DECLARE_bool(ysql_enable_packed_row);
+
 namespace yb::pgwrapper {
 
-class PgVectorIndexTest : public PgMiniTestBase {
+class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterface<bool> {
  protected:
-  void TestSimple(bool colocated);
+  void SetUp() override {
+    // TODO(vector_index) Remove when packed row support is implemented.
+    FLAGS_ysql_enable_packed_row = false;
+    PgMiniTestBase::SetUp();
+  }
+
+  void TestSimple();
 };
 
-void PgVectorIndexTest::TestSimple(bool colocated) {
+void PgVectorIndexTest::TestSimple() {
+  auto colocated = GetParam();
   auto conn = ASSERT_RESULT(Connect());
   std::string create_suffix;
   if (colocated) {
     create_suffix = " WITH (COLOCATED = 1)";
     ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE colocated_db COLOCATION = true"));
     conn = ASSERT_RESULT(ConnectToDB("colocated_db"));
+  } else {
+    // TODO(vector_index) Remove it when multi-tablet vector indexes will be supported
+    create_suffix = " SPLIT INTO 1 TABLETS";
   }
   ASSERT_OK(conn.Execute("CREATE EXTENSION vector VERSION '0.4.4-yb-1.2'"));
   ASSERT_OK(conn.Execute(
       "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector(3))" + create_suffix));
 
-  ASSERT_OK(conn.Execute("CREATE INDEX ON test USING ybdummyann (embedding vector_l2_ops)"));
+  // TODO(vector_index) Support colocated tables.
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE INDEX ON test USING $0 (embedding vector_l2_ops)",
+      colocated ? "ybdummyann" : "ybhnsw"));
 
   size_t num_found_peers = 0;
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
@@ -77,12 +93,14 @@ void PgVectorIndexTest::TestSimple(bool colocated) {
   ASSERT_EQ(result, "1, [1, 0.5, 0.25]; 2, [0.125, 0.375, 0.25]");
 }
 
-TEST_F(PgVectorIndexTest, Simple) {
-  TestSimple(/* colocated= */ false);
+TEST_P(PgVectorIndexTest, Simple) {
+  TestSimple();
 }
 
-TEST_F(PgVectorIndexTest, SimpleColocated) {
-  TestSimple(/* colocated= */ true);
+std::string ColocatedToString(const testing::TestParamInfo<bool>& param_info) {
+  return param_info.param ? "Colocated" : "Distributed";
 }
+
+INSTANTIATE_TEST_SUITE_P(, PgVectorIndexTest, ::testing::Bool(), ColocatedToString);
 
 }  // namespace yb::pgwrapper

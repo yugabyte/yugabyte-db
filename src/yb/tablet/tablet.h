@@ -1278,6 +1278,8 @@ class Tablet : public AbstractTablet,
   std::function<uint32_t(const TableId&, const ColocationId&)>
       get_min_xcluster_schema_version_ = nullptr;
 
+  rpc::ThreadPool* rpc_thread_pool_ = nullptr;
+
   simple_spinlock operation_filters_mutex_;
 
   boost::intrusive::list<OperationFilter> operation_filters_ GUARDED_BY(operation_filters_mutex_);
@@ -1287,6 +1289,13 @@ class Tablet : public AbstractTablet,
   std::unique_ptr<log::LogAnchor> completed_split_log_anchor_ GUARDED_BY(operation_filters_mutex_);
 
   std::unique_ptr<OperationFilter> restoring_operation_filter_ GUARDED_BY(operation_filters_mutex_);
+
+  std::atomic<bool> has_vector_indexes_{false};
+  std::shared_mutex vector_indexes_mutex_;
+  std::unordered_map<TableId, docdb::VectorIndexPtr> all_vector_indexes_
+      GUARDED_BY(vector_indexes_mutex_);
+  std::unordered_map<TableId, docdb::VectorIndexesPtr> vector_indexes_for_table_
+      GUARDED_BY(vector_indexes_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

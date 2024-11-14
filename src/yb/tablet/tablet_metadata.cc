@@ -251,7 +251,7 @@ TableInfo::~TableInfo() = default;
 
 void TableInfo::CompleteInit() {
   if (index_info && index_info->is_vector_idx()) {
-    doc_read_context->SetVectorIdxOptions(index_info->get_vector_idx_options());
+    doc_read_context->vector_idx_options = index_info->vector_idx_options();
   }
 
   if (!index_info || !index_info->is_unique()) {

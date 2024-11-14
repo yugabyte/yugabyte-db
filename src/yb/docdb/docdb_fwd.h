@@ -51,6 +51,7 @@ class SchemaPackingProvider;
 class SharedLockManager;
 class TableInfoProvider;
 class TransactionStatusCache;
+class VectorIndex;
 class WaitQueue;
 class YQLRowwiseIteratorIf;
 class YQLStorageIf;
@@ -67,6 +68,7 @@ struct LockBatchEntry;
 struct ObjectLockPrefix;
 struct PgsqlReadOperationData;
 struct ReadOperationData;
+struct VectorIndexInsertEntry;
 
 using DocKeyHash = uint16_t;
 using DocReadContextPtr = std::shared_ptr<DocReadContext>;
@@ -82,6 +84,10 @@ using ScanChoicesPtr = std::unique_ptr<ScanChoices>;
 using SessionIDHostPair = std::pair<const uint64_t, const std::string>;
 
 using IndexRequests = std::vector<std::pair<const qlexpr::IndexInfo*, QLWriteRequestPB>>;
+using VectorIndexPtr = std::shared_ptr<VectorIndex>;
+using VectorIndexes = std::vector<VectorIndexPtr>;
+using VectorIndexesPtr = std::shared_ptr<VectorIndexes>;
+using VectorIndexInsertEntries = std::vector<VectorIndexInsertEntry>;
 
 YB_STRONGLY_TYPED_BOOL(SkipFlush);
 YB_STRONGLY_TYPED_BOOL(SkipSeek);

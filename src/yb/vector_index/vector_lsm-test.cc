@@ -222,7 +222,7 @@ Status VectorLSMTest::InsertCube(
     TestFrontiers frontiers;
     frontiers.Smallest().SetVertexId(block_entries.front().vertex_id);
     frontiers.Largest().SetVertexId(block_entries.front().vertex_id);
-    RETURN_NOT_OK(lsm.Insert(block_entries, write_time, frontiers));
+    RETURN_NOT_OK(lsm.Insert(block_entries, write_time, &frontiers));
   }
   return Status::OK();
 }

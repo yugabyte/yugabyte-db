@@ -468,13 +468,14 @@ typedef enum YbPgVectorIdxType {
   YB_VEC_INVALID,
   YB_VEC_DUMMY,
   YB_VEC_IVFFLAT,
-  YB_VEC_HNSW
+  YB_VEC_HNSW,
 } YbPgVectorIdxType;
 
 typedef struct YbPgVectorIdxOptions {
   YbPgVectorDistType dist_type;
   YbPgVectorIdxType idx_type;
   uint32_t dimensions;
+  uint32_t attnum;
   // TODO(tanuj): Add vector index type-specific options
 } YbPgVectorIdxOptions;
 

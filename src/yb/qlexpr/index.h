@@ -139,7 +139,9 @@ class IndexInfo {
 
   bool is_vector_idx() const;
 
-  const PgVectorIdxOptionsPB &get_vector_idx_options() const;
+  const PgVectorIdxOptionsPB& vector_idx_options() const {
+    return *vector_idx_options_;
+  }
 
  private:
   const TableId table_id_;            // Index table id.
@@ -168,8 +170,7 @@ class IndexInfo {
 
   mutable std::shared_ptr<const IndexInfoPB_WherePredicateSpecPB> where_predicate_spec_ = nullptr;
 
-  bool has_vector_idx_options_ = false;
-  PgVectorIdxOptionsPB vector_idx_options_;
+  std::optional<PgVectorIdxOptionsPB> vector_idx_options_;
 };
 
 // A map to look up an index by its index table id.

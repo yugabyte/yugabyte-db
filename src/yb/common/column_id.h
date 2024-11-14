@@ -23,6 +23,8 @@
 
 namespace yb {
 
+class Slice;
+
 template<char digit1, char... digits>
 struct ColumnIdHelper {
   typedef ColumnIdHelper<digit1> Current;
@@ -67,7 +69,9 @@ class ColumnId {
 
   uint64_t ToUint64() const;
 
-  static Status FromInt64(int64_t value, ColumnId *column_id);
+  static Result<ColumnId> FromInt64(int64_t value);
+  static Result<ColumnId> Decode(Slice* slice);
+  static Result<ColumnId> FullyDecode(Slice slice);
 
   size_t hash() const {
     return t_;

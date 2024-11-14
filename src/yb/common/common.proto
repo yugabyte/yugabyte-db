@@ -135,9 +135,10 @@ enum PgVectorIndexType {
 }
 
 message PgVectorIdxOptionsPB {
-  required PgVectorDistanceType dist_type = 1;
-  required PgVectorIndexType idx_type = 2;
-  required int32 dimensions = 3;
+  optional PgVectorDistanceType dist_type = 1;
+  optional PgVectorIndexType idx_type = 2;
+  optional uint32 dimensions = 3;
+  optional uint32 column_id = 4;
 }
 
 message TablePropertiesPB {

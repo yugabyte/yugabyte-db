@@ -119,7 +119,6 @@ class AbstractTablet {
 
   Status ProcessPgsqlReadRequest(
       const docdb::PgsqlReadOperationData& op_data,
-      const TableInfoPtr& table_info,
       PgsqlReadRequestResult* result);
 
   virtual bool IsTransactionalRequest(bool is_ysql_request) const = 0;

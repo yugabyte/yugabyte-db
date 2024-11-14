@@ -77,6 +77,7 @@
 #include "yb/docdb/redis_operation.h"
 #include "yb/docdb/rocksdb_writer.h"
 #include "yb/dockv/value_type.h"
+#include "yb/docdb/vector_index.h"
 
 #include "yb/gutil/casts.h"
 
@@ -649,7 +650,8 @@ Tablet::Tablet(const TabletInitData& data)
       full_compaction_pool_(data.full_compaction_pool),
       admin_triggered_compaction_pool_(data.admin_triggered_compaction_pool),
       ts_post_split_compaction_added_(std::move(data.post_split_compaction_added)),
-      get_min_xcluster_schema_version_(std::move(data.get_min_xcluster_schema_version)) {
+      get_min_xcluster_schema_version_(std::move(data.get_min_xcluster_schema_version)),
+      rpc_thread_pool_(data.rpc_thread_pool) {
   CHECK(schema()->has_column_ids());
   LOG_WITH_PREFIX(INFO) << "Schema version for " << metadata_->table_name() << " is "
                         << metadata_->primary_table_schema_version();
@@ -936,15 +938,6 @@ Status Tablet::OpenKeyValueTablet() {
       Format("$0-$1", kRegularDB, tablet_id()), /* metric_name */ kRegularDB,
           block_based_table_mem_tracker_, AddToParent::kTrue, CreateMetrics::kFalse);
   rocksdb_options.block_based_table_mem_tracker = regulardb_mem_tracker_;
-
-
-  if (metadata()->primary_table_info()->index_info) {
-    const auto &ind_info = metadata()->primary_table_info()->index_info;
-    if (ind_info->is_vector_idx()) {
-      auto vec_options = ind_info->get_vector_idx_options();
-      LOG_WITH_PREFIX(INFO) << "Opening vector index tablet";
-    }
-  }
 
   // We may not have a metrics_entity_ instantiated in tests.
   if (tablet_metrics_entity_) {
@@ -1924,15 +1917,46 @@ Status Tablet::DoHandlePgsqlReadRequest(
         transaction_metadata,
         table_info->schema().table_properties().is_ysql_catalog_table(),
         &subtransaction_metadata));
+
+    docdb::VectorIndexPtr vector_index;
+    std::string index_table_id;
+    std::string vector_index_table_id;
+    if (pgsql_read_request.has_index_request()) {
+      index_table_id = pgsql_read_request.index_request().table_id();
+      if (pgsql_read_request.index_request().has_vector_idx_options()) {
+        vector_index_table_id = index_table_id;
+      }
+    } else if (pgsql_read_request.has_vector_idx_options()) {
+      // TODO(vector_index) Temporary use index_doc_read_context to pass doc_read_context for
+      // indexed table. Should be changed when postgres will send all vector index queries in
+      // index_request.
+      index_table_id = table_info->index_info->indexed_table_id();
+      vector_index_table_id = table_info->table_id;
+    }
+    auto index_doc_read_context = !index_table_id.empty()
+        ? VERIFY_RESULT(GetDocReadContext(index_table_id)) : nullptr;
+
+    if (!vector_index_table_id.empty()) {
+      SharedLock lock(vector_indexes_mutex_);
+      auto it = all_vector_indexes_.find(vector_index_table_id);
+      if (it != all_vector_indexes_.end()) {
+        vector_index = it->second;
+      }
+    }
+
     docdb::PgsqlReadOperationData data = {
       .read_operation_data = read_operation_data,
       .is_explicit_request_read_time = is_explicit_request_read_time,
       .request = pgsql_read_request,
+      .doc_read_context = *table_info->doc_read_context,
+      .index_doc_read_context = index_doc_read_context.get(),
       .txn_op_context = txn_op_ctx,
       .ql_storage = storage,
       .pending_op = *scoped_read_operation,
+      .vector_index = vector_index,
     };
-    status = ProcessPgsqlReadRequest(data, table_info, result);
+
+    status = ProcessPgsqlReadRequest(data, result);
   }
 
   // Assert the table is a Postgres table.
@@ -2196,9 +2220,18 @@ Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApply
   // transaction is done properly in the rare situation where the committed transaction's intents
   // are still in intents db and not yet in regular db.
   AtomicFlagSleepMs(&FLAGS_TEST_inject_sleep_before_applying_intents_ms);
+  docdb::VectorIndexesPtr vector_indexes;
+  if (has_vector_indexes_.load(std::memory_order_acquire)) {
+    SharedLock lock(vector_indexes_mutex_);
+    // TODO(vector_index) Handle insert to colocated table
+    auto it = vector_indexes_for_table_.find(metadata_->table_id());
+    if (it != vector_indexes_for_table_.end()) {
+      vector_indexes = it->second;
+    }
+  }
   docdb::ApplyIntentsContext context(
       tablet_id(), data.transaction_id, data.apply_state, data.aborted, data.commit_ht, data.log_ht,
-      min_running_ht, &key_bounds_, metadata_.get(), intents_db_.get());
+      min_running_ht, &key_bounds_, metadata_.get(), intents_db_.get(), vector_indexes);
   docdb::IntentsWriter intents_writer(
       data.apply_state ? data.apply_state->key : Slice(), min_running_ht,
       intents_db_.get(), &context);
@@ -2503,11 +2536,35 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
     index_info.emplace(table_info.index_info());
   }
 
-  return metadata_->AddTable(
+  RETURN_NOT_OK(metadata_->AddTable(
       table_info.table_id(), table_info.namespace_name(), table_info.table_name(),
       table_info.table_type(), schema, qlexpr::IndexMap(), partition_schema, index_info,
       table_info.schema_version(), op_id, table_info.pg_table_id(),
-      SkipTableTombstoneCheck(table_info.skip_table_tombstone_check()));
+      SkipTableTombstoneCheck(table_info.skip_table_tombstone_check())));
+
+  if (index_info && index_info->is_vector_idx() &&
+      index_info->vector_idx_options().idx_type() != PgVectorIndexType::DUMMY) {
+    std::lock_guard lock(vector_indexes_mutex_);
+    has_vector_indexes_ = true;
+    auto it = all_vector_indexes_.find(table_info.table_id());
+    if (it == all_vector_indexes_.end()) {
+      auto vector_index = VERIFY_RESULT(docdb::CreateVectorIndex(
+          metadata_->rocksdb_dir(), *rpc_thread_pool_, *index_info));
+      it = all_vector_indexes_.emplace(table_info.table_id(), std::move(vector_index)).first;
+      auto& indexes = vector_indexes_for_table_[index_info->indexed_table_id()];
+      if (indexes) {
+        auto new_indexes = std::make_shared<docdb::VectorIndexes>();
+        new_indexes->reserve(indexes->size() + 1);
+        *new_indexes = *indexes;
+        new_indexes->push_back(it->second);
+        indexes = std::move(new_indexes);
+      } else {
+        indexes = std::make_shared<std::vector<docdb::VectorIndexPtr>>(1, it->second);
+      }
+    }
+  }
+
+  return Status::OK();
 }
 
 Status Tablet::AddTable(const TableInfoPB& table_info, const OpId& op_id) {

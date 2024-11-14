@@ -166,7 +166,7 @@ class VectorLSMInsertRegistry {
     {
       UniqueLock lock(mutex_);
       while (allocated_tasks_ + num_tasks >= FLAGS_vector_index_max_insert_tasks) {
-        // TODO(lsm) Pass timeout here.
+        // TODO(vector_index) Pass timeout here.
         allocated_tasks_cond_.wait(GetLockForCondition(lock));
       }
       allocated_tasks_ += num_tasks;
@@ -252,14 +252,16 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
   // Invoked when owning VectorLSM holds the mutex.
   bool RegisterInsert(
       const std::vector<InsertEntry>& entries, const Options& options, size_t new_tasks,
-      const rocksdb::UserFrontiers& frontiers) {
-    // TODO(lsm) Handle size of entries greater than points_per_chunk.
+      const rocksdb::UserFrontiers* frontiers) {
+    // TODO(vector_index) Handle size of entries greater than points_per_chunk.
     if (num_entries && num_entries + entries.size() > options.points_per_chunk) {
       return false;
     }
     num_entries += entries.size();
     num_tasks += new_tasks;
-    rocksdb::UpdateFrontiers(user_frontiers, frontiers);
+    if (frontiers) {
+      rocksdb::UpdateFrontiers(user_frontiers, *frontiers);
+    }
     return true;
   }
 
@@ -302,6 +304,10 @@ void VectorLSM<Vector, DistanceResult>::StartShutdown() {
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::CompleteShutdown() {
+  if (!insert_registry_) {
+    // Was not opened.
+    return;
+  }
   insert_registry_->Shutdown();
   auto start_time = CoarseMonoClock::now();
   auto last_warning_time = start_time;
@@ -405,7 +411,7 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::Insert(
     std::vector<InsertEntry> entries, HybridTime write_time,
-    const rocksdb::UserFrontiers& frontiers) {
+    const rocksdb::UserFrontiers* frontiers) {
   std::shared_ptr<MutableChunk> chunk;
   size_t num_tasks = ceil_div<size_t>(entries.size(), FLAGS_vector_index_task_size);
   {
@@ -532,7 +538,7 @@ auto VectorLSM<Vector, DistanceResult>::Search(
     return SearchResults();
   }
 
-  // TODO(lsm) Optimize memory allocation.
+  // TODO(vector_index) Optimize memory allocation.
   std::vector<VectorIndexPtr> indexes;
   {
     SharedLock lock(mutex_);
@@ -692,7 +698,7 @@ Status VectorLSM<Vector, DistanceResult>::DoFlush(std::promise<Status>* promise)
   RSTATUS_DCHECK_LT(tasks, kRunningMark, RuntimeError, "Wrong value for num_tasks");
   if (tasks == 0) {
     options_.thread_pool->EnqueueFunctor(mutable_chunk_->save_callback);
-    // TODO(lsm) Optimize memory allocation related to save callback
+    // TODO(vector_index) Optimize memory allocation related to save callback
     mutable_chunk_->save_callback = {};
   }
   return Status::OK();

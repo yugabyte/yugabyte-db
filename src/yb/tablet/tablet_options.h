@@ -94,6 +94,7 @@ struct TabletInitData {
   std::function<SchemaVersion(const TableId&, const ColocationId&)>
       get_min_xcluster_schema_version = nullptr;
   rpc::Messenger* messenger = nullptr;
+  rpc::ThreadPool* rpc_thread_pool = nullptr;
 };
 
 } // namespace tablet

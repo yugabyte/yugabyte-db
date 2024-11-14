@@ -237,6 +237,9 @@ Status PgCreateTableBase::SetVectorOptions(YbPgVectorIdxOptions* options) {
   options_pb->set_idx_type(static_cast<PgVectorIndexType>(options->idx_type));
   options_pb->set_dimensions(options->dimensions);
 
+  PgTable table(VERIFY_RESULT(pg_session_->LoadTable(PgObjectId::FromPB(req_.base_table_id()))));
+  options_pb->set_column_id(VERIFY_RESULT_REF(table.ColumnForAttr(options->attnum)).id());
+
   req_.set_is_unique_index(false);
 
   if (options->idx_type == YbPgVectorIdxType::YB_VEC_DUMMY) {

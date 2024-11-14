@@ -298,9 +298,9 @@ message PgsqlWriteRequestPB {
 }
 
 message PgVectorReadOptionsPB {
-  required QLValuePB vector = 1;
-  required int32 prefetch_size = 2;
-  required int32 vector_column_id = 3;
+  optional QLValuePB vector = 1;
+  optional int32 prefetch_size = 2;
+  optional int32 vector_column_id = 3;
 }
 
 //--------------------------------------------------------------------------------------------------

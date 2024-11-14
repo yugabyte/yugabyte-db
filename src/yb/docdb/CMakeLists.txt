@@ -77,6 +77,7 @@ set(DOCDB_SRCS
         transaction_dump.cc
         transaction_status_cache.cc
         local_waiting_txn_registry.cc
+        vector_index.cc
         wait_queue.cc
         )
 
