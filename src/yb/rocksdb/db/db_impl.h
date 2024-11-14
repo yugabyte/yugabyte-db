@@ -637,13 +637,11 @@ class DBImpl : public DB {
   static void UnscheduleCallback(void* arg);
   void WaitAfterBackgroundError(const Status& s, const char* job_name, LogBuffer* log_buffer);
   void BackgroundCallCompaction(
-      ManualCompaction* manual_compaction, std::unique_ptr<Compaction> compaction = nullptr,
-      CompactionTask* compaction_task = nullptr);
+      ManualCompaction* manual_compaction, CompactionTask* compaction_task = nullptr);
   void BackgroundCallFlush(ColumnFamilyData* cfd);
   Result<FileNumbersHolder> BackgroundCompaction(
       bool* made_progress, JobContext* job_context, LogBuffer* log_buffer,
-      ManualCompaction* manual_compaction = nullptr,
-      std::unique_ptr<Compaction> compaction = nullptr);
+      ManualCompaction* manual_compaction, CompactionTask* compaction_task);
   Result<FileNumbersHolder> BackgroundFlush(
       bool* made_progress, JobContext* job_context, LogBuffer* log_buffer, ColumnFamilyData* cfd);
   void BackgroundJobComplete(const Status& s, JobContext* job_context, LogBuffer* log_buffer);
