@@ -308,6 +308,46 @@ Replica count can be changed using the following command. Note that only the YB-
 helm upgrade --set replicas.tserver=5 yb-demo ./yugabyte
 ```
 
+### Readiness probes
+
+{{<tags/feature/ea>}}Readiness probes provide readiness checks for your Kubernetes deployment. Probes are compatible with both direct Helm deployments and [YugabyteDB Anywhere-managed deployments](../../../../../yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#configure-helm-overrides), and work with TLS enabled or restricted authorization environments. Use the probes to ensure pods are ready before being marked as available. The probes verify connectivity using ysqlsh for YSQL and ycqlsh for YCQL.
+
+The following probes are available:
+
+- YSQL Readiness. Uses ysqlsh to verify connectivity via local socket for credentialed setups.
+
+- YCQL Readiness. Uses ycqlsh to validate connectivity.
+
+- Master Readiness. Uses `httpGet` to probe master.
+
+- Custom Readiness. Supports custom readiness probe parameters, such as delays, timeouts, and thresholds.
+
+- Startup probes to delay enforcing of readiness probes.
+
+Readiness probes are disabled by default for compatibility.
+
+Enable probes via `values.yaml` or using Kubernetes overrides.
+
+```yaml
+master:
+  readinessProbe:
+    enabled: true
+
+tserver:
+  readinessProbe:
+    enabled: true
+```
+
+The following is example of custom readiness parameters:
+
+```yaml
+tserver:
+  customReadinessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 20
+    timeoutSeconds: 10
+```
+
 ### Independent LoadBalancers
 
 By default, the YugabyteDB Helm chart exposes the client API endpoints and master UI endpoint using two load balancers. If you want to expose the client APIs using independent LoadBalancers, you can execute the following command:
