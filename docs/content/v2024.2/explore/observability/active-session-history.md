@@ -42,7 +42,7 @@ You can also use the following flags based on your requirements.
 
 | Flag | Description |
 | :--- | :---------- |
-| ysql_yb_ash_circular_buffer_size | Size (in KBs) of circular buffer where the samples are stored. <br> Default: 16*1024. Changing this flag requires a VM restart. |
+| ysql_yb_ash_circular_buffer_size | Size (in KBs) of circular buffer where the samples are stored. <br> Defaults:<ul><li>32 MB for 1-2 cores</li><li>64 MB for 3-4 cores</li><li>128 MB for 5-8 cores</li><li>256 MB for 9-16 cores</li><li>512 MB for 17-32 cores</li><li>1024 MB for more than 32 cores</li></ul> Changing this flag requires a VM restart. |
 | ysql_yb_ash_sampling_interval_ms | Sampling interval (in milliseconds). <br>Default: 1000. Changing this flag doesn't require a VM restart. |
 | ysql_yb_ash_sample_size | Maximum number of events captured per sampling interval. <br>Default: 500. Changing this flag doesn't require a VM restart. |
 
@@ -84,6 +84,30 @@ This view provides a list of wait events and their metadata. The columns of the 
 | client_node_ip | text | IP address of the client which sent the query to YSQL/YCQL. Null for background activities. |
 | sample_weight | float | If in any sampling interval there are too many events, YugabyteDB only collects `ysql_yb_ash_sample_size` samples/events. Based on how many were sampled, weights are assigned to the collected events. <br><br>For example, if there are 200 events, but only 100 events are collected, each of the collected samples will have a weight of (200 / 100) = 2.0 |
 | ysql_dbid | oid | Database OID of the YSQL database. This is 0 for YCQL databases.  |
+
+### yb_wait_event_desc
+
+This view displays the class, type, name, and description of each wait event. The columns of the view are described in the following table.
+
+| Column | Type | Description |
+| :----- | :--- | :---------- |
+| wait_event_class | text | Class of the wait event, such as TabletWait, RocksDB, and so on. |
+| wait_event_type | text | Type of the wait event such as CPU, WaitOnCondition, Network, Disk IO, and so on. |
+| wait_event | text | Name of the wait event. |
+| wait_event_description | text | Description of the wait event. |
+
+## Constant query identifiers
+
+These fixed constants are used to identify various YugabyteDB background activities. They also include a placeholder "query id" for instances where the actual "query id" has not been calculated yet, but the ASH collector samples the system. The query ids of the fixed constants are described in the following table.
+
+| Query id | Wait Event Component | Description |
+| :------- | :------------------- | :---------- |
+| 1 | TServer | Query id for write ahead log (WAL) appender thread. |
+| 2 | TServer | Query id for background flush tasks. |
+| 3 | TServer | Query id for background compaction tasks. |
+| 4 | TServer | Query id for Raft update consensus. |
+| 5 | YSQL/TServer | Default query id before it's calculated in YSQL. |
+| 6 | TServer | Query id for write ahead log (WAL) background sync. |
 
 ## Wait events
 
