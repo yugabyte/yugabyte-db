@@ -473,9 +473,7 @@ class YBClient::Data {
 
   bool IsMultiMaster();
 
-  void StartShutdown();
-
-  void CompleteShutdown();
+  void Shutdown();
 
   void DoSetMasterServerProxy(
       CoarseTimePoint deadline, bool skip_resolution, bool wait_for_leader_election);

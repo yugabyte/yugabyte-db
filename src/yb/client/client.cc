@@ -586,14 +586,7 @@ YBClient::~YBClient() {
 }
 
 void YBClient::Shutdown() {
-  data_->StartShutdown();
-  if (data_->messenger_holder_) {
-    data_->messenger_holder_->Shutdown();
-  }
-  if (data_->threadpool_) {
-    data_->threadpool_->Shutdown();
-  }
-  data_->CompleteShutdown();
+  data_->Shutdown();
 }
 
 std::unique_ptr<YBTableCreator> YBClient::NewTableCreator() {
