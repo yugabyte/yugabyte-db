@@ -15,8 +15,11 @@
 
 #pragma once
 
+#include <concepts>
+#include <ostream>
 #include <string>
 #include <type_traits>
+#include <utility>
 
 #include "yb/gutil/dynamic_annotations.h"
 
@@ -24,137 +27,96 @@
 #include "yb/util/tostring.h"
 
 namespace yb {
+namespace result::internal {
 
 template<class TValue>
 struct ResultTraits {
-  typedef TValue ValueType;
-  typedef TValue Stored;
-  typedef const TValue* ConstPointer;
-  typedef TValue* Pointer;
-  typedef const TValue& ConstReference;
-  typedef TValue&& RValueReference;
+  using Stored = TValue;
+  using Pointer = TValue*;
 
-  static const TValue& ToStored(const TValue& value) { return value; }
+  static const Stored& ToStored(const TValue& value) { return value; }
+  static Stored&& ToStored(TValue&& value) { return std::move(value); }
   static void Destroy(Stored* value) { value->~TValue(); }
-  static Stored* GetPtr(Stored* value) { return value; }
-  static const Stored* GetPtr(const Stored* value) { return value; }
+  static TValue* GetPtr(Stored* value) { return value; }
+  static const TValue* GetPtr(const Stored* value) { return value; }
 };
 
 template<class TValue>
 struct ResultTraits<TValue&> {
-  typedef TValue& ValueType;
-  typedef TValue* Stored;
-  typedef const TValue* ConstPointer;
-  typedef TValue* Pointer;
-  typedef const TValue& ConstReference;
-  typedef Pointer&& RValueReference;
+  using Stored = TValue*;
+  using Pointer = TValue*;
 
-  static TValue* ToStored(TValue& value) { return &value; } // NOLINT
+  static Stored ToStored(TValue& value) { return &value; }
   static void Destroy(Stored* value) {}
   static TValue* GetPtr(const Stored* value) { return *value; }
 };
 
+template<class R>
+using ResultValueType = typename std::remove_cvref_t<R>::ValueType;
+
+template<class T, class V>
+concept ConvertibleValue =
+    (std::is_reference_v<V> && std::convertible_to<T, V>) ||
+    (!std::is_reference_v<V> && std::convertible_to<std::remove_cvref_t<T>, V>);
+
+template<class R>
+concept ResultType = std::same_as<std::remove_cvref_t<R>, Result<ResultValueType<R>>>;
+
+template<class S>
+concept StatusType = std::same_as<std::remove_cvref_t<S>, Status>;
+
+template<class R, class TValue>
+concept ConvertibleResultValueType = std::convertible_to<ResultValueType<R>, TValue>;
+
+} // namespace result::internal
+
 void StatusCheck(bool);
 
 template<class TValue>
-class NODISCARD_CLASS Result {
+class [[nodiscard]] Result { // NOLINT
+  using Traits = result::internal::ResultTraits<TValue>;
+
  public:
-  using Traits = ResultTraits<TValue>;
-  using ValueType = typename Traits::ValueType;
-
-  Result(const Result& rhs) : success_(rhs.success_) {
-    if (success_) {
-      new (&value_) typename Traits::Stored(rhs.value_);
-    } else {
-      new (&status_) Status(rhs.status_);
-    }
-  }
-
-  template<class UValue, class = std::enable_if_t<std::is_convertible<UValue, TValue>::value>>
-  Result(const Result<UValue>& rhs) : success_(rhs.success_) {
-    if (success_) {
-      new (&value_) typename Traits::Stored(rhs.value_);
-    } else {
-      new (&status_) Status(rhs.status_);
-    }
-  }
-
-  Result(Result&& rhs) : success_(rhs.success_) {
-    if (success_) {
-      new (&value_) typename Traits::Stored(std::move(rhs.value_));
-    } else {
-      new (&status_) Status(std::move(rhs.status_));
-    }
-  }
+  using ValueType = TValue;
 
   // Forbid creation from Status::OK as value must be explicitly specified in case status is OK
-  Result(const Status::OK&) = delete; // NOLINT
-  Result(Status::OK&&) = delete; // NOLINT
+  Result(const Status::OK&) = delete;
+  Result(Status::OK&&) = delete;
 
-  Result(const Status& status) : success_(false), status_(status) { // NOLINT
+  Result(Result&& rhs) : Result(std::move(rhs), {}) {}
+
+  Result(const Result& rhs) : Result(rhs, {}) {}
+
+  template<result::internal::ResultType R>
+  requires(result::internal::ConvertibleResultValueType<R, TValue>)
+  Result(R&& rhs) : Result(std::forward<R>(rhs), {}) {}
+
+  template<result::internal::StatusType S>
+  Result(S&& status) : success_(false), status_(std::forward<S>(status)) {
     StatusCheck(!status_.ok());
   }
 
-  Result(Status&& status) : success_(false), status_(std::move(status)) { // NOLINT
-    StatusCheck(!status_.ok());
-  }
-
-  Result(const TValue& value) : success_(true), value_(Traits::ToStored(value)) {} // NOLINT
-
-  template <class UValue,
-            class = std::enable_if_t<std::is_convertible<const UValue&, const TValue&>::value>>
-  Result(const UValue& value) // NOLINT
-      : success_(true), value_(Traits::ToStored(value)) {}
-
-  Result(typename Traits::RValueReference value) // NOLINT
-      : success_(true), value_(std::move(value)) {}
-
-  template <class UValue, class = std::enable_if_t<std::is_convertible<UValue&&, TValue&&>::value>>
-  Result(UValue&& value) : success_(true), value_(std::move(value)) {} // NOLINT
+  template<class UValue>
+  requires(result::internal::ConvertibleValue<UValue, TValue>)
+  Result(UValue&& value)
+      : success_(true), value_(Traits::ToStored(std::forward<UValue>(value))) {}
 
   Result& operator=(const Result& rhs) {
-    if (&rhs == this) {
-      return *this;
-    }
-    this->~Result();
-    return *new (this) Result(rhs);
+    return &rhs == this ? *this : ReInit(rhs);
   }
 
   Result& operator=(Result&& rhs) {
-    if (&rhs == this) {
-      return *this;
-    }
-    this->~Result();
-    return *new (this) Result(std::move(rhs));
+    return &rhs == this ? *this : ReInit(std::move(rhs));
   }
 
-  template<class UValue, class = std::enable_if_t<std::is_convertible<UValue, TValue>::value>>
-  Result& operator=(const Result<UValue>& rhs) {
-    this->~Result();
-    return *new (this) Result(rhs);
-  }
-
-  Result& operator=(const Status& status) {
-    StatusCheck(!status.ok());
-    this->~Result();
-    return *new (this) Result(status);
-  }
-
-  Result& operator=(Status&& status) {
-    StatusCheck(!status.ok());
-    this->~Result();
-    return *new (this) Result(std::move(status));
-  }
-
-  Result& operator=(const TValue& value) {
-    this->~Result();
-    return *new (this) Result(value);
-  }
-
-  template <class UValue, class = std::enable_if_t<std::is_convertible<UValue&&, TValue&&>::value>>
-  Result& operator=(UValue&& value) {
-    this->~Result();
-    return *new (this) Result(std::move(value));
+  template<class T>
+  requires(
+      result::internal::StatusType<T> ||
+      result::internal::ConvertibleValue<T, TValue> ||
+      (result::internal::ResultType<T> &&
+       result::internal::ConvertibleResultValueType<T, TValue>))
+  Result& operator=(T&& t) {
+    return ReInit(std::forward<T>(t));
   }
 
   MUST_USE_RESULT explicit operator bool() const {
@@ -250,7 +212,24 @@ class NODISCARD_CLASS Result {
   }
 
  private:
-  bool success_;
+  struct ConstructorRoutingTag {};
+
+  template<result::internal::ResultType R>
+  Result(R&& rhs, ConstructorRoutingTag) : success_(rhs.success_) {
+    if (success_) {
+      new (&value_) typename Traits::Stored(std::forward<R>(rhs).value_);
+    } else {
+      new (&status_) Status(std::forward<R>(rhs).status_);
+    }
+  }
+
+  template<class T>
+  Result& ReInit(T&& t) {
+    this->~Result();
+    return *new (this) Result(std::forward<T>(t));
+  }
+
+  const bool success_;
 #ifndef NDEBUG
   mutable bool success_checked_ = false;
 #endif
@@ -259,7 +238,7 @@ class NODISCARD_CLASS Result {
     typename Traits::Stored value_;
   };
 
-  template <class UValue> friend class Result;
+  template<class UValue> friend class Result;
 };
 
 // Specify Result<bool> to avoid confusion with operator bool and operator!.
@@ -293,7 +272,7 @@ class ResultToStatusAdaptor {
  public:
   explicit ResultToStatusAdaptor(const Functor& functor) : functor_(functor) {}
 
-  template <class Output, class... Args>
+  template<class Output, class... Args>
   Status operator()(Output* output, Args&&... args) {
     auto result = functor_(std::forward<Args>(args)...);
     RETURN_NOT_OK(result);

@@ -710,7 +710,7 @@ Result<const FetchedEntry&> IntentAwareIterator::Fetch() {
     VLOG(4) << "Fetched key <INVALID>";
   }
 
-  return &result;
+  return result;
 }
 
 template <bool kDescending>

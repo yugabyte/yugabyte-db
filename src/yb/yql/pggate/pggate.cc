@@ -175,11 +175,11 @@ Result<std::unique_ptr<PgStatement>> MakeSelectStatement(
   //     Note that for SysTable, only one request is send for both table_id and index_id.
   if (prepare_params && prepare_params->index_only_scan && prepare_params->use_secondary_index) {
     RSTATUS_DCHECK(index_id.IsValid(), InvalidArgument, "Cannot run query with invalid index ID");
-    return VERIFY_RESULT(PgSelectIndex::Make(pg_session, index_id, is_region_local));
+    return PgSelectIndex::Make(pg_session, index_id, is_region_local);
   }
 
-  return VERIFY_RESULT(PgSelect::Make(
-      pg_session, table_id, is_region_local, MakeIndexQueryInfo(index_id, prepare_params)));
+  return PgSelect::Make(
+      pg_session, table_id, is_region_local, MakeIndexQueryInfo(index_id, prepare_params));
 }
 
 namespace get_statement_as::internal {
