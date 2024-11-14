@@ -85,7 +85,7 @@ min(ybp_pitr_config_status{universe_uuid = "__universeUuid__"}) {{ query_conditi
 
 #### xCluster config tables are in bad state
 
-There is a table schema mismatch between primary and replica universes in xCluster replication or xCluster DR; or tables were added or dropped from either primary or replica, but have not been added or dropped from the other.
+There are issues with table replication. For example, there is a table schema mismatch between primary and replica universes in xCluster replication or xCluster DR; or tables were added or dropped from either primary or replica, but have not been added or dropped from the other; or there was an extended network partition.
 
 ```promql
 min(last_over_time(ybp_xcluster_table_status{source_universe_uuid
