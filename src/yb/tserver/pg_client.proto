@@ -142,6 +142,7 @@ message OptionalUint64PB {
 
 message PgHeartbeatRequestPB {
   uint64 session_id = 1;
+  uint32 pid = 2;
 }
 
 message PgHeartbeatResponsePB {

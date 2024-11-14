@@ -425,7 +425,9 @@ class PgClient::Impl : public BigDataFetcher {
       }
     }
     tserver::PgHeartbeatRequestPB req;
-    if (!create) {
+    if (create) {
+      req.set_pid(getpid());
+    } else {
       req.set_session_id(session_id_);
     }
     proxy_->HeartbeatAsync(

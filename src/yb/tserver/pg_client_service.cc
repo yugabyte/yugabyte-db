@@ -82,6 +82,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
+#include "yb/util/tsan_util.h"
 #include "yb/util/yb_pg_errcodes.h"
 
 
@@ -225,6 +226,10 @@ class LockablePgClientSession : public PgClientSession {
 
   CoarseTimePoint expiration() const {
     return expiration_.load(std::memory_order_acquire);
+  }
+
+  void SetExpiration(CoarseTimePoint value) {
+    expiration_.store(value, std::memory_order_release);
   }
 
   void Touch() {
@@ -502,10 +507,37 @@ class PgClientServiceImpl::Impl {
       RETURN_NOT_OK(session_info->session().StartExchange(instance_id_));
     }
 
+    context->ListenConnectionShutdown([this, session_id, pid = req.pid()]() {
+      messenger_.scheduler().Schedule([this, session_id, pid](const Status& status) {
+        if (!status.ok()) {
+          // Task was aborted.
+          return;
+        }
+        CheckSessionShutdown(pid, session_id);
+        // Give some time for process to exit after connection shutdown.
+      }, 50ms * kTimeMultiplier);
+    });
+
     std::lock_guard lock(mutex_);
     auto it = sessions_.insert(std::move(session_info)).first;
     session_expiration_queue_.push({(**it).session().expiration(), session_id});
     return Status::OK();
+  }
+
+  void CheckSessionShutdown(pid_t pid, int64_t session_id) {
+    auto sid = getsid(pid);
+    if (sid != -1 || errno != ESRCH) {
+      return;
+    }
+    auto now = CoarseMonoClock::now();
+    std::lock_guard lock(mutex_);
+    auto it = sessions_.find(session_id);
+    if (it == sessions_.end()) {
+      return;
+    }
+    (**it).session().SetExpiration(now);
+    session_expiration_queue_.push({now, session_id});
+    ScheduleCheckExpiredSessions(now);
   }
 
   Status OpenTable(
@@ -1911,7 +1943,11 @@ class PgClientServiceImpl::Impl {
   void ScheduleCheckExpiredSessions(CoarseTimePoint now) REQUIRES(mutex_) {
     auto time = session_expiration_queue_.empty()
         ? CoarseTimePoint(now + FLAGS_pg_client_session_expiration_ms * 1ms)
-        : session_expiration_queue_.top().first + 1s;
+        : session_expiration_queue_.top().first + 100ms;
+    if (check_expired_sessions_time_ != CoarseTimePoint() && check_expired_sessions_time_ < time) {
+      return;
+    }
+    check_expired_sessions_time_ = time;
     check_expired_sessions_.Schedule([this](const Status& status) {
       if (!status.ok()) {
         return;
@@ -1925,6 +1961,7 @@ class PgClientServiceImpl::Impl {
     std::vector<SessionInfoPtr> expired_sessions;
     {
       std::lock_guard lock(mutex_);
+      check_expired_sessions_time_ = CoarseTimePoint();
       while (!session_expiration_queue_.empty()) {
         auto& top = session_expiration_queue_.top();
         if (top.first > now) {
@@ -2056,7 +2093,8 @@ class PgClientServiceImpl::Impl {
 
   std::atomic<int64_t> session_serial_no_{0};
 
-  rpc::ScheduledTaskTracker check_expired_sessions_;
+  rpc::ScheduledTaskTracker check_expired_sessions_ GUARDED_BY(mutex_);
+  CoarseTimePoint check_expired_sessions_time_ GUARDED_BY(mutex_);
   rpc::ScheduledTaskTracker check_object_id_allocators_;
 
   std::shared_ptr<cdc::CDCStateTable> cdc_state_table_;

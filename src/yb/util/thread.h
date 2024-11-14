@@ -419,5 +419,6 @@ class CDSAttacher {
 };
 
 void RenderAllThreadStacks(std::ostream& output);
+size_t CountManagedThreads();
 
 } // namespace yb
