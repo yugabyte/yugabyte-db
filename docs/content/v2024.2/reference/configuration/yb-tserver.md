@@ -1824,7 +1824,7 @@ Default: `read committed`
 
 PostgreSQL parameter to enable skipping updates to columns that are part of secondary indexes and constraint checks when the column values remain unchanged.
 
-This can only be configured during cluster startup, and adjusting this parameter does not require a cluster restart.
+This parameter can only be configured during cluster startup, and adjusting this parameter does not require a cluster restart.
 
 Default: true
 
