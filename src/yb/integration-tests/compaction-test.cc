@@ -85,10 +85,12 @@ using namespace std::literals; // NOLINT
 
 DECLARE_int32(replication_factor);
 DECLARE_int64(db_write_buffer_size);
+DECLARE_int32(priority_thread_pool_size);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_bool(tablet_enable_ttl_file_filter);
 DECLARE_int32(rocksdb_base_background_compactions);
+DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_int32(rocksdb_max_background_compactions);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 DECLARE_bool(file_expiration_ignore_value_ttl);
@@ -116,7 +118,7 @@ namespace {
 constexpr auto kWaitDelay = 10ms;
 constexpr auto kPayloadBytes = 8_KB;
 constexpr auto kMemStoreSize = 100_KB;
-constexpr auto kNumTablets = 3;
+constexpr auto kDefaultNumTablets = 3;
 constexpr auto kNumWriteThreads = 4;
 constexpr auto kNumReadThreads = 0;
 
@@ -185,6 +187,8 @@ class CompactionTest : public YBTest {
     ASSERT_OK(clock_->Init());
     rocksdb_listener_ = std::make_shared<RocksDbListener>();
 
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_priority_thread_pool_size) = 2;
+
     // Disable scheduled compactions by default so we don't have surprise compactions.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_scheduled_full_compaction_frequency_hours) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_scheduled_full_compaction_jitter_factor_percentage) = 0;
@@ -221,7 +225,7 @@ class CompactionTest : public YBTest {
     YBTest::TearDown();
   }
 
-  void SetupWorkload(IsolationLevel isolation_level, int num_tablets = kNumTablets) {
+  void SetupWorkload(IsolationLevel isolation_level, int num_tablets = kDefaultNumTablets) {
     workload_.reset(new TestWorkload(cluster_.get()));
     workload_->set_timeout_allowed(true);
     workload_->set_payload_bytes(kPayloadBytes);
@@ -361,7 +365,7 @@ class CompactionTest : public YBTest {
 
 void CompactionTest::TestCompactionAfterTruncate() {
   // Write some data before truncate to make sure truncate wouldn't be noop.
-  ASSERT_OK(WriteAtLeast(kMemStoreSize * kNumTablets * 1.2));
+  ASSERT_OK(WriteAtLeast(kMemStoreSize * kDefaultNumTablets * 1.2));
 
   const auto table_info = ASSERT_RESULT(FindTable(cluster_.get(), workload_->table_name()));
   ASSERT_OK(workload_->client().TruncateTable(table_info->id(), true /* wait */));
@@ -494,6 +498,8 @@ TEST_F(CompactionTest, ManualCompactionProducesOneFilePerDb) {
 }
 
 void CompactionTest::TestCompactionTaskMetrics(const int num_files, bool manual_compaction) {
+  constexpr auto kNumTablets = 7;
+
   // Create and instantiate metric entity.
   METRIC_DEFINE_entity(test_entity);
   yb::MetricRegistry registry;
@@ -530,13 +536,51 @@ void CompactionTest::TestCompactionTaskMetrics(const int num_files, bool manual_
   }
 
   // Compact, then verify metrics match the original files and sizes.
-  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
-  ASSERT_OK(WriteAtLeastFilesPerDb(num_files));
-  if (manual_compaction) {
-    ASSERT_OK(ExecuteManualCompaction());
-  }
-  ASSERT_OK(WaitForNumCompactionsPerDb(1));
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL, kNumTablets);
   auto dbs = GetAllRocksDbs(cluster_.get());
+
+  if (manual_compaction) {
+    ASSERT_OK(WriteAtLeastFilesPerDb(num_files));
+    ASSERT_OK(ExecuteManualCompaction());
+  } else {
+    // Disable auto compactions in order to run them later at slow rate and have some nonactive
+    // compaction tasks for testing nonactive metrics.
+    for (auto* db : dbs) {
+      ASSERT_OK(db->SetOptions({{"disable_auto_compactions", "true"}}));
+    }
+
+    ASSERT_OK(WriteAtLeastFilesPerDb(num_files));
+
+    const auto original_compact_flush_rate_bytes_per_sec =
+        FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec;
+    const MonoDelta kWaitForNonActiveCompactions = 10s;
+
+    SetCompactFlushRateLimitBytesPerSec(
+        cluster_.get(), dbs.front()->GetCurrentVersionSstFilesSize() /
+                            (kWaitForNonActiveCompactions.ToSeconds() * 1.5));
+
+    for (auto* db : dbs) {
+      ASSERT_OK(db->EnableAutoCompaction({db->DefaultColumnFamily()}));
+    }
+
+    const size_t num_nonactive_compactions_expected =
+        kNumTablets > FLAGS_priority_thread_pool_size
+            ? kNumTablets - FLAGS_priority_thread_pool_size
+            : 0;
+
+    ASSERT_OK(LoggedWaitFor(
+        [nonactive, num_nonactive_compactions_expected] {
+          return nonactive.compaction_tasks_added_->value() >= num_nonactive_compactions_expected;
+        },
+        kWaitForNonActiveCompactions,
+        Format("Waiting for $0 non active compactions", num_nonactive_compactions_expected)));
+
+    ASSERT_EQ(nonactive.compaction_tasks_added_->value(), num_nonactive_compactions_expected);
+
+    SetCompactFlushRateLimitBytesPerSec(cluster_.get(), original_compact_flush_rate_bytes_per_sec);
+  }
+
+  ASSERT_OK(WaitForNumCompactionsPerDb(1));
   // Wait until the metrics match the number of completed compactions.
   ASSERT_OK(LoggedWaitFor(
       [this, dbs, active] {
@@ -545,8 +589,7 @@ void CompactionTest::TestCompactionTaskMetrics(const int num_files, bool manual_
             num_completed_compactions += rocksdb_listener_->GetNumCompactionsCompleted(db);
           }
           return (num_completed_compactions == active.compaction_tasks_removed_->value() &&
-              active.compaction_tasks_added_->value() ==
-                  active.compaction_tasks_removed_->value());
+              active.compaction_tasks_added_->value() == active.compaction_tasks_removed_->value());
         }, 60s,
         "Waiting until all compactions are completed and metrics match with compaction listener...",
       kWaitDelay * kTimeMultiplier));
@@ -561,7 +604,7 @@ void CompactionTest::TestCompactionTaskMetrics(const int num_files, bool manual_
   }
 
   // We expect at least one compaction per database.
-  ASSERT_GT(num_completed_compactions, 0);
+  ASSERT_GE(num_completed_compactions, dbs.size());
   ASSERT_GT(input_files_compactions, 0);
   ASSERT_GT(input_bytes_compactions, 0);
 
@@ -682,7 +725,7 @@ TEST_F(CompactionTest, UpdateLastFullCompactionTimeForTableWithoutWrites) {
 namespace {
   // Make the queue size twice as big as the number of tablets so that by default, we will
   // not overfill the queue.
-  constexpr auto kQueueSize = kNumTablets * 2;
+  constexpr auto kQueueSize = kDefaultNumTablets * 2;
   constexpr auto kPoolMaxThreads = 1;
 }  // namespace
 
@@ -912,7 +955,7 @@ TEST_F(ScheduledFullCompactionsTest, WillWaitForPreviousToFinishBeforeScheduling
   ScheduleFullCompactionsEveryNSeconds(kCompactionFrequencySecs);
 
   // Compactions should get scheduled but NOT executed yet.
-  ASSERT_EQ(compact_manager->num_scheduled_last_execution(), kNumTablets);
+  ASSERT_EQ(compact_manager->num_scheduled_last_execution(), kDefaultNumTablets);
   SleepFor(MonoDelta::FromSeconds(kCompactionFrequencySecs));
   ASSERT_TRUE(CheckEachDbHasAtLeastNumFiles(kNumFilesToWrite));
   now = clock_->Now();
