@@ -43,12 +43,12 @@ Depending on the flag, the universe may need to be restarted to apply the change
 
 ### Rolling restart in batches
 
-If you have a multi-zone universe with multiple nodes per zone, you can choose a **Max batch size** (default is 1) for rolling restarts as per the following illustration:
+YugabyteDB Anywhere allows processing multiple nodes simultaneously within each availability zone during rolling operations. YBA supports this rolling batch feature which is currently {{<tags/feature/ea>}} for TServer nodes, but Master nodes are always updated one at a time.
+
+If your universe supports rolling more than a single node at a time according to the distribution of replicas ([RF](../../../architecture/key-concepts/#replication-factor-rf)), you can choose a **Max batch size** (default is 1) for rolling restarts as per the following illustration:
 
 ![Rolling restart in batches](/images/ee/rolling-restart-batch.png)
 
-This means YBA can operate on batches of nodes per availability zone instead of one node at a time.
-YBA supports this rolling batch feature which is currently {{<tags/feature/ea>}} for TServer nodes, but Master nodes are always updated individually.
 The specified batch size is automatically applied to read replica as well (if it exists). Before running the operation, YBA synchronizes with the database to verify that the batch size is safe to use and will automatically fall back to a single node at a time if verification fails.
 
 As the feature is not enabled by default, set the **Stop multiple nodes in az simultaneously during upgrade** Global runtime configuration option for VMs (config key `yb.task.upgrade.batch_roll_enabled`), or the **Stop multiple nodes in az simultaneously during upgrade (in k8s)** Global runtime configuration option for Kubernetes (config key `yb.task.upgrade.batch_roll_enabled_k8s`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global runtime configuration settings.
