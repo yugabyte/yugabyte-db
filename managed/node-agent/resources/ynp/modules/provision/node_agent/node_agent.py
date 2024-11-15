@@ -160,7 +160,7 @@ class InstallNodeAgent(BaseYnpModule):
         except requests.exceptions.HTTPError as http_err:
             if response.status_code == 400:
                 logging.info("Instance type does not exist, creating it.")
-                instance_data = self._generate_instance_type_payload(context, provider['uuid'])
+                instance_data = self._generate_instance_type_payload(context)
 
                 instance_payload_file = os.path.join(
                     context.get('tmp_directory'), 'create_instance.json')
