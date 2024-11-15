@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/release/releaseutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -26,16 +27,8 @@ var deleteReleaseCmd = &cobra.Command{
 	Example: `yba yb-db-version delete --version <version>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
-		version, err := cmd.Flags().GetString("version")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		if len(version) == 0 {
-			cmd.Help()
-			logrus.Fatalln(
-				formatter.Colorize("No version found to delete\n", formatter.RedColor))
-		}
-		err = util.ConfirmCommand(
+		version := releaseutil.VersionValidation(cmd, "delete")
+		err := util.ConfirmCommand(
 			fmt.Sprintf("Are you sure you want to delete %s: %s", "version", version),
 			viper.GetBool("force"))
 		if err != nil {

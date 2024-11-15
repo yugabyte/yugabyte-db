@@ -1,37 +1,31 @@
-## yba yb-db-version create
+## yba yb-db-version architecture add
 
-Create a YugabyteDB version entry on YugabyteDB Anywhere
+Add architectures to a version of YugabyteDB
 
 ### Synopsis
 
-Create a YugabyteDB version entry on YugabyteDB Anywhere. Run this command after the information provided in the "yba yb-db-version artifact-create <url/upload>" commands.
+Add architectures for a version of YugabyteDB. Run this command after the information provided in the "yba yb-db-version artifact-create <url/upload>" commands.
 
 ```
-yba yb-db-version create [flags]
+yba yb-db-version architecture add [flags]
 ```
 
 ### Examples
 
 ```
-yba yb-db-version create --version <version> --type PREVIEW --platform LINUX
-	--arch x86_64 --yb-type YBDB --url <url>
+yba yb-db-version architecture add  --version <version> \
+	--platform <platform> --arch <architecture> --url <url>
 ```
 
 ### Options
 
 ```
-  -v, --version string    [Required] YugabyteDB version to be created
-      --type string       [Required] Release type. Allowed values: LTS, STS, PREVIEW
       --platform string   [Optional] Platform supported by this version. Allowed values: LINUX, KUBERNETES (default "LINUX")
       --arch string       [Optional] Architecture supported by this version. Required if platform is LINUX. Allowed values: x86_64, aarch64
-      --yb-type string    [Optional] Type of the release. Allowed values: YBDB (default "YBDB")
       --file-id string    [Optional] File ID of the release tgz file to be used. This is the metadata UUID from the "yba yb-db-version artifact-create upload" command. Provide either file-id or url.
       --url string        [Optional] URL to extract release metadata from a remote tarball. Provide either file-id or url.
       --sha256 string     [Optional] SHA256 of the release tgz file. Required if file-id is provided.
-      --date-msecs int    [Optional] Date in milliseconds since the epoch when the release was created.
-      --notes string      [Optional] Release notes.
-      --tag string        [Optional] Release tag.
-  -h, --help              help for create
+  -h, --help              help for add
 ```
 
 ### Options inherited from parent commands
@@ -45,10 +39,11 @@ yba yb-db-version create --version <version> --type PREVIEW --platform LINUX
   -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
   -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
       --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)
+  -v, --version string     [Required] YugabyteDB version to be updated.
       --wait               Wait until the task is completed, otherwise it will exit immediately. (default true)
 ```
 
 ### SEE ALSO
 
-* [yba yb-db-version](yba_yb-db-version.md)	 - Manage YugabyteDB versions
+* [yba yb-db-version architecture](yba_yb-db-version_architecture.md)	 - Manage architectures for a version of YugabyteDB
 
