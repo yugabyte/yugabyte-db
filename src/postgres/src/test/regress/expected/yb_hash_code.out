@@ -1268,3 +1268,244 @@ EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = 
 (0 rows)
 
 DROP TABLE tt;
+-- GH18347 : yb_hash_code() in row constructor in predicate with an inequality fails
+set client_min_messages = warning;
+drop table if exists GH18347;
+reset client_min_messages;
+CREATE TABLE GH18347 (i int, j int);
+CREATE INDEX ON GH18347 (i, j);
+INSERT INTO GH18347 VALUES(0, 0);
+INSERT INTO GH18347 VALUES(0, 1);
+INSERT INTO GH18347 VALUES(0, 2);
+INSERT INTO GH18347 VALUES(0, 3);
+INSERT INTO GH18347 VALUES(1, 0);
+INSERT INTO GH18347 VALUES(1, 1);
+INSERT INTO GH18347 VALUES(2, 2);
+INSERT INTO GH18347 VALUES(3, 3);
+INSERT INTO GH18347 VALUES(2147483647, 0);
+INSERT INTO GH18347 VALUES(2147483647, 1);
+INSERT INTO GH18347 VALUES(2147483647, 2);
+INSERT INTO GH18347 VALUES(2147483647, 3);
+INSERT INTO GH18347 VALUES(-2147483648, 0);
+INSERT INTO GH18347 VALUES(-2147483648, 1);
+INSERT INTO GH18347 VALUES(-2147483648, 2);
+INSERT INTO GH18347 VALUES(-2147483648, 3);
+-- Failing query pattern.
+EXPLAIN (COSTS OFF) /*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2;
+                        QUERY PLAN
+----------------------------------------------------------
+ Sort
+   Sort Key: i, j
+   ->  Seq Scan on gh18347
+         Filter: (ROW(j, yb_hash_code(i)) > ROW(1, 4624))
+(4 rows)
+
+/*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2;
+      i      | j | hash_code_i | hash_code_j | hash_code_1
+-------------+---+-------------+-------------+-------------
+ -2147483648 | 2 |        4001 |       49348 |        4624
+ -2147483648 | 3 |        4001 |       64672 |        4624
+           0 | 1 |       47650 |        4624 |        4624
+           0 | 2 |       47650 |       49348 |        4624
+           0 | 3 |       47650 |       64672 |        4624
+           2 | 2 |       49348 |       49348 |        4624
+           3 | 3 |       64672 |       64672 |        4624
+  2147483647 | 1 |       40388 |        4624 |        4624
+  2147483647 | 2 |       40388 |       49348 |        4624
+  2147483647 | 3 |       40388 |       64672 |        4624
+(10 rows)
+
+-- Verify sequential and index scans give the same answer.
+EXPLAIN (COSTS OFF) /*+IndexScan(GH18347) SeqScan(GH18347_1) */
+with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2),
+     cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2)
+SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1
+UNION ALL
+SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ HashSetOp Except All
+   CTE cte
+     ->  Sort
+           Sort Key: gh18347.i, gh18347.j
+           ->  Seq Scan on gh18347
+                 Filter: (ROW(j, yb_hash_code(i)) > ROW(1, 4624))
+   CTE cte1
+     ->  Sort
+           Sort Key: gh18347_1.i, gh18347_1.j
+           ->  Seq Scan on gh18347 gh18347_1
+                 Filter: (ROW(j, yb_hash_code(i)) > ROW(1, 4624))
+   ->  Append
+         ->  Result
+               ->  Append
+                     ->  Result
+                           ->  HashSetOp Except All
+                                 ->  Append
+                                       ->  Subquery Scan on "*SELECT* 1"
+                                             ->  CTE Scan on cte
+                                       ->  Subquery Scan on "*SELECT* 2"
+                                             ->  CTE Scan on cte1
+                     ->  CTE Scan on cte1 cte1_1
+         ->  Subquery Scan on "*SELECT* 4"
+               ->  CTE Scan on cte cte_1
+(24 rows)
+
+/*+IndexScan(GH18347) SeqScan(GH18347_1) */
+with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2),
+     cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2)
+SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1
+UNION ALL
+SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
+ i | j | hash_code_i | hash_code_j | hash_code_1
+---+---+-------------+-------------+-------------
+(0 rows)
+
+-- Try variation.
+EXPLAIN (COSTS OFF) /*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2;
+                        QUERY PLAN
+-----------------------------------------------------------
+ Sort
+   Sort Key: i, j
+   ->  Seq Scan on gh18347
+         Filter: (ROW(j, yb_hash_code(i)) < ROW(1, 49348))
+(4 rows)
+
+/*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2;
+      i      | j | hash_code_i | hash_code_j | hash_code_2
+-------------+---+-------------+-------------+-------------
+ -2147483648 | 0 |        4001 |       47650 |       49348
+ -2147483648 | 1 |        4001 |        4624 |       49348
+           0 | 0 |       47650 |       47650 |       49348
+           0 | 1 |       47650 |        4624 |       49348
+           1 | 0 |        4624 |       47650 |       49348
+           1 | 1 |        4624 |        4624 |       49348
+  2147483647 | 0 |       40388 |       47650 |       49348
+  2147483647 | 1 |       40388 |        4624 |       49348
+(8 rows)
+
+-- Verify sequential and index scans give the same answer.
+EXPLAIN (COSTS OFF) /*+IndexScan(GH18347) SeqScan(GH18347_1) */
+with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2),
+     cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2)
+SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1
+UNION ALL
+SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ HashSetOp Except All
+   CTE cte
+     ->  Sort
+           Sort Key: gh18347.i, gh18347.j
+           ->  Seq Scan on gh18347
+                 Filter: (ROW(j, yb_hash_code(i)) < ROW(1, 49348))
+   CTE cte1
+     ->  Sort
+           Sort Key: gh18347_1.i, gh18347_1.j
+           ->  Seq Scan on gh18347 gh18347_1
+                 Filter: (ROW(j, yb_hash_code(i)) < ROW(1, 49348))
+   ->  Append
+         ->  Result
+               ->  Append
+                     ->  Result
+                           ->  HashSetOp Except All
+                                 ->  Append
+                                       ->  Subquery Scan on "*SELECT* 1"
+                                             ->  CTE Scan on cte
+                                       ->  Subquery Scan on "*SELECT* 2"
+                                             ->  CTE Scan on cte1
+                     ->  CTE Scan on cte1 cte1_1
+         ->  Subquery Scan on "*SELECT* 4"
+               ->  CTE Scan on cte cte_1
+(24 rows)
+
+/*+IndexScan(GH18347) SeqScan(GH18347_1) */
+with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2),
+     cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2)
+SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1
+UNION ALL
+SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
+ i | j | hash_code_i | hash_code_j | hash_code_2
+---+---+-------------+-------------+-------------
+(0 rows)
+
+-- Try a 1 element IN with row constructor. Should get an index scan since this turns into an equality.
+EXPLAIN (COSTS OFF) /*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2;
+                         QUERY PLAN
+------------------------------------------------------------
+ Sort
+   Sort Key: i
+   ->  Index Only Scan using gh18347_i_j_idx on gh18347
+         Index Cond: ((yb_hash_code(i) = 4624) AND (j = 1))
+(4 rows)
+
+/*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2;
+ i | j | hash_code_i | hash_code_j | hash_code_2
+---+---+-------------+-------------+-------------
+ 1 | 1 |        4624 |        4624 |       49348
+(1 row)
+
+-- Verify sequential and index scans give the same answer.
+EXPLAIN (COSTS OFF) /*+IndexScan(GH18347) SeqScan(GH18347_1) */
+with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2),
+     cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2)
+SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1
+UNION ALL
+SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ HashSetOp Except All
+   CTE cte
+     ->  Sort
+           Sort Key: gh18347.i
+           ->  Index Only Scan using gh18347_i_j_idx on gh18347
+                 Index Cond: ((yb_hash_code(i) = 4624) AND (j = 1))
+   CTE cte1
+     ->  Sort
+           Sort Key: gh18347_1.i
+           ->  Index Only Scan using gh18347_i_j_idx on gh18347 gh18347_1
+                 Index Cond: ((yb_hash_code(i) = 4624) AND (j = 1))
+   ->  Append
+         ->  Result
+               ->  Append
+                     ->  Result
+                           ->  HashSetOp Except All
+                                 ->  Append
+                                       ->  Subquery Scan on "*SELECT* 1"
+                                             ->  CTE Scan on cte
+                                       ->  Subquery Scan on "*SELECT* 2"
+                                             ->  CTE Scan on cte1
+                     ->  CTE Scan on cte1 cte1_1
+         ->  Subquery Scan on "*SELECT* 4"
+               ->  CTE Scan on cte cte_1
+(24 rows)
+
+/*+IndexScan(GH18347) SeqScan(GH18347_1) */
+with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2),
+     cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2)
+SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1
+union all
+SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
+ i | j | hash_code_i | hash_code_j | hash_code_2
+---+---+-------------+-------------+-------------
+(0 rows)
+
+-- Try an IN with yb_hash_code(). Cannot do an index scan since the query execution code does not support this
+-- so plan will have a sequantial scan. (This was hitting an assert before this issue was fixed.)
+EXPLAIN (COSTS OFF) /*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE yb_hash_code(i) IN (yb_hash_code(1), yb_hash_code(2)) ORDER BY 1, 2;
+                             QUERY PLAN
+---------------------------------------------------------------------
+ Sort
+   Sort Key: i, j
+   ->  Seq Scan on gh18347
+         Filter: (yb_hash_code(i) = ANY ('{4624,49348}'::integer[]))
+(4 rows)
+
+/*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE yb_hash_code(i) IN (yb_hash_code(1), yb_hash_code(2)) ORDER BY 1, 2;
+ i | j | hash_code_i | hash_code_j | hash_code_1 | hash_code_2
+---+---+-------------+-------------+-------------+-------------
+ 1 | 0 |        4624 |       47650 |        4624 |       49348
+ 1 | 1 |        4624 |        4624 |        4624 |       49348
+ 2 | 2 |       49348 |       49348 |        4624 |       49348
+(3 rows)
+
+drop table GH18347;
