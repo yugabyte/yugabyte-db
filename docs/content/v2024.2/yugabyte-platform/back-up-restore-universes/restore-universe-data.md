@@ -107,6 +107,27 @@ To confirm that the restore succeeded, select the **Tables** tab to compare the 
 
 To view the details of a restored database, navigate to **Universes > Restore History**, or **Backups > Restore History**.
 
+## Restore a PITR-enabled backup
+
+Restoring a PITR-enabled backup is currently {{<tags/feature/ea>}}. To enable the feature in YugabyteDB Anywhere, set the feature flag `enableBackupPITR`.
+If you created backups using a [scheduled backup policy with PITR](../schedule-data-backups/#create-a-scheduled-backup-policy-with-pitr), you can restore YugabyteDB universe data from a backup as follows:
+
+1. In the **Backups** list, select the backup to restore to display the **Backup Details**.
+
+1. In the list of databases (YSQL) or keyspaces (YCQL), click **Restore** for the database or keyspace you want to restore. If your backup includes incremental backups, to display the databases or keyspaces, click the down arrow for the increment at which you want to restore.
+
+1. In the **Restore Backup** dialog, select the Keyspaces/Databases you want to restore. You can choose to backup either All Databases/Keyspaces, or a single database/keyspace.
+
+    ![Restore backup](/images/yp/restore-backup-pitr.png)
+
+1. You can select time to restore to based on the "Backup time" or to "An earlier point in time". Selecting **An earlier point in time** option will show the available restore window (start and end times) for the restoration. For YCQL backups, you can select a subset of tables for restoration. If a table is not available within the specified restore window, an error message is displayed. When finished, click **Next**.
+
+1. Select the **Target Universe** where you want to restore the backup. You also have the option to rename the keyspaces/databases before initiating the restore process.
+
+1. If the backup is encrypted, choose the appropriate **KMS configuration**. When finished, click **Next**.
+
+1. Rename the keyspaces/databases and click **Restore**.
+
 ## Advanced restore procedure
 
 In addition to the basic restore, an advanced restore option is available for the following circumstances:
