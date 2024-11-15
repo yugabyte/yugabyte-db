@@ -14,38 +14,46 @@ type: docs
 
 ## Automatic YB-Master failover
 
-{{<tags/feature/ea>}} To avoid under-replication, YugabyteDB Anywhere can automatically detect YB-Master servers that are not responding to the master leader, as well as master servers that are lagging WAL operations, and fail over to another available node.
+{{<tags/feature/ea>}} To avoid under-replication, YugabyteDB Anywhere can automatically detect a YB-Master server that is not responding to the master leader, or that is lagging WAL operations, and fail over to another available node in the same availability zone.
+
+Note that automatic failover only works for a single unhealthy Master server.
 
 ### Prerequisites
 
 - Automatic YB-Master failover is {{<tags/feature/ea>}}. To enable the feature for a universe, set the **Auto Master Failover** Universe Runtime Configuration option (config key `yb.auto_master_failover.enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
-- Universe running v2.20.3.0 or 2.21.0.0 or later, on-premises or on a cloud provider (Kubernetes is not supported).
+- The universe has the following characteristics:
+
+  - running v2.20.3.0 or 2.21.0.0 or later
+  - on-premises or on a cloud provider (Kubernetes is not supported)
+  - replication factor of 3 or more
+  - does not have dedicated masters
+
 - The provider configuration for the universe includes a replacement node in the same availability zone.
 
-### Failover
+### How it works
 
 Automatic master failover works as follows:
 
-1. When active, by default YugabyteDB Anywhere checks universe masters every minute to see if they respond.
+1. When active, by default YugabyteDB Anywhere checks universe masters every minute to see if they are healthy.
 
     You can customize this interval using the universe runtime configuration option `yb.auto_master_failover.detect_interval`.
 
-1. YugabyteDB Anywhere declares a master is failed or potentially failed when one of the following conditions are met:
+1. YugabyteDB Anywhere declares a master is failed or potentially failed when any of the following conditions are met:
 
     - The Master heartbeat delay is greater than the threshold.
     - Maximum tablet follower lag is greater than the threshold.
 
-1. When YugabyteDB Anywhere detects an unresponsive master in a universe, it displays a message on the universe **Overview** indicating a potential master failure, and indicating the time remaining until auto failover (by default, this is 30 minutes).
+1. When YugabyteDB Anywhere detects an unhealthy master in a universe, it displays a message on the universe **Overview** indicating a potential master failure, and indicating the estimated time remaining until auto failover.
 
     The warning is displayed when a master lags more than the threshold defined by the universe runtime configuration option `yb.auto_master_failover.master_follower_lag_soft_threshold`.
 
     You can configure the time to failover using the universe runtime configuration option `yb.auto_master_failover.master_follower_lag_hard_threshold`.
 
-1. During this time, you can investigate and porentially fix the problem.
+1. During this time, you can investigate and potentially fix the problem.
 
     If you fix the problem, the warning is dismissed, and YugabyteDB Anywhere returns to monitoring the universe.
 
-    You can also opt to snooze the failover.
+    If you need more time to investigate or fix the problem manually, you can opt to snooze the failover.
 
 1. Failover is triggered if the time expires and the issue hasn't been fixed.
 
@@ -54,6 +62,8 @@ Automatic master failover works as follows:
     - The universe is not paused.
     - The universe is not locked (that is, another locking operation is running).
     - All nodes are live; that is, there aren't any stopped, removed, or decommissioned nodes.
+
+    Note that master failover may not fix all the issues with the universe. Be sure to address other failed or unavailable nodes or other issues to bring your universe back to a healthy state.
 
 1. After starting up a new master on a different node in the same availability zone as the failed master, YugabyteDB Anywhere waits for you to recover any failed VMs, including the failed master VM, so that it can update the master address configuration on those VMs. Follow the steps in [Replace a live or unreachable node](#replace-a-live-or-unreachable-node).
 
