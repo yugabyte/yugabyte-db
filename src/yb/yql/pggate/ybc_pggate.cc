@@ -1533,18 +1533,13 @@ YBCStatus YBCPgExecTruncateColocated(YBCPgStatement handle) {
 }
 
 // SELECT Operations -------------------------------------------------------------------------------
-YBCStatus YBCPgNewSelect(const YBCPgOid database_oid,
-                         const YBCPgOid table_relfilenode_oid,
-                         const YBCPgPrepareParameters *prepare_params,
-                         bool is_region_local,
-                         YBCPgStatement *handle) {
-  const auto index_oid = prepare_params && prepare_params->use_secondary_index
-      ? prepare_params->index_relfilenode_oid
-      : kInvalidOid;
-  const auto index_id =
-      index_oid == kInvalidOid ? PgObjectId{} : PgObjectId{database_oid, index_oid};
+YBCStatus YBCPgNewSelect(
+    YBCPgOid database_oid, YBCPgOid table_relfilenode_oid, const YBCPgPrepareParameters* params,
+    bool is_region_local, YBCPgStatement* handle) {
   return ToYBCStatus(pgapi->NewSelect(
-      {database_oid, table_relfilenode_oid}, index_id, prepare_params, is_region_local, handle));
+      PgObjectId{database_oid, table_relfilenode_oid},
+      PgObjectId{database_oid, params ? params->index_relfilenode_oid : kInvalidOid},
+      params, is_region_local, handle));
 }
 
 YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan) {
