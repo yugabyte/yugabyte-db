@@ -98,18 +98,18 @@ The following tables describe metrics available via the YugabyteDB Anywhere UI.
 
 ### Per process
 
-Per process metrics provides details about the distribution of resources among YBA agents, and is currently available only from cloud providers (AWS, GCP, and Azure). The metrics presented are not intended for alert purposes, but they can be used when examining alerts on other metrics.
+Per process metrics provide details about the distribution of resources among YBA agents, and is currently available only from cloud providers (AWS, GCP, and Azure). The metrics presented are not intended for alert purposes, but they can be used when examining alerts on other metrics.
 
 | Graph | Description | Example |
 | :------------------------------------ | ------------------------------------------------------------ | -------------------------------- |
-| User CPU Seconds | The percentage of CPU utilization spent by the processor dedicated to executing program instructions in user space. | ![User CPU Seconds](/images/yp/metrics106.png) |
-| System CPU Seconds | The percentage of CPU utilization spent by processor to execute system calls in kernel space on behalf of a program.| ![System CPU Seconds](/images/yp/metrics107.png) |
+| User CPU Seconds | The percentage of CPU utilization spent by the processor dedicated to executing process instructions in user space. | ![User CPU Seconds](/images/yp/metrics106.png) |
+| System CPU Seconds | The percentage of CPU utilization spent by processor to execute system calls in kernel space on behalf of a process. | ![System CPU Seconds](/images/yp/metrics107.png) |
 | Virtual Memory | Virtual memory size for a process. | ![Virtual Memory](/images/yp/metrics108.png) |
-| RSS Memory | Resident set size (RSS) for a process (The portion of memory occupied by a process that is held in main memory (RAM)). | ![RSS Memory](/images/yp/metrics109.png) |
-| PSS Memory | The Proportional Set Size (PSS) for a process (The total size of pages it has in main memory (RAM), where each page is divided by the number of processes sharing it). This metric helps to calculate the total memory occupied by multiple processes more accurately. | ![PSS Memory](/images/yp/metrics110.png) |
-| IO Read | This represents the I/O read bytes for a process, indicating the actual number of bytes retrieved from the storage layer by the process. | ![IO Read](/images/yp/metrics111.png) |
-| IO Write | This represents the I/O write bytes for a process, specifying the actual number of bytes written to the storage layer by the process. | ![IO Write](/images/yp/metrics112.png) |
-| Open files | Number of open files for process. | ![IO Write](/images/yp/metrics113.png) |
+| RSS Memory | The resident set size (RSS) for a process. This is the portion of memory occupied by a process that is held in main memory (RAM). | ![RSS Memory](/images/yp/metrics109.png) |
+| PSS Memory | The proportional set size (PSS) for a process. This is the total size of pages the process has in main memory (RAM), where each page is divided by the number of processes sharing it. This metric helps to calculate the total memory occupied by multiple processes more accurately. | ![PSS Memory](/images/yp/metrics110.png) |
+| IO Read | The I/O read bytes for a process, indicating the actual number of bytes retrieved from the storage layer by the process. | ![IO Read](/images/yp/metrics111.png) |
+| IO Write | The I/O write bytes for a process, specifying the actual number of bytes written to the storage layer by the process. | ![IO Write](/images/yp/metrics112.png) |
+| Open files | Number of open files for the process. | ![IO Write](/images/yp/metrics113.png) |
 
 ### Resource
 
