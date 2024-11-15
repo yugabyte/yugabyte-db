@@ -2350,6 +2350,10 @@ class TransactionParticipant::Impl
   }
 
   void UpdateMinReplayTxnStartTimeIfNeeded() REQUIRES(mutex_) {
+    if (!transactions_loaded_) {
+      return;
+    }
+
     if (min_replay_txn_start_ht_callback_) {
       auto ht = GetMinReplayTxnStartTime(recently_applied_);
       if (min_replay_txn_start_ht_.exchange(ht, std::memory_order_acq_rel) != ht) {
