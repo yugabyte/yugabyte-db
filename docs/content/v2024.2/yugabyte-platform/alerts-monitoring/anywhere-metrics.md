@@ -98,7 +98,7 @@ The following tables describe metrics available via the YugabyteDB Anywhere UI.
 
 ### Per process
 
-Per process metrics provide details about the distribution of resources among YBA agents, and is currently available only from cloud providers (AWS, GCP, and Azure). The metrics presented are not intended for alert purposes, but they can be used when examining alerts on other metrics.
+Per process metrics provide details about the distribution of resources among YBA agents, and is currently available for universes deployed on [cloud providers](../../configure-yugabyte-platform/aws/) or [on-premises](../../configure-yugabyte-platform/on-premises/). The metrics presented are not intended for alert purposes, but they can be used when examining alerts on other metrics.
 
 | Graph | Description | Example |
 | :------------------------------------ | ------------------------------------------------------------ | -------------------------------- |
