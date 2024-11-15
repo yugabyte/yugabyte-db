@@ -1,2 +1,3 @@
 test: helio_distributed_setup
 test: public_api_schema
+test: helio_distributed_test_helpers
