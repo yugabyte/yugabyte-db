@@ -1858,7 +1858,10 @@ bson_maxminn_transition(PG_FUNCTION_ARGS, bool isMaxN)
 	/* Verify that N is an integer. */
 	ValidateElementForNGroupAccumulators(&elementBsonValue, isMaxN == true ? "maxN" :
 										 "minN");
-	int element = BsonValueAsInt32(&elementBsonValue);
+	bool throwIfFailed = true;
+	int64_t element = BsonValueAsInt64WithRoundingMode(&elementBsonValue,
+													   ConversionRoundingMode_Floor,
+													   throwIfFailed);
 
 	BinaryHeapState *currentState = (BinaryHeapState *) palloc0(sizeof(BinaryHeapState));
 
@@ -1874,10 +1877,17 @@ bson_maxminn_transition(PG_FUNCTION_ARGS, bool isMaxN)
 		 * For minN, we need to maintain a large root heap.
 		 * When currentValue is less than the top of the heap, we need to remove the top of the heap and insert currentValue.
 		 */
-
 		int64_t totalSize = sizeof(bson_value_t) * element + sizeof(BinaryHeapState) +
 							sizeof(BinaryHeap);
-		CheckAggregateIntermediateResultSize(totalSize);
+
+		/* TODO: Support element as int64. */
+		if (element > INT32_MAX || totalSize > BSON_MAX_ALLOWED_SIZE_INTERMEDIATE)
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERMEDIATERESULTTOOLARGE),
+							errmsg(
+								"Size is larger than maximum size allowed for an intermediate document %u",
+								BSON_MAX_ALLOWED_SIZE_INTERMEDIATE)));
+		}
 
 		currentState->heap = AllocateHeap(element, isMaxN == true ?
 										  HeapSortComparatorMaxN :

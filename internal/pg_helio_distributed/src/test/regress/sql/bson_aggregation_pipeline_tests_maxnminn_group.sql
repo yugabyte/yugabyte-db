@@ -139,6 +139,8 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "maxminn_te
 
 /* $maxN are subject to the 100 MB limit */
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "maxminn_test1", "pipeline": [ { "$group": { "_id": "$gameId", "NScore":{"$maxN": {"input": "$score", "n": 12345678 } } } } ] }');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "maxminn_test1", "pipeline": [ { "$group": { "_id": "$gameId", "NScore":{"$maxN": {"input": "$score", "n": 9223372036854775807 } } } } ] }');
 
 /* $minN are subject to the 100 MB limit */
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "maxminn_test1", "pipeline": [ { "$group": { "_id": "$gameId", "NScore":{"$minN": {"input": "$score", "n": 12345678 } } } } ] }');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "maxminn_test1", "pipeline": [ { "$group": { "_id": "$gameId", "NScore":{"$minN": {"input": "$score", "n": 9223372036854775807 } } } } ] }');
