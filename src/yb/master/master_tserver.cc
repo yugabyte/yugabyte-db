@@ -229,5 +229,9 @@ Result<pgwrapper::PGConn> MasterTabletServer::CreateInternalPGConn(
   return STATUS_FORMAT(InternalError, "Unexpected call of CreateInternalPGConn()");
 }
 
+bool MasterTabletServer::SkipCatalogVersionChecks() {
+  return master_->catalog_manager()->SkipCatalogVersionChecks();
+}
+
 } // namespace master
 } // namespace yb

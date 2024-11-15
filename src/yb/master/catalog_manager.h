@@ -664,9 +664,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   void DeleteYsqlDatabaseAsync(scoped_refptr<NamespaceInfo> database, const LeaderEpoch& epoch);
 
   // Delete all tables in YSQL database.
-  Status DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& database,
-                            const bool is_for_ysql_major_upgrade,
-                            const LeaderEpoch& epoch);
+  Status DeleteYsqlDBTables(
+      const scoped_refptr<NamespaceInfo>& database, const bool is_for_ysql_major_rollback,
+      const LeaderEpoch& epoch);
 
   // List all the current namespaces.
   Status ListNamespaces(const ListNamespacesRequestPB* req,
@@ -1136,37 +1136,32 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status DdlLog(
       const DdlLogRequestPB* req, DdlLogResponsePB* resp, rpc::RpcContext* rpc);
 
-  // Initiates initdb for the new version of a major YSQL version upgrade. The system must be in
-  // upgrade mode (TEST_online_pg11_to_pg15_upgrade set to true) for this to work.
-  //
-  // Returns immediately. Call IsYsqlMajorVersionUpgradeInitdbDone to wait until it's finished.
-  //
-  // Can be called more than once, but not while it's already running. It internally performs a
-  // rollback before running initdb.
-  Status StartYsqlMajorVersionUpgradeInitdb(const StartYsqlMajorVersionUpgradeInitdbRequestPB* req,
-                                            StartYsqlMajorVersionUpgradeInitdbResponsePB* resp,
-                                            rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+  // Initiates ysql major catalog upgrade which involves global initdb, pg_upgrade, and catalog
+  // version fixups.
+  // IsYsqlMajorCatalogUpgradeDone must be called to track the completion status of the
+  // operation.
+  Status StartYsqlMajorCatalogUpgrade(
+      const StartYsqlMajorCatalogUpgradeRequestPB* req,
+      StartYsqlMajorCatalogUpgradeResponsePB* resp, rpc::RpcContext* rpc, const LeaderEpoch& epoch);
 
-  // Checks if initdb has been completed for a YSQL major version upgrade.
-  Status IsYsqlMajorVersionUpgradeInitdbDone(
-      const IsYsqlMajorVersionUpgradeInitdbDoneRequestPB* req,
-      IsYsqlMajorVersionUpgradeInitdbDoneResponsePB* resp, rpc::RpcContext* rpc);
+  // Checks if ysql major catalog upgrade has completed.
+  Status IsYsqlMajorCatalogUpgradeDone(
+      const IsYsqlMajorCatalogUpgradeDoneRequestPB* req,
+      IsYsqlMajorCatalogUpgradeDoneResponsePB* resp, rpc::RpcContext* rpc);
 
-  // Rolls back an in-progress major YSQL version upgrade. Deletes all of the new YSQL version's
-  // catalog tables, and resets all upgrade-related state to initial values. Blocks until the
-  // rollback is finished or fails. The system must have been in upgrade mode
-  // (TEST_online_pg11_to_pg15_upgrade set to true), with no DDLs performed, since the beginning of
-  // the upgrade for this to work.
-  //
-  // Takes a long time to run. Set a timeout of at least 5 minutes when calling.
-  //
-  // Can be called more than once, but not at the same time.
-  //
-  // After the rollback successfully completes, it's safe to restart the masters on the old major
-  // YSQL version.
-  Status RollbackYsqlMajorVersionUpgrade(const RollbackYsqlMajorVersionUpgradeRequestPB* req,
-                                         RollbackYsqlMajorVersionUpgradeResponsePB* resp,
-                                         rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+  Status FinalizeYsqlMajorCatalogUpgrade(
+      const FinalizeYsqlMajorCatalogUpgradeRequestPB* req,
+      FinalizeYsqlMajorCatalogUpgradeResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+
+  // Rolls back the major YSQL catalog to the previous version. Deletes all of the new YSQL
+  // version's catalog tables, and resets all upgrade-related state to initial values. Blocks until
+  // the rollback is finished or fails.
+  // Takes a long time to run. Use a timeout of at least 5 minutes when calling.
+  Status RollbackYsqlMajorCatalogVersion(
+      const RollbackYsqlMajorCatalogVersionRequestPB* req,
+      RollbackYsqlMajorCatalogVersionResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
 
   // Test wrapper around protected DoSplitTablet method.
   Status TEST_SplitTablet(
@@ -1690,6 +1685,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, CoarseTimePoint deadline);
 
   YsqlCatalogConfig& GetYsqlCatalogConfig() { return ysql_catalog_config_; }
+  const YsqlCatalogConfig& GetYsqlCatalogConfig() const { return ysql_catalog_config_; }
 
   InitialSysCatalogSnapshotWriter& AllocateAndGetInitialSysCatalogSnapshotWriter();
 
@@ -2979,6 +2975,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const CreateTableRequestPB& req, const TablegroupInfo* tablegroup,
       bool is_colocated_via_database, const NamespaceId& namespace_id,
       const NamespaceName& namespace_name, const TableInfoPtr& indexed_table) REQUIRES(mutex_);
+
+  bool IsYsqlMajorCatalogUpgradeInProgress() const;
+
+  bool SkipCatalogVersionChecks() override;
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};

@@ -16,6 +16,8 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
+using namespace std::chrono_literals;
+
 namespace yb {
 
 class Pg15UpgradeTest : public Pg15UpgradeTestBase {
@@ -27,37 +29,6 @@ class Pg15UpgradeTest : public Pg15UpgradeTestBase {
   constexpr static auto kYugabyte = "yugabyte";
   constexpr static auto kPostgres = "postgres";
   constexpr static auto kSystemPlatform = "system_platform";
-
-  void TestSimpleTableUpgrade() {
-    const size_t kRowCount = 100;
-    // Create a table with 3 tablets and kRowCount rows so that each tablet has at least a few rows.
-    ASSERT_OK(ExecuteStatements(
-        {"CREATE TABLE t (a INT) SPLIT INTO 3 TABLETS",
-         Format("INSERT INTO t VALUES(generate_series(1, $0))", kRowCount)}));
-    static const auto kSelectFromTable = "SELECT * FROM t";
-
-    ASSERT_OK(UpgradeClusterToMixedMode());
-
-    {
-      auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg15));
-      auto count = ASSERT_RESULT(conn.Fetch(kSelectFromTable));
-      ASSERT_EQ(PQntuples(count.get()), kRowCount);
-    }
-    {
-      auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg11));
-      auto count = ASSERT_RESULT(conn.Fetch(kSelectFromTable));
-      ASSERT_EQ(PQntuples(count.get()), kRowCount);
-    }
-
-    ASSERT_OK(FinalizeUpgradeFromMixedMode());
-
-    // Verify row count from a random tserver.
-    {
-      auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
-      auto count = ASSERT_RESULT(conn.Fetch(kSelectFromTable));
-      ASSERT_EQ(PQntuples(count.get()), kRowCount);
-    }
-  }
 
   // Stops the tserver running on the yb-master leader node.
   // The tserver must be restarted before the test completes for it to succeed the shutdown in the
@@ -96,6 +67,9 @@ TEST_F(Pg15UpgradeTest, CheckVersion) {
     ASSERT_STR_CONTAINS(version, old_version_info().version);
   }
 
+  auto ysql_catalog_config = ASSERT_RESULT(DumpYsqlCatalogConfig());
+  ASSERT_STR_NOT_CONTAINS(ysql_catalog_config, "catalog_version");
+
   ASSERT_OK(UpgradeClusterToMixedMode());
 
   {
@@ -108,6 +82,8 @@ TEST_F(Pg15UpgradeTest, CheckVersion) {
     auto version = ASSERT_RESULT(conn.FetchRowAsString(kSelectVersion));
     ASSERT_STR_CONTAINS(version, old_version_info().version);
   }
+  ysql_catalog_config = ASSERT_RESULT(DumpYsqlCatalogConfig());
+  ASSERT_STR_NOT_CONTAINS(ysql_catalog_config, "catalog_version");
 
   ASSERT_OK(FinalizeUpgradeFromMixedMode());
 
@@ -116,9 +92,14 @@ TEST_F(Pg15UpgradeTest, CheckVersion) {
     auto version = ASSERT_RESULT(conn.FetchRowAsString(kSelectVersion));
     ASSERT_STR_CONTAINS(version, current_version_info().version_number());
   }
+
+  ysql_catalog_config = ASSERT_RESULT(DumpYsqlCatalogConfig());
+  ASSERT_STR_CONTAINS(ysql_catalog_config, "catalog_version: 15");
 }
 
-TEST_F(Pg15UpgradeTest, SimpleTable) { ASSERT_NO_FATALS(TestSimpleTableUpgrade()); }
+TEST_F(Pg15UpgradeTest, SimpleTableUpgrade) { ASSERT_OK(TestUpgradeWithSimpleTable()); }
+
+TEST_F(Pg15UpgradeTest, SimpleTableRollback) { ASSERT_OK(TestRollbackWithSimpleTable()); }
 
 TEST_F(Pg15UpgradeTest, BackslashD) {
   ASSERT_OK(ExecuteStatement("CREATE TABLE t (a INT)"));
@@ -994,7 +975,7 @@ TEST_F(Pg15UpgradeTest, NoTserverOnMasterNode) {
 
   auto master_tserver = ASSERT_RESULT(StopMasterLeaderTServer());
 
-  ASSERT_OK(PerformYsqlMajorVersionUpgrade());
+  ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
   ASSERT_OK(master_tserver->Restart());
   ASSERT_OK(WaitForClusterToStabilize());
 
@@ -1009,12 +990,12 @@ TEST_F(Pg15UpgradeTestWithAuth, NoTserverOnMasterNode) {
 
   auto master_tserver = ASSERT_RESULT(StopMasterLeaderTServer());
 
-  ASSERT_NOK_STR_CONTAINS(PerformYsqlMajorVersionUpgrade(), "Failed to run pg_upgrade");
+  ASSERT_NOK_STR_CONTAINS(PerformYsqlMajorCatalogUpgrade(), "Failed to run pg_upgrade");
   ASSERT_OK(master_tserver->Restart());
 }
 
 TEST_F(Pg15UpgradeTestWithAuth, UpgradeAuthEnabledUniverse) {
-  ASSERT_NO_FATALS(TestSimpleTableUpgrade());
+  ASSERT_OK(TestUpgradeWithSimpleTable());
 }
 
 TEST_F(Pg15UpgradeTest, GlobalBreakingDDL) {

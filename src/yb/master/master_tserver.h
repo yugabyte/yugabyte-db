@@ -19,8 +19,6 @@
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/ts_local_lock_manager.h"
 
-DECLARE_bool(TEST_online_pg11_to_pg15_upgrade);
-
 namespace yb {
 namespace master {
 
@@ -111,7 +109,7 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   virtual Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const override;
 
-  bool IsInYsqlMajorUpgrade() override { return FLAGS_TEST_online_pg11_to_pg15_upgrade; }
+  bool SkipCatalogVersionChecks() override;
 
  private:
   Result<pgwrapper::PGConn> CreateInternalPGConn(

@@ -37,9 +37,8 @@ extern bool YBCIsEnvVarTrue(const char* env_var_name);
  * but with the given default value in case the environment variable is not
  * defined, or is set to an empty string or the string "auto".
  */
-extern bool YBCIsEnvVarTrueWithDefault(
-    const char* env_var_name,
-    bool default_value);
+extern bool YBCIsEnvVarTrueWithDefault(const char *env_var_name,
+									   bool default_value);
 
 /**
  * Checks if the YB_ENABLED_IN_POSTGRES is set. This is different from
@@ -153,9 +152,9 @@ extern const bool kTestOnlyUseOSDefaultCollation;
 extern bool YBColocateDatabaseByDefault();
 
 /**
- * Returns whether we're doing an online upgrade from PG11 to PG15.
+ * Returns whether we're doing an initdb for a ysql major upgrade.
  */
-extern bool YBIsTestOnlinePg11ToPg15Upgrade();
+extern bool YBIsMajorUpgradeInitDb();
 
 /**
  * Returns the OID for database_name from the environment, if it exists and is
@@ -165,7 +164,7 @@ extern bool YBIsTestOnlinePg11ToPg15Upgrade();
 Oid YBGetDatabaseOidFromEnv(const char *database_name);
 
 /**
- * Returns whether the query diagnostics feature is enabled. 
+ * Returns whether the query diagnostics feature is enabled.
  */
 extern bool YBIsQueryDiagnosticsEnabled();
 

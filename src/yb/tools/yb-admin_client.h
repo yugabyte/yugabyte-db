@@ -63,6 +63,7 @@
 namespace yb {
 
 class HybridTime;
+class IsOperationDoneResult;
 
 namespace consensus {
 class ConsensusServiceProxy;
@@ -318,17 +319,15 @@ class ClusterAdminClient {
   //       look like this workflow is a good fit there.
   Status UpgradeYsql(bool use_single_connection);
 
-  Status StartYsqlMajorVersionUpgradeInitdb();
+  Status StartYsqlMajorCatalogUpgrade();
 
-  // Returns error Result if the RPC failed, otherwise returns the response for the caller to parse
-  // for both whether next version's initdb is done, and whether there is an initdb (non-RPC)
-  // error.
-  Result<master::IsYsqlMajorVersionUpgradeInitdbDoneResponsePB>
-  IsYsqlMajorVersionUpgradeInitdbDone();
+  Result<IsOperationDoneResult> IsYsqlMajorCatalogUpgradeDone();
 
-  Status WaitForYsqlMajorVersionUpgradeInitdb();
+  Status WaitForYsqlMajorCatalogUpgrade();
 
-  Status RollbackYsqlMajorVersionUpgrade();
+  Status FinalizeYsqlMajorCatalogUpgrade();
+
+  Status RollbackYsqlMajorCatalogVersion();
 
   // Set WAL retention time in secs for a table name.
   Status SetWalRetentionSecs(

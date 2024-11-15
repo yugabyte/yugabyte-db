@@ -572,7 +572,7 @@ Boot_CheckInitDbDone:
 				 * initdb is already done for the prior version, but we need to run it for the new
 				 * version.
 				 */
-				if (!YBIsTestOnlinePg11ToPg15Upgrade() && YBIsInitDbAlreadyDone())
+				if (!YBIsMajorUpgradeInitDb() && YBIsInitDbAlreadyDone())
 					exit(YB_INITDB_ALREADY_DONE_EXIT_CODE);
 			}
 

@@ -578,6 +578,9 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   void SetMaxGracefulShutdownWaitSec(int max_graceful_shutdown_wait_sec);
 
+  Status CallYbAdmin(
+      const std::vector<std::string>& args, MonoDelta timeout = MonoDelta::FromSeconds(60));
+
  protected:
   friend class UpgradeTestBase;
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);

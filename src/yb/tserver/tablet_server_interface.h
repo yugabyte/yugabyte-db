@@ -123,7 +123,7 @@ class TabletServerIf : public LocalTabletServer {
   virtual Result<pgwrapper::PGConn> CreateInternalPGConn(
       const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) = 0;
 
-  virtual bool IsInYsqlMajorUpgrade() { return false; }
+  virtual bool SkipCatalogVersionChecks() { return false; }
 };
 
 } // namespace tserver

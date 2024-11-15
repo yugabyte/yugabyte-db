@@ -90,7 +90,7 @@ class PgWrapper : public ProcessWrapper {
   // create a temporary PostgreSQL directory that is later deleted.
   static Status InitDbForYSQL(
       const std::string& master_addresses, const std::string& tmp_dir_base, int tserver_shm_fd,
-      std::vector<std::pair<std::string, YBCPgOid>> db_to_oid);
+      std::vector<std::pair<std::string, YBCPgOid>> db_to_oid, bool is_major_upgrade);
 
   Status SetYsqlConnManagerStatsShmKey(key_t statsshmkey);
 
@@ -111,6 +111,7 @@ class PgWrapper : public ProcessWrapper {
   };
   struct GlobalInitdbParams {
     std::vector<std::pair<std::string, YBCPgOid>> db_to_oid;
+    bool is_major_upgrade = false;
   };
   using InitdbParams = std::variant<LocalInitdbParams, GlobalInitdbParams>;
 

@@ -1630,7 +1630,7 @@ Status ExternalMiniCluster::WaitForTabletServerCount(size_t count, const MonoDel
         return Status::OK();
       }
     }
-    SleepFor(MonoDelta::FromMilliseconds(1));
+    SleepFor(MonoDelta::FromMilliseconds(100));
   }
 }
 
@@ -2192,6 +2192,22 @@ void ExternalMiniCluster::SetMaxGracefulShutdownWaitSec(int max_graceful_shutdow
 LogWaiter::LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait) :
     daemon_(daemon), string_to_wait_(string_to_wait) {
   daemon_->SetLogListener(this);
+}
+
+Status ExternalMiniCluster::CallYbAdmin(const std::vector<std::string>& args, MonoDelta timeout) {
+  auto command = ToStringVector(
+      GetToolPath("yb-admin"), "-master_addresses", GetMasterAddresses(), "-timeout_ms",
+      timeout.ToMilliseconds());
+  command.insert(command.end(), args.begin(), args.end());
+
+  LOG(INFO) << "Running " << ToString(command);
+  std::string output, error;
+  auto status = Subprocess::Call(command, &output, &error);
+  LOG(INFO) << "yb-admin Output: " << output;
+  if (!error.empty()) {
+    LOG(INFO) << "yb-admin Error: " << error;
+  }
+  return status;
 }
 
 void LogWaiter::Handle(const GStringPiece& s) {

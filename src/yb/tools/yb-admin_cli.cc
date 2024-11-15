@@ -1211,8 +1211,17 @@ Status ysql_major_version_catalog_upgrade_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   RETURN_NOT_OK(CheckArgumentsCount(args.size(), 0, 0));
   RETURN_NOT_OK_PREPEND(
-      client->StartYsqlMajorVersionUpgradeInitdb(), "Unable to run ysql major version upgrade");
-  RETURN_NOT_OK(client->WaitForYsqlMajorVersionUpgradeInitdb());
+      client->StartYsqlMajorCatalogUpgrade(), "Unable to run ysql major catalog upgrade");
+  RETURN_NOT_OK(client->WaitForYsqlMajorCatalogUpgrade());
+  return Status::OK();
+}
+
+const auto finalize_ysql_major_version_catalog_upgrade_args = "";
+Status finalize_ysql_major_version_catalog_upgrade_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 0, 0));
+  RETURN_NOT_OK_PREPEND(
+      client->FinalizeYsqlMajorCatalogUpgrade(), "Unable to finalize ysql major catalog upgrade");
   return Status::OK();
 }
 
@@ -1221,8 +1230,8 @@ const auto rollback_ysql_major_version_upgrade_args = "";
 Status rollback_ysql_major_version_upgrade_action(const ClusterAdminCli::CLIArguments& args,
                                                   ClusterAdminClient* client) {
   RETURN_NOT_OK(CheckArgumentsCount(args.size(), 0, 0));
-  RETURN_NOT_OK_PREPEND(client->RollbackYsqlMajorVersionUpgrade(),
-                        "Unable to roll back ysql major version upgrade");
+  RETURN_NOT_OK_PREPEND(
+      client->RollbackYsqlMajorCatalogVersion(), "Unable to roll back ysql major catalog upgrade");
   return Status::OK();
 }
 
@@ -2892,6 +2901,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
 
   // PG11 -> PG15 upgrade commands
   REGISTER_COMMAND(ysql_major_version_catalog_upgrade);
+  REGISTER_COMMAND(finalize_ysql_major_version_catalog_upgrade);
   REGISTER_COMMAND(rollback_ysql_major_version_upgrade);
 
   // SysCatalog util commands
