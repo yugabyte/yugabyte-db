@@ -245,9 +245,9 @@ The Prometheus metrics for the selected universe. You can customize the timefram
 You can include the following metrics with the support bundle:
 
 - Master Export - YB-Master metrics.
-- Node Export - node_exporter OS level metrics.
+- Node Export - System-level metrics for various hardware and OS parameters, such as CPU, memory, disk, and network usage, collected by Prometheus Node Exporter.
 - Platform - YugabyteDB Anywhere metrics.
-- Prometheus - YugabyteDB Anywhere Prometheus metrics.
+- Prometheus - metrics for Prometheus.
 - TServer Export - YB-TServer metrics; these are scraped from the TServer processes, and mostly cover the storage layer.
 - YSQL Export - YSQL query layer metrics.
 - YCQL Export - YCQL query layer metrics.
