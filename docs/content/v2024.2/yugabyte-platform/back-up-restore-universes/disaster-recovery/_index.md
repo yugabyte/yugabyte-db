@@ -28,11 +28,17 @@ The recovery time objective (RTO) for failover or switchover is very low, and de
 
 DR further allows for the role of each universe to switch during planned switchover and unplanned failover scenarios.
 
+![Disaster recovery](/images/yb-platform/disaster-recovery/disaster-recovery.png)
+
 {{<lead link="https://www.yugabyte.com/blog/yugabytedb-xcluster-for-postgresql-dr-in-azure/">}}
-Blog: [Using YugabyteDB xCluster DR for PostgreSQL Disaster Recovery in Azure](https://www.yugabyte.com/blog/yugabytedb-xcluster-for-postgresql-dr-in-azure/)<br>Video: [Disaster Recovery With xCluster DR and Two Cloud Regions](https://www.youtube.com/watch?v=q6Yq4xlj-wk)
+Blog: [Using YugabyteDB xCluster DR for PostgreSQL Disaster Recovery in Azure](https://www.yugabyte.com/blog/yugabytedb-xcluster-for-postgresql-dr-in-azure/)
 {{</lead>}}
 
-![Disaster recovery](/images/yb-platform/disaster-recovery/disaster-recovery.png)
+{{<lead link="https://www.youtube.com/watch?v=q6Yq4xlj-wk">}}
+Video: [Disaster Recovery With xCluster DR and Two Cloud Regions](https://www.youtube.com/watch?v=q6Yq4xlj-wk)
+{{</lead>}}
+
+&nbsp;
 
 {{<index/block>}}
 
@@ -40,41 +46,27 @@ Blog: [Using YugabyteDB xCluster DR for PostgreSQL Disaster Recovery in Azure](h
     title="Set up Disaster Recovery"
     body="Designate a universe to act as a DR replica."
     href="disaster-recovery-setup/"
-    icon="/images/section_icons/explore/fault_tolerance.png">}}
+    icon="fa-thin fa-umbrella">}}
 
   {{<index/item
     title="Unplanned failover"
     body="Fail over to the DR replica in case of an unplanned outage."
     href="disaster-recovery-failover/"
-    icon="/images/section_icons/explore/high_performance.png">}}
+    icon="fa-thin fa-cloud-bolt-sun">}}
 
   {{<index/item
     title="Planned switchover"
     body="Switch over to the DR replica for planned testing and failback."
     href="disaster-recovery-switchover/"
-    icon="/images/section_icons/manage/backup.png">}}
+    icon="fa-thin fa-toggle-on">}}
 
   {{<index/item
     title="Add and remove tables and indexes"
     body="Perform DDL changes to databases in replication."
     href="disaster-recovery-tables/"
-    icon="/images/section_icons/architecture/concepts/replication.png">}}
+    icon="fa-thin fa-plus-minus">}}
 
 {{</index/block>}}
-
-## Limitations
-
-- Currently, automatic replication of DDL (SQL-level changes such as creating or dropping tables or indexes) is not supported. For more details on how to propagate DDL changes from the DR primary to the DR replica, see [Schema change modes](#schema-change-modes).
-
-- DR setup (and other operations that require making a full copy from DR primary to DR replica, such as adding tables with data to replication, resuming replication after an extended network outage, and so on) may fail with the error `database "<database_name>" is being accessed by other users`.
-
-    This happens because the operation relies on a backup and restore of the database, and the restore will fail if there are any open connections to the DR replica.
-
-    To fix this, close any open SQL connections to the DR replica, delete the DR configuration, and perform the operation again.
-
-- Setting up DR between a universe upgraded to v2.20.x and a new v2.20.x universe is not supported. This is due to a limitation of xCluster deployments and packed rows. See [Packed row limitations](../../../architecture/docdb/packed-rows/#limitations).
-
-For more information on the YugabyteDB xCluster implementation and its limitations, refer to [xCluster implementation limitations](../../../architecture/docdb-replication/async-replication/#limitations).
 
 ## Schema change modes
 
@@ -90,13 +82,13 @@ Semi-automatic schema changes are {{<tags/feature/ea>}}. In this mode, table and
 1. The DR primary universe.
 2. The DR replica universe.
 
-You don't need to make any changes to the YugabyteDB Anywhere DR configuration. The exact sequence of these operations for each type of schema change is described in [Manage tables and indexes](./disaster-recovery-tables/).
+You don't need to make any changes to the YugabyteDB Anywhere DR configuration.
 
 {{<lead link="https://www.youtube.com/watch?v=vYyn2OUSZFE">}}
 To learn more, watch [Simplified schema management with xCluster DB Scoped](https://www.youtube.com/watch?v=vYyn2OUSZFE)
 {{</lead>}}
 
-In general, semi-automatic mode is recommended for all new DR configurations. When possible, existing DR configurations should be deleted and re-created using semi-automatic mode to reduce the operational burden of DDL changes.
+Semi-automatic mode is recommended for all new DR configurations. When possible, existing DR configurations should be deleted and re-created using semi-automatic mode to reduce the operational burden of DDL changes.
 
 Semi-automatic mode is used for any xCluster DR configuration when the following pre-requisites are met at setup time:
 
@@ -105,11 +97,7 @@ Semi-automatic mode is used for any xCluster DR configuration when the following
 
 ### Manual schema changes
 
-In manual mode, table and index-level schema changes must be performed in a specific order as follows:
-
-1. The DR primary universe.
-1. The DR replica universe.
-1. In some cases, they must also be updated on the YugabyteDB Anywhere DR configuration.
+In manual mode, table and index-level schema changes must be performed on the DR primary universe and the DR replica universe, and, in some cases, they must also be updated on the YugabyteDB Anywhere DR configuration.
 
 The exact sequence of these operations for each type of schema change (DDL) is described in [Manage tables and indexes](./disaster-recovery-tables/).
 
@@ -157,5 +145,24 @@ Note that a universe configured for xCluster DR cannot be used for xCluster Repl
 
 For more information on xCluster Replication in YugabyteDB, see the following:
 
-- [xCluster Replication: overview and architecture](../../../architecture/docdb-replication/async-replication/)
+{{<lead link="../../../architecture/docdb-replication/async-replication/">}}
+[xCluster Replication: overview and architecture](../../../architecture/docdb-replication/async-replication/)
+{{</lead>}}
+
+{{<lead link="../../../deploy/multi-dc/async-replication/">}}
 - [xCluster Replication between universes in YugabyteDB](../../../deploy/multi-dc/async-replication/)
+{{</lead>}}
+
+## Limitations
+
+- Currently, automatic replication of DDL (SQL-level changes such as creating or dropping tables or indexes) is not supported. For more details on how to propagate DDL changes from the DR primary to the DR replica, see [Schema change modes](#schema-change-modes). This is tracked by [GitHub issue #11537](https://github.com/yugabyte/yugabyte-db/issues/11537).
+
+- DR setup (and other operations that require making a full copy from DR primary to DR replica, such as adding tables with data to replication, resuming replication after an extended network outage, and so on) may fail with the error `database "<database_name>" is being accessed by other users`.
+
+    This happens because the operation relies on a backup and restore of the database, and the restore will fail if there are any open connections to the DR replica.
+
+    To fix this, close any open SQL connections to the DR replica, delete the DR configuration, and perform the operation again.
+
+- Setting up DR between a universe upgraded to v2.20.x and a new v2.20.x universe is not supported. This is due to a limitation of xCluster deployments and packed rows. See [Packed row limitations](../../../architecture/docdb/packed-rows/#limitations).
+
+For more information on the YugabyteDB xCluster implementation and its limitations, refer to [xCluster implementation limitations](../../../architecture/docdb-replication/async-replication/#limitations).
