@@ -45,9 +45,9 @@ You can also use YBA Installer to migrate an existing Replicated installation. N
 
 After the installation is complete, you can use YBA Installer to manage your installation. This includes backup and restore, upgrading, basic licensing, and uninstalling the software.
 
-{{< warning title="Managing installs prior to v2024.2" >}}
-If you installed YugabyteDB Anywhere using a version of YBA Installer prior to v2024.2, or you have configured YBA Installer to run as root, your installation requires root access. Follow the instructions for [YBA Installer v2024.1](/v2024.1/yugabyte-platform/install-software/installer/).
-{{< /warning >}}
+{{< note title="Root permissions" >}}
+YBA Installer does not require root access. However, if you installed YugabyteDB Anywhere using a version of YBA Installer prior to v2024.2, or ran YBA Installer as root, you need to continue using root.
+{{< /note >}}
 
 ## Before you begin
 
@@ -363,7 +363,7 @@ You can set the following YBA Installer configuration options.
 | `support_origin_url` | Specify an alternate hostname or IP address for CORS. For example, for a load balancer. Optional | |
 | `server_cert_path`<br />`server_key_path` | If providing custom certificates, give the path with these values. If not provided, the installation process generates self-signed certificates. Optional. | |
 | `service_username` | The Linux user that will run the YBA processes. Default is `yugabyte`. The install process will create the `yugabyte` user. If you wish to use a different user, create that user beforehand and specify it in `service_username`. YBA Installer only creates the `yugabyte` user, not custom usernames. | {{<icon/partial>}} |
-| `as_root` | Run yb-ctl as root user. Default is false. Optional. If you perform a root installation, run yb-ctl commands using sudo access. You cannot switch between root and non-root installations. If you install using root, follow the [instructions for v2024.1](/v2024.1/yugabyte-platform/install-software/installer/). | {{<icon/partial>}} |
+| `as_root` | Indicates yb-ctl was run as root user. Default is false. Note that you can't switch between running yb-ctl as root and non-root. | {{<icon/partial>}} |
 
 {{<icon/partial>}} You can't change these settings after installation.
 
