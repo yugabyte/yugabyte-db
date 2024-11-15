@@ -53,7 +53,7 @@ After DR is configured, the DR replica will only be available for reads.
 
 To set up disaster recovery for a universe, do the following:
 
-1. Navigate to your DR primary universe **xCluster Disaster Recovery** tab and select the replication configuration.
+1. Navigate to your DR primary universe **xCluster Disaster Recovery** tab, and select the replication configuration.
 
 1. Click **Configure & Enable Disaster Recovery** or, if DR has already been set up for a database, **Create Disaster Recovery Config**.
 
@@ -143,7 +143,9 @@ The status will be _Not Reported_ momentarily after the replication configuratio
 
 If the replication lag has increased so much that resuming or continuing replication cannot be accomplished via WAL logs but instead requires making another full copy from DR primary to DR replica, the status is shown as _Missing op ID_, and you must [restart replication](#restart-replication) for those tables. If a lag alert is enabled on the replication, you are notified when the lag is behind the [replication lag alert](#set-up-replication-lag-alerts) threshold; if the replication stream is not yet broken and the lag is due to some other issues, the status is shown as _Warning_.
 
-If YugabyteDB Anywhere is unable to obtain the status (for example, due to a heavy workload being run on the universe) the status for that table will be _Unable To Fetch_. You may refresh the page to retry gathering information.
+If YugabyteDB Anywhere is unable to obtain the status (for example, due to a heavy workload being run on the universe), the status for that table will be _Unable To Fetch_. You may refresh the page to retry gathering information.
+
+The table statuses are described in the following table.
 
 | Status | Description |
 | :--- | :--- |
@@ -158,13 +160,13 @@ The following statuses [trigger an alert](#set-up-replication-lag-alerts).
 | :--- | :--- |
 | Failed | The table failed to be added to replication. |
 | Warning | The table is in replication, but the replication lag is more than the [maximum acceptable lag](#set-up-replication-lag-alerts), or the lag is not being reported. |
-| Dropped From Source | The table was in replication, but dropped from the DR primary without first being [removed from replication](../disaster-recovery-tables/#tables). If you are using Manual mode, you need to remove it manually from the configuration. In Semi-automatic mode, you don't need to remove it manually. |
-| Dropped From Target | The table was in replication, but was dropped from the DR replica without first being [removed from replication](../disaster-recovery-tables/#tables). If you are using Manual mode, you need to remove it manually from the configuration. In Semi-automatic mode, you don't need to remove it manually. |
+| Dropped From Source | The table was in replication, but dropped from the DR primary without first being [removed from replication](../disaster-recovery-tables/#remove-a-table-from-dr). If you are using Manual mode, you need to remove it manually from the configuration. In Semi-automatic mode, you don't need to remove it manually. |
+| Dropped From Target | The table was in replication, but was dropped from the DR replica without first being [removed from replication](../disaster-recovery-tables/#remove-a-table-from-dr). If you are using Manual mode, you need to remove it manually from the configuration. In Semi-automatic mode, you don't need to remove it manually. |
 | Extra Table On Source | The table is newly created on the DR primary but is not in replication yet. |
 | Extra Table On Target | The table is newly created on the DR replica but it is not in replication yet. |
 | Missing op ID | The replication is broken and cannot continue because the write-ahead-logs are garbage collected before they were replicated to the other universe and you will need to [restart replication](#restart-replication).|
 | Schema&nbsp;mismatch | The schema was updated on the table (on either of the universes) and replication is paused until the same schema change is made to the other universe. |
-| Missing table | For colocated tables, only the parent table is in the replication group; any child table that is part of the colocation will also be replicated. This error is displayed for a parent colocated table if a child table only exists on the DR primary. Create the same table on the DR replica. |
+| Missing table | For colocated tables, only the parent table is in the replication group; any child table that is part of the colocation will also be replicated. This status is displayed for a parent colocated table if a child table only exists on the DR primary. Create the same table on the DR replica. |
 | Auto flag config mismatch | Replication has stopped because one of the universes is running a version of YugabyteDB that is incompatible with the other. This can happen when upgrading universes that are in replication. Upgrade the other universe to the same version. |
 
 ### Set up replication lag alerts
@@ -191,7 +193,7 @@ To create an alert:
 
 When DR is set up, YugabyteDB automatically creates the alert _XCluster Config Tables are in bad state_. This alert fires when:
 
-- there is a table schema mismatch between DR primary and replica
+- there is a table schema mismatch between DR primary and replica.
 - tables are added or dropped from either DR primary or replica, but have not been added or dropped from the other.
 
 When you receive an alert, navigate to the replication configuration [Tables tab](#tables) to see the table status.
