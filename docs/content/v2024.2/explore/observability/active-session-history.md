@@ -98,7 +98,7 @@ This view displays the class, type, name, and description of each wait event. Th
 
 ## Constant query identifiers
 
-These fixed constants are used to identify various YugabyteDB background activities. They also include a placeholder "query id" for instances where the actual "query id" has not been calculated yet, but the ASH collector samples the system. The query ids of the fixed constants are described in the following table.
+These fixed constants are used to identify various YugabyteDB background activities. The query ids of the fixed constants are described in the following table.
 
 | Query id | Wait Event Component | Description |
 | :------- | :------------------- | :---------- |
@@ -126,7 +126,7 @@ These are the wait events introduced by YugabyteDB, however some of the followin
 | TServerWait | TableWrite  | Network |  | A YSQL backend is waiting for a table write from DocDB. |
 | TServerWait | CatalogWrite  | Network |  | A YSQL backend is waiting for a catalog write from master. |
 | TServerWait | IndexWrite | Network |   | A YSQL backend is waiting for a secondary index write from DocDB.  |
-| YSQLQuery | QueryProcessing| CPU |  | Doing CPU work |
+| YSQLQuery | QueryProcessing| CPU |  | A YSQL backend is doing CPU work.|
 | YSQLQuery | yb_ash_metadata | LWLock |  | A YSQL backend is waiting to update ASH metadata for a query. |
 | YSQLQuery | YBParallelScanEmpty| IPC |  | A YSQL backend is waiting on an empty queue while fetching parallel range keys. |
 | YSQLQuery | CopyCommandStreamRead| IO |  | A YSQL backend is waiting for a read from a file or program during COPY. |
@@ -136,7 +136,7 @@ These are the wait events introduced by YugabyteDB, however some of the followin
 | YSQLQuery | QueryDiagnosticsMain| Activity |  | The YugabyteDB query diagnostics background worker is waiting in the main loop. |
 | YSQLQuery | YbQueryDiagnostics| LWLock |  | A YSQL backend is waiting for YugabyteDB query diagnostics hash table memory access. |
 | YSQLQuery | YbQueryDiagnosticsCircularBuffer| LWLock |  | A YSQL backend is waiting for YugabyteDB query diagnostics circular buffer memory access. |
-| Timeout | YSQLQuery | Timeout |  | A YSQL backend is waiting for transaction conflict resolution with an exponential backoff. |
+| YSQLQuery | YBTxnConflictBackoff | Timeout |  | A YSQL backend is waiting for transaction conflict resolution with an exponential backoff. |
 
 ### YB-TServer
 
