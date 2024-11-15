@@ -586,6 +586,11 @@ public enum TaskType {
       CustomerTask.TaskType.Update,
       CustomerTask.TargetType.Node),
 
+  DecommissionNodeInstance(
+      com.yugabyte.yw.commissioner.tasks.DecommissionNodeInstance.class,
+      CustomerTask.TaskType.Update,
+      CustomerTask.TargetType.Node),
+
   MasterFailover(
       com.yugabyte.yw.commissioner.tasks.MasterFailover.class,
       CustomerTask.TaskType.MasterFailover,

@@ -136,6 +136,10 @@ public class NodeInstance extends Model {
   @Enumerated(EnumType.STRING)
   private State state;
 
+  @Column(nullable = false)
+  @ApiModelProperty(value = "Manually set to decommissioned state by user", accessMode = READ_ONLY)
+  private boolean manuallyDecommissioned;
+
   @DbJson @JsonIgnore private UniverseMetadata universeMetadata;
 
   @Getter(AccessLevel.NONE)
@@ -181,6 +185,7 @@ public class NodeInstance extends Model {
     this.setState(State.FREE);
     this.setNodeName("");
     this.universeMetadata = null;
+    this.setManuallyDecommissioned(false);
     this.save();
   }
 

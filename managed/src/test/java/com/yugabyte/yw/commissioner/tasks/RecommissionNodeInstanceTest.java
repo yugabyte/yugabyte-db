@@ -59,7 +59,7 @@ public class RecommissionNodeInstanceTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testRecommissionNodeInstanceSuccess() {
+  public void testRecommissionNodeInstanceSuccessWithCleanup() {
     ShellResponse dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = null;
     doReturn(dummyShellResponse).when(mockNodeManager).detachedNodeCommand(any(), any());
@@ -72,6 +72,27 @@ public class RecommissionNodeInstanceTest extends CommissionerBaseTest {
     assertEquals(Success, taskInfo.getTaskState());
     assertEquals(
         NodeInstance.State.FREE, NodeInstance.getOrBadRequest(node.getNodeUuid()).getState());
+  }
+
+  @Test
+  public void testRecommissionNodeInstanceSuccessWithoutCleanup() {
+    node.setManuallyDecommissioned(true);
+    node.save();
+    ShellResponse dummyShellResponse = new ShellResponse();
+    dummyShellResponse.message = null;
+    doReturn(dummyShellResponse).when(mockNodeManager).detachedNodeCommand(any(), any());
+
+    DetachedNodeTaskParams taskParams = new DetachedNodeTaskParams();
+    taskParams.setNodeUuid(node.getNodeUuid());
+    taskParams.setInstanceType(node.getInstanceTypeCode());
+    taskParams.setAzUuid(node.getZoneUuid());
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertEquals(
+        NodeInstance.State.FREE, NodeInstance.getOrBadRequest(node.getNodeUuid()).getState());
+    assertEquals(
+        false, NodeInstance.getOrBadRequest(node.getNodeUuid()).isManuallyDecommissioned());
+    verify(mockNodeManager, times(0)).detachedNodeCommand(any(), any());
   }
 
   @Test
@@ -91,5 +112,24 @@ public class RecommissionNodeInstanceTest extends CommissionerBaseTest {
     assertEquals(
         NodeInstance.State.DECOMMISSIONED,
         NodeInstance.getOrBadRequest(node.getNodeUuid()).getState());
+  }
+
+  @Test
+  public void testRecommissionNodeInstanceNotAllowed() {
+    node.setState(NodeInstance.State.USED);
+    node.save();
+    ShellResponse dummyShellResponse = new ShellResponse();
+    dummyShellResponse.message = null;
+    doReturn(dummyShellResponse).when(mockNodeManager).detachedNodeCommand(any(), any());
+
+    DetachedNodeTaskParams taskParams = new DetachedNodeTaskParams();
+    taskParams.setNodeUuid(node.getNodeUuid());
+    taskParams.setInstanceType(node.getInstanceTypeCode());
+    taskParams.setAzUuid(node.getZoneUuid());
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    assertEquals(
+        NodeInstance.State.USED, NodeInstance.getOrBadRequest(node.getNodeUuid()).getState());
+    verify(mockNodeManager, times(0)).detachedNodeCommand(any(), any());
   }
 }
