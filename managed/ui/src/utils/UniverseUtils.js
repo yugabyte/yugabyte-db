@@ -10,7 +10,11 @@ import {
 import { PROVIDER_TYPES, BASE_URL } from '../config';
 import { NodeState } from '../redesign/helpers/dtos';
 
-export const MULTILINE_GFLAGS_ARRAY = ['ysql_hba_conf_csv', 'ysql_ident_conf_csv'];
+export const MULTILINE_GFLAGS_ARRAY = [
+  'ysql_hba_conf_csv',
+  'ysql_ident_conf_csv',
+  'ysql_pg_conf_csv'
+];
 
 const LDAP_KEYS = [
   'ldapserver',
@@ -64,7 +68,8 @@ export const nodeInClusterStates = [
 
 export const MultilineGFlags = {
   YSQL_HBA_CONF_CSV: 'ysql_hba_conf_csv',
-  YSQL_IDENT_CONF_CSV: 'ysql_ident_conf_csv'
+  YSQL_IDENT_CONF_CSV: 'ysql_ident_conf_csv',
+  YSQL_PG_CONF_CSV: 'ysql_pg_conf_csv'
 };
 
 export function isNodeRemovable(nodeState) {
