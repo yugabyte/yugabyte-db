@@ -16,6 +16,8 @@
 #include "yb/consensus/log_util.h"
 #include "yb/util/test_macros.h"
 
+DECLARE_string(fs_data_dirs);
+
 namespace yb {
 
 #if defined(__linux__)

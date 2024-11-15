@@ -148,7 +148,10 @@ ExternalDaemon::LogTailerThread::LogTailerThread(
           lock_guard<mutex> lock(logging_mutex);
           if (stopped->load()) break;
           // Make sure we always output an end-of-line character.
-          *out << line_prefix << " " << buf << maybe_end_of_line;
+          // Use only one call to << to minimize chance of interleaving of our output with Google
+          // logging.
+          std::string output = line_prefix + " " + buf + maybe_end_of_line;
+          *out << output;
           if (!stopped->load()) {
             auto listener = listener_.load(std::memory_order_acquire);
             if (!stopped->load() && listener) {

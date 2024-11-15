@@ -236,16 +236,6 @@ Status MiniCluster::StartAsync(
     }
   }
 
-  string ts_data_dirs;
-  for (const shared_ptr<MiniTabletServer>& ts : mini_tablet_servers_) {
-    for (const string& dir : ts->options()->fs_opts.data_paths) {
-      ts_data_dirs += string(ts_data_dirs.empty() ? "" : ",") +  dir;
-    }
-  }
-  // All TSes have the same following g-flags, because this is all-in-one-process MiniCluster.
-  // Use ExternalMiniCluster if you need independent values.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_fs_data_dirs) = ts_data_dirs;
-
   running_ = true;
   rpc::MessengerBuilder builder("minicluster-messenger");
   builder.set_num_reactors(1);
