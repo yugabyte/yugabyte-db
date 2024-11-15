@@ -227,17 +227,17 @@ Note that this requires all the zone deployments to be in the same namespace.
 
 After the service YAML is applied, in this example you would access the universe at `yb-k8s-common-tserver.yb-prod-yb-k8s.svc.cluster.local`.
 
-### Create common load balancer service for YB-Masters/YB-TServers
+### Create a common load balancer service for YB-Masters/YB-TServers
 
 In versions v2.17 and later, newly created multi-zone universes are deployed in a single namespace by default. This can lead to duplication of load balancer services as a separate load balancer is created for each zone. In order to prevent creating extra load balancers, YBA provides the option to create a common load balancer service (currently {{<tags/feature/ea>}}) for YB-Masters and YB-TServers that spans across all the zones in a namespace.
 
-For scenarios involving multi-namespaces or clusters cases, a distinct service will be created for each namespace, maintaining the flexibility needed for complex deployments while avoiding unnecessary resource allocation.
+For scenarios involving multi-namespaces or clusters, a distinct service is created for each namespace, maintaining the flexibility needed for complex deployments while avoiding unnecessary resource allocation.
 
 #### Enable the common load balancer
 
-By default, the load balancer service is created per zone, and you can change this behavior by using kubernetes overrides or a global runtime configuration option.
+By default, the load balancer service is created per zone, and you can change this behavior by [configuring helm overrides](#configure-helm-overrides) during universe creation, or enabling a global runtime configuration option.
 
-You can explicitly define the service scope with the values as "AZ" or "Namespaced in helm overrides as follows:
+You can explicitly define the service scope with the values as "AZ" or "Namespaced" when you [configure helm overrides](#configure-helm-overrides) as follows:
 
 ```yaml
 serviceEndpoints:
@@ -270,8 +270,26 @@ serviceEndpoints:
       tcp-ysql-port: "5433"
 ```
 
-For services without an explicitly defined scope in helm overrides, the default service scope is used.
+For services without an explicitly defined scope in helm overrides, the default service scope is used, provided you set the **Default service scope for K8s universe** Global runtime configuration option (config key `yb.universe.default_service_scope_for_k8s`) to true. The configuration flag defines the default service scope for the universe if the scope is not explicitly defined in the service overrides.
 
-- Set the **Default service scope for K8s universe** Global runtime configuration option (config key `yb.universe.default_service_scope_for_k8s`) to true. The configuration flag defines the default service scope for the universe if the scope is not explicitly defined in the service overrides. Note that you cannot modify this setting after a universe creation. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global runtime configuration settings.
+Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global runtime configuration settings, and you cannot modify this service scope during a universe creation.
 
--
+{{<tip title="Important considerations">}}
+
+- Scope Utilization: Services with a defined scope will adhere to that scope, as long as it's supported.
+- Namespaced service ownership: For services within a namespaced scope, only one Helm release is designated as the owner out of all releases in that namespace.
+- AZ-scoped Helm Releases: Helm releases are scoped according to Availability Zones (AZ). If there are changes or movements across AZs, the ownership of the service adjusts to the appropriate Helm release to align with the AZ.
+- Namespace deletion: When a namespace is deleted, all services associated with that namespace that were created by Helm will be removed as well.
+- Service configuration changes: Existing services can have their serviceType, ports, and annotations updated.
+{{</tip>}}
+
+#### Migrating service type from AZ to Namespaced scope
+
+After creating a service scope, it cannot be changed directly. To migrate a service from an AZ scope to a Namespaced scope, do the following:
+
+1. Create a new service: Use Helm overrides to add a new service with the desired namespaced scope.
+1. Migrate clients. Gradually switch clients over to the new namespaced service to ensure they function correctly without disrupting operations.
+1. Remove the old Service. After confirming that all clients are using the new service, update the Helm overrides again to remove the old AZ scoped service.
+
+### Example
+
