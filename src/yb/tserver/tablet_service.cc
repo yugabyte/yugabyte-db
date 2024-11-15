@@ -1522,6 +1522,8 @@ void TabletServiceImpl::GetCompatibleSchemaVersion(
     if (result.ok()) {
       schema_version = *result;
     } else {
+      // Also set the latest schema version.
+      resp->set_latest_schema_version(schema_version);
       SetupErrorAndRespond(
           resp->mutable_error(), result.status(), TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
       return;

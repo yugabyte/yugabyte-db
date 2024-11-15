@@ -80,20 +80,30 @@ AreCommandTagsEqual(const char *command_tag1, const char *command_tag2)
 }
 
 bool
+IsPrimaryIndex(Relation rel)
+{
+	return (rel->rd_rel->relkind == RELKIND_INDEX ||
+			rel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX) &&
+		   rel->rd_index->indisprimary;
+}
+
+bool
 ShouldReplicateCreateRelation(Oid rel_oid, List **new_rel_list)
 {
 	Relation rel = RelationIdGetRelation(rel_oid);
 	if (!rel)
 		elog(ERROR, "Could not find relation with oid %d", rel_oid);
-
-	// Ignore temporary tables and primary indexes (same as main table).
-	if (!IsYBBackedRelation(rel) ||
-		((rel->rd_rel->relkind == RELKIND_INDEX ||
-		  rel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX) &&
-		 rel->rd_index->indisprimary))
+	// Ignore temporary tables.
+	if (!IsYBBackedRelation(rel))
 	{
 		RelationClose(rel);
 		return false;
+	}
+	// Primary indexes are YB-backed, but don't have table properties.
+	if (IsPrimaryIndex(rel))
+	{
+		RelationClose(rel);
+		return true;
 	}
 
 	// Also need to disallow colocated objects until that is supported.
@@ -113,6 +123,37 @@ ShouldReplicateCreateRelation(Oid rel_oid, List **new_rel_list)
 
 	*new_rel_list = lappend(*new_rel_list, new_rel_entry);
 
+	return true;
+}
+
+bool
+ShouldReplicateAlterReplication(Oid rel_oid)
+{
+	Relation rel = RelationIdGetRelation(rel_oid);
+	if (!rel)
+		elog(ERROR, "Could not find relation with oid %d", rel_oid);
+	// Ignore temporary tables.
+	if (!IsYBBackedRelation(rel))
+	{
+		RelationClose(rel);
+		return false;
+	}
+	// Primary indexes are YB-backed, but don't have table properties.
+	if (IsPrimaryIndex(rel))
+	{
+		RelationClose(rel);
+		return true;
+	}
+
+	// Also need to disallow colocated objects until that is supported.
+	YbTableProperties table_props = YbGetTableProperties(rel);
+	bool is_colocated = table_props->is_colocated;
+	RelationClose(rel);
+	if (is_colocated)
+		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg("Colocated objects are not yet supported by "
+							   "yb_xcluster_ddl_replication\n%s",
+							   kManualReplicationErrorMsg)));
 	return true;
 }
 
@@ -148,6 +189,12 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		{
 			should_replicate_ddl |=
 				ShouldReplicateCreateRelation(obj_id, &new_rel_list);
+		}
+		else if (AreCommandTagsEqual(command_tag, "ALTER TABLE") ||
+      AreCommandTagsEqual(command_tag, "ALTER INDEX"))
+		{
+      // TODO(jhe): May need finer grained control over ALTER TABLE commands.
+	    should_replicate_ddl |= ShouldReplicateAlterReplication(obj_id);
 		}
 		else
 		{

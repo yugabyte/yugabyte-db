@@ -141,6 +141,12 @@ class XClusterManager : public XClusterManagerIf,
       const xrepl::StreamId& bootstrap_id, const std::optional<TableId>& target_table_id,
       const LeaderEpoch& epoch) override;
 
+  // Inserts the sent schema into the historical packing schema for the target table.
+  Status InsertPackedSchemaForXClusterTarget(
+      const InsertPackedSchemaForXClusterTargetRequestPB* req,
+      InsertPackedSchemaForXClusterTargetResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+
   // OutboundReplicationGroup RPCs.
   Status XClusterCreateOutboundReplicationGroup(
       const XClusterCreateOutboundReplicationGroupRequestPB* req,

@@ -367,6 +367,9 @@ message GetCompatibleSchemaVersionRequestPB {
 message GetCompatibleSchemaVersionResponsePB {
   optional TabletServerErrorPB error = 1;
   optional uint32 compatible_schema_version = 2;
+  // Added on Oct 2024 (v2025.1), will not be set for older versions.
+  // Value is set in the case of a schema mismatch.
+  optional uint32 latest_schema_version = 3;
 }
 
 message CheckTserverTabletHealthRequestPB {

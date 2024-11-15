@@ -207,6 +207,10 @@ class XClusterTargetManager {
       const std::vector<TableId>& index_table_ids, const TableInfoPtr& indexed_table,
       const LeaderEpoch& epoch) const;
 
+  Status InsertPackedSchemaForXClusterTarget(
+      const TableId& table_id, const SchemaPB& packed_schema_to_insert,
+      uint32_t current_schema_version, const LeaderEpoch& epoch);
+
  private:
   // Gets the replication group status for the given replication group id. Does not populate the
   // table statuses.
