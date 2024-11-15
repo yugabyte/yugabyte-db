@@ -16,7 +16,7 @@ type: docs
 
 {{<tags/feature/ea>}} To avoid under-replication, YugabyteDB Anywhere can automatically detect a YB-Master server that is not responding to the master leader, or that is lagging WAL operations, and fail over to another available node in the same availability zone.
 
-Note that automatic failover only works for a single unhealthy Master server.
+Note that automatic failover only works for a single unhealthy master server.
 
 ### Prerequisites
 
@@ -24,11 +24,11 @@ Note that automatic failover only works for a single unhealthy Master server.
 - The universe has the following characteristics:
 
   - running v2.20.3.0 or 2.21.0.0 or later
-  - on-premises or on a cloud provider (Kubernetes is not supported)
-  - replication factor of 3 or more
+  - is on-premises or on a cloud provider (Kubernetes is not supported)
+  - has a replication factor of 3 or more
   - does not have dedicated masters
 
-- The provider configuration for the universe includes a replacement node in the same availability zone.
+- A replacement node (running a TServer) is available in the same availability zone. (Read replica nodes are not valid for failover.)
 
 ### How it works
 
