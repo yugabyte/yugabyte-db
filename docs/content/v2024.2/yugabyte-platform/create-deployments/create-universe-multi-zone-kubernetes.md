@@ -226,3 +226,52 @@ Note that this requires all the zone deployments to be in the same namespace.
    ```
 
 After the service YAML is applied, in this example you would access the universe at `yb-k8s-common-tserver.yb-prod-yb-k8s.svc.cluster.local`.
+
+### Create common load balancer service for YB-Masters/YB-TServers
+
+In versions v2.17 and later, newly created multi-zone universes are deployed in a single namespace by default. This can lead to duplication of load balancer services as a separate load balancer is created for each zone. In order to prevent creating extra load balancers, YBA provides the option to create a common load balancer service (currently {{<tags/feature/ea>}}) for YB-Masters and YB-TServers that spans across all the zones in a namespace.
+
+For scenarios involving multi-namespaces or clusters cases, a distinct service will be created for each namespace, maintaining the flexibility needed for complex deployments while avoiding unnecessary resource allocation.
+
+#### Enable the common load balancer
+
+By default, the load balancer service is created per zone, and you can change this behavior by using kubernetes overrides or a global runtime configuration option.
+
+You can explicitly define the service scope with the values as "AZ" or "Namespaced in helm overrides as follows:
+
+```yaml
+serviceEndpoints:
+  - name: "yb-master-ui"
+    type: LoadBalancer
+    # Can be AZ/Namespaced
+    scope: "AZ"
+    annotations: {}
+    clusterIP: ""
+    ## Sets the Service's externalTrafficPolicy
+    externalTrafficPolicy: ""
+    app: "yb-master"
+    loadBalancerIP: ""
+    ports:
+      http-ui: "7000"
+
+  - name: "yb-tserver-service"
+    type: LoadBalancer
+    # Can be AZ/Namespaced
+    scope: "AZ"
+    annotations: {}
+    clusterIP: ""
+    ## Sets the Service's externalTrafficPolicy
+    externalTrafficPolicy: ""
+    app: "yb-tserver"
+    loadBalancerIP: ""
+    ports:
+      tcp-yql-port: "9042"
+      tcp-yedis-port: "6379"
+      tcp-ysql-port: "5433"
+```
+
+For services without an explicitly defined scope in helm overrides, the default service scope is used.
+
+- Set the **Default service scope for K8s universe** Global runtime configuration option (config key `yb.universe.default_service_scope_for_k8s`) to true. The configuration flag defines the default service scope for the universe if the scope is not explicitly defined in the service overrides. Note that you cannot modify this setting after a universe creation. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global runtime configuration settings.
+
+-
