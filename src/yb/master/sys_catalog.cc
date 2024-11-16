@@ -931,8 +931,7 @@ Status SysCatalogTable::ReadWithRestarts(
       VLOG(3) << __func__ << " restarting read with ht = " << safe_ht_to_read
               << " >= " << read_restart_ht << ". Encountered read restart when reading at "
               << read_time.ToString();
-      read_time.read.MakeAtLeast(safe_ht_to_read);
-      read_time.local_limit = std::min(safe_ht_to_read, read_time.global_limit);
+      read_time = read_time.FormRestartReadHybridTime(read_restart_ht, safe_ht_to_read);
       read_restart_ht = HybridTime::kInvalid;
     }
     RETURN_NOT_OK(read_fn(read_time, &read_restart_ht));

@@ -199,6 +199,7 @@ void ConsistentReadPoint::SetInTxnLimit(HybridTime value) {
 
 ReadHybridTime ConsistentReadPoint::GetReadTime() const {
   std::lock_guard lock(mutex_);
+  DCHECK_LE(read_time_.read, read_time_.global_limit);
   return read_time_;
 }
 

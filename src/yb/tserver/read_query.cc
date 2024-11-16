@@ -203,12 +203,7 @@ tablet::Tablet* ReadQuery::tablet() const {
 }
 
 ReadHybridTime ReadQuery::FormRestartReadHybridTime(const HybridTime& restart_time) const {
-  DCHECK_GT(restart_time, read_time_.read);
-  VLOG(1) << "Restart read required at: " << restart_time << ", original: " << read_time_;
-  auto result = read_time_;
-  result.read = std::min(std::max(restart_time, safe_ht_to_read_), read_time_.global_limit);
-  result.local_limit = std::min(safe_ht_to_read_, read_time_.global_limit);
-  return result;
+  return read_time_.FormRestartReadHybridTime(restart_time, safe_ht_to_read_);
 }
 
 Status ReadQuery::PickReadTime(server::Clock* clock) {
