@@ -264,6 +264,47 @@ TEST_F(YsqlMajorUpgradeRpcsTest, MasterCrashDuringMonitoring) {
   ASSERT_OK(CompleteUpgradeAndValidate());
 }
 
+TEST_F(YsqlMajorUpgradeRpcsTest, CompactSysCatalogAfterUpgrade) {
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+  ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
+
+  ASSERT_OK(FlushAndCompactSysCatalog(cluster_.get(), 5min));
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+
+  ASSERT_OK(InsertRowInSimpleTableAndValidate());
+}
+
+TEST_F(YsqlMajorUpgradeRpcsTest, CompactSysCatalogAfterRollback) {
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+  ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
+
+  ASSERT_OK(InsertRowInSimpleTableAndValidate());
+
+  ASSERT_OK(RollbackYsqlMajorCatalogVersion());
+
+  ASSERT_OK(FlushAndCompactSysCatalog(cluster_.get(), 5min));
+  ASSERT_OK(RestartAllMastersInOldVersion(kNoDelayBetweenNodes));
+
+  ASSERT_OK(InsertRowInSimpleTableAndValidate());
+}
+
+TEST_F(YsqlMajorUpgradeRpcsTest, CompactSysCatalogAfterEveryPhase) {
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+  ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
+
+  ASSERT_OK(FlushAndCompactSysCatalog(cluster_.get(), 5min));
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+
+  ASSERT_OK(InsertRowInSimpleTableAndValidate());
+
+  ASSERT_OK(RollbackYsqlMajorCatalogVersion());
+
+  ASSERT_OK(FlushAndCompactSysCatalog(cluster_.get(), 5min));
+  ASSERT_OK(RestartAllMastersInOldVersion(kNoDelayBetweenNodes));
+
+  ASSERT_OK(InsertRowInSimpleTableAndValidate());
+}
+
 class YsqlMajorUpgradeYbAdminTest : public Pg15UpgradeTestBase {
  public:
   YsqlMajorUpgradeYbAdminTest() = default;
