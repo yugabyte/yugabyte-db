@@ -283,6 +283,9 @@ Status RemoteYsckMaster::RetrieveTabletsList(const shared_ptr<YsckTable>& table)
   auto deadline = CoarseMonoClock::now() + 60s;
   while (more_tablets) {
     auto status = GetTabletsBatch(table->id(), table->name(), &last_key, &tablets, &more_tablets);
+    LOG_IF(INFO, !status.ok())
+        << "Failed to retrieve tablets list for: " << table->id() << "/" << table->name().ToString()
+        << ": " << status;
     if (status.IsTryAgain()) {
       if (CoarseMonoClock::now() >= deadline) {
         return status.CloneAndReplaceCode(Status::kTimedOut);
