@@ -46,7 +46,7 @@ You can also use YBA Installer to migrate an existing Replicated installation. N
 After the installation is complete, you can use YBA Installer to manage your installation. This includes backup and restore, upgrading, basic licensing, and uninstalling the software.
 
 {{< note title="Root permissions" >}}
-YBA Installer also supports non-root installation {{<tags/feature/ea>}}. Refer to [Non-sudo installation](#non-sudo-installation).
+YBA Installer also supports non-root installation. Refer to [Non-sudo installation](#non-sudo-installation).
 {{< /note >}}
 
 ## Before you begin
