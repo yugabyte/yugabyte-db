@@ -46,7 +46,7 @@ You can also use YBA Installer to migrate an existing Replicated installation. N
 After the installation is complete, you can use YBA Installer to manage your installation. This includes backup and restore, upgrading, basic licensing, and uninstalling the software.
 
 {{< note title="Root permissions" >}}
-YBA Installer does not require root access. However, if you installed YugabyteDB Anywhere using a version of YBA Installer prior to v2024.2, or ran YBA Installer as root, you need to continue using root.
+YBA Installer also supports non-root installation {{<tags/feature/ea>}}. Refer to [Non-sudo installation](#non-sudo-installation).
 {{< /note >}}
 
 ## Before you begin
@@ -70,16 +70,16 @@ To install YugabyteDB Anywhere using YBA Installer, do the following:
     cd yba_installer_full-{{<yb-version version="preview" format="build">}}/
     ```
 
-1. Run a preflight check to ensure your environment satisfies the requirements. Respond with `y` when prompted to create a default configuration.
+1. Using sudo, run a preflight check to ensure your environment satisfies the requirements. Respond with `y` when prompted to create a default configuration.
 
     ```sh
-    ./yba-ctl preflight
+    sudo ./yba-ctl preflight
     ```
 
 1. If there are no issues (aside from the lack of a license), install the software, providing your license.
 
     ```sh
-    ./yba-ctl install -l /path/to/license
+    sudo ./yba-ctl install -l /path/to/license
     ```
 
 After the installation succeeds, you can immediately start using YBA.
@@ -118,7 +118,7 @@ yba-ctl commands need to be run in the correct context; see [Running yba-ctl com
 Many YBA Installer commands require a configuration file, including `preflight` and `install`. When using these commands without a configuration file, you are prompted to continue using default values. For example:
 
 ```sh
-./yba-ctl preflight
+sudo ./yba-ctl preflight
 ```
 
 ```output
@@ -145,7 +145,7 @@ YBA Installer requires a valid license before installing. To obtain a license, c
 Provide the license to YBA Installer by running the `license` command as follows:
 
 ```sh
-./yba-ctl license add -l /path/to/license
+sudo ./yba-ctl license add -l /path/to/license
 ```
 
 You can use this command to update to a new license if needed.
@@ -157,7 +157,7 @@ You can also provide a license when running the `install` command. Refer to [Ins
 Start by running the preflight checks to ensure that the expected ports are available, the hardware meets the [minimum requirements](../../../prepare/server-nodes-hardware/), and so forth. The preflight check generates a report you can use to fix any issues before continuing with the installation.
 
 ```sh
-./yba-ctl preflight
+sudo ./yba-ctl preflight
 ```
 
 ```output
@@ -179,7 +179,7 @@ Some checks, such as CPU or memory, can be skipped, though this is not recommend
 If you are installing YBA for testing and evaluation and you want to skip a check that is failing, you can pass `–skip_preflight <name>[,<name2>]`. For example:
 
 ```sh
-./yba-ctl preflight --skip_preflight cpu
+sudo ./yba-ctl preflight --skip_preflight cpu
 ```
 
 ### Install the software
@@ -187,13 +187,13 @@ If you are installing YBA for testing and evaluation and you want to skip a chec
 To perform an install, run the `install` command. Once started, an install can take several minutes to complete.
 
 ```sh
-./yba-ctl install
+sudo ./yba-ctl install
 ```
 
 You can also provide a license when running the `install` command by using the `-l` flag if you haven't [set the license prior to install](#provide-a-license) :
 
 ```sh
-./yba-ctl install -l /path/to/license
+sudo ./yba-ctl install -l /path/to/license
 ```
 
 ```output
@@ -219,7 +219,7 @@ YBA Installer can be used to reconfigure an installed YBA instance.
 To reconfigure an installation, edit the `/opt/yba-ctl/yba-ctl.yml` configuration file with your changes, and then run the command as follows:
 
 ```sh
-yba-ctl reconfigure
+sudo yba-ctl reconfigure
 ```
 
 For a list of options, refer to [Configuration options](#configuration-options). Note that some settings can't be reconfigured, such as the install root, service username, or the PostgreSQL version.
@@ -229,14 +229,14 @@ For a list of options, refer to [Configuration options](#configuration-options).
 YBA Installer provides basic service management, with `start`, `stop`, and `restart` commands. Each of these can be performed for all the services (`platform`, `postgres`, and `prometheus`), or any individual service.
 
 ```sh
-yba-ctl [start, stop, reconfigure]
-yba-ctl [start, stop, reconfigure] prometheus
+sudo yba-ctl [start, stop, reconfigure]
+sudo yba-ctl [start, stop, reconfigure] prometheus
 ```
 
 In addition to the state changing operations, you can use the `status` command to show the status of all YugabyteDB Anywhere services, in addition to other information such as the log and configuration location, versions of each service, and the URL to access the YugabyteDB Anywhere UI.
 
 ```sh
-yba-ctl status
+sudo yba-ctl status
 ```
 
 ```output
@@ -259,7 +259,7 @@ Upgrade works similarly to the install workflow, by first running preflight chec
 When ready to upgrade, run the `upgrade` command from the untarred directory of the target version of the YBA upgrade:
 
 ```sh
-./yba-ctl upgrade
+sudo ./yba-ctl upgrade
 ```
 
 The upgrade takes a few minutes to complete. When finished, use the [status command](#service-management) to verify that YBA has been upgraded to the target version.
@@ -271,7 +271,7 @@ YBA Installer also provides utilities to take full backups of the YBA state (not
 To perform a backup, provide the full path to the directory where the backup will be generated. The `createBackup` command creates a timestamped `tgz` file for the backup. For example:
 
 ```sh
-yba-ctl createBackup ~/test_backup
+sudo yba-ctl createBackup ~/test_backup
 ls test_backup/
 ```
 
@@ -282,7 +282,7 @@ backup_23-04-25-16-54.tgz
 To restore from the same backup, use the `restoreBackup` command:
 
 ```sh
-yba-ctl restoreBackup ~/test_backup/backup_23-04-25-16-64.tgz
+sudo yba-ctl restoreBackup ~/test_backup/backup_23-04-25-16-64.tgz
 ```
 
 For more information, refer to [Back up and restore YugabyteDB Anywhere](../../../administer-yugabyte-platform/back-up-restore-installer/).
@@ -294,7 +294,7 @@ To uninstall a YBA instance, YBA Installer also provides a `clean` command.
 By default, `clean` removes the YugabyteDB Anywhere software, but keeps any data such as PostgreSQL or Prometheus information:
 
 ```sh
-yba-ctl clean
+sudo yba-ctl clean
 ```
 
 ```output
@@ -306,7 +306,7 @@ INFO[2023-04-24T23:58:14Z] Uninstalling postgres
 To delete all data, run `clean` with the `–-all` flag as follows:
 
 ```sh
-yba-ctl clean --all
+sudo yba-ctl clean --all
 ```
 
 ```output
@@ -343,12 +343,20 @@ The `help`, `license`, and `preflight` commands can be run in either context.
 If you don't use the correct execution path, yba-ctl fails with an error:
 
 ```sh
-./yba-ctl createBackup ~/backup.tgz
+sudo ./yba-ctl createBackup ~/backup.tgz
 ```
 
 ```output
 FATAL[2023-04-25T00:14:57Z] createBackup must be run from the installed yba-ctl
 ```
+
+## Non-sudo installation
+
+{{<tags/feature/ea>}}YBA Installer supports non-sudo installation, where sudo access is not required for any step of the installation.
+
+To facilitate a non-sudo install, YBA Installer will not create any additional users or set up services in systemd. The install will also be rooted in the home directory by default, instead of `/opt`, ensuring YBA Installer has write access to the base install directory. Instead of using systemd to manage services, basic cron jobs are used to start the services on bootup with basic management scripts used to restart the services after a crash.
+
+To perform a non-sudo installation, run any of the preceding commands without sudo access. You can't switch between a sudo and non-sudo access installation, and `yba-ctl` will return an error if sudo is not used when operating in an installation where sudo access was used.
 
 ## Configuration options
 
