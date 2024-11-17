@@ -553,7 +553,7 @@ To satisfy transactional guarantees during the vector index read path, we need
 to consider the read timestamp of the read request. We must filter out vectors
 that fall into these two categories:
 
-- Vectors that have been overwritten or deleted at a timestamp higher than
+- Vectors that have been overwritten or deleted at a timestamp lower than
 read_time. (Both overwrites and deletes are represented with a delete marker
 against the vector_id in the regular RocksDB.)
 
@@ -585,7 +585,7 @@ entries where every entry satisfies MVCC visibility rules. It is important to
 note that we must eventually get at least K results satisfying the filtering
 conditions from **every chunk**, not from the aggregation of all chunks, to
 maintain the statistical properties of the search recall of each index chunk in
-the final result. However, if we still getting fewer than K results from a
+the final result. However, if we still get fewer than K results from a
 certain chunk after increasing the number M of top results to retrieve from
 that chunk over the course of a few retries, it might make sense to cut the
 overall latency and return the results that are available, if this limitation
