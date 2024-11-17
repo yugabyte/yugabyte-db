@@ -240,26 +240,26 @@ For information on how to set up xCluster for non-colocated tables, refer to [xC
 
 ## Colocated tables with tablespaces
 
-With the introduction of [tablespaces](../going-beyond-sql/tablespaces/) support for colocated tables {{<tags/feature/ea>}}, you can assign tablespaces to their colocated tables, bridging the gap between regional data distribution and performance demands. This development eliminates the need for trade-offs, allowing organizations to adhere to compliance requirements while benefiting from the efficiency of colocated tables and relations. By ensuring all colocated tables in a tablespace reside in the same tablet, this feature optimizes both data management and operational efficiency.
+Colocated tables can be placed in [tablespaces](../going-beyond-sql/tablespaces/) {{<tags/feature/ea>}}. When a colocated table is created in a tablespace, the colocation tablet is placed and replicated exclusively in the tablespace.
 
-Available as an {{<tags/feature/ea>}} feature, you can enable it by setting the flag `ysql_enable_colocated_tables_with_tablespaces = true`.
+During Early Access, by default colocation support for tablespaces is not enabled. To enable the feature, set the flag `ysql_enable_colocated_tables_with_tablespaces=true`.
 
-### Create a colocated table with tablespace
+### Create a colocated table in a tablespace
 
-In a [colocated database](#databases), [tables](#tables) are created with colocation by default. To create a colocated table within a specific tablespace, use the following command:
+In a [colocated database](#databases), [tables](#tables) are created with colocation by default. To create a colocated table in a tablespace, use the following command:
 
 ```sql
 CREATE TABLE <table_name> TABLESPACE <tablespace_name>;
 ```
 
-The same syntax can also be used to create indexes and materialized views within a specific tablespace as follows:
+Use the same syntax to create indexes and materialized views in a tablespace as follows:
 
 ```sql
 CREATE INDEX <index_name> ON <table_name>(<column_name>) TABLESPACE <tablespace_name>;
 CREATE MATERIALIZED VIEW <view_name> TABLESPACE <tablespace_name> AS <query>;
 ```
 
-To create a non-colocated table (in a colocated database) within a tablespace, use the following command:
+To create a non-colocated table (in a colocated database) in a tablespace, use the following command:
 
 ```sql
 CREATE TABLE <table_name> WITH (COLOCATION=FALSE) TABLESPACE <tablespace_name>;
@@ -267,7 +267,7 @@ CREATE TABLE <table_name> WITH (COLOCATION=FALSE) TABLESPACE <tablespace_name>;
 
 ### View tablespace and colocation properties
 
-To check the tablespace and colocation properties of a table, use the [\d](../../api/ysqlsh-meta-commands/#d-s-pattern-patterns) meta command on the table as follows:
+To check the tablespace and colocation properties of a table, use the [\d](../../api/ysqlsh-meta-commands/#d-s-pattern-patterns) meta-command on the table as follows:
 
 ```sql
 \d table_name;
@@ -306,9 +306,9 @@ The `oid` and `grpname` columns represent the tablegroup's OID and name, respect
 
 ### Geo-partitioned colocated tables with tablespaces
 
-YugabyteDB also supports [Row-level geo-partitioning](../multi-region-deployments/row-level-geo-partitioning/), which distributes each row across child tables based on the region specified by respective tablespaces. This capability enhances data access speed and helps meet compliance policies that require specific data locality.
+YugabyteDB supports [row-level geo-partitioning](../multi-region-deployments/row-level-geo-partitioning/), which distributes each row across child tables based on the region specified by respective tablespaces. This capability enhances data access speed and helps meet compliance policies that require specific data locality.
 
-In a colocated database, you can now create colocated geo-partitioned tables to benefit from both colocation and geo-partitioning simultaneously as follows:
+In a colocated database, you can create colocated geo-partitioned tables to benefit from both colocation and geo-partitioning as follows:
 
 ```sql
 CREATE TABLE <partitioned_table_name> PARTITION BY LIST(region);
@@ -338,29 +338,31 @@ To move only colocated relations, you can specify a table to colocate with using
 ALTER TABLE ALL IN TABLESPACE tablespace_1 COLOCATED WITH table1 SET TABLESPACE tablespace_2 CASCADE;
 ```
 
-This command will move only the relations present in `tablespace_1` that are colocated with `table1`.
+This command moves only the relations present in `tablespace_1` that are colocated with `table1`.
 
-A single non-colocated table can be moved using the following syntax:
+Move a single non-colocated table using the following syntax:
 
 ```sql
 ALTER TABLE <table_name> SET TABLESPACE <new_tablespace>;
 
 ```
 
-### Backup and restore colocated database using ysql_dump
+### Back up and restore colocated database using ysql_dump
 
 You can back up and restore a database with colocated tables and tablespaces in two ways:
 
-- With `--use_tablespaces` option in [ysql_dump](../../admin/ysql-dump/): Using this option during backup and restore includes tablespace information. The restored database requires the target universe to contain the necessary nodes for tablespace creation.
+- With `--use_tablespaces` option in [ysql_dump](../../admin/ysql-dump/). Using this option during backup and restore includes tablespace information. The restored database requires the target universe to contain the necessary nodes for tablespace creation.
 
-- Without `--use_tablespaces` option: When this option is omitted, tablespace information is not be stored during backup and restore. After the restore, all colocated entities remain colocated, and you can create tablespaces post-restore as needed. Tables can then be moved to the desired tablespaces using the ALTER syntax.
+- Without `--use_tablespaces` option. When this option is omitted, tablespace information is not stored during backup and restore, and all relations are restored to the YugabyteDB default tablespace `pg_default`.
 
-  - Moving non-colocated tables: For non-colocated tables, use the previously mentioned syntax to [alter the tablespace of a non-colocated table](#create-a-colocated-table-with-tablespace).
+  After the restore, all colocated entities remain colocated, and you can create tablespaces post-restore as needed. Tables can then be moved to the desired tablespaces using the ALTER syntax.
 
-  - Moving colocated relations: To move colocated relations, use the following variant of the previously mentioned command:
+  - To move non-colocated tables, use the syntax to [alter the tablespace of a non-colocated table](#create-a-colocated-table-in-a-tablespace).
+
+  - To move colocated relations, use the following variant of the previously mentioned command:
 
       ```sql
       ALTER TABLE ALL IN TABLESPACE pg_default COLOCATED WITH table1 SET TABLESPACE new_tablespace CASCADE;
       ```
 
-      This command moves all restored colocated relations that are colocated with `table1` to `new_tablespace`. Note that the `pg_default` tablespace is the default tablespace in YugabyteDB, and all relations are restored to this default if the `--use_tablespaces` option is not provided during backup and restore.
+      This command moves all restored colocated relations in the default tablespace `pg_default` that are colocated with `table1` to `new_tablespace`.
