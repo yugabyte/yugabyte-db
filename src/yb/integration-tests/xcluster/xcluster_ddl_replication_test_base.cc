@@ -60,15 +60,15 @@ Status XClusterDDLReplicationTestBase::SetUpClusters(
   return XClusterYsqlTestBase::SetUpClusters(kDefaultParams);
 }
 
-Status XClusterDDLReplicationTestBase::CheckpointReplicationGroupWithoutRequiringNoBootstrapNeeded(
+Status XClusterDDLReplicationTestBase::CheckpointReplicationGroupOnNamespaces(
     const std::vector<NamespaceName>& namespace_names) {
   std::vector<NamespaceId> namespace_ids;
   for (const auto& namespace_name : namespace_names) {
     namespace_ids.push_back(VERIFY_RESULT(GetNamespaceId(producer_client(), namespace_name)));
   }
-  RETURN_NOT_OK(client::XClusterClient(*producer_client())
-                .CreateOutboundReplicationGroup(
-                    kReplicationGroupId, namespace_ids, UseAutomaticMode()));
+  RETURN_NOT_OK(
+      client::XClusterClient(*producer_client())
+          .CreateOutboundReplicationGroup(kReplicationGroupId, namespace_ids, UseAutomaticMode()));
 
   for (const auto& namespace_id : namespace_ids) {
     auto bootstrap_required =
@@ -79,17 +79,8 @@ Status XClusterDDLReplicationTestBase::CheckpointReplicationGroupWithoutRequirin
   return Status::OK();
 }
 
-Status XClusterDDLReplicationTestBase::CreateReplicationFromCheckpointUsingBackupRestore(
-    const std::string& target_master_addresses,
-    const xcluster::ReplicationGroupId& replication_group_id,
-    std::vector<NamespaceName> namespace_names, std::function<Status()> between_backup_and_restore,
-    std::function<Status()> after_restore) {
-  RETURN_NOT_OK(SetupCertificates(replication_group_id));
-
-  auto master_addr = target_master_addresses;
-  if (master_addr.empty()) {
-    master_addr = consumer_cluster()->GetMasterAddresses();
-  }
+Status XClusterDDLReplicationTestBase::BackupFromProducer(
+    std::vector<NamespaceName> namespace_names) {
   if (namespace_names.empty()) {
     namespace_names = {namespace_name};
   }
@@ -105,8 +96,17 @@ Status XClusterDDLReplicationTestBase::CreateReplicationFromCheckpointUsingBacku
          Format("ysql.$0", namespace_name), "create"},
         &*producer_cluster_.mini_cluster_));
   }
+  return Status::OK();
+}
 
-  RETURN_NOT_OK(between_backup_and_restore());
+Status XClusterDDLReplicationTestBase::RestoreToConsumer(
+    std::vector<NamespaceName> namespace_names) {
+  if (namespace_names.empty()) {
+    namespace_names = {namespace_name};
+  }
+  auto BackupDir = [&](NamespaceName namespace_name) {
+    return GetTempDir(Format("backup_$0", namespace_name));
+  };
 
   // Restore to new databases on the consumer.
   for (const auto& namespace_name : namespace_names) {
@@ -116,13 +116,7 @@ Status XClusterDDLReplicationTestBase::CreateReplicationFromCheckpointUsingBacku
          Format("ysql.$0", namespace_name), "restore"},
         &*consumer_cluster_.mini_cluster_));
   }
-
-  RETURN_NOT_OK(after_restore());
-
-  RETURN_NOT_OK(client::XClusterClient(*producer_client())
-                    .CreateXClusterReplicationFromCheckpoint(replication_group_id, master_addr));
-
-  return WaitForCreateReplicationToFinish(master_addr, namespace_names);
+  return Status::OK();
 }
 
 Status XClusterDDLReplicationTestBase::RunBackupCommand(

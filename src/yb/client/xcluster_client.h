@@ -105,6 +105,10 @@ class XClusterClient {
       CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
       const NamespaceId& namespace_id, IsXClusterBootstrapRequiredCallback callback);
 
+  Status EnsureSequenceUpdatesAreInWal(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::vector<NamespaceId>& namespace_ids, CoarseTimePoint deadline);
+
   // Count of table_names and pg_schema_names must match. If no table_names are provided then all
   // tables of the namespace are returned.
   Status GetXClusterStreams(

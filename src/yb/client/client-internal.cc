@@ -334,6 +334,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterOutboundReplicationGroupI
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUniverseReplications);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUniverseReplicationInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, WaitForReplicationDrain);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterEnsureSequenceUpdatesAreInWal);
 
 #define YB_CLIENT_SPECIALIZE_SIMPLE_EX_EACH(i, data, set) YB_CLIENT_SPECIALIZE_SIMPLE_EX set
 
