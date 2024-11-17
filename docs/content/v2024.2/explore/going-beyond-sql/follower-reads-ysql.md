@@ -56,8 +56,8 @@ The following table provides information on the expected behavior when a read ha
 
 You can mark a transaction as read-only by applying the following guidelines:
 
-- `SET TRANSACTION READ ONLY` applies only to the current transaction block.
-- `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY` applies the read-only setting to all statements and transaction blocks that follow.
+- SET TRANSACTION READ ONLY applies only to the current transaction block.
+- SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY applies the read-only setting to all statements and transaction blocks that follow.
 - `SET default_transaction_read_only = TRUE` applies the read-only setting to all statements and transaction blocks that follow.
 
 Note: The use of `pg_hint_plan` to mark a statement as read-only is not recommended. It may work in some cases, but relies on side effects and has known issues (see [GH17024](https://github.com/yugabyte/yugabyte-db/issues/17024) and  [GH17135](https://github.com/yugabyte/yugabyte-db/issues/17135)).
@@ -86,7 +86,7 @@ SET yb_read_from_followers = false;
  k1 | v1
 ```
 
-Use SET LOCAL inside a transaction to have follower reads turned on only for the transaction. Set yb_read_from_followers before any transaction is executed in the block:
+Use SET LOCAL inside a transaction to have follower reads turned on only for the transaction. Set `yb_read_from_followers` before any transaction is executed in the block:
 
 ```sql
 START TRANSACTION READ ONLY;
@@ -116,7 +116,7 @@ SELECT * FROM t WHERE k='k1';
 (1 row)
 ```
 
-The following is a `JOIN` example that uses follower reads:
+The following is a JOIN example that uses follower reads:
 
 ```sql
 CREATE TABLE table1(k int primary key, v int);
@@ -159,7 +159,7 @@ UPDATE t SET  v = 'v1+2' where k = 'k1';
 SELECT * FROM t WHERE k = 'k1';
 ```
 
-This selects the latest version of the row because the transaction setting for the session is `read write`.
+This selects the latest version of the row because the transaction setting for the session is READ WRITE.
 
 ```output
  k  |  v
