@@ -406,6 +406,32 @@ YBA verifies that the universe is in a healthy state before starting operations.
 </details>
 
 <details>
+  <summary><b>Universe consistency check</b></summary>
+  <br>
+
+**Symptom (An approximate sample error message)**
+
+```text
+No rows updated performing consistency check, stale universe metadata.
+```
+
+**Details**
+
+YBA verifies that the configuration of deployed YB-Masters and YB-TServers matches the YBA metadata (`universe_details_json`). In general, any discrepancy may indicate that some operations were performed on the YB-Masters/YB-TServers without YBA's knowledge and may need to be reconciled with the YBA metadata. This could happen due to:
+
+- [High availability](../../administer-yugabyte-platform/high-availability/) (HA) was broken; in this case you would have two independent deployments of YBA, one of which could be stale because it was a standby and the last time it was restored was when it was promoted.
+- Restoring a stale backup to a standby in HA.
+- Manually restoring a stale backup using YBA Installer.
+- During manual migration to a new host using YBA Installer.
+
+**Possible action/workaround**
+
+1. Fix the root cause of the inconsistency. You may need to contact {{% support-platform %}}.
+1. If the inconsistency was verified to be harmless, you can turn off the check using the runtime configuration flag `yb.universe.consistency_check_enabled`. Exercise caution before proceeding with such an inconsistency as it can have serious consequences.
+
+</details>
+
+<details>
   <summary><b>Cluster consistency check</b></summary>
   <br>
 
