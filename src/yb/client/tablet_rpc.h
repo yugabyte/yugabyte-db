@@ -220,7 +220,7 @@ class TabletInvoker {
   // while this object is alive.
   Trace* const trace_;
 
-  // Whether or not to allow lookups of inactive (hidden) tablets.
+  // Whether or not to allow lookups of inactive tablets.
   const master::IncludeInactive include_inactive_;
 
   // Whether or not to allow deleted tablets.

@@ -71,8 +71,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
 
   // Fetches tablet partitions from master using GetTableLocations RPC.
   static void FetchPartitions(
-      YBClient* client, const TableId& table_id, FetchPartitionsCallback callback,
-      master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
+      YBClient* client, const TableId& table_id, FetchPartitionsCallback callback);
 
   //------------------------------------------------------------------------------------------------
   // Access functions.

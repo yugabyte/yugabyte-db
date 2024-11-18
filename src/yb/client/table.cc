@@ -280,8 +280,7 @@ bool YBTable::ArePartitionsStale() const {
 }
 
 void YBTable::FetchPartitions(
-    YBClient* client, const TableId& table_id, FetchPartitionsCallback callback,
-    master::IncludeInactive include_inactive) {
+    YBClient* client, const TableId& table_id, FetchPartitionsCallback callback) {
   // TODO: fetch the schema from the master here once catalog is available.
   // TODO(tsplit): consider optimizing this to not wait for all tablets to be running in case
   // of some tablet has been split and post-split tablets are not yet running.
@@ -309,8 +308,7 @@ void YBTable::FetchPartitions(
         std::sort(partitions->keys.begin(), partitions->keys.end());
 
         callback(partitions);
-      },
-      include_inactive);
+      });
 }
 
 size_t YBTable::DynamicMemoryUsage() const {
