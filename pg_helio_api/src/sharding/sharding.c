@@ -542,6 +542,12 @@ bool
 ComputeShardKeyHashForQuery(pgbson *shardKey, uint64_t collectionId, pgbson *query,
 							int64 *shardKeyHash)
 {
+	if (shardKey == NULL)
+	{
+		*shardKeyHash = collectionId;
+		return true;
+	}
+
 	bson_value_t queryValue = ConvertPgbsonToBsonValue(query);
 	return ComputeShardKeyHashForQueryValue(shardKey, collectionId, &queryValue,
 											shardKeyHash);
