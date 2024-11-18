@@ -9,7 +9,7 @@
   tags: ybc-install
 
 - name: Download ybc package
-  include: download-ybc-package.yml
+  import_tasks: download-ybc-package.yml
   become: yes
   become_method: sudo
   become_user: "{{ user_name }}"
