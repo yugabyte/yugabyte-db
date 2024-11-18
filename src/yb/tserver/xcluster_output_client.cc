@@ -46,7 +46,7 @@
 
 DECLARE_int32(cdc_write_rpc_timeout_ms);
 
-DEFINE_RUNTIME_bool(cdc_force_remote_tserver, false,
+DEFINE_test_flag(bool, xcluster_force_remote_tserver, false,
     "Avoid local tserver apply optimization for xCluster and force remote RPCs.");
 
 DEFINE_RUNTIME_bool(xcluster_enable_packed_rows_support, true,
@@ -362,7 +362,7 @@ Status XClusterOutputClient::SendUserTableWrites() {
 }
 
 bool XClusterOutputClient::UseLocalTserver() {
-  return use_local_tserver_ && !FLAGS_cdc_force_remote_tserver;
+  return use_local_tserver_ && !FLAGS_TEST_xcluster_force_remote_tserver;
 }
 
 bool XClusterOutputClient::IsSequencesDataTablet() {

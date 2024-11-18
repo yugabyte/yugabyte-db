@@ -77,6 +77,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/xcluster_consumer.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
@@ -147,8 +148,8 @@ DECLARE_double(TEST_xcluster_simulate_random_failure_after_apply);
 DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(TEST_xcluster_fail_setup_stream_update);
+DECLARE_bool(TEST_xcluster_force_remote_tserver);
 DECLARE_bool(xcluster_skip_health_check_on_replication_setup);
-DECLARE_bool(FLAGS_update_min_cdc_indices_interval_secs);
 
 namespace yb {
 
@@ -3197,8 +3198,7 @@ TEST_P(XClusterTest, PausingAndResumingReplicationFromProducerMultiTable) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-// This test is flaky. See #18437.
-TEST_P(XClusterTest, YB_DISABLE_TEST(LeaderFailoverTest)) {
+TEST_F_EX(XClusterTest, LeaderFailoverTest, XClusterTestNoParam) {
   // When the consumer tablet leader moves around (like during an upgrade) the pollers can start and
   // stop on multiple nodes. This test makes sure that during such poller movement we do not get
   // replication errors.
@@ -3214,10 +3214,12 @@ TEST_P(XClusterTest, YB_DISABLE_TEST(LeaderFailoverTest)) {
 
   // Dont remove pollers when leaders move.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_disable_delete_old_pollers) = true;
+  // Keep polling even if the leader term is lost.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_disable_poller_term_check) = true;
   // Dont increase Poll delay on failures as it is expected.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_failure_delay_exponent) = 0;
   // The below flags are required for fast log gc.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 500;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 0;
@@ -3226,25 +3228,33 @@ TEST_P(XClusterTest, YB_DISABLE_TEST(LeaderFailoverTest)) {
   const uint32_t kReplicationFactor = 3, kTabletCount = 1, kNumMasters = 1, kNumTservers = 3;
   ASSERT_OK(SetUpWithParams(
       {kTabletCount}, {kTabletCount}, kReplicationFactor, kNumMasters, kNumTservers));
+
+  google::SetVLOGLevel("xcluster*", 5);
+
   ASSERT_OK(
       SetupUniverseReplication(producer_tables_, {LeaderOnly::kFalse, Transactional::kFalse}));
 
   // After creating the cluster, make sure all tablets being polled for.
   ASSERT_OK(CorrectlyPollingAllTablets(kTabletCount));
 
-  auto tablet_ids = ListTabletIdsForTable(consumer_cluster(), consumer_table_->id());
-  ASSERT_EQ(tablet_ids.size(), 1);
-  const auto tablet_id = *tablet_ids.begin();
+  auto consumer_tablet_ids = ListTabletIdsForTable(consumer_cluster(), consumer_table_->id());
+  ASSERT_EQ(consumer_tablet_ids.size(), 1);
+  const auto consumer_tablet_id = *consumer_tablet_ids.begin();
+
+  auto producer_tablet_ids = ListTabletIdsForTable(producer_cluster(), producer_table_->id());
+  ASSERT_EQ(producer_tablet_ids.size(), 1);
+  const auto producer_tablet_id = *producer_tablet_ids.begin();
+
   const auto kTimeout = 10s * kTimeMultiplier;
 
-  auto leader_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
-  master::MasterClusterProxy master_proxy(
-      &consumer_client()->proxy_cache(), leader_master->bound_rpc_addr());
+  auto master_proxy =
+      ASSERT_RESULT(consumer_cluster()->GetLeaderMasterProxy<master::MasterClusterProxy>());
   auto ts_map =
       ASSERT_RESULT(itest::CreateTabletServerMap(master_proxy, &consumer_client()->proxy_cache()));
 
   itest::TServerDetails* old_ts = nullptr;
-  ASSERT_OK(FindTabletLeader(ts_map, tablet_id, kTimeout, &old_ts));
+  ASSERT_OK(FindTabletLeader(ts_map, consumer_tablet_id, kTimeout, &old_ts));
+  tserver::MiniTabletServer* old_tserver = FindTabletLeader(consumer_cluster(), consumer_tablet_id);
 
   itest::TServerDetails* new_ts = nullptr;
   for (auto& [ts_id, ts_details] : ts_map) {
@@ -3254,18 +3264,60 @@ TEST_P(XClusterTest, YB_DISABLE_TEST(LeaderFailoverTest)) {
     }
   }
 
-  constexpr int kNumWriteRecords = 100;
-  ASSERT_OK(InsertRowsInProducer(0, kNumWriteRecords));
-  ASSERT_OK(VerifyNumRecordsOnConsumer(kNumWriteRecords));
+  int num_rows_inserted = 0;
+  auto insert_rows_and_verify = [this, &num_rows_inserted]() -> Status {
+    constexpr int kNumWriteRecords = 100;
+    RETURN_NOT_OK(InsertRowsInProducer(num_rows_inserted, num_rows_inserted + kNumWriteRecords));
+    num_rows_inserted += kNumWriteRecords;
+    return VerifyNumRecordsOnConsumer(num_rows_inserted);
+  };
+
+  auto wait_for_error = [this, &producer_tablet_id, kTimeout](
+                            tserver::XClusterConsumer& consumer,
+                            ReplicationErrorPb expected_error) {
+    return LoggedWaitFor(
+        [this, &consumer, &producer_tablet_id, expected_error]() -> Result<bool> {
+          auto errors = consumer.error_collector_.GetErrorsToSend(/*get_all_errors=*/true);
+          if (!errors[kReplicationGroupId][consumer_table_->id()].contains(producer_tablet_id)) {
+            LOG(INFO) << "No errors found";
+            return false;
+          }
+
+          const auto error =
+              errors[kReplicationGroupId][consumer_table_->id()][producer_tablet_id].error;
+          LOG(INFO) << "Poller Error: " << ReplicationErrorPb_Name(error);
+          return error == expected_error;
+        },
+        kTimeout,
+        Format("Waiting for poller error to be $0", ReplicationErrorPb_Name(expected_error)),
+        /*initial_delay=*/100ms);
+  };
+
+  ASSERT_OK(insert_rows_and_verify());
+
+  auto& old_consumer =
+      *dynamic_cast<tserver::XClusterConsumer*>(old_tserver->server()->GetXClusterConsumer());
+  ASSERT_OK(wait_for_error(old_consumer, ReplicationErrorPb::REPLICATION_OK));
 
   // Failover to new tserver.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_disable_poller_term_check) = true;
-  ASSERT_OK(itest::LeaderStepDown(old_ts, tablet_id, new_ts, kTimeout));
-  ASSERT_OK(itest::WaitUntilLeader(new_ts, tablet_id, kTimeout));
-  auto new_tserver = FindTabletLeader(consumer_cluster(), tablet_id);
+  ASSERT_OK(itest::LeaderStepDown(old_ts, consumer_tablet_id, new_ts, kTimeout));
+  ASSERT_OK(itest::WaitUntilLeader(new_ts, consumer_tablet_id, kTimeout));
 
-  ASSERT_OK(InsertRowsInProducer(kNumWriteRecords, 2 * kNumWriteRecords));
-  ASSERT_OK(VerifyNumRecordsOnConsumer(2 * kNumWriteRecords));
+  ASSERT_OK(insert_rows_and_verify());
+
+  tserver::MiniTabletServer* new_tserver = FindTabletLeader(consumer_cluster(), consumer_tablet_id);
+  auto& new_consumer =
+      *dynamic_cast<tserver::XClusterConsumer*>(new_tserver->server()->GetXClusterConsumer());
+
+  ASSERT_OK(wait_for_error(new_consumer, ReplicationErrorPb::REPLICATION_OK));
+  // Old consumer should be stuck on the applies.
+  ASSERT_OK(wait_for_error(old_consumer, ReplicationErrorPb::REPLICATION_SYSTEM_ERROR));
+
+  // Master should report healthy since it track only errors from the latest term.
+  auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id()));
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
+
+  ASSERT_OK(insert_rows_and_verify());
 
   // GC log on producer.
   // Note: Ideally cdc checkpoint should advance but we do not see that with our combination of
@@ -3276,27 +3328,17 @@ TEST_P(XClusterTest, YB_DISABLE_TEST(LeaderFailoverTest)) {
   SetAtomicFlag(true, &FLAGS_enable_log_retention_by_op_idx);
 
   // Failback to old tserver.
-  ASSERT_OK(itest::LeaderStepDown(new_ts, tablet_id, old_ts, kTimeout));
-  ASSERT_OK(itest::WaitUntilLeader(old_ts, tablet_id, kTimeout));
+  ASSERT_OK(itest::LeaderStepDown(new_ts, consumer_tablet_id, old_ts, kTimeout));
+  ASSERT_OK(itest::WaitUntilLeader(old_ts, consumer_tablet_id, kTimeout));
 
-  // Delete old pollers so that we can properly shutdown the servers.
+  ASSERT_OK(wait_for_error(old_consumer, ReplicationErrorPb::REPLICATION_MISSING_OP_ID));
+
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_disable_delete_old_pollers) = false;
-
-  ASSERT_OK(LoggedWaitFor(
-      [&new_tserver]() {
-        auto new_tserver_pollers = new_tserver->server()->GetXClusterConsumer()->TEST_ListPollers();
-        return new_tserver_pollers.size() == 0;
-      },
-      kTimeout, "Waiting for pollers from new tserver to stop"));
-
-  ASSERT_OK(InsertRowsInProducer(2 * kNumWriteRecords, 3 * kNumWriteRecords));
-
-  auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id()));
-  ASSERT_OK(VerifyReplicationError(
-      consumer_table_->id(), stream_id, ReplicationErrorPb::REPLICATION_MISSING_OP_ID));
-
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_disable_poller_term_check) = false;
-  ASSERT_OK(VerifyNumRecordsOnConsumer(3 * kNumWriteRecords));
+
+  ASSERT_OK(wait_for_error(old_consumer, ReplicationErrorPb::REPLICATION_OK));
+
+  ASSERT_OK(insert_rows_and_verify());
 }
 
 Status VerifyMetaCacheObjectIsValid(
