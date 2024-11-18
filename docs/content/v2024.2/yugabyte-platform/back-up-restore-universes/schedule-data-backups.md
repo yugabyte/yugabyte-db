@@ -74,7 +74,7 @@ Before scheduling a backup of your universe data, create a policy, as follows:
 
 1. Provide the backup policy name and select the storage configuration. For more information, see [Configure backup storage](../configure-backup-storage/). When finished, click **Next**.
 
-<!-- 1. Select the Keyspaces/Databases you want to backup, either **All Databases** for YSQL or, **All Keyspaces** for YCQL. -->
+    <!-- 1. Select the Keyspaces/Databases you want to backup, either **All Databases** for YSQL or, **All Keyspaces** for YCQL. -->
 
 1. Select the Keyspaces/Databases you want to backup, either YSQL or YCQL. You can choose to backup either all databases/keyspaces, or a single database/keyspace.
 
