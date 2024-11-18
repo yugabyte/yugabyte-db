@@ -426,6 +426,7 @@ YBA verifies that the configuration of deployed YB-Masters and YB-TServers match
 
 **Possible action/workaround**
 
+1. If you have a HA setup, check that you are running the task from the correct YBA.
 1. Fix the root cause of the inconsistency. You may need to contact {{% support-platform %}}.
 1. If the inconsistency was verified to be harmless, you can turn off the check using the runtime configuration flag `yb.universe.consistency_check_enabled`. Exercise caution before proceeding with such an inconsistency as it can have serious consequences.
 
