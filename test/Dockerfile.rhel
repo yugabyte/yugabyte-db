@@ -1,7 +1,7 @@
 FROM rockylinux/rockylinux:8
 
 # Install packages
-RUN dnf install -y sudo make gcc openssl-devel redhat-rpm-config
+RUN dnf install -y sudo make gcc llvm-toolset openssl-devel redhat-rpm-config
 
 # Install and enable EPEL repository
 RUN dnf -y install epel-release
