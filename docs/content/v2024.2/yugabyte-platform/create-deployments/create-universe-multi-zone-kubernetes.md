@@ -235,7 +235,7 @@ For scenarios involving multi-namespaces or clusters, a distinct service is crea
 
 #### Enable the common load balancer
 
-By default, the load balancer service is created per zone, and you can change this behavior by [configuring helm overrides](#configure-helm-overrides) during universe creation, or enabling a global runtime configuration option.
+By default, the load balancer service is created per zone, and you can change this behavior by [configuring helm overrides](#configure-helm-overrides) during universe creation, or by enabling a global runtime configuration option.
 
 You can explicitly define the service scope with the values as "AZ" or "Namespaced" when you [configure helm overrides](#configure-helm-overrides) as follows:
 
@@ -270,7 +270,7 @@ serviceEndpoints:
       tcp-ysql-port: "5433"
 ```
 
-For services without an explicitly defined scope in helm overrides, the default service scope is used, provided you set the **Default service scope for K8s universe** Global runtime configuration option (config key `yb.universe.default_service_scope_for_k8s`) to true. The configuration flag defines the default service scope for the universe if the scope is not explicitly defined in the service overrides.
+For services without an explicitly defined scope in helm overrides, the default service scope (Namespaced) is used, provided you set the **Default service scope for K8s universe** Global runtime configuration option (config key `yb.universe.default_service_scope_for_k8s`) to true. The configuration flag defines the default service scope for the universe if the scope is not explicitly defined in the service overrides.
 
 Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global runtime configuration settings, and you cannot modify this service scope during a universe creation.
 
@@ -291,5 +291,64 @@ After creating a service scope, it cannot be changed directly. To migrate a serv
 1. Migrate clients. Gradually switch clients over to the new namespaced service to ensure they function correctly without disrupting operations.
 1. Remove the old Service. After confirming that all clients are using the new service, update the Helm overrides again to remove the old AZ scoped service.
 
-### Example
+#### Limitations
 
+- Unsupported in YugabyteDB helm chart versions before `2024.2`.
+- Unsupported for upgrading universes created prior to versions `2.18.6.0` and `2.20.2.0`.
+- Enable exposing service is disabled.
+
+### Examples
+
+To create a universe with "Namespaced" scope services by default, do the following:
+
+1. Set the **Default service scope for K8s universe** Global runtime configuration option (config key `yb.universe.default_service_scope_for_k8s`) to true.
+
+1. When you [configure helm overrides](#configure-helm-overrides), use serviceEndpoint overrides without explicitly defining scope or define scope as "Namespaced":
+
+    ```yaml
+    serviceEndpoints:
+      - name: "yb-master-ui"
+        type: LoadBalancer
+        annotations: {}
+        clusterIP: ""
+        ## Sets the Service's externalTrafficPolicy
+        externalTrafficPolicy: ""
+        app: "yb-master"
+        loadBalancerIP: ""
+        ports:
+          http-ui: "7000"
+    ```
+
+Note that irrespective of the default scope, you can add any scope to the services using helm overrides, provided that the database version supports the scope.
+
+For example, if you create a universe that has "AZ" as the default scope, you can add a "Namespaced" scope as follows:
+
+```yaml
+serviceEndpoints:
+  - name: "yb-tserver-service"
+    type: LoadBalancer
+    annotations: {}
+    clusterIP: ""
+    ## Sets the Service's externalTrafficPolicy
+    externalTrafficPolicy: ""
+    app: "yb-tserver"
+    loadBalancerIP: ""
+    ports:
+      tcp-yql-port: "9042"
+      tcp-yedis-port: "6379"
+      tcp-ysql-port: "5433"
+  - name: "yb-tserver-service-ns"
+    type: LoadBalancer
+    # Can be AZ/Namespaced
+    scope: "Namespaced"
+    annotations: {}
+    clusterIP: ""
+    ## Sets the Service's externalTrafficPolicy
+    externalTrafficPolicy: ""
+    app: "yb-tserver"
+    loadBalancerIP: ""
+    ports:
+      tcp-yql-port: "9042"
+      tcp-yedis-port: "6379"
+      tcp-ysql-port: "5433"
+```
