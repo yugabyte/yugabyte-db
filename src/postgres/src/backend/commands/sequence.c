@@ -229,12 +229,13 @@ DefineSequence(ParseState *pstate, CreateSeqStmt *seq)
 
 	if (IsYugaByteEnabled())
 	{
-		HandleYBStatus(YBCInsertSequenceTuple(MyDatabaseId,
-											  seqoid,
-											  YbGetCatalogCacheVersion(),
-											  YBIsDBCatalogVersionMode(),
-											  seqdataform.last_value,
-											  false /* is_called */));
+		if (!IsBinaryUpgrade)
+			HandleYBStatus(YBCInsertSequenceTuple(MyDatabaseId,
+												  seqoid,
+												  YbGetCatalogCacheVersion(),
+												  YBIsDBCatalogVersionMode(),
+												  seqdataform.last_value,
+												  false /* is_called */));
 	}
 	else
 	{
@@ -536,16 +537,30 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 
 	if (IsYugaByteEnabled())
 	{
-		HandleYBStatus(YBCReadSequenceTuple(MyDatabaseId,
-											relid,
-											YbGetCatalogCacheVersion(),
-											YBIsDBCatalogVersionMode(),
-											&last_val,
-											&is_called));
+		/*
+		 * In the binary upgrade case we know we only need to deal with catalog
+		 * metadata. There is no reason to read the actual sequence tuple.
+		 */
+		if (!IsBinaryUpgrade)
+		{
+			HandleYBStatus(YBCReadSequenceTuple(MyDatabaseId,
+												relid,
+												YbGetCatalogCacheVersion(),
+												YBIsDBCatalogVersionMode(),
+												&last_val,
+												&is_called));
 
-		seq_data.last_value = last_val;
-		seq_data.is_called = is_called;
-		seq_data.log_cnt = 0;
+			seq_data.last_value = last_val;
+			seq_data.is_called = is_called;
+			seq_data.log_cnt = 0;
+		}
+		else
+		{
+			memset(&seq_data, 0, sizeof(seq_data));
+			/* Not used, but init_params checks it. */
+			seq_data.last_value = seqform->seqmin;
+		}
+
 		newdataform = &seq_data;
 	}
 	else
@@ -564,6 +579,13 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 	init_params(pstate, stmt->options, stmt->for_identity, false,
 				seqform, newdataform,
 				&need_seq_rewrite, &owned_by);
+	/*
+	 * pg_upgrade sets all options other than OWNED BY during DefineSequence
+	 * (where need_seq_rewrite is ignored). pg_upgrade sets OWNED BY using ALTER
+	 * SEQUENCE, but that's treated specially: See the comment for init_params.
+	 */
+	if (IsYugaByteEnabled() && IsBinaryUpgrade && need_seq_rewrite)
+		elog(ERROR, "need_seq_rewrite cannot be true in binary upgrade mode");
 
 	/* Clear local cache so that we don't think we have cached numbers */
 	/* Note that we do not change the currval() state */
