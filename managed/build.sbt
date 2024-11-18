@@ -174,7 +174,7 @@ libraryDependencies ++= Seq(
   "com.azure" % "azure-identity" % "1.6.0",
   "com.azure" % "azure-security-keyvault-keys" % "4.5.0",
   "com.azure" % "azure-storage-blob" % "12.19.1",
-  "com.azure.resourcemanager" % "azure-resourcemanager" % "2.28.0",
+  "com.azure.resourcemanager" % "azure-resourcemanager" % "2.43.0",
   "jakarta.mail" % "jakarta.mail-api" % "2.1.2",
   "org.eclipse.angus" % "jakarta.mail" % "1.0.0",
   "javax.validation" % "validation-api" % "2.0.1.Final",
@@ -187,7 +187,7 @@ libraryDependencies ++= Seq(
   "org.pac4j" % "pac4j-oidc" % "4.5.7" exclude("commons-io" , "commons-io"),
   "org.playframework" %% "play-json" % "3.0.4",
   "commons-validator" % "commons-validator" % "1.8.0",
-  "org.apache.velocity" % "velocity-engine-core" % "2.3",
+  "org.apache.velocity" % "velocity-engine-core" % "2.4.1",
   "com.fasterxml.woodstox" % "woodstox-core" % "6.4.0",
   "com.jayway.jsonpath" % "json-path" % "2.6.0",
   "commons-io" % "commons-io" % "2.15.1",
@@ -202,6 +202,8 @@ libraryDependencies ++= Seq(
   "com.google.oauth-client" % "google-oauth-client" % "1.34.1",
   "org.projectlombok" % "lombok" % "1.18.26",
   "com.squareup.okhttp3" % "okhttp" % "4.12.0",
+  "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.17.2",
+  "com.nimbusds" % "nimbus-jose-jwt" % "7.9",
   "io.kamon" %% "kamon-bundle" % "2.5.9",
   "io.kamon" %% "kamon-prometheus" % "2.5.9",
   "org.unix4j" % "unix4j-command" % "0.6",
@@ -507,7 +509,6 @@ libraryDependencies ++= Seq(
   "io.netty" % "netty-codec-haproxy" % "4.1.89.Final",
   "io.projectreactor.netty" % "reactor-netty-http" % "1.0.39",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
-  "com.nimbusds" % "nimbus-jose-jwt" % "7.9",
 )
 
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.21.7"
