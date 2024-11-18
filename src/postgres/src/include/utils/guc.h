@@ -245,7 +245,7 @@ typedef enum
 
 #define GUC_UNIT				(GUC_UNIT_MEMORY | GUC_UNIT_TIME)
 
-#define GUC_YB_CUSTOM_STICKY	0x100000 /* stickiness for custom string
+#define GUC_YB_CUSTOM_STICKY	0x400000 /* stickiness for custom string
 										  * variables */
 
 
