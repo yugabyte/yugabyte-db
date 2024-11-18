@@ -86,7 +86,7 @@ SET yb_read_from_followers = false;
  k1 | v1
 ```
 
-Use SET LOCAL inside a transaction to have follower reads turned on only for the transaction. Set `yb_read_from_followers` before any transaction is executed in the block:
+Use SET LOCAL inside a transaction to have follower reads turned on only for the transaction. Set `yb_read_from_followers` before any statement is executed in the block:
 
 ```sql
 START TRANSACTION READ ONLY;
