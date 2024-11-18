@@ -36,41 +36,14 @@
 
 #include <boost/preprocessor/cat.hpp>
 
-#include "yb/master/master_fwd.h"
+#include "yb/master/catalog_loading_state.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/permissions_manager.h"
 #include "yb/master/sys_catalog.h"
 
 namespace yb {
 namespace master {
-
-struct SysCatalogLoadingState {
-  std::unordered_map<TableId, std::vector<TableId>> parent_to_child_tables;
-  std::vector<std::pair<std::function<void()>, std::string>> post_load_tasks;
-
-  // The tables which require their memory state to write to disk.
-  TableIdSet write_to_disk_tables;
-
-  // Index tables which require backfill status validation (by checking GC delete markers state).
-  // The tables are grouped by the indexed table id for performance reasons.
-  std::unordered_map<TableId, TableIdSet> validate_backfill_status_index_tables;
-
-  const LeaderEpoch epoch;
-
-  explicit SysCatalogLoadingState(LeaderEpoch leader_epoch = {}) : epoch(std::move(leader_epoch))
-  {}
-
-  void AddPostLoadTask(std::function<void()>&& func, std::string&& msg) {
-    post_load_tasks.push_back({std::move(func), std::move(msg)});
-  }
-
-  void Reset() {
-    parent_to_child_tables.clear();
-    post_load_tasks.clear();
-    write_to_disk_tables.clear();
-    validate_backfill_status_index_tables.clear();
-  }
-};
 
 #define DECLARE_LOADER_CLASS(name, key_type, entry_pb_name, mutex) \
   class BOOST_PP_CAT(name, Loader) : \

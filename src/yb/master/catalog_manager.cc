@@ -1320,31 +1320,6 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
     // it's important to end their tasks now.
     AbortAndWaitForAllTasksUnlocked();
 
-    // Clear internal maps and run data loaders.
-    RETURN_NOT_OK(RunLoaders(state));
-
-    // Prepare various default system configurations.
-    RETURN_NOT_OK(PrepareDefaultSysConfig(term));
-
-    RETURN_NOT_OK(MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog(state));
-
-    // Create the system namespaces (created only if they don't already exist).
-    RETURN_NOT_OK(PrepareDefaultNamespaces(term));
-
-    // Create the system tables (created only if they don't already exist).
-    RETURN_NOT_OK(PrepareSystemTables(state->epoch));
-
-    // Create the default cassandra (created only if they don't already exist).
-    RETURN_NOT_OK(permissions_manager_->PrepareDefaultRoles(term));
-
-    // If this is the first time we start up, we have no config information as default. We write an
-    // empty version 0.
-    RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
-
-    RETURN_NOT_OK(xcluster_manager_->PrepareDefaultXClusterConfig(term, /* recreate = */ false));
-
-    permissions_manager_->BuildRecursiveRoles();
-
     if (FLAGS_enable_ysql) {
       // Number of TS to wait for before creating the txn table.
       auto wait_ts_count = std::max(FLAGS_txn_table_wait_min_ts_count, FLAGS_replication_factor);
@@ -1381,6 +1356,31 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
             LOG_WITH_PREFIX(INFO) << "Finished creating transaction status table asynchronously";
           });
     }
+
+    // Clear internal maps and run data loaders.
+    RETURN_NOT_OK(RunLoaders(state));
+
+    // Prepare various default system configurations.
+    RETURN_NOT_OK(PrepareDefaultSysConfig(term));
+
+    RETURN_NOT_OK(MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog(state));
+
+    // Create the system namespaces (created only if they don't already exist).
+    RETURN_NOT_OK(PrepareDefaultNamespaces(term));
+
+    // Create the system tables (created only if they don't already exist).
+    RETURN_NOT_OK(PrepareSystemTables(state->epoch));
+
+    // Create the default cassandra (created only if they don't already exist).
+    RETURN_NOT_OK(permissions_manager_->PrepareDefaultRoles(term));
+
+    // If this is the first time we start up, we have no config information as default. We write an
+    // empty version 0.
+    RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
+
+    RETURN_NOT_OK(xcluster_manager_->PrepareDefaultXClusterConfig(term, /* recreate = */ false));
+
+    permissions_manager_->BuildRecursiveRoles();
 
     if (!VERIFY_RESULT(StartRunningInitDbIfNeeded(state->epoch))) {
       // If we are not running initdb, this is an existing cluster, and we need to check whether we
@@ -1491,8 +1491,8 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
 
   RETURN_NOT_OK(xcluster_manager_->RunLoaders(hidden_tablets_));
   RETURN_NOT_OK(master_->clone_state_manager().ClearAndRunLoaders(state->epoch));
-  RETURN_NOT_OK(
-      master_->ts_manager()->RunLoader(master_->MakeCloudInfoPB(), &master_->proxy_cache()));
+  RETURN_NOT_OK(master_->ts_manager()->RunLoader(
+      master_->MakeCloudInfoPB(), &master_->proxy_cache(), *state));
 
   return Status::OK();
 }
