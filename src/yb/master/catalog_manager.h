@@ -193,7 +193,7 @@ YB_DEFINE_ENUM(YsqlDdlVerificationState,
 // schema comparison of DocDB current schema or previous schema against the PG catalog schema.
 // That's fine because whether the PG DDL txn has committed or aborted makes no difference for
 // this table's DocDB schema.
-YB_DEFINE_ENUM(TxnState, (kUnknown) (kCommitted) (kAborted) (kNoChange));
+YB_DEFINE_ENUM(TxnState, (kUnknown)(kCommitted)(kAborted)(kNoChange));
 
 struct YsqlTableDdlTxnState;
 
@@ -1895,11 +1895,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Builds the TabletLocationsPB for a tablet based on the provided TabletInfo.
   // Populates locs_pb and returns true on success.
   // Returns Status::ServiceUnavailable if tablet is not running.
-  // Set include_inactive to true in order to also get information about hidden tablets.
+  // Set include_hidden_tablets to true in order to also get information about hidden tablets.
   Status BuildLocationsForTablet(
       const TabletInfoPtr& tablet,
       TabletLocationsPB* locs_pb,
-      IncludeInactive include_inactive = IncludeInactive::kFalse,
+      IncludeHidden include_hidden_tablets = IncludeHidden::kFalse,
       PartitionsOnly partitions_only = PartitionsOnly::kFalse);
 
   // Extract the set of tablets that can be deleted and the set of tablets
@@ -2590,7 +2590,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status BuildLocationsForSystemTablet(
       const TabletInfoPtr& tablet,
       TabletLocationsPB* locs_pb,
-      IncludeInactive include_inactive,
       PartitionsOnly partitions_only);
 
   Status MaybeCreateLocalTransactionTable(

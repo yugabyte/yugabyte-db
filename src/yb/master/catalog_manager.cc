@@ -6872,8 +6872,7 @@ TableInfo::WriteLock CatalogManager::PrepareTableDeletion(const TableInfoPtr& ta
     LOG(INFO) << "Marking table as HIDDEN: " << table->ToString();
     lock.mutable_data()->pb.set_hide_state(SysTablesEntryPB::HIDDEN);
     lock.mutable_data()->pb.set_hide_hybrid_time(master_->clock()->Now().ToUint64());
-    // Erase all the tablets from partitions_ structure.
-    table->ClearTabletMaps(DeactivateOnly::kTrue);
+    // Don't erase hidden tablets from partitions_ as they are needed for CLONE, PITR, SELECT AS-OF.
     return lock;
   }
   if (lock->is_deleting()) {
@@ -7658,8 +7657,8 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
 
   TRACE("Locking table");
   auto l = table->LockForRead();
-  if (req->include_inactive()) {
-    // Do not return the schema of a deleted tablet even if include_inactive is set to true
+  if (req->include_hidden()) {
+    // Do not return the schema of a deleted table even if include_hidden is set to true
     SCHECK_EC_FORMAT(
         l->is_running(), NotFound, MasterError(MasterErrorPB::OBJECT_NOT_FOUND),
         "The object '$0.$1' is not running", l->namespace_id(), l->name());
@@ -10589,13 +10588,9 @@ Status CatalogManager::DeleteOrHideTabletsAndSendRequests(
   for (auto& tablet_data : tablets_data) {
     auto& tablet = tablet_data.tablet;
     auto& tablet_lock = tablet_data.lock;
-
-    // Inactive tablet now, so remove it from partitions_.
-    // TODO(#15043): After all the tablet's replicas have been deleted from the tservers, remove
-    //               it from tablets_.
-    VERIFY_RESULT(tablet->table()->RemoveTablet(tablet->id(), DeactivateOnly::kTrue));
-
     if (hide_only) {
+      // Don't call table()->RemoveTablet for hidden tablets as they are needed to support
+      // CLONE, PITR, SELECT AS-OF.
       LOG(INFO) << "Hiding tablet " << tablet->tablet_id();
       if (!tablet_lock->ListedAsHidden()) {
         marked_as_hidden.push_back(tablet);
@@ -10604,6 +10599,7 @@ Status CatalogManager::DeleteOrHideTabletsAndSendRequests(
       MarkTabletAsHidden(tablet_lock.mutable_data()->pb, hide_hybrid_time, delete_retainer);
     } else {
       LOG(INFO) << "Deleting tablet " << tablet->tablet_id();
+      VERIFY_RESULT(tablet->table()->RemoveTablet(tablet->id(), DeactivateOnly::kTrue));
       if (!tablet_data.transaction_status_tablet) {
         tablet_lock.mutable_data()->set_state(SysTabletsEntryPB::DELETED, reason);
       }
@@ -11541,7 +11537,6 @@ Status CatalogManager::ConsensusStateToTabletLocations(const consensus::Consensu
 Status CatalogManager::BuildLocationsForSystemTablet(
     const TabletInfoPtr& tablet,
     TabletLocationsPB* locs_pb,
-    IncludeInactive include_inactive,
     PartitionsOnly partitions_only) {
   DCHECK(system_tablets_.find(tablet->id()) != system_tablets_.end())
       << Format("Non-system tablet $0 passed to BuildLocationsForSystemTablet", tablet->id());
@@ -11674,19 +11669,22 @@ Result<std::pair<PartitionSchema, std::vector<Partition>>> CatalogManager::Creat
 Status CatalogManager::BuildLocationsForTablet(
     const TabletInfoPtr& tablet,
     TabletLocationsPB* locs_pb,
-    IncludeInactive include_inactive,
+    IncludeHidden include_hidden_tablets,
     PartitionsOnly partitions_only) {
 
   if (system_tablets_.find(tablet->id()) != system_tablets_.end()) {
-    return BuildLocationsForSystemTablet(tablet, locs_pb, include_inactive, partitions_only);
+    return BuildLocationsForSystemTablet(tablet, locs_pb, partitions_only);
   }
   std::shared_ptr<const TabletReplicaMap> locs;
   consensus::ConsensusStatePB cstate;
   {
     auto l_tablet = tablet->LockForRead();
-    if (l_tablet->is_hidden() && !include_inactive) {
+
+    // Hidden tablet locations are needed to support xCluster, CDC, CLONE, SELECT AS-OF.
+    if (l_tablet->is_hidden() && !include_hidden_tablets) {
       return STATUS_FORMAT(NotFound, "Tablet $0 hidden", tablet->id());
     }
+
     if (PREDICT_FALSE(l_tablet->is_deleted())) {
       std::vector<TabletId> split_tablet_ids(
           l_tablet->pb.split_tablet_ids().begin(), l_tablet->pb.split_tablet_ids().end());
@@ -11789,7 +11787,9 @@ Status CatalogManager::GetTabletLocations(
     IncludeInactive include_inactive) {
   DCHECK_EQ(locs_pb->replicas().size(), 0);
   locs_pb->mutable_replicas()->Clear();
-  return BuildLocationsForTablet(tablet_info, locs_pb, include_inactive);
+  // If include_inactive is set, include_hidden_tablets needs to be set to allow hidden tablets.
+  IncludeHidden include_hidden_tablets(include_inactive);
+  return BuildLocationsForTablet(tablet_info, locs_pb, include_hidden_tablets);
 }
 
 Status CatalogManager::GetTableLocations(
@@ -11813,11 +11813,15 @@ Status CatalogManager::GetTableLocations(
   if (table->IsCreateInProgress()) {
     resp->set_creating(true);
   }
-  IncludeInactive include_inactive(req->has_include_inactive() && req->include_inactive());
 
+  // Don't return TabletLocations for deleted tables as they may not exist.
+  // However, do return the TabletLocations for hidden tables as those are
+  // needed for supporting SELECT AS-OF, DB-Clone, XCluster, PITR.
   auto l = table->LockForRead();
-  if (!include_inactive) {
-    RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
+  if (l->started_deleting()) {
+      return STATUS_EC_FORMAT(
+          NotFound, MasterError(MasterErrorPB::OBJECT_NOT_FOUND),
+          "The object '$0.$1' does not exist", l->namespace_id(), l->name());
   }
 
   std::vector<TabletInfoPtr> tablets = VERIFY_RESULT(table->GetTabletsInRange(req));
@@ -11833,8 +11837,7 @@ Status CatalogManager::GetTableLocations(
     TabletLocationsPB* locs_pb = resp->add_tablet_locations();
     locs_pb->set_expected_live_replicas(expected_live_replicas);
     locs_pb->set_expected_read_replicas(expected_read_replicas);
-    auto status =
-        BuildLocationsForTablet(tablet, locs_pb, include_inactive, partitions_only);
+    auto status = BuildLocationsForTablet(tablet, locs_pb, IncludeHidden::kTrue, partitions_only);
     if (!status.ok()) {
       // Not running.
       if (require_tablets_runnings) {

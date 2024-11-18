@@ -294,7 +294,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
  private:
   Result<PgTableDescPtr> DoLoadTable(
       const PgObjectId& table_id, bool fail_on_cache_hit,
-      master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
+      master::IncludeHidden include_hidden = master::IncludeHidden::kFalse);
   Result<PerformFuture> FlushOperations(BufferableOperations&& ops, bool transactional);
 
   const std::string LogPrefix() const;

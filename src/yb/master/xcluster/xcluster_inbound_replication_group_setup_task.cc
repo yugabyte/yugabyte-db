@@ -1138,8 +1138,7 @@ void XClusterTableSetupTask::PopulateTabletMapping() {
   parent_task_->GetYbClient().GetTableLocations(
       stripped_source_table_id, /* max_tablets = */ std::numeric_limits<int32_t>::max(),
       RequireTabletsRunning::kTrue, PartitionsOnly::kTrue,
-      std::bind(&XClusterTableSetupTask::PopulateTabletMappingCallback, shared_from(this), _1),
-      IncludeInactive(parent_task_->data_.TargetTableIdsProvided()));
+      std::bind(&XClusterTableSetupTask::PopulateTabletMappingCallback, shared_from(this), _1));
 }
 
 void XClusterTableSetupTask::PopulateTabletMappingCallback(

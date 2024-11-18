@@ -554,7 +554,7 @@ class PgClientServiceImpl::Impl {
 
     client::YBTablePtr table;
     RETURN_NOT_OK(table_cache_.GetInfo(
-        req.table_id(), master::IncludeInactive(req.include_inactive()), &table,
+        req.table_id(), master::IncludeHidden(req.include_hidden()), &table,
         resp->mutable_info()));
     tserver::GetTablePartitionList(table, resp->mutable_partitions());
     return Status::OK();

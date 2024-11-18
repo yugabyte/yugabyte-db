@@ -1010,7 +1010,7 @@ Result<bool> YBClient::Data::IsBackfillIndexStarted(
   YBTableInfo yb_table_info;
   master::GetTableSchemaResponsePB resp;
   RETURN_NOT_OK(GetTableSchema(
-      client, indexed_table_id, deadline, &yb_table_info, master::IncludeInactive::kFalse, &resp));
+      client, indexed_table_id, deadline, &yb_table_info, master::IncludeHidden::kFalse, &resp));
 
   for (const auto& index : resp.indexes()) {
     if (index.table_id() == index_table_id) {
@@ -1396,13 +1396,13 @@ class GetTableSchemaRpc
                     const YBTableName& table_name,
                     YBTableInfo* info,
                     CoarseTimePoint deadline,
-                    master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
+                    master::IncludeHidden include_hidden = master::IncludeHidden::kFalse);
   GetTableSchemaRpc(YBClient* client,
                     StatusCallback user_cb,
                     const TableId& table_id,
                     YBTableInfo* info,
                     CoarseTimePoint deadline,
-                    master::IncludeInactive include_inactive,
+                    master::IncludeHidden include_hidden,
                     master::GetTableSchemaResponsePB* resp_copy);
 
   std::string ToString() const override;
@@ -1415,7 +1415,7 @@ class GetTableSchemaRpc
                     const master::TableIdentifierPB& table_identifier,
                     YBTableInfo* info,
                     CoarseTimePoint deadline,
-                    master::IncludeInactive include_inactive = master::IncludeInactive::kFalse,
+                    master::IncludeHidden include_hidden = master::IncludeHidden::kFalse,
                     master::GetTableSchemaResponsePB* resp_copy = nullptr);
 
   void CallRemoteMethod() override;
@@ -1525,9 +1525,9 @@ GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      const YBTableName& table_name,
                                      YBTableInfo* info,
                                      CoarseTimePoint deadline,
-                                     master::IncludeInactive include_inactive)
+                                     master::IncludeHidden include_hidden)
     : GetTableSchemaRpc(
-          client, user_cb, ToTableIdentifierPB(table_name), info, deadline, include_inactive) {
+          client, user_cb, ToTableIdentifierPB(table_name), info, deadline, include_hidden) {
 }
 
 GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
@@ -1535,10 +1535,10 @@ GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      const TableId& table_id,
                                      YBTableInfo* info,
                                      CoarseTimePoint deadline,
-                                     master::IncludeInactive include_inactive,
+                                     master::IncludeHidden include_hidden,
                                      master::GetTableSchemaResponsePB* resp_copy)
     : GetTableSchemaRpc(
-          client, user_cb, ToTableIdentifierPB(table_id), info, deadline, include_inactive,
+          client, user_cb, ToTableIdentifierPB(table_id), info, deadline, include_hidden,
           resp_copy) {}
 
 GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
@@ -1546,7 +1546,7 @@ GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      const master::TableIdentifierPB& table_identifier,
                                      YBTableInfo* info,
                                      CoarseTimePoint deadline,
-                                     master::IncludeInactive include_inactive,
+                                     master::IncludeHidden include_hidden,
                                      master::GetTableSchemaResponsePB* resp_copy)
     : ClientMasterRpc(client, deadline),
       user_cb_(std::move(user_cb)),
@@ -1554,7 +1554,7 @@ GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
       info_(DCHECK_NOTNULL(info)),
       resp_copy_(resp_copy) {
   req_.mutable_table()->CopyFrom(table_identifier_);
-  req_.set_include_inactive(include_inactive);
+  req_.set_include_hidden(include_hidden);
 }
 
 GetTableSchemaRpc::~GetTableSchemaRpc() {
@@ -2084,20 +2084,18 @@ class GetTableLocationsRpc
   GetTableLocationsRpc(
       YBClient* client, const TableId& table_id, int32_t max_tablets,
       RequireTabletsRunning require_tablets_running, PartitionsOnly partitions_only,
-      master::IncludeInactive include_inactive, GetTableLocationsCallback user_cb,
-      CoarseTimePoint deadline)
+      GetTableLocationsCallback user_cb, CoarseTimePoint deadline)
       : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)) {
     req_.mutable_table()->set_table_id(table_id);
     req_.set_max_returned_locations(max_tablets);
     req_.set_require_tablets_running(require_tablets_running);
     req_.set_partitions_only(partitions_only);
-    req_.set_include_inactive(include_inactive);
   }
 
   std::string ToString() const override {
     return Format(
         "GetTableLocationsRpc(table_id: $0, max_tablets: $1, require_tablets_running: $2, "
-        "num_attempts: $3)", req_.table().table_id(), req_.max_returned_locations(),
+        "num_attempts: $3,", req_.table().table_id(), req_.max_returned_locations(),
         req_.require_tablets_running(), num_attempts());
   }
 
@@ -2298,7 +2296,7 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
                                       const TableId& table_id,
                                       CoarseTimePoint deadline,
                                       YBTableInfo* info,
-                                      master::IncludeInactive include_inactive,
+                                      master::IncludeHidden include_hidden,
                                       master::GetTableSchemaResponsePB* resp) {
   Synchronizer sync;
   auto rpc = StartRpc<GetTableSchemaRpc>(
@@ -2307,7 +2305,7 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
       table_id,
       info,
       deadline,
-      include_inactive,
+      include_hidden,
       resp);
   return sync.Wait();
 }
@@ -2317,7 +2315,7 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
                                       CoarseTimePoint deadline,
                                       std::shared_ptr<YBTableInfo> info,
                                       StatusCallback callback,
-                                      master::IncludeInactive include_inactive,
+                                      master::IncludeHidden include_hidden,
                                       master::GetTableSchemaResponsePB* resp_ignored) {
   auto rpc = StartRpc<GetTableSchemaRpc>(
       client,
@@ -2325,7 +2323,7 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
       table_name,
       info.get(),
       deadline,
-      include_inactive);
+      include_hidden);
   return Status::OK();
 }
 
@@ -2334,7 +2332,7 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
                                       CoarseTimePoint deadline,
                                       std::shared_ptr<YBTableInfo> info,
                                       StatusCallback callback,
-                                      master::IncludeInactive include_inactive,
+                                      master::IncludeHidden include_hidden,
                                       master::GetTableSchemaResponsePB* resp) {
   auto rpc = StartRpc<GetTableSchemaRpc>(
       client,
@@ -2342,7 +2340,7 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
       table_id,
       info.get(),
       deadline,
-      include_inactive,
+      include_hidden,
       resp);
   return Status::OK();
 }
@@ -2542,10 +2540,9 @@ void YBClient::Data::DeleteNotServingTablet(
 void YBClient::Data::GetTableLocations(
     YBClient* client, const TableId& table_id, const int32_t max_tablets,
     const RequireTabletsRunning require_tablets_running, const PartitionsOnly partitions_only,
-    const CoarseTimePoint deadline, GetTableLocationsCallback callback,
-    master::IncludeInactive include_inactive) {
+    const CoarseTimePoint deadline, GetTableLocationsCallback callback) {
   auto rpc = StartRpc<internal::GetTableLocationsRpc>(
-      client, table_id, max_tablets, require_tablets_running, partitions_only, include_inactive,
+      client, table_id, max_tablets, require_tablets_running, partitions_only,
       callback, deadline);
 }
 
