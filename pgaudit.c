@@ -70,7 +70,7 @@ PG_FUNCTION_INFO_V1(pgaudit_sql_drop);
 #define LOG_ALL         (0xFFFFFFFF)    /* All */
 
 /* GUC variable for pgaudit.log, which defines the classes to log. */
-char *auditLog = NULL;
+static char *auditLog = NULL;
 
 /* Bitmap of classes selected */
 static int auditLogBitmap = LOG_NONE;
@@ -97,7 +97,7 @@ static int auditLogBitmap = LOG_NONE;
  * the query are in pg_catalog.  Interactive sessions (eg: psql) can cause
  * a lot of noise in the logs which might be uninteresting.
  */
-bool auditLogCatalog = true;
+static bool auditLogCatalog = true;
 
 /*
  * GUC variable for pgaudit.log_client
@@ -106,7 +106,7 @@ bool auditLogCatalog = true;
  * setting should generally be left disabled but may be useful for debugging or
  * other purposes.
  */
-bool auditLogClient = false;
+static bool auditLogClient = false;
 
 /*
  * GUC variable for pgaudit.log_level
@@ -115,8 +115,8 @@ bool auditLogClient = false;
  * at.  The default level is LOG, which goes into the server log but does
  * not go to the client.  Set to NOTICE in the regression tests.
  */
-char *auditLogLevelString = NULL;
-int auditLogLevel = LOG;
+static char *auditLogLevelString = NULL;
+static int auditLogLevel = LOG;
 
 /*
  * GUC variable for pgaudit.log_parameter
@@ -124,7 +124,7 @@ int auditLogLevel = LOG;
  * Administrators can choose if parameters passed into a statement are
  * included in the audit log.
  */
-bool auditLogParameter = false;
+static bool auditLogParameter = false;
 
 /*
  * GUC variable for pgaudit.log_relation
@@ -133,7 +133,7 @@ bool auditLogParameter = false;
  * in READ/WRITE class queries.  By default, SESSION logs include the query but
  * do not have a log entry for each relation.
  */
-bool auditLogRelation = false;
+static bool auditLogRelation = false;
 
 /*
  * GUC variable for pgaudit.log_rows
@@ -141,14 +141,14 @@ bool auditLogRelation = false;
  * Administrators can choose if the rows retrieved or affected by a statement
  * are included in the audit log.
  */
-bool auditLogRows = false;
+static bool auditLogRows = false;
 
 /*
  * GUC variable for pgaudit.log_statement
  *
  * Administrators can choose to not have the full statement text logged.
  */
-bool auditLogStatement = true;
+static bool auditLogStatement = true;
 
 /*
  * GUC variable for pgaudit.log_statement_once
@@ -158,7 +158,7 @@ bool auditLogStatement = true;
  * the audit log to facilitate searching, but this can cause the log to be
  * unnecessarily bloated in some environments.
  */
-bool auditLogStatementOnce = false;
+static bool auditLogStatementOnce = false;
 
 /*
  * GUC variable for pgaudit.role
@@ -167,7 +167,7 @@ bool auditLogStatementOnce = false;
  * Object-level auditing uses the privileges which are granted to this role to
  * determine if a statement should be logged.
  */
-char *auditRole = NULL;
+static char *auditRole = NULL;
 
 /*
  * String constants for the audit log fields.
@@ -255,7 +255,7 @@ typedef struct AuditEventStackItem
     MemoryContextCallback contextCallback;
 } AuditEventStackItem;
 
-AuditEventStackItem *auditEventStack = NULL;
+static AuditEventStackItem *auditEventStack = NULL;
 
 /*
  * pgAudit runs queries of its own when using the event trigger system.
