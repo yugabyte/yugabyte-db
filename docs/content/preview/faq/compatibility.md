@@ -91,6 +91,12 @@ The [YSQL](../../api/ysql/) API is compatible with PostgreSQL. This means Postgr
 
 - YugabyteDB's API compatibility is not aimed at lift-and-shift porting of existing applications written for the original language. This is because existing applications are not written to take advantage of the distributed, strongly-consistent storage architecture that YugabyteDB provides. For such existing applications, you should modify your previously monolithic PostgreSQL and/or non-transactional Cassandra data access logic as you migrate to YugabyteDB.
 
+### Can I insert data using YCQL, but read using YSQL, or vice versa?
+
+The YugabyteDB APIs are currently isolated and independent from one another. Data inserted or managed by one API cannot be queried by the other API. Additionally, Yugabyte does not provide a way to access the data across the APIs. An external framework, such as Presto, might be helpful for basic use cases. For an example that joins YCQL and YSQL data, see the blog post about [Presto on YugabyteDB: Interactive OLAP SQL Queries Made Easy](https://www.yugabyte.com/blog/presto-on-yugabyte-db-interactive-olap-sql-queries-made-easy-facebook/).
+
+Allowing YCQL tables to be accessed from the PostgreSQL-compatible YSQL API as foreign tables using foreign data wrappers (FDW) is on the roadmap. You can comment or increase the priority of the associated [GitHub](https://github.com/yugabyte/yugabyte-db/issues/830) issue.
+
 ## YSQL compatibility with PostgreSQL
 
 ### What is the extent of compatibility with PostgreSQL?
@@ -110,11 +116,19 @@ Explore SQL features
 
 YugabyteDB's goal is to remain as compatible with PostgreSQL as much as possible. If you see a feature currently missing, you can file a [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues).
 
-### Can I insert data using YCQL, but read using YSQL, or vice versa?
+### Does YugabyteDB support optimistic and pessimistic locking?
 
-The YugabyteDB APIs are currently isolated and independent from one another. Data inserted or managed by one API cannot be queried by the other API. Additionally, Yugabyte does not provide a way to access the data across the APIs. An external framework, such as Presto, might be helpful for basic use cases. For an example that joins YCQL and YSQL data, see the blog post about [Presto on YugabyteDB: Interactive OLAP SQL Queries Made Easy](https://www.yugabyte.com/blog/presto-on-yugabyte-db-interactive-olap-sql-queries-made-easy-facebook/).
+YugabyteDB effectively supports both optimistic an pessimistic locking.
 
-Allowing YCQL tables to be accessed from the PostgreSQL-compatible YSQL API as foreign tables using foreign data wrappers (FDW) is on the roadmap. You can comment or increase the priority of the associated [GitHub](https://github.com/yugabyte/yugabyte-db/issues/830) issue.
+However YugabyteDB has moved away from using the terms "optimistic locking" and "pessimistic locking" in favor of more precise terminology to describe its concurrency control mechanisms. YugabyteDB uses the concepts of "Fail-on-conflict" and "Wait-on-conflict" to handle conflicts between concurrent transactions:
+
+- Fail-on-conflict: This is similar to what was previously referred to as "optimistic locking". In this mode, when a conflict is detected, the transaction fails and may need to be retried.
+
+- Wait-on-conflict: This is similar to what was previously called "pessimistic locking". In this mode, when a conflict is detected, the transaction waits for the conflicting transaction to complete before proceeding.
+
+{{<lead link="../../architecture/transactions/concurrency-control/">}}
+To learn more, refer to [Concurrency control](../../architecture/transactions/concurrency-control/).
+{{</lead>}}
 
 ## YCQL compatibility with Apache Cassandra QL
 
