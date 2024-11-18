@@ -268,21 +268,21 @@ class YBClient::Data {
                         const TableId& table_id,
                         CoarseTimePoint deadline,
                         YBTableInfo* info,
-                        master::IncludeInactive include_inactive = master::IncludeInactive::kFalse,
+                        master::IncludeHidden include_hidden = master::IncludeHidden::kFalse,
                         master::GetTableSchemaResponsePB* resp = nullptr);
   Status GetTableSchema(YBClient* client,
                         const YBTableName& table_name,
                         CoarseTimePoint deadline,
                         std::shared_ptr<YBTableInfo> info,
                         StatusCallback callback,
-                        master::IncludeInactive include_inactive = master::IncludeInactive::kFalse,
+                        master::IncludeHidden include_hidden = master::IncludeHidden::kFalse,
                         master::GetTableSchemaResponsePB* resp_ignored = nullptr);
   Status GetTableSchema(YBClient* client,
                         const TableId& table_id,
                         CoarseTimePoint deadline,
                         std::shared_ptr<YBTableInfo> info,
                         StatusCallback callback,
-                        master::IncludeInactive include_inactive = master::IncludeInactive::kFalse,
+                        master::IncludeHidden include_hidden = master::IncludeHidden::kFalse,
                         master::GetTableSchemaResponsePB* resp = nullptr);
   Status GetTablegroupSchemaById(YBClient* client,
                                  const TablegroupId& tablegroup_id,
@@ -357,8 +357,7 @@ class YBClient::Data {
   void GetTableLocations(
       YBClient* client, const TableId& table_id, int32_t max_tablets,
       RequireTabletsRunning require_tablets_running, PartitionsOnly partitions_only,
-      CoarseTimePoint deadline, GetTableLocationsCallback callback,
-      master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
+      CoarseTimePoint deadline, GetTableLocationsCallback callback);
 
   bool IsTabletServerLocal(const internal::RemoteTabletServer& rts) const;
 
