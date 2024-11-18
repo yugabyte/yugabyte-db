@@ -120,7 +120,7 @@ YugabyteDB's goal is to remain as compatible with PostgreSQL as much as possible
 
 YugabyteDB effectively supports both optimistic and pessimistic locking.
 
-However YugabyteDB has moved away from using the terms "optimistic locking" and "pessimistic locking" in favor of more precise terminology to describe its concurrency control mechanisms. YugabyteDB uses the concepts of "Fail-on-conflict" and "Wait-on-conflict" to handle conflicts between concurrent transactions:
+However YugabyteDB has moved away from using the terms "optimistic locking" and "pessimistic locking" in favor of more precise terminology to describe its concurrency control mechanisms. YugabyteDB uses the concepts of "Fail-on-conflict" and "Wait-on-conflict" to describe how it handles conflicts between concurrent transactions:
 
 - Fail-on-conflict: This is similar to what was previously referred to as "optimistic locking". In this mode, when a conflict is detected, the transaction fails and may need to be retried.
 
