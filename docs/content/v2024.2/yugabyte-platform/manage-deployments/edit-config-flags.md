@@ -41,17 +41,17 @@ Depending on the flag, the universe may need to be restarted to apply the change
 - Immediately using a concurrent restart.
 - Immediately apply any changes that do not require a restart and wait until the next time the universe is restarted to apply the remaining changes.
 
-### Rolling restart in batches
+### Batched rolling restart
 
-YugabyteDB Anywhere allows processing multiple nodes simultaneously within each availability zone during rolling operations. YBA supports this rolling batch feature which is currently {{<tags/feature/ea>}} for TServer nodes, but Master nodes are always updated one at a time.
+{{<tags/feature/ea>}}During a rolling restart, YugabyteDB Anywhere can process multiple YB-TServer nodes in each availability zone simultaneously. YB-Master nodes are always updated one at a time.
 
-If your universe supports rolling more than a single node at a time according to the distribution of replicas ([RF](../../../architecture/key-concepts/#replication-factor-rf)), you can choose a **Max batch size** (default is 1) for rolling restarts as per the following illustration:
+Batched rolling restart is {{<tags/feature/ea>}}. To enable the feature in YugabyteDB Anywhere, set the **Stop multiple nodes in az simultaneously during upgrade** Global runtime configuration option (config key `yb.task.upgrade.batch_roll_enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global runtime configuration settings.
+
+Batched rolling restart requires a replication factor of 3 or more, and at least two nodes in an availability zone. If your universe supports a batched rolling restart, you can specify the maximum number of nodes to process as a batch.
 
 ![Rolling restart in batches](/images/ee/rolling-restart-batch.png)
 
-The specified batch size is automatically applied to read replica as well (if it exists). Before running the operation, YBA synchronizes with the database to verify that the batch size is safe to use and will automatically fall back to a single node at a time if verification fails.
-
-As the feature is not enabled by default, set the **Stop multiple nodes in az simultaneously during upgrade** Global runtime configuration option for VMs (config key `yb.task.upgrade.batch_roll_enabled`), or the **Stop multiple nodes in az simultaneously during upgrade (in k8s)** Global runtime configuration option for Kubernetes (config key `yb.task.upgrade.batch_roll_enabled_k8s`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global runtime configuration settings.
+The batch size is also applied to read replica nodes. Before running the operation, YugabyteDB Anywhere synchronizes with the database to verify that the batch operation is safe, and falls back to processing a single node at a time if verification fails.
 
 ### Add flags
 
