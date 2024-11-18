@@ -35,6 +35,7 @@ var UpgradeChecks = []Check{
 	checks.OpenSSL,
 	checks.Prometheus,
 	checks.NonRootUpgradeCheck,
+	checks.ServicesRunningCheck,
 }
 
 var ReplicatedMigrateChecks = []Check{

@@ -15,6 +15,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight/checks"
 )
 
 var (
@@ -55,8 +56,10 @@ func initAfterFlagsParsed(cmdName string) {
 
 	// Replicated migration handles config and root checks on its own.
 	// License does not need any config, so skip for now
+	// Generate config will create the config, and set as_root as needed.
 	if !(strings.HasPrefix(cmdName, "yba-ctl replicated-migrate") ||
-		strings.HasPrefix(cmdName, "yba-ctl license")) {
+		strings.HasPrefix(cmdName, "yba-ctl license") ||
+		strings.HasPrefix(cmdName, "yba-ctl generate-config")) {
 		handleRootCheck(cmdName)
 	}
 
@@ -113,6 +116,11 @@ func initServices() {
 	} else {
 		serviceOrder = []string{PrometheusServiceName, YbPlatformServiceName}
 	}
+	serviceList := []common.Component{}
+	for _, service := range services {
+		serviceList = append(serviceList, service)
+	}
+	checks.SetServicesRunningCheck(serviceList)
 	// populate names of services for valid args
 }
 
