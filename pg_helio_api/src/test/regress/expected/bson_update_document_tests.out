@@ -343,9 +343,9 @@ SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_d
 (1 row)
 
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "x": 1 , "f": 1 } ', '{ "": { "$bit": { "x": { "and": { "$numberLong": "1" } } } } }', '{}');
-                                      bson_update_document                                      
-------------------------------------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberLong" : "1"}, "f" : { "$numberInt" : "1" } }
+                                      bson_update_document                                       
+-------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberLong" : "1" }, "f" : { "$numberInt" : "1" } }
 (1 row)
 
 -- update scenario negative tests: $bit
@@ -673,15 +673,15 @@ SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_d
 (1 row)
 
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberLong" : "2" } } }', '{ "": { "$mul": { "a.b": 0 } } }', '{}');
-                            bson_update_document                            
-----------------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberLong" : "0"} } }
+                            bson_update_document                             
+-----------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberLong" : "0" } } }
 (1 row)
 
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberLong" : "9223372036854775807" } } }', '{ "": { "$mul": { "a.b": {"$numberLong": "0"} } } }', '{}');
-                            bson_update_document                            
-----------------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberLong" : "0"} } }
+                            bson_update_document                             
+-----------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberLong" : "0" } } }
 (1 row)
 
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberDouble" : "0.0"} } }', '{ "": { "$mul": { "a.b": 10 } } }', '{}');
@@ -739,9 +739,9 @@ SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_d
 (1 row)
 
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": { "b": 2 } }', '{ "": { "$mul": { "a.c": {"$numberLong": "2"} } } }', '{}');
-                                           bson_update_document                                           
-----------------------------------------------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberLong" : "0"} } }
+                                           bson_update_document                                            
+-----------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberLong" : "0" } } }
 (1 row)
 
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": { "b": 2 } }', '{ "": { "$mul": { "a.c": {"$numberDouble": "2"} } } }', '{}');
@@ -765,16 +765,16 @@ SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_d
 
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberInt": "2147483647"} } }',
                                                 '{ "": { "$mul": { "a.b": {"$numberInt": "2147483647"} } } }', '{}');
-                                     bson_update_document                                     
-----------------------------------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberLong" : "4611686014132420609"} } }
+                                     bson_update_document                                      
+-----------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberLong" : "4611686014132420609" } } }
 (1 row)
 
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberInt": "2147483647"} } }',
                                                 '{ "": { "$mul": { "a.b": {"$numberLong": "2147483647"} } } }', '{}');
-                                     bson_update_document                                     
-----------------------------------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberLong" : "4611686014132420609"} } }
+                                     bson_update_document                                      
+-----------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberLong" : "4611686014132420609" } } }
 (1 row)
 
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberInt": "2147483647"} } }',
@@ -786,16 +786,16 @@ SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_d
 
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberLong": "2147483647"} } }',
                                                 '{ "": { "$mul": { "a.b": {"$numberInt": "-2147483647"} } } }', '{}');
-                                     bson_update_document                                      
------------------------------------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberLong" : "-4611686014132420609"} } }
+                                      bson_update_document                                      
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberLong" : "-4611686014132420609" } } }
 (1 row)
 
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberLong": "2147483647"} } }',
                                                 '{ "": { "$mul": { "a.b": {"$numberLong": "-2147483647"} } } }', '{}');
-                                     bson_update_document                                      
------------------------------------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberLong" : "-4611686014132420609"} } }
+                                      bson_update_document                                      
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberLong" : "-4611686014132420609" } } }
 (1 row)
 
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberLong": "9223372036854775807"} } }',

@@ -5,7 +5,7 @@ set -u
 # exit immediately if a command exits with a non-zero status
 set -e
 
-MONGO_DRIVER_VERSION="1.16.1"
+MONGO_DRIVER_VERSION="1.28.0"
 
 if [ "${INSTALLDESTDIR:-""}" == "" ]; then
     INSTALLDESTDIR="/usr";

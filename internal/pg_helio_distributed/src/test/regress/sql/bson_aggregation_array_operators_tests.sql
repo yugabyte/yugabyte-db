@@ -930,8 +930,8 @@ SELECT * FROM bson_dollar_project('{"d1": [{ "$numberDecimal": "2.23456789" },{"
 SELECT * FROM bson_dollar_project('{"d1": [{ "$numberDecimal": "2.23456789" },{"$numberDecimal": "1.23456789" }, { "$numberDecimal": "-1.32456789" }, { "$numberDecimal": "1.34256789" }]}', '{"result": { "$maxN": {"input": "$d1", "n": 4 } } }');
 SELECT * FROM bson_dollar_project('{"d1": [{ "$numberDecimal": "2.23456789" },{"$numberDecimal": "1.23456789" }, { "$numberDecimal": "-1.32456789" }, { "$numberDecimal": "1.34256789" }]}', '{"result": { "$minN": {"input": "$d1", "n": 4 } } }');
 
-SELECT * FROM bson_dollar_project('{"d1": [{ "$numberDecimal": "1/0" },{"$numberDecimal": "1.23456789" }, { "$numberDecimal": "1.32456789" }, { "$numberDecimal": "1.34256789" }]}', '{"result": { "$maxN": {"input": "$d1", "n": 4 } } }');
-SELECT * FROM bson_dollar_project('{"d1": [{ "$numberDecimal": "1/0" },{"$numberDecimal": "1.23456789" }, { "$numberDecimal": "1.32456789" }, { "$numberDecimal": "1.34256789" }]}', '{"result": { "$minN": {"input": "$d1", "n": 4 } } }');
+SELECT * FROM bson_dollar_project('{"d1": [{ "$numberDecimal": "NaN" },{"$numberDecimal": "1.23456789" }, { "$numberDecimal": "1.32456789" }, { "$numberDecimal": "1.34256789" }]}', '{"result": { "$maxN": {"input": "$d1", "n": 4 } } }');
+SELECT * FROM bson_dollar_project('{"d1": [{ "$numberDecimal": "NaN" },{"$numberDecimal": "1.23456789" }, { "$numberDecimal": "1.32456789" }, { "$numberDecimal": "1.34256789" }]}', '{"result": { "$minN": {"input": "$d1", "n": 4 } } }');
 
 SELECT * FROM bson_dollar_project('{"d1": [{ "$numberDecimal": "NaN" }, 1, 3, -2, null, [3, {"numberDouble": "NaN"}], {"$numberDecimal": "Infinity" }]}', '{"result": { "$maxN": {"input": "$d1", "n": 7 } } }');
 SELECT * FROM bson_dollar_project('{"d1": [{ "$numberDecimal": "NaN" }, 1, 3, -2, null, [3, {"numberDouble": "NaN"}], {"$numberDecimal": "Infinity" }]}', '{"result": { "$minN": {"input": "$d1", "n": 7 } } }');
@@ -945,7 +945,7 @@ select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [42]
 select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [], "sortBy": 1 } } }');
 select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [20, 4, { "a": "Free" }, 6, 21, 5, "Gratis", { "a": null }, { "a": { "sale": true, "price": 19 } }, {"$numberDecimal": "10.23"}, { "a": "On sale" }], "sortBy": 1 } } }');
 select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [[6,2,3],[4,8,6], 4, 1, 6, 12, 5], "sortBy": 1 } } }');
-select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [{"$numberDecimal": "0/0"}, 4, 1, 6, 12, 5, null, " "], "sortBy": 1 } } }');
+select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [{"$numberDecimal": "NaN"}, 4, 1, 6, 12, 5, null, " "], "sortBy": 1 } } }');
 select *from bson_dollar_project('{"team": [{ "name":"pat","age":30,"address":{"street":"12 Baker St","city":"London"}}, {"name":"dallas","age":36,"address":{"street":"12 Cowper St","city":"Palo Alto"}}, {"name":"charlie","age":42,"address":{"street":"12 French St","city":"New Brunswick" }}]}', '{"result": {"$sortArray": {"input": "$team", "sortBy": { "name": 1 } } } }');
 select *from bson_dollar_project('{"team": [{ "name":"pat","age":30,"address":{"street":"12 Baker St","city":"London"}}, {"name":"dallas","age":36,"address":{"street":"12 Cowper St","city":"Palo Alto"}}, {"name":"charlie","age":42,"address":{"street":"12 French St","city":"New Brunswick" }}]}', '{"result": {"$sortArray": {"input": "$team", "sortBy": { "name": -1 } } } }');
 select *from bson_dollar_project('{"team": [{ "name":"pat","age":30,"address":{"street":"12 Baker St","city":"London"}}, {"name":"dallas","age":36,"address":{"street":"12 Cowper St","city":"Palo Alto"}}, {"name":"charlie","age":42,"address":{"street":"12 French St","city":"New Brunswick" }}]}', '{"result": {"$sortArray": {"input": "$team", "sortBy": { "address.city": 1 } } } }');

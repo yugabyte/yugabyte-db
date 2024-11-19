@@ -2150,22 +2150,22 @@ select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strcasecmp" : ["1.234
  { "_id" : "1", "result" : { "$numberInt" : "0" } }
 (1 row)
 
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strcasecmp" : ["1.23451234556666623432432443223432432324",1.23451234556666623432432443223432432324] } }');
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strcasecmp" : ["1.234512345566666234324",1.234512345566666234324] } }');
                 bson_dollar_project                 
 ---------------------------------------------------------------------
  { "_id" : "1", "result" : { "$numberInt" : "1" } }
 (1 row)
 
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strcasecmp" : [1.23451234556666623432432443223432432324, "1.23451234556666623432432443223432432324"] } }');
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strcasecmp" : [1.234512345566666234324, "1.234512345566666234324"] } }');
                  bson_dollar_project                 
 ---------------------------------------------------------------------
  { "_id" : "1", "result" : { "$numberInt" : "-1" } }
 (1 row)
 
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strcasecmp" : [{"$numberDecimal": "1.23451234556666623432432443223432432324"}, "1.23451234556666623432432443223432432324"] } }');
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strcasecmp" : [{"$numberDecimal": "1.234512345566666234324"}, "1.234512345566666234324"] } }');
                 bson_dollar_project                 
 ---------------------------------------------------------------------
- { "_id" : "1", "result" : { "$numberInt" : "1" } }
+ { "_id" : "1", "result" : { "$numberInt" : "0" } }
 (1 row)
 
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strcasecmp" : [{"$numberDecimal": "1.2e10"}, "1e10"] } }');
@@ -4209,7 +4209,7 @@ ERROR:  $replaceOne requires that 'replacement' be a string, found: 3
 select bson_dollar_project('{"_id":"1", "test": "hello"}', '{"result": {"$replaceOne": {"input": ["\u0022\u00A9\u0022\u00A9\u0022\u00A9\u0022\u00A9", 1, 2], "find": "el", "replacement": 3}}}');
 ERROR:  $replaceOne requires that 'input' be a string, found: [ "\"©\"©\"©\"©", 1, 2 ]
 select bson_dollar_project('{"_id":"1", "test": "hello"}', '{"result": {"$replaceOne": {"input": "yellow", "find": {"$binary": {"base64": "ww==", "subType": "01"}}, "replacement": 3}}}');
-ERROR:  $replaceOne requires that 'find' be a string, found: { "$binary" : { "base64": "ww==", "subType" : "01" } }
+ERROR:  $replaceOne requires that 'find' be a string, found: { "$binary" : { "base64" : "ww==", "subType" : "01" } }
 select bson_dollar_project('{"_id":"1", "test": "hello"}', '{"result": {"$replaceOne": {"input": "yellow", "find": "el", "replacement": {"$regex": "/ab/cdsd/abc", "$options" : ""}}}}');
 ERROR:  $replaceOne requires that 'replacement' be a string, found: { "$regularExpression" : { "pattern" : "/ab/cdsd/abc", "options" : "" } }
 select bson_dollar_project('{"_id":"1", "test": "hello"}', '{"result": {"$replaceOne": {"input": "$test", "find": NaN, "replacement": "chandler"}}}');
@@ -4452,7 +4452,7 @@ ERROR:  $replaceAll requires that 'replacement' be a string, found: 3
 select bson_dollar_project('{"_id":"1", "test": "hello"}', '{"result": {"$replaceAll": {"input": ["\u0022\u00A9\u0022\u00A9\u0022\u00A9\u0022\u00A9", 1, 2], "find": "el", "replacement": 3}}}');
 ERROR:  $replaceAll requires that 'input' be a string, found: [ "\"©\"©\"©\"©", 1, 2 ]
 select bson_dollar_project('{"_id":"1", "test": "hello"}', '{"result": {"$replaceAll": {"input": "yellow", "find": {"$binary": {"base64": "ww==", "subType": "01"}}, "replacement": 3}}}');
-ERROR:  $replaceAll requires that 'find' be a string, found: { "$binary" : { "base64": "ww==", "subType" : "01" } }
+ERROR:  $replaceAll requires that 'find' be a string, found: { "$binary" : { "base64" : "ww==", "subType" : "01" } }
 select bson_dollar_project('{"_id":"1", "test": "hello"}', '{"result": {"$replaceAll": {"input": "yellow", "find": "el", "replacement": {"$regex": "/ab/cdsd/abc", "$options" : ""}}}}');
 ERROR:  $replaceAll requires that 'replacement' be a string, found: { "$regularExpression" : { "pattern" : "/ab/cdsd/abc", "options" : "" } }
 select bson_dollar_project('{"_id":"1", "test": "hello"}', '{"result": {"$replaceAll": {"input": "$test", "find": NaN, "replacement": "chandler"}}}');

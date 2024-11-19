@@ -52,11 +52,11 @@ SELECT document from collection('db', 'regex') where document @@ '{"sku": {"$reg
 SELECT count(*) sku from collection('db', 'regex') where document @@ '{"sku": {"$regex": "", "$options": ""} }';
 
 -- 100 to 103
-SELECT document from collection('db', 'regex') where document @@ '{ "description": { "$regex": {"$regularExpression" : {"pattern" : "\\bline\\b", "options" : ""} } }';
+SELECT document from collection('db', 'regex') where document @@ '{ "description": { "$regex": "\\bline\\b", "$options" : "" } }';
 
 
 -- No records. Will try to match \\y (as a char) in the document
-SELECT document from collection('db', 'regex') where document @@ '{ "description": { "$regex": {"$regularExpression" : {"pattern" : "\\\\yline\\\\y", "options" : ""} } }';
+SELECT document from collection('db', 'regex') where document @@ '{ "description": { "$regex": "\\\\yline\\\\y", "$options" : "" } }';
 
 -- 109 Match \y as a char. For libbson \y is a special char. So to \y it needs to be escaped as \\y and for \\y, we need to provide as \\\\y
 SELECT document from collection('db', 'regex') where document @@ '{ "description": { "$regex": "in\\\\ycline", "$options" : "" } }';
@@ -68,7 +68,7 @@ SELECT document from collection('db', 'regex') where document @@ '{"a" : { "$reg
 --SELECT document from collection('db', 'regex') where document @@ '{"a" : { "$regularExpression" : { "pattern": "a\\ycde\\y", "options" : ""} } }';
 
 -- 100 and 101
-SELECT document from collection('db', 'regex') where document @@ '{ "description": { "$regex": { "$regularExpression" : { "pattern": "le.*\\bline\\b", "options" : ""} } }';
+SELECT document from collection('db', 'regex') where document @@ '{ "description": { "$regex": "le.*\\bline\\b", "$options" : "" } }';
 
 -- 105 Matching \b as a normal char inside the string.
 SELECT document from collection('db', 'regex') where document @@ '{ "description": { "$regex": "in\bcline \bdescription", "$options" : "" } }';

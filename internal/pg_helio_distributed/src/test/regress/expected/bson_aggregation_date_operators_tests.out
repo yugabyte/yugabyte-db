@@ -308,27 +308,27 @@ SELECT * FROM bson_dollar_project('{"date": {"$date": "2035-06-23T07:30:10.5Z"}}
 -- $year and $isoWeekYear
 -- $isoWeekYear returns the ISO 8601 week-numbering year that the date falls in.
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2023-01-01T07:30:10.5Z"}}', '{"year": {"$year": "$date"}, "isoWeekYear": {"$isoWeekYear": "$date"}}');
-                                bson_dollar_project                                
+                                bson_dollar_project                                 
 ---------------------------------------------------------------------
- { "year" : { "$numberInt" : "2023" }, "isoWeekYear" : { "$numberLong" : "2022"} }
+ { "year" : { "$numberInt" : "2023" }, "isoWeekYear" : { "$numberLong" : "2022" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2006-01-01T07:30:10.5Z"}}', '{"year": {"$year": "$date"}, "isoWeekYear": {"$isoWeekYear": "$date"}}');
-                                bson_dollar_project                                
+                                bson_dollar_project                                 
 ---------------------------------------------------------------------
- { "year" : { "$numberInt" : "2006" }, "isoWeekYear" : { "$numberLong" : "2005"} }
+ { "year" : { "$numberInt" : "2006" }, "isoWeekYear" : { "$numberLong" : "2005" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2006-01-02T07:30:10.5Z"}}', '{"year": {"$year": "$date"}, "isoWeekYear": {"$isoWeekYear": "$date"}}');
-                                bson_dollar_project                                
+                                bson_dollar_project                                 
 ---------------------------------------------------------------------
- { "year" : { "$numberInt" : "2006" }, "isoWeekYear" : { "$numberLong" : "2006"} }
+ { "year" : { "$numberInt" : "2006" }, "isoWeekYear" : { "$numberLong" : "2006" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2012-12-31T07:30:10.5Z"}}', '{"year": {"$year": "$date"}, "isoWeekYear": {"$isoWeekYear": "$date"}}');
-                                bson_dollar_project                                
+                                bson_dollar_project                                 
 ---------------------------------------------------------------------
- { "year" : { "$numberInt" : "2012" }, "isoWeekYear" : { "$numberLong" : "2013"} }
+ { "year" : { "$numberInt" : "2012" }, "isoWeekYear" : { "$numberLong" : "2013" } }
 (1 row)
 
 -- date part operators with nested operators
@@ -2483,519 +2483,519 @@ select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1678
 
 -- startOfWeek is ignored when unit is not week
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678924740000"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "hour" , "timezone": "-05:00", "startOfWeek" : null  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678924740000"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "hour" , "timezone": "-05:00", "startOfWeek" : 1  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 -- $dateDiff unit milliseconds
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678924740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "millisecond"  } } }');
-           bson_dollar_project            
+            bson_dollar_project            
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "-500"} }
+ { "result" : { "$numberLong" : "-500" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "millisecond"  } } }');
-             bson_dollar_project             
+             bson_dollar_project              
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "3999500"} }
+ { "result" : { "$numberLong" : "3999500" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678924740500"} } , "endDate": {"$date": {"$numberLong": "4740000"} }, "unit": "millisecond"  } } }');
-                bson_dollar_project                 
+                 bson_dollar_project                 
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "-1678920000500"} }
+ { "result" : { "$numberLong" : "-1678920000500" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "millisecond", "timezone": "UTC"  } } }');
-             bson_dollar_project             
+             bson_dollar_project              
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "3999500"} }
+ { "result" : { "$numberLong" : "3999500" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "millisecond", "timezone": "America/New_York"  } } }');
-             bson_dollar_project             
+             bson_dollar_project              
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "3999500"} }
+ { "result" : { "$numberLong" : "3999500" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "millisecond", "timezone": "America/New_York"  }','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit", "timezone": "$timezone"  } } }');
-             bson_dollar_project             
+             bson_dollar_project              
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "3999500"} }
+ { "result" : { "$numberLong" : "3999500" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "millisecond", "timezone": "+05:00"  }','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit", "timezone": "$timezone"  } } }');
-             bson_dollar_project             
+             bson_dollar_project              
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "3999500"} }
+ { "result" : { "$numberLong" : "3999500" } }
 (1 row)
 
 -- $dateDiff unit seconds
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678924740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "second"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "second"  } } }');
-           bson_dollar_project            
+            bson_dollar_project            
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "4000"} }
+ { "result" : { "$numberLong" : "4000" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678924740500"} } , "endDate": {"$date": {"$numberLong": "4740000"} }, "unit": "second"  } } }');
-               bson_dollar_project               
+               bson_dollar_project                
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "-1678920000"} }
+ { "result" : { "$numberLong" : "-1678920000" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "second", "timezone": "UTC"  } } }');
-           bson_dollar_project            
+            bson_dollar_project            
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "4000"} }
+ { "result" : { "$numberLong" : "4000" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "second", "timezone": "America/New_York"  } } }');
-           bson_dollar_project            
+            bson_dollar_project            
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "4000"} }
+ { "result" : { "$numberLong" : "4000" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "second", "timezone": "America/New_York"  }','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit", "timezone": "$timezone"  } } }');
-           bson_dollar_project            
+            bson_dollar_project            
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "4000"} }
+ { "result" : { "$numberLong" : "4000" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "second", "timezone": "+05:00"  }','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit", "timezone": "$timezone"  } } }');
-           bson_dollar_project            
+            bson_dollar_project            
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "4000"} }
+ { "result" : { "$numberLong" : "4000" } }
 (1 row)
 
 -- $dateDiff unit minute
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678924740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "minute"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "minute"  } } }');
-          bson_dollar_project           
+           bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "67"} }
+ { "result" : { "$numberLong" : "67" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678924740500"} } , "endDate": {"$date": {"$numberLong": "4740000"} }, "unit": "minute"  } } }');
-              bson_dollar_project              
+              bson_dollar_project               
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "-27982000"} }
+ { "result" : { "$numberLong" : "-27982000" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "minute", "timezone": "UTC"  } } }');
-          bson_dollar_project           
+           bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "67"} }
+ { "result" : { "$numberLong" : "67" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "minute", "timezone": "America/New_York"  } } }');
-          bson_dollar_project           
+           bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "67"} }
+ { "result" : { "$numberLong" : "67" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "minute", "timezone": "America/New_York"  }','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit", "timezone": "$timezone"  } } }');
-          bson_dollar_project           
+           bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "67"} }
+ { "result" : { "$numberLong" : "67" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "minute", "timezone": "+05:00"  }','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit", "timezone": "$timezone"  } } }');
-          bson_dollar_project           
+           bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "67"} }
+ { "result" : { "$numberLong" : "67" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1678406400000"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "minute", "timezone": "America/New_York"  }','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit", "timezone": "$timezone"  } } }');
-           bson_dollar_project            
+            bson_dollar_project            
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "8639"} }
+ { "result" : { "$numberLong" : "8639" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1678406400000"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "minute"}','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit"} } }');
-           bson_dollar_project            
+            bson_dollar_project            
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "8639"} }
+ { "result" : { "$numberLong" : "8639" } }
 (1 row)
 
 -- $dateDiff unit hour
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678924740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "hour"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "hour"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "1"} }
+ { "result" : { "$numberLong" : "1" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678924740500"} } , "endDate": {"$date": {"$numberLong": "4740000"} }, "unit": "hour"  } } }');
-             bson_dollar_project             
+             bson_dollar_project              
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "-466366"} }
+ { "result" : { "$numberLong" : "-466366" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "hour", "timezone": "UTC"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "1"} }
+ { "result" : { "$numberLong" : "1" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "hour", "timezone": "America/New_York"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "1"} }
+ { "result" : { "$numberLong" : "1" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "hour", "timezone": "America/New_York"  }','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit", "timezone": "$timezone"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "1"} }
+ { "result" : { "$numberLong" : "1" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "hour", "timezone": "+05:00"  }','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit", "timezone": "$timezone"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "1"} }
+ { "result" : { "$numberLong" : "1" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1678406400000"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "hour", "timezone": "America/New_York"  }','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit", "timezone": "$timezone"  } } }');
-           bson_dollar_project           
+           bson_dollar_project            
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "143"} }
+ { "result" : { "$numberLong" : "143" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1678406400000"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "hour"}','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit"} } }');
-           bson_dollar_project           
+           bson_dollar_project            
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "143"} }
+ { "result" : { "$numberLong" : "143" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1604255016000"} } , "endDate": {"$date": {"$numberLong": "1604275200000"} }, "unit": "hour"}','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit"} } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "6"} }
+ { "result" : { "$numberLong" : "6" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1604255016000"} } , "endDate": {"$date": {"$numberLong": "1604275200000"} }, "unit": "hour", "timezone": "America/New_York"}','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit", "timezone": "$timezone"} } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "6"} }
+ { "result" : { "$numberLong" : "6" } }
 (1 row)
 
 -- $dateDiff unit day
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678924740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "day"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "day"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678924740500"} } , "endDate": {"$date": {"$numberLong": "4740000"} }, "unit": "day"  } } }');
-            bson_dollar_project             
+             bson_dollar_project             
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "-19432"} }
+ { "result" : { "$numberLong" : "-19432" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "day", "timezone": "UTC"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "day", "timezone": "America/New_York"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "day", "timezone": "America/New_York"  }','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit", "timezone": "$timezone"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "day", "timezone": "+05:00"  }','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit", "timezone": "$timezone"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1678406400000"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "day", "timezone": "America/New_York"  }','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit", "timezone": "$timezone"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "5"} }
+ { "result" : { "$numberLong" : "5" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1678406400000"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "day"}','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit"} } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "5"} }
+ { "result" : { "$numberLong" : "5" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1604255016000"} } , "endDate": {"$date": {"$numberLong": "1604275200000"} }, "unit": "day"}','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit"} } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1604255016000"} } , "endDate": {"$date": {"$numberLong": "1604275200000"} }, "unit": "day", "timezone": "America/New_York"}','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit", "timezone": "$timezone"} } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 -- days in 2024 year
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1704067200000"} } , "endDate": {"$date": {"$numberLong": "1735603200000"} }, "unit": "day"}','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit"} } }');
-           bson_dollar_project           
+           bson_dollar_project            
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "365"} }
+ { "result" : { "$numberLong" : "365" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1704067200000"} } , "endDate": {"$date": {"$numberLong": "1735603200000"} }, "unit": "day", "timezone": "America/Denver"}','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit", "timezone": "$timezone"} } }');
-           bson_dollar_project           
+           bson_dollar_project            
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "365"} }
+ { "result" : { "$numberLong" : "365" } }
 (1 row)
 
 -- $dateDiff unit week
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678924740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "week"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "week"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678924740500"} } , "endDate": {"$date": {"$numberLong": "4740000"} }, "unit": "week"  } } }');
-            bson_dollar_project            
+            bson_dollar_project             
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "-2776"} }
+ { "result" : { "$numberLong" : "-2776" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "week", "timezone": "UTC"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "week", "timezone": "America/New_York"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1678920740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "week", "timezone": "America/New_York"  }','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit", "timezone": "$timezone"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1678488740500"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "week", "timezone": "+05:00"  }','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit", "timezone": "$timezone"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "1"} }
+ { "result" : { "$numberLong" : "1" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1678406400000"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "week", "timezone": "America/New_York"  }','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit", "timezone": "$timezone"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "1"} }
+ { "result" : { "$numberLong" : "1" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1678406400000"} } , "endDate": {"$date": {"$numberLong": "1678924740000"} }, "unit": "week"}','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit"} } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "1"} }
+ { "result" : { "$numberLong" : "1" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1604255016000"} } , "endDate": {"$date": {"$numberLong": "1604275200000"} }, "unit": "week"}','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit"} } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1604255016000"} } , "endDate": {"$date": {"$numberLong": "1604275200000"} }, "unit": "week", "timezone": "America/New_York"}','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit", "timezone": "$timezone"} } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 -- weeks in 2024 year
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1704067200000"} } , "endDate": {"$date": {"$numberLong": "1735603200000"} }, "unit": "week"}','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit"} } }');
-          bson_dollar_project           
+           bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "52"} }
+ { "result" : { "$numberLong" : "52" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1704067200000"} } , "endDate": {"$date": {"$numberLong": "1735603200000"} }, "unit": "week", "timezone": "America/Denver"}','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit", "timezone": "$timezone"} } }');
-          bson_dollar_project           
+           bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "52"} }
+ { "result" : { "$numberLong" : "52" } }
 (1 row)
 
 -- week startOfWeek cases
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1611512616000"} } , "endDate": {"$date": {"$numberLong": "1611541416000"} }, "unit": "week", "startOfWeek": "MONDAY"}','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit", "startOfWeek": "$startOfWeek"} } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1611512616000"} } , "endDate": {"$date": {"$numberLong": "1611541416000"} }, "unit": "week", "startOfWeek": "monday"}','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit", "startOfWeek": "$startOfWeek"} } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1611512616000"} } , "endDate": {"$date": {"$numberLong": "1611541416000"} }, "unit": "week", "startOfWeek": "tuesday"}','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit", "startOfWeek": "$startOfWeek"} } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1610859600000"} } , "endDate": {"$date": {"$numberLong": "1610859540000"} }, "unit": "week", "startOfWeek": "sunday", "timezone": "America/New_York"}','{"result": {"$dateDiff": {"startDate": "$startDate" , "endDate": "$endDate", "unit": "$unit", "startOfWeek": "$startOfWeek", "timezone": "$timezone"} } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 -- $dateDiff unit month
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1262304000000"} } , "endDate": {"$date": {"$numberLong": "1293840000000"} }, "unit": "month"  } } }');
-          bson_dollar_project           
+           bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "12"} }
+ { "result" : { "$numberLong" : "12" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1262304000000"} } , "endDate": {"$date": {"$numberLong": "1309392000000"} }, "unit": "month"  } } }');
+           bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "17" } }
+(1 row)
+
+select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1267401600000"} } , "endDate": {"$date": {"$numberLong": "1272585600000"} }, "unit": "month"  } } }');
           bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "17"} }
+ { "result" : { "$numberLong" : "1" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1267401600000"} } , "endDate": {"$date": {"$numberLong": "1272585600000"} }, "unit": "month"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "1"} }
-(1 row)
-
-select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1267401600000"} } , "endDate": {"$date": {"$numberLong": "1272585600000"} }, "unit": "month"  } } }');
-          bson_dollar_project          
----------------------------------------------------------------------
- { "result" : { "$numberLong" : "1"} }
+ { "result" : { "$numberLong" : "1" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "993859200000"} } , "endDate": {"$date": {"$numberLong": "1262304000000"} }, "unit": "month"  } } }');
-           bson_dollar_project           
+           bson_dollar_project            
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "103"} }
+ { "result" : { "$numberLong" : "103" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"endDate": {"$date": {"$numberLong": "993859200000"} } , "startDate": {"$date": {"$numberLong": "1262304000000"} }, "unit": "month"  } } }');
-           bson_dollar_project            
+            bson_dollar_project            
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "-103"} }
+ { "result" : { "$numberLong" : "-103" } }
 (1 row)
 
 -- $dateDiff unit quarter
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1262304000000"} } , "endDate": {"$date": {"$numberLong": "1293840000000"} }, "unit": "quarter"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "4"} }
+ { "result" : { "$numberLong" : "4" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1262304000000"} } , "endDate": {"$date": {"$numberLong": "1309392000000"} }, "unit": "quarter"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "5"} }
+ { "result" : { "$numberLong" : "5" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1267401600000"} } , "endDate": {"$date": {"$numberLong": "1272585600000"} }, "unit": "quarter"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "1"} }
+ { "result" : { "$numberLong" : "1" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1267401600000"} } , "endDate": {"$date": {"$numberLong": "1272585600000"} }, "unit": "quarter"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "1"} }
+ { "result" : { "$numberLong" : "1" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "993859200000"} } , "endDate": {"$date": {"$numberLong": "1262304000000"} }, "unit": "quarter"  } } }');
-          bson_dollar_project           
+           bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "35"} }
+ { "result" : { "$numberLong" : "35" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"endDate": {"$date": {"$numberLong": "993859200000"} } , "startDate": {"$date": {"$numberLong": "1262304000000"} }, "unit": "quarter"  } } }');
-           bson_dollar_project           
+           bson_dollar_project            
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "-35"} }
+ { "result" : { "$numberLong" : "-35" } }
 (1 row)
 
 -- $dateDiff unit year
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1262304000000"} } , "endDate": {"$date": {"$numberLong": "1293840000000"} }, "unit": "year"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "1"} }
+ { "result" : { "$numberLong" : "1" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1262304000000"} } , "endDate": {"$date": {"$numberLong": "1309392000000"} }, "unit": "year"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "1"} }
+ { "result" : { "$numberLong" : "1" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1267401600000"} } , "endDate": {"$date": {"$numberLong": "1272585600000"} }, "unit": "year"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1267401600000"} } , "endDate": {"$date": {"$numberLong": "1272585600000"} }, "unit": "year"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "993859200000"} } , "endDate": {"$date": {"$numberLong": "1262304000000"} }, "unit": "year"  } } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "9"} }
+ { "result" : { "$numberLong" : "9" } }
 (1 row)
 
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"endDate": {"$date": {"$numberLong": "993859200000"} } , "startDate": {"$date": {"$numberLong": "1262304000000"} }, "unit": "year"  } } }');
-          bson_dollar_project           
+           bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "-9"} }
+ { "result" : { "$numberLong" : "-9" } }
 (1 row)
 
 -- $dateDiff invalid cases

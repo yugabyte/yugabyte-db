@@ -199,19 +199,19 @@ SET LOCAL enable_seqscan TO OFF;
 SET LOCAL seq_page_cost TO 9999999;
 EXPLAIN (COSTS OFF)
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberLong" : "134311"}}' ORDER BY document->'id';
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
  Sort
    Sort Key: ((document -> 'id'::text))
    ->  Index Scan using _id_ on documents_5000
          Index Cond: (shard_key_value = '7547761715150210803'::bigint)
-         Filter: (document @= '{ "value" : { "$numberLong" : "134311"} }'::bson)
+         Filter: (document @= '{ "value" : { "$numberLong" : "134311" } }'::bson)
 (5 rows)
 
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberLong" : "134311"}}' ORDER BY document->'id';
-                        document                        
---------------------------------------------------------
- { "_id" : "2", "value" : { "$numberLong" : "134311"} }
+                        document                         
+---------------------------------------------------------
+ { "_id" : "2", "value" : { "$numberLong" : "134311" } }
 (1 row)
 
 ROLLBACK;
@@ -230,9 +230,9 @@ SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"v
 (5 rows)
 
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberInt" : "134311"}}' ORDER BY document->'id';
-                        document                        
---------------------------------------------------------
- { "_id" : "2", "value" : { "$numberLong" : "134311"} }
+                        document                         
+---------------------------------------------------------
+ { "_id" : "2", "value" : { "$numberLong" : "134311" } }
 (1 row)
 
 ROLLBACK;

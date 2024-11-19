@@ -16,6 +16,7 @@
 static void * pg_malloc(size_t num_bytes);
 static void * pg_calloc(size_t n_members, size_t num_bytes);
 static void * pg_realloc(void *mem, size_t num_bytes);
+static void * pg_aligned_alloc(size_t alignment, size_t num_bytes);
 static void pg_free(void *mem);
 
 static bool gHasSetVTable = false;
@@ -24,6 +25,7 @@ static bson_mem_vtable_t gMemVtable = {
 	pg_calloc,
 	pg_realloc,
 	pg_free,
+	pg_aligned_alloc,
 	{ 0 }
 };
 
@@ -108,6 +110,17 @@ pg_realloc(void *mem, size_t num_bytes)
 	}
 
 	return repalloc(mem, num_bytes);
+}
+
+
+static void *
+pg_aligned_alloc(size_t alignment, size_t num_bytes)
+{
+#if PG_VERSION_NUM >= 160000
+	return palloc_aligned(num_bytes, alignment, 0);
+#else
+	return pg_malloc(num_bytes);
+#endif
 }
 
 

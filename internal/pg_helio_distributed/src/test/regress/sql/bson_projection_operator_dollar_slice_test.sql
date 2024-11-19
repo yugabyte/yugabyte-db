@@ -69,9 +69,9 @@ select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice"
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : [1, { "$numberDecimal" : "-Infinity"}]} }',NULL);
 
 --large values $slice
-select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : { "$numberDecimal" : "99999999999999999999999999999999999999999999999999999999999999999999999999999999999999"}} }',NULL);
-select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberDecimal" : "99999999999999999999999999999999999999999999999999999999999999999999999999999999999999"}, { "$numberDecimal" : "99999999999999999999999999999999999999999999999999999999999999999999999999999999999999"}] } }',NULL);
-select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberDecimal" : "0"}, { "$numberDecimal" : "99999999999999999999999999999999999999999999999999999999999999999999999999999999999999"}] } }',NULL);
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : { "$numberDecimal" : "999999999999999999999999999999"}} }',NULL);
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberDecimal" : "999999999999999999999999999999"}, { "$numberDecimal" : "999999999999999999999999999999"}] } }',NULL);
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberDecimal" : "0"}, { "$numberDecimal" : "999999999999999999999999999999"}] } }',NULL);
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22}', '{"a" : { "$slice" : {"$numberDecimal" : "123123123123123121231"}} }',NULL);
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22}', '{"a" : { "$slice" : [ {"$numberDecimal" : "123123123123123121231"}, {"$numberDecimal" : "123123123123123121231"} ]} }',NULL);
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22}', '{"a" : { "$slice" : [1,{"$numberDecimal" : "123123123123123121231"}]} }',NULL);

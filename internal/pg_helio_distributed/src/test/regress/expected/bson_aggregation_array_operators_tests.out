@@ -2014,9 +2014,9 @@ SELECT * FROM bson_dollar_project('{}', '{"result": {"$reverseArray": {"$literal
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$reverseArray": {"$literal": [1,2,3,4,5,6,{"$numberLong":"1"}, {"$numberDecimal":"12389.2134234"}] } } }');
-                                                                                                        bson_dollar_project                                                                                                        
+                                                                                                        bson_dollar_project                                                                                                         
 ---------------------------------------------------------------------
- { "result" : [ { "$numberDecimal" : "12389.2134234" }, { "$numberLong" : "1"}, { "$numberInt" : "6" }, { "$numberInt" : "5" }, { "$numberInt" : "4" }, { "$numberInt" : "3" }, { "$numberInt" : "2" }, { "$numberInt" : "1" } ] }
+ { "result" : [ { "$numberDecimal" : "12389.2134234" }, { "$numberLong" : "1" }, { "$numberInt" : "6" }, { "$numberInt" : "5" }, { "$numberInt" : "4" }, { "$numberInt" : "3" }, { "$numberInt" : "2" }, { "$numberInt" : "1" } ] }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$reverseArray": {"$literal": [1,2,3,4, {"$add":[1,2]}] } } }');
@@ -2372,9 +2372,9 @@ SELECT * FROM bson_dollar_project('{}', '{"result": {"$max": {"$date": { "$numbe
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$max": [-2147483648, 2147483647, -9223372036854775808, 9223372036854775807, 0, 100, -100] } }');
-                   bson_dollar_project                   
+                   bson_dollar_project                    
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "9223372036854775807"} }
+ { "result" : { "$numberLong" : "9223372036854775807" } }
 (1 row)
 
 -- $max, array input cases
@@ -2562,9 +2562,9 @@ SELECT * FROM bson_dollar_project('{}', '{"result": {"$min": {"$date": { "$numbe
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$min": [-2147483648, 2147483647, -9223372036854775808, 9223372036854775807, 0, 100, -100] } }');
-                   bson_dollar_project                    
+                    bson_dollar_project                    
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "-9223372036854775808"} }
+ { "result" : { "$numberLong" : "-9223372036854775808" } }
 (1 row)
 
 -- $min, array input cases
@@ -3107,13 +3107,13 @@ SELECT * FROM bson_dollar_project('{"d1": [{ "$numberDecimal": "2.23456789" },{"
  { "result" : [ { "$numberDecimal" : "-1.32456789" }, { "$numberDecimal" : "1.23456789" }, { "$numberDecimal" : "1.34256789" }, { "$numberDecimal" : "2.23456789" } ] }
 (1 row)
 
-SELECT * FROM bson_dollar_project('{"d1": [{ "$numberDecimal": "1/0" },{"$numberDecimal": "1.23456789" }, { "$numberDecimal": "1.32456789" }, { "$numberDecimal": "1.34256789" }]}', '{"result": { "$maxN": {"input": "$d1", "n": 4 } } }');
+SELECT * FROM bson_dollar_project('{"d1": [{ "$numberDecimal": "NaN" },{"$numberDecimal": "1.23456789" }, { "$numberDecimal": "1.32456789" }, { "$numberDecimal": "1.34256789" }]}', '{"result": { "$maxN": {"input": "$d1", "n": 4 } } }');
                                                                       bson_dollar_project                                                                       
 ---------------------------------------------------------------------
  { "result" : [ { "$numberDecimal" : "1.34256789" }, { "$numberDecimal" : "1.32456789" }, { "$numberDecimal" : "1.23456789" }, { "$numberDecimal" : "NaN" } ] }
 (1 row)
 
-SELECT * FROM bson_dollar_project('{"d1": [{ "$numberDecimal": "1/0" },{"$numberDecimal": "1.23456789" }, { "$numberDecimal": "1.32456789" }, { "$numberDecimal": "1.34256789" }]}', '{"result": { "$minN": {"input": "$d1", "n": 4 } } }');
+SELECT * FROM bson_dollar_project('{"d1": [{ "$numberDecimal": "NaN" },{"$numberDecimal": "1.23456789" }, { "$numberDecimal": "1.32456789" }, { "$numberDecimal": "1.34256789" }]}', '{"result": { "$minN": {"input": "$d1", "n": 4 } } }');
                                                                       bson_dollar_project                                                                       
 ---------------------------------------------------------------------
  { "result" : [ { "$numberDecimal" : "NaN" }, { "$numberDecimal" : "1.23456789" }, { "$numberDecimal" : "1.32456789" }, { "$numberDecimal" : "1.34256789" } ] }
@@ -3180,7 +3180,7 @@ select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [[6,
  { "result" : [ { "$numberInt" : "1" }, { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$numberInt" : "6" }, { "$numberInt" : "12" }, [ { "$numberInt" : "4" }, { "$numberInt" : "8" }, { "$numberInt" : "6" } ], [ { "$numberInt" : "6" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] ] }
 (1 row)
 
-select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [{"$numberDecimal": "0/0"}, 4, 1, 6, 12, 5, null, " "], "sortBy": 1 } } }');
+select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [{"$numberDecimal": "NaN"}, 4, 1, 6, 12, 5, null, " "], "sortBy": 1 } } }');
                                                                                  bson_dollar_project                                                                                 
 ---------------------------------------------------------------------
  { "result" : [ null, { "$numberDecimal" : "NaN" }, { "$numberInt" : "1" }, { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$numberInt" : "6" }, { "$numberInt" : "12" }, " " ] }

@@ -548,9 +548,9 @@ select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strcasecmp" : [ "😀
 
 -- $strcasecmp operator: numbers, integers decimal:
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strcasecmp" : ["1.2345",1.2345] } }');
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strcasecmp" : ["1.23451234556666623432432443223432432324",1.23451234556666623432432443223432432324] } }');
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strcasecmp" : [1.23451234556666623432432443223432432324, "1.23451234556666623432432443223432432324"] } }');
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strcasecmp" : [{"$numberDecimal": "1.23451234556666623432432443223432432324"}, "1.23451234556666623432432443223432432324"] } }');
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strcasecmp" : ["1.234512345566666234324",1.234512345566666234324] } }');
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strcasecmp" : [1.234512345566666234324, "1.234512345566666234324"] } }');
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strcasecmp" : [{"$numberDecimal": "1.234512345566666234324"}, "1.234512345566666234324"] } }');
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strcasecmp" : [{"$numberDecimal": "1.2e10"}, "1e10"] } }');
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$strcasecmp" : [{"$numberDecimal": "1.2e10"}, "1e10"] } }');
 

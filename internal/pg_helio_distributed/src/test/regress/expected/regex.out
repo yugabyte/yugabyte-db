@@ -208,7 +208,7 @@ SELECT count(*) sku from collection('db', 'regex') where document @@ '{"sku": {"
 (1 row)
 
 -- 100 to 103
-SELECT document from collection('db', 'regex') where document @@ '{ "description": { "$regex": {"$regularExpression" : {"pattern" : "\\bline\\b", "options" : ""} } }';
+SELECT document from collection('db', 'regex') where document @@ '{ "description": { "$regex": "\\bline\\b", "$options" : "" } }';
                                                document                                                
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "100" }, "sku" : "abc123", "description" : "Single line description." }
@@ -218,7 +218,7 @@ SELECT document from collection('db', 'regex') where document @@ '{ "description
 (4 rows)
 
 -- No records. Will try to match \\y (as a char) in the document
-SELECT document from collection('db', 'regex') where document @@ '{ "description": { "$regex": {"$regularExpression" : {"pattern" : "\\\\yline\\\\y", "options" : ""} } }';
+SELECT document from collection('db', 'regex') where document @@ '{ "description": { "$regex": "\\\\yline\\\\y", "$options" : "" } }';
  document 
 ---------------------------------------------------------------------
 (0 rows)
@@ -240,7 +240,7 @@ SELECT document from collection('db', 'regex') where document @@ '{"a" : { "$reg
 -- 110 (Same as 107 match above.)
 --SELECT document from collection('db', 'regex') where document @@ '{"a" : { "$regularExpression" : { "pattern": "a\\ycde\\y", "options" : ""} } }';
 -- 100 and 101
-SELECT document from collection('db', 'regex') where document @@ '{ "description": { "$regex": { "$regularExpression" : { "pattern": "le.*\\bline\\b", "options" : ""} } }';
+SELECT document from collection('db', 'regex') where document @@ '{ "description": { "$regex": "le.*\\bline\\b", "$options" : "" } }';
                                               document                                              
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "100" }, "sku" : "abc123", "description" : "Single line description." }

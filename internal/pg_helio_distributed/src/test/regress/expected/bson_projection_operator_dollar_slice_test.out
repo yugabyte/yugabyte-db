@@ -314,16 +314,24 @@ select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice"
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : [1, { "$numberDecimal" : "-Infinity"}]} }',NULL);
 ERROR:  Second argument to $slice must be a positive number, but is of type: decimal
 --large values $slice
-select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : { "$numberDecimal" : "99999999999999999999999999999999999999999999999999999999999999999999999999999999999999"}} }',NULL);
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : { "$numberDecimal" : "999999999999999999999999999999"}} }',NULL);
+                                                                                                             bson_dollar_project_find                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberDecimal" : "999999999999999999999999999999"}, { "$numberDecimal" : "999999999999999999999999999999"}] } }',NULL);
                                                                           bson_dollar_project_find                                                                          
 ---------------------------------------------------------------------
  { "_id" : "1", "a" : [  ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
 (1 row)
 
-select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberDecimal" : "99999999999999999999999999999999999999999999999999999999999999999999999999999999999999"}, { "$numberDecimal" : "99999999999999999999999999999999999999999999999999999999999999999999999999999999999999"}] } }',NULL);
-ERROR:  Second argument to $slice must be a positive number, but is of type: decimal
-select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberDecimal" : "0"}, { "$numberDecimal" : "99999999999999999999999999999999999999999999999999999999999999999999999999999999999999"}] } }',NULL);
-ERROR:  Second argument to $slice must be a positive number, but is of type: decimal
+select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberDecimal" : "0"}, { "$numberDecimal" : "999999999999999999999999999999"}] } }',NULL);
+                                                                                                             bson_dollar_project_find                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : { "$numberInt" : "22" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "d" : { "$numberInt" : "4" } }
+(1 row)
+
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22}', '{"a" : { "$slice" : {"$numberDecimal" : "123123123123123121231"}} }',NULL);
                                                      bson_dollar_project_find                                                     
 ---------------------------------------------------------------------

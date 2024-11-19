@@ -815,9 +815,9 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 ERROR:  $nProbes must be an integer value.
 -- numLists > data size, pgvector will generate randomized centroids, using original vector data to query
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "aggregation_pipeline", "index": "foo_1"}');
-                         retval                          
----------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+                          retval                          
+----------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 10000, "similarity": "COS", "dimensions": 3 } } ] }', true);

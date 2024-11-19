@@ -1,4 +1,3 @@
-
 SET search_path TO helio_core;
 
 CREATE TABLE test (document bson);
