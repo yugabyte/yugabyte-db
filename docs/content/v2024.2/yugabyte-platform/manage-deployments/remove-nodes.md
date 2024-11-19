@@ -23,7 +23,7 @@ Note that automatic failover only works for a single unhealthy master server.
 - Automatic YB-Master failover is {{<tags/feature/ea>}}. To enable the feature for a universe, set the **Auto Master Failover** Universe Runtime Configuration option (config key `yb.auto_master_failover.enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
 - The universe has the following characteristics:
 
-  - running v2.20.3.0 or 2.21.0.0 or later
+  - running v2.20.3.0, v2.21.0.0, or later
   - is on-premises or on a cloud provider (Kubernetes is not supported)
   - has a replication factor of 3 or more
   - does not have dedicated masters
