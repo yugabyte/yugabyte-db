@@ -76,8 +76,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         /* Set Gflags and restart cluster */
         Map<String, String> flagMap = super.getTServerFlags();
         flagMap.put("TEST_yb_enable_query_diagnostics", "true");
-        flagMap.put("ysql_pg_conf_csv",
-                    "yb_query_diagnostics_bg_worker_interval_ms=" + BG_WORKER_INTERVAL_MS);
+        appendToYsqlPgConf(flagMap,
+                           "yb_query_diagnostics_bg_worker_interval_ms=" + BG_WORKER_INTERVAL_MS);
         restartClusterWithFlags(Collections.emptyMap(), flagMap);
 
         setUpPreparedStatement();
@@ -360,7 +360,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         /* Set Gflags and restart cluster */
         Map<String, String> flagMap = super.getTServerFlags();
         flagMap.put("TEST_yb_enable_query_diagnostics", "true");
-        flagMap.put("ysql_pg_conf_csv", "yb_query_diagnostics_circular_buffer_size=15");
+        appendToYsqlPgConf(flagMap, "yb_query_diagnostics_circular_buffer_size=15");
         restartClusterWithFlags(Collections.emptyMap(), flagMap);
 
         try (Statement statement = connection.createStatement()) {
@@ -417,8 +417,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         /* Set Gflags and restart cluster */
         Map<String, String> flagMap = super.getTServerFlags();
         flagMap.put("TEST_yb_enable_query_diagnostics", "true");
-        flagMap.put("ysql_pg_conf_csv",
-                    "yb_query_diagnostics_bg_worker_interval_ms=" + BG_WORKER_INTERVAL_MS);
+        appendToYsqlPgConf(flagMap,
+                           "yb_query_diagnostics_bg_worker_interval_ms=" + BG_WORKER_INTERVAL_MS);
         /* Enable ASH for active_session_history.csv */
         if (isTestRunningWithConnectionManager()) {
             flagMap.put("allowed_preview_flags_csv",
