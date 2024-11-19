@@ -28,9 +28,9 @@ BEGIN;
 COMMIT;
 ```
 
-The `BEGIN` and `COMMIT` block is needed when you have multiple statements to be executed as part of a transaction. YugabyteDB treats every ad-hoc individual SQL statement as being executed in a transaction.
+The BEGIN and COMMIT block is needed when you have multiple statements to be executed as part of a transaction. YugabyteDB treats every ad-hoc individual SQL statement as being executed in a transaction.
 
-If you decide to cancel the transaction and not commit it, you can issue a `ROLLBACK` instead of a `COMMIT`. You can also control the rollback of a subset of statements using `SAVEPOINT`. After rolling back to a savepoint, it continues to be defined, so you can roll back to it several times.
+If you decide to cancel the transaction and not commit it, you can issue a ROLLBACK instead of a COMMIT. You can also control the rollback of a subset of statements using SAVEPOINT. After rolling back to a savepoint, it continues to be defined, so you can roll back to it several times.
 
 As all transactions in YugabyteDB are guaranteed to be [ACID](../../../../architecture/transactions/transactions-overview/) compliant, errors can be thrown during transaction processing to ensure correctness guarantees are not violated. YugabyteDB returns different [error codes](../transactions-errorcodes-ysql/) for each case with details. Applications need to be designed to do [retries](../transactions-retries-ysql/) correctly for high availability.
 
@@ -87,12 +87,13 @@ SELECT * FROM txndemo WHERE k=1 FOR UPDATE;
 ```
 
 YugabyteDB supports the following types of explicit row locks:
+
 | Lock | Description |
 | :--- | :---------- |
 | **FOR UPDATE** | Strongest and exclusive lock. Prevents all other locks on these rows till the transaction ends.|
-| **FOR&nbsp;NO&nbsp;KEY&nbsp;UPDATE** | Weaker than `FOR UPDATE` and exclusive. Will not block `FOR KEY SHARE` commands.|
-| **FOR SHARE** | Shared lock that does not block other `FOR SHARE` and `FOR KEY SHARE` commands.|
-| **FOR KEY SHARE** | Shared lock that does not block other `FOR SHARE`, `FOR KEY SHARE`, and `FOR NO KEY UPDATE` commands.|
+| **FOR&nbsp;NO&nbsp;KEY&nbsp;UPDATE** | Weaker than FOR UPDATE and exclusive. Will not block FOR KEY SHARE commands.|
+| **FOR SHARE** | Shared lock that does not block other FOR SHARE and FOR KEY SHARE commands.|
+| **FOR KEY SHARE** | Shared lock that does not block other FOR SHARE, FOR KEY SHARE, and FOR NO KEY UPDATE commands.|
 
 {{<tip title="Examples">}}
 For more details and examples related to these locking policies, see [Explicit locking](../../../../explore/transactions/explicit-locking/).
@@ -141,7 +142,7 @@ All applications need to be tuned to get the best performance. YugabyteDB suppor
 
 - Convert a multi-statement transaction affecting a single row into a [fast-path](../transactions-performance-ysql/#fast-single-row-transactions) transaction.
 - [Avoid long waits](../transactions-performance-ysql/#avoid-long-waits) with the right timeouts.
-- [Minimize conflict errors](../transactions-performance-ysql/#minimize-conflict-errors) with `ON CONFLICT` clause.
+- [Minimize conflict errors](../transactions-performance-ysql/#minimize-conflict-errors) with ON CONFLICT clause.
 - [Uninterrupted long scans](../transactions-performance-ysql/#large-scans-and-batch-jobs)
 - [Minimize round trips](../transactions-performance-ysql/#stored-procedures-minimize-round-trips) with stored procedures.
 
@@ -198,7 +199,7 @@ SET default_transaction_deferrable = TRUE;
 ```
 
 {{<note title="Note">}}
-The `DEFERRABLE` transaction property has no effect unless the transaction is also `SERIALIZABLE` and `READ ONLY`.
+The DEFERRABLE transaction property has no effect unless the transaction is also SERIALIZABLE and READ ONLY.
 {{</note>}}
 
 ##### idle_in_transaction_session_timeout
