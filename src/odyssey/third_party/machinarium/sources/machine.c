@@ -8,6 +8,9 @@
 #include <machinarium.h>
 #include <machinarium_private.h>
 
+// Note YB: By default min_thread_stack_size_bytes in YB is set to 512KB.
+#define YB_MIN_THREAD_STACK_BYTES 512 * 1024
+
 __thread mm_machine_t *mm_self = NULL;
 
 static int mm_idle_cb(mm_idle_t *handle)
@@ -119,7 +122,7 @@ MACHINE_API int64_t machine_create(char *name, machine_coroutine_t function,
 		return -1;
 	}
 	mm_machinemgr_add(&machinarium.machine_mgr, machine);
-	rc = mm_thread_create(&machine->thread, PTHREAD_STACK_MIN, machine_main,
+	rc = mm_thread_create(&machine->thread, YB_MIN_THREAD_STACK_BYTES, machine_main,
 			      machine);
 	if (rc == -1) {
 		mm_machinemgr_delete(&machinarium.machine_mgr, machine);
