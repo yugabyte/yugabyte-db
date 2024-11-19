@@ -117,11 +117,12 @@ func HasSudoAccess() bool {
 func RemoveQuotes(input string) string {
 	return strings.Trim(input, "\"")
 }
+
 // SplitInput parses an input string that is either comma or space separated and returns the
 // individual elements in an array
 func SplitInput(input string) []string {
 	return strings.FieldsFunc(input, func(r rune) bool {
-			return r == ',' || r == ' '
+		return r == ',' || r == ' '
 	})
 }
 
@@ -708,7 +709,7 @@ func SetYamlValue(filePath string, yamlPath string, value interface{}) error {
 		root = yaml.Node{
 			Kind: yaml.DocumentNode,
 			Content: []*yaml.Node{&yaml.Node{
-					Kind: yaml.MappingNode,
+				Kind: yaml.MappingNode,
 			}},
 		}
 	}
@@ -847,4 +848,30 @@ func Bool2Int(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+func SetAllPermissions() error {
+	if err := SetSoftwarePermissions(); err != nil {
+		return err
+	}
+	if err := SetDataPermissions(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func SetSoftwarePermissions() error {
+	userName := viper.GetString("service_username")
+	if err := Chown(GetSoftwareDir(), userName, userName, true); err != nil {
+		return err
+	}
+	return nil
+}
+
+func SetDataPermissions() error {
+	userName := viper.GetString("service_username")
+	if err := Chown(GetDataRoot(), userName, userName, true); err != nil {
+		return err
+	}
+	return nil
 }
