@@ -252,7 +252,7 @@ var createBackupCmd = &cobra.Command{
 
 		if viper.GetBool("wait") {
 			if taskUUID != "" {
-				logrus.Info(fmt.Sprintf("\nWaiting for backup task %s on universe %s(%s) to be completed\n",
+				logrus.Info(fmt.Sprintf("\nWaiting for backup task %s on universe %s (%s) to be completed\n",
 					formatter.Colorize(taskUUID, formatter.GreenColor), universeNameFlag, universeUUID))
 				err = authAPI.WaitForTask(taskUUID, msg)
 				if err != nil {
