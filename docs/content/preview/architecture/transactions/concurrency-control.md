@@ -2,7 +2,7 @@
 title: Concurrency control
 headerTitle: Concurrency control
 linkTitle: Concurrency control
-description: Details about Concurrency control and transaction locking in YSQL
+description: Details about Concurrency control and optimistic and pessimistic locking in YSQL
 menu:
   preview:
     identifier: architecture-concurrency-control
