@@ -252,7 +252,7 @@ In a [colocated database](#databases), [tables](#tables) are created with coloca
 CREATE TABLE <table_name> TABLESPACE <tablespace_name>;
 ```
 
-Use the same syntax to create indexes and materialized views in a tablespace as follows:
+Use the same syntax to create colocated indexes and materialized views in a tablespace as follows:
 
 ```sql
 CREATE INDEX <index_name> ON <table_name>(<column_name>) TABLESPACE <tablespace_name>;
@@ -295,14 +295,14 @@ SELECT * FROM pg_yb_tablegroup;
 You should see output similar to the following:
 
 ```output
-  oid  |     grpname      | grpowner | grptablespace | grpacl | grpoptions
--------+------------------+----------+---------------+--------+------------
- 16387 | default          |       10 |             0 |        |
- 16391 | colocation_16384 |       10 |         16384 |        |
+   grpname       | grpowner | grptablespace | grpacl | grpoptions
+-----------------+----------+---------------+--------+------------
+default          |       10 |             0 |        |
+colocation_16384 |       10 |         16384 |        |
 (2 rows)
 ```
 
-The `oid` and `grpname` columns represent the tablegroup's OID and name, respectively. The `grptablespace` column shows the OID of the associated tablespace.
+The `grpname` column represent the tablegroup's name and the `grptablespace` column shows the OID of the associated tablespace.
 
 ### Geo-partitioned colocated tables with tablespaces
 
@@ -322,7 +322,7 @@ CREATE TABLE <partition_table3> PARTITION OF <partitioned_table_name> FOR VALUES
 
 ### Alter tablespaces for colocated relations
 
-Colocated relations (the strategy of storing related data together to optimize performance and query efficiency) cannot be moved independently from one tablespace to another; instead, you can either move all colocated relations or none.
+Colocated relations (the strategy of storing related data together to optimize performance and query efficiency) cannot be moved independently from one tablespace to another; instead, you can either move all colocated relations or none. The tablespace to which the colocated relations are being moved must not contain any other colocated relations prior to the move.
 
 To move all relations from one tablespace to another, use the following syntax:
 
@@ -330,7 +330,7 @@ To move all relations from one tablespace to another, use the following syntax:
 ALTER TABLE ALL IN TABLESPACE tablespace_1 SET TABLESPACE tablespace_2 CASCADE;
 ```
 
-This command moves all relations in `tablespace_1` to `tablespace_2`, including any non-colocated relations.
+This command moves all relations in `tablespace_1` to `tablespace_2`, including any non-colocated relations. Note that keyword CASCADE is required to move the colocated relations.
 
 To move only colocated relations, you can specify a table to colocate with using the following syntax:
 
@@ -338,13 +338,75 @@ To move only colocated relations, you can specify a table to colocate with using
 ALTER TABLE ALL IN TABLESPACE tablespace_1 COLOCATED WITH table1 SET TABLESPACE tablespace_2 CASCADE;
 ```
 
-This command moves only the relations present in `tablespace_1` that are colocated with `table1`.
+This command moves only the relations present in `tablespace_1` that are colocated with `table1`, where `table1` must be a colocated table.
 
 Move a single non-colocated table using the following syntax:
 
 ```sql
 ALTER TABLE <table_name> SET TABLESPACE <new_tablespace>;
 
+```
+
+#### Failure scenarios for altering tablespaces
+
+The following failure scenarios are applicable to the alter commands from the [Alter tablespaces for colocated relations](#alter-tablespaces-for-colocated-relations) section.
+
+**Scenario 1**: Moving to a tablespace which already contains colocated relations
+
+Consider the following example:
+
+```sql
+CREATE TABLE t1 (col INT PRIMARY KEY, col2 INT) TABLESPACE tsp1;
+CREATE TABLE t2 (col INT PRIMARY KEY, col2 INT) TABLESPACE tsp1;
+CREATE TABLE t3 (col INT PRIMARY KEY, col2 INT) TABLESPACE tsp2;
+
+ALTER TABLE ALL IN TABLESPACE tsp1 SET TABLESPACE tsp2;
+```
+
+```output
+ERROR:  cannot move colocated relations to tablespace tsp2, as it contains existing colocated relation
+```
+
+```sql
+CREATE TABLE t4 (col INT PRIMARY KEY, col2 INT) WITH (COLOCATION = FALSE) TABLESPACE tsp1;
+
+ALTER TABLE t4 SET TABLESPACE tsp2;
+```
+
+```output
+NOTICE:  Data movement for table t4 is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+ALTER TABLE
+```
+
+Tables `t1` and `t2` are colocated tables belonging to tablespace `tsp1`, while table `t3` is a colocated table in tablespace `tsp2`. Moving colocated tables (for example, `t1` and `t2`) from `tsp1` to `tsp2` is not allowed. However, a non-colocated table (for example, `t4`) from `tsp1` can be moved to `tsp2`.
+
+**Scenario 2**: Moving colocated relations without the keyword CASCADE
+
+If you move colocated relations without the CASCADE keyword, it results in the following error:
+
+```sql
+ALTER TABLE ALL IN TABLESPACE tsp1 SET TABLESPACE tsp2;
+```
+
+```output
+ERROR:  cannot move colocated relations present in tablespace tsp1
+HINT:  Use ALTER ... CASCADE to move colcated relations.
+```
+
+**Scenario 3**: Using non-colocated tables in COLOCATED WITH syntax
+
+Consider the following example:
+
+```sql
+CREATE TABLE t1 (col INT PRIMARY KEY, col2 INT) TABLESPACE tsp1;
+CREATE TABLE t2 (col INT PRIMARY KEY, col2 INT) WITH (COLOCATION = FALSE) TABLESPACE tsp1;
+
+ALTER TABLE ALL IN TABLESPACE tsp1 COLOCATED WITH t2 SET TABLESPACE tsp2 CASCADE;
+```
+
+```output
+ERROR:  the specified relation is non-colocated which can't be moved using this command
 ```
 
 ### Back up and restore colocated database using ysql_dump
@@ -366,3 +428,97 @@ You can back up and restore a database with colocated tables and tablespaces in 
       ```
 
       This command moves all restored colocated relations in the default tablespace `pg_default` that are colocated with `table1` to `new_tablespace`.
+
+  - Consider the following example schema for before and after backup or restore operation:
+
+      ```sql
+      CREATE TABLE t1 (a INT, region VARCHAR, c INT, PRIMARY KEY(a, region)) PARTITION BY LIST (region);
+      CREATE TABLE t1_1 PARTITION OF t1 FOR VALUES IN ('USWEST') TABLESPACE tsp1;
+      CREATE TABLE t1_2 PARTITION OF t1 FOR VALUES IN ('USEAST') TABLESPACE tsp2;
+      CREATE TABLE t1_3 PARTITION OF t1 FOR VALUES IN ('APSOUTH') TABLESPACE tsp3;
+      CREATE TABLE t1_default PARTITION OF t1 DEFAULT;
+
+      CREATE TABLE t2 (a INT, region VARCHAR, c INT, PRIMARY KEY(a, region)) PARTITION BY LIST (region);
+      CREATE TABLE t2_1 PARTITION OF t2 FOR VALUES IN ('USWEST') TABLESPACE tsp1;
+      CREATE TABLE t2_2 PARTITION OF t2 FOR VALUES IN ('USEAST') TABLESPACE tsp2;
+      CREATE TABLE t2_3 PARTITION OF t2 FOR VALUES IN ('APSOUTH') TABLESPACE tsp3;
+      CREATE TABLE t2_default PARTITION OF t2 DEFAULT;
+      ```
+
+      The tablegroup information would look like the following:
+
+      ```sql
+      \dgrt
+      ```
+
+      ```output
+                         List of tablegroup tables
+          Group Name    | Group Owner |    Name    | Type  |  Owner
+      ------------------+-------------+------------+-------+----------
+       colocation_16384 | postgres    | t2_1       | table | yugabyte
+       colocation_16384 | postgres    | t1_1       | table | yugabyte
+       colocation_16385 | postgres    | t2_2       | table | yugabyte
+       colocation_16385 | postgres    | t1_2       | table | yugabyte
+       colocation_16386 | postgres    | t2_3       | table | yugabyte
+       colocation_16386 | postgres    | t1_3       | table | yugabyte
+       default          | postgres    | t2_default | table | yugabyte
+       default          | postgres    | t1_default | table | yugabyte
+       default          | postgres    | t2         | table | yugabyte
+       default          | postgres    | t1 	       | table | yugabyte
+      (10 rows)
+      ```
+
+      Same `Group Name` indicates the colocated entities, and each tablegroup belongs to a different tablespace, as evident from the `grptablespace` column from the following table.
+
+      ```sql
+      SELECT * FROM pg_yb_tablegroup;
+      ```
+
+      ```output
+           grpname      | grpowner | grptablespace | grpacl | grpoptions
+      ------------------+----------+---------------+--------+------------
+       default          |       10 |             0 |        |
+       colocation_16384 |       10 |         16384 |        |
+       colocation_16385 |       10 |         16385 |        |
+       colocation_16386 |       10 |         16386 |        |
+      (4 rows)
+      ```
+
+      The same information after backup or restore without the `--use_tablespaces` option would look like the following:
+
+      ```sql
+      \dgrt
+      ```
+
+      ```output
+                     List of tablegroup tables
+              Group Name        | Group Owner |    Name    | Type  |  Owner
+      --------------------------+-------------+------------+-------+----------
+       colocation_restore_16393 | postgres    | t2_1       | table | yugabyte
+       colocation_restore_16393 | postgres    | t1_1       | table | yugabyte
+       colocation_restore_16399 | postgres    | t2_2       | table | yugabyte
+       colocation_restore_16399 | postgres    | t1_2       | table | yugabyte
+       colocation_restore_16405 | postgres    | t2_3       | table | yugabyte
+       colocation_restore_16405 | postgres    | t1_3       | table | yugabyte
+       default                  | postgres    | t2_default | table | yugabyte
+       default                  | postgres    | t1_default | table | yugabyte
+       default                  | postgres    | t2         | table | yugabyte
+       default                  | postgres    | t1         | table | yugabyte
+      (10 rows)
+      ```
+
+      As evident from the above table, the colocation property is still maintained after the backup or restore. But all these tables now reside in the same tablespace which is the default one, as per the following table:
+
+      ```sql
+      SELECT * FROM pg_yb_tablegroup;
+      ```
+
+      ```output
+               grpname          | grpowner | grptablespace | grpacl | grpoptions
+      --------------------------+----------+---------------+--------+------------
+       default                  |       10 |             0 |        |
+       colocation_restore_16393 |       10 |             0 |        |
+       colocation_restore_16399 |       10 |             0 |        |
+       colocation_restore_16405 |       10 |             0 |        |
+      (4 rows)
+      ```
