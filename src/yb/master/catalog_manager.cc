@@ -4161,6 +4161,12 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         // Adding a table to an existing colocation tablet.
         if (is_vector_index) {
           tablets = VERIFY_RESULT(indexed_table->GetTablets());
+          auto options = req.index_info().vector_idx_options();
+          if (options.idx_type() != PgVectorIndexType::DUMMY &&
+              tablets.size() != 1) {
+            return STATUS(InvalidArgument,
+              "Copartitioned vector index must have only one tablet for now.");
+          }
         } else {
           auto tablet = tablegroup ?
               tablegroup->tablet() :

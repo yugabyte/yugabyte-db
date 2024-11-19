@@ -100,6 +100,8 @@ ybvectorrescan(IndexScanDesc scan, ScanKey scankeys, int nscankeys,
 									false /* is_internal_scan */,
 									scan->fetch_ybctids_only);
 	so->yb_scan_desc = ybScan;
+	if (scan->yb_exec_params->limit_count > 0)
+		so->limit = scan->yb_exec_params->limit_count;
 
 	if (scankeys && scan->numberOfKeys > 0)
 		memmove(&scan->keyData, scankeys, scan->numberOfKeys * sizeof(ScanKeyData));
