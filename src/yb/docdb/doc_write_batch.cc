@@ -110,7 +110,7 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
   const auto prev_key_prefix_exact = current_entry_.found_exact_key_prefix;
 
   // Seek the value.
-  doc_iter->Seek(key_prefix_.AsSlice());
+  doc_iter->Seek(key_prefix_.AsSlice(), SeekFilter::kAll);
   VLOG_WITH_FUNC(4) << SubDocKey::DebugSliceToString(key_prefix_.AsSlice())
                     << ", prev_subdoc_ht: " << prev_subdoc_ht
                     << ", prev_key_prefix_exact: " << prev_key_prefix_exact

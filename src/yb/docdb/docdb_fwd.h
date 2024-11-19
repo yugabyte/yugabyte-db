@@ -27,6 +27,7 @@
 
 namespace yb::docdb {
 
+class BoundedRocksDbIterator;
 class ConsensusFrontier;
 class DeadlineInfo;
 class DocDBCompactionFilterFactory;
@@ -69,6 +70,7 @@ struct ObjectLockPrefix;
 struct PgsqlReadOperationData;
 struct ReadOperationData;
 struct VectorIndexInsertEntry;
+struct VectorIndexSearchResultEntry;
 
 using DocKeyHash = uint16_t;
 using DocReadContextPtr = std::shared_ptr<DocReadContext>;
@@ -88,6 +90,7 @@ using VectorIndexPtr = std::shared_ptr<VectorIndex>;
 using VectorIndexes = std::vector<VectorIndexPtr>;
 using VectorIndexesPtr = std::shared_ptr<VectorIndexes>;
 using VectorIndexInsertEntries = std::vector<VectorIndexInsertEntry>;
+using VectorIndexSearchResult = std::vector<VectorIndexSearchResultEntry>;
 
 YB_STRONGLY_TYPED_BOOL(SkipFlush);
 YB_STRONGLY_TYPED_BOOL(SkipSeek);

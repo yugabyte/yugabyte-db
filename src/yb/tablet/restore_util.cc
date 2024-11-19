@@ -112,7 +112,7 @@ Result<std::optional<ValueType>> GetColumnValueNotPacked(
 
 Status FetchState::SetPrefix(const Slice& prefix) {
   if (prefix_.empty()) {
-    iterator_->Seek(prefix);
+    iterator_->Seek(prefix, docdb::SeekFilter::kAll);
   } else {
     iterator_->SeekForward(prefix);
   }

@@ -1716,7 +1716,7 @@ Result<boost::optional<Expiration>> GetTtl(
   auto dockey_size =
     VERIFY_RESULT(DocKey::EncodedSize(encoded_subdoc_key, dockv::DocKeyPart::kWholeDocKey));
   Slice key_slice(encoded_subdoc_key.data(), dockey_size);
-  iter->Seek(key_slice);
+  iter->Seek(key_slice, SeekFilter::kAll);
   auto key_data = VERIFY_RESULT_REF(iter->Fetch());
   if (!key_data) {
     return boost::none;
@@ -2061,7 +2061,7 @@ Status RedisReadOperation::ExecuteKeys() {
         !RedisPatternMatch(request_.keys_request().pattern(),
                            key_primitive.GetString(),
                            false /* ignore_case */)) {
-      iterator_->SeekOutOfSubDoc(&key_copy);
+      iterator_->SeekOutOfSubDoc(SeekFilter::kAll, &key_copy);
       continue;
     }
 
@@ -2081,7 +2081,7 @@ Status RedisReadOperation::ExecuteKeys() {
       RETURN_NOT_OK(AddPrimitiveValueToResponseArray(key_primitive,
                                                      response_.mutable_array_response()));
     }
-    iterator_->SeekOutOfSubDoc(&key_copy);
+    iterator_->SeekOutOfSubDoc(SeekFilter::kAll, &key_copy);
   }
 
   response_.set_code(RedisResponsePB::OK);

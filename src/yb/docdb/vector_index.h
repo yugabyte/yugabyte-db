@@ -27,22 +27,21 @@
 
 namespace yb::docdb {
 
+using EncodedDistance = size_t;
+
 struct VectorIndexInsertEntry {
   KeyBuffer key;
   ValueBuffer value;
 };
 
 struct VectorIndexSearchResultEntry {
-  size_t encoded_distance;
+  EncodedDistance encoded_distance;
   KeyBuffer key;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(encoded_distance, key);
   }
 };
-
-using VectorIndexInsertEntries = std::vector<VectorIndexInsertEntry>;
-using VectorIndexSearchResult = std::vector<VectorIndexSearchResultEntry>;
 
 class VectorIndex {
  public:
@@ -53,6 +52,7 @@ class VectorIndex {
       const VectorIndexInsertEntries& entries, HybridTime write_time,
       const rocksdb::UserFrontiers* frontiers) = 0;
   virtual Result<VectorIndexSearchResult> Search(Slice vector, size_t max_num_results) = 0;
+  virtual Result<EncodedDistance> Distance(Slice lhs, Slice rhs) = 0;
 };
 
 Result<VectorIndexPtr> CreateVectorIndex(
