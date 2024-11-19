@@ -14,6 +14,7 @@
 #pragma once
 
 #include <atomic>
+#include <utility>
 
 #include "yb/vector_index/coordinate_types.h"
 #include "yb/vector_index/vector_index_if.h"
@@ -70,6 +71,51 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
 
   std::atomic<bool> has_entries_{false};
   std::atomic<bool> immutable_{false};
+};
+
+template <typename Vector, typename IteratorImpl>
+class VectorIteratorBase {
+ public:
+  using value_type = Vector;
+  using reference = value_type&;
+  using pointer = value_type*;
+  using difference_type = std::ptrdiff_t;
+  using iterator_category = std::forward_iterator_tag;
+
+  using Scalar = typename Vector::value_type;
+
+  VectorIteratorBase(IteratorImpl begin, IteratorImpl end, size_t dim)
+      : begin_(begin), end_(end), dimensions_(dim) {}
+
+  Vector operator*() const {
+    Vector vec(dimensions_);
+    std::memcpy(vec.data(), &(*begin_), dimensions_ * sizeof(Scalar));
+    return vec;
+  }
+
+  VectorIteratorBase& operator++() {
+    ++begin_;
+    return *this;
+  }
+
+  VectorIteratorBase operator++(int) {
+    VectorIteratorBase tmp = *this;
+    ++(*this);
+    return tmp;
+  }
+  
+  bool operator==(const VectorIteratorBase& other) const {
+    return begin_ == other.begin_;
+  }
+
+  bool operator!=(const VectorIteratorBase& other) const {
+    return !(*this == other);
+  }
+
+ private:
+  IteratorImpl begin_;
+  IteratorImpl end_;
+  size_t dimensions_;
 };
 
 }  // namespace yb::vector_index

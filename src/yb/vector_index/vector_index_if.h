@@ -15,9 +15,8 @@
 
 #pragma once
 
+#include "yb/util/polymorphic_iterator.h"
 #include "yb/util/result.h"
-
-#include "yb/common/vector_types.h"
 
 #include "yb/vector_index/coordinate_types.h"
 #include "yb/vector_index/distance.h"
@@ -25,16 +24,26 @@
 
 namespace yb::vector_index {
 
+template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+class VectorIndexReaderIf;
+
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class VectorIndexReaderIf {
  public:
   using SearchResult = std::vector<VertexWithDistance<DistanceResult>>;
+  using IteratorValueType = std::pair<Vector, VertexId>;
+  using Iterator = yb::PolymorphicIterator<IteratorValueType>;
 
   virtual ~VectorIndexReaderIf() = default;
-
   virtual DistanceResult Distance(const Vector& lhs, const Vector& rhs) const = 0;
   virtual SearchResult Search(const Vector& query_vector, size_t max_num_results) const = 0;
+
+  virtual std::unique_ptr<yb::AbstractIterator<IteratorValueType>> BeginImpl() const = 0;
+  virtual std::unique_ptr<yb::AbstractIterator<IteratorValueType>> EndImpl() const = 0;
   virtual std::string IndexStatsStr() const { return "N/A"; }
+
+  Iterator begin() const { return Iterator(BeginImpl()); }
+  Iterator end() const { return Iterator(EndImpl()); }
 };
 
 template<IndexableVectorType Vector>

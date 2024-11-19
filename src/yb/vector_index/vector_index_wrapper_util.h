@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include "yb/gutil/casts.h"
 #include "yb/vector_index/vector_index_if.h"
 
 #pragma once
@@ -62,6 +63,22 @@ class VectorIndexReaderAdapter
     return destination_results;
   }
 
+  using DestinationIteratorValueType = std::pair<DestinationVector, VertexId>;
+  using SourceIteratorValueType = std::pair<SourceVector, VertexId>;
+
+  std::unique_ptr<AbstractIterator<DestinationIteratorValueType>> BeginImpl()
+      const override {
+    PolymorphicIterator <SourceIteratorValueType> source_begin_iterator =
+        source_reader_.begin();
+    return std::make_unique<VectorIteratorAdapter>(std::move(source_begin_iterator));
+  }
+
+  std::unique_ptr<AbstractIterator<DestinationIteratorValueType>> EndImpl()
+      const override {
+    PolymorphicIterator<SourceIteratorValueType> source_end_iterator = source_reader_.end();
+    return std::make_unique<VectorIteratorAdapter>(std::move(source_end_iterator));
+  }
+
   DestinationDistanceResult Distance(
       const DestinationVector& lhs, const DestinationVector& rhs) const override {
     return static_cast<DestinationDistanceResult>(source_reader_.Distance(
@@ -75,7 +92,32 @@ class VectorIndexReaderAdapter
 
  private:
   const VectorIndexReaderIf<SourceVector, SourceDistanceResult>& source_reader_;
-};
 
+  class VectorIteratorAdapter
+      : public AbstractIterator<DestinationIteratorValueType> {
+   public:
+    VectorIteratorAdapter(
+        PolymorphicIterator<SourceIteratorValueType> source_iterator)
+        : source_iterator_(std::move(source_iterator)) {}
+
+   protected:
+    DestinationIteratorValueType Dereference() const override {
+      auto [source_vector_ptr, vertex_id] = *source_iterator_;
+      DestinationVector temp_casted_vector = vector_cast<DestinationVector>(source_vector_ptr);
+      return std::make_pair(temp_casted_vector, vertex_id);
+    }
+
+    void Next() override { ++source_iterator_; }
+
+    bool NotEquals(const AbstractIterator<DestinationIteratorValueType>& other)
+        const override {
+      const auto* other_adapter = down_cast<const VectorIteratorAdapter*>(&other);
+      return source_iterator_ != other_adapter->source_iterator_;
+    }
+
+   private:
+    PolymorphicIterator<SourceIteratorValueType> source_iterator_;
+  };
+};
 
 }  // namespace yb::vector_index
