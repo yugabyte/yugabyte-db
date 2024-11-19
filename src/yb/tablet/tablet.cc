@@ -1926,14 +1926,6 @@ Status Tablet::DoHandlePgsqlReadRequest(
       if (pgsql_read_request.index_request().has_vector_idx_options()) {
         vector_index_table_id = index_table_id;
       }
-    } else if (pgsql_read_request.has_vector_idx_options()) {
-      // TODO(vector_index) Temporary use index_doc_read_context to pass doc_read_context for
-      // indexed table. Should be changed when postgres will send all vector index queries in
-      // index_request.
-      if (table_info->index_info) {
-        index_table_id = table_info->index_info->indexed_table_id();
-        vector_index_table_id = table_info->table_id;
-      }
     }
     auto index_doc_read_context = !index_table_id.empty()
         ? VERIFY_RESULT(GetDocReadContext(index_table_id)) : nullptr;

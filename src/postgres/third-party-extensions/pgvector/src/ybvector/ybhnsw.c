@@ -46,7 +46,8 @@ PGDLLEXPORT PG_FUNCTION_INFO_V1(ybhnswhandler);
 Datum
 ybhnswhandler(PG_FUNCTION_ARGS)
 {
-	IndexAmRoutine *amroutine = makeBaseYbVectorHandler();
+	IndexAmRoutine *amroutine =
+		makeBaseYbVectorHandler(true /* is_copartitioned */);
 	amroutine->yb_ambindschema = ybhnswbindcolumnschema;
 
 	PG_RETURN_POINTER(amroutine);
