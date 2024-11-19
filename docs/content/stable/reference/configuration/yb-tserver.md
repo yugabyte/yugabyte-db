@@ -1790,6 +1790,24 @@ Default: 1024
 
 Default: true
 
+##### yb_read_from_followers
+
+Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/).
+
+Default: false
+
+##### yb_follower_read_staleness_ms
+
+Sets the maximum allowable staleness. Although the default is recommended, you can set the staleness to a shorter value. The tradeoff is the shorter the staleness, the more likely some reads may be redirected to the leader if the follower isn't sufficiently caught up. You shouldn't set `yb_follower_read_staleness_ms` to less than 2x the `raft_heartbeat_interval_ms` (which by default is 500 ms).
+
+Default: 30000 (30 seconds)
+
+##### default_transaction_read_only
+
+Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/#read-only-transaction).
+
+Default: false
+
 ##### default_transaction_isolation
 
 Specifies the default isolation level of each new transaction. Every transaction has an isolation level of `read uncommitted`, `read committed`, `repeatable read`, or `serializable`.
