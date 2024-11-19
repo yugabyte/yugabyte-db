@@ -27,10 +27,10 @@ var createK8sProviderCmd = &cobra.Command{
 	Example: `yba provider k8s create -n <provider-name> --type gke \
 	--pull-secret-file <pull-secret-file-path> \
 	--region region-name=us-west1 \
-	--zone zone-name=us-west1-b,region-name=us-west1,storage-class=<storage-class>,\
+	--zone zone-name=us-west1-b::region-name=us-west1::storage-class=<storage-class>::\
 	overrirdes-file-path=<overrirdes-file-path> \
-	--zone zone-name=us-west1-a,region-name=us-west1,storage-class=<storage-class> \
-	--zone zone-name=us-west1-c,region-name=us-west1,storage-class=<storage-class>`,
+	--zone zone-name=us-west1-a::region-name=us-west1::storage-class=<storage-class> \
+	--zone zone-name=us-west1-c::region-name=us-west1::storage-class=<storage-class>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -171,13 +171,13 @@ func init() {
 
 	createK8sProviderCmd.Flags().StringArray("region", []string{},
 		"[Required] Region associated with the Kubernetes provider. Minimum number of required "+
-			"regions = 1. Provide the following comma separated fields as key-value pairs:"+
-			"\"region-name=<region-name>,"+
-			"config-file-path=<path-for-the-kubernetes-region-config-file>,"+
-			"storage-class=<storage-class>,"+
-			"cert-manager-cluster-issuer=<cert-manager-cluster-issuer>,"+
-			"cert-manager-issuer=<cert-manager-issuer>,domain=<domain>,namespace=<namespace>,"+
-			"pod-address-template=<pod-address-template>,"+
+			"regions = 1. Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"region-name=<region-name>::"+
+			"config-file-path=<path-for-the-kubernetes-region-config-file>::"+
+			"storage-class=<storage-class>::"+
+			"cert-manager-cluster-issuer=<cert-manager-cluster-issuer>::"+
+			"cert-manager-issuer=<cert-manager-issuer>::domain=<domain>::namespace=<namespace>::"+
+			"pod-address-template=<pod-address-template>::"+
 			"overrides-file-path=<path-for-file-contanining-overrides>\". "+
 			formatter.Colorize("Region name is a required key-value.",
 				formatter.GreenColor)+
@@ -188,13 +188,13 @@ func init() {
 
 	createK8sProviderCmd.Flags().StringArray("zone", []string{},
 		"[Required] Zone associated to the Kubernetes Region defined. "+
-			"Provide the following comma separated fields as key-value pairs:"+
-			"\"zone-name=<zone-name>,region-name=<region-name>,"+
-			"config-file-path=<path-for-the-kubernetes-region-config-file>,"+
-			"storage-class=<storage-class>,"+
-			"cert-manager-cluster-issuer=<cert-manager-cluster-issuer>,"+
-			"cert-manager-issuer=<cert-manager-issuer>,domain=<domain>,namespace=<namespace>,"+
-			"pod-address-template=<pod-address-template>,"+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"zone-name=<zone-name>::region-name=<region-name>::"+
+			"config-file-path=<path-for-the-kubernetes-region-config-file>::"+
+			"storage-class=<storage-class>::"+
+			"cert-manager-cluster-issuer=<cert-manager-cluster-issuer>::"+
+			"cert-manager-issuer=<cert-manager-issuer>::domain=<domain>::namespace=<namespace>::"+
+			"pod-address-template=<pod-address-template>::"+
 			"overrides-file-path=<path-for-file-contanining-overrides>\". "+
 			formatter.Colorize("Zone name and Region name are required values. ",
 				formatter.GreenColor)+

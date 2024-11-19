@@ -366,7 +366,7 @@ func buildKeyspaceTables(keyspaces []string) (res []ybaclient.KeyspaceTable) {
 
 	for _, keyspaceString := range keyspaces {
 		keyspace := map[string]string{}
-		for _, keyspaceInfo := range strings.Split(keyspaceString, ";") {
+		for _, keyspaceInfo := range strings.Split(keyspaceString, util.Separator) {
 			kvp := strings.Split(keyspaceInfo, "=")
 			if len(kvp) != 2 {
 				logrus.Fatalln(
@@ -446,17 +446,17 @@ func init() {
 		"[Optional] Keyspace info to perform backup operation."+
 			"If no keyspace info is provided, then all the keyspaces of the table type "+
 			"specified are backed up. If the user wants to take backup of a subset of keyspaces, "+
-			"then the user has to specify the keyspace info. Provide the following semicolon "+
-			"separated fields as key value pairs, enclose the string with quotes: "+
-			"\"\"keyspace-name=<keyspace-name>;table-names=<table-name1>,<table-name2>,<table-name3>;"+
-			"table-ids=<table-id1>,<table-id2>,<table-id3>\"\". The table-names and table-ids "+
+			"then the user has to specify the keyspace info. Provide the following double colon (::) "+
+			"separated fields as key value pairs: "+
+			"\"keyspace-name=<keyspace-name>::table-names=<table-name1>,<table-name2>,<table-name3>::"+
+			"table-ids=<table-id1>,<table-id2>,<table-id3>\". The table-names and table-ids "+
 			"attributes have to be specified as comma separated values."+
 			formatter.Colorize("Keyspace name is required value. ", formatter.GreenColor)+
 			"Table names and Table ids are optional values and are needed only for YCQL."+
-			"Example: --keyspace-info \"keyspace-name=cassandra;table-names=table1,table2;"+
-			"table-ids=1e683b86-7858-44d1-a1f6-406f50a4e56e,19a34a5e-3a19-4070-9d79-805ed713ce7d\" "+
-			"--keyspace-info \"keyspace-name=cassandra2;table-names=table3,table4;"+
-			"table-ids=e5b83a7c-130c-40c0-95ff-ec1d9ecff616,bc92d473-2e10-4f76-8bd1-9ca9741890fd\"")
+			"Example: --keyspace-info keyspace-name=cassandra::table-names=table1,table2::"+
+			"table-ids=1e683b86-7858-44d1-a1f6-406f50a4e56e,19a34a5e-3a19-4070-9d79-805ed713ce7d "+
+			"--keyspace-info keyspace-name=cassandra2::table-names=table3,table4::"+
+			"table-ids=e5b83a7c-130c-40c0-95ff-ec1d9ecff616,bc92d473-2e10-4f76-8bd1-9ca9741890fd")
 	createBackupScheduleCmd.Flags().Bool("use-tablespaces", false,
 		"[Optional] Backup tablespaces information as part of the backup.")
 	createBackupScheduleCmd.Flags().String("category", "",

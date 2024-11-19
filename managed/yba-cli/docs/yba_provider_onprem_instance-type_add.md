@@ -15,14 +15,14 @@ yba provider onprem instance-type add [flags]
 ```
 yba provider onprem instance-type add \
 	--name <provider-name> --instance-type-name <instance-type>\
-	--volume mount-points="<mount-point>",size=<size>,type=<volume-type>
+	--volume mount-points=<mount-point>::size=<size>::type=<volume-type>
 ```
 
 ### Options
 
 ```
       --instance-type-name string   [Required] Instance type name.
-      --volume stringArray          [Required] Volumes associated per node of an instance type. Minimum number of required volumes = 1. Provide the following comma separated fields as key-value pairs:"type=<volume-type>,size=<volume-size>,mount-points="<quoted-comma-separated-mount-points>"". mount-points is a required key-value. Volume type (Defaults to SSD, Allowed values: EBS, SSD, HDD, NVME) and Volume size (Defaults to 100) are optional. Each volume needs to be added using a separate --volume flag.
+      --volume stringArray          [Required] Volumes associated per node of an instance type. Minimum number of required volumes = 1. Provide the following double colon (::) separated fields as key-value pairs: "type=<volume-type>::size=<volume-size>::mount-points=<comma-separated-mount-points>". Mount points is a required key-value. Volume type (Defaults to SSD, Allowed values: EBS, SSD, HDD, NVME) and Volume size (Defaults to 100) are optional. Each volume needs to be added using a separate --volume flag.
       --mem-size float              [Optional] Memory size of the node in GB. (default 8)
       --num-cores float             [Optional] Number of cores per node. (default 4)
       --tenancy string              [Optional] Tenancy of the nodes of this type. Allowed values (case sensitive): Shared, Dedicated, Host.
