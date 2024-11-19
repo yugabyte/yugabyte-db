@@ -973,25 +973,26 @@ class PgLibPqReadFromSysCatalogTest : public PgLibPqTest {
         "--TEST_get_ysql_catalog_version_from_sys_catalog=true");
   }
 
-  void ReadLatestCatalogVersion() {
-    auto conn = ASSERT_RESULT(Connect());
-    auto client = ASSERT_RESULT(cluster_->CreateClient());
+  Status ReadLatestCatalogVersion() {
+    auto conn = VERIFY_RESULT(Connect());
+    auto client = VERIFY_RESULT(cluster_->CreateClient());
 
     uint64_t ver_orig;
-    ASSERT_OK(client->GetYsqlCatalogMasterVersion(&ver_orig));
+    RETURN_NOT_OK(client->GetYsqlCatalogMasterVersion(&ver_orig));
     for (int i = 1; i <= FLAGS_num_iter; i++) {
       LOG(INFO) << "ITERATION " << i;
-      BumpCatalogVersion(1, &conn, i % 2 == 1 ? "NOSUPERUSER" : "SUPERUSER");
+      RETURN_NOT_OK(BumpCatalogVersion(1, &conn, i % 2 == 1 ? "NOSUPERUSER" : "SUPERUSER"));
       LOG(INFO) << "Fetching CatalogVersion. Expecting " << i + ver_orig;
       uint64_t ver;
-      ASSERT_OK(client->GetYsqlCatalogMasterVersion(&ver));
-      ASSERT_EQ(ver_orig + i, ver);
+      RETURN_NOT_OK(client->GetYsqlCatalogMasterVersion(&ver));
+      SCHECK_EQ(ver_orig + i, ver, IllegalState, "unexpected master catalog version");
     }
+    return Status::OK();
   }
 };
 
 TEST_F_EX(PgLibPqTest, StaleMasterReads, PgLibPqReadFromSysCatalogTest) {
-  ReadLatestCatalogVersion();
+  ASSERT_OK(ReadLatestCatalogVersion());
 }
 
 // A low max clock skew of 1.5ms is used to trigger the following scenario:
@@ -1008,7 +1009,7 @@ class PgLibPqLowClockSkewTest : public PgLibPqReadFromSysCatalogTest {
 };
 
 TEST_F_EX(PgLibPqTest, MasterRestartReadPastGlobalLimit, PgLibPqLowClockSkewTest) {
-  ReadLatestCatalogVersion();
+  ASSERT_OK(ReadLatestCatalogVersion());
 }
 
 TEST_F(PgLibPqTest, CompoundKeyColumnOrder) {
@@ -3957,7 +3958,7 @@ TEST_F(PgLibPqTest, CatalogCacheMemoryLeak) {
                "WHERE name = 'CacheMemoryContext'"s;
   string stable_result;
   for (int i = 0; i < 20; i++) {
-    BumpCatalogVersion(1, &conn1);
+    ASSERT_OK(BumpCatalogVersion(1, &conn1));
     // Wait for heartbeat to propagate the new catalog version to trigger
     // catalog cache refresh on conn2.
     SleepFor(2s);
