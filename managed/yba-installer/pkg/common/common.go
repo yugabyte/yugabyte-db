@@ -388,8 +388,9 @@ func extractPlatformSupportPackageAndYugabundle(vers string) {
 		GetInstallerSoftwareDir()+"/packages/yugabyte-"+vers)
 
 	if HasSudoAccess() {
-		userName := viper.GetString("service_username")
-		Chown(GetSoftwareRoot(), userName, userName, true)
+		if err := SetSoftwarePermissions(); err != nil {
+			log.Fatal("failed to set software permissions: " + err.Error())
+		}
 	}
 
 }

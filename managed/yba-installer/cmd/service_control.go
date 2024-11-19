@@ -44,7 +44,7 @@ var startCmd = &cobra.Command{
 			if preflight.ShouldFail(results) {
 				log.Fatal("preflight failed")
 			}
-			if err := common.Chown(common.GetDataRoot(), "yugabyte", "yugabyte", true); err != nil {
+			if err := common.SetDataPermissions(); err != nil {
 				log.Fatal("Failed to change ownership of data directory: " + err.Error())
 			}
 			log.Info("Initializing YBA before starting services")
@@ -74,6 +74,9 @@ var startCmd = &cobra.Command{
 
 		if err := common.CheckDataVersionFile(); err != nil {
 			log.Fatal("Failed to validate data version: " + err.Error())
+		}
+		if err := common.SetAllPermissions(); err != nil {
+			log.Fatal("error updating permissions for data and software directories: " + err.Error())
 		}
 		if len(args) == 1 {
 			if err := services[args[0]].Start(); err != nil {

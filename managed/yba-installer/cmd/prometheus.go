@@ -294,8 +294,9 @@ func (prom Prometheus) Upgrade() error {
 	//chown is not needed when we are operating under non-root, the user will already
 	//have the necessary access.
 	if common.HasSudoAccess() {
-		userName := viper.GetString("service_username")
-		common.Chown(common.GetSoftwareRoot()+"/prometheus", userName, userName, true)
+		if err := common.SetSoftwarePermissions(); err != nil {
+			return err
+		}
 	}
 
 	//Crontab based monitoring for non-root installs.
