@@ -49,7 +49,7 @@ Automatic master failover works as follows:
 
     You can configure the time to failover using the universe runtime configuration option `yb.auto_master_failover.master_follower_lag_hard_threshold`.
 
-1. During this time, you can investigate and potentially fix the problem.
+1. During this time, you can investigate and potentially fix the problem. Navigate to the universe **Nodes** tab to check the status of the nodes. You may need to replace or eliminate unresponsive nodes, or fix a lagging master process. Refer to the following sections.
 
     If you fix the problem, the warning is dismissed, and YugabyteDB Anywhere returns to monitoring the universe.
 
@@ -65,11 +65,13 @@ Automatic master failover works as follows:
 
     Note that master failover may not fix all the issues with the universe. Be sure to address other failed or unavailable nodes or other issues to bring your universe back to a healthy state.
 
+    For master failover, if the task fails, a retry is made automatically. The retry limit for failover tasks is set by the universe runtime configuration option `yb.auto_master_failover.max_task_retries`.
+
 1. After starting up a new master on a different node in the same availability zone as the failed master, YugabyteDB Anywhere waits for you to recover any failed VMs, including the failed master VM, so that it can update the master address configuration on those VMs. Follow the steps in [Replace a live or unreachable node](#replace-a-live-or-unreachable-node).
 
     You can set the delay for post automatic master failover using the universe runtime configuration option `yb.auto_master_failover.sync_master_addrs_task_delay`. The reference start time is calculated from the time that YugabyteDB Anywhere finds that all processes are running fine on all the VMs.
 
-For master failover, if the task fails, a retry is made automatically. The retry limit is set by the universe runtime configuration option `yb.auto_master_failover.max_task_retries`. Post failover, there is no retry limit as it is a critical operation.
+    Post failover, there is no retry limit as it is a critical operation.
 
 ## Replace a live or unreachable node
 
