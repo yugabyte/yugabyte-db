@@ -3799,9 +3799,6 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
   SCHECK(
       stream_entry, NotFound,
       Format("Missing replication group $0, stream $1", replication_group_id, stream_id));
-  auto schema_cached = stream_entry->mutable_producer_schema();
-  // Clear out any cached schema version
-  schema_cached->Clear();
 
   cdc::SchemaVersionsPB* schema_versions_pb = nullptr;
   bool schema_versions_updated = false;

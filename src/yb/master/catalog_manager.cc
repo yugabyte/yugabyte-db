@@ -7320,10 +7320,6 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     SchemaToPB(new_schema, table_pb.mutable_schema());
   }
 
-  // If we're waiting for a Schema because we saw the a replication source with a change,
-  // ensure this alter is compatible with what we're expecting.
-  RETURN_NOT_OK(xcluster_manager_->ValidateNewSchema(*table, new_schema));
-
   // Only increment the version number if it is a schema change (AddTable change goes through a
   // different path and it's not processed here).
   if (!req->has_wal_retention_secs()) {
@@ -10635,8 +10631,6 @@ Status CatalogManager::HandleTabletSchemaVersionReport(
 
   // Clean up any DDL verification state that is waiting for this Alter to complete.
   RemoveDdlTransactionState(table->id(), table->EraseDdlTxnsWaitingForSchemaVersion(version));
-
-  RETURN_NOT_OK(xcluster_manager_->HandleTabletSchemaVersionReport(*table, version, epoch));
 
   return MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(this, table, version, epoch);
 }

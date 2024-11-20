@@ -749,11 +749,6 @@ Status XClusterManager::HandleTabletSplit(
   return XClusterTargetManager::HandleTabletSplit(consumer_table_id, split_tablet_ids, epoch);
 }
 
-Status XClusterManager::ValidateNewSchema(
-    const TableInfo& table_info, const Schema& consumer_schema) const {
-  return XClusterTargetManager::ValidateNewSchema(table_info, consumer_schema);
-}
-
 Status XClusterManager::ValidateSplitCandidateTable(const TableId& table_id) const {
   if (!FLAGS_enable_tablet_split_of_xcluster_replicated_tables && IsTableReplicated(table_id)) {
     return STATUS_FORMAT(
@@ -765,12 +760,6 @@ Status XClusterManager::ValidateSplitCandidateTable(const TableId& table_id) con
   RETURN_NOT_OK(XClusterSourceManager::ValidateSplitCandidateTable(table_id));
 
   return Status::OK();
-}
-
-Status XClusterManager::HandleTabletSchemaVersionReport(
-    const TableInfo& table_info, SchemaVersion consumer_schema_version, const LeaderEpoch& epoch) {
-  return XClusterTargetManager::ResumeStreamsAfterNewSchema(
-      table_info, consumer_schema_version, epoch);
 }
 
 Status XClusterManager::SetupUniverseReplication(

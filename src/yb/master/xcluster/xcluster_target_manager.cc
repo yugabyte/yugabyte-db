@@ -41,9 +41,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 
-DEFINE_RUNTIME_bool(xcluster_wait_on_ddl_alter, true,
-    "When xCluster replication sends a DDL change, wait for the user to enter a "
-    "compatible/matching entry.  Note: Can also set at runtime to resume after stall.");
+DEPRECATE_FLAG(bool, xcluster_wait_on_ddl_alter, "11_2024");
 
 DEFINE_RUNTIME_uint32(add_new_index_to_bidirectional_xcluster_timeout_secs, 10 * 60,
     "Time in seconds within which index must be created on other universe when the indexed table "
@@ -339,9 +337,6 @@ void XClusterTargetManager::RunBgTasks(const LeaderEpoch& epoch) {
       "Failed to remove dropped tables from consumer replication groups");
 
   WARN_NOT_OK(RefreshLocalAutoFlagConfig(epoch), "Failed refreshing local AutoFlags config");
-
-  WARN_NOT_OK(
-      ProcessPendingSchemaChanges(epoch), "Failed processing xCluster Pending Schema Changes");
 }
 
 Status XClusterTargetManager::RemoveDroppedTablesFromReplication(const LeaderEpoch& epoch) {
@@ -978,161 +973,6 @@ Status XClusterTargetManager::HandleTabletSplit(
   l.Commit();
 
   CreateXClusterSafeTimeTableAndStartService();
-
-  return Status::OK();
-}
-
-Status XClusterTargetManager::ValidateNewSchema(
-    const TableInfo& table_info, const Schema& consumer_schema) const {
-  if (!FLAGS_xcluster_wait_on_ddl_alter) {
-    return Status::OK();
-  }
-
-  // Check if this table is consuming a stream.
-  auto stream_ids = GetStreamIdsForTable(table_info.id());
-  if (stream_ids.empty()) {
-    return Status::OK();
-  }
-
-  auto cluster_config = catalog_manager_.ClusterConfig();
-  auto l = cluster_config->LockForRead();
-  for (const auto& [replication_group_id, stream_id] : stream_ids) {
-    // Fetch the stream entry to get Schema information.
-    auto& replication_group_map = l.data().pb.consumer_registry().producer_map();
-    auto producer_entry = FindOrNull(replication_group_map, replication_group_id.ToString());
-    SCHECK(producer_entry, NotFound, Format("Missing universe $0", replication_group_id));
-    auto stream_entry = FindOrNull(producer_entry->stream_map(), stream_id.ToString());
-    SCHECK(stream_entry, NotFound, Format("Missing stream $0:$1", replication_group_id, stream_id));
-
-    // If we are halted on a Schema update as a Consumer...
-    auto& producer_schema_pb = stream_entry->producer_schema();
-    if (producer_schema_pb.has_pending_schema()) {
-      // Compare our new schema to the Producer's pending schema.
-      Schema producer_schema;
-      RETURN_NOT_OK(SchemaFromPB(producer_schema_pb.pending_schema(), &producer_schema));
-
-      // This new schema should allow us to consume data for the Producer's next schema.
-      // If we instead diverge, we will be unable to consume any more of the Producer's data.
-      bool can_apply = consumer_schema.EquivalentForDataCopy(producer_schema);
-      SCHECK(
-          can_apply, IllegalState,
-          Format(
-              "New Schema not compatible with XCluster Producer Schema:\n new={$0}\n producer={$1}",
-              consumer_schema.ToString(), producer_schema.ToString()));
-    }
-  }
-
-  return Status::OK();
-}
-
-Status XClusterTargetManager::ResumeStreamsAfterNewSchema(
-    const TableInfo& table_info, SchemaVersion consumer_schema_version, const LeaderEpoch& epoch) {
-  if (!FLAGS_xcluster_wait_on_ddl_alter) {
-    return Status::OK();
-  }
-
-  // With Replication Enabled, verify that we've finished applying the New Schema.
-  // If we're waiting for a Schema because we saw the a replication source with a change,
-  // resume replication now that the alter is complete.
-
-  auto stream_ids = GetStreamIdsForTable(table_info.id());
-  if (stream_ids.empty()) {
-    return Status::OK();
-  }
-
-  bool found_schema = false, resuming_replication = false;
-
-  // Now that we've applied the new schema: find pending replication, clear state, resume.
-  auto cluster_config = catalog_manager_.ClusterConfig();
-  auto l = cluster_config->LockForWrite();
-  for (const auto& [replication_group_id, stream_id] : stream_ids) {
-    // Fetch the stream entry to get Schema information.
-    auto replication_group_map =
-        l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
-    auto producer_entry = FindOrNull(*replication_group_map, replication_group_id.ToString());
-    if (!producer_entry) {
-      continue;
-    }
-    auto stream_entry = FindOrNull(*producer_entry->mutable_stream_map(), stream_id.ToString());
-    if (!stream_entry) {
-      continue;
-    }
-
-    auto producer_schema_pb = stream_entry->mutable_producer_schema();
-    if (producer_schema_pb->has_pending_schema()) {
-      found_schema = true;
-      Schema consumer_schema, producer_schema;
-      RETURN_NOT_OK(table_info.GetSchema(&consumer_schema));
-      RETURN_NOT_OK(SchemaFromPB(producer_schema_pb->pending_schema(), &producer_schema));
-      if (consumer_schema.EquivalentForDataCopy(producer_schema)) {
-        resuming_replication = true;
-        auto pending_version = producer_schema_pb->pending_schema_version();
-        LOG(INFO) << "Consumer schema @ version " << consumer_schema_version
-                  << " is now data copy compatible with Producer: " << stream_id
-                  << " @ schema version " << pending_version;
-        // Clear meta we use to track progress on receiving all WAL entries with old schema.
-        producer_schema_pb->set_validated_schema_version(
-            std::max(producer_schema_pb->validated_schema_version(), pending_version));
-        producer_schema_pb->set_last_compatible_consumer_schema_version(consumer_schema_version);
-        producer_schema_pb->clear_pending_schema();
-        // Bump the ClusterConfig version so we'll broadcast new schema version & resume operation.
-        l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
-      } else {
-        LOG(INFO) << "Consumer schema not compatible for data copy of next Producer schema.";
-      }
-    }
-  }
-
-  if (resuming_replication) {
-    RETURN_NOT_OK_PREPEND(
-        sys_catalog_.Upsert(epoch, cluster_config.get()), "Failed updating cluster config");
-    l.Commit();
-    LOG(INFO) << "Resuming Replication on " << table_info.id() << " after Consumer ALTER.";
-  } else if (!found_schema) {
-    LOG(INFO) << "No pending schema change from Producer.";
-  }
-
-  return Status::OK();
-}
-
-Status XClusterTargetManager::ProcessPendingSchemaChanges(const LeaderEpoch& epoch) {
-  if (!GetAtomicFlag(&FLAGS_xcluster_wait_on_ddl_alter)) {
-    // See if any Streams are waiting on a pending_schema.
-    bool found_pending_schema = false;
-    auto cluster_config = catalog_manager_.ClusterConfig();
-    auto cl = cluster_config->LockForWrite();
-    auto replication_group_map =
-        cl.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
-    // For each user entry.
-    for (auto& replication_group_id_and_entry : *replication_group_map) {
-      // For each CDC stream in that Universe.
-      for (auto& stream_id_and_entry :
-           *replication_group_id_and_entry.second.mutable_stream_map()) {
-        auto& stream_entry = stream_id_and_entry.second;
-        if (stream_entry.has_producer_schema() &&
-            stream_entry.producer_schema().has_pending_schema()) {
-          // Force resume this stream.
-          auto schema = stream_entry.mutable_producer_schema();
-          schema->set_validated_schema_version(
-              std::max(schema->validated_schema_version(), schema->pending_schema_version()));
-          schema->clear_pending_schema();
-
-          found_pending_schema = true;
-          LOG(INFO) << "Force Resume Consumer schema: " << stream_id_and_entry.first
-                    << " @ schema version " << schema->pending_schema_version();
-        }
-      }
-    }
-
-    if (found_pending_schema) {
-      // Bump the ClusterConfig version so we'll broadcast new schema version & resume operation.
-      cl.mutable_data()->pb.set_version(cl.mutable_data()->pb.version() + 1);
-      RETURN_NOT_OK_PREPEND(
-          sys_catalog_.Upsert(epoch.leader_term, cluster_config.get()),
-          "Failed updating cluster config");
-      cl.Commit();
-    }
-  }
 
   return Status::OK();
 }

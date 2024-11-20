@@ -114,9 +114,8 @@ XClusterPoller::XClusterPoller(
     std::shared_ptr<const AutoFlagsCompatibleVersion> auto_flags_version, ThreadPool* thread_pool,
     rpc::Rpcs* rpcs, client::YBClient& local_client,
     const std::shared_ptr<client::XClusterRemoteClientHolder>& source_client,
-    XClusterConsumer* xcluster_consumer, SchemaVersion last_compatible_consumer_schema_version,
-    int64_t leader_term, std::function<int64_t(const TabletId&)> get_leader_term,
-    bool is_automatic_mode)
+    XClusterConsumer* xcluster_consumer, int64_t leader_term,
+    std::function<int64_t(const TabletId&)> get_leader_term, bool is_automatic_mode)
     : XClusterAsyncExecutor(thread_pool, local_client.messenger(), rpcs),
       producer_tablet_info_(producer_tablet_info),
       consumer_tablet_info_(consumer_tablet_info),
@@ -127,8 +126,6 @@ XClusterPoller::XClusterPoller(
       auto_flags_version_(std::move(auto_flags_version)),
       is_automatic_mode_(is_automatic_mode),
       op_id_(consensus::MinimumOpId()),
-      validated_schema_version_(0),
-      last_compatible_consumer_schema_version_(last_compatible_consumer_schema_version),
       get_leader_term_(std::move(get_leader_term)),
       local_client_(local_client),
       source_client_(source_client),
@@ -236,39 +233,6 @@ void XClusterPoller::UpdateColocatedSchemaVersionMap(
       LOG_WITH_PREFIX(INFO) << Format(
           "ColocationId:$0 Producer Schema Version:$1, Consumer Schema Version:$2", colocation_id,
           producer_schema_version, consumer_schema_version);
-    }
-  }
-}
-
-void XClusterPoller::ScheduleSetSchemaVersionIfNeeded(
-    SchemaVersion cur_version, SchemaVersion last_compatible_consumer_schema_version) {
-  RETURN_WHEN_OFFLINE;
-
-  if (last_compatible_consumer_schema_version_ < last_compatible_consumer_schema_version ||
-      validated_schema_version_ < cur_version) {
-    ScheduleFunc(BIND_FUNCTION_AND_ARGS(
-        XClusterPoller::DoSetSchemaVersion, cur_version, last_compatible_consumer_schema_version));
-  }
-}
-
-void XClusterPoller::DoSetSchemaVersion(
-    SchemaVersion cur_version, SchemaVersion current_consumer_schema_version) {
-  ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
-
-  if (last_compatible_consumer_schema_version_ < current_consumer_schema_version) {
-    last_compatible_consumer_schema_version_ = current_consumer_schema_version;
-  }
-
-  if (validated_schema_version_ < cur_version) {
-    validated_schema_version_ = cur_version;
-    // Re-enable polling. last_task_schedule_time_ is already current as it was set by the caller
-    // function ScheduleSetSchemaVersionIfNeeded.
-    if (!is_polling_.exchange(true)) {
-      LOG_WITH_PREFIX(INFO) << "Restarting polling on " << producer_tablet_info_.tablet_id
-                            << " Producer schema version : " << validated_schema_version_
-                            << " Consumer schema version : "
-                            << last_compatible_consumer_schema_version_;
-      ScheduleFunc(BIND_FUNCTION_AND_ARGS(XClusterPoller::DoPoll));
     }
   }
 }
@@ -398,7 +362,6 @@ void XClusterPoller::DoPoll() {
 
 void XClusterPoller::UpdateSchemaVersionsForApply() {
   SharedLock lock(schema_version_lock_);
-  output_client_->SetLastCompatibleConsumerSchemaVersion(last_compatible_consumer_schema_version_);
   output_client_->UpdateSchemaVersionMappings(schema_version_map_, colocated_schema_version_map_);
 }
 
@@ -568,16 +531,6 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse res
 
     idle_polls_ = (response.processed_record_count == 0) ? idle_polls_ + 1 : 0;
 
-    if (validated_schema_version_ < response.wait_for_version) {
-      LOG_WITH_PREFIX(WARNING) << "Pausing Poller since producer schema version "
-                               << response.wait_for_version
-                               << " is higher than consumer schema version "
-                               << validated_schema_version_;
-      is_polling_ = false;
-      validated_schema_version_ = response.wait_for_version - 1;
-      return;
-    }
-
     if (response.get_changes_response->has_safe_hybrid_time()) {
       // Once all changes have been successfully applied we can update the safe time.
       UpdateSafeTime(response.get_changes_response->safe_hybrid_time());
@@ -635,23 +588,17 @@ bool XClusterPoller::IsLeaderTermValid() {
 }
 
 bool XClusterPoller::IsStuck() const {
-  if (is_polling_) {
-    const auto lag = MonoTime::Now() - last_task_schedule_time_;
-    if (lag > 1s * GetAtomicFlag(&FLAGS_xcluster_poller_task_delay_considered_stuck_secs)) {
-      LOG_WITH_PREFIX(ERROR) << "XCluster Poller has not executed any tasks for " << lag.ToString();
-      return true;
-    }
+  const auto lag = MonoTime::Now() - last_task_schedule_time_;
+  if (lag > 1s * GetAtomicFlag(&FLAGS_xcluster_poller_task_delay_considered_stuck_secs)) {
+    LOG_WITH_PREFIX(ERROR) << "XCluster Poller has not executed any tasks for " << lag.ToString();
+    return true;
   }
-
   return false;
 }
 
 std::string XClusterPoller::State() const {
   if (is_failed_) {
     return "Failed";
-  }
-  if (!is_polling_) {
-    return "Paused";
   }
 
   return "Running";
