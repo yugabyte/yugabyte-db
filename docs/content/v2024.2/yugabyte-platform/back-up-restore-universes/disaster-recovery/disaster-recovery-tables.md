@@ -52,7 +52,7 @@ Add tables to DR in the following sequence:
 
 1. Create the table on the DR primary (if it doesn't already exist).
 1. Create the table on the DR replica.
-1. Navigate to your DR primary and select **xCluster Disaster Recovery**.
+1. Navigate to your DR primary universe **xCluster Disaster Recovery** tab and select the replication configuration.
 1. Click **Actions** and choose **Select Databases and Tables**.
 1. Select the tables and click **Validate Selection**.
 1. If data needs to be copied, click **Next: Confirm Full Copy**.
@@ -74,7 +74,7 @@ When dropping a table, remove the table from DR before dropping the table in the
 
 Remove tables from DR in the following sequence:
 
-1. Navigate to your DR primary and select **xCluster Disaster Recovery**.
+1. Navigate to your DR primary universe **xCluster Disaster Recovery** tab and select the replication configuration.
 1. Click **Actions** and choose **Select Databases and Tables**.
 1. Deselect the tables and click **Validate Selection**.
 1. Click **Apply Changes**.
@@ -157,5 +157,5 @@ To remove a table partition from DR, follow the same steps as [Remove a table fr
 
 To ensure changes made outside of YugabyteDB Anywhere are reflected in YugabyteDB Anywhere, you need to reconcile the configuration as follows:
 
-1. In YugabyteDB Anywhere, navigate to your DR primary and select **xCluster Disaster Recovery**.
+1. Navigate to your DR primary universe **xCluster Disaster Recovery** tab and select the replication configuration.
 1. Click **Actions > Advanced** and choose **Reconcile Config with Database**.
