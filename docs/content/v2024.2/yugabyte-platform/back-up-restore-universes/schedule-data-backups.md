@@ -62,7 +62,34 @@ Subsequent backups are created based on the value you specified for **Set backup
 
 ## Create a scheduled backup policy with PITR
 
-Creating a scheduled backup policy with PITR is currently {{<tags/feature/ea>}}. To enable the feature in YugabyteDB Anywhere, set the feature flag `enableBackupPITR`.
+Creating a scheduled backup policy with PITR is currently {{<tags/feature/ea>}}.
+
+To create the scheduled backup policy with PITR support, you can set the `enablePointInTimeRestore` attribute to true via an API request as follows:
+
+```shell
+curl 'http://<platform-url>/api/v1/customers/:cUUID/create_backup_schedule_async' \
+  -d '{
+    "backupType": "YQL_TABLE_TYPE",
+    "customerUUID": "f33e3c9b-75ab-4c30-80ad-cba85646ea39",
+    "sse": true,
+    "storageConfigUUID": "20946d96-978f-4577-ae28-c156eebb6aad",
+    "universeUUID": "816ecdcd-8031-4a41-ad62-f49d8a2aa6dc",
+    "tableByTableBackup": false,
+    "useTablespaces": true,
+    "keyspaceTableList": [],
+    "timeBeforeDelete": 86400000,
+    "expiryTimeUnit": "DAYS",
+    "scheduleName": "PIT-test-ycql-2",
+    "schedulingFrequency": 86400000,
+    "frequencyTimeUnit": "DAYS",
+    "incrementalBackupFrequencyTimeUnit": "MINUTES",
+    "incrementalBackupFrequency": 900000,
+    "enablePointInTimeRestore": true
+  }'
+```
+
+<!--
+Steps to create the sceduled backup policy via the UI when the runtime config flag is available in 2024.2.1.0
 
 Before scheduling a backup of your universe data, create a policy, as follows:
 
@@ -74,7 +101,7 @@ Before scheduling a backup of your universe data, create a policy, as follows:
 
 1. Provide the backup policy name and select the storage configuration. For more information, see [Configure backup storage](../configure-backup-storage/). When finished, click **Next**.
 
-    <!-- 1. Select the Keyspaces/Databases you want to backup, either **All Databases** for YSQL or, **All Keyspaces** for YCQL. -->
+1. Select the Keyspaces/Databases you want to backup, either **All Databases** for YSQL or, **All Keyspaces** for YCQL.
 
 1. Select the Keyspaces/Databases you want to backup, either YSQL or YCQL. You can choose to backup either all databases/keyspaces, or a single database/keyspace.
 
@@ -110,7 +137,7 @@ You can edit a scheduled backup policy as follows:
 1. Select the **Backups** tab and then select **Scheduled Backup Policies**.
 1. For your scheduled backup, click **Actions > Edit Policy**.
 
-    ![Edit Scheduled Backup policy](/images/yp/edit-schedule-backup-policy.png)
+    ![Edit Scheduled Backup policy](/images/yp/edit-schedule-backup-policy.png) -->
 
 ## Disable backups
 
