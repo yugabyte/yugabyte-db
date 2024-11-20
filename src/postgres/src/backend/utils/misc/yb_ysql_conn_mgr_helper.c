@@ -137,7 +137,7 @@ struct shmem_session_parameter
 	char value[SHMEM_MAX_STRING_LEN];
 };
 
-/* 
+/*
  * List (linked list) of changed session parameters for the current transaction.
  */
 struct changed_session_parameters_list
@@ -179,7 +179,7 @@ YbAddToChangedSessionParametersList(const char *session_parameter_name)
 	if (session_parameter_name == NULL || yb_logical_client_shmem_key == -1)
 		return;
 
-	/* 
+	/*
 	 * Length of `session_parameter_name` should be less than
 	 * SHMEM_MAX_STRING_LEN.
 	 */
@@ -611,7 +611,7 @@ YbHandleSetSessionParam(int yb_client_id)
 	/* This feature is only for Ysql Connection Manager */
 	Assert(yb_is_client_ysqlconnmgr);
 
-	/* 
+	/*
 	 * Create shared memory segment for the client is handled during the
 	 * authentication.
 	 */
@@ -691,7 +691,7 @@ SetLogicalClientUserDetailsIfValid(const char *rolename, bool *is_superuser,
 	* conn mgr to yb/database.
 	* CountUserBackends: Function returns total number of backend connections made by given
 	* user(roleid). It will be sum of physical connections from connection manager and direct
-	* connections to yb/database. 
+	* connections to yb/database.
 	*/
 
 	uint32_t yb_num_logical_conn = 0,
@@ -708,7 +708,7 @@ SetLogicalClientUserDetailsIfValid(const char *rolename, bool *is_superuser,
 		if (YbIsYsqlConnMgrWarmupModeEnabled())
 			yb_net_client_connections = yb_num_logical_conn;
 	}
-	
+
 	if (rform->rolconnlimit >= 0 &&
 			!rform->rolsuper &&
 			yb_net_client_connections + 1 > rform->rolconnlimit)
@@ -771,7 +771,7 @@ YbSendDatabaseOidAndSetupSharedMemory(Oid database_oid, Oid user, bool is_superu
 		1;
 	#endif
 	if (new_client_id > 0)
-		ereport(WARNING, (errhint("shmkey=%d", new_client_id)));
+		ereport(NOTICE, (errhint("shmkey=%d", new_client_id)));
 	else
 		ereport(FATAL, (errmsg("Unable to create the shared memory block")));
 }
@@ -961,7 +961,7 @@ YbGetNumYsqlConnMgrConnections(const char *db_name, const char *user_name,
 	return true;
 }
 
-/* 
+/*
  * Create a provision to send a ParameterStatus packet back to Connection Manager to
  * change the cached value of a certain GUC variable, outside of the usual
  * ReportGucOption function. This can be useful for some implicit changes to
