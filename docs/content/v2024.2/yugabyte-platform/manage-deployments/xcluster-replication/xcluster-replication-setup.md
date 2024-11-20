@@ -295,6 +295,8 @@ When [upgrading universes](../../../manage-deployments/upgrade-software-install/
 
 If you upgrade and finalize the source universe first, replication may be paused automatically until both universes are finalized to the same software version.
 
+If you have bidirectional xCluster replication, then you should upgrade and finalize both clusters at the same time. Perform the upgrade steps for each cluster individually and monitor both of them. If you encounter any issues, roll back both clusters. If everything appears to be in good condition, finalize both clusters with as little delay as possible.
+
 ### Rotating CA certificates
 
 If you [rotate the CA certificate](../../../security/enable-encryption-in-transit/rotate-certificates/) on the source universe, you need to restart the replication so that the target nodes get the new root certificate for TLS verifications.
