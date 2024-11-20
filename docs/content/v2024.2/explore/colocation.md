@@ -468,7 +468,9 @@ You can back up and restore a database with colocated tables and tablespaces in 
       (10 rows)
       ```
 
-      Same `Group Name` indicates the colocated entities, and each tablegroup belongs to a different tablespace, as evident from the `grptablespace` column from the following table.
+      The Group Name column shows which entities are colocated.
+
+       Each tablegroup belongs to a different tablespace, as shown in the grptablespace column in the following table.
 
       ```sql
       SELECT * FROM pg_yb_tablegroup;
@@ -484,7 +486,7 @@ You can back up and restore a database with colocated tables and tablespaces in 
       (4 rows)
       ```
 
-      The same information after backup or restore without the `--use_tablespaces` option would look like the following:
+      The same information after backup or restore without the `--use_tablespaces` option looks like the following:
 
       ```sql
       \dgrt
@@ -507,7 +509,7 @@ You can back up and restore a database with colocated tables and tablespaces in 
       (10 rows)
       ```
 
-      As evident from the above table, the colocation property is still maintained after the backup or restore. But all these tables now reside in the same tablespace which is the default one, as per the following table:
+      The colocation property is still maintained after the backup or restore. But all the tables now reside in the same tablespace (the default one):
 
       ```sql
       SELECT * FROM pg_yb_tablegroup;
