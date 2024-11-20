@@ -152,7 +152,7 @@ class PgIndexBackfillTest : public LibPqTestBase {
   void TestRetainDeleteMarkersRecovery(const std::string& db_name, bool use_multiple_requests);
   Status TestInsertsWhileCreatingIndex(bool expect_missing_row);
 
-  const int kTabletsPerServer = 8;
+  const int kTabletsPerServer = RegularBuildVsSanitizers(8, 2);
 
   std::unique_ptr<PGConn> conn_;
   TestThreadHolder thread_holder_;
@@ -200,7 +200,7 @@ class PgIndexBackfillTest : public LibPqTestBase {
           SCHECK_EQ(values.size(), 1, IllegalState, "unexpected number of rows");
           return values[0] == expected;
         },
-        30s,
+        30s * kTimeMultiplier,
         Format("Wait on index progress columns $0", columns));
   }
 
