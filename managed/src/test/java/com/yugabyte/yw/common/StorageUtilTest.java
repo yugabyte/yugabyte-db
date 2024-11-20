@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import junitparams.JUnitParamsRunner;
@@ -28,6 +29,7 @@ import play.libs.Json;
 public class StorageUtilTest extends FakeDBApplication {
 
   Customer testCustomer;
+  Universe testUniverse;
   CustomerConfig s3ConfigWithSlash, s3ConfigWithoutSlash, nfsConfigWithoutSlash, nfsConfigWithSlash;
   JsonNode s3FormDataWithSlash =
       Json.parse(
@@ -70,11 +72,12 @@ public class StorageUtilTest extends FakeDBApplication {
     when(mockStorageUtilFactory.getStorageUtil(eq("S3"))).thenReturn(mockAWSUtil);
     when(mockStorageUtilFactory.getStorageUtil(eq("AZ"))).thenReturn(mockAZUtil);
     when(mockStorageUtilFactory.getStorageUtil(eq("GCS"))).thenReturn(mockGCPUtil);
-    when(mockAWSUtil.createRestoreCloudStoreSpec(anyString(), anyString(), any(), anyBoolean()))
+    when(mockAWSUtil.createRestoreCloudStoreSpec(
+            anyString(), anyString(), any(), anyBoolean(), any()))
         .thenCallRealMethod();
     when(mockAWSUtil.getRegionLocationsMap(any())).thenCallRealMethod();
     when(mockNfsUtil.getRegionLocationsMap(any())).thenCallRealMethod();
-    when(mockAWSUtil.createDsmCloudStoreSpec(anyString(), any())).thenCallRealMethod();
+    when(mockAWSUtil.createDsmCloudStoreSpec(anyString(), any(), any())).thenCallRealMethod();
     when(mockAWSUtil.getCloudLocationInfo(nullable(String.class), any(), nullable(String.class)))
         .thenCallRealMethod();
     when(mockAWSUtil.getBucketRegion(anyString(), any(), anyString())).thenReturn("reg-1");
@@ -84,9 +87,10 @@ public class StorageUtilTest extends FakeDBApplication {
         .when(mockNfsUtil)
         .checkStoragePrefixValidity(
             any(), nullable(String.class), nullable(String.class), anyBoolean());
-    when(mockNfsUtil.createRestoreCloudStoreSpec(anyString(), anyString(), any(), anyBoolean()))
+    when(mockNfsUtil.createRestoreCloudStoreSpec(
+            anyString(), anyString(), any(), anyBoolean(), any()))
         .thenCallRealMethod();
-    when(mockNfsUtil.createDsmCloudStoreSpec(anyString(), any())).thenCallRealMethod();
+    when(mockNfsUtil.createDsmCloudStoreSpec(anyString(), any(), any())).thenCallRealMethod();
     doCallRealMethod().when(mockAWSUtil).checkConfigTypeAndBackupLocationSame(anyString());
     doCallRealMethod().when(mockGCPUtil).checkConfigTypeAndBackupLocationSame(anyString());
     doCallRealMethod().when(mockAZUtil).checkConfigTypeAndBackupLocationSame(anyString());
@@ -232,33 +236,34 @@ public class StorageUtilTest extends FakeDBApplication {
   }
 
   private CloudStoreSpec createDsmSpec(
-      String cloudType, String storageLocation, CustomerConfigData configData) {
+      String cloudType, String storageLocation, CustomerConfigData configData, Universe universe) {
     return mockStorageUtilFactory
         .getStorageUtil(cloudType)
-        .createDsmCloudStoreSpec(storageLocation, configData);
+        .createDsmCloudStoreSpec(storageLocation, configData, universe);
   }
 
   private CloudStoreSpec createRestoreSpec(
-      String cloudType, String cloudDir, CustomerConfigData configData) {
+      String cloudType, String cloudDir, CustomerConfigData configData, Universe universe) {
     return mockStorageUtilFactory
         .getStorageUtil(cloudType)
         .createRestoreCloudStoreSpec(
-            YbcBackupUtil.DEFAULT_REGION_STRING, cloudDir, configData, false);
+            YbcBackupUtil.DEFAULT_REGION_STRING, cloudDir, configData, false, universe);
   }
 
   @Test
   public void testCreateRestoreCloudStoreSpecS3Dsm() {
+    testUniverse = ModelFactory.createUniverse(testCustomer.getId());
     String storageLocation =
         "s3://test/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar";
 
     CloudStoreSpec s3SpecSlash =
-        createDsmSpec("S3", storageLocation, s3ConfigWithSlash.getDataObject());
+        createDsmSpec("S3", storageLocation, s3ConfigWithSlash.getDataObject(), testUniverse);
     assertEquals("test", s3SpecSlash.getBucket());
     assertEquals(
         "univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar/", s3SpecSlash.getCloudDir());
 
     CloudStoreSpec s3SpecNoSlash =
-        createDsmSpec("S3", storageLocation, s3ConfigWithoutSlash.getDataObject());
+        createDsmSpec("S3", storageLocation, s3ConfigWithoutSlash.getDataObject(), testUniverse);
     assertEquals("test", s3SpecNoSlash.getBucket());
     assertEquals(
         "univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar/",
@@ -267,15 +272,16 @@ public class StorageUtilTest extends FakeDBApplication {
 
   @Test
   public void testCreateRestoreCloudStoreSpecS3Restore() {
+    testUniverse = ModelFactory.createUniverse(testCustomer.getId());
     String cloudDir = "univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar/";
     CloudStoreSpec s3SpecSlash =
-        createRestoreSpec("S3", cloudDir, s3ConfigWithSlash.getDataObject());
+        createRestoreSpec("S3", cloudDir, s3ConfigWithSlash.getDataObject(), testUniverse);
     assertEquals("test", s3SpecSlash.getBucket());
     assertEquals(
         "univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar/", s3SpecSlash.getCloudDir());
 
     CloudStoreSpec s3SpecNoSlash =
-        createRestoreSpec("S3", cloudDir, s3ConfigWithoutSlash.getDataObject());
+        createRestoreSpec("S3", cloudDir, s3ConfigWithoutSlash.getDataObject(), testUniverse);
     assertEquals("test", s3SpecNoSlash.getBucket());
     assertEquals(
         "univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar/",
@@ -284,10 +290,11 @@ public class StorageUtilTest extends FakeDBApplication {
 
   @Test
   public void testCreateRestoreCloudStoreSpecNFSDsmWithoutSlash() {
+    testUniverse = ModelFactory.createUniverse(testCustomer.getId());
     String storageLocation =
         "/tmp/nfs/yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar";
     CloudStoreSpec nfsSpec =
-        createDsmSpec("NFS", storageLocation, nfsConfigWithoutSlash.getDataObject());
+        createDsmSpec("NFS", storageLocation, nfsConfigWithoutSlash.getDataObject(), testUniverse);
     assertEquals("yugabyte_backup", nfsSpec.getBucket());
     assertEquals("/tmp/nfs", nfsSpec.getCredsMap().get("YBC_NFS_DIR"));
     assertEquals(
@@ -296,10 +303,11 @@ public class StorageUtilTest extends FakeDBApplication {
 
   @Test
   public void testCreateRestoreCloudStoreSpecNFSDsmWithSlash() {
+    testUniverse = ModelFactory.createUniverse(testCustomer.getId());
     String storageLocation =
         "//yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar";
     CloudStoreSpec nfsSpec =
-        createDsmSpec("NFS", storageLocation, nfsConfigWithSlash.getDataObject());
+        createDsmSpec("NFS", storageLocation, nfsConfigWithSlash.getDataObject(), testUniverse);
     assertEquals("yugabyte_backup", nfsSpec.getBucket());
     assertEquals("//", nfsSpec.getCredsMap().get("YBC_NFS_DIR"));
     assertEquals(
@@ -308,9 +316,10 @@ public class StorageUtilTest extends FakeDBApplication {
 
   @Test
   public void testCreateRestoreCloudStoreSpecNFSRestoreWithoutSlash() {
+    testUniverse = ModelFactory.createUniverse(testCustomer.getId());
     String cloudDir = "univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar/";
     CloudStoreSpec nfsSpec =
-        createRestoreSpec("NFS", cloudDir, nfsConfigWithoutSlash.getDataObject());
+        createRestoreSpec("NFS", cloudDir, nfsConfigWithoutSlash.getDataObject(), testUniverse);
     assertEquals("yugabyte_backup", nfsSpec.getBucket());
     assertEquals("/tmp/nfs", nfsSpec.getCredsMap().get("YBC_NFS_DIR"));
     assertEquals(
@@ -319,8 +328,10 @@ public class StorageUtilTest extends FakeDBApplication {
 
   @Test
   public void testCreateRestoreCloudStoreSpecNFSRestoreWithSlash() {
+    testUniverse = ModelFactory.createUniverse(testCustomer.getId());
     String cloudDir = "univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar/";
-    CloudStoreSpec nfsSpec = createRestoreSpec("NFS", cloudDir, nfsConfigWithSlash.getDataObject());
+    CloudStoreSpec nfsSpec =
+        createRestoreSpec("NFS", cloudDir, nfsConfigWithSlash.getDataObject(), testUniverse);
     assertEquals("yugabyte_backup", nfsSpec.getBucket());
     assertEquals("//", nfsSpec.getCredsMap().get("YBC_NFS_DIR"));
     assertEquals(

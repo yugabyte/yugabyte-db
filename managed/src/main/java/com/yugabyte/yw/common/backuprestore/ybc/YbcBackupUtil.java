@@ -727,7 +727,8 @@ public class YbcBackupUtil {
             DEFAULT_REGION_STRING,
             commonSuffix,
             keyspacePreviousLocationsMap.get(DEFAULT_REGION_STRING),
-            configData);
+            configData,
+            universe);
     cloudStoreConfigBuilder.setDefaultSpec(defaultSpec);
     Map<String, String> regionLocationMap =
         storageUtilFactory.getStorageUtil(config.getName()).getRegionLocationsMap(configData);
@@ -738,7 +739,7 @@ public class YbcBackupUtil {
             regionSpecMap.put(
                 r,
                 storageUtil.createCloudStoreSpec(
-                    r, commonSuffix, keyspacePreviousLocationsMap.get(r), configData));
+                    r, commonSuffix, keyspacePreviousLocationsMap.get(r), configData, universe));
           });
     }
     if (MapUtils.isNotEmpty(regionSpecMap)) {
@@ -768,7 +769,7 @@ public class YbcBackupUtil {
     CloudStoreSpec defaultSpec =
         storageUtilFactory
             .getStorageUtil(config.getName())
-            .createCloudStoreSpec(DEFAULT_REGION_STRING, "", "", config.getDataObject());
+            .createCloudStoreSpec(DEFAULT_REGION_STRING, "", "", config.getDataObject(), universe);
     ProxyConfig pConfig =
         storageUtilFactory
             .getStorageUtil(config.getName())
@@ -786,7 +787,8 @@ public class YbcBackupUtil {
                 DEFAULT_REGION_STRING,
                 bucketLocationsMap.get(DEFAULT_REGION_STRING).cloudDir,
                 config.getDataObject(),
-                false);
+                false,
+                universe);
     ProxyConfig pConfig =
         storageUtilFactory
             .getStorageUtil(config.getName())
@@ -803,14 +805,16 @@ public class YbcBackupUtil {
         successMarker.responseCloudStoreSpec.defaultLocation;
     CloudStoreSpec defaultSpec =
         storageUtil.createRestoreCloudStoreSpec(
-            DEFAULT_REGION_STRING, defaultBucketLocation.cloudDir, configData, false);
+            DEFAULT_REGION_STRING, defaultBucketLocation.cloudDir, configData, false, universe);
 
     Map<String, CloudStoreSpec> regionSpecMap = new HashMap<>();
     if (MapUtils.isNotEmpty(successMarker.responseCloudStoreSpec.regionLocations)) {
       successMarker.responseCloudStoreSpec.regionLocations.forEach(
           (r, bL) -> {
             regionSpecMap.put(
-                r, storageUtil.createRestoreCloudStoreSpec(r, bL.cloudDir, configData, false));
+                r,
+                storageUtil.createRestoreCloudStoreSpec(
+                    r, bL.cloudDir, configData, false, universe));
           });
     }
     ProxyConfig pConfig =
@@ -825,7 +829,7 @@ public class YbcBackupUtil {
     CustomerConfigData configData = config.getDataObject();
     StorageUtil storageUtil = storageUtilFactory.getStorageUtil(config.getName());
     CloudStoreSpec defaultSpec =
-        storageUtil.createDsmCloudStoreSpec(defaultBackupLocation, configData);
+        storageUtil.createDsmCloudStoreSpec(defaultBackupLocation, configData, universe);
     ProxyConfig pConfig = storageUtil.createYbcProxyConfig(universe, config.getDataObject());
     return getCloudStoreConfig(defaultSpec, null, pConfig);
   }
