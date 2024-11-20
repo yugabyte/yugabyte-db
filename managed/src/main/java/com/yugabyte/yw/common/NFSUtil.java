@@ -53,7 +53,8 @@ public class NFSUtil implements StorageUtil {
       String region,
       String commonDir,
       String previousBackupLocation,
-      CustomerConfigData configData) {
+      CustomerConfigData configData,
+      Universe universe) {
     String cloudDir = StringUtils.isNotBlank(commonDir) ? BackupUtil.appendSlash(commonDir) : "";
     String previousCloudDir = "";
     if (StringUtils.isNotBlank(previousBackupLocation)) {
@@ -69,7 +70,11 @@ public class NFSUtil implements StorageUtil {
 
   @Override
   public CloudStoreSpec createRestoreCloudStoreSpec(
-      String region, String cloudDir, CustomerConfigData configData, boolean isDsm) {
+      String region,
+      String cloudDir,
+      CustomerConfigData configData,
+      boolean isDsm,
+      Universe universe) {
     String bucket = getRegionBucketMap(configData).get(region);
     String storageLocation = getRegionLocationsMap(configData).get(region);
     Map<String, String> credsMap = new HashMap<>();

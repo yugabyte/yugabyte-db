@@ -1412,4 +1412,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable option for creating backup schedules that support off-cluster PITR",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> useDBNodesIAMRoleForBackup =
+      new ConfKeyInfo<>(
+          "yb.backup.s3.use_db_nodes_iam_role_for_backup",
+          ScopeType.UNIVERSE,
+          "Use S3 IAM roles attached to DB node for Backup/Restore",
+          "Use S3 IAM roles attached to DB node for Backup/Restore",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
