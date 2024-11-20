@@ -31,7 +31,7 @@ The following data is collected:
 - Number of tablet servers (yb-tserver processes)
 - Number of tables
 - Number of tablets
-- Cluster configuration (flags - numerical or non-sensitive only)
+- Cluster configuration (flags - non-string or non-sensitive only)
 - Host name (for each node where yb-master and yb-tserver processes are running)
 - Username (for each node where yb-master and yb-tserver processes are running)
 
