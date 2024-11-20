@@ -1019,6 +1019,93 @@ TEST_F(Pg15UpgradeTest, Indexes) {
   }
 }
 
+TEST_F(Pg15UpgradeTest, ForeignKeyTest) {
+  int a = 0;
+  int b = 100;
+  int c = 10000;
+
+  std::vector<int> a_values = {};
+  std::vector<int> b_values = {};
+  std::vector<int> c_values = {};
+
+  ASSERT_OK(ExecuteStatements({
+    "SET yb_non_ddl_txn_for_sys_tables_allowed TO on",
+    "UPDATE pg_yb_catalog_version SET current_version = 10000, last_breaking_version = 10000",
+    "RESET yb_non_ddl_txn_for_sys_tables_allowed",
+
+    "CREATE TABLE a_values (a int primary key)",
+    "CREATE TABLE b_values (b int primary key)",
+    "CREATE TABLE c_values (c int primary key)",
+
+    "CREATE TABLE referencing_table (a int references a_values(a), "
+    "                                b int, "
+    "                                c int, "
+    "                                foreign key (b) references b_values(b))",
+    "ALTER TABLE referencing_table ADD CONSTRAINT fk_c FOREIGN KEY (c) REFERENCES c_values(c)",
+  }));
+
+  for (size_t i = 0; i < 3; i++) {
+    a_values.push_back(++a);
+    b_values.push_back(++b);
+    c_values.push_back(++c);
+
+    ASSERT_OK(ExecuteStatement(Format("INSERT INTO a_values VALUES ($0)", a)));
+    ASSERT_OK(ExecuteStatement(Format("INSERT INTO b_values VALUES ($0)", b)));
+    ASSERT_OK(ExecuteStatement(Format("INSERT INTO c_values VALUES ($0)", c)));
+
+    ASSERT_OK(ExecuteStatement(Format("INSERT INTO referencing_table VALUES ($0, $1, $2)",
+                                      a, b, c)));
+  }
+
+  const auto add_and_check_new_row = [this, &a, &b, &c, &a_values, &b_values, &c_values]
+      (const std::optional<size_t> tserver_idx) {
+    auto conn = ASSERT_RESULT(CreateConnToTs(tserver_idx));
+
+    ASSERT_NOK_STR_CONTAINS(
+        conn.ExecuteFormat("INSERT INTO referencing_table VALUES ($0, $1, $2)", a + 1, b, c),
+        "is not present in table \"a_values\"");
+    ASSERT_NOK_STR_CONTAINS(
+        conn.ExecuteFormat("INSERT INTO referencing_table VALUES ($0, $1, $2)", a, b + 1, c),
+        "is not present in table \"b_values\"");
+    ASSERT_NOK_STR_CONTAINS(
+        conn.ExecuteFormat("INSERT INTO referencing_table VALUES ($0, $1, $2)", a, b, c + 1),
+        "is not present in table \"c_values\"");
+
+    a_values.push_back(++a);
+    b_values.push_back(++b);
+    c_values.push_back(++c);
+
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO a_values VALUES ($0)", a));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO b_values VALUES ($0)", b));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO c_values VALUES ($0)", c));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO referencing_table VALUES ($0, $1, $2)",
+                                 a, b, c));
+
+    for (std::string col : {"a", "b", "c"}) {
+      const auto expected = ((col == "a") ? a_values : (col == "b") ? b_values : c_values);
+
+      const auto actual = ASSERT_RESULT(conn.FetchRows<int>(
+          Format("SELECT $0 FROM $0_values ORDER BY $0", col)));
+      ASSERT_VECTORS_EQ(expected, actual);
+
+      const auto actual_referencing = ASSERT_RESULT(conn.FetchRows<int>(
+          Format("SELECT $0 FROM referencing_table ORDER BY $0", col)));
+      ASSERT_VECTORS_EQ(expected, actual_referencing);
+    }
+  };
+
+  ASSERT_NO_FATALS(add_and_check_new_row(kAnyTserver));
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  ASSERT_NO_FATALS(add_and_check_new_row(kMixedModeTserverPg11));
+  ASSERT_NO_FATALS(add_and_check_new_row(kMixedModeTserverPg15));
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  ASSERT_NO_FATALS(add_and_check_new_row(kAnyTserver));
+}
+
 class Pg15UpgradeSequenceTest : public Pg15UpgradeTest {
  public:
   Pg15UpgradeSequenceTest() = default;
