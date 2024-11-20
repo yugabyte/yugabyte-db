@@ -56,6 +56,7 @@ DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(rocksdb_max_write_buffer_number);
 DECLARE_int32(max_prevs_to_avoid_seek);
+DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_bool(TEST_skip_applying_truncate);
 DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
 
@@ -1494,6 +1495,20 @@ TEST_F(PgSingleTServerTest, UpdateIndexWithHole) {
   auto num_index_rows = ASSERT_RESULT(conn.FetchRow<int64_t>(
       "SELECT COUNT(*) FROM t WHERE value > 2"));
   ASSERT_EQ(num_index_rows, 1);
+}
+
+TEST_F(PgSingleTServerTest, BoundedBackwardScanWithLargeTransaction) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = 10;
+  constexpr int kNumRows = 20;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (key BIGINT, k2 BIGINT, value BIGINT, PRIMARY KEY (k2 ASC, key ASC))"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test (key, k2, value) SELECT i, i, -i FROM generate_series(1, $0) AS i",
+      kNumRows));
+  auto result = ASSERT_RESULT(conn.FetchAllAsString(
+      "SELECT key FROM test WHERE key >= 1 AND value >= -1 ORDER BY k2 DESC"));
+  ASSERT_EQ(result, "1");
 }
 
 }  // namespace pgwrapper

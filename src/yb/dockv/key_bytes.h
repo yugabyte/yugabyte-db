@@ -63,6 +63,10 @@ class KeyBytes {
     return data_;
   }
 
+  KeyBuffer& data() {
+    return data_;
+  }
+
   void Append(const KeyBytes& other) {
     data_.append(other.data_);
   }
@@ -230,12 +234,6 @@ class KeyBytes {
 
   int CompareTo(Slice other) const {
     return data_.AsSlice().compare(other);
-  }
-
-  // This can be used to e.g. move the internal state of KeyBytes somewhere else, including a
-  // string field in a protobuf, without copying the bytes.
-  KeyBuffer* mutable_data() {
-    return &data_;
   }
 
   void Truncate(size_t new_size);
