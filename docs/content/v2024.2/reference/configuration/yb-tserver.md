@@ -1822,7 +1822,7 @@ Default: `read committed`
 
 ##### yb_skip_redundant_update_ops
 
-PostgreSQL parameter to enable skipping updates to columns that are part of secondary indexes and constraint checks when the column values remain unchanged.
+Enables skipping updates to columns that are part of secondary indexes and constraint checks when the column values remain unchanged.
 
 This parameter can only be configured during cluster startup, and adjusting this parameter does not require a cluster restart.
 
