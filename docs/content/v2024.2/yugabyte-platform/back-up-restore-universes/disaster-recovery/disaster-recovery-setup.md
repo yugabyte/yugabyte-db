@@ -59,7 +59,11 @@ To set up disaster recovery for a universe, do the following:
 
 1. Click **Configure & Enable Disaster Recovery** or, if DR has already been set up for a database, **Create Disaster Recovery Config**.
 
-1. Select the universe to use as the DR replica, then click **Next: Select Databases**.
+1. Enter a name for the DR configuration.
+
+1. Select the universe to use as the DR replica
+
+1. Click **Next: Select Databases**.
 
 1. Select the databases to be copied to the DR replica for disaster recovery.
 
