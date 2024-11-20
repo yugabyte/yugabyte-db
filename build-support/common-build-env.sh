@@ -332,6 +332,11 @@ if [[ -n ${YB_THIRDPARTY_URL:-} ]]; then
   yb_thirdparty_url_origin="from environment"
 fi
 
+yb_thirdparty_checksum_url_origin=""
+if [[ -n ${YB_THIRDPARTY_CHECKSUM_URL:-} ]]; then
+  yb_thirdparty_checksum_url_origin="from environment"
+fi
+
 yb_linuxbrew_dir_origin=""
 if [[ -n ${YB_LINUXBREW_DIR:-} ]]; then
   yb_linuxbrew_dir_origin="from environment"
@@ -1183,18 +1188,35 @@ save_var_to_file_in_build_dir() {
   fi
 }
 
+get_thirdparty_archive_name() {
+  expect_num_args 1 "$@"
+
+  local url=$1
+  if [[ "$url" == *.tar.gz ]]; then
+    local tar_gz_name=${url##*/}
+    thirdparty_archive_name="${tar_gz_name%.tar.gz}"
+  else
+    local zip_removed=${url%/zip}
+    thirdparty_archive_name="${zip_removed##*/}"
+  fi
+}
+
 # -------------------------------------------------------------------------------------------------
 # Downloading third-party dependencies from GitHub releases
 # -------------------------------------------------------------------------------------------------
 
 download_and_extract_archive() {
-  expect_num_args 2 "$@"
+  expect_num_args 2-3 "$@"
   extracted_dir=""
 
   local url=$1
   local dest_dir_parent=$2
-  local tar_gz_name=${url##*/}
-  local install_dir_name=${tar_gz_name%.tar.gz}
+  local checksum_url=${3:-}
+
+  local thirdparty_archive_name
+  get_thirdparty_archive_name "$url"
+
+  local install_dir_name=$thirdparty_archive_name
   local dest_dir=$dest_dir_parent/$install_dir_name
   if [[ ! -d $dest_dir && ! -L $dest_dir ]]; then
     if [[ ! -d $YB_DOWNLOAD_LOCKS_DIR ]]; then
@@ -1211,6 +1233,7 @@ download_and_extract_archive() {
             set -x
             "$YB_SCRIPT_PATH_DOWNLOAD_AND_EXTRACT_ARCHIVE" \
               --url "$url" \
+              --checksum-url "$checksum_url" \
               --dest-dir-parent "$dest_dir_parent" \
               --local-cache-dir "$LOCAL_DOWNLOAD_DIR"
           )
@@ -1235,7 +1258,8 @@ download_thirdparty() {
     "
     fatal "Cannot download pre-built thirdparty dependencies."
   fi
-  download_and_extract_archive "$YB_THIRDPARTY_URL" "$LOCAL_THIRDPARTY_DIR_PARENT"
+  download_and_extract_archive "$YB_THIRDPARTY_URL" "$LOCAL_THIRDPARTY_DIR_PARENT" \
+                               "$YB_THIRDPARTY_CHECKSUM_URL"
   if [[ -n ${YB_THIRDPARTY_DIR:-} &&
         $YB_THIRDPARTY_DIR != "$extracted_dir" ]]; then
     log_thirdparty_and_toolchain_details
@@ -1938,6 +1962,23 @@ find_or_download_thirdparty() {
       fi
     fi
 
+    if [[ -f $BUILD_ROOT/thirdparty_checksum_url.txt ]]; then
+      local thirdparty_checksum_url_from_file
+      thirdparty_checksum_url_from_file=$(<"$BUILD_ROOT/thirdparty_checksum_url.txt")
+      if [[ -n ${YB_THIRDPARTY_CHECKSUM_URL:-} &&
+            "$YB_THIRDPARTY_CHECKSUM_URL" != "$thirdparty_checksum_url_from_file" ]]; then
+        fatal "YB_THIRDPARTY_CHECKSUM_URL is explicitly set to '$YB_THIRDPARTY_CHECKSUM_URL' but " \
+              "file '$BUILD_ROOT/thirdparty_checksum_url.txt' contains " \
+              "'$thirdparty_checksum_url_from_file'"
+      fi
+      export YB_THIRDPARTY_CHECKSUM_URL=$thirdparty_checksum_url_from_file
+      yb_thirdparty_checksum_url_origin="from file '$BUILD_ROOT/thirdparty_checksum_url.txt')"
+      if [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "0" ]]; then
+        fatal "YB_DOWNLOAD_THIRDPARTY is explicitly set to 0 but file" \
+              "$BUILD_ROOT/thirdparty_checksum_url.txt exists"
+      fi
+    fi
+
     if [[ -f $BUILD_ROOT/thirdparty_url.txt ]]; then
       local thirdparty_url_from_file
       thirdparty_url_from_file=$(<"$BUILD_ROOT/thirdparty_url.txt")
@@ -1947,6 +1988,9 @@ find_or_download_thirdparty() {
               "'$BUILD_ROOT/thirdparty_url.txt' contains '$thirdparty_url_from_file'"
       fi
       export YB_THIRDPARTY_URL=$thirdparty_url_from_file
+      if [[ -z ${YB_THIRDPARTY_CHECKSUM_URL:-} ]]; then
+        export YB_THIRDPARTY_CHECKSUM_URL="$YB_THIRDPARTY_URL.sha256"
+      fi
       yb_thirdparty_url_origin="from file '$BUILD_ROOT/thirdparty_url.txt')"
       if [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "0" ]]; then
         fatal "YB_DOWNLOAD_THIRDPARTY is explicitly set to 0 but file" \
@@ -2015,6 +2059,7 @@ log_thirdparty_and_toolchain_details() {
     echo "Details of third-party dependencies:"
     log_env_var YB_THIRDPARTY_DIR "${yb_thirdparty_dir_origin}"
     log_env_var YB_THIRDPARTY_URL "${yb_thirdparty_url_origin}"
+    log_env_var YB_THIRDPARTY_CHECKSUM_URL "${yb_thirdparty_checksum_url_origin}"
 
     if is_linux; then
       log_env_var YB_LINUXBREW_DIR "${yb_linuxbrew_dir_origin}"
@@ -2513,13 +2558,18 @@ set_prebuilt_thirdparty_url() {
   if [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "1" ]]; then
     if [[ -z ${YB_THIRDPARTY_URL:-} ]]; then
       local thirdparty_url_file_path="$BUILD_ROOT/thirdparty_url.txt"
+      local thirdparty_checksum_url_file_path="$BUILD_ROOT/thirdparty_checksum_url.txt"
       local llvm_url_file_path="$BUILD_ROOT/llvm_url.txt"
       if [[ -f $thirdparty_url_file_path ]]; then
         rm -f "$thirdparty_url_file_path"
       fi
+      if [[ -f $thirdparty_checksum_url_file_path ]]; then
+        rm -f "$thirdparty_checksum_url_file_path"
+      fi
       local thirdparty_tool_cmd_line=(
         "$YB_BUILD_SUPPORT_DIR/thirdparty_tool"
         --save-thirdparty-url-to-file "$thirdparty_url_file_path"
+        --save-thirdparty-checksum-url-to-file "$thirdparty_checksum_url_file_path"
         --compiler-type "${YB_COMPILER_TYPE_FOR_THIRDPARTY:-$YB_COMPILER_TYPE}"
       )
       if [[ -n ${YB_USE_LINUXBREW:-} ]]; then
@@ -2534,14 +2584,23 @@ set_prebuilt_thirdparty_url() {
         thirdparty_tool_cmd_line+=( "--allow-older-os" )
       fi
       "${thirdparty_tool_cmd_line[@]}"
-      YB_THIRDPARTY_URL=$(<"$BUILD_ROOT/thirdparty_url.txt")
+      YB_THIRDPARTY_URL=$(<"$thirdparty_url_file_path")
       export YB_THIRDPARTY_URL
+      YB_THIRDPARTY_CHECKSUM_URL=$(<"$thirdparty_checksum_url_file_path")
+      export YB_THIRDPARTY_CHECKSUM_URL
       yb_thirdparty_url_origin="determined automatically based on the OS and compiler type"
       if [[ -z $YB_THIRDPARTY_URL ]]; then
         fatal "Could not automatically determine the third-party archive URL to download."
       fi
       log "Setting third-party URL to $YB_THIRDPARTY_URL"
       save_var_to_file_in_build_dir "$YB_THIRDPARTY_URL" thirdparty_url.txt
+      yb_thirdparty_checksum_url_origin="determined automatically based on the OS and compiler type"
+      if [[ -z ${YB_THIRDPARTY_CHECKSUM_URL:-} ]]; then
+        YB_THIRDPARTY_CHECKSUM_URL="$YB_THIRDPARTY_URL.sha256"
+        fatal "Could not automatically determine the third-party archive URL to download."
+      fi
+      log "Setting third-party checksum URL to $YB_THIRDPARTY_CHECKSUM_URL"
+      save_var_to_file_in_build_dir "$YB_THIRDPARTY_CHECKSUM_URL" thirdparty_checksum_url.txt
 
       if [[ -f $llvm_url_file_path ]]; then
         YB_LLVM_TOOLCHAIN_URL=$(<"$llvm_url_file_path")
