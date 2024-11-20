@@ -24371,6 +24371,376 @@
         "tags" : [ "Release management" ]
       }
     },
+    "/api/v1/customers/{cUUID}/rbac/permissions" : {
+      "get" : {
+        "description" : "WARNING: This is a preview API that could change.",
+        "operationId" : "listPermissions",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "default" : "null",
+          "description" : "Optional resource type to filter permission list",
+          "in" : "query",
+          "name" : "resourceType",
+          "required" : false,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/PermissionInfo"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/PermissionInfo"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List all the permissions available",
+        "tags" : [ "RBAC management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/rbac/role" : {
+      "get" : {
+        "description" : "WARNING: This is a preview API that could change.",
+        "operationId" : "listRoles",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "default" : "null",
+          "description" : "Optional role type to filter roles list",
+          "in" : "query",
+          "name" : "roleType",
+          "required" : false,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/Role"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/Role"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List all the roles available",
+        "tags" : [ "RBAC management" ]
+      },
+      "post" : {
+        "description" : "WARNING: This is a preview API that could change.",
+        "operationId" : "createRole",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "create role form data",
+          "in" : "body",
+          "name" : "RoleFormData",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/RoleFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Role"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Role"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Create a custom role",
+        "tags" : [ "RBAC management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/rbac/role/{rUUID}" : {
+      "delete" : {
+        "description" : "WARNING: This is a preview API that could change.",
+        "operationId" : "deleteRole",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "rUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Delete a custom role",
+        "tags" : [ "RBAC management" ]
+      },
+      "get" : {
+        "description" : "WARNING: This is a preview API that could change.",
+        "operationId" : "getRole",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "rUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Role"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Role"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get a role's information",
+        "tags" : [ "RBAC management" ]
+      },
+      "put" : {
+        "description" : "WARNING: This is a preview API that could change.",
+        "operationId" : "editRole",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "rUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "edit role form data",
+          "in" : "body",
+          "name" : "RoleFormData",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/RoleFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Role"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Role"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Edit a custom role",
+        "tags" : [ "RBAC management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/rbac/role_binding" : {
+      "get" : {
+        "description" : "WARNING: This is a preview API that could change.",
+        "operationId" : "getRoleBindings",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "default" : "null",
+          "description" : "Optional user UUID to filter role binding map",
+          "format" : "uuid",
+          "in" : "query",
+          "name" : "userUUID",
+          "required" : false,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "additionalProperties" : {
+                "$ref" : "#/definitions/RoleBinding"
+              },
+              "type" : "object"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "additionalProperties" : {
+                "$ref" : "#/definitions/RoleBinding"
+              },
+              "type" : "object"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get all the role bindings available",
+        "tags" : [ "RBAC management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/rbac/role_binding/{userUUID}" : {
+      "post" : {
+        "description" : "WARNING: This is a preview API that could change.",
+        "operationId" : "setRoleBinding",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "userUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "set role bindings form data",
+          "in" : "body",
+          "name" : "RoleBindingFormData",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/RoleBindingFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/RoleBinding"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/RoleBinding"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Set the role bindings of a user",
+        "tags" : [ "RBAC management" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/regions" : {
       "get" : {
         "description" : "",
@@ -31694,6 +32064,8 @@
     "name" : "PITR management"
   }, {
     "name" : "Performance Advisor"
+  }, {
+    "name" : "RBAC management"
   }, {
     "name" : "Region management"
   }, {

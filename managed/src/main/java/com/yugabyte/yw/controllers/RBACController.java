@@ -105,11 +105,11 @@ public class RBACController extends AuthenticatedController {
    * @return list of all permissions info
    */
   @YbaApi(
-      visibility = YbaApiVisibility.INTERNAL,
-      sinceYBAVersion = "2.19.3.0",
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.25.0.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      notes = "YbaApi Internal.",
+      notes = "WARNING: This is a preview API that could change.",
       value = "List all the permissions available",
       nickname = "listPermissions",
       response = PermissionInfo.class,
@@ -139,11 +139,11 @@ public class RBACController extends AuthenticatedController {
    * @return the role information
    */
   @YbaApi(
-      visibility = YbaApiVisibility.INTERNAL,
-      sinceYBAVersion = "2.19.3.0",
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.25.0.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      notes = "YbaApi Internal.",
+      notes = "WARNING: This is a preview API that could change.",
       value = "Get a role's information",
       nickname = "getRole",
       response = Role.class)
@@ -168,9 +168,9 @@ public class RBACController extends AuthenticatedController {
    * @param roleType
    * @return the list of roles and their information
    */
-  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.19.3.0")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.25.0.0")
   @ApiOperation(
-      notes = "YbaApi Internal.",
+      notes = "WARNING: This is a preview API that could change.",
       value = "List all the roles available",
       nickname = "listRoles",
       response = Role.class,
@@ -213,11 +213,11 @@ public class RBACController extends AuthenticatedController {
    * @return the info of the role created
    */
   @YbaApi(
-      visibility = YbaApiVisibility.INTERNAL,
-      sinceYBAVersion = "2.19.3.0",
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.25.0.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      notes = "YbaApi Internal.",
+      notes = "WARNING: This is a preview API that could change.",
       value = "Create a custom role",
       nickname = "createRole",
       response = Role.class)
@@ -291,11 +291,11 @@ public class RBACController extends AuthenticatedController {
    * @return the info of the edited role
    */
   @YbaApi(
-      visibility = YbaApiVisibility.INTERNAL,
-      sinceYBAVersion = "2.19.3.0",
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.25.0.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      notes = "YbaApi Internal.",
+      notes = "WARNING: This is a preview API that could change.",
       value = "Edit a custom role",
       nickname = "editRole",
       response = Role.class)
@@ -378,11 +378,11 @@ public class RBACController extends AuthenticatedController {
    * @return a success message if deleted properly.
    */
   @YbaApi(
-      visibility = YbaApiVisibility.INTERNAL,
-      sinceYBAVersion = "2.19.3.0",
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.25.0.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      notes = "YbaApi Internal.",
+      notes = "WARNING: This is a preview API that could change.",
       value = "Delete a custom role",
       nickname = "deleteRole",
       response = YBPSuccess.class)
@@ -439,11 +439,11 @@ public class RBACController extends AuthenticatedController {
   }
 
   @YbaApi(
-      visibility = YbaApiVisibility.INTERNAL,
-      sinceYBAVersion = "2.19.3.0",
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.25.0.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      notes = "YbaApi Internal.",
+      notes = "WARNING: This is a preview API that could change.",
       value = "Get all the role bindings available",
       nickname = "getRoleBindings",
       response = RoleBinding.class,
@@ -483,11 +483,11 @@ public class RBACController extends AuthenticatedController {
   }
 
   @YbaApi(
-      visibility = YbaApiVisibility.INTERNAL,
-      sinceYBAVersion = "2.19.3.0",
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.25.0.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      notes = "YbaApi Internal.",
+      notes = "WARNING: This is a preview API that could change.",
       value = "Set the role bindings of a user",
       nickname = "setRoleBinding",
       response = RoleBinding.class)
