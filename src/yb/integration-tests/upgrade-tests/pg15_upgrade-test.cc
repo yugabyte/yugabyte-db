@@ -1068,6 +1068,96 @@ class Pg15UpgradeSequenceTest : public Pg15UpgradeTest {
   int seq_val_pg15_ = 1;
 };
 
+TEST_F(Pg15UpgradeTest, YbGinIndex) {
+  const auto kGinTableName = "expression";
+  const std::vector<std::string> kGinIndexes = {"gin_idx_1", "gin_idx_2", "gin_idx_3"};
+  ASSERT_OK(ExecuteStatements({
+    "SET yb_non_ddl_txn_for_sys_tables_allowed TO on",
+    "UPDATE pg_yb_catalog_version SET current_version = 10000, last_breaking_version = 10000",
+    "RESET yb_non_ddl_txn_for_sys_tables_allowed",
+
+    Format("CREATE TABLE $0 (v tsvector, a text[], j jsonb)", kGinTableName),
+  }));
+
+  const auto create_indexes = [this, kGinIndexes, kGinTableName]() {
+    ASSERT_OK(ExecuteStatements({
+      Format("CREATE INDEX $0 ON $1 USING ybgin (tsvector_to_array(v))",
+             kGinIndexes[0], kGinTableName),
+      Format("CREATE INDEX $0 ON $1 USING ybgin (array_to_tsvector(a))",
+             kGinIndexes[1], kGinTableName),
+      Format("CREATE INDEX $0 ON $1 USING ybgin (jsonb_to_tsvector('simple', j, '[\"string\"]'))",
+             kGinIndexes[2], kGinTableName),
+    }));
+  };
+
+  ASSERT_NO_FATALS(create_indexes());
+
+  const auto check_and_insert_rows = [kGinTableName](pgwrapper::PGConn& conn, int &expected) {
+    const auto kQueries = {
+      "SELECT count(*) FROM $0 WHERE tsvector_to_array(v) && ARRAY['b']",
+      "SELECT count(*) FROM $0 WHERE array_to_tsvector(a) @@ 'e'",
+      "SELECT count(*) FROM $0 WHERE jsonb_to_tsvector('simple', j, '[\"string\"]') @@ 'h'",
+    };
+
+    for (const auto &query : kQueries) {
+      const auto result = ASSERT_RESULT(
+          conn.FetchRow<pgwrapper::PGUint64>(Format(query, kGinTableName)));
+      ASSERT_EQ(result, expected);
+    }
+
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 VALUES "
+        "  (to_tsvector('simple', 'a b c'), ARRAY['d', 'e', 'f'], '{\"g\":[\"h\",\"i\"]}')",
+        kGinTableName
+    ));
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 VALUES (to_tsvector('simple', 'a a'), ARRAY['d', 'd'], '{\"g\":\"g\"}')",
+        kGinTableName
+    ));
+    expected++;
+
+    for (const auto &query : kQueries) {
+      const auto result = ASSERT_RESULT(
+          conn.FetchRow<pgwrapper::PGUint64>(Format(query, kGinTableName)));
+      ASSERT_EQ(result, expected);
+    }
+  };
+
+  int num_rows = 0;
+
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_NO_FATALS(check_and_insert_rows(conn, num_rows));
+  }
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg11));
+    ASSERT_NO_FATALS(check_and_insert_rows(conn, num_rows));
+  }
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg15));
+    ASSERT_NO_FATALS(check_and_insert_rows(conn, num_rows));
+  }
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_NO_FATALS(check_and_insert_rows(conn, num_rows));
+
+    // test dropping and recreating the indexes, to validate that these DDLs
+    // still work as expected in pg15
+    for (const auto &index : kGinIndexes) {
+      ASSERT_OK(conn.ExecuteFormat("DROP INDEX $0", index));
+    }
+    ASSERT_NO_FATALS(create_indexes());
+
+    ASSERT_NO_FATALS(check_and_insert_rows(conn, num_rows));
+  }
+}
+
 TEST_F(Pg15UpgradeSequenceTest, Sequences) {
   ASSERT_OK(ExecuteStatement(Format("CREATE SEQUENCE $0", kSequencePg11)));
 
