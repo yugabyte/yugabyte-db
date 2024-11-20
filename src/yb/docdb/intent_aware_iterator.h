@@ -62,12 +62,12 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   IntentAwareIterator(const IntentAwareIterator& other) = delete;
   void operator=(const IntentAwareIterator& other) = delete;
 
-  void Revalidate();
+  void Revalidate(SeekFilter seek_filter);
 
   // Seek to the smallest key which is greater or equal than doc_key.
   void Seek(const dockv::DocKey& doc_key);
 
-  void Seek(Slice key, Full full = Full::kTrue) override;
+  void Seek(Slice key, SeekFilter seek_filter, Full full = Full::kTrue) override;
 
   // Seek forward to specified encoded key (it is responsibility of caller to make sure it
   // doesn't have hybrid time).
@@ -82,7 +82,7 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   // For efficiency, this overload takes a non-const KeyBytes pointer avoids memory allocation by
   // using the KeyBytes buffer to prepare the key to seek to by appending an extra byte. The
   // appended byte is removed when the method returns.
-  void SeekOutOfSubDoc(dockv::KeyBytes* key_bytes) override;
+  void SeekOutOfSubDoc(SeekFilter seek_filter, dockv::KeyBytes* key_bytes) override;
 
   // Seek to last doc key.
   void SeekToLastDocKey();
@@ -138,10 +138,6 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   // TTL row).
   // Returns HybridTime::kInvalid if no such record was found.
   Result<HybridTime> FindOldestRecord(Slice key_without_ht, HybridTime min_hybrid_time);
-
-  size_t NumberOfBytesAppendedDuringSeekForward() const {
-    return 1 + encoded_read_time_.global_limit.size();
-  }
 
   void DebugDump();
 

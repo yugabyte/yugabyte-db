@@ -26,7 +26,8 @@ var createAzureProviderCmd = &cobra.Command{
 	Short:   "Create an Azure YugabyteDB Anywhere provider",
 	Long:    "Create an Azure provider in YugabyteDB Anywhere",
 	Example: `yba provider azure create -n <provider-name> \
-	--region region-name=westus2,vnet=<vnet> --zone zone-name=westus2-1,region-name=westus2,subnet=<subnet> \
+	--region region-name=westus2::vnet=<vnet> \
+	--zone zone-name=westus2-1::region-name=westus2::subnet=<subnet> \
 	--rg=<az-resource-group> \
 	--client-id=<az-client-id> \
 	--tenant-id=<az-tenant-id> \
@@ -244,39 +245,39 @@ func init() {
 
 	createAzureProviderCmd.Flags().StringArray("region", []string{},
 		"[Required] Region associated with the Azure provider. Minimum number of required "+
-			"regions = 1. Provide the following comma separated fields as key-value pairs:"+
-			"\"region-name=<region-name>,vnet=<virtual-network>,sg-id=<security-group-id>,"+
-			"rg=<resource-group>,network-rg=<network-resource-group>\". "+
+			"regions = 1. Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"region-name=<region-name>::vnet=<virtual-network>::sg-id=<security-group-id>::"+
+			"rg=<resource-group>::network-rg=<network-resource-group>\". "+
 			formatter.Colorize("Region name and Virtual network are required key-values.",
 				formatter.GreenColor)+
 			" Security Group ID, Resource Group (override for this region) and Network "+
 			"Resource Group (override for this region) are optional. "+
 			"Each region needs to be added using a separate --region flag. "+
-			"Example: --region region-name=westus2,vnet=<vnet-id>")
+			"Example: --region region-name=westus2::vnet=<vnet-id>")
 	createAzureProviderCmd.Flags().StringArray("zone", []string{},
 		"[Required] Zone associated to the Azure Region defined. "+
-			"Provide the following comma separated fields as key-value pairs:"+
-			"\"zone-name=<zone-name>,region-name=<region-name>,subnet=<subnet-id>\"."+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"zone-name=<zone-name>::region-name=<region-name>::subnet=<subnet-id>\"."+
 			formatter.Colorize("Zone name, Region name and subnet IDs are required values. ",
 				formatter.GreenColor)+
 			"Secondary subnet ID is optional. Each --region definition "+
 			"must have atleast one corresponding --zone definition. Multiple --zone definitions "+
 			"can be provided per region."+
 			"Each zone needs to be added using a separate --zone flag. "+
-			"Example: --zone zone-name=westus2-1,region-name=westus2,subnet=<subnet-id>")
+			"Example: --zone zone-name=westus2-1::region-name=westus2::subnet=<subnet-id>")
 
 	createAzureProviderCmd.Flags().StringArray("image-bundle", []string{},
 		"[Optional] Intel x86_64 image bundles associated with Azure provider. "+
-			"Provide the following comma separated fields as key-value pairs: "+
-			"\"image-bundle-name=<image-bundle-name>,machine-image=<custom-ami>,"+
-			"ssh-user=<ssh-user>,ssh-port=<ssh-port>,default=<true/false>\". "+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"image-bundle-name=<image-bundle-name>::machine-image=<custom-ami>::"+
+			"ssh-user=<ssh-user>::ssh-port=<ssh-port>::default=<true/false>\". "+
 			formatter.Colorize(
 				"Image bundle name, machine image and SSH user are required key-value pairs.",
 				formatter.GreenColor)+
 			" The default SSH Port is 22. Default marks the image bundle as default for the provider. "+
 			"Each image bundle can be added using separate --image-bundle flag. "+
-			"Example: --image-bundle <image-bundle-name>=<image-bundle>,machine-image=<custom-ami>,"+
-			"<ssh-user>=<ssh-user>,<ssh-port>=22")
+			"Example: --image-bundle image-bundle-name=<image-bundle>::machine-image=<custom-ami>::"+
+			"ssh-user=<ssh-user>::ssh-port=22")
 
 	createAzureProviderCmd.Flags().String("ssh-user", "centos",
 		"[Optional] SSH User to access the YugabyteDB nodes.")

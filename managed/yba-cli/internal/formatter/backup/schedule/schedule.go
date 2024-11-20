@@ -2,34 +2,49 @@
  * Copyright (c) YugaByte, Inc.
  */
 
-package backup
+package schedule
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
 const (
-	defaultScheduleListing = "table {{.Name}}\t{{.UUID}}\t{{.UniverseUUID}}" +
-		"\t{{.StorageConfigurationName}}\t{{.Frequency}}\t{{.CronExpression}}\t{{.NextTaskTime}}"
+	defaultScheduleListing = "table {{.Name}}\t{{.UUID}}" +
+		"\t{{.Frequency}}\t{{.CronExpression}}\t{{.State}}"
+	scheduleListing1 = "table {{.StorageConfiguration}}\t{{.KMSConfig}}"
+	scheduleListing2 = "table {{.TaskType}}\t{{.NextTaskTime}}"
 
-	taskParamsHeader            = "Task Params"
 	taskTypeHeader              = "Task Type"
-	nextIncrementBackupTaskTime = "Next Increment Backup Task Time"
+	nextIncrementTaskTime       = "Next Increment Backup Task Time"
+	frequencyHeader             = "Frequency"
+	cronExpressionHeader        = "Cron Expression"
+	nextTaskTimeHeader          = "Next Task Time"
+	nextIncrementTaskTimeHeader = "Next Increment Task Time"
 )
+
+// StorageConfigs hold storage config for the backup
+var StorageConfigs []ybaclient.CustomerConfigUI
+
+// KMSConfigs hold KMS config for the backup
+var KMSConfigs []util.KMSConfig
 
 // Context for provider outputs
 type Context struct {
 	formatter.HeaderContext
 	formatter.Context
-	s ybaclient.Schedule
+	s util.Schedule
 }
 
-// NewSchedulesFormat for formatting output
-func NewSchedulesFormat(source string) formatter.Format {
+// NewScheduleFormat for formatting output
+func NewScheduleFormat(source string) formatter.Format {
 	switch source {
 	case formatter.TableFormatKey, "":
 		format := defaultScheduleListing
@@ -40,7 +55,7 @@ func NewSchedulesFormat(source string) formatter.Format {
 }
 
 // Write renders the context for a list of Schedules
-func Write(ctx formatter.Context, schedules []ybaclient.Schedule) error {
+func Write(ctx formatter.Context, schedules []util.Schedule) error {
 	// Check if the format is JSON or Pretty JSON
 	if (ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON()) && ctx.Command.IsListCommand() {
 		// Marshal the slice of schedules into JSON
@@ -79,13 +94,16 @@ func Write(ctx formatter.Context, schedules []ybaclient.Schedule) error {
 func NewScheduleContext() *Context {
 	scheduleCtx := Context{}
 	scheduleCtx.Header = formatter.SubHeaderContext{
-		"Name":                     formatter.NameHeader,
-		"UUID":                     formatter.UUIDHeader,
-		"UniverseName":             formatter.UniversesHeader,
-		"StorageConfigurationName": formatter.StorageConfigurationHeader,
-		// "Frequency":  frequencyHeader,
-		// "CronExpression":    cronExpressionHeader,
-		// "NextTaskTime": nextTaskTimeHeader,
+		"Name":                  formatter.NameHeader,
+		"UUID":                  formatter.UUIDHeader,
+		"StorageConfiguration":  formatter.StorageConfigurationHeader,
+		"State":                 formatter.StateHeader,
+		"Frequency":             frequencyHeader,
+		"CronExpression":        cronExpressionHeader,
+		"NextTaskTime":          nextTaskTimeHeader,
+		"NextIncrementTaskTime": nextIncrementTaskTimeHeader,
+		"TaskType":              taskTypeHeader,
+		"KMSConfig":             formatter.KMSConfigHeader,
 	}
 	return &scheduleCtx
 }
@@ -98,4 +116,82 @@ func (c *Context) UUID() string {
 // Name fetches Schedule Name
 func (c *Context) Name() string {
 	return c.s.GetScheduleName()
+}
+
+// StorageConfiguration fetches Storage Config Name
+func (c *Context) StorageConfiguration() string {
+	commonBackupInfo := c.s.GetCommonBackupInfo()
+	for _, config := range StorageConfigs {
+		if strings.Compare(config.GetConfigUUID(), commonBackupInfo.GetStorageConfigUUID()) == 0 {
+			return fmt.Sprintf("%s(%s)", config.GetConfigName(), config.GetConfigUUID())
+		}
+	}
+	// get name too
+	return commonBackupInfo.GetStorageConfigUUID()
+}
+
+// KMSConfig fetches KMS Config
+func (c *Context) KMSConfig() string {
+	commonBackupInfo := c.s.GetCommonBackupInfo()
+	for _, k := range KMSConfigs {
+		if len(strings.TrimSpace(k.ConfigUUID)) != 0 &&
+			strings.Compare(k.ConfigUUID, commonBackupInfo.GetKmsConfigUUID()) == 0 {
+			return fmt.Sprintf("%s(%s)", k.Name, commonBackupInfo.GetKmsConfigUUID())
+		}
+	}
+	return commonBackupInfo.GetKmsConfigUUID()
+}
+
+// State fetches Schedule State
+func (c *Context) State() string {
+	state := c.s.GetStatus()
+	if strings.Compare(state, util.ActiveScheduleBackupState) == 0 {
+		return formatter.Colorize(state, formatter.GreenColor)
+	}
+	if strings.Compare(state, util.ErrorScheduleBackupState) == 0 {
+		return formatter.Colorize(state, formatter.RedColor)
+	}
+	return formatter.Colorize(state, formatter.YellowColor)
+
+}
+
+// Frequency fetches Schedule Frequency
+func (c *Context) Frequency() string {
+	frequency := util.ConvertMsToUnit(c.s.GetFrequency(), c.s.GetFrequencyTimeUnit())
+	return fmt.Sprintf("%0.0f %s", frequency, c.s.GetFrequencyTimeUnit())
+}
+
+// CronExpression fetches Schedule Cron Expression
+func (c *Context) CronExpression() string {
+	return c.s.GetCronExpression()
+}
+
+// NextTaskTime fetches Schedule Next Task Time
+func (c *Context) NextTaskTime() string {
+	nextTime := c.s.GetNextScheduleTaskTime()
+	if nextTime.IsZero() {
+		return ""
+	}
+	return nextTime.Format(time.RFC1123Z)
+
+}
+
+// NextIncrementTaskTime fetches Schedule Next Increment Task Time
+func (c *Context) NextIncrementTaskTime() string {
+	nextIncrementTaskTime := c.s.GetNextIncrementScheduleTaskTime()
+	if nextIncrementTaskTime.IsZero() {
+		return ""
+	}
+	return nextIncrementTaskTime.Format(time.RFC1123Z)
+
+}
+
+// TaskType fetches Schedule Task Type
+func (c *Context) TaskType() string {
+	return c.s.GetTaskType()
+}
+
+// MarshalJSON function
+func (c *Context) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.s)
 }

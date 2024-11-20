@@ -3001,8 +3001,8 @@ Result<std::pair<size_t, size_t>> CheckPendingCompactions(DBImpl* db) {
         *db->GetOptions().priority_thread_pool_for_compactions_and_flushes->TEST_mutex());
 
     auto* cfd = pointer_cast<ColumnFamilyHandleImpl*>(db->DefaultColumnFamily())->cfd();
-    num_small_pending_compactions = cfd->TEST_num_pending_compactions(CompactionSizeKind::kSmall);
-    num_large_pending_compactions = cfd->TEST_num_pending_compactions(CompactionSizeKind::kLarge);
+    num_small_pending_compactions = cfd->num_pending_compactions(CompactionSizeKind::kSmall);
+    num_large_pending_compactions = cfd->num_pending_compactions(CompactionSizeKind::kLarge);
 
     num_small_not_started_compactions =
         db->TEST_NumNotStartedCompactionsUnlocked(CompactionSizeKind::kSmall);
@@ -3020,9 +3020,10 @@ Result<std::pair<size_t, size_t>> CheckPendingCompactions(DBImpl* db) {
   SCHECK_LE(num_large_not_started_compactions, num_large_pending_compactions, IllegalState,
             "Pending compactions should include not started and paused.");
 
-  // Probably we should abort not yet started compaction if pausing another one in order to limit
-  // number of pending compactions but this is non-trivial and should be addressed by
-  // https://github.com/yugabyte/yugabyte-db/issues/24541.
+  // We can consider aborting not yet started compaction if pausing another one in the same category
+  // in order to limit number of pending compactions but this is non-trivial and limiting not
+  // started ones should be good enough combined together with
+  // rocksdb_determine_compaction_input_at_start==true behavior.
   SCHECK_LE(
       num_small_not_started_compactions, std::size_t{1}, IllegalState,
       "Expected at most 1 not started small compaction.");
@@ -3030,12 +3031,6 @@ Result<std::pair<size_t, size_t>> CheckPendingCompactions(DBImpl* db) {
       num_large_not_started_compactions, std::size_t{1}, IllegalState,
       "Expected at most 1 not started large compaction.");
 
-  SCHECK_LE(
-      num_small_pending_compactions, std::size_t{2}, IllegalState,
-      "Expected at most 2 pending small compaction.");
-  SCHECK_LE(
-      num_large_pending_compactions, std::size_t{2}, IllegalState,
-      "Expected at most 2 pending large compaction.");
   return std::make_pair(num_small_pending_compactions, num_large_pending_compactions);
 }
 
@@ -3093,6 +3088,9 @@ TEST_F(DBCompactionTest, LimitPendingCompactionTasks) {
   compaction_options_universal.stop_style =
       rocksdb::CompactionStopStyle::kCompactionStopStyleTotalSize;
   compaction_options_universal.min_merge_width = 4;
+  // Limit number of files to be picked up into compaction in order to have more compaction
+  // candidates during the test.
+  compaction_options_universal.max_merge_width = 8;
   compaction_options_universal.size_ratio = 20;
   compaction_options_universal.always_include_size_threshold =
       2 * kValueSizeBytes * kNumKeysPerSmallSstFile;
@@ -3128,8 +3126,8 @@ TEST_F(DBCompactionTest, LimitPendingCompactionTasks) {
   LOG(INFO) << "Waiting for flushes to complete - DONE";
 
   auto num_pending_compactions = ASSERT_RESULT(CheckPendingCompactions(dbfull()));
-  // We should achieve at least 1 small and 1 large pending compactions (and we've verified that at
-  // most 2 is pending and at most 1 is not yet started in each category).
+  // We should achieve at least 1 small and 1 large pending compactions (and we've verified that we
+  // have at most 1 is not yet started in each category).
   ASSERT_GE(num_pending_compactions.first, 1);
   ASSERT_GE(num_pending_compactions.second, 1);
 

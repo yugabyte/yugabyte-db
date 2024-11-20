@@ -8,6 +8,10 @@
 
 - name: Validate server type
   hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_remote_tmp: /tmp/.ansible/tmp
   tasks:
     - assert:
         that:
@@ -16,7 +20,26 @@
 
 - name: Send sudo password
   hosts: "{{ instance_search_pattern }}"
-  roles:
-    - "send-sudo-pass"
+  gather_facts: yes
   vars_files:
     - "{{ vars_file | default(placeholder_vars_file) }}"
+  tasks:
+    - name: Create sudo password file in tmp directory
+      ansible.builtin.copy:
+        dest: "{{ remote_tmp_dir | default('/tmp') }}/.yb_sudo_pass.sh"
+        content: |
+          export YB_SUDO_PASS={{ ansible_become_pass | mandatory }}
+        mode: '0600'
+      when:
+        - ansible_become_pass is defined
+        - not (yb_sudo_pass_file is defined)
+
+    - name: Create sudo password file at yb_sudo_pass_file
+      ansible.builtin.copy:
+        dest: "{{ yb_sudo_pass_file }}"
+        content: |
+          export YB_SUDO_PASS={{ ansible_become_pass | mandatory }}
+        mode: '0600'
+      when:
+        - ansible_become_pass is defined
+        - yb_sudo_pass_file is defined

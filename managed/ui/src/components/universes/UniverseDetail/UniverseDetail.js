@@ -195,10 +195,13 @@ class UniverseDetail extends Component {
       universe: { currentUniverse },
       universeTables
     } = this.props;
-    // Always refresh universe info on Overview tab
-    if (prevProps.params.tab !== this.props.params.tab && this.props.params.tab === 'overview') {
-      this.props.getUniverseInfo(currentUniverse.data.universeUUID);
-      this.props.getUniverseLbState(currentUniverse.data.universeUUID);
+    // Always refresh universe info on Overview tab or when universe uuid in the route changes.
+    if (
+      (prevProps.params.tab !== this.props.params.tab && this.props.params.tab === 'overview') ||
+      prevProps.params.uuid !== this.props.params.uuid
+    ) {
+      this.props.getUniverseInfo(this.props.params.uuid);
+      this.props.getUniverseLbState(this.props.params.uuid);
     }
     if (
       getPromiseState(currentUniverse).isSuccess() &&

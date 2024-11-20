@@ -17,9 +17,9 @@ YugabyteDB requires reading from the leader to read the latest data. However, fo
 
 ## Use cases
 
-1. **Time-critical** : Suppose the end-user starts a donation page to raise money for a personal cause and the target amount must be met by the end of the day. In a time-critical scenario, the end-user benefits from accessing the most recent donation made on the page and can keep track of the progress. Such real-time applications require the latest information as soon as it is available. But in the case of an application where fetching slightly stale data is acceptable, follower reads can be helpful.
+1. **Time-critical**. Suppose the end-user starts a donation page to raise money for a personal cause and the target amount must be met by the end of the day. In a time-critical scenario, the end-user benefits from accessing the most recent donation made on the page and can keep track of the progress. Such real-time applications require the latest information as soon as it is available. But in the case of an application where fetching slightly stale data is acceptable, follower reads can be helpful.
 
-1. **Latency-tolerant (staleness)** : Suppose a social media post gets a million likes and more continuously. For a post with massive likes such as this one, slightly stale reads are acceptable, and immediate updates are not necessary because the absolute number may not really matter to the end-user reading the post. Such applications do not need to always make requests directly to the leader. Instead, a slightly older value from the closest replica can achieve improved performance with lower latency.
+1. **Latency-tolerant (staleness)**. Suppose a social media post gets a million likes and more continuously. For a post with massive likes such as this one, slightly stale reads are acceptable, and immediate updates are not necessary because the absolute number may not really matter to the end-user reading the post. Such applications do not need to always make requests directly to the leader. Instead, a slightly older value from the closest replica can achieve improved performance with lower latency.
 
 Follower reads are applicable for applications that can tolerate staleness. Replicas may not be completely up-to-date with all updates, so this design may respond with stale data. You can specify how much staleness the application can tolerate. When enabled, read-only operations may be handled by the closest replica, instead of having to go to the leader.
 
@@ -56,8 +56,8 @@ The following table provides information on the expected behavior when a read ha
 
 You can mark a transaction as read-only by applying the following guidelines:
 
-- `SET TRANSACTION READ ONLY` applies only to the current transaction block.
-- `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY` applies the read-only setting to all statements and transaction blocks that follow.
+- SET TRANSACTION READ ONLY applies only to the current transaction block.
+- SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY applies the read-only setting to all statements and transaction blocks that follow.
 - `SET default_transaction_read_only = TRUE` applies the read-only setting to all statements and transaction blocks that follow.
 
 Note: The use of `pg_hint_plan` to mark a statement as read-only is not recommended. It may work in some cases, but relies on side effects and has known issues (see [GH17024](https://github.com/yugabyte/yugabyte-db/issues/17024) and  [GH17135](https://github.com/yugabyte/yugabyte-db/issues/17135)).
@@ -68,16 +68,31 @@ Note: The use of `pg_hint_plan` to mark a statement as read-only is not recommen
 
 - If the follower is not yet caught up to `<current_time> - <staleness>`, the read is redirected to a different replica transparently from the end-user. The end-user may see a slight increase in latency depending on the location of the replica which satisfies the read.
 
-
 ## Examples
 
 This example uses follower reads because the transaction is marked read-only:
 
 ```sql
-set yb_read_from_followers = true;
-start transaction read only;
-SELECT * from t WHERE k='k1';
-commit;
+SET yb_read_from_followers = true;
+START TRANSACTION READ ONLY;
+SELECT * FROM t WHERE k='k1';
+COMMIT;
+SET yb_read_from_followers = false;
+```
+
+```output
+ k  | v
+----+----
+ k1 | v1
+```
+
+Use SET LOCAL inside a transaction to have follower reads turned on only for the transaction. Set `yb_read_from_followers` before any statement is executed in the block:
+
+```sql
+START TRANSACTION READ ONLY;
+SET LOCAL yb_read_from_followers = true;
+SELECT * FROM t WHERE k='k1';
+COMMIT;
 ```
 
 ```output
@@ -89,9 +104,9 @@ commit;
 This example uses follower reads because the session is marked read-only:
 
 ```sql
-set session characteristics as transaction read only;
-set yb_read_from_followers = true;
-SELECT * from t WHERE k='k1';
+SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY;
+SET yb_read_from_followers = true;
+SELECT * FROM t WHERE k='k1';
 ```
 
 ```output
@@ -101,16 +116,16 @@ SELECT * from t WHERE k='k1';
 (1 row)
 ```
 
-The following is a `JOIN` example that uses follower reads:
+The following is a JOIN example that uses follower reads:
 
 ```sql
-create table table1(k int primary key, v int);
-create table table2(k int primary key, v int);
-insert into table1 values (1, 2), (2, 4), (3, 6), (4,8);
-insert into table2 values (1, 3), (2, 6), (3, 9), (4,12);
-set yb_read_from_followers = true;
-set session characteristics as transaction read only;
-select * from table1, table2 where table1.k = 3 and table2.v = table3.v;
+CREATE TABLE table1(k int primary key, v int);
+CREATE TABLE table2(k int primary key, v int);
+INSERT INTO table1 values (1, 2), (2, 4), (3, 6), (4,8);
+INSERT INTO table2 values (1, 3), (2, 6), (3, 9), (4,12);
+SET yb_read_from_followers = true;
+SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY;
+SELECT * FROM table1, table2 WHERE table1.k = 3 AND table2.v = table3.v;
 ```
 
 ```output
@@ -123,10 +138,10 @@ select * from table1, table2 where table1.k = 3 and table2.v = table3.v;
 The following examples demonstrate staleness after enabling the `yb_follower_read_staleness_ms` property:
 
 ```sql
-set session characteristics as transaction read write;
-insert into t values ('k1', 'v1')
+SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE;
+INSERT INTO t values ('k1', 'v1')
 /* sleep 10s */
-select * from t where k = 'k1';
+SELECT * FROM t WHERE k = 'k1';
 ```
 
 ```output
@@ -141,10 +156,10 @@ UPDATE t SET  v = 'v1+1' where k = 'k1';
 /* sleep 10s */
 UPDATE t SET  v = 'v1+2' where k = 'k1';
 /* sleep 10s */
-select * from t where k = 'k1';
+SELECT * FROM t WHERE k = 'k1';
 ```
 
-This selects the latest version of the row because the transaction setting for the session is `read write`.
+This selects the latest version of the row because the transaction setting for the session is READ WRITE.
 
 ```output
  k  |  v
@@ -154,9 +169,9 @@ This selects the latest version of the row because the transaction setting for t
 ```
 
 ```sql
-set session characteristics as transaction read only;
-set yb_read_from_followers = true;
-select * from t where k = 'k1';
+SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY;
+SET yb_read_from_followers = true;
+SELECT * FROM t WHERE k = 'k1';
 ```
 
 ```output
@@ -167,8 +182,8 @@ select * from t where k = 'k1';
 ```
 
 ```sql
-set yb_follower_read_staleness_ms = 5000;
-select * from t where k = 'k1';   /* up to 5s old value */
+SET yb_follower_read_staleness_ms = 5000;
+SELECT * FROM t WHERE k = 'k1';   /* up to 5s old value */
 ```
 
 ```output
@@ -179,8 +194,8 @@ select * from t where k = 'k1';   /* up to 5s old value */
 ```
 
 ```sql
-set yb_follower_read_staleness_ms = 15000;
-select * from t where k = 'k1';   /* up to 15s old value */
+SET yb_follower_read_staleness_ms = 15000;
+SELECT * FROM t WHERE k = 'k1';   /* up to 15s old value */
 ```
 
 ```output
@@ -191,8 +206,8 @@ select * from t where k = 'k1';   /* up to 15s old value */
 ```
 
 ```sql
-set yb_follower_read_staleness_ms = 25000;
-select * from t where k = 'k1';   /* up to 25s old value */
+SET yb_follower_read_staleness_ms = 25000;
+SELECT * FROM t WHERE k = 'k1';   /* up to 25s old value */
 ```
 
 ```output

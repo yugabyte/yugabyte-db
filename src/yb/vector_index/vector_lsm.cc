@@ -764,11 +764,12 @@ bool VectorLSM<Vector, DistanceResult>::TEST_HasBackgroundInserts() const {
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-DistanceResult VectorLSM<Vector, DistanceResult>::TEST_Distance(
+DistanceResult VectorLSM<Vector, DistanceResult>::Distance(
     const Vector& lhs, const Vector& rhs) const {
   VectorIndexPtr index;
+  // TODO(vector_index) Should improve scenario when there is no active chunk.
   {
-    std::lock_guard lock(mutex_);
+    SharedLock lock(mutex_);
     if (mutable_chunk_) {
       index = mutable_chunk_->index;
     } else if (!immutable_chunks_.empty()) {

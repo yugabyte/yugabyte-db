@@ -121,6 +121,14 @@ const (
 	// required to fetch failed subtask message from YugabyteDB Anywhere
 	YBAAllowFailureSubTaskListMinVersion = "2.19.0.0-b68"
 
+	// YBAAllowNewReleaseMinStableVersion specifies minimum version
+	// required to use New Release via YBA CLI
+	YBAAllowNewReleaseMinStableVersion = "2024.2.0.0-b1"
+
+	// YBAAllowNewReleaseMinPreviewVersion specifies minimum version
+	// required to use New Release via YBA CLI
+	YBAAllowNewReleaseMinPreviewVersion = "2.23.1.0-b27"
+
 	MinCLIStableVersion  = "2024.1.0.0-b4"
 	MinCLIPreviewVersion = "2.21.0.0-b545"
 )
@@ -175,6 +183,36 @@ const (
 	QueuedForForcedDeletionBackupState = "QueuedForForcedDeletion"
 	// DeleteInProgressBackupState state
 	DeleteInProgressBackupState = "DeleteInProgress"
+)
+
+// ScheduleBackupStates
+const (
+	// DeletingScheduleBackupState state
+	DeletingScheduleBackupState = "Deleting"
+	// ErrorScheduleBackupState state
+	ErrorScheduleBackupState = "Error"
+	// ActiveScheduleBackupState state
+	ActiveScheduleBackupState = "Active"
+	// CreatingScheduleBackupState state
+	CreatingScheduleBackupState = "Creating"
+	// PausedScheduleBackupState state
+	PausedScheduleBackupState = "Paused"
+	// StoppedScheduleBackupState state
+	StoppedScheduleBackupState = "Stopped"
+	// EditingScheduleBackupState state
+	EditingScheduleBackupState = "Editing"
+)
+
+// ReleaseResponseStates
+const (
+	// WaitingReleaseResponseState state
+	WaitingReleaseResponseState = "waiting"
+	// RunningReleaseResponseState state
+	RunningReleaseResponseState = "running"
+	// SuccessReleaseResponseState state
+	SuccessReleaseResponseState = "success"
+	// FailureReleaseResponseState state
+	FailureReleaseResponseState = "failure"
 )
 
 // RestoreStates
@@ -370,6 +408,21 @@ func IncompleteTaskStates() []string {
 	return []string{CreatedTaskStatus, InitializingTaskStatus, RunningTaskStatus, AbortTaskStatus}
 }
 
+// CompletedReleaseReponseStates returns set of states that mark the response as completed
+func CompletedReleaseReponseStates() []string {
+	return []string{FailureReleaseResponseState, SuccessReleaseResponseState}
+}
+
+// ErrorReleaseResponseStates return set of states that mark state as failure
+func ErrorReleaseResponseStates() []string {
+	return []string{FailureReleaseResponseState}
+}
+
+// IncompleteReleaseResponseStates return set of states for ongoing tasks
+func IncompleteReleaseResponseStates() []string {
+	return []string{RunningReleaseResponseState, WaitingReleaseResponseState}
+}
+
 // YugabyteDB Anywhere versions >= the minimum listed versions for operations
 // that need to be restricted
 
@@ -409,3 +462,11 @@ func IsCloudBasedProvider(providerType string) bool {
 	return providerType == AWSProviderType ||
 		providerType == AzureProviderType || providerType == GCPProviderType
 }
+
+const (
+	// Separator variable for strings that are in key value format
+	Separator = "::"
+
+	// KeyValueSeparator variable for strings that are in key value format
+	KeyValueSeparator = "="
+)

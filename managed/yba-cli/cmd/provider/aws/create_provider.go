@@ -26,9 +26,9 @@ var createAWSProviderCmd = &cobra.Command{
 	Short:   "Create an AWS YugabyteDB Anywhere provider",
 	Long:    "Create an AWS provider in YugabyteDB Anywhere",
 	Example: `yba provider aws create -n <provider-name> \
-	--region region-name=us-west-2,vpc-id=<vpc-id>,sg-id=<security-group> \
-	--zone zone-name=us-west-2a,region-name=us-west-2,subnet=<subnet> \
-	--zone zone-name=us-west-2b,region-name=us-west-2,subnet=<subnet> \
+	--region region-name=us-west-2::vpc-id=<vpc-id>::sg-id=<security-group> \
+	--zone zone-name=us-west-2a::region-name=us-west-2::subnet=<subnet> \
+	--zone zone-name=us-west-2b::region-name=us-west-2::subnet=<subnet> \
 	--access-key-id <aws-access-key-id> --secret-access-key <aws-secret-access-key>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerNameFlag, err := cmd.Flags().GetString("name")
@@ -230,20 +230,20 @@ func init() {
 
 	createAWSProviderCmd.Flags().StringArray("region", []string{},
 		"[Required] Region associated with the AWS provider. Minimum number of required "+
-			"regions = 1. Provide the following comma separated fields as key-value pairs:"+
-			"\"region-name=<region-name>,"+
-			"vpc-id=<vpc-id>,sg-id=<security-group-id>\". "+
+			"regions = 1. Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"region-name=<region-name>::"+
+			"vpc-id=<vpc-id>::sg-id=<security-group-id>\". "+
 			formatter.Colorize("Region name is required key-value.",
 				formatter.GreenColor)+
 			" VPC ID and Security Group ID"+
 			" are optional. "+
 			"Each region needs to be added using a separate --region flag. "+
-			"Example: --region region-name=us-west-2,vpc-id=<vpc-id>,sg-id=<security-group> "+
-			"--region region-name=us-east-2,vpc-id=<vpc-id>,sg-id=<security-group>")
+			"Example: --region region-name=us-west-2::vpc-id=<vpc-id>::sg-id=<security-group> "+
+			"--region region-name=us-east-2::vpc-id=<vpc-id>::sg-id=<security-group>")
 	createAWSProviderCmd.Flags().StringArray("zone", []string{},
 		"[Required] Zone associated to the AWS Region defined. "+
-			"Provide the following comma separated fields as key-value pairs:"+
-			"\"zone-name=<zone-name>,region-name=<region-name>,subnet=<subnet-id>,"+
+			"Provide the following double colon (::) separated fields as key-value pairs:"+
+			"\"zone-name=<zone-name>::region-name=<region-name>::subnet=<subnet-id>::"+
 			"secondary-subnet=<secondary-subnet-id>\". "+
 			formatter.Colorize("Zone name, Region name and subnet IDs are required values. ",
 				formatter.GreenColor)+
@@ -251,14 +251,14 @@ func init() {
 			"must have atleast one corresponding --zone definition. Multiple --zone definitions "+
 			"can be provided per region."+
 			"Each zone needs to be added using a separate --zone flag. "+
-			"Example: --zone zone-name=us-west-2a,region-name=us-west-2,subnet=<subnet-id>"+
-			" --zone zone-name=us-west-2b,region-name=us-west-2,subnet=<subnet-id>")
+			"Example: --zone zone-name=us-west-2a::region-name=us-west-2::subnet=<subnet-id>"+
+			" --zone zone-name=us-west-2b::region-name=us-west-2::subnet=<subnet-id>")
 
 	createAWSProviderCmd.Flags().StringArray("image-bundle", []string{},
 		"[Optional] Image bundles associated with AWS provider. "+
-			"Provide the following comma separated fields as key-value pairs: "+
-			"\"image-bundle-name=<image-bundle-name>,arch=<architecture>,"+
-			"ssh-user=<ssh-user>,ssh-port=<ssh-port>,imdsv2=<true/false>,default=<true/false>\". "+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"image-bundle-name=<image-bundle-name>::arch=<architecture>::"+
+			"ssh-user=<ssh-user>::ssh-port=<ssh-port>::imdsv2=<true/false>::default=<true/false>\". "+
 			formatter.Colorize(
 				"Image bundle name, architecture and SSH user are required key-value pairs.",
 				formatter.GreenColor)+
@@ -267,11 +267,11 @@ func init() {
 			" is false. Default marks the image bundle as default for the provider. "+
 			"Allowed values for architecture are x86_64 and arm64."+
 			"Each image bundle can be added using separate --image-bundle flag. "+
-			"Example: --image-bundle <image-bundle-name>=<name>,"+
-			"<ssh-user>=<ssh-user>,<ssh-port>=22")
+			"Example: --image-bundle image-bundle-name=<name>::"+
+			"ssh-user=<ssh-user>::ssh-port=22")
 	createAWSProviderCmd.Flags().StringArray("image-bundle-region-override", []string{},
 		"[Optional] Image bundle region overrides associated with AWS provider. "+
-			"Provide the following comma separated fields as key-value pairs: "+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
 			"\"image-bundle-name=<image-bundle-name>,region-name=<region-name>,"+
 			"machine-image=<machine-image>\". "+
 			formatter.Colorize(
@@ -280,8 +280,8 @@ func init() {
 			"must have atleast one corresponding --image-bundle-region-override "+
 			"definition for every region added."+
 			" Each image bundle override can be added using separate --image-bundle-region-override flag. "+
-			"Example: --image-bundle <image-bundle-name>=<name>,"+
-			"<region-name>=<region-name>,<machine-image>=<machine-image>")
+			"Example: --image-bundle-region-override image-bundle-name=<name>::"+
+			"region-name=<region-name>::machine-image=<machine-image>")
 
 	createAWSProviderCmd.Flags().String("ssh-user", "ec2-user",
 		"[Optional] SSH User to access the YugabyteDB nodes.")

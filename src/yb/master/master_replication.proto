@@ -621,6 +621,15 @@ message IsXClusterBootstrapRequiredResponsePB {
   optional bool initial_bootstrap_required = 3;
 }
 
+message XClusterEnsureSequenceUpdatesAreInWalRequestPB {
+  required string replication_group_id = 1;
+  repeated string namespace_ids = 2;
+}
+
+message XClusterEnsureSequenceUpdatesAreInWalResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 message GetXClusterStreamsRequestPB {
   required string replication_group_id = 1;
   required string namespace_id = 2;
@@ -906,6 +915,8 @@ service MasterReplication {
       returns (XClusterDeleteOutboundReplicationGroupResponsePB);
   rpc IsXClusterBootstrapRequired(IsXClusterBootstrapRequiredRequestPB)
       returns (IsXClusterBootstrapRequiredResponsePB);
+  rpc XClusterEnsureSequenceUpdatesAreInWal(XClusterEnsureSequenceUpdatesAreInWalRequestPB)
+      returns (XClusterEnsureSequenceUpdatesAreInWalResponsePB);
   rpc GetXClusterStreams(GetXClusterStreamsRequestPB)
       returns (GetXClusterStreamsResponsePB);
   rpc RepairOutboundXClusterReplicationGroupAddTable(

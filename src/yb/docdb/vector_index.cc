@@ -155,6 +155,12 @@ class VectorIndexImpl : public VectorIndex, public vector_index::VectorLSMKeyVal
     return result;
   }
 
+  Result<EncodedDistance> Distance(Slice lhs, Slice rhs) override {
+    auto lhs_vec = VERIFY_RESULT(VectorFromYSQL<Vector>(lhs));
+    auto rhs_vec = VERIFY_RESULT(VectorFromYSQL<Vector>(rhs));
+    return EncodeDistance(lsm_.Distance(lhs_vec, rhs_vec));
+  }
+
  private:
   Status StoreBaseTableKeys(
       const vector_index::BaseTableKeysBatch& batch, HybridTime write_time) override {

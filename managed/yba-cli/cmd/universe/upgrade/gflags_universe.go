@@ -22,7 +22,7 @@ var upgradeGflagsCmd = &cobra.Command{
 	Short: "Gflags upgrade for a YugabyteDB Anywhere Universe",
 	Long:  "Gflags upgrade for a YugabyteDB Anywhere Universe",
 	Example: `yba universe upgrade gflags --name <universe-name> \
-	--add-master-gflags "<key-1>"="<value-1>","key-2"="<value-2>","key-3"="<value-3>"`,
+	 --add-master-gflags "<key-1>"="<value-1>","key-2"="<value-2>","key-3"="<value-3>"`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		universeName, err := cmd.Flags().GetString("name")

@@ -132,27 +132,25 @@ Status QLRocksDBStorage::InitIterator(DocRowwiseIterator* iter,
   return iter->Init(DocPgsqlScanSpec(schema, request.stmt_id(), range_doc_key));
 }
 
-Status QLRocksDBStorage::GetIteratorForYbctid(
+Result<std::unique_ptr<YQLRowwiseIteratorIf>> QLRocksDBStorage::GetIteratorForYbctid(
     uint64 stmt_id,
     const dockv::ReaderProjection& projection,
     std::reference_wrapper<const DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
     const ReadOperationData& read_operation_data,
-    const Slice& min_ybctid,
-    const Slice& max_ybctid,
+    const YbctidBounds& bounds,
     std::reference_wrapper<const ScopedRWOperation> pending_op,
-    YQLRowwiseIteratorIf::UniPtr* iter,
     SkipSeek skip_seek) const {
   DocKey lower_doc_key(doc_read_context.get().schema());
 
-  if (!min_ybctid.empty()) {
-    RETURN_NOT_OK(lower_doc_key.DecodeFrom(min_ybctid));
+  if (!bounds.first.empty()) {
+    RETURN_NOT_OK(lower_doc_key.DecodeFrom(bounds.first));
   }
 
   DocKey upper_doc_key(doc_read_context.get().schema());
 
-  if (!max_ybctid.empty()) {
-    RETURN_NOT_OK(upper_doc_key.DecodeFrom(max_ybctid));
+  if (!bounds.second.empty()) {
+    RETURN_NOT_OK(upper_doc_key.DecodeFrom(bounds.second));
   }
   upper_doc_key.AddRangeComponent(dockv::KeyEntryValue(dockv::KeyEntryType::kHighest));
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
@@ -171,8 +169,7 @@ Status QLRocksDBStorage::GetIteratorForYbctid(
         lower_doc_key,
         upper_doc_key),
       skip_seek));
-  *iter = std::move(doc_iter);
-  return Status::OK();
+  return std::move(doc_iter);
 }
 
 Status QLRocksDBStorage::GetIterator(

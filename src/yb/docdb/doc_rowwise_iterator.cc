@@ -153,8 +153,15 @@ void DocRowwiseIterator::InitResult() {
   }
 }
 
+void DocRowwiseIterator::Refresh(SeekFilter seek_filter) {
+  done_ = false;
+  seek_filter_ = seek_filter;
+}
+
 inline void DocRowwiseIterator::Seek(Slice key) {
   VLOG_WITH_FUNC(3) << " Seeking to " << key << "/" << dockv::DocKey::DebugSliceToString(key);
+
+  DCHECK(!done_);
 
   prev_doc_found_ = DocReaderResult::kNotFound;
 
@@ -164,18 +171,18 @@ inline void DocRowwiseIterator::Seek(Slice key) {
   // Another option would be changing kLowest value to kNullLow. But there are much more scenarios
   // that could be affected and should be tested.
   if (!key.empty() && key[0] >= dockv::KeyEntryTypeAsChar::kNullLow) {
-    db_iter_->Seek(key, Full::kTrue);
+    db_iter_->Seek(key, seek_filter_, Full::kTrue);
     return;
   }
 
   auto shared_prefix = shared_key_prefix();
   if (!shared_prefix.empty()) {
-    db_iter_->Seek(shared_prefix, Full::kFalse);
+    db_iter_->Seek(shared_prefix, seek_filter_, Full::kFalse);
     return;
   }
 
   const auto null_low = dockv::KeyEntryTypeAsChar::kNullLow;
-  db_iter_->Seek(Slice(&null_low, 1), Full::kFalse);
+  db_iter_->Seek(Slice(&null_low, 1), seek_filter_, Full::kFalse);
 }
 
 inline void DocRowwiseIterator::SeekPrevDocKey(Slice key) {
@@ -190,18 +197,20 @@ inline void DocRowwiseIterator::SeekPrevDocKey(Slice key) {
 
 Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow(bool row_finished,
                                                            bool current_fetched_row_skipped) {
-  if (!IsFetchedRowStatic() &&
+  if (seek_filter_ == SeekFilter::kAll && !IsFetchedRowStatic() &&
       VERIFY_RESULT(scan_choices_->AdvanceToNextRow(&row_key_, db_iter_.get(),
                                                     current_fetched_row_skipped))) {
     return Status::OK();
   }
   if (!is_forward_scan_) {
     VLOG(4) << __PRETTY_FUNCTION__ << " setting as PrevDocKey";
+    RSTATUS_DCHECK_EQ(seek_filter_, SeekFilter::kAll, IllegalState,
+                      "Backward scan is not supported with this filter");
     db_iter_->PrevDocKey(row_key_);
   } else if (row_finished) {
-    db_iter_->Revalidate();
+    db_iter_->Revalidate(seek_filter_);
   } else {
-    db_iter_->SeekOutOfSubDoc(&row_key_);
+    db_iter_->SeekOutOfSubDoc(seek_filter_, &row_key_);
   }
 
   return Status::OK();

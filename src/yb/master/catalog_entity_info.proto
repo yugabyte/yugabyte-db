@@ -475,6 +475,28 @@ message SysSecurityConfigEntryPB {
   optional bool cassandra_user_created = 2 [default = false];
 }
 
+message YsqlMajorCatalogUpgradeInfoPB {
+  enum State {
+    INVALID = 0;
+    DONE = 1;
+    FAILED = 2;
+    PERFORMING_INIT_DB = 3;
+    PERFORMING_PG_UPGRADE = 4;
+    MONITORING = 5;
+    PERFORMING_ROLLBACK = 6;
+  }
+  optional State state = 1 [ default = DONE ];
+
+  // This is set when the state is FAILED.
+  optional AppStatusPB previous_error = 2;
+
+  // Set to the current version at time of new universe creation.
+  // Updated after the ysql major catalog upgrade is complete.
+  // This field is introduced in version 15. So universes that are upgraded
+  // will have the default value of 11 (the previous version).
+  optional uint32 catalog_version = 3 [ default = 11 ];
+}
+
 // Metadata about the YSQL catalog (current only version).
 message SysYSQLCatalogConfigEntryPB {
   // YSQL catalog version. Every time the catalog tables are changed (i.e. by DDL statements)
@@ -487,15 +509,7 @@ message SysYSQLCatalogConfigEntryPB {
   // If this is set, initdb has failed.
   optional string initdb_error = 5;
 
-  message YsqlMajorUpgradeInfoPB {
-    // This is true if the master ran initdb during a ysql major version upgrade and it finished,
-    // successfully or not.
-    optional bool next_ver_initdb_done = 1;
-
-    // If this is set, initdb during a ysql major version upgrade has failed.
-    optional MasterErrorPB next_ver_initdb_error = 2;
-  }
-  optional YsqlMajorUpgradeInfoPB ysql_major_upgrade_info = 7;
+  optional YsqlMajorCatalogUpgradeInfoPB ysql_major_catalog_upgrade_info = 7;
 
   // true if transactional system catalogs have been enabled on this cluster. This means all
   // YSQL system catalog tables have been made transactional, both in their schema and in the tablet

@@ -167,14 +167,7 @@ std::optional<PgSelect::IndexQueryInfo> MakeIndexQueryInfo(
 Result<std::unique_ptr<PgStatement>> MakeSelectStatement(
     const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id,
     const PgObjectId& index_id, const PgPrepareParameters* prepare_params, bool is_region_local) {
-  // Scenarios:
-  // - Sequential Scan: PgSelect to read from table_id.
-  // - Primary Scan: PgSelect from table_id. YugaByte does not have separate table for primary key.
-  // - Index-Only-Scan: PgSelectIndex directly from secondary index_id.
-  // - IndexScan: Use PgSelectIndex to read from index_id and then PgSelect to read from table_id.
-  //     Note that for SysTable, only one request is send for both table_id and index_id.
-  if (prepare_params && prepare_params->index_only_scan && prepare_params->use_secondary_index) {
-    RSTATUS_DCHECK(index_id.IsValid(), InvalidArgument, "Cannot run query with invalid index ID");
+  if (prepare_params && prepare_params->index_only_scan) {
     return PgSelectIndex::Make(pg_session, index_id, is_region_local);
   }
 
@@ -1463,6 +1456,9 @@ Status PgApiImpl::ExecTruncateColocated(PgStatement* handle) {
 Status PgApiImpl::NewSelect(
     const PgObjectId& table_id, const PgObjectId& index_id,
     const PgPrepareParameters* prepare_params, bool is_region_local, PgStatement** handle) {
+  DCHECK(index_id.IsValid() || table_id.IsValid());
+  DCHECK(!(prepare_params && prepare_params->index_only_scan) || index_id.IsValid());
+
   *handle = nullptr;
   return AddToCurrentPgMemctx(
       VERIFY_RESULT(MakeSelectStatement(

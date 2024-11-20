@@ -37,6 +37,7 @@
 #include "yb/tserver/pg_create_table.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
@@ -45,6 +46,11 @@
 // check_bootstrap_required flag by default.
 DEFINE_RUNTIME_bool(check_bootstrap_required, false,
     "Is it necessary to check whether bootstrap is required for Universe Replication.");
+
+DEFINE_RUNTIME_uint32(
+    xcluster_ensure_sequence_updates_in_wal_timeout_sec, 3 * 60,
+    "Timeout for XClusterEnsureSequenceUpdatesAreInWal RPCs.");
+DEFINE_validator(xcluster_ensure_sequence_updates_in_wal_timeout_sec, FLAG_GT_VALUE_VALIDATOR(0));
 
 DEFINE_test_flag(bool, allow_ycql_transactional_xcluster, false,
     "Determines if xCluster transactional replication on YCQL tables is allowed.");
@@ -260,7 +266,7 @@ Status XClusterInboundReplicationGroupSetupTask::FirstStep() {
     auto local_client = master_.client_future();
     RETURN_NOT_OK(tserver::CreateSequencesDataTable(
         local_client.get(), CoarseMonoClock::now() +
-                                MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec)));
+        MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec)));
   }
 
   ScheduleNextStep(
@@ -277,8 +283,8 @@ Status XClusterInboundReplicationGroupSetupTask::SetupDDLReplicationExtension() 
     for (const auto& namespace_id : data_.target_namespace_ids) {
       auto namespace_name = VERIFY_RESULT(catalog_manager_.FindNamespaceById(namespace_id))->name();
       Synchronizer sync;
-      LOG(INFO) << "Setting up DDL replication extension for namespace " << namespace_id << " ("
-                << namespace_name << ")";
+      LOG_WITH_PREFIX(INFO) << "Setting up DDL replication extension for namespace " << namespace_id
+                            << " (" << namespace_name << ")";
       RETURN_NOT_OK(master::SetupDDLReplicationExtension(
           catalog_manager_, namespace_name, XClusterDDLReplicationRole::kTarget,
           CoarseMonoClock::now() +
@@ -287,6 +293,29 @@ Status XClusterInboundReplicationGroupSetupTask::SetupDDLReplicationExtension() 
       RETURN_NOT_OK_PREPEND(sync.Wait(), "Failed to setup xCluster DDL replication extension");
     }
   }
+
+  if (data_.automatic_ddl_mode && FLAGS_TEST_xcluster_enable_sequence_replication &&
+      !is_alter_replication_) {
+    ScheduleNextStep(
+        std::bind(
+            &XClusterInboundReplicationGroupSetupTask::BootstrapSequencesData, shared_from(this)),
+        "BootstrapSequencesData");
+  } else {
+    ScheduleNextStep(
+        std::bind(&XClusterInboundReplicationGroupSetupTask::CreateTableTasks, shared_from(this)),
+        "CreateTableTasks");
+  }
+  return Status::OK();
+}
+
+Status XClusterInboundReplicationGroupSetupTask::BootstrapSequencesData() {
+  LOG_WITH_PREFIX(INFO) << "Bootstrapping sequences_data for namespaces "
+                        << AsString(data_.source_namespace_ids);
+
+  auto deadline = CoarseMonoClock::Now() +
+                  MonoDelta::FromSeconds(FLAGS_xcluster_ensure_sequence_updates_in_wal_timeout_sec);
+  RETURN_NOT_OK(GetXClusterClient().EnsureSequenceUpdatesAreInWal(
+      data_.replication_group_id, data_.source_namespace_ids, deadline));
 
   ScheduleNextStep(
       std::bind(&XClusterInboundReplicationGroupSetupTask::CreateTableTasks, shared_from(this)),
@@ -1109,8 +1138,7 @@ void XClusterTableSetupTask::PopulateTabletMapping() {
   parent_task_->GetYbClient().GetTableLocations(
       stripped_source_table_id, /* max_tablets = */ std::numeric_limits<int32_t>::max(),
       RequireTabletsRunning::kTrue, PartitionsOnly::kTrue,
-      std::bind(&XClusterTableSetupTask::PopulateTabletMappingCallback, shared_from(this), _1),
-      IncludeInactive(parent_task_->data_.TargetTableIdsProvided()));
+      std::bind(&XClusterTableSetupTask::PopulateTabletMappingCallback, shared_from(this), _1));
 }
 
 void XClusterTableSetupTask::PopulateTabletMappingCallback(

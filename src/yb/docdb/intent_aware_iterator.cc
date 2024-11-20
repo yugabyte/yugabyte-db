@@ -232,11 +232,12 @@ IntentAwareIterator::IntentAwareIterator(
 }
 
 void IntentAwareIterator::Seek(const dockv::DocKey &doc_key) {
-  Seek(doc_key.Encode(), Full::kFalse);
+  Seek(doc_key.Encode(), SeekFilter::kAll, Full::kFalse);
 }
 
-void IntentAwareIterator::Seek(Slice key, Full full) {
-  VLOG_WITH_FUNC(4) << "key: " << DebugDumpKeyToStr(key) << ", full: " << full;
+void IntentAwareIterator::Seek(Slice key, SeekFilter filter, Full full) {
+  VLOG_WITH_FUNC(4)
+      << "key: " << DebugDumpKeyToStr(key) << ", full: " << full << ", filter: " << filter;
   DOCDB_DEBUG_SCOPE_LOG(
       key.ToDebugString(),
       std::bind(&IntentAwareIterator::DebugDump, this));
@@ -246,7 +247,17 @@ void IntentAwareIterator::Seek(Slice key, Full full) {
 
   SeekTriggered();
 
-  SkipFutureRecords<Direction::kForward>(ROCKSDB_SEEK(&iter_, key));
+  [&] {
+    switch (filter) {
+      case SeekFilter::kAll:
+        SkipFutureRecords<Direction::kForward>(ROCKSDB_SEEK(&iter_, key));
+        return;
+      case SeekFilter::kIntentsOnly:
+        regular_entry_.Reset();
+        return;
+    }
+    FATAL_INVALID_ENUM_VALUE(SeekFilter, filter);
+  }();
   if (intent_iter_.Initialized()) {
     if (!SetIntentUpperbound()) {
       return;
@@ -348,7 +359,7 @@ void IntentAwareIterator::SeekPastSubKey(Slice key) {
   FillEntry();
 }
 
-void IntentAwareIterator::SeekOutOfSubDoc(KeyBytes* key_bytes) {
+void IntentAwareIterator::SeekOutOfSubDoc(SeekFilter filter, KeyBytes* key_bytes) {
   VLOG_WITH_FUNC(4) << DebugDumpKeyToStr(*key_bytes);
   if (!status_.ok()) {
     return;
@@ -358,7 +369,17 @@ void IntentAwareIterator::SeekOutOfSubDoc(KeyBytes* key_bytes) {
 
   auto prefix_len = intent_iter_.Initialized()
       ? IntentPrepareSeek(*key_bytes, KeyEntryTypeAsChar::kMaxByte) : 0;
-  SkipFutureRecords<Direction::kForward>(docdb::SeekOutOfSubKey(key_bytes, &iter_));
+  [&] {
+    switch (filter) {
+      case SeekFilter::kAll:
+        SkipFutureRecords<Direction::kForward>(docdb::SeekOutOfSubKey(key_bytes, &iter_));
+        return;
+      case SeekFilter::kIntentsOnly:
+        regular_entry_.Reset();
+        return;
+    }
+    FATAL_INVALID_ENUM_VALUE(SeekFilter, filter);
+  }();
   IntentSeekForward(prefix_len);
   FillEntry();
 }
@@ -645,7 +666,7 @@ void IntentAwareIterator::SeekToLatestSubDocKeyInternal() {
     return;
   }
   subdockey_slice.remove_suffix(1);
-  Seek(subdockey_slice);
+  Seek(subdockey_slice, SeekFilter::kAll);
 }
 
 void IntentAwareIterator::SeekToLatestDocKeyInternal() {
@@ -656,13 +677,23 @@ void IntentAwareIterator::SeekToLatestDocKeyInternal() {
   if (!HandleStatus(dockey_size)) {
     return;
   }
-  Seek(Slice(subdockey_slice.data(), *dockey_size));
+  Seek(Slice(subdockey_slice.data(), *dockey_size), SeekFilter::kAll);
 }
 
-void IntentAwareIterator::Revalidate() {
+void IntentAwareIterator::Revalidate(SeekFilter seek_filter) {
   VLOG_WITH_FUNC(4);
 
-  SkipFutureRecords<Direction::kForward>(iter_.Entry());
+  [&] {
+    switch (seek_filter) {
+      case SeekFilter::kAll:
+        SkipFutureRecords<Direction::kForward>(iter_.Entry());
+        return;
+      case SeekFilter::kIntentsOnly:
+        regular_entry_.Reset();
+        return;
+    }
+    FATAL_INVALID_ENUM_VALUE(SeekFilter, seek_filter);
+  }();
   if (intent_iter_.Initialized()) {
     if (!SetIntentUpperbound()) {
       return;

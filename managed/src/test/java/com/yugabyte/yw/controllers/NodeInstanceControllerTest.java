@@ -712,9 +712,10 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testUpdateStateValid() {
+  public void testUpdateStateValidToFree() {
     UUID fakeTaskUUID = buildTaskInfo(null, TaskType.RecommissionNodeInstance);
-    when(mockCommissioner.submit(any(TaskType.class), any(DetachedNodeTaskParams.class)))
+    when(mockCommissioner.submit(
+            any(TaskType.class), any(DetachedNodeTaskParams.class), any(), any()))
         .thenReturn(fakeTaskUUID);
     // Creating valid transition from DECOMMISSIONED -> FREE state.
     node.setState(NodeInstance.State.DECOMMISSIONED);
@@ -726,11 +727,35 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
         ArgumentCaptor.forClass(DetachedNodeTaskParams.class);
     assertOk(r);
     verify(mockCommissioner, times(1))
-        .submit(Mockito.eq(TaskType.RecommissionNodeInstance), paramsCaptor.capture());
+        .submit(
+            Mockito.eq(TaskType.RecommissionNodeInstance), paramsCaptor.capture(), any(), any());
     DetachedNodeTaskParams params = paramsCaptor.getValue();
-    assertEquals(params.getInstanceType(), FAKE_INSTANCE_TYPE);
-    assertEquals(params.getNodeUuid(), node.getNodeUuid());
-    assertEquals(params.getAzUuid(), node.getZoneUuid());
+    assertEquals(FAKE_INSTANCE_TYPE, params.getInstanceType());
+    assertEquals(node.getNodeUuid(), params.getNodeUuid());
+    assertEquals(node.getZoneUuid(), params.getAzUuid());
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  // Creating valid transition from FREE -> DECOMMISSIONED state.
+  public void testUpdateStateValidToDecommissioned() {
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.RecommissionNodeInstance);
+    when(mockCommissioner.submit(
+            any(TaskType.class), any(DetachedNodeTaskParams.class), any(), any()))
+        .thenReturn(fakeTaskUUID);
+    Result r =
+        performUpdateStateAction(
+            customer.getUuid(), provider.getUuid(), FAKE_IP, NodeInstance.State.DECOMMISSIONED);
+    ArgumentCaptor<DetachedNodeTaskParams> paramsCaptor =
+        ArgumentCaptor.forClass(DetachedNodeTaskParams.class);
+    assertOk(r);
+    verify(mockCommissioner, times(1))
+        .submit(
+            Mockito.eq(TaskType.DecommissionNodeInstance), paramsCaptor.capture(), any(), any());
+    DetachedNodeTaskParams params = paramsCaptor.getValue();
+    assertEquals(FAKE_INSTANCE_TYPE, params.getInstanceType());
+    assertEquals(node.getNodeUuid(), params.getNodeUuid());
+    assertEquals(node.getZoneUuid(), params.getAzUuid());
     assertAuditEntry(1, customer.getUuid());
   }
 

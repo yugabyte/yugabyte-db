@@ -46,6 +46,7 @@ namespace yb {
 class HostPort;
 class Thread;
 class ThreadPool;
+class XClusterTest_LeaderFailoverTest_Test;
 
 namespace rpc {
 class Messenger;
@@ -132,6 +133,8 @@ class XClusterConsumer : public XClusterConsumerIf {
     return metric_poll_failure_count_;
   }
  private:
+  FRIEND_TEST(yb::XClusterTest, LeaderFailoverTest);
+
   // Runs a thread that periodically polls for any new threads.
   void RunThread() EXCLUDES(shutdown_mutex_);
 

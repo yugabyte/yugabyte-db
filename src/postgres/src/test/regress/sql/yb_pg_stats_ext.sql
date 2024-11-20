@@ -58,7 +58,7 @@ CREATE ROLE regress_stats_ext;
 SET SESSION AUTHORIZATION regress_stats_ext;
 COMMENT ON STATISTICS ab1_a_b_stats IS 'changed comment';
 DROP STATISTICS ab1_a_b_stats;
-ALTER STATISTICS ab1_a_b_stats RENAME TO ab1_a_b_stats_new; -- YB: fails because ALTER STATISTICS is not supported (#13598)
+ALTER STATISTICS ab1_a_b_stats RENAME TO ab1_a_b_stats_new;
 RESET SESSION AUTHORIZATION;
 DROP ROLE regress_stats_ext;
 
@@ -84,7 +84,6 @@ SELECT stxname FROM pg_statistic_ext WHERE stxname LIKE 'ab1%';
 DROP TABLE ab1;
 SELECT stxname FROM pg_statistic_ext WHERE stxname LIKE 'ab1%';
 
-/* YB: uncomment when ALTER STATISTICS is supported (#13598)
 -- Ensure things work sanely with SET STATISTICS 0
 CREATE TABLE ab1 (a INTEGER, b INTEGER);
 ALTER TABLE ab1 ALTER a SET STATISTICS 0;
@@ -107,7 +106,6 @@ ANALYZE ab1;
 DROP TABLE ab1;
 ALTER STATISTICS ab1_a_b_stats SET STATISTICS 0;
 ALTER STATISTICS IF EXISTS ab1_a_b_stats SET STATISTICS 0;
-*/ -- YB
 
 /* YB: uncomment when INHERITS is supported (#5956)
 -- Ensure we can build statistics for tables with inheritance.
@@ -280,7 +278,6 @@ SELECT s.stxkind, d.stxdndistinct
  WHERE s.stxrelid = 'ndistinct'::regclass
    AND d.stxoid = s.oid;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 -- minor improvement, make sure the ctid does not break the matching
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY ctid, a, b');
 
@@ -300,7 +297,6 @@ SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a+1
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a+1), (b+100), (2*c)');
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (a+1), (b+100)');
-*/ -- YB
 
 -- last two plans keep using Group Aggregate, because 'd' is not covered
 -- by the statistic and while it's NULL-only we assume 200 values for it
@@ -323,7 +319,6 @@ SELECT s.stxkind, d.stxdndistinct
  WHERE s.stxrelid = 'ndistinct'::regclass
    AND d.stxoid = s.oid;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 -- correct estimates
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b');
 
@@ -342,7 +337,6 @@ SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a+1
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a+1), (b+100), (2*c)');
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (a+1), (b+100)');
-*/ -- YB
 
 DROP STATISTICS s10;
 
@@ -386,13 +380,11 @@ SELECT s.stxkind, d.stxdndistinct
  WHERE s.stxrelid = 'ndistinct'::regclass
    AND d.stxoid = s.oid;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a+1), (b+100)');
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a+1), (b+100), (2*c)');
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (a+1), (b+100)');
-*/ -- YB
 
 DROP STATISTICS s10;
 
@@ -412,13 +404,11 @@ SELECT s.stxkind, d.stxdndistinct
  WHERE s.stxrelid = 'ndistinct'::regclass
    AND d.stxoid = s.oid;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b');
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (2*c)');
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, (2*c)');
-*/ -- YB
 
 DROP STATISTICS s10;
 
@@ -453,7 +443,6 @@ CREATE STATISTICS s12 (ndistinct) ON c, d FROM ndistinct;
 
 ANALYZE ndistinct;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b');
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (b+1)');
@@ -467,7 +456,6 @@ SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a*5
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, (c*10)');
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (b+1), c, (d - 1)');
-*/ -- YB
 
 
 -- replace the second statistics by statistics on expressions
@@ -478,7 +466,6 @@ CREATE STATISTICS s12 (ndistinct) ON (c * 10), (d - 1) FROM ndistinct;
 
 ANALYZE ndistinct;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b');
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (b+1)');
@@ -492,7 +479,6 @@ SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a*5
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, (c*10)');
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (b+1), c, (d - 1)');
-*/ -- YB
 
 
 -- replace the second statistics by statistics on both attributes and expressions
@@ -503,7 +489,6 @@ CREATE STATISTICS s12 (ndistinct) ON c, d, (c * 10), (d - 1) FROM ndistinct;
 
 ANALYZE ndistinct;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b');
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (b+1)');
@@ -517,7 +502,6 @@ SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a*5
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, (c*10)');
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (b+1), c, (d - 1)');
-*/ -- YB
 
 
 -- replace the other statistics by statistics on both attributes and expressions
@@ -528,7 +512,6 @@ CREATE STATISTICS s11 (ndistinct) ON a, b, (a*5), (b+1) FROM ndistinct;
 
 ANALYZE ndistinct;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b');
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (b+1)');
@@ -542,7 +525,6 @@ SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a*5
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, (c*10)');
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (b+1), c, (d - 1)');
-*/ -- YB
 
 
 -- replace statistics by somewhat overlapping ones (this expected to get worse estimate
@@ -557,7 +539,6 @@ CREATE STATISTICS s12 (ndistinct) ON a, (b+1), (c * 10) FROM ndistinct;
 
 ANALYZE ndistinct;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b');
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (b+1)');
@@ -571,7 +552,6 @@ SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY (a*5
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, b, (c*10)');
 
 SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (b+1), c, (d - 1)');
-*/ -- YB
 
 DROP STATISTICS s11;
 DROP STATISTICS s12;
@@ -606,11 +586,9 @@ CREATE STATISTICS func_deps_stat (dependencies) ON a, b, c FROM functional_depen
 
 ANALYZE functional_dependencies;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = 1 AND b = ''1''');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = 1 AND b = ''1'' AND c = 1');
-*/ -- YB
 
 -- a => b, a => c, b => c
 TRUNCATE functional_dependencies;
@@ -631,11 +609,9 @@ CREATE STATISTICS func_deps_stat (dependencies) ON (mod(a,11)), (mod(b::int, 13)
 
 ANALYZE functional_dependencies;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE mod(a, 11) = 1 AND mod(b::int, 13) = 1');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE mod(a, 11) = 1 AND mod(b::int, 13) = 1 AND mod(c, 7) = 1');
-*/ -- YB
 
 -- a => b, a => c, b => c
 TRUNCATE functional_dependencies;
@@ -710,7 +686,6 @@ ANALYZE functional_dependencies;
 -- print the detected dependencies
 SELECT dependencies FROM pg_stats_ext WHERE statistics_name = 'func_deps_stat';
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = 1 AND b = ''1''');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = 1 AND b = ''1'' AND c = 1');
@@ -752,7 +727,6 @@ SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = ANY (ARRAY[1, 26, 51, 76]) AND b = ANY (ARRAY[''1'', ''26'']) AND c = ANY (ARRAY[1])');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = ANY (ARRAY[1, 2, 26, 27, 51, 52, 76, 77]) AND b = ANY (ARRAY[''1'', ''2'', ''26'', ''27'']) AND c = ANY (ARRAY[1, 2])');
-*/ -- YB
 
 -- ANY with inequalities should not benefit from functional dependencies
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a < ANY (ARRAY[1, 51]) AND b > ''1''');
@@ -777,9 +751,7 @@ SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE 
 
 ANALYZE functional_dependencies;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = 1 AND b = ''1'' AND c = 1');
-*/ -- YB
 
 DROP STATISTICS func_deps_stat;
 
@@ -850,7 +822,6 @@ ANALYZE functional_dependencies;
 -- print the detected dependencies
 SELECT dependencies FROM pg_stats_ext WHERE statistics_name = 'func_deps_stat';
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) = 2 AND upper(b) = ''1''');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) = 2 AND upper(b) = ''1'' AND (c + 1) = 2');
@@ -907,7 +878,6 @@ SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) IN (2, 102) AND upper(b) = ALL (ARRAY[''1'', ''2''])');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) IN (2, 4, 102, 104) AND upper(b) = ALL (ARRAY[''1'', ''2''])');
-*/ -- YB
 
 -- check the ability to use multiple functional dependencies
 CREATE TABLE functional_dependencies_multi (
@@ -941,13 +911,11 @@ CREATE STATISTICS functional_dependencies_multi_2 (dependencies) ON c, d FROM fu
 
 ANALYZE functional_dependencies_multi;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies_multi WHERE a = 0 AND b = 0');
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies_multi WHERE 0 = a AND 0 = b');
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies_multi WHERE c = 0 AND d = 0');
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies_multi WHERE a = 0 AND b = 0 AND c = 0 AND d = 0');
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies_multi WHERE 0 = a AND b = 0 AND 0 = c AND d = 0');
-*/ -- YB
 
 DROP TABLE functional_dependencies_multi;
 
@@ -1001,11 +969,9 @@ CREATE STATISTICS mcv_lists_stats (mcv) ON (mod(a,7)), (mod(b::int,11)), (mod(c,
 
 ANALYZE mcv_lists;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,7) = 1 AND mod(b::int,11) = 1');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,7) = 1 AND mod(b::int,11) = 1 AND mod(c,13) = 1');
-*/ -- YB
 
 -- 100 distinct combinations, all in the MCV list
 TRUNCATE mcv_lists;
@@ -1070,7 +1036,6 @@ CREATE STATISTICS mcv_lists_stats (mcv) ON a, b, c, ia FROM mcv_lists;
 
 ANALYZE mcv_lists;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = 1 AND b = ''1''');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE 1 = a AND ''1'' = b');
@@ -1120,7 +1085,6 @@ SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a < ALL (ARRAY
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a < ALL (ARRAY[4, 5]) AND b IN (''1'', ''2'', NULL, ''3'') AND c > ANY (ARRAY[1, 2, NULL, 3])');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = ANY (ARRAY[4,5]) AND 4 = ANY(ia)');
-*/ -- YB
 
 -- check change of unrelated column type does not reset the MCV statistics
 ALTER TABLE mcv_lists ALTER COLUMN d TYPE VARCHAR(64);
@@ -1137,9 +1101,7 @@ SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = 1 AND b = 
 
 ANALYZE mcv_lists;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = 1 AND b = ''1''');
-*/ -- YB
 
 
 -- 100 distinct combinations, all in the MCV list, but with expressions
@@ -1181,7 +1143,6 @@ CREATE STATISTICS mcv_lists_stats_3 ON (mod(c,5)) FROM mcv_lists;
 
 ANALYZE mcv_lists;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) = 1 AND mod(b::int,10) = 1');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE 1 = mod(a,20) AND 1 = mod(b::int,10)');
@@ -1201,7 +1162,6 @@ SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) = AN
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) <= ANY (ARRAY[1, NULL, 2, 3]) AND mod(b::int,10) IN (1, 2, NULL, 3)');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) < ALL (ARRAY[4, 5]) AND mod(b::int,10) IN (1, 2, 3) AND mod(c,5) > ANY (ARRAY[1, 2, 3])');
-*/ -- YB
 
 DROP STATISTICS mcv_lists_stats_1;
 DROP STATISTICS mcv_lists_stats_2;
@@ -1212,7 +1172,6 @@ CREATE STATISTICS mcv_lists_stats (mcv) ON (mod(a,20)), (mod(b::int,10)), (mod(c
 
 ANALYZE mcv_lists;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) = 1 AND mod(b::int,10) = 1');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE 1 = mod(a,20) AND 1 = mod(b::int,10)');
@@ -1235,7 +1194,6 @@ SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) < AL
 
 -- we can't use the statistic for OR clauses that are not fully covered (missing 'd' attribute)
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,20) = 1 OR mod(b::int,10) = 1 OR mod(c,5) = 1 OR d IS NOT NULL');
-*/ -- YB
 
 -- 100 distinct combinations with NULL values, all in the MCV list
 TRUNCATE mcv_lists;
@@ -1266,7 +1224,6 @@ CREATE STATISTICS mcv_lists_stats (mcv) ON a, b, c FROM mcv_lists;
 
 ANALYZE mcv_lists;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a IS NULL AND b IS NULL');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a IS NULL AND b IS NULL AND c IS NULL');
@@ -1276,7 +1233,6 @@ SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a IS NULL AND 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a IS NOT NULL AND b IS NULL AND c IS NOT NULL');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a IN (0, 1) AND b IN (''0'', ''1'')');
-*/ -- YB
 
 -- test pg_mcv_list_items with a very simple (single item) MCV list
 TRUNCATE mcv_lists;
@@ -1321,13 +1277,11 @@ SELECT m.*
  WHERE s.stxname = 'mcv_lists_stats'
    AND d.stxoid = s.oid;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE b = ''x'' OR d = ''x''');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = 1 OR b = ''x'' OR d = ''x''');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a IS NULL AND (b = ''x'' OR d = ''x'')');
-*/ -- YB
 
 -- mcv with pass-by-ref fixlen types, e.g. uuid
 CREATE TABLE mcv_lists_uuid (
@@ -1355,11 +1309,9 @@ CREATE STATISTICS mcv_lists_uuid_stats (mcv) ON a, b, c
 
 ANALYZE mcv_lists_uuid;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_uuid WHERE a = ''1679091c-5a88-0faf-6fb5-e6087eb1b2dc'' AND b = ''1679091c-5a88-0faf-6fb5-e6087eb1b2dc''');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_uuid WHERE a = ''1679091c-5a88-0faf-6fb5-e6087eb1b2dc'' AND b = ''1679091c-5a88-0faf-6fb5-e6087eb1b2dc'' AND c = ''1679091c-5a88-0faf-6fb5-e6087eb1b2dc''');
-*/ -- YB
 
 DROP TABLE mcv_lists_uuid;
 
@@ -1411,7 +1363,6 @@ CREATE STATISTICS mcv_lists_bool_stats (mcv) ON a, b, c
 
 ANALYZE mcv_lists_bool;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_bool WHERE a AND b AND c');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_bool WHERE NOT a AND b AND c');
@@ -1419,7 +1370,6 @@ SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_bool WHERE NOT a AND
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_bool WHERE NOT a AND NOT b AND c');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_bool WHERE NOT a AND b AND NOT c');
-*/ -- YB
 
 -- mcv covering just a small fraction of data
 CREATE TABLE mcv_lists_partial (
@@ -1475,7 +1425,6 @@ CREATE STATISTICS mcv_lists_partial_stats (mcv) ON a, b, c
 
 ANALYZE mcv_lists_partial;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_partial WHERE a = 0 AND b = 0 AND c = 0');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_partial WHERE a = 0 OR b = 0 OR c = 0');
@@ -1491,7 +1440,6 @@ SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_partial WHERE a = 0 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_partial WHERE (a = 0 AND b = 0 AND c = 0) OR (a = 1 AND b = 1 AND c = 1) OR (a = 2 AND b = 2 AND c = 2)');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_partial WHERE (a = 0 AND b = 0) OR (a = 0 AND c = 0) OR (b = 0 AND c = 0)');
-*/ -- YB
 
 DROP TABLE mcv_lists_partial;
 
@@ -1529,7 +1477,6 @@ CREATE STATISTICS mcv_lists_multi_2 (mcv) ON c, d FROM mcv_lists_multi;
 
 ANALYZE mcv_lists_multi;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_multi WHERE a = 0 AND b = 0');
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_multi WHERE c = 0 AND d = 0');
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_multi WHERE b = 0 AND c = 0');
@@ -1537,7 +1484,6 @@ SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_multi WHERE b = 0 OR
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_multi WHERE a = 0 AND b = 0 AND c = 0 AND d = 0');
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_multi WHERE (a = 0 AND b = 0) OR (c = 0 AND d = 0)');
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists_multi WHERE a = 0 OR b = 0 OR c = 0 OR d = 0');
-*/ -- YB
 
 DROP TABLE mcv_lists_multi;
 
@@ -1553,10 +1499,8 @@ SELECT * FROM check_estimated_rows('SELECT * FROM expr_stats WHERE (a+b) = 0 AND
 CREATE STATISTICS expr_stats_1 (mcv) ON (a+b), (a-b), (2*a), (3*b) FROM expr_stats;
 ANALYZE expr_stats;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT * FROM expr_stats WHERE (2*a) = 0 AND (3*b) = 0');
 SELECT * FROM check_estimated_rows('SELECT * FROM expr_stats WHERE (a+b) = 0 AND (a-b) = 0');
-*/ -- YB
 
 DROP STATISTICS expr_stats_1;
 DROP TABLE expr_stats;
@@ -1573,11 +1517,9 @@ SELECT * FROM check_estimated_rows('SELECT * FROM expr_stats WHERE a = 0 AND b =
 CREATE STATISTICS expr_stats_1 (mcv) ON a, b, (2*a), (3*b), (a+b), (a-b) FROM expr_stats;
 ANALYZE expr_stats;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT * FROM expr_stats WHERE a = 0 AND (2*a) = 0 AND (3*b) = 0');
 SELECT * FROM check_estimated_rows('SELECT * FROM expr_stats WHERE a = 3 AND b = 3 AND (a-b) = 0');
 SELECT * FROM check_estimated_rows('SELECT * FROM expr_stats WHERE a = 0 AND b = 1 AND (a-b) = 0');
-*/ -- YB
 
 DROP TABLE expr_stats;
 
@@ -1591,9 +1533,7 @@ SELECT * FROM check_estimated_rows('SELECT * FROM expr_stats WHERE a = 0 AND (b 
 CREATE STATISTICS expr_stats_1 (mcv) ON a, b, (b || c), (c || b) FROM expr_stats;
 ANALYZE expr_stats;
 
-/* YB: uncomment when CBO supports extended stats (#13598)
 SELECT * FROM check_estimated_rows('SELECT * FROM expr_stats WHERE a = 0 AND (b || c) <= ''z'' AND (c || b) >= ''0''');
-*/ -- YB
 
 DROP TABLE expr_stats;
 

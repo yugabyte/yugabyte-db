@@ -142,7 +142,7 @@ class VectorLSM {
   size_t TEST_num_immutable_chunks() const;
   bool TEST_HasBackgroundInserts() const;
 
-  DistanceResult TEST_Distance(const Vector& lhs, const Vector& rhs) const;
+  DistanceResult Distance(const Vector& lhs, const Vector& rhs) const;
 
   struct MutableChunk;
   struct ImmutableChunk;

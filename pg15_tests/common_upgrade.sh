@@ -52,7 +52,7 @@ run_and_pushd_pg11() {
 upgrade_masters() {
   for i in {1..3}; do
     yb_ctl restart_node $i --master \
-      --master_flags="$ysql_hba_conf_flag,TEST_online_pg11_to_pg15_upgrade=true,master_join_existing_universe=true,$common_pg15_flags"
+      --master_flags="$ysql_hba_conf_flag,master_join_existing_universe=true,$common_pg15_flags"
   done
 }
 

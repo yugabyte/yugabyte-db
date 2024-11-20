@@ -51,6 +51,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
+#include "yb/util/version_info.h"
 
 using namespace std::literals;
 
@@ -555,6 +556,10 @@ TEST_F(SysCatalogTest, TestSysCatalogSysConfigOperations) {
     auto& ysql_catalog_config_pb = *l.mutable_data()->pb.mutable_ysql_catalog_config();
     ysql_catalog_config_pb.set_version(0);
     ysql_catalog_config_pb.set_transactional_sys_catalog_enabled(true);
+    VersionInfoPB version_info;
+    VersionInfo::GetVersionInfoPB(&version_info);
+    ysql_catalog_config_pb.mutable_ysql_major_catalog_upgrade_info()->set_catalog_version(
+        version_info.ysql_major_version());
     l.Commit();
   }
   scoped_refptr<SysConfigInfo> transaction_tables_config =

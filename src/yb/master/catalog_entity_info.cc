@@ -456,6 +456,10 @@ bool TableInfo::is_deleted() const {
   return LockForRead()->is_deleted();
 }
 
+bool TableInfo::is_hidden() const {
+  return LockForRead()->is_hidden();
+}
+
 bool TableInfo::IsPreparing() const {
   return LockForRead()->IsPreparing();
 }
@@ -637,13 +641,18 @@ Status TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
   const auto& tablet_meta = dirty.pb;
   tablets_.emplace(tablet->id(), tablet);
 
-  if (dirty.is_hidden()) {
+  // Hidden tablets of live tables should not be included in partitions_
+  // as they are either split parents or children that are inactive.
+  // Including them will result in overlapping partition ranges
+  if (dirty.is_hidden() && !is_hidden()) {
     // todo(zdrudi): for github issue 18257 this function's return type changed from void to Status.
     // To avoid changing existing behaviour we return OK here.
     // But silently passing over this case could cause bugs.
     return Status::OK();
   }
 
+  // Include hidden tablets in partitions_ only for hidden tables to support features
+  // such as CLONE, PITR, and SELECT AS-OF that query previously dropped tables.
   const auto& partition_key_start = tablet_meta.partition().partition_key_start();
   auto [it, inserted] = partitions_.emplace(partition_key_start, tablet);
   if (inserted) {

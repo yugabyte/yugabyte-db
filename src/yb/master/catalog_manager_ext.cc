@@ -2904,18 +2904,19 @@ void CatalogManager::CleanupHiddenTables(
   std::vector<TableInfo::WriteLock> locks;
   for (const auto& table : expired_tables) {
     auto write_lock = table->LockForWrite();
-    if (write_lock->started_deleting()) {
-      continue;
+    if (!write_lock->started_deleting()) {
+      // Because tablets for hidden tables are deleted first, there is nothing left to delete
+      // besides the table metadata itself now. So we skip the DELETING state and transition
+      // directly to DELETED.
+      write_lock.mutable_data()->set_state(
+          SysTablesEntryPB::DELETED, Format("Cleanup hidden table at $0", LocalTimeAsString()));
+      LOG_WITH_PREFIX(INFO) << Format(
+          "Cleaning up hidden table $0: $1", table->name(), AsString(table));
     }
-    // Because tablets for hidden tables are deleted first, there is nothing left to delete besides
-    // the table metadata itself now. So we skip the DELETING state and transition directly to
-    // DELETED.
-    write_lock.mutable_data()->set_state(
-        SysTablesEntryPB::DELETED, Format("Cleanup hidden table at $0", LocalTimeAsString()));
-    LOG_WITH_PREFIX(INFO) << Format(
-        "Cleaning up hidden table $0: $1", table->name(), AsString(table));
+
     locks.push_back(std::move(write_lock));
   }
+
   if (locks.empty()) {
     return;
   }

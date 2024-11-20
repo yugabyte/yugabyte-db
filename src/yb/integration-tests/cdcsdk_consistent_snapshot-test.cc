@@ -141,7 +141,7 @@ void CDCSDKConsistentSnapshotTest::TestCSStreamFailureRollback(
   if (sync_point == "CreateCDCSDKStream::kWhileStoringConsistentSnapshotDetails") {
     auto error_message = s.status().message().AsStringView();
     ASSERT_TRUE(
-        error_message.find("Timed out waiting for Create Replication Slot") != std::string::npos ||
+        error_message.find("timed out") != std::string::npos ||
         error_message.find("already exists") != std::string::npos);
   } else {
     ASSERT_NE(s.status().message().AsStringView().find(expected_error), std::string::npos)

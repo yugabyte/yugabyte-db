@@ -22,6 +22,7 @@
 
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(ysql_enable_packed_row);
+DECLARE_double(TEST_transaction_ignore_applying_probability);
 
 namespace yb::pgwrapper {
 
@@ -103,6 +104,11 @@ void PgVectorIndexTest::TestSimple() {
 }
 
 TEST_P(PgVectorIndexTest, Simple) {
+  TestSimple();
+}
+
+TEST_P(PgVectorIndexTest, NotApplied) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
   TestSimple();
 }
 

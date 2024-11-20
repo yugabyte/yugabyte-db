@@ -128,6 +128,9 @@ YB_STRONGLY_TYPED_BOOL(IncludeInactive);
 YB_STRONGLY_TYPED_BOOL(IncludeDeleted);
 YB_STRONGLY_TYPED_BOOL(IsSystemObject);
 
+// Used to indicate whether hidden objects should be included.
+YB_STRONGLY_TYPED_BOOL(IncludeHidden);
+
 YB_DEFINE_ENUM(
     CollectFlag,
     (kAddIndexes)(kIncludeParentColocatedTable)(kSucceedIfCreateInProgress)(kAddUDTypes));

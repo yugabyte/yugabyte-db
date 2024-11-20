@@ -366,10 +366,7 @@ void CatalogManagerBgTasks::Run() {
       }
 
       if (FLAGS_enable_ysql) {
-        // Start the tablespace background task.
         catalog_manager_->StartTablespaceBgTaskIfStopped();
-
-        // Start the pg catalog versions background task.
         catalog_manager_->StartPgCatalogVersionsBgTaskIfStopped();
       }
 

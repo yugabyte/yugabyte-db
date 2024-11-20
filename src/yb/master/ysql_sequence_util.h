@@ -49,7 +49,7 @@ Result<std::vector<YsqlSequenceInfo>> ScanSequencesDataTable(
 // or some other update to S in the WAL with commit timestamp after the time the scan was done.
 //
 // When successful returns the number of updates it makes.
-Result<int> EnsureSequenceUpdatesInWal(
+Result<int> EnsureSequenceUpdatesAreInWal(
     client::YBClient& client, uint32_t db_oid, const std::vector<YsqlSequenceInfo>& sequences);
 
 }  // namespace yb::master

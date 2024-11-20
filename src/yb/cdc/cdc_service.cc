@@ -1533,7 +1533,8 @@ void CDCServiceImpl::GetChanges(
   if (!CheckOnline(req, resp, &context)) {
     return;
   }
-  YB_LOG_EVERY_N_SECS(INFO, 300) << "Received GetChanges request " << req->ShortDebugString();
+  YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 300, 5)
+      << "Received GetChanges request " << req->ShortDebugString();
 
   RPC_CHECK_AND_RETURN_ERROR(
       req->has_tablet_id(),

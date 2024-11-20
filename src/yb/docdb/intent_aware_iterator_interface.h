@@ -21,6 +21,7 @@ namespace yb {
 namespace docdb {
 
 YB_DEFINE_ENUM(Direction, (kForward)(kBackward));
+YB_DEFINE_ENUM(SeekFilter, (kAll)(kIntentsOnly));
 YB_STRONGLY_TYPED_BOOL(Full);
 
 struct FetchedEntry {
@@ -75,7 +76,8 @@ class IntentAwareIteratorIf {
   // hybrid time).
   // full means that key was fully specified, and we could add intent type at the end of the key,
   // to skip read only intents.
-  virtual void Seek(Slice key, Full full = Full::kTrue) = 0;
+  // filter - allows to ignore regular records during seek.
+  virtual void Seek(Slice key, SeekFilter filter, Full full = Full::kTrue) = 0;
 
   // Seek forward to specified encoded key (it is responsibility of caller to make sure it
   // doesn't have hybrid time). For efficiency, the method that takes a non-const KeyBytes pointer
@@ -88,7 +90,8 @@ class IntentAwareIteratorIf {
   // time). For efficiency, the method takes a non-const KeyBytes pointer avoids memory allocation
   // by using the KeyBytes buffer to prepare the key to seek to by appending an extra byte. The
   // appended byte is removed when the method returns.
-  virtual void SeekOutOfSubDoc(dockv::KeyBytes* key_bytes) = 0;
+  // filter - allows to ignore regular records during seek.
+  virtual void SeekOutOfSubDoc(SeekFilter filter, dockv::KeyBytes* key_bytes) = 0;
 
   // Positions the iterator at the beginning of the DocKey found before the given encoded_doc_key.
   // If fast backward scan is enabled, the method positions the iterator at the end (at the last

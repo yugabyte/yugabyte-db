@@ -531,6 +531,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   bool is_running() const;
   bool is_deleted() const;
+  bool is_hidden() const;
   bool IsPreparing() const;
   bool IsOperationalForClient() const {
     auto l = LockForRead();
@@ -788,12 +789,15 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // At any point in time it contains only the active tablets (defined in the comment on tablets_).
   std::map<PartitionKey, std::weak_ptr<TabletInfo>> partitions_ GUARDED_BY(lock_);
   // At any point in time it contains both active and inactive tablets.
-  //
   // Currently there are two cases for a tablet to be categorized as inactive:
-  // 1) Tablets that have been marked HIDDEN; for example, for PITR or xCluster.
-  // 2) Tablets that have been/are being DELETED.
-  //
-  // Currently, we do not remove tablets we have deleted from tablets_.
+  // 1) Not yet deleted split parent tablets for which we've already
+  //    registered child split tablets.
+  // 2) After a PITR restore, child tablets of a split which are inactive if PITR was to
+  //    a time before the split when only parent existed
+  // Tablets of HIDDEN tables that have been marked HIDDEN are considered active
+  // with the introduction of DBClone, SELECT AS-OF features.
+  // TODO(#24956) If a tablet T1[0,100] splits into T2[0,50] and T3[50,100] and later the table is
+  // Hidden, the partitions_ structure may end up with T1 and T3 as start_keys are unique.
   // TODO(#15043): remove tablets from tablets_ once they have been deleted from all TServers.
   std::unordered_map<TabletId, std::weak_ptr<TabletInfo>> tablets_ GUARDED_BY(lock_);
 

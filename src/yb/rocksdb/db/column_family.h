@@ -341,7 +341,7 @@ class ColumnFamilyData {
     return num_pending_compactions_[yb::to_underlying(compaction_size_kind)] > 0;
   }
 
-  size_t TEST_num_pending_compactions(CompactionSizeKind compaction_size_kind) const {
+  size_t num_pending_compactions(CompactionSizeKind compaction_size_kind) const {
     return num_pending_compactions_[yb::to_underlying(compaction_size_kind)];
   }
 

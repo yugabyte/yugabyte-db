@@ -119,7 +119,8 @@ target_link_libraries(integration-tests
   master_test_common
   master_proto
   cdc_test_util
-  test_echo_service_proto)
+  test_echo_service_proto
+  tools_test_utils)
 
 add_dependencies(integration-tests
   "${YB_MASTER_DYNAMIC_EXE_NAME}"
@@ -130,7 +131,8 @@ add_dependencies(integration-tests
   generate_test_certs
   fips_install
   xcluster_ddl_replication_sql
-  upgrade_test_builds_tar)
+  upgrade_test_builds_tar
+  update_ysql_migrations)
 
 ADD_YB_TEST_LIBRARY(
     cql_test_util
@@ -265,6 +267,7 @@ ADD_YB_TEST(retryable_request-test)
 ADD_YB_TEST(upgrade-tests/basic_upgrade-test)
 ADD_YB_TEST(upgrade-tests/pg15_upgrade-test)
 ADD_YB_TEST(upgrade-tests/pg15_upgrade_pgregress-test)
+ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_rpcs-test)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra)

@@ -121,6 +121,36 @@ TEST_F(XClusterDDLReplicationTest, DDLReplicationTablesNotColocated) {
   }
 }
 
+TEST_F(XClusterDDLReplicationTest, Bootstrapping) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
+  ASSERT_OK(SetUpClusters(/*is_colocated=*/false, /*start_yb_controller_servers=*/true));
+  auto producer_table_name = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/1, /*num_tablets=*/3, &producer_cluster_));
+
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace_name}));
+  ASSERT_OK(BackupFromProducer());
+  ASSERT_OK(RestoreToConsumer());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+}
+
+// TODO(Julien): As part of #24888, undisable this or make this a test that this correctly fails
+// with an error.
+TEST_F(XClusterDDLReplicationTest, YB_DISABLE_TEST(BootstrappingWithNoTables)) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
+  ASSERT_OK(SetUpClusters(/*is_colocated=*/false, /*start_yb_controller_servers=*/true));
+
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace_name}));
+  ASSERT_OK(BackupFromProducer());
+  ASSERT_OK(RestoreToConsumer());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+}
+
 TEST_F(XClusterDDLReplicationTest, CreateTable) {
   ASSERT_OK(SetUpClusters());
   ASSERT_OK(CheckpointReplicationGroup());

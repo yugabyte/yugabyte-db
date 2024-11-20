@@ -66,7 +66,6 @@ var deleteBackupScheduleCmd = &cobra.Command{
 		}
 		if (len(strings.TrimSpace(universeName))) > 0 {
 			universeListRequest := authAPI.ListUniverses()
-			universeName, _ := cmd.Flags().GetString("name")
 			universeListRequest = universeListRequest.Name(universeName)
 
 			r, response, err := universeListRequest.Execute()

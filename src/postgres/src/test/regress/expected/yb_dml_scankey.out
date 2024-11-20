@@ -52,7 +52,12 @@ HINT:  Use explicit casts to ensure input types are as desired
  3 | 4 | 5
 (2 rows)
 
-ERROR:  indexqual doesn't have key on left side
+ i | j | k
+---+---+---
+ 2 | 3 | 4
+ 3 | 4 | 5
+(2 rows)
+
 --
 -- Test index scan where filter is too large.
 --
@@ -148,7 +153,7 @@ ERROR:  cannot use more than 64 predicates in a table or index scan
          Index Cond: (ROW(i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, yb_hash_code(k)) >= ROW(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
 (4 rows)
 
-ERROR:  indexqual doesn't have key on left side
+ERROR:  cannot use more than 64 predicates in a table or index scan
 --
 -- Hash code filter should have no limit.
 --

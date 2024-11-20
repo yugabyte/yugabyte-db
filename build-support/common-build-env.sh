@@ -2310,9 +2310,9 @@ activate_virtualenv() {
   # We assume $YB_SRC_ROOT/build is already created by initialize_yugabyte_bash_common having
   # already been called.
   [[ -f "${YB_SRC_ROOT}/build/requirements.txt" ]] \
-    || ln -s "${YB_SRC_ROOT}/requirements.txt" "${YB_SRC_ROOT}/build/"
+    || ln -sf "${YB_SRC_ROOT}/requirements.txt" "${YB_SRC_ROOT}/build/"
   [[ -f "${YB_SRC_ROOT}/build/requirements_frozen.txt" ]] \
-    || ln -s "${YB_SRC_ROOT}/requirements_frozen.txt" "${YB_SRC_ROOT}/build/"
+    || ln -sf "${YB_SRC_ROOT}/requirements_frozen.txt" "${YB_SRC_ROOT}/build/"
 
   yb_activate_virtualenv "${virtualenv_parent_dir}"
 

@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -28,9 +29,17 @@ var hostVersion = "0.1.0"
 
 // AuthAPIClient contains authenticated api client and customer UUID
 type AuthAPIClient struct {
+	RestClient   *RestAPIClient
 	APIClient    *ybaclient.APIClient
 	CustomerUUID string
 	ctx          context.Context
+}
+
+// RestAPIClient contains http client
+type RestAPIClient struct {
+	Client *http.Client
+	Host   string
+	Scheme string
 }
 
 // SetVersion assigns the version of YBA CLI
@@ -87,16 +96,23 @@ func NewAuthAPIClient() (*AuthAPIClient, error) {
 func NewAuthAPIClientInitialize(url *url.URL, apiToken string) (*AuthAPIClient, error) {
 
 	cfg := ybaclient.NewConfiguration()
+	restAPIClient := &RestAPIClient{
+		Client: &http.Client{Timeout: 30 * time.Second},
+		Host:   url.Host,
+	}
 	//Configure the client
 
 	cfg.Host = url.Host
 	cfg.Scheme = url.Scheme
 	if url.Scheme == "https" {
 		cfg.Scheme = "https"
+		restAPIClient.Scheme = "https"
 		tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 		cfg.HTTPClient = &http.Client{Transport: tr}
+		restAPIClient.Client.Transport = tr
 	} else {
 		cfg.Scheme = "http"
+		restAPIClient.Scheme = "http"
 	}
 
 	cfg.DefaultHeader = map[string]string{
@@ -108,6 +124,7 @@ func NewAuthAPIClientInitialize(url *url.URL, apiToken string) (*AuthAPIClient, 
 	ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt)
 
 	return &AuthAPIClient{
+		restAPIClient,
 		apiClient,
 		"",
 		ctx,

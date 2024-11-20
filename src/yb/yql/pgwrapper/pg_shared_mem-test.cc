@@ -231,7 +231,7 @@ TEST_F(PgSharedMemTest, ConnectionShutdown) {
     }
   }
 
-  std::this_thread::sleep_for(1s);
+  std::this_thread::sleep_for(1s * kTimeMultiplier);
 
   auto threads_after = CountManagedThreads();
 

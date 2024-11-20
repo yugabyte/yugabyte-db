@@ -35,7 +35,6 @@ namespace rocksdb {
 struct CompactionInfo {
   uint64_t input_files_count;
   uint64_t input_bytes_count;
-  CompactionReason compaction_reason;
 };
 
 // Contains metrics related to a particular task state in the priority thread pool.
@@ -53,9 +52,17 @@ struct RocksDBTaskMetrics {
   scoped_refptr<yb::AtomicGauge<uint64_t>> compaction_input_bytes_removed_;
 
   void CompactionTaskAdded(const CompactionInfo& info) {
+    CompactionTaskAdded();
+    CompactionTaskInputAdded(info);
+  }
+
+  void CompactionTaskAdded() {
     if (compaction_tasks_added_) {
       compaction_tasks_added_->Increment();
     }
+  }
+
+  void CompactionTaskInputAdded(const CompactionInfo& info) {
     if (compaction_input_files_added_) {
       compaction_input_files_added_->IncrementBy(info.input_files_count);
     }
@@ -65,9 +72,17 @@ struct RocksDBTaskMetrics {
   }
 
   void CompactionTaskRemoved(const CompactionInfo& info) {
+    CompactionTaskRemoved();
+    CompactionTaskInputRemoved(info);
+  }
+
+  void CompactionTaskRemoved() {
     if (compaction_tasks_removed_) {
       compaction_tasks_removed_->Increment();
     }
+  }
+
+  void CompactionTaskInputRemoved(const CompactionInfo& info) {
     if (compaction_input_files_removed_) {
       compaction_input_files_removed_->IncrementBy(info.input_files_count);
     }

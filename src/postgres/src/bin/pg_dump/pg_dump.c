@@ -725,8 +725,11 @@ main(int argc, char **argv)
 	 * Binary upgrade mode implies dumping sequence data even in schema-only
 	 * mode.  This is not exposed as a separate option, but kept separate
 	 * internally for clarity.
+	 * YB: Before, during, and after online upgrade, we use the same sequence
+	 * data table, so we don't want to write anything to sequence data during
+	 * the restore.
 	 */
-	if (dopt.binary_upgrade || dopt.include_yb_metadata)
+	if ((!IsYugabyteEnabled && dopt.binary_upgrade) || dopt.include_yb_metadata)
 		dopt.sequence_data = 1;
 
 	if (dopt.dataOnly && dopt.schemaOnly)

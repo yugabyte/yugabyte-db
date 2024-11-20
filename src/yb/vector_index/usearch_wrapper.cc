@@ -26,6 +26,7 @@
 #include "yb/vector_index/index_wrapper_base.h"
 #include "yb/vector_index/usearch_include_wrapper_internal.h"
 #include "yb/vector_index/coordinate_types.h"
+#include "yb/vector_index/vectorann_util.h"
 
 namespace yb::vector_index {
 
@@ -72,6 +73,23 @@ scalar_kind_t ConvertCoordinateKind(CoordinateKind coordinate_kind) {
 
 namespace {
 
+// No-op VectorIterator
+template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+class NoOpVectorIterator : public AbstractIterator<std::pair<Vector, VertexId>> {
+ protected:
+  std::pair<Vector, VertexId> Dereference() const override {
+    return {Vector(), VertexId{}};
+  }
+
+  void Next() override {
+    // TODO(vector_index) implement iterator for Usearch
+  }
+
+  bool NotEquals(const AbstractIterator<std::pair<Vector, VertexId>>&) const override {
+    return false;  // Always the same, indicating no iteration
+  }
+};
+
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class UsearchIndex :
     public IndexWrapperBase<UsearchIndex<Vector, DistanceResult>, Vector, DistanceResult> {
@@ -88,6 +106,16 @@ class UsearchIndex :
             metric_,
             CreateIndexDenseConfig(options))) {
     CHECK_GT(dimensions_, 0);
+  }
+
+  std::unique_ptr<AbstractIterator<std::pair<Vector, VertexId>>> BeginImpl() const override {
+    // (TODO(vector_index) implement real vector iterator for USearchIndex
+    return std::make_unique<NoOpVectorIterator<Vector, DistanceResult>>();
+  }
+
+  std::unique_ptr<AbstractIterator<std::pair<Vector, VertexId>>> EndImpl() const override {
+    // (TODO(vector_index) implement real vector iterator for USearchIndex
+    return std::make_unique<NoOpVectorIterator<Vector, DistanceResult>>();
   }
 
   Status Reserve(size_t num_vectors) override {

@@ -733,7 +733,7 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 	 * types of scan.
 	 * - "querying_colocated_table": Support optimizations for (system,
 	 *   user database and tablegroup) colocated tables
-	 * - "index_oid, index_only_scan, use_secondary_index": Different index
+	 * - "index_oid, index_only_scan": Different index
 	 *   scans.
 	 * NOTE: Primary index is a special case as there isn't a primary index
 	 * table in YugaByte.
@@ -763,16 +763,15 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 
 	if (index)
 	{
-		ybScan->prepare_params.index_relfilenode_oid =
-			ybScan->prepare_params.fetch_ybctids_only &&
-				YBIsCoveredByMainTable(index)
-					? YbGetRelfileNodeId(relation)
-					: YbGetRelfileNodeId(index);
-		ybScan->prepare_params.index_only_scan = xs_want_itup;
-		ybScan->prepare_params.use_secondary_index =
-			!YBIsCoveredByMainTable(index) ||
-			(ybScan->prepare_params.fetch_ybctids_only &&
-			 !ybScan->prepare_params.querying_colocated_table);
+		YBCPgPrepareParameters *params = &ybScan->prepare_params;
+		params->index_relfilenode_oid = InvalidOid;
+		params->index_only_scan = xs_want_itup;
+		if (!YBIsCoveredByMainTable(index))
+			params->index_relfilenode_oid = YbGetRelfileNodeId(index);
+		else if (params->index_only_scan ||
+				(params->fetch_ybctids_only &&
+				 !params->querying_colocated_table))
+			params->index_relfilenode_oid = YbGetRelfileNodeId(relation);
 	}
 
 	/* Setup descriptors for target and bind. */

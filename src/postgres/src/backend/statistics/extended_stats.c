@@ -2484,6 +2484,7 @@ statext_expressions_load(Oid stxoid, bool inh, int idx)
 	ItemPointerSetInvalid(&(tmptup.t_self));
 	tmptup.t_tableOid = InvalidOid;
 	tmptup.t_data = td;
+	HEAPTUPLE_YBCTID(&tmptup) = 0;
 
 	tup = heap_copytuple(&tmptup);
 
