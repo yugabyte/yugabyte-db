@@ -11,7 +11,7 @@ menu:
   preview:
     identifier: explore-ysql-language-features-data-manipulation
     parent: explore-ysql-language-features
-    weight: 500
+    weight: 400
 type: docs
 ---
 
