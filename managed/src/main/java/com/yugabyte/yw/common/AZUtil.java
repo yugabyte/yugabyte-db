@@ -356,7 +356,8 @@ public class AZUtil implements CloudUtil {
       String region,
       String commonDir,
       String previousBackupLocation,
-      CustomerConfigData configData) {
+      CustomerConfigData configData,
+      Universe universe) {
     Pair<String, Map<String, String>> pair = getContainerCredsMapPair(configData, region);
     CloudLocationInfoAzure csInfoAzure =
         (CloudLocationInfoAzure) getCloudLocationInfo(region, configData, "");
@@ -382,7 +383,11 @@ public class AZUtil implements CloudUtil {
   // In case of Success marker download - cloud Dir is the location provided by user in API
   @Override
   public CloudStoreSpec createRestoreCloudStoreSpec(
-      String region, String cloudDir, CustomerConfigData configData, boolean isDsm) {
+      String region,
+      String cloudDir,
+      CustomerConfigData configData,
+      boolean isDsm,
+      Universe universe) {
     Pair<String, Map<String, String>> pair = getContainerCredsMapPair(configData, region);
     if (isDsm) {
       CloudLocationInfoAzure csInfoAzure =

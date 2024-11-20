@@ -1072,7 +1072,7 @@ public class BackupHelper {
                 CloudStoreSpec successMarkerCSSpec =
                     storageUtilFactory
                         .getStorageUtil(storageConfig.getName())
-                        .createDsmCloudStoreSpec(bL, storageConfig.getDataObject());
+                        .createDsmCloudStoreSpec(bL, storageConfig.getDataObject(), universe);
                 ProxyConfig proxyConfig =
                     storageUtilFactory
                         .getStorageUtil(storageConfig.getName())
@@ -1159,7 +1159,7 @@ public class BackupHelper {
       CloudStoreSpec successMarkerCSSpec =
           storageUtilFactory
               .getStorageUtil(config.getName())
-              .createDsmCloudStoreSpec(successMarkerLoc, config.getDataObject());
+              .createDsmCloudStoreSpec(successMarkerLoc, config.getDataObject(), universe);
       ProxyConfig proxyConfig =
           storageUtilFactory
               .getStorageUtil(config.getName())
