@@ -45,6 +45,8 @@ public class ShellProcessContext {
   Map<String, String> redactedVals;
   // Args that will be added to the cmd but will be redacted in logs.
   Map<String, String> sensitiveData;
+  // Redaction target for the sensitive data present in shellProcesOut.
+  @Builder.Default RedactionTarget shellOutputRedactionTarget = RedactionTarget.QUERY_PARAMS;
 
   public Duration getTimeout() {
     return timeoutSecs > 0L ? Duration.ofSeconds(timeoutSecs) : Duration.ZERO;
