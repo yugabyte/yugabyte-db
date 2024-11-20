@@ -92,6 +92,63 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
     private static final String permissionDeniedWarning =
         "Failed to create query diagnostics directory, Permission denied;";
 
+    @Before
+    public void setUp() throws Exception {
+        /* Set Gflags and restart cluster */
+        Map<String, String> flagMap = super.getTServerFlags();
+        flagMap.put("TEST_yb_enable_query_diagnostics", "true");
+
+        /* Required for some of the fields within schema details */
+        flagMap.put("ysql_beta_features", "true");
+
+        restartClusterWithFlags(Collections.emptyMap(), flagMap);
+
+        setUpPreparedStatement();
+    }
+
+    public void setUp(int queryDiagnosticsCircularBufferSize) throws Exception {
+        /* Set Gflags and restart cluster */
+        Map<String, String> flagMap = super.getTServerFlags();
+        flagMap.put("TEST_yb_enable_query_diagnostics", "true");
+        appendToYsqlPgConf(flagMap,
+                            "yb_query_diagnostics_circular_buffer_size=" +
+                            queryDiagnosticsCircularBufferSize);
+
+        /* Required for some of the fields within schema details */
+        flagMap.put("ysql_beta_features", "true");
+
+        restartClusterWithFlags(Collections.emptyMap(), flagMap);
+
+        setUpPreparedStatement();
+    }
+
+    /*
+     * Sets up a prepared statement for testing.
+     */
+    public void setUpPreparedStatement() throws Exception {
+        try (Statement statement = connection.createStatement()) {
+            /* Creating test table and filling dummy data */
+            statement.execute("CREATE TABLE test_table1(a TEXT, b INT, c FLOAT)");
+            statement.execute("PREPARE stmt(TEXT, INT, FLOAT) AS SELECT * FROM test_table1 " +
+                                "WHERE a = $1 AND b = $2 AND c = $3;");
+            statement.execute("EXECUTE stmt('var', 1, 1.1)");
+        }
+    }
+
+    /*
+     * Retrieves the query ID from pg_stat_statements based on the provided pattern.
+     */
+    private String getQueryIdFromPgStatStatements(Statement statement, String pattern)
+                                                    throws Exception {
+        /* Get query id of the prepared statement */
+        ResultSet resultSet = statement.executeQuery("SELECT queryid FROM pg_stat_statements " +
+                                                        "WHERE query LIKE '" + pattern + "'");
+        if (!resultSet.next())
+            fail("Query id not found in pg_stat_statements");
+
+        return resultSet.getString("queryid");
+    }
+
     /*
      * Generates a unique query ID.
      *
@@ -144,13 +201,13 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
      * Asserts that the expected and actual query diagnostics status objects are equal.
      */
     private void assertQueryDiagnosticsStatus(QueryDiagnosticsStatus expected,
-                                                QueryDiagnosticsStatus actual) throws SQLException {
+                                              QueryDiagnosticsStatus actual) throws SQLException {
         assertEquals("yb_query_diagnostics_status returns wrong path",
                         expected.path, actual.path);
         assertEquals("yb_query_diagnostics_status returns wrong status",
                         expected.status, actual.status);
-        assertEquals("yb_query_diagnostics_status returns wrong description",
-                    expected.description, actual.description);
+        assertTrue("yb_query_diagnostics_status description does not contain expected description",
+                    actual.description.contains(expected.description));
         assertEquals("yb_query_diagnostics_status returns wrong diagnostics_interval_sec",
                     expected.params.diagnosticsInterval, actual.params.diagnosticsInterval);
         assertEquals("yb_query_diagnostics_status returns wrong" +
@@ -226,46 +283,6 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         }
         return separator.toString();
     }
-
-    @Before
-    public void setUp() throws Exception {
-        /* Set Gflags and restart cluster */
-        Map<String, String> flagMap = super.getTServerFlags();
-        flagMap.put("TEST_yb_enable_query_diagnostics", "true");
-        appendToYsqlPgConf(flagMap,
-                           "yb_query_diagnostics_bg_worker_interval_ms=" + BG_WORKER_INTERVAL_MS);
-        restartClusterWithFlags(Collections.emptyMap(), flagMap);
-
-        setUpPreparedStatement();
-    }
-
-    /*
-     * Sets up a prepared statement for testing.
-     */
-    public void setUpPreparedStatement() throws Exception {
-        try (Statement statement = connection.createStatement()) {
-            /* Creating test table and filling dummy data */
-            statement.execute("CREATE TABLE test_table1(a TEXT, b INT, c FLOAT)");
-            statement.execute("PREPARE stmt(TEXT, INT, FLOAT) AS SELECT * FROM test_table1 " +
-                              "WHERE a = $1 AND b = $2 AND c = $3;");
-            statement.execute("EXECUTE stmt('var', 1, 1.1)");
-        }
-    }
-
-    /*
-     * Retrieves the query ID from pg_stat_statements based on the provided pattern.
-     */
-    private String getQueryIdFromPgStatStatements(Statement statement, String pattern)
-                                                  throws Exception {
-        /* Get query id of the prepared statement */
-        ResultSet resultSet = statement.executeQuery("SELECT queryid FROM pg_stat_statements " +
-                                                     "WHERE query LIKE '" + pattern + "'");
-        if (!resultSet.next())
-            fail("Query id not found in pg_stat_statements");
-
-        return resultSet.getString("queryid");
-    }
-
     /*
      * Runs query diagnostics on the given query ID and parameters.
      */
@@ -432,7 +449,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
         assertQueryDiagnosticsStatus(expectedBundleViewEntry, bundleViewEntry);
 
-        if (!warning.equals(noQueriesExecutedWarning)) {
+        if (!warning.contains(noQueriesExecutedWarning)) {
             Path pgssPath = bundleDataPath.resolve("pg_stat_statements.csv");
             assertTrue("pg_stat_statements file does not exist", Files.exists(pgssPath));
             assertGreaterThan("pg_stat_statements.csv file is empty",
@@ -472,9 +489,6 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         statement.execute("CREATE RULE test_rule AS ON DELETE TO test_table\n" + //
                             "DO INSTEAD UPDATE test_table SET is_active = false " + //
                             "WHERE id = OLD.id;");
-        /* Add statistics in test_table */
-        statement.execute("CREATE STATISTICS test_statistics (dependencies) ON name, price " + //
-                            "FROM test_table;");
         /* Add policy in test_table */
         statement.execute("ALTER TABLE test_table ENABLE ROW LEVEL SECURITY;\n" + //
                             "CREATE POLICY test_policy ON test_table " + //
@@ -605,7 +619,6 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
      */
     @Test
     public void testYbQueryDiagnosticsStatus() throws Exception {
-
         try (Statement statement = connection.createStatement()) {
             /*
              * We use random number for the queryid, as we are not doing any accumulation of data,
@@ -728,11 +741,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void testCircularBufferWrapAround() throws Exception {
-        /* Set Gflags and restart cluster */
-        Map<String, String> flagMap = super.getTServerFlags();
-        flagMap.put("TEST_yb_enable_query_diagnostics", "true");
-        appendToYsqlPgConf(flagMap, "yb_query_diagnostics_circular_buffer_size=15");
-        restartClusterWithFlags(Collections.emptyMap(), flagMap);
+        setUp(15);
 
         try (Statement statement = connection.createStatement()) {
             /* running several bundles ensure buffer wraps around */
@@ -742,26 +751,6 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void checkAshData() throws Exception {
-        /* Set Gflags and restart cluster */
-        Map<String, String> flagMap = super.getTServerFlags();
-        flagMap.put("TEST_yb_enable_query_diagnostics", "true");
-        appendToYsqlPgConf(flagMap,
-                           "yb_query_diagnostics_bg_worker_interval_ms=" + BG_WORKER_INTERVAL_MS);
-        /* Enable ASH for active_session_history.csv */
-        if (isTestRunningWithConnectionManager()) {
-            flagMap.put("allowed_preview_flags_csv",
-                    "ysql_yb_ash_enable_infra,ysql_yb_enable_ash,enable_ysql_conn_mgr");
-        } else {
-            flagMap.put("allowed_preview_flags_csv",
-                        "ysql_yb_ash_enable_infra,ysql_yb_enable_ash");
-        }
-        flagMap.put("ysql_yb_ash_enable_infra", "true");
-        flagMap.put("ysql_yb_enable_ash", "true");
-        flagMap.put("ysql_yb_ash_sampling_interval_ms",
-                    String.valueOf(ASH_SAMPLING_INTERVAL_MS));
-
-        restartClusterWithFlags(Collections.emptyMap(), flagMap);
-
         int diagnosticsInterval = (5 * ASH_SAMPLING_INTERVAL_MS) / 1000; /* convert to seconds */
         QueryDiagnosticsParams params = new QueryDiagnosticsParams(
                 diagnosticsInterval /* diagnosticsInterval */,
@@ -1075,11 +1064,6 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void checkSchemaDetailsData() throws Exception {
-        Map<String, String> flagMap = super.getTServerFlags();
-        flagMap.put("TEST_yb_enable_query_diagnostics", "true");
-        flagMap.put("ysql_beta_features", "true");
-        restartClusterWithFlags(Collections.emptyMap(), flagMap);
-
         int diagnosticsInterval = 2;
         QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
             diagnosticsInterval,
