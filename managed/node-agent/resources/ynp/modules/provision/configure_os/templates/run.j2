@@ -69,3 +69,16 @@ sysctl -w vm.max_map_count={{ vm_max_map_count }}
 echo "Kernel settings configured."
 
 echo "OS Configuration applied successfully."
+
+cat <<EOF >> /etc/systemd/journald.conf
+
+##### ADDED BY YUGABYTE #####
+Storage=persistent
+MaxRetentionSec=30days
+SystemMaxUse=400M
+##### ADDED BY YUGABYTE #####
+EOF
+
+systemctl restart systemd-journald
+
+echo "Journald settings configured."

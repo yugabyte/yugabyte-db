@@ -117,6 +117,35 @@
       state: present
     tags: yb-prebuilt-ami
 
+  - name: Provision | Comment out existing journald.conf values
+    become: yes
+    become_method: sudo
+    lineinfile:
+      path: /etc/systemd/journald.conf
+      regexp: '^([^#].*?(Storage|MaxRetentionSec|SystemMaxUse)=.*)'
+      line: '# \1'
+      state: present
+      backrefs: yes
+
+  - name: Provision | Add Yugabyte specific journald.conf values
+    become: yes
+    become_method: sudo
+    blockinfile:
+      path: /etc/systemd/journald.conf
+      marker: "###### ADDED BY YUGABYTE ######"
+      insertbefore: EOF
+      block: |
+        Storage=persistent
+        MaxRetentionSec=30days
+        SystemMaxUse=400M
+
+  - name: Provision | Restart systemd-journald to apply changes
+    become: yes
+    become_method: sudo
+    service:
+      name: systemd-journald
+      state: restarted
+
 - name: Provision | Ensure mount paths exist.
   shell: |
     mkdir -p {{ item }}
