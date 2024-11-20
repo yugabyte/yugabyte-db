@@ -518,7 +518,8 @@ class UniverseDetail extends Component {
       isK8ActionsDisabled;
     const isRollingRestartDisabled =
       isUniverseStatusPending ||
-      isActionFrozen(allowedTasks, UNIVERSE_TASKS.INITIATE_ROLLING_RESTART);
+      isActionFrozen(allowedTasks, UNIVERSE_TASKS.INITIATE_ROLLING_RESTART) ||
+      isK8ActionsDisabled;
     const isReadReplicaDisabled =
       isUniverseStatusPending ||
       hasAsymmetricAsyncCluster ||
