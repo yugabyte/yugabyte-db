@@ -161,9 +161,9 @@ func (c *Context) ExpiryTime() string {
 	expiryTime := c.b.GetExpiryTime()
 	if expiryTime.IsZero() {
 		return ""
-	} else {
-		return expiryTime.Format(time.RFC1123Z)
 	}
+	return expiryTime.Format(time.RFC1123Z)
+
 }
 
 // Category fetches Category
@@ -222,9 +222,8 @@ func (c *Context) CompletionTime() string {
 	completionTime := c.b.GetCommonBackupInfo().CompletionTime
 	if completionTime == nil {
 		return ""
-	} else {
-		return completionTime.Format(time.RFC1123Z)
 	}
+	return completionTime.Format(time.RFC1123Z)
 }
 
 // MarshalJSON function
