@@ -1248,7 +1248,7 @@ Result<bool> DocKeyDecoder::DecodeHashCode(AllowSpecial allow_special) {
 Result<bool> ClearRangeComponents(KeyBytes* out, AllowSpecial allow_special) {
   auto prefix_size = VERIFY_RESULT(
       DocKey::EncodedSize(out->AsSlice(), DocKeyPart::kUpToHash, allow_special));
-  auto& str = *out->mutable_data();
+  auto& str = out->data();
   if (str.size() == prefix_size + 1 && str[prefix_size] == KeyEntryTypeAsChar::kGroupEnd) {
     return false;
   }
