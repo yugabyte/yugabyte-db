@@ -76,6 +76,7 @@ import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -286,6 +287,101 @@ public class AWSUtil implements CloudUtil {
   }
 
   @Override
+  public boolean uploadYBDBRelease(
+      CustomerConfigData configData, File release, String backupDir, String version) {
+    try {
+      maybeDisableCertVerification();
+      CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
+      AmazonS3 client = createS3Client(s3Data);
+      CloudLocationInfo cLInfo =
+          getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, s3Data, "");
+      String keyName =
+          Stream.of(cLInfo.cloudPath, backupDir, YBDB_RELEASES, version, release.getName())
+              .filter(s -> !s.isEmpty())
+              .collect(Collectors.joining("/"));
+      long startTime = System.nanoTime();
+      PutObjectRequest request = new PutObjectRequest(cLInfo.bucket, keyName, release);
+      client.putObject(request);
+      long endTime = System.nanoTime();
+      // Calculate duration in seconds
+      double durationInSeconds = (endTime - startTime) / 1_000_000_000.0;
+      log.info(
+          "Upload of {} to S3 path {} completed in {} seconds",
+          release.getName(),
+          keyName,
+          durationInSeconds);
+    } catch (Exception e) {
+      log.error("Error uploading YBDB release {}: {}", release.getName(), e);
+      return false;
+    } finally {
+      maybeEnableCertVerification();
+    }
+    return true;
+  }
+
+  @Override
+  public Set<String> getRemoteReleaseVersions(CustomerConfigData configData, String backupDir) {
+    try {
+      maybeDisableCertVerification();
+      CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
+      AmazonS3 client = createS3Client(s3Data);
+      CloudLocationInfo cLInfo =
+          getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, s3Data, "");
+
+      // Get all the backups in the specified bucket/directory
+      Set<String> releaseVersions = new HashSet<>();
+      String nextContinuationToken = null;
+      do {
+        ListObjectsV2Result listObjectsResult;
+        ListObjectsV2Request request =
+            new ListObjectsV2Request()
+                .withBucketName(cLInfo.bucket)
+                .withPrefix(backupDir + "/" + YBDB_RELEASES);
+        if (StringUtils.isNotBlank(nextContinuationToken)) {
+          request.withContinuationToken(nextContinuationToken);
+        }
+        listObjectsResult = client.listObjectsV2(request);
+
+        if (listObjectsResult.getKeyCount() == 0) {
+          break;
+        }
+        nextContinuationToken = null;
+        if (listObjectsResult.isTruncated()) {
+          nextContinuationToken = listObjectsResult.getNextContinuationToken();
+        }
+        // Parse out release version from result
+        List<S3ObjectSummary> releases = listObjectsResult.getObjectSummaries();
+        for (S3ObjectSummary release : releases) {
+          String version = extractReleaseVersion(release.getKey(), backupDir);
+          if (version != null) {
+            log.info("Found version {} in S3 bucket", version);
+            releaseVersions.add(version);
+          }
+        }
+      } while (nextContinuationToken != null);
+
+      return releaseVersions;
+    } catch (AmazonS3Exception e) {
+      log.error("AWS Error occurred while listing releases in S3: {}", e.getErrorMessage());
+    } catch (Exception e) {
+      log.error("Unexpected exception while listing releases in S3: {}", e.getMessage());
+    } finally {
+      maybeEnableCertVerification();
+    }
+    return new HashSet<>();
+  }
+
+  private String extractReleaseVersion(String key, String backupDir) {
+    String regex = String.format("%s/%s/([^/]+)/([^/]+)$", backupDir, YBDB_RELEASES);
+    Pattern pattern = Pattern.compile(regex);
+    Matcher matcher = pattern.matcher(key);
+    if (matcher.matches()) {
+      return matcher.group(1);
+    }
+    return null;
+  }
+
+  @Override
   public File downloadYbaBackup(CustomerConfigData configData, String backupDir, Path localDir) {
     try {
       maybeDisableCertVerification();
@@ -413,9 +509,14 @@ public class AWSUtil implements CloudUtil {
         allBackups.addAll(listObjectsResult.getObjectSummaries());
       } while (nextContinuationToken != null);
 
+      Pattern backupPattern = Pattern.compile("backup_.*\\.tgz");
       // Sort backups by last modified date (most recent first)
       List<S3ObjectSummary> sortedBackups =
           allBackups.stream()
+              .filter(
+                  o ->
+                      !o.getKey().contains(YBDB_RELEASES)
+                          && backupPattern.matcher(o.getKey()).find())
               .sorted((o1, o2) -> o2.getLastModified().compareTo(o1.getLastModified()))
               .collect(Collectors.toList());
 

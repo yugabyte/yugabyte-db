@@ -21,6 +21,8 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.CloudUtil;
 import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ReleaseContainer;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
@@ -33,7 +35,9 @@ import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
@@ -44,17 +48,20 @@ public class CreateYbaBackup extends AbstractTaskBase {
   private final CloudUtilFactory cloudUtilFactory;
   private final PlatformReplicationHelper replicationHelper;
   private final PlatformReplicationManager replicationManager;
+  private final ReleaseManager releaseManager;
 
   @Inject
   protected CreateYbaBackup(
       BaseTaskDependencies baseTaskDependencies,
       PlatformReplicationHelper replicationHelper,
       PlatformReplicationManager replicationManager,
-      CloudUtilFactory cloudUtilFactory) {
+      CloudUtilFactory cloudUtilFactory,
+      ReleaseManager releaseManager) {
     super(baseTaskDependencies);
     this.replicationHelper = replicationHelper;
     this.replicationManager = replicationManager;
     this.cloudUtilFactory = cloudUtilFactory;
+    this.releaseManager = releaseManager;
   }
 
   public static class Params extends AbstractTaskParams {
@@ -137,6 +144,28 @@ public class CreateYbaBackup extends AbstractTaskBase {
               + " incurring unexpected costs.");
     }
 
+    Set<String> remoteReleases =
+        cloudUtil.getRemoteReleaseVersions(customerConfig.getDataObject(), taskParams.dirName);
+    // Get all local full paths
+    Map<String, ReleaseContainer> localReleaseContainers =
+        releaseManager.getAllLocalReleaseContainersByVersion();
+    // Remove all that match a remote filename
+    Set<String> toUploadReleases = localReleaseContainers.keySet();
+    toUploadReleases.removeAll(remoteReleases);
+    toUploadReleases.forEach(
+        releaseVer -> {
+          ReleaseContainer container = localReleaseContainers.get(releaseVer);
+          container
+              .getLocalReleasePathStrings()
+              .forEach(
+                  release -> {
+                    cloudUtil.uploadYBDBRelease(
+                        customerConfig.getDataObject(),
+                        new File(release),
+                        taskParams.dirName,
+                        container.getVersion());
+                  });
+        });
     // Cleanup backups
     replicationHelper.cleanupCreatedBackups();
     log.info(backup.getAbsolutePath());
