@@ -114,9 +114,9 @@ If you created backups using a [scheduled backup policy with PITR](../schedule-d
 
 1. In the **Backups** list, select the backup to restore to display the **Backup Details**.
 
-1. In the list of databases (YSQL) or keyspaces (YCQL), click **Restore** for the database or keyspace you want to restore. If your backup includes incremental backups, to display the databases or keyspaces, click the down arrow for the increment at which you want to restore.
+1. Select **Restore Entire Backup** to open the **Restore Backup** dialog.
 
-1. In the **Restore Backup** dialog, select the Keyspaces/Databases you want to restore. You can choose to backup either All Databases/Keyspaces, or a single database/keyspace.
+1. Select the Keyspaces/Databases you want to restore. You can choose to backup either All Databases/Keyspaces, or a single database/keyspace.
 
     ![Restore backup](/images/yp/restore-backup-pitr.png)
 
