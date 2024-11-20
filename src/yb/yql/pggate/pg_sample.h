@@ -31,10 +31,8 @@ class PgSamplePicker;
 //--------------------------------------------------------------------------------------------------
 // SAMPLE collect table statistics and take random rows sample
 //--------------------------------------------------------------------------------------------------
-class PgSample : public PgDmlRead {
+class PgSample final : public PgStatementLeafBase<PgDmlRead, StmtOp::kSample>  {
  public:
-  StmtOp stmt_op() const override { return StmtOp::STMT_SAMPLE; }
-
   // Make PgSamplePicker to process next block of rows in the table.
   // The has_more parameter is set to true if table has and needs more blocks.
   // PgSampler is not ready to be executed until this function returns false

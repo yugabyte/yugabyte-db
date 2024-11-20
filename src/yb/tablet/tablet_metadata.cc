@@ -158,7 +158,7 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
                      TableType table_type,
                      const Schema& schema,
                      const IndexMap& index_map,
-                     const boost::optional<IndexInfo>& index_info,
+                     const std::optional<IndexInfo>& index_info,
                      const SchemaVersion schema_version,
                      dockv::PartitionSchema partition_schema,
                      TableId pg_table_id_,
@@ -251,7 +251,7 @@ TableInfo::~TableInfo() = default;
 
 void TableInfo::CompleteInit() {
   if (index_info && index_info->is_vector_idx()) {
-    doc_read_context->SetVectorIdxOptions(index_info->get_vector_idx_options());
+    doc_read_context->vector_idx_options = index_info->vector_idx_options();
   }
 
   if (!index_info || !index_info->is_unique()) {
@@ -1378,10 +1378,10 @@ void RaftGroupMetadata::SetSchemaAndTableName(
   SetTableNameUnlocked(namespace_name, table_name, op_id, table_id);
 }
 
-void RaftGroupMetadata::AddTable(
+Status RaftGroupMetadata::AddTable(
     const std::string& table_id, const std::string& namespace_name, const std::string& table_name,
     const TableType table_type, const Schema& schema, const IndexMap& index_map,
-    const dockv::PartitionSchema& partition_schema, const boost::optional<IndexInfo>& index_info,
+    const dockv::PartitionSchema& partition_schema, const std::optional<IndexInfo>& index_info,
     const SchemaVersion schema_version, const OpId& op_id, const TableId& pg_table_id,
     const SkipTableTombstoneCheck skip_table_tombstone_check) {
   DCHECK(schema.has_column_ids());
@@ -1414,7 +1414,7 @@ void RaftGroupMetadata::AddTable(
     VLOG_WITH_PREFIX(1) << "Added table with schema version " << schema_version << "\n"
                         << AsString(new_table_info);
     kv_store_.UpdateColocationMap(new_table_info);
-    return;
+    return Status::OK();
   }
 
   const auto& existing_table = *iter->second;
@@ -1426,24 +1426,26 @@ void RaftGroupMetadata::AddTable(
       schema.table_properties().is_ysql_catalog_table()) {
     // This must be the one-time migration with transactional DDL being turned on for the first
     // time on this cluster.
-    return;
+    return Status::OK();
   }
 
   // We never expect colocation IDs to mismatch.
   const auto& existing_schema = existing_table.schema();
-  CHECK(existing_schema.has_colocation_id() == schema.has_colocation_id())
-      << "Attempted to change colocation state for table " << table_id << " from "
-      << existing_schema.has_colocation_id() << " to " << schema.has_colocation_id();
+  SCHECK_EQ(existing_schema.has_colocation_id(), schema.has_colocation_id(), InvalidArgument,
+            Format("Attempted to change colocation state for table $0", table_id));
 
-  CHECK(
-      !existing_schema.has_colocation_id() ||
-      existing_schema.colocation_id() == schema.colocation_id())
-      << "Attempted to change colocation ID for table " << table_id << " from "
-      << existing_schema.colocation_id() << " to " << schema.colocation_id();
+  if (existing_schema.has_colocation_id()) {
+    SCHECK_EQ(existing_schema.colocation_id(), schema.colocation_id(), InvalidArgument,
+              Format("Attempted to change colocation ID for table $0", table_id));
+  }
 
-  CHECK(!schema.colocation_id() || kv_store_.colocation_to_table.count(schema.colocation_id()))
-      << "Missing entry in colocation table: " << schema.colocation_id() << ", "
-      << AsString(kv_store_.colocation_to_table);
+  if (schema.colocation_id() && !kv_store_.colocation_to_table.count(schema.colocation_id())) {
+    return STATUS_FORMAT(
+        IllegalState, "Missing entry in colocation table: $0, $1",
+        schema.colocation_id(), kv_store_.colocation_to_table);
+  }
+
+  return Status::OK();
 }
 
 void RaftGroupMetadata::RemoveTable(const TableId& table_id, const OpId& op_id) {

@@ -37,7 +37,6 @@ struct XClusterOutputClientResponse {
   Status status;
   OpIdPB last_applied_op_id;
   uint32_t processed_record_count;
-  uint32_t wait_for_version{0};
   std::shared_ptr<cdc::GetChangesResponsePB> get_changes_response;
 };
 
@@ -53,9 +52,6 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
   ~XClusterOutputClient();
   void StartShutdown() override;
   void CompleteShutdown() override;
-
-  // Sets the last compatible consumer schema version
-  void SetLastCompatibleConsumerSchemaVersion(SchemaVersion schema_version);
 
   // Async call for applying changes. Will invoke the apply_changes_clbk when the changes are
   // applied, or when any error occurs.
@@ -147,13 +143,11 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
   Status error_status_ GUARDED_BY(lock_);
   OpIdPB op_id_ GUARDED_BY(lock_) = consensus::MinimumOpId();
   bool done_processing_ GUARDED_BY(lock_) = false;
-  uint32_t wait_for_version_ GUARDED_BY(lock_) = 0;
   std::atomic<bool> shutdown_ = false;
 
   uint32_t processed_record_count_ GUARDED_BY(lock_) = 0;
   uint32_t record_count_ GUARDED_BY(lock_) = 0;
 
-  SchemaVersion last_compatible_consumer_schema_version_ GUARDED_BY(lock_) = 0;
   SchemaVersion producer_schema_version_ GUARDED_BY(lock_) = 0;
   ColocationId colocation_id_ GUARDED_BY(lock_) = 0;
 

@@ -10,8 +10,11 @@ import {
 import { PROVIDER_TYPES, BASE_URL } from '../config';
 import { NodeState } from '../redesign/helpers/dtos';
 
-
-export const MULTILINE_GFLAGS_ARRAY = ['ysql_hba_conf_csv', 'ysql_ident_conf_csv'];
+export const MULTILINE_GFLAGS_ARRAY = [
+  'ysql_hba_conf_csv',
+  'ysql_ident_conf_csv',
+  'ysql_pg_conf_csv'
+];
 
 const LDAP_KEYS = [
   'ldapserver',
@@ -65,7 +68,8 @@ export const nodeInClusterStates = [
 
 export const MultilineGFlags = {
   YSQL_HBA_CONF_CSV: 'ysql_hba_conf_csv',
-  YSQL_IDENT_CONF_CSV: 'ysql_ident_conf_csv'
+  YSQL_IDENT_CONF_CSV: 'ysql_ident_conf_csv',
+  YSQL_PG_CONF_CSV: 'ysql_pg_conf_csv'
 };
 
 export function isNodeRemovable(nodeState) {
@@ -266,26 +270,45 @@ export const isOnpremUniverse = (universe) => {
   return isUniverseType(universe, 'onprem');
 };
 
-const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['g5','g6','g6e',
-  'gr6','i3','i3en','i4g','i4i','im4gn',
-  'is4gen','p5','p5e','trn1','trn1n','x1','x1e'];
+const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = [
+  'g5',
+  'g6',
+  'g6e',
+  'gr6',
+  'i3',
+  'i3en',
+  'i4g',
+  'i4i',
+  'im4gn',
+  'is4gen',
+  'p5',
+  'p5e',
+  'trn1',
+  'trn1n',
+  'x1',
+  'x1e'
+];
 
 export const isEphemeralAwsStorageInstance = (instanceType) => {
-  return INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(instanceType?.split?.('.')[0]) ||
-    instanceType?.split?.('.')[0].includes('d');
+  return (
+    INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(instanceType?.split?.('.')[0]) ||
+    instanceType?.split?.('.')[0].includes('d')
+  );
 };
 
 export const isPausableUniverse = (universe) => {
-
   if (isUniverseType(universe, 'aws')) {
-    return universe.universeDetails?.nodeDetailsSet?.find(
-      n => n !== null &&
-      !isEphemeralAwsStorageInstance(n.cloudInfo?.instance_type)) !== undefined ?? true;
+    return (
+      universe.universeDetails?.nodeDetailsSet?.find(
+        (n) => n !== null && !isEphemeralAwsStorageInstance(n.cloudInfo?.instance_type)
+      ) !== undefined ?? true
+    );
   }
 
   return (
     isUniverseType(universe, 'gcp') ||
-    isUniverseType(universe, 'azu')
+    isUniverseType(universe, 'azu') ||
+    isUniverseType(universe, 'kubernetes')
   );
 };
 

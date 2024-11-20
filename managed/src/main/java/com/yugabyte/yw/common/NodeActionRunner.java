@@ -136,12 +136,12 @@ public class NodeActionRunner {
       NodeDetails node,
       String ybHomeDir,
       String fileListFilepath,
+      String targetNodeFilesPath,
       String targetLocalFile,
       ShellProcessContext context) {
     String user = context.getSshUser();
     Duration timeout = context.getTimeout();
     String tarFilename = String.format("%s-%s.tar.gz", node.getNodeName(), UUID.randomUUID());
-    String targetNodeFilesPath = fileListFilepath;
     // Upload the files to be downloaded.
     nodeAgentClient.uploadFile(nodeAgent, fileListFilepath, targetNodeFilesPath, user, 0, timeout);
     Path scriptPath =
@@ -150,7 +150,7 @@ public class NodeActionRunner {
     scriptParams.add("create_tar_file");
     scriptParams.add(ybHomeDir);
     scriptParams.add(tarFilename);
-    scriptParams.add(fileListFilepath);
+    scriptParams.add(targetNodeFilesPath);
     String scriptOutput =
         nodeAgentClient
             .executeScript(nodeAgent, scriptPath, scriptParams, context)
@@ -189,11 +189,6 @@ public class NodeActionRunner {
    */
   public void copyFile(
       NodeAgent nodeAgent, String remoteFile, String localFile, ShellProcessContext context) {
-    Path localFilepath = Paths.get(localFile);
-    Path localFileDir = localFilepath.getParent().toAbsolutePath();
-    nodeAgentClient
-        .executeCommand(nodeAgent, Arrays.asList("mkdir", "-p", localFileDir.toString()), context)
-        .processErrors();
     nodeAgentClient.downloadFile(nodeAgent, remoteFile, localFile);
   }
 

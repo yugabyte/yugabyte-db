@@ -146,7 +146,7 @@ Result<std::vector<YsqlSequenceInfo>> ScanSequencesDataTable(
   return results;
 }
 
-Result<int> EnsureSequenceUpdatesInWal(
+Result<int> EnsureSequenceUpdatesAreInWal(
     client::YBClient& client, uint32_t db_oid, const std::vector<YsqlSequenceInfo>& sequences) {
   auto table = VERIFY_RESULT(OpenSequencesDataTable(client));
 

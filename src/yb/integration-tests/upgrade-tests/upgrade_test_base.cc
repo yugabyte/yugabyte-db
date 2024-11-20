@@ -34,11 +34,13 @@
 
 DECLARE_uint32(auto_flags_apply_delay_ms);
 
+using namespace std::literals;
+
 namespace yb {
 
 namespace {
 
-const MonoDelta kTimeout = 20s * kTimeMultiplier;
+const MonoDelta kRpcTimeout = 20s * kTimeMultiplier;
 
 // Returns the URL for the current build type and os platform. Returns empty string if a valid URL
 // does not exist.
@@ -203,14 +205,6 @@ void AddUnDefOkAndSetFlag(
 
 void WaitForAutoFlagApply() { SleepFor(FLAGS_auto_flags_apply_delay_ms * 1ms + 3s); }
 
-Status SetYsqlMajorUpgradeFlagOnMasters(ExternalMiniCluster& cluster, bool enable) {
-  for (auto* master : cluster.master_daemons()) {
-    RETURN_NOT_OK(
-        cluster.SetFlag(master, "TEST_online_pg11_to_pg15_upgrade", enable ? "true" : "false"));
-  }
-  return Status::OK();
-}
-
 // This is a pg15 version which supports upgrade only from certain versions.
 // Check if the given version is supported for upgrade.
 bool IsUpgradeSupported(const std::string& from_version) {
@@ -322,7 +316,7 @@ Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOption
   server::GetStatusRequestPB req;
   server::GetStatusResponsePB resp;
   rpc::RpcController rpc;
-  rpc.set_timeout(kTimeout);
+  rpc.set_timeout(kRpcTimeout);
   RETURN_NOT_OK(
       cluster_->GetLeaderMasterProxy<server::GenericServiceProxy>().GetStatus(req, &resp, &rpc));
   LOG(INFO) << "From version: " << resp.status().version_info().DebugString();
@@ -346,7 +340,7 @@ Status UpgradeTestBase::UpgradeClusterToCurrentVersion(
       RestartAllMastersInCurrentVersion(delay_between_nodes), "Failed to restart masters");
 
   RETURN_NOT_OK_PREPEND(
-      PerformYsqlMajorVersionUpgrade(), "Failed to run ysql major version upgrade");
+      PerformYsqlMajorCatalogUpgrade(), "Failed to run ysql major catalog upgrade");
 
   RETURN_NOT_OK_PREPEND(
       RestartAllTServersInCurrentVersion(delay_between_nodes), "Failed to restart tservers");
@@ -421,42 +415,43 @@ Status UpgradeTestBase::RestartTServerInCurrentVersion(
   return Status::OK();
 }
 
-Status UpgradeTestBase::PerformYsqlMajorVersionUpgrade() {
+Status UpgradeTestBase::PerformYsqlMajorCatalogUpgrade() {
   if (!is_ysql_major_version_upgrade_) {
     return Status::OK();
   }
 
-  LOG(INFO) << "Running ysql major version upgrade";
+  LOG(INFO) << "Running ysql major catalog version upgrade";
 
-  RETURN_NOT_OK(SetYsqlMajorUpgradeFlagOnMasters(*cluster_, true));
-
-  master::StartYsqlMajorVersionUpgradeInitdbRequestPB req;
-  master::StartYsqlMajorVersionUpgradeInitdbResponsePB resp;
+  master::StartYsqlMajorCatalogUpgradeRequestPB req;
+  master::StartYsqlMajorCatalogUpgradeResponsePB resp;
   rpc::RpcController rpc;
-  rpc.set_timeout(kTimeout);
+  rpc.set_timeout(kRpcTimeout);
   auto master_admin_proxy = cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>();
-  RETURN_NOT_OK(master_admin_proxy.StartYsqlMajorVersionUpgradeInitdb(req, &resp, &rpc));
+  RETURN_NOT_OK(master_admin_proxy.StartYsqlMajorCatalogUpgrade(req, &resp, &rpc));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
 
+  return WaitForYsqlMajorCatalogUpgradeToFinish();
+}
+
+Status UpgradeTestBase::WaitForYsqlMajorCatalogUpgradeToFinish() {
+  auto master_admin_proxy = cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>();
+
   auto is_upgrade_done = [&master_admin_proxy]() -> Result<bool> {
-    master::IsYsqlMajorVersionUpgradeInitdbDoneRequestPB req;
-    master::IsYsqlMajorVersionUpgradeInitdbDoneResponsePB resp;
+    master::IsYsqlMajorCatalogUpgradeDoneRequestPB req;
+    master::IsYsqlMajorCatalogUpgradeDoneResponsePB resp;
     rpc::RpcController rpc;
-    rpc.set_timeout(kTimeout);
-    RETURN_NOT_OK(master_admin_proxy.IsYsqlMajorVersionUpgradeInitdbDone(req, &resp, &rpc));
+    rpc.set_timeout(kRpcTimeout);
+    RETURN_NOT_OK(master_admin_proxy.IsYsqlMajorCatalogUpgradeDone(req, &resp, &rpc));
     if (resp.has_error()) {
       return StatusFromPB(resp.error().status());
-    }
-    if (resp.has_initdb_error()) {
-      return StatusFromPB(resp.initdb_error().status());
     }
     return resp.done();
   };
 
   return LoggedWaitFor(
-      is_upgrade_done, 10min, "Waiting for ysql major version upgrade to complete");
+      is_upgrade_done, 10min, "Waiting for ysql major catalog upgrade to complete");
 }
 
 Status UpgradeTestBase::PromoteAutoFlags(AutoFlagClass flag_class) {
@@ -465,7 +460,7 @@ Status UpgradeTestBase::PromoteAutoFlags(AutoFlagClass flag_class) {
   master::PromoteAutoFlagsRequestPB req;
   master::PromoteAutoFlagsResponsePB resp;
   rpc::RpcController rpc;
-  rpc.set_timeout(kTimeout);
+  rpc.set_timeout(kRpcTimeout);
   req.set_max_flag_class(ToString(flag_class));
   req.set_promote_non_runtime_flags(false);
   req.set_force(false);
@@ -493,14 +488,23 @@ Status UpgradeTestBase::PromoteAutoFlags(AutoFlagClass flag_class) {
   return Status::OK();
 }
 
-Status UpgradeTestBase::FinalizeYsqlMajorVersionUpgrade() {
+Status UpgradeTestBase::FinalizeYsqlMajorCatalogUpgrade() {
   if (!is_ysql_major_version_upgrade_) {
     return Status::OK();
   }
 
-  LOG(INFO) << "Finalizing ysql major version upgrade";
+  LOG(INFO) << "Finalizing ysql major catalog upgrade";
 
-  RETURN_NOT_OK(SetYsqlMajorUpgradeFlagOnMasters(*cluster_, false));
+  master::FinalizeYsqlMajorCatalogUpgradeRequestPB req;
+  master::FinalizeYsqlMajorCatalogUpgradeResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(kRpcTimeout);
+  RETURN_NOT_OK(
+      cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>().FinalizeYsqlMajorCatalogUpgrade(
+          req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
 
   return Status::OK();
 }
@@ -527,7 +531,7 @@ Status UpgradeTestBase::FinalizeUpgrade() {
   LOG(INFO) << "Finalizing upgrade";
 
   RETURN_NOT_OK_PREPEND(
-      FinalizeYsqlMajorVersionUpgrade(), "Failed to run ysql major version upgrade");
+      FinalizeYsqlMajorCatalogUpgrade(), "Failed to run ysql major catalog upgrade");
 
   RETURN_NOT_OK_PREPEND(PromoteAutoFlags(), "Failed to promote AutoFlags");
 
@@ -540,26 +544,24 @@ Status UpgradeTestBase::FinalizeUpgrade() {
   return Status::OK();
 }
 
-Status UpgradeTestBase::RollbackYsqlMajorVersion() {
+Status UpgradeTestBase::RollbackYsqlMajorCatalogVersion() {
   if (!is_ysql_major_version_upgrade_) {
     return Status::OK();
   }
 
-  LOG(INFO) << "Running ysql major version rollback";
+  LOG(INFO) << "Running ysql major catalog rollback";
 
-  master::RollbackYsqlMajorVersionUpgradeRequestPB req;
-  master::RollbackYsqlMajorVersionUpgradeResponsePB resp;
+  master::RollbackYsqlMajorCatalogVersionRequestPB req;
+  master::RollbackYsqlMajorCatalogVersionResponsePB resp;
   rpc::RpcController rpc;
   // Rollback RPC is synchronous and can take a while.
   rpc.set_timeout(3min);
   RETURN_NOT_OK(
-      cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>().RollbackYsqlMajorVersionUpgrade(
+      cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>().RollbackYsqlMajorCatalogVersion(
           req, &resp, &rpc));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
-
-  RETURN_NOT_OK(SetYsqlMajorUpgradeFlagOnMasters(*cluster_, false));
 
   return Status::OK();
 }
@@ -574,7 +576,7 @@ Status UpgradeTestBase::RollbackVolatileAutoFlags() {
   master::RollbackAutoFlagsRequestPB req;
   master::RollbackAutoFlagsResponsePB resp;
   rpc::RpcController rpc;
-  rpc.set_timeout(kTimeout);
+  rpc.set_timeout(kRpcTimeout);
   req.set_rollback_version(*auto_flags_rollback_version_);
   RETURN_NOT_OK(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>().RollbackAutoFlags(
       req, &resp, &rpc));
@@ -598,7 +600,8 @@ Status UpgradeTestBase::RollbackClusterToOldVersion(MonoDelta delay_between_node
   RETURN_NOT_OK_PREPEND(
       RestartAllTServersInOldVersion(delay_between_nodes), "Failed to restart tservers");
 
-  RETURN_NOT_OK_PREPEND(RollbackYsqlMajorVersion(), "Failed to run ysql major version rollback");
+  RETURN_NOT_OK_PREPEND(
+      RollbackYsqlMajorCatalogVersion(), "Failed to run ysql major catalog rollback");
 
   RETURN_NOT_OK_PREPEND(
       RestartAllMastersInOldVersion(delay_between_nodes), "Failed to restart masters");
@@ -665,7 +668,7 @@ Status UpgradeTestBase::RestartTServerInOldVersion(
 }
 
 Status UpgradeTestBase::WaitForClusterToStabilize() {
-  RETURN_NOT_OK(cluster_->WaitForTabletServerCount(cluster_->num_tablet_servers(), kTimeout));
+  RETURN_NOT_OK(cluster_->WaitForTabletServerCount(cluster_->num_tablet_servers(), 5min));
 
   return Status::OK();
 }

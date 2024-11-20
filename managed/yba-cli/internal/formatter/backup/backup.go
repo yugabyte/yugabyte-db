@@ -18,7 +18,7 @@ import (
 
 const (
 	defaultBackupListing = "table {{.BackupUUID}}\t{{.Universe}}" +
-		"\t{{.StorageConfig}}\t{{.StorageConfigType}}\t{{.KMSConfig}}\t{{.BackupType}}" +
+		"\t{{.StorageConfiguration}}\t{{.StorageConfigurationType}}\t{{.KMSConfig}}\t{{.BackupType}}" +
 		"\t{{.State}}\t{{.CompletionTime}}"
 
 	// BackupUUIDHeader to display backup UUID
@@ -102,20 +102,20 @@ func Write(ctx formatter.Context, backups []ybaclient.BackupResp) error {
 func NewBackupContext() *Context {
 	backupCtx := Context{}
 	backupCtx.Header = formatter.SubHeaderContext{
-		"BackupUUID":            BackupUUIDHeader,
-		"BaseBackupUUID":        baseBackupUUIDHeader,
-		"Universe":              UniverseHeader,
-		"StorageConfig":         StorageConfigHeader,
-		"StorageConfigType":     storageConfigTypeHeader,
-		"BackupType":            BackupTypeHeader,
-		"ScheduleName":          scheduleNameHeader,
-		"HasIncrementalBackups": hasIncrementalBackupsHeader,
-		"State":                 StateHeader,
-		"ExpiryTime":            expiryTimeHeader,
-		"CreateTime":            CreateTimeHeader,
-		"CompletionTime":        CompletionTimeHeader,
-		"KMSConfig":             formatter.KMSConfigHeader,
-		"Category":              categoryHeader,
+		"BackupUUID":               BackupUUIDHeader,
+		"BaseBackupUUID":           baseBackupUUIDHeader,
+		"Universe":                 UniverseHeader,
+		"StorageConfiguration":     StorageConfigHeader,
+		"StorageConfigurationType": storageConfigTypeHeader,
+		"BackupType":               BackupTypeHeader,
+		"ScheduleName":             scheduleNameHeader,
+		"HasIncrementalBackups":    hasIncrementalBackupsHeader,
+		"State":                    StateHeader,
+		"ExpiryTime":               expiryTimeHeader,
+		"CreateTime":               CreateTimeHeader,
+		"CompletionTime":           CompletionTimeHeader,
+		"KMSConfig":                formatter.KMSConfigHeader,
+		"Category":                 categoryHeader,
 	}
 	return &backupCtx
 }
@@ -132,8 +132,8 @@ func (c *Context) BaseBackupUUID() string {
 	return commonBackupInfo.GetBackupUUID()
 }
 
-// StorageConfig fetches Storage Config Name
-func (c *Context) StorageConfig() string {
+// StorageConfiguration fetches Storage Config Name
+func (c *Context) StorageConfiguration() string {
 	commonBackupInfo := c.b.GetCommonBackupInfo()
 	for _, config := range StorageConfigs {
 		if strings.Compare(config.GetConfigUUID(), commonBackupInfo.GetStorageConfigUUID()) == 0 {
@@ -181,8 +181,8 @@ func (c *Context) ScheduleName() string {
 	return c.b.GetScheduleName()
 }
 
-// StorageConfigType fetches Storage Config Type
-func (c *Context) StorageConfigType() string {
+// StorageConfigurationType fetches Storage Config Type
+func (c *Context) StorageConfigurationType() string {
 	return c.b.GetStorageConfigType()
 }
 

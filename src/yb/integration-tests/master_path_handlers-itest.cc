@@ -45,6 +45,9 @@
 #include "yb/master/mini_master.h"
 
 #include "yb/master/tasks_tracker.h"
+
+#include "yb/rpc/messenger.h"
+
 #include "yb/server/webui_util.h"
 
 #include "yb/tablet/tablet_types.pb.h"
@@ -80,6 +83,7 @@ DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_uint32(leaderless_tablet_alert_delay_secs);
 DECLARE_bool(TEST_assert_local_op);
 DECLARE_bool(TEST_echo_service_enabled);
+DECLARE_bool(enable_load_balancing);
 
 namespace yb {
 namespace master {
@@ -787,6 +791,64 @@ TEST_F_EX(
   ASSERT_EQ(result.find(tablet->id()), string::npos);
 }
 
+class MasterPathHandlersLeaderlessITest : public MasterPathHandlersItest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_leaderless_tablet_alert_delay_secs) =
+        kLeaderlessTabletAlertDelaySecs;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) =
+        kMetricsHeartbeatIntervalMs;
+    MasterPathHandlersItest::SetUp();
+  }
+ protected:
+  const int kLeaderlessTabletAlertDelaySecs = 5;
+  const int kMetricsHeartbeatIntervalMs = 1000;
+};
+
+// A tablet changed from RF-1 to RF-3 shouldn't be shown as leaderless tablet.
+TEST_F(MasterPathHandlersLeaderlessITest, TestRF1ChangedToRF3) {
+  const auto kLeaderlessTabletAlertDelaySecs = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_leaderless_tablet_alert_delay_secs) =
+      kLeaderlessTabletAlertDelaySecs;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+
+  CreateTestTable(1 /* num_tablets */);
+  client::TableHandle table;
+  ASSERT_OK(table.Open(table_name, client_.get()));
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto tablet = ASSERT_RESULT(catalog_manager.GetTableInfo(table->id())->GetTablets())[0];
+  auto leader = ASSERT_RESULT(GetLeaderPeerForTablet(cluster_.get(), tablet->id()));
+  const auto proxy_cache = std::make_unique<rpc::ProxyCache>(client_->messenger());
+  auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(
+      ASSERT_RESULT(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>()),
+      proxy_cache.get()));
+  auto leader_uuid = leader->permanent_uuid();
+  for (const auto& replica : ts_map) {
+    auto uuid = replica.second->uuid();
+    if (uuid == leader_uuid) {
+      continue;
+    }
+    ASSERT_OK(itest::RemoveServer(
+        ts_map[leader_uuid].get(), tablet->id(), ts_map[uuid].get(), boost::none, 10s));
+  }
+  SleepFor(kLeaderlessTabletAlertDelaySecs * yb::kTimeMultiplier * 1s);
+  string result = ASSERT_RESULT(GetLeaderlessTabletsString());
+  ASSERT_EQ(result.find(tablet->id()), string::npos);
+  for (const auto& replica : ts_map) {
+    auto uuid = replica.second->uuid();
+    if (uuid == leader_uuid) {
+      continue;
+    }
+    ASSERT_OK(itest::AddServer(
+        ts_map[leader_uuid].get(), tablet->id(), ts_map[uuid].get(),
+        consensus::PeerMemberType::PRE_VOTER, boost::none, 10s));
+  }
+  SleepFor(kLeaderlessTabletAlertDelaySecs * yb::kTimeMultiplier * 1s);
+  result = ASSERT_RESULT(GetLeaderlessTabletsString());
+  ASSERT_EQ(result.find(tablet->id()), string::npos);
+}
+
 class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<ExternalMiniCluster> {
  public:
   void InitCluster() override {
@@ -1110,7 +1172,7 @@ TEST_F_EX(MasterPathHandlersItest, TestTablePlacementInfo, MasterPathHandlersExt
 }
 
 template <int RF>
-class MasterPathHandlersLeaderlessITest : public MasterPathHandlersExternalItest {
+class MasterPathHandlersExternalLeaderlessITest : public MasterPathHandlersExternalItest {
  protected:
   int num_tablet_servers() const override {
     return RF;
@@ -1167,8 +1229,8 @@ class MasterPathHandlersLeaderlessITest : public MasterPathHandlersExternalItest
   static constexpr int kTserverHeartbeatMetricsIntervalMs = 1000;
 };
 
-typedef MasterPathHandlersLeaderlessITest<3> MasterPathHandlersLeaderlessRF3ITest;
-typedef MasterPathHandlersLeaderlessITest<1> MasterPathHandlersLeaderlessRF1ITest;
+typedef MasterPathHandlersExternalLeaderlessITest<3> MasterPathHandlersLeaderlessRF3ITest;
+typedef MasterPathHandlersExternalLeaderlessITest<1> MasterPathHandlersLeaderlessRF1ITest;
 
 TEST_F(MasterPathHandlersLeaderlessRF3ITest, TestLeaderlessTabletEndpoint) {
   ASSERT_OK(cluster_->SetFlagOnMasters("leaderless_tablet_alert_delay_secs", "5"));

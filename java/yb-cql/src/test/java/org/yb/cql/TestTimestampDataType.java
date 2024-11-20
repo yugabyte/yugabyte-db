@@ -23,6 +23,8 @@ import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertTrue;
 
+import org.yb.minicluster.Metrics;
+import org.yb.minicluster.MiniYBDaemon;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
@@ -88,6 +90,18 @@ public class TestTimestampDataType extends BaseCQLTest {
       }
     }
     return ts_values;
+  }
+
+  int getMicrosecondTimestampMetricCount(Map<MiniYBDaemon, Metrics> beforeMetrics)
+      throws Exception {
+    Map<MiniYBDaemon, Metrics> afterMetrics = getAllMetrics();
+
+    int obtainedMetric = 0;
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      obtainedMetric += afterMetrics.get(ts).getCounter("cql_microseconds_timestamps_used").value
+          - beforeMetrics.get(ts).getCounter("cql_microseconds_timestamps_used").value;
+    }
+    return obtainedMetric;
   }
 
   @Test
@@ -405,6 +419,7 @@ public class TestTimestampDataType extends BaseCQLTest {
     String tableName = "test";
     String testTimestamp = "2024-08-26 09:23:38.319213+0000";
     String testTimestampMS = "2024-08-26 09:23:38.319000+0000";
+    Map<MiniYBDaemon, Metrics> beforeMetrics = getAllMetrics();
 
     session.execute(String.format("CREATE TABLE %s(x int primary key, b timestamp);", tableName));
     session.execute(
@@ -429,6 +444,9 @@ public class TestTimestampDataType extends BaseCQLTest {
     assertQuery(String.format(sel_stmt, tableName, currenttimestamp_string), "Row[1]");
     assertQuery(String.format(sel_stmt, tableName, totimestamp_now_string), "Row[1]");
 
+    // only milliseconds timestamps are used when cql_revert_to_partial_microsecond_support = false
+    assertEquals(0, getMicrosecondTimestampMetricCount(beforeMetrics));
+
     destroyMiniCluster();
   }
 
@@ -440,6 +458,7 @@ public class TestTimestampDataType extends BaseCQLTest {
     setUpCqlClient();
     String tableName = "test";
     String testTimestamp = "2024-08-26 09:23:38.319213+0000";
+    Map<MiniYBDaemon, Metrics> beforeMetrics = getAllMetrics();
 
     session.execute(String.format("CREATE TABLE %s(x INT, b TIMESTAMP, v1 INT, v2 INT, PRIMARY "
             + "KEY(x, b)) WITH transactions = {'enabled': 'true'};",
@@ -464,6 +483,58 @@ public class TestTimestampDataType extends BaseCQLTest {
       count++;
     }
     assertEquals(3, count);
+
+    // only milliseconds timestamps are used when cql_revert_to_partial_microsecond_support = false
+    assertEquals(0, getMicrosecondTimestampMetricCount(beforeMetrics));
+
+    destroyMiniCluster();
+  }
+
+  @Test
+  public void testMicrosecondsMetric() throws Exception {
+    destroyMiniCluster();
+    createMiniCluster(Collections.emptyMap(),
+        Collections.singletonMap("cql_revert_to_partial_microsecond_support",
+            "true")); // this is also the default behaviour as of 2024-11-05
+    setUpCqlClient();
+    String tableName = "test";
+    String testTimestamp = "2024-08-26 09:23:38.319213+0000";
+    String testTimestampMS = "2024-08-26 09:23:38.319000+0000";
+    String testTimestamp2 = "2024-08-26 19:23:38.537281+0000";
+
+    int usTimestampCount = 0;
+
+    Map<MiniYBDaemon, Metrics> beforeMetrics = getAllMetrics();
+
+    session.execute(String.format("CREATE TABLE %s(x int primary key, b timestamp);", tableName));
+    session.execute(
+        String.format("INSERT INTO %s(x, b) VALUES(%d, '%s');", tableName, 1, testTimestamp));
+    usTimestampCount++; // timestamp inserted with microseconds precision.
+    assertEquals(usTimestampCount, getMicrosecondTimestampMetricCount(beforeMetrics));
+
+    session.execute(
+        String.format("INSERT INTO %s(x, b) VALUES(%d, %s);", tableName, 2, "currenttimestamp()"));
+    usTimestampCount++; // inserted with `currenttimestamp` function i.e. microseconds precision.
+    assertEquals(usTimestampCount, getMicrosecondTimestampMetricCount(beforeMetrics));
+
+    session.execute(String.format("INSERT INTO %s(x, b) VALUES(%d, %s);", tableName, 3,
+        "totimestamp(now())")); // used milliseconds precision hence no updation of metric.
+    assertEquals(usTimestampCount, getMicrosecondTimestampMetricCount(beforeMetrics));
+
+    String sel_stmt = "SELECT * FROM %s WHERE b='%s'";
+
+    session.execute(String.format(sel_stmt, tableName, testTimestamp));
+    usTimestampCount++; // timestamp used is with microseconds precision.
+    assertEquals(usTimestampCount, getMicrosecondTimestampMetricCount(beforeMetrics));
+
+    session.execute(String.format(
+        sel_stmt, tableName, testTimestampMS)); // timestamp used is with milliseconds precision.
+    assertEquals(usTimestampCount, getMicrosecondTimestampMetricCount(beforeMetrics));
+
+    session.execute(String.format(sel_stmt, tableName, testTimestamp2));
+    usTimestampCount++; // timestamp used is with microseconds precision.
+    assertEquals(usTimestampCount, getMicrosecondTimestampMetricCount(beforeMetrics));
+
     destroyMiniCluster();
   }
 }

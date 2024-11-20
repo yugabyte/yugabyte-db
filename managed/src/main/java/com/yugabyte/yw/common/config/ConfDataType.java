@@ -270,8 +270,7 @@ public class ConfDataType<T> {
       return tagList;
     } catch (Exception e) {
       throw new PlatformServiceException(
-          BAD_REQUEST,
-          "Not a valid list of tags." + "All possible tags are " + "PUBLIC, BETA, INTERNAL");
+          BAD_REQUEST, "Not a valid list of tags." + "All possible tags are " + "PUBLIC, INTERNAL");
     }
   }
 

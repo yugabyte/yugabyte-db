@@ -141,3 +141,7 @@ DELETE FROM logs WHERE log_date < NOW() - INTERVAL '30 days';
 END;
 $$);
 ```
+
+## Learn more
+
+[Maintain partitions using pg_cron](../extension-pgpartman/#maintain-partitions-using-pg-cron)

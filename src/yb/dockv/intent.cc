@@ -450,4 +450,38 @@ Status EnumerateIntents(
       last_key, is_row_lock);
 }
 
+#define INTENT_KEY_SCHECK(lhs, op, rhs, msg) \
+  BOOST_PP_CAT(SCHECK_, op)(lhs, \
+                            rhs, \
+                            Corruption, \
+                            Format("Bad intent key, $0 in $1, transaction from: $2", \
+                                   msg, \
+                                   intent_key.ToDebugHexString(), \
+                                   transaction_id_source.ToDebugHexString()))
+
+// transaction_id_slice used in INTENT_KEY_SCHECK
+Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_source) {
+  ParsedIntent result;
+  result.doc_path = intent_key;
+  // Intent is encoded as "DocPath + IntentType + DocHybridTime".
+  size_t doc_ht_size = VERIFY_RESULT(DocHybridTime::GetEncodedSize(result.doc_path));
+  // 3 comes from (ValueType::kIntentType, the actual intent type, ValueType::kHybridTime).
+  INTENT_KEY_SCHECK(result.doc_path.size(), GE, doc_ht_size + 3, "key too short");
+  result.doc_path.remove_suffix(doc_ht_size + 3);
+  auto intent_type_and_doc_ht = result.doc_path.end();
+  if (intent_type_and_doc_ht[0] == KeyEntryTypeAsChar::kObsoleteIntentType) {
+    result.types = dockv::ObsoleteIntentTypeToSet(intent_type_and_doc_ht[1]);
+  } else if (intent_type_and_doc_ht[0] == KeyEntryTypeAsChar::kObsoleteIntentTypeSet) {
+    result.types = dockv::ObsoleteIntentTypeSetToNew(intent_type_and_doc_ht[1]);
+  } else {
+    INTENT_KEY_SCHECK(intent_type_and_doc_ht[0], EQ, KeyEntryTypeAsChar::kIntentTypeSet,
+        "intent type set type expected");
+    result.types = IntentTypeSet(intent_type_and_doc_ht[1]);
+  }
+  INTENT_KEY_SCHECK(intent_type_and_doc_ht[2], EQ, KeyEntryTypeAsChar::kHybridTime,
+                    "hybrid time value type expected");
+  result.doc_ht = Slice(result.doc_path.end() + 2, doc_ht_size + 1);
+  return result;
+}
+
 }  // namespace yb::dockv

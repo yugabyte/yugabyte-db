@@ -10,6 +10,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import java.util.HashSet;
+import java.util.Set;
 import junitparams.JUnitParamsRunner;
 import org.junit.Before;
 import org.junit.Test;
@@ -77,6 +79,19 @@ public class XClusterUtilTest extends FakeDBApplication {
     assertThrows(
         PlatformServiceException.class,
         () -> XClusterUtil.checkDbScopedXClusterSupported(sourceUniverse, targetUniverse));
+  }
+
+  @Test
+  public void testCheckDbScopedNonEmptyDb() {
+    assertThrows(
+        PlatformServiceException.class,
+        () -> XClusterUtil.checkDbScopedNonEmptyDbs(new HashSet<String>()));
+
+    try {
+      XClusterUtil.checkDbScopedNonEmptyDbs(Set.of("db1", "db2"));
+    } catch (Exception e) {
+      fail("Non-empty dbs should not throw error.");
+    }
   }
 
   @Test

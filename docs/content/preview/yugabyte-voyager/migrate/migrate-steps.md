@@ -111,18 +111,6 @@ Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/d
 
 If you want yb-voyager to connect to the target YugabyteDB database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
 
-{{< warning title="Deleting the ybvoyager user" >}}
-
-After migration, all the migrated objects (tables, views, and so on) are owned by the `ybvoyager` user. You should transfer the ownership of the objects to some other user (for example, `yugabyte`) and then delete the `ybvoyager` user. Example steps to delete the user are:
-
-```sql
-REASSIGN OWNED BY ybvoyager TO yugabyte;
-DROP OWNED BY ybvoyager;
-DROP USER ybvoyager;
-```
-
-{{< /warning >}}
-
 ## Create an export directory
 
 yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the *export directory*.
@@ -382,7 +370,7 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
 {{< /warning >}}
 
-### End migration
+## End migration
 
 To complete the migration, you need to clean up the export directory (export-dir) and Voyager state (Voyager-related metadata) stored in the target YugabyteDB database.
 
@@ -404,3 +392,13 @@ After you run end migration, you will _not_ be able to continue further.
 If you want to back up the schema, data, log files, and the migration reports (`analyze-schema` report, `export data status` output, or `import data status` output) for future reference, use the `--backup-dir` argument, and provide the path of the directory where you want to save the backup content (based on what you choose to back up).
 
 Refer to [end migration](../../reference/end-migration/) for more details on the arguments.
+
+### Delete the ybvoyager user (Optional)
+
+After migration, all the migrated objects (tables, views, and so on) are owned by the `ybvoyager` user. Transfer the ownership of the objects to some other user (for example, `yugabyte`) and then delete the `ybvoyager` user. For example, do the following:
+
+```sql
+REASSIGN OWNED BY ybvoyager TO yugabyte;
+DROP OWNED BY ybvoyager;
+DROP USER ybvoyager;
+```

@@ -140,6 +140,8 @@ Status SetupDDLReplicationExtension(
   } else {
     // We could have older data in the table due to a backup restore from the source universe.
     // So, we drop the extension and recreate it so that we start with empty tables.
+    // TODO(#19185) Revisit this GUC disabling when we implement proper extension shutdown.
+    statements.push_back(Format("SET $0.replication_role = DISABLED", kXClusterDDLExtensionName));
     statements.push_back(Format("DROP EXTENSION IF EXISTS $0", kXClusterDDLExtensionName));
     statements.push_back(Format("CREATE EXTENSION $0", kXClusterDDLExtensionName));
   }

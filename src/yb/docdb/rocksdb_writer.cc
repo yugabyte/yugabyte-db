@@ -22,10 +22,13 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/kv_debug.h"
 #include "yb/docdb/transaction_dump.h"
+#include "yb/docdb/vector_index.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/intent.h"
+#include "yb/dockv/packed_value.h"
+#include "yb/dockv/schema_packing.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/walltime.h"
@@ -496,9 +499,7 @@ Status IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
   }
   RETURN_NOT_OK(reverse_index_iter_.status());
 
-  context_.Complete(handler);
-
-  return Status::OK();
+  return context_.Complete(handler);
 }
 
 ApplyIntentsContext::ApplyIntentsContext(
@@ -511,7 +512,8 @@ ApplyIntentsContext::ApplyIntentsContext(
     HybridTime file_filter_ht,
     const KeyBounds* key_bounds,
     SchemaPackingProvider* schema_packing_provider,
-    rocksdb::DB* intents_db)
+    rocksdb::DB* intents_db,
+    const VectorIndexesPtr& vector_indexes)
     : IntentsWriterContext(transaction_id),
       FrontierSchemaVersionUpdater(schema_packing_provider),
       tablet_id_(tablet_id),
@@ -525,10 +527,14 @@ ApplyIntentsContext::ApplyIntentsContext(
       log_ht_(log_ht),
       write_id_(apply_state ? apply_state->write_id : 0),
       key_bounds_(key_bounds),
+      vector_indexes_(vector_indexes),
       intent_iter_(CreateRocksDBIterator(
           intents_db, key_bounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
           rocksdb::kDefaultQueryId, CreateIntentHybridTimeFileFilter(file_filter_ht),
           /* iterate_upper_bound = */ nullptr, rocksdb::CacheRestartBlockKeys::kFalse)) {
+  if (vector_indexes_) {
+    vector_index_batches_.resize(vector_indexes_->size());
+  }
 }
 
 Result<bool> ApplyIntentsContext::StoreApplyState(
@@ -585,7 +591,7 @@ Result<bool> ApplyIntentsContext::Entry(
     return false;
   }
 
-  auto intent = VERIFY_RESULT(ParseIntentKey(value, transaction_id().AsSlice()));
+  auto intent = VERIFY_RESULT(dockv::ParseIntentKey(value, transaction_id().AsSlice()));
 
   if (intent.types.Test(dockv::IntentType::kStrongWrite)) {
     const Slice transaction_id_slice = transaction_id().AsSlice();
@@ -635,6 +641,9 @@ Result<bool> ApplyIntentsContext::Entry(
                 << ", value: " << intent_value.ToDebugString();
     }
 #endif
+    if (vector_indexes_) {
+      RETURN_NOT_OK(ProcessVectorIndexes(intent.doc_path, decoded_value.body));
+    }
 
     handler->Put(key_parts, value_parts);
     ++write_id_;
@@ -650,13 +659,77 @@ Result<bool> ApplyIntentsContext::Entry(
   return false;
 }
 
-void ApplyIntentsContext::Complete(rocksdb::DirectWriteHandler* handler) {
+Status ApplyIntentsContext::ProcessVectorIndexes(Slice key, Slice value) {
+  auto doc_key_size = VERIFY_RESULT(dockv::DocKey::EncodedSize(
+      key, dockv::DocKeyPart::kWholeDocKey));
+  if (doc_key_size < key.size()) {
+    auto entry_type = static_cast<KeyEntryType>(key[doc_key_size]);
+    if (entry_type == KeyEntryType::kColumnId) {
+      auto column_id = VERIFY_RESULT(ColumnId::FullyDecode(key.WithoutPrefix(doc_key_size + 1)));
+      // We expect small amount of vector indexes, usually 1. So it is faster to iterate over them.
+      for (size_t i = 0; i != vector_indexes_->size(); ++i) {
+        if ((*vector_indexes_)[i]->column_id() == column_id) {
+          vector_index_batches_[i].push_back(VectorIndexInsertEntry {
+            .key = KeyBuffer(key.Prefix(doc_key_size)),
+            .value = ValueBuffer(value),
+          });
+        }
+      }
+    } else {
+      LOG_IF(DFATAL, entry_type != KeyEntryType::kSystemColumnId)
+          << "Unexpected entry type: " << entry_type << " in " << key.ToDebugHexString();
+    }
+  } else {
+    auto packed_row_version = dockv::GetPackedRowVersion(value);
+    RSTATUS_DCHECK(packed_row_version.has_value(), Corruption,
+                   "Full row with non packed value: $0 -> $1",
+                   key.ToDebugHexString(), value.ToDebugHexString());
+    switch (*packed_row_version) {
+      case dockv::PackedRowVersion::kV1:
+        return ProcessVectorIndexesForPackedRow<dockv::PackedRowDecoderV1>(key, value);
+      case dockv::PackedRowVersion::kV2:
+        return ProcessVectorIndexesForPackedRow<dockv::PackedRowDecoderV2>(key, value);
+    }
+    FATAL_INVALID_ENUM_VALUE(dockv::PackedRowVersion, *packed_row_version);
+  }
+  return Status::OK();
+}
+
+template <class Decoder>
+Status ApplyIntentsContext::ProcessVectorIndexesForPackedRow(Slice key, Slice value) {
+  value.consume_byte();
+
+  auto schema_version = narrow_cast<SchemaVersion>(VERIFY_RESULT(FastDecodeUnsignedVarInt(&value)));
+
+  auto& schema_packing = *VERIFY_RESULT(schema_packing_provider()->CotablePacking(
+      Uuid::Nil(), schema_version, HybridTime::kMax)).schema_packing;
+  Decoder decoder(schema_packing, value.data());
+  for (size_t i = 0; i != vector_indexes_->size(); ++i) {
+    auto column_value = decoder.FetchValue((*vector_indexes_)[i]->column_id());
+    vector_index_batches_[i].push_back(VectorIndexInsertEntry {
+      .key = KeyBuffer(key),
+      .value = ValueBuffer(*column_value),
+    });
+  }
+  return Status::OK();
+}
+
+Status ApplyIntentsContext::Complete(rocksdb::DirectWriteHandler* handler) {
   if (apply_state_) {
     char tombstone_value_type = ValueEntryTypeAsChar::kTombstone;
     std::array<Slice, 1> value_parts = {{Slice(&tombstone_value_type, 1)}};
     PutApplyState(transaction_id().AsSlice(), commit_ht_, write_id_, value_parts, handler);
   }
+  if (vector_indexes_) {
+    for (size_t i = 0; i != vector_index_batches_.size(); ++i) {
+      if (!vector_index_batches_[i].empty()) {
+        RETURN_NOT_OK((*vector_indexes_)[i]->Insert(
+            vector_index_batches_[i], commit_ht_, frontiers()));
+      }
+    }
+  }
   FlushSchemaVersion();
+  return Status::OK();
 }
 
 Status FrontierSchemaVersionUpdater::UpdateSchemaVersion(Slice key, Slice value) {
@@ -748,7 +821,8 @@ Result<bool> RemoveIntentsContext::Entry(
   return false;
 }
 
-void RemoveIntentsContext::Complete(rocksdb::DirectWriteHandler* handler) {
+Status RemoveIntentsContext::Complete(rocksdb::DirectWriteHandler* handler) {
+  return Status::OK();
 }
 
 ExternalIntentsBatchWriter::ExternalIntentsBatchWriter(

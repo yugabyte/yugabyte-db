@@ -1160,12 +1160,10 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
 
     case KeyEntryType::kColumnId: FALLTHROUGH_INTENDED;
     case KeyEntryType::kSystemColumnId: {
-      // Decode varint
-      {
-        ColumnId dummy_column_id;
-        ColumnId& column_id_ref = out ? out->column_id_val_ : dummy_column_id;
-        int64_t column_id_as_int64 = VERIFY_RESULT(FastDecodeSignedVarInt(slice));
-        RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id_ref));
+      if (out) {
+        out->column_id_val_ = VERIFY_RESULT(ColumnId::Decode(slice));
+      } else {
+        RETURN_NOT_OK(ColumnId::Decode(slice));
       }
 
       type_ref = type;

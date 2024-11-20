@@ -22,6 +22,8 @@
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/pgsql_operation.h"
 
+#include "yb/qlexpr/index.h"
+
 #include "yb/tablet/read_result.h"
 #include "yb/tablet/tablet_metadata.h"
 
@@ -76,25 +78,15 @@ Status AbstractTablet::HandleQLReadRequest(
 }
 
 Status AbstractTablet::ProcessPgsqlReadRequest(
-    const docdb::ReadOperationData& read_operation_data,
-    bool is_explicit_request_read_time,
-    const PgsqlReadRequestPB& pgsql_read_request,
-    const std::shared_ptr<TableInfo>& table_info,
-    const TransactionOperationContext& txn_op_context,
-    const docdb::YQLStorageIf& ql_storage,
-    std::reference_wrapper<const ScopedRWOperation> pending_op,
+    const docdb::PgsqlReadOperationData& op_data,
     PgsqlReadRequestResult* result) {
-  docdb::PgsqlReadOperation doc_op(pgsql_read_request, txn_op_context);
-
+  const auto& pgsql_read_request = op_data.request;
   // Form a schema of columns that are referenced by this query.
-  const auto doc_read_context = table_info->doc_read_context;
-  const auto index_doc_read_context = pgsql_read_request.has_index_request()
-    ? VERIFY_RESULT(GetDocReadContext(pgsql_read_request.index_request().table_id())) : nullptr;
+
+  docdb::PgsqlReadOperation doc_op(op_data, result->rows_data, &result->restart_read_ht);
 
   TRACE("Start Execute");
-  auto fetched_rows = doc_op.Execute(
-      ql_storage, read_operation_data, is_explicit_request_read_time, *doc_read_context,
-      index_doc_read_context.get(), pending_op, result->rows_data, &result->restart_read_ht);
+  auto fetched_rows = doc_op.Execute();
   TRACE("Done Execute");
   if (!fetched_rows.ok()) {
     result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);

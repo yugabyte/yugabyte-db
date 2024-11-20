@@ -936,6 +936,8 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
     const bool colocated,
     const std::vector<SnapshotScheduleId>& snapshot_schedules,
     const std::unordered_set<StatefulServiceKind>& hosted_services) {
+  LOG_WITH_FUNC(INFO) << "Table: " << table_info->ToString();
+
   SCOPED_WAIT_STATUS(CreatingNewTablet);
   if (state() != MANAGER_RUNNING) {
     return STATUS_FORMAT(IllegalState, "Manager is not running: $0", state());
@@ -1295,10 +1297,10 @@ Status TSTabletManager::DoApplyCloneTablet(
   const auto target_pg_table_id = request->target_pg_table_id().ToBuffer();
   const auto target_skip_table_tombstone_check =
       request->target_skip_table_tombstone_check();
-  const boost::optional<qlexpr::IndexInfo> target_table_index_info =
+  const std::optional<qlexpr::IndexInfo> target_table_index_info =
       request->has_target_index_info() ?
-      boost::optional<qlexpr::IndexInfo>(request->target_index_info().ToGoogleProtobuf()) :
-      boost::none;
+      std::optional<qlexpr::IndexInfo>(request->target_index_info().ToGoogleProtobuf()) :
+      std::nullopt;
   Schema target_schema;
   dockv::PartitionSchema target_partition_schema;
   RETURN_NOT_OK(SchemaFromPB(request->target_schema().ToGoogleProtobuf(), &target_schema));
@@ -2074,7 +2076,10 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         .metadata_cache = metadata_cache,
         .get_min_xcluster_schema_version =
             std::bind(&TabletServer::GetMinXClusterSchemaVersion, server_, _1, _2),
-        .messenger = server_->messenger()};
+        .messenger = server_->messenger(),
+        // TODO(vector_index) find the best thread pool for this purpose
+        .rpc_thread_pool = raft_notifications_pool(),
+    };
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
       .listener = tablet_peer->status_listener(),

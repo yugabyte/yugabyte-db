@@ -140,9 +140,6 @@ DEFINE_NON_RUNTIME_string(ysql_hba_conf, "",
               "Comma separated list of postgres hba rules (in order)");
 TAG_FLAG(ysql_hba_conf, sensitive_info);
 DECLARE_string(tmp_dir);
-DEFINE_test_flag(bool, online_pg11_to_pg15_upgrade, false,
-    "Enter the mode in which the master creates PG15 catalogs alongside PG11 catalogs, leaving "
-    "PG11 catalogs as they are, using pg_restore. This flag is only meaningful on the YB master.");
 
 DEFINE_RUNTIME_PG_FLAG(string, timezone, "",
     "Overrides the default ysql timezone for displaying and interpreting timestamps. If no value "
@@ -877,11 +874,14 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
   initdb_subprocess.InheritNonstandardFd(conf_.tserver_shm_fd);
   bool global_initdb = std::holds_alternative<GlobalInitdbParams>(initdb_params);
   SetCommonEnv(&initdb_subprocess, global_initdb);
-  initdb_subprocess.SetEnv(
-      "FLAGS_TEST_online_pg11_to_pg15_upgrade",
-      FLAGS_TEST_online_pg11_to_pg15_upgrade ? "true" : "false");
   if (global_initdb) {
-    for (const auto& [db_name, db_oid] : std::get<GlobalInitdbParams>(initdb_params).db_to_oid) {
+    const auto& global_initdb_params = std::get<GlobalInitdbParams>(initdb_params);
+
+    if (global_initdb_params.is_major_upgrade) {
+      initdb_subprocess.SetEnv("YB_PG_MAJOR_UPGRADE_INITDB", "true");
+    }
+
+    for (const auto& [db_name, db_oid] : global_initdb_params.db_to_oid) {
       initdb_subprocess.SetEnv("YB_DATABASE_OID_" + db_name, std::to_string(db_oid));
     }
   }
@@ -1031,8 +1031,8 @@ Status PgWrapper::InitDbLocalOnlyIfNeeded() {
 }
 
 Status PgWrapper::InitDbForYSQL(
-    const string& master_addresses, const string& tmp_dir_base,
-    int tserver_shm_fd, std::vector<std::pair<string, YBCPgOid>> db_to_oid) {
+    const string& master_addresses, const string& tmp_dir_base, int tserver_shm_fd,
+    std::vector<std::pair<string, YBCPgOid>> db_to_oid, bool is_major_upgrade) {
   LOG(INFO) << "Running initdb to initialize YSQL cluster with master addresses "
             << master_addresses;
   PgProcessConf conf;
@@ -1057,7 +1057,7 @@ Status PgWrapper::InitDbForYSQL(
   });
   PgWrapper pg_wrapper(conf);
   auto start_time = std::chrono::steady_clock::now();
-  Status initdb_status = pg_wrapper.InitDb(GlobalInitdbParams{db_to_oid});
+  Status initdb_status = pg_wrapper.InitDb(GlobalInitdbParams{db_to_oid, is_major_upgrade});
   auto elapsed_time = std::chrono::steady_clock::now() - start_time;
   LOG(INFO)
       << "initdb took "

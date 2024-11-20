@@ -328,12 +328,11 @@ BEGIN;
 		INSERT INTO koju VALUES (1);
 		INSERT INTO koju VALUES (1);
 	rollback to x;
-	DROP TABLE koju; -- YB: above CREATE TABLE is not rolled back due to lack of transactional DDL
 
+	/* YB: above CREATE TABLE is not rolled back due to lack of transactional DDL
 	CREATE TABLE koju (a INT UNIQUE);
-\set VERBOSITY terse \\ -- YB: suppress "expired or aborted by a conflict" message because it prints a file line number
-	INSERT INTO koju VALUES (1); -- YB: TODO(#22949): fix output
-\set VERBOSITY default \\ -- YB
+	*/ -- YB
+	INSERT INTO koju VALUES (1);
 	INSERT INTO koju VALUES (1);
 ROLLBACK;
 

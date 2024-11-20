@@ -57,14 +57,9 @@ struct DdlMode {
 };
 
 #define YB_PG_CLIENT_SIMPLE_METHODS \
-  (AlterDatabase) \
-  (AlterTable) \
-  (CreateDatabase) \
-  (CreateTablegroup) \
-  (DropDatabase) \
-  (DropReplicationSlot) \
-  (DropTablegroup) \
-  (TruncateTable)
+    (AlterDatabase)(AlterTable) \
+    (CreateDatabase)(CreateTable)(CreateTablegroup) \
+    (DropDatabase)(DropReplicationSlot)(DropTablegroup)(TruncateTable)
 
 struct PerformResult {
   Status status;
@@ -138,7 +133,7 @@ class PgClient {
 
   Result<PgTableDescPtr> OpenTable(
       const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time,
-      master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
+      master::IncludeHidden include_hidden = master::IncludeHidden::kFalse);
 
   Result<client::VersionedTablePartitionList> GetTablePartitionList(const PgObjectId& table_id);
 
@@ -260,9 +255,6 @@ class PgClient {
 
   Status SetCronLastMinute(int64_t last_minute);
   Result<int64_t> GetCronLastMinute();
-
-  Result<tserver::PgCreateTableResponsePB> CreateTable(
-      tserver::PgCreateTableRequestPB& req, CoarseTimePoint deadline);
 
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;

@@ -177,26 +177,28 @@ message DdlLogResponsePB {
   repeated DdlLogEntryPB entries = 2;
 }
 
-message StartYsqlMajorVersionUpgradeInitdbRequestPB {
-}
+message StartYsqlMajorCatalogUpgradeRequestPB {}
 
-message StartYsqlMajorVersionUpgradeInitdbResponsePB {
+message StartYsqlMajorCatalogUpgradeResponsePB {
   optional MasterErrorPB error = 1;
 }
 
-message IsYsqlMajorVersionUpgradeInitdbDoneRequestPB {
-}
+message IsYsqlMajorCatalogUpgradeDoneRequestPB {}
 
-message IsYsqlMajorVersionUpgradeInitdbDoneResponsePB {
+message IsYsqlMajorCatalogUpgradeDoneResponsePB {
   optional MasterErrorPB error = 1;
   optional bool done = 2;
-  optional MasterErrorPB initdb_error = 3;
 }
 
-message RollbackYsqlMajorVersionUpgradeRequestPB {
+message FinalizeYsqlMajorCatalogUpgradeRequestPB {}
+
+message FinalizeYsqlMajorCatalogUpgradeResponsePB {
+  optional MasterErrorPB error = 1;
 }
 
-message RollbackYsqlMajorVersionUpgradeResponsePB {
+message RollbackYsqlMajorCatalogVersionRequestPB {}
+
+message RollbackYsqlMajorCatalogVersionResponsePB {
   optional MasterErrorPB error = 1;
 }
 
@@ -325,12 +327,14 @@ service MasterAdmin {
 
   rpc DdlLog(DdlLogRequestPB) returns (DdlLogResponsePB);
 
-  rpc StartYsqlMajorVersionUpgradeInitdb(StartYsqlMajorVersionUpgradeInitdbRequestPB)
-      returns (StartYsqlMajorVersionUpgradeInitdbResponsePB);
-  rpc IsYsqlMajorVersionUpgradeInitdbDone(IsYsqlMajorVersionUpgradeInitdbDoneRequestPB)
-      returns (IsYsqlMajorVersionUpgradeInitdbDoneResponsePB);
-  rpc RollbackYsqlMajorVersionUpgrade(RollbackYsqlMajorVersionUpgradeRequestPB)
-      returns (RollbackYsqlMajorVersionUpgradeResponsePB);
+  rpc StartYsqlMajorCatalogUpgrade(StartYsqlMajorCatalogUpgradeRequestPB)
+      returns (StartYsqlMajorCatalogUpgradeResponsePB);
+  rpc IsYsqlMajorCatalogUpgradeDone(IsYsqlMajorCatalogUpgradeDoneRequestPB)
+      returns (IsYsqlMajorCatalogUpgradeDoneResponsePB);
+  rpc FinalizeYsqlMajorCatalogUpgrade(FinalizeYsqlMajorCatalogUpgradeRequestPB)
+      returns (FinalizeYsqlMajorCatalogUpgradeResponsePB);
+  rpc RollbackYsqlMajorCatalogVersion(RollbackYsqlMajorCatalogVersionRequestPB)
+      returns (RollbackYsqlMajorCatalogVersionResponsePB);
 
   rpc CheckIfPitrActive(CheckIfPitrActiveRequestPB)
       returns (CheckIfPitrActiveResponsePB);

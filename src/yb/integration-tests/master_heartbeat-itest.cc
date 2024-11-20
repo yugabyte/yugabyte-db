@@ -52,6 +52,8 @@
 #include "yb/util/flags.h"
 #include "yb/util/tostring.h"
 
+#include "yb/yql/pgwrapper/libpq_utils.h"
+
 using namespace std::literals;
 
 DECLARE_bool(enable_load_balancing);
@@ -670,6 +672,62 @@ TEST_F(MasterHeartbeatITestWithExternal, ReRegisterRemovedPeers) {
 
   ASSERT_OK(WaitForRegisteredTserverSet(
       original_uuids, 60s, "Wait for master to register original uuids"));
+}
+
+// This test class sets up a cluster in an inconsistent state.  The tservers have a placement uuid
+// set but the masters do not have the placement uuid in the cluster config. This prevents the
+// master leader from creating the global transaction status table after registering the tservers
+// which is required for a test case.
+class GlobalTransactionTableCreationTest : public YBTest {
+ public:
+  void SetUp() override;
+
+  void TearDown() override;
+
+  std::unique_ptr<ExternalMiniCluster> cluster_;
+  std::string placement_uuid_;
+};
+
+TEST_F(GlobalTransactionTableCreationTest, CreateGlobalTransactionTableAfterFailover) {
+  // In this test we validate the global transaction table is created by the callback scheduled by
+  // the ts manager at catalog load time when it detects there are enough tservers in the registry.
+  // Normally the master leader that first registers enough tservers will execute the
+  // callback. However because this test's setup sets a placement uuid for the tservers without
+  // setting it in the master's cluster config, the master leader will fail to create the global
+  // transaction table. After failover we fix the cluster config which unblocks the attempt to
+  // create the global transaction able.
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+  // Sanity check that we cannot create a table yet.
+  std::string stmt = "CREATE TABLE test_table (k INT PRIMARY KEY, v INT)";
+  auto pgconn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_NOK(pgconn.ExecuteFormat(stmt));
+  master::MasterClusterClient cluster_client(
+      cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
+  auto config = ASSERT_RESULT(cluster_client.GetMasterClusterConfig());
+  config.mutable_replication_info()->mutable_live_replicas()->set_placement_uuid(placement_uuid_);
+  ASSERT_OK(cluster_client.ChangeMasterClusterConfig(std::move(config)));
+
+  // Now try to create a table. Table creation through pg will fail unless the transaction table
+  // already exists.
+  ASSERT_OK(WaitFor([&pgconn, &stmt]() -> Result<bool> {
+        return pgconn.ExecuteFormat(stmt).ok();
+      },
+      MonoDelta::FromSeconds(60), "Could not create table"));
+}
+
+void GlobalTransactionTableCreationTest::SetUp() {
+  placement_uuid_ = Uuid::Generate().ToString();
+  auto opts = ExternalMiniClusterOptions();
+  opts.num_masters = 3;
+  opts.num_tablet_servers = 3;
+  opts.enable_ysql = true;
+  opts.extra_tserver_flags = {Format("--placement_uuid=$0", placement_uuid_)};
+  cluster_ = std::make_unique<ExternalMiniCluster>(opts);
+  ASSERT_OK(cluster_->Start());
+}
+
+void GlobalTransactionTableCreationTest::TearDown() {
+  cluster_->Shutdown();
 }
 
 }  // namespace yb::integration_tests

@@ -6110,6 +6110,13 @@ class ControlScript(object):
             Output.log("thread-uml: master list updated, old list: {} ".format(
                 current_master_list) + "new list: {}".format(full_master_list))
 
+            tserver_ip_addr = self.advertise_ip()
+            tserver_ip_port = self.configs.saved_data.get("tserver_rpc_port")
+            if not YBTableServerCLIProxy.update_gflag_in_tserver(tserver_ip_addr,
+                tserver_ip_port, "tserver_master_addrs", masters_csv, True):
+                Output.log("Failed to update the master list {} " +
+                            "on the tserver node.".format(masters_csv))
+
             # Persist the config if masters have changed
             self.configs.save_configs()
 
@@ -7548,15 +7555,20 @@ class ControlScript(object):
 
             if args.advertise_address is None:
                 if not self.configs.saved_data.get("advertise_address"):
-                    if OS_NAME == "Linux":
-                        # Case Scenario: When advertise_address has no value in conf file
-                        # and the OS is Linux, set the advertise address to the private IP
-                        # of the machine.
-                        args.advertise_address = self.find_ip_address_of_node()
+
+                    if str(os.path.exists("/.dockerenv")):
+                            args.advertise_address = self.find_hostname_of_node()
                     else:
-                        # Case Scenario: When advertise_address has no value in conf file
-                        # and the OS is Mac, set the advertise address to 127.0.0.1.
-                        args.advertise_address = IP_LOCALHOST
+                        if OS_NAME == "Linux":
+                            # Case Scenario: When advertise_address has no value in conf file
+                            # and the OS is Linux, set the advertise address to the private IP
+                            # of the machine.
+                            args.advertise_address = self.find_ip_address_of_node()
+
+                        else:
+                            # Case Scenario: When advertise_address has no value in conf file
+                            # and the OS is Mac, set the advertise address to 127.0.0.1.
+                            args.advertise_address = IP_LOCALHOST
                 else:
                     # Case Scenario: When advertise_address has a value in conf file and then
                     # use that regardless of the OS.
@@ -8357,11 +8369,17 @@ class ControlScript(object):
         # Initialize the binary path of ybadmin
         YBAdminProxy.init()
 
+        # Initialize the binary path of yb-ts-cli
+        YBTableServerCLIProxy.init()
+
         self.validate_and_set_configs(args)
 
         # Initialize the binary path of ybadmin
         # TODO(Sanket): Clean up and refactor this file
         YBAdminProxy.set_certs_dir(self.configs.saved_data.get("master_flags"), \
+            self.configs.saved_data.get("secure"), self.configs.saved_data.get("certs_dir"))
+
+        YBTableServerCLIProxy.set_certs_dir(self.configs.saved_data.get("master_flags"), \
             self.configs.saved_data.get("secure"), self.configs.saved_data.get("certs_dir"))
 
         try:
@@ -8929,6 +8947,51 @@ class Diagnostics(object):
                 if os.path.isfile(filepath):
                     size += os.path.getsize(filepath)
         return size
+
+class YBTableServerCLIProxy(object):
+    cmd_args = []
+
+    @staticmethod
+    def init():
+        YBTableServerCLIProxy.cmd_args.append(find_binary_location("yb-ts-cli"))
+
+    @staticmethod
+    def set_certs_dir(master_flags, secure, certs_dir):
+        # If the user is attempting to use TLS, let's point yb-admin to
+        # the same certs dir as the master
+        if secure:
+            YBTableServerCLIProxy.cmd_args.append("--certs_dir_name={}".format(certs_dir))
+        elif master_flags:
+            flags_list = master_flags.split(",")
+            if 'use_node_to_node_encryption=true' not in flags_list:
+                return
+            certs_dir_name = [y for y in
+                [re.match('certs_dir=(.*)', x) for x in flags_list]
+                if y is not None]
+            if not certs_dir_name[0]:
+                raise RuntimeError("use_node_to_node_encryption=true must "
+                                "be accompanied by a certs_dir setting")
+            YBTableServerCLIProxy.cmd_args.append('--certs_dir_name={}'.
+                                                 format(certs_dir_name[0].group(1)))
+
+    @staticmethod
+    def update_gflag_in_tserver(tserver_ip, tserver_port, gflag, gflag_value, byForce=False):
+        cmd = YBTableServerCLIProxy.cmd_args + \
+            [
+                "--server_address={}:{}".format(tserver_ip, tserver_port),
+                "set_flag",
+                gflag,
+                gflag_value
+            ]
+
+        if byForce:
+            cmd = cmd + \
+                [
+                    "--force"
+                ]
+
+        out, err, ret_code = run_process(cmd, timeout=10, log_cmd=True)
+        return (0 == ret_code)
 
 class YBControllerCLIProxy(object):
     cmd_args = []

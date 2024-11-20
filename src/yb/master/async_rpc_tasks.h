@@ -871,7 +871,8 @@ class AsyncAddTableToTablet : public RetryingTSRpcTaskWithTable {
  public:
   AsyncAddTableToTablet(
       Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
-      const scoped_refptr<TableInfo>& table, LeaderEpoch epoch);
+      const scoped_refptr<TableInfo>& table, LeaderEpoch epoch,
+      const std::shared_ptr<std::atomic<size_t>>& task_counter);
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kAddTableToTablet;
@@ -891,6 +892,7 @@ class AsyncAddTableToTablet : public RetryingTSRpcTaskWithTable {
   const TabletId tablet_id_;
   tserver::AddTableToTabletRequestPB req_;
   tserver::AddTableToTabletResponsePB resp_;
+  std::shared_ptr<std::atomic<size_t>> task_counter_;
 };
 
 // Task to remove a table from a tablet. Catalog Manager uses this task to send the request to the

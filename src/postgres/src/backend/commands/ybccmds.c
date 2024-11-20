@@ -716,8 +716,9 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 		{
 			/*
 			 * In yb_binary_restore if tablespaceId is not valid but
-			 * binary_upgrade_next_tablegroup_oid is valid, that implies we are
-			 * restoring without tablespace information.
+			 * binary_upgrade_next_tablegroup_oid is valid, that implies either:
+			 * 1. it is a default tablespace.
+			 * 2. we are restoring without tablespace information.
 			 * In this case all tables are restored to default tablespace,
 			 * while maintaining the colocation properties, and tablegroup's name
 			 * will be colocation_restore_tablegroupId, while default tablegroup's
@@ -758,6 +759,13 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			tablegroupId = CreateTableGroup(tablegroup_stmt);
 			stmt->tablegroupname = pstrdup(tablegroup_name);
 		}
+		/*
+		 * Reset the binary_upgrade params as these are not needed anymore (only
+		 * required in CreateTableGroup), to ensure these parameter values are
+		 * not reused in subsequent unrelated statements.
+		 */
+		binary_upgrade_next_tablegroup_oid = InvalidOid;
+		binary_upgrade_next_tablegroup_default = false;
 
 		/* Record dependency between the table and tablegroup. */
 		ObjectAddress myself, tablegroup;
@@ -831,15 +839,8 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			handle, desc, split_options, primary_key,
 			is_colocated_via_database, is_tablegroup, ybrowid_mode);
 	}
-
-	const char *notice_msg = NULL;
 	/* Create the table. */
-	HandleYBStatus(YBCPgExecCreateTable(handle, &notice_msg));
-	if (notice_msg)
-	{
-		ereport(NOTICE, (errmsg("%s", notice_msg)));
-		pfree((void *) notice_msg);
-	}
+	HandleYBStatus(YBCPgExecCreateTable(handle));
 }
 
 void
@@ -1030,10 +1031,10 @@ YbUnsafeTruncate(Relation rel)
 /* Utility function to handle split points */
 static void
 CreateIndexHandleSplitOptions(YBCPgStatement handle,
-                              TupleDesc desc,
-                              OptSplit *split_options,
-                              int16 * coloptions,
-                              int numIndexKeyAttrs)
+							  TupleDesc desc,
+							  OptSplit *split_options,
+							  int16 * coloptions,
+							  int numIndexKeyAttrs)
 {
 	/* Address both types of split options */
 	switch (split_options->split_type)
@@ -1182,16 +1183,10 @@ YBCCreateIndex(const char *indexName,
 	/* Handle SPLIT statement, if present */
 	if (split_options)
 		CreateIndexHandleSplitOptions(handle, indexTupleDesc, split_options, coloptions,
-		                              indexInfo->ii_NumIndexKeyAttrs);
+									  indexInfo->ii_NumIndexKeyAttrs);
 
-	const char *notice_msg = NULL;
 	/* Create the index. */
-	HandleYBStatus(YBCPgExecCreateIndex(handle, &notice_msg));
-	if (notice_msg)
-	{
-		ereport(NOTICE, (errmsg("%s", notice_msg)));
-		pfree((void *) notice_msg);
-	}
+	HandleYBStatus(YBCPgExecCreateIndex(handle));
 }
 
 static Node *
@@ -2085,17 +2080,13 @@ YBCDropReplicationSlot(const char *slot_name)
 
 /*
  * Returns an of relfilenodes corresponding to input table_oids array.
+ * It is the responsibility of the caller to allocate and free the memory for relfilenodes.
  */
-static Oid *
-YBCGetRelfileNodes(Oid *table_oids, size_t num_relations)
+static void
+YBCGetRelfileNodes(Oid *table_oids, size_t num_relations, Oid* relfilenodes)
 {
-	Oid			*relfilenodes;
-
-	relfilenodes = palloc(sizeof(Oid) * num_relations);
 	for (size_t table_idx = 0; table_idx < num_relations; table_idx++)
 		relfilenodes[table_idx] = YbGetRelfileNodeIdFromRelId(table_oids[table_idx]);
-
-	return relfilenodes;
 }
 
 void
@@ -2105,10 +2096,13 @@ YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,
 	Assert(MyDatabaseId);
 
 	Oid *relfilenodes;
-	relfilenodes = YBCGetRelfileNodes(relations, numrelations);
+	relfilenodes = palloc(sizeof(Oid) * numrelations);
+	YBCGetRelfileNodes(relations, numrelations, relfilenodes);
 
 	HandleYBStatus(YBCPgInitVirtualWalForCDC(stream_id, MyDatabaseId, relations,
 											 relfilenodes, numrelations));
+
+	pfree(relfilenodes);
 }
 
 void
@@ -2118,11 +2112,14 @@ YBCUpdatePublicationTableList(const char *stream_id, Oid *relations,
 	Assert(MyDatabaseId);
 
 	Oid *relfilenodes;
-	relfilenodes = YBCGetRelfileNodes(relations, numrelations);
+	relfilenodes = palloc(sizeof(Oid) * numrelations);
+	YBCGetRelfileNodes(relations, numrelations, relfilenodes);
 
 	HandleYBStatus(YBCPgUpdatePublicationTableList(stream_id, MyDatabaseId,
 												   relations, relfilenodes,
 												   numrelations));
+
+	pfree(relfilenodes);
 }
 
 void

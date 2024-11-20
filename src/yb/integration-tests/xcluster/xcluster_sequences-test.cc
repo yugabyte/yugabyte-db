@@ -18,9 +18,12 @@
 #include "yb/common/xcluster_util.h"
 #include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
 #include "yb/util/flags.h"
+#include "yb/util/logging_test_util.h"
 
+DECLARE_bool(TEST_simulate_EnsureSequenceUpdatesAreInWal_failure);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
+DECLARE_int32(xcluster_ensure_sequence_updates_in_wal_timeout_sec);
 DECLARE_int32(ysql_num_shards_per_tserver);
 
 namespace yb {
@@ -29,12 +32,14 @@ class XClusterAutomaticModeTest : public XClusterDDLReplicationTestBase {
  public:
   Status SetUpClusters(
       bool use_different_database_oids, NamespaceName first_namespace,
-      std::optional<NamespaceName> second_namespace = std::nullopt) {
+      std::optional<NamespaceName> second_namespace = std::nullopt,
+      bool start_yb_controller_servers = false) {
     // Set up first namespace.
     namespace_name = first_namespace;
     SetupParams params;
     params.replication_factor = 1;
     params.use_different_database_oids = use_different_database_oids;
+    params.start_yb_controller_servers = start_yb_controller_servers;
     RETURN_NOT_OK(XClusterYsqlTestBase::SetUpClusters(params));
 
     // Set up second namespace if requested.
@@ -113,7 +118,6 @@ class XClusterAutomaticModeTest : public XClusterDDLReplicationTestBase {
   }
 };
 
-
 TEST_F(XClusterAutomaticModeTest, StraightforwardSequenceReplication) {
   // Make sure we correctly wait for replications to drain in order to avoid flakiness.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 2000;
@@ -131,7 +135,7 @@ TEST_F(XClusterAutomaticModeTest, StraightforwardSequenceReplication) {
   ASSERT_OK(SetUpSequences(&consumer_cluster_, namespace1));
   ASSERT_OK(VerifySequencesSameOnBothSides(namespace1));
 
-  ASSERT_OK(CheckpointReplicationGroupWithoutRequiringNoBootstrapNeeded({namespace1}));
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace1}));
   ASSERT_OK(CreateReplicationFromCheckpoint());
   ASSERT_OK(VerifySequencesSameOnBothSides(namespace1));
 
@@ -175,7 +179,7 @@ TEST_F(XClusterAutomaticModeTest, SequenceReplicationWithFiltering) {
   // namespace1 on the consumer unchanged when we bump sequences of
   // namespace1 on the producer.
   std::vector<NamespaceName> namespaces_to_replicate = {namespace2};
-  ASSERT_OK(CheckpointReplicationGroupWithoutRequiringNoBootstrapNeeded(namespaces_to_replicate));
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces(namespaces_to_replicate));
   ASSERT_OK(CreateReplicationFromCheckpoint({}, kReplicationGroupId, namespaces_to_replicate));
   EXPECT_EQ(
       original_namespace1_consumer_sequences,
@@ -208,7 +212,7 @@ TEST_F(XClusterAutomaticModeTest, SequenceReplicationWithTwoDbs) {
   std::vector<NamespaceName> namespaces_to_replicate = {namespace1, namespace2};
   {
     SCOPED_TRACE("Setting up replication");
-    ASSERT_OK(CheckpointReplicationGroupWithoutRequiringNoBootstrapNeeded(namespaces_to_replicate));
+    ASSERT_OK(CheckpointReplicationGroupOnNamespaces(namespaces_to_replicate));
     ASSERT_OK(CreateReplicationFromCheckpoint({}, kReplicationGroupId, namespaces_to_replicate));
     ASSERT_OK(VerifySequencesSameOnBothSides(namespace1));
     ASSERT_OK(VerifySequencesSameOnBothSides(namespace2));
@@ -246,13 +250,197 @@ TEST_F(XClusterAutomaticModeTest, SequenceReplicationWithTransform) {
   ASSERT_OK(VerifySequencesSameOnBothSides(namespace1));
 
   std::vector<NamespaceName> namespaces_to_replicate = {namespace1};
-  ASSERT_OK(CheckpointReplicationGroupWithoutRequiringNoBootstrapNeeded(namespaces_to_replicate));
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces(namespaces_to_replicate));
   ASSERT_OK(CreateReplicationFromCheckpoint({}, kReplicationGroupId, namespaces_to_replicate));
   ASSERT_OK(VerifySequencesSameOnBothSides(namespace1));
 
   ASSERT_OK(BumpSequences(&producer_cluster_, namespace1));
   ASSERT_OK(WaitForSequencesReplicationDrain(namespaces_to_replicate));
   ASSERT_OK(VerifySequencesSameOnBothSides(namespace1));
+}
+
+TEST_F(XClusterAutomaticModeTest, SequenceSafeTime) {
+  const std::string namespace1{"yugabyte"};
+  ASSERT_OK(SetUpClusters(/*use_different_database_oids=*/false, namespace1));
+
+  ASSERT_OK(SetUpSequences(&producer_cluster_, namespace1));
+  ASSERT_OK(SetUpSequences(&consumer_cluster_, namespace1));
+
+  std::vector<NamespaceName> namespaces_to_replicate = {namespace1};
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces(namespaces_to_replicate));
+  ASSERT_OK(CreateReplicationFromCheckpoint({}, kReplicationGroupId, namespaces_to_replicate));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow(namespaces_to_replicate));
+  ASSERT_OK(VerifySequencesSameOnBothSides(namespace1));
+
+  ASSERT_OK(BumpSequences(&producer_cluster_, namespace1));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow(namespaces_to_replicate));
+  ASSERT_OK(VerifySequencesSameOnBothSides(namespace1));
+
+  ASSERT_OK(BumpSequences(&producer_cluster_, namespace1));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow(namespaces_to_replicate));
+  ASSERT_OK(VerifySequencesSameOnBothSides(namespace1));
+}
+
+TEST_F(XClusterAutomaticModeTest, SequencePausingAndSafeTime) {
+  const std::string namespace1{"yugabyte"};
+  ASSERT_OK(SetUpClusters(/*use_different_database_oids=*/false, namespace1));
+
+  ASSERT_OK(SetUpSequences(&producer_cluster_, namespace1));
+  ASSERT_OK(SetUpSequences(&consumer_cluster_, namespace1));
+
+  std::vector<NamespaceName> namespaces_to_replicate = {namespace1};
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces(namespaces_to_replicate));
+  ASSERT_OK(CreateReplicationFromCheckpoint({}, kReplicationGroupId, namespaces_to_replicate));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow(namespaces_to_replicate));
+
+  auto sequences_stream_id =
+      ASSERT_RESULT(GetCDCStreamID(xcluster::GetSequencesDataAliasForNamespace(
+          ASSERT_RESULT(GetNamespaceId(producer_client(), namespace_name)))));
+  ASSERT_OK(PauseResumeXClusterProducerStreams({sequences_stream_id}, /*is_paused=*/true));
+  ASSERT_OK(
+      StringWaiterLogSink("Replication is paused from the producer for stream").WaitFor(300s));
+  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow(namespaces_to_replicate));
+
+  ASSERT_OK(PauseResumeXClusterProducerStreams({sequences_stream_id}, /*is_paused=*/false));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow(namespaces_to_replicate));
+}
+
+TEST_F(XClusterAutomaticModeTest, SequencePausingIsolation) {
+  const std::string namespace1{"yugabyte"};
+  const std::string namespace2{"yugabyte2"};
+  ASSERT_OK(SetUpClusters(/*use_different_database_oids=*/false, namespace1, namespace2));
+
+  ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
+    RETURN_NOT_OK(SetUpSequences(cluster, namespace1));
+    return SetUpSequences(cluster, namespace2);
+  }));
+
+  std::vector<NamespaceName> namespaces_to_replicate = {namespace1, namespace2};
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces(namespaces_to_replicate));
+  ASSERT_OK(CreateReplicationFromCheckpoint({}, kReplicationGroupId, namespaces_to_replicate));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow(namespaces_to_replicate));
+
+  auto pause_one_namespace_temporarily = [&](NamespaceName namespace_to_pause,
+                                             NamespaceName other_namespace) {
+    auto namespace_to_pause_id =
+        ASSERT_RESULT(GetNamespaceId(producer_client(), namespace_to_pause));
+    LOG(INFO) << "***** Pausing namespace: " << namespace_to_pause
+              << " ID: " << namespace_to_pause_id;
+    auto sequences_stream_id = ASSERT_RESULT(
+        GetCDCStreamID(xcluster::GetSequencesDataAliasForNamespace(namespace_to_pause_id)));
+    ASSERT_OK(PauseResumeXClusterProducerStreams({sequences_stream_id}, /*is_paused=*/true));
+    ASSERT_OK(
+        StringWaiterLogSink(
+            "Replication is paused from the producer for stream: "s + AsString(sequences_stream_id))
+            .WaitFor(300s));
+    ASSERT_OK(BumpSequences(&producer_cluster_, namespace_to_pause));
+
+    std::vector<NamespaceName> paused_namespaces = {namespace_to_pause};
+    std::vector<NamespaceName> unpaused_namespaces = {other_namespace};
+    ASSERT_NOK(WaitForSafeTimeToAdvanceToNow(paused_namespaces));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow(unpaused_namespaces));
+
+    LOG(INFO) << "***** Unpausing namespace: " << namespace_to_pause
+              << " ID: " << namespace_to_pause_id;
+    ASSERT_OK(PauseResumeXClusterProducerStreams({sequences_stream_id}, /*is_paused=*/false));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow(paused_namespaces));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow(unpaused_namespaces));
+  };
+
+  pause_one_namespace_temporarily(namespace1, namespace2);
+  pause_one_namespace_temporarily(namespace2, namespace1);
+}
+
+TEST_F(XClusterAutomaticModeTest, SequenceReplicationBootstrappingWithoutBumps) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
+  const std::string namespace1{"yugabyte"};
+  ASSERT_OK(SetUpClusters(
+      /*use_different_database_oids=*/false, namespace1, /*second_namespace=*/std::nullopt,
+      /*start_yb_controller_servers=*/true));
+
+  ASSERT_OK(SetUpSequences(&producer_cluster_, namespace1));
+
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace1}));
+  ASSERT_OK(BackupFromProducer({namespace1}));
+  ASSERT_OK(RestoreToConsumer({namespace1}));
+  ASSERT_OK(CreateReplicationFromCheckpoint({}, kReplicationGroupId, {namespace1}));
+  ASSERT_OK(VerifySequencesSameOnBothSides(namespace1));
+
+  ASSERT_OK(BumpSequences(&producer_cluster_, namespace1));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifySequencesSameOnBothSides(namespace1));
+}
+
+TEST_F(XClusterAutomaticModeTest, SequenceReplicationBootstrappingBumpInMiddle) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
+  const std::string namespace1{"yugabyte"};
+  ASSERT_OK(SetUpClusters(
+      /*use_different_database_oids=*/false, namespace1, /*second_namespace=*/std::nullopt,
+      /*start_yb_controller_servers=*/true));
+  ASSERT_OK(SetUpSequences(&producer_cluster_, namespace1));
+
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace1}));
+  ASSERT_OK(BackupFromProducer({namespace1}));
+
+  ASSERT_OK(BumpSequences(&producer_cluster_, namespace1));
+
+  ASSERT_OK(RestoreToConsumer({namespace1}));
+  ASSERT_OK(CreateReplicationFromCheckpoint({}, kReplicationGroupId, {namespace1}));
+  ASSERT_OK(VerifySequencesSameOnBothSides(namespace1));
+
+  ASSERT_OK(BumpSequences(&producer_cluster_, namespace1));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifySequencesSameOnBothSides(namespace1));
+}
+
+TEST_F(XClusterAutomaticModeTest, SequenceReplicationBootstrappingWith2Databases) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
+  const std::string namespace1{"yugabyte"};
+  const std::string namespace2{"yugabyte2"};
+  ASSERT_OK(SetUpClusters(
+      /*use_different_database_oids=*/false, namespace1, namespace2,
+      /*start_yb_controller_servers=*/true));
+  ASSERT_OK(SetUpSequences(&producer_cluster_, namespace1));
+  ASSERT_OK(BumpSequences(&producer_cluster_, namespace1));
+  ASSERT_OK(SetUpSequences(&producer_cluster_, namespace2));
+
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace1, namespace2}));
+  ASSERT_OK(BackupFromProducer({namespace1, namespace2}));
+
+  ASSERT_OK(BumpSequences(&producer_cluster_, namespace1));
+  ASSERT_OK(BumpSequences(&producer_cluster_, namespace2));
+
+  ASSERT_OK(RestoreToConsumer({namespace1, namespace2}));
+  ASSERT_OK(CreateReplicationFromCheckpoint({}, kReplicationGroupId, {namespace1, namespace2}));
+
+  ASSERT_OK(VerifySequencesSameOnBothSides(namespace1));
+  ASSERT_OK(VerifySequencesSameOnBothSides(namespace2));
+}
+
+TEST_F(XClusterAutomaticModeTest, SequenceReplicationEnsureWalsFails) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
+  // Make the EnsureSequenceUpdatesAreInWal call, which is part of bootstrapping, fail.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_EnsureSequenceUpdatesAreInWal_failure) = true;
+
+  const std::string namespace1{"yugabyte"};
+  ASSERT_OK(SetUpClusters(
+      /*use_different_database_oids=*/false, namespace1, /*second_namespace=*/std::nullopt,
+      /*start_yb_controller_servers=*/true));
+  ASSERT_OK(SetUpSequences(&producer_cluster_, namespace1));
+
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace1}));
 }
 
 }  // namespace yb

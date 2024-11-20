@@ -308,7 +308,7 @@ YBCStatus YBCPgCreateTableSetNumTablets(YBCPgStatement handle, int32_t num_table
 
 YBCStatus YBCPgAddSplitBoundary(YBCPgStatement handle, YBCPgExpr *exprs, int expr_count);
 
-YBCStatus YBCPgExecCreateTable(YBCPgStatement handle, const char **notice_msg);
+YBCStatus YBCPgExecCreateTable(YBCPgStatement handle);
 
 YBCStatus YBCPgNewAlterTable(YBCPgOid database_oid,
                              YBCPgOid table_relfilenode_oid,
@@ -421,7 +421,7 @@ YBCStatus YBCPgCreateIndexSetNumTablets(YBCPgStatement handle, int32_t num_table
 
 YBCStatus YBCPgCreateIndexSetVectorOptions(YBCPgStatement handle, YbPgVectorIdxOptions *options);
 
-YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle, const char** notice_msg);
+YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle);
 
 YBCStatus YBCPgNewDropIndex(YBCPgOid database_oid,
                             YBCPgOid index_relfilenode_oid,
@@ -772,6 +772,19 @@ YBCPgExplicitRowLockStatus YBCAddExplicitRowLockIntent(
     YBCPgOid table_relfilenode_oid, uint64_t ybctid, YBCPgOid database_oid,
     const YBCPgExplicitRowLockParams *params, bool is_region_local);
 YBCPgExplicitRowLockStatus YBCFlushExplicitRowLockIntents();
+
+// INSERT ... ON CONFLICT batching -----------------------------------------------------------------
+YBCStatus YBCPgAddInsertOnConflictKey(const YBCPgYBTupleIdDescriptor* tupleid,
+                                      YBCPgInsertOnConflictKeyInfo* info);
+YBCStatus YBCPgInsertOnConflictKeyExists(const YBCPgYBTupleIdDescriptor* tupleid,
+                                         YBCPgInsertOnConflictKeyState* res);
+YBCStatus YBCPgDeleteInsertOnConflictKey(const YBCPgYBTupleIdDescriptor* tupleid,
+                                         YBCPgInsertOnConflictKeyInfo* info);
+YBCStatus YBCPgDeleteNextInsertOnConflictKey(YBCPgInsertOnConflictKeyInfo* info);
+YBCStatus YBCPgAddInsertOnConflictKeyIntent(const YBCPgYBTupleIdDescriptor* tupleid);
+void YBCPgClearInsertOnConflictCache();
+uint64_t YBCPgGetInsertOnConflictKeyCount();
+//--------------------------------------------------------------------------------------------------
 
 bool YBCIsInitDbModeEnvVarSet();
 

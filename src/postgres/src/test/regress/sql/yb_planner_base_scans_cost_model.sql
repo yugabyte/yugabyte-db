@@ -31,3 +31,14 @@ SET yb_enable_base_scans_cost_model = ON;
 /*+ IndexScan(t1) */ EXPLAIN SELECT * FROM t1 WHERE k1 > 80000;
 /*+ IndexOnlyScan(t1 t1_v1) */ EXPLAIN SELECT v1 FROM t1;
 /*+ IndexOnlyScan(t1 t1_v1) */ EXPLAIN SELECT v1 FROM t1 WHERE v1 < 50000;
+
+-- #24916 : Partial Index clause is not included in estimate for data transfer costs
+CREATE TABLE t_24916 (v1 INT, v2 INT, v3 TEXT);
+INSERT INTO t_24916 SELECT s1, s2, repeat('a', 10000) FROM generate_series(1, 40) s1, generate_series(1, 40) s2;
+CREATE INDEX t_24916_partial_idx ON t_24916 (v2 ASC) WHERE v1 = 1;
+CREATE INDEX t_24916_full_idx_v1_v2 ON t_24916 (v1 ASC, v2 ASC);
+ANALYZE t_24916;
+SET yb_enable_base_scans_cost_model = ON;
+
+-- Partial Index Scan should be preferred over full index scan or seq scan
+EXPLAIN (COSTS OFF) SELECT * FROM t_24916 WHERE v1 = 1 AND v2 < 5;

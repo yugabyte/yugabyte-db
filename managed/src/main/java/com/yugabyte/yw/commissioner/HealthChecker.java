@@ -762,8 +762,9 @@ public class HealthChecker {
         if (nodeInfo.enableYEDIS && nodeDetails.isRedisServer) {
           nodeInfo.setRedisPort(nodeDetails.redisServerRpcPort);
         }
-        if (!provider.getCode().equals(CloudType.onprem.toString())
-            && !provider.getCode().equals(CloudType.kubernetes.toString())) {
+
+        // Skip clock check for k8s.
+        if (!provider.getCode().equals(CloudType.kubernetes.toString())) {
           nodeInfo.setCheckClock(true);
         }
         // Clock drift config values. Clock drift health checks are only run for non-k8s universes

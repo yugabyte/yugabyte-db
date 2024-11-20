@@ -30,8 +30,8 @@ var createOnpremProviderCmd = &cobra.Command{
 		"set of commands",
 	Example: `yba provider onprem create --name <provider-name> \
 	--region region-name=region1 --region region-name=region2 \
-	--zone zone-name=zone1,region-name=region1 \
-	--zone zone-name=zone2,region-name=region2 \
+	--zone zone-name=zone1::region-name=region1 \
+	--zone zone-name=zone2::region-name=region2 \
 	--ssh-user centos \
 	--ssh-keypair-name <keypair-name>  \
 	--ssh-keypair-file-path <path-to-ssh-key-file>`,
@@ -75,18 +75,30 @@ var createOnpremProviderCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-
-		filePath, err := cmd.Flags().GetString("ssh-keypair-file-path")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
 		var sshFileContent string
-		if len(filePath) > 0 {
-			sshFileContentByte, err := os.ReadFile(filePath)
+		if len(strings.TrimSpace(keyPairName)) != 0 {
+
+			filePath, err := cmd.Flags().GetString("ssh-keypair-file-path")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			sshFileContent = string(sshFileContentByte)
+			if len(filePath) > 0 {
+				sshFileContentByte, err := os.ReadFile(filePath)
+				if err != nil {
+					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+				}
+				sshFileContent = string(sshFileContentByte)
+			} else {
+				sshFileContent, err = cmd.Flags().GetString("ssh-keypair-file-content")
+				if err != nil {
+					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+				}
+			}
+			if len(sshFileContent) == 0 {
+				logrus.Fatalf(
+					formatter.Colorize("No ssh keypair file content found while using --ssh-keypair-name\n",
+						formatter.RedColor))
+			}
 		}
 
 		passwordlessSudoAccess, err := cmd.Flags().GetBool("passwordless-sudo-access")
@@ -183,28 +195,27 @@ func init() {
 	createOnpremProviderCmd.Flags().SortFlags = false
 
 	createOnpremProviderCmd.Flags().String("ssh-keypair-name", "",
-		"[Required] Provider key pair name to access YugabyteDB nodes.")
+		"[Optional] Provider key pair name to access YugabyteDB nodes.")
 	createOnpremProviderCmd.Flags().String("ssh-keypair-file-path", "",
 		fmt.Sprintf("[Optional] Provider key pair file path to access YugabyteDB nodes. %s",
-			formatter.Colorize("One of ssh-keypair-file-path or ssh-keypair-file-contents"+
-				"required with --ssh-keypair-name.",
+			formatter.Colorize("One of ssh-keypair-file-path or ssh-keypair-file-contents "+
+				"is required if --ssh-keypair-name is provided.",
 				formatter.GreenColor)))
 	createOnpremProviderCmd.Flags().String("ssh-keypair-file-contents", "",
 		fmt.Sprintf("[Optional] Provider key pair file contents to access YugabyteDB nodes. %s",
-			formatter.Colorize("One of ssh-keypair-file-path or ssh-keypair-file-contents"+
-				"required with --ssh-keypair-name.",
+			formatter.Colorize("One of ssh-keypair-file-path or ssh-keypair-file-contents "+
+				"is required if --ssh-keypair-name is provided.",
 				formatter.GreenColor)))
 	createOnpremProviderCmd.Flags().String("ssh-user", "", "[Required] SSH User.")
 	createOnpremProviderCmd.MarkFlagRequired("ssh-user")
-	createOnpremProviderCmd.MarkFlagRequired("ssh-keypair-name")
-	createOnpremProviderCmd.MarkFlagRequired("ssh-keypair-file-path")
+
 	createOnpremProviderCmd.Flags().Int("ssh-port", 22,
 		"[Optional] SSH Port.")
 
 	createOnpremProviderCmd.Flags().StringArray("region", []string{},
 		"[Required] Region associated with the On-premises provider. Minimum number of required "+
-			"regions = 1. Provide the following comma separated fields as key-value pairs:"+
-			"\"region-name=<region-name>,latitude=<latitude>,longitude=<longitude>\". "+
+			"regions = 1. Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"region-name=<region-name>::latitude=<latitude>::longitude=<longitude>\". "+
 			formatter.Colorize("Region name is a required key-value.",
 				formatter.GreenColor)+
 			" Latitude and Longitude (Defaults to 0.0) are optional. "+
@@ -212,15 +223,15 @@ func init() {
 			"Example: --region region-name=us-west-1 --region region-name=us-west-2")
 	createOnpremProviderCmd.Flags().StringArray("zone", []string{},
 		"[Required] Zone associated to the On-premises Region defined. "+
-			"Provide the following comma separated fields as key-value pairs:"+
-			"\"zone-name=<zone-name>,region-name=<region-name>\". "+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"zone-name=<zone-name>::region-name=<region-name>\". "+
 			formatter.Colorize("Zone name and Region name are required values. ",
 				formatter.GreenColor)+
 			"Each --region definition must have atleast one corresponding --zone definition."+
 			" Multiple --zone definitions can be provided per region."+
 			" Each zone needs to be added using a separate --zone flag. "+
-			"Example: --zone zone-name=us-west-1a,region-name=us-west-1"+
-			" --zone zone-name=us-west-1b,region-name=us-west-1")
+			"Example: --zone zone-name=us-west-1a::region-name=us-west-1"+
+			" --zone zone-name=us-west-1b::region-name=us-west-1")
 
 	createOnpremProviderCmd.Flags().Bool("passwordless-sudo-access", true,
 		"[Optional] Can sudo actions be carried out by user without a password.")

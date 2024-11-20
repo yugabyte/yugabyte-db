@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V60__23519__yb_database_clones.sql
-{ major => '60', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V61__24439__yb_cancel_query_diagnostics.sql
+{ major => '61', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]

@@ -115,12 +115,10 @@ class CowObject {
   State* mutable_dirty() {
     DCHECK(lock_.HasWriteLock());
     is_dirty_ = true;
-    return DCHECK_NOTNULL(dirty_state_.get());
+    return CHECK_NOTNULL(dirty_state_.get());
   }
 
-  const State& dirty() const {
-    return *DCHECK_NOTNULL(dirty_state_.get());
-  }
+  const State& dirty() const { return *CHECK_NOTNULL(dirty_state_.get()); }
 
   bool is_dirty() const {
     DCHECK(lock_.HasReaders() || lock_.HasWriteLock());

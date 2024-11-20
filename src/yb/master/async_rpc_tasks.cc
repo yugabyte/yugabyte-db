@@ -1583,12 +1583,14 @@ void AsyncTryStepDown::HandleResponse(int attempt) {
 // ============================================================================
 AsyncAddTableToTablet::AsyncAddTableToTablet(
     Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
-    const scoped_refptr<TableInfo>& table, LeaderEpoch epoch)
+    const scoped_refptr<TableInfo>& table, LeaderEpoch epoch,
+    const std::shared_ptr<std::atomic<size_t>>& task_counter)
     : RetryingTSRpcTaskWithTable(
           master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), table.get(),
           std::move(epoch), /* async_task_throttler */ nullptr),
       tablet_(tablet),
-      tablet_id_(tablet->tablet_id()) {
+      tablet_id_(tablet->tablet_id()),
+      task_counter_(task_counter) {
   req_.set_tablet_id(tablet->id());
   auto& add_table = *req_.mutable_add_table();
   add_table.set_table_id(table_->id());
@@ -1599,6 +1601,9 @@ AsyncAddTableToTablet::AsyncAddTableToTablet(
     add_table.set_schema_version(l->pb.version());
     *add_table.mutable_schema() = l->pb.schema();
     *add_table.mutable_partition_schema() = l->pb.partition_schema();
+    if (l->pb.has_index_info()) {
+      *add_table.mutable_index_info() = l->pb.index_info();
+    }
   }
   add_table.set_pg_table_id(table_->pg_table_id());
   add_table.set_skip_table_tombstone_check(FLAGS_ysql_yb_enable_alter_table_rewrite);
@@ -1641,13 +1646,16 @@ void AsyncAddTableToTablet::HandleResponse(int attempt) {
     TransitionToFailedState(MonitoredTaskState::kRunning, tablets_running_result.status());
     return;
   }
-  DCHECK(*tablets_running_result);
-  VLOG_WITH_FUNC(1) << "Marking table " << table_->ToString() << " as RUNNING";
-  Status s = master_->catalog_manager()->PromoteTableToRunningState(table_, epoch());
-  if (!s.ok()) {
-    LOG(WARNING) << "Error updating table " << table_->ToString() << ": " << s;
-    TransitionToFailedState(MonitoredTaskState::kRunning, s);
-    return;
+  LOG_IF(DFATAL, !*tablets_running_result)
+      << "Not all tablets are running while processing AddTableToTablet response";
+  if (--*task_counter_ == 0) {
+    VLOG_WITH_FUNC(1) << "Marking table " << table_->ToString() << " as RUNNING";
+    Status s = master_->catalog_manager()->PromoteTableToRunningState(table_, epoch());
+    if (!s.ok()) {
+      LOG(DFATAL) << "Error updating table " << table_->ToString() << ": " << s;
+      TransitionToFailedState(MonitoredTaskState::kRunning, s);
+      return;
+    }
   }
 
   TransitionToCompleteState();

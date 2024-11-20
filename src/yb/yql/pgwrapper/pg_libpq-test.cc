@@ -966,27 +966,49 @@ TEST_F(PgLibPqTest, InTxnDelete) {
 }
 
 class PgLibPqReadFromSysCatalogTest : public PgLibPqTest {
+ protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgLibPqTest::UpdateMiniClusterOptions(options);
     options->extra_master_flags.push_back(
         "--TEST_get_ysql_catalog_version_from_sys_catalog=true");
   }
+
+  void ReadLatestCatalogVersion() {
+    auto conn = ASSERT_RESULT(Connect());
+    auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+    uint64_t ver_orig;
+    ASSERT_OK(client->GetYsqlCatalogMasterVersion(&ver_orig));
+    for (int i = 1; i <= FLAGS_num_iter; i++) {
+      LOG(INFO) << "ITERATION " << i;
+      BumpCatalogVersion(1, &conn, i % 2 == 1 ? "NOSUPERUSER" : "SUPERUSER");
+      LOG(INFO) << "Fetching CatalogVersion. Expecting " << i + ver_orig;
+      uint64_t ver;
+      ASSERT_OK(client->GetYsqlCatalogMasterVersion(&ver));
+      ASSERT_EQ(ver_orig + i, ver);
+    }
+  }
 };
 
 TEST_F_EX(PgLibPqTest, StaleMasterReads, PgLibPqReadFromSysCatalogTest) {
-  auto conn = ASSERT_RESULT(Connect());
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  ReadLatestCatalogVersion();
+}
 
-  uint64_t ver_orig;
-  ASSERT_OK(client->GetYsqlCatalogMasterVersion(&ver_orig));
-  for (int i = 1; i <= FLAGS_num_iter; i++) {
-    LOG(INFO) << "ITERATION " << i;
-    BumpCatalogVersion(1, &conn, i % 2 == 1 ? "NOSUPERUSER" : "SUPERUSER");
-    LOG(INFO) << "Fetching CatalogVersion. Expecting " << i + ver_orig;
-    uint64_t ver;
-    ASSERT_OK(client->GetYsqlCatalogMasterVersion(&ver));
-    ASSERT_EQ(ver_orig + i, ver);
+// A low max clock skew of 1.5ms is used to trigger the following scenario:
+// 1. A write to sys catalog table happens at time T2.
+// 2. A read from sys catalog table happens at read time T1 < T2, global limit T3 > T2.
+// 3. This causes a read restart error with restart time = safe time = T4 > T3.
+// 4. Prevent a case where the read is restarted with read time = T4 and global limit = T3 < T4.
+class PgLibPqLowClockSkewTest : public PgLibPqReadFromSysCatalogTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back("--max_clock_skew_usec=1500");
+    options->extra_master_flags.push_back("--max_clock_skew_usec=1500");
+    PgLibPqReadFromSysCatalogTest::UpdateMiniClusterOptions(options);
   }
+};
+
+TEST_F_EX(PgLibPqTest, MasterRestartReadPastGlobalLimit, PgLibPqLowClockSkewTest) {
+  ReadLatestCatalogVersion();
 }
 
 TEST_F(PgLibPqTest, CompoundKeyColumnOrder) {
@@ -3883,8 +3905,8 @@ TEST_F(PgLibPqTest, TempTableViewFileCountTest) {
 
   // Check that only one file is present in this database and that corresponds to temp table foo.
   auto query = Format(
-      "SELECT pg_ls_dir('$0/pg_data/' || substring(pg_relation_filepath('$1') from '.*/')) = 't1_' "
-      "|| '$1'::regclass::oid::text;",
+      "SELECT pg_ls_dir('$0/pg_data/' || substring(pg_relation_filepath('$1') from '.*/')) ~  "
+      "('t[0-9]_' || '$1'::regclass::oid::text)",
       pg_ts->GetRootDir(), kTableName);
   auto values = ASSERT_RESULT(conn.FetchRows<bool>(query));
   ASSERT_EQ(values, decltype(values){true});

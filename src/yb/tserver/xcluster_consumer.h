@@ -46,6 +46,7 @@ namespace yb {
 class HostPort;
 class Thread;
 class ThreadPool;
+class XClusterTest_LeaderFailoverTest_Test;
 
 namespace rpc {
 class Messenger;
@@ -132,6 +133,8 @@ class XClusterConsumer : public XClusterConsumerIf {
     return metric_poll_failure_count_;
   }
  private:
+  FRIEND_TEST(yb::XClusterTest, LeaderFailoverTest);
+
   // Runs a thread that periodically polls for any new threads.
   void RunThread() EXCLUDES(shutdown_mutex_);
 
@@ -192,11 +195,6 @@ class XClusterConsumer : public XClusterConsumerIf {
   std::unordered_set<xrepl::StreamId> streams_with_local_tserver_optimization_
       GUARDED_BY(master_data_mutex_);
   std::unordered_set<xrepl::StreamId> ddl_queue_streams_ GUARDED_BY(master_data_mutex_);
-
-  // Pair of validated_schema_version and last_compatible_consumer_schema_version.
-  using SchemaVersionMapping = std::pair<uint32_t, uint32_t>;
-  std::unordered_map<xrepl::StreamId, SchemaVersionMapping> stream_to_schema_version_
-      GUARDED_BY(master_data_mutex_);
 
   cdc::StreamSchemaVersionMap stream_schema_version_map_ GUARDED_BY(master_data_mutex_);
 

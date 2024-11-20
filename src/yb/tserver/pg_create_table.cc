@@ -57,8 +57,8 @@ static constexpr const char* const kPgSequenceIsCalledColName = "is_called";
 
 } // namespace
 
-PgCreateTable::PgCreateTable(const PgCreateTableRequestPB& req, PgCreateTableResponsePB* resp)
-    : req_(req), resp_(resp) {}
+PgCreateTable::PgCreateTable(const PgCreateTableRequestPB& req) : req_(req) {
+}
 
 Status PgCreateTable::Prepare() {
   table_name_ = client::YBTableName(
@@ -220,11 +220,7 @@ Status PgCreateTable::Exec(
       }
       return STATUS(InvalidArgument, "Duplicate table");
     }
-    return STATUS_FORMAT(
-        InvalidArgument, "Invalid table definition: $0",
-        s.ToString(false /* include_file_and_line */, false /* include_code */));
-  } else {
-    resp_->set_notice_message(table_creator->ResponseNoticeMessage());
+    return STATUS_FORMAT(InvalidArgument, "Invalid table definition: $0", s.message());
   }
 
   return Status::OK();
@@ -265,7 +261,7 @@ void PgCreateTable::EnsureYBbasectidColumnCreated() {
   // Add YBUniqueIdxKeySuffix column to store key suffix for handling multiple NULL values in
   // column with unique index.
   // Value of this column is set to ybctid (same as ybbasectid) for index row in case index
-  // is unique and at least one of its key column is NULL.
+  // is unique, uses nulls-are-distinct mode, and at least one of its key column is NULL.
   // In all other case value of this column is NULL.
   if (req_.is_unique_index()) {
     auto name = "ybuniqueidxkeysuffix";

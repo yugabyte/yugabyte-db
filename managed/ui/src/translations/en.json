@@ -465,6 +465,7 @@
         "nonASCIIDetected": "Non-ASCII value detected",
         "identConfLocal": "map-name idp-user/group/role database-username",
         "hbaConfDescription": "Input each record as a new row, then reorder them. The sequential order of the records are significant as they are searched serially for every connection request.",
+        "pgConfDescription": "CSV formatted line represented list of postgres setting assignments.",
         "identConfDescriptionFirst": "The flag's configuration follows ",
         "identConfPostgreSQL": "PostgreSQL. ",
         "identConfDescriptionSecond": "Enter each mapping as a new row, comprising the map-name, external user name, and database user name. ",

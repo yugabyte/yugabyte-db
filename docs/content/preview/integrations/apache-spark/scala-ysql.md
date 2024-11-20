@@ -194,7 +194,7 @@ The output will be similar to [SQL queries](#using-sql-queries).
 The following spark query renames the column of the table `test` from `ceil` to `round_off` in the DataFrame, then creates a new table with the schema of the changed DataFrame, inserts all its data in the new table, and names it as `test_copy` using the JDBC connector.
 
 ```scala
-scala> spark.table("test").withColumnRenamed("ceil", "round_off").write.jdbc(jdbcUrl, "test_copy"connectionProperties)
+scala> spark.table("test").withColumnRenamed("ceil", "round_off").write.jdbc(jdbcUrl, "test_copy", connectionProperties)
 ```
 
 Verify that the new table `test_copy` is created with the changed schema, and all the data from `test` is copied to it using the following commands from your ysqlsh terminal:

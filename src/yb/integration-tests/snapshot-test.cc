@@ -438,8 +438,8 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
         if (tablet_peer->tablet_metadata()->table_id() == table_id &&
             !tablet_peer->tablet_metadata()->hidden()) {
           return STATUS_FORMAT(
-              IllegalState, "Tablet $0 of table $1 not hidden on tserver",
-              tablet_peer->tablet_id(), table_id);
+              IllegalState, "Tablet $0 of table $1 not hidden on tserver $2",
+              tablet_peer->tablet_id(), table_id, ts->server()->permanent_uuid());
         }
       }
     }

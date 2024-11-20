@@ -19,15 +19,11 @@ This page describes factors that can affect the performance of migration jobs be
 
 There are several factors that slow down data-ingestion performance in any database:
 
-- **Secondary indexes** slow down insert speeds. As the number of indexes increases, insert speed decreases, because the index structures need to be updated for every insert.
-
 - **Constraint checks**. Every insert has to satisfy the constraints (including foreign key constraints, value constraints, and so on) defined on a table, which results in extra processing. In distributed databases, this becomes pronounced as foreign key checks invariably mean talking to peer servers.
 
 - **Trigger actions**. If triggers are defined on tables for every insert, then the corresponding trigger action (for each insert) is executed, which slows down ingestion.
 
 yb-voyager improves performance when migrating data into a newly created empty database in several ways:
-
-- Creates secondary indexes after the data import is complete. During the [post-import data](../../migrate/migrate-steps/#import-indexes-and-triggers) phase, yb-voyager creates the secondary indexes (except the unique indexes) after it completes data loading on all the tables. Then, it uses [Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) to update indexes after data is loaded. This is much faster than online index maintenance. (Unique indexes are created in the [import-schema](../../migrate/migrate-steps/#import-schema) phase, to avoid any issues during import of schema because of foreign key dependencies on the index.)
 
 - Disables foreign key constraints during data import. However, other constraints like primary key constraints, check constraints, unique key constraints, and so on are not disabled. It's safe to disable some constraint checks as the data is from a reliable source. For maximum throughput, it is also preferable to not follow any order when populating tables.
 

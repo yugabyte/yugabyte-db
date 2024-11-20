@@ -28,7 +28,7 @@ var addInstanceTypesCmd = &cobra.Command{
 	Long:    "Add an instance type to YugabyteDB Anywhere on-premises provider",
 	Example: `yba provider onprem instance-type add \
 	--name <provider-name> --instance-type-name <instance-type>\
-	--volume mount-points="<mount-point>",size=<size>,type=<volume-type>`,
+	--volume mount-points=<mount-point>::size=<size>::type=<volume-type>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -50,7 +50,7 @@ var addInstanceTypesCmd = &cobra.Command{
 		}
 
 		providerListRequest := authAPI.GetListOfProviders()
-		providerListRequest = providerListRequest.Name(providerName)
+		providerListRequest = providerListRequest.Name(providerName).ProviderCode(util.OnpremProviderType)
 		r, response, err := providerListRequest.Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Instance Type", "Add - Get Provider")
@@ -59,14 +59,9 @@ var addInstanceTypesCmd = &cobra.Command{
 		if len(r) < 1 {
 			logrus.Fatalf(
 				formatter.Colorize(
-					fmt.Sprintf("No providers with name: %s found\n", providerName),
+					fmt.Sprintf("No on premises providers with name: %s found\n", providerName),
 					formatter.RedColor,
 				))
-		}
-
-		if r[0].GetCode() != util.OnpremProviderType {
-			errMessage := "Operation only supported for On-premises providers."
-			logrus.Fatalf(formatter.Colorize(errMessage+"\n", formatter.RedColor))
 		}
 
 		providerUUID := r[0].GetUuid()
@@ -141,10 +136,10 @@ func init() {
 		"[Required] Instance type name.")
 	addInstanceTypesCmd.Flags().StringArray("volume", []string{},
 		"[Required] Volumes associated per node of an instance type. Minimum number of required "+
-			"volumes = 1. Provide the following comma separated fields as key-value pairs:"+
-			"\"type=<volume-type>,"+
-			"size=<volume-size>,mount-points=\"<quoted-comma-separated-mount-points>\"\". "+
-			formatter.Colorize("mount-points is a required key-value.",
+			"volumes = 1. Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"type=<volume-type>::"+
+			"size=<volume-size>::mount-points=<comma-separated-mount-points>\". "+
+			formatter.Colorize("Mount points is a required key-value.",
 				formatter.GreenColor)+
 			" Volume type (Defaults to SSD, Allowed values: EBS, SSD, HDD, NVME)"+
 			" and Volume size (Defaults to 100) are optional. "+
@@ -170,7 +165,7 @@ func buildVolumeDetails(volumeStrings []string) *[]ybaclient.VolumeDetails {
 	res := make([]ybaclient.VolumeDetails, 0)
 	for _, volumeString := range volumeStrings {
 		volume := map[string]string{}
-		for _, volumeInfo := range strings.Split(volumeString, ",") {
+		for _, volumeInfo := range strings.Split(volumeString, util.Separator) {
 			kvp := strings.Split(volumeInfo, "=")
 			if len(kvp) != 2 {
 				logrus.Fatalln(

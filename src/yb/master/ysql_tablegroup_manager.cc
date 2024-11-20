@@ -30,7 +30,7 @@
 namespace yb {
 namespace master {
 
-using TgInfo = YsqlTablegroupManager::TablegroupInfo;
+using TgInfo = TablegroupInfo;
 
 // ================================================================================================
 // TablegroupManager

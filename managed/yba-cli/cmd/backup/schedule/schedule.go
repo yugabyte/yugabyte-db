@@ -23,4 +23,6 @@ func init() {
 	ScheduleCmd.Flags().SortFlags = false
 	ScheduleCmd.AddCommand(createBackupScheduleCmd)
 	ScheduleCmd.AddCommand(deleteBackupScheduleCmd)
+	ScheduleCmd.AddCommand(listBackupScheduleCmd)
+	ScheduleCmd.AddCommand(describeBackupScheduleCmd)
 }

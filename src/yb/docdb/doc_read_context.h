@@ -74,12 +74,6 @@ struct DocReadContext {
 
   void SetCotableId(const Uuid& cotable_id);
 
-  void SetVectorIdxOptions(const PgVectorIdxOptionsPB& vector_idx_options);
-
-  const PgVectorIdxOptionsPB& vector_idx_options() const {
-    return vector_idx_options_;
-  }
-
   // The number of bytes before actual key values for all encoded keys in this table.
   size_t key_prefix_encoded_len() const {
     return key_prefix_encoded_len_;
@@ -113,6 +107,8 @@ struct DocReadContext {
   }
 
   dockv::SchemaPackingStorage schema_packing_storage;
+
+  std::optional<PgVectorIdxOptionsPB> vector_idx_options;
 
  private:
   void LogAfterLoad();
@@ -152,9 +148,6 @@ struct DocReadContext {
   size_t table_key_prefix_len_ = 0;
 
   std::string log_prefix_;
-
-  // Used for geometric indexes.
-  PgVectorIdxOptionsPB vector_idx_options_;
 };
 
 } // namespace yb::docdb

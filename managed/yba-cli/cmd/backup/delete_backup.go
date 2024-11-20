@@ -66,6 +66,8 @@ func buildBackupInfo(backupInfos []string) []ybaclient.DeleteBackupInfo {
 
 	for _, backupInfo := range backupInfos {
 		backupDetails := map[string]string{}
+		// not changing the separator here since these are known to be UUIDs
+		// comma is a safe separator for this case
 		for _, backupDetailString := range strings.Split(backupInfo, ",") {
 			kvp := strings.Split(backupDetailString, "=")
 			if len(kvp) != 2 {

@@ -50,7 +50,9 @@ typedef enum
 	WAIT_EVENT_WAL_SENDER_MAIN,
 	WAIT_EVENT_WAL_WRITER_MAIN,
 	WAIT_EVENT_YB_QUERY_DIAGNOSTICS_MAIN,
-	WAIT_EVENT_YB_ASH_MAIN
+	WAIT_EVENT_YB_ASH_MAIN,
+
+	WAIT_EVENT_YB_ACTIVITY_END /* This should be the last value */
 } WaitEventActivity;
 
 /* ----------
@@ -71,6 +73,8 @@ typedef enum
 	WAIT_EVENT_SSL_OPEN_SERVER,
 	WAIT_EVENT_WAL_SENDER_WAIT_WAL,
 	WAIT_EVENT_WAL_SENDER_WRITE_DATA,
+
+	WAIT_EVENT_YB_CLIENT_END /* This should be the last value */
 } WaitEventClient;
 
 /* ----------
@@ -134,6 +138,8 @@ typedef enum
 	WAIT_EVENT_WAL_RECEIVER_WAIT_START,
 	WAIT_EVENT_XACT_GROUP_UPDATE,
 	WAIT_EVENT_YB_PARALLEL_SCAN_EMPTY,
+
+	WAIT_EVENT_YB_IPC_END /* This should be the last value */
 } WaitEventIPC;
 
 /* ----------
@@ -152,7 +158,9 @@ typedef enum
 	WAIT_EVENT_REGISTER_SYNC_REQUEST,
 	WAIT_EVENT_VACUUM_DELAY,
 	WAIT_EVENT_VACUUM_TRUNCATE,
-	WAIT_EVENT_YB_TXN_CONFLICT_BACKOFF
+	WAIT_EVENT_YB_TXN_CONFLICT_BACKOFF,
+
+	WAIT_EVENT_YB_TIMEOUT_END /* This should be the last value */
 } WaitEventTimeout;
 
 /* ----------
@@ -238,6 +246,8 @@ typedef enum
 	WAIT_EVENT_WAL_WRITE,
 	WAIT_EVENT_YB_COPY_COMMAND_STREAM_READ,
 	WAIT_EVENT_YB_COPY_COMMAND_STREAM_WRITE,
+
+	WAIT_EVENT_YB_IO_END /* This should be the last value */
 } WaitEventIO;
 
 

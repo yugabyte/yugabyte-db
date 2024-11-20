@@ -219,6 +219,8 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
 
   void ReportQueueTime(MonoDelta delta);
 
+  void ListenShutdown(const std::function<void()>& listener) EXCLUDES(outbound_data_queue_mtx_);
+
  private:
   // Marks the given call as failed and schedules destruction of the connection.
   void FailCallAndDestroyConnection(const OutboundDataPtr& outbound_data,
@@ -337,6 +339,7 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   // Starts as Status::OK, gets set to a shutdown status upon Shutdown().
   Status shutdown_status_ GUARDED_BY(outbound_data_queue_mtx_);
   std::atomic<CoarseTimePoint> shutdown_time_{CoarseTimePoint::min()};
+  std::function<void()> shutdown_listener_ GUARDED_BY(outbound_data_queue_mtx_);
 
   std::shared_ptr<ReactorTask> process_response_queue_task_ GUARDED_BY(outbound_data_queue_mtx_);
 

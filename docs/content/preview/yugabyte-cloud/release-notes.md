@@ -18,6 +18,21 @@ rightNav:
 
 ### 2024
 
+#### November 12, 2024
+
+##### New features
+
+- Support for [Change Data Capture](../cloud-clusters/aeon-cdc/) (CDC) for streaming changes to external processes, applications, or other databases. If you have a new cluster running v2024.1.1 or later, CDC is available automatically. If you have a cluster that was upgraded to v2024.1.1 or later and want to use CDC, contact {{% support-cloud %}}.
+- Support for exporting [pgaudit logs](../cloud-monitor/logging-export/) to third-party tools (Datadog and Google Cloud Storage) for compliance with government, financial, or ISO certification audits.
+- General availability for [exporting cluster metrics](../cloud-monitor/managed-integrations/) from clusters deployed in AWS and GCP to [Prometheus](https://prometheus.io/docs/introduction/overview/).
+
+##### Database
+
+- Production track updated to 2.18.9.0.
+- Innovation track updated to 2.20.7.1.
+- Early Access track updated to 2024.1.3.0.
+- Preview track updated to 2.23.0.0.
+
 #### September 17, 2024
 
 ##### New features

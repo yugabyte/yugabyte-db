@@ -647,6 +647,9 @@ extern bool yb_test_system_catalogs_creation;
  */
 extern bool yb_test_fail_next_ddl;
 
+/* If set to true, all drop commands will fail. */
+extern bool yb_test_fail_all_drops;
+
 /*
  * If set to true, next increment catalog version operation will fail and
  * reset this back to false.
@@ -1252,6 +1255,8 @@ bool YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum);
 SortByDir YbGetIndexKeySortOrdering(Relation indexRel);
 
 bool YbUseUnsafeTruncate(Relation rel);
+
+extern AttrNumber YbGetIndexAttnum(Relation index, AttrNumber table_attno);
 
 extern bool yb_ysql_conn_mgr_superuser_existed;
 

@@ -2128,4 +2128,22 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     // Wait for load balancer to become idle.
     assertTrue(miniCluster.getClient().waitForLoadBalance(Long.MAX_VALUE, expectedTServers));
   }
+
+  @Test
+  public void updatePgNodeTreeType() throws Exception {
+    try (Connection conn = customDbCb.connect();
+        Statement stmt = conn.createStatement()) {
+      setSystemRelsModificationGuc(stmt, true);
+
+      String value = "({CONST :consttype 16 :consttypmod -1 :constcollid 0 :constlen 1 "
+          + ":constbyval true :constisnull false :location -1 :constvalue 1 [ 0 0 0 0 0 0 0 0 ]})";
+      String condition = "WHERE proname = 'yb_is_database_colocated' AND pronamespace = "
+          + "'pg_catalog'::regnamespace";
+      String ddlSql = "UPDATE pg_catalog.pg_proc SET proargdefaults = '" + value + "' " + condition;
+      executeSystemTableDml(stmt, ddlSql);
+      assertQuery(stmt, "SELECT proargdefaults FROM pg_catalog.pg_proc " + condition,
+          new Row(value));
+
+    }
+  }
 }

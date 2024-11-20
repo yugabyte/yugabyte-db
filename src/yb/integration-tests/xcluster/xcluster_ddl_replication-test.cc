@@ -121,6 +121,36 @@ TEST_F(XClusterDDLReplicationTest, DDLReplicationTablesNotColocated) {
   }
 }
 
+TEST_F(XClusterDDLReplicationTest, Bootstrapping) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
+  ASSERT_OK(SetUpClusters(/*is_colocated=*/false, /*start_yb_controller_servers=*/true));
+  auto producer_table_name = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/1, /*num_tablets=*/3, &producer_cluster_));
+
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace_name}));
+  ASSERT_OK(BackupFromProducer());
+  ASSERT_OK(RestoreToConsumer());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+}
+
+// TODO(Julien): As part of #24888, undisable this or make this a test that this correctly fails
+// with an error.
+TEST_F(XClusterDDLReplicationTest, YB_DISABLE_TEST(BootstrappingWithNoTables)) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
+  ASSERT_OK(SetUpClusters(/*is_colocated=*/false, /*start_yb_controller_servers=*/true));
+
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace_name}));
+  ASSERT_OK(BackupFromProducer());
+  ASSERT_OK(RestoreToConsumer());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+}
+
 TEST_F(XClusterDDLReplicationTest, CreateTable) {
   ASSERT_OK(SetUpClusters());
   ASSERT_OK(CheckpointReplicationGroup());
@@ -588,6 +618,28 @@ TEST_F(XClusterDDLReplicationAddDropColumnTest, AddDropColumns) {
     ASSERT_OK(RunTest(i));
     LOG(INFO) << "Finished running test with pause on step " << i;
   }
+}
+
+// Make sure we can create Colocated db and table on both clusters that is not affected by an the
+// replication of a different database.
+TEST_F(XClusterDDLReplicationTest, CreateNonXClusterColocatedDb) {
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  const auto kColocatedDB = "colocated_db";
+  const auto kCreateTableStmt = "CREATE TABLE tbl1(a int)";
+  const auto kInsertStmt = "INSERT INTO tbl1 VALUES (1)";
+
+  ASSERT_OK(CreateDatabase(&consumer_cluster_, kColocatedDB, /*colocated=*/true));
+  auto c_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(kColocatedDB));
+  ASSERT_OK(c_conn.Execute(kCreateTableStmt));
+  ASSERT_OK(c_conn.Execute(kInsertStmt));
+
+  ASSERT_OK(CreateDatabase(&producer_cluster_, kColocatedDB, /*colocated=*/true));
+  auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(kColocatedDB));
+  ASSERT_OK(p_conn.Execute(kCreateTableStmt));
+  ASSERT_OK(p_conn.Execute(kInsertStmt));
 }
 
 }  // namespace yb

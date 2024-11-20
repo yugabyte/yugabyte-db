@@ -40,7 +40,7 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
     if (!has_entries_) {
       return STATUS_FORMAT(IllegalState, "Attempt to save empty index: $0", path);
     }
-    // TODO(lsm) Reload via memory mapped file
+    // TODO(vector_index) Reload via memory mapped file
     return impl().DoSaveToFile(path);
   }
 

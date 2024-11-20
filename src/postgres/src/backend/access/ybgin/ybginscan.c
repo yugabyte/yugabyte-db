@@ -104,7 +104,6 @@ ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 	YBCPgPrepareParameters prepare_params = {
 		.index_relfilenode_oid = YbGetRelfileNodeId(scan->indexRelation),
 		.index_only_scan = scan->xs_want_itup,
-		.use_secondary_index = true, /* can't have ybgin primary index */
 		.querying_colocated_table = querying_colocated_table,
 	};
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(scan->heapRelation),

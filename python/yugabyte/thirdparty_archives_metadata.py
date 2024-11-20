@@ -182,13 +182,6 @@ class MetadataUpdater:
                 num_skipped_wrong_branch += 1
                 continue
 
-            if yb_dep_release.should_skip_as_too_os_specific():
-                logging.info(
-                    f"Skipping release {yb_dep_release} because it is too specific to a particular "
-                    "version of OS and we could use a build for an older OS instead.")
-                num_skipped_too_os_specific += 1
-                continue
-
             if sha not in releases_by_commit:
                 releases_by_commit[sha] = ReleaseGroup(sha)
 

@@ -172,9 +172,7 @@ public class DrConfig extends Model {
               "DrConfig %s(%s) does not have any corresponding xCluster config",
               this.name, this.uuid));
     }
-    if (xClusterConfigs.size() == 1) {
-      return xClusterConfigs.get(0);
-    }
+
     return xClusterConfigs.stream()
         .filter(xClusterConfig -> !xClusterConfig.isSecondary())
         .findFirst()
@@ -185,15 +183,8 @@ public class DrConfig extends Model {
     if (xClusterConfigs.isEmpty()) {
       return false;
     }
-    if (xClusterConfigs.size() == 1) {
-      return true;
-    }
-    for (XClusterConfig xClusterConfig : xClusterConfigs) {
-      if (!xClusterConfig.isSecondary()) {
-        return true;
-      }
-    }
-    return false;
+
+    return xClusterConfigs.stream().anyMatch(config -> !config.isSecondary());
   }
 
   @JsonIgnore

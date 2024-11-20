@@ -1,10 +1,10 @@
 ## yba yb-db-version list
 
-List YugabyteDB version releases
+List YugabyteDB versions
 
 ### Synopsis
 
-List YugabyteDB version releases
+List YugabyteDB versions
 
 ```
 yba yb-db-version list [flags]
@@ -19,7 +19,9 @@ yba yb-db-version list
 ### Options
 
 ```
-  -h, --help   help for list
+      --deployment-type string   [Optional] Deployment type of the YugabyteDB version. Allowed values: x86_64, aarch64, kubernetes
+      --type string              [Optional] Release type. Allowed values: lts, sts, preview
+  -h, --help                     help for list
 ```
 
 ### Options inherited from parent commands
@@ -38,5 +40,5 @@ yba yb-db-version list
 
 ### SEE ALSO
 
-* [yba yb-db-version](yba_yb-db-version.md)	 - Manage YugabyteDB version release
+* [yba yb-db-version](yba_yb-db-version.md)	 - Manage YugabyteDB versions
 

@@ -278,6 +278,10 @@ To migrate your installation from Replicated, do the following:
 
 If you have [high availability](../../../administer-yugabyte-platform/high-availability/) configured, you need to upgrade the active and standby YBA instances if they are running older versions of YBA. In addition, you need to finish migration on both the active and standby instances for failover to be re-enabled.
 
+##### Replicated uses HTTPS
+
+Note that if your node has a timezone that is not UTC, in-place migration requires changing the timezone to UTC. If this is not possible, follow the instructions for [Replicated uses HTTP](#replicated-uses-http) instead.
+
 If Replicated is using HTTPS, migrate as follows:
 
 1. If your instances are v2.18.5 or earlier, or v2.20.0, [upgrade your active and HA standby instances](../../../administer-yugabyte-platform/high-availability/#upgrade-instances) to v2.20.1.
@@ -286,7 +290,9 @@ If Replicated is using HTTPS, migrate as follows:
 
 Failovers are only possible after you finish the migration on both the primary and standby.
 
-If Replicated is using HTTP, you need to remove the standbys and delete the HA configuration before migrating. Migrate as follows:
+##### Replicated uses HTTP
+
+If Replicated is using HTTP (or any servers are configured with a timezone that is not UTC), you need to remove the standbys and delete the high availability configuration before migrating. Migrate as follows:
 
 1. [Remove the standby instances](../../../administer-yugabyte-platform/high-availability/#remove-a-standby-instance).
 1. On the active instance, navigate to **Admin > High Availability** and click **Delete Configuration**.

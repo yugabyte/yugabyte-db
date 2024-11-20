@@ -716,9 +716,6 @@ TEST_P(XClusterBiDirectionalIndexTest, CreateIndex) {
   // Create a dummy table on producer, so that the table ids for the indexes do not match.
   ASSERT_OK(producer_conn_->Execute("create type dummy"));
 
-  producer_conn_->TEST_CaptureNoticeMessages();
-  consumer_conn_->TEST_CaptureNoticeMessages();
-
   auto starting_backfill_sink = StringWaiterLogSink("starting backfill with timestamp:");
   // Create index on producer.
   auto producer_sync = AsyncCreateIndex(*producer_conn_);
@@ -737,12 +734,6 @@ TEST_P(XClusterBiDirectionalIndexTest, CreateIndex) {
   ASSERT_OK_PREPEND(producer_sync->Wait(), "CreateIndex on producer failed");
   ASSERT_OK_PREPEND(consumer_sync->Wait(), "CreateIndex on consumer failed");
   ASSERT_TRUE(starting_backfill_sink.IsEventOccurred());
-
-  const auto expected_notice =
-      "This index belongs to a table that is under bi-directional xCluster replication. Create the "
-      "index on the other xCluster universe parallelly in order for this DDL to complete.";
-  ASSERT_STR_CONTAINS(producer_conn_->TEST_GetLastNoticeMessage(), expected_notice);
-  ASSERT_STR_CONTAINS(consumer_conn_->TEST_GetLastNoticeMessage(), expected_notice);
 
   // The colocated table uses range partitioning so gets a index scan, whereas the non-colocated
   // table uses hash partitioning and does a seq scan.

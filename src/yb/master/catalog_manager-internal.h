@@ -43,12 +43,6 @@ namespace master {
 static const std::string kRelnamespaceNotFoundErrorStr =
     "Not found or invalid relnamespace oid for table oid ";
 
-inline Status SetupError(MasterErrorPB* error, MasterErrorPB::Code code, const Status& s) {
-  StatusToPB(s, error->mutable_status());
-  error->set_code(code);
-  return s;
-}
-
 inline Status CheckIfNoLongerLeader(const Status& s) {
   // TODO (KUDU-591): This is a bit of a hack, as right now
   // there's no way to propagate why a write to a consensus configuration has

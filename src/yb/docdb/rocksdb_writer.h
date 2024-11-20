@@ -142,7 +142,7 @@ class IntentsWriterContext {
       const Slice& key, const Slice& value, bool metadata,
       rocksdb::DirectWriteHandler* handler) = 0;
 
-  virtual void Complete(rocksdb::DirectWriteHandler* handler) = 0;
+  virtual Status Complete(rocksdb::DirectWriteHandler* handler) = 0;
 
   const TransactionId& transaction_id() const {
     return transaction_id_;
@@ -199,12 +199,19 @@ class FrontierSchemaVersionUpdater {
 
   void SetFrontiers(ConsensusFrontiers* frontiers) { frontiers_ = frontiers; }
 
+  SchemaPackingProvider* schema_packing_provider() const {
+    return schema_packing_provider_;
+  }
+
  protected:
   Status UpdateSchemaVersion(Slice key, Slice value);
   void FlushSchemaVersion();
+  ConsensusFrontiers* frontiers() const {
+    return frontiers_;
+  }
 
  private:
-  SchemaPackingProvider* schema_packing_provider_;
+  SchemaPackingProvider* const schema_packing_provider_;
   Uuid schema_version_table_ = Uuid::Nil();
   ColocationId schema_version_colocation_id_ = 0;
   SchemaVersion min_schema_version_ = std::numeric_limits<SchemaVersion>::max();
@@ -224,7 +231,8 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
       HybridTime file_filter_ht,
       const KeyBounds* key_bounds,
       SchemaPackingProvider* schema_packing_provider,
-      rocksdb::DB* intents_db);
+      rocksdb::DB* intents_db,
+      const VectorIndexesPtr& vector_indexes);
 
   void Start(const boost::optional<Slice>& first_key) override;
 
@@ -232,10 +240,13 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
       const Slice& key, const Slice& value, bool metadata,
       rocksdb::DirectWriteHandler* handler) override;
 
-  void Complete(rocksdb::DirectWriteHandler* handler) override;
+  Status Complete(rocksdb::DirectWriteHandler* handler) override;
 
  private:
   Result<bool> StoreApplyState(const Slice& key, rocksdb::DirectWriteHandler* handler);
+  Status ProcessVectorIndexes(Slice key, Slice value);
+  template <class Decoder>
+  Status ProcessVectorIndexesForPackedRow(Slice key, Slice value);
 
   const TabletId& tablet_id_;
   const ApplyTransactionState* apply_state_;
@@ -244,7 +255,10 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
   HybridTime log_ht_;
   IntraTxnWriteId write_id_;
   const KeyBounds* key_bounds_;
+  VectorIndexesPtr vector_indexes_;
   BoundedRocksDbIterator intent_iter_;
+  // TODO(vector_index) Optimize memory management
+  std::vector<VectorIndexInsertEntries> vector_index_batches_;
 };
 
 class RemoveIntentsContext : public IntentsWriterContext {
@@ -255,7 +269,7 @@ class RemoveIntentsContext : public IntentsWriterContext {
       const Slice& key, const Slice& value, bool metadata,
       rocksdb::DirectWriteHandler* handler) override;
 
-  void Complete(rocksdb::DirectWriteHandler* handler) override;
+  Status Complete(rocksdb::DirectWriteHandler* handler) override;
  private:
   uint8_t reason_;
 };

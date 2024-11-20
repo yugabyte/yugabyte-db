@@ -82,6 +82,7 @@ class SnapshotState;
 class SysCatalogTable;
 class SysConfigInfo;
 class SysRowEntries;
+class TablegroupInfo;
 class TestAsyncRpcManager;
 class TSDescriptor;
 class TSManager;
@@ -126,6 +127,9 @@ YB_STRONGLY_TYPED_BOOL(RegisteredThroughHeartbeat);
 YB_STRONGLY_TYPED_BOOL(IncludeInactive);
 YB_STRONGLY_TYPED_BOOL(IncludeDeleted);
 YB_STRONGLY_TYPED_BOOL(IsSystemObject);
+
+// Used to indicate whether hidden objects should be included.
+YB_STRONGLY_TYPED_BOOL(IncludeHidden);
 
 YB_DEFINE_ENUM(
     CollectFlag,

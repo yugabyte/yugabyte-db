@@ -232,10 +232,7 @@ public class CertificateController extends AuthenticatedController {
     return PlatformResults.withData(certUUID);
   }
 
-  @ApiOperation(
-      notes = "YbaApi Internal.",
-      value = "Add a client certificate",
-      response = CertificateDetails.class)
+  @ApiOperation(value = "Add a client certificate", response = CertificateDetails.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "certificate",
@@ -249,7 +246,6 @@ public class CertificateController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
-  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   public Result getClientCert(UUID customerUUID, UUID rootCA, Http.Request request) {
     Form<ClientCertParams> formData =
         formFactory.getFormDataOrBadRequest(request, ClientCertParams.class);

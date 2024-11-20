@@ -220,6 +220,35 @@ public abstract class KubernetesManager {
     return tempOutputPath;
   }
 
+  public void helmResume(
+      UUID universeUuid,
+      String ybSoftwareVersion,
+      Map<String, String> config,
+      String helmReleaseName,
+      String namespace,
+      String overridesFile) {
+
+    String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
+    List<String> commandList =
+        ImmutableList.of(
+            "helm",
+            "upgrade",
+            "--install",
+            helmReleaseName,
+            helmPackagePath,
+            "--debug",
+            "--reuse-values",
+            "-f",
+            overridesFile,
+            "--namespace",
+            namespace,
+            "--timeout",
+            getTimeout(universeUuid),
+            "--wait");
+    ShellResponse response = execCommand(config, commandList);
+    processHelmResponse(config, helmReleaseName, namespace, response);
+  }
+
   public void helmUpgrade(
       UUID universeUuid,
       String ybSoftwareVersion,
@@ -745,6 +774,9 @@ public abstract class KubernetesManager {
       String namespace,
       int numNodes,
       boolean newNamingStyle);
+
+  public abstract void PauseAllPodsInRelease(
+      Map<String, String> config, String universePrefix, String namespace, boolean newNamingStyle);
 
   public abstract void deleteStorage(
       Map<String, String> config, String universePrefix, String namespace);

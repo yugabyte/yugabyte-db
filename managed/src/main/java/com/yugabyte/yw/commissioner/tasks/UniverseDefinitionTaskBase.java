@@ -1986,33 +1986,41 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           }
           return th;
         };
-    // Configure all tservers to update the masters list as well.
-    createConfigureServerTasks(
-            tserverNodes,
-            params -> {
-              params.updateMasterAddrsOnly = true;
-              params.masterAddrsOverride = getOrCreateExecutionContext().getMasterAddrsSupplier();
-            })
-        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
-        .setAfterRunHandler(failedMasterAddrUpdateHandler);
-    // Change the master addresses in the conf file for the all masters to reflect
-    // the changes.
-    createConfigureServerTasks(
-            masterNodes,
-            params -> {
-              params.updateMasterAddrsOnly = true;
-              params.isMaster = true;
-              params.masterAddrsOverride = getOrCreateExecutionContext().getMasterAddrsSupplier();
-            })
-        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
-        .setAfterRunHandler(failedMasterAddrUpdateHandler);
+    // Configure the tservers to update the masters addresses in their conf files.
+    if (CollectionUtils.isNotEmpty(tserverNodes)) {
+      createConfigureServerTasks(
+              tserverNodes,
+              params -> {
+                params.updateMasterAddrsOnly = true;
+                params.masterAddrsOverride = getOrCreateExecutionContext().getMasterAddrsSupplier();
+              })
+          .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
+          .setAfterRunHandler(failedMasterAddrUpdateHandler);
+    }
+    // Configure the masters to update the masters addresses in their conf files.
+    if (CollectionUtils.isNotEmpty(masterNodes)) {
+      createConfigureServerTasks(
+              masterNodes,
+              params -> {
+                params.updateMasterAddrsOnly = true;
+                params.isMaster = true;
+                params.masterAddrsOverride = getOrCreateExecutionContext().getMasterAddrsSupplier();
+              })
+          .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
+          .setAfterRunHandler(failedMasterAddrUpdateHandler);
+    }
     // Update the master addresses in memory.
-    createUpdateMasterAddrsInMemoryTasks(tserverNodes, ServerType.TSERVER)
-        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
-        .setAfterRunHandler(failedMasterAddrUpdateHandler);
-    createUpdateMasterAddrsInMemoryTasks(masterNodes, ServerType.MASTER)
-        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
-        .setAfterRunHandler(failedMasterAddrUpdateHandler);
+    if (CollectionUtils.isNotEmpty(tserverNodes)) {
+      createUpdateMasterAddrsInMemoryTasks(tserverNodes, ServerType.TSERVER)
+          .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
+          .setAfterRunHandler(failedMasterAddrUpdateHandler);
+    }
+    // Update the master addresses in memory.
+    if (CollectionUtils.isNotEmpty(masterNodes)) {
+      createUpdateMasterAddrsInMemoryTasks(masterNodes, ServerType.MASTER)
+          .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
+          .setAfterRunHandler(failedMasterAddrUpdateHandler);
+    }
   }
 
   /**

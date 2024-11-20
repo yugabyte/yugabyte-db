@@ -4239,11 +4239,7 @@ ColConstraintElem:
 
 opt_unique_null_treatment:
 			NULLS_P DISTINCT		{ $$ = true; }
-			| NULLS_P NOT DISTINCT
-				{
-					parser_ybc_signal_unsupported(@1, "UNIQUE NULLS NOT DISTINCT", 24399);
-					$$ = false;
-				}
+			| NULLS_P NOT DISTINCT  { $$ = false;}
 			| /*EMPTY*/				{ $$ = true; }
 		;
 

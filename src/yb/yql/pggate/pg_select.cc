@@ -24,7 +24,7 @@
 namespace yb::pggate {
 
 PgSelect::PgSelect(const PgSession::ScopedRefPtr& pg_session)
-    : PgDmlRead(pg_session) {}
+    : BaseType(pg_session) {}
 
 Status PgSelect::Prepare(
     const PgObjectId& table_id, bool is_region_local,

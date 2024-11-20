@@ -422,6 +422,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.EditBackupSchedule,
           TaskType.EditBackupScheduleKubernetes,
           TaskType.MultiTableBackup,
+          TaskType.ResumeKubernetesUniverse,
           TaskType.ReadOnlyClusterDelete,
           TaskType.ResumeUniverse);
 
@@ -778,6 +779,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     boolean isResumeOrDelete =
         (taskType == TaskType.ResumeUniverse
+            || taskType == TaskType.ResumeKubernetesUniverse
             || taskType == TaskType.DestroyUniverse
             || taskType == TaskType.ResumeXClusterUniverses);
     if (universeDetails.universePaused && !isResumeOrDelete) {
@@ -869,6 +871,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         boolean isResumeOrDelete =
             (owner == TaskType.ResumeUniverse
+                || owner == TaskType.ResumeKubernetesUniverse
                 || owner == TaskType.DestroyUniverse
                 || owner == TaskType.ResumeXClusterUniverses);
         if (universeDetails.universePaused && !isResumeOrDelete) {

@@ -1924,7 +1924,18 @@ RelationBuildTriggers(Relation relation)
 	SysScanDesc tgscan;
 	HeapTuple	htup;
 	MemoryContext oldContext;
+	MemoryContext ybSavedContext;
+	MemoryContext ybTriggerContext;
 	int			i;
+
+	if (IsYugaByteEnabled())
+	{
+		ybTriggerContext =
+			AllocSetContextCreate(CurrentMemoryContext,
+							 "RelationBuildTriggers context",
+							 ALLOCSET_DEFAULT_SIZES);
+		ybSavedContext = MemoryContextSwitchTo(ybTriggerContext);
+	}
 
 	/*
 	 * Allocate a working array to hold the triggers (the array is extended if
@@ -2042,6 +2053,11 @@ RelationBuildTriggers(Relation relation)
 	if (numtrigs == 0)
 	{
 		pfree(triggers);
+		if (IsYugaByteEnabled())
+		{
+			MemoryContextSwitchTo(ybSavedContext);
+			MemoryContextDelete(ybTriggerContext);
+		}
 		return;
 	}
 
@@ -2059,6 +2075,12 @@ RelationBuildTriggers(Relation relation)
 
 	/* Release working memory */
 	FreeTriggerDesc(trigdesc);
+
+	if (IsYugaByteEnabled())
+	{
+		MemoryContextSwitchTo(ybSavedContext);
+		MemoryContextDelete(ybTriggerContext);
+	}
 }
 
 /*

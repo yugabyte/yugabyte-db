@@ -134,7 +134,9 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.ReprovisionNode,
           TaskType.CloudProviderEdit,
           TaskType.SwitchoverDrConfig,
-          TaskType.FailoverDrConfig);
+          TaskType.FailoverDrConfig,
+          TaskType.ResumeKubernetesUniverse,
+          TaskType.PauseKubernetesUniverse);
 
   @Override
   protected Application provideApplication() {

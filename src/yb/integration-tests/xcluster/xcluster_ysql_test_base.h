@@ -30,6 +30,7 @@ class XClusterYsqlTestBase : public XClusterTestBase {
     // Should setup ensure that the DBs with the same names on the source and target universes have
     // different OIDs?
     bool use_different_database_oids = false;
+    bool start_yb_controller_servers = false;
   };
 
   void SetUp() override;

@@ -16,6 +16,8 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
+using namespace std::chrono_literals;
+
 namespace yb {
 
 class Pg15UpgradeTest : public Pg15UpgradeTestBase {
@@ -27,37 +29,6 @@ class Pg15UpgradeTest : public Pg15UpgradeTestBase {
   constexpr static auto kYugabyte = "yugabyte";
   constexpr static auto kPostgres = "postgres";
   constexpr static auto kSystemPlatform = "system_platform";
-
-  void TestSimpleTableUpgrade() {
-    const size_t kRowCount = 100;
-    // Create a table with 3 tablets and kRowCount rows so that each tablet has at least a few rows.
-    ASSERT_OK(ExecuteStatements(
-        {"CREATE TABLE t (a INT) SPLIT INTO 3 TABLETS",
-         Format("INSERT INTO t VALUES(generate_series(1, $0))", kRowCount)}));
-    static const auto kSelectFromTable = "SELECT * FROM t";
-
-    ASSERT_OK(UpgradeClusterToMixedMode());
-
-    {
-      auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg15));
-      auto count = ASSERT_RESULT(conn.Fetch(kSelectFromTable));
-      ASSERT_EQ(PQntuples(count.get()), kRowCount);
-    }
-    {
-      auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg11));
-      auto count = ASSERT_RESULT(conn.Fetch(kSelectFromTable));
-      ASSERT_EQ(PQntuples(count.get()), kRowCount);
-    }
-
-    ASSERT_OK(FinalizeUpgradeFromMixedMode());
-
-    // Verify row count from a random tserver.
-    {
-      auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
-      auto count = ASSERT_RESULT(conn.Fetch(kSelectFromTable));
-      ASSERT_EQ(PQntuples(count.get()), kRowCount);
-    }
-  }
 
   // Stops the tserver running on the yb-master leader node.
   // The tserver must be restarted before the test completes for it to succeed the shutdown in the
@@ -96,6 +67,9 @@ TEST_F(Pg15UpgradeTest, CheckVersion) {
     ASSERT_STR_CONTAINS(version, old_version_info().version);
   }
 
+  auto ysql_catalog_config = ASSERT_RESULT(DumpYsqlCatalogConfig());
+  ASSERT_STR_NOT_CONTAINS(ysql_catalog_config, "catalog_version");
+
   ASSERT_OK(UpgradeClusterToMixedMode());
 
   {
@@ -108,6 +82,8 @@ TEST_F(Pg15UpgradeTest, CheckVersion) {
     auto version = ASSERT_RESULT(conn.FetchRowAsString(kSelectVersion));
     ASSERT_STR_CONTAINS(version, old_version_info().version);
   }
+  ysql_catalog_config = ASSERT_RESULT(DumpYsqlCatalogConfig());
+  ASSERT_STR_NOT_CONTAINS(ysql_catalog_config, "catalog_version");
 
   ASSERT_OK(FinalizeUpgradeFromMixedMode());
 
@@ -116,9 +92,14 @@ TEST_F(Pg15UpgradeTest, CheckVersion) {
     auto version = ASSERT_RESULT(conn.FetchRowAsString(kSelectVersion));
     ASSERT_STR_CONTAINS(version, current_version_info().version_number());
   }
+
+  ysql_catalog_config = ASSERT_RESULT(DumpYsqlCatalogConfig());
+  ASSERT_STR_CONTAINS(ysql_catalog_config, "catalog_version: 15");
 }
 
-TEST_F(Pg15UpgradeTest, SimpleTable) { ASSERT_NO_FATALS(TestSimpleTableUpgrade()); }
+TEST_F(Pg15UpgradeTest, SimpleTableUpgrade) { ASSERT_OK(TestUpgradeWithSimpleTable()); }
+
+TEST_F(Pg15UpgradeTest, SimpleTableRollback) { ASSERT_OK(TestRollbackWithSimpleTable()); }
 
 TEST_F(Pg15UpgradeTest, BackslashD) {
   ASSERT_OK(ExecuteStatement("CREATE TABLE t (a INT)"));
@@ -295,64 +276,6 @@ TEST_F(Pg15UpgradeTest, Schemas) {
                kSchemaA, kSchemaATable, kSchemaB, kSchemaBTable,
                kDefaultTable, kDefaultTable2, kPublicTable, kPublicTable2)));
     ASSERT_EQ(joined_rows, 0);
-  }
-}
-
-TEST_F(Pg15UpgradeTest, Sequences) {
-  ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_sequence_cache_minval", "1"));
-  // As documented in the daemon->AddExtraFlag call, a restart is required to apply the flag.
-  // We must Shutdown before we can Restart.
-  cluster_->Shutdown();
-  ASSERT_OK(cluster_->Restart());
-
-  const auto kSelectNextVal = "SELECT nextval('$0')";
-  const auto kSequencePg11 = "seq_pg11";
-  const auto kSequencePg15 = "seq_pg15";
-  int seq_val_pg11 = 1;
-  int seq_val_pg15 = 1;
-
-  ASSERT_OK(ExecuteStatement(Format("CREATE SEQUENCE $0", kSequencePg11)));
-
-  auto take_3_values = [&kSelectNextVal](pgwrapper::PGConn& conn, const std::string& sequence,
-                                         int& seq_val) {
-    for (int i = 0; i < 3; i++) {
-      const auto result = ASSERT_RESULT(
-          conn.FetchRow<pgwrapper::PGUint64>(Format(kSelectNextVal, sequence)));
-      ASSERT_EQ(seq_val++, result);
-    }
-  };
-
-  {
-    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
-    ASSERT_NO_FATALS(take_3_values(conn, kSequencePg11, seq_val_pg11));
-  }
-
-  ASSERT_OK(UpgradeClusterToMixedMode());
-
-  {
-    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg15));
-    ASSERT_NO_FATALS(take_3_values(conn, kSequencePg11, seq_val_pg11));
-  }
-  {
-    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg11));
-    ASSERT_NO_FATALS(take_3_values(conn, kSequencePg11, seq_val_pg11));
-  }
-
-  ASSERT_OK(FinalizeUpgradeFromMixedMode());
-
-  // Take three values from a random tserver
-  {
-    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
-    ASSERT_NO_FATALS(take_3_values(conn, kSequencePg11, seq_val_pg11));
-  }
-
-  ASSERT_OK(ExecuteStatement(Format("CREATE SEQUENCE $0 CACHE 1", kSequencePg15)));
-
-  // Take three values from a random tserver, twice (to validate caching on the new sequence)
-  for (int i = 0; i < 2; i++) {
-    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
-    ASSERT_NO_FATALS(take_3_values(conn, kSequencePg11, seq_val_pg11));
-    ASSERT_NO_FATALS(take_3_values(conn, kSequencePg15, seq_val_pg15));
   }
 }
 
@@ -994,7 +917,7 @@ TEST_F(Pg15UpgradeTest, NoTserverOnMasterNode) {
 
   auto master_tserver = ASSERT_RESULT(StopMasterLeaderTServer());
 
-  ASSERT_OK(PerformYsqlMajorVersionUpgrade());
+  ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
   ASSERT_OK(master_tserver->Restart());
   ASSERT_OK(WaitForClusterToStabilize());
 
@@ -1009,12 +932,12 @@ TEST_F(Pg15UpgradeTestWithAuth, NoTserverOnMasterNode) {
 
   auto master_tserver = ASSERT_RESULT(StopMasterLeaderTServer());
 
-  ASSERT_NOK_STR_CONTAINS(PerformYsqlMajorVersionUpgrade(), "Failed to run pg_upgrade");
+  ASSERT_NOK_STR_CONTAINS(PerformYsqlMajorCatalogUpgrade(), "Failed to run pg_upgrade");
   ASSERT_OK(master_tserver->Restart());
 }
 
 TEST_F(Pg15UpgradeTestWithAuth, UpgradeAuthEnabledUniverse) {
-  ASSERT_NO_FATALS(TestSimpleTableUpgrade());
+  ASSERT_OK(TestUpgradeWithSimpleTable());
 }
 
 TEST_F(Pg15UpgradeTest, GlobalBreakingDDL) {
@@ -1023,5 +946,191 @@ TEST_F(Pg15UpgradeTest, GlobalBreakingDDL) {
      "DROP USER test"}));
   ASSERT_OK(UpgradeClusterToMixedMode());
   ASSERT_OK(FinalizeUpgradeFromMixedMode());
+}
+
+TEST_F(Pg15UpgradeTest, Indexes) {
+  ASSERT_OK(ExecuteStatements(
+    {"CREATE TABLE t1 (a int)",
+     "INSERT INTO t1 VALUES (1),(2),(3),(4),(5)",
+     "CREATE INDEX i1 ON t1 (a)",
+
+     "CREATE TABLE t2 (a int)",
+     "INSERT INTO t2 VALUES (1),(2),(3),(4),(5)",
+     "CREATE UNIQUE INDEX i2 ON t2 (a)",
+
+     "CREATE TABLE t3 (a int)",
+     "INSERT INTO t3 VALUES (1),(2),(3),(4),(5)",
+     "CREATE INDEX i3 ON t3 (a ASC)",
+
+     "CREATE TABLE t4 (a int)",
+     "INSERT INTO t4 VALUES (1),(2),(3),(4),(5)",
+     "CREATE INDEX i4 ON t4 (a DESC)",
+     }));
+
+  auto check_indexes = [&](pgwrapper::PGConn& conn, const std::vector<int>& values_to_check) {
+    // Check hash based indexes (i1, i2).
+    for (const auto& value : values_to_check) {
+      for (const auto& table : {"t1", "t2"}) {
+        auto query = Format("SELECT a FROM $0 WHERE a = $1", table, value);
+        ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+        auto result = ASSERT_RESULT(conn.FetchRows<int>(query));
+        ASSERT_VECTORS_EQ(result, std::vector<int>{value});
+      }
+    }
+
+    // Check range based indexes (i3, i4).
+    for (const auto& table : {"t3", "t4"}) {
+      auto query = Format("SELECT a FROM $0 WHERE a >= 1", table);
+      ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+      auto result = ASSERT_RESULT(conn.FetchRows<int>(query));
+      if (table == std::string("t4")) {
+        // DESC index (i4) on table t4.
+        std::vector<int> reversed_values(values_to_check.rbegin(), values_to_check.rend());
+        ASSERT_VECTORS_EQ(result, reversed_values);
+      } else {
+        ASSERT_VECTORS_EQ(result, values_to_check);
+      }
+    }
+  };
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg15));
+    for (const auto& table : {"t1", "t2", "t3", "t4"}) {
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (15)", table));
+    }
+    ASSERT_NO_FATALS(check_indexes(conn, {1, 2, 3, 4, 5, 15}));
+  }
+
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg11));
+    for (const auto& table : {"t1", "t2", "t3", "t4"}) {
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (11)", table));
+    }
+    ASSERT_NO_FATALS(check_indexes(conn, {1, 2, 3, 4, 5, 11, 15}));
+  }
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_NO_FATALS(check_indexes(conn, {1, 2, 3, 4, 5, 11, 15}));
+  }
+}
+
+class Pg15UpgradeSequenceTest : public Pg15UpgradeTest {
+ public:
+  Pg15UpgradeSequenceTest() = default;
+
+  void SetUp() override {
+    Pg15UpgradeTest::SetUp();
+    if (IsTestSkipped()) {
+      return;
+    }
+
+    ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_sequence_cache_minval", "1"));
+    // As documented in the daemon->AddExtraFlag call, a restart is required to apply the flag.
+    // We must Shutdown before we can Restart.
+    cluster_->Shutdown();
+    ASSERT_OK(cluster_->Restart());
+
+    // Set catalog version to 10000 so that tservers detect a catalog version mismatch if they're
+    // contacted.
+    ASSERT_OK(ExecuteStatements(
+        {"SET yb_non_ddl_txn_for_sys_tables_allowed TO on",
+        "UPDATE pg_yb_catalog_version SET current_version = 10000, last_breaking_version = 10000 "
+        "WHERE db_oid = (SELECT oid FROM pg_database WHERE datname = 'yugabyte')",
+        "RESET yb_non_ddl_txn_for_sys_tables_allowed"}));
+    // Required to avoid a known issue documented in yb_catalog_version.sql
+    ASSERT_NOK(ExecuteStatement("SELECT 1 FROM pg_yb_catalog_version"));
+  }
+
+  void Take3Values(pgwrapper::PGConn& conn, const std::string& sequence, int& seq_val) {
+    for (int i = 0; i < 3; i++) {
+      const auto result = ASSERT_RESULT(
+          conn.FetchRow<pgwrapper::PGUint64>(Format("SELECT nextval('$0')", sequence)));
+      ASSERT_EQ(seq_val++, result);
+    }
+  }
+
+  void Add3Rows(pgwrapper::PGConn& conn, const std::string& sequence, int& seq_val) {
+    for (int i = 0; i < 3; i++) {
+      ASSERT_OK(conn.Execute(Format("INSERT INTO t_identity DEFAULT VALUES")));
+      const auto result = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT max(col) FROM t_identity"));
+      ASSERT_EQ(seq_val++, result);
+    }
+  }
+
+  const std::string kSequencePg11 = "seq_pg11";
+  const std::string kSequencePg15 = "seq_pg15";
+  int seq_val_pg11_ = 1;
+  int seq_val_pg15_ = 1;
+};
+
+TEST_F(Pg15UpgradeSequenceTest, Sequences) {
+  ASSERT_OK(ExecuteStatement(Format("CREATE SEQUENCE $0", kSequencePg11)));
+
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_NO_FATALS(Take3Values(conn, kSequencePg11, seq_val_pg11_));
+  }
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg15));
+    ASSERT_NO_FATALS(Take3Values(conn, kSequencePg11, seq_val_pg11_));
+  }
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg11));
+    ASSERT_NO_FATALS(Take3Values(conn, kSequencePg11, seq_val_pg11_));
+  }
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  // Take three values from a random tserver
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_NO_FATALS(Take3Values(conn, kSequencePg11, seq_val_pg11_));
+  }
+
+  ASSERT_OK(ExecuteStatement(Format("CREATE SEQUENCE $0 CACHE 1", kSequencePg15)));
+
+  // Take three values from a random tserver, twice (to validate caching on the new sequence)
+  for (int i = 0; i < 2; i++) {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_NO_FATALS(Take3Values(conn, kSequencePg11, seq_val_pg11_));
+    ASSERT_NO_FATALS(Take3Values(conn, kSequencePg15, seq_val_pg15_));
+  }
+}
+
+
+TEST_F(Pg15UpgradeSequenceTest, IdentityColumn) {
+  ASSERT_OK(ExecuteStatement("CREATE TABLE t_identity (col INT GENERATED ALWAYS AS IDENTITY)"));
+
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_NO_FATALS(Add3Rows(conn, kSequencePg11, seq_val_pg11_));
+  }
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg15));
+    ASSERT_NO_FATALS(Add3Rows(conn, kSequencePg11, seq_val_pg11_));
+  }
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg11));
+    ASSERT_NO_FATALS(Add3Rows(conn, kSequencePg11, seq_val_pg11_));
+  }
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  // Take three values from a random tserver
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_NO_FATALS(Add3Rows(conn, kSequencePg11, seq_val_pg11_));
+  }
 }
 }  // namespace yb

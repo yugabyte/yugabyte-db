@@ -922,13 +922,9 @@ bool MasterHeartbeatServiceImpl::ProcessCommittedConsensusState(
   // TS is removed from the config while it is remote bootstrapping. In this case, we must ignore
   // the heartbeats to avoid incorrectly adding this TS to the config in
   // UpdateTabletReplicaInLocalMemory.
-  bool found_ts_in_config = false;
-  for (const auto& peer : cstate.config().peers()) {
-    if (peer.permanent_uuid() == ts_desc->permanent_uuid()) {
-      found_ts_in_config = true;
-      break;
-    }
-  }
+  auto found_ts_in_config = std::ranges::any_of(
+      cstate.config().peers(),
+      [&ts_desc](const auto& peer) { return peer.permanent_uuid() == ts_desc->permanent_uuid(); });
   if (!found_ts_in_config) {
     LOG(WARNING) << Format("Ignoring heartbeat from tablet server that is not part of reported "
         "consensus config. ts_desc: $0, cstate: $1.", *ts_desc, cstate);
@@ -1199,38 +1195,22 @@ void MasterHeartbeatServiceImpl::UpdateTabletReplicasAfterConfigChange(
     }
     const auto& ts_desc = *ts_desc_result;
 
-    // Do not update replicas in the NOT_STARTED or BOOTSTRAPPING state (unless they are stale).
-    bool use_existing = false;
-    const TabletReplica* existing_replica = nullptr;
-    auto it = prev_rl->find(ts_desc->permanent_uuid());
-    if (it != prev_rl->end()) {
-      existing_replica = &it->second;
-    }
-    if (existing_replica && peer.permanent_uuid() != sender_uuid) {
-      // IsStarting returns true if state == NOT_STARTED or state == BOOTSTRAPPING.
-      use_existing = existing_replica->IsStarting() && !existing_replica->IsStale();
-    }
-    if (use_existing) {
-      InsertOrDie(replica_locations.get(), ts_desc->permanent_uuid(),
-          *existing_replica);
-    } else {
-      // The RaftGroupStatePB in the report is only applicable to the replica that is owned by the
-      // sender. Initialize the other replicas with an unknown state.
-      const RaftGroupStatePB replica_state =
-          (sender_uuid == ts_desc->permanent_uuid()) ? report.state() : RaftGroupStatePB::UNKNOWN;
+    const TabletReplica* existing_replica = FindOrNull(*prev_rl, ts_desc->permanent_uuid());
+    // The RaftGroupStatePB in the report is only applicable to the replica that is owned by the
+    // sender. Initialize the other replicas with an unknown state.
+    const RaftGroupStatePB replica_state =
+        (sender_uuid == ts_desc->permanent_uuid()) ? report.state() : RaftGroupStatePB::UNKNOWN;
 
-      auto replica = CreateNewReplicaForLocalMemory(
-          ts_desc, &consensus_state, report, replica_state);
-      auto result = replica_locations.get()->insert({ts_desc->id(), replica});
-      LOG_IF(FATAL, !result.second) << "duplicate uuid: " << ts_desc->id();
-      if (existing_replica) {
-        result.first->second.UpdateDriveInfo(existing_replica->drive_info);
-        result.first->second.UpdateLeaderLeaseInfo(existing_replica->leader_lease_info);
-      }
+    auto replica = CreateNewReplicaForLocalMemory(ts_desc, &consensus_state, report, replica_state);
+    if (existing_replica) {
+      replica.UpdateDriveInfo(existing_replica->drive_info);
+      replica.UpdateLeaderLeaseInfo(existing_replica->leader_lease_info);
     }
+    auto result = replica_locations.get()->insert({ts_desc->id(), replica});
+    LOG_IF(FATAL, !result.second) << "duplicate uuid: " << ts_desc->id();
   }
 
-  // Update the local tablet replica set. This deviates from persistent state during bootstrapping.
+  // Update the local tablet replica set.
   catalog_manager_->SetTabletReplicaLocations(tablet, replica_locations);
 }
 
@@ -1308,7 +1288,7 @@ void MasterHeartbeatServiceImpl::ProcessTabletMetadata(
     return;
   }
   auto& tablet = *tablet_result;
-  MicrosTime ht_lease_exp = 0;
+  MicrosTime new_ht_lease_exp = 0;
   uint64 new_heartbeats_without_leader_lease = 0;
   consensus::LeaderLeaseStatus leader_lease_status =
       consensus::LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
@@ -1322,13 +1302,20 @@ void MasterHeartbeatServiceImpl::ProcessTabletMetadata(
       leader_lease_status = leader_info.leader_lease_status();
       leader_lease_info_initialized = true;
       if (leader_info.leader_lease_status() == consensus::LeaderLeaseStatus::HAS_LEASE) {
-        ht_lease_exp = leader_info.ht_lease_expiration();
+        auto ht_lease_exp = leader_info.ht_lease_expiration();
+        auto current_ht_lease_exp = existing_leader_lease_info->ht_lease_expiration;
         // If the reported ht lease from the leader is expired for more than
         // FLAGS_maximum_tablet_leader_lease_expired_secs, the leader shouldn't be treated
         // as a valid leader.
-        if (ht_lease_exp >= existing_leader_lease_info->ht_lease_expiration &&
+        // If the tablet has been changed from RF1 to any RF>1, the newly reported ht_lease_exp
+        // is always less than that reported when it was RF1 (kInfiniteHybridTimeLeaseExpiration).
+        // We should also treat such ht_lease_exp as valid.
+        // See https://github.com/yugabyte/yugabyte-db/issues/24575.
+        if ((ht_lease_exp >= current_ht_lease_exp ||
+                 current_ht_lease_exp == consensus::kInfiniteHybridTimeLeaseExpiration) &&
             !IsHtLeaseExpiredForTooLong(
                 master_->clock()->Now().GetPhysicalValueMicros(), ht_lease_exp)) {
+          new_ht_lease_exp = ht_lease_exp;
           tablet->UpdateLastTimeWithValidLeader();
         }
       } else {
@@ -1340,7 +1327,7 @@ void MasterHeartbeatServiceImpl::ProcessTabletMetadata(
   TabletLeaderLeaseInfo leader_lease_info{
         leader_lease_info_initialized,
         leader_lease_status,
-        ht_lease_exp,
+        new_ht_lease_exp,
         new_heartbeats_without_leader_lease};
   TabletReplicaDriveInfo drive_info{
         storage_metadata.sst_file_size(),

@@ -363,8 +363,10 @@ ColumnFamilyData::ColumnFamilyData(
       log_number_(0),
       column_family_set_(column_family_set),
       pending_flush_(false),
-      pending_compaction_(false),
       prev_compaction_needed_bytes_(0) {
+  for (auto& num_pending_compactions : num_pending_compactions_) {
+    num_pending_compactions = 0;
+  }
   Ref();
 
   // Convert user defined table properties collector factories to internal ones.
@@ -442,7 +444,11 @@ ColumnFamilyData::~ColumnFamilyData() {
   // It would be wrong if this ColumnFamilyData is in flush_queue_ or
   // compaction_queue_ and we destroyed it
   DCHECK(!pending_flush_);
-  DCHECK(!pending_compaction_);
+  for (size_t idx = 0; idx < num_pending_compactions_.size(); ++idx) {
+    LOG_IF(DFATAL, num_pending_compactions_[idx] != 0)
+        << "Expected no " << yb::AsString(CompactionSizeKind(idx))
+        << " pending compactions, but got: " << num_pending_compactions_[idx];
+  }
 
   if (super_version_ != nullptr) {
     // Release SuperVersion reference kept in ThreadLocalPtr.
@@ -556,6 +562,33 @@ int GetL0ThresholdSpeedupCompaction(int level0_file_num_compaction_trigger,
 }
 }  // namespace
 
+void ColumnFamilyData::PendingCompactionAdded(CompactionSizeKind compaction_size_kind) {
+  num_pending_compactions_[yb::to_underlying(compaction_size_kind)].fetch_add(1);
+}
+
+void ColumnFamilyData::PendingCompactionRemoved(CompactionSizeKind compaction_size_kind) {
+  if (num_pending_compactions_[yb::to_underlying(compaction_size_kind)].fetch_sub(1) == 0) {
+    LOG_WITH_FUNC(DFATAL) << ioptions_.info_log->Prefix() << "No pending "
+                          << yb::AsString(compaction_size_kind) << " compactions";
+    num_pending_compactions_[yb::to_underlying(compaction_size_kind)].fetch_add(1);
+  }
+}
+
+void ColumnFamilyData::PendingCompactionSizeKindUpdated(
+    CompactionSizeKind from, CompactionSizeKind to) {
+  PendingCompactionRemoved(from);
+  PendingCompactionAdded(to);
+}
+
+bool ColumnFamilyData::pending_compaction() const {
+  for (auto& num_pending_compactions : num_pending_compactions_) {
+    if (num_pending_compactions > 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void ColumnFamilyData::RecalculateWriteStallConditions(
       const MutableCFOptions& mutable_cf_options) {
   Version* current_version = current();
@@ -631,10 +664,10 @@ void ColumnFamilyData::RecalculateWriteStallConditions(
           InternalStats::LEVEL0_SLOWDOWN_WITH_COMPACTION, 1);
     }
     RLOG(InfoLogLevel::WARN_LEVEL, ioptions_.info_log,
-        "[%s] Stalling writes because we have %d level-0 files "
+        "[%s] Stalling writes because we have %d level-0 files (trigger: %d) "
         "rate %" PRIu64,
         name_.c_str(), vstorage->l0_delay_trigger_count(),
-        write_controller->delayed_write_rate());
+        mutable_cf_options.level0_slowdown_writes_trigger, write_controller->delayed_write_rate());
   } else if (mutable_cf_options.soft_pending_compaction_bytes_limit > 0 &&
              vstorage->estimated_compaction_needed_bytes() >=
                  mutable_cf_options.soft_pending_compaction_bytes_limit) {

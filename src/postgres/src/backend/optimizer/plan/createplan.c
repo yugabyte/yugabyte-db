@@ -3909,6 +3909,9 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 		 (plan->operation == CMD_INSERT && plan->onConflictAction == ONCONFLICT_UPDATE)))
 	{
 		RangeTblEntry *rte = NULL;
+		Bitmapset *updatedCols = NULL;
+		int rt_index;
+
 		if (!root->simple_rel_array_size)
 		{
 			/*
@@ -3918,6 +3921,7 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 			 * information about the ON CONFLICT DO UPDATE.
 			 */
 			rte = lfirst(list_head(root->parse->rtable));
+			rt_index = 0;
 		}
 		else
 		{
@@ -3928,7 +3932,7 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 			 * This also handles situations when the modifyTable is being run on
 			 * a view rather than a relation.
 			 */
-			int rt_index = lfirst_int(list_head(plan->resultRelations));
+			rt_index = lfirst_int(list_head(plan->resultRelations));
 			rte = root->simple_rte_array[rt_index];
 		}
 
@@ -3949,8 +3953,14 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 		 * TODO(kramanathan): Add support for partitioned tables. (#23348)
 		 */
 		if (rel->rd_rel->relkind == RELKIND_RELATION)
+		{
+			updatedCols = bms_add_members(
+				get_dependent_generated_columns(root, rt_index, rte->updatedCols),
+				rte->updatedCols);
 			plan->yb_update_affected_entities =
-				YbComputeAffectedEntitiesForRelation(plan, rel, rte->updatedCols);
+				YbComputeAffectedEntitiesForRelation(plan, rel, updatedCols);
+			bms_free(updatedCols);
+		}
 
 		RelationClose(rel);
 	}
@@ -9097,12 +9107,17 @@ make_modifytable(PlannerInfo *root, Plan *subplan,
 	 * resultRelations contains more than one entry for partitioned relations
 	 * and ybUseScanTupleInUpdate is true for all partitioned relations.
 	 */
-	RangeTblEntry *rte = root->simple_rte_array[linitial_int(resultRelations)];
+	Index rti = linitial_int(resultRelations);
+	RangeTblEntry *rte = root->simple_rte_array[rti];
 	Relation relation = RelationIdGetRelation(rte->relid);
+	Bitmapset *updatedCols = bms_add_members(
+		get_dependent_generated_columns(root, rti, rte->updatedCols),
+		rte->updatedCols);
 	node->ybUseScanTupleInUpdate = YbUseScanTupleInUpdate(
-		relation, rte->updatedCols, root->parse->returningList);
+		relation, updatedCols, root->parse->returningList);
 	node->ybHasWholeRowAttribute = YbUseWholeRowJunkAttribute(
-		relation, rte->updatedCols, operation, root->parse->returningList);
+		relation, updatedCols, operation, root->parse->returningList);
+	bms_free(updatedCols);
 	RelationClose(relation);
 	return node;
 }

@@ -76,6 +76,7 @@ set(MASTER_SRCS
   catalog_entity_info.cc
   catalog_entity_tasks.cc
   catalog_loaders.cc
+  catalog_loading_state.cc
   catalog_manager.cc
   catalog_manager_bg_tasks.cc
   catalog_manager_ext.cc

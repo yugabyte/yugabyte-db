@@ -62,8 +62,7 @@ public class ModifyBlackList extends UniverseTaskBase {
   public String getName() {
     return super.getName()
         + "("
-        + taskParams().getUniverseUUID()
-        + ", numAddNodes="
+        + "numAddNodes="
         + (CollectionUtils.isEmpty(taskParams().addNodes) ? 0 : taskParams().addNodes.size())
         + ", numRemoveNodes="
         + (CollectionUtils.isEmpty(taskParams().removeNodes) ? 0 : taskParams().removeNodes.size())

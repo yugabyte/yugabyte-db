@@ -34,3 +34,69 @@ else
     echo "{{ yb_home_dir }} does not exist"
     add_result "Yugabyte Home Directory Existence Check" "FAIL" "{{ yb_home_dir }} does not exist"
 fi
+
+is_subdirectory() {
+  local dir="$1"
+  local parent="$2"
+
+  # Resolve the absolute canonical paths
+  dir=$(realpath -m "$dir")
+  parent=$(realpath -m "$parent")
+
+  # Append a trailing slash to the parent directory for accurate matching
+  case "$dir/" in
+    "$parent/"* ) return 0 ;;  # dir is inside parent
+    * ) return 1 ;;            # dir is not inside parent
+  esac
+}
+
+yb_home_dir={{ yb_home_dir }}
+threshold=49 #Gigabytes
+# Convert the space-separated string to an array
+mount_points="{{ mount_points | default('') | trim }}"
+IFS=' ' read -ra mount_points_array <<< "$mount_points"
+# Verify each mount point
+for mount_point in "${mount_points_array[@]}"; do
+    if is_subdirectory "$mount_point" "$yb_home_dir"; then
+        message="Mountpoint $mount_point is inside home directory $yb_home_dir"
+        add_result "home directory check" "FAIL" "$message"
+    fi
+    if [ -d "$mount_point" ]; then
+        # Check if the directory is owned by yugabyte or has 7 (rwx) permissions
+        owner_check=$(stat -c '%U' "$mount_point")
+        perm_check=$(stat -c '%A' "$mount_point" | cut -c 2-4)
+
+        if [ "$owner_check" == "{{ yb_user }}" ] || [[ "$perm_check" == "rwx" ]]; then
+            result="PASS"
+            message="Directory $mount_point is owned by {{ yb_user }} or has '7' (rwx) permissions."
+            echo "[PASS] $message"
+        else
+            result="FAIL"
+            message="Directory $mount_point is not owned by {{ yb_user }} and lacks '7' (rwx) permissions."
+            echo "[FAIL] $message"
+            any_fail=1
+        fi
+    else
+        result="FAIL"
+        message="Directory $mount_point does not exist."
+        echo "[FAIL] $message"
+        any_fail=1
+    fi
+    add_result "$mount_point Ownership/Permission Check" "$result" "$message"
+
+    if [ -d "$mount_point" ]; then
+        # Get available disk space in gigabytes
+        free_space_gb=$(df -BG --output=avail "$mount_point" | tail -n 1 | tr -d 'G ')
+        if [ "$free_space_gb" -gt "$threshold" ]; then
+            result="PASS"
+            message="Sufficient disk space available: ${free_space_gb}G"
+            echo "[PASS] $message"
+        else
+            result="FAIL"
+            message="Insufficient disk space: ${free_space_gb}G available, ${threshold}G required."
+            echo "[FAIL] $message"
+            any_fail=1
+        fi
+        add_result "$mount_point Free Space Check" "$result" "$message"
+    fi
+done

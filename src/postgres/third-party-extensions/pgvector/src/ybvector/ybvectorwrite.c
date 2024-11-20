@@ -86,6 +86,7 @@ bindVectorIndexOptions(YBCPgStatement handle,
 	/* Assuming vector is the first att */;
 	options.dimensions = TupleDescAttr(indexTupleDesc, 0)->atttypmod;
 	Assert(options.dimensions > 0);
+	options.attnum = indexInfo->ii_IndexAttrNumbers[0];
 
 	YBCPgCreateIndexSetVectorOptions(handle, &options);
 }

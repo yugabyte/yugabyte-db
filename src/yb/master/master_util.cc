@@ -235,10 +235,14 @@ Result<bool> TableMatchesIdentifier(
     InvalidArgument, "Wrong table identifier format: $0", table_identifier);
 }
 
-Status SetupError(MasterErrorPB* error, const Status& s) {
+Status SetupError(MasterErrorPB* error, MasterErrorPB::Code code, const Status& s) {
   StatusToPB(s, error->mutable_status());
-  error->set_code(MasterError::ValueFromStatus(s).get_value_or(MasterErrorPB::UNKNOWN_ERROR));
+  error->set_code(MasterError::ValueFromStatus(s).get_value_or(code));
   return s;
+}
+
+Status SetupError(MasterErrorPB* error, const Status& s) {
+  return SetupError(error, MasterErrorPB::UNKNOWN_ERROR, s);
 }
 
 bool IsBlacklisted(const ServerRegistrationPB& registration, const BlacklistSet& blacklist) {

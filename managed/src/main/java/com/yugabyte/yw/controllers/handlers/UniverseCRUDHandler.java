@@ -962,6 +962,12 @@ public class UniverseCRUDHandler {
               primaryIntent.defaultServiceScopeAZ = false;
             }
           }
+          if (KubernetesUtil.isNonRestartGflagsUpgradeSupported(
+              primaryCluster.userIntent.ybSoftwareVersion)) {
+            universe.updateConfig(
+                ImmutableMap.of(
+                    Universe.K8S_SET_MASTER_EXISTING_UNIVERSE_GFLAG, Boolean.toString(true)));
+          }
           // Validate service endpoints
           try {
             KubernetesUtil.validateServiceEndpoints(taskParams, universe.getConfig());

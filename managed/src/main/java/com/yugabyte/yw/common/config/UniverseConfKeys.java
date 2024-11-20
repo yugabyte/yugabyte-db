@@ -107,7 +107,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "YB Upgrade Allow Downgrades",
           "TODO - Leave this for feature owners to fill in",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> singleConnectionYsqlUpgrade =
       new ConfKeyInfo<>(
           "yb.upgrade.single_connection_ysql_upgrade",
@@ -161,7 +161,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Amount of memory to limit the postgres process to via the ysql cgroup. "
               + "DEPRECATED for now - use 'cgroupSize' in userIntent",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 
   @Deprecated
   public static final ConfKeyInfo<Integer> dbMemPostgresReadReplicaMaxMemMb =
@@ -176,7 +176,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + ">0 set max memory of postgres to this value for read replicas."
               + "DEPRECATED for now - use 'cgroupSize' in userIntent",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 
   public static final ConfKeyInfo<Long> dbMemAvailableLimit =
       new ConfKeyInfo<>(
@@ -1285,7 +1285,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "XCluster Sync on Universe",
           "Enable automatic synchronization of XCluster on Universe",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> autoMasterFailoverCooldown =
       new ConfKeyInfo<>(
           "yb.auto_master_failover.cooldown",

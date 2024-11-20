@@ -246,6 +246,31 @@ Status XClusterClient::IsBootstrapRequired(
       &yb_client_, deadline, replication_group_id, namespace_id, std::move(callback));
 }
 
+Status XClusterClient::EnsureSequenceUpdatesAreInWal(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const std::vector<NamespaceId>& namespace_ids, CoarseTimePoint deadline) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Invalid Replication group ID");
+  SCHECK(!namespace_ids.empty(), InvalidArgument, "No Namespace IDs provided");
+  for (const auto& namespace_id : namespace_ids) {
+    SCHECK(!namespace_id.empty(), InvalidArgument, "Invalid empty Namespace ID provided");
+  }
+
+  master::XClusterEnsureSequenceUpdatesAreInWalRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  for (const auto& namespace_id : namespace_ids) {
+    req.add_namespace_ids(namespace_id);
+  }
+
+  master::XClusterEnsureSequenceUpdatesAreInWalResponsePB resp;
+  RETURN_NOT_OK(yb_client_.data_->SyncLeaderMasterRpc(
+      deadline, req, &resp, "XClusterEnsureSequenceUpdatesAreInWal",
+      &master::MasterReplicationProxy::XClusterEnsureSequenceUpdatesAreInWalAsync));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
 Status XClusterClient::RemoveNamespaceFromOutboundReplicationGroup(
     const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
     const std::string& target_master_addresses) {

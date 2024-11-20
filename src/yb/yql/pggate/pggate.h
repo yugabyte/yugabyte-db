@@ -322,7 +322,7 @@ class PgApiImpl {
 
   Status AddSplitBoundary(PgStatement *handle, PgExpr **exprs, int expr_count);
 
-  Status ExecCreateTable(PgStatement *handle, const char **notice_msg);
+  Status ExecCreateTable(PgStatement *handle);
 
   Status NewAlterTable(const PgObjectId& table_id,
                        PgStatement **handle);
@@ -368,7 +368,7 @@ class PgApiImpl {
   Result<YBCPgColumnInfo> GetColumnInfo(YBCPgTableDesc table_desc,
                                         int16_t attr_number);
 
-  Status DmlModifiesRow(PgStatement *handle, bool *modifies_row);
+  Result<bool> DmlModifiesRow(PgStatement* handle);
 
   Status SetIsSysCatalogVersionChange(PgStatement *handle);
 
@@ -408,7 +408,7 @@ class PgApiImpl {
   Status CreateIndexAddSplitRow(PgStatement *handle, int num_cols,
                                 YBCPgTypeEntity **types, uint64_t *data);
 
-  Status ExecCreateIndex(PgStatement *handle, const char** notice_msg);
+  Status ExecCreateIndex(PgStatement *handle);
 
   Status NewDropIndex(const PgObjectId& index_id,
                       bool if_exist,
@@ -473,7 +473,7 @@ class PgApiImpl {
   Status DmlBindColumnCondIsNotNull(PgStatement *handle, int attr_num);
   Status DmlBindRow(YBCPgStatement handle, uint64_t ybctid, YBCBindColumn* columns, int count);
 
-  void DmlBindHashCode(
+  Status DmlBindHashCode(
       PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end);
 
   Status DmlBindRange(YBCPgStatement handle,
@@ -719,6 +719,18 @@ class PgApiImpl {
       const PgExplicitRowLockParams& params, bool is_region_local,
       PgExplicitRowLockErrorInfo& error_info);
   Status FlushExplicitRowLockIntents(PgExplicitRowLockErrorInfo& error_info);
+
+  // INSERT ... ON CONFLICT batching ---------------------------------------------------------------
+  Status AddInsertOnConflictKey(
+      PgOid table_id, const Slice& ybctid, const YBCPgInsertOnConflictKeyInfo& info);
+  YBCPgInsertOnConflictKeyState InsertOnConflictKeyExists(PgOid table_id, const Slice& ybctid);
+  Result<YBCPgInsertOnConflictKeyInfo> DeleteInsertOnConflictKey(
+      PgOid table_id, const Slice& ybctid);
+  Result<YBCPgInsertOnConflictKeyInfo> DeleteNextInsertOnConflictKey();
+  uint64_t GetInsertOnConflictKeyCount();
+  void AddInsertOnConflictKeyIntent(PgOid table_id, const Slice& ybctid);
+  void ClearInsertOnConflictCache();
+  //------------------------------------------------------------------------------------------------
 
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);

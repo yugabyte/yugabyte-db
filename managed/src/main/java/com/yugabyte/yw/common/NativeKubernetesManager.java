@@ -237,6 +237,12 @@ public class NativeKubernetesManager extends KubernetesManager {
   }
 
   @Override
+  public void PauseAllPodsInRelease(
+      Map<String, String> config, String universePrefix, String namespace, boolean newNamingStyle) {
+    throw new UnsupportedOperationException("Unimplemented method 'resourceExists'");
+  }
+
+  @Override
   public void updateNumNodes(
       Map<String, String> config,
       String universePrefix,

@@ -1,3 +1,5 @@
+SET yb_explain_hide_non_deterministic_fields TO true;
+
 CREATE TABLE ab_tab (a int, b int);
 INSERT INTO ab_tab SELECT g, g + 10 FROM generate_series(1, 10) g;
 
@@ -25,6 +27,25 @@ SELECT * FROM ab_tab ORDER BY a, b;
 -- Reset.
 ROLLBACK;
 
+--- DO UPDATE with existing row
+BEGIN;
+INSERT INTO ab_tab VALUES (generate_series(-3, 13)) ON CONFLICT (a) DO UPDATE SET b = ab_tab.a + 1;
+SELECT * FROM ab_tab ORDER BY a, b;
+-- Reset.
+ROLLBACK;
+
+--- DO UPDATE with RETURNING
+BEGIN;
+-- Column b should be returned as NULL for rows a = [-3, 0]
+INSERT INTO ab_tab VALUES (generate_series(-3, 5)) ON CONFLICT (a) DO UPDATE SET b = EXCLUDED.a RETURNING b, (b % 5);
+-- Column b should be returned as a + 1 for rows a = [6, 10] and NULL for a = [11, 13]
+INSERT INTO ab_tab AS old VALUES (generate_series(6, 13)) ON CONFLICT (a) DO UPDATE SET b = old.a + 1 RETURNING a, (b % 5);
+SELECT * FROM ab_tab ORDER BY a, b;
+ROLLBACK;
+
+--- Accessing the EXCLUDED row from the RETURNING clause should be disallowed
+INSERT INTO ab_tab VALUES (generate_series(-3, 13)) ON CONFLICT (a) DO UPDATE SET b = EXCLUDED.a RETURNING EXCLUDED.b, b, (b % 5);
+
 --- Multiple arbiter indexes
 CREATE UNIQUE INDEX NONCONCURRENTLY br_idx ON ab_tab (b ASC);
 -- No constraint specification.
@@ -37,6 +58,13 @@ SELECT * FROM ab_tab WHERE a < 1 OR a > 10 ORDER BY a, b;
 INSERT INTO ab_tab VALUES (2, 2) ON CONFLICT (a) DO NOTHING;
 INSERT INTO ab_tab VALUES (2, 2) ON CONFLICT (b) DO NOTHING;
 SELECT * FROM ab_tab WHERE a < 1 OR a > 10 ORDER BY a, b;
+
+--- Multiple unique indexes but single arbiter index
+INSERT INTO ab_tab VALUES (21, 21), (22, 23);
+-- (24, 21) conflicts on b but not a and should produce a unique constraint violation.
+INSERT INTO ab_tab VALUES (24, 21) ON CONFLICT (a) DO UPDATE SET b = EXCLUDED.b;
+-- (22, 22) conflicts on a but not b and should produce a unique constraint violation.
+INSERT INTO ab_tab VALUES (22, 22) ON CONFLICT (b) DO UPDATE SET b = EXCLUDED.b;
 -- Reset.
 DELETE FROM ab_tab WHERE a < 1 OR a > 10;
 DROP INDEX ah_idx;
@@ -82,25 +110,98 @@ INSERT INTO ab_tab VALUES (55, 55), (66, 66), (77, 77), (88, 88) ON CONFLICT DO 
 SELECT * FROM ab_tab WHERE a < 1 OR a > 10 ORDER BY a, b;
 -- Reset.
 DELETE FROM ab_tab WHERE a < 1 OR a > 10;
+
+--- Index predicate matching
+CREATE UNIQUE INDEX NONCONCURRENTLY bfull_idx ON ab_tab (b);
+BEGIN;
+INSERT INTO ab_tab VALUES (101, 101), (102, 102);
+-- Index predicate should satisfy both the partial index (b1_idx) as well as the full index (bfull_idx).
+EXPLAIN (COSTS OFF) INSERT INTO ab_tab VALUES (101, 101), (201, 201) ON CONFLICT (b) WHERE a % 10 = 1 DO NOTHING;
+INSERT INTO ab_tab VALUES (101, 101), (201, 201) ON CONFLICT (b) WHERE a % 10 = 1 DO NOTHING RETURNING *, a % 10 AS modulo;
+-- Index predicate should satisfy b1_idx and bfull_idx but the inserted row should satisfy only bfull_idx.
+EXPLAIN (COSTS OFF) INSERT INTO ab_tab VALUES (102, 102), (202, 202) ON CONFLICT (b) WHERE a % 10 = 1 DO NOTHING;
+INSERT INTO ab_tab VALUES (102, 102) ON CONFLICT (b) WHERE a % 10 = 1 DO NOTHING RETURNING *, a % 10 AS modulo; -- should return nothing
+INSERT INTO ab_tab VALUES (202, 202) ON CONFLICT (b) WHERE a % 10 = 1 DO NOTHING RETURNING *, a % 10 AS modulo; -- should return row
+SELECT * FROM ab_tab WHERE a < 1 OR a > 10 ORDER BY a, b;
+ROLLBACK;
+-- Exclude the full index by specifying the partial index as a constraint.
+-- Unique constraints cannot be defined on partial indexes.
+CREATE UNIQUE INDEX NONCONCURRENTLY b3_idx ON ab_tab (b) WHERE a % 10 = 3;
+ALTER TABLE ab_tab ADD CONSTRAINT b3_idx_constr UNIQUE USING INDEX b3_idx;
+DROP INDEX b3_idx;
+DROP INDEX bfull_idx;
+INSERT INTO ab_tab VALUES (101, 101), (102, 102);
+BEGIN;
+-- Index predicate corresponding to b1_idx does not satisfy the inserted row
+INSERT INTO ab_tab VALUES (103, 103) ON CONFLICT (b) WHERE a % 10 = 1 DO NOTHING RETURNING *, a % 10 AS modulo;
+-- However, a different partial index and should produce a unique constraint violation.
+INSERT INTO ab_tab VALUES (102, 102) ON CONFLICT (b) WHERE a % 10 = 1 DO NOTHING;
+ROLLBACK;
+-- Reset.
+DELETE FROM ab_tab WHERE a < 1 OR a > 10;
 DROP INDEX b1_idx;
 DROP INDEX b2_idx;
+
+--- Defaults
+CREATE TABLE ioc_defaults (a INT, b INT DEFAULT 42, c INT DEFAULT NULL);
+INSERT INTO ioc_defaults (a) VALUES (1);
+CREATE UNIQUE INDEX NONCONCURRENTLY ioc_defaults_b_idx ON ioc_defaults (b);
+INSERT INTO ioc_defaults VALUES (1) ON CONFLICT DO NOTHING RETURNING *;
+INSERT INTO ioc_defaults VALUES (1), (1) ON CONFLICT (b) DO UPDATE SET b = ioc_defaults.b + 1 RETURNING *;
+-- Not modifying the default value should produce an error.
+-- TODO(kramanathan): Uncomment when RETURNING is supported by batch insert on conflict.
+-- INSERT INTO ioc_defaults VALUES (1), (1) ON CONFLICT (b) DO UPDATE SET c = ioc_defaults.a + 1 RETURNING *;
+SELECT * FROM ioc_defaults ORDER BY b, c;
+DROP INDEX ioc_defaults_b_idx;
+TRUNCATE ioc_defaults;
 
 --- Nulls
 -- NULLS DISTINCT
 CREATE UNIQUE INDEX NONCONCURRENTLY ah_idx ON ab_tab (a HASH);
 INSERT INTO ab_tab VALUES (null, null);
 INSERT INTO ab_tab VALUES (null, null) ON CONFLICT DO NOTHING;
+-- Multiple rows with NULL values should semantically be treated as distinct rows.
+INSERT INTO ab_tab VALUES (null, 1), (null, 2) ON CONFLICT DO NOTHING;
+INSERT INTO ab_tab VALUES (null, 1), (null, 2) ON CONFLICT (a) DO UPDATE SET b = EXCLUDED.b;
 SELECT * FROM ab_tab WHERE a IS NULL ORDER BY b;
+-- Similarly, columns with default NULL values should be treated as distinct rows.
+CREATE UNIQUE INDEX NONCONCURRENTLY ioc_defaults_bc_idx ON ioc_defaults (b, c);
+INSERT INTO ioc_defaults (a) VALUES (1);
+INSERT INTO ioc_defaults VALUES (1), (1) ON CONFLICT (b, c) DO UPDATE SET a = EXCLUDED.a;
+SELECT * FROM ioc_defaults ORDER BY b, c;
 -- Reset.
 DELETE FROM ab_tab WHERE a IS null;
+DROP INDEX ioc_defaults_bc_idx;
+TRUNCATE ioc_defaults;
+
 -- NULLS NOT DISTINCT
 DROP INDEX ah_idx;
 CREATE UNIQUE INDEX NONCONCURRENTLY ah_idx ON ab_tab (a HASH) NULLS NOT DISTINCT;
-/* TODO(jason): uncomment when NULLS NOT DISTINCT is supported
+INSERT INTO ab_tab VALUES (123, null), (456, null) ON CONFLICT DO NOTHING;
 INSERT INTO ab_tab VALUES (null, null);
 INSERT INTO ab_tab VALUES (null, null) ON CONFLICT DO NOTHING;
+-- Multiple rows with NULL values should semantically be treated as the same logical row.
+INSERT INTO ab_tab VALUES (null, 1), (null, 2) ON CONFLICT DO NOTHING;
+INSERT INTO ab_tab VALUES (null, 1), (null, 2) ON CONFLICT (a) DO UPDATE SET b = EXCLUDED.b;
 SELECT * FROM ab_tab WHERE a IS NULL ORDER BY b;
-*/
+DELETE FROM ab_tab;
+-- Similarly, columns with default NULL values should be treated as the same logical row.
+CREATE UNIQUE INDEX NONCONCURRENTLY ioc_defaults_bc_idx ON ioc_defaults (b, c) NULLS NOT DISTINCT;
+INSERT INTO ioc_defaults VALUES (1);
+INSERT INTO ioc_defaults VALUES (2), (3) ON CONFLICT (b, c) DO UPDATE SET a = EXCLUDED.a;
+SELECT * FROM ioc_defaults ORDER BY b, c;
+-- Reset.
+DROP INDEX ioc_defaults_bc_idx;
+TRUNCATE ioc_defaults;
+
+-- Index key attributes > 1
+CREATE TABLE ab_tab2 (a int, b int);
+CREATE UNIQUE INDEX NONCONCURRENTLY ah_idx2 ON ab_tab2 ((a, b) HASH) NULLS NOT DISTINCT;
+INSERT INTO ab_tab2 VALUES (123, null), (456, null) ON CONFLICT DO NOTHING;
+INSERT INTO ab_tab2 VALUES (null, null);
+INSERT INTO ab_tab2 VALUES (123, null), (456, null), (null, 5), (null, null) ON CONFLICT DO NOTHING;
+SELECT * FROM ab_tab2 ORDER BY a, b;
+DELETE FROM ab_tab2;
 
 --- Partitioned table
 CREATE TABLE pp (i serial, j int, UNIQUE (j)) PARTITION BY RANGE (j);
@@ -119,6 +220,18 @@ SELECT * FROM pp ORDER BY i;
 ABORT;
 INSERT INTO pp (j) SELECT g * 7 % 40 FROM generate_series(1, 40) g ON CONFLICT (j) DO UPDATE SET i = EXCLUDED.i + 100;
 SELECT * FROM pp ORDER BY i % 100;
+
+--- Partitioned table with TEXT partition key
+CREATE TABLE staff (id SERIAL, name TEXT, department TEXT, PRIMARY KEY (name HASH, department ASC)) PARTITION BY LIST (department);
+CREATE TABLE staff_sales PARTITION OF staff FOR VALUES IN ('Sales');
+CREATE TABLE staff_engineering PARTITION OF staff FOR VALUES IN ('Engineering');
+CREATE TABLE staff_finance PARTITION OF staff FOR VALUES IN ('Finance');
+INSERT INTO staff (name, department) VALUES ('Eve Adams', 'Sales'), ('Frank Green', 'Engineering');
+INSERT INTO staff (name, department) VALUES ('Eve Adams', 'Sales'), ('Frank Green', 'Engineering') ON CONFLICT (name, department) DO NOTHING;
+-- Cross-partition updates should be disallowed.
+INSERT INTO staff (name, department) VALUES ('Eve Adams', 'Sales'), ('Frank Green', 'Engineering') ON CONFLICT (name, department) DO UPDATE SET department = 'Finance';
+INSERT INTO staff (name, department) VALUES ('Eve Adams', 'Sales'), ('Gwen Smith', 'Engineering') ON CONFLICT (name, department) DO UPDATE SET name = staff.name || ' (CONFLICT)';
+SELECT name, department FROM staff ORDER BY id;
 
 --- Complex types
 CREATE TYPE complex_enum AS ENUM ('bob', 'cob', 'hob');
@@ -155,27 +268,74 @@ CREATE TABLE varlen (t text, b bytea GENERATED ALWAYS AS (bytea(t)) STORED, UNIQ
 CREATE INDEX NONCONCURRENTLY ON varlen (b);
 INSERT INTO varlen VALUES ('a');
 INSERT INTO varlen VALUES ('a'), ('a') ON CONFLICT (t) DO UPDATE SET t = 'b';
+INSERT INTO varlen VALUES ('a'), ('a') ON CONFLICT (t) DO UPDATE SET t = EXCLUDED.t || 'z';
+INSERT INTO varlen VALUES ('az'), ('az') ON CONFLICT (t) DO UPDATE SET t = varlen.t || 'z';
+SELECT * FROM varlen ORDER BY t;
+-- Reset.
+TRUNCATE varlen;
+
+--- Generated column as arbiter index
+CREATE UNIQUE INDEX NONCONCURRENTLY ON varlen (b);
+INSERT INTO varlen VALUES ('a');
+INSERT INTO varlen VALUES ('a'), ('a') ON CONFLICT (b) DO UPDATE SET t = 'b';
+INSERT INTO varlen VALUES ('a'), ('a') ON CONFLICT (b) DO UPDATE SET t = EXCLUDED.t || 'z';
+INSERT INTO varlen VALUES ('az'), ('az') ON CONFLICT (b) DO UPDATE SET t = varlen.t || 'z';
+
 SELECT * FROM varlen ORDER BY t;
 
---- ON CONFLICT DO UPDATE edge cases
+--- ON CONFLICT DO UPDATE edge cases with PRIMARY KEY as arbiter index
 CREATE TABLE ioc (i int, PRIMARY KEY (i ASC));
 BEGIN;
+-- INSERT i=1, UPDATE i=1 to 21
 INSERT INTO ioc VALUES (1), (1) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + 20;
 ROLLBACK;
 INSERT INTO ioc VALUES (1);
 BEGIN;
+-- UPDATE i=1 to 21, INSERT i=1
 INSERT INTO ioc VALUES (1), (1) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + 20;
 TABLE ioc;
 ROLLBACK;
 BEGIN;
+-- INSERT i=20, UPDATE i=20 to 40
 INSERT INTO ioc VALUES (20), (20) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + 20;
 ROLLBACK;
 BEGIN;
+-- INSERT i=20, UPDATE i=1 to 20
 INSERT INTO ioc VALUES (20), (1) ON CONFLICT (i) DO UPDATE SET i = 20;
 ROLLBACK;
 BEGIN;
+-- UPDATE i=1 to 20, UPDATE i=20 to 20
 INSERT INTO ioc VALUES (1), (20) ON CONFLICT (i) DO UPDATE SET i = 20;
 ROLLBACK;
+-- Reset.
+DROP TABLE ioc;
+
+--- ON CONFLICT DO UPDATE edge cases with secondary index as arbiter index
+CREATE TABLE ioc (i TEXT, j INT UNIQUE);
+BEGIN;
+-- INSERT j=1, UPDATE j=1 to 21
+INSERT INTO ioc VALUES ('row-1', 1), ('row-2', 1) ON CONFLICT (j) DO UPDATE SET j = EXCLUDED.j + 20;
+ROLLBACK;
+INSERT INTO ioc VALUES ('row-1', 1);
+BEGIN;
+-- UPDATE j=1 to 21, INSERT j=1
+INSERT INTO ioc VALUES ('row-1', 1), ('row-2', 1) ON CONFLICT (j) DO UPDATE SET j = EXCLUDED.j + 20;
+SELECT * FROM ioc ORDER BY i, j;
+ROLLBACK;
+BEGIN;
+-- INSERT j=20, UPDATE j=20 to 40
+INSERT INTO ioc VALUES ('row-2', 20), ('row-2', 20) ON CONFLICT (j) DO UPDATE SET j = EXCLUDED.j + 20;
+ROLLBACK;
+BEGIN;
+-- INSERT j=20, UPDATE j=1 to 20
+INSERT INTO ioc VALUES ('row-2', 20), ('row-3', 1) ON CONFLICT (j) DO UPDATE SET j = 20;
+ROLLBACK;
+BEGIN;
+-- UPDATE j=1 to 20, UPDATE j=20 to 20
+INSERT INTO ioc VALUES ('row-2', 1), ('row-3', 20) ON CONFLICT (j) DO UPDATE SET j = 20;
+ROLLBACK;
+-- Reset.
+DROP TABLE ioc;
 
 --- UPDATE SET edge case
 CREATE TABLE texts (t text PRIMARY KEY);
@@ -183,6 +343,18 @@ CREATE FUNCTION agg_texts() RETURNS text AS $$SELECT 'agg=[' || string_agg(t, ',
 INSERT INTO texts VALUES ('i'), ('j') ON CONFLICT (t) DO UPDATE SET t = agg_texts();
 INSERT INTO texts VALUES ('i'), ('j') ON CONFLICT (t) DO UPDATE SET t = agg_texts();
 SELECT * FROM texts ORDER BY t;
+
+--- UPDATE SET unmodified primary key
+CREATE TABLE table_unmodified_pk (i INT PRIMARY KEY, j INT);
+INSERT INTO table_unmodified_pk VALUES (1, 1);
+INSERT INTO table_unmodified_pk AS old VALUES (1, 1), (1, 4) ON CONFLICT (i) DO UPDATE SET j = old.j + 1;
+
+--- UPDATE SET unmodified secondary index
+CREATE TABLE table_skip_index (i INT UNIQUE, j INT);
+INSERT INTO table_skip_index VALUES (1, 1);
+SET yb_enable_inplace_index_update TO true;
+INSERT INTO table_skip_index AS old VALUES (1, 1), (1, 4) ON CONFLICT (i) DO UPDATE SET j = old.j + 1;
+RESET yb_enable_inplace_index_update;
 
 --- ON CONFLICT DO UPDATE YbExecDoUpdateIndexTuple
 CREATE TABLE index_update (a int PRIMARY KEY, b int);

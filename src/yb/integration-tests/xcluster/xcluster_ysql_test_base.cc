@@ -12,10 +12,12 @@
 //
 
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
+
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
+
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.pb.h"
@@ -23,12 +25,16 @@
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_initialization.h"
+
 #include "yb/server/server_base.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/thread.h"
+
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_bool(enable_ysql);
@@ -41,6 +47,7 @@ DECLARE_int32(replication_factor);
 DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 
 DECLARE_bool(TEST_create_table_with_empty_pgschema_name);
+DECLARE_bool(TEST_use_custom_varz);
 DECLARE_bool(TEST_xcluster_enable_ddl_replication);
 DECLARE_bool(TEST_xcluster_enable_sequence_replication);
 DECLARE_uint64(TEST_pg_auth_key);
@@ -94,22 +101,28 @@ Status XClusterYsqlTestBase::InitClusters(const MiniClusterOptions& opts) {
 
   auto producer_opts = opts;
   producer_opts.cluster_id = "producer";
-
   producer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(producer_opts);
 
   // Randomly select the tserver index that will serve the postgres proxy.
   const size_t pg_ts_idx = RandomUniformInt<size_t>(0, opts.num_tablet_servers - 1);
   const std::string pg_addr = server::TEST_RpcAddress(pg_ts_idx + 1, server::Private::kTrue);
-  // The 'pgsql_proxy_bind_address' flag must be set before starting the producer cluster. Each
+
+  // The 'pgsql_proxy_bind_address' flag must be set before starting each cluster.  Each
   // tserver will store this address when it starts.
   const uint16_t producer_pg_port = producer_cluster_.mini_cluster_->AllocateFreePort();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address) =
       Format("$0:$1", pg_addr, producer_pg_port);
+  // In order for yb-controller to access this and other gflags to find Postgres or the
+  // masters, we must make /varz reflect the startup value of these gflags.  Otherwise, both
+  // clusters will have the same information and yb-controller will only talk to one of them.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_use_custom_varz) = true;
 
+  RETURN_NOT_OK(PreProducerCreate());
   {
     TEST_SetThreadPrefixScoped prefix_se("P");
     RETURN_NOT_OK(producer_cluster()->StartAsync());
   }
+  RETURN_NOT_OK(PostProducerCreate());
 
   auto consumer_opts = opts;
   consumer_opts.cluster_id = "consumer";
@@ -120,10 +133,12 @@ Status XClusterYsqlTestBase::InitClusters(const MiniClusterOptions& opts) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address) =
       Format("$0:$1", pg_addr, consumer_pg_port);
 
+  RETURN_NOT_OK(PreConsumerCreate());
   {
     TEST_SetThreadPrefixScoped prefix_se("C");
     RETURN_NOT_OK(consumer_cluster()->StartAsync());
   }
+  RETURN_NOT_OK(PostConsumerCreate());
 
   RETURN_NOT_OK(
       RunOnBothClusters([](MiniCluster* cluster) { return cluster->WaitForAllTabletServers(); }));
@@ -157,7 +172,6 @@ Status XClusterYsqlTestBase::InitProducerClusterOnly(const MiniClusterOptions& o
 
   auto producer_opts = opts;
   producer_opts.cluster_id = "producer";
-
   producer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(producer_opts);
 
   // Randomly select the tserver index that will serve the postgres proxy.
@@ -862,6 +876,17 @@ Status XClusterYsqlTestBase::SetUpClusters(const SetupParams& params) {
 
   RETURN_NOT_OK(Initialize(params.replication_factor, params.num_masters));
 
+  if (params.start_yb_controller_servers) {
+    {
+      TEST_SetThreadPrefixScoped prefix_se("P");
+      RETURN_NOT_OK(producer_cluster_.mini_cluster_->StartYbControllerServers());
+    }
+    {
+      TEST_SetThreadPrefixScoped prefix_se("C");
+      RETURN_NOT_OK(consumer_cluster_.mini_cluster_->StartYbControllerServers());
+    }
+  }
+
   SCHECK_EQ(
       params.num_consumer_tablets.size(), params.num_producer_tablets.size(), IllegalState,
       Format(
@@ -989,6 +1014,9 @@ Status XClusterYsqlTestBase::CreateReplicationFromCheckpoint(
   auto master_addr = target_master_addresses;
   if (master_addr.empty()) {
     master_addr = consumer_cluster()->GetMasterAddresses();
+  }
+  if (namespace_names.empty()) {
+    namespace_names = {namespace_name};
   }
 
   RETURN_NOT_OK(client::XClusterClient(*producer_client())

@@ -241,9 +241,10 @@ YBColocateDatabaseByDefault()
 }
 
 bool
-YBIsTestOnlinePg11ToPg15Upgrade()
+YBIsMajorUpgradeInitDb()
 {
-	return YBCIsEnvVarTrue("FLAGS_TEST_online_pg11_to_pg15_upgrade");
+	return YBCIsEnvVarTrueWithDefault("YB_PG_MAJOR_UPGRADE_INITDB",
+									  false /* default_value */);
 }
 
 Oid YBGetDatabaseOidFromEnv(const char *database_name)
@@ -261,7 +262,7 @@ Oid YBGetDatabaseOidFromEnv(const char *database_name)
 }
 
 /*
- * Note: This function is used for the test flag only. 
+ * Note: This function is used for the test flag only.
  * Once the associated feature is fully developed and stable, this function will be removed.
  * The flag is defined this way and not in ybc_pggate.cc because it is used in the ipic.c file,
  * which is initialized before the pggate api.

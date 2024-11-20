@@ -1025,8 +1025,8 @@ YBCStatus YBCPgAddSplitBoundary(YBCPgStatement handle, YBCPgExpr *exprs, int exp
   return ToYBCStatus(pgapi->AddSplitBoundary(handle, exprs, expr_count));
 }
 
-YBCStatus YBCPgExecCreateTable(YBCPgStatement handle, const char **notice_msg) {
-  return ToYBCStatus(pgapi->ExecCreateTable(handle, notice_msg));
+YBCStatus YBCPgExecCreateTable(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecCreateTable(handle));
 }
 
 YBCStatus YBCPgNewAlterTable(const YBCPgOid database_oid,
@@ -1112,7 +1112,7 @@ YBCStatus YBCPgSetDBCatalogCacheVersion(
 }
 
 YBCStatus YBCPgDmlModifiesRow(YBCPgStatement handle, bool *modifies_row) {
-  return ToYBCStatus(pgapi->DmlModifiesRow(handle, modifies_row));
+  return ExtractValueFromResult(pgapi->DmlModifiesRow(handle), modifies_row);
 }
 
 YBCStatus YBCPgSetIsSysCatalogVersionChange(YBCPgStatement handle) {
@@ -1232,8 +1232,8 @@ YBCStatus YBCPgCreateIndexSetVectorOptions(YBCPgStatement handle, YbPgVectorIdxO
   return ToYBCStatus(pgapi->CreateIndexSetVectorOptions(handle, options));
 }
 
-YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle, const char** notice_msg) {
-  return ToYBCStatus(pgapi->ExecCreateIndex(handle, notice_msg));
+YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecCreateIndex(handle));
 }
 
 YBCStatus YBCPgNewDropIndex(const YBCPgOid database_oid,
@@ -1346,8 +1346,7 @@ YBCStatus YBCPgDmlBindHashCodes(
   const auto start = MakeBound(start_type, start_value);
   const auto end = MakeBound(end_type, end_value);
   DCHECK(start || end);
-  pgapi->DmlBindHashCode(handle, start, end);
-  return YBCStatusOK();
+  return ToYBCStatus(pgapi->DmlBindHashCode(handle, start, end));
 }
 
 YBCStatus YBCPgDmlBindRange(YBCPgStatement handle,
@@ -1534,18 +1533,13 @@ YBCStatus YBCPgExecTruncateColocated(YBCPgStatement handle) {
 }
 
 // SELECT Operations -------------------------------------------------------------------------------
-YBCStatus YBCPgNewSelect(const YBCPgOid database_oid,
-                         const YBCPgOid table_relfilenode_oid,
-                         const YBCPgPrepareParameters *prepare_params,
-                         bool is_region_local,
-                         YBCPgStatement *handle) {
-  const auto index_oid = prepare_params && prepare_params->use_secondary_index
-      ? prepare_params->index_relfilenode_oid
-      : kInvalidOid;
-  const auto index_id =
-      index_oid == kInvalidOid ? PgObjectId{} : PgObjectId{database_oid, index_oid};
+YBCStatus YBCPgNewSelect(
+    YBCPgOid database_oid, YBCPgOid table_relfilenode_oid, const YBCPgPrepareParameters* params,
+    bool is_region_local, YBCPgStatement* handle) {
   return ToYBCStatus(pgapi->NewSelect(
-      {database_oid, table_relfilenode_oid}, index_id, prepare_params, is_region_local, handle));
+      PgObjectId{database_oid, table_relfilenode_oid},
+      PgObjectId{database_oid, params ? params->index_relfilenode_oid : kInvalidOid},
+      params, is_region_local, handle));
 }
 
 YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan) {
@@ -1904,6 +1898,53 @@ YBCPgExplicitRowLockStatus YBCFlushExplicitRowLockIntents() {
   result.ybc_status = ToYBCStatus(pgapi->FlushExplicitRowLockIntents(result.error_info));
   return result;
 }
+
+// INSERT ... ON CONFLICT batching -----------------------------------------------------------------
+YBCStatus YBCPgAddInsertOnConflictKey(const YBCPgYBTupleIdDescriptor* tupleid,
+                                      YBCPgInsertOnConflictKeyInfo* info) {
+  return ProcessYbctid(*tupleid, [info](auto table_id, const auto& ybctid) {
+    return pgapi->AddInsertOnConflictKey(
+        table_id, ybctid, info ? *info : YBCPgInsertOnConflictKeyInfo());
+  });
+}
+
+YBCStatus YBCPgInsertOnConflictKeyExists(const YBCPgYBTupleIdDescriptor* tupleid,
+                                         YBCPgInsertOnConflictKeyState* res) {
+  return ProcessYbctid(*tupleid, [res](auto table_id, const auto& ybctid) {
+    *res = pgapi->InsertOnConflictKeyExists(table_id, ybctid);
+    return Status::OK();
+  });
+}
+
+YBCStatus YBCPgDeleteInsertOnConflictKey(const YBCPgYBTupleIdDescriptor* tupleid,
+                                         YBCPgInsertOnConflictKeyInfo* info) {
+  return ProcessYbctid(*tupleid, [info](auto table_id, const auto& ybctid) {
+    auto result = VERIFY_RESULT(pgapi->DeleteInsertOnConflictKey(table_id, ybctid));
+    *info = result;
+    return (Status) Status::OK();
+  });
+}
+
+YBCStatus YBCPgDeleteNextInsertOnConflictKey(YBCPgInsertOnConflictKeyInfo* info) {
+  return ExtractValueFromResult(pgapi->DeleteNextInsertOnConflictKey(), info);
+}
+
+YBCStatus YBCPgAddInsertOnConflictKeyIntent(const YBCPgYBTupleIdDescriptor* tupleid) {
+  return ProcessYbctid(*tupleid, [](auto table_id, const auto& ybctid) {
+    pgapi->AddInsertOnConflictKeyIntent(table_id, ybctid);
+    return Status::OK();
+  });
+}
+
+void YBCPgClearInsertOnConflictCache() {
+  pgapi->ClearInsertOnConflictCache();
+}
+
+uint64_t YBCPgGetInsertOnConflictKeyCount() {
+  return pgapi->GetInsertOnConflictKeyCount();
+}
+
+//--------------------------------------------------------------------------------------------------
 
 bool YBCIsInitDbModeEnvVarSet() {
   static bool cached_value = false;

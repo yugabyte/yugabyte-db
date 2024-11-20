@@ -27,7 +27,7 @@ yba provider onprem add --name <provider-name> \
       --zone string                [Required] Zone name of the node.
       --node-name string           [Optional] Node name given by the user.
       --ssh-user string            [Optional] SSH user to access the node instances.
-      --node-configs stringArray   [Optional] Node configurations. Provide the following comma separated fields as key-value pairs: "type=<type>,value=<value>". Each config needs to be added using a separate --node-configs flag. Example: --node-configs type=S3CMD,value=<value> --node-configs type=CPU_CORES,value=<value>
+      --node-configs stringArray   [Optional] Node configurations. Provide the following double colon (::) separated fields as key-value pairs: "type=<type>::value=<value>". Each config needs to be added using a separate --node-configs flag. Example: --node-configs type=S3CMD::value=<value> --node-configs type=CPU_CORES::value=<value>
   -h, --help                       help for add
 ```
 

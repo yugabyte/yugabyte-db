@@ -42,6 +42,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/thread_annotations.h"
 
+#include "yb/master/catalog_loading_state.h"
 #include "yb/master/master_cluster.fwd.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/ts_descriptor.h"
@@ -160,7 +161,8 @@ class TSManager {
   // Transition all such TServers into the UNRESPONSIVE state.
   Status MarkUnresponsiveTServers(const LeaderEpoch& epoch);
 
-  Status RunLoader(const CloudInfoPB& cloud_info, rpc::ProxyCache* proxy_cache);
+  Status RunLoader(
+      const CloudInfoPB& cloud_info, rpc::ProxyCache* proxy_cache, SysCatalogLoadingState& state);
 
   Status RemoveTabletServer(
       const std::string& permanent_uuid, const BlacklistSet& blacklist,

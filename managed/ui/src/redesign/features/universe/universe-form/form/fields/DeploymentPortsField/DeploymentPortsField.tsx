@@ -231,6 +231,7 @@ export const DeploymentPortsField: FC<DeploymentPortsFieldids> = ({ disabled, is
                                   inputProps={{
                                     'data-testid': `DeploymentPortsField-Input${item.id}`
                                   }}
+                                  trimWhitespace={false}
                                 />
                               </Box>
                             </Box>

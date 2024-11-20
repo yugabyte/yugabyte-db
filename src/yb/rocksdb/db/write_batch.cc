@@ -357,6 +357,10 @@ Status WriteBatch::Iterate(Handler* handler) const {
   }
   if (frontiers_) {
     s = handler->Frontiers(*frontiers_);
+    if (handler_for_logging_) {
+      WARN_NOT_OK(
+          handler_for_logging_->Frontiers(*frontiers_), "Logging handler failed on Frontiers");
+    }
   }
   while (s.ok() && !input.empty() && handler->Continue()) {
     char tag = 0;
@@ -374,6 +378,12 @@ Status WriteBatch::Iterate(Handler* handler) const {
         assert(content_flags_.load(std::memory_order_relaxed) &
                (ContentFlags::DEFERRED | ContentFlags::HAS_PUT));
         s = handler->PutCF(column_family, SliceParts(&key, 1), SliceParts(&value, 1));
+        if (handler_for_logging_) {
+          WARN_NOT_OK(
+              handler_for_logging_->PutCF(
+                  column_family, SliceParts(&key, 1), SliceParts(&value, 1)),
+              "Logging handler failed on PutCF");
+        }
         found++;
         break;
       case kTypeColumnFamilyDeletion:
@@ -381,6 +391,11 @@ Status WriteBatch::Iterate(Handler* handler) const {
         assert(content_flags_.load(std::memory_order_relaxed) &
                (ContentFlags::DEFERRED | ContentFlags::HAS_DELETE));
         s = handler->DeleteCF(column_family, key);
+        if (handler_for_logging_) {
+          WARN_NOT_OK(
+              handler_for_logging_->DeleteCF(column_family, key),
+              "Logging handler failed on DeleteCF");
+        }
         found++;
         break;
       case kTypeColumnFamilySingleDeletion:
@@ -388,6 +403,11 @@ Status WriteBatch::Iterate(Handler* handler) const {
         assert(content_flags_.load(std::memory_order_relaxed) &
                (ContentFlags::DEFERRED | ContentFlags::HAS_SINGLE_DELETE));
         s = handler->SingleDeleteCF(column_family, key);
+        if (handler_for_logging_) {
+          WARN_NOT_OK(
+              handler_for_logging_->SingleDeleteCF(column_family, key),
+              "Logging handler failed on SingleDeleteCF");
+        }
         found++;
         break;
       case kTypeColumnFamilyMerge:
@@ -395,10 +415,18 @@ Status WriteBatch::Iterate(Handler* handler) const {
         assert(content_flags_.load(std::memory_order_relaxed) &
                (ContentFlags::DEFERRED | ContentFlags::HAS_MERGE));
         s = handler->MergeCF(column_family, key, value);
+        if (handler_for_logging_) {
+          WARN_NOT_OK(
+              handler_for_logging_->MergeCF(column_family, key, value),
+              "Logging handler failed on MergeCF");
+        }
         found++;
         break;
       case kTypeLogData:
         handler->LogData(blob);
+        if (handler_for_logging_) {
+          handler_for_logging_->LogData(blob);
+        }
         break;
       default:
         return STATUS(Corruption, "unknown WriteBatch tag");
@@ -985,6 +1013,13 @@ size_t WriteBatchInternal::AppendedByteSize(size_t leftByteSize,
 
 Result<size_t> DirectInsert(
     WriteBatch::Handler* handler, DirectWriter* writer, WriteBatch::Handler* handler_for_logging) {
+#ifndef NDEBUG
+  if (dynamic_cast<MemTableInserter*>(handler) == nullptr) {
+    LOG(FATAL) << "WriteBatch::Iterate cannot be used with write batches using direct writers due "
+                  "to incomplete implementation of direct writers";
+  }
+#endif
+
   auto mem_table_inserter = down_cast<MemTableInserter*>(handler);
   auto* mems = mem_table_inserter->cf_mems_;
   auto current = mems->current();

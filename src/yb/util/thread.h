@@ -56,6 +56,7 @@ class Thread;
 class WebCallbackRegistry;
 
 const char* TEST_GetThreadLogPrefix();
+std::string TEST_GetThreadUnformattedLogPrefix();
 
 class TEST_SetThreadPrefixScoped {
  public:
@@ -419,5 +420,6 @@ class CDSAttacher {
 };
 
 void RenderAllThreadStacks(std::ostream& output);
+size_t CountManagedThreads();
 
 } // namespace yb

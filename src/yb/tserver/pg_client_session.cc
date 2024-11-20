@@ -784,7 +784,7 @@ PgClientSession::PgClientSession(
 
 Status PgClientSession::CreateTable(
     const PgCreateTableRequestPB& req, PgCreateTableResponsePB* resp, rpc::RpcContext* context) {
-  PgCreateTable helper(req, resp);
+  PgCreateTable helper(req);
   RETURN_NOT_OK(helper.Prepare());
 
   if (xcluster_context_) {

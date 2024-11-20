@@ -43,7 +43,7 @@ The payload for each migration phase is described in the following table. Note t
 
 | Migration phase | Data collected |
 | :---- | :------------- |
-| <br/>[assess-migration](../assess-migration/) |<ul><li> Unsupported features (reported in the assessment report without any object names or SQL statements; only count of object per feature)</li> <li>Unsupported datatypes (reported in the assessment report without any table name or column name; only the datatype)</li> <li>Error message while running the assessment if any </li> <li>Table sizing statistics (reads/writes per second, and size in bytes)</li> <li>Index sizing statistics (reads/writes per second, and size in bytes)</li> <li>Schema summary (reported in the assessment report, without object names for each object type)</li> <li>Source connectivity (whether assessment is run with source connectivity) </li></ul>|
+| <br/>[assess-migration](../assess-migration/) |<ul><li> Unsupported features (reported in the assessment report without any object names or SQL statements; only count of object per feature)</li> <li>Unsupported datatypes (reported in the assessment report without any table name or column name; only the datatype)</li> <li>Error message while running the assessment if any </li> <li>Table sizing statistics (reads/writes per second, and size in bytes)</li> <li>Index sizing statistics (reads/writes per second, and size in bytes)</li> <li>Schema summary (reported in the assessment report, without object names for each object type)</li> <li>Source connectivity (whether assessment is run with source connectivity) </li><li>Migration caveats (reported in the assessment report without any object name or SQL statements; only count of object per caveat) </li><li>Unsupported query constructs (reported in the assessment report without any query information; only count of queries per construct)</li></ul>|
 | <br/>[export-schema](../schema-migration/export-schema/) | <ul><li>Whether sharding recommendations from the assessment report were applied</li></ul> |
 | <br/>[analyze-schema](../schema-migration/analyze-schema/) | <ul><li>Issues (issues reported by analyze-schema without the SQL statements)</li><li>Database objects (objects migrated in the migration without the object names per object type)</li></ul> |
 | <br/>[import-schema](../schema-migration/import-schema/) | <ul><li>Error count (if there are errors while running the import schema). <li>Flag values if passed or not:<ul><li>Continue on error</li><li>Enable orafce</li><li>Ignore exist</li><li>Refresh mviews</li><li>Post snapshot import</ul></li></li></ul> |
@@ -91,6 +91,33 @@ The following are examples of payloads that are collected during some migration 
       }
     ],
     "unsupported_datatypes": ["point", "point"],
+    "migration_caveats": [
+      {
+        "FeatureName": "Alter partitioned tables to add Primary Key",
+        "ObjectCount": 2
+      },
+      {
+        "FeatureName": "Foreign tables",
+        "ObjectCount": 2
+      },
+      {
+        "FeatureName": "Policies",
+        "ObjectCount": 3
+      },
+      {
+        "FeatureName": "Unsupported Data Types for Live Migration",
+        "ObjectCount": 7
+      },
+      {
+        "FeatureName": "Unsupported Data Types for Live Migration with Fall-forward/Fallback",
+        "ObjectCount": 3
+      }
+    ],
+    "unsupported_query_constructs": {
+      "Advisory Locks": 2,
+      "System Columns": 0,
+      "XML Function": 1
+    },
     "table_sizing_stats": [
       { "object_name": "XXX", "reads_per_second": 0, "writes_per_second": 0, "size_in_bytes": 0 },
       { "object_name": "XXX", "reads_per_second": 0, "writes_per_second": 0, "size_in_bytes": 8192 },

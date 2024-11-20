@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include <vector>
+#include <initializer_list>
 
 #include <boost/preprocessor/cat.hpp>
 
@@ -31,8 +31,8 @@ template <class Tag>
 struct StronglyTypedBoolProxy {
   bool value;
 
-  operator bool() const { return value; }
-  StronglyTypedBoolProxy<Tag> operator!() const { return StronglyTypedBoolProxy<Tag>{!value}; }
+  constexpr operator bool() const { return value; }
+  constexpr auto operator!() const { return StronglyTypedBoolProxy<Tag>{!value}; }
 };
 
 template <class Tag>
@@ -44,17 +44,17 @@ class StronglyTypedBool {
     StronglyTypedBool<Tag>(false), StronglyTypedBool<Tag>(true)
   };
 
-  StronglyTypedBool(StronglyTypedBoolProxy<Tag> proxy) : value_(proxy.value) {} // NOLINT
+  constexpr StronglyTypedBool(StronglyTypedBoolProxy<Tag> proxy) : value_(proxy.value) {} // NOLINT
 
   // This is public so that we can construct a strongly-typed boolean value out of a regular one if
   // needed. In that case we'll have to spell out the class name, which will enforce readability.
-  explicit constexpr StronglyTypedBool(bool value) : value_(value) {}
+  constexpr explicit StronglyTypedBool(bool value) : value_(value) {}
 
   // These operators return regular bools so that it is easy to use strongly-typed bools in logical
   // expressions.
-  operator bool() const { return value_; }
-  StronglyTypedBool<Tag> operator!() const { return StronglyTypedBool<Tag>(!value_); }
-  bool get() const { return value_; }
+  constexpr operator bool() const { return value_; }
+  constexpr auto operator!() const { return StronglyTypedBool<Tag>(!value_); }
+  constexpr bool get() const { return value_; }
 
  private:
   bool value_;

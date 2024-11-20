@@ -666,7 +666,7 @@ YBIsDBLogicalClientVersionMode()
 		YbGetLogicalClientVersionType() != LOGICAL_CLIENT_VERSION_CATALOG_TABLE||
 		!*YBCGetGFlags()->TEST_ysql_enable_db_logical_client_version_mode)
 		return false;
-	
+
 	/*
 	 * During second phase of initdb, logical client version mode is supported.
 	 */
@@ -1662,6 +1662,8 @@ bool yb_test_system_catalogs_creation = false;
 
 bool yb_test_fail_next_ddl = false;
 
+bool yb_test_fail_all_drops = false;
+
 bool yb_test_fail_next_inc_catalog_version = false;
 
 double yb_test_ybgin_disable_cost_factor = 2.0;
@@ -2481,7 +2483,7 @@ YbDdlModeOptional YbGetDdlMode(
 				{
 					AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
 					if (cmd->def != NULL &&
-					    IsA(cmd->def, Constraint) &&
+						IsA(cmd->def, Constraint) &&
 						((Constraint *) cmd->def)->contype == CONSTR_FOREIGN)
 					{
 						is_version_increment = true;
@@ -2730,7 +2732,7 @@ void YBFlushBufferedOperations() {
 }
 
 bool YBEnableTracing() {
-  return yb_enable_docdb_tracing;
+	return yb_enable_docdb_tracing;
 }
 
 bool YBReadFromFollowersEnabled() {
@@ -4029,7 +4031,7 @@ static Datum GetMetricsAsJsonbDatum(YBCMetricsInfo* metrics, size_t metricsCount
 	result = *pushJsonbValue(&state, WJB_END_OBJECT, NULL);
 	Jsonb *jsonb = JsonbValueToJsonb(&result);
 	return JsonbPGetDatum(jsonb);
-} 
+}
 
 Datum
 yb_servers_metrics(PG_FUNCTION_ARGS)
@@ -4806,7 +4808,7 @@ yb_assign_max_replication_slots(int newval, void *extra)
 		(errmsg("max_replication_slots should be controlled using the Gflag"
 				" \"max_replication_slots\" on the YB-Master process"),
 		 errdetail("In Yugabyte clusters, the replication slots are managed by"
-		 		   " the YB-Master globally. Hence limits on the number of"
+				   " the YB-Master globally. Hence limits on the number of"
 				   " replication slots should be controlled using Gflags and"
 				   " not session-level GUC variables.")));
 }
@@ -5632,7 +5634,7 @@ YbReadTimePointHandle YbBuildCurrentReadTimePointHandle()
 // TODO(#22370): the method will be used to make Const Based Optimizer to be aware of
 // fast backward scan capability.
 bool YbUseFastBackwardScan() {
-  return *(YBCGetGFlags()->ysql_use_fast_backward_scan);
+	return *(YBCGetGFlags()->ysql_use_fast_backward_scan);
 }
 
 bool YbIsYsqlConnMgrWarmupModeEnabled()
@@ -5677,4 +5679,20 @@ bool YbUseUnsafeTruncate(Relation rel)
 {
 	return IsYBRelation(rel) &&
 		(IsSystemRelation(rel) || !yb_enable_alter_table_rewrite);
+}
+
+
+/*
+ * Given a table attribute number, get a corresponding index attribute number.
+ * Throw an error if it is not found.
+ */
+AttrNumber
+YbGetIndexAttnum(Relation index, AttrNumber table_attno)
+{
+	for (int i = 0; i < IndexRelationGetNumberOfAttributes(index); ++i)
+	{
+		if (table_attno == index->rd_index->indkey.values[i])
+			return i + 1;
+	}
+	elog(ERROR, "column is not in index");
 }

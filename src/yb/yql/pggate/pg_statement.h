@@ -16,6 +16,7 @@
 
 #include <stdint.h>
 
+#include <concepts>
 #include <memory>
 #include <string>
 #include <utility>
@@ -26,6 +27,7 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/enums.h"
 
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_memctx.h"
@@ -34,36 +36,29 @@
 
 namespace yb::pggate {
 
-// Statement types.
-// - Might use it for error reporting or debugging or if different operations share the same
-//   CAPI calls.
-// - TODO(neil) Remove StmtOp if we don't need it.
-enum class StmtOp {
-  STMT_NOOP = 0,
-  STMT_CREATE_DATABASE,
-  STMT_DROP_DATABASE,
-  STMT_CREATE_SCHEMA,
-  STMT_DROP_SCHEMA,
-  STMT_CREATE_TABLE,
-  STMT_DROP_TABLE,
-  STMT_TRUNCATE_TABLE,
-  STMT_CREATE_INDEX,
-  STMT_DROP_INDEX,
-  STMT_ALTER_TABLE,
-  STMT_INSERT,
-  STMT_UPDATE,
-  STMT_DELETE,
-  STMT_TRUNCATE,
-  STMT_SELECT,
-  STMT_ALTER_DATABASE,
-  STMT_CREATE_TABLEGROUP,
-  STMT_DROP_TABLEGROUP,
-  STMT_SAMPLE,
-  STMT_DROP_SEQUENCE,
-  STMT_DROP_DB_SEQUENCES,
-  STMT_CREATE_REPLICATION_SLOT,
-  STMT_DROP_REPLICATION_SLOT,
-};
+YB_DEFINE_TYPED_ENUM(StmtOp, uint8_t,
+    (kCreateDatabase)
+    (kDropDatabase)
+    (kCreateTable)
+    (kDropTable)
+    (kTruncateTable)
+    (kCreateIndex)
+    (kDropIndex)
+    (kAlterTable)
+    (kInsert)
+    (kUpdate)
+    (kDelete)
+    (kTruncate)
+    (kSelect)
+    (kAlterDatabase)
+    (kCreateTablegroup)
+    (kDropTablegroup)
+    (kSample)
+    (kDropSequence)
+    (kDropDbSequences)
+    (kCreateReplicationSlot)
+    (kDropReplicationSlot)
+);
 
 class PgStatement : public PgMemctx::Registrable {
  public:
@@ -73,15 +68,11 @@ class PgStatement : public PgMemctx::Registrable {
 
   virtual ~PgStatement() = default;
 
-  virtual StmtOp stmt_op() const = 0;
+  [[nodiscard]] virtual StmtOp stmt_op() const = 0;
 
   const std::shared_ptr<ThreadSafeArena>& arena_ptr() const { return arena_; }
 
   ThreadSafeArena& arena() const { return *arena_; }
-
-  static bool IsValidStmt(const PgStatement* stmt, StmtOp op) {
-    return stmt && stmt->stmt_op() == op;
-  }
 
  protected:
   // YBSession that this statement belongs to.
@@ -89,6 +80,24 @@ class PgStatement : public PgMemctx::Registrable {
 
  private:
   std::shared_ptr<ThreadSafeArena> arena_;
+};
+
+template <class T>
+concept PgStatementSubclass = std::derived_from<T, PgStatement> && !std::same_as<T, PgStatement>;
+
+template <PgStatementSubclass Base, StmtOp T>
+class PgStatementLeafBase : public Base {
+ public:
+  using BaseParam = Base;
+
+  static constexpr StmtOp kStmtOp = T;
+  [[nodiscard]] StmtOp stmt_op() const override final { return kStmtOp; }
+
+ protected:
+  using BaseType = PgStatementLeafBase<Base, T>;
+
+  template <class... Args>
+  explicit PgStatementLeafBase(Args&&... args) : Base(std::forward<Args>(args)...) {}
 };
 
 }  // namespace yb::pggate

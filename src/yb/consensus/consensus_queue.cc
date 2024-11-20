@@ -1287,7 +1287,7 @@ MicrosTime PeerMessageQueue::HybridTimeLeaseExpirationWatermark() {
     }
 
     static result_type InfiniteWatermarkForLocalPeer() {
-      return HybridTime::kMax.GetPhysicalValueMicros();
+      return kInfiniteHybridTimeLeaseExpiration;
     }
 
     static result_type ExtractValue(const TrackedPeer& peer) {

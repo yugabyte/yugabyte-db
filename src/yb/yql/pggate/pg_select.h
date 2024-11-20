@@ -23,7 +23,7 @@
 
 namespace yb::pggate {
 
-class PgSelect : public PgDmlRead {
+class PgSelect : public PgStatementLeafBase<PgDmlRead, StmtOp::kSelect> {
  public:
   struct IndexQueryInfo {
     IndexQueryInfo(PgObjectId id_, bool is_embedded_)

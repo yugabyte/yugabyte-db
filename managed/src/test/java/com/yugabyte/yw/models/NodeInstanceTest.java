@@ -112,9 +112,10 @@ public class NodeInstanceTest extends FakeDBApplication {
     node.setState(NodeInstance.State.USED);
     node.save();
     node.clearNodeDetails();
-    assertEquals(node.getState(), NodeInstance.State.FREE);
-    assertEquals(node.getNodeName(), "");
-    assertEquals(node.getUniverseMetadata(), null);
+    assertEquals(NodeInstance.State.FREE, node.getState());
+    assertEquals("", node.getNodeName());
+    assertEquals(null, node.getUniverseMetadata());
+    assertEquals(false, node.isManuallyDecommissioned());
   }
 
   @Test

@@ -148,7 +148,10 @@ ExternalDaemon::LogTailerThread::LogTailerThread(
           lock_guard<mutex> lock(logging_mutex);
           if (stopped->load()) break;
           // Make sure we always output an end-of-line character.
-          *out << line_prefix << " " << buf << maybe_end_of_line;
+          // Use only one call to << to minimize chance of interleaving of our output with Google
+          // logging.
+          std::string output = line_prefix + " " + buf + maybe_end_of_line;
+          *out << output;
           if (!stopped->load()) {
             auto listener = listener_.load(std::memory_order_acquire);
             if (!stopped->load() && listener) {
@@ -478,7 +481,8 @@ void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown, RequireExitCode0 requi
     }
 
     if (safe_shutdown) {
-      constexpr auto max_graceful_shutdown_wait = 1min * kTimeMultiplier;
+      const auto max_graceful_shutdown_wait =
+          max_graceful_shutdown_wait_sec_ * 1s * kTimeMultiplier;
       // We put 'SIGTERM' in quotes because an unquoted one would be treated as a test failure
       // by our regular expressions in common-test-env.sh.
       LOG_WITH_PREFIX(INFO) << "Terminating " << process_name_and_pid << " using 'SIGTERM' signal";

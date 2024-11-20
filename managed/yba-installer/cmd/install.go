@@ -109,8 +109,14 @@ var installCmd = &cobra.Command{
 		}
 
 		// Update permissions of data and software to service username
-		if err := common.SetAllPermissions(); err != nil {
-			log.Fatal("error updating permissions for data and software directories: " + err.Error())
+		if dataless {
+			if err := common.SetSoftwarePermissions(); err != nil {
+				log.Fatal("error updating permissions for software directory: " + err.Error())
+			}
+		} else {
+			if err := common.SetAllPermissions(); err != nil {
+				log.Fatal("error updating permissions for software and data directories: " + err.Error())
+			}
 		}
 
 		// Update state config now that install is complete.

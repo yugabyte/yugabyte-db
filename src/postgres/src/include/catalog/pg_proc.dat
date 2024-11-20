@@ -12092,4 +12092,12 @@
   proargmodes => '{o,o,o,o,o,o,o}',
   proargnames => '{db_oid,db_name,parent_db_oid,parent_db_name,state,as_of_time,failure_reason}',
   prosrc => 'yb_database_clones' },
+
+{ oid => '8077',
+  descr => 'cancels query diagnostics bundle',
+  proname => 'yb_cancel_query_diagnostics',
+  provolatile => 'v', proparallel => 's',
+  prorettype => 'void', proargtypes => 'int8',
+  proargnames => '{query_id}',
+  prosrc => 'yb_cancel_query_diagnostics'},
 ]

@@ -86,7 +86,7 @@ var createHashicorpVaultEITCmd = &cobra.Command{
 			Label:             configName,
 			CertType:          util.HashicorpVaultCertificateType,
 			CertContent:       "pki",
-			HcVaultCertParams: hcvParams,
+			HcVaultCertParams: &hcvParams,
 		}
 
 		eitutil.CreateEITUtil(authAPI, configName, util.HashicorpVaultCertificateType, requestBody)

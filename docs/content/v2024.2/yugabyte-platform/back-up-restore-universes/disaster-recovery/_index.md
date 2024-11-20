@@ -157,11 +157,7 @@ For more information on xCluster Replication in YugabyteDB, see the following:
 
 - Currently, automatic replication of DDL (SQL-level changes such as creating or dropping tables or indexes) is not supported. For more details on how to propagate DDL changes from the DR primary to the DR replica, see [Schema change modes](#schema-change-modes). This is tracked by [GitHub issue #11537](https://github.com/yugabyte/yugabyte-db/issues/11537).
 
-- DR setup (and other operations that require making a full copy from DR primary to DR replica, such as adding tables with data to replication, resuming replication after an extended network outage, and so on) may fail with the error `database "<database_name>" is being accessed by other users`.
-
-    This happens because the operation relies on a backup and restore of the database, and the restore will fail if there are any open connections to the DR replica.
-
-    To fix this, close any open SQL connections to the DR replica, delete the DR configuration, and perform the operation again.
+- If a database operation requires a full copy, any application sessions on the database on the DR target will be interrupted while the database is dropped and recreated. Your application should either retry connections or redirect reads to the DR primary.
 
 - Setting up DR between a universe upgraded to v2.20.x and a new v2.20.x universe is not supported. This is due to a limitation of xCluster deployments and packed rows. See [Packed row limitations](../../../architecture/docdb/packed-rows/#limitations).
 

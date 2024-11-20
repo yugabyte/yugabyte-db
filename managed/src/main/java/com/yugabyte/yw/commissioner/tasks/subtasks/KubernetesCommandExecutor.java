@@ -114,6 +114,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     COPY_PACKAGE,
     YBC_ACTION,
     NAMESPACED_SVC_DELETE,
+    PAUSE_AZ,
+    RESUME_AZ,
     // The following flag is deprecated.
     INIT_YSQL;
 
@@ -248,10 +250,40 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public Set<String> deleteServiceNames;
     // Only set false for create universe case initially
     public boolean masterJoinExistingCluster = true;
+
+    public String getTaskDetails() {
+      String details = String.format("Command: %s", commandType);
+      switch (commandType) {
+        case CREATE_NAMESPACE:
+        case APPLY_SECRET:
+          details += String.format(", Namespace: %s", namespace);
+          break;
+        case HELM_INIT:
+        case HELM_INSTALL:
+        case HELM_UPGRADE:
+        case HELM_DELETE:
+          details += String.format(", Helm Release: %s, Namespace: %s", helmReleaseName, namespace);
+          break;
+        case COPY_PACKAGE:
+          details += String.format(", YBC Server: %s", ybcServerName);
+          break;
+        case YBC_ACTION:
+          details += String.format(", action: %s, YBC Server: %s", command, ybcServerName);
+          break;
+        default:
+          break;
+      }
+      return details;
+    }
   }
 
   protected KubernetesCommandExecutor.Params taskParams() {
     return (KubernetesCommandExecutor.Params) taskParams;
+  }
+
+  @Override
+  public String getName() {
+    return super.getName() + "(" + taskParams().getTaskDetails() + ")";
   }
 
   protected Map<String, String> getConfig() {
@@ -301,7 +333,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         && taskParams().namespace == null) {
       throw new IllegalArgumentException("namespace can be null only in case of POD_INFO");
     }
-
+    boolean newNamingStyle = false;
     // TODO: add checks for the shell process handler return values.
     switch (taskParams().commandType) {
       case CREATE_NAMESPACE:
@@ -345,7 +377,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       case UPDATE_NUM_NODES:
         int numNodes = this.getNumNodes();
         if (numNodes > 0) {
-          boolean newNamingStyle =
+          newNamingStyle =
               Universe.getOrBadRequest(taskParams().getUniverseUUID())
                   .getUniverseDetails()
                   .useNewHelmNamingStyle;
@@ -417,7 +449,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         break;
       case STS_DELETE:
         u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-        boolean newNamingStyle = u.getUniverseDetails().useNewHelmNamingStyle;
+        newNamingStyle = u.getUniverseDetails().useNewHelmNamingStyle;
         // Ideally we should have called KubernetesUtil.getHelmFullNameWithSuffix()
         String appName = (newNamingStyle ? taskParams().helmReleaseName + "-" : "") + "yb-tserver";
         kubernetesManagerFactory
@@ -459,6 +491,30 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 "-c",
                 String.format("/home/yugabyte/tools/k8s_ybc_parent.py %s", taskParams().command));
         ybcManager.performActionOnYbcK8sNode(config, nodeDetails, commandArgs);
+        break;
+      case PAUSE_AZ:
+        newNamingStyle =
+            Universe.getOrBadRequest(taskParams().getUniverseUUID())
+                .getUniverseDetails()
+                .useNewHelmNamingStyle;
+        kubernetesManagerFactory
+            .getManager()
+            .PauseAllPodsInRelease(
+                config, taskParams().helmReleaseName, taskParams().namespace, newNamingStyle);
+
+        break;
+      case RESUME_AZ:
+        overridesFile = this.generateHelmOverride();
+        kubernetesManagerFactory
+            .getManager()
+            .helmResume(
+                taskParams().getUniverseUUID(),
+                taskParams().ybSoftwareVersion,
+                config,
+                taskParams().helmReleaseName,
+                taskParams().namespace,
+                overridesFile);
+
         break;
     }
   }
@@ -1143,7 +1199,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
           taskUniverseDetails.xClusterInfo.sourceRootCertDirPath);
     }
-    if (taskParams().masterJoinExistingCluster) {
+    if (taskParams().masterJoinExistingCluster
+        && universeFromDB
+            .getConfig()
+            .getOrDefault(Universe.K8S_SET_MASTER_EXISTING_UNIVERSE_GFLAG, "false")
+            .equals("true")) {
       masterGFlags.put(GFlagsUtil.MASTER_JOIN_EXISTING_UNIVERSE, "true");
     }
     if (!masterGFlags.isEmpty()) {

@@ -32,29 +32,21 @@
 
 #include "yb/server/server_base_options.h"
 
-#include <functional>
 #include <memory>
 #include <mutex>
+#include <regex>
 #include <string>
 #include <thread>
-#include <unordered_map>
 #include <vector>
-
-#include "yb/util/logging.h"
 
 #include "yb/common/common_net.pb.h"
 
-#include "yb/gutil/macros.h"
-#include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/join.h"
 
 #include "yb/master/master_defaults.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/util/faststring.h"
-#include "yb/util/flags.h"
-#include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/result.h"
@@ -69,7 +61,7 @@ DEFINE_UNKNOWN_int32(master_discovery_timeout_ms, 3600000,
              "Timeout for masters to discover each other during cluster creation/startup");
 TAG_FLAG(master_discovery_timeout_ms, hidden);
 
-DECLARE_bool(TEST_mini_cluster_mode);
+DECLARE_bool(TEST_use_custom_varz);
 
 DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
@@ -148,8 +140,17 @@ WebserverOptions& ServerBaseOptions::CompleteWebserverOptions() {
     }
   }
 
-  if (FLAGS_TEST_mini_cluster_mode &&  !fs_opts.data_paths.empty()) {
-    webserver_opts.TEST_custom_varz = "\nfs_data_dirs\n" + JoinStrings(fs_opts.data_paths, ",");
+  if (FLAGS_TEST_use_custom_varz) {
+    if (!fs_opts.data_paths.empty() &&
+        // Only add information about fs_data_dirs once even if called multiple times.
+        webserver_opts.TEST_custom_varz.find("fs_data_dirs") == std::string::npos) {
+      if (!webserver_opts.TEST_custom_varz.empty()) {
+        webserver_opts.TEST_custom_varz += "\n";
+      }
+      webserver_opts.TEST_custom_varz += "fs_data_dirs\n" + JoinStrings(fs_opts.data_paths, ",");
+    }
+    LOG(INFO) << "custom_varz is "
+              << std::regex_replace(webserver_opts.TEST_custom_varz, std::regex{"\n"}, " | ");
   }
 
   return webserver_opts;

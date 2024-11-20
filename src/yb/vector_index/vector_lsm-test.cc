@@ -222,7 +222,7 @@ Status VectorLSMTest::InsertCube(
     TestFrontiers frontiers;
     frontiers.Smallest().SetVertexId(block_entries.front().vertex_id);
     frontiers.Largest().SetVertexId(block_entries.front().vertex_id);
-    RETURN_NOT_OK(lsm.Insert(block_entries, write_time, frontiers));
+    RETURN_NOT_OK(lsm.Insert(block_entries, write_time, &frontiers));
   }
   return Status::OK();
 }
@@ -269,7 +269,7 @@ void VectorLSMTest::CheckQueryVector(
   FloatVectorLSM::SearchResults expected_results;
   for (const auto& entry : CubeInsertEntries(dimensions)) {
     expected_results.push_back({
-      .distance = lsm.TEST_Distance(query_vector, entry.vector),
+      .distance = lsm.Distance(query_vector, entry.vector),
       .base_table_key = entry.base_table_key,
     });
   }

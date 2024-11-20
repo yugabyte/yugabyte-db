@@ -36,6 +36,7 @@
 
 #include "yb/cdc/xcluster_types.h"
 #include "yb/common/colocated_util.h"
+#include "yb/common/common_consensus_util.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/schema_pbutil.h"
@@ -119,10 +120,18 @@ void TabletReplica::UpdateLeaderLeaseInfo(const TabletLeaderLeaseInfo& info) {
   const bool initialized = leader_lease_info.initialized;
   const auto old_lease_exp = leader_lease_info.ht_lease_expiration;
   leader_lease_info = info;
-  leader_lease_info.ht_lease_expiration =
-      info.leader_lease_status == consensus::LeaderLeaseStatus::HAS_LEASE
-          ? std::max(info.ht_lease_expiration, old_lease_exp)
-          : 0;
+  leader_lease_info.ht_lease_expiration = 0;
+  if (info.leader_lease_status == consensus::LeaderLeaseStatus::HAS_LEASE) {
+    if (old_lease_exp == consensus::kInfiniteHybridTimeLeaseExpiration) {
+      // It's originally RF-1, so there are two possibilities:
+      // 1. It's still RF-1, and the new lease expiration is the same as the old one.
+      // 2. It's changed to RF>1, and the new lease expiration is less than the old one.
+      // In both cases, we can accept the new lease expiration.
+      leader_lease_info.ht_lease_expiration = info.ht_lease_expiration;
+    } else {
+      leader_lease_info.ht_lease_expiration = std::max(info.ht_lease_expiration, old_lease_exp);
+    }
+  }
   leader_lease_info.initialized = initialized || info.initialized;
 }
 
@@ -447,6 +456,10 @@ bool TableInfo::is_deleted() const {
   return LockForRead()->is_deleted();
 }
 
+bool TableInfo::is_hidden() const {
+  return LockForRead()->is_hidden();
+}
+
 bool TableInfo::IsPreparing() const {
   return LockForRead()->IsPreparing();
 }
@@ -628,13 +641,18 @@ Status TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
   const auto& tablet_meta = dirty.pb;
   tablets_.emplace(tablet->id(), tablet);
 
-  if (dirty.is_hidden()) {
+  // Hidden tablets of live tables should not be included in partitions_
+  // as they are either split parents or children that are inactive.
+  // Including them will result in overlapping partition ranges
+  if (dirty.is_hidden() && !is_hidden()) {
     // todo(zdrudi): for github issue 18257 this function's return type changed from void to Status.
     // To avoid changing existing behaviour we return OK here.
     // But silently passing over this case could cause bugs.
     return Status::OK();
   }
 
+  // Include hidden tablets in partitions_ only for hidden tables to support features
+  // such as CLONE, PITR, and SELECT AS-OF that query previously dropped tables.
   const auto& partition_key_start = tablet_meta.partition().partition_key_start();
   auto [it, inserted] = partitions_.emplace(partition_key_start, tablet);
   if (inserted) {
@@ -948,6 +966,16 @@ TabletInfoPtr TableInfo::GetColocatedUserTablet() const {
     return tablets_.begin()->second.lock();
   }
   return nullptr;
+}
+
+std::vector<qlexpr::IndexInfo> TableInfo::GetIndexInfos() const {
+  std::vector<qlexpr::IndexInfo> result;
+  auto l = LockForRead();
+  result.reserve(l->pb.indexes().size());
+  for (const auto& index_info_pb : l->pb.indexes()) {
+    result.emplace_back(index_info_pb);
+  }
+  return result;
 }
 
 qlexpr::IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {

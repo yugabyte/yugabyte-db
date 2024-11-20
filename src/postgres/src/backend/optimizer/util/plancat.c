@@ -2274,9 +2274,11 @@ get_dependent_generated_columns(PlannerInfo *root, Index rti,
 	Relation	relation;
 	TupleDesc	tupdesc;
 	TupleConstr *constr;
+	AttrNumber	min_attr;
 
 	/* Assume we already have adequate lock */
 	relation = table_open(rte->relid, NoLock);
+	min_attr = YBGetFirstLowInvalidAttributeNumber(relation);
 
 	tupdesc = RelationGetDescr(relation);
 	constr = tupdesc->constr;
@@ -2295,11 +2297,11 @@ get_dependent_generated_columns(PlannerInfo *root, Index rti,
 
 			/* identify columns this generated column depends on */
 			expr = stringToNode(defval->adbin);
-			pull_varattnos(expr, 1, &attrs_used);
+			pull_varattnos_min_attr(expr, 1, &attrs_used, min_attr + 1);
 
 			if (bms_overlap(target_cols, attrs_used))
 				dependentCols = bms_add_member(dependentCols,
-											   defval->adnum - FirstLowInvalidHeapAttributeNumber);
+											   defval->adnum - min_attr);
 		}
 	}
 

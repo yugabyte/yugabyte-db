@@ -60,7 +60,7 @@ var removeNodesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		providerListRequest := authAPI.GetListOfProviders()
-		providerListRequest = providerListRequest.Name(providerName)
+		providerListRequest = providerListRequest.Name(providerName).ProviderCode(util.OnpremProviderType)
 		r, response, err := providerListRequest.Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err,
@@ -70,14 +70,9 @@ var removeNodesCmd = &cobra.Command{
 		if len(r) < 1 {
 			logrus.Fatalf(
 				formatter.Colorize(
-					fmt.Sprintf("No providers with name: %s found\n", providerName),
+					fmt.Sprintf("No on premises providers with name: %s found\n", providerName),
 					formatter.RedColor,
 				))
-		}
-
-		if r[0].GetCode() != util.OnpremProviderType {
-			errMessage := "Operation only supported for On-premises providers."
-			logrus.Fatalf(formatter.Colorize(errMessage+"\n", formatter.RedColor))
 		}
 
 		providerUUID := r[0].GetUuid()
