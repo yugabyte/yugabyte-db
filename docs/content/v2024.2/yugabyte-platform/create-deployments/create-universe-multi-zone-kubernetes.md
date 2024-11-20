@@ -277,8 +277,7 @@ Refer to [Manage runtime configuration settings](../../administer-yugabyte-platf
 {{<tip title="Important considerations">}}
 
 - Scope Utilization: Services with a defined scope will adhere to that scope, as long as it's supported.
-- Namespaced service ownership: For services within a namespaced scope, only one Helm release is designated as the owner out of all releases in that namespace. This means the lifecycle of the service endpoint when it is Namespaced is tied  to a universe instead of any AZ that it may originally be deployed in.
-- AZ-scoped Helm Releases: Each AZ is one Helm deployment and when you create a service, YugabyteDB Anywhere picks an AZ that owns that service resource. If in the future, you remove the AZ using edit universe, YugabyteDB Anywhere adjusts the owner of the service.
+- Namespaced scope: For Namespace scoped services, a service lifecycle is tied to the lifecycle of the universe.
 - Namespace deletion: When a namespace is deleted, all services associated with that namespace that were created by Helm will be removed as well.
 - Service configuration changes: Existing services can have their serviceType, ports, and annotations updated.
 {{</tip>}}
