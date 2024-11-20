@@ -72,10 +72,10 @@ You can manually provision each node using the pre-provisioning Python script, a
     SUDO password:
     ```
 
-2. Enter your password.
+1. Enter your password.
 
-3. Wait for the script to finish successfully.
+1. Wait for the script to finish successfully.
 
-4. Repeat steps 4-6 for every node that will participate in the on-prem configuration.
+1. Repeat steps 4-6 for every node that will participate in the on-prem configuration.
 
 After you have provisioned the nodes, you can proceed to [add instances to the on-premises provider](../on-premises-nodes/#add-instances).
