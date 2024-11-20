@@ -45,7 +45,7 @@ You can manually provision each node using the pre-provisioning Python script, a
     - `--mount_points` - enter the mount point configured for the node (typically `/data`). If you have multiple drives, add these as a comma-separated list, such as, for example, `/mnt/d0,/mnt/d1`.
     - `--install_node_agent` - this flag instructs the script to install the node agent, which is required for YugabyteDB Anywhere to communicate with the instance.
     - `--api_token` - enter your API token; you can create an API token by navigating to your **User Profile** and clicking **Generate Key**.
-    - `--yba_url` - enter the URL of the machine where you are running YugabyteDB Anywhere, with port 9000. For example, `https://ybahost.company.com:9000`. The node must be able to communicate with YugabyteDB Anywhere at this address.
+    - `--yba_url` - enter the URL of the machine where you are running YugabyteDB Anywhere. For example, `https://ybahost.company.com`. The node must be able to communicate with YugabyteDB Anywhere at this address.
     - `--node_name` - enter a name for the node.
     - `--instance_type` - enter the name of the [instance type](../on-premises-nodes/#add-instance-types) to use for the node. The name must match the name of an existing instance type.
     - `--zone_name` - enter a zone name for the node.
@@ -72,10 +72,10 @@ You can manually provision each node using the pre-provisioning Python script, a
     SUDO password:
     ```
 
-1. Enter your password.
+2. Enter your password.
 
-1. Wait for the script to finish successfully.
+3. Wait for the script to finish successfully.
 
-1. Repeat steps 4-6 for every node that will participate in the on-prem configuration.
+4. Repeat steps 4-6 for every node that will participate in the on-prem configuration.
 
 After you have provisioned the nodes, you can proceed to [add instances to the on-premises provider](../on-premises-nodes/#add-instances).
