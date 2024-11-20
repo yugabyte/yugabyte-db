@@ -171,7 +171,7 @@ To create an alert:
 
 1. Click **Save** when you are done.
 
-When DR is set up, YugabyteDB automatically creates an alert for _YSQL Tables in DR/xCluster Config Inconsistent With Primary/Source_. This alert fires when tables are added or dropped from DR primary's databases under replication, but are not yet added or dropped from the YugabyteDB Anywhere DR configuration.
+When DR is set up, YugabyteDB Anywhere automatically creates an alert for _YSQL Tables in DR/xCluster Config Inconsistent With Primary/Source_. This alert fires when tables are added or dropped from DR primary's databases under replication, but are not yet added or dropped from the DR configuration.
 
 For more information on alerting in YugabyteDB Anywhere, refer to [Alerts](../../../alerts-monitoring/alert/).
 

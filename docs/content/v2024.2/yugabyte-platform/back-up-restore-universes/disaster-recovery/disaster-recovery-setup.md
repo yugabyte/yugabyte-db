@@ -208,8 +208,8 @@ For more information on alerting in YugabyteDB Anywhere, refer to [Alerts](../..
 
 On the DR replica, create a database with the same name as that on the DR primary.
 
-- In [Manual mode](../#manual-schema-changes), you don't need to create objects on the DR replica; DR performs a full copy of the data to be replicated on the DR primary, and automatically creates tables and objects, and restores data on the DR replica from the DR primary.
-- In [Semi-automatic mode](../#semi-automatic-schema-changes), you need to create all objects (tables, indexes, and so on) on the DR replica exactly as they are on the DR primary _prior_ to setting up xCluster DR.
+- In [Manual mode](../#manual-mode), you don't need to create objects on the DR replica; DR performs a full copy of the data to be replicated on the DR primary, and automatically creates tables and objects, and restores data on the DR replica from the DR primary.
+- In [Semi-automatic mode](../#semi-automatic-mode), you need to create all objects (tables, indexes, and so on) on the DR replica exactly as they are on the DR primary _prior_ to setting up xCluster DR.
 
 To add a database to DR, do the following:
 

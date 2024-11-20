@@ -15,11 +15,11 @@ type: docs
 When DDL changes are made to databases in replication for xCluster disaster recovery (DR) (such as creating, altering, or dropping tables or partitions), the changes must be:
 
 - Performed at the SQL level on both the DR primary and replica.
-- In [Manual mode](../#manual-schema-changes), also updated at the YugabyteDB Anywhere level in the DR configuration.
+- In [Manual mode](../#manual-mode), also updated at the YugabyteDB Anywhere level in the DR configuration.
 
 {{<tabpane text=true >}}
 
-  {{% tab header="Semi-automatic schema change mode" lang="semi-automatic-schema-changes" %}}
+  {{% tab header="Semi-automatic mode" lang="semi-automatic-mode" %}}
 
 For each DDL statement:
 
@@ -30,7 +30,7 @@ After both steps are complete, the YugabyteDB Anywhere UI should reflect any add
 
   {{% /tab %}}
 
-  {{% tab header="Manual schema change mode" lang="manual-schema-changes" %}}
+  {{% tab header="Manual mode" lang="manual-mode" %}}
 
 You should perform these actions in a specific order, depending on whether performing a CREATE, DROP, ALTER, and so forth, as indicated by the sequence number of the operation in the table below.
 
