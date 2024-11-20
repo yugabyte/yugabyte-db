@@ -131,7 +131,8 @@ add_dependencies(integration-tests
   generate_test_certs
   fips_install
   xcluster_ddl_replication_sql
-  upgrade_test_builds_tar)
+  upgrade_test_builds_tar
+  update_ysql_migrations)
 
 ADD_YB_TEST_LIBRARY(
     cql_test_util
