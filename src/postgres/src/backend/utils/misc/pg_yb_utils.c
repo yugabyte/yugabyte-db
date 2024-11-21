@@ -2429,7 +2429,6 @@ YbDdlModeOptional YbGetDdlMode(
 		case T_AlterPublicationStmt:
 		case T_AlterRoleSetStmt:
 		case T_AlterSeqStmt:
-		case T_AlterStatsStmt:
 		case T_AlterSubscriptionStmt:
 		case T_AlterSystemStmt:
 		case T_AlterTSConfigurationStmt:
