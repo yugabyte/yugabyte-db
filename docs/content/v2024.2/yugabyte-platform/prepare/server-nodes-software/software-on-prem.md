@@ -12,8 +12,8 @@ menu:
 type: docs
 ---
 
-{{<tip title="v2.20 and earlier">}}
-For instructions on preparing nodes for on-premises configurations in v2.20 and earlier, see [Create on-premises provider configuration](/v2.20/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
+{{<tip>}}
+For instructions for v2.20 and earlier, see [Create on-premises provider configuration](/v2.20/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
 {{</tip>}}
 
 When deploying database clusters using an on-premises provider, YugabyteDB Anywhere (YBA) relies on you to manually create the VMs and provide these pre-created VMs to YBA.
@@ -32,13 +32,19 @@ After you have created the VMs, they must be provisioned with YugabyteDB and rel
 
 The [YugabyteDB Anywhere Node agent](/preview/faq/yugabyte-platform/#what-is-a-node-agent) is an RPC service running on a YugabyteDB node, and is used to manage communication between YugabyteDB Anywhere and the nodes in universes. Node agent can also be used to provision on-premises nodes.
 
-After configuring setup options and running the script, the script provisions the node and installs the node agent. Optionally, if YugabyteDB Anywhere is installed and is running, node agent can also creates or update the on-premises provider that the node is to be part of.
+With this method, you:
 
-See [On-premises provisioning using node agent](../software-on-prem-na/).
+1. Download the node agent package to the VM.
+1. Set the configuration options in the provisioning configuration file.
+1. With sudo permissions, run the provisioning script.
+
+If you have already installed and are running YugabyteDB Anywhere, the node agent will additionally create or update an on-premises provider, as appropriate.
+
+See [Node agent provisioning](../software-on-prem-na/).
 
 ### Classic provisioning
 
-With classic provisioning, how you provision nodes for use with an on-premises provider depends on the SSH access that you can grant YugabyteDB Anywhere.
+With classic provisioning, how you provision nodes for use with an on-premises provider depends on the SSH access that you can grant YugabyteDB Anywhere:
 
 - If you can grant YugabyteDB Anywhere SSH access to nodes, YugabyteDB Anywhere can provision the nodes when you add nodes to the on-premises provider. You do this after installing YugabyteDB Anywhere and creating an on-premises provider.
 - If you are unable to grant SSH access to the nodes, you must manually install each prerequisite software component. You can do this immediately after creating the VM.
