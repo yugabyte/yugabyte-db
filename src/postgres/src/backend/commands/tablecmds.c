@@ -5908,8 +5908,11 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 		/*
 		 * Relations without storage may be ignored here.
 		 * Foreign tables have no storage, nor do partitioned tables and indexes.
+		 * YB: We do not need to rewrite tables during upgrade because we
+		 * link the DocDB table with the data on master.
 		 */
-		if (!RELKIND_HAS_STORAGE(tab->relkind))
+		if (!RELKIND_HAS_STORAGE(tab->relkind) ||
+			(IsYBRelationById(tab->relid) && IsBinaryUpgrade))
 			continue;
 		/*
 		 * YB Note: The following only applies to the old ALTER TYPE code.

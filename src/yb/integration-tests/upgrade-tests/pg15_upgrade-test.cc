@@ -1029,10 +1029,6 @@ TEST_F(Pg15UpgradeTest, ForeignKeyTest) {
   std::vector<int> c_values = {};
 
   ASSERT_OK(ExecuteStatements({
-    "SET yb_non_ddl_txn_for_sys_tables_allowed TO on",
-    "UPDATE pg_yb_catalog_version SET current_version = 10000, last_breaking_version = 10000",
-    "RESET yb_non_ddl_txn_for_sys_tables_allowed",
-
     "CREATE TABLE a_values (a int primary key)",
     "CREATE TABLE b_values (b int primary key)",
     "CREATE TABLE c_values (c int primary key)",
@@ -1122,13 +1118,6 @@ class Pg15UpgradeSequenceTest : public Pg15UpgradeTest {
     cluster_->Shutdown();
     ASSERT_OK(cluster_->Restart());
 
-    // Set catalog version to 10000 so that tservers detect a catalog version mismatch if they're
-    // contacted.
-    ASSERT_OK(ExecuteStatements(
-        {"SET yb_non_ddl_txn_for_sys_tables_allowed TO on",
-        "UPDATE pg_yb_catalog_version SET current_version = 10000, last_breaking_version = 10000 "
-        "WHERE db_oid = (SELECT oid FROM pg_database WHERE datname = 'yugabyte')",
-        "RESET yb_non_ddl_txn_for_sys_tables_allowed"}));
     // Required to avoid a known issue documented in yb_catalog_version.sql
     ASSERT_NOK(ExecuteStatement("SELECT 1 FROM pg_yb_catalog_version"));
   }
