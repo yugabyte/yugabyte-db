@@ -3585,65 +3585,6 @@ Status CatalogManager::SetUniverseReplicationInfoEnabled(
   return Status::OK();
 }
 
-Status CatalogManager::SetConsumerRegistryEnabled(
-    const xcluster::ReplicationGroupId& replication_group_id, bool is_enabled,
-    ClusterConfigInfo::WriteLock* l) {
-  // Modify the Consumer Registry, which will fan out this info to all TServers on heartbeat.
-  {
-    auto replication_group_map =
-        l->mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
-    {
-      auto it = replication_group_map->find(replication_group_id.ToString());
-      if (it == replication_group_map->end()) {
-        LOG(WARNING) << "Valid Producer Universe not in Consumer Registry: "
-                     << replication_group_id;
-        return STATUS(
-            NotFound, "Could not find CDC producer universe", replication_group_id,
-            MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-      }
-      (*it).second.set_disable_stream(!is_enabled);
-    }
-  }
-  return Status::OK();
-}
-
-Status CatalogManager::SetUniverseReplicationEnabled(
-    const SetUniverseReplicationEnabledRequestPB* req,
-    SetUniverseReplicationEnabledResponsePB* resp,
-    rpc::RpcContext* rpc) {
-  LOG(INFO) << "Servicing SetUniverseReplicationEnabled request from " << RequestorString(rpc)
-            << ": " << req->ShortDebugString();
-
-  // Sanity Checking Cluster State and Input.
-  if (!req->has_replication_group_id()) {
-    return STATUS(
-        InvalidArgument, "Producer universe ID must be provided", req->ShortDebugString(),
-        MasterError(MasterErrorPB::INVALID_REQUEST));
-  }
-  if (!req->has_is_enabled()) {
-    return STATUS(
-        InvalidArgument, "Must explicitly set whether to enable", req->ShortDebugString(),
-        MasterError(MasterErrorPB::INVALID_REQUEST));
-  }
-
-  const auto is_enabled = req->is_enabled();
-  // When updating the cluster config, make sure that the change to the user replication and
-  // system replication commit atomically by using the same lock.
-  auto cluster_config = ClusterConfig();
-  auto l = cluster_config->LockForWrite();
-  RETURN_NOT_OK(SetConsumerRegistryEnabled(
-      xcluster::ReplicationGroupId(req->replication_group_id()), is_enabled, &l));
-  l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
-  RETURN_NOT_OK(CheckStatus(
-      sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
-      "updating cluster config in sys-catalog"));
-  l.Commit();
-
-  xcluster_manager_->CreateXClusterSafeTimeTableAndStartService();
-
-  return Status::OK();
-}
-
 Status CatalogManager::GetUniverseReplication(
     const GetUniverseReplicationRequestPB* req, GetUniverseReplicationResponsePB* resp,
     rpc::RpcContext* rpc) {

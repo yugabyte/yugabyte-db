@@ -32,6 +32,7 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/unique_lock.h"
 
@@ -115,7 +116,7 @@ XClusterPoller::XClusterPoller(
     rpc::Rpcs* rpcs, client::YBClient& local_client,
     const std::shared_ptr<client::XClusterRemoteClientHolder>& source_client,
     XClusterConsumer* xcluster_consumer, int64_t leader_term,
-    std::function<int64_t(const TabletId&)> get_leader_term, bool is_automatic_mode)
+    std::function<int64_t(const TabletId&)> get_leader_term, bool is_automatic_mode, bool is_paused)
     : XClusterAsyncExecutor(thread_pool, local_client.messenger(), rpcs),
       producer_tablet_info_(producer_tablet_info),
       consumer_tablet_info_(consumer_tablet_info),
@@ -130,7 +131,8 @@ XClusterPoller::XClusterPoller(
       local_client_(local_client),
       source_client_(source_client),
       xcluster_consumer_(xcluster_consumer),
-      producer_safe_time_(HybridTime::kInvalid) {
+      producer_safe_time_(HybridTime::kInvalid),
+      is_paused_(is_paused) {
   DCHECK_NE(GetLeaderTerm(), yb::OpId::kUnknownTerm);
 }
 
@@ -238,8 +240,19 @@ void XClusterPoller::UpdateColocatedSchemaVersionMap(
 }
 
 HybridTime XClusterPoller::GetSafeTime() const {
-  SharedLock lock(safe_time_lock_);
-  return producer_safe_time_;
+  if (!ShouldContinuePolling()) {
+    return HybridTime::kInvalid;
+  }
+
+  HybridTime safe_time;
+  {
+    SharedLock lock(safe_time_lock_);
+    safe_time = producer_safe_time_;
+  }
+
+  TEST_SYNC_POINT_CALLBACK("XClusterPoller::GetSafeTime", &safe_time);
+
+  return safe_time;
 }
 
 void XClusterPoller::UpdateSafeTime(int64 new_time) {
@@ -255,7 +268,17 @@ void XClusterPoller::UpdateSafeTime(int64 new_time) {
   }
 }
 
+void XClusterPoller::InvalidateSafeTime() {
+  std::lock_guard l(safe_time_lock_);
+  producer_safe_time_ = HybridTime::kInvalid;
+}
+
 void XClusterPoller::SchedulePoll() {
+  if (is_paused_) {
+    // Run immediately.
+    ScheduleFunc(BIND_FUNCTION_AND_ARGS(XClusterPoller::DoPoll));
+  }
+
   // determine if we should delay our upcoming poll
   int64_t delay_ms =
       GetAtomicFlag(&FLAGS_async_replication_polling_delay_ms);  // normal throttling.
@@ -272,6 +295,24 @@ void XClusterPoller::SchedulePoll() {
 }
 
 void XClusterPoller::DoPoll() {
+  if (is_paused_) {
+    const auto safe_time = GetSafeTime();
+    if (!safe_time.is_special()) {
+      VLOG_WITH_PREFIX(1) << "Waiting for safe time to get published.";
+      xcluster_consumer_->AddSafeTimePublishCallback([weak_this = weak_from_this()]() {
+        auto shared_this = std::static_pointer_cast<XClusterPoller>(weak_this.lock());
+        if (shared_this) {
+          shared_this->MarkReplicationPaused();
+          VLOG(1) << shared_this->LogPrefix() << "Safe time has been published.";
+        }
+      });
+      return;
+    }
+
+    MarkReplicationPaused();
+    return;
+  }
+
   if (FLAGS_enable_xcluster_stat_collection) {
     poll_stats_history_.RecordBeginPoll();
   }
@@ -460,6 +501,13 @@ void XClusterPoller::VerifyApplyChangesResponse(XClusterOutputClientResponse res
   // Verify if the ApplyChanges failed, in which case we need to reschedule it.
   if (!response.status.ok() ||
       RandomActWithProbability(FLAGS_TEST_xcluster_simulate_random_failure_after_apply)) {
+    if (is_paused_) {
+      // If replication is paused, skip the Apply and Poll again so that we enter the pausing
+      // workflow.
+      SchedulePoll();
+      return;
+    }
+
     LOG_WITH_PREFIX(WARNING) << "ApplyChanges failure: " << response.status;
 
     StoreNOKReplicationError();
@@ -588,6 +636,10 @@ bool XClusterPoller::IsLeaderTermValid() {
 }
 
 bool XClusterPoller::IsStuck() const {
+  if (is_paused_) {
+    return false;
+  }
+
   const auto lag = MonoTime::Now() - last_task_schedule_time_;
   if (lag > 1s * GetAtomicFlag(&FLAGS_xcluster_poller_task_delay_considered_stuck_secs)) {
     LOG_WITH_PREFIX(ERROR) << "XCluster Poller has not executed any tasks for " << lag.ToString();
@@ -599,6 +651,10 @@ bool XClusterPoller::IsStuck() const {
 std::string XClusterPoller::State() const {
   if (is_failed_) {
     return "Failed";
+  }
+
+  if (is_paused_) {
+    return "Paused";
   }
 
   return "Running";
@@ -619,6 +675,9 @@ void XClusterPoller::MarkFailed(const std::string& reason, const Status& status)
   LOG_WITH_PREFIX(WARNING) << "Stopping xCluster Poller as " << reason
                            << (status.ok() ? "" : Format(": $0", status));
   is_failed_ = true;
+
+  // Invalidate our safe time so that we dont keep updating the safe time table with a stale value.
+  InvalidateSafeTime();
 }
 
 XClusterPollerStats XClusterPoller::GetStats() const {
@@ -658,6 +717,29 @@ void XClusterPoller::ClearReplicationError() {
 
 void XClusterPoller::TEST_IncrementNumSuccessfulWriteRpcs() {
   xcluster_consumer_->TEST_IncrementNumSuccessfulWriteRpcs();
+}
+
+void XClusterPoller::MarkReplicationPaused() {
+  if (!is_paused_) {
+    // We got unpaused before we could process the pause.
+    return;
+  }
+
+  StoreReplicationError(ReplicationErrorPb::REPLICATION_PAUSED);
+
+  // Invalidate our safe time so that we dont keep updating the safe time table with the same value
+  // unnecessarily.
+  InvalidateSafeTime();
+}
+
+void XClusterPoller::SetPaused(bool is_paused) {
+  if (is_paused_.exchange(is_paused) && !is_paused) {
+    // Resume of a paused poller.
+    // Ideally would invoke SchedulePoll here, but this expects us to not be in the middle of a
+    // Poll. To safely handle the cases where we were paused and unpaused all within the same poll,
+    // we simply mark ourself as failed and let the consumer recreate a fresh poller.
+    MarkFailed("the stream was unpaused. The poller should be recreated.");
+  }
 }
 
 }  // namespace tserver

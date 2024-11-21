@@ -79,6 +79,11 @@ class XClusterManager : public XClusterManagerIf,
   Status RemoveStreamsFromSysCatalog(
       const LeaderEpoch& epoch, const std::vector<CDCStreamInfo*>& streams);
 
+  Status SetUniverseReplicationEnabled(
+      const SetUniverseReplicationEnabledRequestPB* req,
+      SetUniverseReplicationEnabledResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+
   Status PauseResumeXClusterProducerStreams(
       const PauseResumeXClusterProducerStreamsRequestPB* req,
       PauseResumeXClusterProducerStreamsResponsePB* resp, rpc::RpcContext* rpc,
