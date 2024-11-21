@@ -238,6 +238,9 @@ class TestLoadBalancerBase {
     PrepareTestState(ts_descs_single_az);
     TestMissingPlacementSingleAz();
 
+    PrepareTestState(ts_descs_multi_az);
+    TestLimitRbsPerTserver();
+
     gflags::SetCommandLineOption("leader_balance_threshold", "2");
     PrepareTestState(ts_descs_multi_az);
     TestBalancingLeadersWithThreshold();
@@ -1018,6 +1021,26 @@ class TestLoadBalancerBase {
     ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&placeholder, &placeholder, &placeholder)));
   }
 
+  void TestLimitRbsPerTserver() {
+    GetOptions()->kMaxInboundRemoteBootstrapsPerTs = 1;
+    // Remove all replicas from ts2.
+    for (const auto& tablet : tablets_) {
+      RemoveReplica(tablet.get(), ts_descs_[2]);
+    }
+
+    // Add another tserver in zone c.
+    ts_descs_.push_back(SetupTS("3333", "c"));
+
+    // Load balancer should add a replica to ts2, then ts3, then stop because of the inbound RBS
+    // limit.
+    std::string tablet_id, from_ts, to_ts;
+    ResetState();
+    ASSERT_OK(AnalyzeTablets());
+    TestAddLoad("", "", ts_descs_[2]->permanent_uuid());
+    TestAddLoad("", "", ts_descs_[3]->permanent_uuid());
+    ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  }
+
   // Methods to prepare the state of the current test.
   void PrepareTestState(const TSDescriptorVector& ts_descs) {
     // Clear old state.
@@ -1168,6 +1191,10 @@ class TestLoadBalancerBase {
         master_errors, (uint32_t)0, IllegalState, "ProcessUnderReplicatedTablets hit an error");
     SCHECK_NE(remaining_adds, task_added, IllegalState, "task_added and remaining_adds mismatch");
     return task_added;
+  }
+
+  Options* GetOptions() {
+    return cb_->state_->options_;
   }
 
   Result<bool> HandleAddReplicas(

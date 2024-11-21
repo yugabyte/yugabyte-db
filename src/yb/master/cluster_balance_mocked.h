@@ -58,7 +58,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
   }
 
   const PlacementInfoPB& GetClusterPlacementInfo() const override {
-    return state_->options_->type == LIVE ?
+    return state_->options_->type == ReplicaType::kLive ?
         replication_info_.live_replicas() : replication_info_.read_replicas(0);
   }
 
@@ -114,7 +114,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     state_->options_->placement_uuid = placement_uuid;
   }
 
-  void ResetOptions() { SetOptions(LIVE, ""); }
+  void ResetOptions() { SetOptions(ReplicaType::kLive, ""); }
 
   TSDescriptorVector ts_descs_;
   vector<AffinitizedZonesSet> affinitized_zones_;

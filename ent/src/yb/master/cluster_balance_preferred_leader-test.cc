@@ -249,7 +249,7 @@ class TestLoadBalancerPreferredLeader : public TestLoadBalancerBase<ClusterLoadB
     ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&placeholder, &placeholder, &placeholder)));
 
     ResetState();
-    cb_->SetOptions(READ_ONLY, read_only_placement_uuid);
+    cb_->SetOptions(ReplicaType::kReadOnly, read_only_placement_uuid);
     ASSERT_OK(AnalyzeTablets());
     // Now load balance an read_only replica.
     string expected_from_ts = ts_descs_[3]->permanent_uuid();
@@ -294,7 +294,7 @@ class TestLoadBalancerPreferredLeader : public TestLoadBalancerBase<ClusterLoadB
     ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
 
     ResetState();
-    cb_->SetOptions(READ_ONLY, read_only_placement_uuid);
+    cb_->SetOptions(ReplicaType::kReadOnly, read_only_placement_uuid);
     ASSERT_OK(AnalyzeTablets());
     ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
     cb_->ResetOptions();
