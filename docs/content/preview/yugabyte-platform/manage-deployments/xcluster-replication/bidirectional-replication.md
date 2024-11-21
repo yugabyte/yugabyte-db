@@ -82,9 +82,7 @@ To add a table to bidirectional replication:
 1. Add the table to both universes.
 1. Add the table to both replication configurations by following the steps in [Add a table to xCluster Replication](../xcluster-replication-ddl/#add-a-table-to-replication).
 
-Non-empty tables can still be added to replication in both directions as above, but this is not advisable. In this case, no full copy is performed so any initial writes to the table are not replicated and data might be inconsistent between the source and target universes. To fix any inconsistencies, [restart the replication](#restart-replication).
-
-For YSQL due to being at database granularity, non-empty tables can still be added to replication in both directions as above, but this is not advisable. In this case, no full copy is performed, so any initial writes to the table are not replicated, and data might be inconsistent between the source and target universes. To fix any inconsistencies, follow the documented steps to [restart bidirectional replication](#restart-replication). For YCQL non-index tables, adding non-empty tables to replication works as expected, with no additional steps required. For index tables, follow the steps in the next section.
+Non-empty YSQL tables can still be added to replication in both directions as above, but this is not advisable. In this case, due to YSQL being at database granularity, no full copy is performed, so any initial writes to the table are not replicated, and data might be inconsistent between the source and target universes. To fix any inconsistencies, follow the documented steps to [restart bidirectional replication](#restart-replication). For YCQL non-index tables, adding non-empty tables to replication works as expected, with no additional steps required. For index tables, follow the steps in the next section.
 
 ### Add index table
 
