@@ -318,14 +318,20 @@ public class GFlagsUtil {
     if (processType == null) {
       extra_gflags.put(MASTER_ADDRESSES, "");
     } else if (processType.equals(UniverseTaskBase.ServerType.TSERVER.name())) {
-      boolean configCgroup = config.getInt(NodeManager.POSTGRES_MAX_MEM_MB) > 0;
+      Integer cgroupSize = userIntent.getCGroupSize(node);
+      boolean configCgroup =
+          (cgroupSize != null && cgroupSize > 0)
+              || config.getInt(NodeManager.POSTGRES_MAX_MEM_MB) > 0;
 
       // If the cluster is a read replica, use the read replica max mem value if its >= 0. -1 means
       // to use the primary cluster value instead.
       if (universe.getUniverseDetails().getClusterByUuid(taskParam.placementUuid).clusterType
               == UniverseDefinitionTaskParams.ClusterType.ASYNC
-          && confGetter.getStaticConf().getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) >= 0) {
-        configCgroup = config.getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) > 0;
+          && ((cgroupSize != null && cgroupSize >= 0)
+              || confGetter.getStaticConf().getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) >= 0)) {
+        configCgroup =
+            userIntent.getCGroupSize(node) > 0
+                || config.getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) > 0;
       }
       long historyRetentionBufferSecs =
           confGetter.getConfForScope(
