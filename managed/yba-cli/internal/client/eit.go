@@ -33,3 +33,17 @@ func (a *AuthAPIClient) EditCertificate(certUUID string) (
 ) {
 	return a.APIClient.CertificateInfoApi.EditCertificate(a.ctx, a.CustomerUUID, certUUID)
 }
+
+// GetRootCert - get root certificate
+func (a *AuthAPIClient) GetRootCert(certUUID string) (
+	ybaclient.CertificateInfoApiApiGetRootCertRequest,
+) {
+	return a.APIClient.CertificateInfoApi.GetRootCert(a.ctx, a.CustomerUUID, certUUID)
+}
+
+// GetClientCert - get client certificate
+func (a *AuthAPIClient) GetClientCert(certUUID string) (
+	ybaclient.CertificateInfoApiApiGetClientCertRequest,
+) {
+	return a.APIClient.CertificateInfoApi.GetClientCert(a.ctx, a.CustomerUUID, certUUID)
+}

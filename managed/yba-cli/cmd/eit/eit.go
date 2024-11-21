@@ -7,6 +7,7 @@ package eit
 import (
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/eit/customca"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/eit/download"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/eit/hashicorp"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/eit/k8scertmanager"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/eit/selfsigned"
@@ -28,6 +29,7 @@ func init() {
 	EITCmd.AddCommand(listEITCmd)
 	EITCmd.AddCommand(describeEITCmd)
 	EITCmd.AddCommand(deleteEITCmd)
+	EITCmd.AddCommand(download.DownloadEITCmd)
 
 	EITCmd.AddCommand(selfsigned.SelfSignedEITCmd)
 	EITCmd.AddCommand(hashicorp.HashicorpVaultEITCmd)
