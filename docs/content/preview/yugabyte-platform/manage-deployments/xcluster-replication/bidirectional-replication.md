@@ -65,7 +65,7 @@ To restart a bidirectional replication setup:
 1. Restart the other replication configuration, where this universe is the source universe.
 1. Set up the replication configuration deleted in step (2) again, with this universe as the target universe.
 
-Note that restarting one side of an existing bidirectional replication configuration without performing step 2 simply re-establishes the replication configuration from the current data without performing a full copy. This can cause inconsistencies in the data between the source and target universes.
+Note that restarting one side of an existing bidirectional replication configuration is disabled to prevent potential data inconsistencies. To restart bidirectional replication, users must follow the documented steps above.
 
 ## DDL operations in bidirectional replication
 
@@ -83,6 +83,8 @@ To add a table to bidirectional replication:
 1. Add the table to both replication configurations by following the steps in [Add a table to xCluster Replication](../xcluster-replication-ddl/#add-a-table-to-replication).
 
 Non-empty tables can still be added to replication in both directions as above, but this is not advisable. In this case, no full copy is performed so any initial writes to the table are not replicated and data might be inconsistent between the source and target universes. To fix any inconsistencies, [restart the replication](#restart-replication).
+
+For YSQL due to being at database granularity, non-empty tables can still be added to replication in both directions as above, but this is not advisable. In this case, no full copy is performed, so any initial writes to the table are not replicated, and data might be inconsistent between the source and target universes. To fix any inconsistencies, follow the documented steps to [restart bidirectional replication](#restart-replication). For YCQL non-index tables, adding non-empty tables to replication works as expected, with no additional steps required. For index tables, follow the steps in the next section.
 
 ### Add index table
 
