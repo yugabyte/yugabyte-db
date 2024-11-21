@@ -38,7 +38,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
   protected Set<String> sourceTableIdsWithNoTableOnTargetUniverse;
   protected Map<String, List<String>> mainTableIndexTablesMap;
   @Setter protected XClusterConfigCreateFormData.BootstrapParams bootstrapParams;
-  protected XClusterConfigEditFormData editFormData;
+  public XClusterConfigEditFormData editFormData;
   protected XClusterConfigSyncFormData syncFormData;
   protected Set<String> tableIdsToAdd;
   protected Set<String> tableIdsToRemove;
