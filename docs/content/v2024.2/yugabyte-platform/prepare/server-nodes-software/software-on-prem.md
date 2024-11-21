@@ -28,7 +28,7 @@ With the on-premises provider, you must provide to YBA one, three, five, or more
 
 After you have created the VMs, they must be provisioned with YugabyteDB and related software before they can be deployed in a universe.
 
-### Automatic provisioning using YugabyteDB Anywhere node agent
+### Node agent provisioning
 
 The [YugabyteDB Anywhere Node agent](/preview/faq/yugabyte-platform/#what-is-a-node-agent) is an RPC service running on a YugabyteDB node, and is used to manage communication between YugabyteDB Anywhere and the nodes in universes. Node agent can also be used to provision on-premises nodes.
 
@@ -38,7 +38,7 @@ With this method, you:
 1. Set the configuration options in the provisioning configuration file.
 1. With sudo permissions, run the provisioning script.
 
-If you have already installed and are running YugabyteDB Anywhere, the node agent will additionally create or update an on-premises provider, as appropriate.
+If you have already installed and are running YugabyteDB Anywhere, the node agent will additionally create or update an [on-premises provider](../../../configure-yugabyte-platform/on-premises/), as appropriate.
 
 See [Node agent provisioning](../software-on-prem-na/).
 

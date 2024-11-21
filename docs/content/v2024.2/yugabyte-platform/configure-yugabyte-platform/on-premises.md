@@ -16,7 +16,31 @@ Before you can deploy universes to private clouds using YugabyteDB Anywhere (YBA
 
 With on-premises providers, VMs are _not_ auto-created by YBA; you must manually create your VMs, provision them with YugabyteDB software, and then add them to the provider's free pool of nodes.
 
-## Overview
+## Node agent provisioning
+
+The [YugabyteDB Anywhere Node agent](/preview/faq/yugabyte-platform/#what-is-a-node-agent) is an RPC service running on a YugabyteDB node, and is used to manage communication between YugabyteDB Anywhere and the nodes in universes. Node agent can also be used to provision on-premises nodes.
+
+With this method, you:
+
+1. Prepare your infrastructure. Refer to
+    - [Networking](../../prepare/networking/)
+    - [Software requirements for on-premises nodes](../../prepare/server-nodes-software/software-on-prem/)
+
+1. Run the node agent provisioning package on the node.
+
+    1. Download the node agent package to the VM.
+    1. Set the configuration options in the provisioning configuration file.
+    1. With sudo permissions, run the provisioning script.
+
+    If you have already installed and are running YugabyteDB Anywhere, the node agent will:
+
+    - Create or update the on-premises provider, as appropriate.
+    - Create the instance type.
+    - Add the node instance to the provider.
+
+    See [Node agent provisioning](../../prepare/server-nodes-software/software-on-prem-na/).
+
+## Classic provisioning
 
 To create, provision, and add nodes to your on-premises provider, you will perform tasks in roughly three stages.
 

@@ -110,4 +110,18 @@ To provision the node:
     sudo ./node-agent-provision.sh
     ```
 
-The script provisions the node and installs node agent. If specified, node agent creates the on-premises provider configuration; or, if the provider already exists, adds the instance to the provider.
+The script provisions the node and installs node agent.
+
+If specified, node agent creates the on-premises provider configuration; or, if the provider already exists, adds the instance to the provider.
+
+## Next steps
+
+If you did not provide configuration details for the provider, you will need to do the following:
+
+1. If the on-premises provider has not been created, create one.
+
+    Refer to [Create the provider configuration](../../../configure-yugabyte-platform/on-premises-provider/).
+
+1. Add the node to the provider.
+
+    Refer to [Add nodes to the on-premises provider](../../../configure-yugabyte-platform/on-premises-nodes/).
