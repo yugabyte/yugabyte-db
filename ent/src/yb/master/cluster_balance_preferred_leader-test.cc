@@ -263,7 +263,7 @@ class TestLoadBalancerPreferredLeader : public TestLoadBalancerBase<ClusterLoadB
 
     expected_from_ts = ts_descs_[3]->permanent_uuid();
     expected_to_ts = ts_descs_[4]->permanent_uuid();
-    expected_tablet_id = tablets_[1]->tablet_id();
+    expected_tablet_id = tablets_[3]->tablet_id();
     TestAddLoad(expected_tablet_id, expected_from_ts, expected_to_ts);
     RemoveReplica(tablet_map_[expected_tablet_id].get(), ts_descs_[3]);
     AddFollowerReplica(tablet_map_[expected_tablet_id].get(), ts_descs_[4]);

@@ -410,11 +410,7 @@ class TestLoadBalancerBase {
     destination_ts->AddPendingTabletDelete(pending_delete_tablet->id());
     ResetState();
     ASSERT_OK(AnalyzeTablets());
-    std::string tablet_id, out_ts, to_ts;
-    auto replica_added = ASSERT_RESULT(HandleAddReplicas(&tablet_id, &out_ts, &to_ts));
-    EXPECT_TRUE(replica_added);
-    EXPECT_EQ(tablet_id, underreplicated_tablet->id());
-    EXPECT_EQ(to_ts, destination_ts->permanent_uuid());
+    TestAddLoad(underreplicated_tablet->id(), "", destination_ts->permanent_uuid());
   }
 
   // It's not clear how realistic this scenario is. The load balancer has checks in the addition
@@ -618,10 +614,8 @@ class TestLoadBalancerBase {
 
     // Remove the only tablet peer from AZ "c".
     for (const auto& tablet : tablets_) {
-      std::shared_ptr<TabletReplicaMap> replica_map =
-        std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
-      replica_map->erase(ts_descs_[2]->permanent_uuid());
-      tablet->SetReplicaLocations(replica_map);
+      RemoveReplica(tablet.get(), ts_descs_[2]);
+      MoveTabletLeader(tablet.get(), ts_descs_[0]);
     }
     // Remove the tablet server from the list.
     ts_descs_.pop_back();
@@ -778,10 +772,8 @@ class TestLoadBalancerBase {
 
     // Remove the only tablet peer from AZ "c".
     for (const auto& tablet : tablets_) {
-      std::shared_ptr<TabletReplicaMap> replica_map =
-        std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
-      replica_map->erase(ts_descs_[2]->permanent_uuid());
-      tablet->SetReplicaLocations(replica_map);
+      RemoveReplica(tablet.get(), ts_descs_[2]);
+      MoveTabletLeader(tablet.get(), ts_descs_[0]);
     }
     // Remove the tablet server from the list.
     ts_descs_.pop_back();
@@ -984,8 +976,11 @@ class TestLoadBalancerBase {
 
     // Under-replicate tablets 0, 1, 2.
     RemoveReplica(tablets_[0].get(), ts_descs_[0]);
+    MoveTabletLeader(tablets_[0].get(), ts_descs_[1]);
     RemoveReplica(tablets_[1].get(), ts_descs_[1]);
+    MoveTabletLeader(tablets_[1].get(), ts_descs_[2]);
     RemoveReplica(tablets_[2].get(), ts_descs_[2]);
+    MoveTabletLeader(tablets_[2].get(), ts_descs_[0]);
 
     ResetState();
     ASSERT_OK(AnalyzeTablets());
@@ -997,18 +992,27 @@ class TestLoadBalancerBase {
     expected_to_ts = ts_descs_[0]->permanent_uuid();
 
     TestAddLoad(expected_tablet_id,  placeholder, expected_to_ts);
+    // ASSERT_TRUE(ASSERT_RESULT(HandleOneAddIfMissingPlacement(actual_tablet_id, actual_to_ts)));
+    // ASSERT_EQ(expected_tablet_id, actual_tablet_id);
+    // ASSERT_EQ(expected_to_ts, actual_to_ts);
 
     // Make sure a replica is added for tablet 1 to ts 1.
     expected_tablet_id = tablets_[1]->tablet_id();
     expected_to_ts = ts_descs_[1]->permanent_uuid();
 
     TestAddLoad(expected_tablet_id,  placeholder, expected_to_ts);
+    // ASSERT_TRUE(ASSERT_RESULT(HandleOneAddIfMissingPlacement(actual_tablet_id, actual_to_ts)));
+    // ASSERT_EQ(expected_tablet_id, actual_tablet_id);
+    // ASSERT_EQ(expected_to_ts, actual_to_ts);
 
     // Make sure a replica is added for tablet 2 to ts 2.
     expected_tablet_id = tablets_[2]->tablet_id();
     expected_to_ts = ts_descs_[2]->permanent_uuid();
 
     TestAddLoad(expected_tablet_id,  placeholder, expected_to_ts);
+    // ASSERT_TRUE(ASSERT_RESULT(HandleOneAddIfMissingPlacement(actual_tablet_id, actual_to_ts)));
+    // ASSERT_EQ(expected_tablet_id, actual_tablet_id);
+    // ASSERT_EQ(expected_to_ts, actual_to_ts);
 
     // Everything is normal now, load balancer shouldn't do anything.
     ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&placeholder, &placeholder, &placeholder)));
@@ -1072,7 +1076,10 @@ class TestLoadBalancerBase {
                    string* actual_to_ts = nullptr) NO_THREAD_SAFETY_ANALYSIS {
     string tablet_id, from_ts, to_ts;
     auto over_replication_at_start = cb_->get_total_over_replication();
-    ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+    // First try to handle missing placement, otherwise handle regular adds.
+    if (!ASSERT_RESULT(HandleOneAddIfMissingPlacement(tablet_id, to_ts))) {
+      ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+    }
     if (actual_tablet_id) {
       *actual_tablet_id = tablet_id;
     }
@@ -1146,6 +1153,21 @@ class TestLoadBalancerBase {
   // Clear the tablets_added_ field from the state, used for testing.
   void ClearTabletsAddedForTest() {
     cb_->state_->tablets_added_.clear();
+  }
+
+  Result<bool> HandleOneAddIfMissingPlacement(TabletId& out_tablet_id, TabletServerId& out_to_ts)
+      NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {
+    // Only do one add at most. If we do an add then we'll call AddReplica which will update state.
+    int remaining_adds = 1;
+    uint32_t master_errors = 0;
+    bool task_added = false;
+    cb_->ProcessUnderReplicatedTablets(
+        remaining_adds, master_errors, task_added, out_tablet_id, out_to_ts);
+
+    SCHECK_EQ(
+        master_errors, (uint32_t)0, IllegalState, "ProcessUnderReplicatedTablets hit an error");
+    SCHECK_NE(remaining_adds, task_added, IllegalState, "task_added and remaining_adds mismatch");
+    return task_added;
   }
 
   Result<bool> HandleAddReplicas(
