@@ -139,6 +139,7 @@ DEFINE_test_flag(bool, cdcsdk_skip_table_removal_from_qualified_list, false,
 
 DECLARE_int32(master_rpc_timeout_ms);
 DECLARE_bool(ysql_yb_enable_replication_commands);
+DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_uint32(cdc_wal_retention_time_secs);
@@ -1008,6 +1009,17 @@ Status CatalogManager::CreateNewCdcsdkStream(
   if (req.has_cdcsdk_ysql_replication_slot_plugin_name()) {
     metadata->set_cdcsdk_ysql_replication_slot_plugin_name(
         req.cdcsdk_ysql_replication_slot_plugin_name());
+  }
+
+  if (FLAGS_ysql_yb_allow_replication_slot_lsn_types &&
+      req.has_cdcsdk_ysql_replication_slot_name() && req.has_cdcsdk_stream_create_options()) {
+    RSTATUS_DCHECK(
+        req.cdcsdk_stream_create_options().has_lsn_type() &&
+            req.cdcsdk_stream_create_options().lsn_type() != ReplicationSlotLsnType_UNSPECIFIED,
+        InvalidArgument, "LSN type not present CDC stream creation request");
+
+    metadata->set_cdcsdk_ysql_replication_slot_lsn_type(
+        req.cdcsdk_stream_create_options().lsn_type());
   }
 
   {
@@ -1967,6 +1979,13 @@ Status CatalogManager::ValidateCDCSDKRequestProperties(
     // Should never happen since the YSQL commands also check the flag.
     RETURN_INVALID_REQUEST_STATUS(
         "Creation of CDCSDK stream with a replication slot name is disallowed");
+  }
+
+  if (!FLAGS_ysql_yb_allow_replication_slot_lsn_types && req.has_cdcsdk_stream_create_options() &&
+      req.cdcsdk_stream_create_options().has_lsn_type()) {
+    RETURN_INVALID_REQUEST_STATUS(
+        "Creation of CDCSDK stream with a replication slot having LSN type is disallowed because "
+        "the flag ysql_yb_allow_replication_slot_lsn_types is disabled");
   }
 
   // TODO: Validate that the replication slot output plugin name is provided if
@@ -2929,6 +2948,13 @@ Status CatalogManager::GetCDCStream(
         stream_lock->pb.cdcsdk_disable_dynamic_table_addition());
   }
 
+  if (FLAGS_ysql_yb_allow_replication_slot_lsn_types &&
+      stream_lock->pb.has_cdcsdk_ysql_replication_slot_lsn_type()) {
+    auto cdc_stream_info_options = stream_info->mutable_cdc_stream_info_options();
+    cdc_stream_info_options->set_cdcsdk_ysql_replication_slot_lsn_type(
+        stream_lock->pb.cdcsdk_ysql_replication_slot_lsn_type());
+  }
+
   auto replica_identity_map = stream_lock->pb.replica_identity_map();
   stream_info->mutable_replica_identity_map()->swap(replica_identity_map);
 
@@ -3063,6 +3089,14 @@ Status CatalogManager::ListCDCStreams(
     if (ltm->pb.has_cdcsdk_ysql_replication_slot_plugin_name()) {
       stream->set_cdcsdk_ysql_replication_slot_plugin_name(
           ltm->pb.cdcsdk_ysql_replication_slot_plugin_name());
+    }
+
+    if (FLAGS_ysql_yb_allow_replication_slot_lsn_types) {
+      if (ltm->pb.has_cdcsdk_ysql_replication_slot_lsn_type()) {
+        auto cdc_stream_info_options = stream->mutable_cdc_stream_info_options();
+        cdc_stream_info_options->set_cdcsdk_ysql_replication_slot_lsn_type(
+            ltm->pb.cdcsdk_ysql_replication_slot_lsn_type());
+      }
     }
 
     if (ltm->pb.has_cdcsdk_stream_metadata()) {

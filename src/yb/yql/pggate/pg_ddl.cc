@@ -502,7 +502,7 @@ Status PgDropDBSequences::Exec() {
 
 PgCreateReplicationSlot::PgCreateReplicationSlot(
     const PgSession::ScopedRefPtr& pg_session, const char* slot_name, const char* plugin_name,
-    PgOid database_oid, YBCPgReplicationSlotSnapshotAction snapshot_action)
+    PgOid database_oid, YBCPgReplicationSlotSnapshotAction snapshot_action, YBCLsnType lsn_type)
     : BaseType(pg_session) {
   req_.set_database_oid(database_oid);
   req_.set_replication_slot_name(slot_name);
@@ -519,6 +519,19 @@ PgCreateReplicationSlot::PgCreateReplicationSlot(
       break;
     default:
       DCHECK(false) << "Unknown snapshot_action " << snapshot_action;
+  }
+
+  if (yb_allow_replication_slot_lsn_types) {
+    switch (lsn_type) {
+      case YB_REPLICATION_SLOT_LSN_TYPE_SEQUENCE:
+        req_.set_lsn_type(tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_SEQUENCE);
+        break;
+      case YB_REPLICATION_SLOT_LSN_TYPE_HYBRID_TIME:
+        req_.set_lsn_type(tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_HYBRID_TIME);
+        break;
+      default:
+        req_.set_lsn_type(tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_SEQUENCE);
+    }
   }
 }
 

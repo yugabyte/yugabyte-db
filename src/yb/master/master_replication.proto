@@ -26,6 +26,12 @@ import "yb/rpc/service.proto";
 import "yb/tablet/operations.proto";
 import "yb/common/common.proto";
 
+message CDCStreamInfoOptionsPB {
+  // This field stores the type of the LSN being used by the replication slot.
+  optional ReplicationSlotLsnType cdcsdk_ysql_replication_slot_lsn_type =
+    1 [default = ReplicationSlotLsnType_UNSPECIFIED];
+}
+
 message CDCStreamInfoPB {
   optional bytes stream_id = 1;
   // For CDCSDK, table_id contains the qualified list of tables for the stream.
@@ -52,6 +58,9 @@ message CDCStreamInfoPB {
   // This field stores the list of user created tables that have been removed from CDCSDK
   // stream.
   repeated bytes unqualified_table_id = 13;
+
+  // Field to store all the metadata related to a CDC stream.
+  optional CDCStreamInfoOptionsPB cdc_stream_info_options = 14;
 }
 
 message ValidateReplicationInfoRequestPB {

@@ -49,7 +49,7 @@ create_physical_replication_slot(char *name, bool immediately_reserve,
 	ReplicationSlotCreate(name, false,
 						  temporary ? RS_TEMPORARY : RS_PERSISTENT, false,
 						  NULL /* yb_plugin_name */, CRS_NOEXPORT_SNAPSHOT,
-						  NULL);
+						  NULL, CRS_SEQUENCE);
 
 	if (immediately_reserve)
 	{
@@ -130,7 +130,8 @@ static void
 create_logical_replication_slot(char *name, char *plugin,
 								bool temporary, bool two_phase,
 								XLogRecPtr restart_lsn,
-								bool find_startpoint)
+								bool find_startpoint,
+								char *yb_lsn_type)
 {
 	LogicalDecodingContext *ctx = NULL;
 
@@ -151,7 +152,7 @@ create_logical_replication_slot(char *name, char *plugin,
 	 */
 	ReplicationSlotCreate(name, true,
 						  temporary ? RS_TEMPORARY : RS_EPHEMERAL, two_phase,
-						  plugin, CRS_NOEXPORT_SNAPSHOT, NULL);
+						  plugin, CRS_NOEXPORT_SNAPSHOT, NULL, YBParseLsnType(yb_lsn_type));
 
 	if (!IsYugaByteEnabled())
 	{
@@ -201,6 +202,8 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 	Name		plugin = PG_GETARG_NAME(1);
 	bool		temporary = PG_GETARG_BOOL(2);
 	bool		two_phase = PG_GETARG_BOOL(3);
+	char		*yb_lsn_type = "SEQUENCE";
+	
 	Datum		result;
 	TupleDesc	tupdesc;
 	HeapTuple	tuple;
@@ -231,6 +234,7 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 			elog(ERROR, "cannot initialize logical decoding without a specified plugin");
 
 		YBValidateOutputPlugin(NameStr(*plugin));
+		YBValidateLsnType(yb_lsn_type);
 	}
 
 	CheckSlotPermissions();
@@ -242,7 +246,8 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 									temporary,
 									two_phase,
 									InvalidXLogRecPtr,
-									true);
+									true,
+									yb_lsn_type);
 
 	memset(nulls, 0, sizeof(nulls));
 
@@ -828,6 +833,7 @@ copy_replication_slot(FunctionCallInfo fcinfo, bool logical_slot)
 	ReplicationSlot *src = NULL;
 	ReplicationSlot first_slot_contents;
 	ReplicationSlot second_slot_contents;
+	char		*yb_lsn_type = "SEQUENCE";
 	XLogRecPtr	src_restart_lsn;
 	bool		src_islogical;
 	bool		temporary;
@@ -926,7 +932,8 @@ copy_replication_slot(FunctionCallInfo fcinfo, bool logical_slot)
 										temporary,
 										false,
 										src_restart_lsn,
-										false);
+										false,
+										yb_lsn_type);
 	}
 	else
 		create_physical_replication_slot(NameStr(*dst_name),

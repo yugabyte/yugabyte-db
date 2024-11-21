@@ -27,3 +27,7 @@ TAG_FLAG(cluster_uuid, hidden);
 DEFINE_NON_RUNTIME_bool(enable_pg_cron, false,
     "Enables the pg_cron extension. Jobs will be run on a single tserver node. The node should be "
     "assumed to be selected randomly.");
+
+DEFINE_RUNTIME_AUTO_PG_FLAG(
+    bool, yb_allow_replication_slot_lsn_types, kLocalPersisted, false, true,
+    "Enable LSN types to be specified while creating replication slots.");
