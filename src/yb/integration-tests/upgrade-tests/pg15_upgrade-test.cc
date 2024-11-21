@@ -116,9 +116,9 @@ TEST_F(Pg15UpgradeTest, BackslashD) {
 
   ASSERT_OK(UpgradeClusterToMixedMode());
 
-  result = ASSERT_RESULT(ExecuteViaYsqlshOnTs(kBackslashD, kMixedModeTserverPg15));
+  result = ASSERT_RESULT(ExecuteViaYsqlsh(kBackslashD, kMixedModeTserverPg15));
   ASSERT_EQ(result, kExpectedResult);
-  result = ASSERT_RESULT(ExecuteViaYsqlshOnTs(kBackslashD, kMixedModeTserverPg11));
+  result = ASSERT_RESULT(ExecuteViaYsqlsh(kBackslashD, kMixedModeTserverPg11));
   ASSERT_EQ(result, kExpectedResult);
 
   ASSERT_OK(FinalizeUpgradeFromMixedMode());
@@ -126,6 +126,62 @@ TEST_F(Pg15UpgradeTest, BackslashD) {
   // Verify the result from a random tserver.
   result = ASSERT_RESULT(ExecuteViaYsqlsh(kBackslashD));
   ASSERT_EQ(result, kExpectedResult);
+}
+
+TEST_F(Pg15UpgradeTest, CreateTableOf) {
+  static const auto t1 = "t1_pg11";
+  static const auto t2 = "t2_pg11";
+  static const auto t3 = "t3_pg15";
+  static const auto t4 = "t4_pg15";
+  static const auto type_name = "ty";
+
+  ASSERT_OK(ExecuteStatements({
+      Format("CREATE TYPE $0 AS (a INT)", type_name),
+      Format("CREATE TABLE $0 OF $1", t1, type_name),
+      Format("CREATE TABLE $0 (a INT)", t2),
+  }));
+
+  std::map<std::string, bool> table_is_typed = {{t1, true}, {t2, false}};
+
+  const auto check_tables = [this, &table_is_typed] (std::optional<size_t> tserver_idx) {
+    const auto kTypeTable = Format("Typed table of type: $0\n", type_name);
+    const auto kExpectedOutput =
+        "              Table \"public.$0\"\n"
+        " Column |  Type   | Collation | Nullable | Default \n"
+        "--------+---------+-----------+----------+---------\n"
+        " a      | integer |           |          | \n"
+        "$1\n";
+
+    for (const auto &[table, is_typed] : table_is_typed) {
+      auto result = ASSERT_RESULT(ExecuteViaYsqlsh(Format("\\d $0", table), tserver_idx));
+      ASSERT_EQ(result, Format(kExpectedOutput, table, is_typed ? kTypeTable : ""));
+    }
+  };
+
+  ASSERT_NO_FATALS(check_tables(kAnyTserver));
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  for (const auto tserver_idx : {kMixedModeTserverPg11, kMixedModeTserverPg15})
+    ASSERT_NO_FATALS(check_tables(tserver_idx));
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  ASSERT_NO_FATALS(check_tables(kAnyTserver));
+
+  ASSERT_OK(ExecuteStatements({
+      Format("ALTER TABLE $0 NOT OF", t1),
+      Format("ALTER TABLE $0 OF $1", t2, type_name),
+      Format("CREATE TABLE $0 OF $1", t3, type_name),
+      Format("CREATE TABLE $0 (a INT)", t4),
+  }));
+
+  table_is_typed[t1] = false;
+  table_is_typed[t2] = true;
+  table_is_typed[t3] = true;
+  table_is_typed[t4] = false;
+
+  ASSERT_NO_FATALS(check_tables(kAnyTserver));
 }
 
 TEST_F(Pg15UpgradeTest, Comments) {
@@ -588,17 +644,17 @@ TEST_F(Pg15UpgradeTest, Template1) {
       // Event triggers run only on DDLs, which are disallowed during upgrade. So we can't directly
       // test them, but we can check that they exist.
       {
-        auto result = ASSERT_RESULT(ExecuteViaYsqlshOnTs("\\dy", tserver, db_name));
+        auto result = ASSERT_RESULT(ExecuteViaYsqlsh("\\dy", tserver, db_name));
         ASSERT_STR_CONTAINS(result, kEventTrigger);
       }
       // Check that objects created in the schema are visible only in that schema.
       {
-        auto result = ASSERT_RESULT(ExecuteViaYsqlshOnTs("\\df", tserver, db_name));
+        auto result = ASSERT_RESULT(ExecuteViaYsqlsh("\\df", tserver, db_name));
         ASSERT_STR_NOT_CONTAINS(result, kSchema);
         ASSERT_STR_NOT_CONTAINS(result, kFunctionInSchema);
 
-        auto result_schema = ASSERT_RESULT(ExecuteViaYsqlshOnTs(Format("\\df $0.*", kSchema),
-                                                                      tserver, db_name));
+        auto result_schema = ASSERT_RESULT(ExecuteViaYsqlsh(Format("\\df $0.*", kSchema),
+                                                            tserver, db_name));
         ASSERT_STR_CONTAINS(result_schema, kSchema);
         ASSERT_STR_CONTAINS(result_schema, kFunctionInSchema);
       }
@@ -662,7 +718,8 @@ TEST_F(Pg15UpgradeTest, Template1) {
       ASSERT_OK(conn.ExecuteFormat("DROP SCHEMA $0 CASCADE", kSchema));
 
       // Validate that the function no longer exists.
-      auto all_functions = ASSERT_RESULT(ExecuteViaYsqlsh(Format("\\df *.*", kSchema), db_name));
+      auto all_functions = ASSERT_RESULT(ExecuteViaYsqlsh(Format("\\df *.*", kSchema), kAnyTserver,
+                                                          db_name));
       ASSERT_STR_NOT_CONTAINS(all_functions, kFunctionInSchema);
     }
   }

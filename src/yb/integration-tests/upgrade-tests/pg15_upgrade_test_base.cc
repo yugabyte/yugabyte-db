@@ -147,13 +147,17 @@ Status Pg15UpgradeTestBase::ExecuteStatement(const std::string& sql_statement) {
   return ExecuteStatements({sql_statement});
 }
 
-Result<std::string> Pg15UpgradeTestBase::ExecuteViaYsqlshOnTs(
-    const std::string& sql_statement, size_t ts_id, const std::string &db_name) {
+Result<std::string> Pg15UpgradeTestBase::ExecuteViaYsqlsh(
+    const std::string& sql_statement, std::optional<size_t> ts_id, const std::string &db_name) {
   // tserver could have restarted recently. Create a connection which will wait till the pg process
   // is up.
-  RETURN_NOT_OK(CreateConnToTs(ts_id));
 
-  auto tserver = cluster_->tablet_server(ts_id);
+  auto not_null_ts_id = ts_id.value_or(
+      RandomUniformInt<size_t>(0, cluster_->num_tablet_servers() - 1));
+
+  RETURN_NOT_OK(CreateConnToTs(not_null_ts_id));
+
+  auto tserver = cluster_->tablet_server(not_null_ts_id);
   std::vector<std::string> args;
   args.push_back(GetPgToolPath("ysqlsh"));
   args.push_back(db_name);
@@ -165,19 +169,13 @@ Result<std::string> Pg15UpgradeTestBase::ExecuteViaYsqlshOnTs(
   args.push_back(sql_statement);
 
   std::string output, error;
-  LOG_WITH_FUNC(INFO) << "Executing on " << ts_id << ": " << AsString(args);
+  LOG_WITH_FUNC(INFO) << "Executing on " << not_null_ts_id << ": " << AsString(args);
   auto status = Subprocess::Call(args, &output, &error);
   if (!status.ok()) {
     return status.CloneAndAppend(error);
   }
   LOG_WITH_FUNC(INFO) << "Command output: " << output;
   return output;
-}
-
-Result<std::string> Pg15UpgradeTestBase::ExecuteViaYsqlsh(const std::string& sql_statement,
-                                                          const std::string &db_name) {
-  auto node_index = RandomUniformInt<size_t>(0, cluster_->num_tablet_servers() - 1);
-  return ExecuteViaYsqlshOnTs(sql_statement, node_index, db_name);
 }
 
 Status Pg15UpgradeTestBase::CreateSimpleTable() {

@@ -2928,7 +2928,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> OF <type_name> */
 			| OF any_name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER action OF", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					TypeName   *def = makeTypeNameFromNameList($2);
 
@@ -2940,7 +2939,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> NOT OF */
 			| NOT OF
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER action NOT OF", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_DropOf;

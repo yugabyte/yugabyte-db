@@ -475,6 +475,9 @@ drop schema alter2 cascade;
 
 CREATE TYPE tt_t0 AS (z inet, x int, y numeric(8,2));
 ALTER TYPE tt_t0 DROP ATTRIBUTE z;
+-- YB: since we can't ALTER TYPE yet, work around by recreating the type.
+DROP TYPE tt_t0;
+CREATE TYPE tt_t0 AS (x int, y numeric(8,2));
 CREATE TABLE tt0 (x int NOT NULL, y numeric(8,2));	-- OK
 CREATE TABLE tt1 (x int, y bigint);					-- wrong base type
 CREATE TABLE tt2 (x int, y numeric(9,2));			-- wrong typmod
