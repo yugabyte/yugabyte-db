@@ -202,7 +202,7 @@ const fs = require('fs');
 const config = {
   user: 'admin',
   database: 'yugabyte',
-  host: '22420e3a-768b-43da-8dcb-xxxxxx.aws.ybdb.io',
+  host: '22420e3a-768b-43da-8dcb-xxxxxx.aws.yugabyte.cloud',
   password: 'xxxxxx',
   port: 5433,
   // this object will be passed to the TLSSocket constructor

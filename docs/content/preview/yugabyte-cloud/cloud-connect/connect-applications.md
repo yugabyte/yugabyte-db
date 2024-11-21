@@ -81,7 +81,7 @@ Select **Connection String** to display the string that YSQL applications can us
 Here's an example of a generated `ysqlsh` string:
 
 ```sh
-postgresql://<DB USER>:<DB PASSWORD>@us-west1.fa1b1ca1-b1c1-11a1-111b-ca111b1c1a11.aws.ybdb.io:5433/yugabyte? \
+postgresql://<DB USER>:<DB PASSWORD>@us-west1.fa1b1ca1-b1c1-11a1-111b-ca111b1c1a11.aws.yugabyte.cloud:5433/yugabyte? \
 ssl=true& \
 sslmode=verify-full& \
 sslrootcert=<ROOT_CERT_PATH>
@@ -97,7 +97,7 @@ To use the string in your application, replace the following:
 For example:
 
 ```sh
-postgresql://admin:qwerty@us-west1.fa1b1ca1-b1c1-11a1-111b-ca111b1c1a11.aws.ybdb.io:5433/yugabyte?ssl=true& \
+postgresql://admin:qwerty@us-west1.fa1b1ca1-b1c1-11a1-111b-ca111b1c1a11.aws.yugabyte.cloud:5433/yugabyte?ssl=true& \
 sslmode=verify-full&sslrootcert=~/.postgresql/root.crt
 ```
 
