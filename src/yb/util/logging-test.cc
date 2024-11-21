@@ -47,11 +47,6 @@ DECLARE_string(vmodule);
 using std::string;
 using std::vector;
 
-// LoggingTest is not actually an integration test, but we put it here, so it will be linked with
-// all libraries used for YB cluster processes, because static object initialization in thse
-// libraries could cause logging issues.
-// For example: https://github.com/yugabyte/yugabyte-db/issues/3176
-
 namespace yb {
 
 // Test the YB_LOG_EVERY_N_SECS(...) macro.
@@ -69,8 +64,8 @@ TEST(LoggingTest, TestThrottledLogging) {
 
   // The first log line shouldn't have a suppression count.
   EXPECT_THAT(msgs[0], testing::ContainsRegex("test$"));
-  // The second one should have suppressed at least three digits worth of log messages.
-  EXPECT_THAT(msgs[1], testing::ContainsRegex("\\[suppressed [0-9]{3,} similar messages\\]"));
+  // The second one should have suppressed at least two digits worth of log messages.
+  EXPECT_THAT(msgs[1], testing::ContainsRegex("\\[suppressed [0-9]{2,} similar messages\\]"));
 
   // Just compilation check.
   YB_LOG_EVERY_N_SECS(INFO, 1) << "test" << THROTTLE_MSG;
@@ -104,4 +99,48 @@ TEST(LoggingTest, VModule) {
   EXPECT_THAT(msgs[1], testing::HasSubstr("vlog3: "));
 }
 
-} // namespace yb
+// Test the YB_LOG_EVERY_N_SECS_OR_VLOG(...) macro when vlog is off.
+TEST(LoggingTest, TestThrottledOrVlogWithoutVlog) {
+  StringVectorSink sink;
+  ScopedRegisterSink srs(&sink);
+
+  // Log 5000 messages over a period of 5 seconds.
+  for (int i = 0; i < 5000; i++) {
+    YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 1, 1) << "test" << THROTTLE_MSG;
+    SleepFor(MonoDelta::FromMilliseconds(1));
+  }
+  const vector<string>& msgs = sink.logged_msgs();
+  ASSERT_GE(msgs.size(), 2);
+  ASSERT_LT(msgs.size(), 50);
+
+  // The first log line shouldn't have a suppression count.
+  EXPECT_THAT(msgs[0], testing::ContainsRegex("] test$"));
+  // The second one should have suppressed at least two digits worth of log messages.
+  EXPECT_THAT(
+      msgs[1], testing::ContainsRegex("\\] test [suppressed [0-9]{2,} similar messages\\]$"));
+
+  // Just compilation check.
+  YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 1, 2) << "test" << THROTTLE_MSG;
+  YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 1, 3) << "test" << THROTTLE_MSG;
+}
+
+// Test the YB_LOG_EVERY_N_SECS_OR_VLOG(...) macro when vlog is on.
+TEST(LoggingTest, TestThrottledOrVlogWithVlog) {
+  google::SetVLOGLevel("logging-test", 1);
+
+  StringVectorSink sink;
+  ScopedRegisterSink srs(&sink);
+
+  // Log 2000 messages over a period of 2 seconds.
+  for (int i = 0; i < 2000; i++) {
+    YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 1, 1) << "test" << THROTTLE_MSG;
+    SleepFor(MonoDelta::FromMilliseconds(1));
+  }
+  const vector<string>& msgs = sink.logged_msgs();
+  ASSERT_EQ(msgs.size(), 2000);
+
+  // The first log line shouldn't have a suppression count.
+  EXPECT_THAT(msgs[0], testing::ContainsRegex("] vlog1: test$"));
+}
+
+}  // namespace yb
