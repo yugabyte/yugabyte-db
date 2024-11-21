@@ -81,7 +81,7 @@ def retry_ssh_errors(fn=None, retry_delay=SSH_RETRY_DELAY):
 
 def parse_private_key(key):
     """Parses the private key file, & returns
-    the underlying format that the key uses.
+    the key format and key data.
     :param key: private key file.
     :return: Private key type(One of SSH2/SSH).
     """
@@ -93,12 +93,17 @@ def parse_private_key(key):
         # key maybe SSH encoded public key
         try:
             key = serialization.load_ssh_public_key(data=key_data.encode())
-            return SSHPUB
+            return SSHPUB, key
         except Exception:
             pass
         try:
-            serialization.load_pem_private_key(data=key_data.encode(), password=None)
-            return SSH
+            key = serialization.load_ssh_private_key(data=key_data.encode(), password=None)
+            return SSH, key
+        except Exception:
+            pass
+        try:
+            key = serialization.load_pem_private_key(data=key_data.encode(), password=None)
+            return SSH, key
         except ValueError:
             '''
             SSH2 encrypted keys contains Subject & comment in the generated body.
@@ -108,7 +113,7 @@ def parse_private_key(key):
             '''
             key_val = key_data.split('\n')
             if 'Subject' in key_val[1] and 'Comment' in key_val[2]:
-                return SSH2
+                return SSH2, None
 
     logging.info("[app], specified key format is not supported.")
     raise YBOpsRuntimeError("Specified key format is not supported.")
@@ -254,13 +259,9 @@ def validated_key_file(key_file):
         raise YBOpsRuntimeError("Key file {} not found.".format(key_file))
 
     # Check based on key_type not on SSH2 installed or not.
-    ssh_type = parse_private_key(key_file)
-    if ssh_type == SSH:
-        with open(key_file) as f:
-            return serialization.load_pem_private_key(data=f.read().encode(), password=None)
-    elif ssh_type == SSHPUB:
-        with open(key_file) as f:
-            return serialization.load_ssh_public_key(data=f.read().encode())
+    ssh_type, key = parse_private_key(key_file)
+    if ssh_type == SSH or ssh_type == SSHPUB:
+        return key
     else:
         return key_file
 
