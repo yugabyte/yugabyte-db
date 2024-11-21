@@ -28,11 +28,24 @@ With the on-premises provider, you must provide to YBA one, three, five, or more
 
 After you have created the VMs, they must be provisioned with YugabyteDB and related software before they can be deployed in a universe.
 
-How you provision nodes for use with an on-premises provider depends on the SSH access that you can grant YBA to provision nodes.
+### Automatic provisioning using YugabyteDB Anywhere node agent
+
+The [YugabyteDB Anywhere Node agent](/preview/faq/yugabyte-platform/#what-is-a-node-agent) is an RPC service running on a YugabyteDB node, and is used to manage communication between YugabyteDB Anywhere and the nodes in universes. Node agent can also be used to provision on-premises nodes.
+
+After configuring setup options and running the script, the script provisions the node and installs the node agent. Optionally, if YugabyteDB Anywhere is installed and is running, node agent can also creates or update the on-premises provider that the node is to be part of.
+
+See [On-premises provisioning using node agent](../software-on-prem-na/).
+
+### Classic provisioning
+
+With classic provisioning, how you provision nodes for use with an on-premises provider depends on the SSH access that you can grant YugabyteDB Anywhere.
+
+- If you can grant YugabyteDB Anywhere SSH access to nodes, YugabyteDB Anywhere can provision the nodes when you add nodes to the on-premises provider. You do this after installing YugabyteDB Anywhere and creating an on-premises provider.
+- If you are unable to grant SSH access to the nodes, you must manually install each prerequisite software component. You can do this immediately after creating the VM.
 
 | SSH mode | Description | Notes | For more details |
 | :--- | :--- | :--- | :--- |
-| Permissive | You can allow SSH to a root-privileged user, AND<br>You can provide YBA with SSH login credentials for that user. | For example, the ec2-user for AWS EC2 instances meets this requirement. In this mode, YBA will sign in to the VM and automatically provision the nodes. | See [Automatic Provisioning](../software-on-prem-auto/). |
+| Permissive | You can allow SSH to a root-privileged user, AND<br>You can provide YBA with SSH login credentials for that user. | For example, the ec2-user for AWS EC2 instances meets this requirement. In this mode, YugabyteDB Anywhere will sign in to the VM and automatically provision the nodes when you are adding instances to the on-premises provider. | See [Automatic Manual Provisioning](../software-on-prem-auto/). |
 | Medium | You can allow SSH to a root-privileged user, AND<br>You can't provide YBA with SSH login credentials for that user; however you can enter the password interactively. | In this mode, you run a script on the VM, and are prompted for a password for each sudo action to install the required software. | See [Assisted Manual Provisioning](../software-on-prem-assist/). |
 | Restrictive | All other cases (you disallow SSH login to a root-privileged user at setup time). | In this mode, you'll manually install each prerequisite software component. | See [Fully Manual Provisioning](../software-on-prem-manual/). |
 
