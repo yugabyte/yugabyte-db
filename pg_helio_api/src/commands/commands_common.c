@@ -25,6 +25,8 @@
 #include "planner/helio_planner.h"
 
 
+extern bool ThrowDeadlockOnCrud;
+
 /*
  *  This is a list of Mongo command options that are not currently supported.
  *  At runtime, we ignore these optional fields.
@@ -226,6 +228,11 @@ GetWriteErrorFromErrorData(ErrorData *errorData, int writeErrorIdx)
 			ereport(LOG, (errmsg("%s", errorData->message)));
 			ThrowErrorData(errorData);
 		}
+	}
+
+	if (ThrowDeadlockOnCrud && errorData->sqlerrcode == ERRCODE_T_R_DEADLOCK_DETECTED)
+	{
+		ThrowErrorData(errorData);
 	}
 
 	WriteError *writeError = palloc0(sizeof(WriteError));

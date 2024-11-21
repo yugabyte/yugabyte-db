@@ -297,6 +297,9 @@ char *ClusterAdminRole = DEFAULT_CLUSTER_ADMIN_ROLE;
 #define SCRAM_DEFAULT_SALT_LEN 28
 int ScramDefaultSaltLen = SCRAM_DEFAULT_SALT_LEN;
 
+#define DEFAULT_THROW_DEADLOCK_ON_CRUD false
+bool ThrowDeadlockOnCrud = DEFAULT_THROW_DEADLOCK_ON_CRUD;
+
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
@@ -886,6 +889,15 @@ InitApiConfigurations(char *prefix)
 		PGC_SUSET,
 		0,
 		NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.throwDeadlockOnCRUD",
+		gettext_noop(
+			"Determines whether a deadlock on CRUD operations should be thrown as an exception rather than catching it and writing it to the operation result bson."),
+		NULL,
+		&ThrowDeadlockOnCrud,
+		DEFAULT_THROW_DEADLOCK_ON_CRUD,
+		PGC_USERSET, 0, NULL, NULL, NULL);
 }
 
 
