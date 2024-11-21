@@ -229,10 +229,6 @@ function mapStateToProps(state) {
         );
 
         const currentVersion = primaryCluster?.userIntent?.ybSoftwareVersion ?? null;
-        const isReleasesEnabled =
-          state?.customer?.runtimeConfigs?.data?.configEntries?.find(
-            (config) => config.key === RuntimeConfigKey.RELEASES_REDESIGN_UI_FEATURE_FLAG
-          )?.value === 'true';
         // Display the number of upgrades available in the respective track
         // regardless of skipVersionCheck runtime flag
         // If current version belongs to the stable track, see available upgrades only in the stable track
@@ -240,9 +236,7 @@ function mapStateToProps(state) {
         const isCurrentVersionStable = isVersionStable(currentVersion);
         if (currentVersion) {
           let supportedSoftwareVersions;
-          const softwareVersions = isReleasesEnabled
-            ? state.customer?.dbVersionsWithMetadata
-            : state.universe.supportedReleases?.data;
+          const softwareVersions = state.customer?.dbVersionsWithMetadata;
           if (isCurrentVersionStable) {
             supportedSoftwareVersions =
               softwareVersions

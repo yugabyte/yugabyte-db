@@ -395,10 +395,6 @@ class UniverseDetail extends Component {
       runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.IS_GFLAG_MULTILINE_ENABLED
       )?.value === 'true';
-    const isReleasesEnabled =
-      runtimeConfigs?.data?.configEntries?.find(
-        (config) => config.key === RuntimeConfigKey.RELEASES_REDESIGN_UI_FEATURE_FLAG
-      )?.value === 'true';
     const isGFlagAllowDuringPrefinalize =
       runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.GFLAGS_ALLOW_DURING_PREFINALIZE
@@ -579,7 +575,6 @@ class UniverseDetail extends Component {
               universe={universe}
               updateAvailable={updateAvailable}
               showSoftwareUpgradesModal={showSoftwareUpgradesModal}
-              isReleasesEnabled={isReleasesEnabled}
               universeLbState={universeLbState}
             />
           </Tab.Pane>
@@ -1574,7 +1569,6 @@ class UniverseDetail extends Component {
             this.props.getUniverseInfo(currentUniverse.data.universeUUID);
           }}
           universeData={currentUniverse.data}
-          isReleasesEnabled={isReleasesEnabled}
         />
 
         <DBRollbackModal

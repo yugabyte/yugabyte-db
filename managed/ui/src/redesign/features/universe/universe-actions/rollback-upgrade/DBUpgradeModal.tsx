@@ -57,7 +57,6 @@ interface DBUpgradeModalProps {
   open: boolean;
   onClose: () => void;
   universeData: Universe;
-  isReleasesEnabled: boolean;
 }
 
 const MAX_RELEASE_TAG_CHAR = 20;
@@ -114,20 +113,11 @@ const renderOption = (option: Record<string, any>) => {
   );
 };
 
-export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({
-  open,
-  onClose,
-  universeData,
-  isReleasesEnabled
-}) => {
+export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, universeData }) => {
   const { t } = useTranslation();
   const classes = dbUpgradeFormStyles();
   const [needPrefinalize, setPrefinalize] = useState(false);
-  const releases = useSelector((state: any) =>
-    isReleasesEnabled
-      ? state.customer.dbVersionsWithMetadata
-      : state.customer.softwareVersionswithMetaData
-  );
+  const releases = useSelector((state: any) => state.customer.dbVersionsWithMetadata);
   const featureFlags = useSelector((state: any) => state.featureFlags);
   const { universeDetails, universeUUID, rollMaxBatchSize } = universeData;
   const primaryCluster = _.cloneDeep(getPrimaryCluster(universeDetails));
