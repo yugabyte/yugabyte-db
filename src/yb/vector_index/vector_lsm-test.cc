@@ -380,8 +380,6 @@ std::string ANNMethodKindToString(
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    ANNMethodKind, VectorLSMTest,
-    ::testing::ValuesIn(kANNMethodKindArray),
-    ANNMethodKindToString);
+    , VectorLSMTest, ::testing::ValuesIn(kANNMethodKindArray), ANNMethodKindToString);
 
 }  // namespace yb::vector_index
