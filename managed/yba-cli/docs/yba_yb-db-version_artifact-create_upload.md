@@ -1,19 +1,26 @@
-## yba yb-db-version artifact-create
+## yba yb-db-version artifact-create upload
 
-Fetch artifact metadata for a version of YugabyteDB
+Upload a new YugabyteDB version from a tar gz file
 
 ### Synopsis
 
-Fetch artifact metadata for a version of YugabyteDB
+Upload a new version of YugabyteDB from a tar gz file. Use the output of this command in the "yba yb-db-version create" command.
 
 ```
-yba yb-db-version artifact-create [flags]
+yba yb-db-version artifact-create upload [flags]
+```
+
+### Examples
+
+```
+yba yb-db-version artifact-create upload --file <file>
 ```
 
 ### Options
 
 ```
-  -h, --help   help for artifact-create
+      --file string   [Required] Tar gz file path of the release
+  -h, --help          help for upload
 ```
 
 ### Options inherited from parent commands
@@ -32,7 +39,5 @@ yba yb-db-version artifact-create [flags]
 
 ### SEE ALSO
 
-* [yba yb-db-version](yba_yb-db-version.md)	 - Manage YugabyteDB versions
-* [yba yb-db-version artifact-create upload](yba_yb-db-version_artifact-create_upload.md)	 - Upload a new YugabyteDB version from a tar gz file
-* [yba yb-db-version artifact-create url](yba_yb-db-version_artifact-create_url.md)	 - Fetch metadata of a new YugabyteDB version from a URL
+* [yba yb-db-version artifact-create](yba_yb-db-version_artifact-create.md)	 - Fetch artifact metadata for a version of YugabyteDB
 
