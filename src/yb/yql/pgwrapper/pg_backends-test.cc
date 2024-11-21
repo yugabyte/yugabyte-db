@@ -466,7 +466,7 @@ TEST_F_EX(PgBackendsTest,
   // Add margin to cover time spent in setup (and teardown), such as creating the docdb index.  The
   // timeout timer starts on the first wait-for-backends call, which is after committing the initial
   // state.
-  constexpr auto kMargin = 5s;
+  constexpr auto kMargin = 5s * kTimeMultiplier;
   ASSERT_LT(time_spent, kTimeout + kRpcTimeout + kMargin);
 }
 
