@@ -489,9 +489,12 @@ message UpdateConsumerOnProducerMetadataResponsePB {
 }
 
 message InsertPackedSchemaForXClusterTargetRequestPB {
+  // If this is an alter on a colocated table, then this is the colocated parent table id,
+  // and we also need to specify the colocation_id.
   optional bytes table_id = 1;
   optional SchemaPB packed_schema = 2;
   optional uint32 current_schema_version = 3;
+  optional uint32 colocation_id = 4;
 }
 
 message InsertPackedSchemaForXClusterTargetResponsePB {

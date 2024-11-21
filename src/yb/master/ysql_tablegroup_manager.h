@@ -42,6 +42,8 @@ class TablegroupInfo {
 
   bool HasChildTable(ColocationId colocation_id) const;
 
+  Result<TableId> GetChildTableId(ColocationId colocation_id) const;
+
   std::unordered_set<TableId> ChildTableIds() const;
 
   void ReplaceTablet(const TabletInfoPtr& tablet) { tablet_ = tablet; }

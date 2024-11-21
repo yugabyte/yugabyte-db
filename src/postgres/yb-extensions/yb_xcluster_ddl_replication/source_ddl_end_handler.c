@@ -203,7 +203,7 @@ ShouldReplicateAlterReplication(Oid rel_oid)
 	YbTableProperties table_props = YbGetTableProperties(rel);
 	bool is_colocated = table_props->is_colocated;
 	RelationClose(rel);
-	if (is_colocated)
+	if (is_colocated && !TEST_AllowColocatedObjects)
 		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						errmsg("Colocated objects are not yet supported by "
 							   "yb_xcluster_ddl_replication\n%s",

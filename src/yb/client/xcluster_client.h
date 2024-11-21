@@ -250,7 +250,7 @@ class XClusterClient {
   // current_schema_version is passed to avoid sending repeated alter table requests.
   Status InsertPackedSchemaForXClusterTarget(
       const TableId& table_id, const SchemaPB& packed_schema_to_insert,
-      uint32_t current_schema_version);
+      uint32_t current_schema_version, const std::optional<ColocationId>& colocation_id);
 
  private:
   CoarseTimePoint GetDeadline() const;

@@ -1049,6 +1049,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Result<scoped_refptr<TableInfo>> FindTableByIdUnlocked(
       const TableId& table_id) const REQUIRES_SHARED(mutex_);
 
+  Result<TableId> GetColocatedTableId(
+      const TablegroupId& tablegroup_id, ColocationId colocation_id) const EXCLUDES(mutex_);
+
   Result<bool> TableExists(
       const std::string& namespace_name, const std::string& table_name) const EXCLUDES(mutex_);
 

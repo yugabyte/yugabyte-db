@@ -1358,27 +1358,29 @@ Status XClusterTargetManager::InsertPackedSchemaForXClusterTarget(
     uint32_t current_schema_version, const LeaderEpoch& epoch) {
   // Lookup the table and verify if it exists.
   scoped_refptr<TableInfo> table = VERIFY_RESULT(catalog_manager_.FindTableById(table_id));
-  auto l = table->LockForWrite();
-  auto& table_pb = l.mutable_data()->pb;
+  {
+    auto l = table->LockForWrite();
+    auto& table_pb = l.mutable_data()->pb;
 
-  // Compare the current schema version with the one in the request to avoid repeated updates.
-  if (table_pb.version() != current_schema_version) {
-    YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 10, 1)
-        << __func__ << ": Table " << table->ToString() << " has schema version "
-        << table_pb.version() << " but request has version " << current_schema_version
-        << ". Skipping update of packed schema.";
-    return Status::OK();
+    // Compare the current schema version with the one in the request to avoid repeated updates.
+    if (table_pb.version() != current_schema_version) {
+      YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 10, 1)
+          << __func__ << ": Table " << table->ToString() << " has schema version "
+          << table_pb.version() << " but request has version " << current_schema_version
+          << ". Skipping update of packed schema.";
+      return Status::OK();
+    }
+
+    // Just bump the version up by two. We will insert the packed schema in as version + 1, and then
+    // revert back to the original version, but now with version + 2.
+    table_pb.set_version(table_pb.version() + 2);
+    RETURN_NOT_OK(sys_catalog_.Upsert(epoch, table));
+    l.Commit();
   }
-
-  // Just bump the version up by two. We will insert the packed schema in as version + 1, and then
-  // revert back to the original version, but now with version + 2.
-  table_pb.set_version(table_pb.version() + 2);
-  RETURN_NOT_OK(sys_catalog_.Upsert(epoch, table));
-  l.Commit();
 
   for (const auto& tablet : VERIFY_RESULT(table->GetTablets())) {
     auto call = std::make_shared<AsyncInsertPackedSchemaForXClusterTarget>(
-        &master_, catalog_manager_.AsyncTaskPool(), tablet, packed_schema_to_insert, epoch);
+        &master_, catalog_manager_.AsyncTaskPool(), tablet, table, packed_schema_to_insert, epoch);
     table->AddTask(call);
     RETURN_NOT_OK(catalog_manager_.ScheduleTask(call));
   }

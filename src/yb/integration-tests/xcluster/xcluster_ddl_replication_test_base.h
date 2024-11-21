@@ -32,8 +32,6 @@ class XClusterDDLReplicationTestBase : public XClusterYsqlTestBase {
 
   Status SetUpClusters(bool is_colocated = false, bool start_yb_controller_servers = false);
 
-  Status EnableDDLReplicationExtension();
-
   virtual Status CheckpointReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId) override {
     return XClusterYsqlTestBase::CheckpointReplicationGroup(replication_group_id);
@@ -65,6 +63,11 @@ class XClusterDDLReplicationTestBase : public XClusterYsqlTestBase {
   Status WaitForSafeTimeToAdvanceToNowWithoutDDLQueue();
 
   Status PrintDDLQueue(Cluster& cluster);
+
+  // We require at least one colocated table to exist before setting up replication.
+  Status CreateInitialColocatedTable();
+
+  const std::string kInitialColocatedTableName = "initial_colocated_table";
 
  private:
   tools::TmpDirProvider tmp_dir_;
