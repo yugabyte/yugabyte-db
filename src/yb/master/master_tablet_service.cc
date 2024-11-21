@@ -117,9 +117,9 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
 
   bool log_versions = false;
   std::unordered_set<uint32_t> db_oids;
-  for (const auto& pg_req : req->pgsql_write_batch()) {
+  for (const auto &pg_req : req->pgsql_write_batch()) {
     if (pg_req.is_ysql_catalog_change_using_protobuf()) {
-      const auto &res = master_->catalog_manager()->IncrementYsqlCatalogVersion();
+      const auto& res = master_->catalog_manager()->IncrementYsqlCatalogVersion();
       if (!res.ok()) {
         context.RespondRpcFailure(rpc::ErrorStatusPB::ERROR_APPLICATION,
             STATUS(InternalError, "Failed to increment YSQL catalog version"));

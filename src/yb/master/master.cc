@@ -613,6 +613,10 @@ XClusterManager* Master::xcluster_manager_impl() const {
   return catalog_manager_->GetXClusterManagerImpl();
 }
 
+YsqlManagerIf& Master::ysql_manager() const { return catalog_manager_->GetYsqlManager(); }
+
+YsqlManager& Master::ysql_manager_impl() const { return catalog_manager_->GetYsqlManagerImpl(); }
+
 SysCatalogTable& Master::sys_catalog() const {
   return *catalog_manager_->sys_catalog();
 }
