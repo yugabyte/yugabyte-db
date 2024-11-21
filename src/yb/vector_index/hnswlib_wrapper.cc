@@ -16,8 +16,9 @@
 #include <memory>
 #include <utility>
 
-#include "yb/gutil/casts.h"
-#include "yb/vector_index/vector_index_if.h"
+#include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/member.hpp>
+#include <boost/multi_index_container.hpp>
 
 #pragma GCC diagnostic push
 
@@ -35,16 +36,20 @@
 
 #pragma GCC diagnostic pop
 
+#include "yb/gutil/casts.h"
+
 #include "yb/util/status.h"
 
 #include "yb/vector_index/distance.h"
 #include "yb/vector_index/index_wrapper_base.h"
+#include "yb/vector_index/vector_index_if.h"
 
 namespace yb::vector_index {
 
 using hnswlib::Stats;
 
 namespace {
+
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class HnswlibVectorIterator;
 
@@ -60,14 +65,14 @@ class HnswlibIndex :
       : options_(options) {
   }
 
-  std::unique_ptr<AbstractIterator<std::pair<Vector, VertexId>>> BeginImpl() const override {
+  std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> BeginImpl() const override {
     return std::make_unique<HnswlibVectorIterator<Vector, DistanceResult>>(
-        hnsw_->vectors_begin(), options_.dimensions);
+        *this, hnsw_->vectors_begin(), options_.dimensions);
   }
 
-  std::unique_ptr<AbstractIterator<std::pair<Vector, VertexId>>> EndImpl() const override {
+  std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> EndImpl() const override {
     return std::make_unique<HnswlibVectorIterator<Vector, DistanceResult>>(
-        hnsw_->vectors_end(), options_.dimensions);
+        *this, hnsw_->vectors_end(), options_.dimensions);
   }
 
   Status Reserve(size_t num_vectors, size_t, size_t) override {
@@ -90,14 +95,23 @@ class HnswlibIndex :
     return Status::OK();
   }
 
-  Status DoInsert(VertexId vertex_id, const Vector& v) {
-    hnsw_->addPoint(v.data(), vertex_id);
+  Status DoInsert(VectorId vertex_id, const Vector& v) {
+    // TODO(vector-index) temp solution for hnsw lib which accepts only integers as vector id.
+    auto it = vector_id_label_map_.find(vertex_id);
+    if (it == vector_id_label_map_.end()) {
+      static std::atomic<hnswlib::labeltype> counter {1};
+      auto label = counter.fetch_add(1, std::memory_order_relaxed);
+      std::tie(it, std::ignore) = vector_id_label_map_.insert({vertex_id, label});
+    }
+    hnsw_->addPoint(v.data(), it->second);
     return Status::OK();
   }
 
   Status DoSaveToFile(const std::string& path) {
     try {
       hnsw_->saveIndex(path);
+      // TODO(vector-index) temp solution for hnsw lib which accepts only integers as vector id.
+      // Need to save mapping.
     } catch (std::exception& e) {
       return STATUS_FORMAT(
           IOError, "Failed to save Hnswlib index to file $0: $1", path, e.what());
@@ -110,6 +124,8 @@ class HnswlibIndex :
     RETURN_NOT_OK(Reserve(0, 0, 0));
     try {
       hnsw_->loadIndex(path, space_.get());
+      // TODO(vector-index) temp solution for hnsw lib which accepts only integers as vector id.
+      // Need to load mapping.
     } catch (std::exception& e) {
       return STATUS_FORMAT(
           IOError, "Failed to load Hnswlib index from file $0: $1", path, e.what());
@@ -131,15 +147,12 @@ class HnswlibIndex :
       const auto distance = entry.first;
       static_assert(std::is_same_v<std::remove_const_t<decltype(distance)>, DistanceResult>);
 
-      const auto label = entry.second;
-      static_assert(VertexIdCompatible<decltype(label)>);
-
-      result.push_back(VertexWithDistance<DistanceResult>(label, distance));
+      result.push_back({ GetVectorIdByLabel(entry.second), distance });
     }
     return result;
   }
 
-  Result<Vector> GetVector(VertexId vertex_id) const override {
+  Result<Vector> GetVector(VectorId vertex_id) const override {
     return STATUS(
         NotSupported, "Hnswlib wrapper currently does not allow retriving vectors by id");
   }
@@ -210,27 +223,53 @@ class HnswlibIndex :
   HNSWOptions options_;
   std::unique_ptr<hnswlib::SpaceInterface<DistanceResult>> space_;
   std::unique_ptr<HNSWImpl> hnsw_;
+
+  // TODO(vector-index) refer to https://github.com/yugabyte/yugabyte-db/issues/25041.
+  struct VectorLabelTag;
+  using  VectorLabel = hnswlib::labeltype;
+  using  VectorIdLabelPair = std::pair<VectorId, VectorLabel>;
+  using  VectorIdLabelMap = boost::multi_index::multi_index_container<
+      VectorIdLabelPair,
+      boost::multi_index::indexed_by<
+          boost::multi_index::hashed_unique<
+              BOOST_MULTI_INDEX_MEMBER(VectorIdLabelPair, VectorId, first)>,
+          boost::multi_index::hashed_unique<
+              boost::multi_index::tag<VectorLabelTag>,
+              BOOST_MULTI_INDEX_MEMBER(VectorIdLabelPair, VectorLabel, second)>>>;
+
+  const VectorId& GetVectorIdByLabel(VectorLabel label) const {
+    const auto& label_to_id_map = vector_id_label_map_.template get<VectorLabelTag>();
+    auto it = label_to_id_map.find(label);
+    CHECK(it != label_to_id_map.end());
+    CHECK_NE(0, it->second);
+    return it->first;
+  }
+  VectorIdLabelMap vector_id_label_map_;
+  friend class HnswlibVectorIterator<Vector, DistanceResult>;
 };
 
 
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class HnswlibVectorIterator : public AbstractIterator<std::pair<Vector, VertexId>> {
+class HnswlibVectorIterator : public AbstractIterator<std::pair<VectorId, Vector>> {
  public:
-  HnswlibVectorIterator(typename hnswlib::VectorIterator<DistanceResult> position, int dimensions)
-      : internal_iterator_(position), dimensions_(dimensions) {}
+  using VectorIndex = HnswlibIndex<Vector, DistanceResult>;
+
+  HnswlibVectorIterator(const VectorIndex& index,
+                        typename hnswlib::VectorIterator<DistanceResult> position, int dimensions)
+      : internal_iterator_(position), dimensions_(dimensions), index_(index) {}
 
  protected:
-  std::pair<Vector, VertexId> Dereference() const override {
+  std::pair<VectorId, Vector> Dereference() const override {
     auto pair_data = *internal_iterator_;
     Vector result_vector(dimensions_);
-    std::memcpy(
-        result_vector.data(), pair_data.first, dimensions_ * sizeof(typename Vector::value_type));
-    return std::make_pair(result_vector, pair_data.second);
+    std::memcpy(result_vector.data(), pair_data.first,
+                dimensions_ * sizeof(typename Vector::value_type));
+    return std::make_pair(index_.GetVectorIdByLabel(pair_data.second), result_vector);
   }
 
   void Next() override { ++internal_iterator_; }
 
-  bool NotEquals(const AbstractIterator<std::pair<Vector, VertexId>>& other) const override {
+  bool NotEquals(const AbstractIterator<std::pair<VectorId, Vector>>& other) const override {
     const auto& other_casted = down_cast<const HnswlibVectorIterator&>(other);
     return internal_iterator_ != other_casted.internal_iterator_;
   }
@@ -238,6 +277,9 @@ class HnswlibVectorIterator : public AbstractIterator<std::pair<Vector, VertexId
  private:
   hnswlib::VectorIterator<DistanceResult> internal_iterator_;
   int dimensions_;
+
+  // TODO(vector-index) refer to https://github.com/yugabyte/yugabyte-db/issues/25041.
+  const VectorIndex& index_;
 };
 
 }  // namespace

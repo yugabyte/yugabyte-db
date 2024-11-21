@@ -64,8 +64,6 @@ Result<typename vector_index::VectorLSMTypes<Vector, DistanceResult>::VectorInde
         NotSupported, "Vector index $0 is not supported", PgVectorIndexType_Name(type));
 }
 
-std::atomic<vector_index::VertexId> vertex_id_serial_no_{0}; // TODO(vector_index)
-
 template<vector_index::IndexableVectorType Vector>
 Result<Vector> VectorFromYSQL(Slice slice) {
   size_t size = VERIFY_RESULT((CheckedRead<uint16_t, LittleEndian>(slice)));
@@ -95,7 +93,7 @@ template<vector_index::IndexableVectorType Vector>
 Result<vector_index::VectorLSMInsertEntry<Vector>> ConvertEntry(
     const VectorIndexInsertEntry& entry) {
   return vector_index::VectorLSMInsertEntry<Vector> {
-    .vertex_id = ++vertex_id_serial_no_,
+    .vertex_id = vector_index::VectorId::GenerateRandom(),
     .base_table_key = entry.key,
     .vector = VERIFY_RESULT(VectorFromBinary<Vector>(entry.value.AsSlice())),
   };
@@ -180,7 +178,7 @@ class VectorIndexImpl : public VectorIndex, public vector_index::VectorLSMKeyVal
     return Status::OK();
   }
 
-  Result<KeyBuffer> ReadBaseTableKey(vector_index::VertexId vertex_id) override {
+  Result<KeyBuffer> ReadBaseTableKey(vector_index::VectorId vertex_id) override {
     std::lock_guard lock(storage_mutex_);
     auto it = vertex_id_to_key_map_.find(vertex_id);
     if (it == vertex_id_to_key_map_.end()) {
@@ -196,9 +194,9 @@ class VectorIndexImpl : public VectorIndex, public vector_index::VectorLSMKeyVal
   LSM lsm_;
 
   // TODO(vector_index) Use actual storage implementation when ready
+  using VertexIdToKeyMap = std::unordered_map<vector_index::VectorId, KeyBuffer>;
   std::mutex storage_mutex_;
-  std::unordered_map<vector_index::VertexId, KeyBuffer> vertex_id_to_key_map_
-      GUARDED_BY(storage_mutex_);
+  VertexIdToKeyMap vertex_id_to_key_map_ GUARDED_BY(storage_mutex_);
 };
 
 } // namespace

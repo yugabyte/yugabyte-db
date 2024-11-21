@@ -14,16 +14,10 @@
 #pragma once
 
 #include <cstdint>
-#include <queue>
-#include <variant>
-
-#include "yb/util/random_util.h"
-
-#include "yb/vector_index/distance.h"
-#include "yb/vector_index/graph_repr_defs.h"
-#include "yb/common/vector_types.h"
 
 namespace yb::vector_index {
+
+using VectorIndexLevel = uint8_t;
 
 // Generates a random value as floor(-log(uniform_random) * ml), but clipped at max_level.
 // Ignoring the clipping, this corresponds to be a geometric distribution with probability of

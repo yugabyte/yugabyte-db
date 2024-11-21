@@ -648,7 +648,7 @@ TEST_F(MasterTestXRepl, TestDeleteCDCStreamWithReplicationSlotName) {
       CreateCDCStreamForNamespace(ns_id, kPgReplicationSlotName, kPgReplicationSlotPgOutput));
   auto resp = ASSERT_RESULT(GetCDCStream(stream_id));
 
-  ASSERT_OK(DeleteCDCStream({} /*stream_ids*/, {kPgReplicationSlotName}));
+  ASSERT_OK(DeleteCDCStream(std::vector<xrepl::StreamId>{}, {kPgReplicationSlotName}));
 
   resp = ASSERT_RESULT(GetCDCStream(stream_id));
   ASSERT_TRUE(resp.has_error());
@@ -749,7 +749,7 @@ TEST_F(MasterTestXRepl, TestCreateDropCDCStreamWithReplicationSlotName) {
     ASSERT_EQ(
         resp.stream().cdcsdk_ysql_replication_slot_plugin_name(), kPgReplicationSlotTestDecoding);
 
-    ASSERT_OK(DeleteCDCStream({} /*stream_ids*/, {kPgReplicationSlotName}));
+    ASSERT_OK(DeleteCDCStream(std::vector<xrepl::StreamId>{}, {kPgReplicationSlotName}));
     resp = ASSERT_RESULT(GetCDCStream(kPgReplicationSlotName));
     ASSERT_TRUE(resp.has_error());
     ASSERT_EQ(MasterErrorPB::OBJECT_NOT_FOUND, resp.error().code());

@@ -516,7 +516,7 @@ class PackedRowData {
   HistoryCutoff history_cutoff_;
 
   using UsedSchemaVersionsMap =
-      std::unordered_map<Uuid, std::pair<SchemaVersion, SchemaVersion>, UuidHash>;
+      std::unordered_map<Uuid, std::pair<SchemaVersion, SchemaVersion>>;
 
   // Schema version ranges for each found table.
   // That could be a surprise, but when we are talking about range and use pair to represent range

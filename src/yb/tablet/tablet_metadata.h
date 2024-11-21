@@ -682,7 +682,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   bool UsePartialRangeKeyIntents() const;
 
   // versions is a map from table id to min schema version that should be kept for this table.
-  Status OldSchemaGC(const std::unordered_map<Uuid, SchemaVersion, UuidHash>& versions);
+  Status OldSchemaGC(const std::unordered_map<Uuid, SchemaVersion>& versions);
   void DisableSchemaGC();
   void EnableSchemaGC();
 

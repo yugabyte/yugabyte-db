@@ -34,10 +34,6 @@ Uuid::Uuid() {
   memset(&boost_uuid_, 0, sizeof(boost_uuid_));
 }
 
-Uuid::Uuid(const Uuid& other) {
-  boost_uuid_ = other.boost_uuid_;
-}
-
 Uuid::Uuid(const uuid_t copy) {
   for(int it = 0; it < 16; it ++) {
     boost_uuid_.data[it] = copy[it];
@@ -239,54 +235,54 @@ Status Uuid::IsTimeUuid() const {
                            "Not a type 1 UUID. Current type: $0", boost_uuid_.version());
 }
 
-bool Uuid::operator<(const Uuid& other) const {
+bool operator<(const Uuid& lhs, const Uuid& rhs) {
   // First compare the version, variant and then the timestamp bytes.
-  if (boost_uuid_.version() < other.boost_uuid_.version()) {
+  if (lhs.boost_uuid_.version() < rhs.boost_uuid_.version()) {
     return true;
-  } else if (boost_uuid_.version() > other.boost_uuid_.version()) {
+  } else if (lhs.boost_uuid_.version() > rhs.boost_uuid_.version()) {
     return false;
   }
-  if (boost_uuid_.version() == boost::uuids::uuid::version_time_based) {
+  if (lhs.boost_uuid_.version() == boost::uuids::uuid::version_time_based) {
     // Compare the hi timestamp bits.
-    for (size_t i = 6; i < kUuidMsbSize; i++) {
-      if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
+    for (size_t i = 6; i < Uuid::kUuidMsbSize; i++) {
+      if (lhs.boost_uuid_.data[i] < rhs.boost_uuid_.data[i]) {
         return true;
-      } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
+      } else if (lhs.boost_uuid_.data[i] > rhs.boost_uuid_.data[i]) {
         return false;
       }
     }
     // Compare the mid timestamp bits.
     for (int i = 4; i < 6; i++) {
-      if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
+      if (lhs.boost_uuid_.data[i] < rhs.boost_uuid_.data[i]) {
         return true;
-      } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
+      } else if (lhs.boost_uuid_.data[i] > rhs.boost_uuid_.data[i]) {
         return false;
       }
     }
     // Compare the low timestamp bits.
     for (int i = 0; i < 4; i++) {
-      if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
+      if (lhs.boost_uuid_.data[i] < rhs.boost_uuid_.data[i]) {
         return true;
-      } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
+      } else if (lhs.boost_uuid_.data[i] > rhs.boost_uuid_.data[i]) {
         return false;
       }
     }
   } else {
     // Compare all the other bits
-    for (size_t i = 0; i < kUuidMsbSize; i++) {
-      if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
+    for (size_t i = 0; i < Uuid::kUuidMsbSize; i++) {
+      if (lhs.boost_uuid_.data[i] < rhs.boost_uuid_.data[i]) {
         return true;
-      } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
+      } else if (lhs.boost_uuid_.data[i] > rhs.boost_uuid_.data[i]) {
         return false;
       }
     }
   }
 
   // Then compare the remaining bytes.
-  for (size_t i = kUuidMsbSize; i < kUuidSize; i++) {
-    if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
+  for (size_t i = Uuid::kUuidMsbSize; i < kUuidSize; i++) {
+    if (lhs.boost_uuid_.data[i] < rhs.boost_uuid_.data[i]) {
       return true;
-    } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
+    } else if (lhs.boost_uuid_.data[i] > rhs.boost_uuid_.data[i]) {
       return false;
     }
   }

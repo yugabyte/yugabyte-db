@@ -84,7 +84,7 @@ auto DrainMaxQueueToIncreasingDistanceList(MaxDistanceQueue<DistanceResult>& que
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 std::vector<VertexWithDistance<DistanceResult>> BruteForcePreciseNearestNeighbors(
     const Vector& query,
-    const std::vector<VertexId>& vertex_ids,
+    const std::vector<VectorId>& vertex_ids,
     const VertexIdToVectorDistanceFunction<Vector, DistanceResult>& distance_fn,
     size_t num_results) {
   if (num_results == 0) {
@@ -127,11 +127,11 @@ VectorIndexIfPtr<Vector, DistanceResult> Merge(
   auto status_reserve = merged_index->Reserve(
       10, std::thread::hardware_concurrency(), std::thread::hardware_concurrency());
 
-  for (const auto& [vector, vertex_id] : *index_a) {
+  for (const auto& [vertex_id, vector] : *index_a) {
     auto status = merged_index->Insert(vertex_id, vector);
   }
 
-  for (const auto& [vector, vertex_id] : *index_b) {
+  for (const auto& [vertex_id, vector] : *index_b) {
     auto status = merged_index->Insert(vertex_id, vector);
   }
 

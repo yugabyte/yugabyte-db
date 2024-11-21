@@ -11,19 +11,15 @@
 // under the License.
 //
 
-// Typedefs of vector types used by the vector indexing library. These are simple typedefs for
-// std::vector, and they are used in dockv, which is not allowed to depend on the yb_vector
-// library.
 #pragma once
 
-#include <cstdint>
-#include <vector>
+#include "yb/util/strongly_typed_uuid.h"
 
-namespace yb {
+namespace yb::vector_index {
 
-using FloatVector = std::vector<float>;
-using Int32Vector = std::vector<int32_t>;
-using UInt64Vector = std::vector<uint64_t>;
-using UInt8Vector = std::vector<uint8_t>;
+// Vector Id is a unique identifier of a vector (unique inside a particular vector index table).
+// A value of a vector id never gets reused, even if the same vector is deleted and re-inserted
+// later.
+YB_STRONGLY_TYPED_UUID_DECL(VectorId);
 
-}  // namespace yb
+} // namespace yb::vector_index

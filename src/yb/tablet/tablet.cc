@@ -542,7 +542,7 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
   }
 
  private:
-  using MinSchemaVersionMap = std::unordered_map<Uuid, SchemaVersion, UuidHash>;
+  using MinSchemaVersionMap = std::unordered_map<Uuid, SchemaVersion>;
 
   void OldSchemaGC() {
     MinSchemaVersionMap table_id_to_min_schema_version;

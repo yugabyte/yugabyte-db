@@ -126,7 +126,7 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
 
   // Merge current frontier with provided map, preferring min values.
   void MakeExternalSchemaVersionsAtMost(
-      std::unordered_map<Uuid, SchemaVersion, UuidHash>* min_schema_versions) const;
+      std::unordered_map<Uuid, SchemaVersion>* min_schema_versions) const;
 
   HybridTime max_value_level_ttl_expiration_time() const {
     return max_value_level_ttl_expiration_time_;
@@ -156,7 +156,7 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
   HybridTime max_value_level_ttl_expiration_time_;
 
   std::optional<SchemaVersion> primary_schema_version_;
-  std::unordered_map<Uuid, SchemaVersion, UuidHash> cotable_schema_versions_;
+  std::unordered_map<Uuid, SchemaVersion> cotable_schema_versions_;
 
   // Serialized filter that is set only for the largest frontier of sst files
   // during restore. There are two types of filter - a global filter

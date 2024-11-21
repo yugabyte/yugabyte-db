@@ -22,21 +22,52 @@
 
 namespace yb::vector_index {
 
+namespace {
+
+template <class Container, class... Containers>
+void MergeValuesImpl(std::set<typename std::decay_t<Container>::value_type>& out,
+                     Container&& container, Containers&&... containers) {
+  out.insert(container.begin(), container.end());
+  if constexpr (sizeof...(Containers) > 0) {
+    MergeValuesImpl(out, std::forward<Containers>(containers)...);
+  }
+}
+
+template <class Container, class... Containers>
+auto MergeValues(Container&& container, Containers&&... containers) {
+  std::set<typename std::decay_t<Container>::value_type> out;
+  MergeValuesImpl(out, std::forward<Container>(container), std::forward<Containers>(containers)...);
+  return out;
+}
+
+} // namespace
+
 // Test fixture class for Merge operation.
 class HnswlibIndexMergeTest : public YBTest {
  protected:
-  VectorIndexIfPtr<FloatVector, float> CreateAndFillIndex(size_t first_id, size_t num_entries) {
-    auto result = index_factory_();
-    CHECK_OK(result->Reserve(num_entries, 0, 0));
-    for (size_t id = first_id; id != first_id + num_entries; ++id) {
-      CHECK_OK(result->Insert(id, all_vectors_[id % 4]));
+  struct IndexData {
+    VectorIndexIfPtr<FloatVector, float> index;
+    std::vector<VectorId> vector_ids;
+    const size_t num_vectors() const { return vector_ids.size(); }
+  };
+
+  IndexData CreateAndFillIndex(size_t first_id, size_t num_entries) {
+    auto index = index_factory_();
+    CHECK_OK(index->Reserve(num_entries, 0, 0));
+
+    std::vector<VectorId> ids;
+    ids.reserve(num_entries);
+    for (size_t id = first_id; id < first_id + num_entries; ++id) {
+      ids.emplace_back(VectorId::GenerateRandom());
+      CHECK_OK(index->Insert(ids.back(), input_vectors_[id % input_vectors_.size()]));
     }
-    return result;
+
+    return { std::move(index), std::move(ids) };
   }
 
   // Helper function to verify that all expected vertex_ids are in the search results.
   void VerifyExpectedVertexIds(const VectorIndexReaderIf<FloatVector, float>::SearchResult& results,
-                               std::set<VertexId> expected_ids) {
+                               std::set<VectorId>&& expected_ids) {
     for (const auto& result : results) {
       ASSERT_TRUE(expected_ids.find(result.vertex_id) != expected_ids.end());
       expected_ids.erase(result.vertex_id); // Remove found ID from the set.
@@ -54,11 +85,9 @@ class HnswlibIndexMergeTest : public YBTest {
           .distance_kind = DistanceKind::kL2Squared};
       return HnswlibIndexFactory<FloatVector, float>::Create(hnsw_options);
     };
-    index_a_ = CreateAndFillIndex(0, 2);
-    index_b_ = CreateAndFillIndex(2, 2);
   }
 
-  std::vector<float> all_vectors_[4] = {
+  const std::vector<std::vector<float>> input_vectors_ = {
     {0.1f, 0.2f, 0.3f},
     {0.4f, 0.5f, 0.6f},
     {0.7f, 0.8f, 0.9f},
@@ -66,51 +95,55 @@ class HnswlibIndexMergeTest : public YBTest {
   };
 
   VectorIndexFactory<FloatVector, float> index_factory_;
-  VectorIndexIfPtr<FloatVector, float> index_a_;
-  VectorIndexIfPtr<FloatVector, float> index_b_;
 };
 
 // Test case to verify the Merge method for HnswlibIndex.
-TEST_F(HnswlibIndexMergeTest, TestMergeIndices) {
+TEST_F(HnswlibIndexMergeTest, TestMergeIndexes) {
+  // Generate indexes for the input set.
+  const auto half_size = input_vectors_.size() / 2;
+  auto data_a = CreateAndFillIndex(0, half_size);
+  auto data_b = CreateAndFillIndex(half_size, half_size);
+
   // Perform merge operation.
-  VectorIndexIfPtr<FloatVector, float> merged_index =
-      Merge(index_factory_, index_a_, index_b_);
+  auto merged_index = Merge(index_factory_, data_a.index, data_b.index);
 
   // Check that the merged index contains all entries.
-  auto result_a = ASSERT_RESULT(merged_index->Search(all_vectors_[0], 1));
+  auto result_a = ASSERT_RESULT(merged_index->Search(input_vectors_[0], 1));
   ASSERT_EQ(result_a.size(), 1);
-  ASSERT_EQ(result_a[0].vertex_id, 0);
+  ASSERT_EQ(result_a[0].vertex_id, data_a.vector_ids[0]);
 
-  auto result_b = ASSERT_RESULT(merged_index->Search(all_vectors_[2], 1));
+  auto result_b = ASSERT_RESULT(merged_index->Search(input_vectors_[half_size], 1));
   ASSERT_EQ(result_b.size(), 1);
-  ASSERT_EQ(result_b[0].vertex_id, 2);
+  ASSERT_EQ(result_b[0].vertex_id, data_b.vector_ids[0]);
 
   // Verify the size of the merged index.
   auto all_results = ASSERT_RESULT(merged_index->Search(
-      {0.0f, 0.0f, 0.0f}, 10)); // Assuming a query that fetches all.
-  ASSERT_EQ(all_results.size(), 4); // Should contain all 4 entries.
+      {0.0f, 0.0f, 0.0f}, 10)); // Query that fetches all.
+  ASSERT_EQ(all_results.size(), data_a.num_vectors() + data_b.num_vectors());
 
   // Check that all expected vertex_ids are in the results.
-  VerifyExpectedVertexIds(all_results, {0, 1, 2, 3});
+  VerifyExpectedVertexIds(all_results, MergeValues(data_a.vector_ids, data_b.vector_ids));
 }
 
 // Test case to verify merging an empty index with a non-empty one.
 TEST_F(HnswlibIndexMergeTest, TestMergeWithEmptyIndex) {
   // Create an empty index with the same options.
-  VectorIndexIfPtr<FloatVector, float> empty_index = index_factory_();
-
+  auto empty_index = index_factory_();
   CHECK_OK(empty_index->Reserve(10, 0, 0));
 
-  // Merge empty_index into index_a.
-  VectorIndexIfPtr<FloatVector, float> merged_index =
-      Merge(index_factory_, index_a_, empty_index);
+  // Generate indexes for the input set.
+  auto data_a = CreateAndFillIndex(0, input_vectors_.size() / 2);
 
-  // Check that the merged index contains only the entries from index_a.
+  // Merge empty_index into data_a.
+  auto merged_index = Merge(index_factory_, data_a.index, empty_index);
+
+  // Check that the merged index contains only the entries from data_a.
   auto all_results = ASSERT_RESULT(merged_index->Search(
-      {0.0f, 0.0f, 0.0f}, 10));  // Query that fetches all.
-  ASSERT_EQ(all_results.size(), 2);  // Should contain only the 2 entries from index_a.
-  // Check that all expected vertex_ids are in the results.
-  VerifyExpectedVertexIds(all_results, {0, 1});
+      {0.0f, 0.0f, 0.0f}, 10)); // Query that fetches all.
+  ASSERT_EQ(all_results.size(), data_a.num_vectors());
+
+  // Check that all expected vector ids are in the results.
+  VerifyExpectedVertexIds(all_results, MergeValues(data_a.vector_ids));
 }
 
 }  // namespace yb::vector_index

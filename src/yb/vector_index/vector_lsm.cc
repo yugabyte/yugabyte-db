@@ -97,7 +97,7 @@ class VectorLSMInsertTask :
     chunk_ = chunk;
   }
 
-  void Add(VertexId vertex_id, Vector vector) {
+  void Add(VectorId vertex_id, Vector&& vector) {
     vectors_.emplace_back(vertex_id, std::move(vector));
   }
 
@@ -127,11 +127,12 @@ class VectorLSMInsertTask :
   }
 
   void Done(const Status& status) override;
+
  private:
   mutable rw_spinlock mutex_;
   LSM& lsm_;
   std::shared_ptr<MutableChunk> chunk_;
-  std::vector<std::pair<VertexId, Vector>> vectors_;
+  std::vector<std::pair<VectorId, Vector>> vectors_;
 };
 
 // Registry for all active Vector LSM insert subtasks.
@@ -269,7 +270,7 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
     return true;
   }
 
-  void Insert(VectorLSM& lsm, VertexId vertex_id, const Vector& vector) {
+  void Insert(VectorLSM& lsm, VectorId vertex_id, const Vector& vector) {
     lsm.CheckFailure(index->Insert(vertex_id, vector));
   }
 };
@@ -465,7 +466,6 @@ void MergeChunkResults(
     size_t max_num_results) {
   // Store the current size of the existing results.
   auto old_size = std::min(combined_results.size(), max_num_results);
-
 
   // Because of concurrency we could get the same vertex from different sources.
   // So remove duplicates from chunk_results before merging.

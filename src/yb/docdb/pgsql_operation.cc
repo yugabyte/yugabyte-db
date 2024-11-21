@@ -2096,7 +2096,8 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteVectorSearch(
           *pointer_cast<const vector_index::YSQLVector*>(vec_value->binary_value().data()),
           vec_value->binary_value().size()));
       auto doc_iter = down_cast<DocRowwiseIterator*>(table_iter_.get());
-      ann_store->Add(vec, doc_iter->GetTupleId());
+      ann_store->Add(vector_index::VectorId::GenerateRandom(),
+                     std::move(vec), doc_iter->GetTupleId());
     }
   }
 

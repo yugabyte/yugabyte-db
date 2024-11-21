@@ -11,19 +11,12 @@
 // under the License.
 //
 
-// Typedefs of vector types used by the vector indexing library. These are simple typedefs for
-// std::vector, and they are used in dockv, which is not allowed to depend on the yb_vector
-// library.
-#pragma once
+#include "yb/vector_index/vector_id.h"
 
-#include <cstdint>
-#include <vector>
+#include "yb/util/result.h"
 
-namespace yb {
+namespace yb::vector_index {
 
-using FloatVector = std::vector<float>;
-using Int32Vector = std::vector<int32_t>;
-using UInt64Vector = std::vector<uint64_t>;
-using UInt8Vector = std::vector<uint8_t>;
+YB_STRONGLY_TYPED_UUID_IMPL(VectorId);
 
-}  // namespace yb
+} // namespace yb::vector_index
