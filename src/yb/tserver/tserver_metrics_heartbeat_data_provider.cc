@@ -119,9 +119,9 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
       }
     }
   }
-
-  // Report xCluster consumer heartbeat info.
-  if (FLAGS_tserver_heartbeat_metrics_add_replication_status) {
+  // Report xCluster consumer heartbeat info via the metric collector only when a full report is
+  // required. The partial reports are sent via the regular heartbeat request.
+  if (needs_full_tablet_report && FLAGS_tserver_heartbeat_metrics_add_replication_status) {
     auto xcluster_consumer = server().GetXClusterConsumer();
     if (xcluster_consumer != nullptr) {
       xcluster_consumer->PopulateMasterHeartbeatRequest(req, needs_full_tablet_report);

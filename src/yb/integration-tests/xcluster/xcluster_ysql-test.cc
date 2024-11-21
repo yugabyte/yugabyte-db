@@ -1193,7 +1193,6 @@ void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
   // Disable the replication and ensure no tablets are being polled
   ASSERT_OK(
       ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, false));
-  ASSERT_OK(CorrectlyPollingAllTablets(0));
 
   // 6. Write packed data.
   for (const auto& producer_table : producer_tables_) {
@@ -1204,7 +1203,6 @@ void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
   ASSERT_OK(
       ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, true));
-  ASSERT_OK(CorrectlyPollingAllTablets(num_producer_tablets));
   ASSERT_OK(data_replicated_correctly(kNumRecords + 10));
 
   // 8. Write some non-packed data on consumer.
@@ -1313,7 +1311,8 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
   // Pause Replication so we can batch up the below GetChanges information.
   ASSERT_OK(
       ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, false));
-  ASSERT_OK(CorrectlyPollingAllTablets(0));
+  ASSERT_OK(VerifyReplicationError(
+      consumer_table_->id(), stream_id, ReplicationErrorPb::REPLICATION_PAUSED));
 
   // Write some new data to the producer.
   ASSERT_OK(InsertRowsInProducer(count, count + kRecordBatch));

@@ -238,6 +238,18 @@ Status XClusterManager::RemoveStreamsFromSysCatalog(
   return XClusterSourceManager::RemoveStreamsFromSysCatalog(xcluster_streams, epoch);
 }
 
+Status XClusterManager::SetUniverseReplicationEnabled(
+    const SetUniverseReplicationEnabledRequestPB* req,
+    SetUniverseReplicationEnabledResponsePB* resp, rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id);
+  SCHECK_PB_FIELDS_SET(*req, is_enabled);
+
+  return XClusterTargetManager::SetReplicationGroupEnabled(
+      xcluster::ReplicationGroupId(req->replication_group_id()), req->is_enabled(), epoch,
+      rpc->GetClientDeadline());
+}
+
 Status XClusterManager::PauseResumeXClusterProducerStreams(
     const PauseResumeXClusterProducerStreamsRequestPB* req,
     PauseResumeXClusterProducerStreamsResponsePB* resp, rpc::RpcContext* rpc,

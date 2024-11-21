@@ -1436,12 +1436,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                             BootstrapProducerResponsePB* resp,
                             rpc::RpcContext* rpc);
 
-  // Enable/Disable an Existing Universe Replication.
-  Status SetUniverseReplicationEnabled(
-      const SetUniverseReplicationEnabledRequestPB* req,
-      SetUniverseReplicationEnabledResponsePB* resp,
-      rpc::RpcContext* rpc);
-
   // Get Universe Replication.
   Status GetUniverseReplication(
       const GetUniverseReplicationRequestPB* req,
@@ -2871,11 +2865,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Update the UniverseReplicationInfo object when toggling replication.
   Status SetUniverseReplicationInfoEnabled(
       const xcluster::ReplicationGroupId& replication_group_id, bool is_enabled) EXCLUDES(mutex_);
-
-  // Update the cluster config and consumer registry objects when toggling replication.
-  Status SetConsumerRegistryEnabled(
-      const xcluster::ReplicationGroupId& replication_group_id, bool is_enabled,
-      ClusterConfigInfo::WriteLock* l);
 
   // True when the cluster is a consumer of a NS-level replication stream.
   std::atomic<bool> namespace_replication_enabled_{false};
