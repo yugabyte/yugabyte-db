@@ -6,6 +6,7 @@ package release
 
 import (
 	"github.com/spf13/cobra"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/release/architecture"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/release/artifact"
 )
 
@@ -25,5 +26,7 @@ func init() {
 	ReleaseCmd.AddCommand(describeReleaseCmd)
 	ReleaseCmd.AddCommand(deleteReleaseCmd)
 	ReleaseCmd.AddCommand(createReleaseCmd)
+	ReleaseCmd.AddCommand(updateReleaseCmd)
 	ReleaseCmd.AddCommand(artifact.ArtifactReleaseCmd)
+	ReleaseCmd.AddCommand(architecture.ArchitectureReleaseCmd)
 }

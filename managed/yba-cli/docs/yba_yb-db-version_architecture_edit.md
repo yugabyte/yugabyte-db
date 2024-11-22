@@ -1,19 +1,29 @@
-## yba yb-db-version
+## yba yb-db-version architecture edit
 
-Manage YugabyteDB versions
+Edit architectures to a version of YugabyteDB
 
 ### Synopsis
 
-Manage YugabyteDB versions
+Edit architectures for a version of YugabyteDB. Run this command after the information provided in the "yba yb-db-version artifact-create <url/upload>" commands.
 
 ```
-yba yb-db-version [flags]
+yba yb-db-version architecture edit [flags]
+```
+
+### Examples
+
+```
+yba yb-db-version architecture edit  --version <version> \
+	--platform <platform> --arch <architecture> --sha256 <sha256>
 ```
 
 ### Options
 
 ```
-  -h, --help   help for yb-db-version
+      --platform string   [Required] Platform supported by this version. Allowed values: LINUX, KUBERNETES
+      --arch string       [Optional] Architecture supported by this version. Required if platform is LINUX. Allowed values: x86_64, aarch64
+      --sha256 string     [Optional] SHA256 of the release tgz file.
+  -h, --help              help for edit
 ```
 
 ### Options inherited from parent commands
@@ -27,17 +37,11 @@ yba yb-db-version [flags]
   -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
   -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
       --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)
+  -v, --version string     [Required] YugabyteDB version to be updated.
       --wait               Wait until the task is completed, otherwise it will exit immediately. (default true)
 ```
 
 ### SEE ALSO
 
-* [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
 * [yba yb-db-version architecture](yba_yb-db-version_architecture.md)	 - Manage architectures for a version of YugabyteDB
-* [yba yb-db-version artifact-create](yba_yb-db-version_artifact-create.md)	 - Fetch artifact metadata for a version of YugabyteDB
-* [yba yb-db-version create](yba_yb-db-version_create.md)	 - Create a YugabyteDB version entry on YugabyteDB Anywhere
-* [yba yb-db-version delete](yba_yb-db-version_delete.md)	 - Delete a YugabyteDB version
-* [yba yb-db-version describe](yba_yb-db-version_describe.md)	 - Describe a YugabyteDB version
-* [yba yb-db-version list](yba_yb-db-version_list.md)	 - List YugabyteDB versions
-* [yba yb-db-version update](yba_yb-db-version_update.md)	 - Update a YugabyteDB version entry on YugabyteDB Anywhere
 

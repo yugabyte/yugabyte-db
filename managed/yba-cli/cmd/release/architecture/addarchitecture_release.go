@@ -2,7 +2,7 @@
  * Copyright (c) YugaByte, Inc.
  */
 
-package release
+package architecture
 
 import (
 	"fmt"
@@ -13,7 +13,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
-
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/release/releaseutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
@@ -21,18 +20,17 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/release"
 )
 
-// createReleaseCmd represents the ear command
-var createReleaseCmd = &cobra.Command{
-	Use:     "create",
-	Aliases: []string{"add"},
-	Short:   "Create a YugabyteDB version entry on YugabyteDB Anywhere",
-	Long: "Create a YugabyteDB version entry on YugabyteDB Anywhere. " +
-		"Run this command after the information provided in the " +
+// addArchitectureReleaseCmd represents the release command to fetch metadata
+var addArchitectureReleaseCmd = &cobra.Command{
+	Use:   "add",
+	Short: "Add architectures to a version of YugabyteDB",
+	Long: "Add architectures for a version of YugabyteDB." +
+		" Run this command after the information provided in the " +
 		"\"yba yb-db-version artifact-create <url/upload>\" commands.",
-	Example: `yba yb-db-version create --version <version> --type PREVIEW --platform LINUX
-	--arch x86_64 --yb-type YBDB --url <url>`,
+	Example: `yba yb-db-version architecture add  --version <version> \
+	--platform <platform> --arch <architecture> --url <url>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
-		releaseutil.VersionValidation(cmd, "create")
+		releaseutil.VersionValidation(cmd, "add architecture")
 		releaseutil.AddArchValidation(cmd)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -45,30 +43,33 @@ var createReleaseCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		releaseType, err := cmd.Flags().GetString("type")
+		releasesListRequest := authAPI.ListNewReleases()
+
+		rList, response, err := releasesListRequest.Execute()
 		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			errMessage := util.ErrorFromHTTPResponse(
+				response,
+				err, "Release Architecture", "Add - List Releases")
+			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		ybType, err := cmd.Flags().GetString("yb-type")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		requestedReleaseList := make([]ybaclient.ResponseRelease, 0)
+		for _, v := range rList {
+			if strings.Compare(v.GetVersion(), version) == 0 {
+				requestedReleaseList = append(requestedReleaseList, v)
+				break
+			}
 		}
 
-		dateMsecs, err := cmd.Flags().GetInt64("date-msecs")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		if len(requestedReleaseList) < 1 {
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf("No YugabyteDB version: %s found\n", version),
+					formatter.RedColor,
+				))
 		}
 
-		notes, err := cmd.Flags().GetString("notes")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-
-		tag, err := cmd.Flags().GetString("tag")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
+		requestedRelease := requestedReleaseList[0]
 
 		platform, err := cmd.Flags().GetString("platform")
 		if err != nil {
@@ -107,36 +108,47 @@ var createReleaseCmd = &cobra.Command{
 			PackageUrl:    url,
 		}
 
-		artifacts := []ybaclient.Artifact{artifact}
-		req := ybaclient.CreateRelease{
-			Version:          version,
-			ReleaseType:      strings.ToUpper(releaseType),
-			Artifacts:        artifacts,
-			YbType:           strings.ToUpper(ybType),
-			ReleaseDateMsecs: dateMsecs,
-			ReleaseNotes:     notes,
-			ReleaseTag:       tag,
+		addArtifact := requestedRelease.GetArtifacts()
+		addArtifact = append(addArtifact, artifact)
+		requestedRelease.SetArtifacts(addArtifact)
+
+		req := ybaclient.UpdateRelease{
+			State:        requestedRelease.GetState(),
+			ReleaseTag:   requestedRelease.GetReleaseTag(),
+			ReleaseDate:  requestedRelease.GetReleaseDateMsecs() / 1000,
+			ReleaseNotes: requestedRelease.GetReleaseNotes(),
+			Artifacts:    addArtifact,
 		}
 
-		rCreate, response, err := authAPI.CreateNewRelease().Release(req).Execute()
+		rUpdate, response, err := authAPI.UpdateNewRelease(
+			requestedRelease.GetReleaseUuid()).Release(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Release", "Create")
+			errMessage := util.ErrorFromHTTPResponse(
+				response,
+				err,
+				"Release Architecture",
+				"Add - Update Release")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		resourceUUID := rCreate.GetResourceUUID()
-		if len(strings.TrimSpace(resourceUUID)) == 0 {
-			logrus.Fatalf(
+		if !rUpdate.GetSuccess() {
+			logrus.Errorf(
 				formatter.Colorize(
-					"An error occurred while adding YugabyteDB version.\n",
-					formatter.RedColor,
-				),
-			)
+					fmt.Sprintf(
+						"An error occurred while updating YugabyteDB version %s (%s)\n",
+						formatter.Colorize(version, formatter.GreenColor),
+						requestedRelease.GetReleaseUuid()),
+					formatter.RedColor))
+
 		}
 
-		rGet, response, err := authAPI.GetNewRelease(resourceUUID).Execute()
+		rGet, response, err := authAPI.GetNewRelease(requestedRelease.GetReleaseUuid()).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Release", "Create - Get Release")
+			errMessage := util.ErrorFromHTTPResponse(
+				response,
+				err,
+				"Release Architecture",
+				"Add - Get Release")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
@@ -144,62 +156,42 @@ var createReleaseCmd = &cobra.Command{
 		r = append(r, rGet)
 
 		releaseCtx := formatter.Context{
-			Command: "create",
+			Command: "update",
 			Output:  os.Stdout,
 			Format:  release.NewReleaseFormat(viper.GetString("output")),
 		}
 		release.Write(releaseCtx, r)
-
 	},
 }
 
 func init() {
-	createReleaseCmd.Flags().SortFlags = false
+	addArchitectureReleaseCmd.Flags().SortFlags = false
 
-	createReleaseCmd.Flags().StringP("version", "v", "",
-		"[Required] YugabyteDB version to be created")
-	createReleaseCmd.MarkFlagRequired("version")
-
-	createReleaseCmd.Flags().String("type", "",
-		"[Required] Release type. Allowed values: LTS, STS, PREVIEW")
-	createReleaseCmd.MarkFlagRequired("type")
-
-	createReleaseCmd.Flags().String("platform", "LINUX",
+	addArchitectureReleaseCmd.Flags().String("platform", "LINUX",
 		"[Optional] Platform supported by this version. Allowed values: LINUX, KUBERNETES")
 
-	createReleaseCmd.Flags().String("arch", "",
+	addArchitectureReleaseCmd.Flags().String("arch", "",
 		fmt.Sprintf(
 			"[Optional] Architecture supported by this version. %s. "+
 				"Allowed values: x86_64, aarch64",
 			formatter.Colorize("Required if platform is LINUX", formatter.GreenColor)))
 
-	createReleaseCmd.Flags().String("yb-type", "YBDB",
-		"[Optional] Type of the release. Allowed values: YBDB")
-
-	createReleaseCmd.Flags().String("file-id", "",
+	addArchitectureReleaseCmd.Flags().String("file-id", "",
 		fmt.Sprintf("[Optional] File ID of the release tgz file to be used. "+
 			"This is the metadata UUID from the \"yba yb-db-version artifact-create upload\" command. %s",
 			formatter.Colorize(
 				"Provide either file-id or url.",
 				formatter.GreenColor)))
-	createReleaseCmd.Flags().String("url", "",
+	addArchitectureReleaseCmd.Flags().String("url", "",
 		fmt.Sprintf("[Optional] URL to extract release metadata from a remote tarball. %s",
 			formatter.Colorize(
 				"Provide either file-id or url.",
 				formatter.GreenColor)))
 
-	createReleaseCmd.MarkFlagsMutuallyExclusive("file-id", "url")
+	addArchitectureReleaseCmd.MarkFlagsMutuallyExclusive("file-id", "url")
 
-	createReleaseCmd.Flags().String("sha256", "",
+	addArchitectureReleaseCmd.Flags().String("sha256", "",
 		"[Optional] SHA256 of the release tgz file. Required if file-id is provided.")
-	createReleaseCmd.MarkFlagsRequiredTogether("file-id", "sha256")
-
-	createReleaseCmd.Flags().Int64("date-msecs", 0,
-		"[Optional] Date in milliseconds since the epoch when the release was created.")
-
-	createReleaseCmd.Flags().String("notes", "",
-		"[Optional] Release notes.")
-
-	createReleaseCmd.Flags().String("tag", "", "[Optional] Release tag.")
+	addArchitectureReleaseCmd.MarkFlagsRequiredTogether("file-id", "sha256")
 
 }
