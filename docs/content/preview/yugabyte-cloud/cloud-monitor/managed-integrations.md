@@ -35,7 +35,7 @@ Currently, you can export data to the following tools.
 | [Grafana Cloud](https://grafana.com/docs/grafana-cloud/) | | [Yes](https://grafana.com/grafana/dashboards/12620-yugabytedb/) |
 | [Sumo Logic](https://www.sumologic.com) | | Yes |
 | [Prometheus](https://prometheus.io/docs/introduction/overview/) | | Yes |
-| [VictoriaMetrics](https://docs.victoriametrics.com/) {{<tags/feature/tp>}} | | Yes |
+| [VictoriaMetrics](https://docs.victoriametrics.com/) | | Yes |
 | [Google Cloud Storage](https://cloud.google.com/storage) (GCS) | Database audit logs | |
 <!--| [Dynatrace](https://www.dynatrace.com) | | Yes |-->
 
@@ -159,24 +159,30 @@ To create an export configuration, do the following:
 
 ### VictoriaMetrics
 
-VictoriaMetrics integration is {{<tags/feature/tp>}} and only available for clusters deployed on AWS.
+VictoriaMetrics integration is only available for clusters deployed on AWS or GCP.
 
 The VictoriaMetrics integration requires the following:
 
 - VictoriaMetrics instance
-  - deployed in a VPC on AWS
-  - publically-accessible endpoint URL that resolves to the private IP of the VictoriaMetrics instance; the DNS for the endpoint must be in a public hosted zone in AWS. The URL must be in the form as described in [How to use OpenTelemetry metrics with VictoriaMetrics](https://docs.victoriametrics.com/guides/getting-started-with-opentelemetry/).
+  - Deployed in a VPC on AWS or GCP.
+  - Publically-accessible endpoint URL that resolves to the private IP of the VictoriaMetrics instance.
+
+  The DNS for the endpoint must be in a publicly accessible DNS record, allowing it to resolve globally. This typically involves adding the URL to a public DNS zone. To confirm that the address is publicly resolvable, you can use a tool like nslookup.
+
+  The URL must be in the form as described in [How to use OpenTelemetry metrics with VictoriaMetrics](https://docs.victoriametrics.com/guides/getting-started-with-opentelemetry/).
   - VPC hosting the VictoriaMetrics instance has the following Inbound Security Group rules:
     - Allow HTTP inbound traffic on port 80 for VictoriaMetrics endpoint URL (HTTP)
     - Allow HTTPS inbound traffic on port 443 for VictoriaMetrics endpoint URL (HTTPS)
 
-    See [Control traffic to your AWS resources using security groups](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html) in the AWS documentation.
+    See [Control traffic to your AWS resources using security groups](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html) in the AWS documentation, or [VPC firewall rules](https://cloud.google.com/firewall/docs/firewalls) in the Google Cloud documentation.
 
 - YugabyteDB Aeon cluster from which you want to export metrics
-  - the cluster is [deployed in VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc/) on AWS
-  - each region VPC is peered with the VPC hosting VictoriaMetrics. See [Peer VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc-aws/).
+  - Cluster deployed in VPCs on AWS, or a VPC in GCP. See [VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc/).
+  - VPCs are peered with the VPC hosting VictoriaMetrics. See [Peer VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc-aws/).
 
-  As each region of a cluster deployed in AWS has its own VPC, make sure that all the VPCs are peered and allow inbound access from VictoriaMetrics; this also applies to regions you add or change after deployment, and to read replicas. For information on VPC networking in YugabyteDB Aeon, see [VPC network overview](../../cloud-basics/cloud-vpcs/cloud-vpc-intro/).
+  As each region of a cluster deployed in AWS has its own VPC, make sure that _all_ the VPCs are peered and allow inbound access from VictoriaMetrics; this also applies to regions you add or change after deployment, and to read replicas. In GCP, clusters are deployed in a single VPC.
+
+  For information on VPC networking in YugabyteDB Aeon, see [VPC network overview](../../cloud-basics/cloud-vpcs/cloud-vpc-intro/).
 
 To create an export configuration, do the following:
 
