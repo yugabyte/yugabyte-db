@@ -1,26 +1,26 @@
-## yba task retry
+## yba task abort
 
-Retry a YugabyteDB Anywhere task
+Abort a YugabyteDB Anywhere task
 
 ### Synopsis
 
-Retry a task in YugabyteDB Anywhere
+Abort a task in YugabyteDB Anywhere
 
 ```
-yba task retry [flags]
+yba task abort [flags]
 ```
 
 ### Examples
 
 ```
-yba task retry --uuid <uuid>
+yba task abort --uuid <task-uuid>
 ```
 
 ### Options
 
 ```
-  -u, --uuid string   [Required] The task UUID to be retried.
-  -h, --help          help for retry
+  -u, --uuid string   [Required] The task UUID to be aborted.
+  -h, --help          help for abort
 ```
 
 ### Options inherited from parent commands

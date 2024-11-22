@@ -33,6 +33,7 @@ type AuthAPIClient struct {
 	APIClient    *ybaclient.APIClient
 	CustomerUUID string
 	ctx          context.Context
+	stop         context.CancelFunc
 }
 
 // RestAPIClient contains http client
@@ -121,13 +122,14 @@ func NewAuthAPIClientInitialize(url *url.URL, apiToken string) (*AuthAPIClient, 
 
 	apiClient := ybaclient.NewAPIClient(cfg)
 
-	ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 
 	return &AuthAPIClient{
 		restAPIClient,
 		apiClient,
 		"",
 		ctx,
+		stop,
 	}, nil
 }
 
