@@ -5,6 +5,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
+import org.yb.util.BuildTypeUtil;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -39,7 +40,8 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
   public void testModifiedTableWrite() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE t(k INT PRIMARY KEY, v1 INT DEFAULT 10, v2 INT DEFAULT 20)");
-      int count = 50;
+      int count = BuildTypeUtil.isASAN() ? 10 : 50;
+
       final AtomicBoolean errorsDetected = new AtomicBoolean(false);
       final AtomicBoolean stopped = new AtomicBoolean(false);
       final CyclicBarrier barrier = new CyclicBarrier(count);
