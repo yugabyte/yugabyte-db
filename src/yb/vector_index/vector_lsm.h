@@ -153,7 +153,7 @@ class VectorLSM {
   friend struct MutableChunk;
 
   // Saves the current mutable chunk to disk and creates a new one.
-  Status RollChunk() REQUIRES(mutex_);
+  Status RollChunk(size_t min_points) REQUIRES(mutex_);
   Status DoFlush(std::promise<Status>* promise) REQUIRES(mutex_);
 
   // Use var arg to avoid specifying arguments twice in SaveChunk and DoSaveChunk.
@@ -165,7 +165,7 @@ class VectorLSM {
   Status UpdateManifest(
       rocksdb::WritableFile* metadata_file, ImmutableChunkPtr chunk) EXCLUDES(mutex_);
 
-  Status CreateNewMutableChunk() REQUIRES(mutex_);
+  Status CreateNewMutableChunk(size_t min_points) REQUIRES(mutex_);
 
   Options options_;
   rocksdb::Env* const env_;

@@ -52,7 +52,7 @@ class VectorIndexWriterIf {
   virtual ~VectorIndexWriterIf() = default;
 
   // Reserves capacity for this number of vectors.
-  virtual Status Reserve(size_t num_vectors) = 0;
+  virtual Status Reserve(size_t num_vectors, size_t max_concurrent_inserts) = 0;
 
   virtual Status Insert(VertexId vertex_id, const Vector& vector) = 0;
 

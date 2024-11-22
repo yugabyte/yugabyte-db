@@ -2136,7 +2136,8 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(
   RSTATUS_DCHECK(data_.vector_index, IllegalState, "Search vector when vector index is null");
 
   Slice vector_slice(options.vector().binary_value());
-  size_t max_results = options.prefetch_size();
+  // TODO(vector_index) Use correct max_results
+  size_t max_results = std::min<size_t>(1000, options.prefetch_size());
 
   auto result = VERIFY_RESULT(data_.vector_index->Search(vector_slice, max_results));
   // TODO(vector_index) Order keys by ybctid for fetching.

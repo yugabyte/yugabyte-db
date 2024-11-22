@@ -1278,7 +1278,7 @@ class Tablet : public AbstractTablet,
   std::function<uint32_t(const TableId&, const ColocationId&)>
       get_min_xcluster_schema_version_ = nullptr;
 
-  rpc::ThreadPool* rpc_thread_pool_ = nullptr;
+  VectorIndexThreadPoolProvider vector_index_thread_pool_provider_;
 
   simple_spinlock operation_filters_mutex_;
 

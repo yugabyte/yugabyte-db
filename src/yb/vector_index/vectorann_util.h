@@ -15,7 +15,7 @@
 #pragma once
 
 #include <queue>
-
+#include <thread>
 
 #include "yb/common/vector_types.h"
 #include "yb/rocksdb/status.h"
@@ -123,8 +123,8 @@ VectorIndexIfPtr<Vector, DistanceResult> Merge(
     VectorIndexIfPtr<Vector, DistanceResult> index_a,
     VectorIndexIfPtr<Vector, DistanceResult> index_b) {
   VectorIndexIfPtr<Vector, DistanceResult> merged_index = index_factory();
-  auto status_reserve =
-      merged_index->Reserve(10);  // TODO we need a way to get the size of merging index
+  // TODO(vector_index) we need a way to get the size of merging index
+  auto status_reserve = merged_index->Reserve(10, std::thread::hardware_concurrency());
 
   for (const auto& [vector, vertex_id] : *index_a) {
     auto status = merged_index->Insert(vertex_id, vector);

@@ -118,15 +118,22 @@ class UsearchIndex :
     return std::make_unique<NoOpVectorIterator<Vector, DistanceResult>>();
   }
 
-  Status Reserve(size_t num_vectors) override {
-    index_.reserve(num_vectors);
+  Status Reserve(size_t num_vectors, size_t max_concurrent_inserts) override {
+    // Usearch could allocate 3 times more entries, than requested.
+    // Since it always allocate power of 2, we use this weird logic to make it pick minimal
+    // power of 2 that is greater or equals than num_vectors.
+    auto rounded_num_vectors = unum::usearch::ceil2(num_vectors);
+    // TODO(vector_index) Limit number of concurrent inserts + reads because of internal limitation
+    // on active threads in usearch.
+    index_.reserve(unum::usearch::index_limits_t(
+        rounded_num_vectors * 2 / 3, max_concurrent_inserts + std::thread::hardware_concurrency()));
     return Status::OK();
   }
 
   Status DoInsert(VertexId vertex_id, const Vector& v) {
-    if (!index_.add(vertex_id, v.data())) {
-      return STATUS_FORMAT(RuntimeError, "Failed to add a vector");
-    }
+    auto add_result = index_.add(vertex_id, v.data());
+    RSTATUS_DCHECK(
+        add_result, RuntimeError, "Failed to add a vector: $0", add_result.error.release());
     return Status::OK();
   }
 

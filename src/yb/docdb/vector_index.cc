@@ -23,10 +23,14 @@
 
 #include "yb/util/decimal.h"
 #include "yb/util/endian_util.h"
+#include "yb/util/flags.h"
 #include "yb/util/result.h"
 
 #include "yb/vector_index/ann_methods.h"
 #include "yb/vector_index/vector_lsm.h"
+
+DEFINE_RUNTIME_uint64(vector_index_initial_chunk_size, 1024,
+                      "Number of vector in initial vector index chunk");
 
 namespace yb::docdb {
 
@@ -124,7 +128,7 @@ class VectorIndexImpl : public VectorIndex, public vector_index::VectorLSMKeyVal
       .storage_dir = path,
       .vector_index_factory = VERIFY_RESULT((GetVectorLSMFactory<Vector, DistanceResult>(
           idx_options.idx_type(), idx_options.dimensions()))),
-      .points_per_chunk = 1000, // TODO(vector_index) pick points per chunk from somewhere
+      .points_per_chunk = FLAGS_vector_index_initial_chunk_size,
       .key_value_storage = this, // TODO(vector_index) implement key value storage using rocksdb
       .thread_pool = &thread_pool,
       .frontiers_factory = [] { return std::make_unique<docdb::ConsensusFrontiers>(); },

@@ -32,26 +32,32 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
     PgMiniTestBase::SetUp();
   }
 
+  Result<PGConn> MakeIndex() {
+    auto colocated = GetParam();
+    auto conn = VERIFY_RESULT(Connect());
+    std::string create_suffix;
+    if (colocated) {
+      create_suffix = " WITH (COLOCATED = 1)";
+      RETURN_NOT_OK(conn.ExecuteFormat("CREATE DATABASE colocated_db COLOCATION = true"));
+      conn = VERIFY_RESULT(ConnectToDB("colocated_db"));
+    } else {
+      // TODO(vector_index) Remove it when multi-tablet vector indexes will be supported
+      create_suffix = " SPLIT INTO 1 TABLETS";
+    }
+    RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector VERSION '0.4.4-yb-1.2'"));
+    RETURN_NOT_OK(conn.Execute(
+        "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector(3))" + create_suffix));
+
+  RETURN_NOT_OK(conn.Execute("CREATE INDEX ON test USING ybhnsw (embedding vector_l2_ops)"));
+
+    return conn;
+  }
+
   void TestSimple();
 };
 
 void PgVectorIndexTest::TestSimple() {
-  auto colocated = GetParam();
-  auto conn = ASSERT_RESULT(Connect());
-  std::string create_suffix;
-  if (colocated) {
-    create_suffix = " WITH (COLOCATED = 1)";
-    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE colocated_db COLOCATION = true"));
-    conn = ASSERT_RESULT(ConnectToDB("colocated_db"));
-  } else {
-    // TODO(vector_index) Remove it when multi-tablet vector indexes will be supported
-    create_suffix = " SPLIT INTO 1 TABLETS";
-  }
-  ASSERT_OK(conn.Execute("CREATE EXTENSION vector VERSION '0.4.4-yb-1.2'"));
-  ASSERT_OK(conn.Execute(
-      "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector(3))" + create_suffix));
-
-  ASSERT_OK(conn.Execute("CREATE INDEX ON test USING ybhnsw (embedding vector_l2_ops)"));
+  auto conn = ASSERT_RESULT(MakeIndex());
 
   size_t num_found_peers = 0;
   auto check_tablets = [this, &num_found_peers]() -> Result<bool> {
@@ -107,6 +113,31 @@ TEST_P(PgVectorIndexTest, Simple) {
 TEST_P(PgVectorIndexTest, NotApplied) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
   TestSimple();
+}
+
+std::string VectorAsString(int64_t id) {
+  return Format("[$0, $1, $2]", id, id * 2, id * 3);
+}
+
+TEST_P(PgVectorIndexTest, ManyRows) {
+  constexpr int kNumRows = RegularBuildVsSanitizers(2000, 64);
+  constexpr int kQueryLimit = 5;
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  for (int i = 1; i <= kNumRows; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(
+       "INSERT INTO test VALUES ($0, '$1')", i, VectorAsString(i)));
+  }
+  ASSERT_OK(conn.CommitTransaction());
+
+  auto result = ASSERT_RESULT((conn.FetchRows<RowAsString>(Format(
+      "SELECT * FROM test ORDER BY embedding <-> '[0.0, 0.0, 0.0]' LIMIT $0", kQueryLimit))));
+  ASSERT_EQ(result.size(), kQueryLimit);
+  for (size_t i = 0; i != result.size(); ++i) {
+    ASSERT_EQ(result[i], Format("$0, $1", i + 1, VectorAsString(i + 1)));
+  }
 }
 
 std::string ColocatedToString(const testing::TestParamInfo<bool>& param_info) {

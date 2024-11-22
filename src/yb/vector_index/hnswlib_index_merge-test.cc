@@ -11,8 +11,11 @@
 // under the License.
 //
 
+#include <thread>
+
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
+
 #include "yb/vector_index/hnswlib_wrapper.h"
 #include "yb/vector_index/vector_index_if.h"
 #include "yb/vector_index/vectorann_util.h"
@@ -24,7 +27,7 @@ class HnswlibIndexMergeTest : public YBTest {
  protected:
   VectorIndexIfPtr<FloatVector, float> CreateAndFillIndex(size_t first_id, size_t num_entries) {
     auto result = index_factory_();
-    CHECK_OK(result->Reserve(num_entries));
+    CHECK_OK(result->Reserve(num_entries, std::thread::hardware_concurrency()));
     for (size_t id = first_id; id != first_id + num_entries; ++id) {
       CHECK_OK(result->Insert(id, all_vectors_[id % 4]));
     }
@@ -96,11 +99,11 @@ TEST_F(HnswlibIndexMergeTest, TestMergeWithEmptyIndex) {
   // Create an empty index with the same options.
   VectorIndexIfPtr<FloatVector, float> empty_index = index_factory_();
 
-  CHECK_OK(empty_index->Reserve(10));
+  CHECK_OK(empty_index->Reserve(10, std::thread::hardware_concurrency()));
 
   // Merge empty_index into index_a.
   VectorIndexIfPtr<FloatVector, float> merged_index =
-      Merge (index_factory_, index_a_, empty_index);
+      Merge(index_factory_, index_a_, empty_index);
 
   // Check that the merged index contains only the entries from index_a.
   auto all_results = merged_index->Search({0.0f, 0.0f, 0.0f}, 10);  // Query that fetches all.

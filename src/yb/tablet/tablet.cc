@@ -651,7 +651,7 @@ Tablet::Tablet(const TabletInitData& data)
       admin_triggered_compaction_pool_(data.admin_triggered_compaction_pool),
       ts_post_split_compaction_added_(std::move(data.post_split_compaction_added)),
       get_min_xcluster_schema_version_(std::move(data.get_min_xcluster_schema_version)),
-      rpc_thread_pool_(data.rpc_thread_pool) {
+      vector_index_thread_pool_provider_(data.vector_index_thread_pool_provider) {
   CHECK(schema()->has_column_ids());
   LOG_WITH_PREFIX(INFO) << "Schema version for " << metadata_->table_name() << " is "
                         << metadata_->primary_table_schema_version();
@@ -2549,7 +2549,7 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
     auto it = vector_indexes_map_.find(table_info.table_id());
     if (it == vector_indexes_map_.end()) {
       auto vector_index = VERIFY_RESULT(docdb::CreateVectorIndex(
-          metadata_->rocksdb_dir(), *rpc_thread_pool_,
+          metadata_->rocksdb_dir(), *vector_index_thread_pool_provider_(),
           indexed_table_info->doc_read_context->table_key_prefix(), *index_info));
       it = vector_indexes_map_.emplace(table_info.table_id(), std::move(vector_index)).first;
       auto& indexes = vector_indexes_list_;
