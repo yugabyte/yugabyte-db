@@ -810,19 +810,23 @@ class YBClient {
   Result<int> WaitForYsqlBackendsCatalogVersion(
       const std::string& database_name,
       uint64_t version,
-      const MonoDelta& timeout = MonoDelta());
+      const MonoDelta& timeout = MonoDelta(),
+      pid_t requestor_pg_backend_pid = -1);
   Result<int> WaitForYsqlBackendsCatalogVersion(
       const std::string& database_name,
       uint64_t version,
-      const CoarseTimePoint& deadline);
+      const CoarseTimePoint& deadline,
+      pid_t requestor_pg_backend_pid = -1);
   Result<int> WaitForYsqlBackendsCatalogVersion(
       PgOid database_oid,
       uint64_t version,
-      const MonoDelta& timeout = MonoDelta());
+      const MonoDelta& timeout = MonoDelta(),
+      pid_t requestor_pg_backend_pid = -1);
   Result<int> WaitForYsqlBackendsCatalogVersion(
       PgOid database_oid,
       uint64_t version,
-      const CoarseTimePoint& deadline);
+      const CoarseTimePoint& deadline,
+      pid_t requestor_pg_backend_pid = -1);
 
   // Get the list of master uuids. Can be enhanced later to also return port/host info.
   Status ListMasters(

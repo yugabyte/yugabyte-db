@@ -225,6 +225,8 @@ message AccessYsqlBackendsManagerTestRegisterResponsePB {
 message WaitForYsqlBackendsCatalogVersionRequestPB {
   optional uint32 database_oid = 1; // required
   optional uint64 catalog_version = 2; // required
+  optional bytes requestor_ts_uuid = 3; // required
+  optional int32 requestor_pg_backend_pid = 4; // required
 }
 
 message WaitForYsqlBackendsCatalogVersionResponsePB {

@@ -2138,8 +2138,11 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
 
   // TODO(jason): handle or create issue for catalog version being uint64 vs int64.
   const std::string num_lagging_backends_query = Format(
-      "SELECT count(*) FROM pg_stat_activity WHERE catalog_version < $0 AND datid = $1",
-      catalog_version, database_oid);
+      "SELECT count(*) FROM pg_stat_activity WHERE catalog_version < $0 AND datid = $1$2",
+      catalog_version, database_oid,
+      (req->has_requestor_pg_backend_pid() ?
+       Format(" AND pid != $0", req->requestor_pg_backend_pid()) :
+       ""));
   int num_lagging_backends = -1;
   const std::string description = Format("Wait for update to num lagging backends $0", db_ver_tag);
   s = Wait(

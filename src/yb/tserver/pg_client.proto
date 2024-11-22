@@ -906,6 +906,7 @@ message PgWaitForBackendsCatalogVersionRequestPB {
   uint64 session_id = 1;
   uint32 database_oid = 2;
   uint64 catalog_version = 3;
+  int32 requestor_pg_backend_pid = 5;
   AshMetadataPB ash_metadata = 4;
 }
 

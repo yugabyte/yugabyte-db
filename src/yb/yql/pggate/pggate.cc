@@ -1197,10 +1197,11 @@ Status PgApiImpl::ExecDropIndex(PgStatement* handle) {
   return ExecDdlWithSyscatalogChanges<PgDropIndex>(handle, *pg_session_);
 }
 
-Result<int> PgApiImpl::WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version) {
+Result<int> PgApiImpl::WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version, pid_t pid) {
   tserver::PgWaitForBackendsCatalogVersionRequestPB req;
   req.set_database_oid(dboid);
   req.set_catalog_version(version);
+  req.set_requestor_pg_backend_pid(pid);
   // Incorporate the margin into the deadline because master will subtract the margin for
   // responding.
   return pg_session_->pg_client().WaitForBackendsCatalogVersion(

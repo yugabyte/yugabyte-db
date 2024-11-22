@@ -1010,7 +1010,8 @@ Status PgClientSession::WaitForBackendsCatalogVersion(
     rpc::RpcContext* context) {
   // TODO(jason): send deadline to client.
   const int num_lagging_backends = VERIFY_RESULT(client().WaitForYsqlBackendsCatalogVersion(
-      req.database_oid(), req.catalog_version(), context->GetClientDeadline()));
+      req.database_oid(), req.catalog_version(), context->GetClientDeadline(),
+      req.requestor_pg_backend_pid()));
   resp->set_num_lagging_backends(num_lagging_backends);
   return Status::OK();
 }
