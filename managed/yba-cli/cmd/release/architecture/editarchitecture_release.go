@@ -87,7 +87,7 @@ var editArchitectureReleaseCmd = &cobra.Command{
 
 		for i, v := range releaseExistingArch {
 			if strings.Compare(v.GetPlatform(), "LINUX") == 0 &&
-				strings.Compare(v.GetArchitecture(), architecture) == 0 {
+				strings.Compare(v.GetArchitecture(), strings.ToLower(architecture)) == 0 {
 				requestedArchitecture = v
 				requestedArchitectureIndex = i
 				break

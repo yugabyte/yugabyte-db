@@ -98,7 +98,7 @@ var updateK8sProviderCmd = &cobra.Command{
 		}
 		if len(strings.TrimSpace(providerType)) > 0 {
 			logrus.Debug("Updating kubernetes provider type\n")
-			k8sCloudInfo.SetKubernetesProvider(providerType)
+			k8sCloudInfo.SetKubernetesProvider(strings.ToLower(providerType))
 		}
 
 		imageRegistry, err := cmd.Flags().GetString("image-registry")

@@ -820,7 +820,7 @@ func addAWSImageBundles(
 			Name:         util.GetStringPointer(bundle["name"]),
 			UseAsDefault: util.GetBoolPointer(defaultBundle),
 			Details: &ybaclient.ImageBundleDetails{
-				Arch:      util.GetStringPointer(bundle["arch"]),
+				Arch:      util.GetStringPointer(strings.ToLower(bundle["arch"])),
 				SshUser:   util.GetStringPointer(bundle["ssh-user"]),
 				SshPort:   util.GetInt32Pointer(int32(sshPort)),
 				UseIMDSv2: util.GetBoolPointer(useIMDSv2),
