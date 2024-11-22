@@ -799,7 +799,7 @@ Default: `false`
 
 ##### --pg_client_use_shared_memory
 
-{{<tags/feature/ea>}} Enables the use of shared memory between PostgreSQL and the YB-TServer. Using shared memory can potentially improve the performance of your database operations.
+Enables the use of shared memory between PostgreSQL and the YB-TServer. Using shared memory can potentially improve the performance of your database operations.
 
 Default: `false`
 
