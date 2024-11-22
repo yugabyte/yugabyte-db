@@ -30,7 +30,8 @@ import {
   convertArrayToMap,
   convertBackupToFormValues,
   DATE_FORMAT,
-  ENTITY_NOT_AVAILABLE
+  ENTITY_NOT_AVAILABLE,
+  isBackupPITREnabled
 } from '../common/BackupUtils';
 import { BackupCancelModal, BackupDeleteModal } from './BackupDeleteModal';
 import { BackupRestoreModal } from './BackupRestoreModal';
@@ -46,6 +47,7 @@ import { AccountLevelBackupEmpty, UniverseLevelBackupEmpty } from './BackupEmpty
 import { YBTable } from '../../common/YBTable';
 import { find, isEmpty, get } from 'lodash';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
+import { api } from '../../../redesign/features/universe/universe-form/utils/api';
 import { AllowedTasks, TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import {
@@ -198,8 +200,9 @@ export const BackupList: FC<BackupListOptions> = ({
   const isNewRestoreModalEnabled =
     featureFlags.test.enableNewRestoreModal || featureFlags.released.enableNewRestoreModal;
 
-  const enableBackupPITR =
-    featureFlags.test.enableBackupPITR || featureFlags.released.enableBackupPITR;
+  const { data: runtimeConfigs, isLoading: runtimeConfigLoading } = useQuery(['runtimeConfigs', universeUUID], () => api.fetchRunTimeConfigs(true, universeUUID));
+
+  const enableBackupPITR = !runtimeConfigLoading && isBackupPITREnabled(runtimeConfigs!);
 
   const timeReducer = (_state: TIME_RANGE_STATE, action: OptionTypeBase) => {
     if (action.label === 'Custom') {
