@@ -182,7 +182,7 @@ func init() {
 			"Allowed values for resource type are universe, role, user, other. "+
 			"If resource UUID list is empty, default for allow all is true. "+
 			"If the role given is a system role, resource type, allow all and "+
-			"resource UUID must be empty." +
+			"resource UUID must be empty."+
 			" Add multiple resource types for each role UUID "+
 			" using separate --role-resource-definition flags. "+
 			"Each binding needs to be added using a separate --role-resource-definition flag. "+

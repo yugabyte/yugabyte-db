@@ -404,7 +404,7 @@ func init() {
 	createBackupCmd.Flags().String("category", "",
 		"[Optional] Category of the backup. "+
 			"If a universe has YBC enabled, then default value of category is YB_CONTROLLER. "+
-			"Allowed values: YB_BACKUP_SCRIPT, YB_CONTROLLER")
+			"Allowed values: yb_backup_script, yb_controller")
 	createBackupCmd.Flags().Bool("enable-verbose-logs", false,
 		"[Optional] Enable verbose logging while taking backup via \"yb_backup\" script. (default false)")
 	createBackupCmd.Flags().Int("parallelism", 8,
