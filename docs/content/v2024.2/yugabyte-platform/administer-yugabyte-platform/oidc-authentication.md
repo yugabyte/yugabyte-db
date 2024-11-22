@@ -64,13 +64,31 @@ YugabyteDB Anywhere accepts OIDC configuration either using a discovery URL that
 
 For air-gapped installations, where YugabyteDB Anywhere does not have access to the discovery URL, you need to explicitly provide the configuration document.
 
+{{<tags/feature/ea>}}You can map groups to [fine-grained](../anywhere-rbac/#fine-grained-rbac) YugabyteDB Anywhere roles. To enable the feature in YugabyteDB Anywhere, set the **Enable RBAC for Groups** Global Runtime Configuration option (config key `yb.security.group_mapping_rbac_support`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
+
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+  <li>
+    <a href="#classic" class="nav-link active" id="classic-tab" data-bs-toggle="tab"
+      role="tab" aria-controls="classic" aria-selected="true">
+      Classic
+    </a>
+  </li>
+  <li>
+    <a href="#rbac" class="nav-link" id="rbac-tab" data-bs-toggle="tab"
+      role="tab" aria-controls="rbac" aria-selected="false">
+      RBAC for Groups
+    </a>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <div id="classic" class="tab-pane fade show active" role="tabpanel" aria-labelledby="classic-tab">
+
 You configure OIDC as follows:
 
 1. Navigate to **Admin > Access Management > User Authentication > OIDC Configuration**.
 
-1. Select **OIDC Enabled** to turn on OIDC.
-
-1. Complete the OIDC Configuration settings.
+1. Select **OIDC Enabled** and complete the fields shown in the following illustration:
 
     ![OIDC authentication](/images/yp/oidc-auth-220.png)
 
@@ -89,6 +107,45 @@ You configure OIDC as follows:
     - If you have configured OIDC to use [refresh tokens](https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokens), in the **Refresh Token URL** field, enter the URL of the refresh token endpoint.
     - If you have configured [OIDC enhancements](../../security/authentication/oidc-authentication-aad/#enable-oidc-enhancements), you can select the **Display JWT token on login** option to allow users to access their JWT from the YugabyteDB Anywhere sign in page. See [Set up OIDC with Azure AD on YugabyteDB Anywhere](../../security/authentication/oidc-authentication-aad/#set-up-oidc-with-azure-ad-on-yugabytedb-anywhere).
 
+1. You can assign the default [role](../anywhere-rbac/#built-in-roles) for OIDC users to be ReadOnly or ConnectOnly.
+
+1. To map an OIDC group to a YugabyteDB Anywhere role, click **Create Mappings**, choose the YugabyteDB Anywhere role you want group members to be assigned to, and enter the name of the OIDC group.
+
+    You can't assign the SuperAdmin role to a group.
+
+    To add more mappings, click **Add rows**. Click **Confirm** when you are done.
+
+1. Click **Save**.
+
+  </div>
+
+  <div id="rbac" class="tab-pane fade" role="tabpanel" aria-labelledby="rbac-tab">
+
+If you are using RBAC for Groups, you configure OIDC as follows:
+
+1. Navigate to **Admin > Access Management > User Authentication > OIDC Configuration**.
+
+1. Select **OIDC Enabled** to turn on OIDC.
+
+1. Complete the OIDC Configuration settings.
+
+    ![OIDC authentication](/images/yp/oidc-auth-2024-2.png)
+
+    - In the **Client ID** field, enter the unique identifier that you provided when you manually created the client application in the identity provider.
+    - In the **Client Secret** field, enter the password or secret for authenticating your Yugabyte client application with your identity provider.
+    - Use the **Discovery URL** field to provide a URL for the discovery document that contains OIDC configuration for the identity provider. The discovery document is a JSON file stored in a well-known location.
+
+        [Google OIDC discovery endpoint](https://developers.google.com/identity/protocols/oauth2/openid-connect#an-id-tokens-payload) is an example of such file. For most identity providers, `/.well-known/openid-configuration` is appended to the issuer to generate the metadata URL for OIDC specifications.
+
+        If you have an airgapped installation, where YugabyteDB Anywhere cannot access the Discovery URL, provide the OIDC configuration for the identity provider directly.
+
+        To do this, click **Add OIDC Provider Configuration** and paste the OIDC configuration document from your identity provider (in JSON format) into the field.
+
+    - In the **Scope** field, enter your identity provider OIDC scope that is allowed to be requested. This field accepts a space-separated list of values. If left blank, all scopes will be considered.
+    - In the **Email Attribute** field, enter the OIDC scope containing the user email identifier. This field accepts a case-sensitive custom configuration. Typically, this field is left blank.
+    - If you have configured OIDC to use [refresh tokens](https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokens), in the **Refresh Token URL** field, enter the URL of the refresh token endpoint.
+    - If you have configured [OIDC enhancements](../../security/authentication/oidc-authentication-aad/#enable-oidc-enhancements), you can select the **Display JWT token on login** option to allow users to access their JWT from the YugabyteDB Anywhere sign in page. See [Set up OIDC with Azure AD on YugabyteDB Anywhere](../../security/authentication/oidc-authentication-aad/#set-up-oidc-with-azure-ad-on-yugabytedb-anywhere).
+
 1. To map OIDC groups to YugabyteDB Anywhere roles, select the **Use OIDC groups for authentication and authorization** option.
 
 1. You can assign the default [role](../anywhere-rbac/#built-in-roles) for OIDC users to be Read Only or Connect Only.
@@ -97,7 +154,9 @@ You configure OIDC as follows:
 
 1. Click **Save**.
 
-To map groups to roles, on the **Groups** tab, do the following:
+**Map groups to fine-grained roles**
+
+To map groups to fine-grained roles, on the **Groups** tab, do the following:
 
 1. Click **Add Group** and select **OIDC**.
 
@@ -106,3 +165,7 @@ To map groups to roles, on the **Groups** tab, do the following:
     You can't assign the SuperAdmin role to a group.
 
 1. Click **Save**.
+
+  </div>
+
+</div>
