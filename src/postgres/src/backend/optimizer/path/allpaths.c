@@ -5080,6 +5080,7 @@ ybTracePath(PlannerInfo *root, Path *path, char *msg)
 
 	const char *ptype;
 	bool		join = false;
+	bool		index = false;
 
 	switch (nodeTag(path))
 	{
@@ -5120,6 +5121,7 @@ ybTracePath(PlannerInfo *root, Path *path, char *msg)
 			break;
 		case T_IndexPath:
 			ptype = "IdxScan";
+			index = true;
 			break;
 		case T_BitmapHeapPath:
 			ptype = "BitmapHeapScan";
@@ -5233,6 +5235,14 @@ ybTracePath(PlannerInfo *root, Path *path, char *msg)
 
 	appendStringInfoSpaces(&buf, 2);
 	appendStringInfo(&buf, "%s (NODE %u , hinted = %s)\n", ptype, path->ybUniqueId, path->ybIsHinted ? "true" : "false");
+
+	if (index)
+	{
+		IndexPath *indexPath = (IndexPath *) path;
+		char *indexName = get_rel_name(indexPath->indexinfo->indexoid);
+		appendStringInfoSpaces(&buf, 4);
+		appendStringInfo(&buf, "index name : %s\n", indexName);
+	}
 
 	appendStringInfoSpaces(&buf, 4);
 	appendStringInfo(&buf, "parallel aware = %s , parallel safe = %s, parallel workers = %d\n",
