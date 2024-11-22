@@ -42,11 +42,6 @@ export const AdvancedConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
       (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.ENABLE_CONNECTION_POOLING
     )?.value === 'true';
 
-  const isConnectionPoolEnabled =
-    runtimeConfigs?.configEntries?.find(
-      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.ENABLE_CONNECTION_POOLING
-    )?.value === 'true';
-
   //field data
   const provider = useWatch({ name: PROVIDER_FIELD });
 
