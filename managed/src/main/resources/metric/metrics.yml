@@ -3544,7 +3544,8 @@ process_user_cpu_seconds:
   operator: "* 100"
   range: true
   filters:
-    process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|yb-controller-server|node_exporter"
+    process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|\
+      yb-controller-server|node_exporter|total"
   group_by: "process"
   panel_group: "Per-process Metrics"
   layout:
@@ -3555,10 +3556,11 @@ process_user_cpu_seconds:
       alias:
         "yb-master": "Master"
         "yb-tserver": "Tserver"
-        "yb-postmaster": "Postmaster"
+        "yb-postmaster": "Postgres"
         "otelcol-contrib": "Otel Collector"
         "yb-controller-server": "YB-Controller"
         "node_exporter": "Node Exporter"
+        "total": "Total"
       ticksuffix: "&nbsp;%"
 
 process_system_cpu_seconds:
@@ -3567,7 +3569,8 @@ process_system_cpu_seconds:
   operator: "* 100"
   range: true
   filters:
-    process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|yb-controller-server|node_exporter"
+    process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|\
+      yb-controller-server|node_exporter|total"
   group_by: "process"
   panel_group: "Per-process Metrics"
   layout:
@@ -3578,10 +3581,11 @@ process_system_cpu_seconds:
       alias:
         "yb-master": "Master"
         "yb-tserver": "Tserver"
-        "yb-postmaster": "Postmaster"
+        "yb-postmaster": "Postgres"
         "otelcol-contrib": "Otel Collector"
         "yb-controller-server": "YB-Controller"
         "node_exporter": "Node Exporter"
+        "total": "Total"
       ticksuffix: "&nbsp;%"
 
 process_virtual_memory:
@@ -3590,7 +3594,8 @@ process_virtual_memory:
   range: true
   operator: "/ 1024"
   filters:
-    process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|yb-controller-server|node_exporter"
+    process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|\
+      yb-controller-server|node_exporter|total"
     type: "virtual"
   group_by: "process"
   panel_group: "Per-process Metrics"
@@ -3602,10 +3607,11 @@ process_virtual_memory:
       alias:
         "yb-master": "Master"
         "yb-tserver": "Tserver"
-        "yb-postmaster": "Postmaster"
+        "yb-postmaster": "Postgres"
         "otelcol-contrib": "Otel Collector"
         "yb-controller-server": "YB-Controller"
         "node_exporter": "Node Exporter"
+        "total": "Total"
       ticksuffix: "&nbsp;MB"
 
 process_resident_memory:
@@ -3614,7 +3620,8 @@ process_resident_memory:
   range: true
   operator: "/ 1024"
   filters:
-    process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|yb-controller-server|node_exporter"
+    process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|\
+      yb-controller-server|node_exporter|total"
     type: "resident"
   group_by: "process"
   panel_group: "Per-process Metrics"
@@ -3626,10 +3633,11 @@ process_resident_memory:
       alias:
         "yb-master": "Master"
         "yb-tserver": "Tserver"
-        "yb-postmaster": "Postmaster"
+        "yb-postmaster": "Postgres"
         "otelcol-contrib": "Otel Collector"
         "yb-controller-server": "YB-Controller"
         "node_exporter": "Node Exporter"
+        "total": "Total"
       ticksuffix: "&nbsp;MB"
 
 process_proportional_memory:
@@ -3638,7 +3646,8 @@ process_proportional_memory:
   range: true
   operator: "/ 1024"
   filters:
-    process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|yb-controller-server|node_exporter"
+    process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|\
+      yb-controller-server|node_exporter|total"
     type: "proportional"
   group_by: "process"
   panel_group: "Per-process Metrics"
@@ -3650,10 +3659,11 @@ process_proportional_memory:
       alias:
         "yb-master": "Master"
         "yb-tserver": "Tserver"
-        "yb-postmaster": "Postmaster"
+        "yb-postmaster": "Postgres"
         "otelcol-contrib": "Otel Collector"
         "yb-controller-server": "YB-Controller"
         "node_exporter": "Node Exporter"
+        "total": "Total"
       ticksuffix: "&nbsp;MB"
 
 process_io_read:
@@ -3661,7 +3671,8 @@ process_io_read:
   function: "avg_over_time|avg"
   range: true
   filters:
-    process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|yb-controller-server|node_exporter"
+    process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|\
+      yb-controller-server|node_exporter|total"
   group_by: "process"
   panel_group: "Per-process Metrics"
   layout:
@@ -3672,10 +3683,11 @@ process_io_read:
       alias:
         "yb-master": "Master"
         "yb-tserver": "Tserver"
-        "yb-postmaster": "Postmaster"
+        "yb-postmaster": "Postgres"
         "otelcol-contrib": "Otel Collector"
         "yb-controller-server": "YB-Controller"
         "node_exporter": "Node Exporter"
+        "total": "Total"
       ticksuffix: "&nbsp;KB"
 
 process_io_write:
@@ -3683,7 +3695,8 @@ process_io_write:
   function: "avg_over_time|avg"
   range: true
   filters:
-    process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|yb-controller-server|node_exporter"
+    process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|\
+      yb-controller-server|node_exporter|total"
   group_by: "process"
   panel_group: "Per-process Metrics"
   layout:
@@ -3694,10 +3707,11 @@ process_io_write:
       alias:
         "yb-master": "Master"
         "yb-tserver": "Tserver"
-        "yb-postmaster": "Postmaster"
+        "yb-postmaster": "Postgres"
         "otelcol-contrib": "Otel Collector"
         "yb-controller-server": "YB-Controller"
         "node_exporter": "Node Exporter"
+        "total": "Total"
       ticksuffix: "&nbsp;KB"
 
 process_open_files:
@@ -3705,7 +3719,8 @@ process_open_files:
   function: "max_over_time|avg"
   range: true
   filters:
-    process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|yb-controller-server|node_exporter"
+    process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|\
+      yb-controller-server|node_exporter|total"
   group_by: "process"
   panel_group: "Per-process Metrics"
   layout:
@@ -3716,10 +3731,11 @@ process_open_files:
       alias:
         "yb-master": "Master"
         "yb-tserver": "Tserver"
-        "yb-postmaster": "Postmaster"
+        "yb-postmaster": "Postgres"
         "otelcol-contrib": "Otel Collector"
         "yb-controller-server": "YB-Controller"
         "node_exporter": "Node Exporter"
+        "total": "Total"
 
 ysql_catalog_cache_misses:
   metric: "rpc_latency_count"
