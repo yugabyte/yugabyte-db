@@ -23,5 +23,5 @@ func init() {
 	ArtifactReleaseCmd.Flags().SortFlags = false
 
 	ArtifactReleaseCmd.AddCommand(urlArtifactReleaseCmd)
-	// ArtifactReleaseCmd.AddCommand(fileArtifactReleaseCmd)
+	ArtifactReleaseCmd.AddCommand(fileArtifactReleaseCmd)
 }
