@@ -1202,11 +1202,22 @@ RemoveBundleInfo(int64 query_id)
 /*
  * MakeDirectory
  *		Creates the directory structure recursively for storing the diagnostics data.
+ *
+ * Returns:
+ * DIAGNOSTICS_SUCCESS if successful, DIAGNOSTICS_ERROR otherwise
  */
 static int
 MakeDirectory(const char *path, char *description)
 {
-	if (pg_mkdir_p((char *)path, pg_dir_create_mode) == -1)
+	/*
+	 * pg_mkdir_p modifies the path in case of failure, so we create a copy of the path
+	 * and pass it to pg_mkdir_p.
+	 */
+	char		path_copy[MAXPGPATH];
+
+	memcpy(path_copy, path, MAXPGPATH);
+
+	if (pg_mkdir_p((char *)path_copy, pg_dir_create_mode) == -1)
 	{
 		snprintf(description, YB_QD_DESCRIPTION_LEN,
 				 "Failed to create query diagnostics directory, %s;", strerror(errno));

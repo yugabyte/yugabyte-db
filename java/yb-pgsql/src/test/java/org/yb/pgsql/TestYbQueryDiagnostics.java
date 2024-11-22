@@ -16,6 +16,7 @@ package org.yb.pgsql;
 import static org.yb.AssertionWrappers.*;
 
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
@@ -30,6 +31,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -38,6 +40,8 @@ import org.json.JSONObject;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value = YBTestRunner.class)
 public class TestYbQueryDiagnostics extends BasePgSQLTest {
@@ -61,6 +65,23 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         }
     }
 
+    public class QueryDiagnosticsStatus {
+        private final Path path;
+        private final String status;
+        private final String description;
+        private final QueryDiagnosticsParams params;
+
+        public QueryDiagnosticsStatus(Path path, String status, String description,
+                                      QueryDiagnosticsParams params) {
+            this.path = path;
+            this.status = status;
+            this.description = description;
+            this.params = params;
+        }
+    }
+
+    private static final Logger LOG = LoggerFactory.getLogger(TestYbQueryDiagnostics.class);
+    private static final AtomicInteger queryIdGenerator = new AtomicInteger();
     private static final int ASH_SAMPLING_INTERVAL_MS = 500;
     private static final int YB_QD_MAX_EXPLAIN_PLAN_LEN = 16384;
     private static final int YB_QD_MAX_BIND_VARS_LEN = 2048;
@@ -70,6 +91,141 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         "pg_stat_statements was reset, query string not available;";
     private static final String permissionDeniedWarning =
         "Failed to create query diagnostics directory, Permission denied;";
+
+    /*
+     * Generates a unique query ID.
+     *
+     * @return A unique query ID as a string.
+     */
+    private String generateUniqueQueryId() {
+        return String.valueOf(queryIdGenerator.incrementAndGet());
+    }
+
+    /*
+     * Returns the last bundle data from the view
+     * which corresponds to queryId and satisfies the whereClause.
+     */
+    private QueryDiagnosticsStatus getViewData(Statement statement, String queryId,
+                                                String whereClause) throws Exception {
+        StringBuilder query = new StringBuilder()
+                    .append("SELECT * FROM yb_query_diagnostics_status WHERE query_id = '")
+                    .append(queryId).append("'");
+
+        if (!whereClause.isEmpty()) {
+            query.append(" AND (").append(whereClause).append(")");
+        }
+
+        query.append(" ORDER BY start_time DESC LIMIT 1");
+
+        ResultSet resultSet = statement.executeQuery(query.toString());
+
+        if (!resultSet.next())
+            fail("yb_query_diagnostics_status view does not have expected data");
+
+        String explainParamsString = resultSet.getString("explain_params");
+        JSONObject explainParams = new JSONObject(explainParamsString);
+
+        QueryDiagnosticsParams lastBundleParams = new QueryDiagnosticsParams(
+            resultSet.getInt("diagnostics_interval_sec"),
+            explainParams.getInt("explain_sample_rate"),
+            explainParams.getBoolean("explain_analyze"),
+            explainParams.getBoolean("explain_dist"),
+            explainParams.getBoolean("explain_debug"),
+            resultSet.getInt("bind_var_query_min_duration_ms"));
+
+
+        return new QueryDiagnosticsStatus(Paths.get(resultSet.getString("path")),
+                                            resultSet.getString("status"),
+                                            resultSet.getString("description"),
+                                            lastBundleParams);
+    }
+
+    /*
+     * Asserts that the expected and actual query diagnostics status objects are equal.
+     */
+    private void assertQueryDiagnosticsStatus(QueryDiagnosticsStatus expected,
+                                                QueryDiagnosticsStatus actual) throws SQLException {
+        assertEquals("yb_query_diagnostics_status returns wrong path",
+                        expected.path, actual.path);
+        assertEquals("yb_query_diagnostics_status returns wrong status",
+                        expected.status, actual.status);
+        assertEquals("yb_query_diagnostics_status returns wrong description",
+                    expected.description, actual.description);
+        assertEquals("yb_query_diagnostics_status returns wrong diagnostics_interval_sec",
+                    expected.params.diagnosticsInterval, actual.params.diagnosticsInterval);
+        assertEquals("yb_query_diagnostics_status returns wrong" +
+                        "bind_var_query_min_duration_ms",
+                        expected.params.bindVarQueryMinDuration,
+                        actual.params.bindVarQueryMinDuration);
+        assertEquals("yb_query_diagnostics_status returns wrong explain_params",
+                        expected.params.explainAnalyze, actual.params.explainAnalyze);
+        assertEquals("yb_query_diagnostics_status returns wrong explain_params",
+                        expected.params.explainDebug, actual.params.explainDebug);
+        assertEquals("yb_query_diagnostics_status returns wrong explain_params",
+                        expected.params.explainDist, actual.params.explainDist);
+        assertEquals("yb_query_diagnostics_status returns wrong explain_params",
+                        expected.params.explainSampleRate, actual.params.explainSampleRate);
+    }
+
+    /*
+     * Prints the results of a SQL query in a formatted table.
+     *
+     * The output includes:
+     * - Query string
+     * - Column headers
+     * - Row data with aligned columns
+     * - Separator lines for readability
+     *
+     * NULL values are displayed as "NULL" in the output.
+     */
+    private void printQueryResults(Statement statement, String query) throws SQLException {
+        LOG.info("Printing query results for: " + query);
+        try (ResultSet rs = statement.executeQuery(query)) {
+            // Get result set metadata
+            ResultSetMetaData metadata = rs.getMetaData();
+            int columnCount = metadata.getColumnCount();
+
+            // Print column headers
+            StringBuilder header = new StringBuilder();
+            for (int i = 1; i <= columnCount; i++) {
+                if (i > 1) {
+                    header.append(" | ");
+                }
+                header.append(String.format("%-20s", metadata.getColumnName(i)));
+            }
+
+            String separator = createSeparator(header.length());
+            LOG.info("\nQuery: " + query);
+            LOG.info(separator);
+            LOG.info(header.toString());
+            LOG.info(separator);
+
+            // Print rows
+            while (rs.next()) {
+                StringBuilder row = new StringBuilder();
+                for (int i = 1; i <= columnCount; i++) {
+                    if (i > 1) {
+                        row.append(" | ");
+                    }
+                    String value = rs.getString(i);
+                    row.append(String.format("%-20s", value != null ? value : "NULL"));
+                }
+                LOG.info(row.toString());
+            }
+            LOG.info(separator + "\n");
+        }
+    }
+
+    /*
+     * Creates a separator line of specified length using dashes.
+     */
+    private String createSeparator(int length) {
+        StringBuilder separator = new StringBuilder();
+        for (int i = 0; i < length; i++) {
+            separator.append("-");
+        }
+        return separator.toString();
+    }
 
     @Before
     public void setUp() throws Exception {
@@ -83,6 +239,9 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         setUpPreparedStatement();
     }
 
+    /*
+     * Sets up a prepared statement for testing.
+     */
     public void setUpPreparedStatement() throws Exception {
         try (Statement statement = connection.createStatement()) {
             /* Creating test table and filling dummy data */
@@ -93,6 +252,9 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         }
     }
 
+    /*
+     * Retrieves the query ID from pg_stat_statements based on the provided pattern.
+     */
     private String getQueryIdFromPgStatStatements(Statement statement, String pattern)
                                                   throws Exception {
         /* Get query id of the prepared statement */
@@ -104,6 +266,9 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         return resultSet.getString("queryid");
     }
 
+    /*
+     * Runs query diagnostics on the given query ID and parameters.
+     */
     private Path runQueryDiagnostics(Statement statement, String queryId,
                                      QueryDiagnosticsParams params) throws Exception {
         /* Run query diagnostics on the prepared stmt */
@@ -124,40 +289,9 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         return Paths.get(resultSet.getString("yb_query_diagnostics"));
     }
 
-    private void assertQueryDiagnosticsStatus(ResultSet resultSet, Path expectedPath,
-                                              String expectedStatus,
-                                              String expectedDescription,
-                                              QueryDiagnosticsParams expectedParams)
-                                              throws SQLException {
-        Path viewPath = Paths.get(resultSet.getString("path"));
-        String status = resultSet.getString("status");
-        String description = resultSet.getString("description");
-        int diagnosticsInterval = resultSet.getInt("diagnostics_interval_sec");
-        int bindVarQueryMinDuration = resultSet.getInt("bind_var_query_min_duration_ms");
-        String explainParamsString = resultSet.getString("explain_params");
-        JSONObject explainParams = new JSONObject(explainParamsString);
-
-        assertEquals("yb_query_diagnostics_status returns wrong path",
-                     expectedPath, viewPath);
-        assertEquals("yb_query_diagnostics_status returns wrong status",
-                     expectedStatus, status);
-        assertEquals("yb_query_diagnostics_status returns wrong description",
-                     expectedDescription, description);
-        assertEquals("yb_query_diagnostics_status returns wrong diagnostics_interval_sec",
-                     expectedParams.diagnosticsInterval, (Object) diagnosticsInterval);
-        assertEquals("yb_query_diagnostics_status returns wrong" +
-                     "bind_var_query_min_duration_ms",
-                     expectedParams.bindVarQueryMinDuration, (Object) bindVarQueryMinDuration);
-        assertEquals("yb_query_diagnostics_status returns wrong explain_params",
-                     expectedParams.explainAnalyze, explainParams.getBoolean("explain_analyze"));
-        assertEquals("yb_query_diagnostics_status returns wrong explain_params",
-                     expectedParams.explainDebug, explainParams.getBoolean("explain_debug"));
-        assertEquals("yb_query_diagnostics_status returns wrong explain_params",
-                     expectedParams.explainDist, explainParams.getBoolean("explain_dist"));
-        assertEquals("yb_query_diagnostics_status returns wrong explain_params",
-                     expectedParams.explainSampleRate, explainParams.getInt("explain_sample_rate"));
-    }
-
+    /*
+     * Waits for the bundle to complete by checking the yb_query_diagnostics_status view.
+     */
     private void waitForBundleCompletion(String queryId, Statement statement,
                                          int diagnosticsInterval) throws Exception {
         Thread.sleep(diagnosticsInterval * 1000 + BG_WORKER_INTERVAL_MS);
@@ -179,6 +313,230 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
             Thread.sleep(BG_WORKER_INTERVAL_MS);
         }
+    }
+
+    /*
+     * Counts the number of table sections in the schema details.
+     */
+    private int countTableSections(String schemaDetails) {
+        Pattern tablePattern = Pattern.compile("Table name: ");
+        Matcher matcher = tablePattern.matcher(schemaDetails);
+        int count = 0;
+        while (matcher.find()) {
+            count++;
+        }
+        return count;
+    }
+
+    /*
+     * Recreates a folder with specified permissions.
+     */
+    private void recreateFolderWithPermissions(String query_diagnostics_path, int permissions)
+    throws Exception {
+        List<String> commands = Arrays.asList(
+            "rm -rf " + query_diagnostics_path,
+            "mkdir " + query_diagnostics_path,
+            "chmod " + permissions + " " + query_diagnostics_path
+        );
+        execute(commands);
+    }
+
+    /*
+     * Executes a list of commands in a shell.
+     */
+    private static void execute(List<String> commands) throws Exception{
+        for (String command : commands) {
+            Process process = Runtime.getRuntime().exec(new String[]{"bash", "-c", command});
+            process.waitFor();
+        }
+    }
+
+    /*
+     * Runs multiple bundles and checks for circular buffer wrap-around.
+     */
+    private void runMultipleBundles(Statement statement, int n) throws Exception {
+        int diagnosticsInterval = 1;
+        int queryId = 0;
+
+        QueryDiagnosticsParams params = new QueryDiagnosticsParams(
+            diagnosticsInterval,
+            100 /* explainSampleRate */,
+            false /* explainAnalyze */,
+            false/* explainDist */,
+            false/* explainDebug */,
+            0 /* bindVarQueryMinDuration */);
+
+        for (int i = 1; i <= n; i+=5) {
+
+            /* Run in batches of 5 to save time */
+            for (int j = 0; j < 5; j++)
+            {
+                queryId++;
+                runQueryDiagnostics(statement, Integer.toString(queryId) , params);
+            }
+
+            /* Completing the bundles as circular buffer only stores completed bundles */
+            Thread.sleep((diagnosticsInterval + 1) * 1000);
+
+            /* If the buffer wrapped around then query_id 1 should not be present */
+            ResultSet resultSet = statement.executeQuery(String.format("SELECT query_id " +
+                                                 "FROM yb_query_diagnostics_status " +
+                                                 "where query_id = '1'"));
+            if (!resultSet.next()) {
+                /* Check that the last 5 query_ids are present in the view */
+                for (int k = queryId; k > queryId - 5; k--) {
+                    resultSet = statement.executeQuery(String.format("SELECT query_id " +
+                                                       "FROM yb_query_diagnostics_status " +
+                                                       "WHERE query_id = '%d'", k));
+                    if (!resultSet.next())
+                        fail("could not find query_id " + k + " in the view");
+                }
+                return;
+            }
+        }
+        fail("Buffer never wrapped around");
+    }
+
+    /*
+     * Counts the number of occurrences of a regex pattern in a string.
+     */
+    private int countOccurrences(String content, String regex) {
+        Pattern pattern = Pattern.compile(regex);
+        Matcher matcher = pattern.matcher(content);
+        int count = 0;
+        while (matcher.find()) {
+            count++;
+        }
+        return count;
+    }
+
+    /*
+     * Runs a bundle with the given queries and checks for the specified warning.
+     */
+    private void runBundleWithQueries(Statement statement, String queryId,
+                                      QueryDiagnosticsParams queryDiagnosticsParams,
+                                      String[] queries, String warning) throws Exception {
+        Path bundleDataPath = runQueryDiagnostics(statement, queryId, queryDiagnosticsParams);
+
+        for (String query : queries) {
+            statement.execute(query);
+        }
+
+        waitForBundleCompletion(queryId, statement, queryDiagnosticsParams.diagnosticsInterval);
+
+        /* Select the last executed bundle */
+        QueryDiagnosticsStatus bundleViewEntry = getViewData(statement, queryId, "");
+
+        QueryDiagnosticsStatus expectedBundleViewEntry = new QueryDiagnosticsStatus(
+            bundleDataPath, "Success", warning, queryDiagnosticsParams);
+
+        assertQueryDiagnosticsStatus(expectedBundleViewEntry, bundleViewEntry);
+
+        if (!warning.equals(noQueriesExecutedWarning)) {
+            Path pgssPath = bundleDataPath.resolve("pg_stat_statements.csv");
+            assertTrue("pg_stat_statements file does not exist", Files.exists(pgssPath));
+            assertGreaterThan("pg_stat_statements.csv file is empty",
+            Files.size(pgssPath) , 0L);
+
+            /* Read the pg_stat_statements.csv file */
+            List<String> pgssData = Files.readAllLines(pgssPath);
+            String[] tokens = pgssData.get(1).split(",");
+
+            /* Ensure that the query string in pg_stat_statements is empty as expected */
+            assertEquals("pg_stat_statements query is incorrect", "\"\"", tokens[1]);
+        }
+    }
+
+    /*
+     * Creates tables for testing schema details.
+     */
+    private void createTestingTables(Statement statement) throws Exception {
+        /* Create a table with a primary key, unique key, foreign key, and a partition key */
+        statement.execute("CREATE TABLE test_table (\n" + //
+                            "  id INTEGER PRIMARY KEY,\n" + //
+                            "  name VARCHAR(100) NOT NULL,\n" + //
+                            "  description TEXT,\n" + //
+                            "  updated_at TIMESTAMP WITH TIME ZONE DEFAULT " + //
+                            "CURRENT_TIMESTAMP,\n" + //
+                            "  is_active BOOLEAN DEFAULT true,\n" + //
+                            "  price NUMERIC(10, 2),\n" + //
+                            "  UNIQUE (id, description)\n" + //
+                            ")\n" + //
+                            "PARTITION BY RANGE (id);");
+        /* Add a "Check constraint" in test_table */
+        statement.execute("ALTER TABLE test_table " + //
+                            "ADD CONSTRAINT check_price_positive CHECK (price >= 0);");
+        /* Create an index on test_table */
+        statement.execute("CREATE INDEX idx_test_table_name ON test_table (name);");
+        /* Create a rule on test_table */
+        statement.execute("CREATE RULE test_rule AS ON DELETE TO test_table\n" + //
+                            "DO INSTEAD UPDATE test_table SET is_active = false " + //
+                            "WHERE id = OLD.id;");
+        /* Add statistics in test_table */
+        statement.execute("CREATE STATISTICS test_statistics (dependencies) ON name, price " + //
+                            "FROM test_table;");
+        /* Add policy in test_table */
+        statement.execute("ALTER TABLE test_table ENABLE ROW LEVEL SECURITY;\n" + //
+                            "CREATE POLICY test_policy ON test_table " + //
+                            "FOR SELECT USING (is_active = true);");
+
+        /* Create a sequence */
+        statement.execute("CREATE SEQUENCE test_sequence\n" + //
+                            "  INCREMENT 1\n" + //
+                            "  START 1000\n" + //
+                            "  MINVALUE 1000\n" + //
+                            "  MAXVALUE 9999;");
+        statement.execute("ALTER SEQUENCE test_sequence OWNED BY test_table.id;");
+
+        statement.execute("CREATE TABLE table_referenced_by_view (" + //
+                            "  id INTEGER PRIMARY KEY," + //
+                            "  name VARCHAR(100));");
+        /* Create a view */
+        statement.execute("CREATE VIEW test_view AS \n" + //
+                            "  SELECT id, name \n" + //
+                            "  FROM table_referenced_by_view\n" + //
+                            "  WHERE id >= 0;");
+
+        /* Create a partitioned table over test_table */
+        statement.execute("CREATE TABLE test_table_partition PARTITION OF test_table\n" + //
+                            "  FOR VALUES FROM (0) TO (5);");
+        /* Create a trigger on test_table_partition */
+        statement.execute("CREATE FUNCTION update_timestamp()\n" + //
+                            "RETURNS TRIGGER AS $$\n" + //
+                            "BEGIN\n" + //
+                            "  NEW.updated_at = CURRENT_TIMESTAMP;\n" + //
+                            "  RETURN NEW;\n" + //
+                            "END;\n" + //
+                            "$$ LANGUAGE plpgsql;");
+        statement.execute("CREATE TRIGGER trigger_update_timestamp\n" + //
+                            "  BEFORE UPDATE ON test_table_partition\n" + //
+                            "  FOR EACH ROW\n" + //
+                            "  EXECUTE FUNCTION update_timestamp();");
+        /* Create a foreign key on test_table_partition */
+        statement.execute("CREATE TABLE referencing_table (\n" + //
+                            "  id INTEGER PRIMARY KEY,\n" + //
+                            "  test_table_id INTEGER REFERENCES test_table_partition(id),\n" + //
+                            "  related_data TEXT UNIQUE);");
+        /* Create a publication on test_table_partition */
+        statement.execute("CREATE PUBLICATION test_publication FOR TABLE test_table_partition;");
+
+        /*
+            * Since foreign data wrappers are not switched on by default,
+            * and are part of ysql_beta_options we create the extension manually.
+            */
+        statement.execute("CREATE EXTENSION IF NOT EXISTS postgres_fdw;");
+        statement.execute("CREATE SERVER foreign_server\n" + //
+                            "FOREIGN DATA WRAPPER postgres_fdw\n" + //
+                            "OPTIONS (host 'remote_host', dbname 'remote_database', port '5432');");
+        statement.execute("CREATE USER MAPPING FOR CURRENT_USER\n" + //
+                            "SERVER foreign_server\n" + //
+                            "OPTIONS (user 'remote_user', password 'remote_password');");
+        /* Create a foreign table */
+        statement.execute("CREATE FOREIGN TABLE foreign_test_table (\n" + //
+                            "  id INTEGER,\n" + //
+                            "  name VARCHAR(100))\n" + //
+                            "SERVER foreign_server\n" + //
+                            "OPTIONS (schema_name 'public', table_name 'remote_test_table');");
     }
 
     @Test
@@ -221,20 +579,44 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         }
     }
 
+    /*
+     * Verifies the functionality of the yb_query_diagnostics_status view.
+     *
+     * This test creates three different query diagnostics bundles:
+     * 1. A successful bundle that completes normally
+     * 2. A bundle that encounters a file permission error
+     * 3. A long-running bundle that remains in progress
+     *
+     * For the successful bundle:
+     * - Verifies that the bundle completes with "Success" status
+     * - Checks for "No query executed" warning when no queries are run
+     *
+     * For the error bundle:
+     * - Creates a permission error by restricting directory access
+     * - Verifies that the bundle has "Error" status
+     * - Confirms the correct error message about permission denial
+     *
+     * For the in-progress bundle:
+     * - Sets a long diagnostics interval (120 seconds)
+     * - Verifies that the bundle shows "In Progress" status
+     *
+     * Each bundle's status, path, description, and parameters are verified
+     * against expected values in the yb_query_diagnostics_status view.
+     */
     @Test
     public void testYbQueryDiagnosticsStatus() throws Exception {
-        Map<String, String> flagMap = super.getTServerFlags();
-        flagMap.put("TEST_yb_enable_query_diagnostics", "true");
-        restartClusterWithFlags(Collections.emptyMap(), flagMap);
 
         try (Statement statement = connection.createStatement()) {
             /*
-            * We use random number for the queryid, as we are not doing any accumulation of data,
-            * the specific number for the query ID does not matter.
-            */
-            String queryId = String.valueOf((int) (Math.random() * 1000));
-            int diagnosticsInterval = 2;
+             * We use random number for the queryid, as we are not doing any accumulation of data,
+             * the specific number for the query ID does not matter.
+             */
 
+            /*
+             * Successful bundle
+             */
+            String successfulQueryId = generateUniqueQueryId();
+            int diagnosticsInterval = 2;
             QueryDiagnosticsParams successfulRunParams = new QueryDiagnosticsParams(
                 diagnosticsInterval,
                 100 /* explainSampleRate */,
@@ -243,6 +625,29 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                 false /* explainDebug */,
                 0 /* bindVarQueryMinDuration */);
 
+            /* Trigger the successful bundle */
+            Path successfulBundlePath = runQueryDiagnostics(statement, successfulQueryId,
+                                                            successfulRunParams);
+
+            /* Wait until yb_query_diagnostics_status entry's status becomes Success/Error */
+            waitForBundleCompletion(successfulQueryId, statement, diagnosticsInterval);
+
+            /* Assert that the Success bundle is present in the view */
+            QueryDiagnosticsStatus successBundleViewEntry = getViewData(statement,
+                                                                        successfulQueryId,
+                                                                        "status='Success'");
+            /* Create the expected bundle data */
+            QueryDiagnosticsStatus expectedSuccessBundleViewEntry = new QueryDiagnosticsStatus(
+                successfulBundlePath, "Success", noQueriesExecutedWarning, successfulRunParams);
+
+            /* Assert that the bundle data is as expected */
+            assertQueryDiagnosticsStatus(expectedSuccessBundleViewEntry, successBundleViewEntry);
+
+            /*
+             * Error bundle
+             */
+            String queryDiagnosticsPath = successfulBundlePath.getParent().getParent().toString();
+            String errorQueryId = generateUniqueQueryId();
             QueryDiagnosticsParams fileErrorRunParams = new QueryDiagnosticsParams(
                 diagnosticsInterval,
                 50 /* explainSampleRate */,
@@ -251,6 +656,37 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                 true /* explainDebug */,
                 10 /* bindVarQueryMinDuration */);
 
+            /* Postgres cannot write to query-diagnostics folder */
+            recreateFolderWithPermissions(queryDiagnosticsPath, 400);
+
+            /* Trigger the bundle and raise file error */
+            Path fileErrorBundlePath = runQueryDiagnostics(statement, errorQueryId,
+                                                           fileErrorRunParams);
+
+            /* Wait until yb_query_diagnostics_status entry's status becomes Error */
+            waitForBundleCompletion(errorQueryId, statement, diagnosticsInterval);
+
+            /* Print the query results for debugging */
+            printQueryResults(statement, "SELECT * FROM yb_query_diagnostics_status");
+
+            /* Assert that the Error bundle is present in the view */
+            QueryDiagnosticsStatus errorBundleViewEntry = getViewData(statement, errorQueryId,
+                                                                      "status='Error'");
+            /* Create the expected bundle data */
+            QueryDiagnosticsStatus expectedErrorBundleViewEntry = new QueryDiagnosticsStatus(
+                fileErrorBundlePath, "Error", permissionDeniedWarning,
+                fileErrorRunParams);
+
+            /* Assert that the bundle data is as expected */
+            assertQueryDiagnosticsStatus(expectedErrorBundleViewEntry, errorBundleViewEntry);
+
+            /* Reset permissions to allow test cleanup */
+            recreateFolderWithPermissions(queryDiagnosticsPath, 666);
+
+            /*
+             * In Progress bundle
+             */
+            String inProgressQueryId = generateUniqueQueryId();
             QueryDiagnosticsParams inProgressRunParams = new QueryDiagnosticsParams(
                 120 /* diagnosticsInterval */,
                 75 /* explainSampleRate */,
@@ -259,84 +695,19 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                 false /* explainDebug */,
                 15 /* bindVarQueryMinDuration */);
 
-            /* Trigger the successful bundle */
-            Path successfulBundlePath = runQueryDiagnostics(statement, queryId,
-                                                            successfulRunParams);
-
-            /* Wait until yb_query_diagnostics_status entry's status becomes Success/Error */
-            waitForBundleCompletion(queryId, statement, diagnosticsInterval);
-
-            /* Trigger the bundle with file error */
-            Path fileErrorBundlePath = runQueryDiagnostics(statement, queryId, fileErrorRunParams);
-            String query_diagnostics_path = fileErrorBundlePath.getParent().getParent().toString();
-
-            /* Postgres cannot write to query-diagnostics folder */
-            recreateFolderWithPermissions(query_diagnostics_path, 400);
-
-            /* Wait until yb_query_diagnostics_status entry's status becomes Success/Error */
-            waitForBundleCompletion(queryId, statement, diagnosticsInterval);
-
-            /* Reset permissions to allow test cleanup */
-            recreateFolderWithPermissions(query_diagnostics_path, 666);
-
             /* Trigger the bundle for 120 seconds to ensure it remains in In Progress state */
-            Path inProgressBundlePath = runQueryDiagnostics(statement, queryId,
+            Path inProgressBundlePath = runQueryDiagnostics(statement, inProgressQueryId,
                                                             inProgressRunParams);
-            ResultSet resultSet = statement.executeQuery(
-                                    "SELECT * FROM yb_query_diagnostics_status " +
-                                    "WHERE status='Success'");
 
-            if (!resultSet.next())
-                fail("yb_query_diagnostics_status view does not have expected data");
-
-            assertQueryDiagnosticsStatus(resultSet,
-                                         successfulBundlePath /* expectedViewPath */,
-                                         "Success" /* expectedStatus */,
-                                         noQueriesExecutedWarning /* expectedDescription */,
-                                         successfulRunParams);
-
-            resultSet = statement.executeQuery(
-                                    "SELECT * FROM yb_query_diagnostics_status " +
-                                    "WHERE status='Error'");
-
-            if (!resultSet.next())
-                fail("yb_query_diagnostics_status view does not have expected data");
-
-            assertQueryDiagnosticsStatus(resultSet,
-                                         fileErrorBundlePath.getParent() /* expectedViewPath */,
-                                         "Error" /* expectedStatus */,
-                                         permissionDeniedWarning /* expectedDescription */,
-                                         fileErrorRunParams);
-
-            resultSet = statement.executeQuery(
-                                    "SELECT * FROM yb_query_diagnostics_status " +
-                                    "WHERE status='In Progress'");
-
-            if (!resultSet.next())
-                fail("yb_query_diagnostics_status view does not have expected data");
-
-            assertQueryDiagnosticsStatus(resultSet,
-                                         inProgressBundlePath /* expectedViewPath */,
-                                         "In Progress" /* expectedStatus */,
-                                         "" /* expectedDescription */,
-                                         inProgressRunParams);
-        }
-    }
-
-    private void recreateFolderWithPermissions(String query_diagnostics_path, int permissions)
-                                               throws Exception {
-        List<String> commands = Arrays.asList(
-            "rm -rf " + query_diagnostics_path,
-            "mkdir " + query_diagnostics_path,
-            "chmod " + permissions + " " + query_diagnostics_path
-        );
-        execute(commands);
-    }
-
-    private static void execute(List<String> commands) throws Exception{
-        for (String command : commands) {
-            Process process = Runtime.getRuntime().exec(new String[]{"bash", "-c", command});
-            process.waitFor();
+            /* Assert that the In Progress bundle is present in the view */
+            QueryDiagnosticsStatus inProgressBundleViewEntry = getViewData(statement,
+                                                                      inProgressQueryId,
+                                                                      "status='In Progress'");
+            /* Create the expected bundle data */
+            QueryDiagnosticsStatus expectedInProgressBundleViewEntry = new QueryDiagnosticsStatus(
+                inProgressBundlePath, "In Progress", "", inProgressRunParams);
+            assertQueryDiagnosticsStatus(expectedInProgressBundleViewEntry,
+                                         inProgressBundleViewEntry);
         }
     }
 
@@ -367,49 +738,6 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             /* running several bundles ensure buffer wraps around */
             runMultipleBundles(statement, 100);
         }
-    }
-
-    private void runMultipleBundles(Statement statement, int n) throws Exception {
-        int diagnosticsInterval = 1;
-        int queryId = 0;
-
-        QueryDiagnosticsParams params = new QueryDiagnosticsParams(
-            diagnosticsInterval,
-            100 /* explainSampleRate */,
-            false /* explainAnalyze */,
-            false/* explainDist */,
-            false/* explainDebug */,
-            0 /* bindVarQueryMinDuration */);
-
-        for (int i = 1; i <= n; i+=5) {
-
-            /* Run in batches of 5 to save time */
-            for (int j = 0; j < 5; j++)
-            {
-                queryId++;
-                runQueryDiagnostics(statement, Integer.toString(queryId) , params);
-            }
-
-            /* Completing the bundles as circular buffer only stores completed bundles */
-            Thread.sleep((diagnosticsInterval + 1) * 1000);
-
-            /* If the buffer wrapped around then query_id 1 should not be present */
-            ResultSet resultSet = statement.executeQuery(String.format("SELECT query_id " +
-                                                 "FROM yb_query_diagnostics_status " +
-                                                 "where query_id = '1'"));
-            if (!resultSet.next()) {
-                /* Check that the last 5 query_ids are present in the view */
-                for (int k = queryId; k > queryId - 5; k--) {
-                    resultSet = statement.executeQuery(String.format("SELECT query_id " +
-                                                       "FROM yb_query_diagnostics_status " +
-                                                       "WHERE query_id = '%d'", k));
-                    if (!resultSet.next())
-                        fail("could not find query_id " + k + " in the view");
-                }
-                return;
-            }
-        }
-        fail("Buffer never wrapped around");
     }
 
     @Test
@@ -557,45 +885,6 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         }
     }
 
-    private void runBundleWithQueries(Statement statement, String queryId,
-                                      QueryDiagnosticsParams queryDiagnosticsParams,
-                                      String[] queries, String warning) throws Exception {
-        Path bundleDataPath = runQueryDiagnostics(statement, queryId, queryDiagnosticsParams);
-
-        for (String query : queries) {
-            statement.execute(query);
-        }
-
-        waitForBundleCompletion(queryId, statement, queryDiagnosticsParams.diagnosticsInterval);
-
-        /* Select the last executed bundle */
-        ResultSet resultSet = statement.executeQuery("SELECT * " +
-                                                     "FROM yb_query_diagnostics_status " +
-                                                     "ORDER BY start_time DESC");
-        if (!resultSet.next())
-            fail("yb_query_diagnostics_status view does not have expected data");
-
-        assertQueryDiagnosticsStatus(resultSet,
-                                     bundleDataPath /* expectedViewPath */,
-                                     "Success" /* expectedStatus */,
-                                     warning /* expectedDescription */,
-                                     queryDiagnosticsParams);
-
-        if (!warning.equals(noQueriesExecutedWarning)) {
-            Path pgssPath = bundleDataPath.resolve("pg_stat_statements.csv");
-            assertTrue("pg_stat_statements file does not exist", Files.exists(pgssPath));
-            assertGreaterThan("pg_stat_statements.csv file is empty",
-            Files.size(pgssPath) , 0L);
-
-            /* Read the pg_stat_statements.csv file */
-            List<String> pgssData = Files.readAllLines(pgssPath);
-            String[] tokens = pgssData.get(1).split(",");
-
-            /* Ensure that the query string in pg_stat_statements is empty as expected */
-            assertEquals("pg_stat_statements query is incorrect", "\"\"", tokens[1]);
-        }
-    }
-
     @Test
     public void testPgssResetBetweenDiagnostics() throws Exception {
         int diagnosticsInterval = (5 * ASH_SAMPLING_INTERVAL_MS) / 1000; /* convert to seconds */
@@ -683,27 +972,13 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             }
 
             /* Check that the bundle is empty in the view */
-            ResultSet resultSet = statement.executeQuery(
-                                  "SELECT * FROM yb_query_diagnostics_status");
-            if (!resultSet.next())
-                fail("yb_query_diagnostics_status view does not have expected data");
+            QueryDiagnosticsStatus bundleViewEntry = getViewData(statement, queryId, "");
 
-            assertQueryDiagnosticsStatus(resultSet,
-                                         bundleDataPath /* expectedViewPath */,
-                                         "Success" /* expectedStatus */,
-                                         noQueriesExecutedWarning /* expectedDescription */,
-                                         params);
-        }
-    }
+            QueryDiagnosticsStatus expectedBundleViewEntry = new QueryDiagnosticsStatus(
+                bundleDataPath, "Success", noQueriesExecutedWarning, params);
 
-    private int countOccurrences(String content, String regex) {
-        Pattern pattern = Pattern.compile(regex);
-        Matcher matcher = pattern.matcher(content);
-        int count = 0;
-        while (matcher.find()) {
-            count++;
+            assertQueryDiagnosticsStatus(expectedBundleViewEntry, bundleViewEntry);
         }
-        return count;
     }
 
     /*
@@ -798,95 +1073,6 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         }
     }
 
-    private void createTestingTables(Statement statement) throws Exception {
-        /* Create a table with a primary key, unique key, foreign key, and a partition key */
-        statement.execute("CREATE TABLE test_table (\n" + //
-                            "  id INTEGER PRIMARY KEY,\n" + //
-                            "  name VARCHAR(100) NOT NULL,\n" + //
-                            "  description TEXT,\n" + //
-                            "  updated_at TIMESTAMP WITH TIME ZONE DEFAULT " + //
-                            "CURRENT_TIMESTAMP,\n" + //
-                            "  is_active BOOLEAN DEFAULT true,\n" + //
-                            "  price NUMERIC(10, 2),\n" + //
-                            "  UNIQUE (id, description)\n" + //
-                            ")\n" + //
-                            "PARTITION BY RANGE (id);");
-        /* Add a "Check constraint" in test_table */
-        statement.execute("ALTER TABLE test_table " + //
-                            "ADD CONSTRAINT check_price_positive CHECK (price >= 0);");
-        /* Create an index on test_table */
-        statement.execute("CREATE INDEX idx_test_table_name ON test_table (name);");
-        /* Create a rule on test_table */
-        statement.execute("CREATE RULE test_rule AS ON DELETE TO test_table\n" + //
-                            "DO INSTEAD UPDATE test_table SET is_active = false " + //
-                            "WHERE id = OLD.id;");
-        /* Add statistics in test_table */
-        statement.execute("CREATE STATISTICS test_statistics (dependencies) ON name, price " + //
-                            "FROM test_table;");
-        /* Add policy in test_table */
-        statement.execute("ALTER TABLE test_table ENABLE ROW LEVEL SECURITY;\n" + //
-                            "CREATE POLICY test_policy ON test_table " + //
-                            "FOR SELECT USING (is_active = true);");
-
-        /* Create a sequence */
-        statement.execute("CREATE SEQUENCE test_sequence\n" + //
-                            "  INCREMENT 1\n" + //
-                            "  START 1000\n" + //
-                            "  MINVALUE 1000\n" + //
-                            "  MAXVALUE 9999;");
-        statement.execute("ALTER SEQUENCE test_sequence OWNED BY test_table.id;");
-
-        statement.execute("CREATE TABLE table_referenced_by_view (" + //
-                            "  id INTEGER PRIMARY KEY," + //
-                            "  name VARCHAR(100));");
-        /* Create a view */
-        statement.execute("CREATE VIEW test_view AS \n" + //
-                            "  SELECT id, name \n" + //
-                            "  FROM table_referenced_by_view\n" + //
-                            "  WHERE id >= 0;");
-
-        /* Create a partitioned table over test_table */
-        statement.execute("CREATE TABLE test_table_partition PARTITION OF test_table\n" + //
-                            "  FOR VALUES FROM (0) TO (5);");
-        /* Create a trigger on test_table_partition */
-        statement.execute("CREATE FUNCTION update_timestamp()\n" + //
-                            "RETURNS TRIGGER AS $$\n" + //
-                            "BEGIN\n" + //
-                            "  NEW.updated_at = CURRENT_TIMESTAMP;\n" + //
-                            "  RETURN NEW;\n" + //
-                            "END;\n" + //
-                            "$$ LANGUAGE plpgsql;");
-        statement.execute("CREATE TRIGGER trigger_update_timestamp\n" + //
-                            "  BEFORE UPDATE ON test_table_partition\n" + //
-                            "  FOR EACH ROW\n" + //
-                            "  EXECUTE FUNCTION update_timestamp();");
-        /* Create a foreign key on test_table_partition */
-        statement.execute("CREATE TABLE referencing_table (\n" + //
-                            "  id INTEGER PRIMARY KEY,\n" + //
-                            "  test_table_id INTEGER REFERENCES test_table_partition(id),\n" + //
-                            "  related_data TEXT UNIQUE);");
-        /* Create a publication on test_table_partition */
-        statement.execute("CREATE PUBLICATION test_publication FOR TABLE test_table_partition;");
-
-        /*
-            * Since foreign data wrappers are not switched on by default,
-            * and are part of ysql_beta_options we create the extension manually.
-            */
-        statement.execute("CREATE EXTENSION IF NOT EXISTS postgres_fdw;");
-        statement.execute("CREATE SERVER foreign_server\n" + //
-                            "FOREIGN DATA WRAPPER postgres_fdw\n" + //
-                            "OPTIONS (host 'remote_host', dbname 'remote_database', port '5432');");
-        statement.execute("CREATE USER MAPPING FOR CURRENT_USER\n" + //
-                            "SERVER foreign_server\n" + //
-                            "OPTIONS (user 'remote_user', password 'remote_password');");
-        /* Create a foreign table */
-        statement.execute("CREATE FOREIGN TABLE foreign_test_table (\n" + //
-                            "  id INTEGER,\n" + //
-                            "  name VARCHAR(100))\n" + //
-                            "SERVER foreign_server\n" + //
-                            "OPTIONS (schema_name 'public', table_name 'remote_test_table');");
-    }
-
     @Test
     public void checkSchemaDetailsData() throws Exception {
         Map<String, String> flagMap = super.getTServerFlags();
@@ -938,16 +1124,6 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             assertEquals("schema_details.txt file does not match expected output",
                             expectedOutput.trim(), schemaDetails.trim());
         }
-    }
-
-    private int countTableSections(String schemaDetails) {
-        Pattern tablePattern = Pattern.compile("Table name: ");
-        Matcher matcher = tablePattern.matcher(schemaDetails);
-        int count = 0;
-        while (matcher.find()) {
-            count++;
-        }
-        return count;
     }
 
     @Test
@@ -1090,66 +1266,42 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             statement.execute("SELECT yb_cancel_query_diagnostics('" + queryId2 + "')");
 
             /* Check the cancelled entry within the yb_query_diagnostics_status view */
-            ResultSet resultSet = statement.executeQuery(
-                                    "SELECT * FROM yb_query_diagnostics_status " +
-                                    "where query_id = '" + queryId2 + "'");
+            QueryDiagnosticsStatus bundleViewEntry2 = getViewData(statement, queryId2, "");
 
-            if (!resultSet.next())
-                fail("yb_query_diagnostics_status view does not have expected data");
+            QueryDiagnosticsStatus expectedBundleViewEntry2 = new QueryDiagnosticsStatus(
+                bundleDataPath2, "Cancelled", "Bundle was cancelled", params2);
 
-            /* verify that bundle's diagnostics was cancelled */
-            assertQueryDiagnosticsStatus(resultSet,
-                                         bundleDataPath2 /* expectedViewPath */,
-                                         "Cancelled" /* expectedStatus */,
-                                         "Bundle was cancelled" /* expectedDescription */,
-                                         params2);
+            assertQueryDiagnosticsStatus(expectedBundleViewEntry2, bundleViewEntry2);
 
             /* Ensure cancelling 2nd bundle does not affect the functioning of other bundles */
 
             /* 1st bundle has already expired */
-            resultSet = statement.executeQuery(
-                "SELECT * FROM yb_query_diagnostics_status where query_id = '" + queryId1 + "'");
+            QueryDiagnosticsStatus bundleViewEntry1 = getViewData(statement, queryId1, "");
 
-            if (!resultSet.next())
-                fail("yb_query_diagnostics_status view does not have expected data");
+            QueryDiagnosticsStatus expectedBundleViewEntry1 = new QueryDiagnosticsStatus(
+                bundleDataPath1, "Success", noQueriesExecutedWarning, params1);
 
             /* verify that the bundle's diagnostics completed successfully */
-            assertQueryDiagnosticsStatus(resultSet,
-                                         bundleDataPath1 /* expectedViewPath */,
-                                         "Success" /* expectedStatus */,
-                                         noQueriesExecutedWarning /* expectedDescription */,
-                                         params1);
+            assertQueryDiagnosticsStatus(expectedBundleViewEntry1, bundleViewEntry1);
 
             /* 3rd bundle must be in progress */
-            resultSet = statement.executeQuery(
-                "SELECT * FROM yb_query_diagnostics_status where query_id = '" + queryId3 + "'");
+            QueryDiagnosticsStatus bundleViewEntry3 = getViewData(statement, queryId3, "");
 
-            if (!resultSet.next())
-                fail("yb_query_diagnostics_status view does not have expected data");
+            QueryDiagnosticsStatus expectedBundleViewEntry3 = new QueryDiagnosticsStatus(
+                bundleDataPath3, "In Progress", "", params3);
 
-            /* verify that the bundle's diagnostics is still in progress */
-            assertQueryDiagnosticsStatus(resultSet,
-                                         bundleDataPath3 /* expectedViewPath */,
-                                         "In Progress" /* expectedStatus */,
-                                         "" /* expectedDescription */,
-                                         params3);
+            assertQueryDiagnosticsStatus(expectedBundleViewEntry3, bundleViewEntry3);
 
             /* Wait for the 3rd bundle to expire */
             Thread.sleep((bundle3Interval * 1000) + BG_WORKER_INTERVAL_MS);
 
             /* 3rd bundle must have successfully completed */
-            resultSet = statement.executeQuery(
-                "SELECT * FROM yb_query_diagnostics_status where query_id = '" + queryId3 + "'");
+            bundleViewEntry3 = getViewData(statement, queryId3, "");
 
-            if (!resultSet.next())
-                fail("yb_query_diagnostics_status view does not have expected data");
+            expectedBundleViewEntry3 = new QueryDiagnosticsStatus(
+                bundleDataPath3, "Success", noQueriesExecutedWarning, params3);
 
-            /* verify that the bundle's diagnostics completed successfully */
-            assertQueryDiagnosticsStatus(resultSet,
-                                         bundleDataPath3 /* expectedViewPath */,
-                                         "Success" /* expectedStatus */,
-                                         noQueriesExecutedWarning /* expectedDescription */,
-                                         params3);
+            assertQueryDiagnosticsStatus(expectedBundleViewEntry3, bundleViewEntry3);
         }
     }
 }
