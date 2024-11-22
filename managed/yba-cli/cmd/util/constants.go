@@ -393,6 +393,26 @@ const (
 	RotateUniverseKeyKMSOpType = "ROTATE-UNIVERSE-KEY"
 )
 
+// ResourceType
+const (
+	// UniverseResourceType type
+	UniverseResourceType = "UNIVERSE"
+	// RoleResourceType type
+	RoleResourceType = "ROLE"
+	// UserResourceType type
+	UserResourceType = "USER"
+	// OtherResourceType type
+	OtherResourceType = "OTHER"
+)
+
+// RoleType
+const (
+	// SystemRoleType type
+	SystemRoleType = "System"
+	// CustomRoleType type
+	CustomRoleType = "Custom"
+)
+
 // CompletedTaskStates returns set of states that mark the task as completed
 func CompletedTaskStates() []string {
 	return []string{SuccessTaskStatus, FailureTaskStatus, AbortedTaskStatus}

@@ -168,7 +168,7 @@ func init() {
 	addArchitectureReleaseCmd.Flags().SortFlags = false
 
 	addArchitectureReleaseCmd.Flags().String("platform", "LINUX",
-		"[Optional] Platform supported by this version. Allowed values: LINUX, KUBERNETES")
+		"[Optional] Platform supported by this version. Allowed values: linux, kubernetes")
 
 	addArchitectureReleaseCmd.Flags().String("arch", "",
 		fmt.Sprintf(

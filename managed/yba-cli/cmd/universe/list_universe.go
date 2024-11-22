@@ -27,7 +27,11 @@ var listUniverseCmd = &cobra.Command{
 
 		universeListRequest := authAPI.ListUniverses()
 		// filter by name and/or by universe code
-		universeName, _ := cmd.Flags().GetString("name")
+		universeName, err := cmd.Flags().GetString("name")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
 		if universeName != "" {
 			universeListRequest = universeListRequest.Name(universeName)
 		}
