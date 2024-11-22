@@ -220,24 +220,6 @@ You can map LDAP groups to [YugabyteDB Anywhere roles](../anywhere-rbac/#roles).
 
 {{<tags/feature/ea>}}You can map groups to [fine-grained](../anywhere-rbac/#fine-grained-rbac) YugabyteDB Anywhere roles. To enable the feature in YugabyteDB Anywhere, set the **Enable RBAC for Groups** Global Runtime Configuration option (config key `yb.security.group_mapping_rbac_support`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
 
-<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
-  <li>
-    <a href="#classic" class="nav-link active" id="classic-tab" data-bs-toggle="tab"
-      role="tab" aria-controls="classic" aria-selected="true">
-      Classic
-    </a>
-  </li>
-  <li>
-    <a href="#rbac" class="nav-link" id="rbac-tab" data-bs-toggle="tab"
-      role="tab" aria-controls="rbac" aria-selected="false">
-      RBAC for Groups
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="classic" class="tab-pane fade show active" role="tabpanel" aria-labelledby="classic-tab">
-
 To map LDAP groups to YugabyteDB Anywhere roles, do the following:
 
 1. Navigate to **Admin > Access Management > User Authentication** and select **LDAP Configuration**.
@@ -249,44 +231,21 @@ To map LDAP groups to YugabyteDB Anywhere roles, do the following:
     - Select **User Attribute** and set the name of the LDAP user attribute to use to find the groups that users belong to.
     - Select **Group Search Filter** and enter an LDAP search filter to search for membership in group member listings. To specify a YugabyteDB Anywhere user in the filter, use the string `{username}`. For all occurrences of this string in the query filter, YugabyteDB Anywhere will replace those with the actual username used to sign in to YugabyteDB Anywhere. Enter a group search base DN to use for the group search. Use the scope option to set the scope of the search; there are three levels - SUBTREE, ONELEVEL, and OBJECT.
 
-1. Click **Create Mappings** (or, if you have existing mappings, **Edit**) to display the **Create Mapping** dialog.
-
-1. Click **Add rows** to add mappings. Select the YugabyteDB Anywhere role and enter the LDAP Group DN that you want to map the role to.
-
-1. Click **Confirm**.
-
 1. Click **Save** when you are done.
 
-  </div>
-
-  <div id="rbac" class="tab-pane fade" role="tabpanel" aria-labelledby="rbac-tab">
-
-If you are using RBAC for Groups, map LDAP groups to YugabyteDB Anywhere roles as follows:
-
-1. Navigate to **Admin > Access Management > User Authentication** and select **LDAP Configuration**.
-
-1. Under **Role Settings**, enable the **Map YugabyteDB Anywhere built-in roles to your existing LDAP groups** option.
-
-1. Choose how to look up LDAP group membership:
-
-    - Select **User Attribute** and set the name of the LDAP user attribute to use to find the groups that users belong to.
-    - Select **Group Search Filter** and enter an LDAP search filter to search for membership in group member listings. To specify a YugabyteDB Anywhere user in the filter, use the string `{username}`. For all occurrences of this string in the query filter, YugabyteDB Anywhere will replace those with the actual username used to sign in to YugabyteDB Anywhere. Enter a group search base DN to use for the group search. Use the scope option to set the scope of the search; there are three levels - SUBTREE, ONELEVEL, and OBJECT.
-
-1. Click **Save** when you are done.
-
-**Map groups to fine-grained roles**
+#### Map groups to roles
 
 To map groups to fine-grained roles, on the **Groups** tab, do the following:
 
-1. Click **Add Group** and select **LDAP**.
+1. Click **Add Group** and select **OIDC**.
 
-1. Enter the LDAP Group DN and select the YugabyteDB Anywhere role (built-in or custom) that you want to map the group to.
+1. Enter the Group DN name and select the YugabyteDB Anywhere role (built-in or custom) that you want to map the group to.
+
+1. To assign a built-in role, on the **Built-in Role** tab, select a role. You can't assign the SuperAdmin role to a group.
+
+1. To assign a custom role (only available if you have enabled RBAC for groups), on the **Custom Role** tab, select a role and scope.
 
 1. Click **Save**.
-
-  </div>
-
-</div>
 
 ### Define the YugabyteDB Anywhere role
 
