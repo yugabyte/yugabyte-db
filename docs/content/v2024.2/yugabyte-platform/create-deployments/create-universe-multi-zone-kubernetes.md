@@ -272,7 +272,7 @@ serviceEndpoints:
 
 For services without an explicitly defined scope in Helm overrides, the default service scope (Namespaced) is used, provided you set the **Default service scope for K8s universe** Global runtime configuration option (config key `yb.universe.default_service_scope_for_k8s`) to true. The configuration flag defines the default service scope for the universe if the scope is not explicitly defined in the service overrides.
 
-Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global runtime configuration settings, and you cannot modify this service scope during a universe creation.
+Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global runtime configuration settings, and you cannot modify this service scope during universe creation.
 
 Keep in mind the following:
 
