@@ -3161,7 +3161,7 @@ TEST_F_EX(ClientTest, EmptiedBatcherFlush, ClientTestWithHashAndRangePk) {
       ASSERT_OK(cluster_->mini_master()->catalog_manager()
           .TEST_IncrementTablePartitionListVersion(table->id()));
       table->MarkPartitionsAsStale();
-      SleepFor(10ms * kTimeMultiplier);
+      SleepFor(RegularBuildVsSanitizers(10ms, 100ms));
     }
   });
 
