@@ -2,7 +2,6 @@ import React, { ComponentType, FC } from "react";
 import { Box, makeStyles, Tab, Tabs } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import { SummaryTab } from "./SummaryTab";
-import { ReviewRecommendedTab } from "./ReviewRecommendedTab";
 import clsx from "clsx";
 import type { SchemaAnalysisData } from "./SchemaAnalysis";
 
@@ -23,15 +22,15 @@ export interface ITabListItem {
 
 const tabList: ITabListItem[] = [
   {
-    name: "tabSummary",
+    name: "tabSuggestedRefactoring",
     component: SummaryTab,
     testId: "MigrationSchemaTabList-Summary",
   },
-  {
-    name: "tabSuggestedRefactoring",
-    component: ReviewRecommendedTab,
-    testId: "MigrationSchemaTabList-SuggestedRefactoring",
-  },
+  // {
+  //   name: "tabSuggestedRefactoring",
+  //   component: ReviewRecommendedTab,
+  //   testId: "MigrationSchemaTabList-SuggestedRefactoring",
+  // },
 ];
 
 type SchemaAnalysisTabsProps = {

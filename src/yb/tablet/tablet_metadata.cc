@@ -1322,7 +1322,7 @@ void RaftGroupMetadata::InsertPackedSchemaForXClusterTarget(
   std::lock_guard lock(data_mutex_);
   TableId target_table_id = table_id.empty() ? primary_table_id_ : table_id;
   auto table_info_ptr = FindOrNull(kv_store_.tables, target_table_id);
-  CHECK(table_info_ptr);
+  CHECK_NOTNULL(table_info_ptr);
 
   // First insert the packed schema with schema_version - 1.
   // Don't drop any columns as part of inserting the packed schema.
@@ -1334,8 +1334,14 @@ void RaftGroupMetadata::InsertPackedSchemaForXClusterTarget(
   auto new_table_info = std::make_shared<TableInfo>(
       *temp_table_info, (*table_info_ptr)->schema(), index_map, dropped_cols, version);
 
-  // TODO(#22318) handle colocated tables later.
   table_info_ptr->swap(new_table_info);
+
+  // Also update the colocation map if needed.
+  if (target_table_id != primary_table_id_ && schema.has_colocation_id()) {
+    auto colocated_table = FindOrNull(kv_store_.colocation_to_table, schema.colocation_id());
+    CHECK_NOTNULL(colocated_table);
+    *colocated_table = *table_info_ptr;
+  }
 
   OnChangeMetadataOperationAppliedUnlocked(op_id);
 }

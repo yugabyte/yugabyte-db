@@ -43,7 +43,7 @@ uint32 GetMajorVersionOfCurrentBuild() {
 
 YsqlCatalogConfig::YsqlCatalogConfig(SysCatalogTable& sys_catalog) : sys_catalog_(sys_catalog) {}
 
-Status YsqlCatalogConfig::PrepareDefaultIfNeeded(int64_t term) {
+Status YsqlCatalogConfig::PrepareDefaultIfNeeded(const LeaderEpoch& epoch) {
   std::lock_guard m_lock(mutex_);
   if (config_) {
     return Status::OK();
@@ -58,7 +58,7 @@ Status YsqlCatalogConfig::PrepareDefaultIfNeeded(int64_t term) {
   auto l = config_->LockForWrite();
   *l.mutable_data()->pb.mutable_ysql_catalog_config() = std::move(ysql_catalog_config);
 
-  RETURN_NOT_OK(sys_catalog_.Upsert(term, config_));
+  RETURN_NOT_OK(sys_catalog_.Upsert(epoch, config_));
   l.Commit();
 
   return Status::OK();

@@ -71,9 +71,6 @@ export YB_BUILD_CPP=${YB_BUILD_CPP:-1}
 log "Running with Bash version $BASH_VERSION"
 
 cd "$YB_SRC_ROOT"
-if ! "$YB_BUILD_SUPPORT_DIR/common-build-env-test.sh"; then
-  fatal "Test of the common build environment failed, cannot proceed."
-fi
 
 activate_virtualenv
 set_pythonpath

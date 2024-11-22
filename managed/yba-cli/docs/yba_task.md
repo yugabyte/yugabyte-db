@@ -33,6 +33,7 @@ yba task [flags]
 ### SEE ALSO
 
 * [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
+* [yba task abort](yba_task_abort.md)	 - Abort a YugabyteDB Anywhere task
 * [yba task list](yba_task_list.md)	 - List YugabyteDB Anywhere tasks
 * [yba task retry](yba_task_retry.md)	 - Retry a YugabyteDB Anywhere task
 

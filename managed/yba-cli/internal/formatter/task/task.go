@@ -10,6 +10,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
@@ -110,8 +111,15 @@ func (c *Context) Target() string {
 
 // Status fetches the task state
 func (c *Context) Status() string {
-	// Put colours here too
-	return c.t.GetStatus()
+	taskStatus := c.t.GetStatus()
+	switch taskStatus {
+	case util.FailureTaskStatus:
+		return formatter.Colorize(taskStatus, formatter.RedColor)
+	case util.SuccessTaskStatus:
+		return formatter.Colorize(taskStatus, formatter.GreenColor)
+	default:
+		return formatter.Colorize(taskStatus, formatter.YellowColor)
+	}
 }
 
 // CreateTime fetches Task create time

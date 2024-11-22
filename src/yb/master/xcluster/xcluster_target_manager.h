@@ -68,6 +68,10 @@ class XClusterTargetManager {
       const xcluster::ReplicationGroupId& replication_group_id, CoarseTimePoint deadline,
       bool skip_health_check);
 
+  Status SetReplicationGroupEnabled(
+      const xcluster::ReplicationGroupId& replication_group_id, bool is_enabled,
+      const LeaderEpoch& epoch, CoarseTimePoint deadline);
+
  protected:
   explicit XClusterTargetManager(
       Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog);
@@ -141,6 +145,10 @@ class XClusterTargetManager {
 
   Result<bool> HasReplicationGroupErrors(const xcluster::ReplicationGroupId& replication_group_id)
       const EXCLUDES(replication_error_map_mutex_);
+
+  Result<bool> IsReplicationGroupFullyPaused(
+      const xcluster::ReplicationGroupId& replication_group_id) const
+      EXCLUDES(replication_error_map_mutex_);
 
   void RecordTableStream(
       const TableId& table_id, const xcluster::ReplicationGroupId& replication_group_id,

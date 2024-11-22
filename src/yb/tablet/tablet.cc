@@ -2695,10 +2695,6 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
 Status Tablet::InsertPackedSchemaForXClusterTarget(
     ChangeMetadataOperation* operation, std::shared_ptr<yb::tablet::TableInfo> current_table_info) {
   SCHECK(operation->schema()->has_column_ids(), IllegalState, "Schema must have column ids");
-  // TODO(#22318) handle colocated tables later.
-  SCHECK(
-      !metadata_->colocated(), IllegalState,
-      "Colocated tables are not supported for automatic DDL replication.");
 
   metadata_->InsertPackedSchemaForXClusterTarget(
       *operation->schema(), operation->index_map(), operation->schema_version(), operation->op_id(),

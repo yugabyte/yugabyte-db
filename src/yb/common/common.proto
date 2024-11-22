@@ -652,6 +652,13 @@ message PgDatumPB {
   }
 }
 
+// The type of LSN type which will be used with the replication slot and stream metadata.
+enum ReplicationSlotLsnType {
+  ReplicationSlotLsnType_UNSPECIFIED = 0;
+  ReplicationSlotLsnType_SEQUENCE = 1;
+  ReplicationSlotLsnType_HYBRID_TIME = 2;
+}
+
 message AshMetadataPB {
   // The root level request id. i.e. the request id
   // corresponding to the call from the application to YSQL-Pg/YCQL
@@ -706,6 +713,7 @@ message WaitStateInfoPB {
 message CDCSDKStreamCreateOptionsPB {
   optional
       CDCSDKDynamicTablesOption cdcsdk_dynamic_tables_option = 1 [default = DYNAMIC_TABLES_ENABLED];
+  optional ReplicationSlotLsnType lsn_type = 12 [default = ReplicationSlotLsnType_SEQUENCE];
 }
 
 message TserverMetricsInfoPB {

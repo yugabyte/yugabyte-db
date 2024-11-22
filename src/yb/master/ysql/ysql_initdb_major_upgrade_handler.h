@@ -32,16 +32,10 @@ class YsqlCatalogConfig;
 class YsqlInitDBAndMajorUpgradeHandler {
  public:
   YsqlInitDBAndMajorUpgradeHandler(
-      Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog,
-      yb::ThreadPool& thread_pool);
+      Master& master, YsqlCatalogConfig& ysql_catalog_config, CatalogManager& catalog_manager,
+      SysCatalogTable& sys_catalog, yb::ThreadPool& thread_pool);
 
   ~YsqlInitDBAndMajorUpgradeHandler() = default;
-
-  IsOperationDoneResult IsInitDbDone() const;
-
-  Status SetInitDbDone(const LeaderEpoch& epoch);
-
-  IsOperationDoneResult IsCurrentVersionInitDbDone() const;
 
   void SysCatalogLoaded(const LeaderEpoch& epoch);
 
@@ -102,11 +96,8 @@ class YsqlInitDBAndMajorUpgradeHandler {
   // Get the address to a live tserver process that is closest to the master.
   Result<std::string> GetClosestLiveTserverAddress();
 
-  YsqlCatalogConfig& GetYsqlCatalogConfig();
-
-  const YsqlCatalogConfig& GetYsqlCatalogConfig() const;
-
   Master& master_;
+  YsqlCatalogConfig& ysql_catalog_config_;
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;
   yb::ThreadPool& thread_pool_;

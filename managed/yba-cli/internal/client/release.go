@@ -5,7 +5,11 @@
 package client
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"strings"
@@ -100,6 +104,111 @@ func (a *AuthAPIClient) GetExtractMetadata(fileUUID string) (
 		a.ctx,
 		a.CustomerUUID,
 		fileUUID)
+}
+
+// UploadReleaseRest uses REST API to call list schedule functionality
+func (a *AuthAPIClient) UploadReleaseRest(
+	filePath string,
+) (
+	ybaclient.YBPCreateSuccess, error,
+) {
+	token := viper.GetString("apiToken")
+	errorTag := fmt.Errorf("Release, Operation: Upload")
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return ybaclient.YBPCreateSuccess{},
+			fmt.Errorf("%w: Error opening file for upload YugabyteDB version %s",
+				errorTag,
+				err.Error())
+	}
+	defer file.Close()
+
+	// Create a buffer and a multipart writer
+	bodyBuffer := &bytes.Buffer{}
+	writer := multipart.NewWriter(bodyBuffer)
+
+	// Add the file field to the form
+	part, err := writer.CreateFormFile("file", file.Name())
+	if err != nil {
+		return ybaclient.YBPCreateSuccess{},
+			fmt.Errorf("%w: Error creating form file for upload YugabyteDB version %s",
+				errorTag,
+				err.Error())
+	}
+
+	// Copy the file content into the form field
+	_, err = io.Copy(part, file)
+	if err != nil {
+		return ybaclient.YBPCreateSuccess{},
+			fmt.Errorf("%w: Error copying file content for upload YugabyteDB version %s",
+				errorTag,
+				err.Error())
+	}
+
+	// Close the writer to finalize the form data
+	err = writer.Close()
+	if err != nil {
+		return ybaclient.YBPCreateSuccess{},
+			fmt.Errorf("%w: Error Error closing writer for upload YugabyteDB version %s",
+				errorTag,
+				err.Error())
+	}
+
+	var req *http.Request
+
+	req, err = http.NewRequest("POST", fmt.Sprintf("%s://%s/api/v1/customers/%s/ybdb_release/upload",
+		a.RestClient.Scheme, a.RestClient.Host, a.CustomerUUID), bodyBuffer)
+
+	if err != nil {
+		return ybaclient.YBPCreateSuccess{},
+			fmt.Errorf("%w: %s", errorTag, err.Error())
+	}
+
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("X-AUTH-YW-API-TOKEN", token)
+
+	r, err := a.RestClient.Client.Do(req)
+	if err != nil {
+		return ybaclient.YBPCreateSuccess{},
+			fmt.Errorf("%w: Error occured during POST call for upload YugabyteDB version %s",
+				errorTag,
+				err.Error())
+	}
+
+	var body []byte
+	body, err = io.ReadAll(r.Body)
+	if err != nil {
+		return ybaclient.YBPCreateSuccess{},
+			fmt.Errorf("%w: Error reading upload YugabyteDB version response body %s",
+				errorTag,
+				err.Error())
+	}
+
+	responseBody := ybaclient.YBPCreateSuccess{}
+	if err = json.Unmarshal(body, &responseBody); err != nil {
+		return ybaclient.YBPCreateSuccess{},
+			fmt.Errorf("%w: Failed unmarshalling upload YugabyteDB version response body %s",
+				errorTag,
+				err.Error())
+	}
+
+	if responseBody.ResourceUUID != nil {
+		return responseBody, nil
+	}
+
+	responseBodyError := util.YbaStructuredError{}
+	if err = json.Unmarshal(body, &responseBodyError); err != nil {
+		return ybaclient.YBPCreateSuccess{},
+			fmt.Errorf("%w: Failed unmarshalling upload YugabyteDB version error response body %s",
+				errorTag,
+				err.Error())
+	}
+
+	errorMessage := util.ErrorFromResponseBody(responseBodyError)
+	return ybaclient.YBPCreateSuccess{},
+		fmt.Errorf("%w: Error fetching YugabyteDB version: %s", errorTag, errorMessage)
+
 }
 
 // NewReleaseYBAVersionCheck checks if the new release management API can be used

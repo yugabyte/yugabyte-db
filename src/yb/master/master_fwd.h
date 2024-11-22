@@ -92,6 +92,8 @@ class XClusterManagerIf;
 class YQLPartitionsVTable;
 class YQLVirtualTable;
 class YsqlBackendsManager;
+class YsqlManager;
+class YsqlManagerIf;
 class YsqlTablegroupManager;
 class YsqlTablespaceManager;
 class YsqlTransactionDdl;

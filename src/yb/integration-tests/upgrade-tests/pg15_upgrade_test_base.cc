@@ -134,7 +134,7 @@ Status Pg15UpgradeTestBase::ExecuteStatementsInFiles(
   return Status::OK();
 }
 
-Result<pgwrapper::PGConn> Pg15UpgradeTestBase::CreateConnToTs(size_t ts_id) {
+Result<pgwrapper::PGConn> Pg15UpgradeTestBase::CreateConnToTs(std::optional<size_t> ts_id) {
   return cluster_->ConnectToDB("yugabyte", ts_id);
 }
 

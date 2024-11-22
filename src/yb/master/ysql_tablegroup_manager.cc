@@ -171,6 +171,15 @@ bool TgInfo::HasChildTable(ColocationId colocation_id) const {
   return ContainsKey(table_map_.right, colocation_id);
 }
 
+Result<TableId> TgInfo::GetChildTableId(ColocationId colocation_id) const {
+  SCHECK(
+      HasChildTable(colocation_id), NotFound,
+      Format(
+          "Tablegroup $0 does not contain a table with colocation_id $1", ToString(),
+          colocation_id));
+  return table_map_.right.at(colocation_id);
+}
+
 std::unordered_set<TableId> TgInfo::ChildTableIds() const {
   std::unordered_set<TableId> result;
   for (auto iter = table_map_.left.begin(), iend = table_map_.left.end(); iter != iend; ++iter) {

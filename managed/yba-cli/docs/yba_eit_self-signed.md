@@ -13,7 +13,7 @@ yba eit self-signed [flags]
 ### Options
 
 ```
-  -n, --name string   [Optional] The name of the configuration for the action. Required for create, delete, describe, update.
+  -n, --name string   [Optional] The name of the configuration for the action. Required for create, delete, describe, download.
   -h, --help          help for self-signed
 ```
 
@@ -37,5 +37,6 @@ yba eit self-signed [flags]
 * [yba eit self-signed create](yba_eit_self-signed_create.md)	 - Create a YugabyteDB Anywhere Self Signed encryption in transit configuration
 * [yba eit self-signed delete](yba_eit_self-signed_delete.md)	 - Delete a YugabyteDB Anywhere Self Signed encryption in transit configuration
 * [yba eit self-signed describe](yba_eit_self-signed_describe.md)	 - Describe a Self Signed YugabyteDB Anywhere Encryption In Transit (EIT) configuration
+* [yba eit self-signed download](yba_eit_self-signed_download.md)	 - Download a Self Signed YugabyteDB Anywhere Encryption In Transit (EIT) configuration's certifciates
 * [yba eit self-signed list](yba_eit_self-signed_list.md)	 - List Self Signed YugabyteDB Anywhere Encryption In Transit (EIT) certificate configurations
 

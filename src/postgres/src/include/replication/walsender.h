@@ -24,6 +24,15 @@ typedef enum
 	CRS_USE_SNAPSHOT
 } CRSSnapshotAction;
 
+/*
+ * The type of LSN type to use in create replication slot command.
+ */
+typedef enum
+{
+	CRS_SEQUENCE,
+	CRS_HYBRID_TIME
+} CRSLsnType;
+
 /* global state */
 extern PGDLLIMPORT bool am_walsender;
 extern PGDLLIMPORT bool am_cascading_walsender;

@@ -38,6 +38,7 @@
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/tsan_util.h"
 
 using std::string;
@@ -47,6 +48,8 @@ DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_bool(enable_load_balancing);
 DECLARE_uint32(xcluster_safe_time_log_outliers_interval_secs);
 DECLARE_uint32(xcluster_safe_time_slow_tablet_delta_secs);
+DECLARE_bool(TEST_enable_sync_points);
+DECLARE_int32(xcluster_safe_time_update_interval_secs);
 
 namespace yb {
 using client::YBSchema;
@@ -58,6 +61,9 @@ const int kMasterCount = 3;
 const int kTServerCount = 3;
 const int kTabletCount = 3;
 const string kTableName = "test_table";
+
+const client::YBTableName kSafeTimeTableName(
+    YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kXClusterSafeTimeTableName);
 
 class XClusterSafeTimeTest : public XClusterTestBase {
   typedef XClusterTestBase super;
@@ -116,10 +122,8 @@ class XClusterSafeTimeTest : public XClusterTestBase {
     ASSERT_EQ(resp.entry().tables_size(), 1);
 
     // Initial wait is higher as it may need to wait for the create the table to complete.
-    const client::YBTableName safe_time_table_name(
-        YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kXClusterSafeTimeTableName);
     ASSERT_OK(consumer_client()->WaitForCreateTableToFinish(
-        safe_time_table_name, CoarseMonoClock::Now() + MonoDelta::FromMinutes(1)));
+        kSafeTimeTableName, CoarseMonoClock::Now() + MonoDelta::FromMinutes(1)));
   }
 
   HybridTime GetProducerSafeTime() { return CHECK_RESULT(producer_tablet_peer_->LeaderSafeTime()); }
@@ -300,4 +304,64 @@ TEST_F(XClusterSafeTimeTest, ConsumerHistoryCutoff) {
   // Ensure history cutoff time has progressed.
   VerifyHistoryCutoffTime();
 }
+
+TEST_F(XClusterSafeTimeTest, SafeTimeInTableDoesNotGoBackwards) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  auto ht_1 = GetProducerSafeTime();
+  auto low_safe_time = ht_1.AddDelta(-1h);  // Use 1hr before now.
+  ASSERT_OK(WaitForSafeTime(ht_1));
+
+  auto table = std::make_unique<client::TableHandle>();
+  ASSERT_OK(table->Open(kSafeTimeTableName, consumer_client()));
+
+  Status table_scan_status;
+  client::TableIteratorOptions options;
+  options.error_handler = [&table_scan_status](const Status& status) {
+    table_scan_status = status;
+  };
+
+  std::map<TabletId, HybridTime> tablet_safe_time;
+  for (const auto& row : client::TableRange(*table, options)) {
+    LOG(INFO) << "Read safe time table row: " << row.ToString();
+    ASSERT_EQ(
+        kReplicationGroupId,
+        xcluster::ReplicationGroupId(row.column(master::kXCReplicationGroupIdIdx).string_value()));
+    const auto producer_tablet_id = row.column(master::kXCProducerTabletIdIdx).string_value();
+    ASSERT_TRUE(!producer_tablet_id.empty());
+    HybridTime safe_ht;
+    ASSERT_OK(safe_ht.FromUint64(
+        static_cast<uint64_t>(row.column(master::kXCSafeTimeIdx).int64_value())));
+    ASSERT_GE(safe_ht, ht_1);
+
+    tablet_safe_time[producer_tablet_id] = safe_ht;
+  }
+  ASSERT_OK(table_scan_status);
+  ASSERT_EQ(tablet_safe_time.size(), kTabletCount);
+
+  // Make the pollers return the low_safe_time to write to the safe_time table.
+  auto* sync_point_instance = yb::SyncPoint::GetInstance();
+  Synchronizer sync;
+  sync_point_instance->SetCallBack("XClusterPoller::GetSafeTime", [&low_safe_time](void* arg) {
+    *reinterpret_cast<HybridTime*>(arg) = low_safe_time;
+  });
+  sync_point_instance->EnableProcessing();
+
+  SleepFor(FLAGS_xcluster_safe_time_update_interval_secs * 5s);
+
+  for (const auto& row : client::TableRange(*table, options)) {
+    LOG(INFO) << "Read safe time table row: " << row.ToString();
+    const auto producer_tablet_id = row.column(master::kXCProducerTabletIdIdx).string_value();
+    ASSERT_TRUE(tablet_safe_time.contains(producer_tablet_id));
+    HybridTime safe_ht;
+    ASSERT_OK(safe_ht.FromUint64(
+        static_cast<uint64_t>(row.column(master::kXCSafeTimeIdx).int64_value())));
+
+    // At least the previous value.
+    ASSERT_GE(safe_ht, tablet_safe_time[producer_tablet_id]);
+    // Definitely not the low_safe_time.
+    ASSERT_GT(safe_ht, low_safe_time);
+  }
+  ASSERT_OK(table_scan_status);
+}
+
 }  // namespace yb

@@ -22,4 +22,5 @@ var TaskCmd = &cobra.Command{
 func init() {
 	TaskCmd.AddCommand(retryTaskCmd)
 	TaskCmd.AddCommand(listTaskCmd)
+	TaskCmd.AddCommand(abortTaskCmd)
 }

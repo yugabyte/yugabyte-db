@@ -176,6 +176,7 @@ set(MASTER_SRCS
   yql_vtable_iterator.cc
   ysql/ysql_catalog_config.cc
   ysql/ysql_initdb_major_upgrade_handler.cc
+  ysql/ysql_manager.cc
   ysql_backends_manager.cc
   ysql_ddl_handler.cc
   ysql_ddl_verification_task.cc

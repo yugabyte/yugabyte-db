@@ -7555,8 +7555,7 @@ class ControlScript(object):
 
             if args.advertise_address is None:
                 if not self.configs.saved_data.get("advertise_address"):
-
-                    if str(os.path.exists("/.dockerenv")):
+                    if os.path.exists("/.dockerenv"):
                             args.advertise_address = self.find_hostname_of_node()
                     else:
                         if OS_NAME == "Linux":

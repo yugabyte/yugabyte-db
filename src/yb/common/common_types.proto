@@ -165,6 +165,9 @@ enum ReplicationErrorPb {
 
   // There was a generic system error.
   REPLICATION_SYSTEM_ERROR = 8;
+
+  // The replication stream has been paused by the user.
+  REPLICATION_PAUSED = 9;
 }
 
 // Stateful services.

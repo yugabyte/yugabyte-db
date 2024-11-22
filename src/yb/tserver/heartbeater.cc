@@ -410,6 +410,10 @@ Status Heartbeater::Thread::TryHeartbeat() {
       req.set_ysql_db_catalog_versions_fingerprint(*fingerprint);
     }
   }
+
+  RETURN_NOT_OK(server_->XClusterPopulateMasterHeartbeatRequest(
+      req, last_hb_response_.needs_full_tablet_report()));
+
   for (auto& data_provider : data_providers_) {
     data_provider->AddData(last_hb_response_, &req);
   }

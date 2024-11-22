@@ -33,5 +33,6 @@ yba yb-db-version artifact-create [flags]
 ### SEE ALSO
 
 * [yba yb-db-version](yba_yb-db-version.md)	 - Manage YugabyteDB versions
+* [yba yb-db-version artifact-create upload](yba_yb-db-version_artifact-create_upload.md)	 - Upload a new YugabyteDB version from a tar gz file
 * [yba yb-db-version artifact-create url](yba_yb-db-version_artifact-create_url.md)	 - Fetch metadata of a new YugabyteDB version from a URL
 

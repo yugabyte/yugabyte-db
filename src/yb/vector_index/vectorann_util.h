@@ -16,8 +16,8 @@
 
 #include <queue>
 
-#include "yb/common/vector_types.h"
 
+#include "yb/common/vector_types.h"
 #include "yb/rocksdb/status.h"
 
 #include "yb/util/result.h"
@@ -25,6 +25,8 @@
 
 #include "yb/vector_index/coordinate_types.h"
 #include "yb/vector_index/distance.h"
+#include "yb/vector_index/vector_index_if.h"
+#include "yb/vector_index/hnswlib_wrapper.h"
 
 namespace yb::vector_index {
 
@@ -112,6 +114,27 @@ std::vector<VertexWithDistance<DistanceResult>> BruteForcePreciseNearestNeighbor
       << num_results << ", returned: " << result.size();
 
   return result;
+}
+
+// Draft of a function that returns a pointer to a merged index
+template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+VectorIndexIfPtr<Vector, DistanceResult> Merge(
+    VectorIndexFactory<Vector, DistanceResult> index_factory,
+    VectorIndexIfPtr<Vector, DistanceResult> index_a,
+    VectorIndexIfPtr<Vector, DistanceResult> index_b) {
+  VectorIndexIfPtr<Vector, DistanceResult> merged_index = index_factory();
+  auto status_reserve =
+      merged_index->Reserve(10);  // TODO we need a way to get the size of merging index
+
+  for (const auto& [vector, vertex_id] : *index_a) {
+    auto status = merged_index->Insert(vertex_id, vector);
+  }
+
+  for (const auto& [vector, vertex_id] : *index_b) {
+    auto status = merged_index->Insert(vertex_id, vector);
+  }
+
+  return merged_index;
 }
 
 }  // namespace yb::vector_index

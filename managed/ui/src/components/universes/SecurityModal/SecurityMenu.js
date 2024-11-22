@@ -7,6 +7,7 @@ import { UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
 
 export function SecurityMenu({
   backToMainMenu,
+  isItKubernetesUniverse,
   editTLSAvailability,
   showTLSConfigurationModal,
   showManageKeyModal,
@@ -31,7 +32,10 @@ export function SecurityMenu({
       <YBMenuItem
         onClick={showTLSConfigurationModal}
         availability={tlsAvailability}
-        disabled={isActionFrozen(allowedTasks, UNIVERSE_TASKS.ENCRYPTION_IN_TRANSIT)}
+        disabled={
+          isActionFrozen(allowedTasks, UNIVERSE_TASKS.ENCRYPTION_IN_TRANSIT) ||
+          isItKubernetesUniverse
+        }
       >
         Encryption in-Transit
       </YBMenuItem>

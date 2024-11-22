@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/eit/selfsigned/download"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
@@ -31,10 +32,11 @@ func init() {
 	SelfSignedEITCmd.AddCommand(listSelfSignedEITCmd)
 	SelfSignedEITCmd.AddCommand(describeSelfSignedEITCmd)
 	SelfSignedEITCmd.AddCommand(deleteSelfSignedEITCmd)
+	SelfSignedEITCmd.AddCommand(download.DownloadSelfSignedEITCmd)
 
 	SelfSignedEITCmd.PersistentFlags().StringP("name", "n", "",
 		fmt.Sprintf("[Optional] The name of the configuration for the action. %s",
 			formatter.Colorize(
-				"Required for create, delete, describe, update.",
+				"Required for create, delete, describe, download.",
 				formatter.GreenColor)))
 }

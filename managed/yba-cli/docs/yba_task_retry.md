@@ -13,14 +13,14 @@ yba task retry [flags]
 ### Examples
 
 ```
-yba task retry --task-uuid <task-uuid>
+yba task retry --uuid <uuid>
 ```
 
 ### Options
 
 ```
-      --task-uuid string   [Required] The task UUID to be retried.
-  -h, --help               help for retry
+  -u, --uuid string   [Required] The task UUID to be retried.
+  -h, --help          help for retry
 ```
 
 ### Options inherited from parent commands

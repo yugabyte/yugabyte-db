@@ -187,6 +187,8 @@ Status XClusterTargetManager::GetXClusterSafeTimeForNamespace(
     const GetXClusterSafeTimeForNamespaceRequestPB* req,
     GetXClusterSafeTimeForNamespaceResponsePB* resp, const LeaderEpoch& epoch) {
   SCHECK(!req->namespace_id().empty(), InvalidArgument, "Namespace id must be provided");
+
+  RETURN_NOT_OK(safe_time_service_->ComputeSafeTime(epoch.leader_term));
   auto safe_time_ht =
       VERIFY_RESULT(GetXClusterSafeTimeForNamespace(epoch, req->namespace_id(), req->filter()));
   resp->set_safe_time_ht(safe_time_ht.ToUint64());
@@ -791,6 +793,28 @@ Result<bool> XClusterTargetManager::HasReplicationGroupErrors(
   return !table_errors.empty();
 }
 
+Result<bool> XClusterTargetManager::IsReplicationGroupFullyPaused(
+    const xcluster::ReplicationGroupId& replication_group_id) const {
+  SharedLock l(replication_error_map_mutex_);
+
+  auto* replication_error_map = FindOrNull(replication_error_map_, replication_group_id);
+  SCHECK(
+      replication_error_map, NotFound, "Could not find replication group $0",
+      replication_group_id.ToString());
+
+  for (const auto& [consumer_table_id, tablet_error_map] : *replication_error_map) {
+    for (const auto& [_, error_info] : tablet_error_map) {
+      if (error_info.error != ReplicationErrorPb::REPLICATION_PAUSED) {
+        YB_LOG_EVERY_N_SECS(WARNING, 60) << "Replication group " << replication_group_id
+                                         << " waiting for table to pause:" << consumer_table_id;
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
 Status XClusterTargetManager::PopulateReplicationGroupErrors(
     const xcluster::ReplicationGroupId& replication_group_id,
     GetReplicationStatusResponsePB* resp) const {
@@ -834,10 +858,16 @@ Status XClusterTargetManager::PopulateReplicationGroupErrors(
 
       auto* resp_error = resp_status->add_errors();
       resp_error->set_error(error_pb);
-      // Only include the first 20 tablet IDs to limit response size. VLOG(4) will log all tablet to
-      // the log.
-      resp_error->set_error_detail(
-          Format("Producer Tablet IDs: $0", JoinStringsLimitCount(tablet_ids, ",", 20)));
+
+      if (error_pb == ReplicationErrorPb::REPLICATION_PAUSED) {
+        resp_error->set_error_detail("Replication paused");
+      } else {
+        // Only include the first 20 tablet IDs to limit response size.
+        // VLOG(4) will write all tablet to the log.
+        resp_error->set_error_detail(
+            Format("Producer Tablet IDs: $0", JoinStringsLimitCount(tablet_ids, ",", 20)));
+      }
+
       if (VLOG_IS_ON(4)) {
         VLOG(4) << "Replication error " << ReplicationErrorPb_Name(error_pb)
                 << " for ReplicationGroup: " << replication_group_id << ", stream id: " << stream_id
@@ -1328,33 +1358,71 @@ Status XClusterTargetManager::InsertPackedSchemaForXClusterTarget(
     uint32_t current_schema_version, const LeaderEpoch& epoch) {
   // Lookup the table and verify if it exists.
   scoped_refptr<TableInfo> table = VERIFY_RESULT(catalog_manager_.FindTableById(table_id));
-  auto l = table->LockForWrite();
-  auto& table_pb = l.mutable_data()->pb;
+  {
+    auto l = table->LockForWrite();
+    auto& table_pb = l.mutable_data()->pb;
 
-  // Compare the current schema version with the one in the request to avoid repeated updates.
-  if (table_pb.version() != current_schema_version) {
-    YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 10, 1)
-        << __func__ << ": Table " << table->ToString() << " has schema version "
-        << table_pb.version() << " but request has version " << current_schema_version
-        << ". Skipping update of packed schema.";
-    return Status::OK();
+    // Compare the current schema version with the one in the request to avoid repeated updates.
+    if (table_pb.version() != current_schema_version) {
+      YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 10, 1)
+          << __func__ << ": Table " << table->ToString() << " has schema version "
+          << table_pb.version() << " but request has version " << current_schema_version
+          << ". Skipping update of packed schema.";
+      return Status::OK();
+    }
+
+    // Just bump the version up by two. We will insert the packed schema in as version + 1, and then
+    // revert back to the original version, but now with version + 2.
+    table_pb.set_version(table_pb.version() + 2);
+    RETURN_NOT_OK(sys_catalog_.Upsert(epoch, table));
+    l.Commit();
   }
-
-  // Just bump the version up by two. We will insert the packed schema in as version + 1, and then
-  // revert back to the original version, but now with version + 2.
-  table_pb.set_version(table_pb.version() + 2);
-  RETURN_NOT_OK(sys_catalog_.Upsert(epoch, table));
-  l.Commit();
 
   for (const auto& tablet : VERIFY_RESULT(table->GetTablets())) {
     auto call = std::make_shared<AsyncInsertPackedSchemaForXClusterTarget>(
-        &master_, catalog_manager_.AsyncTaskPool(), tablet, packed_schema_to_insert, epoch);
+        &master_, catalog_manager_.AsyncTaskPool(), tablet, table, packed_schema_to_insert, epoch);
     table->AddTask(call);
     RETURN_NOT_OK(catalog_manager_.ScheduleTask(call));
   }
 
   LOG(INFO) << "Successfully initiated InsertPackedSchemaForXClusterTarget "
             << "(pending tablet schema updates) for " << table->ToString();
+
+  return Status::OK();
+}
+
+Status XClusterTargetManager::SetReplicationGroupEnabled(
+    const xcluster::ReplicationGroupId& replication_group_id, bool is_enabled,
+    const LeaderEpoch& epoch, CoarseTimePoint deadline) {
+  auto cluster_config = catalog_manager_.ClusterConfig();
+  auto l = cluster_config->LockForWrite();
+
+  auto replication_group_map =
+      l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
+  auto replication_group = FindOrNull(*replication_group_map, replication_group_id.ToString());
+  SCHECK(
+      replication_group, NotFound,
+      Format("Replication group $0 not found in Consumer Registry", replication_group_id));
+
+  if (replication_group->disable_stream() == !is_enabled) {
+    // Dont update the config version unnecessarily.
+    return Status::OK();
+  }
+
+  replication_group->set_disable_stream(!is_enabled);
+
+  l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
+  RETURN_NOT_OK(sys_catalog_.Upsert(epoch, cluster_config.get()));
+  l.Commit();
+
+  if (!is_enabled) {
+    return Wait(
+        std::bind(
+            &XClusterTargetManager::IsReplicationGroupFullyPaused, this, replication_group_id),
+        deadline, Format("Wait for replication group $0 to pause", replication_group_id));
+  }
+
+  CreateXClusterSafeTimeTableAndStartService();
 
   return Status::OK();
 }

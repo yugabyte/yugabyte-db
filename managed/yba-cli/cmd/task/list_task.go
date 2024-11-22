@@ -33,7 +33,7 @@ var listTaskCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		// filter by uuid
-		taskUUID, err := cmd.Flags().GetString("task-uuid")
+		taskUUID, err := cmd.Flags().GetString("uuid")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -70,6 +70,6 @@ var listTaskCmd = &cobra.Command{
 func init() {
 	listTaskCmd.Flags().SortFlags = false
 
-	listTaskCmd.Flags().String("task-uuid", "", "[Optional] UUID of the task.")
+	listTaskCmd.Flags().StringP("uuid", "u", "", "[Optional] UUID of the task.")
 
 }

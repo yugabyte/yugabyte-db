@@ -302,6 +302,8 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     row_key = row_key_.AsSlice();
 
     if (has_bound_key_ && is_forward_scan_ == (row_key.compare(bound_key_) >= 0)) {
+      VLOG(3) << "Done since " << dockv::SubDocKey::DebugSliceToString(key_data.key)
+              << " out of bound: " << dockv::SubDocKey::DebugSliceToString(bound_key_);
       done_ = true;
       return false;
     }
@@ -351,14 +353,14 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
 Result<DocReaderResult> DocRowwiseIterator::FetchRow(
     const FetchedEntry& fetched_entry, dockv::PgTableRow* table_row) {
   CHECK_NE(doc_mode_, DocMode::kGeneric) << "Table type: " << table_type_;
-  return doc_reader_->GetFlat(row_key_.mutable_data(), fetched_entry, table_row);
+  return doc_reader_->GetFlat(&row_key_.data(), fetched_entry, table_row);
 }
 
 Result<DocReaderResult> DocRowwiseIterator::FetchRow(
     const FetchedEntry& fetched_entry, QLTableRowPair table_row) {
   return doc_mode_ == DocMode::kFlat
-      ? doc_reader_->GetFlat(row_key_.mutable_data(), fetched_entry, table_row.table_row)
-      : doc_reader_->Get(row_key_.mutable_data(), fetched_entry, &*row_);
+      ? doc_reader_->GetFlat(&row_key_.data(), fetched_entry, table_row.table_row)
+      : doc_reader_->Get(&row_key_.data(), fetched_entry, &*row_);
 }
 
 Status DocRowwiseIterator::FillRow(dockv::PgTableRow* out) {

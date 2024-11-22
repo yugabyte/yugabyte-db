@@ -5,6 +5,60 @@ import subprocess
 import os
 import sys
 import tempfile
+import time
+import uuid
+
+
+def get_audit_query(universe_uuid, payload,):
+    user_uuid = uuid.UUID(int=0)
+    customer_uuid = uuid.UUID(int=0)
+    payload = payload
+    timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(time.time()))
+    # Using an existing enum.
+    action = 'Edit'
+    user_address = 'localhost'
+    additional_details = None
+    target = 'universe'
+    target_id = universe_uuid
+    user_email = 'local@localhost.yb'
+    api_call = None
+    api_method = None
+
+    """
+    Generates a full SQL query string to insert a row into the audit table.
+    Uses `locals()` to dynamically substitute all provided variables.
+
+    Parameters are explicitly typed for better IDE support and type checking.
+    """
+    sql = """
+    INSERT INTO audit (
+        id,
+        user_uuid,
+        customer_uuid,
+        payload,
+        api_call,
+        api_method,
+        timestamp,
+        user_email,
+        target,
+        target_id,
+        action,
+        additional_details,
+        user_address
+    )
+    VALUES (
+        (SELECT nextval('audit_id_seq')),  -- Dynamically calculate the next ID
+        '{user_uuid}', '{customer_uuid}', '{payload}', '{api_call}', '{api_method}',
+        '{timestamp}', '{user_email}', '{target}',
+        '{target_id}', '{action}', '{additional_details}', '{user_address}'
+    );
+    """.format(
+        **{
+            key: "NULL" if value is None else value
+            for key, value in locals().items()
+        }
+    )
+    return sql
 
 
 def msg_exit(msg):
@@ -128,5 +182,9 @@ with open(edit_file_path, "r") as edit_file:
 print("Updating universe json")
 print(run_psql(("update universe set universe_details_json='{}' " +
                "where universe.universe_uuid='{}';").format(
-                    json.dumps(new_json_parsed),
-                    univ_uuid)))
+    json.dumps(new_json_parsed),
+    univ_uuid)))
+# Updating audit entry
+audit_query = get_audit_query(univ_uuid, json.dumps(new_json_parsed))
+print("Inserting audit entry")
+print(run_psql(audit_query))
