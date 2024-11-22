@@ -163,7 +163,7 @@ VictoriaMetrics integration is only available for clusters deployed on AWS or GC
 
 The VictoriaMetrics integration requires the following:
 
-- VictoriaMetrics instance
+- VictoriaMetrics self-hosted instance (Enterprise and Cloud are not currently supported)
   - Deployed in a VPC on AWS or GCP.
   - Publically-accessible endpoint URL that resolves to the private IP of the VictoriaMetrics instance.
 
