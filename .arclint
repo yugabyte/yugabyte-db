@@ -149,6 +149,7 @@
     "postgres": {
       "type": "script-and-regex",
       "exclude": [
+        "(^src/postgres/third-party-extensions/)",
         "(^src/yb/)"
       ],
       "include": [
