@@ -1,3 +1,9 @@
 # Unlike thirdpaty_archives.yml, this file is maintained manually. The contents of "archives" lists
 # from both files are concatenated.
-archives: []
+archives:
+   - os_type: almalinux8
+     architecture: x86_64
+     compiler_type: clang17
+     tag: v20240105234116-48b2fc05e7-almalinux8-x86_64-clang17
+     sha: 48b2fc05e70b75e0465a884e959a0b0828e7877b
+     build_type: asan

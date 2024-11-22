@@ -2604,6 +2604,7 @@ set_prebuilt_thirdparty_url() {
         "$YB_BUILD_SUPPORT_DIR/thirdparty_tool"
         --save-thirdparty-url-to-file "$thirdparty_url_file_path"
         --compiler-type "${YB_COMPILER_TYPE_FOR_THIRDPARTY:-$YB_COMPILER_TYPE}"
+        --build-type "${build_type}"
       )
       if [[ -n ${YB_USE_LINUXBREW:-} ]]; then
         # See arg_str_to_bool in Python code for how the boolean parameter is interpreted.

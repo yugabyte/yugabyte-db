@@ -132,7 +132,7 @@ class ThirdPartyReleaseBase:
     # multiple releases that have the same OS/architecture/compiler type/SHA but different tags.
     # Therefore we distinguish between "key with tag" and "key with no tag"
     KEY_FIELDS_NO_TAG = [
-        'os_type', 'architecture', 'compiler_type', 'is_linuxbrew', 'sha', 'lto_type'
+        'os_type', 'architecture', 'compiler_type', 'is_linuxbrew', 'sha', 'lto_type', 'build_type'
     ]
     KEY_FIELDS_WITH_TAG = KEY_FIELDS_NO_TAG + ['tag']
 
@@ -143,6 +143,7 @@ class ThirdPartyReleaseBase:
     sha: str
     tag: str
     lto_type: Optional[str]
+    build_type: Optional[str]
 
     __str__ = __repr__ = autorepr(KEY_FIELDS_WITH_TAG)
 
@@ -159,7 +160,7 @@ class ThirdPartyReleaseBase:
 
     @staticmethod
     def get_default_field_value(field_name: str) -> Any:
-        if field_name == 'lto_type':
+        if field_name in ('lto_type', 'build_type'):
             return None
         if field_name == 'is_linuxbrew':
             return False
@@ -232,6 +233,7 @@ class GitHubThirdPartyRelease(ThirdPartyReleaseBase):
         self.branch_name = branch_name
 
         self.lto_type = group_dict.get('lto_type')
+        self.build_type = group_dict.get('build_type')
 
     def validate_url(self) -> bool:
         asset_urls = [asset.browser_download_url for asset in self.github_release.get_assets()]
@@ -283,7 +285,8 @@ class GitHubThirdPartyRelease(ThirdPartyReleaseBase):
             # We handle Linuxbrew builds in a special way, e.g. they could be built on AlmaLinux 8.
             not self.is_linuxbrew and
             # We don't run ASAN/TSAN on aarch64 or with LTO yet.
-            (self.architecture == 'aarch64' or self.lto_type is not None)
+            (self.architecture == 'aarch64' or self.lto_type is not None) and
+            self.build_type is None
         )
 
 
@@ -378,6 +381,9 @@ def parse_args() -> argparse.Namespace:
         '--os-type',
         help='Operating system type, to help us decide which third-party archive to choose. '
              'The default value is determined automatically based on the current OS.')
+    parser.add_argument(
+        '--build-type',
+        help='Build type, to help us decide which third-party archive to choose.')
     parser.add_argument(
         '--architecture',
         help='Machine architecture, to help us decide which third-party archive to choose. '
@@ -764,6 +770,7 @@ def get_third_party_release(
         architecture: Optional[str],
         is_linuxbrew: Optional[bool],
         lto: Optional[str],
+        build_type: Optional[str],
         allow_older_os: bool) -> MetadataItem:
     if not os_type:
         os_type = local_sys_conf().short_os_name_and_version()
@@ -783,13 +790,21 @@ def get_third_party_release(
         archive for archive in available_archives
         if compiler_type_matches(archive.compiler_type, needed_compiler_type) and
         archive.architecture == architecture and
-        matches_maybe_empty(archive.lto_type, lto)
+        matches_maybe_empty(archive.lto_type, lto) and
+        (archive.build_type is None or archive.build_type == build_type)
     ]
 
     if is_linuxbrew is not None:
         candidates = [
             candidate for candidate in candidates
             if candidate.is_linuxbrew == is_linuxbrew
+        ]
+
+    build_type_candidates = []
+    if build_type is not None:
+        build_type_candidates = [
+            candidate for candidate in candidates
+            if candidate.build_type is not None
         ]
 
     if is_linuxbrew is None or not is_linuxbrew or len(candidates) > 1:
@@ -801,13 +816,19 @@ def get_third_party_release(
 
         filtered_for_os = False
         if preferred_os_type:
-            candidates_for_preferred_os_type = filter_for_os(candidates, preferred_os_type)
+            candidates_for_preferred_os_type = \
+                filter_for_os(build_type_candidates, preferred_os_type)
+            if not candidates_for_preferred_os_type:
+                candidates_for_preferred_os_type = filter_for_os(candidates, preferred_os_type)
             if candidates_for_preferred_os_type:
                 candidates = candidates_for_preferred_os_type
                 filtered_for_os = True
 
         if not filtered_for_os:
-            candidates = filter_for_os(candidates, os_type)
+            candidates_for_os = filter_for_os(build_type_candidates, os_type)
+            if not candidates_for_os:
+                candidates_for_os = filter_for_os(candidates, os_type)
+            candidates = candidates_for_os
 
     if len(candidates) == 1:
         return candidates[0]
@@ -830,6 +851,7 @@ def get_third_party_release(
                 architecture=architecture,
                 is_linuxbrew=False,
                 lto=lto,
+                build_type=build_type,
                 allow_older_os=False)
         logging.info(f"Available release archives:\n{to_yaml_str(available_archives)}")
         wrong_count_str = 'no'
@@ -889,6 +911,7 @@ def main() -> None:
             architecture=args.architecture,
             is_linuxbrew=args.is_linuxbrew,
             lto=args.lto,
+            build_type=args.build_type,
             allow_older_os=args.allow_older_os)
 
         thirdparty_url = thirdparty_release.url()
