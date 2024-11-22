@@ -67,7 +67,7 @@ To provision the node:
     | `yb_home_dir` | The directory on the node where YugabyteDB will be installed. |
     | `chrony_servers` | The addresses of your Network Time Protocol servers. |
     | `yb_user_id` | The UID for the `yugabyte` user. |
-    | `is_airgap` | If you are performing and airgapped installation, set to true. |
+    | `is_airgap` | If you are performing an airgapped installation, set to true. |
     | `use_system_level_systemd` | Set to true to use system-level systemd for service management. YugabyteDB Anywhere will require SSH access to the node. |
     | `node_ip` | The IP address of the node you are provisioning. Must be accessible to other nodes. |
     | `tmp_directory` | The directory on the node to use for storing temporary files during provisioning. |
@@ -80,7 +80,6 @@ To provision the node:
     | `customer_uuid` | Your customer ID. To view your customer ID, in YugabyteDB Anywhere, click the **Profile** icon in the top right corner of the window, and choose **User Profile**. |
     | `api_key` | You API token. |
     | `node_name` | A name for the node. |
-    | `node_external_fqdn` | The external FQDN or IP address of the node. Must be accessible from YugabyteDB Anywhere. |
     | `node_external_fqdn` | The external FQDN or IP address of the node. Must be accessible from YugabyteDB Anywhere. |
 
     Enter the following provider details. If the provider does not exist, node agent creates it; otherwise, it adds the node instance to the existing provider.
