@@ -1,14 +1,20 @@
 {{/* trim the data */}}
 {{- $origdata := trim .Inner " \n\t\r" -}}
 {{- $newdata := "" -}}
-{{/* replace | within ``` with ;-vert-;  \x01 is used for matching blocks */}}
-{{- $origdata := replaceRE "```([^`\x01]*)(\\|)([^`]*)```" "```$1;-vert-;$3```\x01" $origdata -}}
+{{- warnf "original: %s" $origdata -}}
+
+{{/* mark code blocks with \x7E is used for matching blocks */}}
+{{- $origdata := replaceRE "[^\x7E]```([^`\x7E]*?)```" "```\x7E$1\x7E```" $origdata -}}
+{{- warnf "marked: %s" $origdata -}}
+{{/* replace | within ``` with ;-vert-;  \x7E is used for matching blocks */}}
+{{- $origdata := replaceRE "```\x7E([^`]*?)(\\|)([^`]*?)\x7E```" "```\x7E$1;-vert-;$3\x7E```" $origdata -}}
 {{- range seq 1000 -}}
-    {{- $newdata := replaceRE "```([^`\x01]*)(\\|)([^`]*)```\x01" "```$1;-vert-;$3```\x01" $origdata -}}
+    {{- $newdata := replaceRE "```\x7E([^`]*?)(\\|)([^`]*?)\x7E```" "```\x7E$1;-vert-;$3\x7E```" $origdata -}}
     {{- if (eq $origdata $newdata) -}} {{- break -}} {{- end -}}
     {{- $origdata = $newdata -}}
 {{- end -}}
-{{- $origdata := replace $origdata "\x01" "" -}}
+
+{{- $origdata := replace $origdata "\x7E" "" -}}
 {{/* fetch the header row to calculate no.of columns */}}
 {{- $header := index (findRE `[^|]*\|[^\n]*` $origdata 1) 0 -}}
 {{/* NOTE: numcols is no.of real columns + 1 -- because of split */}}
@@ -20,7 +26,7 @@
     {{- if ne (mod (sub (len $cells) 1) $numcols) 0 -}}
         {{- $totalcells := len $cells -}}
         {{- warnf "incomplete table: cols:%d pipes[total:%d expected:%d] in [%q]"
-                    (sub $numcols 1) (sub $totalcells 1) 
+                    (sub $numcols 1) (sub $totalcells 1)
                     (mul $numcols (div $totalcells $numcols)) $.Page.Permalink -}}
     {{- end -}}
     {{- $table := "" -}}
@@ -30,7 +36,7 @@
         {{/* No operations on the header and alignment rows */}}
         {{- if ge $index $startclean -}}
             {{/* markdown each cell & convert into single line */}}
-            {{- $cell = replace (markdownify $cell) "\n" "\x01" -}}
+            {{- $cell = replace (markdownify $cell) "\n" "\x7E" -}}
         {{- end -}}
         {{- if (eq (mod $index $numcols) 0) -}}
             {{/* first column of the row (empty(or whitespace) because of split) */}}
@@ -46,8 +52,8 @@
             {{- $row = print $row "|" $cell -}}
         {{- end -}}
     {{- end -}}
-    {{- replace (replace (markdownify $table) ";-vert-;" "|") "\x01" "\n" | markdownify  -}}
-    {{- /* warnf "%s" (replace (replace (markdownify $table) ";-vert-;" "|") "\x01" "\n" | markdownify ) */ -}}
+    {{- replace (replace (markdownify $table) ";-vert-;" "|") "\x7E" "\n" | markdownify  -}}
+    {{- /* warnf "%s" (replace (replace (markdownify $table) ";-vert-;" "|") "\x7E" "\n" | markdownify ) */ -}}
 {{- else -}}
     {{- warnf "empty table in [%q]" $.Page.Permalink -}}
 {{- end -}}
