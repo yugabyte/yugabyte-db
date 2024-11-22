@@ -138,6 +138,7 @@ DEFINE_NON_RUNTIME_bool(
 
 DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
+DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
 
 DECLARE_bool(use_fast_backward_scan);
 
@@ -2041,6 +2042,8 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .TEST_ysql_enable_db_logical_client_version_mode =
           &FLAGS_TEST_ysql_enable_db_logical_client_version_mode,
       .ysql_conn_mgr_superuser_sticky = &FLAGS_ysql_conn_mgr_superuser_sticky,
+      .TEST_ysql_log_perdb_allocated_new_objectid =
+          &FLAGS_TEST_ysql_log_perdb_allocated_new_objectid,
   };
   // clang-format on
   return &accessor;
