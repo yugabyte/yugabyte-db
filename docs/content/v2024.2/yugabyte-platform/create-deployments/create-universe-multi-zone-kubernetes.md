@@ -229,15 +229,15 @@ After the service YAML is applied, in this example you would access the universe
 
 ### Create a common load balancer service for YB-Masters/YB-TServers
 
-In versions v2.17 and later, newly created multi-zone universes are deployed in a single namespace by default. This can lead to duplication of load balancer services as a separate load balancer is created for each zone. In order to prevent creating extra load balancers, YBA provides the option to create a common load balancer service (currently {{<tags/feature/ea>}}) for YB-Masters and YB-TServers that spans across all the zones in a namespace.
+In v2.17 and later, newly created multi-zone universes are deployed in a single namespace by default. This can lead to duplication of load balancer services as a separate load balancer is created for each zone. To prevent creating extra load balancers, you can create a common load balancer service (currently {{<tags/feature/ea>}}) for YB-Masters and YB-TServers that spans all the zones in a namespace.
 
 For scenarios involving multi-namespaces or clusters, a distinct service is created for each namespace, maintaining the flexibility needed for complex deployments while avoiding unnecessary resource allocation.
 
 #### Enable the common load balancer
 
-By default, the load balancer service is created per zone, and you can change this behavior by [configuring helm overrides](#configure-helm-overrides) during universe creation, or by enabling a global runtime configuration option.
+By default, the load balancer service is created per zone. You can change this behavior by [configuring Helm overrides](#configure-helm-overrides) during universe creation, or by enabling a global runtime configuration option.
 
-You can explicitly define the service scope with the values as "AZ" or "Namespaced" when you [configure helm overrides](#configure-helm-overrides) as follows:
+You can explicitly define the service scope with the values as "AZ" or "Namespaced" when you [configure Helm overrides](#configure-helm-overrides) as follows:
 
 ```yaml
 serviceEndpoints:
@@ -270,39 +270,38 @@ serviceEndpoints:
       tcp-ysql-port: "5433"
 ```
 
-For services without an explicitly defined scope in helm overrides, the default service scope (Namespaced) is used, provided you set the **Default service scope for K8s universe** Global runtime configuration option (config key `yb.universe.default_service_scope_for_k8s`) to true. The configuration flag defines the default service scope for the universe if the scope is not explicitly defined in the service overrides.
+For services without an explicitly defined scope in Helm overrides, the default service scope (Namespaced) is used, provided you set the **Default service scope for K8s universe** Global runtime configuration option (config key `yb.universe.default_service_scope_for_k8s`) to true. The configuration flag defines the default service scope for the universe if the scope is not explicitly defined in the service overrides.
 
 Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global runtime configuration settings, and you cannot modify this service scope during a universe creation.
 
-{{<tip title="Important considerations">}}
+Keep in mind the following:
 
 - Scope Utilization: Services with a defined scope will adhere to that scope, as long as it's supported.
-- Namespaced scope: For Namespace scoped services, a service lifecycle is tied to the lifecycle of the universe.
-- Namespace deletion: When a namespace is deleted, all services associated with that namespace that were created by Helm will be removed as well.
+- Namespaced scope: For Namespaced-scoped services, a service lifecycle is tied to the lifecycle of the universe.
+- Namespace deletion: When a namespace is deleted, all services associated with that namespace that were created by Helm are removed as well.
 - Service configuration changes: Existing services can have their serviceType, ports, and annotations updated.
-{{</tip>}}
 
 #### Migrating service type from AZ to Namespaced scope
 
-After creating a service scope, it cannot be changed directly. To migrate a service from an AZ scope to a Namespaced scope, do the following:
+After creating a service scope, you can't change it directly. To migrate a service from an AZ scope to a Namespaced scope, do the following:
 
-1. Create a new service: Use Helm overrides to add a new service with the desired namespaced scope.
-1. Migrate clients. Gradually switch clients over to the new namespaced service to ensure they function correctly without disrupting operations.
+1. Create a new service: Use Helm overrides to add a new service with the desired Namespaced scope.
+1. Migrate clients. Gradually switch clients over to the new Namespaced service to ensure they function correctly without disrupting operations.
 1. Remove the old Service. After confirming that all clients are using the new service, update the Helm overrides again to remove the old AZ scoped service.
 
 #### Limitations
 
-- Unsupported in YugabyteDB helm chart versions before `2024.2`.
-- Unsupported for upgrading universes created prior to versions `2.18.6.0` and `2.20.2.0`.
+- Unsupported in YugabyteDB Helm chart versions before v2024.2.
+- Unsupported for upgrading universes created prior to v2.18.6.0 and v2.20.2.0.
 - Enable exposing service is disabled.
 
 ### Examples
 
-To create a universe with "Namespaced" scope services by default, do the following:
+To create a universe with Namespaced scope services by default, do the following:
 
 1. Set the **Default service scope for K8s universe** Global runtime configuration option (config key `yb.universe.default_service_scope_for_k8s`) to true.
 
-1. When you [configure helm overrides](#configure-helm-overrides), use serviceEndpoint overrides without explicitly defining scope or define scope as "Namespaced":
+1. When you [configure Helm overrides](#configure-helm-overrides), use serviceEndpoint overrides without explicitly defining scope, or define scope as "Namespaced":
 
     ```yaml
     serviceEndpoints:
@@ -318,7 +317,7 @@ To create a universe with "Namespaced" scope services by default, do the followi
           http-ui: "7000"
     ```
 
-Note that irrespective of the default scope, you can add any scope to the services using helm overrides, provided that the database version supports the scope.
+Note that irrespective of the default scope, you can add any scope to the services using Helm overrides, provided that the database version supports the scope.
 
 For example, if you create a universe that has "AZ" as the default scope, you can add a "Namespaced" scope as follows:
 
