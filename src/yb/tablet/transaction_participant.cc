@@ -676,6 +676,15 @@ class TransactionParticipant::Impl
     metric_aborted_transactions_pending_cleanup_->Decrement();
   }
 
+  void SignalAborted(const TransactionId& id) EXCLUDES(mutex_) override {
+    // We don't acquire this->mutex_ in here, but exclude it as the downstream code acquires
+    // wait-queue mutex which might be contentious. Additionally, this would also help avoid
+    // potential lock inversion issues.
+    if (wait_queue_) {
+      wait_queue_->SignalAborted(id);
+    }
+  }
+
   void Abort(const TransactionId& id, TransactionStatusCallback callback) {
     // We are not trying to cleanup intents here because we don't know whether this transaction
     // has intents of not.
@@ -2052,9 +2061,10 @@ class TransactionParticipant::Impl
       operation->CompleteWithStatus(id.status());
       return;
     }
-    if (operation->request()->status() == TransactionStatus::IMMEDIATE_CLEANUP && wait_queue_) {
-      // We should only receive IMMEDIATE_CLEANUP from the client in case of certain txn abort.
-      wait_queue_->SignalAborted(*id);
+    if (operation->request()->status() == TransactionStatus::IMMEDIATE_CLEANUP) {
+      // We should only receive IMMEDIATE_CLEANUP from the client when the txn heartbeat
+      // realizes that the txn has been aborted.
+      SignalAborted(*id);
     }
 
     TransactionApplyData data = {

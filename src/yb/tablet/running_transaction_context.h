@@ -84,6 +84,9 @@ class RunningTransactionContext {
     return ++request_serial_;
   }
 
+  // Used tp signal the wait-queue that the transaction has been aborted.
+  virtual void SignalAborted(const TransactionId& id) = 0;
+
   virtual const std::string& LogPrefix() const = 0;
 
   Delayer& delayer() {
