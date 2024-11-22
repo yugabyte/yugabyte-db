@@ -105,7 +105,12 @@ template<vector_index::IndexableVectorType Vector,
          vector_index::ValidDistanceResultType DistanceResult>
 class VectorIndexImpl : public VectorIndex, public vector_index::VectorLSMKeyValueStorage {
  public:
-  explicit VectorIndexImpl(ColumnId column_id) : column_id_(column_id) {
+  VectorIndexImpl(Slice indexed_table_key_prefix, ColumnId column_id)
+      : indexed_table_key_prefix_(indexed_table_key_prefix), column_id_(column_id) {
+  }
+
+  Slice indexed_table_key_prefix() const override {
+    return indexed_table_key_prefix_.AsSlice();
   }
 
   ColumnId column_id() const override {
@@ -180,6 +185,7 @@ class VectorIndexImpl : public VectorIndex, public vector_index::VectorLSMKeyVal
     return it->second;
   }
 
+  const KeyBuffer indexed_table_key_prefix_;
   const ColumnId column_id_;
 
   using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
@@ -195,11 +201,11 @@ class VectorIndexImpl : public VectorIndex, public vector_index::VectorLSMKeyVal
 
 Result<VectorIndexPtr> CreateVectorIndex(
     const std::string& data_root_dir, rpc::ThreadPool& thread_pool,
-    const qlexpr::IndexInfo& index_info) {
+    Slice indexed_table_key_prefix, const qlexpr::IndexInfo& index_info) {
   auto path = Format("$0.vi-$1", data_root_dir, index_info.table_id());
   auto& options = index_info.vector_idx_options();
   auto result = std::make_shared<VectorIndexImpl<std::vector<float>, float>>(
-      ColumnId(options.column_id()));
+      indexed_table_key_prefix, ColumnId(options.column_id()));
   RETURN_NOT_OK(result->Open(path, thread_pool, options));
   return result;
 }

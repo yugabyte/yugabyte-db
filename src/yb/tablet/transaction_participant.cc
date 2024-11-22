@@ -917,7 +917,7 @@ class TransactionParticipant::Impl
         // TODO(wait-queues): Consider signaling before replicating the transaction update.
         wait_queue_->SignalCommitted(data.transaction_id, data.commit_ht);
       }
-      auto apply_state = CHECK_RESULT(applier_.ApplyIntents(data));
+      auto apply_state = applier_.ApplyIntents(data);
 
       VLOG_WITH_PREFIX(4) << "TXN: " << data.transaction_id << ": apply state: "
                           << apply_state.ToString();

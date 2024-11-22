@@ -660,17 +660,19 @@ Result<bool> ApplyIntentsContext::Entry(
 }
 
 Status ApplyIntentsContext::ProcessVectorIndexes(Slice key, Slice value) {
-  auto doc_key_size = VERIFY_RESULT(dockv::DocKey::EncodedSize(
-      key, dockv::DocKeyPart::kWholeDocKey));
-  if (doc_key_size < key.size()) {
-    auto entry_type = static_cast<KeyEntryType>(key[doc_key_size]);
+  auto sizes = VERIFY_RESULT(dockv::DocKey::EncodedPrefixAndDocKeySizes(key));
+  if (sizes.doc_key_size < key.size()) {
+    auto entry_type = static_cast<KeyEntryType>(key[sizes.doc_key_size]);
     if (entry_type == KeyEntryType::kColumnId) {
-      auto column_id = VERIFY_RESULT(ColumnId::FullyDecode(key.WithoutPrefix(doc_key_size + 1)));
+      auto column_id = VERIFY_RESULT(ColumnId::FullyDecode(
+          key.WithoutPrefix(sizes.doc_key_size + 1)));
       // We expect small amount of vector indexes, usually 1. So it is faster to iterate over them.
       for (size_t i = 0; i != vector_indexes_->size(); ++i) {
-        if ((*vector_indexes_)[i]->column_id() == column_id) {
+        const auto& vector_index = *(*vector_indexes_)[i];
+        auto table_key_prefix = vector_index.indexed_table_key_prefix();
+        if (key.starts_with(table_key_prefix) && vector_index.column_id() == column_id) {
           vector_index_batches_[i].push_back(VectorIndexInsertEntry {
-            .key = KeyBuffer(key.Prefix(doc_key_size)),
+            .key = KeyBuffer(key.Prefix(sizes.doc_key_size).WithoutPrefix(table_key_prefix.size())),
             .value = ValueBuffer(value),
           });
         }
@@ -686,9 +688,11 @@ Status ApplyIntentsContext::ProcessVectorIndexes(Slice key, Slice value) {
                    key.ToDebugHexString(), value.ToDebugHexString());
     switch (*packed_row_version) {
       case dockv::PackedRowVersion::kV1:
-        return ProcessVectorIndexesForPackedRow<dockv::PackedRowDecoderV1>(key, value);
+        return ProcessVectorIndexesForPackedRow<dockv::PackedRowDecoderV1>(
+            sizes.prefix_size, key, value);
       case dockv::PackedRowVersion::kV2:
-        return ProcessVectorIndexesForPackedRow<dockv::PackedRowDecoderV2>(key, value);
+        return ProcessVectorIndexesForPackedRow<dockv::PackedRowDecoderV2>(
+            sizes.prefix_size, key, value);
     }
     FATAL_INVALID_ENUM_VALUE(dockv::PackedRowVersion, *packed_row_version);
   }
@@ -696,18 +700,35 @@ Status ApplyIntentsContext::ProcessVectorIndexes(Slice key, Slice value) {
 }
 
 template <class Decoder>
-Status ApplyIntentsContext::ProcessVectorIndexesForPackedRow(Slice key, Slice value) {
+Status ApplyIntentsContext::ProcessVectorIndexesForPackedRow(
+    size_t prefix_size, Slice key, Slice value) {
   value.consume_byte();
 
   auto schema_version = narrow_cast<SchemaVersion>(VERIFY_RESULT(FastDecodeUnsignedVarInt(&value)));
 
-  auto& schema_packing = *VERIFY_RESULT(schema_packing_provider()->CotablePacking(
-      Uuid::Nil(), schema_version, HybridTime::kMax)).schema_packing;
-  Decoder decoder(schema_packing, value.data());
+  auto table_key_prefix = key.Prefix(prefix_size);
+  if (schema_packing_version_ != schema_version ||
+      schema_packing_table_prefix_.AsSlice() != table_key_prefix) {
+    auto packing = VERIFY_RESULT(prefix_size
+        ? schema_packing_provider()->ColocationPacking(
+              BigEndian::Load32(key.data() + 1), schema_version, HybridTime::kMax)
+        : schema_packing_provider()->CotablePacking(
+              Uuid::Nil(), schema_version, HybridTime::kMax));
+    schema_packing_ = packing.schema_packing;
+    schema_packing_version_ = schema_version;
+    schema_packing_table_prefix_.Assign(table_key_prefix);
+  }
+  Decoder decoder(*schema_packing_, value.data());
+
   for (size_t i = 0; i != vector_indexes_->size(); ++i) {
-    auto column_value = decoder.FetchValue((*vector_indexes_)[i]->column_id());
+    const auto& vector_index = *(*vector_indexes_)[i];
+    auto vector_index_table_key_prefix = vector_index.indexed_table_key_prefix();
+    if (table_key_prefix != vector_index_table_key_prefix) {
+      continue;
+    }
+    auto column_value = decoder.FetchValue(vector_index.column_id());
     vector_index_batches_[i].push_back(VectorIndexInsertEntry {
-      .key = KeyBuffer(key),
+      .key = KeyBuffer(key.WithoutPrefix(table_key_prefix.size())),
       .value = ValueBuffer(*column_value),
     });
   }

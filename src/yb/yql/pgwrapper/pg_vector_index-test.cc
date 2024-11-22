@@ -51,10 +51,7 @@ void PgVectorIndexTest::TestSimple() {
   ASSERT_OK(conn.Execute(
       "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector(3))" + create_suffix));
 
-  // TODO(vector_index) Support colocated tables.
-  ASSERT_OK(conn.ExecuteFormat(
-      "CREATE INDEX ON test USING $0 (embedding vector_l2_ops)",
-      colocated ? "ybdummyann" : "ybhnsw"));
+  ASSERT_OK(conn.Execute("CREATE INDEX ON test USING ybhnsw (embedding vector_l2_ops)"));
 
   size_t num_found_peers = 0;
   auto check_tablets = [this, &num_found_peers]() -> Result<bool> {

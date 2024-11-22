@@ -47,6 +47,7 @@ class VectorIndex {
  public:
   virtual ~VectorIndex() = default;
 
+  virtual Slice indexed_table_key_prefix() const = 0;
   virtual ColumnId column_id() const = 0;
   virtual Status Insert(
       const VectorIndexInsertEntries& entries, HybridTime write_time,
@@ -57,6 +58,6 @@ class VectorIndex {
 
 Result<VectorIndexPtr> CreateVectorIndex(
     const std::string& data_root_dir, rpc::ThreadPool& thread_pool,
-    const qlexpr::IndexInfo& index_info);
+    Slice indexed_table_key_prefix, const qlexpr::IndexInfo& index_info);
 
 }  // namespace yb::docdb

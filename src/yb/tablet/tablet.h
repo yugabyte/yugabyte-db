@@ -310,7 +310,7 @@ class Tablet : public AbstractTablet,
 
   Status ImportData(const std::string& source_dir);
 
-  Result<docdb::ApplyTransactionState> ApplyIntents(const TransactionApplyData& data) override;
+  docdb::ApplyTransactionState ApplyIntents(const TransactionApplyData& data) override;
 
   Status RemoveIntents(
       const RemoveIntentsData& data, RemoveReason reason, const TransactionId& id) override;
@@ -1292,10 +1292,9 @@ class Tablet : public AbstractTablet,
 
   std::atomic<bool> has_vector_indexes_{false};
   std::shared_mutex vector_indexes_mutex_;
-  std::unordered_map<TableId, docdb::VectorIndexPtr> all_vector_indexes_
+  std::unordered_map<TableId, docdb::VectorIndexPtr> vector_indexes_map_
       GUARDED_BY(vector_indexes_mutex_);
-  std::unordered_map<TableId, docdb::VectorIndexesPtr> vector_indexes_for_table_
-      GUARDED_BY(vector_indexes_mutex_);
+  docdb::VectorIndexesPtr vector_indexes_list_ GUARDED_BY(vector_indexes_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

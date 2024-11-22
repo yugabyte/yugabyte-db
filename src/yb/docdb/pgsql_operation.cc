@@ -1883,7 +1883,11 @@ Result<size_t> PgsqlReadOperation::Execute() {
   } else if (request_.has_sampling_state()) {
     std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteSample());
   } else if (request_.has_vector_idx_options()) {
-    std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteVectorSearch());
+    std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteVectorSearch(
+        data_.doc_read_context, request_.vector_idx_options()));
+  } else if (request_.index_request().has_vector_idx_options()) {
+    std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteVectorSearch(
+        *data_.index_doc_read_context, request_.index_request().vector_idx_options()));
   } else {
     std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteScalar());
   }
@@ -2029,18 +2033,21 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteSample() {
   return std::tuple<size_t, bool>{fetched_rows, has_paging_state};
 }
 
-Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteVectorSearch() {
+Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteVectorSearch(
+     const DocReadContext& doc_read_context, const PgVectorReadOptionsPB& options) {
   // Build the vectorann and then make an index_doc_read_context on the vectorann
   // to get the index iterator. Then do ExecuteBatchKeys on the index iterator.
-  if (!request_.vector_idx_options().has_vector()) {
-    return STATUS(InvalidArgument, "Query vector not provided");
+  RSTATUS_DCHECK(options.has_vector(), InvalidArgument, "Query vector not provided");
+  RSTATUS_DCHECK(
+      doc_read_context.vector_idx_options.has_value(), IllegalState,
+      "Table does not have vector index");
+
+  if (doc_read_context.vector_idx_options->idx_type() == PgVectorIndexType::HNSW) {
+    return std::tuple<size_t, bool>(VERIFY_RESULT(ExecuteVectorLSMSearch(
+        doc_read_context, options)), false);
   }
 
-  if (data_.doc_read_context.vector_idx_options->idx_type() == PgVectorIndexType::HNSW) {
-    return std::tuple<size_t, bool>(VERIFY_RESULT(ExecuteVectorLSMSearch()), false);
-  }
-
-  auto query_vec = request_.vector_idx_options().vector().binary_value();
+  auto query_vec = options.vector().binary_value();
 
   auto ysql_query_vec = pointer_cast<const vector_index::YSQLVector*>(query_vec.data());
 
@@ -2054,21 +2061,21 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteVectorSearch() {
   std::vector<ColumnSchema> indexed_column_ids;
   dockv::ReaderProjection index_doc_projection;
 
-  auto key_col_id = data_.doc_read_context.schema().column_id(0);
+  auto key_col_id = doc_read_context.schema().column_id(0);
 
   // Building the schema to extract the vector and key from the main DocDB store.
   // Vector should be the first value after the key.
   auto vector_col_id =
-      data_.doc_read_context.schema().column_id(data_.doc_read_context.schema().num_key_columns());
+      doc_read_context.schema().column_id(doc_read_context.schema().num_key_columns());
 
   if (request_.vector_idx_options().has_vector_column_id()) {
     vector_col_id = request_.vector_idx_options().vector_column_id();
   }
 
-  index_doc_projection.Init(data_.doc_read_context.schema(), {key_col_id, vector_col_id});
+  index_doc_projection.Init(doc_read_context.schema(), {key_col_id, vector_col_id});
 
   FilteringIterator table_iter(&table_iter_);
-  RETURN_NOT_OK(table_iter.Init(data_, request_, index_doc_projection, data_.doc_read_context));
+  RETURN_NOT_OK(table_iter.Init(data_, request_, index_doc_projection, doc_read_context));
   dockv::PgTableRow row(index_doc_projection);
   const auto& table_id = request_.table_id();
 
@@ -2105,7 +2112,7 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteVectorSearch() {
   initial_prefetch_size = std::max(initial_prefetch_size, 25);
 
   ANNKeyProvider key_provider(
-      data_.doc_read_context, response_, initial_prefetch_size, query_vec_ref, ann_store.get(),
+      doc_read_context, response_, initial_prefetch_size, query_vec_ref, ann_store.get(),
       ann_paging_state);
   auto fetched_rows = VERIFY_RESULT(ExecuteBatchKeys(key_provider));
 
@@ -2124,17 +2131,18 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteVectorSearch() {
   return std::tuple<size_t, bool>{fetched_rows, has_paging_state};
 }
 
-Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch() {
+Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(
+    const DocReadContext& doc_read_context, const PgVectorReadOptionsPB& options) {
   RSTATUS_DCHECK(data_.vector_index, IllegalState, "Search vector when vector index is null");
 
-  Slice vector_slice(request_.vector_idx_options().vector().binary_value());
-  size_t max_results = request_.vector_idx_options().prefetch_size();
+  Slice vector_slice(options.vector().binary_value());
+  size_t max_results = options.prefetch_size();
 
   auto result = VERIFY_RESULT(data_.vector_index->Search(vector_slice, max_results));
   // TODO(vector_index) Order keys by ybctid for fetching.
   VectorIndexKeyProvider key_provider(
       result, response_, *data_.vector_index, vector_slice, max_results);
-  return ExecuteBatchKeys(key_provider, true);
+  return ExecuteBatchKeys(key_provider, &doc_read_context != data_.index_doc_read_context);
 }
 
 void PgsqlReadOperation::BindReadTimeToPagingState(const ReadHybridTime& read_time) {

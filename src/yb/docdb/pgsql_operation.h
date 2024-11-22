@@ -189,7 +189,8 @@ class PgsqlReadOperation : public DocExprExecutor {
   Result<std::tuple<size_t, bool>> ExecuteScalar();
 
   // Execute a READ operator for a given vector search.
-  Result<std::tuple<size_t, bool>> ExecuteVectorSearch();
+  Result<std::tuple<size_t, bool>> ExecuteVectorSearch(
+      const DocReadContext& doc_read_context, const PgVectorReadOptionsPB& options);
 
   // Execute a READ operator for a given batch of keys.
   template <class KeyProvider>
@@ -211,7 +212,8 @@ class PgsqlReadOperation : public DocExprExecutor {
   Result<bool> SetPagingState(
       YQLRowwiseIteratorIf* iter, const Schema& schema, const ReadHybridTime& read_time);
 
-  Result<size_t> ExecuteVectorLSMSearch();
+  Result<size_t> ExecuteVectorLSMSearch(
+      const DocReadContext& doc_read_context, const PgVectorReadOptionsPB& options);
 
   void InitTargetEncoders(
       const google::protobuf::RepeatedPtrField<PgsqlExpressionPB>& targets,

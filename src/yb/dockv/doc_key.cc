@@ -350,6 +350,47 @@ class EncodedSizesCallback {
   mutable const uint8_t* range_group_start_ = nullptr;
 };
 
+class EncodedPrefixAndDocKeySizesCallback {
+ public:
+  explicit EncodedPrefixAndDocKeySizesCallback(DocKeyDecoder* decoder) : decoder_(decoder) {
+    UpdatePrefixEnd();
+  }
+
+  boost::container::small_vector_base<Slice>* hashed_group() const {
+    return nullptr;
+  }
+
+  boost::container::small_vector_base<Slice>* range_group() const {
+    return nullptr;
+  }
+
+  void SetHash(...) const {}
+
+  void SetCoTableId(const Uuid& cotable_id) const {
+    UpdatePrefixEnd();
+  }
+
+  void SetColocationId(const ColocationId colocation_id) const {
+    UpdatePrefixEnd();
+  }
+
+  KeyEntryValue* AddSubkey() const {
+    return nullptr;
+  }
+
+  const uint8_t* prefix_end() {
+    return prefix_end_;
+  }
+
+ private:
+  void UpdatePrefixEnd() const {
+    prefix_end_ = decoder_->left_input().data();
+  }
+
+  DocKeyDecoder* decoder_;
+  mutable const uint8_t* prefix_end_;
+};
+
 } // namespace
 
 yb::Status DocKey::PartiallyDecode(Slice *slice,
@@ -410,6 +451,19 @@ Result<DocKeySizes> DocKey::EncodedHashPartAndDocKeySizes(
       &decoder, DocKeyPart::kWholeDocKey, allow_special, callback));
   return DocKeySizes {
     .hash_part_size = static_cast<size_t>(callback.range_group_start() - initial_begin),
+    .doc_key_size = static_cast<size_t>(decoder.left_input().data() - initial_begin),
+  };
+}
+
+Result<PrefixAndDocKeySizes> DocKey::EncodedPrefixAndDocKeySizes(
+    Slice slice, AllowSpecial allow_special) {
+  auto initial_begin = slice.data();
+  DocKeyDecoder decoder(slice);
+  EncodedPrefixAndDocKeySizesCallback callback(&decoder);
+  RETURN_NOT_OK(DoDecode(
+      &decoder, DocKeyPart::kWholeDocKey, allow_special, callback));
+  return PrefixAndDocKeySizes {
+    .prefix_size = static_cast<size_t>(callback.prefix_end() - initial_begin),
     .doc_key_size = static_cast<size_t>(decoder.left_input().data() - initial_begin),
   };
 }
