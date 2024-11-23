@@ -44,7 +44,7 @@ YSQL Connection Manager has the following key features:
 
 - Support for prepared statements - Odyssey supports protocol-level prepared statements and YSQL Connection Manager inherits this feature.
 
-## How to use
+## Start YSQL Connection Manager
 
 To start a YugabyteDB cluster with YSQL Connection Manager, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `enable_ysql_conn_mgr` to true.
 
@@ -69,7 +69,7 @@ To create a large number of client connections, ensure that "SHMMNI" (the maximu
 
 ### YugabyteDB Anywhere
 
-{{<tags/feature/tp>}}You can use built-in connection pooling with universes deployed using YugabyteDB Anywhere. Refer to [Create universe](../../../yugabyte-platform/create-deployments/create-universe-multi-zone/#advanced-configuration). When managing universes using YugabyteDB Anywhere, do not set connection pooling options using flags.
+{{<tags/feature/tp>}}To use built-in connection pooling with universes deployed using YugabyteDB Anywhere, turn on the **Connection pooling** option when [creating](../../../yugabyte-platform/create-deployments/create-universe-multi-zone/#advanced-configuration) or [modifying](../../../yugabyte-platform/manage-deployments/edit-universe/#edit-connection-pooling) a universe. When managing universes using YugabyteDB Anywhere, do not set connection pooling options using flags.
 
 ## Configuration
 
