@@ -12,6 +12,9 @@ menu:
     parent: troubleshoot-yp
     weight: 20
 type: docs
+rightNav:
+  hideH3: true
+  hideH4: true
 ---
 
 YugabyteDB Anywhere (YBA) allows you to monitor and troubleshoot issues that arise from universes.
