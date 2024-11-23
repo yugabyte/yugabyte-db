@@ -33,7 +33,7 @@ class YsqlCatalogConfig {
   explicit YsqlCatalogConfig(SysCatalogTable& sys_catalog);
   ~YsqlCatalogConfig() = default;
 
-  Status PrepareDefaultIfNeeded(int64_t term) EXCLUDES(mutex_);
+  Status PrepareDefaultIfNeeded(const LeaderEpoch& epoch) EXCLUDES(mutex_);
   void SetConfig(scoped_refptr<SysConfigInfo> config) EXCLUDES(mutex_);
   void Reset() EXCLUDES(mutex_);
 

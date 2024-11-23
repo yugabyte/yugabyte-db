@@ -433,7 +433,8 @@ Status TSManager::MarkUnresponsiveTServers(const LeaderEpoch& epoch) {
   return Status::OK();
 }
 
-Status TSManager::RunLoader(const CloudInfoPB& cloud_info, rpc::ProxyCache* proxy_cache) {
+Status TSManager::RunLoader(
+    const CloudInfoPB& cloud_info, rpc::ProxyCache* proxy_cache, SysCatalogLoadingState& state) {
   if (!GetAtomicFlag(&FLAGS_persist_tserver_registry)) {
     return Status::OK();
   }
@@ -442,10 +443,10 @@ Status TSManager::RunLoader(const CloudInfoPB& cloud_info, rpc::ProxyCache* prox
   MutexLock l_reg(registration_lock_);
   std::lock_guard l_map(map_lock_);
   servers_by_id_ = loader->TakeMap();
-  // todo(zdrudi): cluster can be wedged (permanently?) if we crash after registering enough
-  // tservers but before calling the callback.  so add a check to potentially schedule the callback
-  // here.
-  // https://github.com/yugabyte/yugabyte-db/issues/23744
+  if (servers_by_id_.size() >= ts_count_callback_min_count_ && ts_count_callback_) {
+    state.AddPostLoadTask(
+        std::move(ts_count_callback_), "Callback run at minimum number of tservers");
+  }
   return Status::OK();
 }
 

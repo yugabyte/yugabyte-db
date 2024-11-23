@@ -49,7 +49,6 @@
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/opid_util.h"
 
-#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/pgsql_operation.h"
 
@@ -116,6 +115,7 @@ using util::DereferencedEqual;
 using util::MapsEqual;
 using qlexpr::IndexInfo;
 using qlexpr::IndexMap;
+using docdb::SkipTableTombstoneCheck;
 
 namespace {
 
@@ -144,7 +144,8 @@ TableInfo::TableInfo(const std::string& log_prefix_,
                      SkipTableTombstoneCheck skip_table_tombstone_check,
                      PrivateTag)
     : log_prefix(log_prefix_),
-      doc_read_context(new docdb::DocReadContext(log_prefix, table_type, docdb::Index::kFalse)),
+      doc_read_context(new docdb::DocReadContext(
+          log_prefix, table_type, docdb::Index::kFalse, skip_table_tombstone_check)),
       index_map(std::make_shared<IndexMap>()),
       skip_table_tombstone_check(skip_table_tombstone_check) {
   CompleteInit();
@@ -171,7 +172,7 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
       log_prefix(MakeTableInfoLogPrefix(tablet_log_prefix, primary, table_id)),
       doc_read_context(std::make_shared<docdb::DocReadContext>(
           log_prefix, table_type, docdb::Index(index_info.has_value()), schema,
-          schema_version)),
+          schema_version, skip_table_tombstone_check_)),
       index_map(std::make_shared<IndexMap>(index_map)),
       index_info(index_info ? new IndexInfo(*index_info) : nullptr),
       schema_version(schema_version),
@@ -195,7 +196,8 @@ TableInfo::TableInfo(const TableInfo& other,
       doc_read_context(schema_version != other.schema_version
           ? std::make_shared<docdb::DocReadContext>(
               *other.doc_read_context, schema, schema_version)
-          : std::make_shared<docdb::DocReadContext>(*other.doc_read_context)),
+          : std::make_shared<docdb::DocReadContext>(
+              *other.doc_read_context)),
       index_map(std::make_shared<IndexMap>(index_map)),
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
       schema_version(schema_version),
@@ -217,7 +219,8 @@ TableInfo::TableInfo(const TableInfo& other,
       table_type(other.table_type),
       cotable_id(other.cotable_id),
       log_prefix(other.log_prefix),
-      doc_read_context(std::make_shared<docdb::DocReadContext>(*other.doc_read_context, schema)),
+      doc_read_context(std::make_shared<docdb::DocReadContext>(
+          *other.doc_read_context, schema)),
       index_map(std::make_shared<IndexMap>(*other.index_map)),
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
       schema_version(other.schema_version),
@@ -251,6 +254,7 @@ TableInfo::~TableInfo() = default;
 
 void TableInfo::CompleteInit() {
   if (index_info && index_info->is_vector_idx()) {
+    CHECK_EQ(index_info->vector_idx_options().idx_type(), PgVectorIndexType::HNSW);
     doc_read_context->vector_idx_options = index_info->vector_idx_options();
   }
 
@@ -283,6 +287,8 @@ Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
   skip_table_tombstone_check = SkipTableTombstoneCheck(pb.skip_table_tombstone_check());
 
   RETURN_NOT_OK(doc_read_context->LoadFromPB(pb));
+  doc_read_context->set_skip_table_tombstone_check(skip_table_tombstone_check);
+
   if (pb.has_index_info()) {
     index_info.reset(new IndexInfo(pb.index_info()));
   }
@@ -1322,7 +1328,7 @@ void RaftGroupMetadata::InsertPackedSchemaForXClusterTarget(
   std::lock_guard lock(data_mutex_);
   TableId target_table_id = table_id.empty() ? primary_table_id_ : table_id;
   auto table_info_ptr = FindOrNull(kv_store_.tables, target_table_id);
-  CHECK(table_info_ptr);
+  CHECK_NOTNULL(table_info_ptr);
 
   // First insert the packed schema with schema_version - 1.
   // Don't drop any columns as part of inserting the packed schema.
@@ -1334,8 +1340,14 @@ void RaftGroupMetadata::InsertPackedSchemaForXClusterTarget(
   auto new_table_info = std::make_shared<TableInfo>(
       *temp_table_info, (*table_info_ptr)->schema(), index_map, dropped_cols, version);
 
-  // TODO(#22318) handle colocated tables later.
   table_info_ptr->swap(new_table_info);
+
+  // Also update the colocation map if needed.
+  if (target_table_id != primary_table_id_ && schema.has_colocation_id()) {
+    auto colocated_table = FindOrNull(kv_store_.colocation_to_table, schema.colocation_id());
+    CHECK_NOTNULL(colocated_table);
+    *colocated_table = *table_info_ptr;
+  }
 
   OnChangeMetadataOperationAppliedUnlocked(op_id);
 }

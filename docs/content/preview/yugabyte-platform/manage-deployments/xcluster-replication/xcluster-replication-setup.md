@@ -14,6 +14,8 @@ type: docs
 
 ## Prerequisites
 
+To set up or configure xCluster replication, you must be a Super Admin or Admin, or have a role with the Manage xCluster permission. For information on roles, refer to [Manage users](../../../administer-yugabyte-platform/anywhere-rbac/).
+
 Create the source and target universes for replication.
 
 Ensure the universes have the following characteristics:
@@ -215,7 +217,14 @@ To create an alert:
 
 1. Click **Save** when you are done.
 
-When replication is set up, YugabyteDB automatically creates an alert for _YSQL Tables in DR/xCluster Config Inconsistent With Primary/Source_. This alert fires when tables are added or dropped from source's databases under replication, but are not yet added or dropped from the YugabyteDB Anywhere replication configuration.
+When replication is set up, YugabyteDB automatically creates the alert _XCluster Config Tables are in bad state_. This alert fires when:
+
+- there is a table schema mismatch between DR primary and replica
+- tables are added or dropped from either DR primary or replica, but have not been added or dropped from the other.
+
+When you receive an alert, navigate to the replication configuration [Tables tab](#tables) to see the table status.
+
+YugabyteDB Anywhere collects these metrics every 2 minutes, and fires the alert within 10 minutes of the error.
 
 For more information on alerting in YugabyteDB Anywhere, refer to [Alerts](../../../alerts-monitoring/alert/).
 

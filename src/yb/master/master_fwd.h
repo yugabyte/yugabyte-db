@@ -92,6 +92,8 @@ class XClusterManagerIf;
 class YQLPartitionsVTable;
 class YQLVirtualTable;
 class YsqlBackendsManager;
+class YsqlManager;
+class YsqlManagerIf;
 class YsqlTablegroupManager;
 class YsqlTablespaceManager;
 class YsqlTransactionDdl;
@@ -127,6 +129,9 @@ YB_STRONGLY_TYPED_BOOL(RegisteredThroughHeartbeat);
 YB_STRONGLY_TYPED_BOOL(IncludeInactive);
 YB_STRONGLY_TYPED_BOOL(IncludeDeleted);
 YB_STRONGLY_TYPED_BOOL(IsSystemObject);
+
+// Used to indicate whether hidden objects should be included.
+YB_STRONGLY_TYPED_BOOL(IncludeHidden);
 
 YB_DEFINE_ENUM(
     CollectFlag,

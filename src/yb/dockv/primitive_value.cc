@@ -558,7 +558,7 @@ void KeyEntryValue::AppendToKey(KeyBytes* key_bytes) const {
       return;
 
     case KeyEntryType::kHybridTime:
-      hybrid_time_val_.AppendEncodedInDocDbFormat(key_bytes->mutable_data());
+      hybrid_time_val_.AppendEncodedInDocDbFormat(&key_bytes->data());
       return;
 
     case KeyEntryType::kUInt16Hash:

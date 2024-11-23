@@ -14,6 +14,10 @@
 #include "yb/vector_index/hnswlib_wrapper.h"
 
 #include <memory>
+#include <utility>
+
+#include "yb/gutil/casts.h"
+#include "yb/vector_index/vector_index_if.h"
 
 #pragma GCC diagnostic push
 
@@ -41,6 +45,8 @@ namespace yb::vector_index {
 using hnswlib::Stats;
 
 namespace {
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+class HnswlibVectorIterator;
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class HnswlibIndex :
@@ -54,7 +60,17 @@ class HnswlibIndex :
       : options_(options) {
   }
 
-  Status Reserve(size_t num_vectors) override {
+  std::unique_ptr<AbstractIterator<std::pair<Vector, VertexId>>> BeginImpl() const override {
+    return std::make_unique<HnswlibVectorIterator<Vector, DistanceResult>>(
+        hnsw_->vectors_begin(), options_.dimensions);
+  }
+
+  std::unique_ptr<AbstractIterator<std::pair<Vector, VertexId>>> EndImpl() const override {
+    return std::make_unique<HnswlibVectorIterator<Vector, DistanceResult>>(
+        hnsw_->vectors_end(), options_.dimensions);
+  }
+
+  Status Reserve(size_t num_vectors, size_t max_concurrent_inserts) override {
     if (hnsw_) {
       return STATUS_FORMAT(
           IllegalState, "Cannot reserve space for $0 vectors: Hnswlib index already initialized",
@@ -75,7 +91,6 @@ class HnswlibIndex :
   }
 
   Status DoInsert(VertexId vertex_id, const Vector& v) {
-    CHECK_NOTNULL(hnsw_);
     hnsw_->addPoint(v.data(), vertex_id);
     return Status::OK();
   }
@@ -92,7 +107,7 @@ class HnswlibIndex :
 
   Status DoLoadFromFile(const std::string& path) {
     // Create hnsw_ before loading from file.
-    RETURN_NOT_OK(Reserve(0));
+    RETURN_NOT_OK(Reserve(0, 0));
     try {
       hnsw_->loadIndex(path, space_.get());
     } catch (std::exception& e) {
@@ -195,6 +210,34 @@ class HnswlibIndex :
   HNSWOptions options_;
   std::unique_ptr<hnswlib::SpaceInterface<DistanceResult>> space_;
   std::unique_ptr<HNSWImpl> hnsw_;
+};
+
+
+template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+class HnswlibVectorIterator : public AbstractIterator<std::pair<Vector, VertexId>> {
+ public:
+  HnswlibVectorIterator(typename hnswlib::VectorIterator<DistanceResult> position, int dimensions)
+      : internal_iterator_(position), dimensions_(dimensions) {}
+
+ protected:
+  std::pair<Vector, VertexId> Dereference() const override {
+    auto pair_data = *internal_iterator_;
+    Vector result_vector(dimensions_);
+    std::memcpy(
+        result_vector.data(), pair_data.first, dimensions_ * sizeof(typename Vector::value_type));
+    return std::make_pair(result_vector, pair_data.second);
+  }
+
+  void Next() override { ++internal_iterator_; }
+
+  bool NotEquals(const AbstractIterator<std::pair<Vector, VertexId>>& other) const override {
+    const auto& other_casted = down_cast<const HnswlibVectorIterator&>(other);
+    return internal_iterator_ != other_casted.internal_iterator_;
+  }
+
+ private:
+  hnswlib::VectorIterator<DistanceResult> internal_iterator_;
+  int dimensions_;
 };
 
 }  // namespace

@@ -905,7 +905,6 @@ export default class UniverseOverviewNew extends Component {
                 higherVersionCount={updateAvailable}
                 isRollBackFeatureEnabled={isRollBackFeatureEnabled}
                 failedTaskDetails={failedTask}
-                isReleasesEnabled={this.props.isReleasesEnabled}
               />
             )}
           </Col>

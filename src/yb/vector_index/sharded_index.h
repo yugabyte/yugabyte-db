@@ -33,10 +33,10 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
   }
 
   // Reserve capacity across all shards (each shard gets an equal portion, rounded up).
-  Status Reserve(size_t num_vectors) override {
-    size_t capacity_per_shard = (num_vectors + indexes_.size() - 1) / indexes_.size(); // Round up
+  Status Reserve(size_t num_vectors, size_t max_concurrent_inserts) override {
+    size_t capacity_per_shard = (num_vectors + indexes_.size() - 1) / indexes_.size();  // Round up
     for (auto& index : indexes_) {
-      RETURN_NOT_OK(index->Reserve(capacity_per_shard));
+      RETURN_NOT_OK(index->Reserve(capacity_per_shard, max_concurrent_inserts));
     }
     return Status::OK();
   }
@@ -56,6 +56,17 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
       }
     }
     return Vector();  // Return an empty vector if not found.
+  }
+
+  // Define begin and end methods to return iterators
+  std::unique_ptr<AbstractIterator<std::pair<Vector, VertexId>>> BeginImpl() const override {
+    CHECK(!indexes_.empty());
+    return indexes_[0]->BeginImpl();
+  }
+
+  std::unique_ptr<AbstractIterator<std::pair<Vector, VertexId>>> EndImpl() const override {
+    CHECK(!indexes_.empty());
+    return indexes_[0]->EndImpl();
   }
 
   // Search for the closest vectors across all shards.

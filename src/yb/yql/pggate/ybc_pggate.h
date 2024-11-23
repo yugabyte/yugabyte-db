@@ -15,6 +15,8 @@
 #pragma once
 
 #include <stdint.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -438,6 +440,7 @@ YBCStatus YBCPgExecDropIndex(YBCPgStatement handle);
 YBCStatus YBCPgWaitForBackendsCatalogVersion(
     YBCPgOid dboid,
     uint64_t version,
+    pid_t pid,
     int* num_lagging_backends);
 
 YBCStatus YBCPgBackfillIndex(
@@ -881,6 +884,7 @@ YBCStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
                                         const char *plugin_name,
                                         YBCPgOid database_oid,
                                         YBCPgReplicationSlotSnapshotAction snapshot_action,
+                                        YBCLsnType lsn_type,
                                         YBCPgStatement *handle);
 YBCStatus YBCPgExecCreateReplicationSlot(YBCPgStatement handle,
                                          uint64_t *consistent_snapshot_time);

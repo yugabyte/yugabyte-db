@@ -96,7 +96,7 @@ var createGCPEARCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(strings.TrimSpace(protectionLevel)) != 0 {
-			requestBody[util.GCPProtectionLevelField] = protectionLevel
+			requestBody[util.GCPProtectionLevelField] = strings.ToUpper(protectionLevel)
 		}
 
 		rTask, response, err := authAPI.CreateKMSConfig(util.GCPEARType).
@@ -133,9 +133,9 @@ func init() {
 			"else a new one will be created automatically.")
 	createGCPEARCmd.MarkFlagRequired("crypto-key-name")
 	createGCPEARCmd.MarkFlagRequired("key-ring-name")
-	createGCPEARCmd.Flags().String("protection-level", "HSM",
+	createGCPEARCmd.Flags().String("protection-level", "hsm",
 		"[Optional] The protection level to use for this key. "+
-			"Allowed values (case sensitive): SOFTWARE and HSM.")
+			"Allowed values: software, hsm.")
 	createGCPEARCmd.Flags().String("endpoint", "",
 		"[Optional] GCP KMS Endpoint.")
 

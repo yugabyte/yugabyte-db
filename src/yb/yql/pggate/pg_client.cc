@@ -478,14 +478,14 @@ class PgClient::Impl : public BigDataFetcher {
 
   Result<PgTableDescPtr> OpenTable(
       const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time,
-      master::IncludeInactive include_inactive) {
+      master::IncludeHidden include_hidden) {
     tserver::PgOpenTableRequestPB req;
     req.set_table_id(table_id.GetYbTableId());
     req.set_reopen(reopen);
     if (invalidate_cache_time != CoarseTimePoint()) {
       req.set_invalidate_cache_time_us(ToMicroseconds(invalidate_cache_time.time_since_epoch()));
     }
-    req.set_include_inactive(include_inactive);
+    req.set_include_hidden(include_hidden);
     tserver::PgOpenTableResponsePB resp;
 
     RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::OpenTable,
@@ -1453,8 +1453,8 @@ uint64_t PgClient::SessionID() const { return impl_->SessionID(); }
 
 Result<PgTableDescPtr> PgClient::OpenTable(
     const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time,
-    master::IncludeInactive include_inactive) {
-  return impl_->OpenTable(table_id, reopen, invalidate_cache_time, include_inactive);
+    master::IncludeHidden include_hidden) {
+  return impl_->OpenTable(table_id, reopen, invalidate_cache_time, include_hidden);
 }
 
 Result<client::VersionedTablePartitionList> PgClient::GetTablePartitionList(

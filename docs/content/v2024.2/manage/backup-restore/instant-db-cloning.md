@@ -4,7 +4,7 @@ headerTitle: Instant database cloning
 linkTitle: Instant database cloning
 description: Clone your database in YugabyteDB for data recovery, development, and testing.
 tags:
-  feature: tech-preview
+  feature: early-access
 menu:
   v2024.2:
     identifier: instant-db-clone
@@ -27,7 +27,7 @@ Cloning has two main use cases:
 
 ## Enable database cloning
 
-To enable database cloning in a cluster, set the yb-master flag `enable_db_clone` to true. Because cloning is in {{<tags/feature/tp>}}, you must also add the `enable_db_clone` flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-master/#allowed-preview-flags-csv) list.
+To enable database cloning in a cluster, set the yb-master flag `enable_db_clone` to true. Because cloning is in {{<tags/feature/ea>}}, you must also add the `enable_db_clone` flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-master/#allowed-preview-flags-csv) list.
 
 For example, to set these flags when creating a cluster using yugabyted, use the `--master_flags` option of the [start](../../../reference/configuration/yugabyted/#start) command as follows:
 
@@ -289,3 +289,5 @@ Although creating a clone database is quick and initially doesn't take up much a
 
 - Cloning is not currently supported for databases that use sequences. See GitHub issue [21467](https://github.com/yugabyte/yugabyte-db/issues/21467) for tracking.
 - Cloning to a time before dropping Materialized views is not currently supported. See GitHub issue [23740](https://github.com/yugabyte/yugabyte-db/issues/23740) for tracking.
+- Cloning to a time before table rewrite operation is not currently supported. See GitHub issue [24385](https://github.com/yugabyte/yugabyte-db/issues/24385) for tracking.
+- Cloning to a time before rename of index column is not currently supported. See GitHub issue [24127](https://github.com/yugabyte/yugabyte-db/issues/24127) for tracking.

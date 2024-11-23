@@ -46,6 +46,7 @@ namespace yb {
 class HostPort;
 class Thread;
 class ThreadPool;
+class XClusterTest_LeaderFailoverTest_Test;
 
 namespace rpc {
 class Messenger;
@@ -101,7 +102,9 @@ class XClusterConsumer : public XClusterConsumerIf {
 
   Status ReloadCertificates() override;
 
-  Status PublishXClusterSafeTime();
+  // Get notified after the safe time table is updated.
+  void AddSafeTimePublishCallback(std::function<void()> callback)
+      EXCLUDES(safe_time_callback_mutex_);
 
   SchemaVersion GetMinXClusterSchemaVersion(
       const TableId& table_id, const ColocationId& colocation_id) override;
@@ -132,6 +135,8 @@ class XClusterConsumer : public XClusterConsumerIf {
     return metric_poll_failure_count_;
   }
  private:
+  FRIEND_TEST(yb::XClusterTest, LeaderFailoverTest);
+
   // Runs a thread that periodically polls for any new threads.
   void RunThread() EXCLUDES(shutdown_mutex_);
 
@@ -149,7 +154,7 @@ class XClusterConsumer : public XClusterConsumerIf {
   void TriggerDeletionOfOldPollers() EXCLUDES (master_data_mutex_);
 
   bool ShouldContinuePolling(
-      const xcluster::ProducerTabletInfo producer_tablet_info, const XClusterPoller& poller,
+      const xcluster::ProducerTabletInfo producer_tablet_info, XClusterPoller& poller,
       std::string& reason) REQUIRES_SHARED(master_data_mutex_);
 
   void UpdatePollerSchemaVersionMaps(
@@ -159,6 +164,10 @@ class XClusterConsumer : public XClusterConsumerIf {
   void RemoveFromPollersMap(const xcluster::ProducerTabletInfo producer_tablet_info);
 
   void SetRateLimiterSpeed();
+
+  void PublishXClusterSafeTime();
+
+  Status PublishXClusterSafeTimeInternal();
 
   // Mutex and cond for should_run_ state.
   std::mutex shutdown_mutex_;
@@ -257,6 +266,9 @@ class XClusterConsumer : public XClusterConsumerIf {
   scoped_refptr<Counter> metric_poll_failure_count_;
 
   scoped_refptr<Counter> metric_replication_error_count_;
+
+  std::mutex safe_time_callback_mutex_;
+  std::vector<std::function<void()>> safe_time_callbacks_ GUARDED_BY(safe_time_callback_mutex_);
 };
 
 } // namespace tserver

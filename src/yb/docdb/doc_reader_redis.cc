@@ -194,7 +194,7 @@ Status BuildSubDocument(
                 ? doc_value.timestamp()
                 : write_time.hybrid_time().GetPhysicalValueMicros());
         if (!data.high_index->CanInclude(current_values_observed)) {
-          iter->SeekOutOfSubDoc(&key_copy);
+          iter->SeekOutOfSubDoc(SeekFilter::kAll, &key_copy);
           DCHECK(iter->Fetch().ok()); // Enforce call to Fetch in debug mode
           return Status::OK();
         }
@@ -203,7 +203,7 @@ Status BuildSubDocument(
         }
         (*num_values_observed)++;
         VLOG(3) << "SeekOutOfSubDoc: " << SubDocKey::DebugSliceToString(key);
-        iter->SeekOutOfSubDoc(&key_copy);
+        iter->SeekOutOfSubDoc(SeekFilter::kAll, &key_copy);
         DCHECK(iter->Fetch().ok()); // Enforce call to Fetch in debug mode
         return Status::OK();
       } else {
@@ -221,7 +221,7 @@ Status BuildSubDocument(
           iter, data.Adjusted(key, &descendant), low_ts,
           num_values_observed));
     }
-    iter->Revalidate();
+    iter->Revalidate(SeekFilter::kAll);
     if (descendant.value_type() == ValueEntryType::kInvalid) {
       // The document was not found in this level (maybe a tombstone was encountered).
       continue;
@@ -426,7 +426,7 @@ Status GetRedisSubDocument(
   if (seek_fwd_suffices) {
     db_iter->SeekForward(key_slice);
   } else {
-    db_iter->Seek(key_slice);
+    db_iter->Seek(key_slice, SeekFilter::kAll);
   }
   {
     auto temp_key = data.subdocument_key;
@@ -470,7 +470,7 @@ Status GetRedisSubDocument(
     upperbound_buffer.Append(key_slice.WithoutPrefix(upperbound_buffer.size()));
     upperbound_buffer.PushBack(dockv::KeyEntryTypeAsChar::kHighest);
     IntentAwareIteratorUpperboundScope upperbound_scope2(upperbound_buffer.AsSlice(), db_iter);
-    db_iter->Revalidate();
+    db_iter->Revalidate(SeekFilter::kAll);
     RETURN_NOT_OK(BuildSubDocument(db_iter, data, max_overwrite_ht,
                                    &num_values_observed));
     *data.doc_found = data.result->value_type() != ValueEntryType::kInvalid;
@@ -518,7 +518,7 @@ Status GetRedisSubDocument(
   }
   // Make sure the iterator is placed outside the whole document in the end.
   key_bytes.Truncate(dockey_size);
-  db_iter->SeekOutOfSubDoc(&key_bytes);
+  db_iter->SeekOutOfSubDoc(SeekFilter::kAll, &key_bytes);
   return Status::OK();
 }
 

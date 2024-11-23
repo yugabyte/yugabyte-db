@@ -2012,7 +2012,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [SystemColumnId(0); HT{ physical: 1000 }]
           if (use_seek_forward) {
             iter.SeekForward(kEncodedDocKey2);
           } else {
-            iter.Seek(kEncodedDocKey2);
+            iter.Seek(kEncodedDocKey2, SeekFilter::kAll);
           }
           if (VLOG_IS_ON(1)) {
             iter.DebugDump();

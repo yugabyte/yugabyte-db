@@ -240,7 +240,7 @@ To be able to send [replication commands](https://www.postgresql.org/docs/11/pro
 To do this, [connect to your cluster](../../cloud-connect/connect-client-shell/) using a client shell as you normally would, and add `replication=database` to the connection string. For example:
 
 ```sh
-./ysqlsh "host=740ce33e-4242-4242-a424-cc4242c4242b.aws.ybdb.io \
+./ysqlsh "host=740ce33e-4242-4242-a424-cc4242c4242b.aws.yugabyte.cloud \
     user=admin \
     dbname=yugabyte \
     sslmode=verify-full \

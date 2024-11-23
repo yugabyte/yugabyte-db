@@ -85,7 +85,7 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
 
     You can enable TLS by following instructions provided in [Configure TLS](#configure-tls).
 
-    To install YugabyteDB Anywhere using the Yugabyte Kubernetes Operator (the feature is in [Tech Preview](/preview/releases/versioning/#feature-maturity)), see [Use Yugabyte Kubernetes Operator to automate YugabyteDB Anywhere deployments](#use-yugabyte-kubernetes-operator-to-automate-yba-deployments).
+    To install YugabyteDB Anywhere using the Yugabyte Kubernetes Operator (the feature is in [Early access](/preview/releases/versioning/#feature-maturity)), see [Use Yugabyte Kubernetes Operator to automate YugabyteDB Anywhere deployments](#use-yugabyte-kubernetes-operator-to-automate-yba-deployments).
 
 1. Use the following command to check the service:
 
@@ -145,7 +145,7 @@ If you are looking for a customization which is not listed, you can view all the
 
 ### Use Yugabyte Kubernetes Operator to automate YBA deployments
 
-The [Yugabyte Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-operator/) {{<tags/feature/tp>}} automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments.
+The [Yugabyte Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-operator/) {{<tags/feature/ea>}} automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments.
 
 Note that for Yugabyte Kubernetes Operator to work correctly, you need to set `rbac.create=true`, as the operator needs ClusterRoles to create its own providers.
 

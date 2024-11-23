@@ -310,7 +310,7 @@ class Tablet : public AbstractTablet,
 
   Status ImportData(const std::string& source_dir);
 
-  Result<docdb::ApplyTransactionState> ApplyIntents(const TransactionApplyData& data) override;
+  docdb::ApplyTransactionState ApplyIntents(const TransactionApplyData& data) override;
 
   Status RemoveIntents(
       const RemoveIntentsData& data, RemoveReason reason, const TransactionId& id) override;
@@ -1278,7 +1278,7 @@ class Tablet : public AbstractTablet,
   std::function<uint32_t(const TableId&, const ColocationId&)>
       get_min_xcluster_schema_version_ = nullptr;
 
-  rpc::ThreadPool* rpc_thread_pool_ = nullptr;
+  VectorIndexThreadPoolProvider vector_index_thread_pool_provider_;
 
   simple_spinlock operation_filters_mutex_;
 
@@ -1292,10 +1292,9 @@ class Tablet : public AbstractTablet,
 
   std::atomic<bool> has_vector_indexes_{false};
   std::shared_mutex vector_indexes_mutex_;
-  std::unordered_map<TableId, docdb::VectorIndexPtr> all_vector_indexes_
+  std::unordered_map<TableId, docdb::VectorIndexPtr> vector_indexes_map_
       GUARDED_BY(vector_indexes_mutex_);
-  std::unordered_map<TableId, docdb::VectorIndexesPtr> vector_indexes_for_table_
-      GUARDED_BY(vector_indexes_mutex_);
+  docdb::VectorIndexesPtr vector_indexes_list_ GUARDED_BY(vector_indexes_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

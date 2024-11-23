@@ -29,6 +29,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import io.ebean.annotation.Transactional;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -44,6 +45,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import play.inject.ApplicationLifecycle;
@@ -124,6 +126,22 @@ public class Commissioner {
    * @param taskUUID the task UUID
    */
   public UUID submit(TaskType taskType, ITaskParams taskParams, UUID taskUUID) {
+    return submit(taskType, taskParams, taskUUID, null);
+  }
+
+  /**
+   * Creates a new task runnable to run the required task, and submits it to the TaskExecutor.
+   *
+   * @param taskType the task type.
+   * @param taskParams the task parameters.
+   * @param taskUUID the task UUID
+   * @param preTaskSubmitWork function to run before task submission
+   */
+  public UUID submit(
+      TaskType taskType,
+      ITaskParams taskParams,
+      UUID taskUUID,
+      @Nullable Consumer<RunnableTask> preTaskSubmitWork) {
     RunnableTask taskRunnable = null;
     try {
       if (runtimeConfGetter.getGlobalConf(
@@ -135,7 +153,7 @@ public class Commissioner {
             "Executing TaskType {} with params {}", taskType.toString(), redactedJson.toString());
       }
       // Create the task runnable object based on the various parameters passed in.
-      taskRunnable = taskExecutor.createRunnableTask(taskType, taskParams, taskUUID);
+      taskRunnable = createRunnableTask(taskType, taskParams, taskUUID, preTaskSubmitWork);
       // Add the consumer to handle before task if available.
       taskRunnable.setTaskExecutionListener(getTaskExecutionListener());
       onTaskCreated(taskRunnable, taskParams);
@@ -147,7 +165,7 @@ public class Commissioner {
         TaskInfo taskInfo = taskRunnable.getTaskInfo();
         if (taskInfo.getTaskState() != TaskInfo.State.Failure) {
           taskInfo.setTaskState(TaskInfo.State.Failure);
-          taskInfo.save();
+          taskInfo.update();
         }
       }
       String msg = "Error processing " + taskType + " task for " + taskParams.toString();
@@ -157,6 +175,20 @@ public class Commissioner {
       }
       throw new RuntimeException(msg, t);
     }
+  }
+
+  @Transactional
+  private RunnableTask createRunnableTask(
+      TaskType taskType,
+      ITaskParams taskParams,
+      UUID taskUUID,
+      @Nullable Consumer<RunnableTask> preTaskSubmitWork) {
+    // Create the task runnable object based on the various parameters passed in.
+    RunnableTask taskRunnable = taskExecutor.createRunnableTask(taskType, taskParams, taskUUID);
+    if (preTaskSubmitWork != null) {
+      preTaskSubmitWork.accept(taskRunnable);
+    }
+    return taskRunnable;
   }
 
   private void onTaskCreated(RunnableTask taskRunnable, ITaskParams taskParams) {

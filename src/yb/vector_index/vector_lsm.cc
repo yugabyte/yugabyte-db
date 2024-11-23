@@ -419,10 +419,10 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
     RETURN_NOT_OK(failed_status_);
 
     if (!mutable_chunk_) {
-      RETURN_NOT_OK(CreateNewMutableChunk());
+      RETURN_NOT_OK(CreateNewMutableChunk(entries.size()));
     }
     if (!mutable_chunk_->RegisterInsert(entries, options_, num_tasks, frontiers)) {
-      RETURN_NOT_OK(RollChunk());
+      RETURN_NOT_OK(RollChunk(entries.size()));
       RSTATUS_DCHECK(mutable_chunk_->RegisterInsert(entries, options_, num_tasks, frontiers),
                      RuntimeError, "Failed to register insert into a new mutable chunk");
     }
@@ -705,15 +705,17 @@ Status VectorLSM<Vector, DistanceResult>::DoFlush(std::promise<Status>* promise)
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-Status VectorLSM<Vector, DistanceResult>::RollChunk() {
+Status VectorLSM<Vector, DistanceResult>::RollChunk(size_t min_points) {
   RETURN_NOT_OK(DoFlush(/* promise=*/ nullptr));
-  return CreateNewMutableChunk();
+  return CreateNewMutableChunk(min_points);
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-Status VectorLSM<Vector, DistanceResult>::CreateNewMutableChunk() {
+Status VectorLSM<Vector, DistanceResult>::CreateNewMutableChunk(size_t min_points) {
   auto index = options_.vector_index_factory();
-  RETURN_NOT_OK(index->Reserve(options_.points_per_chunk));
+  RETURN_NOT_OK(index->Reserve(
+      std::max(min_points, options_.points_per_chunk),
+      options_.thread_pool->options().max_workers));
 
   mutable_chunk_ = std::make_shared<MutableChunk>();
   mutable_chunk_->index = std::move(index);
@@ -764,11 +766,12 @@ bool VectorLSM<Vector, DistanceResult>::TEST_HasBackgroundInserts() const {
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-DistanceResult VectorLSM<Vector, DistanceResult>::TEST_Distance(
+DistanceResult VectorLSM<Vector, DistanceResult>::Distance(
     const Vector& lhs, const Vector& rhs) const {
   VectorIndexPtr index;
+  // TODO(vector_index) Should improve scenario when there is no active chunk.
   {
-    std::lock_guard lock(mutex_);
+    SharedLock lock(mutex_);
     if (mutable_chunk_) {
       index = mutable_chunk_->index;
     } else if (!immutable_chunks_.empty()) {

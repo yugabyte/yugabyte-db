@@ -101,7 +101,7 @@ The following is an example connection string for connecting to YugabyteDB using
 
 ```csharp
 var connStringBuilder = new NpgsqlConnectionStringBuilder();
-    connStringBuilder.Host = "22420e3a-768b-43da-8dcb-xxxxxx.aws.ybdb.io";
+    connStringBuilder.Host = "22420e3a-768b-43da-8dcb-xxxxxx.aws.yugabyte.cloud";
     connStringBuilder.Port = 5433;
     connStringBuilder.SslMode = SslMode.VerifyFull;
     connStringBuilder.RootCertificate = "/root.crt"; //Provide full path to your root CA.
@@ -215,7 +215,7 @@ namespace Yugabyte_CSharp_Demo
        static void Main(string[] args)
        {
           var connStringBuilder = new NpgsqlConnectionStringBuilder();
-           connStringBuilder.Host = "22420e3a-768b-43da-8dcb-xxxxxx.aws.ybdb.io";
+           connStringBuilder.Host = "22420e3a-768b-43da-8dcb-xxxxxx.aws.yugabyte.cloud";
            connStringBuilder.Port = 5433;
            connStringBuilder.SslMode = SslMode.VerifyFull;
            connStringBuilder.RootCertificate = "/root.crt" //Provide full path to your root CA.

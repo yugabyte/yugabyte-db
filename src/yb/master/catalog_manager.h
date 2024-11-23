@@ -52,7 +52,6 @@
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/restore_sys_catalog_state.h"
-#include "yb/master/ysql/ysql_catalog_config.h"
 #include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/transaction.h"
@@ -149,6 +148,8 @@ struct DeferredAssignmentActions;
 struct SysCatalogLoadingState;
 struct KeyRange;
 class YsqlInitDBAndMajorUpgradeHandler;
+class YsqlManagerIf;
+class YsqlManager;
 
 using PlacementId = std::string;
 
@@ -193,7 +194,7 @@ YB_DEFINE_ENUM(YsqlDdlVerificationState,
 // schema comparison of DocDB current schema or previous schema against the PG catalog schema.
 // That's fine because whether the PG DDL txn has committed or aborted makes no difference for
 // this table's DocDB schema.
-YB_DEFINE_ENUM(TxnState, (kUnknown) (kCommitted) (kAborted) (kNoChange));
+YB_DEFINE_ENUM(TxnState, (kUnknown)(kCommitted)(kAborted)(kNoChange));
 
 struct YsqlTableDdlTxnState;
 
@@ -788,6 +789,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   XClusterManagerIf* GetXClusterManager() override;
   XClusterManager* GetXClusterManagerImpl() override { return xcluster_manager_.get(); }
 
+  YsqlManagerIf& GetYsqlManager();
+  YsqlManager& GetYsqlManagerImpl() { return *ysql_manager_.get(); }
+
   // Dump all of the current state about tables and tablets to the
   // given output stream. This is verbose, meant for debugging.
   Status DumpState(std::ostream* out, bool on_disk_dump = false) const override;
@@ -1045,6 +1049,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Result<scoped_refptr<TableInfo>> FindTableByIdUnlocked(
       const TableId& table_id) const REQUIRES_SHARED(mutex_);
 
+  Result<TableId> GetColocatedTableId(
+      const TablegroupId& tablegroup_id, ColocationId colocation_id) const EXCLUDES(mutex_);
+
   Result<bool> TableExists(
       const std::string& namespace_name, const std::string& table_name) const EXCLUDES(mutex_);
 
@@ -1135,33 +1142,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status DdlLog(
       const DdlLogRequestPB* req, DdlLogResponsePB* resp, rpc::RpcContext* rpc);
-
-  // Initiates ysql major catalog upgrade which involves global initdb, pg_upgrade, and catalog
-  // version fixups.
-  // IsYsqlMajorCatalogUpgradeDone must be called to track the completion status of the
-  // operation.
-  Status StartYsqlMajorCatalogUpgrade(
-      const StartYsqlMajorCatalogUpgradeRequestPB* req,
-      StartYsqlMajorCatalogUpgradeResponsePB* resp, rpc::RpcContext* rpc, const LeaderEpoch& epoch);
-
-  // Checks if ysql major catalog upgrade has completed.
-  Status IsYsqlMajorCatalogUpgradeDone(
-      const IsYsqlMajorCatalogUpgradeDoneRequestPB* req,
-      IsYsqlMajorCatalogUpgradeDoneResponsePB* resp, rpc::RpcContext* rpc);
-
-  Status FinalizeYsqlMajorCatalogUpgrade(
-      const FinalizeYsqlMajorCatalogUpgradeRequestPB* req,
-      FinalizeYsqlMajorCatalogUpgradeResponsePB* resp, rpc::RpcContext* rpc,
-      const LeaderEpoch& epoch);
-
-  // Rolls back the major YSQL catalog to the previous version. Deletes all of the new YSQL
-  // version's catalog tables, and resets all upgrade-related state to initial values. Blocks until
-  // the rollback is finished or fails.
-  // Takes a long time to run. Use a timeout of at least 5 minutes when calling.
-  Status RollbackYsqlMajorCatalogVersion(
-      const RollbackYsqlMajorCatalogVersionRequestPB* req,
-      RollbackYsqlMajorCatalogVersionResponsePB* resp, rpc::RpcContext* rpc,
-      const LeaderEpoch& epoch);
 
   // Test wrapper around protected DoSplitTablet method.
   Status TEST_SplitTablet(
@@ -1436,12 +1416,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                             BootstrapProducerResponsePB* resp,
                             rpc::RpcContext* rpc);
 
-  // Enable/Disable an Existing Universe Replication.
-  Status SetUniverseReplicationEnabled(
-      const SetUniverseReplicationEnabledRequestPB* req,
-      SetUniverseReplicationEnabledResponsePB* resp,
-      rpc::RpcContext* rpc);
-
   // Get Universe Replication.
   Status GetUniverseReplication(
       const GetUniverseReplicationRequestPB* req,
@@ -1684,9 +1658,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status CreateTransactionAwareSnapshot(
       const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, CoarseTimePoint deadline);
 
-  YsqlCatalogConfig& GetYsqlCatalogConfig() { return ysql_catalog_config_; }
-  const YsqlCatalogConfig& GetYsqlCatalogConfig() const { return ysql_catalog_config_; }
-
   InitialSysCatalogSnapshotWriter& AllocateAndGetInitialSysCatalogSnapshotWriter();
 
   Result<std::vector<SysCatalogEntryDumpPB>> FetchFromSysCatalog(
@@ -1762,10 +1733,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Sets up various system configs.
   Status PrepareDefaultSysConfig(int64_t term) REQUIRES(mutex_);
-
-  // Starts an asynchronous run of initdb. Errors are handled in the callback. Returns true
-  // if started running initdb, false if decided that it is not needed.
-  Result<bool> StartRunningInitDbIfNeeded(const LeaderEpoch& epoch) REQUIRES_SHARED(mutex_);
 
   Status PrepareDefaultNamespaces(int64_t term) REQUIRES(mutex_);
 
@@ -1895,11 +1862,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Builds the TabletLocationsPB for a tablet based on the provided TabletInfo.
   // Populates locs_pb and returns true on success.
   // Returns Status::ServiceUnavailable if tablet is not running.
-  // Set include_inactive to true in order to also get information about hidden tablets.
+  // Set include_hidden_tablets to true in order to also get information about hidden tablets.
   Status BuildLocationsForTablet(
       const TabletInfoPtr& tablet,
       TabletLocationsPB* locs_pb,
-      IncludeInactive include_inactive = IncludeInactive::kFalse,
+      IncludeHidden include_hidden_tablets = IncludeHidden::kFalse,
       PartitionsOnly partitions_only = PartitionsOnly::kFalse);
 
   // Extract the set of tablets that can be deleted and the set of tablets
@@ -2322,9 +2289,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   SysCatalogTable* sys_catalog_;
 
-  // YSQL Catalog information.
-  YsqlCatalogConfig ysql_catalog_config_;
-
   // Mutex to avoid concurrent remote bootstrap sessions.
   std::mutex remote_bootstrap_mtx_;
 
@@ -2435,9 +2399,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   std::unique_ptr<PermissionsManager> permissions_manager_;
 
-  // This is used for tracking that initdb has started running previously.
-  std::atomic<bool> pg_proc_exists_{false};
-
   // Tracks most recent async tasks.
   scoped_refptr<TasksTracker> tasks_tracker_;
 
@@ -2462,6 +2423,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   std::unordered_set<TableId> pending_backfill_tables_ GUARDED_BY(backfill_mutex_);
 
   std::unique_ptr<XClusterManager> xcluster_manager_;
+
+  std::unique_ptr<YsqlManager> ysql_manager_;
 
   Status CanAddPartitionsToTable(
       size_t desired_partitions, const PlacementInfoPB& placement_info) override;
@@ -2590,7 +2553,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status BuildLocationsForSystemTablet(
       const TabletInfoPtr& tablet,
       TabletLocationsPB* locs_pb,
-      IncludeInactive include_inactive,
       PartitionsOnly partitions_only);
 
   Status MaybeCreateLocalTransactionTable(
@@ -2873,11 +2835,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status SetUniverseReplicationInfoEnabled(
       const xcluster::ReplicationGroupId& replication_group_id, bool is_enabled) EXCLUDES(mutex_);
 
-  // Update the cluster config and consumer registry objects when toggling replication.
-  Status SetConsumerRegistryEnabled(
-      const xcluster::ReplicationGroupId& replication_group_id, bool is_enabled,
-      ClusterConfigInfo::WriteLock* l);
-
   // True when the cluster is a consumer of a NS-level replication stream.
   std::atomic<bool> namespace_replication_enabled_{false};
 
@@ -3135,8 +3092,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   std::unique_ptr<cdc::CDCStateTable> cdc_state_table_;
 
   std::atomic<bool> pg_cron_service_created_{false};
-
-  std::unique_ptr<YsqlInitDBAndMajorUpgradeHandler> ysql_initdb_and_major_upgrade_helper_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

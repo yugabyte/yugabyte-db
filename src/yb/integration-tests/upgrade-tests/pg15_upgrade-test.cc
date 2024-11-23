@@ -279,64 +279,6 @@ TEST_F(Pg15UpgradeTest, Schemas) {
   }
 }
 
-TEST_F(Pg15UpgradeTest, Sequences) {
-  ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_sequence_cache_minval", "1"));
-  // As documented in the daemon->AddExtraFlag call, a restart is required to apply the flag.
-  // We must Shutdown before we can Restart.
-  cluster_->Shutdown();
-  ASSERT_OK(cluster_->Restart());
-
-  const auto kSelectNextVal = "SELECT nextval('$0')";
-  const auto kSequencePg11 = "seq_pg11";
-  const auto kSequencePg15 = "seq_pg15";
-  int seq_val_pg11 = 1;
-  int seq_val_pg15 = 1;
-
-  ASSERT_OK(ExecuteStatement(Format("CREATE SEQUENCE $0", kSequencePg11)));
-
-  auto take_3_values = [&kSelectNextVal](pgwrapper::PGConn& conn, const std::string& sequence,
-                                         int& seq_val) {
-    for (int i = 0; i < 3; i++) {
-      const auto result = ASSERT_RESULT(
-          conn.FetchRow<pgwrapper::PGUint64>(Format(kSelectNextVal, sequence)));
-      ASSERT_EQ(seq_val++, result);
-    }
-  };
-
-  {
-    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
-    ASSERT_NO_FATALS(take_3_values(conn, kSequencePg11, seq_val_pg11));
-  }
-
-  ASSERT_OK(UpgradeClusterToMixedMode());
-
-  {
-    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg15));
-    ASSERT_NO_FATALS(take_3_values(conn, kSequencePg11, seq_val_pg11));
-  }
-  {
-    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg11));
-    ASSERT_NO_FATALS(take_3_values(conn, kSequencePg11, seq_val_pg11));
-  }
-
-  ASSERT_OK(FinalizeUpgradeFromMixedMode());
-
-  // Take three values from a random tserver
-  {
-    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
-    ASSERT_NO_FATALS(take_3_values(conn, kSequencePg11, seq_val_pg11));
-  }
-
-  ASSERT_OK(ExecuteStatement(Format("CREATE SEQUENCE $0 CACHE 1", kSequencePg15)));
-
-  // Take three values from a random tserver, twice (to validate caching on the new sequence)
-  for (int i = 0; i < 2; i++) {
-    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
-    ASSERT_NO_FATALS(take_3_values(conn, kSequencePg11, seq_val_pg11));
-    ASSERT_NO_FATALS(take_3_values(conn, kSequencePg15, seq_val_pg15));
-  }
-}
-
 TEST_F(Pg15UpgradeTest, MultipleDatabases) {
   /* Cases:
    * - We support creating / altering databases to disallow connections - but neither YB nor PG
@@ -1074,6 +1016,287 @@ TEST_F(Pg15UpgradeTest, Indexes) {
   {
     auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
     ASSERT_NO_FATALS(check_indexes(conn, {1, 2, 3, 4, 5, 11, 15}));
+  }
+}
+
+TEST_F(Pg15UpgradeTest, ForeignKeyTest) {
+  int a = 0;
+  int b = 100;
+  int c = 10000;
+
+  std::vector<int> a_values = {};
+  std::vector<int> b_values = {};
+  std::vector<int> c_values = {};
+
+  ASSERT_OK(ExecuteStatements({
+    "CREATE TABLE a_values (a int primary key)",
+    "CREATE TABLE b_values (b int primary key)",
+    "CREATE TABLE c_values (c int primary key)",
+
+    "CREATE TABLE referencing_table (a int references a_values(a), "
+    "                                b int, "
+    "                                c int, "
+    "                                foreign key (b) references b_values(b))",
+    "ALTER TABLE referencing_table ADD CONSTRAINT fk_c FOREIGN KEY (c) REFERENCES c_values(c)",
+  }));
+
+  for (size_t i = 0; i < 3; i++) {
+    a_values.push_back(++a);
+    b_values.push_back(++b);
+    c_values.push_back(++c);
+
+    ASSERT_OK(ExecuteStatement(Format("INSERT INTO a_values VALUES ($0)", a)));
+    ASSERT_OK(ExecuteStatement(Format("INSERT INTO b_values VALUES ($0)", b)));
+    ASSERT_OK(ExecuteStatement(Format("INSERT INTO c_values VALUES ($0)", c)));
+
+    ASSERT_OK(ExecuteStatement(Format("INSERT INTO referencing_table VALUES ($0, $1, $2)",
+                                      a, b, c)));
+  }
+
+  const auto add_and_check_new_row = [this, &a, &b, &c, &a_values, &b_values, &c_values]
+      (const std::optional<size_t> tserver_idx) {
+    auto conn = ASSERT_RESULT(CreateConnToTs(tserver_idx));
+
+    ASSERT_NOK_STR_CONTAINS(
+        conn.ExecuteFormat("INSERT INTO referencing_table VALUES ($0, $1, $2)", a + 1, b, c),
+        "is not present in table \"a_values\"");
+    ASSERT_NOK_STR_CONTAINS(
+        conn.ExecuteFormat("INSERT INTO referencing_table VALUES ($0, $1, $2)", a, b + 1, c),
+        "is not present in table \"b_values\"");
+    ASSERT_NOK_STR_CONTAINS(
+        conn.ExecuteFormat("INSERT INTO referencing_table VALUES ($0, $1, $2)", a, b, c + 1),
+        "is not present in table \"c_values\"");
+
+    a_values.push_back(++a);
+    b_values.push_back(++b);
+    c_values.push_back(++c);
+
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO a_values VALUES ($0)", a));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO b_values VALUES ($0)", b));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO c_values VALUES ($0)", c));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO referencing_table VALUES ($0, $1, $2)",
+                                 a, b, c));
+
+    for (std::string col : {"a", "b", "c"}) {
+      const auto expected = ((col == "a") ? a_values : (col == "b") ? b_values : c_values);
+
+      const auto actual = ASSERT_RESULT(conn.FetchRows<int>(
+          Format("SELECT $0 FROM $0_values ORDER BY $0", col)));
+      ASSERT_VECTORS_EQ(expected, actual);
+
+      const auto actual_referencing = ASSERT_RESULT(conn.FetchRows<int>(
+          Format("SELECT $0 FROM referencing_table ORDER BY $0", col)));
+      ASSERT_VECTORS_EQ(expected, actual_referencing);
+    }
+  };
+
+  ASSERT_NO_FATALS(add_and_check_new_row(kAnyTserver));
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  ASSERT_NO_FATALS(add_and_check_new_row(kMixedModeTserverPg11));
+  ASSERT_NO_FATALS(add_and_check_new_row(kMixedModeTserverPg15));
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  ASSERT_NO_FATALS(add_and_check_new_row(kAnyTserver));
+}
+
+class Pg15UpgradeSequenceTest : public Pg15UpgradeTest {
+ public:
+  Pg15UpgradeSequenceTest() = default;
+
+  void SetUp() override {
+    Pg15UpgradeTest::SetUp();
+    if (IsTestSkipped()) {
+      return;
+    }
+
+    ASSERT_OK(cluster_->AddAndSetExtraFlag("ysql_sequence_cache_minval", "1"));
+    // As documented in the daemon->AddExtraFlag call, a restart is required to apply the flag.
+    // We must Shutdown before we can Restart.
+    cluster_->Shutdown();
+    ASSERT_OK(cluster_->Restart());
+
+    // Required to avoid a known issue documented in yb_catalog_version.sql
+    ASSERT_NOK(ExecuteStatement("SELECT 1 FROM pg_yb_catalog_version"));
+  }
+
+  void Take3Values(pgwrapper::PGConn& conn, const std::string& sequence, int& seq_val) {
+    for (int i = 0; i < 3; i++) {
+      const auto result = ASSERT_RESULT(
+          conn.FetchRow<pgwrapper::PGUint64>(Format("SELECT nextval('$0')", sequence)));
+      ASSERT_EQ(seq_val++, result);
+    }
+  }
+
+  void Add3Rows(pgwrapper::PGConn& conn, const std::string& sequence, int& seq_val) {
+    for (int i = 0; i < 3; i++) {
+      ASSERT_OK(conn.Execute(Format("INSERT INTO t_identity DEFAULT VALUES")));
+      const auto result = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT max(col) FROM t_identity"));
+      ASSERT_EQ(seq_val++, result);
+    }
+  }
+
+  const std::string kSequencePg11 = "seq_pg11";
+  const std::string kSequencePg15 = "seq_pg15";
+  int seq_val_pg11_ = 1;
+  int seq_val_pg15_ = 1;
+};
+
+TEST_F(Pg15UpgradeTest, YbGinIndex) {
+  const auto kGinTableName = "expression";
+  const std::vector<std::string> kGinIndexes = {"gin_idx_1", "gin_idx_2", "gin_idx_3"};
+  ASSERT_OK(ExecuteStatements({
+    "SET yb_non_ddl_txn_for_sys_tables_allowed TO on",
+    "UPDATE pg_yb_catalog_version SET current_version = 10000, last_breaking_version = 10000",
+    "RESET yb_non_ddl_txn_for_sys_tables_allowed",
+
+    Format("CREATE TABLE $0 (v tsvector, a text[], j jsonb)", kGinTableName),
+  }));
+
+  const auto create_indexes = [this, kGinIndexes, kGinTableName]() {
+    ASSERT_OK(ExecuteStatements({
+      Format("CREATE INDEX $0 ON $1 USING ybgin (tsvector_to_array(v))",
+             kGinIndexes[0], kGinTableName),
+      Format("CREATE INDEX $0 ON $1 USING ybgin (array_to_tsvector(a))",
+             kGinIndexes[1], kGinTableName),
+      Format("CREATE INDEX $0 ON $1 USING ybgin (jsonb_to_tsvector('simple', j, '[\"string\"]'))",
+             kGinIndexes[2], kGinTableName),
+    }));
+  };
+
+  ASSERT_NO_FATALS(create_indexes());
+
+  const auto check_and_insert_rows = [kGinTableName](pgwrapper::PGConn& conn, int &expected) {
+    const auto kQueries = {
+      "SELECT count(*) FROM $0 WHERE tsvector_to_array(v) && ARRAY['b']",
+      "SELECT count(*) FROM $0 WHERE array_to_tsvector(a) @@ 'e'",
+      "SELECT count(*) FROM $0 WHERE jsonb_to_tsvector('simple', j, '[\"string\"]') @@ 'h'",
+    };
+
+    for (const auto &query : kQueries) {
+      const auto result = ASSERT_RESULT(
+          conn.FetchRow<pgwrapper::PGUint64>(Format(query, kGinTableName)));
+      ASSERT_EQ(result, expected);
+    }
+
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 VALUES "
+        "  (to_tsvector('simple', 'a b c'), ARRAY['d', 'e', 'f'], '{\"g\":[\"h\",\"i\"]}')",
+        kGinTableName
+    ));
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 VALUES (to_tsvector('simple', 'a a'), ARRAY['d', 'd'], '{\"g\":\"g\"}')",
+        kGinTableName
+    ));
+    expected++;
+
+    for (const auto &query : kQueries) {
+      const auto result = ASSERT_RESULT(
+          conn.FetchRow<pgwrapper::PGUint64>(Format(query, kGinTableName)));
+      ASSERT_EQ(result, expected);
+    }
+  };
+
+  int num_rows = 0;
+
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_NO_FATALS(check_and_insert_rows(conn, num_rows));
+  }
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg11));
+    ASSERT_NO_FATALS(check_and_insert_rows(conn, num_rows));
+  }
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg15));
+    ASSERT_NO_FATALS(check_and_insert_rows(conn, num_rows));
+  }
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_NO_FATALS(check_and_insert_rows(conn, num_rows));
+
+    // test dropping and recreating the indexes, to validate that these DDLs
+    // still work as expected in pg15
+    for (const auto &index : kGinIndexes) {
+      ASSERT_OK(conn.ExecuteFormat("DROP INDEX $0", index));
+    }
+    ASSERT_NO_FATALS(create_indexes());
+
+    ASSERT_NO_FATALS(check_and_insert_rows(conn, num_rows));
+  }
+}
+
+TEST_F(Pg15UpgradeSequenceTest, Sequences) {
+  ASSERT_OK(ExecuteStatement(Format("CREATE SEQUENCE $0", kSequencePg11)));
+
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_NO_FATALS(Take3Values(conn, kSequencePg11, seq_val_pg11_));
+  }
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg15));
+    ASSERT_NO_FATALS(Take3Values(conn, kSequencePg11, seq_val_pg11_));
+  }
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg11));
+    ASSERT_NO_FATALS(Take3Values(conn, kSequencePg11, seq_val_pg11_));
+  }
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  // Take three values from a random tserver
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_NO_FATALS(Take3Values(conn, kSequencePg11, seq_val_pg11_));
+  }
+
+  ASSERT_OK(ExecuteStatement(Format("CREATE SEQUENCE $0 CACHE 1", kSequencePg15)));
+
+  // Take three values from a random tserver, twice (to validate caching on the new sequence)
+  for (int i = 0; i < 2; i++) {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_NO_FATALS(Take3Values(conn, kSequencePg11, seq_val_pg11_));
+    ASSERT_NO_FATALS(Take3Values(conn, kSequencePg15, seq_val_pg15_));
+  }
+}
+
+
+TEST_F(Pg15UpgradeSequenceTest, IdentityColumn) {
+  ASSERT_OK(ExecuteStatement("CREATE TABLE t_identity (col INT GENERATED ALWAYS AS IDENTITY)"));
+
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_NO_FATALS(Add3Rows(conn, kSequencePg11, seq_val_pg11_));
+  }
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg15));
+    ASSERT_NO_FATALS(Add3Rows(conn, kSequencePg11, seq_val_pg11_));
+  }
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg11));
+    ASSERT_NO_FATALS(Add3Rows(conn, kSequencePg11, seq_val_pg11_));
+  }
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  // Take three values from a random tserver
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_NO_FATALS(Add3Rows(conn, kSequencePg11, seq_val_pg11_));
   }
 }
 }  // namespace yb

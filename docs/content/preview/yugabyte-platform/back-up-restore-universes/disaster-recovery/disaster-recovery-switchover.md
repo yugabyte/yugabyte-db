@@ -20,7 +20,9 @@ Switchover can be used by enterprises when performing regular business continuit
 
 First, confirm there is no excessive lag between the DR primary and replica. You can [monitor lag](../disaster-recovery-setup/#monitor-replication) on the **xCluster Disaster Recovery** tab.
 
-If the DR config has any tables that don't have a replication status of Operational, switchover will be unsuccessful. In that case, you can do one of the following:
+While the switchover task is in progress, both universes are in read-only mode and reject write operations.
+
+If the DR configuration has any tables that don't have a replication status of Operational, switchover will be unsuccessful. In that case, you can do one of the following:
 
 - Perform a full copy from the DR primary to the DR replica.
 - [Unplanned Failover](../disaster-recovery-failover/).
@@ -33,7 +35,7 @@ Use the following steps to perform a planned switchover:
 
 1. Stop the application traffic on the DR primary.
 
-1. Navigate to your DR primary universe and select **xCluster Disaster Recovery**.
+1. Navigate to your DR primary universe **xCluster Disaster Recovery** tab and select the replication configuration.
 
 1. Click **Actions** and choose **Switchover**.
 

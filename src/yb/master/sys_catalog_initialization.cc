@@ -20,7 +20,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/sys_catalog.h"
 
-#include "yb/master/ysql/ysql_catalog_config.h"
+#include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/tablet.h"
@@ -209,9 +209,9 @@ void SetDefaultInitialSysCatalogSnapshotFlags() {
 }
 
 Status MakeYsqlSysCatalogTablesTransactional(
-    TableIndex::TablesRange tables, SysCatalogTable* sys_catalog,
-    YsqlCatalogConfig& ysql_catalog_config, const LeaderEpoch& epoch) {
-  if (ysql_catalog_config.IsTransactionalSysCatalogEnabled()) {
+    TableIndex::TablesRange tables, SysCatalogTable* sys_catalog, YsqlManagerIf& ysql_manager,
+    const LeaderEpoch& epoch) {
+  if (ysql_manager.IsTransactionalSysCatalogEnabled()) {
     LOG(INFO) << "YSQL catalog tables are already transactional";
     return Status::OK();
   }
@@ -275,7 +275,7 @@ Status MakeYsqlSysCatalogTablesTransactional(
     LOG(INFO) << "Made " << num_updated_tables << " YSQL sys catalog tables transactional";
   }
 
-  RETURN_NOT_OK(ysql_catalog_config.SetTransactionalSysCatalogEnabled(epoch));
+  RETURN_NOT_OK(ysql_manager.SetTransactionalSysCatalogEnabled(epoch));
 
   return Status::OK();
 }

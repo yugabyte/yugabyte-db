@@ -9,10 +9,14 @@
 #include <unordered_set>
 #include <list>
 #include <memory>
+#include <utility>
 
 namespace hnswlib {
 typedef unsigned int tableint;
 typedef unsigned int linklistsizeint;
+
+template<typename dist_t>
+class VectorIterator;
 
 struct Stats {
     size_t nodes = 0;
@@ -95,6 +99,16 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
     std::mutex deleted_elements_lock;  // lock for deleted_elements
     std::unordered_set<tableint> deleted_elements;  // contains internal ids of deleted elements
+
+    // Function to return the begin iterator
+    VectorIterator<dist_t> vectors_begin() {
+        return VectorIterator<dist_t>(0, this);
+    }
+
+    // Function to return the end iterator
+    VectorIterator<dist_t> vectors_end() {
+        return VectorIterator(cur_element_count, this);
+    }
 
 
     HierarchicalNSW(SpaceInterface<dist_t> *s) {
@@ -1210,17 +1224,16 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
             label_lookup_[label] = cur_c;
         }
 
-        std::unique_lock <std::mutex> lock_el(link_list_locks_[cur_c]);
-        int curlevel = getRandomLevel(mult_);
-        if (level > 0)
-            curlevel = level;
-
-        element_levels_[cur_c] = curlevel;
+        int curlevel = level > 0 ? level : getRandomLevel(mult_);
 
         std::unique_lock <std::mutex> templock(global);
         int maxlevelcopy = maxlevel_;
         if (curlevel <= maxlevelcopy)
             templock.unlock();
+
+        std::unique_lock <std::mutex> lock_el(link_list_locks_[cur_c]);
+        element_levels_[cur_c] = curlevel;
+
         tableint currObj = enterpoint_node_;
         tableint enterpoint_copy = enterpoint_node_;
 
@@ -1456,7 +1469,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
         }
         std::cout << "integrity ok, checked " << connections_checked << " connections\n";
     }
-
+    
     // Populate index statistics in the Stats array.
     Stats getStats(Stats* stats_per_level, int max_level) const {
         if (max_level < 0) {
@@ -1506,8 +1519,40 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
         return result;
     }
-
+  
 };
+
+// Define an iterator class for the stored vectors
+template<typename dist_t>
+class VectorIterator {
+ public:
+    // Constructor for the iterator
+    VectorIterator(tableint internal_id, HierarchicalNSW<dist_t> * outer)
+        : curr_internal_id_(internal_id),outer_(outer)  {}
+
+    // Dereference operator to access the vector data
+    std::pair<const void*, labeltype> operator*() const {
+      return std::make_pair(
+          outer_->getDataByInternalId(curr_internal_id_),
+          outer_->getExternalLabel(curr_internal_id_));
+    }
+
+    // Prefix increment operator
+    VectorIterator& operator++() {
+        ++curr_internal_id_;  // Move to the next element
+        return *this;
+    }
+
+    // Equality comparison operator
+    bool operator!=(const VectorIterator& other) const {
+        return curr_internal_id_ != other.curr_internal_id_;
+    }
+
+ private:
+    tableint curr_internal_id_;
+    HierarchicalNSW<dist_t> * outer_;
+};
+
 }  // namespace hnswlib
 
 // This file is part of the hnswlib inline third-party dependency of YugabyteDB.

@@ -36,7 +36,7 @@
 #define YB_WAIT_EVENT_DESC_COLS 4
 
 static const char *yb_not_applicable =
-	"This wait event was inherited from PostgreSQL. Check "
+	"Inherited from PostgreSQL. Check "
 	"https://www.postgresql.org/docs/current/monitoring-stats.html "
 	"for description.";
 

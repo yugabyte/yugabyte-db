@@ -113,7 +113,8 @@ To create an export configuration, do the following:
 
 The GCP Cloud Logging export configuration requires the following:
 
-- Google Service Account credentials JSON
+- Google Service Account with the `roles/logging.logWriter` role.
+- The Service Account credentials JSON key. The credentials should be scoped to the project where the log group is located.
 
 To create an export configuration, do the following:
 

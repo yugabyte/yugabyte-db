@@ -651,7 +651,7 @@ Tablet::Tablet(const TabletInitData& data)
       admin_triggered_compaction_pool_(data.admin_triggered_compaction_pool),
       ts_post_split_compaction_added_(std::move(data.post_split_compaction_added)),
       get_min_xcluster_schema_version_(std::move(data.get_min_xcluster_schema_version)),
-      rpc_thread_pool_(data.rpc_thread_pool) {
+      vector_index_thread_pool_provider_(data.vector_index_thread_pool_provider) {
   CHECK(schema()->has_column_ids());
   LOG_WITH_PREFIX(INFO) << "Schema version for " << metadata_->table_name() << " is "
                         << metadata_->primary_table_schema_version();
@@ -1940,8 +1940,8 @@ Status Tablet::DoHandlePgsqlReadRequest(
 
     if (!vector_index_table_id.empty()) {
       SharedLock lock(vector_indexes_mutex_);
-      auto it = all_vector_indexes_.find(vector_index_table_id);
-      if (it != all_vector_indexes_.end()) {
+      auto it = vector_indexes_map_.find(vector_index_table_id);
+      if (it != vector_indexes_map_.end()) {
         vector_index = it->second;
       }
     }
@@ -2211,7 +2211,7 @@ Status Tablet::ImportData(const std::string& source_dir) {
 // We apply intents by iterating over whole transaction reverse index.
 // Using value of reverse index record we find original intent record and apply it.
 // After that we delete both intent record and reverse index record.
-Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApplyData& data) {
+docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& data) {
   VLOG_WITH_PREFIX(4) << __func__ << ": " << data.transaction_id;
 
   HybridTime min_running_ht = transaction_participant_->MinRunningHybridTime();
@@ -2225,11 +2225,7 @@ Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApply
   docdb::VectorIndexesPtr vector_indexes;
   if (has_vector_indexes_.load(std::memory_order_acquire)) {
     SharedLock lock(vector_indexes_mutex_);
-    // TODO(vector_index) Handle insert to colocated table
-    auto it = vector_indexes_for_table_.find(metadata_->table_id());
-    if (it != vector_indexes_for_table_.end()) {
-      vector_indexes = it->second;
-    }
+    vector_indexes = vector_indexes_list_;
   }
   docdb::ApplyIntentsContext context(
       tablet_id(), data.transaction_id, data.apply_state, data.aborted, data.commit_ht, data.log_ht,
@@ -2546,14 +2542,17 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
 
   if (index_info && index_info->is_vector_idx() &&
       index_info->vector_idx_options().idx_type() != PgVectorIndexType::DUMMY) {
+    auto indexed_table_info = VERIFY_RESULT(metadata_->GetTableInfo(
+        index_info->indexed_table_id()));
     std::lock_guard lock(vector_indexes_mutex_);
     has_vector_indexes_ = true;
-    auto it = all_vector_indexes_.find(table_info.table_id());
-    if (it == all_vector_indexes_.end()) {
+    auto it = vector_indexes_map_.find(table_info.table_id());
+    if (it == vector_indexes_map_.end()) {
       auto vector_index = VERIFY_RESULT(docdb::CreateVectorIndex(
-          metadata_->rocksdb_dir(), *rpc_thread_pool_, *index_info));
-      it = all_vector_indexes_.emplace(table_info.table_id(), std::move(vector_index)).first;
-      auto& indexes = vector_indexes_for_table_[index_info->indexed_table_id()];
+          metadata_->rocksdb_dir(), *vector_index_thread_pool_provider_(),
+          indexed_table_info->doc_read_context->table_key_prefix(), *index_info));
+      it = vector_indexes_map_.emplace(table_info.table_id(), std::move(vector_index)).first;
+      auto& indexes = vector_indexes_list_;
       if (indexes) {
         auto new_indexes = std::make_shared<docdb::VectorIndexes>();
         new_indexes->reserve(indexes->size() + 1);
@@ -2695,10 +2694,6 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
 Status Tablet::InsertPackedSchemaForXClusterTarget(
     ChangeMetadataOperation* operation, std::shared_ptr<yb::tablet::TableInfo> current_table_info) {
   SCHECK(operation->schema()->has_column_ids(), IllegalState, "Schema must have column ids");
-  // TODO(#22318) handle colocated tables later.
-  SCHECK(
-      !metadata_->colocated(), IllegalState,
-      "Colocated tables are not supported for automatic DDL replication.");
 
   metadata_->InsertPackedSchemaForXClusterTarget(
       *operation->schema(), operation->index_map(), operation->schema_version(), operation->op_id(),

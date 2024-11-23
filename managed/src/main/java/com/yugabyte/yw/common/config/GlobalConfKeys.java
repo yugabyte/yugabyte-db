@@ -1527,4 +1527,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Disable support for V1 API Token",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Boolean> enableRFChange =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_rf_change",
+          ScopeType.GLOBAL,
+          "Enable RF Change For Existing Universes",
+          "Enable RF change for existing universes through edit universe flow",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL, ConfKeyTags.FEATURE_FLAG));
 }

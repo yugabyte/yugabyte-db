@@ -328,17 +328,17 @@ func init() {
 
 	updateAWSProviderCmd.Flags().StringArray("add-region", []string{},
 		"[Optional] Add region associated with the AWS provider. "+
-			"Provide the following comma separated fields as key-value pairs:"+
-			"\"region-name=<region-name>,"+
-			"vpc-id=<vpc-id>,sg-id=<security-group-id>\". "+
+			"Provide the following double colon (::) separated fields as key-value pairs:"+
+			"\"region-name=<region-name>::"+
+			"vpc-id=<vpc-id>::sg-id=<security-group-id>\". "+
 			formatter.Colorize("Region name is required key-value.",
 				formatter.GreenColor)+
 			" VPC ID and Security Group ID are optional. "+
 			"Each region needs to be added using a separate --add-region flag.")
 	updateAWSProviderCmd.Flags().StringArray("add-zone", []string{},
 		"[Optional] Zone associated to the AWS Region defined. "+
-			"Provide the following comma separated fields as key-value pairs:"+
-			"\"zone-name=<zone-name>,region-name=<region-name>,subnet=<subnet-id>,"+
+			"Provide the following double colon (::) separated fields as key-value pairs:"+
+			"\"zone-name=<zone-name>::region-name=<region-name>::subnet=<subnet-id>::"+
 			"secondary-subnet=<secondary-subnet-id>\". "+
 			formatter.Colorize("Zone name, Region name and subnet IDs are required values. ",
 				formatter.GreenColor)+
@@ -354,43 +354,36 @@ func init() {
 			"--remove-region definition. Removing a region removes the corresponding zones.")
 	updateAWSProviderCmd.Flags().StringArray("remove-zone", []string{},
 		"[Optional] Remove zone associated to the AWS Region defined. "+
-			"Provide the following comma separated fields as key-value pairs:"+
-			"\"zone-name=<zone-name>,region-name=<region-name>\". "+
+			"Provide the following double colon (::) separated fields as key-value pairs:"+
+			"\"zone-name=<zone-name>::region-name=<region-name>\". "+
 			formatter.Colorize("Zone name, Region name are required values. ",
 				formatter.GreenColor)+
 			"Each zone needs to be removed using a separate --remove-zone flag.")
 
 	updateAWSProviderCmd.Flags().StringArray("edit-region", []string{},
 		"[Optional] Edit region details associated with the AWS provider. "+
-			"Provide the following comma separated fields as key-value pairs:"+
-			"\"region-name=<region-name>,"+
-			"vpc-id=<vpc-id>,sg-id=<security-group-id>\". "+
+			"Provide the following double colon (::) separated fields as key-value pairs:"+
+			"\"region-name=<region-name>::"+
+			"vpc-id=<vpc-id>::sg-id=<security-group-id>\". "+
 			formatter.Colorize("Region name is a required key-value pair.",
 				formatter.GreenColor)+
 			" VPC ID and Security Group ID are optional. "+
 			"Each region needs to be modified using a separate --edit-region flag.")
 	updateAWSProviderCmd.Flags().StringArray("edit-zone", []string{},
 		"[Optional] Edit zone associated to the AWS Region defined. "+
-			"Provide the following comma separated fields as key-value pairs:"+
-			"\"zone-name=<zone-name>,region-name=<region-name>,subnet=<subnet-id>,"+
+			"Provide the following double colon (::) separated fields as key-value pairs:"+
+			"\"zone-name=<zone-name>::region-name=<region-name>::subnet=<subnet-id>::"+
 			"secondary-subnet=<secondary-subnet-id>\". "+
 			formatter.Colorize("Zone name, Region name are required values. ",
 				formatter.GreenColor)+
 			"Subnet IDs and Secondary subnet ID is optional. "+
 			"Each zone needs to be modified using a separate --edit-zone flag.")
 
-	// updateAWSProviderCmd.Flags().Bool("add-x86-default-image-bundle", false,
-	// 	"[Optional] Include Linux versions that are chosen and managed by"+
-	// 		" YugabyteDB Anywhere in the catalog. (default false)")
-	// updateAWSProviderCmd.Flags().Bool("add-aarch6-default-image-bundle", false,
-	// 	"[Optional] Include Linux versions that are chosen and managed by"+
-	// 		" YugabyteDB Anywhere in the catalog. (default false)")
-
 	updateAWSProviderCmd.Flags().StringArray("add-image-bundle", []string{},
 		"[Optional] Add Image bundles associated with the provider. "+
-			"Provide the following comma separated fields as key-value pairs: "+
-			"\"image-bundle-name=<image-bundle-name>,arch=<architecture>,"+
-			"ssh-user=<ssh-user>,ssh-port=<ssh-port>,imdsv2=<true/false>,default=<true/false>\". "+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"image-bundle-name=<image-bundle-name>::arch=<architecture>::"+
+			"ssh-user=<ssh-user>::ssh-port=<ssh-port>::imdsv2=<true/false>::default=<true/false>\". "+
 			formatter.Colorize(
 				"Image bundle name, architecture and SSH user are required key-value pairs.",
 				formatter.GreenColor)+
@@ -398,45 +391,37 @@ func init() {
 			"This should be true if the Image bundle requires Instance Metadata Service v2)"+
 			" is false. Default marks the image bundle as default for the provider. "+
 			"Allowed values for architecture are x86_64 and arm64."+
-			"Each image bundle can be added using separate --image-bundle flag. "+
-			"Example: --add-image-bundle <image-bundle-name>=<name>,"+
-			"<ssh-user>=<ssh-user>,<ssh-port>=22")
+			"Each image bundle can be added using separate --add-image-bundle flag.")
 	updateAWSProviderCmd.Flags().StringArray("add-image-bundle-region-override", []string{},
 		"[Optional] Add Image bundle region overrides associated with the provider. "+
-			"Provide the following comma separated fields as key-value pairs: "+
-			"\"image-bundle-name=<image-bundle-name>,region-name=<region-name>,"+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"image-bundle-name=<image-bundle-name>::region-name=<region-name>::"+
 			"machine-image=<machine-image>\". "+
 			formatter.Colorize(
 				"Image bundle name and region name are required key-value pairs.",
 				formatter.GreenColor)+" Each --image-bundle definition "+
 			"must have atleast one corresponding --image-bundle-region-override "+
 			"definition for every region added."+
-			" Each override can be added using separate --image-bundle-region-override flag. "+
-			"Example: --add-image-bundle-region-override <image-bundle-name>=<name>,"+
-			"<region-name>=<region-name>,<machine-image>=<machine-image>")
+			" Each override can be added using separate --add-image-bundle-region-override flag.")
 
 	updateAWSProviderCmd.Flags().StringArray("edit-image-bundle", []string{},
 		"[Optional] Edit Image bundles associated with the provider. "+
-			"Provide the following comma separated fields as key-value pairs: "+
-			"\"image-bundle-uuid=<image-bundle-uuid>,"+
-			"ssh-user=<ssh-user>,ssh-port=<ssh-port>,imdsv2=<true/false>,default=<true/false>\". "+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"image-bundle-uuid=<image-bundle-uuid>::"+
+			"ssh-user=<ssh-user>::ssh-port=<ssh-port>::imdsv2=<true/false>::default=<true/false>\". "+
 			formatter.Colorize(
 				"Image bundle UUID is a required key-value pair.",
 				formatter.GreenColor)+
-			" Each image bundle can be edited using separate --image-bundle flag. "+
-			"Example: --edit-image-bundle <image-bundle-uuid>=<uuid>,"+
-			"<ssh-user>=<ssh-user>,<ssh-port>=22")
+			" Each image bundle can be edited using separate --edit-image-bundle flag.")
 	updateAWSProviderCmd.Flags().StringArray("edit-image-bundle-region-override", []string{},
 		"[Optional] Edit overrides of the region associated with the provider. "+
-			"Provide the following comma separated fields as key-value pairs: "+
-			"\"image-bundle-uuid=<image-bundle-uuid>,region-name=<region-name>,"+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"image-bundle-uuid=<image-bundle-uuid>::region-name=<region-name>::"+
 			"machine-image=<machine-image>\". "+
 			formatter.Colorize(
 				"Image bundle UUID and region name are required key-value pairs.",
 				formatter.GreenColor)+
-			" Each image bundle can be added using separate --image-bundle-region-override flag. "+
-			"Example: --edit-image-bundle-region-override <image-bundle-uuid>=<uuid>,"+
-			"<region-name>=<region-name>,<machine-image>=<machine-image>")
+			" Each image bundle can be added using separate --edit-image-bundle-region-override flag.")
 
 	updateAWSProviderCmd.Flags().StringArray("remove-image-bundle", []string{},
 		"[Optional] Image bundle UUID to be removed from the provider. "+
@@ -835,7 +820,7 @@ func addAWSImageBundles(
 			Name:         util.GetStringPointer(bundle["name"]),
 			UseAsDefault: util.GetBoolPointer(defaultBundle),
 			Details: &ybaclient.ImageBundleDetails{
-				Arch:      util.GetStringPointer(bundle["arch"]),
+				Arch:      util.GetStringPointer(strings.ToLower(bundle["arch"])),
 				SshUser:   util.GetStringPointer(bundle["ssh-user"]),
 				SshPort:   util.GetInt32Pointer(int32(sshPort)),
 				UseIMDSv2: util.GetBoolPointer(useIMDSv2),

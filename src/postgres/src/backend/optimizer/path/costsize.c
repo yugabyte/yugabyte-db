@@ -8004,13 +8004,10 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	 */
 	List *all_conditions_and_remote_filters = NIL;
 	all_conditions_and_remote_filters =
-		list_concat(all_conditions_and_remote_filters,
-					list_copy(index_conditions));
+		list_concat_unique(all_conditions_and_remote_filters,
+					list_copy(index_predicates_conditions_and_filters));
 	all_conditions_and_remote_filters =
-		list_concat(all_conditions_and_remote_filters,
-					list_copy(index_pushed_down_filters));
-	all_conditions_and_remote_filters =
-		list_concat(all_conditions_and_remote_filters,
+		list_concat_unique(all_conditions_and_remote_filters,
 					list_copy(base_table_pushed_down_filters));
 
 	if (list_length(all_conditions_and_remote_filters) > 0)

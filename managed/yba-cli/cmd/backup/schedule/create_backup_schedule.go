@@ -17,6 +17,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/backup/schedule"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ybatask"
 )
 
@@ -30,11 +31,11 @@ var createBackupScheduleCmd = &cobra.Command{
 	--universe-name <universe-name> --storage-config-name <storage-config-name> \
 	--table-type <table-type>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
-		scheduleNameFlag, err := cmd.Flags().GetString("name")
+		scheduleName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(scheduleNameFlag)) == 0 {
+		if len(strings.TrimSpace(scheduleName)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("No schedule name specified to create a backup schedule\n", formatter.RedColor))
@@ -74,7 +75,7 @@ var createBackupScheduleCmd = &cobra.Command{
 		var response *http.Response
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
-		scheduleNameFlag, err := cmd.Flags().GetString("name")
+		scheduleName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -233,7 +234,7 @@ var createBackupScheduleCmd = &cobra.Command{
 		requestBody := ybaclient.BackupRequestParams{
 			UniverseUUID:        universeUUID,
 			CustomerUUID:        util.GetStringPointer(authAPI.CustomerUUID),
-			ScheduleName:        util.GetStringPointer(scheduleNameFlag),
+			ScheduleName:        util.GetStringPointer(scheduleName),
 			StorageConfigUUID:   storageUUID,
 			BackupType:          util.GetStringPointer(backupType),
 			KeyspaceTableList:   &keyspaceTableList,
@@ -270,24 +271,84 @@ var createBackupScheduleCmd = &cobra.Command{
 		}
 
 		taskUUID := rTask.GetTaskUUID()
-		msg := fmt.Sprintf("The backup schedule creation task %s is in progress",
-			formatter.Colorize(taskUUID, formatter.GreenColor))
+		msg := fmt.Sprintf("The backup schedule %s creation on universe %s (%s) is in progress",
+			formatter.Colorize(scheduleName, formatter.GreenColor),
+			universeNameFlag, universeUUID)
 
 		if viper.GetBool("wait") {
 			if taskUUID != "" {
 				logrus.Info(fmt.Sprintf(
-					"\nWaiting for backup schedule creation task %s on universe %s(%s) to be completed\n",
-					formatter.Colorize(taskUUID, formatter.GreenColor), universeNameFlag, universeUUID))
+					"\nWaiting for backup schedule %s creation on universe %s (%s) to be completed\n",
+					formatter.Colorize(scheduleName, formatter.GreenColor), universeNameFlag, universeUUID))
 				err = authAPI.WaitForTask(taskUUID, msg)
 				if err != nil {
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
 			}
-			// Replace with schedule output after get schedule is implemented
-			logrus.Infof(
-				"The backup schedule %s creation task %s is complete now\n",
-				scheduleNameFlag,
-				formatter.Colorize(taskUUID, formatter.GreenColor))
+			logrus.Infof("The backup schedule %s on universe %s (%s) has been created\n",
+				formatter.Colorize(scheduleName, formatter.GreenColor),
+				universeNameFlag, universeUUID)
+
+			backupScheduleAPIFilter := ybaclient.ScheduleApiFilter{}
+
+			backupScheduleAPIFilter.SetUniverseUUIDList([]string{universeUUID})
+			backupScheduleAPIDirection := "DESC"
+			backupScheduleAPISort := "scheduleUUID"
+
+			var limit int32 = 10
+			var offset int32 = 0
+
+			backupScheduleAPIQuery := ybaclient.SchedulePagedApiQuery{
+				Filter:    backupScheduleAPIFilter,
+				Direction: backupScheduleAPIDirection,
+				Limit:     limit,
+				Offset:    offset,
+				SortBy:    backupScheduleAPISort,
+			}
+			backupSchedules := make([]util.Schedule, 0)
+			for {
+				// Execute backup schedule describe request
+				r, err := authAPI.ListBackupSchedulesRest(backupScheduleAPIQuery, "Create")
+				if err != nil {
+					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+				}
+
+				// Check if backup schedules found
+				if len(r.GetEntities()) < 1 {
+					break
+				}
+
+				for _, e := range r.GetEntities() {
+					if strings.Compare(e.GetScheduleName(), scheduleName) == 0 {
+						backupSchedules = append(backupSchedules, e)
+					}
+				}
+
+				// Check if there are more pages
+				hasNext := r.GetHasNext()
+				if !hasNext {
+					break
+				}
+
+				offset += int32(len(r.GetEntities()))
+
+				// Prepare next page request
+				backupScheduleAPIQuery.Offset = offset
+			}
+
+			if len(backupSchedules) == 0 {
+				logrus.Fatalf(
+					formatter.Colorize(
+						fmt.Sprintf("Backup schedule %s for universe %s (%s) not found",
+							scheduleName, universeNameFlag, universeUUID),
+						formatter.RedColor))
+			}
+			backupScheduleCtx := formatter.Context{
+				Command: "create",
+				Output:  os.Stdout,
+				Format:  schedule.NewScheduleFormat(viper.GetString("output")),
+			}
+			schedule.Write(backupScheduleCtx, backupSchedules)
 			return
 		}
 		logrus.Info(msg + "\n")
@@ -305,7 +366,7 @@ func buildKeyspaceTables(keyspaces []string) (res []ybaclient.KeyspaceTable) {
 
 	for _, keyspaceString := range keyspaces {
 		keyspace := map[string]string{}
-		for _, keyspaceInfo := range strings.Split(keyspaceString, ";") {
+		for _, keyspaceInfo := range strings.Split(keyspaceString, util.Separator) {
 			kvp := strings.Split(keyspaceInfo, "=")
 			if len(kvp) != 2 {
 				logrus.Fatalln(
@@ -385,17 +446,17 @@ func init() {
 		"[Optional] Keyspace info to perform backup operation."+
 			"If no keyspace info is provided, then all the keyspaces of the table type "+
 			"specified are backed up. If the user wants to take backup of a subset of keyspaces, "+
-			"then the user has to specify the keyspace info. Provide the following semicolon "+
-			"separated fields as key value pairs, enclose the string with quotes: "+
-			"\"\"keyspace-name=<keyspace-name>;table-names=<table-name1>,<table-name2>,<table-name3>;"+
-			"table-ids=<table-id1>,<table-id2>,<table-id3>\"\". The table-names and table-ids "+
+			"then the user has to specify the keyspace info. Provide the following double colon (::) "+
+			"separated fields as key value pairs: "+
+			"\"keyspace-name=<keyspace-name>::table-names=<table-name1>,<table-name2>,<table-name3>::"+
+			"table-ids=<table-id1>,<table-id2>,<table-id3>\". The table-names and table-ids "+
 			"attributes have to be specified as comma separated values."+
 			formatter.Colorize("Keyspace name is required value. ", formatter.GreenColor)+
 			"Table names and Table ids are optional values and are needed only for YCQL."+
-			"Example: --keyspace-info \"keyspace-name=cassandra;table-names=table1,table2;"+
-			"table-ids=1e683b86-7858-44d1-a1f6-406f50a4e56e,19a34a5e-3a19-4070-9d79-805ed713ce7d\" "+
-			"--keyspace-info \"keyspace-name=cassandra2;table-names=table3,table4;"+
-			"table-ids=e5b83a7c-130c-40c0-95ff-ec1d9ecff616,bc92d473-2e10-4f76-8bd1-9ca9741890fd\"")
+			"Example: --keyspace-info keyspace-name=cassandra::table-names=table1,table2::"+
+			"table-ids=1e683b86-7858-44d1-a1f6-406f50a4e56e,19a34a5e-3a19-4070-9d79-805ed713ce7d "+
+			"--keyspace-info keyspace-name=cassandra2::table-names=table3,table4::"+
+			"table-ids=e5b83a7c-130c-40c0-95ff-ec1d9ecff616,bc92d473-2e10-4f76-8bd1-9ca9741890fd")
 	createBackupScheduleCmd.Flags().Bool("use-tablespaces", false,
 		"[Optional] Backup tablespaces information as part of the backup.")
 	createBackupScheduleCmd.Flags().String("category", "",

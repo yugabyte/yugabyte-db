@@ -2360,7 +2360,7 @@ public class UniverseCRUDHandler {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot change communication ports for k8s universe");
     }
-    boolean rfChangeEnabled = false;
+    boolean rfChangeEnabled = confGetter.getGlobalConf(GlobalConfKeys.enableRFChange);
 
     for (Cluster newCluster : taskParams.clusters) {
       Cluster curCluster = universe.getCluster(newCluster.uuid);

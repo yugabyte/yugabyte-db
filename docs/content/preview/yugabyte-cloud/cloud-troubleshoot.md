@@ -22,7 +22,7 @@ If you are connecting to a cluster and the cluster does not respond, and the con
 
 ```output
 ysqlsh: could not connect to server: Operation timed out
-    Is the server running on host "4477b44e-4f4c-4ee4-4f44-f44e4abf4f44.aws.ybdb.io" (44.144.244.144) and accepting
+    Is the server running on host "4477b44e-4f4c-4ee4-4f44-f44e4abf4f44.aws.yugabyte.cloud" (44.144.244.144) and accepting
     TCP/IP connections on port 5433?
 ```
 
@@ -32,7 +32,7 @@ ysqlsh: could not connect to server: Operation timed out
 
 - If your cluster is deployed in a VPC and you are trying to connect from a peered VPC, add one or more IP addresses from the peered VPC to the cluster IP allow list.
 
-- If you are using a secure internet/web gateway or malware/threat blocking software, whitelist `*.ybdb.io` to allow access to clusters.
+- If you are using a secure internet/web gateway or malware/threat blocking software, whitelist `*.yugabyte.cloud` to allow access to clusters.
 
 ### Connection closed in Cloud Shell
 

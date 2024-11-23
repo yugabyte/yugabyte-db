@@ -88,6 +88,11 @@ struct DocKeySizes {
   size_t doc_key_size;
 };
 
+struct PrefixAndDocKeySizes {
+  size_t prefix_size;
+  size_t doc_key_size;
+};
+
 class DocKey {
  public:
   // Constructs an empty document key with no hash component.
@@ -212,6 +217,9 @@ class DocKey {
 
   // Returns size of encoded hash part and whole part of DocKey.
   static Result<DocKeySizes> EncodedHashPartAndDocKeySizes(
+      Slice slice, AllowSpecial allow_special = AllowSpecial::kFalse);
+
+  static Result<PrefixAndDocKeySizes> EncodedPrefixAndDocKeySizes(
       Slice slice, AllowSpecial allow_special = AllowSpecial::kFalse);
 
   // Decode the current document key from the given slice, but expect all bytes to be consumed, and

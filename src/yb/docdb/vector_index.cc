@@ -23,10 +23,14 @@
 
 #include "yb/util/decimal.h"
 #include "yb/util/endian_util.h"
+#include "yb/util/flags.h"
 #include "yb/util/result.h"
 
 #include "yb/vector_index/ann_methods.h"
 #include "yb/vector_index/vector_lsm.h"
+
+DEFINE_RUNTIME_uint64(vector_index_initial_chunk_size, 1024,
+                      "Number of vector in initial vector index chunk");
 
 namespace yb::docdb {
 
@@ -105,7 +109,12 @@ template<vector_index::IndexableVectorType Vector,
          vector_index::ValidDistanceResultType DistanceResult>
 class VectorIndexImpl : public VectorIndex, public vector_index::VectorLSMKeyValueStorage {
  public:
-  explicit VectorIndexImpl(ColumnId column_id) : column_id_(column_id) {
+  VectorIndexImpl(Slice indexed_table_key_prefix, ColumnId column_id)
+      : indexed_table_key_prefix_(indexed_table_key_prefix), column_id_(column_id) {
+  }
+
+  Slice indexed_table_key_prefix() const override {
+    return indexed_table_key_prefix_.AsSlice();
   }
 
   ColumnId column_id() const override {
@@ -119,7 +128,7 @@ class VectorIndexImpl : public VectorIndex, public vector_index::VectorLSMKeyVal
       .storage_dir = path,
       .vector_index_factory = VERIFY_RESULT((GetVectorLSMFactory<Vector, DistanceResult>(
           idx_options.idx_type(), idx_options.dimensions()))),
-      .points_per_chunk = 1000, // TODO(vector_index) pick points per chunk from somewhere
+      .points_per_chunk = FLAGS_vector_index_initial_chunk_size,
       .key_value_storage = this, // TODO(vector_index) implement key value storage using rocksdb
       .thread_pool = &thread_pool,
       .frontiers_factory = [] { return std::make_unique<docdb::ConsensusFrontiers>(); },
@@ -155,6 +164,12 @@ class VectorIndexImpl : public VectorIndex, public vector_index::VectorLSMKeyVal
     return result;
   }
 
+  Result<EncodedDistance> Distance(Slice lhs, Slice rhs) override {
+    auto lhs_vec = VERIFY_RESULT(VectorFromYSQL<Vector>(lhs));
+    auto rhs_vec = VERIFY_RESULT(VectorFromYSQL<Vector>(rhs));
+    return EncodeDistance(lsm_.Distance(lhs_vec, rhs_vec));
+  }
+
  private:
   Status StoreBaseTableKeys(
       const vector_index::BaseTableKeysBatch& batch, HybridTime write_time) override {
@@ -174,6 +189,7 @@ class VectorIndexImpl : public VectorIndex, public vector_index::VectorLSMKeyVal
     return it->second;
   }
 
+  const KeyBuffer indexed_table_key_prefix_;
   const ColumnId column_id_;
 
   using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
@@ -189,11 +205,11 @@ class VectorIndexImpl : public VectorIndex, public vector_index::VectorLSMKeyVal
 
 Result<VectorIndexPtr> CreateVectorIndex(
     const std::string& data_root_dir, rpc::ThreadPool& thread_pool,
-    const qlexpr::IndexInfo& index_info) {
+    Slice indexed_table_key_prefix, const qlexpr::IndexInfo& index_info) {
   auto path = Format("$0.vi-$1", data_root_dir, index_info.table_id());
   auto& options = index_info.vector_idx_options();
   auto result = std::make_shared<VectorIndexImpl<std::vector<float>, float>>(
-      ColumnId(options.column_id()));
+      indexed_table_key_prefix, ColumnId(options.column_id()));
   RETURN_NOT_OK(result->Open(path, thread_pool, options));
   return result;
 }

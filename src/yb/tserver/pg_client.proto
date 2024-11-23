@@ -262,6 +262,13 @@ enum PgReplicationSlotSnapshotActionPB {
   REPLICATION_SLOT_USE_SNAPSHOT = 2;
 }
 
+// proto2 version of the ReplicationSlotLsnType enum from yb/common/common_types.proto
+enum PGReplicationSlotLsnType {
+  ReplicationSlotLsnTypePg_UNDEFINED = 0;
+  ReplicationSlotLsnTypePg_SEQUENCE = 1;
+  ReplicationSlotLsnTypePg_HYBRID_TIME = 2;
+}
+
 message PgCreateReplicationSlotRequestPB {
   uint64 session_id = 1;
   uint32 database_oid = 2;
@@ -269,6 +276,7 @@ message PgCreateReplicationSlotRequestPB {
   PgReplicationSlotSnapshotActionPB snapshot_action = 4;
   string output_plugin_name = 5;
   AshMetadataPB ash_metadata = 6;
+  PGReplicationSlotLsnType lsn_type = 7;
 }
 
 message PgCreateReplicationSlotResponsePB {
@@ -577,7 +585,9 @@ message PgOpenTableRequestPB {
   string table_id = 1;
   bool reopen = 2;
   fixed64 invalidate_cache_time_us = 3;
-  bool include_inactive = 4;
+  // Allows a hidden table to be opened.
+  // Hidden table is a dropped table retained in DocDB for PITR, CLONE, AS-OF.
+  bool include_hidden = 4;
   AshMetadataPB ash_metadata = 5;
 }
 
@@ -896,6 +906,7 @@ message PgWaitForBackendsCatalogVersionRequestPB {
   uint64 session_id = 1;
   uint32 database_oid = 2;
   uint64 catalog_version = 3;
+  int32 requestor_pg_backend_pid = 5;
   AshMetadataPB ash_metadata = 4;
 }
 

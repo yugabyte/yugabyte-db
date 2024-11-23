@@ -185,6 +185,24 @@ const (
 	DeleteInProgressBackupState = "DeleteInProgress"
 )
 
+// ScheduleBackupStates
+const (
+	// DeletingScheduleBackupState state
+	DeletingScheduleBackupState = "Deleting"
+	// ErrorScheduleBackupState state
+	ErrorScheduleBackupState = "Error"
+	// ActiveScheduleBackupState state
+	ActiveScheduleBackupState = "Active"
+	// CreatingScheduleBackupState state
+	CreatingScheduleBackupState = "Creating"
+	// PausedScheduleBackupState state
+	PausedScheduleBackupState = "Paused"
+	// StoppedScheduleBackupState state
+	StoppedScheduleBackupState = "Stopped"
+	// EditingScheduleBackupState state
+	EditingScheduleBackupState = "Editing"
+)
+
 // ReleaseResponseStates
 const (
 	// WaitingReleaseResponseState state
@@ -444,3 +462,11 @@ func IsCloudBasedProvider(providerType string) bool {
 	return providerType == AWSProviderType ||
 		providerType == AzureProviderType || providerType == GCPProviderType
 }
+
+const (
+	// Separator variable for strings that are in key value format
+	Separator = "::"
+
+	// KeyValueSeparator variable for strings that are in key value format
+	KeyValueSeparator = "="
+)

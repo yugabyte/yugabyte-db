@@ -33,6 +33,11 @@ void Pg15UpgradeTestBase::SetUp() {
   CHECK_OK_PREPEND(StartClusterInOldVersion(), "Failed to start cluster in old version");
   CHECK(IsYsqlMajorVersionUpgrade());
   CHECK_GT(cluster_->num_tablet_servers(), 1);
+  // Bump catalog version to 10000 so that tservers can detect catalog version mismatch errors.
+  ASSERT_OK(ExecuteStatements({
+      "SET yb_non_ddl_txn_for_sys_tables_allowed TO on",
+      "UPDATE pg_yb_catalog_version SET current_version = 10000, last_breaking_version = 10000",
+      "RESET yb_non_ddl_txn_for_sys_tables_allowed"}));
 }
 
 Status Pg15UpgradeTestBase::UpgradeClusterToMixedMode() {
@@ -134,7 +139,7 @@ Status Pg15UpgradeTestBase::ExecuteStatementsInFiles(
   return Status::OK();
 }
 
-Result<pgwrapper::PGConn> Pg15UpgradeTestBase::CreateConnToTs(size_t ts_id) {
+Result<pgwrapper::PGConn> Pg15UpgradeTestBase::CreateConnToTs(std::optional<size_t> ts_id) {
   return cluster_->ConnectToDB("yugabyte", ts_id);
 }
 

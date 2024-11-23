@@ -269,7 +269,7 @@ void VectorLSMTest::CheckQueryVector(
   FloatVectorLSM::SearchResults expected_results;
   for (const auto& entry : CubeInsertEntries(dimensions)) {
     expected_results.push_back({
-      .distance = lsm.TEST_Distance(query_vector, entry.vector),
+      .distance = lsm.Distance(query_vector, entry.vector),
       .base_table_key = entry.base_table_key,
     });
   }
@@ -380,8 +380,6 @@ std::string ANNMethodKindToString(
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    ANNMethodKind, VectorLSMTest,
-    ::testing::ValuesIn(kANNMethodKindArray),
-    ANNMethodKindToString);
+    , VectorLSMTest, ::testing::ValuesIn(kANNMethodKindArray), ANNMethodKindToString);
 
 }  // namespace yb::vector_index

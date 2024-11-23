@@ -4,7 +4,7 @@ Create a YugabyteDB version entry on YugabyteDB Anywhere
 
 ### Synopsis
 
-Create a YugabyteDB version entry on YugabyteDB Anywhere. Run this command after the information provided in the "yba yb-db-version artifact-create <url>" commands.
+Create a YugabyteDB version entry on YugabyteDB Anywhere. Run this command after the information provided in the "yba yb-db-version artifact-create <url/upload>" commands.
 
 ```
 yba yb-db-version create [flags]

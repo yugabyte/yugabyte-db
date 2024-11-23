@@ -451,8 +451,12 @@ Status XClusterTestBase::ToggleUniverseReplication(
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
-  // Sleep a few seconds for the change to be propagated.
-  SleepFor(3s);
+
+  if (is_enabled) {
+    // Sleep a few seconds for the change to be propagated.
+    // When disabling replication the RPC perform a sync wait.
+    SleepFor(3s);
+  }
   return Status::OK();
 }
 
@@ -828,12 +832,9 @@ Status XClusterTestBase::VerifyReplicationError(
       [&]() -> Result<bool> {
         rpc.Reset();
         rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-        if (!master_proxy->GetReplicationStatus(req, &resp, &rpc).ok()) {
-          return false;
-        }
-
+        RETURN_NOT_OK(master_proxy->GetReplicationStatus(req, &resp, &rpc));
         if (resp.has_error()) {
-          return false;
+          return StatusFromPB(resp.error().status());
         }
 
         if (resp.statuses_size() == 0 || (resp.statuses()[0].table_id() != consumer_table_id &&

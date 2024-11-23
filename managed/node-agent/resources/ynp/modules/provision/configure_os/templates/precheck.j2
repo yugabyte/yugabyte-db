@@ -66,7 +66,7 @@ done
 # Determine the PLATFORM_ID
 platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"')
 
-if [[ "$platform_id" == "platform:el8" ]]; then
+if [[ "$platform_id" == "platform:el8" ]] || [[ "$platform_id" == "platform:el9" ]]; then
     # Verify DefaultLimitNOFILE in systemd configuration files
     verify_systemd_conf /etc/systemd/system.conf "DefaultLimitNOFILE={{ fd_limit }}"
     verify_systemd_conf /etc/systemd/user.conf "DefaultLimitNOFILE={{ fd_limit }}"

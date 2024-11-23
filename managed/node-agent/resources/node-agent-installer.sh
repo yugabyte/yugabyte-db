@@ -324,10 +324,12 @@ install_systemd_service() {
     USER_SCOPED_UNIT="true"
     SYSTEMD_PATH="$INSTALL_USER_HOME/.config/systemd/user"
   fi
-  if [ "$SE_LINUX_STATUS" = "Enforcing" ]; then
-    modify_selinux
+  if [ "$USER_SCOPED_UNIT" = "false" ]; then
+    if [ "$SE_LINUX_STATUS" = "Enforcing" ]; then
+      modify_selinux
+    fi
+    modify_firewall
   fi
-  modify_firewall
   echo "* Installing Node Agent Systemd Service"
   # Define the path to the service file.
   SERVICE_FILE_PATH="$SYSTEMD_PATH/$SERVICE_NAME"

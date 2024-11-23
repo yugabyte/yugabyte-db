@@ -5,6 +5,8 @@
 package provider
 
 import (
+	"strings"
+
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/providerutil"
@@ -28,7 +30,7 @@ var deleteProviderCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		providerutil.DeleteProviderUtil(cmd, "", providerCode)
+		providerutil.DeleteProviderUtil(cmd, "", strings.ToLower(providerCode))
 	},
 }
 

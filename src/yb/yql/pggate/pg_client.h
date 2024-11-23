@@ -133,7 +133,7 @@ class PgClient {
 
   Result<PgTableDescPtr> OpenTable(
       const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time,
-      master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
+      master::IncludeHidden include_hidden = master::IncludeHidden::kFalse);
 
   Result<client::VersionedTablePartitionList> GetTablePartitionList(const PgObjectId& table_id);
 

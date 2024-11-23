@@ -131,7 +131,8 @@ add_dependencies(integration-tests
   generate_test_certs
   fips_install
   xcluster_ddl_replication_sql
-  upgrade_test_builds_tar)
+  upgrade_test_builds_tar
+  update_ysql_migrations)
 
 ADD_YB_TEST_LIBRARY(
     cql_test_util
@@ -180,7 +181,6 @@ ADD_YB_TEST(are_leaders_on_preferred_only-itest)
 ADD_YB_TEST(compaction-test)
 ADD_YB_TEST(clone-tablet-itest)
 ADD_YB_TEST(compressed_stream-test)
-ADD_YB_TEST(logging-test)
 ADD_YB_TEST(tablet_health_manager-itest)
 ADD_YB_TEST(master_replication-itest)
 ADD_YB_TEST(master_sysnamespace-itest)

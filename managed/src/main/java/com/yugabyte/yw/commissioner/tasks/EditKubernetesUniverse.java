@@ -169,11 +169,30 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               universeDetails.communicationPorts.masterRpcPort,
               newNamingStyle);
 
+      Cluster existingPrimaryCluster = universeDetails.getPrimaryCluster();
+      PlacementInfo existingPrimaryPI = existingPrimaryCluster.placementInfo;
+      int existingNumMasters = existingPrimaryCluster.userIntent.replicationFactor;
+      PlacementInfoUtil.selectNumMastersAZ(existingPrimaryPI, existingNumMasters);
+      KubernetesPlacement existingPrimaryPlacement =
+          new KubernetesPlacement(existingPrimaryPI, /*isReadOnlyCluster*/ false);
+      String existingMasterAddresses =
+          KubernetesUtil.computeMasterAddresses(
+              existingPrimaryPI,
+              existingPrimaryPlacement.masters,
+              taskParams().nodePrefix,
+              universe.getName(),
+              provider,
+              universeDetails.communicationPorts.masterRpcPort,
+              newNamingStyle);
+
       // validate clusters
       for (Cluster cluster : taskParams().clusters) {
         Cluster currCluster = universeDetails.getClusterByUuid(cluster.uuid);
         validateEditParams(cluster, currCluster);
       }
+      boolean primaryRFChange =
+          universeDetails.getPrimaryCluster().userIntent.replicationFactor
+              != primaryCluster.userIntent.replicationFactor;
 
       // Update the user intent.
       // This writes new state of nodes to DB.
@@ -184,7 +203,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               universe,
               taskParams().getPrimaryCluster(),
               universeDetails.getPrimaryCluster(),
-              masterAddresses);
+              masterAddresses,
+              existingMasterAddresses);
       // Updating cluster in DB
       createUpdateUniverseIntentTask(taskParams().getPrimaryCluster());
 
@@ -203,15 +223,21 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       // read cluster edit.
       for (Cluster cluster : taskParams().clusters) {
         if (cluster.clusterType == ClusterType.ASYNC) {
+          // Use new master addresses for editing read cluster.
           editCluster(
               universe,
               cluster,
               universeDetails.getClusterByUuid(cluster.uuid),
               masterAddresses,
+              masterAddresses /* existingMasterAddresses */,
               mastersAddrChanged);
           // Updating cluster in DB
           createUpdateUniverseIntentTask(cluster);
         }
+      }
+
+      if (primaryRFChange) {
+        createMasterLeaderStepdownTask();
       }
 
       // Update the swamper target file.
@@ -240,9 +266,18 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   }
 
   private boolean editCluster(
-      Universe universe, Cluster newCluster, Cluster curCluster, String masterAddresses) {
+      Universe universe,
+      Cluster newCluster,
+      Cluster curCluster,
+      String masterAddresses,
+      String existingMasterAddresses) {
     return editCluster(
-        universe, newCluster, curCluster, masterAddresses, false /* masterAddressesChanged */);
+        universe,
+        newCluster,
+        curCluster,
+        masterAddresses,
+        existingMasterAddresses,
+        false /* masterAddressesChanged */);
   }
 
   /*
@@ -254,6 +289,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       Cluster newCluster,
       Cluster curCluster,
       String masterAddresses,
+      String existingMasterAddresses,
       boolean masterAddressesChanged) {
     if (newCluster == null) {
       return false;
@@ -295,7 +331,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       createResizeDiskTask(
           universe.getName(),
           curPlacement,
-          masterAddresses,
+          existingMasterAddresses,
           newIntent,
           isReadOnlyCluster,
           newNamingStyle,

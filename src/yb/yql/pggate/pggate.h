@@ -421,7 +421,7 @@ class PgApiImpl {
 
   Status ExecDropIndex(PgStatement *handle);
 
-  Result<int> WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version);
+  Result<int> WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version, pid_t pid);
 
   Status BackfillIndex(const PgObjectId& table_id);
 
@@ -777,6 +777,7 @@ class PgApiImpl {
                                   const char *plugin_name,
                                   const PgOid database_oid,
                                   YBCPgReplicationSlotSnapshotAction snapshot_action,
+                                  YBCLsnType lsn_type,
                                   PgStatement **handle);
   Result<tserver::PgCreateReplicationSlotResponsePB> ExecCreateReplicationSlot(
       PgStatement *handle);

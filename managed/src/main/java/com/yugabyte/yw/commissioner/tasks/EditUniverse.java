@@ -37,6 +37,7 @@ import lombok.extern.slf4j.Slf4j;
 @Retryable
 public class EditUniverse extends EditUniverseTaskBase {
   private final AtomicBoolean dedicatedNodesChanged = new AtomicBoolean();
+  private final AtomicBoolean primaryRFChanged = new AtomicBoolean();
 
   @Inject
   protected EditUniverse(BaseTaskDependencies baseTaskDependencies) {
@@ -81,6 +82,9 @@ public class EditUniverse extends EditUniverseTaskBase {
         dedicatedNodesChanged.set(
             taskParams().getPrimaryCluster().userIntent.dedicatedNodes
                 != universe.getUniverseDetails().getPrimaryCluster().userIntent.dedicatedNodes);
+        primaryRFChanged.set(
+            taskParams().getPrimaryCluster().userIntent.replicationFactor
+                != universe.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor);
       }
       Set<NodeDetails> addedMasters = getAddedMasters();
       Set<NodeDetails> removedMasters = getRemovedMasters();
@@ -117,6 +121,9 @@ public class EditUniverse extends EditUniverseTaskBase {
           && !Objects.equals(
               universe.getUniverseDetails().communicationPorts, taskParams().communicationPorts)) {
         createUpdateUniverseCommunicationPortsTask(taskParams().communicationPorts);
+      }
+      if (primaryRFChanged.get()) {
+        createMasterLeaderStepdownTask();
       }
 
       // Wait for the master leader to hear from all tservers.

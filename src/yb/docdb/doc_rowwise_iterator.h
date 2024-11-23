@@ -80,6 +80,10 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
 
   void Seek(Slice key) override;
 
+  // Refreshes the iterator if it was in finished state.
+  // filter - filter mode that should be used with refreshed iterator.
+  void Refresh(SeekFilter filter);
+
   HybridTime TEST_MaxSeenHt() override;
 
   // key slice should point to block of memory, that contains kHighest after the end.
@@ -161,6 +165,8 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
   bool use_fast_backward_scan_ = false;
 
   DeadlineInfo deadline_info_;
+
+  SeekFilter seek_filter_ = SeekFilter::kAll;
 };
 
 }  // namespace docdb

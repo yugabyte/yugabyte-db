@@ -219,8 +219,8 @@ Result<DocHybridTime> GetTableTombstoneTime(
 
   auto iter = CreateIntentAwareIterator(
       doc_db, BloomFilterMode::USE_BLOOM_FILTER, table_id, rocksdb::kDefaultQueryId, txn_op_context,
-      read_operation_data.WithStatistics(nullptr));
-  iter->Seek(table_id);
+      read_operation_data);
+  iter->Seek(table_id, SeekFilter::kAll);
   const auto& entry_data = VERIFY_RESULT_REF(iter->Fetch());
   if (!entry_data || !entry_data.value.FirstByteIs(dockv::ValueEntryTypeAsChar::kTombstone) ||
       entry_data.key != table_id) {
@@ -253,7 +253,7 @@ Result<std::optional<SubDocument>> TEST_GetSubDocument(
   DOCDB_DEBUG_LOG("GetSubDocument for key $0 @ $1", sub_doc_key.ToDebugHexString(),
                   iter->read_time().ToString());
 
-  iter->Seek(sub_doc_key);
+  iter->Seek(sub_doc_key, SeekFilter::kAll);
   const auto& fetched = VERIFY_RESULT_REF(iter->Fetch());
   if (!fetched || !fetched.key.starts_with(sub_doc_key)) {
     return std::nullopt;
@@ -1845,7 +1845,7 @@ Result<DocReaderResult> DocDBTableReader::Get(
   // It means that other columns have NULL values, so if such column present, then
   // we should return row consisting of NULLs.
   // Here we check if there are columns values not listed in projection.
-  data_.iter->Seek(root_doc_key->AsSlice());
+  data_.iter->Seek(root_doc_key->AsSlice(), SeekFilter::kAll);
   const auto& new_fetched_entry = VERIFY_RESULT_REF(data_.iter->Fetch());
   if (!new_fetched_entry) {
     return DocReaderResult::kNotFound;

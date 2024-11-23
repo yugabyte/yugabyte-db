@@ -46,7 +46,7 @@
 
 DECLARE_int32(cdc_write_rpc_timeout_ms);
 
-DEFINE_RUNTIME_bool(cdc_force_remote_tserver, false,
+DEFINE_test_flag(bool, xcluster_force_remote_tserver, false,
     "Avoid local tserver apply optimization for xCluster and force remote RPCs.");
 
 DEFINE_RUNTIME_bool(xcluster_enable_packed_rows_support, true,
@@ -362,7 +362,7 @@ Status XClusterOutputClient::SendUserTableWrites() {
 }
 
 bool XClusterOutputClient::UseLocalTserver() {
-  return use_local_tserver_ && !FLAGS_cdc_force_remote_tserver;
+  return use_local_tserver_ && !FLAGS_TEST_xcluster_force_remote_tserver;
 }
 
 bool XClusterOutputClient::IsSequencesDataTablet() {
@@ -646,10 +646,15 @@ void XClusterOutputClient::DoSchemaVersionCheckDone(
               STATUS(IllegalState, "Missing latest schema version in response"));
           return;
         }
-        auto s =
-            client::XClusterClient(local_client_)
-                .InsertPackedSchemaForXClusterTarget(
-                    consumer_tablet_info_.table_id, req.schema(), resp.latest_schema_version());
+        std::optional<ColocationId> colocation_id_opt = std::nullopt;
+        if (req.schema().has_colocated_table_id() &&
+            req.schema().colocated_table_id().colocation_id() != kColocationIdNotSet) {
+          colocation_id_opt = std::make_optional(req.schema().colocated_table_id().colocation_id());
+        }
+        auto s = client::XClusterClient(local_client_)
+                     .InsertPackedSchemaForXClusterTarget(
+                         consumer_tablet_info_.table_id, req.schema(), resp.latest_schema_version(),
+                         colocation_id_opt);
 
         if (s.ok()) {
           VLOG_WITH_PREFIX(2) << "Inserted schema for automatic DDL replication: "

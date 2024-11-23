@@ -61,7 +61,8 @@ class XClusterPoller : public XClusterAsyncExecutor {
       rpc::Rpcs* rpcs, client::YBClient& local_client,
       const std::shared_ptr<client::XClusterRemoteClientHolder>& source_client,
       XClusterConsumer* xcluster_consumer, int64_t leader_term,
-      std::function<int64_t(const TabletId&)> get_leader_term, bool is_automatic_mode);
+      std::function<int64_t(const TabletId&)> get_leader_term, bool is_automatic_mode,
+      bool is_paused);
   ~XClusterPoller();
 
   void Init(bool use_local_tserver, rocksdb::RateLimiter* rate_limiter);
@@ -114,6 +115,8 @@ class XClusterPoller : public XClusterAsyncExecutor {
   void TEST_IncrementNumSuccessfulWriteRpcs();
   void ApplyChangesCallback(XClusterOutputClientResponse&& response);
 
+  void SetPaused(bool is_paused);
+
  private:
   const xcluster::ReplicationGroupId& GetReplicationGroupId() const {
     return producer_tablet_info_.replication_group_id;
@@ -131,9 +134,12 @@ class XClusterPoller : public XClusterAsyncExecutor {
   void VerifyApplyChangesResponse(XClusterOutputClientResponse response);
   void HandleApplyChangesResponse(XClusterOutputClientResponse response) EXCLUDES(data_mutex_);
   void UpdateSafeTime(int64 new_time) EXCLUDES(safe_time_lock_);
+  void InvalidateSafeTime() EXCLUDES(safe_time_lock_);
   void UpdateSchemaVersionsForApply() EXCLUDES(schema_version_lock_);
   bool IsLeaderTermValid() REQUIRES(data_mutex_);
   Status ProcessGetChangesResponseError(const cdc::GetChangesResponsePB& resp);
+
+  void MarkReplicationPaused();
 
   const xcluster::ProducerTabletInfo producer_tablet_info_;
   const xcluster::ConsumerTabletInfo consumer_tablet_info_;
@@ -168,6 +174,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
   mutable rw_spinlock safe_time_lock_;
   HybridTime producer_safe_time_ GUARDED_BY(safe_time_lock_);
 
+  std::atomic<bool> is_paused_;
   std::atomic<uint32> poll_failures_ = 0;
   std::atomic<uint32> apply_failures_ = 0;
   std::atomic<uint32> idle_polls_ = 0;

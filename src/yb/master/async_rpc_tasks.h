@@ -684,10 +684,12 @@ class AsyncBackfillDone : public AsyncAlterTable {
 
 class AsyncInsertPackedSchemaForXClusterTarget : public AsyncAlterTable {
  public:
+  // For colocated alters, `table` should be the table we are modifying (ie not the parent table).
   AsyncInsertPackedSchemaForXClusterTarget(
       Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
-      const SchemaPB& packed_schema, LeaderEpoch epoch)
-      : AsyncAlterTable(master, callback_pool, tablet, std::move(epoch)),
+      const scoped_refptr<TableInfo>& table, const SchemaPB& packed_schema, LeaderEpoch epoch)
+      : AsyncAlterTable(
+            master, callback_pool, tablet, table, TransactionId::Nil(), std::move(epoch)),
         packed_schema_(packed_schema) {}
 
   std::string type_name() const override { return "Insert packed schema for xCluster target"; }

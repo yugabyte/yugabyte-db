@@ -288,7 +288,8 @@ class PgCreateReplicationSlot final : public PgStatementLeafBase<
  public:
   PgCreateReplicationSlot(
       const PgSession::ScopedRefPtr& pg_session, const char* slot_name, const char* plugin_name,
-      PgOid database_oid, YBCPgReplicationSlotSnapshotAction snapshot_action);
+      PgOid database_oid, YBCPgReplicationSlotSnapshotAction snapshot_action,
+      YBCLsnType lsn_type);
 
   Result<tserver::PgCreateReplicationSlotResponsePB> Exec();
 

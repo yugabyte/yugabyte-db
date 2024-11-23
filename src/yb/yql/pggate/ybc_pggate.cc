@@ -138,6 +138,7 @@ DEFINE_NON_RUNTIME_bool(
 
 DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
+DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
 
 DECLARE_bool(use_fast_backward_scan);
 
@@ -1257,9 +1258,9 @@ YBCStatus YBCPgExecDropIndex(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecDropIndex(handle));
 }
 
-YBCStatus YBCPgWaitForBackendsCatalogVersion(YBCPgOid dboid, uint64_t version,
+YBCStatus YBCPgWaitForBackendsCatalogVersion(YBCPgOid dboid, uint64_t version, pid_t pid,
                                              int* num_lagging_backends) {
-  return ExtractValueFromResult(pgapi->WaitForBackendsCatalogVersion(dboid, version),
+  return ExtractValueFromResult(pgapi->WaitForBackendsCatalogVersion(dboid, version, pid),
                                 num_lagging_backends);
 }
 
@@ -2041,6 +2042,8 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .TEST_ysql_enable_db_logical_client_version_mode =
           &FLAGS_TEST_ysql_enable_db_logical_client_version_mode,
       .ysql_conn_mgr_superuser_sticky = &FLAGS_ysql_conn_mgr_superuser_sticky,
+      .TEST_ysql_log_perdb_allocated_new_objectid =
+          &FLAGS_TEST_ysql_log_perdb_allocated_new_objectid,
   };
   // clang-format on
   return &accessor;
@@ -2239,11 +2242,13 @@ YBCStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
                                         const char *plugin_name,
                                         YBCPgOid database_oid,
                                         YBCPgReplicationSlotSnapshotAction snapshot_action,
+                                        YBCLsnType lsn_type,
                                         YBCPgStatement *handle) {
   return ToYBCStatus(pgapi->NewCreateReplicationSlot(slot_name,
                                                      plugin_name,
                                                      database_oid,
                                                      snapshot_action,
+                                                     lsn_type,
                                                      handle));
 }
 

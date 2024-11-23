@@ -9,7 +9,8 @@ check_os() {
     else
       echo "rpm command exists, testing operating system version"
       rhel_version=$(rpm -E %{rhel})
-      if [[ "$rhel_version" == "7" ]]; then
+      platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"')
+      if [[ "$rhel_version" == "7" ]] || [[ "$platform_id" == "platform:el8" ]] || [[ "$platform_id" == "platform:el9" ]]; then
           echo "Operating system is based on el7"
           return 0
       else

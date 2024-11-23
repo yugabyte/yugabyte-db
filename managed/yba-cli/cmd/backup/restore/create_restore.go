@@ -30,9 +30,9 @@ var createRestoreCmd = &cobra.Command{
 	Example: `yba backup restore create --universe-name <universe-name> \
 	--storage-config-name <storage-config-name> \
 	--keyspace-info \
-	"keyspace-name=<keyspace-name-1>;storage-location=<storage-location-1>;backup-type=ysql" \
+	keyspace-name=<keyspace-name-1>::storage-location=<storage-location-1>::backup-type=ysql \
 	--keyspace-info \
-	"keyspace-name=<keyspace-name-2>;storage-location=<storage-location-2>;backup-type=ysql"`,
+	keyspace-name=<keyspace-name-2>::storage-location=<storage-location-2>::backup-type=ysql`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		universeNameFlag, err := cmd.Flags().GetString("universe-name")
 		if err != nil {
@@ -41,7 +41,7 @@ var createRestoreCmd = &cobra.Command{
 		if len(strings.TrimSpace(universeNameFlag)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No universe name found to take a backup\n", formatter.RedColor))
+				formatter.Colorize("No universe name found to restore backup to\n", formatter.RedColor))
 		}
 
 		storageConfigNameFlag, err := cmd.Flags().GetString("storage-config-name")
@@ -51,7 +51,7 @@ var createRestoreCmd = &cobra.Command{
 		if len(strings.TrimSpace(storageConfigNameFlag)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No storage config name found to take a backup\n", formatter.RedColor))
+				formatter.Colorize("No storage config name found for restore\n", formatter.RedColor))
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -194,7 +194,7 @@ var createRestoreCmd = &cobra.Command{
 
 		if viper.GetBool("wait") {
 			if taskUUID != "" {
-				logrus.Info(fmt.Sprintf("\nWaiting for restore task %s on universe %s(%s) to be completed\n",
+				logrus.Info(fmt.Sprintf("\nWaiting for restore task %s on universe %s (%s) to be completed\n",
 					formatter.Colorize(taskUUID, formatter.GreenColor), universeNameFlag, universeUUID))
 				err = authAPI.WaitForTask(taskUUID, msg)
 				if err != nil {
@@ -256,7 +256,7 @@ func buildBackupInfoList(backupInfos []string) (res []ybaclient.BackupStorageInf
 
 	for _, backupInfo := range backupInfos {
 		backupDetails := map[string]string{}
-		for _, keyspaceInfo := range strings.Split(backupInfo, ";") {
+		for _, keyspaceInfo := range strings.Split(backupInfo, util.Separator) {
 			kvp := strings.Split(keyspaceInfo, "=")
 			if len(kvp) != 2 {
 				logrus.Fatalln(
@@ -345,21 +345,20 @@ func init() {
 			"KMS configuration used during backup creation.")
 	createRestoreCmd.Flags().StringArray("keyspace-info", []string{},
 		"[Required] Keyspace info to perform restore operation."+
-			" Provide the following semicolon separated fields as key value pairs, and"+
-			" enclose the string with quotes: "+
-			"\"'keyspace-name=<keyspace-name>;storage-location=<storage_location>;"+
-			"backup-type=<ycql/ysql>;use-tablespaces=<use-tablespaces>;"+
-			"selective-restore=<selective-restore>;table-name-list=<table-name1>,<table-name2>'\"."+
+			" Provide the following double colon (::) separated fields as key value pairs: "+
+			"\"keyspace-name=<keyspace-name>::storage-location=<storage_location>::"+
+			"backup-type=<ycql/ysql>::use-tablespaces=<use-tablespaces>::"+
+			"selective-restore=<selective-restore>::table-name-list=<table-name1>,<table-name2>\"."+
 			" The table-name-list attribute has to be specified as comma separated values. "+
 			formatter.Colorize("Keyspace name, storage-location and backup-type are required "+
 				"values. ", formatter.GreenColor)+
 			"The attributes use-tablespaces, selective-restore and table-name-list are optional. "+
 			"Attributes selective-restore and table-name-list are needed only for YCQL. "+
 			"The attribute use-tablespaces is needed only for YSQL. "+
-			"Example: --keyspace-info 'keyspace-name=cassandra1;storage-location=s3://bucket/location1;"+
-			"backup-type=ycql;selective-restore=true;table-name-list=table1,table2' "+
-			"--keyspace-info 'keyspace-name=postgres;storage-location=s3://bucket/location2"+
-			"backup-type=ysql;use-tablespaces=true'")
+			"Example: --keyspace-info keyspace-name=cassandra1;storage-location=s3://bucket/location1;"+
+			"backup-type=ycql;selective-restore=true;table-name-list=table1,table2 "+
+			"--keyspace-info keyspace-name=postgres;storage-location=s3://bucket/location2"+
+			"backup-type=ysql;use-tablespaces=true")
 	createRestoreCmd.MarkFlagRequired("keyspace-info")
 	createRestoreCmd.Flags().Bool("enable-verbose-logs", false,
 		"[Optional] Enable verbose logging while taking backup via \"yb_backup\" script. (default false)")

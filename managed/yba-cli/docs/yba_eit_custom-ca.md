@@ -13,7 +13,7 @@ yba eit custom-ca [flags]
 ### Options
 
 ```
-  -n, --name string   [Optional] The name of the configuration for the action. Required for create, delete, describe, update.
+  -n, --name string   [Optional] The name of the configuration for the action. Required for create, delete, describe, download.
   -h, --help          help for custom-ca
 ```
 
@@ -37,5 +37,6 @@ yba eit custom-ca [flags]
 * [yba eit custom-ca create](yba_eit_custom-ca_create.md)	 - Create a YugabyteDB Anywhere Custom CA encryption in transit configuration
 * [yba eit custom-ca delete](yba_eit_custom-ca_delete.md)	 - Delete a YugabyteDB Anywhere Custom CA encryption in transit configuration
 * [yba eit custom-ca describe](yba_eit_custom-ca_describe.md)	 - Describe a Custom CA YugabyteDB Anywhere Encryption In Transit (EIT) configuration
+* [yba eit custom-ca download](yba_eit_custom-ca_download.md)	 - Download a Custom CA YugabyteDB Anywhere Encryption In Transit (EIT) configuration's certifciates
 * [yba eit custom-ca list](yba_eit_custom-ca_list.md)	 - List Custom CA YugabyteDB Anywhere Encryption In Transit (EIT) certificate configurations
 

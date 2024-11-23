@@ -24,8 +24,7 @@
 
 #include "yb/util/status_fwd.h"
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
 YB_DEFINE_ENUM(RemoveReason,
                (kApplied)(kLargeApplied)(kProcessCleanup)(kStatusReceived)(kAbortReceived)
@@ -34,7 +33,7 @@ YB_DEFINE_ENUM(RemoveReason,
 // Interface to object that should apply intents in RocksDB when transaction is applying.
 class TransactionIntentApplier {
  public:
-  virtual Result<docdb::ApplyTransactionState> ApplyIntents(const TransactionApplyData& data) = 0;
+  virtual docdb::ApplyTransactionState ApplyIntents(const TransactionApplyData& data) = 0;
   virtual Status RemoveIntents(
       const RemoveIntentsData& data, RemoveReason reason,
       const TransactionId& transaction_id) = 0;
@@ -53,5 +52,4 @@ class TransactionIntentApplier {
   ~TransactionIntentApplier() {}
 };
 
-}  // namespace tablet
-}  // namespace yb
+}  // namespace yb::tablet

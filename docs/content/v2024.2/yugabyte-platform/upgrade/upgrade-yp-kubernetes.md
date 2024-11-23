@@ -60,7 +60,7 @@ If you have upgraded YugabyteDB Anywhere to version 2.12 or later and [xCluster 
 
 ## Install Yugabyte Kubernetes Operator by upgrading an existing YBA
 
-The [Yugabyte Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/) {{<tags/feature/tp>}} automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. You can install the operator by upgrading an existing YBA as follows:
+The [Yugabyte Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/) {{<tags/feature/ea>}} automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. You can install the operator by upgrading an existing YBA as follows:
 
 1. Apply the following Custom Resource Definition:
 

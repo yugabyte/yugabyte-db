@@ -592,15 +592,7 @@ public class NodeInstanceController extends AuthenticatedController {
       throw new PlatformServiceException(
           CONFLICT, "Node " + node.getNodeUuid() + " has incomplete tasks");
     }
-    UUID taskUUID = nodeInstanceHandler.updateState(payload, node, provider);
-
-    CustomerTask.create(
-        c,
-        node.getNodeUuid(),
-        taskUUID,
-        CustomerTask.TargetType.Node,
-        CustomerTask.TaskType.Update,
-        node.getNodeName());
+    UUID taskUUID = nodeInstanceHandler.updateState(payload, node, provider, c);
 
     auditService()
         .createAuditEntryWithReqBody(

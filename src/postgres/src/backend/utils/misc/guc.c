@@ -2527,6 +2527,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_allow_replication_slot_lsn_types", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Allow specifying LSN type while creating replication slot"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_allow_replication_slot_lsn_types,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"ysql_upgrade_mode", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enter a special mode designed specifically for YSQL cluster upgrades. "
 						 "Allows creating new system tables with given relation and type OID. "
@@ -3046,6 +3057,7 @@ static struct config_int ConfigureNamesInt[] =
 		0, 0, INT_MAX / 2,
 		NULL, NULL, NULL
 	},
+
 	{
 		{"post_auth_delay", PGC_BACKEND, DEVELOPER_OPTIONS,
 			gettext_noop("Sets the amount of time to wait after "

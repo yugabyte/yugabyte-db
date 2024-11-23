@@ -28,17 +28,34 @@ public class RecommissionNodeInstance extends AbstractTaskBase {
   public void run() {
     NodeInstance nodeInstance = NodeInstance.getOrBadRequest(taskParams().getNodeUuid());
 
-    try {
-      ShellResponse response =
-          nodeManager
-              .detachedNodeCommand(NodeManager.NodeCommandType.Destroy, taskParams())
-              .processErrors();
-    } catch (Exception e) {
-      log.error("Clean up failed for node instance: {}", nodeInstance.getNodeUuid(), e);
-      throw e;
+    if (nodeInstance.getState() != NodeInstance.State.DECOMMISSIONED) {
+      throw new RuntimeException(
+          String.format(
+              "Node instance %s in %s state cannot be recommissioned. Node instance must be in %s"
+                  + " state to be recommissioned.",
+              nodeInstance.getNodeUuid(),
+              nodeInstance.getState(),
+              NodeInstance.State.DECOMMISSIONED));
     }
 
-    log.debug("Successfully cleaned up node instance: {}", nodeInstance.getNodeUuid());
+    if (!nodeInstance.isManuallyDecommissioned()) {
+      log.debug("Cleaning up node instance {}", nodeInstance.getNodeUuid());
+      try {
+        ShellResponse response =
+            nodeManager
+                .detachedNodeCommand(NodeManager.NodeCommandType.Destroy, taskParams())
+                .processErrors();
+      } catch (Exception e) {
+        log.error("Clean up failed for node instance: {}", nodeInstance.getNodeUuid(), e);
+        throw e;
+      }
+      log.debug("Successfully cleaned up node instance: {}", nodeInstance.getNodeUuid());
+    } else {
+      log.debug(
+          "Skipping clean up node instance {} as node instance was manually decommissioned by user",
+          nodeInstance.getNodeUuid());
+    }
+
     nodeInstance.clearNodeDetails();
   }
 }

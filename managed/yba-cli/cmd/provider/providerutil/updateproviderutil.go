@@ -79,7 +79,7 @@ func BuildZoneMapFromString(
 	operation string,
 ) map[string]string {
 	zone := map[string]string{}
-	for _, zoneInfo := range strings.Split(zoneString, ",") {
+	for _, zoneInfo := range strings.Split(zoneString, util.Separator) {
 		kvp := strings.Split(zoneInfo, "=")
 		if len(kvp) != 2 {
 			logrus.Fatalln(
@@ -195,7 +195,7 @@ func BuildRegionMapFromString(
 	regionString, operation string,
 ) map[string]string {
 	region := map[string]string{}
-	for _, regionInfo := range strings.Split(regionString, ",") {
+	for _, regionInfo := range strings.Split(regionString, util.Separator) {
 		kvp := strings.Split(regionInfo, "=")
 		if len(kvp) != 2 {
 			logrus.Fatalln(
@@ -335,7 +335,7 @@ func BuildImageBundleMapFromString(
 	imageBundleString, operation string,
 ) map[string]string {
 	imageBundle := map[string]string{}
-	for _, ibInfo := range strings.Split(imageBundleString, ",") {
+	for _, ibInfo := range strings.Split(imageBundleString, util.Separator) {
 		kvp := strings.Split(ibInfo, "=")
 		if len(kvp) != 2 {
 			logrus.Fatalln(
@@ -419,7 +419,7 @@ func BuildImageBundleRegionOverrideMapFromString(
 	regionString, operation string,
 ) map[string]string {
 	override := map[string]string{}
-	for _, o := range strings.Split(regionString, ",") {
+	for _, o := range strings.Split(regionString, util.Separator) {
 		kvp := strings.Split(o, "=")
 		if len(kvp) != 2 {
 			logrus.Fatalln(

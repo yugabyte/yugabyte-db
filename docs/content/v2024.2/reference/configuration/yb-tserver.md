@@ -799,7 +799,7 @@ Default: `false`
 
 ##### --pg_client_use_shared_memory
 
-{{<tags/feature/ea>}} Enables the use of shared memory between PostgreSQL and the YB-TServer. Using shared memory can potentially improve the performance of your database operations.
+Enables the use of shared memory between PostgreSQL and the YB-TServer. Using shared memory can potentially improve the performance of your database operations.
 
 Default: `false`
 
@@ -1812,6 +1812,24 @@ Default: 1024
 
 Default: true
 
+##### yb_read_from_followers
+
+Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/).
+
+Default: false
+
+##### yb_follower_read_staleness_ms
+
+Sets the maximum allowable staleness. Although the default is recommended, you can set the staleness to a shorter value. The tradeoff is the shorter the staleness, the more likely some reads may be redirected to the leader if the follower isn't sufficiently caught up. You shouldn't set `yb_follower_read_staleness_ms` to less than 2x the `raft_heartbeat_interval_ms` (which by default is 500 ms).
+
+Default: 30000 (30 seconds)
+
+##### default_transaction_read_only
+
+Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/#read-only-transaction).
+
+Default: false
+
 ##### default_transaction_isolation
 
 Specifies the default isolation level of each new transaction. Every transaction has an isolation level of `read uncommitted`, `read committed`, `repeatable read`, or `serializable`.
@@ -1819,6 +1837,14 @@ Specifies the default isolation level of each new transaction. Every transaction
 See [transaction isolation levels](../../../architecture/transactions/isolation-levels) for reference.
 
 Default: `read committed`
+
+##### yb_skip_redundant_update_ops
+
+Enables skipping updates to columns that are part of secondary indexes and constraint checks when the column values remain unchanged.
+
+This parameter can only be configured during cluster startup, and adjusting this parameter does not require a cluster restart.
+
+Default: true
 
 ## Admin UI
 
