@@ -64,7 +64,7 @@ Subsequent backups are created based on the value you specified for **Set backup
 
 Creating a scheduled backup policy with PITR is currently {{<tags/feature/ea>}}.
 
-To create the scheduled backup policy with PITR support, you can set the `enablePointInTimeRestore` attribute to true via an API request as follows:
+To create a scheduled backup policy with PITR support, you can set the `enablePointInTimeRestore` attribute to true in the API request. For example:
 
 ```shell
 curl 'http://<platform-url>/api/v1/customers/:cUUID/create_backup_schedule_async' \
