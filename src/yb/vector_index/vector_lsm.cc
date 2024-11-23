@@ -55,6 +55,10 @@ DEFINE_test_flag(bool, vector_index_skip_update_metadata_during_shutdown, false,
 DEFINE_test_flag(uint64, vector_index_delay_saving_first_chunk_ms, 0,
                  "Delay saving the first chunk in VectorLSM for specified amount of milliseconds");
 
+DEFINE_NON_RUNTIME_uint32(vector_index_concurrent_reads, 0,
+                          "Max number of concurrent reads on vector index chunk. "
+                          "0 - use number of CPUs for it.");
+
 namespace yb::vector_index {
 
 namespace bi = boost::intrusive;
@@ -556,7 +560,7 @@ auto VectorLSM<Vector, DistanceResult>::Search(
   auto intermediate_results = insert_registry_->Search(query_vector, options.max_num_results);
 
   for (const auto& index : indexes) {
-    auto chunk_results = index->Search(query_vector, options.max_num_results);
+    auto chunk_results = VERIFY_RESULT(index->Search(query_vector, options.max_num_results));
     MergeChunkResults(intermediate_results, chunk_results, options.max_num_results);
   }
 
@@ -713,9 +717,13 @@ Status VectorLSM<Vector, DistanceResult>::RollChunk(size_t min_points) {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::CreateNewMutableChunk(size_t min_points) {
   auto index = options_.vector_index_factory();
+  auto max_concurrent_reads = FLAGS_vector_index_concurrent_reads;
+  if (max_concurrent_reads == 0) {
+    max_concurrent_reads = std::thread::hardware_concurrency();
+  }
   RETURN_NOT_OK(index->Reserve(
       std::max(min_points, options_.points_per_chunk),
-      options_.thread_pool->options().max_workers));
+      options_.thread_pool->options().max_workers, max_concurrent_reads));
 
   mutable_chunk_ = std::make_shared<MutableChunk>();
   mutable_chunk_->index = std::move(index);

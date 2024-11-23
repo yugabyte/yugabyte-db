@@ -27,7 +27,7 @@ class HnswlibIndexMergeTest : public YBTest {
  protected:
   VectorIndexIfPtr<FloatVector, float> CreateAndFillIndex(size_t first_id, size_t num_entries) {
     auto result = index_factory_();
-    CHECK_OK(result->Reserve(num_entries, std::thread::hardware_concurrency()));
+    CHECK_OK(result->Reserve(num_entries, 0, 0));
     for (size_t id = first_id; id != first_id + num_entries; ++id) {
       CHECK_OK(result->Insert(id, all_vectors_[id % 4]));
     }
@@ -77,17 +77,17 @@ TEST_F(HnswlibIndexMergeTest, TestMergeIndices) {
       Merge(index_factory_, index_a_, index_b_);
 
   // Check that the merged index contains all entries.
-  auto result_a = merged_index->Search(all_vectors_[0], 1);
+  auto result_a = ASSERT_RESULT(merged_index->Search(all_vectors_[0], 1));
   ASSERT_EQ(result_a.size(), 1);
   ASSERT_EQ(result_a[0].vertex_id, 0);
 
-  auto result_b = merged_index->Search(all_vectors_[2], 1);
+  auto result_b = ASSERT_RESULT(merged_index->Search(all_vectors_[2], 1));
   ASSERT_EQ(result_b.size(), 1);
   ASSERT_EQ(result_b[0].vertex_id, 2);
 
   // Verify the size of the merged index.
-  auto all_results =
-      merged_index->Search({0.0f, 0.0f, 0.0f}, 10); // Assuming a query that fetches all.
+  auto all_results = ASSERT_RESULT(merged_index->Search(
+      {0.0f, 0.0f, 0.0f}, 10)); // Assuming a query that fetches all.
   ASSERT_EQ(all_results.size(), 4); // Should contain all 4 entries.
 
   // Check that all expected vertex_ids are in the results.
@@ -99,14 +99,15 @@ TEST_F(HnswlibIndexMergeTest, TestMergeWithEmptyIndex) {
   // Create an empty index with the same options.
   VectorIndexIfPtr<FloatVector, float> empty_index = index_factory_();
 
-  CHECK_OK(empty_index->Reserve(10, std::thread::hardware_concurrency()));
+  CHECK_OK(empty_index->Reserve(10, 0, 0));
 
   // Merge empty_index into index_a.
   VectorIndexIfPtr<FloatVector, float> merged_index =
       Merge(index_factory_, index_a_, empty_index);
 
   // Check that the merged index contains only the entries from index_a.
-  auto all_results = merged_index->Search({0.0f, 0.0f, 0.0f}, 10);  // Query that fetches all.
+  auto all_results = ASSERT_RESULT(merged_index->Search(
+      {0.0f, 0.0f, 0.0f}, 10));  // Query that fetches all.
   ASSERT_EQ(all_results.size(), 2);  // Should contain only the 2 entries from index_a.
   // Check that all expected vertex_ids are in the results.
   VerifyExpectedVertexIds(all_results, {0, 1});

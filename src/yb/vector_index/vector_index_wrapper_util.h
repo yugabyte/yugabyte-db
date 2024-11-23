@@ -36,27 +36,28 @@ template<
 class VectorIndexReaderAdapter
     : public VectorIndexReaderIf<DestinationVector, DestinationDistanceResult> {
  public:
+  using Base = VectorIndexReaderIf<DestinationVector, DestinationDistanceResult>;
+
   // Constructor takes the underlying vector index reader
   explicit VectorIndexReaderAdapter(
       const VectorIndexReaderIf<SourceVector, SourceDistanceResult>& source_reader)
       : source_reader_(source_reader) {}
 
   // Implementation of the Search function
-  std::vector<VertexWithDistance<DestinationDistanceResult>> Search(
+  Result<typename Base::SearchResult> Search(
       const DestinationVector& query_vector, size_t max_num_results) const override {
     // Cast the query_vector to the SourceVector type
     SourceVector cast_query_vector = vector_cast<SourceVector>(query_vector);
 
     // Perform the search using the underlying source_reader
-    auto source_results = source_reader_.Search(cast_query_vector, max_num_results);
+    auto source_results = VERIFY_RESULT(source_reader_.Search(cast_query_vector, max_num_results));
 
     // Prepare to convert results to the DestinationDistanceResult type
-    std::vector<VertexWithDistance<DestinationDistanceResult>> destination_results;
+    typename Base::SearchResult destination_results;
     destination_results.reserve(source_results.size());
 
     for (const auto& source_result : source_results) {
-      DestinationDistanceResult cast_distance = static_cast<DestinationDistanceResult>(
-          source_result.distance);
+      auto cast_distance = static_cast<DestinationDistanceResult>(source_result.distance);
       destination_results.emplace_back(source_result.vertex_id, cast_distance);
     }
 

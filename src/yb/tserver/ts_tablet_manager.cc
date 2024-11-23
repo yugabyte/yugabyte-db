@@ -321,6 +321,10 @@ DEFINE_test_flag(bool, crash_before_clone_target_marked_ready, false,
 DEFINE_test_flag(bool, crash_before_mark_clone_attempted, false,
                  "Whether to crash before marking a clone op as completed on the source tablet.");
 
+DEFINE_NON_RUNTIME_uint32(vector_index_concurrent_writes, 0,
+                          "Number of threads used by vector index thread pool. "
+                          "0 - use number of CPUs for it.");
+
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
 DECLARE_bool(lazily_flush_superblock);
@@ -3468,8 +3472,12 @@ rpc::ThreadPool* TSTabletManager::VectorIndexThreadPool() {
   }
   rpc::ThreadPoolOptions options = {
     .name = "vector_index_tp",
-    .max_workers = std::thread::hardware_concurrency(),
+    .max_workers = FLAGS_vector_index_concurrent_writes,
   };
+  if (options.max_workers == 0) {
+    options.max_workers = std::thread::hardware_concurrency();
+  }
+  LOG(INFO) << "Use " << options.max_workers << " for vector index thread pool";
   vector_index_thread_pool_.reset(result = new rpc::ThreadPool(std::move(options)));
   return result;
 }

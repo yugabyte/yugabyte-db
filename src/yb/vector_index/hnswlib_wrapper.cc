@@ -70,7 +70,7 @@ class HnswlibIndex :
         hnsw_->vectors_end(), options_.dimensions);
   }
 
-  Status Reserve(size_t num_vectors, size_t max_concurrent_inserts) override {
+  Status Reserve(size_t num_vectors, size_t, size_t) override {
     if (hnsw_) {
       return STATUS_FORMAT(
           IllegalState, "Cannot reserve space for $0 vectors: Hnswlib index already initialized",
@@ -107,7 +107,7 @@ class HnswlibIndex :
 
   Status DoLoadFromFile(const std::string& path) {
     // Create hnsw_ before loading from file.
-    RETURN_NOT_OK(Reserve(0, 0));
+    RETURN_NOT_OK(Reserve(0, 0, 0));
     try {
       hnsw_->loadIndex(path, space_.get());
     } catch (std::exception& e) {

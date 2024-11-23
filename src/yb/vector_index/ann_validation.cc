@@ -146,7 +146,7 @@ void GroundTruth<Vector, DistanceResult>::DoApproxSearchAndUpdateStats(
     const Vector& query,
     const std::vector<VertexId>& correct_result,
     AtomicUInt64Vector& total_overlap_counters) {
-  auto approx_result = index_reader_.Search(vector_cast<Vector>(query), k_);
+  auto approx_result = CHECK_RESULT(index_reader_.Search(vector_cast<Vector>(query), k_));
   std::unordered_set<VertexId> approx_set;
   for (const auto& approx_entry : approx_result) {
     approx_set.insert(approx_entry.vertex_id);

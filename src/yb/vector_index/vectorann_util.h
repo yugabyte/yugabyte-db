@@ -124,7 +124,8 @@ VectorIndexIfPtr<Vector, DistanceResult> Merge(
     VectorIndexIfPtr<Vector, DistanceResult> index_b) {
   VectorIndexIfPtr<Vector, DistanceResult> merged_index = index_factory();
   // TODO(vector_index) we need a way to get the size of merging index
-  auto status_reserve = merged_index->Reserve(10, std::thread::hardware_concurrency());
+  auto status_reserve = merged_index->Reserve(
+      10, std::thread::hardware_concurrency(), std::thread::hardware_concurrency());
 
   for (const auto& [vector, vertex_id] : *index_a) {
     auto status = merged_index->Insert(vertex_id, vector);

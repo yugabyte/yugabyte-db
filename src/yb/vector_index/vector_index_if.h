@@ -36,7 +36,7 @@ class VectorIndexReaderIf {
 
   virtual ~VectorIndexReaderIf() = default;
   virtual DistanceResult Distance(const Vector& lhs, const Vector& rhs) const = 0;
-  virtual SearchResult Search(const Vector& query_vector, size_t max_num_results) const = 0;
+  virtual Result<SearchResult> Search(const Vector& query_vector, size_t max_num_results) const = 0;
 
   virtual std::unique_ptr<yb::AbstractIterator<IteratorValueType>> BeginImpl() const = 0;
   virtual std::unique_ptr<yb::AbstractIterator<IteratorValueType>> EndImpl() const = 0;
@@ -52,7 +52,8 @@ class VectorIndexWriterIf {
   virtual ~VectorIndexWriterIf() = default;
 
   // Reserves capacity for this number of vectors.
-  virtual Status Reserve(size_t num_vectors, size_t max_concurrent_inserts) = 0;
+  virtual Status Reserve(
+      size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads) = 0;
 
   virtual Status Insert(VertexId vertex_id, const Vector& vector) = 0;
 

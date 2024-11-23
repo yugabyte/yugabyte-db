@@ -24,6 +24,8 @@ namespace yb::vector_index {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
  public:
+  using Base = VectorIndexIf<Vector, DistanceResult>;
+
   ShardedVectorIndex(const VectorIndexFactory<Vector, DistanceResult>& factory,
                      size_t num_shards)
       : indexes_(num_shards), round_robin_counter_(0) {
@@ -33,10 +35,12 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
   }
 
   // Reserve capacity across all shards (each shard gets an equal portion, rounded up).
-  Status Reserve(size_t num_vectors, size_t max_concurrent_inserts) override {
+  Status Reserve(
+      size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads) override {
     size_t capacity_per_shard = (num_vectors + indexes_.size() - 1) / indexes_.size();  // Round up
     for (auto& index : indexes_) {
-      RETURN_NOT_OK(index->Reserve(capacity_per_shard, max_concurrent_inserts));
+      RETURN_NOT_OK(index->Reserve(
+          capacity_per_shard, max_concurrent_inserts, max_concurrent_reads));
     }
     return Status::OK();
   }
@@ -70,11 +74,11 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
   }
 
   // Search for the closest vectors across all shards.
-  std::vector<VertexWithDistance<DistanceResult>> Search(
+  Result<typename Base::SearchResult> Search(
       const Vector& query_vector, size_t max_num_results) const override {
     std::vector<VertexWithDistance<DistanceResult>> all_results;
     for (const auto& index : indexes_) {
-      auto results = index->Search(query_vector, max_num_results);
+      auto results = VERIFY_RESULT(index->Search(query_vector, max_num_results));
       all_results.insert(all_results.end(), results.begin(), results.end());
     }
 

@@ -19,10 +19,13 @@
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/test_thread_holder.h"
 
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
+DECLARE_uint32(vector_index_concurrent_reads);
+DECLARE_uint32(vector_index_concurrent_writes);
 
 namespace yb::pgwrapper {
 
@@ -32,14 +35,22 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
     PgMiniTestBase::SetUp();
   }
 
+  bool IsColocated() const {
+    return GetParam();
+  }
+
+  Result<PGConn> Connect() const override {
+    return IsColocated() ? ConnectToDB("colocated_db") : PgMiniTestBase::Connect();
+  }
+
   Result<PGConn> MakeIndex() {
-    auto colocated = GetParam();
-    auto conn = VERIFY_RESULT(Connect());
+    auto colocated = IsColocated();
+    auto conn = VERIFY_RESULT(PgMiniTestBase::Connect());
     std::string create_suffix;
     if (colocated) {
       create_suffix = " WITH (COLOCATED = 1)";
       RETURN_NOT_OK(conn.ExecuteFormat("CREATE DATABASE colocated_db COLOCATION = true"));
-      conn = VERIFY_RESULT(ConnectToDB("colocated_db"));
+      conn = VERIFY_RESULT(Connect());
     } else {
       // TODO(vector_index) Remove it when multi-tablet vector indexes will be supported
       create_suffix = " SPLIT INTO 1 TABLETS";
@@ -52,6 +63,8 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
 
     return conn;
   }
+
+  Result<PGConn> MakeIndexAndFill(int num_rows);
 
   void TestSimple();
 };
@@ -119,25 +132,60 @@ std::string VectorAsString(int64_t id) {
   return Format("[$0, $1, $2]", id, id * 2, id * 3);
 }
 
+std::string ExpectedRow(int64_t id) {
+  return Format("$0, $1", id, VectorAsString(id));
+}
+
+Result<PGConn> PgVectorIndexTest::MakeIndexAndFill(int num_rows) {
+  auto conn = VERIFY_RESULT(MakeIndex());
+
+  RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  for (int i = 1; i <= num_rows; ++i) {
+    RETURN_NOT_OK(conn.ExecuteFormat(
+       "INSERT INTO test VALUES ($0, '$1')", i, VectorAsString(i)));
+  }
+  RETURN_NOT_OK(conn.CommitTransaction());
+  return conn;
+}
+
 TEST_P(PgVectorIndexTest, ManyRows) {
   constexpr int kNumRows = RegularBuildVsSanitizers(2000, 64);
   constexpr int kQueryLimit = 5;
 
-  auto conn = ASSERT_RESULT(MakeIndex());
-
-  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  for (int i = 1; i <= kNumRows; ++i) {
-    ASSERT_OK(conn.ExecuteFormat(
-       "INSERT INTO test VALUES ($0, '$1')", i, VectorAsString(i)));
-  }
-  ASSERT_OK(conn.CommitTransaction());
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
 
   auto result = ASSERT_RESULT((conn.FetchRows<RowAsString>(Format(
       "SELECT * FROM test ORDER BY embedding <-> '[0.0, 0.0, 0.0]' LIMIT $0", kQueryLimit))));
   ASSERT_EQ(result.size(), kQueryLimit);
   for (size_t i = 0; i != result.size(); ++i) {
-    ASSERT_EQ(result[i], Format("$0, $1", i + 1, VectorAsString(i + 1)));
+    ASSERT_EQ(result[i], ExpectedRow(i + 1));
   }
+}
+
+TEST_P(PgVectorIndexTest, ManyReads) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_concurrent_reads) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_concurrent_writes) = 1;
+
+  constexpr int kNumRows = 64;
+  constexpr int kNumReads = 16;
+
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+
+  TestThreadHolder threads;
+  for (int i = 1; i <= kNumReads; ++i) {
+    threads.AddThreadFunctor([this, &stop_flag = threads.stop_flag()] {
+      auto conn = ASSERT_RESULT(Connect());
+      while (!stop_flag.load()) {
+        auto id = RandomUniformInt(1, kNumRows);
+        auto vector = VectorAsString(id);
+        auto rows = ASSERT_RESULT(conn.FetchAllAsString(Format(
+            "SELECT * FROM test ORDER BY embedding <-> '$0' LIMIT 1", vector)));
+        ASSERT_EQ(rows, ExpectedRow(id));
+      }
+    });
+  }
+
+  threads.WaitAndStop(5s);
 }
 
 std::string ColocatedToString(const testing::TestParamInfo<bool>& param_info) {
