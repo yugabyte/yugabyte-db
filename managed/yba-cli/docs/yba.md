@@ -43,5 +43,6 @@ yba [flags]
 * [yba storage-config](yba_storage-config.md)	 - Manage YugabyteDB Anywhere storage configurations
 * [yba task](yba_task.md)	 - Manage YugabyteDB Anywhere tasks
 * [yba universe](yba_universe.md)	 - Manage YugabyteDB Anywhere universes
+* [yba user](yba_user.md)	 - Manage YugabyteDB Anywhere users
 * [yba yb-db-version](yba_yb-db-version.md)	 - Manage YugabyteDB versions
 
