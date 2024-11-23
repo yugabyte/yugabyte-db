@@ -67,6 +67,10 @@ To create a large number of client connections, ensure that "SHMMNI" (the maximu
 1. To refresh the settings, use `sudo sysctl -p`.
 {{< /note >}}
 
+### YugabyteDB Anywhere
+
+{{<tags/feature/tp>}}You can use built-in connection pooling with universes deployed using YugabyteDB Anywhere. Refer to [Create universe](../../../yugabyte-platform/create-deployments/create-universe-multi-zone/#advanced-configuration). When managing universes using YugabyteDB Anywhere, do not set connection pooling options using flags.
+
 ## Configuration
 
 By default, when YSQL Connection Manager is enabled, it uses the port 5433, and the backend database is assigned a random free port.
