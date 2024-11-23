@@ -184,7 +184,7 @@ Optionally, use the **Helm Overrides** section, as follows:
     ```yaml
     # Point to the aarch64 image in case multi-arch is not available.
     Image:
-        tag: 2.23.0.0-b586-aarch64 
+        tag: {{< yb-version version="stable" format="build">}}-aarch64 
     # Add a nodeSelector to deploy universe to arm64 nodes in the cluster
     nodeSelector:
         kubernetes.io/arch: arm64 
