@@ -37,21 +37,37 @@ Note that the provider example used in this document has a cluster-level admin a
 
 ## Create a universe
 
-To start, navigate to **Dashboard** or **Universes**, click **Create Universe** and complete the first two fields of the **Cloud Configuration** section:
+To create a universe:
 
-- In the **Name** field, enter the name for the YugabyteDB universe using lowercase characters (for example, yb-k8s).
+1. Navigate to **Dashboard** or **Universes**, and click **Create Universe**.
 
-- Use the **Provider** field to select the appropriate Kubernetes cloud (for example, multilane-k8s-portal-yb). Notice that additional fields appear.
+1. Enter the universe details. Refer to [Universe settings](#universe-settings).
 
-Complete the rest of the **Cloud Configuration** section as follows:
+1. To add a read replica, click **Configure Read Replica**. Refer to [Create a read replica cluster](../read-replicas/).
 
-- Use the **Regions** field to select the region. This enables the **Availability Zones** option that allows you to see zones belonging to that region.
+1. Click **Create** when you are done and wait for the configuration to complete.
 
-- Provide the value in the **Pods** field. This value should be equal to or greater than the replication factor. The default value is 3. When this value is supplied, the pods (also known as nodes) are automatically placed across all the availability zones to guarantee the maximum availability.
+  ![Kubernetes Create Universe](/images/yb-platform/instance-config-k8s.png)
 
-- In the **Replication Factor** field, define the replication factor, as per the following illustration:
+## Universe settings
 
-  ![Kubernetes Cloud Configuration](/images/yb-platform/kubernetes-config55.png)
+### Cloud Configuration
+
+Specify the provider and geolocations for the pods in the universe:
+
+- Enter a name for the universe.
+
+- Choose the Kubernetes [provider configuration](../../configure-yugabyte-platform/kubernetes/) to use to create the universe.
+
+- Select the regions in which to deploy pods. The available regions will depend on the provider you selected.
+
+- Enter the number of pods to deploy in the universe. When you provide the value in the **TServer** field, the pods are automatically placed across all the availability zones to guarantee the maximum availability.
+
+- Select the [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) for the universe.
+
+- Configure the availability zones where the pods will be deployed by clicking **Add Zone**.
+
+- Use the **Preferred** setting to set the [preferred zone or region](../../../explore/multi-region-deployments/synchronous-replication-yba/#preferred-region).
 
 ### Instance Configuration
 
@@ -61,20 +77,38 @@ Complete the **Instance Configuration** section for **TServer** and **Master** a
 - **Memory(GiB)** - specify the memory allocation of the TServer and Master.
 - **Volume Info** - specify the number of volumes multiplied by size for the TServer and Master. The default is 1 x 100GB.
 
-  ![Kubernetes Overrides](/images/yb-platform/instance-config-k8s.png)
+YugabyteDB supports ARM instances, which are specified using Helm overrides. See [Helm Overrides](#helm-overrides).
 
 ### Security Configurations
 
-Complete the **Security Configurations** section as follows:
+#### Authentication Settings
 
-- **Enable YSQL** - specify whether or not to enable the YSQL API endpoint for running PostgreSQL-compatible workloads. This setting is enabled by default.
-- **Enable YSQL Auth** - specify whether or not to enable the YSQL password authentication.
-- **Enable YCQL** - specify whether or not to enable the YCQL API endpoint for running Cassandra-compatible workloads. This setting is enabled by default.
-- **Enable YCQL Auth** - specify whether or not to enable the YCQL password authentication.
-- **Enable Node-to-Node TLS** - specify whether or not to enable encryption in transit for communication between the database servers. This setting is enabled by default.
-- **Enable Client-to-Node TLS** - specify whether or not to enable encryption in transit for communication between clients and the database servers. This setting is enabled by default.
-- **Root Certificate** - select an existing security certificate or create a new one.
-- **Enable Encryption at Rest** - specify whether or not to enable encryption for data stored on the tablet servers. This setting is disabled by default.
+Enable the YSQL and YCQL endpoints and database authentication.
+
+Enter the password to use for the default database admin superuser (yugabyte for YSQL, and cassandra for YCQL). For more information, refer to [Database authorization](../../security/authorization-platform/).
+
+You can also enable and disable the API endpoints and authentication after deployment. Navigate to your universe, click **Actions**, and choose **Edit YSQL Configuration** or **Edit YCQL Configuration**.
+
+By default, the API endpoints use ports 5433 (YSQL) and 9042 (YCQL). You can [customize these ports](#advanced-configuration), and, after deployment, you can modify the YCQL API and admin UI endpoint ports. To change YCQL ports, navigate to your universe, click **Actions**, choose **Edit YCQL Configuration**, and select the **Override YCQL Default Ports** option.
+
+#### Encryption Settings
+
+Enable encryption in transit to encrypt universe traffic. You can enable the following:
+
+- **Node-to-Node TLS** to encrypt traffic between universe nodes.
+- **Client-to-Node TLS** to encrypt traffic between universe nodes and external clients.
+
+    Note that if you want to enable Client-to-Node encryption, you first must enable Node-to-Node encryption.
+
+Encryption requires a certificate. YugabyteDB Anywhere can generate a self-signed certificate automatically, or you can use your own certificate.
+
+To use your own, you must first add it to YugabyteDB Anywhere; refer to [Add certificates](../../security/enable-encryption-in-transit/add-certificate-self/).
+
+To have YugabyteDB Anywhere generate a certificate for the universe, use the default **Root Certificate** setting of **Create New Certificate**. To use a certificate you added or a previously generated certificate, select it from the **Root Certificate** menu.
+
+For more information on using and managing certificates, refer to [Encryption in transit](../../security/enable-encryption-in-transit/).
+
+To encrypt the universe data, select the **Enable encryption at rest** option and select the [KMS configuration](../../security/create-kms-config/aws-kms/) to use for encryption. For more information, refer to [Encryption at rest](../../security/enable-encryption-at-rest/).
 
 ### Advanced Configuration
 
@@ -82,29 +116,19 @@ Complete the **Advanced** section as follows:
 
 - In the **DB Version** field, specify the YugabyteDB version. The default is either the same as the YugabyteDB Anywhere version or the latest YugabyteDB version available for YugabyteDB Anywhere. If the version you want to add is not listed, you can add it to YugabyteDB Anywhere. Refer to [Manage YugabyteDB releases](../../manage-deployments/ybdb-releases/).
 - Use the **Enable IPV6** field to specify whether or not you want to use IPV6 networking for connections between database servers. This setting is disabled by default.
-- Use the **Enable Public Network Access** field to specify whether or not to assign a load balancer or nodeport for connecting to the database endpoints over the internet. This setting is disabled by default.
+- Use the **Enable Public Network Access** field to specify whether or not to assign a load balancer or nodeport for connecting to the database endpoints over the Internet. This setting is disabled by default.
 
-### Configure G-Flags
+If database version is v2024.2 or later, you can enable early access features for PostgreSQL compatibility. For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../../explore/ysql-language-features/postgresql-compatibility/#enhanced-postgresql-compatibility-mode).
 
-Optionally, complete the **G-Flags** section as follows:
+### G-Flags
 
-- Click **Add Flags > Add to Master** to specify YB-Master servers parameters, one parameter per field.
+Optionally, add configuration flags for your YB-Master and YB-TServer nodes. You can also set flags after universe creation. Refer to [Edit configuration flags](../../manage-deployments/edit-config-flags/).
 
-- Click **Add Flags > Add to T-Server** to specify YB-TServer servers parameters, one parameter per field.
-
-  For details, see the following:
-
-  - [Edit configuration flags](../../manage-deployments/edit-config-flags)
-
-  - [YB-Master configuration flags](../../../reference/configuration/yb-master/#configuration-flags)
-
-  - [YB-TServer configuration flags](../../../reference/configuration/yb-tserver/#configuration-flags)
-
-### Configure Helm overrides
+### Helm overrides
 
 Optionally, use the **Helm Overrides** section, as follows:
 
-- Click **Add Kubernetes Overrides** to open the **Kubernetes Overrides** dialog shown in the following illustration:
+- Click **Add Kubernetes Overrides** to open the **Kubernetes Overrides** dialog.
 
   ![Kubernetes Overrides](/images/yb-platform/kubernetes-config66.png)
 
@@ -155,17 +179,55 @@ Optionally, use the **Helm Overrides** section, as follows:
         enabled: true
     ```
 
+- If you want to use ARM VMs, add the following overrides:
+
+    ```yaml
+    # Point to the aarch64 image in case multi-arch is not available.
+    Image:
+        tag: {{< yb-version version="stable" format="build">}}-aarch64 
+    # Add a nodeSelector to deploy universe to arm64 nodes in the cluster
+    nodeSelector:
+        kubernetes.io/arch: arm64 
+
+    # For each master and tserver add tolerations for any taints that might be
+    # present on the nodes. These taints can be added by default by the 
+    # managed k8s provider or by the cluster administrator 
+    master:
+      tolerations:
+        - key: kubernetes.io/arch
+          operator: Equal
+          value: aarch64
+          effect: NoSchedule
+        - key: kubernetes.io/arch
+          operator: Equal
+          value: arm64
+          effect: NoSchedule
+        - key: arch
+          operator: Equal
+          value: aarch64
+          effect: NoSchedule
+
+    tserver:
+      tolerations:
+        - key: kubernetes.io/arch
+          operator: Equal
+          value: aarch64
+          effect: NoSchedule
+        - key: kubernetes.io/arch
+          operator: Equal
+          value: arm64
+          effect: NoSchedule
+        - key: arch
+          operator: Equal
+          value: aarch64
+          effect: NoSchedule
+    ```
+
 - Select **Force Apply** if you want to override any previous overrides.
 
-- Click **Validate & Save**.
+- Click **Validate and Save**.
 
   If there are any errors in your overrides definitions, a detailed error message is displayed. You can correct the errors and try to save again. To save your Kubernetes overrides regardless of any validation errors, select **Force Apply**.
-
-The final step is to click **Create** and wait for the YugabyteDB cluster to appear.
-
-The following illustration shows the universe in its pending state:
-
-![Pending universe](/images/yb-platform/kubernetes-config10.png)
 
 ## Examine the universe and connect to nodes
 
