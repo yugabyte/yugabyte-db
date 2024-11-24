@@ -24,6 +24,7 @@
 #include "yb/util/cast.h"
 #include "yb/util/random_util.h"
 #include "yb/util/shmem/interprocess_semaphore.h"
+#include "yb/util/shmem/robust_hash_map.h"
 #include "yb/util/shmem/shared_mem_allocator.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -548,6 +549,13 @@ TEST_F(SharedMemoryAllocatorTest, TestUnorderedMap) {
   using Allocator = SharedMemoryAllocator<std::pair<const int64_t, int64_t>>;
   using Map = std::unordered_map<int64_t, int64_t, std::hash<int64_t>, std::equal_to<int64_t>,
                                  Allocator>;
+  ASSERT_NO_FATALS((TestMap<Map, Allocator>()));
+}
+
+TEST_F(SharedMemoryAllocatorTest, TestRobustHashMap) {
+  using Allocator = SharedMemoryAllocator<std::pair<const int64_t, int64_t>>;
+  using Map = RobustHashMap<int64_t, int64_t, std::hash<int64_t>, std::equal_to<int64_t>,
+                            Allocator>;
   ASSERT_NO_FATALS((TestMap<Map, Allocator>()));
 }
 
