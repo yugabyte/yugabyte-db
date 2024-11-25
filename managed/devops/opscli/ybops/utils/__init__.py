@@ -302,6 +302,7 @@ def validate_instance(connect_options, mount_paths, **kwargs):
     Returns:
         (dict): return success/failure code and corresponding message (0 = success, 1-3 = failure)
     """
+    remote_shell = None
     try:
         remote_shell = RemoteShell(connect_options)
         for path in [mount_path.strip() for mount_path in mount_paths]:
@@ -321,7 +322,7 @@ def validate_instance(connect_options, mount_paths, **kwargs):
         logging.error("[app] Failed to execute remote command: {}".format(ex))
         return ValidationResult.UNREACHABLE
     finally:
-        if remote_shell:
+        if remote_shell is not None:
             remote_shell.close()
 
 
@@ -334,6 +335,7 @@ def validate_cron_status(connect_options, **kwargs):
     Returns:
         bool: true if all cronjobs are present, false otherwise (or if errored)
     """
+    remote_shell = None
     try:
         remote_shell = RemoteShell(connect_options)
         stdout = remote_shell.exec_command("crontab -l", output_only=True)
@@ -343,7 +345,7 @@ def validate_cron_status(connect_options, **kwargs):
         logging.error("Failed to validate cronjobs: {}".format(ex))
         return False
     finally:
-        if remote_shell:
+        if remote_shell is not None:
             remote_shell.close()
 
 
@@ -356,6 +358,7 @@ def remote_exec_command(connect_options, cmd, **kwargs):
         stdout (str): output log
         stderr (str): error logs
     """
+    remote_shell = None
     try:
         remote_shell = RemoteShell(connect_options)
         rc, stdout, stderr = remote_shell.exec_command(cmd)
@@ -364,7 +367,7 @@ def remote_exec_command(connect_options, cmd, **kwargs):
         logging.error("Failed to execute remote command: {}".format(e))
         return 1, None, None  # treat this as a non-zero return code
     finally:
-        if remote_shell:
+        if remote_shell is not None:
             remote_shell.close()
 
 
@@ -433,15 +436,20 @@ def get_mount_roots(connect_options, paths):
     connect_options_copy = connect_options.copy()
     # Remove node_agent_user to default to the user of the server process.
     connect_options_copy.pop("node_agent_user")
-    remote_shell = RemoteShell(connect_options_copy)
-    remote_cmd = 'df --output=target {}'.format(" ".join(paths.split(",")))
-    # Example output of the df cmd
-    # $ df --output=target /bar/foo/rnd /storage/abc
-    # Mounted on
-    # /bar
-    # /storage
+    remote_shell = None
+    try:
+        remote_shell = RemoteShell(connect_options_copy)
+        remote_cmd = 'df --output=target {}'.format(" ".join(paths.split(",")))
+        # Example output of the df cmd
+        # $ df --output=target /bar/foo/rnd /storage/abc
+        # Mounted on
+        # /bar
+        # /storage
 
-    mount_roots = remote_shell.run_command(remote_cmd).stdout.split('\n')[1:]
-    return ",".join(
-        [mroot.strip() for mroot in mount_roots if mroot.strip()]
-    )
+        mount_roots = remote_shell.run_command(remote_cmd).stdout.split('\n')[1:]
+        return ",".join(
+            [mroot.strip() for mroot in mount_roots if mroot.strip()]
+        )
+    finally:
+        if remote_shell is not None:
+            remote_shell.close()
