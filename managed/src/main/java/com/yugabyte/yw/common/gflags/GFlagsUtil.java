@@ -192,7 +192,7 @@ public class GFlagsUtil {
       Pattern.compile("^\"?\\s*log_line_prefix\\s*=\\s*'?([^']+)'?\\s*\"?$");
   private static final String DEFAULT_LOG_LINE_PREFIX = "%m [%p] ";
 
-  private static final Set<String> GFLAGS_FORBIDDEN_TO_OVERRIDE =
+  public static final Set<String> GFLAGS_FORBIDDEN_TO_OVERRIDE =
       ImmutableSet.<String>builder()
           .add(PLACEMENT_CLOUD)
           .add(PLACEMENT_REGION)
