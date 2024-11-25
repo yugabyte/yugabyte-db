@@ -1,20 +1,30 @@
 ---
 title: YugabyteDB Anywhere on-premises node provisioning
-headerTitle: Provisioning on-premises nodes
+headerTitle: Provision on-premises nodes
 linkTitle: Provision nodes
 description: Software requirements for on-premises provider nodes.
-headContent: How to meet the software prerequisites with assisted manual provisioning
+headContent: How to meet the software prerequisites for database nodes
 menu:
   v2024.2_yugabyte-platform:
-    identifier: software-on-prem-2-assist
+    identifier: software-on-prem-3-assist
     parent: software-on-prem
     weight: 10
 type: docs
 ---
 
-{{<tip title="For v2.20 and earlier">}}
-For instructions on preparing nodes for on-premises configurations in v2.20 and earlier, see [Create on-premises provider configuration](/v2.20/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
-{{</tip>}}
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li>
+    <a href="../software-on-prem-na/" class="nav-link">
+      <i class="fa-solid fa-user-secret"></i>Node Agent</a>
+  </li>
+
+  <li>
+    <a href="../software-on-prem-assist/" class="nav-link active">
+      <i class="fa-regular fa-briefcase" aria-hidden="true"></i>Classic</a>
+  </li>
+
+</ul>
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
@@ -38,6 +48,10 @@ For instructions on preparing nodes for on-premises configurations in v2.20 and 
     </a>
   </li>
 </ul>
+
+{{<tip>}}
+For instructions for v2.20 and earlier, see [Create on-premises provider configuration](/v2.20/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
+{{</tip>}}
 
 Use Assisted Manual Provisioning in the following case:
 
