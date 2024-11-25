@@ -136,7 +136,7 @@ Enable Connection Pooling
 : While in Tech Preview, connection pooling is not available by default. To make the feature available, set the *Allow users to enable or disable connection pooling* Global Runtime Configuration option (config key `yb.universe.allow_connection_pooling`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
 
 Enable Systemd Services
-: To use cron instead of systemd for managing nodes, you can disable systemd services. This not recommended.
+: To use cron instead of systemd for managing nodes, you can disable systemd services. This is not recommended.
 
 Override Deployment Ports
 : To customize the [ports used for the universe](../../prepare/networking/), select the **Override Deployment Ports** option and enter the custom port numbers for the services you want to change. Any value from `1024` to `65535` is valid, as long as it doesn't conflict with anything else running on nodes to be provisioned.
