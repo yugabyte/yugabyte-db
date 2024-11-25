@@ -52,6 +52,8 @@
 
 #include "yb/server/server_base_options.h"
 
+#include "yb/tserver/tserver_fwd.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/locks.h"
@@ -66,6 +68,11 @@ class HostPort;
 namespace client {
 
 YB_STRONGLY_TYPED_BOOL(Retry);
+
+// Checks if the Tablet locations are valid - Partition keys are sorted with no overlaps.
+Status CheckTabletLocations(
+    const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
+    tserver::AllowSplitTablet allow_split_tablets);
 
 class YBClient::Data {
  public:

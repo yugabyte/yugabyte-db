@@ -567,7 +567,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status GetTabletLocations(
       const TabletId& tablet_id,
       TabletLocationsPB* locs_pb,
-      IncludeInactive include_inactive) override;
+      IncludeHidden include_hidden) override;
 
   // Look up the locations of the given tablet. The locations
   // vector is overwritten (not appended to).
@@ -578,7 +578,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status GetTabletLocations(
       const TabletInfoPtr& tablet_info,
       TabletLocationsPB* locs_pb,
-      IncludeInactive include_inactive) override;
+      IncludeHidden include_hidden) override;
 
   // Returns the system tablet in catalog manager by the id.
   Result<std::shared_ptr<tablet::AbstractTablet>> GetSystemTablet(const TabletId& id) override;

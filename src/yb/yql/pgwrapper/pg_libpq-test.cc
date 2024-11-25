@@ -1367,7 +1367,7 @@ void PgLibPqTest::TestTableColocation(GetParentTableTabletLocation getParentTabl
           client->LookupTabletById(
               tablets_bar_index[i].tablet_id(),
               table_bar_index,
-              master::IncludeInactive::kFalse,
+              master::IncludeHidden::kFalse,
               master::IncludeDeleted::kFalse,
               CoarseMonoClock::Now() + 30s,
               [&, i](const Result<client::internal::RemoteTabletPtr>& result) {
@@ -1405,7 +1405,7 @@ void PgLibPqTest::TestTableColocation(GetParentTableTabletLocation getParentTabl
         client->LookupTabletById(
             colocated_tablet_id,
             colocated_table,
-            master::IncludeInactive::kFalse,
+            master::IncludeHidden::kFalse,
             master::IncludeDeleted::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
@@ -2047,7 +2047,7 @@ TEST_F_EX(PgLibPqTest, TablegroupBasics,
           client->LookupTabletById(
               tablets_bar_index[i].tablet_id(),
               table_bar_index,
-              master::IncludeInactive::kFalse,
+              master::IncludeHidden::kFalse,
               master::IncludeDeleted::kFalse,
               CoarseMonoClock::Now() + 30s,
               [&, i](const Result<client::internal::RemoteTabletPtr>& result) {
@@ -2081,7 +2081,7 @@ TEST_F_EX(PgLibPqTest, TablegroupBasics,
         client->LookupTabletById(
             tablegroup_alt.tablet_id,
             tablegroup_alt.table,
-            master::IncludeInactive::kFalse,
+            master::IncludeHidden::kFalse,
             master::IncludeDeleted::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
@@ -2127,7 +2127,7 @@ TEST_F_EX(PgLibPqTest, TablegroupBasics,
         client->LookupTabletById(
             tablegroup.tablet_id,
             tablegroup.table,
-            master::IncludeInactive::kFalse,
+            master::IncludeHidden::kFalse,
             master::IncludeDeleted::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
@@ -2148,7 +2148,7 @@ TEST_F_EX(PgLibPqTest, TablegroupBasics,
         client->LookupTabletById(
             tablegroup_alt.tablet_id,
             tablegroup_alt.table,
-            master::IncludeInactive::kFalse,
+            master::IncludeHidden::kFalse,
             master::IncludeDeleted::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {

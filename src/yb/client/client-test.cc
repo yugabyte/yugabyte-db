@@ -2766,7 +2766,7 @@ Result<client::internal::RemoteTabletPtr> GetRemoteTablet(
   std::promise<Result<client::internal::RemoteTabletPtr>> tablet_lookup_promise;
   auto future = tablet_lookup_promise.get_future();
   client->LookupTabletById(
-      tablet_id, /* table =*/ nullptr, master::IncludeInactive::kTrue,
+      tablet_id, /* table =*/ nullptr, master::IncludeHidden::kTrue,
       master::IncludeDeleted::kFalse, CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(1000),
       [&tablet_lookup_promise](const Result<client::internal::RemoteTabletPtr>& result) {
         tablet_lookup_promise.set_value(result);

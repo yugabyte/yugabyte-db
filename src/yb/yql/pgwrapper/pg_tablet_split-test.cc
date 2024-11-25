@@ -199,7 +199,7 @@ class PgTabletSplitTest : public PgTabletSplitTestBase {
     auto deadline = ToCoarse(MonoTime::Now() + MonoDelta::FromSeconds(3 * kTimeMultiplier));
     auto remote_tablet_future = MakeFuture<Result<RemoteTabletPtr>>([&](auto callback) {
       client_->LookupTabletById(
-          tablet_id, table, master::IncludeInactive::kFalse, master::IncludeDeleted::kFalse,
+          tablet_id, table, master::IncludeHidden::kFalse, master::IncludeDeleted::kFalse,
           deadline, [callback] (const auto& lookup_result) {
             callback(lookup_result);
           }, use_cache);

@@ -111,8 +111,8 @@ message GetTabletLocationsRequestPB {
   // If table ID is specified, table's partition_list_version will be included into response.
   optional bytes table_id = 2;
 
-  // If true, then return any hidden tablets as well. Does not work with partition key ranges.
-  optional bool include_inactive = 3;
+  // If true, then return any hidden tablets as well.
+  optional bool include_hidden = 3;
 
   // If true, then return any deleted tablets as well (marked with is_deleted in the returned
   // tablet locations).
@@ -146,7 +146,8 @@ message GetTableLocationsRequestPB {
 
   optional bool require_tablets_running = 6;
 
-  // If true, then return any hidden tablets as well. Does not work with partition key ranges.
+  // If true, then return all tablets associated with the table - including parents of splits
+  // that have not yet been deleted. Result could have overlapping partition key ranges.
   optional bool include_inactive = 7;
 
   // When set, the TabletLocationsPBs in the response will only have basic fields and

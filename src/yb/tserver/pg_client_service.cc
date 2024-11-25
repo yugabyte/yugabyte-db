@@ -1645,7 +1645,7 @@ class PgClientServiceImpl::Impl {
 
     return MakeFuture<Result<RemoteTabletServerPtr>>([&](auto callback) {
       client().LookupTabletById(
-          status_tablet_id, /* table =*/ nullptr, master::IncludeInactive::kFalse,
+          status_tablet_id, /* table =*/ nullptr, master::IncludeHidden::kFalse,
           master::IncludeDeleted::kFalse, deadline,
           [&, status_tablet_id, callback] (const auto& lookup_result) {
             if (!lookup_result.ok()) {

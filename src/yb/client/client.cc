@@ -2406,13 +2406,13 @@ void YBClient::LookupTabletByKey(const std::shared_ptr<YBTable>& table,
 
 void YBClient::LookupTabletById(const std::string& tablet_id,
                                 const std::shared_ptr<const YBTable>& table,
-                                master::IncludeInactive include_inactive,
+                                master::IncludeHidden include_hidden,
                                 master::IncludeDeleted include_deleted,
                                 CoarseTimePoint deadline,
                                 LookupTabletCallback callback,
                                 UseCache use_cache) {
   data_->meta_cache_->LookupTabletById(
-      tablet_id, table, include_inactive, include_deleted, deadline, std::move(callback),
+      tablet_id, table, include_hidden, include_deleted, deadline, std::move(callback),
       use_cache);
 }
 
