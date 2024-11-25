@@ -5,16 +5,19 @@ package com.yugabyte.yw.commissioner.tasks.local;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.Util.YUGABYTE_DB;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.FakeApiHelper;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ConfigureYCQLFormData;
 import com.yugabyte.yw.forms.ConfigureYSQLFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.ScopedRuntimeConfig;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -51,6 +54,8 @@ public class ConfigureDBApiLocalTest extends LocalProviderUniverseTestBase {
         user.createAuthToken(),
         Json.toJson(formData));
   }
+
+  private void enableConnectionPoolingFlag() {}
 
   @Test
   public void testConfigureYSQL() throws InterruptedException {
@@ -158,5 +163,51 @@ public class ConfigureDBApiLocalTest extends LocalProviderUniverseTestBase {
       assertEquals(newYqlServerRpcPort, node.yqlServerRpcPort);
       assertEquals(newYqlServerHttpPort, node.yqlServerHttpPort);
     }
+  }
+
+  @Test
+  public void testEnableConnectionPooling() throws InterruptedException {
+    // Set the connection pooling flag to true.
+    runtimeConfService.setKey(
+        customer.getUuid(),
+        ScopedRuntimeConfig.GLOBAL_SCOPE_UUID,
+        GlobalConfKeys.allowConnectionPooling.getKey(),
+        "true",
+        true);
+
+    // Create universe with YSQL Auth enabled.
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    userIntent.enableYSQLAuth = true;
+    userIntent.ysqlPassword = "Pass@123";
+    Universe universe = createUniverse(userIntent);
+    initYSQL(universe);
+
+    // Enable Connection Pooling for the universe.
+    ConfigureYSQLFormData formData = new ConfigureYSQLFormData();
+    formData.enableYSQL = true;
+    formData.enableYSQLAuth = true;
+    formData.enableConnectionPooling = true;
+    formData.communicationPorts.internalYsqlServerRpcPort = 6434;
+    formData.communicationPorts.ysqlServerRpcPort = 5434;
+
+    Result result = configureYSQL(formData, universe.getUniverseUUID());
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    TaskInfo taskInfo = waitForTask(UUID.fromString(json.get("taskUUID").asText()), universe);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertTrue(
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling);
+    assertEquals(5434, universe.getUniverseDetails().communicationPorts.ysqlServerRpcPort);
+    assertEquals(6434, universe.getUniverseDetails().communicationPorts.internalYsqlServerRpcPort);
+    verifyYSQL(universe);
+    verifyYSQL(
+        universe,
+        false,
+        YUGABYTE_DB,
+        "some_table" /* tableName */,
+        true /* authEnabled */,
+        true /* cpEnabled */);
   }
 }

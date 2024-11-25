@@ -217,8 +217,7 @@ public class YsqlQueryExecutor {
         node,
         timeoutSec,
         authEnabled,
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling,
-        universe.getUniverseDetails().communicationPorts.internalYsqlServerRpcPort);
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling);
   }
 
   public JsonNode executeQueryInNodeShell(
@@ -226,16 +225,14 @@ public class YsqlQueryExecutor {
       RunQueryFormData queryParams,
       NodeDetails node,
       boolean authEnabled,
-      boolean enableConnectionPooling,
-      int internalYsqlServerRpcPort) {
+      boolean cpEnabled) {
     return executeQueryInNodeShell(
         universe,
         queryParams,
         node,
         runtimeConfigFactory.forUniverse(universe).getLong("yb.ysql_timeout_secs"),
         authEnabled,
-        enableConnectionPooling,
-        internalYsqlServerRpcPort);
+        cpEnabled);
   }
 
   public JsonNode executeQueryInNodeShell(
@@ -244,8 +241,7 @@ public class YsqlQueryExecutor {
       NodeDetails node,
       long timeoutSec,
       boolean authEnabled,
-      boolean enableConnectionPooling,
-      int internalYsqlServerRpcPort) {
+      boolean cpEnabled) {
     ObjectNode response = newObject();
     response.put("type", "ysql");
     String queryType = getQueryType(queryParams.getQuery());
@@ -262,8 +258,7 @@ public class YsqlQueryExecutor {
                   queryString,
                   timeoutSec,
                   authEnabled,
-                  enableConnectionPooling,
-                  internalYsqlServerRpcPort)
+                  cpEnabled)
               .processErrors("Ysql Query Execution Error");
     } catch (RuntimeException e) {
       response.put("error", ShellResponse.cleanedUpErrorMessage(e.getMessage()));
