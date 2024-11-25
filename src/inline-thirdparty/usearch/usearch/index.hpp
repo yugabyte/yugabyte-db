@@ -2132,7 +2132,7 @@ class index_gt {
     static_assert(std::is_trivially_destructible<node_t>::value, "Nodes must be light!");
 
     /**
-     *  @brief  A slice of the node's tape, containing a the list of neighbors
+     *  @brief  A slice of the node's tape, containing a list of neighbors
      *          for a node in a single graph level. It's pre-allocated to fit
      *          as many neighbors "slots", as may be needed at the target level,
      *          and starts with a single integer `neighbors_count_t` counter.
