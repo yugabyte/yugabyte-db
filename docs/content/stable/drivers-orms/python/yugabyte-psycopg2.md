@@ -128,8 +128,8 @@ The following table describes the connection parameters required to connect, inc
 | database/dbname | Database name | yugabyte |
 | user | User connecting to the database | yugabyte |
 | password | User password | yugabyte |
-| `load_balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | Defaults to upstream driver behavior unless set to 'true' |
-| `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing) | If `load_balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
+| `load_balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | Defaults to upstream driver behavior unless set to any of the allowed values |
+| `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing) | If `load_balance` is not `false`, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
 
 You can provide the connection details in one of the following ways:
 
