@@ -100,7 +100,7 @@ To create a user, do the following:
 
 1. Navigate to **Admin > Access Management > Users**, and click **Create User**.
 
-    ![Add User](/images/yp/authorization-platform/add-user.png)
+    ![Add User](/images/yp/authorization-platform/add-user-2024-2.png)
 
 1. Enter the user's email.
 1. Enter a password for the user to sign in with.
@@ -145,7 +145,7 @@ To create a custom role, do the following:
 
 1. Navigate to **Admin > Access Management > Roles** and click **Create Role**.
 
-    ![Add Role](/images/yp/authorization-platform/add-role.png)
+    ![Add Role](/images/yp/authorization-platform/add-role-2024-2.png)
 
 1. Enter a name for the role.
 1. Enter a description for the role.

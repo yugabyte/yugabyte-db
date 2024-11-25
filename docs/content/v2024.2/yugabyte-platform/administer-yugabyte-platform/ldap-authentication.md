@@ -50,7 +50,7 @@ You can use the YugabyteDB Anywhere UI to enable LDAP authentication for Yugabyt
 
 1. Select **LDAP Enabled** and complete the fields in the **LDAP Configuration** page shown in the following illustration:
 
-    ![LDAP authentication](/images/yb-platform/ldap-auth-1-220.png)
+    ![LDAP authentication](/images/yb-platform/ldap-auth-1-2024-2.png)
 
     With the exception of the following fields, the descriptions of the preceding settings are provided in [Use the YugabyteDB Anywhere API](#use-the-yugabytedb-anywhere-api).
 
@@ -235,15 +235,17 @@ To map LDAP groups to YugabyteDB Anywhere roles, do the following:
 
 #### Map groups to roles
 
-To map groups to fine-grained roles, on the **Groups** tab, do the following:
+To map groups to roles, on the **Groups** tab, do the following:
 
-1. Click **Add Group** and select **OIDC**.
+1. Click **Add Group** and select **LDAP**.
 
-1. Enter the Group DN name and select the YugabyteDB Anywhere role (built-in or custom) that you want to map the group to.
+1. Enter the Group DN name.
 
-1. To assign a built-in role, on the **Built-in Role** tab, select a role. You can't assign the SuperAdmin role to a group.
+1. Select the YugabyteDB Anywhere role (built-in or custom) that you want to map the group to.
 
-1. To assign a custom role (only available if you have enabled RBAC for groups), on the **Custom Role** tab, select a role and scope.
+    - To assign a built-in role, on the **Built-in Role** tab, select a role. You can't assign the SuperAdmin role to a group.
+
+    - To assign a custom role (only available if you have enabled RBAC for groups), on the **Custom Role** tab, select a role and scope.
 
 1. Click **Save**.
 
