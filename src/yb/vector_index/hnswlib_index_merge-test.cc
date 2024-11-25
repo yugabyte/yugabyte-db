@@ -23,7 +23,8 @@ namespace yb::vector_index {
 // Test fixture class for Merge operation.
 class HnswlibIndexMergeTest : public YBTest {
  protected:
-  VectorIndexIfPtr<FloatVector, float> CreateAndFillIndex(VectorIndexFactory<FloatVector, float> index_factory, size_t first_id, size_t num_entries) {
+  VectorIndexIfPtr<FloatVector, float> CreateAndFillIndex(
+      VectorIndexFactory<FloatVector, float> index_factory, size_t first_id, size_t num_entries) {
     auto result = index_factory();
     CHECK_OK(result->Reserve(num_entries));
     for (size_t id = first_id; id != first_id + num_entries; ++id) {
@@ -42,29 +43,32 @@ class HnswlibIndexMergeTest : public YBTest {
     ASSERT_TRUE(expected_ids.empty()); // Verify all expected IDs were found.
   }
 
-  void TestMergeIndices(VectorIndexFactory<FloatVector, float> index_factory, VectorIndexIfPtr<FloatVector, float> index_a, VectorIndexIfPtr<FloatVector, float> index_b) {
-    VectorIndexIfPtr<FloatVector, float> merged_index =
-      Merge(index_factory, index_a, index_b);
+  void TestMergeIndices(
+      VectorIndexFactory<FloatVector, float> index_factory,
+      VectorIndexIfPtr<FloatVector, float> index_a, VectorIndexIfPtr<FloatVector, float> index_b) {
+    VectorIndexIfPtr<FloatVector, float> merged_index = Merge(index_factory, index_a, index_b);
 
-      // Check that the merged index contains all entries.
-      auto result_a = merged_index->Search(all_vectors_[0], 1);
-      ASSERT_EQ(result_a.size(), 1);
-      ASSERT_EQ(result_a[0].vertex_id, 0);
+    // Check that the merged index contains all entries.
+    auto result_a = merged_index->Search(all_vectors_[0], 1);
+    ASSERT_EQ(result_a.size(), 1);
+    ASSERT_EQ(result_a[0].vertex_id, 0);
 
-      auto result_b = merged_index->Search(all_vectors_[2], 1);
-      ASSERT_EQ(result_b.size(), 1);
-      ASSERT_EQ(result_b[0].vertex_id, 2);
+    auto result_b = merged_index->Search(all_vectors_[2], 1);
+    ASSERT_EQ(result_b.size(), 1);
+    ASSERT_EQ(result_b[0].vertex_id, 2);
 
-      // Verify the size of the merged index.
-      auto all_results =
-          merged_index->Search({0.0f, 0.0f, 0.0f}, 10); // Assuming a query that fetches all.
-      ASSERT_EQ(all_results.size(), 4); // Should contain all 4 entries.
+    // Verify the size of the merged index.
+    auto all_results =
+        merged_index->Search({0.0f, 0.0f, 0.0f}, 10);  // Assuming a query that fetches all.
+    ASSERT_EQ(all_results.size(), 4);                  // Should contain all 4 entries.
 
-      // Check that all expected vertex_ids are in the results.
-      VerifyExpectedVertexIds(all_results, {0, 1, 2, 3});
+    // Check that all expected vertex_ids are in the results.
+    VerifyExpectedVertexIds(all_results, {0, 1, 2, 3});
   }
 
-  void TestMergeWithEmptyIndex(VectorIndexFactory<FloatVector, float> index_factory, VectorIndexIfPtr<FloatVector, float> index_a) {
+  void TestMergeWithEmptyIndex(
+      VectorIndexFactory<FloatVector, float> index_factory,
+      VectorIndexIfPtr<FloatVector, float> index_a) {
     // Create an empty index with the same options.
     VectorIndexIfPtr<FloatVector, float> empty_index = index_factory();
 
@@ -96,7 +100,7 @@ class HnswlibIndexMergeTest : public YBTest {
     };
 
     hnswlib_index_a_ = CreateAndFillIndex(hnswlib_index_factory_, 0, 2);
-    hnswlib_index_b_ = CreateAndFillIndex(hnswlib_index_factory_,2, 2);
+    hnswlib_index_b_ = CreateAndFillIndex(hnswlib_index_factory_, 2, 2);
     usearch_index_a_ = CreateAndFillIndex(hnswlib_index_factory_, 0, 2);
     usearch_index_b_ = CreateAndFillIndex(hnswlib_index_factory_, 2, 2);
   }

@@ -126,11 +126,13 @@ class UsearchIndex :
   }
 
   std::unique_ptr<AbstractIterator<std::pair<Vector, VertexId>>> BeginImpl() const override {
-    return std::make_unique<UsearchVectorIterator<Vector, DistanceResult>>(dimensions_, index_.cbegin());
+    return std::make_unique<UsearchVectorIterator<Vector, DistanceResult>>(
+        dimensions_, index_.cbegin());
   }
 
   std::unique_ptr<AbstractIterator<std::pair<Vector, VertexId>>> EndImpl() const override {
-    return std::make_unique<UsearchVectorIterator<Vector, DistanceResult>>(dimensions_, index_.cend());
+    return std::make_unique<UsearchVectorIterator<Vector, DistanceResult>>(
+        dimensions_, index_.cend());
   }
 
   Status Reserve(size_t num_vectors) override {
