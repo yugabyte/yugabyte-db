@@ -48,9 +48,7 @@ To configure YugabyteDB Anywhere for OIDC, you need to be signed in as a Super A
 
 If your OIDC provider is configured with user groups, you can map the groups to [YugabyteDB Anywhere roles](../anywhere-rbac/). Users who are members of these groups can then sign in to YugabyteDB Anywhere without needing to be added to YugabyteDB Anywhere first. Users who are members of multiple groups are assigned the most privileged role.
 
-Currently, groups can only be mapped to [built-in](../anywhere-rbac/#built-in-roles) roles.
-
-Note that, if you use group mapping, you must manage users via your OIDC server. You can't add or change user roles in YugabyteDB Anywhere.
+Note that, if you use group mapping, you must manage users via your OIDC server. You can't add or change user roles in YugabyteDB Anywhere. In addition, group mapping overrides any previously assigned roles.
 
 ### Prerequisites
 
@@ -60,25 +58,23 @@ To use OIDC groups, ensure the following on your IdP:
 - Configure the IdP so that groups are present in the ID token. As groups is not one of the [Standard Claims](https://openid.net/specs/openid-connect-core-1_0.html#StandardClaims), you will need to add the groups claim in the ID token by configuring your IdP provider settings. Refer to your IdP documentation.
 - For Azure AD/Microsoft Entra ID, Azure doesn't allow obtaining group names in ID tokens. You need to use the [Azure API](https://learn.microsoft.com/en-gb/graph/api/user-list-memberof?view=graph-rest-1.0&tabs=http) to get a list of the user's group memberships. Note that to fetch the group membership via Azure API, the IdP administrator will need to assign the GroupMember.Read.All API permission to the registered application on Azure.
 
-During EA, by default OIDC group mapping is not enabled. To enable the feature, you need to set the `yb.security.oidc_enable_auto_create_users` configuration flag to true as follows:
-
-1. Navigate to **Admin > Advanced > Global Configuration**.
-
-1. Search on OIDC to display the configuration setting and set it to true.
-
 ## Enable OIDC for YugabyteDB Anywhere
 
 YugabyteDB Anywhere accepts OIDC configuration either using a discovery URL that points to the [OpenID Provider Configuration Document](https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig) for your provider, or by uploading the document directly. The configuration document contains key-value pairs with details about the OIDC provider's configuration, including uniform resource identifiers of the authorization, token, revocation, user information, and public-keys endpoints. YugabyteDB Anywhere uses the metadata to discover the URLs to use for authentication and the authentication service's public signing keys.
 
 For air-gapped installations, where YugabyteDB Anywhere does not have access to the discovery URL, you need to explicitly provide the configuration document.
 
+{{<tags/feature/ea>}}You can map groups to [fine-grained](../anywhere-rbac/#fine-grained-rbac) YugabyteDB Anywhere roles. To enable the feature in YugabyteDB Anywhere, set the **Enable RBAC for Groups** Global Runtime Configuration option (config key `yb.security.group_mapping_rbac_support`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
+
 You configure OIDC as follows:
 
 1. Navigate to **Admin > Access Management > User Authentication > OIDC Configuration**.
 
-1. Select **OIDC Enabled** and complete the fields shown in the following illustration:
+1. Select **OIDC Enabled** to turn on OIDC.
 
-    ![OIDC authentication](/images/yp/oidc-auth-220.png)
+1. Complete the OIDC Configuration settings.
+
+    ![OIDC authentication](/images/yp/oidc-auth-2024-2.png)
 
     - In the **Client ID** field, enter the unique identifier that you provided when you manually created the client application in the identity provider.
     - In the **Client Secret** field, enter the password or secret for authenticating your Yugabyte client application with your identity provider.
@@ -88,19 +84,33 @@ You configure OIDC as follows:
 
         If you have an airgapped installation, where YugabyteDB Anywhere cannot access the Discovery URL, provide the OIDC configuration for the identity provider directly.
 
-        To do this, click **Configure OIDC Provider Metadata** and paste the OIDC configuration document from your identity provider (in JSON format) into the field.
+        To do this, click **Add OIDC Provider Configuration** and paste the OIDC configuration document from your identity provider (in JSON format) into the field.
 
     - In the **Scope** field, enter your identity provider OIDC scope that is allowed to be requested. This field accepts a space-separated list of values. If left blank, all scopes will be considered.
     - In the **Email Attribute** field, enter the OIDC scope containing the user email identifier. This field accepts a case-sensitive custom configuration. Typically, this field is left blank.
     - If you have configured OIDC to use [refresh tokens](https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokens), in the **Refresh Token URL** field, enter the URL of the refresh token endpoint.
     - If you have configured [OIDC enhancements](../../security/authentication/oidc-authentication-aad/#enable-oidc-enhancements), you can select the **Display JWT token on login** option to allow users to access their JWT from the YugabyteDB Anywhere sign in page. See [Set up OIDC with Azure AD on YugabyteDB Anywhere](../../security/authentication/oidc-authentication-aad/#set-up-oidc-with-azure-ad-on-yugabytedb-anywhere).
 
-1. You can assign the default [role](../anywhere-rbac/#built-in-roles) for OIDC users to be ReadOnly or ConnectOnly.
+1. To map OIDC groups to YugabyteDB Anywhere roles, select the **Use OIDC groups for authentication and authorization** option.
 
-1. To map an OIDC group to a YugabyteDB Anywhere role, click **Create Mappings**, choose the YugabyteDB Anywhere role you want group members to be assigned to, and enter the name of the OIDC group.
+1. You can assign the default [role](../anywhere-rbac/#built-in-roles) for OIDC users to be Read Only or Connect Only.
 
-    You can't assign the SuperAdmin role to a group.
+1. Optionally, if you are using a groups claim, enter the name of the groups claim; this is the claim that lists the groups that users are a member of in the ID token.
 
-    To add more mappings, click **Add rows**. Click **Confirm** when you are done.
+1. Click **Save**.
+
+### Map groups to roles
+
+To map groups to roles, on the **Groups** tab, do the following:
+
+1. Click **Add Group** and select **OIDC**.
+
+1. Enter the Group DN name.
+
+1. Select the YugabyteDB Anywhere role (built-in or custom) that you want to map the group to.
+
+    - To assign a built-in role, on the **Built-in Role** tab, select a role. You can't assign the SuperAdmin role to a group.
+
+    - To assign a custom role (only available if you have enabled RBAC for groups), on the **Custom Role** tab, select a role and scope.
 
 1. Click **Save**.
