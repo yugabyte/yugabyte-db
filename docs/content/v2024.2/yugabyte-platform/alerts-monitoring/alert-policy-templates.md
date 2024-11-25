@@ -433,6 +433,16 @@ Maximum clock skew for universe `'$universe_name'` is more than 500 milliseconds
   500
 ```
 
+#### Clock drift
+
+Clock drift for universe `'$universe_uuid'` is above `$threshold%` ms. The warning threshold is 200.0ms, and severe is 400.0ms. The current value is `$value` milliseconds.
+
+```promql
+  max by (universe_uuid) (yb_node_clock_drift_check_ms{universe_uuid="__universeUuid__"}) {{ query_condition }} {{ query_threshold }}
+    >
+  500
+```
+
 #### Health check error
 
 Failed to perform health check for universe `'$universe_name'`. You need to check YugabyteDB Anywhere logs for details or contact {{% support-platform %}}.
