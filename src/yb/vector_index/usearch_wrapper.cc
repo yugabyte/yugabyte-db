@@ -38,6 +38,7 @@ using unum::usearch::metric_punned_t;
 using unum::usearch::output_file_t;
 using unum::usearch::scalar_kind_t;
 
+
 index_dense_config_t CreateIndexDenseConfig(const HNSWOptions& options) {
   index_dense_config_t config;
   config.connectivity = options.num_neighbors_per_vertex;
@@ -73,22 +74,38 @@ scalar_kind_t ConvertCoordinateKind(CoordinateKind coordinate_kind) {
 
 namespace {
 
-// No-op VectorIterator
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class NoOpVectorIterator : public AbstractIterator<std::pair<Vector, VertexId>> {
+class UsearchVectorIterator : public AbstractIterator<std::pair<Vector, VertexId>> {
+ public:
+  using IteratorPair = std::pair<Vector, VertexId>;
+  using member_citerator_t = typename unum::usearch::index_dense_gt<VertexId>::member_citerator_t;
+
+    UsearchVectorIterator(size_t dimensions, member_citerator_t it) 
+    : dimensions_(dimensions), it_(it) {}
+  
  protected:
-  std::pair<Vector, VertexId> Dereference() const override {
-    return {Vector(), VertexId{}};
+  IteratorPair Dereference() const override {
+    Vector result_vector(dimensions_);
+    std::memcpy(
+        result_vector.data(),   &it_, dimensions_ * sizeof(typename Vector::value_type));
+    return {result_vector, it_.key()};
   }
 
   void Next() override {
-    // TODO(vector_index) implement iterator for Usearch
+    ++it_;
   }
 
-  bool NotEquals(const AbstractIterator<std::pair<Vector, VertexId>>&) const override {
-    return false;  // Always the same, indicating no iteration
+  bool NotEquals(const AbstractIterator<IteratorPair>& other) const override {
+    const auto* other_iterator = dynamic_cast<const UsearchVectorIterator*>(&other);
+    if (!other_iterator) return true;
+    return it_ != other_iterator->it_;
   }
+
+ private:      // Reference to the Usearch index
+  size_t dimensions_;              // Dimensionality of the vectors
+  member_citerator_t it_; // Iterator over the internal Usearch entities
 };
+
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class UsearchIndex :
@@ -109,13 +126,11 @@ class UsearchIndex :
   }
 
   std::unique_ptr<AbstractIterator<std::pair<Vector, VertexId>>> BeginImpl() const override {
-    // (TODO(vector_index) implement real vector iterator for USearchIndex
-    return std::make_unique<NoOpVectorIterator<Vector, DistanceResult>>();
+    return std::make_unique<UsearchVectorIterator<Vector, DistanceResult>>(dimensions_, index_.cbegin());
   }
 
   std::unique_ptr<AbstractIterator<std::pair<Vector, VertexId>>> EndImpl() const override {
-    // (TODO(vector_index) implement real vector iterator for USearchIndex
-    return std::make_unique<NoOpVectorIterator<Vector, DistanceResult>>();
+    return std::make_unique<UsearchVectorIterator<Vector, DistanceResult>>(dimensions_, index_.cend());
   }
 
   Status Reserve(size_t num_vectors) override {
