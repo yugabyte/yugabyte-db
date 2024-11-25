@@ -11715,7 +11715,7 @@ Result<shared_ptr<tablet::AbstractTablet>> CatalogManager::GetSystemTablet(const
 }
 
 Status CatalogManager::GetTabletLocations(
-    const TabletId& tablet_id, TabletLocationsPB* locs_pb, IncludeInactive include_inactive) {
+    const TabletId& tablet_id, TabletLocationsPB* locs_pb, IncludeHidden include_hidden) {
   TabletInfoPtr tablet_info;
   {
     SharedLock lock(mutex_);
@@ -11723,7 +11723,7 @@ Status CatalogManager::GetTabletLocations(
       return STATUS_SUBSTITUTE(NotFound, "Unknown tablet $0", tablet_id);
     }
   }
-  Status s = GetTabletLocations(tablet_info, locs_pb, include_inactive);
+  Status s = GetTabletLocations(tablet_info, locs_pb, include_hidden);
 
   auto num_replicas = GetNumTabletReplicas(tablet_info);
   if (num_replicas.ok() && *num_replicas > 0 &&
@@ -11739,11 +11739,9 @@ Status CatalogManager::GetTabletLocations(
 Status CatalogManager::GetTabletLocations(
     const TabletInfoPtr& tablet_info,
     TabletLocationsPB* locs_pb,
-    IncludeInactive include_inactive) {
+    IncludeHidden include_hidden_tablets) {
   DCHECK_EQ(locs_pb->replicas().size(), 0);
   locs_pb->mutable_replicas()->Clear();
-  // If include_inactive is set, include_hidden_tablets needs to be set to allow hidden tablets.
-  IncludeHidden include_hidden_tablets(include_inactive);
   return BuildLocationsForTablet(tablet_info, locs_pb, include_hidden_tablets);
 }
 

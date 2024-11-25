@@ -21,7 +21,7 @@ public class GetTabletLocationsRequest extends YRpc<GetTabletLocationsResponse> 
   private final ByteString tableId;
 
   // Default value is false.
-  private final boolean includeInactive;
+  private final boolean includeHidden;
 
   // Default value is false.
   private final boolean includeDeleted;
@@ -29,7 +29,7 @@ public class GetTabletLocationsRequest extends YRpc<GetTabletLocationsResponse> 
   public GetTabletLocationsRequest(YBTable table,
                                   List<String> tabletIds,
                                   String tableId,
-                                  boolean includeInactive,
+                                  boolean includeHidden,
                                   boolean includeDeleted) {
     super(table);
     this.tabletIds =
@@ -42,7 +42,7 @@ public class GetTabletLocationsRequest extends YRpc<GetTabletLocationsResponse> 
     } else {
       this.tableId = null;
     }
-    this.includeInactive = includeInactive;
+    this.includeHidden = includeHidden;
     this.includeDeleted = includeDeleted;
   }
 
@@ -53,7 +53,7 @@ public class GetTabletLocationsRequest extends YRpc<GetTabletLocationsResponse> 
     final MasterClientOuterClass.GetTabletLocationsRequestPB.Builder builder =
         MasterClientOuterClass.GetTabletLocationsRequestPB.newBuilder()
             .addAllTabletIds(tabletIds)
-            .setIncludeInactive(includeInactive)
+            .setIncludeHidden(includeHidden)
             .setIncludeDeleted(includeDeleted);
     if (tableId != null) {
       builder.setTableId(tableId);

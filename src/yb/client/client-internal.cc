@@ -353,6 +353,34 @@ bool SyncClientMasterRpc<master::MasterAdminProxy,
   return status.IsTryAgain();
 }
 
+// Checks if the Tablet locations are valid - Partition keys are sorted with no overlaps.
+Status CheckTabletLocations(
+    const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
+    tserver::AllowSplitTablet allow_split_tablets) {
+  const std::string* prev_partition_end = nullptr;
+  for (const master::TabletLocationsPB& loc : locations) {
+    LOG_IF(DFATAL, !allow_split_tablets && loc.split_tablet_ids().size() > 0)
+        << "Processing remote tablet location with split children id set: "
+        << loc.ShortDebugString() << " when allow_split_tablets was set to false.";
+    if (prev_partition_end && *prev_partition_end > loc.partition().partition_key_start()) {
+      LOG(DFATAL) << "There should be no overlaps in tablet partitions and they should be sorted "
+                  << "by partition_key_start. Prev partition end: "
+                  << Slice(*prev_partition_end).ToDebugHexString() << ", current partition start: "
+                  << Slice(loc.partition().partition_key_start()).ToDebugHexString()
+                  << ". Tablet locations: " << [&locations] {
+                       std::string result;
+                       for (auto& loc : locations) {
+                         result += "\n  " + AsString(loc);
+                       }
+                       return result;
+                     }();
+      return STATUS(IllegalState, "Wrong order or overlaps in partitions");
+    }
+    prev_partition_end = &loc.partition().partition_key_end();
+  }
+  return Status::OK();
+}
+
 YBClient::Data::Data()
     : leader_master_rpc_(rpcs_.InvalidHandle()),
       latest_observed_hybrid_time_(YBClient::kNoHybridTime),

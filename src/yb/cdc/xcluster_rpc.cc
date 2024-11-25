@@ -252,7 +252,7 @@ class GetChangesRpc : public rpc::Rpc, public client::internal::TabletRpc {
         invoker_(
             false /* local_tserver_only */, false /* consistent_prefix */, client, this, this,
             tablet, nullptr /* table */, mutable_retrier(), trace_.get(),
-            master::IncludeInactive::kTrue),
+            master::IncludeHidden::kTrue),
         callback_(std::move(callback)) {
     req_.Swap(req);
   }
