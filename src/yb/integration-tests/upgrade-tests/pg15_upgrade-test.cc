@@ -957,6 +957,39 @@ TEST_F(Pg15UpgradeTest, PartitionedTables) {
   }
 }
 
+TEST_F(Pg15UpgradeTest, ColocatedTables) {
+  ASSERT_OK(ExecuteStatement("CREATE DATABASE colo WITH COLOCATION = true"));
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB("colo"));
+    ASSERT_OK(conn.Execute("CREATE TABLE t1 (k int PRIMARY KEY)"));
+    ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1)"));
+  }
+  ASSERT_OK(UpgradeClusterToMixedMode());
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB("colo", kMixedModeTserverPg15));
+    ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (2)"));
+    auto result = ASSERT_RESULT(conn.FetchRows<int>("SELECT * FROM t1"));
+    ASSERT_VECTORS_EQ(result, (decltype(result){1, 2}));
+  }
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB("colo", kMixedModeTserverPg11));
+    ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (3)"));
+    auto result = ASSERT_RESULT(conn.FetchRows<int>("SELECT * FROM t1"));
+    ASSERT_VECTORS_EQ(result, (decltype(result){1, 2, 3}));
+  }
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB("colo"));
+    auto result = ASSERT_RESULT(conn.FetchRows<int>("SELECT * FROM t1"));
+    ASSERT_VECTORS_EQ(result, (decltype(result){1, 2, 3}));
+
+    ASSERT_OK(conn.Execute("CREATE TABLE t2 (k int PRIMARY KEY)"));
+    ASSERT_OK(conn.Execute("INSERT INTO t2 VALUES (1), (2), (4)"));
+    result = ASSERT_RESULT(conn.FetchRows<int>("SELECT * FROM t2"));
+    ASSERT_VECTORS_EQ(result, (decltype(result){1, 2, 4}));
+  }
+}
+
 class Pg15UpgradeTestWithAuth : public Pg15UpgradeTest {
  public:
   Pg15UpgradeTestWithAuth() = default;

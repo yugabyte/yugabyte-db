@@ -15683,7 +15683,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 
 		/* Get the table properties from YB, if relevant. */
 		YbTableProperties yb_properties = NULL;
-		if (dopt->include_yb_metadata &&
+		if ((dopt->include_yb_metadata || dopt->binary_upgrade) &&
 			(tbinfo->relkind == RELKIND_RELATION || tbinfo->relkind == RELKIND_INDEX
 			 || tbinfo->relkind == RELKIND_MATVIEW || tbinfo->relkind == RELKIND_PARTITIONED_TABLE))
 		{

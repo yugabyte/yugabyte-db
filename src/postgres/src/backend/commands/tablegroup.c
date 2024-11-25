@@ -182,14 +182,12 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 	nulls[Anum_pg_yb_tablegroup_grpoptions - 1] = true;
 
 	/*
-	 * If YB binary restore mode is set, we want to use the specified tablegroup
-	 * oid stored in binary_upgrade_next_tablegroup_oid instead of generating
-	 * an oid when inserting the tuple into pg_yb_tablegroup catalog.
-	 * YB binary restore mode is similar to PG binary upgrade mode. However, in
-	 * YB binary restore mode, we only expecte oids of few types of DB objects
-	 * (tablegroup, type, etc) to be set.
+	 * When inserting the tuple into the pg_yb_tablegroup catalog, if YB binary
+	 * restore mode or binary upgrade mode is set, use the specified tablegroup
+	 * oid stored in binary_upgrade_next_tablegroup_oid instead of generating a
+	 * new oid.
 	 */
-	if (yb_binary_restore)
+	if (yb_binary_restore || IsBinaryUpgrade)
 	{
 		/*
 		 * The reason to comment out the check below is mainly for supporting
