@@ -63,7 +63,7 @@ class HnswlibIndexMergeTest : public YBTest {
       // Check that all expected vertex_ids are in the results.
       VerifyExpectedVertexIds(all_results, {0, 1, 2, 3});
   }
-  
+
   void TestMergeWithEmptyIndex(VectorIndexFactory<FloatVector, float> index_factory, VectorIndexIfPtr<FloatVector, float> index_a) {
     // Create an empty index with the same options.
     VectorIndexIfPtr<FloatVector, float> empty_index = index_factory();
@@ -94,7 +94,7 @@ class HnswlibIndexMergeTest : public YBTest {
     usearch_index_factory_ = [hnsw_options]() ->  VectorIndexIfPtr<FloatVector, float> {
       return UsearchIndexFactory<FloatVector, float>::Create(hnsw_options);
     };
-      
+
     hnswlib_index_a_ = CreateAndFillIndex(hnswlib_index_factory_, 0, 2);
     hnswlib_index_b_ = CreateAndFillIndex(hnswlib_index_factory_,2, 2);
     usearch_index_a_ = CreateAndFillIndex(hnswlib_index_factory_, 0, 2);

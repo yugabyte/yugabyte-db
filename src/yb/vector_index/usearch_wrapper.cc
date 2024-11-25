@@ -80,9 +80,9 @@ class UsearchVectorIterator : public AbstractIterator<std::pair<Vector, VertexId
   using IteratorPair = std::pair<Vector, VertexId>;
   using member_citerator_t = typename unum::usearch::index_dense_gt<VertexId>::member_citerator_t;
 
-    UsearchVectorIterator(size_t dimensions, member_citerator_t it) 
+    UsearchVectorIterator(size_t dimensions, member_citerator_t it)
     : dimensions_(dimensions), it_(it) {}
-  
+
  protected:
   IteratorPair Dereference() const override {
     Vector result_vector(dimensions_);
