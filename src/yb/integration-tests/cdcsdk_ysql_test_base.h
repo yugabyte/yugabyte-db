@@ -850,6 +850,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Status GetIntentEntriesAndSSTFileCountForTablet(
       const TabletId& tablet_id, std::unordered_map<std::string, std::pair<int64_t, int64_t>>*
                                         initial_intents_and_intent_sst_file_count);
+
+  void TestLagMetricWithConsistentSnapshotStream(bool expire_table);
 };
 
 }  // namespace cdc

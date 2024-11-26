@@ -4486,6 +4486,100 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsWithAddStream)) 
   ASSERT_LT(current_traffic_sent_bytes, new_metrics->cdcsdk_traffic_sent->value());
 }
 
+void CDCSDKYsqlTest::TestLagMetricWithConsistentSnapshotStream(bool expire_table) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_metrics_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 1;
+  const uint32_t num_tables = 2;
+  vector<string> table_suffix = {"_1", "_2"};
+
+  vector<YBTableName> table(num_tables);
+  vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> tablets(num_tables);
+  vector<TableId> table_id(num_tables);
+
+  // Create two tables.
+  for (uint32_t idx = 0; idx < num_tables; idx++) {
+    table[idx] = ASSERT_RESULT(
+        CreateTable(&test_cluster_, kNamespaceName, kTableName + table_suffix[idx], num_tablets));
+
+    ASSERT_OK(test_client()->GetTablets(
+        table[idx], 0, &tablets[idx],
+        /* partition_list_version =*/nullptr));
+    ASSERT_EQ(tablets[idx].size(), num_tablets);
+
+    table_id[idx] =
+        ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName + table_suffix[idx]));
+  }
+
+  // Creat a consistent snapshot stream.
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  ASSERT_OK(
+      WriteRowsHelper(1, 50, &test_cluster_, true, 2, (kTableName + table_suffix[0]).c_str()));
+
+  const auto& tserver = test_cluster()->mini_tablet_server(0)->server();
+  auto cdc_service = CDCService(tserver);
+
+  ASSERT_OK(WaitFor(
+      [&]() { return cdc_service->CDCEnabled(); }, MonoDelta::FromSeconds(30), "IsCDCEnabled"));
+
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets[0]));
+  ASSERT_GE(change_resp.cdc_sdk_proto_records_size(), 50);
+  change_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets[0], &change_resp.cdc_sdk_checkpoint()));
+
+  // Since GetChanges has consumed everything, the lag should be zero.
+  for (uint32_t idx = 0; idx < num_tables; idx++) {
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          auto metrics = VERIFY_RESULT(
+              GetCDCSDKTabletMetrics(*cdc_service, tablets[idx][0].tablet_id(), stream_id));
+          return metrics->cdcsdk_sent_lag_micros->value() == 0;
+        },
+        MonoDelta::FromSeconds(10) * kTimeMultiplier, "Timed out waiting for lag to be = 0"));
+  }
+
+  // Insert some records in second table.
+  ASSERT_OK(
+      WriteRowsHelper(1, 50, &test_cluster_, true, 2, (kTableName + table_suffix[1]).c_str()));
+
+  // Since this table is not being polled, lag will rise up for it.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto metrics = VERIFY_RESULT(
+            GetCDCSDKTabletMetrics(*cdc_service, tablets[1][0].tablet_id(), stream_id));
+        return metrics->cdcsdk_sent_lag_micros->value() > 0;
+      },
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Timed out waiting for lag to be > 0"));
+
+  if (expire_table) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 0;
+  } else {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs) = 0;
+  }
+
+  // As the table has expired / become not of interest, its lag should go down to zero.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto metrics = VERIFY_RESULT(
+            GetCDCSDKTabletMetrics(*cdc_service, tablets[1][0].tablet_id(), stream_id));
+        return metrics->cdcsdk_sent_lag_micros->value() == 0;
+      },
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Timed out waiting for lag to be = 0"));
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLagMetricWithNotOfInterestTableAndCSStream)) {
+  TestLagMetricWithConsistentSnapshotStream(false);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLagMetricWithExpiredTableAndCSStream)) {
+    TestLagMetricWithConsistentSnapshotStream(true);
+}
+
 TEST_F(
     CDCSDKYsqlTest,
     YB_DISABLE_TEST_IN_TSAN(TestCDCSDKAddColumnsWithImplictTransactionWithoutPackedRow)) {
