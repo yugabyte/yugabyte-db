@@ -2389,6 +2389,7 @@ retry1:
 							   "if the connection is made over unix domain "
 							   "socket")));
 
+				yb_is_client_ysqlconnmgr = yb_is_auth_backend;
 			}
 			else if (YBIsEnabledInPostgresEnvVar()
 					 && strcmp(nameptr, "yb_auth_remote_host") == 0)
@@ -2407,24 +2408,6 @@ retry1:
 
 				yb_logical_conn_type = *pstrdup(valptr);
 				yb_logical_conn_type_provided = true;
-			}
-			else if (YBIsEnabledInPostgresEnvVar()
-					 && strcmp(nameptr, "yb_is_client_ysqlconnmgr") == 0)
-			{
-				if (!parse_bool(valptr, &yb_is_client_ysqlconnmgr))
-					ereport(FATAL,
-							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							 errmsg("invalid value for parameter \"%s\": \"%s\"",
-									"yb_is_client_ysqlconnmgr",
-									valptr),
-							 errhint("Valid values are: \"false\", 0, \"true\", 1.")));
-
-				/* Client needs to be connected on the unix domain socket */
-				if (port->raddr.addr.ss_family != AF_UNIX)
-					ereport(FATAL,
-							(errcode(ERRCODE_PROTOCOL_VIOLATION),
-							 errmsg("ysql connection manager makes all connections "
-							   "over unix domain socket to postgres")));
 			}
 			else if (strncmp(nameptr, "_pq_.", 5) == 0)
 			{
@@ -2570,7 +2553,7 @@ retry1:
 
 	if (am_walsender)
 		MyBackendType = B_WAL_SENDER;
-	else if (YBIsEnabledInPostgresEnvVar() && yb_is_client_ysqlconnmgr)
+	else if (YbIsClientYsqlConnMgr())
 		MyBackendType = YB_YSQL_CONN_MGR;
 	else
 		MyBackendType = B_BACKEND;
