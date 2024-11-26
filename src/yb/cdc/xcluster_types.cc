@@ -20,9 +20,7 @@
 namespace yb::xcluster {
 
 std::string ProducerTabletInfo::ToString() const {
-  return Format(
-      "{ replication_group_id: $0 stream_id: $1 tablet_id: $2 }", replication_group_id, stream_id,
-      tablet_id);
+  return YB_STRUCT_TO_STRING(replication_group_id, stream_id, tablet_id, table_id);
 }
 
 std::size_t ProducerTabletInfo::Hash::operator()(const ProducerTabletInfo& p) const noexcept {
@@ -30,8 +28,13 @@ std::size_t ProducerTabletInfo::Hash::operator()(const ProducerTabletInfo& p) co
   boost::hash_combine(hash, p.replication_group_id);
   boost::hash_combine(hash, p.stream_id);
   boost::hash_combine(hash, p.tablet_id);
+  boost::hash_combine(hash, p.table_id);
 
   return hash;
+}
+
+std::string ConsumerTabletInfo::ToString() const {
+  return Format("{ consumer tablet ID: $0 table ID: $1 }", tablet_id, table_id);
 }
 
 }  // namespace yb::xcluster

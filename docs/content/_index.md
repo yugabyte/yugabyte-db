@@ -1,12 +1,14 @@
 ---
 title: YB Documentation
-headerTitle: Build scalable applications and learn distributed SQL
+headerTitle: YugabyteDB Documentation
+headcontent: Build scalable applications and learn distributed SQL
 description: Guides, examples, and reference material you need to evaluate YugabyteDB database, build scalable applications, and learn distributed SQL.
 type: indexpage
 layout: list
 breadcrumbDisable: true
 weight: 1
 showRightNav: true
+unversioned: true
 resourcesIntro: Products
 resources:
   - title: Open source

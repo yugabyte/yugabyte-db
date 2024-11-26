@@ -36,6 +36,7 @@
 
 #include "yb/util/crypt.h"
 #include "yb/util/flags.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/redis_util.h"
@@ -54,26 +55,16 @@ using namespace std::literals;
 using namespace std::placeholders;
 using yb::client::YBTableName;
 
-namespace {
-static bool ValidateRedisPasswordSeparator(const char* flag_name, const string& value) {
-  if (value.size() != 1) {
-    LOG_FLAG_VALIDATION_ERROR(flag_name, value) << "Must be 1 character long";
-    return false;
-  }
-  return true;
-}
-}
-
 DEFINE_UNKNOWN_bool(yedis_enable_flush, true, "Enables FLUSHDB and FLUSHALL commands in yedis.");
 DEFINE_UNKNOWN_bool(use_hashed_redis_password, true,
     "Store the hash of the redis passwords instead.");
-DEFINE_UNKNOWN_string(redis_passwords_separator, ",",
+DEFINE_NON_RUNTIME_string(redis_passwords_separator, ",",
     "The character used to separate multiple passwords.");
+DEFINE_validator(redis_passwords_separator,
+    FLAG_COND_VALIDATOR(_value.size() == 1, "Must be 1 character long"));
 
 DEFINE_UNKNOWN_int32(redis_keys_threshold, 10000,
              "Maximum number of keys allowed to be in the db before the KEYS operation errors out");
-
-DEFINE_validator(redis_passwords_separator, &ValidateRedisPasswordSeparator);
 
 namespace yb {
 namespace redisserver {

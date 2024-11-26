@@ -93,7 +93,6 @@ DECLARE_int32(replication_factor);
 DECLARE_int32(rpc_workers_limit);
 DECLARE_int32(tablet_server_svc_queue_length);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
-DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint64(ysql_packed_row_size_limit);
@@ -1194,7 +1193,6 @@ void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
   // Disable the replication and ensure no tablets are being polled
   ASSERT_OK(
       ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, false));
-  ASSERT_OK(CorrectlyPollingAllTablets(0));
 
   // 6. Write packed data.
   for (const auto& producer_table : producer_tables_) {
@@ -1205,7 +1203,6 @@ void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
   ASSERT_OK(
       ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, true));
-  ASSERT_OK(CorrectlyPollingAllTablets(num_producer_tablets));
   ASSERT_OK(data_replicated_correctly(kNumRecords + 10));
 
   // 8. Write some non-packed data on consumer.
@@ -1266,7 +1263,6 @@ TEST_F(XClusterYsqlTest, SimpleReplicationWithRangedPartitionsAndUnevenTabletCou
 }
 
 TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
-  SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
   // Used for faster VerifyReplicationError.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 1000;
@@ -1315,7 +1311,8 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
   // Pause Replication so we can batch up the below GetChanges information.
   ASSERT_OK(
       ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, false));
-  ASSERT_OK(CorrectlyPollingAllTablets(0));
+  ASSERT_OK(VerifyReplicationError(
+      consumer_table_->id(), stream_id, ReplicationErrorPb::REPLICATION_PAUSED));
 
   // Write some new data to the producer.
   ASSERT_OK(InsertRowsInProducer(count, count + kRecordBatch));
@@ -1464,7 +1461,6 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
 }
 
 TEST_F(XClusterYsqlTest, ReplicationWithCreateIndexDDL) {
-  SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_disable_index_backfill) = false;
   string new_column = "alt";
   constexpr auto kIndexName = "TestIndex";

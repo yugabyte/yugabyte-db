@@ -24,7 +24,7 @@ import {
   formatUuidForXCluster,
   getNamespaceIdentifierToNamespaceUuidMap,
   getNamespaceIdentifier,
-  getInConfigTableUuidsToTableDetailsMap
+  getInConfigTableUuid
 } from '../../ReplicationUtils';
 import {
   XClusterConfigAction,
@@ -823,10 +823,8 @@ const getXClusterTableEligibilityDetails = (
   currentXClusterConfigUUID?: string
 ): EligibilityDetails => {
   for (const xClusterConfig of sharedXClusterConfigs) {
-    const tableUuidToTableDetails = getInConfigTableUuidsToTableDetailsMap(
-      xClusterConfig.tableDetails
-    );
-    if (tableUuidToTableDetails.has(sourceTable.tableID)) {
+    const inConfigTableUuids = new Set<string>(getInConfigTableUuid(xClusterConfig.tableDetails));
+    if (inConfigTableUuids.has(sourceTable.tableID)) {
       return {
         status:
           xClusterConfig.uuid === currentXClusterConfigUUID

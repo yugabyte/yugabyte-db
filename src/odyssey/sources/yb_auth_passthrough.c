@@ -411,6 +411,8 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 	int rc = -1;
 	int rc_auth = -1;
 
+	assert(!instance->config.yb_use_auth_backend);
+
 	rc = yb_route_auth_packets(server, client);
 	rc_auth = rc;
 
@@ -514,4 +516,5 @@ void yb_handle_fatalforlogicalconnection_pkt(od_client_t *client,
 	}
 
 	yb_forward_fatal_msg(client, msg);
+	machine_msg_free(msg);
 }

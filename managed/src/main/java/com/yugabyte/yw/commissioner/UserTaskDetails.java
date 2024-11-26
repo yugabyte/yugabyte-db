@@ -278,7 +278,13 @@ public class UserTaskDetails {
     OSPatching,
 
     // Update Proxy Config
-    UpdateProxyConfig
+    UpdateProxyConfig,
+
+    // Create Pod Disruption Budget Policy
+    CreatePodDisruptionBudgetPolicy,
+
+    // Remove Pod Disruption Budget Policy
+    RemovingPodDisruptionBudgetPolicy
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -645,6 +651,14 @@ public class UserTaskDetails {
       case UpdateProxyConfig:
         title = "Updating Proxy config";
         description = "Updating Proxy Config for Universe nodes";
+        break;
+      case CreatePodDisruptionBudgetPolicy:
+        title = "Creating Pod Disruption Budget Policy";
+        description = "Creating Pod Disruption Budget Policy";
+        break;
+      case RemovingPodDisruptionBudgetPolicy:
+        title = "Removing Pod Disruption Budget Policy";
+        description = "Removing Pod Disruption Budget Policy";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

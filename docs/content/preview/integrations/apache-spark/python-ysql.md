@@ -57,7 +57,7 @@ This tutorial assumes that you have:
 From your spark installation directory, use the following command to start `pyspark` shell, and pass the YugabyteDB driver package with the `--packages` parameter. The command fetches the YugabyteDB driver from local cache (if present), or installs the driver from [maven central](https://search.maven.org/).
 
 ```sh
-./bin/pyspark --packages com.yugabyte:jdbc-yugabytedb:42.3.5-yb-8
+./bin/pyspark --packages com.yugabyte:jdbc-yugabytedb:42.7.3-yb-1
 ```
 
 The Spark session should be available as follows:
@@ -81,7 +81,7 @@ SparkSession available as 'spark'.
 
 Create the database and table you will read and write to as follows:
 
-1. From your YugabyteDB installation directory, use [ysqlsh](../../../admin/ysqlsh/) shell to read and write directly to the database as follows:
+1. From your YugabyteDB installation directory, use [ysqlsh](../../../api/ysqlsh/) shell to read and write directly to the database as follows:
 
     ```sh
     ./bin/ysqlsh

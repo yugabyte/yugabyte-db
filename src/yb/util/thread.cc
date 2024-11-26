@@ -253,6 +253,7 @@ class ThreadMgr {
   void RemoveThread(const pthread_t& pthread_id, const string& category);
 
   void RenderThreadGroup(const std::string& group, std::ostream& output);
+  uint64_t ReadThreadsRunning();
 
  private:
   // Container class for any details we want to capture about a thread
@@ -305,7 +306,6 @@ class ThreadMgr {
 
   // Metric callbacks.
   uint64_t ReadThreadsStarted();
-  uint64_t ReadThreadsRunning();
 
   // Webpage callback; prints all threads by category
   void ThreadPathHandler(const WebCallbackRegistry::WebRequest& args,
@@ -601,30 +601,34 @@ void InitThreadingInternal() {
 }
 
 // Thread local prefix used in tests to display the daemon name.
-std::string* TEST_GetThreadFormattedLogPrefix() {
+std::string* AccessThreadFormattedLogPrefix() {
   BLOCK_STATIC_THREAD_LOCAL(std::string, log_prefix);
   return log_prefix;
 }
 
-std::string* TEST_GetThreadUnformattedLogPrefix() {
+std::string* AccessThreadUnformattedLogPrefix() {
   BLOCK_STATIC_THREAD_LOCAL(std::string, log_prefix_unformatted);
   return log_prefix_unformatted;
 }
 
 void TEST_FormatAndSetThreadLogPrefix(const std::string& new_prefix) {
-  *TEST_GetThreadUnformattedLogPrefix() = new_prefix;
-  *TEST_GetThreadFormattedLogPrefix() =
+  *AccessThreadUnformattedLogPrefix() = new_prefix;
+  *AccessThreadFormattedLogPrefix() =
       new_prefix.empty() ? new_prefix : Format("[$0] ", new_prefix);
 }
 
 } // anonymous namespace
 
 const char* TEST_GetThreadLogPrefix() {
-  return TEST_GetThreadFormattedLogPrefix()->c_str();
+  return AccessThreadFormattedLogPrefix()->c_str();
+}
+
+std::string TEST_GetThreadUnformattedLogPrefix() {
+  return *AccessThreadUnformattedLogPrefix();
 }
 
 TEST_SetThreadPrefixScoped::TEST_SetThreadPrefixScoped(const std::string& prefix)
-    : old_prefix_(*TEST_GetThreadUnformattedLogPrefix()) {
+    : old_prefix_(*AccessThreadUnformattedLogPrefix()) {
   TEST_FormatAndSetThreadLogPrefix(
       Format("$0$1$2", old_prefix_, old_prefix_.empty() ? "" : "-", prefix));
 }
@@ -739,7 +743,7 @@ Thread::Thread(std::string category, std::string name, ThreadFunctor functor)
     : thread_(0),
       category_(std::move(category)),
       name_(std::move(name)),
-      TEST_log_prefix_(*TEST_GetThreadUnformattedLogPrefix()),
+      TEST_log_prefix_(*AccessThreadUnformattedLogPrefix()),
       tid_(CHILD_WAITING_TID),
       functor_(std::move(functor)),
       done_(1),
@@ -888,7 +892,8 @@ void* Thread::SuperviseThread(void* arg) {
 }
 
 void Thread::Join() {
-  WARN_NOT_OK(ThreadJoiner(this).Join(), "Thread join failed");
+  auto status = ThreadJoiner(this).Join();
+  LOG_IF(DFATAL, !status.ok()) << "Thread join failed: " << status;
 }
 
 void Thread::FinishThread(void* arg) {
@@ -926,6 +931,10 @@ CDSAttacher::~CDSAttacher() {
 
 void RenderAllThreadStacks(std::ostream& output) {
   thread_manager->RenderThreadGroup(kAllGroups, output);
+}
+
+size_t CountManagedThreads() {
+  return thread_manager->ReadThreadsRunning();
 }
 
 } // namespace yb

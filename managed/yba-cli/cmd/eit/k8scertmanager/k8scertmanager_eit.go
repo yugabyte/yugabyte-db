@@ -8,12 +8,14 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/eit/k8scertmanager/download"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
 // K8sCertManagerEITCmd represents the eit command
 var K8sCertManagerEITCmd = &cobra.Command{
 	Use:     "k8s-cert-manager",
+	Aliases: []string{"k8scertmanager", "k8scm"},
 	GroupID: "type",
 	Short: "Manage a YugabyteDB Anywhere K8s Cert Manager encryption" +
 		" in transit (EIT) certificate configuration",
@@ -31,10 +33,11 @@ func init() {
 	K8sCertManagerEITCmd.AddCommand(listK8sCertManagerEITCmd)
 	K8sCertManagerEITCmd.AddCommand(describeK8sCertManagerEITCmd)
 	K8sCertManagerEITCmd.AddCommand(deleteK8sCertManagerEITCmd)
+	K8sCertManagerEITCmd.AddCommand(download.DownloadK8sCertManagerEITCmd)
 
 	K8sCertManagerEITCmd.PersistentFlags().StringP("name", "n", "",
 		fmt.Sprintf("[Optional] The name of the configuration for the action. %s",
 			formatter.Colorize(
-				"Required for create, delete, describe, update.",
+				"Required for create, delete, describe, download.",
 				formatter.GreenColor)))
 }

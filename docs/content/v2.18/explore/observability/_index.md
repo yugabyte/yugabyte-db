@@ -4,7 +4,6 @@ headerTitle: Observability
 linkTitle: Observability
 description: Observability in YugabyteDB.
 headcontent: Observability in YugabyteDB.
-image: /images/section_icons/secure/authorization.png
 menu:
   v2.18:
     identifier: explore-observability

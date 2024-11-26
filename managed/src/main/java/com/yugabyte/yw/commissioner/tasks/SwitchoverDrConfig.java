@@ -131,7 +131,8 @@ public class SwitchoverDrConfig extends EditDrConfig {
               currentXClusterConfig,
               false /* keepEntry */,
               false /*forceDelete*/,
-              false /*deletePitrConfigs*/);
+              false /* deleteSourcePitrConfigs */,
+              false /* deleteTargetPitrConfigs */);
         }
 
         // After all the other subtasks are done, set the DR states to show replication is

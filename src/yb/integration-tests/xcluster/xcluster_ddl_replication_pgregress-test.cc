@@ -22,6 +22,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/tsan_util.h"
 
+DECLARE_bool(TEST_skip_schema_validation);
 DECLARE_int32(ysql_num_tablets);
 
 using namespace std::chrono_literals;
@@ -52,9 +53,9 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     const auto output = VERIFY_RESULT(tools::RunYSQLDump(cluster.pg_host_port_, database_name));
 
     // Filter out any lines in output that contain "binary_upgrade_set_next", since these contain
-    // oids which will not match.
-    const std::regex pattern("\n.*binary_upgrade_set_next.*\n");
-    return std::regex_replace(output, pattern, "\n<binary_upgrade_set_next>\n");
+    // oids which may not match.
+    const std::regex pattern("\n.*binary_upgrade_set_next.*(?=\n)");
+    return std::regex_replace(output, pattern, "\n<binary_upgrade_set_next>");
   }
 
   void ExecutePgFile(const std::string& file_path) {
@@ -73,7 +74,7 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
 
   Status TestPgRegress(const std::string& create_file_name, const std::string& drop_file_name) {
     const auto sub_dir = "test_xcluster_ddl_replication_sql";
-    const auto test_sql_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
+    const auto test_sql_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir, "sql");
 
     // Setup xCluster.
     RETURN_NOT_OK(SetUpClusters());
@@ -138,6 +139,22 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropTablePartitions) 
 TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropTablePartitions2) {
   // Tests basic create and drop of tables with partitions.
   ASSERT_OK(TestPgRegress("create_table_partitions2.sql", "drop_table_partitions2.sql"));
+}
+
+TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressAlterTable) {
+  // Tests various add column types, alter index columns, renames and partitioned tables.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_schema_validation) = true;
+  ASSERT_OK(TestPgRegress("alter_table.sql", "alter_table2.sql"));
+}
+
+TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropPgOnlyDdls) {
+  // Tests create and drop of pass through ddls that dont require special handling.
+  ASSERT_OK(TestPgRegress("pgonly_ddls_create.sql", "pgonly_ddls_drop.sql"));
+}
+
+TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressAlterPgOnlyDdls) {
+  // Tests create and alters of pass through ddls that dont require special handling.
+  ASSERT_OK(TestPgRegress("pgonly_ddls_create.sql", "pgonly_ddls_alter.sql"));
 }
 
 }  // namespace yb

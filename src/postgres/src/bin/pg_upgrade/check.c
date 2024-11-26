@@ -104,7 +104,7 @@ check_and_dump_old_cluster(bool live_check)
 	/*
 	 * Check for various failure cases
 	 */
-	/* 
+	/*
 	 * YB: this check requires the following conditions:
 	 * 	1. The logged in user is 'postgres' (oid = 10)
 	 * 	2. New cluster does not have any users
@@ -129,7 +129,7 @@ check_and_dump_old_cluster(bool live_check)
 	 * need to be changed to match the new signature.
 	 */
 	if (!is_yugabyte_enabled() && GET_MAJOR_VERSION(old_cluster.major_version) <= 1300)
-		/* 
+		/*
 		 * CREATE CONVERSION is not supported by YB,
 		 * cannot have user-defined encoding conversions.
 		 */

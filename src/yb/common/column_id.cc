@@ -12,6 +12,8 @@
 //
 #include "yb/common/column_id.h"
 
+#include "yb/util/fast_varint.h"
+#include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -28,12 +30,27 @@ ColumnId& ColumnId::operator=(const ColumnIdRep& rhs) {
   return *this;
 }
 
-Status ColumnId::FromInt64(int64_t value, ColumnId *column_id) {
+Result<ColumnId> ColumnId::FromInt64(int64_t value) {
   if (value > std::numeric_limits<ColumnIdRep>::max() || value < 0) {
     return STATUS_FORMAT(Corruption, "$0 not valid for column id representation", value);
   }
-  column_id->t_ = static_cast<ColumnIdRep>(value);
-  return Status::OK();
+  return ColumnId(static_cast<ColumnIdRep>(value));
+}
+
+Result<ColumnId> ColumnId::Decode(Slice* slice) {
+  int64_t as_int64 = VERIFY_RESULT(FastDecodeSignedVarInt(slice));
+  return FromInt64(as_int64);
+}
+
+Result<ColumnId> ColumnId::FullyDecode(Slice slice) {
+  auto start = slice.data();
+  auto result = VERIFY_RESULT(Decode(&slice));
+  if (!slice.empty()) {
+    return STATUS_FORMAT(
+        Corruption, "Extra data found while decoding column id: $0 + $1",
+        Slice(start, slice.data()).ToDebugHexString(), slice.ToDebugHexString());
+  }
+  return result;
 }
 
 uint64_t ColumnId::ToUint64() const {

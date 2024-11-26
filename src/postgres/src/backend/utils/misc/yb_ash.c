@@ -37,6 +37,7 @@
 #include "parser/scansup.h"
 #include "pgstat.h"
 #include "postmaster/bgworker.h"
+#include "postmaster/interrupt.h"
 #include "storage/ipc.h"
 #include "storage/latch.h"
 #include "storage/lwlock.h"
@@ -60,8 +61,6 @@
 #define ACTIVE_SESSION_HISTORY_COLS_V2 13
 #define ACTIVE_SESSION_HISTORY_COLS_V3 14
 
-#define YB_WAIT_EVENT_DESC_COLS 4
-
 #define MAX_NESTED_QUERY_LEVEL 64
 
 #define set_query_id() (nested_level == 0 || \
@@ -80,10 +79,6 @@ static ExecutorRun_hook_type prev_ExecutorRun = NULL;
 static ExecutorFinish_hook_type prev_ExecutorFinish = NULL;
 static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
-
-/* Flags set by interrupt handlers for later service in the main loop. */
-static volatile sig_atomic_t got_sigterm = false;
-static volatile sig_atomic_t got_sighup = false;
 
 YbAshTrackNestedQueries yb_ash_track_nested_queries = NULL;
 
@@ -133,6 +128,7 @@ static void yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 static const unsigned char *get_top_level_node_id();
 static void YbAshMaybeReplaceSample(PGPROC *proc, int num_procs, TimestampTz sample_time,
 									int samples_considered);
+static YBCWaitEventInfo YbGetWaitEventInfo(const PGPROC *proc);
 static void copy_pgproc_sample_fields(PGPROC *proc, int index);
 static void copy_non_pgproc_sample_fields(TimestampTz sample_time, int index);
 static void YbAshIncrementCircularBufferIndex(void);
@@ -329,7 +325,7 @@ yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags)
 		query_id = queryDesc->plannedstmt->queryId != 0
 				   ? queryDesc->plannedstmt->queryId
 				   : yb_ash_utility_query_id(queryDesc->sourceText,
-					   						 queryDesc->plannedstmt->stmt_len,
+											 queryDesc->plannedstmt->stmt_len,
 											 queryDesc->plannedstmt->stmt_location);
 		YbAshSetQueryId(query_id);
 	}
@@ -675,28 +671,6 @@ YbAshReleaseBufferLock()
 	LWLockRelease(&yb_ash->lock);
 }
 
-static void
-yb_ash_sigterm(SIGNAL_ARGS)
-{
-	int			save_errno = errno;
-
-	got_sigterm = true;
-	SetLatch(MyLatch);
-
-	errno = save_errno;
-}
-
-static void
-yb_ash_sighup(SIGNAL_ARGS)
-{
-	int			save_errno = errno;
-
-	got_sighup = true;
-	SetLatch(MyLatch);
-
-	errno = save_errno;
-}
-
 void
 YbAshMain(Datum main_arg)
 {
@@ -706,8 +680,10 @@ YbAshMain(Datum main_arg)
 					yb_ash_circular_buffer_size * 1024)));
 
 	/* Register functions for SIGTERM/SIGHUP management */
-	pqsignal(SIGHUP, yb_ash_sighup);
-	pqsignal(SIGTERM, yb_ash_sigterm);
+	pqsignal(SIGHUP, SignalHandlerForConfigReload);
+	pqsignal(SIGTERM, SignalHandlerForShutdownRequest);
+	pqsignal(SIGINT, SignalHandlerForShutdownRequest);
+	pqsignal(SIGQUIT, SignalHandlerForCrashExit);
 
 	/* We're now ready to receive signals */
 	BackgroundWorkerUnblockSignals();
@@ -716,7 +692,7 @@ YbAshMain(Datum main_arg)
 
 	pgstat_report_appname("yb_ash collector");
 
-	while (!got_sigterm)
+	while (true)
 	{
 		TimestampTz	sample_time;
 		int 		rc;
@@ -729,15 +705,7 @@ YbAshMain(Datum main_arg)
 		if (rc & WL_POSTMASTER_DEATH)
 			proc_exit(1);
 
-		/* Process signals */
-		if (got_sighup)
-		{
-			/* Process config file */
-			got_sighup = false;
-			ProcessConfigFile(PGC_SIGHUP);
-			ereport(LOG,
-					(errmsg("bgworker yb_ash signal: processed SIGHUP")));
-		}
+		HandleMainLoopInterrupts();
 
 		if (yb_enable_ash && yb_ash_sample_size > 0)
 		{
@@ -820,6 +788,37 @@ YbAshStoreSample(PGPROC *proc, int num_procs, TimestampTz sample_time, int index
 	YbAshIncrementCircularBufferIndex();
 }
 
+static YBCWaitEventInfo
+YbGetWaitEventInfo(const PGPROC *proc)
+{
+	static uint32 waiting_on_tserver_code = -1;
+
+	if (waiting_on_tserver_code == -1)
+		waiting_on_tserver_code = YBCWaitEventForWaitingOnTServer();
+
+	YBCWaitEventInfo info = {waiting_on_tserver_code, 0};
+
+	for (size_t attempt = 0; attempt < 32; ++attempt)
+	{
+		const uint32 wait_event = proc->wait_event_info;
+		const uint16 rpc_code = proc->yb_rpc_code;
+
+		if (wait_event != waiting_on_tserver_code)
+		{
+			info.wait_event = wait_event;
+			break;
+		}
+
+		if (rpc_code != 0)
+		{
+			info.rpc_code = rpc_code;
+			break;
+		}
+	}
+
+	return info;
+}
+
 static void
 copy_pgproc_sample_fields(PGPROC *proc, int index)
 {
@@ -829,7 +828,10 @@ copy_pgproc_sample_fields(PGPROC *proc, int index)
 	memcpy(&cb_sample->metadata, &proc->yb_ash_metadata, sizeof(YBCAshMetadata));
 	LWLockRelease(&proc->yb_ash_metadata_lock);
 
-	cb_sample->encoded_wait_event_code = proc->wait_event_info;
+	YBCWaitEventInfo info = YbGetWaitEventInfo(proc);
+	cb_sample->encoded_wait_event_code = info.wait_event;
+	cb_sample->aux_info[0] = info.rpc_code;
+	cb_sample->aux_info[1] = '\0';
 }
 
 /* We don't fill the sample weight here. Check YbAshFillSampleWeight */
@@ -846,8 +848,6 @@ copy_non_pgproc_sample_fields(TimestampTz sample_time, int index)
 
 	/* rpc_request_id is 0 for PG samples */
 	cb_sample->rpc_request_id = 0;
-	/* TODO(asaha): Add aux info to circular buffer once it's available */
-	cb_sample->aux_info[0] = '\0';
 	cb_sample->sample_time = sample_time;
 }
 
@@ -997,7 +997,15 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		}
 
 		if (sample->aux_info[0] != '\0')
-			values[j++] = CStringGetTextDatum(sample->aux_info);
+		{
+			/*
+			 * In PG samples, the wait event aux buffer will be [ash::PggateRPC, 0, ...],
+			 * the 0-th index contains the rpc enum value, the 1-st and subsequent indexes contains 0.
+			 */
+			values[j++] = sample->aux_info[0] != 0 && sample->aux_info[1] == 0
+				? CStringGetTextDatum(YBCGetPggateRPCName(sample->aux_info[0]))
+				: CStringGetTextDatum(sample->aux_info);
+		}
 		else
 			nulls[j++] = true;
 
@@ -1047,77 +1055,6 @@ client_ip_to_string(unsigned char *client_addr, uint16 client_port,
 				client_addr[12], client_addr[13], client_addr[14], client_addr[15],
 				client_port);
 	}
-}
-
-Datum
-yb_wait_event_desc(PG_FUNCTION_ARGS)
-{
-	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
-	TupleDesc	tupdesc;
-	Tuplestorestate *tupstore;
-	MemoryContext per_query_ctx;
-	MemoryContext oldcontext;
-	int			i;
-
-	/* ASH must be loaded first */
-	if (!yb_ash)
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("ysql_yb_ash_enable_infra gflag must be enabled")));
-
-	/* check to see if caller supports us returning a tuplestore */
-	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("set-valued function called in context that cannot accept a set")));
-
-	if (!(rsinfo->allowedModes & SFRM_Materialize))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("materialize mode required, but it is not " \
-						"allowed in this context")));
-
-	/* Switch context to construct returned data structures */
-	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
-	oldcontext = MemoryContextSwitchTo(per_query_ctx);
-
-	/* Build a tuple descriptor */
-	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-		ereport(ERROR,
-				(errmsg_internal("return type must be a row type")));
-
-	tupstore = tuplestore_begin_heap(true, false, work_mem);
-	rsinfo->returnMode = SFRM_Materialize;
-	rsinfo->setResult = tupstore;
-	rsinfo->setDesc = tupdesc;
-
-	MemoryContextSwitchTo(oldcontext);
-
-	for (i = 0;; ++i)
-	{
-		Datum		values[YB_WAIT_EVENT_DESC_COLS];
-		bool		nulls[YB_WAIT_EVENT_DESC_COLS];
-
-		memset(values, 0, sizeof(values));
-		memset(nulls, 0, sizeof(nulls));
-
-		YBCWaitEventDescriptor wait_event_desc = YBCGetWaitEventDescription(i);
-
-		if (wait_event_desc.code == 0 && wait_event_desc.description == NULL)
-			break;
-
-		values[0] = CStringGetTextDatum(YBCGetWaitEventClass(wait_event_desc.code));
-		values[1] = CStringGetTextDatum(pgstat_get_wait_event_type(wait_event_desc.code));
-		values[2] = CStringGetTextDatum(pgstat_get_wait_event(wait_event_desc.code));
-		values[3] = CStringGetTextDatum(wait_event_desc.description);
-
-		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
-	}
-
-	/* clean up and return the tuplestore */
-	tuplestore_donestoring(tupstore);
-
-	return (Datum) 0;
 }
 
 /*

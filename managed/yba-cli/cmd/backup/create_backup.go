@@ -18,6 +18,7 @@ import (
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/backup"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ybatask"
 )
 
 // createBackupCmd represents the universe backup command
@@ -25,6 +26,11 @@ var createBackupCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a YugabyteDB Anywhere universe backup",
 	Long:  "Create an universe backup in YugabyteDB Anywhere",
+	Example: `yba backup create --universe-name <universe-name> \
+	--storage-config-name <storage-config-name> \
+	--table-type <table-type> \
+	--time-before-delete-in-ms 3600000 \
+	--keyspace-info keyspace-name=<keyspace-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		universeNameFlag, err := cmd.Flags().GetString("universe-name")
 		if err != nil {
@@ -234,78 +240,83 @@ var createBackupCmd = &cobra.Command{
 			requestBody.SetBaseBackupUUID(baseBackupUUID)
 		}
 
-		rCreate, response, err := authAPI.CreateBackup().Backup(requestBody).Execute()
+		rTask, response, err := authAPI.CreateBackup().Backup(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		taskUUID := rCreate.GetTaskUUID()
+		taskUUID := rTask.GetTaskUUID()
 		msg := fmt.Sprintf("The backup task %s is in progress",
 			formatter.Colorize(taskUUID, formatter.GreenColor))
 
 		if viper.GetBool("wait") {
 			if taskUUID != "" {
-				logrus.Info(fmt.Sprintf("\nWaiting for backup task %s on universe %s(%s) to be completed\n",
+				logrus.Info(fmt.Sprintf("\nWaiting for backup task %s on universe %s (%s) to be completed\n",
 					formatter.Colorize(taskUUID, formatter.GreenColor), universeNameFlag, universeUUID))
 				err = authAPI.WaitForTask(taskUUID, msg)
 				if err != nil {
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
-				backupTaskRequest := authAPI.GetBackupByTaskUUID(universeUUID, taskUUID)
-				rBackup, response, err := backupTaskRequest.Execute()
-				if err != nil {
-					errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Create - Get Backup")
-					logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
-				}
-				backupUUID := rBackup[0].GetBackupUUID()
-
-				backupUUIDList := []string{backupUUID}
-
-				var limit int32 = 10
-				var offset int32 = 0
-				backupAPIDirection := "DESC"
-				backupAPISort := "createTime"
-
-				backupAPIFilter := ybaclient.BackupApiFilter{
-					BackupUUIDList: backupUUIDList,
-				}
-
-				backupAPIQuery := ybaclient.BackupPagedApiQuery{
-					Filter:    backupAPIFilter,
-					Direction: backupAPIDirection,
-					Limit:     limit,
-					Offset:    offset,
-					SortBy:    backupAPISort,
-				}
-
-				backupListRequest := authAPI.ListBackups().PageBackupsRequest(backupAPIQuery)
-				r, response, err := backupListRequest.Execute()
-				if err != nil {
-					errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Create - Describe Backup")
-					logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
-				}
-
-				if len(r.GetEntities()) < 1 {
-					logrus.Fatalf(
-						formatter.Colorize(
-							fmt.Sprintf("No backups with UUID: %s found\n", backupUUID),
-							formatter.RedColor,
-						))
-				}
-
-				backupCtx := formatter.Context{
-					Command: "create",
-					Output:  os.Stdout,
-					Format:  backup.NewBackupFormat(viper.GetString("output")),
-				}
-				backup.Write(backupCtx, r.GetEntities())
-
 			}
-		} else {
-			logrus.Infoln(msg + "\n")
-		}
+			backupTaskRequest := authAPI.GetBackupByTaskUUID(universeUUID, taskUUID)
+			rBackup, response, err := backupTaskRequest.Execute()
+			if err != nil {
+				errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Create - Get Backup")
+				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			}
+			backupUUID := rBackup[0].GetBackupUUID()
 
+			backupUUIDList := []string{backupUUID}
+
+			var limit int32 = 10
+			var offset int32 = 0
+			backupAPIDirection := "DESC"
+			backupAPISort := "createTime"
+
+			backupAPIFilter := ybaclient.BackupApiFilter{
+				BackupUUIDList: backupUUIDList,
+			}
+
+			backupAPIQuery := ybaclient.BackupPagedApiQuery{
+				Filter:    backupAPIFilter,
+				Direction: backupAPIDirection,
+				Limit:     limit,
+				Offset:    offset,
+				SortBy:    backupAPISort,
+			}
+
+			backupListRequest := authAPI.ListBackups().PageBackupsRequest(backupAPIQuery)
+			r, response, err := backupListRequest.Execute()
+			if err != nil {
+				errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Create - Describe Backup")
+				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			}
+
+			if len(r.GetEntities()) < 1 {
+				logrus.Fatalf(
+					formatter.Colorize(
+						fmt.Sprintf("No backups with UUID: %s found\n", backupUUID),
+						formatter.RedColor,
+					))
+			}
+
+			backupCtx := formatter.Context{
+				Command: "create",
+				Output:  os.Stdout,
+				Format:  backup.NewBackupFormat(viper.GetString("output")),
+			}
+			backup.Write(backupCtx, r.GetEntities())
+
+			return
+		}
+		logrus.Infoln(msg + "\n")
+		taskCtx := formatter.Context{
+			Command: "create",
+			Output:  os.Stdout,
+			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
+		}
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
 	},
 }
 
@@ -313,7 +324,7 @@ func buildKeyspaceTables(keyspaces []string) (res []ybaclient.KeyspaceTable) {
 
 	for _, keyspaceString := range keyspaces {
 		keyspace := map[string]string{}
-		for _, keyspaceInfo := range strings.Split(keyspaceString, ";") {
+		for _, keyspaceInfo := range strings.Split(keyspaceString, util.Separator) {
 			kvp := strings.Split(keyspaceInfo, "=")
 			if len(kvp) != 2 {
 				logrus.Fatalln(
@@ -374,17 +385,17 @@ func init() {
 		"[Optional] Keyspace info to perform backup operation."+
 			"If no keyspace info is provided, then all the keyspaces of the table type "+
 			"specified are backed up. If the user wants to take backup of a subset of keyspaces, "+
-			"then the user has to specify the keyspace info. Provide the following semicolon "+
-			"separated fields as key value pairs, enclose the string with quotes: "+
-			"\"\"keyspace-name=<keyspace-name>;table-names=<table-name1>,<table-name2>,<table-name3>;"+
-			"table-ids=<table-id1>,<table-id2>,<table-id3>\"\". The table-names and table-ids "+
+			"then the user has to specify the keyspace info. Provide the following double colon (::) "+
+			"separated fields as key value pairs: "+
+			"\"keyspace-name=<keyspace-name>::table-names=<table-name1>,<table-name2>,<table-name3>::"+
+			"table-ids=<table-id1>,<table-id2>,<table-id3>\". The table-names and table-ids "+
 			"attributes have to be specified as comma separated values. "+
 			formatter.Colorize("Keyspace name is required value. ", formatter.GreenColor)+
 			"Table names and Table ids are optional values and are needed only for YCQL."+
-			"Example: --keyspace-info \"keyspace-name=cassandra;table-names=table1,table2;"+
-			"table-ids=1e683b86-7858-44d1-a1f6-406f50a4e56e,19a34a5e-3a19-4070-9d79-805ed713ce7d\" "+
-			"--keyspace-info \"keyspace-name=cassandra2;table-names=table3,table4;"+
-			"table-ids=e5b83a7c-130c-40c0-95ff-ec1d9ecff616,bc92d473-2e10-4f76-8bd1-9ca9741890fd\"")
+			"Example: --keyspace-info keyspace-name=cassandra::table-names=table1,table2::"+
+			"table-ids=1e683b86-7858-44d1-a1f6-406f50a4e56e,19a34a5e-3a19-4070-9d79-805ed713ce7d "+
+			"--keyspace-info keyspace-name=cassandra2::table-names=table3,table4::"+
+			"table-ids=e5b83a7c-130c-40c0-95ff-ec1d9ecff616,bc92d473-2e10-4f76-8bd1-9ca9741890fd")
 
 	createBackupCmd.Flags().Bool("use-tablespaces", false,
 		"[Optional] Backup tablespaces information as part of the backup")

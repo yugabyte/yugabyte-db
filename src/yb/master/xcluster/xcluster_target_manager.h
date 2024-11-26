@@ -68,6 +68,10 @@ class XClusterTargetManager {
       const xcluster::ReplicationGroupId& replication_group_id, CoarseTimePoint deadline,
       bool skip_health_check);
 
+  Status SetReplicationGroupEnabled(
+      const xcluster::ReplicationGroupId& replication_group_id, bool is_enabled,
+      const LeaderEpoch& epoch, CoarseTimePoint deadline);
+
  protected:
   explicit XClusterTargetManager(
       Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog);
@@ -142,6 +146,10 @@ class XClusterTargetManager {
   Result<bool> HasReplicationGroupErrors(const xcluster::ReplicationGroupId& replication_group_id)
       const EXCLUDES(replication_error_map_mutex_);
 
+  Result<bool> IsReplicationGroupFullyPaused(
+      const xcluster::ReplicationGroupId& replication_group_id) const
+      EXCLUDES(replication_error_map_mutex_);
+
   void RecordTableStream(
       const TableId& table_id, const xcluster::ReplicationGroupId& replication_group_id,
       const xrepl::StreamId& stream_id) EXCLUDES(table_stream_ids_map_mutex_);
@@ -163,13 +171,6 @@ class XClusterTargetManager {
   Status HandleTabletSplit(
       const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids,
       const LeaderEpoch& epoch) EXCLUDES(table_stream_ids_map_mutex_);
-
-  Status ValidateNewSchema(const TableInfo& table_info, const Schema& consumer_schema) const
-      EXCLUDES(table_stream_ids_map_mutex_);
-
-  Status ResumeStreamsAfterNewSchema(
-      const TableInfo& table_info, SchemaVersion consumer_schema_version, const LeaderEpoch& epoch)
-      EXCLUDES(table_stream_ids_map_mutex_);
 
   Status SetupUniverseReplication(
       const SetupUniverseReplicationRequestPB* req, SetupUniverseReplicationResponsePB* resp,
@@ -203,6 +204,14 @@ class XClusterTargetManager {
       const xrepl::StreamId& bootstrap_id, const std::optional<TableId>& target_table_id,
       const LeaderEpoch& epoch);
 
+  Result<std::optional<HybridTime>> TryGetXClusterSafeTimeForBackfill(
+      const std::vector<TableId>& index_table_ids, const TableInfoPtr& indexed_table,
+      const LeaderEpoch& epoch) const;
+
+  Status InsertPackedSchemaForXClusterTarget(
+      const TableId& table_id, const SchemaPB& packed_schema_to_insert,
+      uint32_t current_schema_version, const LeaderEpoch& epoch);
+
  private:
   // Gets the replication group status for the given replication group id. Does not populate the
   // table statuses.
@@ -221,7 +230,9 @@ class XClusterTargetManager {
   std::unordered_map<xcluster::ReplicationGroupId, xrepl::StreamId> GetStreamIdsForTable(
       const TableId& table_id) const EXCLUDES(table_stream_ids_map_mutex_);
 
-  Status ProcessPendingSchemaChanges(const LeaderEpoch& epoch);
+  Result<HybridTime> PrepareAndGetBackfillTimeForBiDirectionalIndex(
+      const std::vector<TableId>& index_table_ids, const TableId& indexed_table,
+      const LeaderEpoch& epoch) const;
 
   Master& master_;
   CatalogManager& catalog_manager_;

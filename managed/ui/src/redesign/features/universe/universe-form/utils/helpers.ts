@@ -505,7 +505,9 @@ export const getKubernetesDiffClusterData = (
       oldMasterNumCores: 0,
       newMasterNumCores: 0,
       oldMasterMemory: 0,
-      newMasterMemory: 0
+      newMasterMemory: 0,
+      oldTServerVolumeCount: 0,
+      newTServerVolumeCount: 0
     };
   }
 
@@ -525,7 +527,9 @@ export const getKubernetesDiffClusterData = (
     oldMasterNumCores: currentClusterConfig?.userIntent?.masterK8SNodeResourceSpec?.cpuCoreCount,
     newMasterNumCores: newClusterConfig?.userIntent?.masterK8SNodeResourceSpec?.cpuCoreCount,
     oldMasterMemory: currentClusterConfig?.userIntent?.masterK8SNodeResourceSpec?.memoryGib,
-    newMasterMemory: newClusterConfig?.userIntent?.masterK8SNodeResourceSpec?.memoryGib
+    newMasterMemory: newClusterConfig?.userIntent?.masterK8SNodeResourceSpec?.memoryGib,
+    oldTServerVolumeCount: currentClusterConfig?.userIntent?.deviceInfo?.numVolumes,
+    newTServerVolumeCount: newClusterConfig?.userIntent?.deviceInfo?.numVolumes
   };
 };
 
@@ -572,4 +576,26 @@ export const getChangedPorts = (
   });
 
   return { oldPorts, newPorts };
+};
+
+// Any changes from security config, we can detect it here
+export const getSecurityConfigChanges = (
+  currentClusterConfig?: Cluster,
+  newClusterConfig?: Cluster
+) => {
+  const isNewIPEnabled = newClusterConfig?.userIntent?.assignPublicIP;
+  const isCurrentIPEnabled = currentClusterConfig?.userIntent?.assignPublicIP;
+  const hasChanged = isNewIPEnabled !== isCurrentIPEnabled;
+  return { hasChanged, isNewIPEnabled, isCurrentIPEnabled };
+};
+
+// Any changes from advanced config, we can detect it here
+export const getAdvancedConfigChanges = (
+  currentClusterConfig?: Cluster,
+  newClusterConfig?: Cluster
+) => {
+  const newArnString = newClusterConfig?.userIntent?.awsArnString;
+  const currentArnString = currentClusterConfig?.userIntent?.awsArnString;
+  const hasChanged = currentArnString !== newArnString;
+  return { hasChanged, currentArnString, newArnString };
 };

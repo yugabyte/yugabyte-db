@@ -12,11 +12,12 @@ import { useForm } from 'react-hook-form';
 import { AxiosResponse } from 'axios';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { find, isString, keys } from 'lodash';
+import clsx from 'clsx';
 import { useToggle } from 'react-use';
 import { Trans, useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
 import { yupResolver } from '@hookform/resolvers/yup';
-import { makeStyles, Typography } from '@material-ui/core';
+import { Collapse, makeStyles, Typography } from '@material-ui/core';
 import {
   AlertVariant,
   YBAlert,
@@ -28,25 +29,36 @@ import {
 } from '../../../components';
 import OIDCMetadataModal from '../../../../components/users/UserAuth/OIDCMetadataModal';
 import { DisableAuthProviderModal } from '../DisableAuthProvider';
-import { YBErrorIndicator, YBLoadingCircleIcon } from '../../../../components/common/indicators';
+import { YBLoadingCircleIcon } from '../../../../components/common/indicators';
 import { setShowJWTTokenInfo, setSSO } from '../../../../config';
 import { isRbacEnabled } from '../../rbac/common/RbacUtils';
 import { RbacValidator } from '../../rbac/common/RbacApiPermValidator';
-import { escapeStr, TOAST_OPTIONS, UserDefaultRoleOptions } from '../UserAuthUtils';
+import {
+  escapeStr,
+  OIDC_FEATURE_ENHANCEMENT_KEY,
+  TOAST_OPTIONS,
+  UserDefaultRoleOptions
+} from '../UserAuthUtils';
 import { RunTimeConfigEntry } from '../../universe/universe-form/utils/dto';
 import { api } from '../../universe/universe-form/utils/api';
 import { Action } from '../../rbac';
 import { getOIDCValidationSchema } from './OIDCValidationSchema';
 import { OIDC_PATH, OIDC_RUNTIME_CONFIGS_QUERY_KEY } from '../../rbac/groups/components/GroupUtils';
 import { OIDC_FIELDS, OIDCFormProps } from './OIDCConstants';
-import { ReactComponent as User } from '../../../../redesign/assets/user-outline.svg';
 import { ReactComponent as BulbIcon } from '../../../../redesign/assets/bulb.svg';
 
 const useStyles = makeStyles((theme) => ({
   root: {
     width: '680px',
     padding: '24px',
-    height: '1200px'
+    height: '100%',
+    '& .MuiFormLabel-root': {
+      textTransform: 'capitalize',
+      color: '#333',
+      fontSize: '13px',
+      fontWeight: 400,
+      marginBottom: '6px'
+    }
   },
   header: {
     display: 'flex',
@@ -59,14 +71,7 @@ const useStyles = makeStyles((theme) => ({
     marginTop: '16px',
     display: 'flex',
     gap: '24px',
-    flexDirection: 'column',
-    '& .MuiFormLabel-root': {
-      textTransform: 'capitalize',
-      color: '#333',
-      fontSize: '13px',
-      fontWeight: 400,
-      marginBottom: '6px'
-    }
+    flexDirection: 'column'
   },
   roleHeader: {
     marginTop: '56px',
@@ -85,12 +90,16 @@ const useStyles = makeStyles((theme) => ({
   roleSettings: {
     display: 'flex',
     gap: '56px',
-    marginTop: '8px',
     alignItems: 'center',
-    marginBottom: '32px'
+    marginBottom: '32px',
+    marginTop: '32px'
   },
   alert: {
-    background: theme.palette.primary[200]
+    background: theme.palette.primary[200],
+    marginTop: '32px'
+  },
+  groupOverrideWarning: {
+    marginTop: '32px'
   },
   link: {
     color: 'inherit',
@@ -125,6 +134,25 @@ const useStyles = makeStyles((theme) => ({
     display: 'flex',
     alignItems: 'center',
     marginLeft: '-12px'
+  },
+  mapGroupRoles: {
+    marginBottom: '16px',
+    display: 'flex',
+    flexDirection: 'column',
+    border: `1px solid ${theme.palette.ybacolors.backgroundGrayDark}`,
+    borderRadius: '8px',
+    padding: '24px',
+    '&>h6': {
+      marginLeft: '50px',
+      color: theme.palette.ybacolors.textDarkGray
+    }
+  },
+  defaultRoleLabel: {
+    display: 'flex',
+    alignItems: 'center'
+  },
+  disabled: {
+    opacity: 0.6
   }
 }));
 
@@ -149,7 +177,11 @@ const initializeFormValues = (configEntries: RunTimeConfigEntry[]) => {
     } else {
       fData[key] = escapeStr(config.value);
     }
-    if (key === 'showJWTInfoOnLogin' || key === 'use_oauth') {
+    if (
+      key === 'showJWTInfoOnLogin' ||
+      key === 'use_oauth' ||
+      key === 'oidc_enable_auto_create_users'
+    ) {
       fData[key] = config.value === 'true';
     }
     return fData;
@@ -169,7 +201,15 @@ export const OIDCAuthNew = () => {
     keyPrefix: 'userAuth.OIDC'
   });
 
-  const { control, setValue, watch, getValues, handleSubmit } = useForm<OIDCFormProps>({
+  const {
+    control,
+    setValue,
+    watch,
+    getValues,
+    handleSubmit,
+    clearErrors,
+    formState: { isDirty }
+  } = useForm<OIDCFormProps>({
     defaultValues: {
       oidc_default_role: UserDefaultRoleOptions.ReadOnly
     },
@@ -201,10 +241,11 @@ export const OIDCAuthNew = () => {
   const [showMetadataModel, toggleMetadataModal] = useToggle(false);
   const [showOIDCDisableModal, toggleOIDCDisableModal] = useToggle(false);
   const [initialData, setInitialData] = useState<Partial<OIDCFormProps>>({});
+  const [showDisplayJWTToken, toggleDisplayJWTToken] = useToggle(false);
 
   const queryClient = useQueryClient();
 
-  const { isLoading, isError } = useQuery(
+  const { isLoading } = useQuery(
     [OIDC_RUNTIME_CONFIGS_QUERY_KEY],
     () => api.fetchRunTimeConfigs(true),
     {
@@ -214,6 +255,10 @@ export const OIDCAuthNew = () => {
         Object.entries(formData).forEach(([key, value]) => {
           setValue((key as unknown) as keyof OIDCFormProps, value, { shouldValidate: false });
         });
+        toggleDisplayJWTToken(
+          data?.configEntries?.find((config) => config.key === OIDC_FEATURE_ENHANCEMENT_KEY)
+            ?.value === 'true'
+        );
       }
     }
   );
@@ -233,7 +278,7 @@ export const OIDCAuthNew = () => {
         if (key === `oidcProviderMetadata`) {
           val = transformProviderMetaData(getValues(key as keyof OIDCFormProps) as string);
         }
-        if (key === `showJWTInfoOnLogin`) {
+        if (key === `showJWTInfoOnLogin` || key === 'oidc_enable_auto_create_users') {
           val = String(val);
           setShowJWTTokenInfo(val);
           setSSO(val);
@@ -246,26 +291,20 @@ export const OIDCAuthNew = () => {
         );
       }
     });
+    if (promiseArr.length > 0) {
+      promiseArr.push(
+        setRunTimeConfig({
+          key: `${OIDC_PATH}.type`,
+          value: 'OIDC'
+        })
+      );
+    }
     return promiseArr;
   };
 
+  const enableRoleMapping = watch('oidc_enable_auto_create_users');
+
   if (isLoading) return <YBLoadingCircleIcon />;
-  if (isError) return <YBErrorIndicator />;
-
-  const UserDefaultRole = [
-    {
-      label: t('roles.readOnly'),
-      value: UserDefaultRoleOptions.ReadOnly
-    },
-    {
-      label: t('roles.connectOnly'),
-      value: UserDefaultRoleOptions.ConnectOnly
-    }
-  ];
-
-  const oauthEnabled = watch('use_oauth');
-
-  const { oidcProviderMetadata } = getValues();
 
   const toolTip = (content: string) => {
     return (
@@ -274,6 +313,31 @@ export const OIDCAuthNew = () => {
       </YBTooltip>
     );
   };
+
+  const UserDefaultRole = [
+    {
+      label: (
+        <>
+          {t('roles.readOnly')}
+          {toolTip(t('infos.readOnly'))}
+        </>
+      ),
+      value: UserDefaultRoleOptions.ReadOnly
+    },
+    {
+      label: (
+        <>
+          {t('roles.connectOnly')}
+          {toolTip(t('infos.connectOnly'))}
+        </>
+      ),
+      value: UserDefaultRoleOptions.ConnectOnly
+    }
+  ];
+
+  const oauthEnabled = watch('use_oauth');
+
+  const { oidcProviderMetadata } = getValues();
 
   return (
     <RbacValidator
@@ -389,18 +453,20 @@ export const OIDCAuthNew = () => {
             disabled={!oauthEnabled}
             data-testid="oidcRefreshTokenEndpoint"
           />
-          <YBToggleField
-            control={control}
-            name="showJWTInfoOnLogin"
-            label={
-              <>
-                {t('displayJWTToken')}
-                {toolTip(t('infos.jwtTokenURL'))}
-              </>
-            }
-            disabled={!oauthEnabled}
-            data-testid="showJWTInfoOnLogin"
-          />
+          {showDisplayJWTToken && (
+            <YBToggleField
+              control={control}
+              name="showJWTInfoOnLogin"
+              label={
+                <>
+                  {t('displayJWTToken')}
+                  {toolTip(t('infos.jwtTokenURL'))}
+                </>
+              }
+              disabled={!oauthEnabled}
+              data-testid="showJWTInfoOnLogin"
+            />
+          )}
           <YBButton
             variant="secondary"
             className={classes.oidcProviderConfig}
@@ -416,64 +482,106 @@ export const OIDCAuthNew = () => {
         <Typography variant="h5" className={classes.roleHeader}>
           {t('roles.title')}
         </Typography>
-        <div className={classes.roleConfigurations}>
-          <div className={classes.roleSettingsHeader}>
-            <User />
-            <Typography variant="body1">{t('roles.userRoleSettings')}</Typography>
-          </div>
-          <div className={classes.roleSettings}>
-            <Typography variant="body2">{t('roles.userDefaultRole')}</Typography>
-            <div className={classes.roleField}>
-              <YBRadioGroupField
-                name="oidc_default_role"
-                options={UserDefaultRole}
-                control={control}
-                orientation="horizontal"
-                isDisabled={!oauthEnabled}
-                data-testid="oidc_default_role"
-              />
-              {toolTip(t('infos.connectOnly'))}
-            </div>
-          </div>
-          <YBAlert
-            variant={AlertVariant.Info}
-            open
-            icon={<BulbIcon />}
-            text={
-              <Trans
-                i18nKey="userAuth.OIDC.roles.alertText"
-                components={{
-                  a: (
-                    <a
-                      className={classes.link}
-                      href={
-                        isRbacEnabled()
-                          ? `/admin/rbac?tab=groups`
-                          : '/admin/user-management/user-groups'
-                      }
-                      rel="noreferrer"
-                      target="_blank"
-                    ></a>
-                  )
-                }}
-              />
-            }
-            className={classes.alert}
+        <div className={classes.mapGroupRoles}>
+          <YBToggleField
+            name="oidc_enable_auto_create_users"
+            control={control}
+            label={t('oidcUseRoleMapping')}
+            disabled={!oauthEnabled}
           />
+          <Typography variant="subtitle1" className={clsx(!oauthEnabled && classes.disabled)}>
+            {t('infos.defaultRoleHelpText')}
+          </Typography>
+          {enableRoleMapping ? (
+            <YBAlert
+              variant={AlertVariant.Info}
+              open
+              icon={<BulbIcon />}
+              text={
+                <Trans
+                  i18nKey="userAuth.OIDC.roles.alertText"
+                  components={{
+                    a: (
+                      <a
+                        className={classes.link}
+                        href={
+                          isRbacEnabled()
+                            ? `/admin/rbac?tab=groups`
+                            : '/admin/user-management/user-groups'
+                        }
+                        rel="noreferrer"
+                        target="_blank"
+                      ></a>
+                    )
+                  }}
+                />
+              }
+              className={classes.alert}
+            />
+          ) : (
+            <YBAlert
+              open={true}
+              className={classes.groupOverrideWarning}
+              text={
+                <Trans
+                  i18nKey="userAuth.OIDC.roles.groupOverrideWarning"
+                  components={{ b: <b /> }}
+                />
+              }
+              variant={AlertVariant.Warning}
+            />
+          )}
         </div>
+        <Collapse in={enableRoleMapping}>
+          <div className={classes.roleConfigurations}>
+            <div className={classes.roleSettingsHeader}>
+              <Typography variant="body1">{t('roles.userRoleSettings')}</Typography>
+            </div>
+            <div className={classes.roleSettings}>
+              <span className={classes.defaultRoleLabel}>
+                <Typography variant="body2">{t('roles.userDefaultRole')}</Typography>
+                {toolTip(t('infos.defaultRole'))}
+              </span>
+              <div className={classes.roleField}>
+                <YBRadioGroupField
+                  name="oidc_default_role"
+                  options={UserDefaultRole}
+                  control={control}
+                  orientation="horizontal"
+                  isDisabled={!oauthEnabled}
+                  data-testid="oidc_default_role"
+                />
+              </div>
+            </div>
+            <YBInputField
+              control={control}
+              name="oidc_group_claim"
+              label={
+                <>
+                  {t('groupClaim')}
+                  {toolTip(t('infos.groupClaim'))}
+                </>
+              }
+              fullWidth
+              disabled={!oauthEnabled}
+              data-testid="oidcGroupClaim"
+            />
+          </div>
+        </Collapse>
         <div className={classes.actions}>
           <YBButton
             variant="primary"
             size="large"
             onClick={() => {
+              clearErrors();
               queryClient.invalidateQueries(OIDC_RUNTIME_CONFIGS_QUERY_KEY);
             }}
             data-testid="cancel"
           >
-            {t('clear', { keyPrefix: 'common' })}
+            {t('reset', { keyPrefix: 'common' })}
           </YBButton>
           <YBButton
-            disabled={!oauthEnabled}
+            disabled={!oauthEnabled || !isDirty}
             variant="primary"
             size="large"
             onClick={() => {
@@ -500,7 +608,7 @@ export const OIDCAuthNew = () => {
             toggleMetadataModal(false);
           }}
           onSubmit={(value: string) => {
-            setValue('oidcProviderMetadata', value);
+            setValue('oidcProviderMetadata', value, { shouldDirty: true });
             toggleMetadataModal(false);
           }}
         ></OIDCMetadataModal>

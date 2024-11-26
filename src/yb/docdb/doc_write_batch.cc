@@ -110,7 +110,7 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
   const auto prev_key_prefix_exact = current_entry_.found_exact_key_prefix;
 
   // Seek the value.
-  doc_iter->Seek(key_prefix_.AsSlice());
+  doc_iter->Seek(key_prefix_.AsSlice(), SeekFilter::kAll);
   VLOG_WITH_FUNC(4) << SubDocKey::DebugSliceToString(key_prefix_.AsSlice())
                     << ", prev_subdoc_ht: " << prev_subdoc_ht
                     << ", prev_key_prefix_exact: " << prev_key_prefix_exact
@@ -125,9 +125,7 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
     if (!subkeys.empty() && IsColumnId(static_cast<KeyEntryType>(subkeys[0]))) {
       if (key_data.key.empty() || key_data.write_time < packed_row_write_time_) {
         KeyEntryType entry_type = static_cast<KeyEntryType>(subkeys.consume_byte());
-        int64_t column_id_as_int64 = VERIFY_RESULT(FastDecodeSignedVarIntUnsafe(&subkeys));
-        ColumnId column_id_ref;
-        RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id_ref));
+        auto column_id_ref = VERIFY_RESULT(ColumnId::Decode(&subkeys));
         if (subkeys.empty()) {
           key_data.write_time = packed_row_write_time_;
           key_data.key = key_prefix_.AsSlice();

@@ -197,6 +197,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         "Connection Manager is enabled. Skipping this test with Connection Manager enabled " +
         "until the relevant code is pushed to master.";
 
+  protected static final String EXTENSION_NOT_SUPPORTED =
+      "The extension being used as part of the test is not supported with connection manager.";
+
   // Warmup modes for Connection Manager during test runs.
   protected static enum ConnectionManagerWarmupMode {
     NONE,
@@ -207,6 +210,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected static ConnectionManagerWarmupMode warmupMode = ConnectionManagerWarmupMode.RANDOM;
 
   protected static final int CONN_MGR_WARMUP_BACKEND_COUNT = 3;
+
+  protected static boolean ysql_conn_mgr_superuser_sticky = false;
 
   // CQL and Redis settings, will be reset before each test via resetSettings method.
   protected boolean startCqlProxy = false;
@@ -348,6 +353,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       builder.enableYsqlConnMgr(true);
       builder.addCommonTServerFlag("ysql_conn_mgr_stats_interval",
         Integer.toString(CONNECTIONS_STATS_UPDATE_INTERVAL_SECS));
+      builder.addCommonTServerFlag("ysql_conn_mgr_superuser_sticky",
+        Boolean.toString(ysql_conn_mgr_superuser_sticky));
+      builder.addCommonTServerFlag("TEST_ysql_conn_mgr_dowarmup_all_pools_mode",
+        warmupMode.toString().toLowerCase());
     }
   }
 
@@ -514,6 +523,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
    */
   private void cleanUpCustomDatabases() throws Exception {
     LOG.info("Cleaning up custom databases");
+    if (isTestRunningWithConnectionManager()) {
+      waitForStatsToGetUpdated();
+    }
     try (Statement stmt = connection.createStatement()) {
       for (int i = 0; i < 2; i++) {
         try {
@@ -641,17 +653,23 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   protected
+  void enableStickySuperuserConnsAndRestartCluster() throws Exception {
+    if (!isTestRunningWithConnectionManager()) {
+      return;
+    }
+
+    ysql_conn_mgr_superuser_sticky = true;
+    restartCluster();
+  }
+
+  protected
   void setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode wm) throws Exception {
     if (!isTestRunningWithConnectionManager()) {
       return;
     }
 
-    Map<String, String> tsFlagMap = getTServerFlags();
-    tsFlagMap.put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode",
-      wm.toString().toLowerCase());
     warmupMode = wm;
-    Map<String, String> masterFlagMap = getMasterFlags();
-    restartClusterWithFlags(masterFlagMap, tsFlagMap);
+    restartCluster();
   }
 
   protected boolean isConnMgrWarmupRoundRobinMode() {

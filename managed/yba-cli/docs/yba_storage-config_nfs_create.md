@@ -10,6 +10,13 @@ Create an NFS storage configuration in YugabyteDB Anywhere
 yba storage-config nfs create [flags]
 ```
 
+### Examples
+
+```
+yba storage-config nfs create --name <storage-configuration-name> \
+	--backup-location <backup-location>
+```
+
 ### Options
 
 ```

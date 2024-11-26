@@ -63,6 +63,7 @@ OTEL_COLLECTOR = "otelcol-contrib"
 YB_CONTROLLER = "yb-controller-server"
 NODE_EXPORTER = "node_exporter"
 CONNECTION_POOLING_MANAGER = "odyssey"
+TOTAL = "total"
 
 ALERT_ENHANCEMENTS_RELEASE_BUILD = "2.6.0.0-b0"
 RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-](.+)"
@@ -540,10 +541,10 @@ class NodeChecker():
     def __init__(self, node, node_name, node_identifier, master_index, tserver_index, is_k8s,
                  yb_home_dir, ybc_dir, start_time_ms, ysql_port, internal_ysql_port, ycql_port,
                  redis_port, enable_tls_client, enable_tls, root_and_client_root_ca_same,
-                 ssl_protocol, enable_ysql, enable_ysql_auth, master_http_port, tserver_http_port,
-                 ysql_server_http_port, node_version, is_ybc_enabled, ybc_port,
-                 time_drift_wrn_threshold, time_drift_err_threshold, otel_enabled,
-                 temp_output_file, ddl_atomicity_check, master_leader_url,
+                 ssl_protocol, enable_connection_pooling, enable_ysql, enable_ysql_auth,
+                 master_http_port, tserver_http_port, ysql_server_http_port, node_version,
+                 is_ybc_enabled, ybc_port, time_drift_wrn_threshold, time_drift_err_threshold,
+                 otel_enabled, temp_output_file, ddl_atomicity_check, master_leader_url,
                  master_rpc_port, tserver_rpc_port, verbose, clock_service_required):
         self.node = node
         self.node_name = node_name
@@ -562,6 +563,7 @@ class NodeChecker():
         self.internal_ysql_port = internal_ysql_port
         self.ycql_port = ycql_port
         self.redis_port = redis_port
+        self.enable_connection_pooling = enable_connection_pooling
         self.enable_ysql = enable_ysql
         self.enable_ysql_auth = enable_ysql_auth
         self.master_http_port = master_http_port
@@ -1488,16 +1490,16 @@ class NodeChecker():
             return e.fill_and_return_entry(["TServer is not running on this node"], has_error=False)
 
         try:
-            ysqlsh_cmd = self.create_ysqlsh_command()
+            ysqlsh_cmd = self.create_ysqlsh_command(
+                use_internal_port = True if self.enable_connection_pooling else False)
         except RuntimeError as re:
             metric.add_value(0)
             return e.fill_and_return_entry([str(re)], has_error=True, metrics=[metric])
 
         key = str(self.tserver_index * 100 + 1)
         output = []
-        statement = "insert into write_read_test values ({}) on conflict do nothing; \
-                     select from write_read_test where id = {}; \
-                     delete from write_read_test where id = {};".format(key, key, key)
+        statement = "insert into write_read_test values ({}) on conflict (id) \
+                     do update set id = {} returning id;".format(key, key)
         cmd = "{} -c \"{}\"".format(ysqlsh_cmd, statement)
         output = self._check_output(cmd).strip()
 
@@ -1505,7 +1507,7 @@ class NodeChecker():
             # Old system without read write table
             # It's metric-only check, hence we do set has_error=False to avoid retries
             return e.fill_and_return_entry(["Test table does not exist"], has_error=False)
-        if 'DELETE 1' in output:
+        if 'INSERT 0 1' in output:
             metric.add_value(1)
             return e.fill_and_return_entry([], has_error=False, metrics=[metric])
 
@@ -1581,21 +1583,35 @@ class NodeChecker():
 
     def check_ddl_atomicity(self):
         logging.info("Checking DDL atomicity on node {}".format(self.node))
+
+        result, recheck_table_uuids = self.check_ddl_atomicity_internal([])
+
+        if not recheck_table_uuids:
+            return result
+
+        result, recheck_table_uuids = self.check_ddl_atomicity_internal(recheck_table_uuids)
+        return result
+
+
+    def check_ddl_atomicity_internal(self, recheck_table_uuids):
+        logging.info("Checking DDL atomicity on node {}".format(self.node))
         e = self._new_entry("DDL atomicity")
         metric = Metric.from_definition(YB_DDL_ATOMICITY_CHECK)
+        tables_with_errors = []
 
         tserver_pid = self.get_process_pid_by_name(TSERVER)
         if tserver_pid is None:
             metric.add_value(0)
-            return e.fill_and_return_entry(["TServer is not running on this node"],
+            return (e.fill_and_return_entry(["TServer is not running on this node"],
                                            has_error=True,
-                                           metrics=[metric])
+                                           metrics=[metric]), [])
 
         try:
-            ysqlsh_cmd = self.create_ysqlsh_command("")
+            ysqlsh_cmd = self.create_ysqlsh_command(
+                "", True if self.enable_connection_pooling else False)
         except RuntimeError as re:
             metric.add_value(0)
-            return e.fill_and_return_entry([str(re)], has_error=True, metrics=[metric])
+            return (e.fill_and_return_entry([str(re)], has_error=True, metrics=[metric]), [])
 
         errors = []
         try:
@@ -1604,19 +1620,19 @@ class NodeChecker():
                 "{}/api/v1/tables".format(self.master_leader_url))
             if not tables_response:
                 metric.add_value(0)
-                return e.fill_and_return_entry(
+                return (e.fill_and_return_entry(
                     ['Master Leader HTTP endpoint is not running'],
                     has_error=True,
-                    metrics=[metric])
+                    metrics=[metric]), [])
             try:
                 tables_output = json.loads(tables_response)
             except Exception as ex:
                 logging.warning("Tables HTTP API response is not a valid json: %s", tables_response)
                 metric.add_value(0)
-                return e.fill_and_return_entry(
+                return (e.fill_and_return_entry(
                     ['Tables HTTP API response is not a valid json'],
                     has_error=True,
-                    metrics=[metric])
+                    metrics=[metric]), [])
             table_data_json = tables_output["user"]
             table_data_json += tables_output["index"]
 
@@ -1632,7 +1648,7 @@ class NodeChecker():
                 if pg_oid == "" or table["hidden"]:
                     continue
                 # Extract table oid
-                yb_pg_table_oid = str(int(table["uuid"][-4:], 16))
+                yb_pg_table_oid = str(int(table["uuid"][-8:], 16))
 
                 # Add table to the database's list in the dictionary
                 if dbname not in db_tables:
@@ -1651,20 +1667,20 @@ class NodeChecker():
 
                 if check_for_errors(pg_class_output):
                     metric.add_value(0)
-                    return e.fill_and_return_entry(
+                    return (e.fill_and_return_entry(
                         ["Failed to retrieve pg_class info: {}".format(pg_class_output)],
                         has_error=True,
-                        metrics=[metric])
+                        metrics=[metric]), [])
                 try:
                     pg_class_json = json.loads(pg_class_output)
                 except Exception as ex:
                     logging.warning("pg_class query returned invalid json: %s",
                                     pg_class_output)
                     metric.add_value(0)
-                    return e.fill_and_return_entry(
+                    return (e.fill_and_return_entry(
                         ['pg_class query returned invalid json'],
                         has_error=True,
-                        metrics=[metric])
+                        metrics=[metric]), [])
                 pg_class_oid_tableinfo_dict = {}
                 # Use relfilenode if it exists (as the table may be rewritten)
                 for table in pg_class_json:
@@ -1681,10 +1697,10 @@ class NodeChecker():
 
                 if check_for_errors(pg_attribute_output):
                     metric.add_value(0)
-                    return e.fill_and_return_entry(
+                    return (e.fill_and_return_entry(
                         ["Failed to retrieve pg_attribute info: {}".format(pg_attribute_output)],
                         has_error=True,
-                        metrics=[metric])
+                        metrics=[metric]), [])
 
                 try:
                     pg_attribute_json = json.loads(pg_attribute_output)
@@ -1692,10 +1708,10 @@ class NodeChecker():
                     logging.warning("pg_attribute query returned invalid json: %s",
                                     pg_attribute_output)
                     metric.add_value(0)
-                    return e.fill_and_return_entry(
+                    return (e.fill_and_return_entry(
                         ['pg_attribute query returned invalid json'],
                         has_error=True,
-                        metrics=[metric])
+                        metrics=[metric]), [])
                 pg_attribute_attrelid_attnames_dict = defaultdict(list)
                 for attribute in pg_attribute_json:
                     (pg_attribute_attrelid_attnames_dict[attribute['attrelid']]
@@ -1703,10 +1719,15 @@ class NodeChecker():
 
                 # Iterate through each table
                 for tablename, pg_oid, yb_pg_table_oid, tableid in tables:
+                    if recheck_table_uuids and tableid not in recheck_table_uuids:
+                        # This is a recheck in case DDL happened during the previous check.
+                        # Just test particular tables.
+                        continue
                     # Check if the table exists in pg_class
                     if yb_pg_table_oid not in pg_class_oid_tableinfo_dict:
                         # Note: on versions older than 2024.1, the oid in this log
                         # will refer to the relfilenode for materialized views.
+                        tables_with_errors.append(tableid)
                         errors.append(("Table {} with oid {} and uuid {} does not exist in "
                                        "database {} - ORPHANED TABLE NEEDS TO BE DROPPED")
                                        .format(tablename, pg_oid, tableid, dbname))
@@ -1719,6 +1740,7 @@ class NodeChecker():
                     pg_oid = pg_class_entry['oid']
 
                     if tablename != pg_class_entry['relname']:
+                        tables_with_errors.append(tableid)
                         errors.append(("Table {} with oid {} and uuid {} exists in {} but has a "
                                        "mismatched table name - TABLE NAME NEEDS TO BE FIXED")
                                        .format(tablename, pg_oid, tableid, dbname))
@@ -1729,10 +1751,10 @@ class NodeChecker():
                         "{}/api/v1/table?id={}".format(self.master_leader_url, tableid))
                     if not table_schema_response:
                         metric.add_value(0)
-                        return e.fill_and_return_entry(
+                        return (e.fill_and_return_entry(
                             ['Master Leader HTTP endpoint is not running'],
                             has_error=True,
-                            metrics=[metric])
+                            metrics=[metric]), [])
 
                     try:
                         table_schema_json = json.loads(table_schema_response)
@@ -1740,10 +1762,10 @@ class NodeChecker():
                         logging.warning("Table HTTP API response is not a valid json: %s",
                                          table_schema_response)
                         metric.add_value(0)
-                        return e.fill_and_return_entry(
+                        return (e.fill_and_return_entry(
                             ['Table HTTP API response is not a valid json'],
                             has_error=True,
-                            metrics=[metric])
+                            metrics=[metric]), [])
                     columns = [html.unescape(
                         column['column']) for column in table_schema_json["columns"]]
                     # Check if each column exists in pg_attribute
@@ -1752,6 +1774,7 @@ class NodeChecker():
                             or column == "ybidxbasectid"):
                             continue
                         if column not in pg_attribute_attrelid_attnames_dict[pg_oid]:
+                            tables_with_errors.append(tableid)
                             errors.append(("Column {} does not exist in table {} in database {} - "
                                            "ORPHANED COLUMN NEEDS TO BE DROPPED")
                                            .format(column, tablename, dbname))
@@ -1759,10 +1782,10 @@ class NodeChecker():
         except Exception as ex:
             logging.exception('Got exception on while performing DDL Atomicity check')
             metric.add_value(0)
-            return e.fill_and_return_entry(
+            return (e.fill_and_return_entry(
                 ["Unexpected error occurred"],
                 has_error=True,
-                metrics=[metric])
+                metrics=[metric]), [])
 
         has_errors = len(errors) > 0
         if has_errors:
@@ -1773,7 +1796,8 @@ class NodeChecker():
         else:
             msgs = ["No errors found"]
         metric.add_value(0 if has_errors else 1)
-        return e.fill_and_return_entry(msgs, has_error=has_errors, metrics=[metric])
+        return (e.fill_and_return_entry(msgs, has_error=has_errors, metrics=[metric]),
+                tables_with_errors)
 
     def check_openssl_availability(self):
         cmd = "which openssl &>/dev/null; echo $?"
@@ -1815,26 +1839,28 @@ class NodeChecker():
             Metric.from_definition(YB_NODE_NTP_SERVICE_STATUS)
         ]
         service_status = get_ntp_service_status()
+        service_error = service_status == 0
+        msgs = ["Ntp service is%s running" % " not" if service_error else ""]
         metrics[1].add_value(service_status)
         drift_ms = get_clock_drift_ms()
         # Returns error string on failure, int on success
         if isinstance(drift_ms, str):
-          return e.fill_and_return_entry([drift_ms], has_error=True, metrics=metrics)
+          msgs.append(drift_ms)
+          return e.fill_and_return_entry(msgs, has_error=True, metrics=metrics)
         metrics[0].add_value(drift_ms)
-        errors = []
         if drift_ms > self.time_drift_err_threshold:
-            errors.append("Node clock drift is {} ms, over {} ms".format(
+            msgs.append("Node clock drift is {} ms, over {} ms".format(
                 drift_ms, self.time_drift_err_threshold))
-            return e.fill_and_return_entry(errors, has_error=True, metrics=metrics)
+            return e.fill_and_return_entry(msgs, has_error=True, metrics=metrics)
         if drift_ms > self.time_drift_wrn_threshold:
-            errors.append("Node clock drift is {} ms, over {} ms".format(
+            msgs.append("Node clock drift is {} ms, over {} ms".format(
                 drift_ms, self.time_drift_wrn_threshold))
-            return e.fill_and_return_warning_entry(errors, metrics=metrics)
+            if service_error:
+                return e.fill_and_return_entry(msgs, has_error=True, metrics=metrics)
+            return e.fill_and_return_warning_entry(msgs, metrics=metrics)
 
-        service_error = service_status == 0
-        return e.fill_and_return_entry(
-            ["%s ms" % drift_ms, "ntp service is%s running" % "not" if service_error else ""],
-            has_error=service_error, metrics=metrics)
+        msgs.append("%s ms" % drift_ms)
+        return e.fill_and_return_entry(msgs, has_error=service_error, metrics=metrics)
 
     def check_process_stats(self, process_name):
         metrics = [Metric.from_definition(YB_PROCESS_CPU_SECONDS_TOTAL),
@@ -1845,10 +1871,16 @@ class NodeChecker():
         e = self._new_metric_entry("Per-process check", process_name)
         process = Label("process", process_name)
         try:
-            res = self._load_per_process_metrics(process_name)
-            stat = res['total_stat']
-            self.current_process_results[process_name] = res
-            self._dump_per_process_results()
+            if process_name == TOTAL:
+                stat = self._get_empty_proc_results()
+                for proc in self.current_process_results.keys():
+                    stat = self._merge_proc_results(
+                        stat, self.current_process_results[proc]['total_stat'])
+                self._dump_per_process_results()
+            else:
+                res = self._load_per_process_metrics(process_name)
+                stat = res['total_stat']
+                self.current_process_results[process_name] = res
             ticks = int(os.sysconf("SC_CLK_TCK"))
             metrics[0].add_value(stat['user_cpu_seconds'] // ticks, labels=[process,
                                                                             Label('type', 'user')])
@@ -2135,9 +2167,9 @@ def _ntp_get_clock_drift_ms():
     ntp_out = check_output("systemctl status ntp.service", env)
     ntpd_out = check_output("systemctl status ntpd.service", env)
     if "Active: active" in ntp_out or "Active: active" in ntpd_out:
-        out = check_output("ntpq -p | awk 'NR==3 {print $9}'", env)
-        if "Error" not in out:
-          return int(float(out)*1000) # Convert seconds to milliseconds
+        out = check_output("ntpq -p | awk '$1 ~ \"^*\" {print $9}'", env)
+        if "Error" not in out and out.strip() != "":
+            return int(float(out)) # ntpq -p offset is already in milliseconds
     return "Failed to get clock drift from ntp(d)"
 
 def _timesyncd_get_clock_drift_ms():
@@ -2372,10 +2404,10 @@ def main():
         n.node_host, n.node_name, n.node_identifier, n.master_index, n.tserver_index, n.is_k8s,
         n.yb_home_dir, n.ybc_dir, n.node_start_time, n.ysql_port, n.internal_ysql_port, n.ycql_port,
         n.redis_port, n.enable_tls_client, n.enable_tls, n.root_and_client_root_ca_same,
-        n.ssl_protocol, n.enable_ysql, n.enable_ysql_auth, n.master_http_port, n.tserver_http_port,
-        n.ysql_server_http_port, n.yb_version, n.is_ybc_enabled, n.ybc_port,
-        n.time_drift_wrn_threshold, n.time_drift_err_threshold, n.otel_enabled,
-        args.temp_output_file, args.ddl_atomicity_check, args.master_leader_url,
+        n.ssl_protocol, n.enable_connection_pooling, n.enable_ysql, n.enable_ysql_auth,
+        n.master_http_port, n.tserver_http_port, n.ysql_server_http_port, n.yb_version,
+        n.is_ybc_enabled, n.ybc_port, n.time_drift_wrn_threshold, n.time_drift_err_threshold,
+        n.otel_enabled, args.temp_output_file, args.ddl_atomicity_check, args.master_leader_url,
         n.master_rpc_port, n.tserver_rpc_port, args.verbose, n.clockSyncServiceRequired)
 
     coordinator.add_precheck(checker, "check_openssl_availability")
@@ -2471,6 +2503,8 @@ def main():
 
     if args.ddl_atomicity_check:
         coordinator.add_check(checker, "check_ddl_atomicity")
+
+    coordinator.add_check(checker, "check_process_stats", TOTAL)
 
     entries = coordinator.run()
     for e in entries:

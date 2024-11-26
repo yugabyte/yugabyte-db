@@ -529,14 +529,12 @@ BEGIN;
 		INSERT INTO koju VALUES (1);
 ERROR:  duplicate key value violates unique constraint "koju_a_key"
 	rollback to x;
-	DROP TABLE koju; -- YB: above CREATE TABLE is not rolled back due to lack of transactional DDL
+	/* YB: above CREATE TABLE is not rolled back due to lack of transactional DDL
 	CREATE TABLE koju (a INT UNIQUE);
-\set VERBOSITY terse \\ -- YB: suppress "expired or aborted by a conflict" message because it prints a file line number
-	INSERT INTO koju VALUES (1); -- YB: TODO(#22949): fix output
-ERROR:  current transaction is expired or aborted (query layer retry isn't possible, READ COMMITTED transaction was aborted  and some data was already sent to the user)
-\set VERBOSITY default \\ -- YB
+	*/ -- YB
 	INSERT INTO koju VALUES (1);
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+	INSERT INTO koju VALUES (1);
+ERROR:  duplicate key value violates unique constraint "koju_a_key"
 ROLLBACK;
 DROP TABLE trans_foo;
 DROP TABLE trans_baz;

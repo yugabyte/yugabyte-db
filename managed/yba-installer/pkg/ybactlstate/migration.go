@@ -22,6 +22,7 @@ const promTLSCipherSuites = 6
 const asRoot = 7
 const ybaWait = 8
 const initialized = 9
+const asRootRetry = 10
 
 // Please do not use this in ybactlstate package, only use getSchemaVersion()
 var schemaVersionCache = -1
@@ -252,6 +253,7 @@ var migrations map[int]migrator = map[int]migrator{
 	asRoot:               migrateAsRootConfig,
 	ybaWait:              migrateYbaWait,
 	initialized:          migrateInitialized,
+	asRootRetry:          migrateAsRootConfig,
 }
 
 func getMigrationHandler(toSchema int) migrator {
@@ -271,4 +273,8 @@ func getSchemaVersion() int {
 		}
 	}
 	return schemaVersionCache
+}
+
+func getMigrations() map[int]migrator {
+	return migrations
 }

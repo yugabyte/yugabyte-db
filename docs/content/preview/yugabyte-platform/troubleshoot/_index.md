@@ -3,8 +3,7 @@ title: Troubleshoot YugabyteDB Anywhere
 headerTitle: Troubleshoot
 linkTitle: Troubleshoot
 description: Troubleshoot issues in YugabyteDB Anywhere
-image: /images/section_icons/troubleshoot/troubleshoot.png
-headcontent: Diagnose and troubleshoot issues that arise from YugabyteDB universes and YugabyteDB Anywhere.
+headcontent: Diagnose and troubleshoot issues that arise from YugabyteDB universes and YugabyteDB Anywhere
 aliases:
   - /troubleshoot/enterprise-edition/
   - /preview/troubleshoot/enterprise-edition/

@@ -18,6 +18,8 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.PauseUniverse;
 import com.yugabyte.yw.commissioner.tasks.ResumeUniverse;
+import com.yugabyte.yw.commissioner.tasks.upgrade.PauseKubernetesUniverse;
+import com.yugabyte.yw.commissioner.tasks.upgrade.ResumeKubernetesUniverse;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -185,35 +187,62 @@ public class UniverseActionsHandler {
         universe.getName(),
         universe.getUniverseUUID());
 
+    // Determine if the universe is Kubernetes-based
+    boolean isKubernetes = isKubernetesUniverse(universe);
+
     // Create the Commissioner task to pause the universe.
-    PauseUniverse.Params taskParams = new PauseUniverse.Params();
-    taskParams.setUniverseUUID(universe.getUniverseUUID());
-    // There is no staleness of a pause request. Perform it even if the universe has changed.
-    taskParams.expectedUniverseVersion = -1;
-    taskParams.customerUUID = customer.getUuid();
-    // Submit the task to pause the universe.
-    TaskType taskType = TaskType.PauseUniverse;
+    TaskType taskType;
 
-    UUID taskUUID = commissioner.submit(taskType, taskParams);
-    LOG.info(
-        "Submitted pause universe for " + universe.getUniverseUUID() + ", task uuid = " + taskUUID);
+    if (isKubernetes) {
+      PauseKubernetesUniverse.Params kubeParams = new PauseKubernetesUniverse.Params();
+      kubeParams.setUniverseUUID(universe.getUniverseUUID());
+      kubeParams.expectedUniverseVersion = -1;
+      kubeParams.customerUUID = customer.getUuid();
+      taskType = TaskType.PauseKubernetesUniverse;
+      // Submit the task to pause the universe.
+      UUID taskUUID = commissioner.submit(taskType, kubeParams);
+      LOG.info(
+          "Submitted {} for {}, task uuid = {}", taskType, universe.getUniverseUUID(), taskUUID);
 
-    // Add this task uuid to the user universe.
-    CustomerTask.create(
-        customer,
-        universe.getUniverseUUID(),
-        taskUUID,
-        CustomerTask.TargetType.Universe,
-        CustomerTask.TaskType.Pause,
-        universe.getName());
+      // Add this task uuid to the user universe.
+      CustomerTask.create(
+          customer,
+          universe.getUniverseUUID(),
+          taskUUID,
+          CustomerTask.TargetType.Universe,
+          CustomerTask.TaskType.Pause,
+          universe.getName());
 
-    LOG.info(
-        "Paused universe "
-            + universe.getUniverseUUID()
-            + " for customer ["
-            + customer.getName()
-            + "]");
-    return taskUUID;
+      LOG.info(
+          "Paused Kubernetes universe {} for customer [{}]",
+          universe.getUniverseUUID(),
+          customer.getName());
+      return taskUUID;
+
+    } else {
+      PauseUniverse.Params params = new PauseUniverse.Params();
+      params.setUniverseUUID(universe.getUniverseUUID());
+      params.expectedUniverseVersion = -1;
+      params.customerUUID = customer.getUuid();
+      taskType = TaskType.PauseUniverse;
+      // Submit the task to pause the universe.
+      UUID taskUUID = commissioner.submit(taskType, params);
+      LOG.info(
+          "Submitted {} for {}, task uuid = {}", taskType, universe.getUniverseUUID(), taskUUID);
+
+      // Add this task uuid to the user universe.
+      CustomerTask.create(
+          customer,
+          universe.getUniverseUUID(),
+          taskUUID,
+          CustomerTask.TargetType.Universe,
+          CustomerTask.TaskType.Pause,
+          universe.getName());
+
+      LOG.info(
+          "Paused universe {} for customer [{}]", universe.getUniverseUUID(), customer.getName());
+      return taskUUID;
+    }
   }
 
   public UUID resume(Customer customer, Universe universe) throws IOException {
@@ -223,46 +252,68 @@ public class UniverseActionsHandler {
         universe.getName(),
         universe.getUniverseUUID());
 
-    // Create the Commissioner task to resume the universe.
-    // TODO: this is better done using copy constructors
+    // Determine if the universe is Kubernetes-based
+    boolean isKubernetes = isKubernetesUniverse(universe);
     ObjectMapper mapper =
         Json.mapper()
             .copy()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
             .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
-    ResumeUniverse.Params taskParams =
-        mapper.readValue(
-            mapper.writeValueAsString(universe.getUniverseDetails()), ResumeUniverse.Params.class);
-    // There is no staleness of a resume request. Perform it even if the universe has changed.
-    taskParams.expectedUniverseVersion = -1;
-    taskParams.customerUUID = customer.getUuid();
 
-    // Submit the task to resume the universe.
-    TaskType taskType = TaskType.ResumeUniverse;
+    if (isKubernetes) {
+      TaskType taskType;
+      ResumeKubernetesUniverse.Params kubeParams =
+          mapper.readValue(
+              mapper.writeValueAsString(universe.getUniverseDetails()),
+              ResumeKubernetesUniverse.Params.class);
+      kubeParams.setUniverseUUID(universe.getUniverseUUID());
+      kubeParams.expectedUniverseVersion = -1;
+      kubeParams.customerUUID = customer.getUuid();
+      taskType = TaskType.ResumeKubernetesUniverse;
+      UUID taskUUID = commissioner.submit(taskType, kubeParams);
+      LOG.info(
+          "Submitted {} for {}, task uuid = {}", taskType, universe.getUniverseUUID(), taskUUID);
+      // Add this task uuid to the user universe.
+      CustomerTask.create(
+          customer,
+          universe.getUniverseUUID(),
+          taskUUID,
+          CustomerTask.TargetType.Universe,
+          CustomerTask.TaskType.Resume,
+          universe.getName());
 
-    UUID taskUUID = commissioner.submit(taskType, taskParams);
-    LOG.info(
-        "Submitted resume universe for "
-            + universe.getUniverseUUID()
-            + ", task uuid = "
-            + taskUUID);
+      LOG.info(
+          "Resumed Kubernetes universe {} for customer [{}]",
+          universe.getUniverseUUID(),
+          customer.getName());
+      return taskUUID;
+    } else {
+      TaskType taskType;
+      ResumeUniverse.Params params =
+          mapper.readValue(
+              mapper.writeValueAsString(universe.getUniverseDetails()),
+              ResumeUniverse.Params.class);
+      params.expectedUniverseVersion = -1;
+      params.customerUUID = customer.getUuid();
 
-    // Add this task uuid to the user universe.
-    CustomerTask.create(
-        customer,
-        universe.getUniverseUUID(),
-        taskUUID,
-        CustomerTask.TargetType.Universe,
-        CustomerTask.TaskType.Resume,
-        universe.getName());
+      taskType = TaskType.ResumeUniverse;
+      UUID taskUUID = commissioner.submit(taskType, params);
+      LOG.info(
+          "Submitted {} for {}, task uuid = {}", taskType, universe.getUniverseUUID(), taskUUID);
 
-    LOG.info(
-        "Resumed universe "
-            + universe.getUniverseUUID()
-            + " for customer ["
-            + customer.getName()
-            + "]");
-    return taskUUID;
+      // Add this task uuid to the user universe.
+      CustomerTask.create(
+          customer,
+          universe.getUniverseUUID(),
+          taskUUID,
+          CustomerTask.TargetType.Universe,
+          CustomerTask.TaskType.Resume,
+          universe.getName());
+
+      LOG.info(
+          "Resumed universe {} for customer [{}]", universe.getUniverseUUID(), customer.getName());
+      return taskUUID;
+    }
   }
 
   public UUID updateLoadBalancerConfig(
@@ -304,5 +355,12 @@ public class UniverseActionsHandler {
         universe.getUniverseUUID(),
         universe.getName());
     return taskUUID;
+  }
+
+  // Helper method to determine if the universe is Kubernetes-based
+  private boolean isKubernetesUniverse(Universe universe) {
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    return primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes);
   }
 }

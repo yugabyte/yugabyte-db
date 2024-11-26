@@ -11,6 +11,12 @@ Stop the server processes running on the node.
 yba universe node stop [flags]
 ```
 
+### Examples
+
+```
+yba universe node stop --name <universe-name> --node-name <node-name>
+```
+
 ### Options
 
 ```

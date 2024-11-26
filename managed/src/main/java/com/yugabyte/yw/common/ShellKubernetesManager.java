@@ -10,8 +10,16 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase.KubernetesPlacement;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.SupportBundleUtil.KubernetesResourceType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import io.fabric8.kubernetes.api.model.Namespace;
 import io.fabric8.kubernetes.api.model.NamespaceList;
 import io.fabric8.kubernetes.api.model.Node;
@@ -39,10 +47,13 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -60,10 +71,13 @@ import play.libs.Json;
 public class ShellKubernetesManager extends KubernetesManager {
 
   private final ShellProcessHandler shellProcessHandler;
+  private final FileHelperService fileHelperService;
 
   @Inject
-  public ShellKubernetesManager(ShellProcessHandler shellProcessHandler) {
+  public ShellKubernetesManager(
+      ShellProcessHandler shellProcessHandler, FileHelperService fileHelperService) {
     this.shellProcessHandler = shellProcessHandler;
+    this.fileHelperService = fileHelperService;
   }
 
   private ShellResponse execCommand(Map<String, String> config, List<String> command) {
@@ -289,6 +303,25 @@ public class ShellKubernetesManager extends KubernetesManager {
         execCommand(config, commandList, false /*logCmdOutput*/)
             .processErrors("Unable to get secret");
     return deserialize(response.message, Secret.class);
+  }
+
+  @Override
+  public void PauseAllPodsInRelease(
+      Map<String, String> config, String universePrefix, String namespace, boolean newNamingStyle) {
+    // We just scale down the StatefulSet to 0 replicas to pause all.
+    String appLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
+    String selector = String.format("release=%s", universePrefix, appLabel);
+    List<String> commandList =
+        ImmutableList.of(
+            "kubectl",
+            "--namespace",
+            namespace,
+            "scale",
+            "statefulset",
+            "-l",
+            selector,
+            "--replicas=" + "0");
+    execCommand(config, commandList).processErrors();
   }
 
   @Override
@@ -1266,5 +1299,175 @@ public class ShellKubernetesManager extends KubernetesManager {
             "--overwrite");
     execCommand(config, masterCommandList)
         .processErrors("Unable to update namespaced service ownership");
+  }
+
+  public void deletePodDisruptionBudget(Universe universe) {
+    for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
+      if (cluster.clusterType.equals(ClusterType.PRIMARY)) {
+        deletePodDisruptionBudgetPolicy(universe, cluster, ServerType.MASTER);
+        deletePodDisruptionBudgetPolicy(universe, cluster, ServerType.TSERVER);
+      } else {
+        deletePodDisruptionBudgetPolicy(universe, cluster, ServerType.TSERVER);
+      }
+    }
+  }
+
+  private void deletePodDisruptionBudgetPolicy(
+      Universe universe, UniverseDefinitionTaskParams.Cluster cluster, ServerType serverType) {
+    String pdbPolicyName =
+        String.format(
+            "%s-%s-%s-pdb",
+            universe.getName(),
+            cluster.clusterType.equals(ClusterType.PRIMARY) ? "primary" : "replica",
+            serverType.name().toLowerCase());
+    PlacementInfo pi = cluster.placementInfo;
+    boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
+    KubernetesPlacement placement = new KubernetesPlacement(pi, isReadOnlyCluster);
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+    boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
+    for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
+      Map<String, String> config = entry.getValue();
+      AvailabilityZone az = AvailabilityZone.getOrBadRequest(entry.getKey());
+      String namespace =
+          KubernetesUtil.getKubernetesNamespace(
+              isMultiAZ,
+              universe.getUniverseDetails().nodePrefix,
+              az.getCode(),
+              config,
+              universe.getUniverseDetails().useNewHelmNamingStyle,
+              isReadOnlyCluster,
+              false /* addKubeClusterPrefix */);
+      List<String> commandList =
+          ImmutableList.of(
+              "kubectl",
+              "delete",
+              "pdb",
+              pdbPolicyName,
+              "--namespace",
+              namespace,
+              "--ignore-not-found");
+      execCommand(config, commandList).processErrors("Unable to delete PodDisruptionBudget policy");
+    }
+  }
+
+  public void createPodDisruptionBudget(Universe universe) {
+    for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
+      if (cluster.clusterType.equals(ClusterType.PRIMARY)) {
+        createPodDisruptionBudgetPolicy(universe, cluster, ServerType.MASTER);
+        createPodDisruptionBudgetPolicy(universe, cluster, ServerType.TSERVER);
+      } else {
+        createPodDisruptionBudgetPolicy(universe, cluster, ServerType.TSERVER);
+      }
+    }
+  }
+
+  private void createPodDisruptionBudgetPolicy(
+      Universe universe, UniverseDefinitionTaskParams.Cluster cluster, ServerType serverType) {
+    if (cluster.userIntent.replicationFactor == 1) {
+      log.info(
+          "Skipping PodDisruptionBudget policy creation for cluster {} as replication factor is 1",
+          cluster.uuid);
+      return;
+    }
+    String pdbPolicyYaml = generatePDBPolicyYaml(universe, cluster, serverType);
+    PlacementInfo pi = cluster.placementInfo;
+    boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
+    KubernetesPlacement placement = new KubernetesPlacement(pi, isReadOnlyCluster);
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+    boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
+    // Create a PDB policy for each AZ at the namespace level, filtering the pod selector
+    // to match pods across the entire namespace. This results in the PDB policy being applied
+    // to all pods within a single namespace across all AZs. Similar policies will be created
+    // for different namespaces within the same cluster or namespaces with the same name
+    // across different clusters.
+    for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
+      Map<String, String> config = entry.getValue();
+      AvailabilityZone az = AvailabilityZone.getOrBadRequest(entry.getKey());
+      String namespace =
+          KubernetesUtil.getKubernetesNamespace(
+              isMultiAZ,
+              universe.getUniverseDetails().nodePrefix,
+              az.getCode(),
+              config,
+              universe.getUniverseDetails().useNewHelmNamingStyle,
+              isReadOnlyCluster,
+              false /* addKubeClusterPrefix */);
+      List<String> commandList =
+          ImmutableList.of("kubectl", "apply", "-f", pdbPolicyYaml, "--namespace", namespace);
+      execCommand(config, commandList).processErrors("Unable to create PodDisruptionBudget policy");
+    }
+  }
+
+  private String generatePDBPolicyYaml(
+      Universe universe, UniverseDefinitionTaskParams.Cluster cluster, ServerType serverType) {
+    Map<String, Object> policy = new HashMap<String, Object>();
+    policy.put("apiVersion", "policy/v1");
+    policy.put("kind", "PodDisruptionBudget");
+    String policyName =
+        String.format(
+            "%s-%s-%s-pdb",
+            universe.getName(),
+            cluster.clusterType.equals(ClusterType.PRIMARY) ? "primary" : "replica",
+            serverType.name().toLowerCase());
+    policy.put("metadata", ImmutableMap.of("name", policyName));
+    policy.put("spec", createPDBSpec(cluster, universe, serverType));
+    Yaml yaml = new Yaml();
+    try {
+      Path tempFile =
+          fileHelperService.createTempFile(UUID.randomUUID().toString() + "-" + policyName, ".yml");
+      BufferedWriter bw = new BufferedWriter(new FileWriter(tempFile.toFile()));
+      yaml.dump(policy, bw);
+      return tempFile.toAbsolutePath().toString();
+    } catch (IOException e) {
+      log.error(e.getMessage());
+      throw new RuntimeException("Error writing PodDisruptionBudget YAML file..");
+    }
+  }
+
+  private Map<String, Object> createPDBSpec(
+      UniverseDefinitionTaskParams.Cluster cluster, Universe universe, ServerType serverType) {
+    Map<String, Object> spec = new HashMap<>();
+    spec.put("maxUnavailable", cluster.userIntent.replicationFactor / 2);
+    spec.put("selector", createPDBSelector(universe, cluster, serverType));
+    return spec;
+  }
+
+  private Map<String, Object> createPDBSelector(
+      Universe universe, UniverseDefinitionTaskParams.Cluster cluster, ServerType serverType) {
+    Map<String, Object> selector = new HashMap<>();
+    selector.put(
+        "matchLabels",
+        ImmutableMap.of("app.kubernetes.io/name", "yb-" + serverType.name().toLowerCase()));
+    Optional<Object> matchExpressions = createPDBMatchExpressions(universe, cluster);
+    matchExpressions.ifPresent(o -> selector.put("matchExpressions", List.of(o)));
+    return selector;
+  }
+
+  private Optional<Object> createPDBMatchExpressions(
+      Universe universe, UniverseDefinitionTaskParams.Cluster cluster) {
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+    Set<String> helmReleaseNames = new HashSet<>();
+    boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
+    for (NodeDetails node : universe.getNodesInCluster(cluster.uuid)) {
+      AvailabilityZone az = AvailabilityZone.getOrBadRequest(node.azUuid);
+      String helmRelease =
+          KubernetesUtil.getHelmReleaseName(
+              isMultiAZ,
+              universe.getUniverseDetails().nodePrefix,
+              universe.getName(),
+              az.getName(),
+              cluster.clusterType == ClusterType.ASYNC,
+              universe.getUniverseDetails().useNewHelmNamingStyle);
+      helmReleaseNames.add(helmRelease);
+    }
+    if (helmReleaseNames.size() > 0) {
+      Map<String, Object> matchExpressions = new HashMap<>();
+      matchExpressions.put("key", "release");
+      matchExpressions.put("operator", "In");
+      matchExpressions.put("values", new ArrayList<>(helmReleaseNames));
+      return Optional.of(matchExpressions);
+    } else {
+      return Optional.empty();
+    }
   }
 }

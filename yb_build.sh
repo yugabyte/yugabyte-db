@@ -925,7 +925,8 @@ fi
 
 if [[ ${remove_entire_build_dir_before_build} == "true" ]]; then
   log "Removing the entire ${YB_SRC_ROOT}/build directory (--clean-all specified)"
-  ( set -x; rm -rf "${YB_SRC_ROOT}/build" )
+  ( set -x; find "${YB_SRC_ROOT}/build" -maxdepth 1 -mindepth 1 \
+      ! -name "yugabyte-bash-common" -exec rm -rf {} \; )
   save_paths_and_archive_urls_to_build_dir
 elif [[ ${remove_build_root_before_build} == "true" ]]; then
   log "Removing '$BUILD_ROOT' (--clean specified)"
@@ -1016,7 +1017,7 @@ fi
 
 if [[ ${use_google_tcmalloc} == "true" ]]; then
   if ! is_linux; then
-    fatal "Google TCMalloc is only supported on linux. is_linux is: '${is_linux}'."
+    fatal "Google TCMalloc is only supported on linux. OSTYPE is: '${OSTYPE}'."
   fi
   cmake_opts+=( "-DYB_GOOGLE_TCMALLOC=1" )
 fi

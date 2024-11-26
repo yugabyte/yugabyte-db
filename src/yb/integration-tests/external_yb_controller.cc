@@ -12,6 +12,7 @@
 //
 
 #include "yb/integration-tests/external_yb_controller.h"
+
 #include <gtest/gtest.h>
 
 #include "yb/gutil/strings/join.h"
@@ -20,6 +21,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
+#include "yb/util/thread.h"
 
 using std::string;
 
@@ -98,10 +100,15 @@ Status ExternalYbController::Start() {
     return STATUS_FORMAT(InternalError, "Failed to ping YB Controller server!");
   }
 
-  auto default_output_prefix = Format("[yb-controller-$0]", idx_);
+  std::string existing_prefix = TEST_GetThreadUnformattedLogPrefix();
+  if (!existing_prefix.empty()) {
+    existing_prefix += "-";
+  }
+  auto stdout_prefix = Format("[$0yb-controller-$1 stdout]", existing_prefix, idx_);
+  auto stderr_prefix = Format("[$0yb-controller-$1]", existing_prefix, idx_);
   auto* listener = stdout_tailer_thread_ ? stdout_tailer_thread_->listener() : nullptr;
   stdout_tailer_thread_ = std::make_unique<ExternalDaemon::LogTailerThread>(
-      Format("[yb-controller-$0 stdout]", idx_), p->ReleaseChildStdoutFd(), &std::cout);
+      stdout_prefix, p->ReleaseChildStdoutFd(), &std::cout);
   if (listener) {
     stdout_tailer_thread_->SetListener(listener);
   }
@@ -110,7 +117,7 @@ Status ExternalYbController::Start() {
   // We will mostly see stderr output from the child process (because of --logtostderr), so we'll
   // assume that by default in the output prefix.
   stderr_tailer_thread_ = std::make_unique<ExternalDaemon::LogTailerThread>(
-      default_output_prefix, p->ReleaseChildStderrFd(), &std::cerr);
+      stderr_prefix, p->ReleaseChildStderrFd(), &std::cerr);
   if (listener) {
     stderr_tailer_thread_->SetListener(listener);
   }

@@ -70,7 +70,8 @@ class XClusterSourceManager {
 
   Result<xrepl::StreamId> CreateNewXClusterStreamForTable(
       const TableId& table_id, cdc::StreamModeTransactional transactional,
-      const std::optional<SysCDCStreamEntryPB::State>& initial_state, const LeaderEpoch& epoch);
+      const std::optional<SysCDCStreamEntryPB::State>& initial_state, const LeaderEpoch& epoch,
+      StdStatusCallback callback);
 
  protected:
   XClusterSourceManager(
@@ -111,6 +112,10 @@ class XClusterSourceManager {
   Result<std::optional<bool>> IsBootstrapRequired(
       const xcluster::ReplicationGroupId& replication_group_id,
       const NamespaceId& namespace_id) const;
+
+  Status EnsureSequenceUpdatesAreInWal(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::vector<NamespaceId>& namespace_ids) const;
 
   // If opt_table_names is empty, all tables in the namespace are returned.
   Result<std::optional<NamespaceCheckpointInfo>> GetXClusterStreams(
@@ -202,6 +207,8 @@ class XClusterSourceManager {
 
   Result<std::unique_ptr<XClusterCreateStreamsContext>> CreateStreamsForDbScoped(
       const std::vector<TableId>& table_ids, const LeaderEpoch& epoch);
+  Result<xrepl::StreamId> CreateNonTxnStreamForNewTable(
+      const TableId& table_id, const LeaderEpoch& epoch, StdStatusCallback callback);
 
   Result<std::unique_ptr<XClusterCreateStreamsContext>> CreateStreamsInternal(
       const std::vector<TableId>& table_ids, SysCDCStreamEntryPB::State state,

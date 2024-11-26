@@ -36,7 +36,8 @@ yba eit [flags]
 * [yba eit custom-ca](yba_eit_custom-ca.md)	 - Manage a YugabyteDB Anywhere Custom CA encryption in transit (EIT) certificate configuration
 * [yba eit delete](yba_eit_delete.md)	 - Delete a YugabyteDB Anywhere encryption in transit configuration
 * [yba eit describe](yba_eit_describe.md)	 - Describe a YugabyteDB Anywhere Encryption In Transit (EIT) configuration
-* [yba eit hashicorp](yba_eit_hashicorp.md)	 - Manage a YugabyteDB Anywhere Hashicorp Vault encryption in transit (EIT) certificate configuration
+* [yba eit download](yba_eit_download.md)	 - Download YugabyteDB Anywhere Encryption In Transit (EIT) configuration's certifciates
+* [yba eit hashicorp-vault](yba_eit_hashicorp-vault.md)	 - Manage a YugabyteDB Anywhere Hashicorp Vault encryption in transit (EIT) certificate configuration
 * [yba eit k8s-cert-manager](yba_eit_k8s-cert-manager.md)	 - Manage a YugabyteDB Anywhere K8s Cert Manager encryption in transit (EIT) certificate configuration
 * [yba eit list](yba_eit_list.md)	 - List YugabyteDB Anywhere Encryption In Transit (EIT) configurations
 * [yba eit self-signed](yba_eit_self-signed.md)	 - Manage a YugabyteDB Anywhere Self Signed encryption in transit (EIT) certificate configuration

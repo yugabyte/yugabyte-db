@@ -10,6 +10,13 @@ Update an Azure encryption at rest (EAR) configuration in YugabyteDB Anywhere
 yba ear azure update [flags]
 ```
 
+### Examples
+
+```
+yba ear azure update --name <config-name> \
+	--client-id <client-id> --tenant-id <tenant-id>
+```
+
 ### Options
 
 ```

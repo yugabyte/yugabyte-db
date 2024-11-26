@@ -6873,38 +6873,55 @@ yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
 		}
 		else
 		{
-			/* Check if attribute widths have been cached */
-			if (baserel->attr_widths == NULL ||
-				baserel->attr_widths[1 - baserel->min_attr] == 0)
-			{
-				/* This method will refresh and cache attribute widths */
-				yb_get_relation_data_width(baserel, baserel_oid);
-			}
-
-			/* Add 1 byte for null indicator and 8 bytes for size of the ybctid. */
+			/*
+			 * Add 1 byte for null indicator and 8 bytes for size of the ybctid.
+			 */
 			ybctid_width += 9;
 
 			/* Aggregate the width of the key columns in the index */
 			for (int i = 0; i < index->nkeycolumns; i++)
 			{
-				/*
-				* For each key column, add 1 byte for value type and estimated average
-				* width of the column.
-				*/
-				ybctid_width +=
-					baserel->attr_widths[index->indexkeys[i] - baserel->min_attr] + 1;
-
-				Relation 	baserel = table_open(baserel_oid, NoLock);
-				Form_pg_attribute att =
-					TupleDescAttr(baserel->rd_att, index->indexkeys[i] - 1);
-				if (att->attlen < 0)
+				/* We ignore system columns for which index->indexkeys[i] < 0 */
+				if (index->indexkeys[i] == 0) /* Index key is an expression */
 				{
-					/* attlen is -2 if the attribute is variable size null-
-					 * terminated C string. Add 1 byte because DocDB uses double
-					 * null termination. */
-					++ybctid_width;
+					ybctid_width += get_attavgwidth(index->indexoid, i + 1) + 1;
+
+					Relation 	baserel = index_open(index->indexoid, NoLock);
+					Form_pg_attribute att =
+						TupleDescAttr(baserel->rd_att, i + 1);
+					if (att->attlen < 0)
+					{
+						/*
+						 * attlen is negative if the attribute has variable
+						 * length. Add 1 byte because DocDB uses double
+						 * null termination.
+						 */
+						++ybctid_width;
+					}
 				}
-				table_close(baserel, NoLock);
+				else if (index->indexkeys[i] > 0) /* Index key is user column */
+				{
+					/*
+					 * For each key column, add 1 byte for value type and
+					 * estimated average width of the column.
+					 */
+					ybctid_width +=
+						get_attavgwidth(baserel_oid, index->indexkeys[i]) + 1;
+
+					Relation 	baserel = table_open(baserel_oid, NoLock);
+					Form_pg_attribute att =
+						TupleDescAttr(baserel->rd_att, index->indexkeys[i] - 1);
+					if (att->attlen < 0)
+					{
+						/*
+						 * attlen is negative if the attribute has variable
+						 * length. Add 1 byte because DocDB uses double
+						 * null termination.
+						 */
+						++ybctid_width;
+					}
+					table_close(baserel, NoLock);
+				}
 			}
 
 			/* Add 1 byte for the kGroupEnd(!). */
@@ -6912,7 +6929,8 @@ yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
 
 			if (index->nhashcolumns > 0)
 			{
-				/* If there were hash and range keys, then the key is prefixed
+				/*
+				 * If there were hash and range keys, then the key is prefixed
 				 * with a 16 bit hash value of the hash columns. Add 1 byte
 				 * for the hash value type and 2 bytes for the hash value. Also
 				 * add 1 byte for group termination between hash and range keys.
@@ -6922,9 +6940,10 @@ yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
 
 			if (!is_primary_index)
 			{
-				/* In the secondary index, the ybctid of the base table is part of
-				* the secondary index key. It is stored in string encoded format.
-				*/
+				/*
+				 * In the secondary index, the ybctid of the base table is part of
+				 * the secondary index key. It is stored in string encoded format.
+				 */
 				IndexOptInfo* base_table_primary_index =
 					yb_get_baserel_primary_index(baserel);
 				int32 base_table_ybctid_width =
@@ -6933,12 +6952,12 @@ yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
 										base_table_primary_index,
 										true /* is_primary_index */);
 				/* We need to subtract 2 from the base table ybctid length to get
-				* the length of the string encoding. The ybctid length includes 9
-				* bytes for the null indicator and size of the ybctid, which are
-				* not part of the string encoding. However, the string encoding
-				* needs 7 additional bytes, 1 for the value type, 4 bytes for
-				* separator and 2 bytes for double null termination.
-				*/
+				 * the length of the string encoding. The ybctid length includes 9
+				 * bytes for the null indicator and size of the ybctid, which are
+				 * not part of the string encoding. However, the string encoding
+				 * needs 7 additional bytes, 1 for the value type, 4 bytes for
+				 * separator and 2 bytes for double null termination.
+				 */
 				ybctid_width += base_table_ybctid_width - 2;
 			}
 
@@ -6984,7 +7003,7 @@ yb_get_docdb_result_width(Path *path, PlannerInfo* root, bool is_index_path,
 
 	/* DocDB returns ybctid in the following cases,
 	 * * Queries where no column is projected and no local filters are present
-     *   and sequential scan is used.
+	 *	 and sequential scan is used.
 	 *   eg. `SELECT 0 FROM test` or
 	 *       `SELECT true FROM test WHERE v1 > 0` where the filter on v1 is
 	 *         pushed down to DocDB.
@@ -7231,7 +7250,7 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 												   baserel, reloid);
 	path->yb_plan_info.estimated_docdb_result_width = docdb_result_width;
 	num_result_pages = yb_get_num_result_pages(remote_filtered_rows,
-										 	   docdb_result_width);
+											   docdb_result_width);
 	num_seeks = num_result_pages;
 	num_nexts = (num_result_pages - 1) + (baserel->tuples - 1);
 
@@ -7524,7 +7543,7 @@ yb_estimate_seeks_nexts_in_index_scan(PlannerInfo *root,
 					 *
 					 * seek(-inf) -> (1, 1)
 					 *     nexts until (1, 15) <-- Doesn't match filter.
-				     * seek (1, inf) -> (2, 1)
+					 * seek (1, inf) -> (2, 1)
 					 *     nexts until (2, 15) <-- Doesn't match filter
 					 * seek (2, inf) -> (3, 1)
 					 */
@@ -7985,13 +8004,10 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	 */
 	List *all_conditions_and_remote_filters = NIL;
 	all_conditions_and_remote_filters =
-		list_concat(all_conditions_and_remote_filters,
-					list_copy(index_conditions));
+		list_concat_unique(all_conditions_and_remote_filters,
+					list_copy(index_predicates_conditions_and_filters));
 	all_conditions_and_remote_filters =
-		list_concat(all_conditions_and_remote_filters,
-					list_copy(index_pushed_down_filters));
-	all_conditions_and_remote_filters =
-		list_concat(all_conditions_and_remote_filters,
+		list_concat_unique(all_conditions_and_remote_filters,
 					list_copy(base_table_pushed_down_filters));
 
 	if (list_length(all_conditions_and_remote_filters) > 0)
@@ -7999,7 +8015,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 			clauselist_selectivity(root, all_conditions_and_remote_filters,
 								   baserel->relid, JOIN_INNER, NULL);
 	else
-	 	all_conditions_and_remote_filters_selectivity = 1.0;
+		all_conditions_and_remote_filters_selectivity = 1.0;
 
 	double num_docdb_result_rows = clamp_row_est(
 		index->rel->tuples * all_conditions_and_remote_filters_selectivity);

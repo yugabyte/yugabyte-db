@@ -8,5 +8,6 @@ Disallow: /v2.14/
 Disallow: /v2.18/
 Disallow: /v2.20/
 Disallow: /stable/
+Disallow: /v2024.2/
 
 # Algolia-Crawler-Verif: 73EC23ACA4B42138

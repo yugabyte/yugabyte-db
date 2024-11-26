@@ -19,6 +19,7 @@
 #include "yb/master/master_service_base-internal.h"
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/test_async_rpc_manager.h"
+#include "yb/master/ysql/ysql_manager.h"
 #include "yb/master/ysql_backends_manager.h"
 
 #include "yb/util/flags.h"
@@ -78,9 +79,6 @@ class MasterAdminServiceImpl : public MasterServiceBase, public MasterAdminIf {
       (GetCompactionStatus)
       (CreateTransactionStatusTable)
       (DdlLog)
-      (StartYsqlMajorVersionUpgradeInitdb)
-      (IsYsqlMajorVersionUpgradeInitdbDone)
-      (RollbackYsqlMajorVersionUpgrade)
       (DeleteNotServingTablet)
       (FlushSysCatalog)
       (SplitTablet)
@@ -112,6 +110,14 @@ class MasterAdminServiceImpl : public MasterServiceBase, public MasterAdminIf {
   MASTER_SERVICE_IMPL_ON_LEADER_WITHOUT_LOCK(
       YsqlBackendsManager,
       (WaitForYsqlBackendsCatalogVersion)
+  )
+
+  MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
+      YsqlManager,
+      (StartYsqlMajorCatalogUpgrade)
+      (IsYsqlMajorCatalogUpgradeDone)
+      (FinalizeYsqlMajorCatalogUpgrade)
+      (RollbackYsqlMajorCatalogVersion)
   )
 };
 

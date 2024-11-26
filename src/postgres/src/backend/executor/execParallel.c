@@ -44,6 +44,7 @@
 #include "jit/jit.h"
 #include "nodes/nodeFuncs.h"
 #include "pgstat.h"
+#include "pg_yb_utils.h"
 #include "storage/spin.h"
 #include "tcop/tcopprot.h"
 #include "utils/datum.h"
@@ -1432,7 +1433,12 @@ ParallelQueryMain(dsm_segment *seg, shm_toc *toc)
 	receiver = ExecParallelGetReceiver(seg, toc);
 	instrumentation = shm_toc_lookup(toc, PARALLEL_KEY_INSTRUMENTATION, true);
 	if (instrumentation != NULL)
+	{
 		instrument_options = instrumentation->instrument_options;
+		/* Fetch DocDB statistics if parallel query is instrumented */
+		YbToggleSessionStatsTimer(true);
+		YbSetMetricsCaptureType(YB_YQL_METRICS_CAPTURE_ALL);
+	}
 	jit_instrumentation = shm_toc_lookup(toc, PARALLEL_KEY_JIT_INSTRUMENTATION,
 										 true);
 	queryDesc = ExecParallelGetQueryDesc(toc, receiver, instrument_options);
@@ -1496,8 +1502,12 @@ ParallelQueryMain(dsm_segment *seg, shm_toc *toc)
 
 	/* Report instrumentation data if any instrumentation options are set. */
 	if (instrumentation != NULL)
+	{
 		ExecParallelReportInstrumentation(queryDesc->planstate,
 										  instrumentation);
+		YbToggleSessionStatsTimer(false);
+		YbSetMetricsCaptureType(YB_YQL_METRICS_CAPTURE_NONE);
+	}
 
 	/* Report JIT instrumentation data if any */
 	if (queryDesc->estate->es_jit && jit_instrumentation != NULL)

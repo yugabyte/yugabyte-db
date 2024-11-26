@@ -129,7 +129,7 @@ DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
 DECLARE_bool(cdc_immediate_transaction_cleanup);
 
-DECLARE_int64(cdc_intent_retention_ms);
+DECLARE_uint64(cdc_intent_retention_ms);
 
 DECLARE_bool(enable_flush_retryable_requests);
 
@@ -726,7 +726,7 @@ void TabletPeer::Submit(std::unique_ptr<Operation> operation, int64_t term) {
 }
 
 Status TabletPeer::SubmitUpdateTransaction(
-    std::unique_ptr<UpdateTxnOperation> operation, int64_t term) {
+    std::unique_ptr<UpdateTxnOperation>& operation, int64_t term) {
   if (!operation->tablet_is_set()) {
     auto tablet = VERIFY_RESULT(shared_tablet_safe());
     operation->SetTablet(tablet);
@@ -1248,7 +1248,7 @@ HybridTime TabletPeer::GetMinStartHTRunningTxnsOrLeaderSafeTime() {
         << "Tablet not found, so setting minimum start hybrid time for running txns to kInitial.";
     return HybridTime::kInitial;
   }
-  return (*tablet_result)->GetMinStartHTRunningTxnsOrLeaderSafeTime();
+  return (*tablet_result)->GetMinStartHTRunningTxnsForCDCLogCallback();
 }
 
 Status TabletPeer::SetCDCSDKRetainOpIdAndTime(
@@ -1262,7 +1262,15 @@ Status TabletPeer::SetCDCSDKRetainOpIdAndTime(
     RETURN_NOT_OK(CheckRunning());
     auto txn_participant = tablet_->transaction_participant();
     if (txn_participant) {
-      txn_participant->SetIntentRetainOpIdAndTime(cdc_sdk_op_id, cdc_sdk_op_id_expiration);
+      auto log = log_atomic_.load(std::memory_order_acquire);
+      auto min_start_ht_cdc_unstreamed_txns = tablet_->GetMinStartHTCDCUnstreamedTxns(log);
+      VLOG_WITH_PREFIX_AND_FUNC(1)
+          << "Intents opid retention duration = " << cdc_sdk_op_id_expiration
+          << ", Minimum start time for CDC unstreamed txns from available gc log segments = "
+          << min_start_ht_cdc_unstreamed_txns;
+
+      txn_participant->SetIntentRetainOpIdAndTime(
+          cdc_sdk_op_id, cdc_sdk_op_id_expiration, min_start_ht_cdc_unstreamed_txns);
       if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
         tablet_->CleanupIntentFiles();
       }

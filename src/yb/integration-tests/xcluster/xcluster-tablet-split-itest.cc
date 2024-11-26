@@ -75,6 +75,8 @@ DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 DECLARE_int64(tablet_force_split_threshold_bytes);
 DECLARE_int64(db_write_buffer_size);
 
+using namespace std::literals;
+
 namespace yb {
 using test::Partitioning;
 using cdc::CDCServiceImpl;
@@ -487,7 +489,17 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
   void DoBeforeTearDown() override {
     // Stop trying to process metrics when shutting down.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = false;
-    ValidateOverlap();
+
+    if (!testing::Test::HasFailure()) {
+      // Disable further splitting and wait for all ongoing splits to complete.
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+      SwitchToProducer();
+      ASSERT_OK(WaitForOngoingSplitsToComplete(/* wait_for_parent_deletion */ false));
+      SwitchToConsumer();
+      ASSERT_OK(WaitForOngoingSplitsToComplete(/* wait_for_parent_deletion */ false));
+      ValidateOverlap();
+    }
+
     DeleteReplication();
 
     SwitchToConsumer();
@@ -509,11 +521,11 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
   Status WaitForOngoingSplitsToComplete(bool wait_for_parent_deletion) {
     auto master_admin_proxy = std::make_unique<master::MasterAdminProxy>(
         proxy_cache_.get(), client_->GetMasterLeaderAddress());
-    RETURN_NOT_OK(WaitFor(
-        std::bind(&TabletSplitITestBase::IsSplittingComplete, this, master_admin_proxy.get(),
-                  wait_for_parent_deletion),
-        30s, "Wait for ongoing tablet splits to complete."));
-    return Status::OK();
+    return LoggedWaitFor(
+        std::bind(
+            &TabletSplitITestBase::IsSplittingComplete, this, master_admin_proxy.get(),
+            wait_for_parent_deletion),
+        30s * kTimeMultiplier, "Wait for ongoing tablet splits to complete");
   }
 
   Status SplitAllTablets(
@@ -536,6 +548,7 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
   }
 
   auto GetConsumerMap() {
+    SwitchToConsumer();
     auto& cm = EXPECT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
     auto cluster_info = EXPECT_RESULT(cm.GetClusterConfig());
     auto producer_map = cluster_info.mutable_consumer_registry()->mutable_producer_map();
@@ -565,34 +578,38 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
     for (const auto& peer : consumer_tablet_peers) {
       consumer_tablet_ids.insert(peer->tablet_id());
     }
-    size_t consumer_tablet_count = consumer_tablet_ids.size();
 
     auto tablet_map = GetConsumerMap();
     LOG(INFO) << "Consumer Map: \n";
-    for (const auto& elem : tablet_map) {
+    for (const auto& [consumer_tablet_id, producer_tablet_list] : tablet_map) {
       std::vector<string> start_keys, end_keys;
       std::transform(
-          elem.second.start_key().begin(), elem.second.start_key().end(),
+          producer_tablet_list.start_key().begin(), producer_tablet_list.start_key().end(),
           std::back_inserter(start_keys),
           [](std::string s) -> string { return Slice(s).ToDebugHexString(); });
       std::transform(
-          elem.second.end_key().begin(), elem.second.end_key().end(), std::back_inserter(end_keys),
+          producer_tablet_list.end_key().begin(), producer_tablet_list.end_key().end(),
+          std::back_inserter(end_keys),
           [](std::string s) -> string { return Slice(s).ToDebugHexString(); });
 
-      LOG(INFO) << elem.first << ", [" << boost::algorithm::join(elem.second.tablets(), ",")
-                << "], [" << boost::algorithm::join(start_keys, ",") << "], ["
+      LOG(INFO) << consumer_tablet_id << ", ["
+                << boost::algorithm::join(producer_tablet_list.tablets(), ",") << "], ["
+                << boost::algorithm::join(start_keys, ",") << "], ["
                 << boost::algorithm::join(end_keys, ",") << "]\n";
     }
-    ASSERT_LE(tablet_map.size(), min(producer_tablet_count, consumer_tablet_count));
+
+    ASSERT_LE(tablet_map.size(), consumer_tablet_ids.size());
 
     int producer_tablets = 0;
-    for (auto& mapping : tablet_map) {
+    for (const auto& [consumer_tablet_id, producer_tablet_list] : tablet_map) {
       auto consumer_tablet = std::find_if(
           consumer_tablet_peers.begin(), consumer_tablet_peers.end(),
-          [&](const auto& tablet) { return tablet->tablet_id() == mapping.first; });
+          [consumer_tablet_id](const auto& tablet) {
+            return tablet->tablet_id() == consumer_tablet_id;
+          });
       ASSERT_NE(consumer_tablet, consumer_tablet_peers.end());
 
-      for (auto& mapped_producer_tablet : mapping.second.tablets()) {
+      for (auto& mapped_producer_tablet : producer_tablet_list.tablets()) {
         producer_tablets++;
         auto producer_tablet = std::find_if(
             producer_tablet_peers.begin(), producer_tablet_peers.end(),
@@ -678,8 +695,7 @@ TEST_P(xClusterTabletMapTest, MoreConsumerTablets) {
   RunSetUp(3, 8);
 }
 
-TEST_F(XClusterTabletSplitITest,
-  YB_DISABLE_TEST_ON_MACOS(SplittingWithXClusterReplicationOnConsumer)) {
+TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnConsumer) {
   // Perform a split on the consumer side and ensure replication still works.
 
   // To begin with, cluster_ will be our producer.
@@ -702,8 +718,7 @@ TEST_F(XClusterTabletSplitITest,
   ASSERT_OK(CheckForNumRowsOnConsumer(2 * kDefaultNumRows));
 }
 
-TEST_F(XClusterTabletSplitITest,
-  YB_DISABLE_TEST_ON_MACOS(SplittingWithXClusterReplicationOnProducer)) {
+TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnProducer) {
   // Perform a split on the producer side and ensure replication still works.
 
   // Default cluster_ will be our producer.
@@ -783,7 +798,7 @@ TEST_F(XClusterTabletSplitITest, MultipleSplitsInSequence) {
   ASSERT_OK(CheckForNumRowsOnConsumer(2 * kDefaultNumRows));
 }
 
-TEST_F(XClusterTabletSplitITest, YB_DISABLE_TEST_ON_MACOS(SplittingOnProducerAndConsumer)) {
+TEST_F(XClusterTabletSplitITest, SplittingOnProducerAndConsumer) {
   // Test splits on both producer and consumer while writes to the producer are happening.
 
   // Default cluster_ will be our producer.
@@ -1165,10 +1180,8 @@ class XClusterAutomaticTabletSplitITest : public XClusterTabletSplitITest {
   }
 };
 
-// This test is very flaky in TSAN as we spend a long time waiting for children tablets to be
-// ready, and will often then time out.
-TEST_F(XClusterAutomaticTabletSplitITest, YB_DISABLE_TEST_ON_MACOS(AutomaticTabletSplitting)) {
-  constexpr auto num_active_tablets = 6;
+TEST_F(XClusterAutomaticTabletSplitITest, AutomaticTabletSplitting) {
+  constexpr auto num_active_tablets = RegularBuildVsSanitizers(6, 3);
 
   // Setup a new thread for continuous writing to producer.
   std::atomic<bool> stop(false);
@@ -1177,12 +1190,14 @@ TEST_F(XClusterAutomaticTabletSplitITest, YB_DISABLE_TEST_ON_MACOS(AutomaticTabl
     CDSAttacher attacher;
     client::TableHandle producer_table;
     ASSERT_OK(producer_table.Open(table_->name(), client_.get()));
-    auto producer_session = client_->NewSession(60s);
+    auto producer_session = client_->NewSession(60s * kTimeMultiplier);
     while (!stop) {
       rows_written = (rows_written + 1);
       ASSERT_RESULT(client::kv_table_test::WriteRow(
           &producer_table, producer_session, rows_written, rows_written,
           client::WriteOpType::INSERT, client::Flush::kTrue));
+      // Wait for a bit so that we do not overload the system.
+      SleepFor(10ms * kTimeMultiplier);
     }
   });
 
@@ -1205,11 +1220,6 @@ TEST_F(XClusterAutomaticTabletSplitITest, YB_DISABLE_TEST_ON_MACOS(AutomaticTabl
 
   // Verify that both sides have the same number of rows.
   ASSERT_OK(CheckForNumRowsOnConsumer(rows_written));
-
-  // Disable splitting before shutting down, to prevent more splits from occurring.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
-  // Wait for splitting to complete before validating overlaps.
-  ASSERT_OK(WaitForOngoingSplitsToComplete(/* wait_for_parent_deletion */ false));
 }
 
 class XClusterBootstrapTabletSplitITest : public XClusterTabletSplitITest {
@@ -1330,7 +1340,7 @@ TEST_F(NotSupportedTabletSplitITest, SplittingWithCdcStream) {
   ASSERT_RESULT(SplitTabletAndCheckForNotSupported());
 }
 
-TEST_F(NotSupportedTabletSplitITest, YB_DISABLE_TEST_ON_MACOS(SplittingWithBootstrappedStream)) {
+TEST_F(NotSupportedTabletSplitITest, SplittingWithBootstrappedStream) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables) = false;
   // Default cluster_ will be our producer.

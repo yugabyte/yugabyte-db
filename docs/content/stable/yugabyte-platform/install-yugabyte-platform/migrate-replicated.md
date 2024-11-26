@@ -13,6 +13,10 @@ type: docs
 
 YugabyteDB Anywhere has ended support for Replicated installation. If your YugabyteDB Anywhere installation uses Replicated, use YBA Installer to migrate from Replicated.
 
+You can migrate your existing [Replicated installation to YBA Installer in place](#migrate-from-replicated-to-yba-installer-in-place) on the same VM (recommended). When migrating in place, both your Replicated configuration and the YBA metadata (universes, providers, and so on) are migrated to the YBA Installer format.
+
+Alternately, you can migrate the [Replicated installation to YBA Installer on a different VM](#migrate-from-replicated-to-yba-installer-on-a-different-vm). Only the YBA metadata (universes, providers, and so on) is migrated to the new VM; the Replicated configuration is not.
+
 ## Before you begin
 
 - Review the [prerequisites](../../prepare/).
@@ -21,27 +25,21 @@ YugabyteDB Anywhere has ended support for Replicated installation. If your Yugab
 - If you haven't already, [download and extract](../install-software/installer/#download-yba-installer) YBA Installer. It is recommended that you migrate using the same version of YBA Installer as the version of YBA you are running in Replicated. For example, if you have v.{{<yb-version version="stable" format="long">}} installed, use the following commands:
 
     ```sh
-    $ wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-    $ tar -xf yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-    $ cd yba_installer_full-{{<yb-version version="stable" format="build">}}/
+    wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
+    tar -xf yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
+    cd yba_installer_full-{{<yb-version version="stable" format="build">}}/
     ```
 
-## Migrate a Replicated installation
+## Migrate from Replicated to YBA Installer in place
 
-You can migrate your existing Replicated installation to YBA Installer in place on the same VM (recommended). When migrating in place, both your Replicated configuration and the YBA metadata (universes, providers, and so on) are migrated to the YBA Installer format.
-
-Alternately, you can migrate the [Replicated installation to YBA Installer on a different VM](#migrate-from-replicated-to-yba-installer-on-a-different-vm). Only the YBA metadata (universes, providers, and so on) is migrated to the new VM; the Replicated configuration is not.
-
-### Migrate from Replicated to YBA Installer in place
-
-If you have [high availability](../../administer-yugabyte-platform/high-availability/) configured, you need to migrate your instances in a specific order. See [In-place migration and high availability](#in-place-migration-and-high-availability).
+If you have high availability configured, you need to migrate your instances in a specific order. See [In-place migration and high availability](#in-place-migration-and-high-availability).
 
 To migrate in place, do the following:
 
 1. Optionally, configure the migration as follows:
 
     ```sh
-    $ sudo ./yba-ctl replicated-migrate config
+    sudo ./yba-ctl replicated-migrate config
     ```
 
     This generates a configuration file `/opt/yba-ctl/yba-ctl.yml` with the settings for your current installation, which are used for the migration. You can edit the file to customize the install further.
@@ -57,7 +55,7 @@ The `installRoot` must _not_ be a subdirectory of the Replicated Storage Path (`
 1. Start the migration, passing in your license file:
 
     ```sh
-    $ sudo ./yba-ctl replicated-migrate start -l /path/to/license
+    sudo ./yba-ctl replicated-migrate start -l /path/to/license
     ```
 
     The `start` command runs all [preflight checks](../../install-yugabyte-platform/install-software/installer/#run-preflight-checks) and then proceeds to do the migration, and then waits for YBA to start.
@@ -73,35 +71,41 @@ The `installRoot` must _not_ be a subdirectory of the Replicated Storage Path (`
 1. If the new YBA installation is correct, finish the migration as follows:
 
     ```sh
-    $ sudo ./yba-ctl replicated-migrate finish
+    sudo ./yba-ctl replicated-migrate finish
     ```
 
     This uninstalls Replicated and makes the new YBA instance permanent.
 
-#### In-place migration and high availability
+### In-place migration and high availability
 
 If you have [high availability](../../administer-yugabyte-platform/high-availability/) configured, you need to upgrade the active and standby YBA instances if they are running older versions of YBA. In addition, you need to finish migration on both the active and standby instances for failover to be re-enabled.
+
+#### Replicated uses HTTPS
+
+Note that if your node has a timezone that is not UTC, in-place migration requires changing the timezone to UTC. If this is not possible, follow the instructions for [Replicated uses HTTP](#replicated-uses-http) instead.
 
 If Replicated is using HTTPS, migrate as follows:
 
 1. If your instances are v2.18.5 or earlier, or v2.20.0, [upgrade your active and high availability standby instances](../../administer-yugabyte-platform/high-availability/#upgrade-instances) to v2.20.1.3 or later.
-1. [Migrate and finish](#migrate-a-replicated-installation) the active instance.
+1. [Migrate and finish](#migrate-from-replicated-to-yba-installer-in-place) the active instance.
 1. Migrate and finish the standby instances.
 
 Failovers are only possible after you finish the migration on both the primary and standby.
 
-If Replicated is using HTTP, you need to remove the standbys and delete the high availability configuration before migrating. Migrate as follows:
+#### Replicated uses HTTP
+
+If Replicated is using HTTP (or any servers are configured with a timezone that is not UTC), you need to remove the standbys and delete the high availability configuration before migrating. Migrate as follows:
 
 1. [Remove the standby instances](../../administer-yugabyte-platform/high-availability/#remove-a-standby-instance).
 1. On the active instance, navigate to **Admin > High Availability** and click **Delete Configuration**.
 1. If your instances are v2.18.5 or earlier, or 2.20.0, [upgrade the primary and standby instances](../../administer-yugabyte-platform/high-availability/#upgrade-instances) to v2.20.1.3 or later.
-1. [Migrate and finish](#migrate-a-replicated-installation) the active instance.
+1. [Migrate and finish](#migrate-from-replicated-to-yba-installer-in-place) the active instance.
 1. Migrate and finish the standby instances.
 1. [Configure high availability on the updated instances](../../administer-yugabyte-platform/high-availability/#configure-active-and-standby-instances).
 
 [Failovers](../../administer-yugabyte-platform/high-availability/#failover) are possible again after the completion of this step.
 
-### Migrate from Replicated to YBA Installer on a different VM
+## Migrate from Replicated to YBA Installer on a different VM
 
 Note that the Replicated configuration is not migrated when using this method.
 

@@ -20,9 +20,11 @@ import (
 
 // updateGCPProviderCmd represents the provider command
 var updateGCPProviderCmd = &cobra.Command{
-	Use:   "update",
-	Short: "Update a GCP YugabyteDB Anywhere provider",
-	Long:  "Update a GCP provider in YugabyteDB Anywhere",
+	Use:     "update",
+	Aliases: []string{"edit"},
+	Short:   "Update a GCP YugabyteDB Anywhere provider",
+	Long:    "Update a GCP provider in YugabyteDB Anywhere",
+	Example: `yba provider gcp update --name <provider-name> --new-name <new-provider-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -330,18 +332,15 @@ var updateGCPProviderCmd = &cobra.Command{
 
 		// End of Updating Image Bundles
 
-		rUpdate, response, err := authAPI.EditProvider(provider.GetUuid()).
+		rTask, response, err := authAPI.EditProvider(provider.GetUuid()).
 			EditProviderRequest(provider).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Provider: GCP", "Update")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		providerUUID := rUpdate.GetResourceUUID()
-		taskUUID := rUpdate.GetTaskUUID()
-
 		providerutil.WaitForUpdateProviderTask(
-			authAPI, providerName, providerUUID, providerCode, taskUUID)
+			authAPI, providerName, rTask, providerCode)
 	},
 }
 
@@ -379,8 +378,8 @@ func init() {
 
 	updateGCPProviderCmd.Flags().StringArray("add-region", []string{},
 		"[Required] Region associated with the GCP provider. Minimum number of required "+
-			"regions = 1. Provide the following comma separated fields as key-value pairs:"+
-			"\"region-name=<region-name>,shared-subnet=<subnet-id>,"+
+			"regions = 1. Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"region-name=<region-name>::shared-subnet=<subnet-id>::"+
 			"instance-template=<instance-templates-for-YugabyteDB-nodes>\". "+
 			formatter.Colorize("Region name and Shared subnet are required key-value pairs.",
 				formatter.GreenColor)+
@@ -388,8 +387,8 @@ func init() {
 			"Each region can be added using separate --add-region flags.")
 	updateGCPProviderCmd.Flags().StringArray("edit-region", []string{},
 		"[Optional] Edit region details associated with the GCP provider. "+
-			"Provide the following comma separated fields as key-value pairs:"+
-			"\"region-name=<region-name>,shared-subnet=<subnet-id>,"+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"region-name=<region-name>::shared-subnet=<subnet-id>::"+
 			"instance-template=<instance-templates-for-YugabyteDB-nodes>\". "+
 			formatter.Colorize("Region name is a required key-value pair.",
 				formatter.GreenColor)+
@@ -402,28 +401,24 @@ func init() {
 
 	updateGCPProviderCmd.Flags().StringArray("add-image-bundle", []string{},
 		"[Optional] Add Intel x86_64 image bundles associated with the provider. "+
-			"Provide the following comma separated fields as key-value pairs: "+
-			"\"image-bundle-name=<image-bundle-name>,machine-image=<custom-ami>,"+
-			"ssh-user=<ssh-user>,ssh-port=<ssh-port>,default=<true/false>\". "+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"image-bundle-name=<image-bundle-name>::machine-image=<custom-ami>::"+
+			"ssh-user=<ssh-user>::ssh-port=<ssh-port>::default=<true/false>\". "+
 			formatter.Colorize(
 				"Image bundle name, machine image and SSH user are required key-value pairs.",
 				formatter.GreenColor)+
 			" The default SSH Port is 22. Default marks the image bundle as default for the provider. "+
-			"Each image bundle can be added using separate --image-bundle flag. "+
-			"Example: --add-image-bundle <image-bundle-name>=<image-bundle>,machine-image=<custom-ami>,"+
-			"<ssh-user>=<ssh-user>,<ssh-port>=22")
+			"Each image bundle can be added using separate --add-image-bundle flag.")
 
 	updateGCPProviderCmd.Flags().StringArray("edit-image-bundle", []string{},
 		"[Optional] Edit Intel x86_64 image bundles associated with the provider. "+
-			"Provide the following comma separated fields as key-value pairs: "+
-			"\"image-bundle-uuid=<image-bundle-uuid>,machine-image=<custom-ami>,"+
-			"ssh-user=<ssh-user>,ssh-port=<ssh-port>,default=<true/false>\". "+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
+			"\"image-bundle-uuid=<image-bundle-uuid>::machine-image=<custom-ami>::"+
+			"ssh-user=<ssh-user>::ssh-port=<ssh-port>::default=<true/false>\". "+
 			formatter.Colorize(
 				"Image bundle UUID is a required key-value pair.",
 				formatter.GreenColor)+
-			"Each image bundle can be added using separate --image-bundle flag. "+
-			"Example: --edit-image-bundle <image-bundle-uuid>=<image-bundle>,machine-image=<custom-ami>,"+
-			"<ssh-user>=<ssh-user>,<ssh-port>=22")
+			"Each image bundle can be added using separate --edit-image-bundle flag.")
 
 	updateGCPProviderCmd.Flags().StringArray("remove-image-bundle", []string{},
 		"[Optional] Image bundle UUID to be removed from the provider. "+
@@ -513,7 +508,7 @@ func addGCPRegions(
 	for _, regionString := range addRegions {
 		region := providerutil.BuildRegionMapFromString(regionString, "add")
 
-		zones := addGCPZones(region["name"], region["shared-subnet"],
+		zones := addGCPZones(region["shared-subnet"],
 			make([]ybaclient.AvailabilityZone, 0))
 		r := ybaclient.Region{
 			Code:  util.GetStringPointer(region["name"]),
@@ -534,7 +529,7 @@ func addGCPRegions(
 }
 
 func addGCPZones(
-	regionName, sharedSubnet string,
+	sharedSubnet string,
 	zones []ybaclient.AvailabilityZone,
 ) []ybaclient.AvailabilityZone {
 	z := ybaclient.AvailabilityZone{

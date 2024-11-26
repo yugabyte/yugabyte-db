@@ -167,7 +167,7 @@ size_t FastDecodeDescendingSignedVarIntSize(Slice src) {
 }
 
 inline Result<std::pair<int64_t, size_t>> FastDecodeSignedVarInt(
-    const uint8_t* const src, size_t src_size, const uint8_t* read_allowed_from) {
+    const uint8_t* const src, size_t src_size) {
   typedef std::pair<int64_t, size_t> ResultType;
   if (src_size == 0) {
     return STATUS(Corruption, "Cannot decode a variable-length integer of zero size");
@@ -194,84 +194,63 @@ inline Result<std::pair<int64_t, size_t>> FastDecodeSignedVarInt(
   // n_bytes                   : 10
   //
   // Argument of __builtin_clz is always unsigned int.
-  size_t n_bytes = __builtin_clz((~header & 0x7fff) | 0x20) - 16;
+  const size_t n_bytes = __builtin_clz((~header & 0x7fff) | 0x20) - 16;
   if (src_size < n_bytes) {
     return NotEnoughEncodedBytes(n_bytes, src_size);
   }
   auto mask = kVarIntMasks[n_bytes];
 
-  const auto* const read_start = src - 8 + n_bytes;
-
-#if defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
-  if (false) {
-#else
-  if (PREDICT_TRUE(read_start >= read_allowed_from)) {
-#endif
-
-    // We are interested in range [src, src+n_bytes), so we use 64bit number that ends at
-    // src+n_bytes.
-    // Then we use mask to drop header and bytes out of range.
-    // Suppose we have negative number -a (where a > 0). Then at this point we would have ~a & mask.
-    // To get -a, we should fill it with zeros to 64bits: "| (~mask & negative)".
-    // And add one: "- negative".
-    // In case of non negative number, negative == 0.
-    // So number will be unchanged by those manipulations.
-    return ResultType(
-          ((__builtin_bswap64(*reinterpret_cast<const uint64_t*>(read_start)) & mask) |
-              (~mask & negative)) - negative,
-          n_bytes);
+  uint64_t temp;
+  if (n_bytes & 8) {
+    temp = __builtin_bswap64(*reinterpret_cast<const uint64_t*>(src + (n_bytes ^ 8)));
   } else {
-    uint64_t temp = 0;
-    const auto* end = src + n_bytes;
-    for (const uint8_t* i = std::max(read_start, src); i != end; ++i) {
-      temp = (temp << 8) | *i;
+    auto input = src;
+    if (n_bytes & 4) {
+      temp = __builtin_bswap32(*reinterpret_cast<const uint32_t*>(input));
+      input += 4;
+    } else {
+      temp = 0;
     }
-    return ResultType(((temp & mask) | (~mask & negative)) - negative, n_bytes);
+    if (n_bytes & 2) {
+      temp = (temp << 16) | __builtin_bswap16(*reinterpret_cast<const uint16_t*>(input));
+      input += 2;
+    }
+    if (n_bytes & 1) {
+      temp = (temp << 8) | *input;
+    }
   }
+
+  return ResultType(((temp & mask) | (~mask & negative)) - negative, n_bytes);
 }
 
 Status FastDecodeSignedVarInt(
-    const uint8_t* src, size_t src_size, const uint8_t* read_allowed_from, int64_t* v,
-    size_t* decoded_size) {
-  auto temp = VERIFY_RESULT(FastDecodeSignedVarInt(src, src_size, read_allowed_from));
-  *v = temp.first;
-  *decoded_size = temp.second;
-  return Status::OK();
-}
-
-inline Result<std::pair<int64_t, size_t>> FastDecodeSignedVarIntUnsafe(
-    const uint8_t* const src, size_t src_size) {
-  return FastDecodeSignedVarInt(src, src_size, nullptr);
-}
-
-Status FastDecodeSignedVarIntUnsafe(
     const uint8_t* src, size_t src_size, int64_t* v, size_t* decoded_size) {
-  auto temp = VERIFY_RESULT(FastDecodeSignedVarIntUnsafe(src, src_size));
+  auto temp = VERIFY_RESULT(FastDecodeSignedVarInt(src, src_size));
   *v = temp.first;
   *decoded_size = temp.second;
   return Status::OK();
 }
 
-Result<int64_t> FastDecodeSignedVarIntUnsafe(Slice* slice) {
-  auto temp = VERIFY_RESULT(FastDecodeSignedVarIntUnsafe(slice->data(), slice->size()));
+Result<int64_t> FastDecodeSignedVarInt(Slice* slice) {
+  auto temp = VERIFY_RESULT(FastDecodeSignedVarInt(slice->data(), slice->size()));
   slice->remove_prefix(temp.second);
   return temp.first;
 }
 
-Status FastDecodeSignedVarIntUnsafe(const std::string& encoded, int64_t* v, size_t* decoded_size) {
-  return FastDecodeSignedVarIntUnsafe(
+Status FastDecodeSignedVarInt(const std::string& encoded, int64_t* v, size_t* decoded_size) {
+  return FastDecodeSignedVarInt(
       to_uchar_ptr(encoded.c_str()), encoded.size(), v, decoded_size);
 }
 
-Status FastDecodeDescendingSignedVarIntUnsafe(yb::Slice *slice, int64_t *dest) {
-  auto temp = VERIFY_RESULT(FastDecodeSignedVarIntUnsafe(slice->data(), slice->size()));
+Status FastDecodeDescendingSignedVarInt(Slice *slice, int64_t *dest) {
+  auto temp = VERIFY_RESULT(FastDecodeSignedVarInt(slice->data(), slice->size()));
   *dest = -temp.first;
   slice->remove_prefix(temp.second);
   return Status::OK();
 }
 
-Result<int64_t> FastDecodeDescendingSignedVarIntUnsafe(Slice* slice) {
-  auto temp = VERIFY_RESULT(FastDecodeSignedVarIntUnsafe(slice->data(), slice->size()));
+Result<int64_t> FastDecodeDescendingSignedVarInt(Slice* slice) {
+  auto temp = VERIFY_RESULT(FastDecodeSignedVarInt(slice->data(), slice->size()));
   slice->remove_prefix(temp.second);
   return -temp.first;
 }

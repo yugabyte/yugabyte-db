@@ -5,8 +5,10 @@
 package client
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
 	"time"
 
@@ -52,7 +54,7 @@ func (a *AuthAPIClient) TasksList() (
 func (a *AuthAPIClient) failureSubTaskListYBAVersionCheck() (
 	bool, string, error) {
 	allowedVersions := YBAMinimumVersion{
-		Stable: util.YBAAllowFailureSubTaskListMinVersion, 
+		Stable:  util.YBAAllowFailureSubTaskListMinVersion,
 		Preview: util.YBAAllowFailureSubTaskListMinVersion,
 	}
 	allowed, version, err := a.CheckValidYBAVersion(allowedVersions)
@@ -83,8 +85,12 @@ func (a *AuthAPIClient) WaitForTaskCI(taskUUID, message string) error {
 
 			return fmt.Errorf("wait timeout, operation could still be on-going")
 		case <-a.ctx.Done():
+			a.stop()
+			err := abortAfterCtrlC(taskUUID, a)
+			if err != nil {
+				return err // Signal that the task was aborted
+			}
 
-			return fmt.Errorf("receive interrupt signal, operation could still be on-going")
 		case <-checkEveryInSec.C:
 			r, response, err := a.GetCustomerTaskStatus(taskUUID).Execute()
 			if err != nil {
@@ -142,7 +148,7 @@ func (a *AuthAPIClient) WaitForTaskCI(taskUUID, message string) error {
 					fmt.Sprintf(
 						"\nOperation failed. Retry operation with \"%s\" command\n",
 						formatter.Colorize(
-							fmt.Sprintf("yba task retry --task-uuid %s", taskUUID),
+							fmt.Sprintf("yba task retry --uuid %s", taskUUID),
 							formatter.BlueColor,
 						),
 					))
@@ -191,8 +197,12 @@ func (a *AuthAPIClient) WaitForTaskProgressBar(taskUUID, message string) error {
 		case <-a.ctx.Done():
 
 			s.Stop()
+			a.stop()
+			err := abortAfterCtrlC(taskUUID, a)
+			if err != nil {
+				return err // Signal that the task was aborted
+			}
 
-			return fmt.Errorf("receive interrupt signal, operation could still be on-going")
 		case <-checkEveryInSec.C:
 			r, response, err := a.GetCustomerTaskStatus(taskUUID).Execute()
 			if err != nil {
@@ -241,7 +251,7 @@ func (a *AuthAPIClient) WaitForTaskProgressBar(taskUUID, message string) error {
 					fmt.Sprintf(
 						"\nOperation failed. Retry operation with \"%s\" command\n",
 						formatter.Colorize(
-							fmt.Sprintf("yba task retry --task-uuid %s", taskUUID),
+							fmt.Sprintf("yba task retry --uuid %s", taskUUID),
 							formatter.BlueColor,
 						),
 					))
@@ -261,5 +271,28 @@ func (a *AuthAPIClient) WaitForTaskProgressBar(taskUUID, message string) error {
 
 		}
 	}
+}
 
+func abortAfterCtrlC(taskUUID string, a *AuthAPIClient) error {
+	var stop context.CancelFunc
+	a.ctx, stop = signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	logrus.Info("Received interrupt signal, aborting task\n")
+
+	r, response, err := a.AbortTask(taskUUID).Execute()
+	if err != nil {
+		errMessage := util.ErrorFromHTTPResponse(
+			response,
+			err,
+			"Wait For Task",
+			"Abort Task")
+		return errMessage
+	}
+	stop()
+	if r.GetSuccess() {
+		logrus.Info(fmt.Sprintf("Task %s aborted successfully\n", taskUUID))
+		return fmt.Errorf("Task %s aborted by user", taskUUID)
+	}
+	return fmt.Errorf("Failed to abort task %s\n", taskUUID)
 }

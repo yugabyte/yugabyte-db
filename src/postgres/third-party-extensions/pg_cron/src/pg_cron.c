@@ -151,8 +151,11 @@ static bool jobCanceled(CronTask *task);
 static bool jobStartupTimeout(CronTask *task, TimestampTz currentTime);
 static char* pg_cron_cmdTuples(char *msg);
 static void bgw_generate_returned_message(StringInfoData *display_msg, ErrorData edata);
+
 static long YbSecondsPassed(TimestampTz startTime, TimestampTz stopTime);
 static void YbCheckLeadership(List *taskList, TimestampTz currentTime);
+static TimestampTz YbGetLastPersistedMinute(TimestampTz currentTime);
+static void YbPersistLastMinute();
 
 /* global settings */
 char *CronTableDatabaseName = "yugabyte";
@@ -171,7 +174,9 @@ static int RunningTaskCount = 0;
 static int MaxRunningTasks = 0;
 static int CronLogMinMessages = WARNING;
 static bool UseBackgroundWorkers = true;
+
 static int YbJobListRefreshSeconds = 60;
+static TimestampTz YbLastMinuteToPersist = 0;
 
 char  *cron_timezone = NULL;
 
@@ -590,9 +595,7 @@ PgCronLauncherMain(Datum arg)
 	/* Establish signal handlers before unblocking signals. */
 	pqsignal(SIGHUP, pg_cron_sighup);
 	pqsignal(SIGINT, SIG_IGN);
-	/* YB Note: Exit immediately. */
-	pqsignal(SIGTERM, quickdie);
-	pqsignal(SIGQUIT, quickdie);
+	pqsignal(SIGTERM, pg_cron_sigterm);
 
 	/* We're now ready to receive signals */
 	BackgroundWorkerUnblockSignals();
@@ -715,6 +718,13 @@ PgCronLauncherMain(Datum arg)
 		WaitForCronTasks(taskList);
 		ManageCronTasks(taskList, currentTime);
 
+		/*
+		 * YB Note: Persist the new minute after any new job run details runs
+		 * have been persisted. This ensures that on a crash we at the least log
+		 * a failed job run.
+		 */
+		YbPersistLastMinute();
+
 		MemoryContextReset(CronLoopContext);
 	}
 
@@ -798,7 +808,16 @@ StartAllPendingRuns(List *taskList, TimestampTz currentTime)
 
 	if (lastMinute == 0)
 	{
-		lastMinute = TimestampMinuteStart(currentTime);
+		if (IsYugaByteEnabled())
+		{
+			/* Get the persisted lastMinite so that we do no miss schedules when
+			 * the cron leader changes. */
+			lastMinute = YbGetLastPersistedMinute(currentTime);
+		}
+		else
+		{
+			lastMinute = TimestampMinuteStart(currentTime);
+		}
 	}
 
 	minutesPassed = MinutesPassed(lastMinute, currentTime);
@@ -861,6 +880,9 @@ StartAllPendingRuns(List *taskList, TimestampTz currentTime)
 	if (clockProgress != CLOCK_JUMP_BACKWARD)
 	{
 		lastMinute = TimestampMinuteStart(currentTime);
+
+		Assert(YbLastMinuteToPersist == 0);
+		YbLastMinuteToPersist = lastMinute;
 	}
 }
 
@@ -1389,6 +1411,19 @@ ManageCronTask(CronTask *task, TimestampTz currentTime)
 										cronJob->database,
 										cronJob->userName,
 										cronJob->command, GetCronStatus(CRON_STATUS_STARTING));
+
+			/*
+			 * YB Note: We need to persist the job run details for all tasks and
+			 * then the lastMinute before we can start execution. This ensures
+			 * at-most-once guarantees during failures, and that an aborted
+			 * run would be logged.
+			 * This will add an extra second to the job
+			 * run time. For interval jobs such a guarantee is not needed,
+			 * and the extra second will significantly affect the jobs so
+			 * run them immediately.
+			 */
+			if (IsYugaByteEnabled() && !task->secondsInterval)
+				break;
 		}
 
 		case CRON_TASK_START:
@@ -2121,8 +2156,6 @@ CronBackgroundWorker(Datum main_arg)
 
 	/* handle SIGTERM like regular backend */
 	pqsignal(SIGTERM, die);
-	/* YB Note: Exit immediately. */
-	pqsignal(SIGQUIT, quickdie);
 	BackgroundWorkerUnblockSignals();
 
 	/* Set up a memory context and resource owner. */
@@ -2498,4 +2531,24 @@ YbCheckLeadership(List *taskList, TimestampTz currentTime)
 			task->pendingRunCount = 0;
 		}
 	}
+}
+
+static TimestampTz
+YbGetLastPersistedMinute(TimestampTz currentTime)
+{
+	int64_t lastMinute = 0;
+	HandleYBStatus(YBCGetCronLastMinute(&lastMinute));
+	if (lastMinute == 0)
+		lastMinute = TimestampMinuteStart(currentTime);
+
+	return lastMinute;
+}
+
+static void
+YbPersistLastMinute()
+{
+	if (ybIsLeader && YbLastMinuteToPersist != 0)
+		HandleYBStatus(YBCSetCronLastMinute(YbLastMinuteToPersist));
+
+	YbLastMinuteToPersist = 0;
 }

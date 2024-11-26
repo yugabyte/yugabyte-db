@@ -247,9 +247,13 @@ static inline int od_router_expire_server_tick_cb(od_server_t *server,
 		/* advance idle time for 1 sec */
 		if (server_life < lifetime &&
 		    server->idle_time < route->rule->pool->ttl) {
+			/* YB NOTE: the server is within the pool's ttl. */
 			server->idle_time++;
 			return 0;
 		}
+
+		/* YB NOTE: the server has crossed the pool's ttl. */
+		server->idle_time++;
 
 		/*
 		 * Do not expire more servers than we are allowed to connect at one time
@@ -259,10 +263,13 @@ static inline int od_router_expire_server_tick_cb(od_server_t *server,
 			return 0;
 
 		/*
-		 * Dont expire the server connection if the min size is reached.
+		 * Dont expire the server connection if the min size is reached and this
+		 * server hasn't been idle for >= 3 * ttl.
 		 */
-		if (od_server_pool_total(&route->server_pool) <=
-		    route->rule->min_pool_size)
+		if ((od_server_pool_total(&route->server_pool) <=
+		     route->rule->min_pool_size) &&
+		    server_life < lifetime &&
+		    server->idle_time < 3 * route->rule->pool->ttl)
 			return 0;
 	} // else remove server because we are forced to
 

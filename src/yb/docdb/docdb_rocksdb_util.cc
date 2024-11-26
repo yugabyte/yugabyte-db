@@ -53,6 +53,7 @@
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
@@ -114,6 +115,11 @@ DEFINE_UNKNOWN_uint64(rocksdb_max_file_size_for_compaction, 0,
 // db_max_flushing_bytes will be actual default.
 DEFINE_NON_RUNTIME_int32(rocksdb_max_write_buffer_number, 100500,
              "Maximum number of write buffers that are built up in memory.");
+
+// The manifest file persists min/max schema versions in flushed frontiers. A default 10MB limit
+// enables us to support a ~200k colocated tables/1500 databases in the syscatalog tablet
+DEFINE_NON_RUNTIME_uint64(rocksdb_max_manifest_file_size, 10_MB,
+             "Maximum size of manifest file before which it is consolidated");
 
 DEFINE_RUNTIME_bool(
     rocksdb_advise_random_on_open, true,
@@ -226,32 +232,11 @@ namespace docdb {
 
 } // namespace yb
 
-namespace {
+DEFINE_validator(compression_type,
+    FLAG_OK_VALIDATOR(yb::GetConfiguredCompressionType(_value)));
 
-bool CompressionTypeValidator(const char* flag_name, const std::string& flag_compression_type) {
-  auto res = yb::GetConfiguredCompressionType(flag_compression_type);
-  if (!res.ok()) {
-    // Below we CHECK_RESULT on the same value returned here, and validating the result here ensures
-    // that CHECK_RESULT will never fail once the process is running.
-    LOG_FLAG_VALIDATION_ERROR(flag_name, flag_compression_type) << res.status().ToString();
-    return false;
-  }
-  return true;
-}
-
-bool KeyValueEncodingFormatValidator(const char* flag_name, const std::string& flag_value) {
-  auto res = yb::docdb::GetConfiguredKeyValueEncodingFormat(flag_value);
-  bool ok = res.ok();
-  if (!ok) {
-    LOG_FLAG_VALIDATION_ERROR(flag_name, flag_value) << res.status();
-  }
-  return ok;
-}
-
-} // namespace
-
-DEFINE_validator(compression_type, &CompressionTypeValidator);
-DEFINE_validator(regular_tablets_data_block_key_value_encoding, &KeyValueEncodingFormatValidator);
+DEFINE_validator(regular_tablets_data_block_key_value_encoding,
+    FLAG_OK_VALIDATOR(yb::docdb::GetConfiguredKeyValueEncodingFormat(_value)));
 
 using std::shared_ptr;
 using std::string;
@@ -677,6 +662,8 @@ void InitRocksDBOptions(
   if (FLAGS_num_reserved_small_compaction_threads != -1) {
     options->num_reserved_small_compaction_threads = FLAGS_num_reserved_small_compaction_threads;
   }
+
+  options->max_manifest_file_size = FLAGS_rocksdb_max_manifest_file_size;
 
   // Since the flag validator for FLAGS_compression_type will fail if the result of this call is not
   // OK, this CHECK_RESULT should never fail and is safe.

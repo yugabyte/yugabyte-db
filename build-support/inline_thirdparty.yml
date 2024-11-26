@@ -15,8 +15,8 @@
 
 dependencies:
   - name: usearch
-    git_url: https://github.com/unum-cloud/usearch
-    commit: 191d9bb46fe5e2a44d1505ce7563ed51c7e55868
+    git_url: https://github.com/yugabyte/usearch
+    tag: v2.15.3-yb-2
     src_dir: include
     dest_dir: usearch
 
@@ -27,8 +27,10 @@ dependencies:
     dest_dir: fp16
 
   - name: hnswlib
-    git_url: https://github.com/nmslib/hnswlib
-    commit: 2142dc6f4dd08e64ab727a7bbd93be7f732e80b0
+    git_url: https://github.com/yugabyte/hnswlib
+    # c1b9b79a is the commit in the upstream repo that we branched off of. We apply our patches to
+    # our branch c1b9b79a-yb while waiting for our PRs to be merged in the official Hnswlib.
+    tag: vc1b9b79a-yb-1
     src_dir: hnswlib
     dest_dir: hnswlib/hnswlib
 

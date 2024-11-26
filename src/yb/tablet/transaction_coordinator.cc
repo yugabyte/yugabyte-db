@@ -820,6 +820,7 @@ class TransactionState {
           << "Deadlock reason already set: " << deadlock_reason_;
       deadlock_time_ = data.hybrid_time;
       deadlock_reason_ = deadlock_reason;
+      LOG_IF_WITH_PREFIX(INFO, !abort_waiters_.empty()) << deadlock_reason;
     }
     NotifyAbortWaiters(TransactionStatusResult::Aborted());
     return Status::OK();
@@ -1730,7 +1731,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
 
     for (auto& update : actions->updates) {
       auto submit_status =
-          context_.SubmitUpdateTransaction(std::move(update), actions->leader_term);
+          context_.SubmitUpdateTransaction(update, actions->leader_term);
       if (!submit_status.ok()) {
         LOG_WITH_PREFIX(DFATAL)
             << "Could not submit transaction status update operation: "

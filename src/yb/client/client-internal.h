@@ -207,6 +207,15 @@ class YBClient::Data {
                                       const TableId& index_id,
                                       CoarseTimePoint deadline);
 
+  // Has the index entered the backfill stage yet?
+  // Returns true if the backfill has started or has already completed.
+  // Returns false if the index is not backfilling yet or is not yet part of the indexed table
+  // schema.
+  // Returns a bad Status if the index is being dropped, or it encountered a backfill error.
+  Result<bool> IsBackfillIndexStarted(
+      YBClient* client, const TableId& index_table_id, const TableId& indexed_table_id,
+      CoarseTimePoint deadline);
+
   Result<master::GetBackfillStatusResponsePB> GetBackfillStatus(
     const std::vector<std::string_view>& table_ids,
     const CoarseTimePoint deadline);
@@ -259,21 +268,21 @@ class YBClient::Data {
                         const TableId& table_id,
                         CoarseTimePoint deadline,
                         YBTableInfo* info,
-                        master::IncludeInactive include_inactive = master::IncludeInactive::kFalse,
+                        master::IncludeHidden include_hidden = master::IncludeHidden::kFalse,
                         master::GetTableSchemaResponsePB* resp = nullptr);
   Status GetTableSchema(YBClient* client,
                         const YBTableName& table_name,
                         CoarseTimePoint deadline,
                         std::shared_ptr<YBTableInfo> info,
                         StatusCallback callback,
-                        master::IncludeInactive include_inactive = master::IncludeInactive::kFalse,
+                        master::IncludeHidden include_hidden = master::IncludeHidden::kFalse,
                         master::GetTableSchemaResponsePB* resp_ignored = nullptr);
   Status GetTableSchema(YBClient* client,
                         const TableId& table_id,
                         CoarseTimePoint deadline,
                         std::shared_ptr<YBTableInfo> info,
                         StatusCallback callback,
-                        master::IncludeInactive include_inactive = master::IncludeInactive::kFalse,
+                        master::IncludeHidden include_hidden = master::IncludeHidden::kFalse,
                         master::GetTableSchemaResponsePB* resp = nullptr);
   Status GetTablegroupSchemaById(YBClient* client,
                                  const TablegroupId& tablegroup_id,
@@ -348,8 +357,7 @@ class YBClient::Data {
   void GetTableLocations(
       YBClient* client, const TableId& table_id, int32_t max_tablets,
       RequireTabletsRunning require_tablets_running, PartitionsOnly partitions_only,
-      CoarseTimePoint deadline, GetTableLocationsCallback callback,
-      master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
+      CoarseTimePoint deadline, GetTableLocationsCallback callback);
 
   bool IsTabletServerLocal(const internal::RemoteTabletServer& rts) const;
 
@@ -503,9 +511,7 @@ class YBClient::Data {
 
   bool IsMultiMaster();
 
-  void StartShutdown();
-
-  void CompleteShutdown();
+  void Shutdown();
 
   void DoSetMasterServerProxy(
       CoarseTimePoint deadline, bool skip_resolution, bool wait_for_leader_election);

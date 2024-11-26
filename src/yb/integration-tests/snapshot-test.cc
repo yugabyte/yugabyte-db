@@ -438,8 +438,8 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
         if (tablet_peer->tablet_metadata()->table_id() == table_id &&
             !tablet_peer->tablet_metadata()->hidden()) {
           return STATUS_FORMAT(
-              IllegalState, "Tablet $0 of table $1 not hidden on tserver",
-              tablet_peer->tablet_id(), table_id);
+              IllegalState, "Tablet $0 of table $1 not hidden on tserver $2",
+              tablet_peer->tablet_id(), table_id, ts->server()->permanent_uuid());
         }
       }
     }
@@ -584,7 +584,9 @@ TEST_F(SnapshotTest, ImportedSnapshotsDoNotBlockCleanup) {
 
   // Drop table and verify table is dropped, not hidden.
   ASSERT_OK(client_->DeleteTable(workload.table_name(), true /* wait */));
-  ASSERT_TRUE(ASSERT_RESULT(IsTableDropped(table->id())));
+  ASSERT_OK(WaitFor(
+      std::bind(&SnapshotTest::IsTableDropped, this, table->id()), 120s,
+      "Timed out waiting for table to be dropped"));
 }
 
 YB_STRONGLY_TYPED_BOOL(Imported);

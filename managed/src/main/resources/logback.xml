@@ -185,11 +185,13 @@
   <appender name="ASYNCSTDOUT" class="ch.qos.logback.classic.AsyncAppender">
     <appender-ref ref="STDOUT" />
     <includeCallerData>true</includeCallerData>
+    <neverBlock>true</neverBlock>
   </appender>
 
   <appender name="ASYNCFILE" class="ch.qos.logback.classic.AsyncAppender">
     <appender-ref ref="SIFT_FILE" />
     <includeCallerData>true</includeCallerData>
+    <neverBlock>true</neverBlock>
   </appender>
 
   <logger name="play" level="INFO" />

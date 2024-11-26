@@ -37,6 +37,7 @@
 #include "yb/tserver/pg_create_table.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
@@ -46,6 +47,11 @@
 DEFINE_RUNTIME_bool(check_bootstrap_required, false,
     "Is it necessary to check whether bootstrap is required for Universe Replication.");
 
+DEFINE_RUNTIME_uint32(
+    xcluster_ensure_sequence_updates_in_wal_timeout_sec, 3 * 60,
+    "Timeout for XClusterEnsureSequenceUpdatesAreInWal RPCs.");
+DEFINE_validator(xcluster_ensure_sequence_updates_in_wal_timeout_sec, FLAG_GT_VALUE_VALIDATOR(0));
+
 DEFINE_test_flag(bool, allow_ycql_transactional_xcluster, false,
     "Determines if xCluster transactional replication on YCQL tables is allowed.");
 
@@ -54,6 +60,9 @@ DEFINE_test_flag(bool, fail_universe_replication_merge, false,
 
 DEFINE_test_flag(bool, exit_unfinished_merging, false,
     "Whether to exit part way through the merging universe process.");
+
+DEFINE_test_flag(bool, skip_schema_validation, false,
+    "Skip schema validation during xCluster replication setup.");
 
 DECLARE_bool(enable_xcluster_auto_flag_validation);
 
@@ -257,7 +266,7 @@ Status XClusterInboundReplicationGroupSetupTask::FirstStep() {
     auto local_client = master_.client_future();
     RETURN_NOT_OK(tserver::CreateSequencesDataTable(
         local_client.get(), CoarseMonoClock::now() +
-                                MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec)));
+        MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec)));
   }
 
   ScheduleNextStep(
@@ -274,8 +283,8 @@ Status XClusterInboundReplicationGroupSetupTask::SetupDDLReplicationExtension() 
     for (const auto& namespace_id : data_.target_namespace_ids) {
       auto namespace_name = VERIFY_RESULT(catalog_manager_.FindNamespaceById(namespace_id))->name();
       Synchronizer sync;
-      LOG(INFO) << "Setting up DDL replication extension for namespace " << namespace_id << " ("
-                << namespace_name << ")";
+      LOG_WITH_PREFIX(INFO) << "Setting up DDL replication extension for namespace " << namespace_id
+                            << " (" << namespace_name << ")";
       RETURN_NOT_OK(master::SetupDDLReplicationExtension(
           catalog_manager_, namespace_name, XClusterDDLReplicationRole::kTarget,
           CoarseMonoClock::now() +
@@ -284,6 +293,29 @@ Status XClusterInboundReplicationGroupSetupTask::SetupDDLReplicationExtension() 
       RETURN_NOT_OK_PREPEND(sync.Wait(), "Failed to setup xCluster DDL replication extension");
     }
   }
+
+  if (data_.automatic_ddl_mode && FLAGS_TEST_xcluster_enable_sequence_replication &&
+      !is_alter_replication_) {
+    ScheduleNextStep(
+        std::bind(
+            &XClusterInboundReplicationGroupSetupTask::BootstrapSequencesData, shared_from(this)),
+        "BootstrapSequencesData");
+  } else {
+    ScheduleNextStep(
+        std::bind(&XClusterInboundReplicationGroupSetupTask::CreateTableTasks, shared_from(this)),
+        "CreateTableTasks");
+  }
+  return Status::OK();
+}
+
+Status XClusterInboundReplicationGroupSetupTask::BootstrapSequencesData() {
+  LOG_WITH_PREFIX(INFO) << "Bootstrapping sequences_data for namespaces "
+                        << AsString(data_.source_namespace_ids);
+
+  auto deadline = CoarseMonoClock::Now() +
+                  MonoDelta::FromSeconds(FLAGS_xcluster_ensure_sequence_updates_in_wal_timeout_sec);
+  RETURN_NOT_OK(GetXClusterClient().EnsureSequenceUpdatesAreInWal(
+      data_.replication_group_id, data_.source_namespace_ids, deadline));
 
   ScheduleNextStep(
       std::bind(&XClusterInboundReplicationGroupSetupTask::CreateTableTasks, shared_from(this)),
@@ -742,8 +774,7 @@ Status XClusterTableSetupTask::ProcessTable(
   schema_versions->set_current_producer_schema_version(source_info->schema.version());
   schema_versions->set_current_consumer_schema_version(target_schema.version());
 
-  RETURN_NOT_OK(
-      PopulateTableStreamEntry(target_schema.identifier().table_id(), target_schema.version()));
+  RETURN_NOT_OK(PopulateTableStreamEntry(target_schema.identifier().table_id()));
 
   return ValidateBootstrapAndSetupStreams();
 }
@@ -755,7 +786,7 @@ Status XClusterTableSetupTask::ProcessTableWithoutSchemaValidation() {
   schema_versions->set_current_producer_schema_version(0);
   schema_versions->set_current_consumer_schema_version(0);
 
-  RETURN_NOT_OK(PopulateTableStreamEntry(*target_table_id_, 0));
+  RETURN_NOT_OK(PopulateTableStreamEntry(*target_table_id_));
 
   return ValidateBootstrapAndSetupStreams();
 }
@@ -832,10 +863,7 @@ Status XClusterTableSetupTask::ProcessTablegroup(
                                           ? GetColocationParentTableId(target_tablegroup_id)
                                           : GetTablegroupParentTableId(target_tablegroup_id);
 
-  auto target_schema_version =
-      VERIFY_RESULT(parent_task_->catalog_manager_.GetTableSchemaVersion(target_parent_table_id));
-
-  RETURN_NOT_OK(PopulateTableStreamEntry(target_parent_table_id, target_schema_version));
+  RETURN_NOT_OK(PopulateTableStreamEntry(target_parent_table_id));
 
   return ValidateBootstrapAndSetupStreams();
 }
@@ -915,6 +943,9 @@ Result<GetTableSchemaResponsePB> XClusterTableSetupTask::ValidateSourceSchemaAnd
     RETURN_NOT_OK(SchemaFromPB(table_schema_resp.schema(), &target_schema));
 
     // We now have a table match. Validate the schema.
+    if (FLAGS_TEST_skip_schema_validation) {
+      break;  // TODO(#23078): Will replace this with better checks.
+    }
     SCHECK(
         target_schema.EquivalentForDataCopy(source_schema), IllegalState,
         Format(
@@ -965,9 +996,8 @@ Result<GetTableSchemaResponsePB> XClusterTableSetupTask::ValidateSourceSchemaAnd
   return table_schema_resp;
 }
 
-Status XClusterTableSetupTask::PopulateTableStreamEntry(
-    const TableId& target_table_id, const SchemaVersion& target_schema_version) {
-  VLOG_WITH_PREFIX_AND_FUNC(1) << YB_STRUCT_TO_STRING(target_table_id, target_schema_version);
+Status XClusterTableSetupTask::PopulateTableStreamEntry(const TableId& target_table_id) {
+  VLOG_WITH_PREFIX_AND_FUNC(1) << YB_STRUCT_TO_STRING(target_table_id);
 
   SCHECK(
       !parent_task_->xcluster_manager_.IsTableReplicationConsumer(target_table_id), IllegalState,
@@ -978,15 +1008,6 @@ Status XClusterTableSetupTask::PopulateTableStreamEntry(
   auto& stream_entry = table_setup_info_.stream_entry;
   stream_entry.set_consumer_table_id(target_table_id);
   stream_entry.set_producer_table_id(source_table_id_);
-
-  RSTATUS_DCHECK_NE(
-      target_schema_version, cdc::kInvalidSchemaVersion, IllegalState,
-      Format(
-          "Invalid target schema version for source table $0, target table $1", source_table_id_,
-          target_table_id));
-
-  stream_entry.mutable_producer_schema()->set_last_compatible_consumer_schema_version(
-      target_schema_version);
 
   if (parent_task_->data_.automatic_ddl_mode) {
     // Mark this stream as special if it is for the ddl_queue table.
@@ -1117,8 +1138,7 @@ void XClusterTableSetupTask::PopulateTabletMapping() {
   parent_task_->GetYbClient().GetTableLocations(
       stripped_source_table_id, /* max_tablets = */ std::numeric_limits<int32_t>::max(),
       RequireTabletsRunning::kTrue, PartitionsOnly::kTrue,
-      std::bind(&XClusterTableSetupTask::PopulateTabletMappingCallback, shared_from(this), _1),
-      IncludeInactive(parent_task_->data_.TargetTableIdsProvided()));
+      std::bind(&XClusterTableSetupTask::PopulateTabletMappingCallback, shared_from(this), _1));
 }
 
 void XClusterTableSetupTask::PopulateTabletMappingCallback(

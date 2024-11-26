@@ -82,5 +82,5 @@
   when: ssh_config.ssh_type != "ssh2"
 
 - name: "Setup {{ create_user.name }} ssh"
-  include: setup-ssh.yml
+  import_tasks: setup-ssh.yml
   when: ssh_config is defined and ssh_config.enabled

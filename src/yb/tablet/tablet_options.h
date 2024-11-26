@@ -64,6 +64,7 @@ struct TabletOptions {
 };
 
 using TransactionManagerProvider = std::function<client::TransactionManager&()>;
+using VectorIndexThreadPoolProvider = std::function<rpc::ThreadPool*()>;
 
 struct TabletInitData {
   RaftGroupMetadataPtr metadata;
@@ -94,6 +95,7 @@ struct TabletInitData {
   std::function<SchemaVersion(const TableId&, const ColocationId&)>
       get_min_xcluster_schema_version = nullptr;
   rpc::Messenger* messenger = nullptr;
+  VectorIndexThreadPoolProvider vector_index_thread_pool_provider = {};
 };
 
 } // namespace tablet

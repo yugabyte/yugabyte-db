@@ -26,7 +26,7 @@
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
-#include "yb/vector/usearch_include_wrapper_internal.h"
+#include "yb/vector_index/usearch_include_wrapper_internal.h"
 
 namespace yb {
 

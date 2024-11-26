@@ -15,14 +15,31 @@
 #include "source_ddl_end_handler.h"
 
 #include "catalog/pg_attrdef_d.h"
+#include "catalog/pg_cast_d.h"
+#include "catalog/pg_collation_d.h"
 #include "catalog/pg_constraint_d.h"
+#include "catalog/pg_conversion_d.h"
+#include "catalog/pg_extension_d.h"
+#include "catalog/pg_foreign_data_wrapper_d.h"
+#include "catalog/pg_foreign_server_d.h"
+#include "catalog/pg_namespace_d.h"
+#include "catalog/pg_operator_d.h"
+#include "catalog/pg_opclass_d.h"
+#include "catalog/pg_opfamily_d.h"
+#include "catalog/pg_policy_d.h"
+#include "catalog/pg_proc_d.h"
+#include "catalog/pg_rewrite_d.h"
+#include "catalog/pg_statistic_ext.h"
+#include "catalog/pg_trigger_d.h"
 #include "catalog/pg_type_d.h"
+#include "catalog/pg_user_mapping_d.h"
 #include "executor/spi.h"
 #include "json_util.h"
 #include "lib/stringinfo.h"
 
 #include "extension_util.h"
 #include "pg_yb_utils.h"
+#include "tcop/cmdtag.h"
 #include "utils/jsonb.h"
 #include "utils/palloc.h"
 #include "utils/rel.h"
@@ -35,6 +52,57 @@
 #define SQL_DROP_OBJECT_TYPE_COLUMN_ID 3
 #define SQL_DROP_SCHEMA_NAME_COLUMN_ID 4
 #define SQL_DROP_OBJECT_NAME_COLUMN_ID 5
+
+#define ALLOWED_DDL_LIST \
+	X(CMDTAG_COMMENT) \
+	X(CMDTAG_CREATE_AGGREGATE) \
+	X(CMDTAG_CREATE_ACCESS_METHOD) \
+	X(CMDTAG_CREATE_CAST) \
+	X(CMDTAG_CREATE_COLLATION) \
+	X(CMDTAG_CREATE_DOMAIN) \
+	X(CMDTAG_CREATE_EXTENSION) \
+	X(CMDTAG_CREATE_FOREIGN_DATA_WRAPPER) \
+	X(CMDTAG_CREATE_FOREIGN_TABLE) \
+	X(CMDTAG_CREATE_FUNCTION) \
+	X(CMDTAG_CREATE_OPERATOR) \
+	X(CMDTAG_CREATE_OPERATOR_CLASS) \
+	X(CMDTAG_CREATE_OPERATOR_FAMILY) \
+	X(CMDTAG_CREATE_POLICY) \
+	X(CMDTAG_CREATE_PROCEDURE) \
+	X(CMDTAG_CREATE_ROUTINE) \
+	X(CMDTAG_CREATE_RULE) \
+	X(CMDTAG_CREATE_SCHEMA) \
+	X(CMDTAG_CREATE_SERVER) \
+	X(CMDTAG_CREATE_STATISTICS) \
+	X(CMDTAG_CREATE_TEXT_SEARCH_CONFIGURATION) \
+	X(CMDTAG_CREATE_TEXT_SEARCH_DICTIONARY) \
+	X(CMDTAG_CREATE_TEXT_SEARCH_PARSER) \
+	X(CMDTAG_CREATE_TEXT_SEARCH_TEMPLATE) \
+	X(CMDTAG_CREATE_TRIGGER) \
+	X(CMDTAG_CREATE_USER_MAPPING) \
+	X(CMDTAG_CREATE_VIEW) \
+	X(CMDTAG_IMPORT_FOREIGN_SCHEMA) \
+	X(CMDTAG_ALTER_AGGREGATE) \
+	X(CMDTAG_ALTER_CAST) \
+	X(CMDTAG_ALTER_COLLATION) \
+	X(CMDTAG_ALTER_DOMAIN) \
+	X(CMDTAG_ALTER_FUNCTION) \
+	X(CMDTAG_ALTER_OPERATOR) \
+	X(CMDTAG_ALTER_OPERATOR_CLASS) \
+	X(CMDTAG_ALTER_OPERATOR_FAMILY) \
+	X(CMDTAG_ALTER_POLICY) \
+	X(CMDTAG_ALTER_PROCEDURE) \
+	X(CMDTAG_ALTER_ROUTINE) \
+	X(CMDTAG_ALTER_RULE) \
+	X(CMDTAG_ALTER_SCHEMA) \
+	X(CMDTAG_ALTER_STATISTICS) \
+	X(CMDTAG_ALTER_TEXT_SEARCH_CONFIGURATION) \
+	X(CMDTAG_ALTER_TEXT_SEARCH_DICTIONARY) \
+	X(CMDTAG_ALTER_TEXT_SEARCH_PARSER) \
+	X(CMDTAG_ALTER_TEXT_SEARCH_TEMPLATE) \
+	X(CMDTAG_ALTER_TRIGGER) \
+	X(CMDTAG_ALTER_VIEW) \
+	X(CMDTAG_SECURITY_LABEL)
 
 typedef struct NewRelMapEntry
 {
@@ -71,20 +139,46 @@ SPI_GetBool(HeapTuple spi_tuple, int column_id)
 }
 
 bool
+IsPrimaryIndex(Relation rel)
+{
+	return (rel->rd_rel->relkind == RELKIND_INDEX ||
+			rel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX) &&
+		   YBIsCoveredByMainTable(rel);
+}
+
+bool
+IsPassThroughDdlSupported(const char *command_tag_name)
+{
+	if (command_tag_name == NULL || *command_tag_name == '\0')
+		return false;
+
+	CommandTag command_tag = GetCommandTagEnum(command_tag_name);
+	switch (command_tag)
+	{
+		#define X(CMD_TAG_VALUE) case CMD_TAG_VALUE: return true;
+		ALLOWED_DDL_LIST
+		#undef X
+		default: return false;
+	}
+}
+
+bool
 ShouldReplicateCreateRelation(Oid rel_oid, List **new_rel_list)
 {
 	Relation rel = RelationIdGetRelation(rel_oid);
 	if (!rel)
 		elog(ERROR, "Could not find relation with oid %d", rel_oid);
-
-	// Ignore temporary tables and covered indexes (same as main table).
-	if (!IsYBBackedRelation(rel) ||
-		((rel->rd_rel->relkind == RELKIND_INDEX ||
-		  rel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX) &&
-		 YBIsCoveredByMainTable(rel)))
+	// Ignore temporary tables.
+	if (!IsYBBackedRelation(rel))
 	{
 		RelationClose(rel);
 		return false;
+	}
+	// Primary indexes are YB-backed, but don't have table properties.
+	if (IsPrimaryIndex(rel))
+	{
+		RelationClose(rel);
+		return true;
 	}
 
 	// Also need to disallow colocated objects until that is supported.
@@ -104,6 +198,37 @@ ShouldReplicateCreateRelation(Oid rel_oid, List **new_rel_list)
 
 	*new_rel_list = lappend(*new_rel_list, new_rel_entry);
 
+	return true;
+}
+
+bool
+ShouldReplicateAlterReplication(Oid rel_oid)
+{
+	Relation rel = RelationIdGetRelation(rel_oid);
+	if (!rel)
+		elog(ERROR, "Could not find relation with oid %d", rel_oid);
+	// Ignore temporary tables.
+	if (!IsYBBackedRelation(rel))
+	{
+		RelationClose(rel);
+		return false;
+	}
+	// Primary indexes are YB-backed, but don't have table properties.
+	if (IsPrimaryIndex(rel))
+	{
+		RelationClose(rel);
+		return true;
+	}
+
+	// Also need to disallow colocated objects until that is supported.
+	YbTableProperties table_props = YbGetTableProperties(rel);
+	bool is_colocated = table_props->is_colocated;
+	RelationClose(rel);
+	if (is_colocated && !TEST_AllowColocatedObjects)
+		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg("Colocated objects are not yet supported by "
+							   "yb_xcluster_ddl_replication\n%s",
+							   kManualReplicationErrorMsg)));
 	return true;
 }
 
@@ -135,6 +260,16 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		{
 			should_replicate_ddl |=
 				ShouldReplicateCreateRelation(obj_id, &new_rel_list);
+		}
+		else if (command_tag == CMDTAG_ALTER_TABLE ||
+				 command_tag == CMDTAG_ALTER_INDEX)
+		{
+			// TODO(jhe): May need finer grained control over ALTER TABLE commands.
+			should_replicate_ddl |= ShouldReplicateAlterReplication(obj_id);
+		}
+		else if (IsPassThroughDdlSupported(command_tag_name))
+		{
+			should_replicate_ddl = true;
 		}
 		else
 		{
@@ -202,10 +337,10 @@ ProcessSourceEventTriggerDroppedObjects()
 				/*
 				 * Since this trigger only happens after the objects are already
 				 * deleted, there is not that much that we can validate here.
-         * If required for certain checks, we could:
-         * - make a call to yb-master for any docdb metadata via pggate.
-         * - or could modify pg_event_trigger_dropped_objects / create
-         *   yb_event_trigger_dropped_objects to provide the data we require.
+				 * If required for certain checks, we could:
+				 * - make a call to yb-master for any docdb metadata via pggate.
+				 * - or could modify pg_event_trigger_dropped_objects / create
+				 *   yb_event_trigger_dropped_objects to provide the data we require.
 				 */
 
 				/*
@@ -219,8 +354,21 @@ ProcessSourceEventTriggerDroppedObjects()
 										   kManualReplicationErrorMsg)));
 				switch_fallthrough();
 			case AttrDefaultRelationId:
+			case CastRelationId:
+			case CollationRelationId:
 			case ConstraintRelationId:
+			case ConversionRelationId:
+			case ExtensionRelationId:
+			case ForeignDataWrapperRelationId:
+			case OperatorClassRelationId:
+			case OperatorFamilyRelationId:
+			case OperatorRelationId:
+			case PolicyRelationId:
+			case ProcedureRelationId:
+			case StatisticExtRelationId:
+			case TriggerRelationId:
 			case TypeRelationId:
+			case UserMappingRelationId:
 				should_replicate_ddl = true;
 				break;
 			default:

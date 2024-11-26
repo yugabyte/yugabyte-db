@@ -825,7 +825,7 @@ TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   CHECK_EQ(versions.size(), 1);
   ASSERT_OK(CheckMatch(versions.begin()->second, kCurrentCatalogVersion));
   // A global-impact DDL statement that increments catalog version still works.
-  ASSERT_OK(conn_yugabyte.Execute("ALTER ROLE yugabyte SUPERUSER"));
+  ASSERT_OK(conn_yugabyte.Execute("ALTER ROLE yugabyte NOSUPERUSER"));
   constexpr CatalogVersion kNewCatalogVersion{2, 2};
   versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
   CHECK_EQ(versions.size(), 1);
@@ -1157,7 +1157,7 @@ TEST_F(PgCatalogVersionTest, ResetIsGlobalDdlState) {
   ASSERT_OK(conn_yugabyte.Execute("SET yb_test_fail_next_inc_catalog_version=true"));
   // The following ALTER ROLE is a global impact DDL statement. It will
   // fail due to yb_test_fail_next_inc_catalog_version=true.
-  auto status = conn_yugabyte.Execute("ALTER ROLE yugabyte SUPERUSER");
+  auto status = conn_yugabyte.Execute("ALTER ROLE yugabyte NOSUPERUSER");
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(), "Failed increment catalog version as requested");
 
@@ -1675,6 +1675,23 @@ TEST_F(PgCatalogVersionTest, SimulateRollingUpgrade) {
   ASSERT_TRUE(status.IsNetworkError()) << status;
   const string msg = "permission denied for table t";
   ASSERT_STR_CONTAINS(status.ToString(), msg);
+}
+
+// This test that ALTER ROLE statement will increment catalog version
+// if --FLAGS_ysql_yb_enable_nop_alter_role_optimization=false.
+TEST_F(PgCatalogVersionTest, DisableNopAlterRoleOptimization) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto v1 = ASSERT_RESULT(GetCatalogVersion(&conn));
+  // This ALTER ROLE should be a nop DDL.
+  ASSERT_OK(conn.Execute("ALTER ROLE yugabyte SUPERUSER"));
+  auto v2 = ASSERT_RESULT(GetCatalogVersion(&conn));
+  ASSERT_EQ(v2, v1);
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "ysql_yb_enable_nop_alter_role_optimization", "false"));
+  // This ALTER ROLE is not a nop DDL because the nop alter role optimization is disabled.
+  ASSERT_OK(conn.Execute("ALTER ROLE yugabyte SUPERUSER"));
+  auto v3 = ASSERT_RESULT(GetCatalogVersion(&conn));
+  ASSERT_EQ(v3, v2 + 1);
 }
 
 } // namespace pgwrapper

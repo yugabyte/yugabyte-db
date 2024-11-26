@@ -44,7 +44,9 @@ struct XClusterStatus;
 
 class XClusterManagerIf {
  public:
-  virtual Result<HybridTime> GetXClusterSafeTime(const NamespaceId& namespace_id) const = 0;
+  virtual Result<std::optional<HybridTime>> TryGetXClusterSafeTimeForBackfill(
+      const std::vector<TableId>& index_table_ids, const TableInfoPtr& indexed_table,
+      const LeaderEpoch& epoch) const = 0;
   virtual Status RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) = 0;
   virtual Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap() const = 0;
   virtual Status SetXClusterNamespaceToSafeTimeMap(
@@ -101,6 +103,11 @@ class XClusterManagerIf {
 
   virtual Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
       const xcluster::ReplicationGroupId& replication_group_id, bool skip_health_check) = 0;
+
+  virtual bool IsTableBiDirectionallyReplicated(const TableId& table_id) const = 0;
+
+  virtual bool ShouldAutoAddIndexesToBiDirectionalXCluster(
+      const TableInfo& indexed_table) const = 0;
 
  protected:
   virtual ~XClusterManagerIf() = default;

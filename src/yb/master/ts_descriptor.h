@@ -86,16 +86,15 @@ class TSInformationPB;
 class ReplicationInfoPB;
 class TServerMetricsPB;
 
-typedef util::SharedPtrTuple<
-    tserver::TabletServerAdminServiceProxy,
-    tserver::TabletServerServiceProxy,
-    tserver::TabletServerBackupServiceProxy,
-    cdc::CDCServiceProxy,
-    consensus::ConsensusServiceProxy>
-    ProxyTuple;
+using ProxyTuple = util::SharedPtrTuple<
+  tserver::TabletServerAdminServiceProxy,
+  tserver::TabletServerServiceProxy,
+  tserver::TabletServerBackupServiceProxy,
+  cdc::CDCServiceProxy,
+  consensus::ConsensusServiceProxy>;
 
 struct PersistentTServerInfo
-    : public Persistent<SysTServerEntryPB> {};
+    : public Persistent<SysTabletServerEntryPB> {};
 
 // Master-side view of a single tablet server.
 //
@@ -103,10 +102,14 @@ struct PersistentTServerInfo
 // This class is thread-safe.
 class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
  public:
+  explicit TSDescriptor(
+      const std::string& permanent_uuid, RegisteredThroughHeartbeat registered_through_heartbeat,
+      CloudInfoPB&& cloud_info, rpc::ProxyCache* proxy_cache);
+
   static Result<std::pair<TSDescriptorPtr, TSDescriptor::WriteLock>> CreateNew(
       const NodeInstancePB& instance,
       const TSRegistrationPB& registration,
-      CloudInfoPB local_cloud_info,
+      CloudInfoPB&& local_cloud_info,
       rpc::ProxyCache* proxy_cache,
       // What the source of this registration request is. TServers can be registered by heartbeating
       // to the master.
@@ -115,6 +118,10 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
       // TServer, the master will attempt to register the tserver even if it hasn't received a
       // heartbeat from it.
       RegisteredThroughHeartbeat registered_through_heartbeat = RegisteredThroughHeartbeat::kTrue);
+
+  static TSDescriptorPtr LoadFromEntry(
+      const std::string& permanent_uuid, const SysTabletServerEntryPB& metadata,
+      CloudInfoPB&& cloud_info, rpc::ProxyCache* proxy_cache);
 
   static std::string generate_placement_id(const CloudInfoPB& ci);
 
@@ -129,7 +136,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   // request received from the tserver. If not, this method does no mutations and returns an error
   // status.
   Status UpdateTSMetadataFromHeartbeat(
-      const TSHeartbeatRequestPB& req, TSDescriptor::WriteLock* lock);
+      const TSHeartbeatRequestPB& req, const TSDescriptor::WriteLock& lock);
 
   // Return the amount of time since the last heartbeat received from this TS.
   MonoDelta TimeSinceHeartbeat() const;
@@ -137,8 +144,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   Result<TSDescriptor::WriteLock> UpdateRegistration(
       const NodeInstancePB& instance, const TSRegistrationPB& registration,
-      CloudInfoPB&& local_cloud_info, RegisteredThroughHeartbeat registered_through_heartbeat,
-      rpc::ProxyCache* proxy_cache);
+      RegisteredThroughHeartbeat registered_through_heartbeat);
 
   const std::string& permanent_uuid() const { return permanent_uuid_; }
   const std::string& id() const override { return permanent_uuid(); }
@@ -312,11 +318,8 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   // Indicates that this descriptor was removed from the cluster and shouldn't be surfaced.
   bool IsReplaced() const {
-    return LockForRead()->pb.state() == SysTServerEntryPB::REPLACED;
+    return LockForRead()->pb.state() == SysTabletServerEntryPB::REPLACED;
   }
-
-  explicit TSDescriptor(
-      const std::string& permanent_uuid, RegisteredThroughHeartbeat registered_through_heartbeat);
 
   std::size_t NumTasks() const;
 
@@ -348,7 +351,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   template <typename LockType>
   Status IsReportCurrentUnlocked(
       const NodeInstancePB& ts_instance,
-      std::optional<std::reference_wrapper<const TabletReportPB>> report, LockType* lock)
+      std::optional<std::reference_wrapper<const TabletReportPB>> report, const LockType& lock)
       REQUIRES_SHARED(mutex_);
 
   struct TSMetrics {

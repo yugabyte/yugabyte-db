@@ -11,9 +11,11 @@ import (
 
 // deleteAZStorageConfigurationCmd represents the storage command
 var deleteAZStorageConfigurationCmd = &cobra.Command{
-	Use:   "delete",
-	Short: "Delete an Azure YugabyteDB Anywhere storage configuration",
-	Long:  "Delete an Azure storage configuration in YugabyteDB Anywhere",
+	Use:     "delete",
+	Aliases: []string{"remove", "rm"},
+	Short:   "Delete an Azure YugabyteDB Anywhere storage configuration",
+	Long:    "Delete an Azure storage configuration in YugabyteDB Anywhere",
+	Example: `yba storage-config azure delete --name <storage-configuration-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		storageconfigurationutil.DeleteStorageConfigurationValidation(cmd)
 	},

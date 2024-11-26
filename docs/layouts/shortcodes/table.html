@@ -1,13 +1,18 @@
 {{/* trim the data */}}
 {{- $origdata := trim .Inner " \n\t\r" -}}
 {{- $newdata := "" -}}
+
+{{/* mark code blocks with \x01 is used for matching blocks */}}
+{{- $origdata := replaceRE "[^\x01]```([^`\x01]*?)```" "```\x01$1\x01```" $origdata -}}
+
 {{/* replace | within ``` with ;-vert-;  \x01 is used for matching blocks */}}
-{{- $origdata := replaceRE "```([^`\x01]*)(\\|)([^`]*)```" "```$1;-vert-;$3```\x01" $origdata -}}
+{{- $origdata := replaceRE "```\x01([^`]*?)(\\|)([^`]*?)\x01```" "```\x01$1;-vert-;$3\x01```" $origdata -}}
 {{- range seq 1000 -}}
-    {{- $newdata := replaceRE "```([^`\x01]*)(\\|)([^`]*)```\x01" "```$1;-vert-;$3```\x01" $origdata -}}
+    {{- $newdata := replaceRE "```\x01([^`]*?)(\\|)([^`]*?)\x01```" "```\x01$1;-vert-;$3\x01```" $origdata -}}
     {{- if (eq $origdata $newdata) -}} {{- break -}} {{- end -}}
     {{- $origdata = $newdata -}}
 {{- end -}}
+
 {{- $origdata := replace $origdata "\x01" "" -}}
 {{/* fetch the header row to calculate no.of columns */}}
 {{- $header := index (findRE `[^|]*\|[^\n]*` $origdata 1) 0 -}}
@@ -20,7 +25,7 @@
     {{- if ne (mod (sub (len $cells) 1) $numcols) 0 -}}
         {{- $totalcells := len $cells -}}
         {{- warnf "incomplete table: cols:%d pipes[total:%d expected:%d] in [%q]"
-                    (sub $numcols 1) (sub $totalcells 1) 
+                    (sub $numcols 1) (sub $totalcells 1)
                     (mul $numcols (div $totalcells $numcols)) $.Page.Permalink -}}
     {{- end -}}
     {{- $table := "" -}}

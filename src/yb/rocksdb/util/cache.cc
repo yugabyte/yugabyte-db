@@ -708,7 +708,7 @@ Status LRUCache::Insert(const Slice& key, uint32_t hash, const QueryId query_id,
                         Cache::Handle** handle, Statistics* statistics) {
   // Don't use the cache if disabled by the caller using the special query id.
   if (query_id == kNoCacheQueryId) {
-    return Status::OK();
+    return STATUS(InvalidArgument, "Inserting to cache when cache is disabled");
   }
   // Allocate the memory here outside of the mutex
   // If the cache is full, we'll have to release it
@@ -941,7 +941,7 @@ class ShardedLRUCache : public Cache {
   }
 
   void* Value(Handle* handle) override {
-    return reinterpret_cast<LRUHandle*>(handle)->value;
+    return reinterpret_cast<LRUHandle*>(DCHECK_NOTNULL(handle))->value;
   }
 
   uint64_t NewId() override {

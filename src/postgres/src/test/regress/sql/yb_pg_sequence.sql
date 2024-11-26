@@ -276,13 +276,11 @@ SELECT lastval();
 -- unlogged sequences
 -- (more tests in src/test/recovery/)
 CREATE UNLOGGED SEQUENCE sequence_test_unlogged;
-/* YB: uncomment when UNLOGGED SEQUENCE is supported
 ALTER SEQUENCE sequence_test_unlogged SET LOGGED;
 \d sequence_test_unlogged
 ALTER SEQUENCE sequence_test_unlogged SET UNLOGGED;
 \d sequence_test_unlogged
 DROP SEQUENCE sequence_test_unlogged;
-*/ -- YB
 
 -- Test sequences in read-only transactions
 CREATE TEMPORARY SEQUENCE sequence_test_temp1;

@@ -15,6 +15,7 @@
 
 #include "yb/util/metrics_writer.h"
 
+#include "yb/util/debug.h"
 #include "yb/util/enums.h"
 
 DECLARE_string(metric_node_name);
@@ -120,9 +121,29 @@ void PrometheusWriter::AddAggregatedEntry(
 
   metric_name_to_entity_type_.try_emplace(metric_name, metric_entity_type);
 
-  auto [stored_attr_it, _] =
+  auto [attr_it, inserted] =
       aggregated_attributes_by_metric_type_[metric_entity_type].try_emplace(aggregation_id, attr);
-  DCHECK(stored_attr_it->second == attr);
+
+  if (inserted && aggregation_id == kSeverLevelAggregationId) {
+    attr_it->second.erase("table_id");
+    attr_it->second.erase("table_name");
+    attr_it->second.erase("table_type");
+    attr_it->second.erase("namespace_name");
+  }
+
+  if (kIsDebug) {
+    auto expected_attr = attr;
+
+    if (aggregation_id == kSeverLevelAggregationId) {
+      expected_attr.erase("table_id");
+      expected_attr.erase("table_name");
+      expected_attr.erase("table_type");
+      expected_attr.erase("namespace_name");
+    }
+
+    LOG_IF(DFATAL, attr_it->second != expected_attr)
+        << "Cached attributes differ from the expected attributes for metric " << metric_name;
+  }
 
   auto& stored_value = aggregated_values_[metric_name][aggregation_id];
   switch (aggregation_function) {
@@ -160,7 +181,8 @@ Status PrometheusWriter::WriteSingleEntry(
            metric_entity_type == kCdcsdkMetricEntityName);
     auto stream_id_it = attr.find("stream_id");
     DCHECK(stream_id_it != attr.end());
-    AddAggregatedEntry(stream_id_it->second, type, description, attr, name, value,
+    AddAggregatedEntry(
+        stream_id_it->second, type, description, attr, name, value,
         aggregation_function, metric_entity_type);
     // Metrics from xcluster or cdcsdk entity should only be exposed on stream level.
     DCHECK(aggregation_levels == kStreamLevel);
@@ -170,7 +192,8 @@ Status PrometheusWriter::WriteSingleEntry(
 
   if (aggregation_levels & kTableLevel) {
     DCHECK(table_id_it != attr.end());
-    AddAggregatedEntry(table_id_it->second, type, description, attr, name, value,
+    AddAggregatedEntry(
+        table_id_it->second, type, description, attr, name, value,
         aggregation_function, metric_entity_type);
   }
 
@@ -185,13 +208,9 @@ Status PrometheusWriter::WriteSingleEntry(
       FlushHelpAndTypeIfRequested(name, type, description);
       return FlushSingleEntry(attr, name, value);
     }
-    MetricEntity::AttributeMap new_attr = attr;
-    new_attr.erase("table_id");
-    new_attr.erase("table_name");
-    new_attr.erase("table_type");
-    new_attr.erase("namespace_name");
-    AddAggregatedEntry(metric_entity_type, type, description, new_attr, name, value,
-        aggregation_function, metric_entity_type);
+    AddAggregatedEntry(
+        kSeverLevelAggregationId, type, description, attr,
+        name, value, aggregation_function, metric_entity_type);
   }
 
   return Status::OK();

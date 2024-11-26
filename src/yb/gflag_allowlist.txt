@@ -41,6 +41,7 @@ ref_counted_debug_type_name_regex
 regular_tablets_data_block_key_value_encoding
 rocksdb_compact_flush_rate_limit_sharing_mode
 ssl_protocols
+time_source
 trace_to_console
 tryfromenv
 undefok

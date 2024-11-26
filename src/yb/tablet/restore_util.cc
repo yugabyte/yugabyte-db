@@ -112,7 +112,7 @@ Result<std::optional<ValueType>> GetColumnValueNotPacked(
 
 Status FetchState::SetPrefix(const Slice& prefix) {
   if (prefix_.empty()) {
-    iterator_->Seek(prefix);
+    iterator_->Seek(prefix, docdb::SeekFilter::kAll);
   } else {
     iterator_->SeekForward(prefix);
   }
@@ -249,11 +249,7 @@ Status RestorePatch::ProcessExistingOnlyEntry(
               break;
           }
         }
-        int64_t column_id_as_int64 = VERIFY_RESULT(FastDecodeSignedVarIntUnsafe(&subkey));
-        // Expect only one subkey.
-        SCHECK_EQ(subkey.empty(), true, Corruption, "Only one subkey expected");
-        ColumnId column_id;
-        RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id));
+        auto column_id = VERIFY_RESULT(ColumnId::FullyDecode(subkey));
         // Insert this column's packed row value.
         return std::visit([this, column_id, existing_key](auto& decoder) {
           auto index = decoder.packing().GetIndex(column_id);

@@ -39,6 +39,7 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
   void SetUp() override;
 
  protected:
+  void SetUpOptions(ExternalMiniClusterOptions& opts) override;
   Status StartClusterInOldVersion();
   Status StartClusterInOldVersion(const ExternalMiniClusterOptions& options);
 
@@ -52,13 +53,14 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
   Status RestartTServerInCurrentVersion(
       ExternalTabletServer& ts, bool wait_for_cluster_to_stabilize = true);
 
-  Status PerformYsqlMajorVersionUpgrade();
+  virtual Status PerformYsqlMajorCatalogUpgrade();
+  Status WaitForYsqlMajorCatalogUpgradeToFinish();
 
   Status FinalizeUpgrade();
 
   Status PromoteAutoFlags(AutoFlagClass flag_class = AutoFlagClass::kExternal);
 
-  Status FinalizeYsqlMajorVersionUpgrade();
+  Status FinalizeYsqlMajorCatalogUpgrade();
 
   Status PerformYsqlUpgrade();
 
@@ -72,13 +74,13 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
   Status RestartTServerInOldVersion(
       ExternalTabletServer& ts, bool wait_for_cluster_to_stabilize = true);
 
-  Status RollbackYsqlMajorVersion();
+  virtual Status RollbackYsqlMajorCatalogVersion();
 
   Status RollbackVolatileAutoFlags();
 
   // Wait for the cluster to stabilize after an upgrade or rollback.
-  // Waits for all tservers to register with the master leader, which happens after all tablets have
-  // been bootstrapped.
+  // Waits for all tservers to register with the master leader, which happens after all tablets
+  // have been bootstrapped.
   Status WaitForClusterToStabilize();
 
   BuildInfo old_version_info() const { return old_version_info_; }
@@ -104,9 +106,10 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
   bool is_ysql_major_version_upgrade_ = false;
 };
 
-// Supported builds
+// From build versions.
 static constexpr auto kBuild_2_20_2_4 = "2.20.2.4";
 static constexpr auto kBuild_2024_1_0_1 = "2024.1.0.1";
 static constexpr auto kBuild_2024_2_0_0 = "2024.2.0.0";
+static constexpr auto kBuild_2_25_0_0 = "2.25.0.0";
 
 }  // namespace yb

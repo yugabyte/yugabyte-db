@@ -124,8 +124,8 @@ PREREQS_ERROR_MSGS = {
             ' please free the port and restart the node.',
     'ycql_metric_port': 'YCQL metrics port {} is already in use. For accessing the YCQL metrics,' \
             ' please free the port and restart the node.',
-    'clockbound': 'Clockbound is recommended on AWS clusters. It can reduce read restart errors' \
-        ' significantly in concurrent workloads.' \
+    'clockbound': 'Clockbound is recommended on AWS/Azure/GCP clusters.' \
+        ' It can reduce read restart errors significantly in concurrent workloads.' \
         ' Relevant flag: --enhance_time_sync_via_clockbound.',
 }
 QUICK_START_LINKS = {
@@ -666,30 +666,24 @@ def get_cli_title():
     cli_title += div_line
     return cli_title
 
-def has_aws_time_sync_service():
-    try:
-        # Run the chronyc sources command and capture the output
-        result = subprocess.run(['chronyc', 'sources'], capture_output=True, text=True, timeout=1)
+def using_time_sync_service():
+    # List of recognized IP addresses and sources
+    allow_list = ['169.254.169.123', 'metadata.google.internal', 'PHC',
+                  'aws.com', 'google.com']
 
-        # Check if 169.254.169.123 is in the output
-        if result.returncode == 0 and '169.254.169.123' in result.stdout:
-            return True
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        return False
+    cmd = ['chronyc', 'sources']
+    out, err, ret_code = run_process(cmd, timeout=1, log_cmd=True)
+    if ret_code == 0:
+        for source in allow_list:
+            if source in out:
+                return True
 
     return False
 
 def is_phc_configured():
-    try:
-        # Run the chronyc sources command and capture the output
-        result = subprocess.run(['systemctl', 'status', 'clockbound'],
-                                capture_output=True, text=True, timeout=1)
-
-        # Check if PHC is in the output
-        if result.returncode == 0 and 'PHC' in result.stdout:
-            return True
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        return False
+    cmd = ['systemctl', 'status', 'clockbound']
+    out, err, retcode = run_process(cmd, timeout=1, log_cmd=True)
+    return retcode == 0 and 'PHC' in out
 
 class ControlScript(object):
     def __init__(self):
@@ -2794,11 +2788,12 @@ class ControlScript(object):
             prereqs_warn.add('ntp/chrony')
             prereqs_warn_flag = True
 
-        # Configuring clockbound is strongly recommended for AWS clusters.
-        if has_aws_time_sync_service() and not self.configs.temp_data[
-                "enhance_time_sync_via_clockbound"]:
-            prereqs_warn.add('clockbound')
-            prereqs_warn_flag = True
+        # TODO: Uncomment this block when clockbound becomes GA.
+        # # Configuring clockbound is strongly recommended for AWS clusters.
+        # if using_time_sync_service() and not self.configs.temp_data[
+        #         "enhance_time_sync_via_clockbound"]:
+        #     prereqs_warn.add('clockbound')
+        #     prereqs_warn_flag = True
 
         (failed_ports, warning_ports, mandatory_port_available,
         recommended_port_available) = self.check_ports()
@@ -4085,18 +4080,14 @@ class ControlScript(object):
         Output.init_animation("Validating system config for clockbound...")
         configure_clockbound_path = find_binary_location("configure_clockbound.sh")
         cmd = ["bash", configure_clockbound_path, "--validate"]
-        try:
-            subprocess.check_call(cmd)
-            Output.update_animation("Clockbound configured successfully.")
-        except subprocess.CalledProcessError as e:
-            exit_code = e.returncode
-            Output.update_animation("Failed to validate clockbound configuration.",
+        out, err, retcode = run_process(cmd)
+        if retcode == 0:
+            Output.update_animation("System configured for clockbound.")
+        else:
+            Output.update_animation("Failed to validate system configuration for clockbound.",
                                     status=Output.ANIMATION_FAIL)
             Output.log_error_and_exit(
-                Output.make_red("ERROR") + f": Exit code: {exit_code}."
-                " Did you run configure_clockbound.sh script?"
-            )
-
+                Output.make_red("ERROR") + ": Did you run configure_clockbound.sh script?")
 
     # Runs post_install script for linux computers.
     def post_install_yb(self):
@@ -6119,6 +6110,13 @@ class ControlScript(object):
             Output.log("thread-uml: master list updated, old list: {} ".format(
                 current_master_list) + "new list: {}".format(full_master_list))
 
+            tserver_ip_addr = self.advertise_ip()
+            tserver_ip_port = self.configs.saved_data.get("tserver_rpc_port")
+            if not YBTableServerCLIProxy.update_gflag_in_tserver(tserver_ip_addr,
+                tserver_ip_port, "tserver_master_addrs", masters_csv, True):
+                Output.log("Failed to update the master list {} " +
+                            "on the tserver node.".format(masters_csv))
+
             # Persist the config if masters have changed
             self.configs.save_configs()
 
@@ -6548,7 +6546,7 @@ class ControlScript(object):
                         ": The directory mentioned in the --cert_dir value of the configs file " +
                         "doen't exist. Please create the directory and copy the certs into that " +
                         "directory.")
-                elif args.join:
+                elif (args.join or self.configs.saved_data.get("join")):
                     # Case Scenario: When the user is trying to start and join a node
                     # to a secure cluster but the generated certs are neither present
                     # in the default directory nor given through --certs_dir flag.
@@ -7557,15 +7555,19 @@ class ControlScript(object):
 
             if args.advertise_address is None:
                 if not self.configs.saved_data.get("advertise_address"):
-                    if OS_NAME == "Linux":
-                        # Case Scenario: When advertise_address has no value in conf file
-                        # and the OS is Linux, set the advertise address to the private IP
-                        # of the machine.
-                        args.advertise_address = self.find_ip_address_of_node()
+                    if os.path.exists("/.dockerenv"):
+                            args.advertise_address = self.find_hostname_of_node()
                     else:
-                        # Case Scenario: When advertise_address has no value in conf file
-                        # and the OS is Mac, set the advertise address to 127.0.0.1.
-                        args.advertise_address = IP_LOCALHOST
+                        if OS_NAME == "Linux":
+                            # Case Scenario: When advertise_address has no value in conf file
+                            # and the OS is Linux, set the advertise address to the private IP
+                            # of the machine.
+                            args.advertise_address = self.find_ip_address_of_node()
+
+                        else:
+                            # Case Scenario: When advertise_address has no value in conf file
+                            # and the OS is Mac, set the advertise address to 127.0.0.1.
+                            args.advertise_address = IP_LOCALHOST
                 else:
                     # Case Scenario: When advertise_address has a value in conf file and then
                     # use that regardless of the OS.
@@ -7593,19 +7595,22 @@ class ControlScript(object):
                 args.background = "True"
 
             cluster_member = self.configs.saved_data.get("cluster_member")
-            if args.join is not None:
-                if not self.validate_hostname_ip(args.join):
+            join_ip = args.join if args.join else self.configs.saved_data.get("join")
+            if join_ip:
+                if not self.validate_hostname_ip(join_ip):
                     Output.log_error_and_exit(Output.make_red("ERROR") + ": --join" +
-                        " provided is not a valid address. Please try again with a valid IPV4, " +
-                        "IPV6 or DNS.")
+                        " provided is not a valid address. Please try again with a " +
+                        "valid IPV4, IPV6 or DNS.")
 
-                Output.print_and_log("Fetching configs from join IP...")
                 if not cluster_member:
+                    # Node is starting for the first time.
+                    Output.print_and_log("Fetching configs from join IP...")
+
                     # Check if tserver webserver at join_IP is reachable or not
                     # Also get the leader master(used to get the info of all tservers)
-                    master_leader = self.get_current_master_leader_from_api(args.join,
+                    master_leader = self.get_current_master_leader_from_api(join_ip,
                                                                 tserver_webserver_port)
-                    args.join = master_leader
+                    join_ip = master_leader
 
                     # Get info on all tservers
                     master_leader_hostport = "{}:{}".format(master_leader, master_webserver_port)
@@ -7616,7 +7621,7 @@ class ControlScript(object):
                         for node in [node.split(":")[0] for node in list(nodes.keys())]:
                             if args.advertise_address == node:
                                 Output.log_error_and_exit(Output.make_red("ERROR:") + " A node" +
-                                    " is already running on {}, please ".format(args.join) +
+                                    " is already running on {}, please ".format(join_ip) +
                                     "specify a valid address.")
 
                     is_placement_uuid_set = False
@@ -7683,8 +7688,8 @@ class ControlScript(object):
                     ": --certs_dir flag needs to be accompanied with the --secure flag.")
 
             if args.insecure:
-                if args.join and not cluster_member:
-                    master_hostport = "{}:{}".format(args.join, master_webserver_port)
+                if join_ip and not cluster_member:
+                    master_hostport = "{}:{}".format(join_ip, master_webserver_port)
                     if self.is_leader_master_secure(master_hostport):
                         # Case Scenario: When a User starts the 1st node in secure mode and tries
                         # to start the second node in insecure mode
@@ -7693,8 +7698,8 @@ class ControlScript(object):
                             "IP was provided in --join flag has SSL/TLS enabled. Cannot join a " +
                             "secure and an insecure node.")
             elif args.secure:
-                if args.join and not cluster_member:
-                    master_hostport = "{}:{}".format(args.join, master_webserver_port)
+                if join_ip and not cluster_member:
+                    master_hostport = "{}:{}".format(join_ip, master_webserver_port)
                     if not self.is_leader_master_secure(master_hostport):
                         # Case Scenario: When the user starts the 1st node in insecure mode and
                         # tries to start the second node in secure mode.
@@ -8363,11 +8368,17 @@ class ControlScript(object):
         # Initialize the binary path of ybadmin
         YBAdminProxy.init()
 
+        # Initialize the binary path of yb-ts-cli
+        YBTableServerCLIProxy.init()
+
         self.validate_and_set_configs(args)
 
         # Initialize the binary path of ybadmin
         # TODO(Sanket): Clean up and refactor this file
         YBAdminProxy.set_certs_dir(self.configs.saved_data.get("master_flags"), \
+            self.configs.saved_data.get("secure"), self.configs.saved_data.get("certs_dir"))
+
+        YBTableServerCLIProxy.set_certs_dir(self.configs.saved_data.get("master_flags"), \
             self.configs.saved_data.get("secure"), self.configs.saved_data.get("certs_dir"))
 
         try:
@@ -8935,6 +8946,51 @@ class Diagnostics(object):
                 if os.path.isfile(filepath):
                     size += os.path.getsize(filepath)
         return size
+
+class YBTableServerCLIProxy(object):
+    cmd_args = []
+
+    @staticmethod
+    def init():
+        YBTableServerCLIProxy.cmd_args.append(find_binary_location("yb-ts-cli"))
+
+    @staticmethod
+    def set_certs_dir(master_flags, secure, certs_dir):
+        # If the user is attempting to use TLS, let's point yb-admin to
+        # the same certs dir as the master
+        if secure:
+            YBTableServerCLIProxy.cmd_args.append("--certs_dir_name={}".format(certs_dir))
+        elif master_flags:
+            flags_list = master_flags.split(",")
+            if 'use_node_to_node_encryption=true' not in flags_list:
+                return
+            certs_dir_name = [y for y in
+                [re.match('certs_dir=(.*)', x) for x in flags_list]
+                if y is not None]
+            if not certs_dir_name[0]:
+                raise RuntimeError("use_node_to_node_encryption=true must "
+                                "be accompanied by a certs_dir setting")
+            YBTableServerCLIProxy.cmd_args.append('--certs_dir_name={}'.
+                                                 format(certs_dir_name[0].group(1)))
+
+    @staticmethod
+    def update_gflag_in_tserver(tserver_ip, tserver_port, gflag, gflag_value, byForce=False):
+        cmd = YBTableServerCLIProxy.cmd_args + \
+            [
+                "--server_address={}:{}".format(tserver_ip, tserver_port),
+                "set_flag",
+                gflag,
+                gflag_value
+            ]
+
+        if byForce:
+            cmd = cmd + \
+                [
+                    "--force"
+                ]
+
+        out, err, ret_code = run_process(cmd, timeout=10, log_cmd=True)
+        return (0 == ret_code)
 
 class YBControllerCLIProxy(object):
     cmd_args = []

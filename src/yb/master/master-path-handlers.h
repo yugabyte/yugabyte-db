@@ -42,8 +42,10 @@
 
 #include "yb/server/webserver.h"
 #include "yb/server/monitored_task.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/jsonwriter.h"
+#include "yb/util/ref_wrap.h"
 
 namespace yb {
 
@@ -58,6 +60,8 @@ class Master;
 struct TabletReplica;
 class TSDescriptor;
 class TSRegistrationPB;
+
+using TsUuidAndTabletReplica = std::pair<ConstRefWrap<std::string>, TabletReplica>;
 
 YB_DEFINE_ENUM(TServersViewType, (kTServersDefaultView)(kTServersClocksView));
 
@@ -75,16 +79,6 @@ class MasterPathHandlers {
   const std::string kYBDarkBlue = "#202951";
   const std::string kYBLightBlue = "#3eb1cc";
   const std::string kYBGray = "#5e647a";
-
-  const std::vector<std::string> kYBColorList = {
-    "#30307F", "#36B8F5",
-    "#BB43BC", "#43BFC2", "#90948E",
-    "#1C7180", "#EEA95F", "#3590D9",
-    "#F0679E", "#707B8E", "#800000",
-    "#F08080", "#FF8C00", "#7CFC00",
-    "#D2691E", "#696969", "#FFD700",
-    "#B8860B", "#006400", "#FF6347"
-  };
 
   Status Register(Webserver* server);
 
@@ -302,7 +296,6 @@ class MasterPathHandlers {
   void HandleGetUnderReplicationStatus(const Webserver::WebRequest &req,
                                         Webserver::WebResponse *resp);
   void HandleVersionInfoDump(const Webserver::WebRequest &req, Webserver::WebResponse *resp);
-  void HandlePrettyLB(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleLoadBalancer(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleGetMetaCacheJson(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleStatefulServices(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
@@ -312,7 +305,7 @@ class MasterPathHandlers {
   Status CalculateTabletMap(TabletCountMap* tablet_map);
 
   // Calculate tserver tree for ALL tables if max_table_count == -1.
-  // Otherwise, do not perform calculation if number of tables is less than max_table_count.
+  // Otherwise, do not perform calculation if number of tables is more than max_table_count.
   Result<TServerTree> CalculateTServerTree(int max_table_count);
   void RenderLoadBalancerViewPanel(
       const TServerTree& tserver_tree, const std::vector<std::shared_ptr<TSDescriptor>>& descs,
@@ -331,13 +324,10 @@ class MasterPathHandlers {
   // Convert location of peers to HTML, indicating the roles
   // of each tablet server in a consensus configuration.
   // This method will display 'locations' in the order given.
-  std::string RaftConfigToHtml(const std::vector<TabletReplica>& locations,
-                               const std::string& tablet_id) const;
-
-  // Convert the specified TSDescriptor to HTML, adding a link to the
-  // tablet server's own webserver if specified in 'desc'.
-  std::string TSDescriptorToHtml(const TSDescriptor& desc,
-                                 const std::string& tablet_id) const;
+  std::string RaftConfigToHtml(
+      const std::vector<TsUuidAndTabletReplica>&
+          locations,
+      const std::string& tablet_id) const;
 
   // Convert the specified server registration to HTML, adding a link
   // to the server's own web server (if specified in 'reg') with

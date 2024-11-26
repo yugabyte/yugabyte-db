@@ -89,8 +89,11 @@ constexpr auto kInterval = 6s;
 constexpr auto kRetention = RegularBuildVsDebugVsSanitizers(12min, 20min, 12min);
 constexpr auto kHistoryRetentionIntervalSec = 5;
 constexpr auto kCleanupSplitTabletsInterval = 1s;
-const std::string old_sys_catalog_snapshot_path = "/opt/yb-build/ysql-sys-catalog-snapshots/";
-const std::string old_sys_catalog_snapshot_name = "initial_sys_catalog_snapshot_2.0.9.0";
+const std::string sys_catalog_snapshot_path = "/opt/yb-build/ysql-sys-catalog-snapshots/";
+constexpr char pg15_old_sys_catalog_snapshot_name[] =
+    "initial_sys_catalog_snapshot_2.25.0.0-pg15-alpha-2";
+constexpr char pg11_old_sys_catalog_snapshot_name[] =
+    "initial_sys_catalog_snapshot_2.0.9.0";
 
 Result<double> MinuteStringToSeconds(const std::string_view& min_str) {
   std::vector<Slice> args;
@@ -296,7 +299,8 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     return { "--snapshot_coordinator_cleanup_delay_ms=1000",
              "--snapshot_coordinator_poll_interval_ms=500",
              "--enable_automatic_tablet_splitting=true",
-             "--enable_transactional_ddl_gc=false"};
+             "--enable_transactional_ddl_gc=false",
+             "--vmodule=restore_sys_catalog_state=3,catalog*=3"};
   }
 
   Result<std::string> PrepareQl(MonoDelta interval = kInterval, MonoDelta retention = kRetention) {
@@ -929,6 +933,44 @@ TEST_F(YbAdminSnapshotScheduleTest, CloneYcql) {
   target_table = ASSERT_RESULT(open_target_table(target_namespace_name));
   target_rows = ASSERT_RESULT(client::kv_table_test::SelectAllRows(&target_table, session));
   ASSERT_EQ(target_rows.size(), 2 * rows_per_iter);
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, DeleteRowsFromCloneYcql) {
+  ASSERT_RESULT(PrepareCql());
+  const auto kSourceNamespace = "ycql." + client::kTableName.namespace_name();
+  const auto kTableName = "test_table";
+
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+  ASSERT_OK(conn.ExecuteQueryFormat(
+      "CREATE TABLE $0(key INT PRIMARY KEY, value INT) WITH TRANSACTIONS = {'enabled' : true};",
+      kTableName));
+  ASSERT_OK(conn.ExecuteQueryFormat(
+      "CREATE INDEX idx ON $0(value) WITH TRANSACTIONS = {'enabled' : true};",
+      kTableName));
+  ASSERT_OK(conn.ExecuteQueryFormat("INSERT INTO $0(key, value) VALUES (1, 2)", kTableName));
+
+  // Create a window to restore in (we can only restore with 1s granularity).
+  SleepFor(3s);
+  Timestamp restore_time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  SleepFor(3s);
+
+  ASSERT_OK(conn.ExecuteQueryFormat("DELETE FROM $0 WHERE key=1", kTableName));
+
+  const auto kTargetNamespace = "cloned";
+  ASSERT_OK(cluster_->SetFlagOnMasters("allowed_preview_flags_csv", "enable_db_clone"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_db_clone", "true"));
+  ASSERT_OK(CloneAndWait(
+      kSourceNamespace, kTargetNamespace, 30s /* timeout */,
+      restore_time.ToFormattedString()));
+
+  auto target_conn = ASSERT_RESULT(CqlConnect(kTargetNamespace));
+  auto row_count = ASSERT_RESULT(target_conn.ExecuteWithResult(
+      Format("SELECT COUNT(*) FROM $0", kTableName)));
+  ASSERT_EQ(row_count.RenderToString(), "1");
+  ASSERT_OK(target_conn.ExecuteQueryFormat("DELETE FROM $0 WHERE key=1", kTableName));
+  row_count = ASSERT_RESULT(target_conn.ExecuteWithResult(
+      Format("SELECT COUNT(*) FROM $0", kTableName)));
+  ASSERT_EQ(row_count.RenderToString(), "0");
 }
 
 TEST_F(YbAdminSnapshotScheduleTest, CreateIntervalZero) {
@@ -1617,8 +1659,9 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlDeleteCol
   RunTestWithColocatedParam(schedule_id);
 }
 
-// TODO(asrivastava): Fails with DB cloning.
-TEST_P( YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlDeleteColumnWithMissingDefault) {
+TEST_P(
+    YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam,
+    PgsqlDeleteColumnWithMissingDefault) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -3304,7 +3347,8 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, SysCatalogRetentionWithFastPitr,
   }
 }
 
-class YbAdminSnapshotScheduleUpgradeTestWithYsql : public YbAdminSnapshotScheduleTestWithYsql {
+template<const char* initial_sys_catalog_snapshot_name>
+class YbAdminSnapshotScheduleUpgradeTestWithYsqlBase : public YbAdminSnapshotScheduleTestWithYsql {
   std::vector<std::string> ExtraMasterFlags() override {
     // To speed up tests.
     std::string build_type;
@@ -3312,19 +3356,29 @@ class YbAdminSnapshotScheduleUpgradeTestWithYsql : public YbAdminSnapshotSchedul
     // In the version of YugabyteDB where the old sys catalog snapshot was generated, the debug
     // build had a column representation now used only in ASAN and TSAN builds. See
     // src/yb/common/column_id.h file history for details.
-    build_type = "debug";
+    build_type = "sanitizers";
+#elif defined __APPLE__
+    // Mac builds have a different snapshot due to different system collations.
+    build_type = "mac";
 #else
+    // Debug and release Linux builds use the "release" snapshot.
     build_type = "release";
 #endif
-    std::string old_sys_catalog_snapshot_full_path =
-        old_sys_catalog_snapshot_path + old_sys_catalog_snapshot_name + "_" + build_type;
+    std::string initial_sys_catalog_snapshot_full_path =
+        sys_catalog_snapshot_path + initial_sys_catalog_snapshot_name + "_" + build_type;
     return { "--snapshot_coordinator_cleanup_delay_ms=1000",
              "--snapshot_coordinator_poll_interval_ms=500",
              "--enable_automatic_tablet_splitting=true",
              "--enable_transactional_ddl_gc=false",
-             "--initial_sys_catalog_snapshot_path="+old_sys_catalog_snapshot_full_path };
+             "--initial_sys_catalog_snapshot_path=" + initial_sys_catalog_snapshot_full_path };
   }
 };
+
+using YbAdminSnapshotScheduleUpgradeTestWithYsql =
+    YbAdminSnapshotScheduleUpgradeTestWithYsqlBase<pg15_old_sys_catalog_snapshot_name>;
+
+using YbAdminSnapshotScheduleUpgradeTestWithYsqlPg11 =
+    YbAdminSnapshotScheduleUpgradeTestWithYsqlBase<pg11_old_sys_catalog_snapshot_name>;
 
 TEST_F(YbAdminSnapshotScheduleUpgradeTestWithYsql,
        PgsqlTestOldSysCatalogSnapshot) {
@@ -3348,8 +3402,8 @@ TEST_F(YbAdminSnapshotScheduleUpgradeTestWithYsql,
 }
 
 TEST_F(
-    YbAdminSnapshotScheduleUpgradeTestWithYsql,
-    YB_DISABLE_TEST_IN_SANITIZERS(PgsqlTestMigrationFromEarliestSysCatalogSnapshot)) {
+    YbAdminSnapshotScheduleUpgradeTestWithYsqlPg11,
+    YB_DISABLE_TEST(PgsqlTestMigrationFromEarliestSysCatalogSnapshot)) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
   LOG(INFO) << "Assert pg_yb_migration table does not exist.";
@@ -3637,7 +3691,7 @@ TEST_F(YbAdminSnapshotScheduleTestWithYcqlPackedRow, GCHiddenTables) {
 
 void YbAdminSnapshotScheduleTest::TestGCHiddenTables() {
   const auto interval = 15s;
-  const auto retention = 30s * kTimeMultiplier;
+  const auto retention = 60s * kTimeMultiplier;
   auto schedule_id = ASSERT_RESULT(PrepareQl(interval, retention));
 
   auto session = client_->NewSession(60s);
@@ -4789,6 +4843,49 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, WritesAfterRestoreWithSplit,
 TEST_F_EX(YbAdminSnapshotScheduleTest, ReadsAfterRestoreWithSplit,
           YbAdminSnapshotScheduleTestWithYsqlAndManualSplitting) {
   TestIOWithSnapshotScheduleAndSplit(/* test_write = */ false, /* perform_restore = */ true);
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, ReadsWithSnapshotScheduleAndSplitWithClusterRestart,
+          YbAdminSnapshotScheduleTestWithYsqlAndManualSplitting) {
+    // Setup an RF1 so that we are only dealing with one tserver and its cache.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
+    auto schedule_id = ASSERT_RESULT(PreparePg());
+    auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) "
+        "SPLIT INTO 1 tablets",
+        client::kTableName.table_name()));
+
+    // Insert enough data conducive to splitting.
+    ASSERT_OK(InsertDataForSplitting(&conn, 15000));
+    LOG(INFO) << "Inserted 15000 rows";
+
+    // Read data so that partitions get updated.
+    auto select_query = Format(
+        "SELECT count(*) FROM $0", client::kTableName.table_name());
+    auto rows = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGUint64>(select_query));
+    LOG(INFO) << "Before split found #rows " << rows;
+    ASSERT_EQ(rows, 15000);
+
+    // Trigger a manual split.
+    ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      client::kTableName.namespace_name(), client::kTableName.table_name(),
+      /* wait_for_parent_deletion */ true));
+
+    LOG(INFO) << "Now restarting cluster";
+    cluster_->Shutdown();
+    ASSERT_OK(cluster_->Restart());
+    LOG(INFO) << "Cluster restarted";
+
+    conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+    auto t1 = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGUint64>(
+        Format("SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint")));
+    LOG(INFO) << "Setting yb_read_time to " << t1;
+    ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+    rows = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGUint64>(select_query));
+    LOG(INFO) << "After split found #rows " << rows;
+    ASSERT_EQ(rows, 15000);
 }
 
 TEST_F(YbAdminSnapshotScheduleTest, RestoreToBeforePreviousRestoreAt) {

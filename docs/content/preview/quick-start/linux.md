@@ -66,7 +66,7 @@ Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [d
 
 #### ulimits
 
-Because each tablet maps to its own file, you can create a very large number of files in the current shell by experimenting with several hundred tables and several tablets per table. You need to [configure ulimit values](../../deploy/manual-deployment/system-config/#ulimits).
+Because each tablet maps to its own file, you can create a very large number of files in the current shell by experimenting with several hundred tables and several tablets per table. You need to [configure ulimit values](../../deploy/manual-deployment/system-config/#set-ulimits).
 
 ### Download
 

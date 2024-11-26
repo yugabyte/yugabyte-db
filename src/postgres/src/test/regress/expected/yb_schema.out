@@ -112,6 +112,70 @@ CREATE TEMP TABLE TMP_TBL (a INT PRIMARY KEY);
 ALTER TABLE TMP_TBL SET SCHEMA S2;
 ERROR:  cannot move objects into or out of temporary schemas
 DROP TABLE TMP_TBL;
+-- Test ALTER SEQUENCE [IF EXISTS].. SET SCHEMA..
+CREATE SEQUENCE S1.TEST_SEQ;
+SELECT nextval('S1.TEST_SEQ');
+ nextval
+---------
+       1
+(1 row)
+
+\d S1.TEST_SEQ;
+                            Sequence "s1.test_seq"
+  Type  | Start | Minimum |       Maximum       | Increment | Cycles? | Cache
+--------+-------+---------+---------------------+-----------+---------+-------
+ bigint |     1 |       1 | 9223372036854775807 |         1 | no      |   100
+
+select c.relname as name, n.nspname as schema, r.rolname as owner
+from pg_class as c
+     inner join pg_namespace as n on c.relnamespace = n.oid
+     inner join pg_roles as r on c.relowner = r.oid
+where c.relname ~ 'test_seq';
+   name   | schema |  owner
+----------+--------+----------
+ test_seq | s1     | yugabyte
+(1 row)
+
+ALTER SEQUENCE S1.TEST_SEQ SET SCHEMA S2;
+SELECT nextval('S1.TEST_SEQ');
+ERROR:  relation "s1.test_seq" does not exist
+LINE 1: SELECT nextval('S1.TEST_SEQ');
+                       ^
+SELECT nextval('S2.TEST_SEQ');
+ nextval
+---------
+       2
+(1 row)
+
+\d S1.TEST_SEQ;
+\d S2.TEST_SEQ;
+                            Sequence "s2.test_seq"
+  Type  | Start | Minimum |       Maximum       | Increment | Cycles? | Cache
+--------+-------+---------+---------------------+-----------+---------+-------
+ bigint |     1 |       1 | 9223372036854775807 |         1 | no      |   100
+
+ALTER SEQUENCE S2.TEST_SEQ OWNER TO CURRENT_USER;
+ALTER SEQUENCE S2.TEST_SEQ OWNER TO SESSION_USER;
+ALTER SEQUENCE S2.TEST_SEQ OWNER TO postgres;
+select c.relname as name, n.nspname as schema, r.rolname as owner
+from pg_class as c
+     inner join pg_namespace as n on c.relnamespace = n.oid
+     inner join pg_roles as r on c.relowner = r.oid
+where c.relname ~ 'test_seq';
+   name   | schema |  owner
+----------+--------+----------
+ test_seq | s2     | postgres
+(1 row)
+
+DROP SEQUENCE S2.TEST_SEQ;
+SELECT * FROM S2.TEST_SEQ;
+ERROR:  relation "s2.test_seq" does not exist
+LINE 1: SELECT * FROM S2.TEST_SEQ;
+                      ^
+ALTER TABLE S2.TEST_SEQ SET SCHEMA S1;            -- the sequence was deleted
+ERROR:  relation "s2.test_seq" does not exist
+ALTER TABLE IF EXISTS S2.TEST_SEQ SET SCHEMA S1;  -- OK
+NOTICE:  relation "test_seq" does not exist, skipping
 -- verify yb_db_admin role can manage schemas like a superuser
 CREATE SCHEMA test_ns_schema_other;
 CREATE ROLE test_regress_user1;

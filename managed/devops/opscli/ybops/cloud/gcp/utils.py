@@ -23,7 +23,7 @@ from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.cloud.common.utils import request_retry_decorator
 
 
-RESOURCE_BASE_URL = "https://www.googleapis.com/compute/beta/projects/"
+RESOURCE_BASE_URL = "https://www.googleapis.com/compute/v1/projects/"
 REGIONS_RESOURCE_URL_FORMAT = RESOURCE_BASE_URL + "{}/regions/{}"
 PRICING_JSON_URL = os.environ.get("YB_GCP_PRICING_JSON_URL",
                                   "https://downloads.yugabyte.com/gcp_price_list/pricelist_gcp.json")
@@ -555,7 +555,7 @@ class GoogleCloudAdmin():
         # account associated with the instance we're running on, if one exists.
         self.credentials = oauth2client.client.GoogleCredentials.get_application_default()
         self.compute = discovery.build(
-            "compute", "beta", credentials=self.credentials, num_retries=3)
+            "compute", "v1", credentials=self.credentials, num_retries=3)
         # If we have specified a GCE_PROJECT, use that, else, try the instance metadata, else fail.
         self.project = os.environ.get("GCE_PROJECT") or GcpMetadata.project()
         if self.project is None:

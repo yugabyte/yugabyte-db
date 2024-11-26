@@ -139,10 +139,15 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({
       let payload: YSQLFormPayload = {
         enableYSQL: values.enableYSQL ?? false,
         enableYSQLAuth: values.enableYSQL && values.enableYSQLAuth ? values.enableYSQLAuth : false,
+        enableConnectionPooling:
+          (values.enableYSQL && primaryCluster?.userIntent?.enableConnectionPooling) ?? false,
         ysqlPassword: values.ysqlPassword ?? '',
         communicationPorts: {
           ysqlServerHttpPort: universeDetails.communicationPorts.ysqlServerHttpPort,
-          ysqlServerRpcPort: universeDetails.communicationPorts.ysqlServerRpcPort
+          ysqlServerRpcPort: universeDetails.communicationPorts.ysqlServerRpcPort,
+          ...(primaryCluster?.userIntent?.enableConnectionPooling && {
+            internalYsqlServerRpcPort: universeDetails.communicationPorts.internalYsqlServerRpcPort
+          })
         }
       };
       if (primaryCluster?.userIntent?.enableYSQL && !values.enableYSQL) {

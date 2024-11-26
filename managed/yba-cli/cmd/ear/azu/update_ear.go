@@ -22,6 +22,8 @@ var updateAzureEARCmd = &cobra.Command{
 	Aliases: []string{"edit"},
 	Short:   "Update a YugabyteDB Anywhere Azure encryption at rest (EAR) configuration",
 	Long:    "Update an Azure encryption at rest (EAR) configuration in YugabyteDB Anywhere",
+	Example: `yba ear azure update --name <config-name> \
+	--client-id <client-id> --tenant-id <tenant-id>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		configNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {

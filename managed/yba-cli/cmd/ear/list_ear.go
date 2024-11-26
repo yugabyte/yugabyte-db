@@ -13,9 +13,11 @@ import (
 
 var listEARCmd = &cobra.Command{
 	Use:     "list",
+	Aliases: []string{"ls"},
 	GroupID: "action",
 	Short:   "List YugabyteDB Anywhere Encryption at Rest Configurations",
 	Long:    "List YugabyteDB Anywhere Encryption at Rest Configurations",
+	Example: "yba ear list",
 	Run: func(cmd *cobra.Command, args []string) {
 		earCode, err := cmd.Flags().GetString("code")
 		if err != nil {

@@ -1738,10 +1738,7 @@ select v||'a', case when grouping(v||'a') = 1 then 1 else 0 end, count(*)
 create table bug_16784(i int, j int);
 analyze bug_16784;
 alter table bug_16784 set (autovacuum_enabled = 'false');
-ERROR:  ALTER TABLE SET not supported yet
-LINE 1: alter table bug_16784 set (autovacuum_enabled = 'false');
-                              ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+NOTICE:  storage parameters are currently ignored in YugabyteDB
 -- YB: TODO(cost_model): enable the rest of the test.
 -- test handling of outer GroupingFunc within subqueries
 explain (costs off)

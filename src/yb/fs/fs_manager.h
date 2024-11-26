@@ -256,6 +256,8 @@ class FsManager {
 
   Status CreateDirIfMissingAndSync(const std::string& path, bool* created = NULL);
 
+  Result<uint64> GetFreeSpaceBytes(const std::string& path) const;
+
  private:
   FRIEND_TEST(FsManagerTestBase, TestDuplicatePaths);
   FRIEND_TEST(FsManagerTestBase, AutoFlagsTest);

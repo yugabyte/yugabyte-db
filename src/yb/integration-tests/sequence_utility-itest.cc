@@ -186,17 +186,17 @@ TEST_F(SequencesUtilTest, ScanWithReadFailure) {
   LOG(INFO) << "return status is " << result.status();
 }
 
-TEST_F(SequencesUtilTest, EnsureSequenceUpdatesInWalWhenNoChanges) {
+TEST_F(SequencesUtilTest, EnsureSequenceUpdatesAreInWalWhenNoChanges) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_docdb_log_write_batches) = true;
   ASSERT_OK(CreateSampleSequences());
   auto expected = ASSERT_RESULT(GetSequencesData());
   auto sequences = ASSERT_RESULT(master::ScanSequencesDataTable(*client_.get(), namespace_oid_));
   auto updates =
-      ASSERT_RESULT(EnsureSequenceUpdatesInWal(*client_.get(), namespace_oid_, sequences));
+      ASSERT_RESULT(EnsureSequenceUpdatesAreInWal(*client_.get(), namespace_oid_, sequences));
 
   // For this test we assume there were no changes since the scan used to call
-  // EnsureSequenceUpdatesInWal was done.  Thus EnsureSequenceUpdatesInWal should have made one
-  // update for each sequence.
+  // EnsureSequenceUpdatesAreInWal was done.  Thus EnsureSequenceUpdatesAreInWal should have made
+  // one update for each sequence.
   ASSERT_EQ(updates, expected.size());
 
   // Ensure the updates it made are nops.
@@ -206,14 +206,14 @@ TEST_F(SequencesUtilTest, EnsureSequenceUpdatesInWalWhenNoChanges) {
   }
 }
 
-TEST_F(SequencesUtilTest, EnsureSequenceUpdatesInWalWithConcurrentChanges) {
+TEST_F(SequencesUtilTest, EnsureSequenceUpdatesAreInWalWithConcurrentChanges) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_docdb_log_write_batches) = true;
   ASSERT_OK(CreateSampleSequences());
   auto sequences = ASSERT_RESULT(master::ScanSequencesDataTable(*client_.get(), namespace_oid_));
 
   // Here we are testing changes that occur between the scan used to get the sequence information
-  // and the call to EnsureSequenceUpdatesInWal.  This should make EnsureSequenceUpdatesInWal do
-  // fewer updates because it should not update changes since the scan was done.
+  // and the call to EnsureSequenceUpdatesAreInWal.  This should make EnsureSequenceUpdatesAreInWal
+  // do fewer updates because it should not update changes since the scan was done.
 
   auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
   ASSERT_OK(conn.Execute("ALTER SEQUENCE altered_sequence RESTART WITH 22"));
@@ -222,7 +222,7 @@ TEST_F(SequencesUtilTest, EnsureSequenceUpdatesInWalWithConcurrentChanges) {
   ASSERT_OK(conn.Execute("DROP SEQUENCE extra_sequence"));
 
   auto updates =
-      ASSERT_RESULT(EnsureSequenceUpdatesInWal(*client_.get(), namespace_oid_, sequences));
+      ASSERT_RESULT(EnsureSequenceUpdatesAreInWal(*client_.get(), namespace_oid_, sequences));
   ASSERT_EQ(updates, sequences.size() - /*number of sequences changed above*/ 3);
 
   // Ensure the updates it did make are nops.

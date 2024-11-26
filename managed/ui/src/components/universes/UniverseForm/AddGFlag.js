@@ -156,13 +156,40 @@ const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus, disabledFlags
     </div>
   );
 
+  const getAuditLogLink = () => {
+    const path = window.location.href;
+    const pathArray = path.split('/');
+    const universeUrl = `${pathArray[3]}/${pathArray[4]}`;
+    return `/${universeUrl}/db-audit-log`;
+  };
+
   const auditLogBanner = (
     <div className="pg-banner">
       <img alt="Warning" src={WarningIcon} width="24" />
       &nbsp;
       <span>
-        Please be careful when modifying the &quot;pgaudit&quot; params if DB audit logging is
-        enabled on this universe.
+        Set pgaudit parameters using the&nbsp;
+        <a
+          className="gflag-doc-link"
+          rel="noopener noreferrer"
+          href={getAuditLogLink()}
+          target="_blank"
+        >
+          YugabyteDB Anywhere UI
+        </a>
+        &nbsp; instead of via the ysql_pg_conf_flag. If you set pgaudit parameters using the flag,
+        the flag values take precedence and the values are not updated in the UI.
+        <br />
+        <a
+          className="gflag-doc-link"
+          rel="noopener noreferrer"
+          href={
+            'https://docs.yugabyte.com/preview/yugabyte-platform/alerts-monitoring/universe-logging'
+          }
+          target="_blank"
+        >
+          Learn more
+        </a>
       </span>
     </div>
   );
@@ -375,7 +402,7 @@ const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus, disabledFlags
           <Col md={6} className="split-container">
             {renderFlagList()}
           </Col>
-          <Col md={6} className="split-container add-border-left">
+          <Col md={6} className="detail-container add-border-left">
             {renderFlagDetails()}
           </Col>
         </Row>

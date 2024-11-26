@@ -257,9 +257,18 @@ static inline int update_db_entry_via_ctrl_conn(od_global_t *global,
 
 	rc = update_db_entry_from_backend(instance, server, entry);
 
-	/* detach and unroute */
+	/*
+	 * close the backend connection as we don't want to reuse machines in
+	 * this pool if auth-backend is enabled.
+	 */
+	if (instance->config.yb_use_auth_backend)
+		server->offline = true;
 	od_router_detach(router, control_conn_client);
 	od_router_unroute(router, control_conn_client);
+	if (instance->config.yb_use_auth_backend && control_conn_client->io.io) {
+		machine_close(control_conn_client->io.io);
+		machine_io_free(control_conn_client->io.io);
+	}
 	od_client_free(control_conn_client);
 
 	if (rc == -1)

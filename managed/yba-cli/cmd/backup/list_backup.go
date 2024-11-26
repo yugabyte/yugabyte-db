@@ -20,9 +20,12 @@ import (
 
 // listBackupCmd represents the list backup command
 var listBackupCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List YugabyteDB Anywhere backups",
-	Long:  "List backups in YugabyteDB Anywhere",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List YugabyteDB Anywhere backups",
+	Long:    "List backups in YugabyteDB Anywhere",
+	Example: `yba backup list --universe-uuids <universe-uuid-1>,<universe-uuid-2> \
+	--universe-names <universe-name-1>,<universe-name-2>`,
 	Run: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()

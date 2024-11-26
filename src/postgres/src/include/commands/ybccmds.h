@@ -61,7 +61,7 @@ extern void YBCCreateTable(CreateStmt *stmt,
 						   Oid tablegroupId,
 						   Oid colocationId,
 						   Oid tablespaceId,
-						   Oid pgTableId,
+						   Oid relfileNodeId,
 						   Oid oldRelfileNodeId,
 						   bool isTruncate);
 
@@ -82,7 +82,7 @@ extern void YBCCreateIndex(const char *indexName,
 						   Oid tablegroupId,
 						   Oid colocationId,
 						   Oid tablespaceId,
-						   Oid pgTableId,
+						   Oid indexRelfileNodeId,
 						   Oid oldRelfileNodeId);
 
 extern void YBCBindCreateIndexColumns(YBCPgStatement handle,
@@ -122,7 +122,8 @@ extern void YBCValidatePlacement(const char *placement_info);
 extern void YBCCreateReplicationSlot(const char *slot_name,
 									 const char *plugin_name,
 									 CRSSnapshotAction snapshot_action,
-									 uint64_t *consistent_snapshot_time);
+									 uint64_t *consistent_snapshot_time,
+									 CRSLsnType lsn_type);
 
 extern void
 YBCListReplicationSlots(YBCReplicationSlotDescriptor **replication_slots,

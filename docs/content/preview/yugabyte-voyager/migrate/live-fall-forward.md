@@ -387,100 +387,28 @@ You can use only one of the following arguments to connect to your Oracle instan
 
     1. Restart PostgreSQL.
 
-1. Check that the replica identity is FULL (`f`)  for all tables on the database.
-
-    1. Check the replica identity using the following query:
-
-        ```sql
-        SELECT n.nspname, relname, relreplident
-        FROM pg_class c JOIN pg_namespace n on c.relnamespace = n.oid
-        WHERE n.nspname in (<SCHEMA_LIST>) and relkind = 'r';
-        --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
-        ```
-
-    1. Change the replica identity of all tables if the tables have an identity other than FULL (`f`), using the following query:
-
-        ```sql
-        DO $$
-        DECLARE
-          r Record;
-        BEGIN
-          FOR r IN (SELECT table_schema, '"' || table_name || '"' as t_name  FROM information_schema.tables WHERE table_schema IN (<SCHEMA_LIST>) AND table_type = 'BASE TABLE')
-          LOOP
-            EXECUTE 'ALTER TABLE ' || r.table_schema || '.' || r.t_name || ' REPLICA IDENTITY FULL';
-          END LOOP;
-        END $$;
-        --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
-        ```
-
 1. Create user `ybvoyager` for the migration using the following command:
 
     ```sql
-    CREATE USER ybvoyager PASSWORD 'password' REPLICATION;
+    CREATE USER ybvoyager PASSWORD 'password';
     ```
 
-1. Switch to the database that you want to migrate as follows:
+1. Grant permissions for migration. Use the `yb-voyager-pg-grant-migration-permissions.sql` script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows::
 
    ```sql
-   \c <database_name>
-   ```
-
-1. Grant the `USAGE` permission to the `ybvoyager` user on all schemas of the database as follows:
-
-   ```sql
-   SELECT 'GRANT USAGE ON SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
-   ```
-
-   The preceding `SELECT` statement generates a list of `GRANT USAGE` statements which are then executed by `psql` because of the `\gexec` switch. The `\gexec` switch works for PostgreSQL v9.6 and later. For earlier versions, you'll have to manually execute the `GRANT USAGE ON SCHEMA schema_name TO ybvoyager` statement, for each schema in the source PostgreSQL database.
-
-1. Grant `SELECT` permission on all the tables and sequences as follows:
-
-   ```sql
-   SELECT 'GRANT SELECT ON ALL TABLES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
-
-   SELECT 'GRANT SELECT ON ALL SEQUENCES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
+   psql -h <host> \
+        -d <database> \
+        -U <username> \
+        -v voyager_user='ybvoyager' \
+        -v schema_list='<comma_separated_schema_list>' \
+        -v is_live_migration=1 \
+        -v is_live_migration_fall_back=0 \
+        -v replication_group='<replication_group>' \
+        -v original_owner_of_tables='<original_owner_of_tables>' \
+        -f <path_to_the_script>
    ```
 
    The `ybvoyager` user can now be used for migration.
-
-1. Create a replication group as follows:
-
-    ```sql
-    CREATE ROLE replication_group;
-    ```
-
-1. Add the original owner of the table to the group as follows:
-
-    ```sql
-    GRANT replication_group TO <original_owner>;
-    ```
-
-1. Add the user `ybvoyager` to the replication group as follows:
-
-    ```sql
-    GRANT replication_group TO ybvoyager;
-    ```
-
-1. Transfer ownership of the tables to the role `replication_group` as follows:
-
-    ```sql
-    DO $$
-    DECLARE
-       r Record;
-    BEGIN
-       FOR r IN (SELECT table_schema, '"' || table_name || '"' as t_name FROM information_schema.tables WHERE table_schema IN (<SCHEMA_LIST>))
-      LOOP
-        EXECUTE 'ALTER TABLE ' || r.table_schema || '.' || r.t_name || ' OWNER TO replication_group';
-      END LOOP;
-    END $$;
-    --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
-    ```
-
-1. Grant `CREATE` privilege on the source database to `ybvoyager` as follows:
-
-    ```sql
-    GRANT CREATE ON DATABASE <database_name> TO ybvoyager; --required to create a publication.
-    ```
 
   {{% /tab %}}
 
@@ -496,101 +424,26 @@ You can use only one of the following arguments to connect to your Oracle instan
 
     1. Restart RDS.
 
-1. Check that the replica identity is FULL (`f`) for all tables on the database.
-
-    1. Check the replica identity using the following query:
-
-        ```sql
-        SELECT n.nspname, relname, relreplident
-        FROM pg_class c JOIN pg_namespace n on c.relnamespace = n.oid
-        WHERE n.nspname in (<SCHEMA_LIST>) and relkind = 'r';
-        --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
-        ```
-
-    1. Change the replica identity of all tables if the tables have an identity other than FULL (`f`), using the following query:
-
-        ```sql
-        DO $$
-        DECLARE
-          r Record;
-        BEGIN
-          FOR r IN (SELECT table_schema, '"' || table_name || '"' as t_name  FROM information_schema.tables WHERE table_schema IN (<SCHEMA_LIST>) AND table_type = 'BASE TABLE')
-          LOOP
-            EXECUTE 'ALTER TABLE ' || r.table_schema || '.' || r.t_name || ' REPLICA IDENTITY FULL';
-          END LOOP;
-        END $$;
-        --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
-        ```
-
 1. Create user `ybvoyager` for the migration using the following command:
 
     ```sql
     CREATE USER ybvoyager PASSWORD 'password';
-    GRANT rds_replication to ybvoyager;
     ```
 
-1. Switch to the database that you want to migrate as follows:
+1. Grant permissions for migration. Use the `yb-voyager-pg-grant-migration-permissions.sql` script (which can be found at `/opt/yb-voyager/guardrails-scripts`. For brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
 
    ```sql
-   \c <database_name>
+   psql -h <host> \
+        -d <database> \
+        -U <username> \
+        -v voyager_user='ybvoyager' \
+        -v schema_list='<comma_separated_schema_list>' \
+        -v is_live_migration=1 \
+        -v is_live_migration_fall_back=0 \
+        -v replication_group='<replication_group>' \
+        -v original_owner_of_tables='<original_owner_of_tables>' \
+        -f <path_to_the_script>
    ```
-
-1. Grant the `USAGE` permission to the `ybvoyager` user on all schemas of the database as follows:
-
-   ```sql
-   SELECT 'GRANT USAGE ON SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
-   ```
-
-   The preceding `SELECT` statement generates a list of `GRANT USAGE` statements which are then executed by `psql` because of the `\gexec` switch. The `\gexec` switch works for PostgreSQL v9.6 and later. For older versions, you'll have to manually execute the `GRANT USAGE ON SCHEMA schema_name TO ybvoyager` statement, for each schema in the source PostgreSQL database.
-
-1. Grant `SELECT` permission on all the tables and sequences as follows:
-
-   ```sql
-   SELECT 'GRANT SELECT ON ALL TABLES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
-
-   SELECT 'GRANT SELECT ON ALL SEQUENCES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
-   ```
-
-   Note that you may get "Permission Denied" errors for `pg_catalog tables` (such as pg_statistic). These errors do not affect the migration and can be ignored.
-
-1. Create a replication group as follows:
-
-    ```sql
-    CREATE ROLE replication_group;
-    ```
-
-1. Add the original owner of the table to the group as follows:
-
-    ```sql
-    GRANT replication_group TO <original_owner>;
-    ```
-
-1. Add the user `ybvoyager` to the replication group as follows:
-
-    ```sql
-    GRANT replication_group TO ybvoyager;
-    ```
-
-1. Transfer ownership of the tables to the role `replication_group` as follows:
-
-    ```sql
-    DO $$
-    DECLARE
-       r Record;
-    BEGIN
-       FOR r IN (SELECT table_schema, '"' || table_name || '"' as t_name FROM information_schema.tables WHERE table_schema IN (<SCHEMA_LIST>))
-      LOOP
-        EXECUTE 'ALTER TABLE ' || r.table_schema || '.' || r.t_name || ' OWNER TO replication_group';
-      END LOOP;
-    END $$;
-    --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
-    ```
-
-1. Grant `CREATE` privilege on the source database to `ybvoyager` as follows:
-
-    ```sql
-    GRANT CREATE ON DATABASE <database_name> TO ybvoyager; --required to create a publication.
-    ```
 
     The `ybvoyager` user can now be used for migration.
 
@@ -648,18 +501,6 @@ Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/d
      ```
 
 If you want yb-voyager to connect to the target YugabyteDB database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
-
-{{< warning title="Deleting the ybvoyager user" >}}
-
-After migration, all the migrated objects (tables, views, and so on) are owned by the `ybvoyager` user. You should transfer the ownership of the objects to some other user (for example, `yugabyte`) and then delete the `ybvoyager` user. Example steps to delete the user are:
-
-```sql
-REASSIGN OWNED BY ybvoyager TO yugabyte;
-DROP OWNED BY ybvoyager;
-DROP USER ybvoyager;
-```
-
-{{< /warning >}}
 
 ## Create an export directory
 
@@ -1212,7 +1053,7 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
     {{< /warning >}}
 
-### End migration
+## End migration
 
 To complete the migration, you need to clean up the export directory (export-dir), and Voyager state ( Voyager-related metadata) stored in the target YugabyteDB database and source-replica database.
 
@@ -1232,6 +1073,16 @@ yb-voyager end migration --export-dir <EXPORT_DIR> \
 Note that after you end the migration, you will _not_ be able to continue further. If you want to back up the schema, data, log files, and the migration reports (`analyze-schema` report and `get data-migration-report` output) for future reference, the command provides an additional argument `--backup-dir`, using which you can pass the path of the directory where the backup content needs to be saved (based on what you choose to back up).
 
 Refer to [end migration](../../reference/end-migration/) for more details on the arguments.
+
+### Delete the ybvoyager user (Optional)
+
+After migration, all the migrated objects (tables, views, and so on) are owned by the `ybvoyager` user. Transfer the ownership of the objects to some other user (for example, `yugabyte`) and then delete the `ybvoyager` user. For example, do the following:
+
+```sql
+REASSIGN OWNED BY ybvoyager TO yugabyte;
+DROP OWNED BY ybvoyager;
+DROP USER ybvoyager;
+```
 
 ## Limitations
 

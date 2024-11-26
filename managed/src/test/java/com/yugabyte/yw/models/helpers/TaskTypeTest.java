@@ -4,7 +4,7 @@ package com.yugabyte.yw.models.helpers;
 
 import static org.junit.Assert.fail;
 
-import autovalue.shaded.com.google.common.collect.ImmutableSet;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.CustomerTask;
 import java.util.Set;

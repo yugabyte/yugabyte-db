@@ -65,6 +65,8 @@ DEFINE_test_flag(bool, generate_ybrowid_sequentially, false,
                  " for ported pg_regress tests that expect deterministic output ordering based on"
                  " ctid. This is a best-effort reproduction of that, but it still falls short in"
                  " case of UPDATEs because PG regenerates ctid while YB doesn't.");
+DEFINE_test_flag(bool, ysql_log_perdb_allocated_new_objectid, false,
+                 "Log new object id returned by per database oid allocator");
 
 namespace yb::pggate {
 namespace {
@@ -395,11 +397,13 @@ PgSession::PgSession(
     const YBCPgCallbacks& pg_callbacks,
     YBCPgExecStatsState& stats_state,
     YbctidReader&& ybctid_reader,
-    bool is_pg_binary_upgrade)
+    bool is_pg_binary_upgrade,
+    std::reference_wrapper<const WaitEventWatcher> wait_event_watcher)
     : pg_client_(pg_client),
       pg_txn_manager_(std::move(pg_txn_manager)),
       ybctid_reader_(std::move(ybctid_reader)),
       explicit_row_lock_buffer_(aux_ybctid_container_provider_, ybctid_reader_),
+      insert_on_conflict_buffer_(),
       metrics_(stats_state),
       pg_callbacks_(pg_callbacks),
       buffer_(
@@ -409,7 +413,8 @@ PgSession::PgSession(
                 VERIFY_RESULT(FlushOperations(std::move(ops), transactional)), this};
           },
           metrics_, buffering_settings_),
-      is_major_pg_version_upgrade_(is_pg_binary_upgrade) {
+      is_major_pg_version_upgrade_(is_pg_binary_upgrade),
+      wait_event_watcher_(wait_event_watcher) {
   Update(&buffering_settings_);
 }
 
@@ -537,7 +542,7 @@ Status PgSession::DropTablegroup(const PgOid database_oid,
 //--------------------------------------------------------------------------------------------------
 
 Result<PgTableDescPtr> PgSession::DoLoadTable(
-    const PgObjectId& table_id, bool fail_on_cache_hit, master::IncludeInactive include_inactive) {
+    const PgObjectId& table_id, bool fail_on_cache_hit, master::IncludeHidden include_hidden) {
   auto cached_table_it = table_cache_.find(table_id);
   const auto exists = cached_table_it != table_cache_.end();
   const auto cache_hit = exists && cached_table_it->second;
@@ -554,12 +559,12 @@ Result<PgTableDescPtr> PgSession::DoLoadTable(
         "Partition list refresh failed for table \"$0\": $1. Invalidating table cache.",
         cached_table_it->second->table_name(), status);
     InvalidateTableCache(table_id, InvalidateOnPgClient::kFalse);
-    return DoLoadTable(table_id, /* fail_on_cache_hit */ true, include_inactive);
+    return DoLoadTable(table_id, /* fail_on_cache_hit */ true, include_hidden);
   }
 
   VLOG(4) << "Table cache MISS: " << table_id;
   auto table = VERIFY_RESULT(
-      pg_client_.OpenTable(table_id, exists, invalidate_table_cache_time_, include_inactive));
+      pg_client_.OpenTable(table_id, exists, invalidate_table_cache_time_, include_hidden));
   invalidate_table_cache_time_ = CoarseTimePoint();
   if (exists) {
     cached_table_it->second = table;
@@ -574,8 +579,8 @@ Result<PgTableDescPtr> PgSession::LoadTable(const PgObjectId& table_id) {
   // When loading table description and yb_read_time is set, return the table properties even if the
   // table is hidden. For instance, this is required for succesful return of yb_table_properties()
   // when yb_read_time is set and the table was hidden at yb_read_time.
-  master::IncludeInactive include_inactive = master::IncludeInactive(yb_read_time != 0);
-  return DoLoadTable(table_id, /* fail_on_cache_hit */ false, include_inactive);
+  master::IncludeHidden include_hidden = master::IncludeHidden(yb_read_time != 0);
+  return DoLoadTable(table_id, /* fail_on_cache_hit */ false, include_hidden);
 }
 
 void PgSession::InvalidateTableCache(
@@ -1059,7 +1064,8 @@ Result<tserver::PgGetReplicationSlotResponsePB> PgSession::GetReplicationSlot(
 }
 
 PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event) {
-  return {pg_callbacks_.PgstatReportWaitStart, wait_event};
+  DCHECK_NE(wait_event, ash::WaitStateCode::kWaitingOnTServer);
+  return wait_event_watcher_(wait_event, ash::PggateRPC::kNoRPC);
 }
 
 Result<tserver::PgYCQLStatementStatsResponsePB> PgSession::YCQLStatementStats() {
@@ -1081,5 +1087,11 @@ Result<yb::tserver::PgTabletsMetadataResponsePB> PgSession::TabletsMetadata() {
 Result<yb::tserver::PgServersMetricsResponsePB> PgSession::ServersMetrics() {
   return pg_client_.ServersMetrics();
 }
+
+Status PgSession::SetCronLastMinute(int64_t last_minute) {
+  return pg_client_.SetCronLastMinute(last_minute);
+}
+
+Result<int64_t> PgSession::GetCronLastMinute() { return pg_client_.GetCronLastMinute(); }
 
 }  // namespace yb::pggate

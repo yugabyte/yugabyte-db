@@ -149,6 +149,11 @@ extern bool yb_enable_alter_table_rewrite;
 extern bool yb_enable_replica_identity;
 
 /*
+ * Guc variable that allows lsn types to be specified while creating replication slot
+ */
+extern bool yb_allow_replication_slot_lsn_types;
+
+/*
  * GUC variable that specifies default replica identity for tables at the time of creation.
  */
 extern char* yb_default_replica_identity;
@@ -346,9 +351,11 @@ const char* YBCGetWaitEventClass(uint32_t wait_event_info);
 const char* YBCGetWaitEventComponent(uint32_t wait_event_info);
 const char* YBCGetWaitEventType(uint32_t wait_event_info);
 uint8_t YBCGetQueryIdForCatalogRequests();
+uint32_t YBCWaitEventForWaitingOnTServer();
 int YBCGetRandomUniformInt(int a, int b);
 YBCWaitEventDescriptor YBCGetWaitEventDescription(size_t index);
 int YBCGetCircularBufferSizeInKiBs();
+const char* YBCGetPggateRPCName(uint32_t pggate_rpc_enum_value);
 
 int YBCGetCallStackFrames(void** result, int max_depth, int skip_count);
 

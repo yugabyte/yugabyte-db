@@ -230,19 +230,18 @@ typedef struct PgSysColumns {
 //
 // Index-related parameters are used to describe different types of scan.
 //   - Sequential scan: Index parameter is not used.
-//     { index_relfilenode_oid, index_only_scan, use_secondary_index }
-//        = { kInvalidRelfileNodeOid, false, false }
+//     { index_relfilenode_oid, index_only_scan}
+//        = { kInvalidRelfileNodeOid, false}
 //   - IndexScan:
-//     { index_relfilenode_oid, index_only_scan, use_secondary_index }
-//        = { IndexRelfileNodeOid, false, true }
+//     { index_relfilenode_oid, index_only_scan}
+//        = { IndexRelfileNodeOid, false}
 //   - IndexOnlyScan:
-//     { index_relfilenode_oid, index_only_scan, use_secondary_index }
-//        = { IndexRelfileNodeOid, true, true }
+//     { index_relfilenode_oid, index_only_scan}
+//        = { IndexRelfileNodeOid, true}
 //   - PrimaryIndexScan: This is a special case as YugaByte doesn't have a separated
 //     primary-index database object from table object.
 //       index_relfilenode_oid = TableRelfileNodeOid
 //       index_only_scan = true if ROWID is wanted. Otherwise, regular rowset is wanted.
-//       use_secondary_index = false
 //
 // Attribute "querying_colocated_table"
 //   - If 'true', SELECT from colocated tables (of any type - database, tablegroup, system).
@@ -251,7 +250,6 @@ typedef struct PgSysColumns {
 typedef struct PgPrepareParameters {
   YBCPgOid index_relfilenode_oid;
   bool index_only_scan;
-  bool use_secondary_index;
   bool querying_colocated_table;
   bool fetch_ybctids_only;
 } YBCPgPrepareParameters;
@@ -355,6 +353,16 @@ typedef struct PgAttrValueDescriptor {
   int collation_id;
 } YBCPgAttrValueDescriptor;
 
+typedef struct WaitEventInfo {
+  uint32_t wait_event;
+  uint16_t rpc_code;
+} YBCWaitEventInfo;
+
+typedef struct WaitEventInfoPtr {
+  uint32_t* wait_event;
+  uint16_t* rpc_code;
+} YBCWaitEventInfoPtr;
+
 typedef struct PgCallbacks {
   YBCPgMemctx (*GetCurrentYbMemctx)();
   const char* (*GetDebugQueryString)();
@@ -365,7 +373,7 @@ typedef struct PgCallbacks {
   /* hba.c */
   int (*CheckUserMap)(const char *, const char *, const char *, bool case_insensitive);
   /* pgstat.h */
-  uint32_t (*PgstatReportWaitStart)(uint32_t);
+  YBCWaitEventInfo (*PgstatReportWaitStart)(YBCWaitEventInfo);
 } YBCPgCallbacks;
 
 typedef struct PgGFlagsAccessor {
@@ -395,6 +403,8 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_use_fast_backward_scan;
   const char*     TEST_ysql_conn_mgr_dowarmup_all_pools_mode;
   const bool*     TEST_ysql_enable_db_logical_client_version_mode;
+  const bool*     ysql_conn_mgr_superuser_sticky;
+  const bool*     TEST_ysql_log_perdb_allocated_new_objectid;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
@@ -457,13 +467,14 @@ typedef enum YbPgVectorIdxType {
   YB_VEC_INVALID,
   YB_VEC_DUMMY,
   YB_VEC_IVFFLAT,
-  YB_VEC_HNSW
+  YB_VEC_HNSW,
 } YbPgVectorIdxType;
 
 typedef struct YbPgVectorIdxOptions {
   YbPgVectorDistType dist_type;
   YbPgVectorIdxType idx_type;
   uint32_t dimensions;
+  uint32_t attnum;
   // TODO(tanuj): Add vector index type-specific options
 } YbPgVectorIdxOptions;
 
@@ -763,6 +774,11 @@ typedef enum PgReplicationSlotSnapshotAction {
   YB_REPLICATION_SLOT_USE_SNAPSHOT
 } YBCPgReplicationSlotSnapshotAction;
 
+typedef enum LsnType {
+  YB_REPLICATION_SLOT_LSN_TYPE_SEQUENCE,
+  YB_REPLICATION_SLOT_LSN_TYPE_HYBRID_TIME
+} YBCLsnType;
+
 typedef struct PgTabletsDescriptor {
   const char* tablet_id;
   const char* table_name;
@@ -788,6 +804,16 @@ typedef struct PgServerMetricsInfo {
   const char* status;
   const char* error;
 } YBCPgServerMetricsInfo;
+
+typedef struct PgDatabaseCloneInfo {
+  YBCPgOid db_id;
+  const char* db_name;
+  YBCPgOid parent_db_id;
+  const char* parent_db_name;
+  const char* state;
+  int64_t as_of_time;
+  const char* failure_reason;
+} YBCPgDatabaseCloneInfo;
 
 typedef struct PgExplicitRowLockParams {
   int rowmark;
@@ -827,6 +853,16 @@ typedef struct PgThreadLocalRegexpCache {
 } YBCPgThreadLocalRegexpCache;
 
 typedef void (*YBCPgThreadLocalRegexpCacheCleanup)(YBCPgThreadLocalRegexpCache*);
+
+typedef struct YbInsertOnConflictKeyInfo {
+  void *slot;
+} YBCPgInsertOnConflictKeyInfo;
+
+typedef enum YbInsertOnConflictKeyState {
+  KEY_NOT_FOUND,
+  KEY_READ,
+  KEY_JUST_INSERTED,
+} YBCPgInsertOnConflictKeyState;
 
 #ifdef __cplusplus
 }  // extern "C"

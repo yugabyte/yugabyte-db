@@ -87,7 +87,7 @@ drop table inserttest;
 CREATE TABLE large_tuple_test (a int, b text) WITH (fillfactor = 10);
 WARNING:  storage parameter fillfactor is unsupported, ignoring
 ALTER TABLE large_tuple_test ALTER COLUMN b SET STORAGE plain;
-ERROR:  ALTER TABLE ALTER column not supported yet
+ERROR:  ALTER action ALTER COLUMN ... SET STORAGE not supported yet
 LINE 1: ALTER TABLE large_tuple_test ALTER COLUMN b SET STORAGE plai...
                                      ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority

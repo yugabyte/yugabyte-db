@@ -4,7 +4,6 @@ headerTitle: Kafka environments
 linkTitle: Environments
 description: Use YugabyteDB CDC with different Kafka environments.
 headcontent:
-image: /images/section_icons/index/develop.png
 menu:
   v2.18:
     identifier: cdc-tutorials

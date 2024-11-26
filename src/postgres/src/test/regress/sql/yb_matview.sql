@@ -4,6 +4,7 @@
 
 CREATE TABLE test_yb (col int);
 INSERT INTO test_yb VALUES (null);
+CREATE UNLOGGED MATERIALIZED VIEW unlogged_mv_yb AS SELECT * FROM test_yb; -- not supported
 CREATE MATERIALIZED VIEW mtest_yb AS SELECT * FROM test_yb;
 CREATE UNIQUE INDEX ON mtest_yb(col);
 REFRESH MATERIALIZED VIEW NONCONCURRENTLY mtest_yb;
@@ -169,9 +170,9 @@ INSERT INTO arrays VALUES
 (null);
 INSERT INTO arrays SELECT '{0}' FROM generate_series(1, 1000);
 CREATE MATERIALIZED VIEW mvtest_tv7 AS SELECT * FROM arrays;
-explain select * from mvtest_tv7 where a @> '{6}';
+explain (costs off) select * from mvtest_tv7 where a @> '{6}';
 CREATE INDEX NONCONCURRENTLY ON mvtest_tv7 using ybgin (a);
-explain select * from mvtest_tv7 where a @> '{6}';
+explain (costs off) select * from mvtest_tv7 where a @> '{6}';
 select * from mvtest_tv7 where a @> '{6}' order by k;
 INSERT INTO arrays SELECT '{0}' FROM generate_series(1, 1000);
 INSERT INTO arrays VALUES

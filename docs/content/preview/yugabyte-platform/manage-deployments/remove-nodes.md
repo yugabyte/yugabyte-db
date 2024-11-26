@@ -16,6 +16,67 @@ menu:
 type: docs
 ---
 
+## Automatic YB-Master failover
+
+{{<tags/feature/ea>}} To avoid under-replication, YugabyteDB Anywhere can automatically detect a YB-Master server that is not responding to the master leader, or that is lagging WAL operations, and fail over to another available node in the same availability zone.
+
+Note that automatic failover only works for a single unhealthy master server.
+
+### Prerequisites
+
+- Automatic YB-Master failover is {{<tags/feature/ea>}}. To enable the feature for a universe, set the **Auto Master Failover** Universe Runtime Configuration option (config key `yb.auto_master_failover.enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+- The universe has the following characteristics:
+
+  - running v2.20.3.0, v2.21.0.0, or later
+  - is on-premises or on a cloud provider (Kubernetes is not supported)
+  - has a replication factor of 3 or more
+  - does not have dedicated masters
+
+- A replacement node (running a TServer) is available in the same availability zone. (Read replica nodes are not valid for failover.)
+
+### How it works
+
+Automatic master failover works as follows:
+
+1. When active, by default YugabyteDB Anywhere checks universe masters every minute to see if they are healthy.
+
+    You can customize this interval using the universe runtime configuration option `yb.auto_master_failover.detect_interval`.
+
+1. YugabyteDB Anywhere declares a master is failed or potentially failed when any of the following conditions are met:
+
+    - The Master heartbeat delay is greater than the threshold.
+    - Maximum tablet follower lag is greater than the threshold.
+
+1. When YugabyteDB Anywhere detects an unhealthy master in a universe, it displays a message on the universe **Overview** indicating a potential master failure, and indicating the estimated time remaining until auto failover.
+
+    The warning is displayed when a master lags more than the threshold defined by the universe runtime configuration option `yb.auto_master_failover.master_follower_lag_soft_threshold`.
+
+    You can configure the time to failover using the universe runtime configuration option `yb.auto_master_failover.master_follower_lag_hard_threshold`.
+
+1. During this time, you can investigate and potentially fix the problem. Navigate to the universe **Nodes** tab to check the status of the nodes. You may need to replace or eliminate unresponsive nodes, or fix a lagging master process. Refer to the following sections.
+
+    If you fix the problem, the warning is dismissed, and YugabyteDB Anywhere returns to monitoring the universe.
+
+    If you need more time to investigate or fix the problem manually, you can opt to snooze the failover.
+
+1. Failover is triggered if the time expires and the issue hasn't been fixed.
+
+    For a universe to successfully fail over masters, the following must be true:
+
+    - The universe is not paused.
+    - The universe is not locked (that is, another locking operation is running).
+    - All nodes are live; that is, there aren't any stopped, removed, or decommissioned nodes.
+
+    Note that master failover may not fix all the issues with the universe. Be sure to address other failed or unavailable nodes or other issues to bring your universe back to a healthy state.
+
+    For master failover, if the task fails, a retry is made automatically. The retry limit for failover tasks is set by the universe runtime configuration option `yb.auto_master_failover.max_task_retries`.
+
+1. After starting up a new master on a different node in the same availability zone as the failed master, YugabyteDB Anywhere waits for you to recover any failed VMs, including the failed master VM, so that it can update the master address configuration on those VMs. Follow the steps in [Replace a live or unreachable node](#replace-a-live-or-unreachable-node).
+
+    You can set the delay for post automatic master failover using the universe runtime configuration option `yb.auto_master_failover.sync_master_addrs_task_delay`. The reference start time is calculated from the time that YugabyteDB Anywhere finds that all processes are running fine on all the VMs.
+
+    Post failover, there is no retry limit as it is a critical operation.
+
 ## Replace a live or unreachable node
 
 To replace a live node for extended maintenance or replace an unhealthy node, do the following:
@@ -79,6 +140,10 @@ A node status displayed in the UI is not always entirely indicative of the node'
 {{< /note >}}
 
 ## Start and stop node processes
+
+{{< warning title="Prevent back up failure due to NFS unmount on cloud VM restart" >}}
+If the universe uses NFS for backup storage, make sure the NFS mount is added to `/etc/fstab` on the node. When a cloud VM is restarted, the NFS mount may get unmounted if its entry is not in `/etc/fstab`. This can lead to backup failures, and errors during [backup](../../back-up-restore-universes/back-up-universe-data/) or [restore](../../back-up-restore-universes/restore-universe-data/).
+{{< /warning >}}
 
 ### Stop a process
 
@@ -152,11 +217,11 @@ A typical universe has an RF of 3 or 5. At the end of the [node removal](#remove
 
 If a master process is down for more than its [WAL log retention period](../../../reference/configuration/yb-master/#log-min-seconds-to-retain) (defaults to 2 hrs) and then becomes healthy, it will be unable to catch up to its peers. In this scenario, the **Nodes** tab shows that the master is in a healthy state but YugabyteDB Anywhere generates an "under-replicated masters" alert. To fix this situation, do the following:
 
-1. Identify the lagging master.  Navigate to **Universes**, select your universe, open the **Metrics** tab, and select **Master > Master Follower Lag** metric. 
+1. Identify the lagging master.  Navigate to **Universes**, select your universe, open the **Metrics** tab, and select **Master > Master Follower Lag** metric.
 1. On the **Nodes** page, click the [**Actions > Stop Processes**](#stop-a-process) action on the node with the lagging master. As part of the execution of this action, a new master process might be started on a different node in the same Availability Zone (if possible).
 1. When the "Stop Processes" task completes, click the [**Actions > Start Processes**](#start-a-process) action on the same node.
 1. Verify that the cluster has an [RF](../../../architecture/key-concepts/#replication-factor-rf) count of healthy masters.
-   
+
 ## Release node instance
 
 To release the IP address associated with the **yb-15-aws-ys-n6** node, click its corresponding **Actions > Release Instance**. This changes the value in the **Status** column from **Removed** to **Decommissioned**.

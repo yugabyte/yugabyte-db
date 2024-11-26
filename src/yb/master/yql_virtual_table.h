@@ -103,19 +103,17 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
     return Status::OK();
   }
 
-  Status GetIteratorForYbctid(
+  Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> GetIteratorForYbctid(
       uint64 stmt_id,
       const dockv::ReaderProjection& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
       const docdb::ReadOperationData& read_operation_data,
-      const Slice& min_ybctid,
-      const Slice& max_ybctid,
+      const docdb::YbctidBounds& bounds,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      docdb::YQLRowwiseIteratorIf::UniPtr* iter,
       docdb::SkipSeek skip_seek = docdb::SkipSeek::kFalse) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
-    return Status::OK();
+    return nullptr;
   }
 
   std::string ToString() const override { return Format("YQLVirtualTable $0", table_name_); }

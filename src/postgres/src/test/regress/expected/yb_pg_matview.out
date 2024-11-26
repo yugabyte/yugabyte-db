@@ -132,7 +132,7 @@ View definition:
 ----------+---------+-----------+----------+---------+---------+--------------+-------------
  grandtot | numeric |           |          |         | main    |              |
 Indexes:
-    "mvtest_aa" lsm (grandtot HASH)
+    "mvtest_aa" lsm (grandtot ASC)
 View definition:
  SELECT mvtest_tvvmv.grandtot
    FROM mvtest_tvvmv;

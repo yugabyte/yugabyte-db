@@ -48,6 +48,7 @@ static int ReplicationRole = REPLICATION_ROLE_DISABLED;
 static bool EnableManualDDLReplication = false;
 char *DDLQueuePrimaryKeyStartTime = NULL;
 char *DDLQueuePrimaryKeyQueryId = NULL;
+bool TEST_AllowColocatedObjects = false;
 
 /* Util functions. */
 static bool IsInIgnoreList(EventTriggerData *trig_data);
@@ -108,6 +109,18 @@ _PG_init(void)
 		&DDLQueuePrimaryKeyQueryId,
 		"",
 		PGC_SUSET,
+		0,
+		NULL, NULL, NULL);
+
+  // YB_TODO(jhe): Remove this flag once colocated objects are supported.
+	DefineCustomBoolVariable(
+		"yb_xcluster_ddl_replication.TEST_allow_colocated_objects",
+		gettext_noop(
+			"Allow colocated objects to be replicated."),
+		NULL,
+		&TEST_AllowColocatedObjects,
+		false,
+		PGC_USERSET,
 		0,
 		NULL, NULL, NULL);
 }
@@ -296,7 +309,7 @@ HandleSourceSQLDrop(EventTriggerData *trig_data)
 	Oid save_userid;
 	int save_sec_context;
 	INIT_MEM_CONTEXT_AND_SPI_CONNECT(
-      "yb_xcluster_ddl_replication.HandleSourceSQLDrop context");
+		"yb_xcluster_ddl_replication.HandleSourceSQLDrop context");
 
 	should_replicate_ddl |= ProcessSourceEventTriggerDroppedObjects();
 

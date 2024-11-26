@@ -25,6 +25,7 @@
 #include "yb/gutil/endian.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/endian_util.h"
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -168,6 +169,10 @@ Result<char*> GetValueWithLength(const PGresult* result, int row, int column, si
   return PQgetvalue(result, row, column);
 }
 
+Slice CellSlice(const PGresult* result, int row, int column) {
+  return Slice(PQgetvalue(result, row, column), PQgetlength(result, row, column));
+}
+
 template<class T>
 Result<T> GetValueImpl(const PGresult* result, int row, int column) {
   if constexpr (std::is_same_v<T, bool> || std::is_same_v<T, char>) {
@@ -183,10 +188,30 @@ Result<T> GetValueImpl(const PGresult* result, int row, int column) {
     return BigEndian::Load64(
         VERIFY_RESULT(GetValueWithLength(result, row, column, sizeof(uint64_t))));
   } else if constexpr (std::is_same_v<T, std::string>) {
-    return std::string(PQgetvalue(result, row, column), PQgetlength(result, row, column));
+    return CellSlice(result, row, column).ToBuffer();
   } else if constexpr (std::is_same_v<T, Uuid>) {
-    return Uuid::FromSlice(
-        Slice(PQgetvalue(result, row, column), PQgetlength(result, row, column)));
+    return Uuid::FromSlice(CellSlice(result, row, column));
+  }
+  if constexpr (std::is_same_v<T, std::vector<float>>) {
+    auto slice = CellSlice(result, row, column);
+    if (slice.size() < 4) {
+      return STATUS_FORMAT(Corruption, "Too small data for float vector: $0", slice.size());
+    }
+    auto input = slice.data();
+    auto size = Read<uint16_t, BigEndian>(input);
+    size_t expected_size = 4 + size * sizeof(float);
+    if (slice.size() != expected_size) {
+      return STATUS_FORMAT(
+          Corruption, "Wrong data size for float vector: $0, expected: $1",
+          slice.size(), expected_size);
+    }
+    input += 2;
+    std::vector<float> vec;
+    vec.reserve(size);
+    while (input != slice.end()) {
+      vec.push_back(bit_cast<float>(Read<uint32_t, BigEndian>(input)));
+    }
+    return vec;
   }
 }
 
@@ -236,6 +261,7 @@ constexpr Oid TIMESTAMPTZOID = 1184;
 constexpr Oid CSTRINGOID = 2275;
 constexpr Oid UUIDOID = 2950;
 constexpr Oid JSONBOID = 3802;
+constexpr Oid VECTOROID = 16385;
 
 template<BasePGType T>
 bool IsValidType(Oid pg_type) {
@@ -277,6 +303,8 @@ bool IsValidType(Oid pg_type) {
     return pg_type == OIDOID;
   } else if constexpr (std::is_same_v<T, Uuid>) {
     return pg_type == UUIDOID;
+  } else if constexpr (std::is_same_v<T, std::vector<float>>) {
+    return pg_type == VECTOROID;
   }
 }
 
@@ -690,6 +718,8 @@ Result<std::string> ToString(const PGresult* result, int row, int column) {
     case TIMESTAMPOID: [[fallthrough]];
     case TIMESTAMPTZOID:
       return AsString(VERIFY_RESULT(GetValue<MonoDelta>(result, row, column)));
+    case VECTOROID:
+      return AsString(VERIFY_RESULT(GetValue<std::vector<float>>(result, row, column)));
   }
   return Format("Type not supported: $0", type);
 }
@@ -878,6 +908,18 @@ template struct GetValueHelper<char>;
 template struct GetValueHelper<PGOid>;
 template struct GetValueHelper<Uuid>;
 template struct GetValueHelper<MonoDelta>;
+
+FetchHelper<RowAsString>::RowsResult FetchHelper<RowAsString>::FetchRows(
+    Result<PGResultPtr>&& source) {
+  auto result = VERIFY_RESULT(std::move(source));
+  RowsType rows;
+  auto num_rows = PQntuples(result.get());
+  rows.reserve(num_rows);
+  for (decltype(num_rows) row = 0; row < num_rows; ++row) {
+    rows.push_back(VERIFY_RESULT(RowToString(result.get(), row, DefaultColumnSeparator())));
+  }
+  return rows;
+}
 
 } // namespace libpq_utils::internal
 } // namespace yb::pgwrapper

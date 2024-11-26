@@ -37,6 +37,8 @@
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 struct PgExecParameters;
 
 namespace yb::pggate {
@@ -55,14 +57,15 @@ struct Bound {
 // when it goes out of scope.
 class PgWaitEventWatcher {
  public:
-  using Starter = uint32_t (*)(uint32_t wait_event);
+  using Starter = YBCWaitEventInfo (*)(YBCWaitEventInfo info);
 
-  PgWaitEventWatcher(Starter starter, ash::WaitStateCode wait_event);
+  PgWaitEventWatcher(
+      Starter starter, ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc);
   ~PgWaitEventWatcher();
 
  private:
   const Starter starter_;
-  const uint32_t prev_wait_event_;
+  const YBCWaitEventInfo prev_wait_event_;
 
   DISALLOW_COPY_AND_ASSIGN(PgWaitEventWatcher);
 };
@@ -70,6 +73,12 @@ class PgWaitEventWatcher {
 struct EstimatedRowCount {
   double live;
   double dead;
+};
+
+struct SampleRandomState {
+  double w;
+  uint64_t s0;
+  uint64_t s1;
 };
 
 struct LightweightTableYbctid {
@@ -86,8 +95,15 @@ struct TableYbctid {
   TableYbctid(PgOid table_id_, std::string ybctid_)
       : table_id(table_id_), ybctid(std::move(ybctid_)) {}
 
+  explicit TableYbctid(const LightweightTableYbctid& lightweight)
+      : TableYbctid(lightweight.table_id, std::string(lightweight.ybctid)) {}
+
   operator LightweightTableYbctid() const {
     return LightweightTableYbctid(table_id, static_cast<std::string_view>(ybctid));
+  }
+
+  std::string ToString() const {
+    return Format("{ table_id: $0, ybctid: $1 }", table_id, ybctid);
   }
 
   PgOid table_id;
@@ -129,6 +145,9 @@ using TableYbctidSetHelper =
 using MemoryOptimizedTableYbctidSet = TableYbctidSetHelper<MemoryOptimizedTableYbctid>;
 using TableYbctidSet = TableYbctidSetHelper<TableYbctid>;
 using TableYbctidVector = std::vector<TableYbctid>;
+
+template <class U>
+using TableYbctidMap = std::unordered_map<TableYbctid, U, TableYbctidHasher, TableYbctidComparator>;
 
 class TableYbctidVectorProvider {
  public:

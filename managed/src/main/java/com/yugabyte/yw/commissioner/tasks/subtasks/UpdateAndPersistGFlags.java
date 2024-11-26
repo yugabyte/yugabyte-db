@@ -48,7 +48,14 @@ public class UpdateAndPersistGFlags extends UniverseTaskBase {
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams().getUniverseUUID() + ")";
+    return super.getName()
+        + "(master: "
+        + taskParams().masterGFlags
+        + ", tserver:"
+        + taskParams().tserverGFlags
+        + ", specific:"
+        + taskParams().specificGFlags
+        + ")";
   }
 
   @Override

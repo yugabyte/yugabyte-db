@@ -20,6 +20,9 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/client/table_info.h"
+#include "yb/client/yb_table_name.h"
+
 #include "yb/common/common_flags.h"
 #include "yb/common/pgsql_error.h"
 
@@ -74,18 +77,21 @@ using std::string;
 
 using namespace std::literals;
 
+DECLARE_bool(TEST_disable_flush_on_shutdown);
+DECLARE_bool(TEST_enable_pg_client_mock);
 DECLARE_bool(TEST_force_master_leader_resolution);
+DECLARE_bool(TEST_no_schedule_remove_intents);
+DECLARE_bool(delete_intents_sst_files);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_tracing);
-DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(enable_wait_queues);
+DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(pg_client_use_shared_memory);
-DECLARE_bool(ysql_yb_enable_replica_identity);
-DECLARE_bool(TEST_enable_pg_client_mock);
-DECLARE_bool(delete_intents_sst_files);
+DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_bool(use_bootstrap_intent_ht_filter);
-DECLARE_bool(TEST_no_schedule_remove_intents);
-DECLARE_bool(TEST_disable_flush_on_shutdown);
+DECLARE_bool(ysql_yb_ash_enable_infra);
+DECLARE_bool(ysql_yb_enable_ash);
+DECLARE_bool(ysql_yb_enable_replica_identity);
 
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
@@ -102,6 +108,7 @@ DECLARE_int32(tracing_level);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int32(yb_num_shards_per_tserver);
+DECLARE_int32(ysql_yb_ash_sample_size);
 
 DECLARE_int64(TEST_inject_random_delay_on_txn_status_response_ms);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
@@ -115,18 +122,14 @@ DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
 DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
 DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 
-DECLARE_uint64(max_clock_skew_usec);
-
 DECLARE_string(time_source);
 DECLARE_string(ysql_yb_default_replica_identity);
 
-DECLARE_bool(rocksdb_disable_compactions);
-DECLARE_uint64(pg_client_session_expiration_ms);
+DECLARE_uint64(consensus_max_batch_size_bytes);
+DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(pg_client_heartbeat_interval_ms);
-
-DECLARE_bool(ysql_yb_ash_enable_infra);
-DECLARE_bool(ysql_yb_enable_ash);
-DECLARE_int32(ysql_yb_ash_sample_size);
+DECLARE_uint64(pg_client_session_expiration_ms);
+DECLARE_uint64(rpc_max_message_size);
 
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_gauge_uint64(aborted_transactions_pending_cleanup);
@@ -228,6 +231,7 @@ class PgMiniPgClientServiceCleanupTest : public PgMiniTestSingleNode {
 
 TEST_F_EX(PgMiniTest, VerifyPgClientServiceCleanupQueue, PgMiniPgClientServiceCleanupTest) {
   constexpr size_t kTotalConnections = 30;
+  constexpr size_t kAshConnection = 1;
   std::vector<PGConn> connections;
   connections.reserve(kTotalConnections);
   for (size_t i = 0; i < kTotalConnections; ++i) {
@@ -235,10 +239,10 @@ TEST_F_EX(PgMiniTest, VerifyPgClientServiceCleanupQueue, PgMiniPgClientServiceCl
   }
   auto* client_service =
       cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientService();
-  ASSERT_EQ(connections.size(), client_service->TEST_SessionsCount());
+  ASSERT_EQ(connections.size() + kAshConnection, client_service->TEST_SessionsCount());
 
   connections.erase(connections.begin() + connections.size() / 2, connections.end());
-  ASSERT_OK(WaitFor([client_service, expected_count = connections.size()]() {
+  ASSERT_OK(WaitFor([client_service, expected_count = connections.size() + kAshConnection]() {
     return client_service->TEST_SessionsCount() == expected_count;
   }, 4 * FLAGS_pg_client_session_expiration_ms * 1ms, "client session cleanup", 1s));
 }
@@ -1185,6 +1189,17 @@ TEST_F(PgMiniTest, BigSelect) {
 }
 
 TEST_F(PgMiniTest, MoveMaster) {
+  for (;;) {
+    client::YBTableName transactions_table_name(
+        YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+    auto result = client_->GetYBTableInfo(transactions_table_name);
+    if (result.ok()) {
+      LOG(INFO) << "Transactions table info: " << result->table_id;
+      break;
+    }
+    LOG(INFO) << "Waiting for transactions table";
+    std::this_thread::sleep_for(1s);
+  }
   ShutdownAllMasters(cluster_.get());
   cluster_->mini_master(0)->set_pass_master_addresses(false);
   ASSERT_OK(StartAllMasters(cluster_.get()));
@@ -1195,7 +1210,7 @@ TEST_F(PgMiniTest, MoveMaster) {
     auto status = conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)");
     WARN_NOT_OK(status, "Failed to create table");
     return status.ok();
-  }, 15s, "Create table"));
+  }, 15s * kTimeMultiplier, "Create table"));
 }
 
 TEST_F(PgMiniTest, DDLWithRestart) {
@@ -1446,7 +1461,7 @@ TEST_F(PgMiniTest, AlterTableWithReplicaIdentity) {
   ASSERT_NOK(conn.Execute("CREATE TABLE t4 (a int primary key)"));
 }
 
-TEST_F(PgMiniTest, SkipTableTombstoneCheckMetadata) {
+TEST_F(PgMiniTest, TestSkipTableTombstoneCheck) {
   // Setup test data.
   const auto kNonColocatedTableName = "test";
   const auto kColocatedTableName = "colo_test";
@@ -1480,6 +1495,39 @@ TEST_F(PgMiniTest, SkipTableTombstoneCheckMetadata) {
   ASSERT_TRUE(ASSERT_RESULT(
       colocated_tablet_peer->tablet_metadata()->GetTableInfo(table_id))
       ->skip_table_tombstone_check);
+
+  const auto kRowCount = 100;
+
+  for (int i = 0; i < kRowCount; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, $1)", kColocatedTableName, i));
+  }
+
+  auto RunPointSelectQueriesOnColocatedTable = [&conn, &kColocatedTableName]() {
+    for (int i = 0; i < kRowCount; ++i) {
+      ASSERT_RESULT(conn.FetchFormat("SELECT * FROM $0 WHERE a = $1;", kColocatedTableName, i));
+    }
+  };
+
+  // Verify that read from the colocated table only does 100 seek.
+  auto num_seek_before_read = colocated_tablet_peer->shared_tablet()->regulardb_statistics()
+      ->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK);
+
+  RunPointSelectQueriesOnColocatedTable();
+
+  auto num_seek_after_read = colocated_tablet_peer->shared_tablet()->regulardb_statistics()
+      ->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK);
+  ASSERT_EQ(kRowCount, num_seek_after_read - num_seek_before_read);
+
+  // Verify that the number of seeks is still 100 even after a TRUNCATE
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE TABLE $0", kColocatedTableName));
+  num_seek_before_read = colocated_tablet_peer->shared_tablet()->regulardb_statistics()
+      ->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK);
+
+  RunPointSelectQueriesOnColocatedTable();
+
+  num_seek_after_read = colocated_tablet_peer->shared_tablet()->regulardb_statistics()
+      ->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK);
+  ASSERT_EQ(kRowCount, num_seek_after_read - num_seek_before_read);
 
   // Verify that skip_table_tombstone_check=false for pg system tables.
   table_id = ASSERT_RESULT(GetTableIDFromTableName("pg_class"));
@@ -2175,11 +2223,7 @@ TEST_F(PgMiniTest, CompactionAfterDBDrop) {
 // The test checks that YSQL doesn't wait for sent RPC response in case of process termination.
 TEST_F(PgMiniTest, NoWaitForRPCOnTermination) {
   auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
-  constexpr auto kRows = RegularBuildVsDebugVsSanitizers(1000000, 100000, 30000);
-  ASSERT_OK(conn.ExecuteFormat(
-      "INSERT INTO t SELECT s FROM generate_series(1, $0) AS s", kRows));
-  constexpr auto kLongTimeQuery = "SELECT COUNT(*) FROM t";
+  constexpr auto kLongTimeQuery = "SELECT pg_sleep(30)";
   std::atomic<MonoTime> termination_start;
   MonoTime termination_end;
   {
@@ -2192,11 +2236,12 @@ TEST_F(PgMiniTest, NoWaitForRPCOnTermination) {
       const auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(30);
       while (MonoTime::Now() < deadline) {
         const auto local_termination_start = MonoTime::Now();
-        auto res = ASSERT_RESULT(thread_conn.FetchFormat(
-          "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE query like '$0'",
-          kLongTimeQuery));
-        auto lines = PQntuples(res.get());
-        if (lines) {
+        const auto lines = ASSERT_RESULT(thread_conn.FetchRows<bool>(
+            Format(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE query like '$0'",
+                kLongTimeQuery)));
+        if (!lines.empty()) {
+          ASSERT_TRUE(lines.size() == 1 && lines.front());
           termination_start.store(local_termination_start, std::memory_order_release);
           break;
         }
@@ -2206,8 +2251,8 @@ TEST_F(PgMiniTest, NoWaitForRPCOnTermination) {
     latch.Wait();
     const auto res = conn.Fetch(kLongTimeQuery);
     ASSERT_NOK(res);
-    ASSERT_STR_CONTAINS(res.status().ToString(),
-                        "terminating connection due to administrator command");
+    ASSERT_TRUE(res.status().IsNetworkError());
+    ASSERT_STR_CONTAINS(res.status().ToString(), "server closed the connection unexpectedly");
     termination_end = MonoTime::Now();
   }
   const auto termination_duration =
@@ -2218,7 +2263,11 @@ TEST_F(PgMiniTest, NoWaitForRPCOnTermination) {
 
 TEST_F(PgMiniTest, ReadHugeRow) {
   constexpr size_t kNumColumns = 2;
-  constexpr size_t kColumnSize = 254000000;
+  constexpr size_t kColumnSize = 254000000 / RegularBuildVsSanitizers(1, 16);
+  if (IsSanitizer()) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_max_message_size) = kColumnSize + 1_MB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_max_batch_size_bytes) = kColumnSize - 1_KB - 1;
+  }
 
   std::string create_query = "CREATE TABLE test(pk INT PRIMARY KEY";
   for (size_t i = 0; i < kNumColumns; ++i) {
@@ -2453,11 +2502,12 @@ Status MockAbortFailure(
     yb::tserver::PgFinishTransactionResponsePB* resp, yb::rpc::RpcContext* context) {
   LOG(INFO) << "FinishTransaction called for session: " << req->session_id();
 
-  if (req->session_id() == 1) {
+  // ASH collector takes session id 1, the subsequent connections take 2 and 3
+  if (req->session_id() == 2) {
     context->CloseConnection();
     // The return status should not matter here.
     return Status::OK();
-  } else if (req->session_id() == 2) {
+  } else if (req->session_id() == 3) {
     return STATUS(NetworkError, "Mocking network failure on FinishTransaction");
   }
 

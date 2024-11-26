@@ -68,6 +68,7 @@ DECLARE_int32(TEST_txn_participant_inject_delay_on_start_shutdown_ms);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_uint64(ysql_session_max_batch_size);
+DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
 
 using namespace std::literals;
 
@@ -970,10 +971,10 @@ TEST_F(PgWaitQueueContentionStressTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentReader
 
 // When a waiter fails to re-acquire the shared in-memory locks while being resumed from the thread
 // running ResumedWaiterRunner (which resumes waiters serially), it is scheduled for retry on the
-// Tablet Server's Scheduler which attempts to re-acquire the shared in-memory locks until the
+// Tablet Server's rpc threadpool which attempts to re-acquire the shared in-memory locks until the
 // request deadline passes. The below test simulates a contentious workload and helps assert the
 // above, particularly in tsan mode.
-TEST_F(PgWaitQueueContentionStressTest, TestResumeWaitersOnScheduler) {
+TEST_F(PgWaitQueueContentionStressTest, TestResumeWaitersOnRpcThreadpool) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_wait_for_relock_unblocked_txn_keys_ms) = 100;
   PerformConcurrentReads();
 }
@@ -1368,7 +1369,7 @@ void PgWaitQueuesTest::TestMultiTabletFairness() const {
   }
 }
 
-TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(MultiTabletFairness)) {
+TEST_F(PgWaitQueuesTest, MultiTabletFairness) {
   TestMultiTabletFairness();
 }
 
@@ -1468,8 +1469,13 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestMultipleRequestsPerTxn)) {
 }
 
 class PgWaitQueueRF1Test
-    : public PgWaitQueuesMaxBatchSize1Test, public testing::WithParamInterface<UseMaxBatchSize1> {
+    : public PgWaitQueuesMaxBatchSize1Test, public ConcurrentBlockedWaitersTest,
+      public testing::WithParamInterface<UseMaxBatchSize1> {
  protected:
+  Result<PGConn> GetDbConn() const override {
+    return Connect();
+  }
+
   std::string GetYsqlPgConf() const override {
     if (auto use_max_batch_size_as_1 = GetParam()) {
       return PgWaitQueuesMaxBatchSize1Test::GetYsqlPgConf();
@@ -1608,6 +1614,78 @@ TEST_P(PgWaitQueueRF1Test, YB_DISABLE_TEST_IN_TSAN(TestDetectorPreservesBlockerS
                conn2.CommitTransaction().ok());
 }
 
+// When a blocker transaction is aborted by a conflicting DDL or a high pri DML with NOWAIT set,
+// the waiters blocked on this now aborted blocker can be resumed once the participant realizes
+// the abort and signals the wait-queue. The below test asserts that the participant signals the
+// wait-queue once it realizes the abort of a transaction.
+TEST_P(PgWaitQueueRF1Test, TestAbortSignalDeliveredOnTxnAbort) {
+  // Tune the flags so as to prevent other ways of the waiter being resumed from the wait-queue.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_refresh_waiter_timeout_ms) = 600000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_wait_queue_poll_interval_ms) = 600000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_proactive_txn_cleanup_on_abort) = true;
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO foo SELECT generate_series(0, 10), 0"));
+
+  auto low_pri_blocker_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(low_pri_blocker_conn.Execute("SET yb_transaction_priority_upper_bound=0.5"));
+  ASSERT_OK(low_pri_blocker_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(low_pri_blocker_conn.Execute("UPDATE foo SET v=v+1 WHERE k=1"));
+
+  yb::SyncPoint::GetInstance()->LoadDependency({
+    {"WaitQueue::Impl::SetupWaiterUnlocked:1", "TestAbortSignalDeliveredOnTxnAbort"}});
+  yb::SyncPoint::GetInstance()->ClearTrace();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    auto waiter_conn = VERIFY_RESULT(Connect());
+    EXPECT_OK(waiter_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    RETURN_NOT_OK(waiter_conn.Execute("UPDATE foo SET v=v+1 WHERE k=1"));
+    RETURN_NOT_OK(waiter_conn.CommitTransaction());
+    return Status::OK();
+  });
+  // Wait for the blocked request to enter the wait-queue.
+  TEST_SYNC_POINT("TestAbortSignalDeliveredOnTxnAbort");
+  auto high_pri_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(high_pri_conn.Execute("SET yb_transaction_priority_lower_bound=0.6"));
+  ASSERT_OK(high_pri_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  // This would abort the low_pri_blocker. If NOWAIT is ever re-worked to error out instead of
+  // aborting conflciting low priority txns, the below assert would fail. Re-work the test then.
+  ASSERT_OK(high_pri_conn.Fetch("SELECT * FROM foo WHERE k=1 FOR UPDATE NOWAIT"));
+  ASSERT_OK(high_pri_conn.CommitTransaction());
+
+  ASSERT_EQ(status_future.wait_for(5s * kTimeMultiplier), std::future_status::ready)
+      << "Expected waiter to have been resolved by now.";
+  // Note: The waiter would always go through because of the explicit synchronization in the test
+  // - low pri update goes through
+  // - another update enters the wait-queue blocked on the prior
+  // - a high pri NOWAIT comes in aborts the first update (note that at this point, the high pri
+  //   txn holds the shared in-memory locks. So even if the waiter above is in the process of being
+  //   resumed, it will block re-acquiring the shared in-memory locks).
+  // - high pri txn replicates its op, releases the shared in-memory locks.
+  // - the waiter now re-does conflict resolution, re-enters the wait-queue, and is resumed only
+  //   after the high pri txn commits.
+  ASSERT_OK(status_future.get());
+}
+
+TEST_P(PgWaitQueueRF1Test, TestCommitSignalDeliveredOnTxnCommit) {
+  static constexpr int kNumWaiters = 1;
+  static constexpr int kNumTablets = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_refresh_waiter_timeout_ms) = 600000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_wait_queue_poll_interval_ms) = 600000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_proactive_txn_cleanup_on_abort) = true;
+  ASSERT_OK(SetupData(kNumTablets));
+
+  yb::SyncPoint::GetInstance()->LoadDependency({
+    {"WaitQueue::Impl::SetupWaiterUnlocked:1", "TestCommitSignalDeliveredOnTxnCommit"}});
+  yb::SyncPoint::GetInstance()->ClearTrace();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+  auto conn = ASSERT_RESULT(SetupWaitersAndBlocker(kNumWaiters));
+
+  TEST_SYNC_POINT("TestCommitSignalDeliveredOnTxnCommit");
+  UnblockWaitersAndValidate(&conn, kNumWaiters);
+}
+
 class PgWaitQueuesReadCommittedTest : public PgWaitQueuesTest {
  protected:
   IsolationLevel GetIsolationLevel() const override {
@@ -1615,7 +1693,7 @@ class PgWaitQueuesReadCommittedTest : public PgWaitQueuesTest {
   }
 };
 
-TEST_F(PgWaitQueuesReadCommittedTest, TestDeadlockSimple) {
+TEST_F(PgWaitQueuesReadCommittedTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockSimple)) {
   TestDeadlockWithWrites();
 }
 

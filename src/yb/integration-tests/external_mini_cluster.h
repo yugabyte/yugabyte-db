@@ -132,6 +132,7 @@ struct ExternalMiniClusterOptions {
 #endif
 
   bool enable_ysql = false;
+  bool enable_ysql_auth = false;
 
   // Directory in which to store data.
   // Default: "", which auto-generates a unique path for this cluster.
@@ -252,6 +253,11 @@ class ExternalMiniCluster : public MiniClusterBase {
       bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
       const std::vector<std::string>& extra_flags = {},
       int num_drives = -1);
+
+  // Shuts down the tablet server(s) and removes it/them from the masters' ts registry.
+  Status RemoveTabletServer(const std::string& ts_uuid, MonoTime deadline);
+  Status RemoveTabletServers(
+      const std::vector<std::reference_wrapper<const std::string>>& ts_uuids, MonoTime deadline);
 
   // Start YB Controller servers for all the existing TSs.
   Status StartYbControllerServers();
@@ -569,6 +575,11 @@ class ExternalMiniCluster : public MiniClusterBase {
   Status MoveTabletLeader(
       const TabletId& tablet_id, std::optional<size_t> new_leader_idx = std::nullopt,
       MonoDelta timeout = MonoDelta::kMin);
+
+  void SetMaxGracefulShutdownWaitSec(int max_graceful_shutdown_wait_sec);
+
+  Status CallYbAdmin(
+      const std::vector<std::string>& args, MonoDelta timeout = MonoDelta::FromSeconds(60));
 
  protected:
   friend class UpgradeTestBase;

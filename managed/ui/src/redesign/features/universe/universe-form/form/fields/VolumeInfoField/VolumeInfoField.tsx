@@ -278,11 +278,14 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
       [VolumeType.SSD, VolumeType.NVME].includes(volumeType) &&
       ![CloudType.kubernetes, CloudType.gcp, CloudType.azu].includes(provider?.code);
 
+    // Ephemeral instances volume information cannot be resized, refer to PLAT-16118
+    const isEphemeralStorage =
+      provider?.code === CloudType.aws && isEphemeralAwsStorageInstance(instance);
+
     const smartResizePossible =
       [CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code) &&
       !isEphemeralAwsStorageInstance(instance) &&
-      fieldValue?.storageType !== StorageType.Scratch &&
-      isPrimary;
+      fieldValue?.storageType !== StorageType.Scratch;
 
     return (
       <Grid container spacing={2}>
@@ -300,7 +303,9 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                   <YBInput
                     type="number"
                     fullWidth
-                    disabled={fixedNumVolumes || isViewMode || numVolumesDisable}
+                    disabled={
+                      fixedNumVolumes || isViewMode || numVolumesDisable || isEphemeralStorage
+                    }
                     inputProps={{ min: 1, 'data-testid': `VolumeInfoField-${dataTag}-VolumeInput` }}
                     value={convertToString(fieldValue.numVolumes)}
                     onChange={(event) => onNumVolumesChanged(event.target.value)}
@@ -317,6 +322,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                     type="number"
                     fullWidth
                     disabled={
+                      isEphemeralStorage ||
                       fixedVolumeSize ||
                       isViewMode ||
                       (provider?.code !== CloudType.kubernetes &&

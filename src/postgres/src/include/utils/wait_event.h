@@ -49,8 +49,10 @@ typedef enum
 	WAIT_EVENT_WAL_RECEIVER_MAIN,
 	WAIT_EVENT_WAL_SENDER_MAIN,
 	WAIT_EVENT_WAL_WRITER_MAIN,
-	YB_WAIT_EVENT_QUERY_DIAGNOSTICS_MAIN,
-	WAIT_EVENT_YB_ASH_MAIN
+	WAIT_EVENT_YB_QUERY_DIAGNOSTICS_MAIN,
+	WAIT_EVENT_YB_ASH_MAIN,
+
+	WAIT_EVENT_YB_ACTIVITY_END /* This should be the last value */
 } WaitEventActivity;
 
 /* ----------
@@ -71,6 +73,8 @@ typedef enum
 	WAIT_EVENT_SSL_OPEN_SERVER,
 	WAIT_EVENT_WAL_SENDER_WAIT_WAL,
 	WAIT_EVENT_WAL_SENDER_WRITE_DATA,
+
+	WAIT_EVENT_YB_CLIENT_END /* This should be the last value */
 } WaitEventClient;
 
 /* ----------
@@ -134,6 +138,8 @@ typedef enum
 	WAIT_EVENT_WAL_RECEIVER_WAIT_START,
 	WAIT_EVENT_XACT_GROUP_UPDATE,
 	WAIT_EVENT_YB_PARALLEL_SCAN_EMPTY,
+
+	WAIT_EVENT_YB_IPC_END /* This should be the last value */
 } WaitEventIPC;
 
 /* ----------
@@ -152,7 +158,9 @@ typedef enum
 	WAIT_EVENT_REGISTER_SYNC_REQUEST,
 	WAIT_EVENT_VACUUM_DELAY,
 	WAIT_EVENT_VACUUM_TRUNCATE,
-	WAIT_EVENT_YB_TXN_CONFLICT_BACKOFF
+	WAIT_EVENT_YB_TXN_CONFLICT_BACKOFF,
+
+	WAIT_EVENT_YB_TIMEOUT_END /* This should be the last value */
 } WaitEventTimeout;
 
 /* ----------
@@ -238,6 +246,8 @@ typedef enum
 	WAIT_EVENT_WAL_WRITE,
 	WAIT_EVENT_YB_COPY_COMMAND_STREAM_READ,
 	WAIT_EVENT_YB_COPY_COMMAND_STREAM_WRITE,
+
+	WAIT_EVENT_YB_IO_END /* This should be the last value */
 } WaitEventIO;
 
 
@@ -247,8 +257,11 @@ static inline void pgstat_report_wait_start(uint32 wait_event_info);
 static inline void pgstat_report_wait_end(void);
 extern void pgstat_set_wait_event_storage(uint32 *wait_event_info);
 extern void pgstat_reset_wait_event_storage(void);
+extern void yb_pgstat_set_wait_event_storage(PGPROC *proc);
+extern void yb_pgstat_reset_wait_event_storage(void);
 
 extern PGDLLIMPORT uint32 *my_wait_event_info;
+extern PGDLLIMPORT YBCWaitEventInfoPtr yb_my_wait_event_info;
 
 
 /* ----------
@@ -303,21 +316,27 @@ pgstat_report_wait_end(void)
  * initialized.
  * ----------
  */
-static inline uint32
-yb_pgstat_report_wait_start(uint32 wait_event_info)
+static inline YBCWaitEventInfo
+yb_pgstat_report_wait_start(YBCWaitEventInfo info)
 {
-	/* If ASH is disabled, do nothing */
-	if (!yb_enable_ash)
-		return wait_event_info;
+	YBCWaitEventInfo prev_wait_event_info = info;
 
-	uint32 prev_wait_event_info = 0;
+	if (yb_enable_ash)
+	{
+		/*
+		 * Since this is a four-byte field which is always read and written as
+		 * four-bytes, updates are atomic.
+		 * The reader copy_pgproc_sample_fields() is aware if it's reading
+		 * inconsistent data and will retry to read the values.
+		 */
+		prev_wait_event_info = (YBCWaitEventInfo){
+			*yb_my_wait_event_info.wait_event,
+			*yb_my_wait_event_info.rpc_code };
 
-	/*
-	 * Since this is a four-byte field which is always read and written as
-	 * four-bytes, updates are atomic.
-	 */
-	prev_wait_event_info = *my_wait_event_info;
-	*(volatile uint32 *) my_wait_event_info = wait_event_info;
+		*(volatile uint32 *) yb_my_wait_event_info.wait_event = info.wait_event;
+		*(volatile uint16 *) yb_my_wait_event_info.rpc_code = info.rpc_code;
+	}
+
 	return prev_wait_event_info;
 }
 

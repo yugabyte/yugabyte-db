@@ -106,6 +106,7 @@ public class CustomerConfigService {
 
     Map<UUID, List<DrConfig>> drConfigsByConfigUuid =
         DrConfig.getAll().stream()
+            .filter(DrConfig::hasActiveXClusterConfig)
             .collect(Collectors.groupingBy(DrConfig::getStorageConfigUuid, Collectors.toList()));
 
     Set<UUID> universeUuids =

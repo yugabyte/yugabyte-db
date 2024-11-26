@@ -4,7 +4,6 @@ headerTitle: Horizontal Scalability
 linkTitle: Horizontal scalability
 description: Horizontal Scalability in YugabyteDB.
 headcontent: Horizontal Scalability in YugabyteDB.
-image: /images/section_icons/explore/linear_scalability.png
 menu:
   v2.14:
     identifier: explore-scalability

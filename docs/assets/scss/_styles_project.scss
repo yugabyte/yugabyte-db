@@ -103,9 +103,13 @@ a {
 .td-breadcrumbs {
   margin-bottom: 20px;
   padding-right: 120px;
-  @media(max-width:991px){
-    padding-right: 0;
 
+	@media(max-width:991px) {
+    padding-right: 0;
+  }
+
+   + .td-content .dropdown-list {
+    margin-top: 14px!important;
   }
 
   &:has(.breadcrumb-item:only-child) {
@@ -165,7 +169,6 @@ a {
 @media (min-width: 992px) {
   .td-main main {
     padding-top: 116px;
-    //margin-top: 32px;
     margin-top: 52px;
   }
 }
@@ -452,6 +455,7 @@ body:not(.td-home) .td-main main {
     margin-top: 16px;
     display: flex;
     align-items: center;
+    flex-flow: wrap;
     justify-content: space-between;
 
     @media (max-width: 991px) {
@@ -461,6 +465,11 @@ body:not(.td-home) .td-main main {
 
     @media (min-width: 991px) {
       margin: 20px 0 72px;
+    }
+
+    .header-version-dropdown {
+      width: 100%;
+      margin: 0 0 4px 0;
     }
   }
 }

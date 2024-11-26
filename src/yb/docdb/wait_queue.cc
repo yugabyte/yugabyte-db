@@ -140,6 +140,12 @@ METRIC_DEFINE_gauge_uint64(
 METRIC_DEFINE_gauge_uint64(
     tablet, wait_queue_num_blockers, "Wait Queue - Num Blockers",
     yb::MetricUnit::kTransactions, "The number of unique blockers tracked in a wait queue");
+METRIC_DEFINE_gauge_uint64(
+    tablet, wait_queue_num_contentious_waiters, "Wait Queue - Num Contentious Waiters",
+    yb::MetricUnit::kRequests, "The number of waiter rpc requests that couldn't be resumed by the "
+    "serial waiter resumption thread due to contention among shared in-memory locks, following "
+    "which they were enqueued (and are currently in the queue) for resumption on the tablet "
+    "server's rpc threadpool.");
 
 using namespace std::chrono_literals;
 using namespace std::placeholders;
@@ -259,6 +265,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
              const WaitDoneCallback callback_,
              std::unique_ptr<ScopedWaitingTxnRegistration> waiter_registration_,
              scoped_refptr<EventStats>* finished_waiting_latency,
+             scoped_refptr<AtomicGauge<uint64_t>>& total_contentious_waiters,
              CoarseTimePoint deadline)
       : id(id_),
         subtxn_id(subtxn_id_),
@@ -275,9 +282,10 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
         callback(std::move(callback_)),
         waiter_registration(std::move(waiter_registration_)),
         finished_waiting_latency_(*finished_waiting_latency),
+        total_contentious_waiters_(total_contentious_waiters),
         unlocked_(locks->Unlock()),
         deadline_(deadline) {
-    DCHECK(txn_start_us || id.IsNil());
+    LOG_IF_WITH_PREFIX(DFATAL, !txn_start_us && !id.IsNil()) << "Expected non-zero txn_start_us";
     VLOG_WITH_PREFIX(4) << "Constructed waiter";
   }
 
@@ -426,6 +434,14 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
     return serial_no < rhs->serial_no;
   }
 
+  void IncrementContentiousWaiters() {
+    total_contentious_waiters_->Increment();
+  }
+
+  void DecrementContentiousWaiters() {
+    total_contentious_waiters_->Decrement();
+  }
+
   CoarseTimePoint deadline() {
     return deadline_;
   }
@@ -443,6 +459,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
   }
 
   scoped_refptr<EventStats>& finished_waiting_latency_;
+  scoped_refptr<AtomicGauge<uint64_t>>& total_contentious_waiters_;
   mutable rw_spinlock mutex_;
   std::optional<UnlockedBatch> unlocked_ GUARDED_BY(mutex_) = std::nullopt;
   bool is_wait_queue_shutting_down_ GUARDED_BY(mutex_) = false;
@@ -491,12 +508,16 @@ struct WaitingTxn : public std::enable_shared_from_this<WaitingTxn> {
   }
 
   void SignalWaitQueueShutdown() EXCLUDES(mutex_) {
+    rpc::RpcCommandPtr rpc_to_abort = nullptr;
     {
       UniqueLock l(mutex_);
       if (handle_ != rpcs_.InvalidHandle()) {
-        (**handle_).Abort();
+        rpc_to_abort = *handle_;
       }
       is_wait_queue_shutting_down_ = true;
+    }
+    if (rpc_to_abort) {
+      rpc_to_abort->Abort();
     }
     for (const auto& waiter : PurgeWaiters()) {
       waiter->SignalWaitQueueShutdown();
@@ -885,25 +906,56 @@ struct SerialWaiter {
   }
 };
 
-void ResumeContentiousWaiter(const SerialWaiter& to_resume) {
-  DCHECK(PREDICT_TRUE(ThreadRestrictions::IsIOAllowed()))
-      << "IO disallowed, but the thread might have to perform IO operations downstearm.";
-
-  auto& waiter = to_resume.waiter;
-  VLOG(1) << "Resuming waiter " << waiter->LogPrefix() << "on Scheduler.";
-
-  auto start_time = MonoTime::Now();
-  auto deadline = waiter->deadline();
-  auto s = waiter->InvokeCallback(Status::OK(), to_resume.resolve_ht, deadline);
-  if (s.ok()) {
-    VLOG(4) << "Successfully executed waiter " << waiter->LogPrefix() << "callback on Scheduler.";
-    return;
+class ContentiousWaiterTask : public std::enable_shared_from_this<ContentiousWaiterTask>,
+                              public rpc::ThreadPoolTask {
+ public:
+  explicit ContentiousWaiterTask(SerialWaiter serial_waiter)
+      : serial_waiter_(std::move(serial_waiter)) {
+    serial_waiter_.waiter->IncrementContentiousWaiters();
   }
 
-  s = s.CloneAndAppend(Format("timeout: $0", deadline - ToCoarse(start_time)));
-  VLOG(1) << "Couldn't resume waiter on Scheduler: " << s;
-  DCHECK_OK(waiter->InvokeCallback(s));
-}
+  virtual ~ContentiousWaiterTask() = default;
+
+  void Schedule(rpc::Messenger* messenger) {
+    retained_self_ = shared_from_this();
+    messenger->ThreadPool().Enqueue(this);
+  }
+
+ private:
+  void Run() override {
+    LOG_IF(DFATAL, !PREDICT_TRUE(ThreadRestrictions::IsIOAllowed()))
+        << "IO disallowed, but the thread might have to perform IO operations downstream.";
+
+    auto& waiter = serial_waiter_.waiter;
+    VLOG(1) << "Resuming waiter " << waiter->LogPrefix() << "on rpc threadpool.";
+
+    auto start_time = MonoTime::Now();
+    auto deadline = waiter->deadline();
+    auto s = waiter->InvokeCallback(Status::OK(), serial_waiter_.resolve_ht, deadline);
+    if (s.ok()) {
+      VLOG(4) << "Waiter " << waiter->LogPrefix() << "resumed with status ok.";
+      return;
+    }
+
+    s = s.CloneAndAppend(Format("timeout: $0", deadline - ToCoarse(start_time)));
+    DCHECK_OK(waiter->InvokeCallback(s));
+    VLOG(1) << "Waiter " << waiter->LogPrefix() << " resumed with status: " << s;
+  }
+
+  void Done(const Status& status) override {
+    // status.ok() => Run() would have been executed, so the waiter would have already been resumed.
+    if (!status.ok()) {
+      WARN_NOT_OK(
+          serial_waiter_.waiter->InvokeCallback(status),
+          "Couldn't invoke waiter callback with bad status, would lead to Perform(s) timing out.");
+    }
+    serial_waiter_.waiter->DecrementContentiousWaiters();
+    retained_self_ = nullptr;
+  }
+
+  SerialWaiter serial_waiter_;
+  std::shared_ptr<ContentiousWaiterTask> retained_self_;
+};
 
 // Resumes waiters async, in serial, and in the order of the waiter's serial_no, running the lowest
 // serial number first in a best effort manner.
@@ -1028,15 +1080,9 @@ class ResumedWaiterRunner {
           serial_waiter.waiter->SignalWaitQueueShutdown();
         } else {
           VLOG_WITH_PREFIX(1) << "Scheduling waiter " << serial_waiter.waiter->LogPrefix()
-                              << "resumption on the Tablet Server's Scheduler.";
-          messenger_->scheduler().Schedule([serial_waiter](const Status& s) {
-            if (!s.ok()) {
-              serial_waiter.waiter->InvokeCallbackOrWarn(
-                  s.CloneAndPrepend("Failed scheduling contentious waiter resumption: "));
-              return;
-            }
-            ResumeContentiousWaiter(serial_waiter);
-          }, std::chrono::milliseconds(100));
+                              << "resumption on the rpc threadpool.";
+          auto resume_contentious_waiter = std::make_shared<ContentiousWaiterTask>(serial_waiter);
+          resume_contentious_waiter->Schedule(messenger_);
         }
       }
     }), "Failed to trigger poll of ResumedWaiterRunner in wait queue");
@@ -1095,6 +1141,8 @@ class WaitQueue::Impl {
         waiters_per_blocker_(METRIC_wait_queue_waiters_per_blocker.Instantiate(metrics)),
         total_waiters_(METRIC_wait_queue_num_waiters.Instantiate(metrics, 0)),
         total_blockers_(METRIC_wait_queue_num_blockers.Instantiate(metrics, 0)),
+        total_contentious_waiters_(
+            METRIC_wait_queue_num_contentious_waiters.Instantiate(metrics, 0)),
         in_progress_rpc_status_req_callbacks_(LogPrefix()) {}
 
   ~Impl() {
@@ -1339,7 +1387,8 @@ class WaitQueue::Impl {
     auto waiter_data = std::make_shared<WaiterData>(
         waiter_txn_id, subtxn_id, locks, serial_no, txn_start_us, request_start_us, request_id,
         clock_->Now(), status_tablet_id, std::move(blocker_datas), std::move(intent_provider),
-        std::move(callback), std::move(scoped_reporter), &finished_waiting_latency_, deadline);
+        std::move(callback), std::move(scoped_reporter), &finished_waiting_latency_,
+        total_contentious_waiters_, deadline);
     if (waiter_data->IsSingleShard()) {
       DCHECK(single_shard_waiters_.size() == 0 ||
              waiter_data->wq_entry_time >= single_shard_waiters_.front()->wq_entry_time);
@@ -1617,8 +1666,8 @@ class WaitQueue::Impl {
       return;
     }
     waiter_runner_.CompleteShutdown();
-    SharedLock l(mutex_);
     rpcs_.Shutdown();
+    SharedLock l(mutex_);
     LOG_IF(DFATAL, !shutting_down_)
         << "Called CompleteShutdown() while not in shutting_down_ state.";
     LOG_IF(DFATAL, !blocker_status_.empty())
@@ -1778,7 +1827,7 @@ class WaitQueue::Impl {
           waiter_info->set_has_additional_waiting_locks(true);
           break;
         }
-        ParsedIntent parsed_intent {
+        dockv::ParsedIntent parsed_intent {
           .doc_path = intent_key.AsSlice(),
           .types = intent_data.types,
           .doc_ht = Slice(),
@@ -2056,6 +2105,7 @@ class WaitQueue::Impl {
   scoped_refptr<EventStats> waiters_per_blocker_;
   scoped_refptr<AtomicGauge<uint64_t>> total_waiters_;
   scoped_refptr<AtomicGauge<uint64_t>> total_blockers_;
+  scoped_refptr<AtomicGauge<uint64_t>> total_contentious_waiters_;
   OperationCounter in_progress_rpc_status_req_callbacks_;
 };
 

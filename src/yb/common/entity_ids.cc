@@ -11,11 +11,11 @@
 // under the License.
 //
 
+#include "yb/common/entity_ids.h"
+
 #include <boost/uuid/nil_generator.hpp>
 
 #include "yb/cdc/cdc_types.h"
-
-#include "yb/common/entity_ids.h"
 
 #include "yb/gutil/strings/escaping.h"
 #include "yb/util/cast.h"

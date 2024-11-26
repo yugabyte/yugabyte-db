@@ -13,14 +13,17 @@
 
 #include "yb/master/xcluster/xcluster_target_manager.h"
 
+#include "yb/client/xcluster_client.h"
 #include "yb/common/xcluster_util.h"
 
 #include "yb/gutil/strings/util.h"
 
+#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
+#include "yb/master/xcluster/add_index_to_bidirectional_xcluster_target_task.h"
 #include "yb/master/xcluster/add_table_to_xcluster_target_task.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_bootstrap_helper.h"
@@ -31,15 +34,22 @@
 #include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
 #include "yb/master/xcluster_consumer_registry_service.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 
-DEFINE_RUNTIME_bool(xcluster_wait_on_ddl_alter, true,
-    "When xCluster replication sends a DDL change, wait for the user to enter a "
-    "compatible/matching entry.  Note: Can also set at runtime to resume after stall.");
+DEPRECATE_FLAG(bool, xcluster_wait_on_ddl_alter, "11_2024");
+
+DEFINE_RUNTIME_uint32(add_new_index_to_bidirectional_xcluster_timeout_secs, 10 * 60,
+    "Time in seconds within which index must be created on other universe when the indexed table "
+    "is part of bidirectional xCluster replication. Applies only when "
+    "--ysql_auto_add_new_index_to_bidirectional_xcluster is set.");
+
+DECLARE_bool(ysql_auto_add_new_index_to_bidirectional_xcluster);
+DECLARE_uint64(max_clock_skew_usec);
 
 namespace yb::master {
 
@@ -177,6 +187,8 @@ Status XClusterTargetManager::GetXClusterSafeTimeForNamespace(
     const GetXClusterSafeTimeForNamespaceRequestPB* req,
     GetXClusterSafeTimeForNamespaceResponsePB* resp, const LeaderEpoch& epoch) {
   SCHECK(!req->namespace_id().empty(), InvalidArgument, "Namespace id must be provided");
+
+  RETURN_NOT_OK(safe_time_service_->ComputeSafeTime(epoch.leader_term));
   auto safe_time_ht =
       VERIFY_RESULT(GetXClusterSafeTimeForNamespace(epoch, req->namespace_id(), req->filter()));
   resp->set_safe_time_ht(safe_time_ht.ToUint64());
@@ -326,9 +338,6 @@ void XClusterTargetManager::RunBgTasks(const LeaderEpoch& epoch) {
       "Failed to remove dropped tables from consumer replication groups");
 
   WARN_NOT_OK(RefreshLocalAutoFlagConfig(epoch), "Failed refreshing local AutoFlags config");
-
-  WARN_NOT_OK(
-      ProcessPendingSchemaChanges(epoch), "Failed processing xCluster Pending Schema Changes");
 }
 
 Status XClusterTargetManager::RemoveDroppedTablesFromReplication(const LeaderEpoch& epoch) {
@@ -784,6 +793,28 @@ Result<bool> XClusterTargetManager::HasReplicationGroupErrors(
   return !table_errors.empty();
 }
 
+Result<bool> XClusterTargetManager::IsReplicationGroupFullyPaused(
+    const xcluster::ReplicationGroupId& replication_group_id) const {
+  SharedLock l(replication_error_map_mutex_);
+
+  auto* replication_error_map = FindOrNull(replication_error_map_, replication_group_id);
+  SCHECK(
+      replication_error_map, NotFound, "Could not find replication group $0",
+      replication_group_id.ToString());
+
+  for (const auto& [consumer_table_id, tablet_error_map] : *replication_error_map) {
+    for (const auto& [_, error_info] : tablet_error_map) {
+      if (error_info.error != ReplicationErrorPb::REPLICATION_PAUSED) {
+        YB_LOG_EVERY_N_SECS(WARNING, 60) << "Replication group " << replication_group_id
+                                         << " waiting for table to pause:" << consumer_table_id;
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
 Status XClusterTargetManager::PopulateReplicationGroupErrors(
     const xcluster::ReplicationGroupId& replication_group_id,
     GetReplicationStatusResponsePB* resp) const {
@@ -827,10 +858,16 @@ Status XClusterTargetManager::PopulateReplicationGroupErrors(
 
       auto* resp_error = resp_status->add_errors();
       resp_error->set_error(error_pb);
-      // Only include the first 20 tablet IDs to limit response size. VLOG(4) will log all tablet to
-      // the log.
-      resp_error->set_error_detail(
-          Format("Producer Tablet IDs: $0", JoinStringsLimitCount(tablet_ids, ",", 20)));
+
+      if (error_pb == ReplicationErrorPb::REPLICATION_PAUSED) {
+        resp_error->set_error_detail("Replication paused");
+      } else {
+        // Only include the first 20 tablet IDs to limit response size.
+        // VLOG(4) will write all tablet to the log.
+        resp_error->set_error_detail(
+            Format("Producer Tablet IDs: $0", JoinStringsLimitCount(tablet_ids, ",", 20)));
+      }
+
       if (VLOG_IS_ON(4)) {
         VLOG(4) << "Replication error " << ReplicationErrorPb_Name(error_pb)
                 << " for ReplicationGroup: " << replication_group_id << ", stream id: " << stream_id
@@ -965,161 +1002,6 @@ Status XClusterTargetManager::HandleTabletSplit(
   l.Commit();
 
   CreateXClusterSafeTimeTableAndStartService();
-
-  return Status::OK();
-}
-
-Status XClusterTargetManager::ValidateNewSchema(
-    const TableInfo& table_info, const Schema& consumer_schema) const {
-  if (!FLAGS_xcluster_wait_on_ddl_alter) {
-    return Status::OK();
-  }
-
-  // Check if this table is consuming a stream.
-  auto stream_ids = GetStreamIdsForTable(table_info.id());
-  if (stream_ids.empty()) {
-    return Status::OK();
-  }
-
-  auto cluster_config = catalog_manager_.ClusterConfig();
-  auto l = cluster_config->LockForRead();
-  for (const auto& [replication_group_id, stream_id] : stream_ids) {
-    // Fetch the stream entry to get Schema information.
-    auto& replication_group_map = l.data().pb.consumer_registry().producer_map();
-    auto producer_entry = FindOrNull(replication_group_map, replication_group_id.ToString());
-    SCHECK(producer_entry, NotFound, Format("Missing universe $0", replication_group_id));
-    auto stream_entry = FindOrNull(producer_entry->stream_map(), stream_id.ToString());
-    SCHECK(stream_entry, NotFound, Format("Missing stream $0:$1", replication_group_id, stream_id));
-
-    // If we are halted on a Schema update as a Consumer...
-    auto& producer_schema_pb = stream_entry->producer_schema();
-    if (producer_schema_pb.has_pending_schema()) {
-      // Compare our new schema to the Producer's pending schema.
-      Schema producer_schema;
-      RETURN_NOT_OK(SchemaFromPB(producer_schema_pb.pending_schema(), &producer_schema));
-
-      // This new schema should allow us to consume data for the Producer's next schema.
-      // If we instead diverge, we will be unable to consume any more of the Producer's data.
-      bool can_apply = consumer_schema.EquivalentForDataCopy(producer_schema);
-      SCHECK(
-          can_apply, IllegalState,
-          Format(
-              "New Schema not compatible with XCluster Producer Schema:\n new={$0}\n producer={$1}",
-              consumer_schema.ToString(), producer_schema.ToString()));
-    }
-  }
-
-  return Status::OK();
-}
-
-Status XClusterTargetManager::ResumeStreamsAfterNewSchema(
-    const TableInfo& table_info, SchemaVersion consumer_schema_version, const LeaderEpoch& epoch) {
-  if (!FLAGS_xcluster_wait_on_ddl_alter) {
-    return Status::OK();
-  }
-
-  // With Replication Enabled, verify that we've finished applying the New Schema.
-  // If we're waiting for a Schema because we saw the a replication source with a change,
-  // resume replication now that the alter is complete.
-
-  auto stream_ids = GetStreamIdsForTable(table_info.id());
-  if (stream_ids.empty()) {
-    return Status::OK();
-  }
-
-  bool found_schema = false, resuming_replication = false;
-
-  // Now that we've applied the new schema: find pending replication, clear state, resume.
-  auto cluster_config = catalog_manager_.ClusterConfig();
-  auto l = cluster_config->LockForWrite();
-  for (const auto& [replication_group_id, stream_id] : stream_ids) {
-    // Fetch the stream entry to get Schema information.
-    auto replication_group_map =
-        l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
-    auto producer_entry = FindOrNull(*replication_group_map, replication_group_id.ToString());
-    if (!producer_entry) {
-      continue;
-    }
-    auto stream_entry = FindOrNull(*producer_entry->mutable_stream_map(), stream_id.ToString());
-    if (!stream_entry) {
-      continue;
-    }
-
-    auto producer_schema_pb = stream_entry->mutable_producer_schema();
-    if (producer_schema_pb->has_pending_schema()) {
-      found_schema = true;
-      Schema consumer_schema, producer_schema;
-      RETURN_NOT_OK(table_info.GetSchema(&consumer_schema));
-      RETURN_NOT_OK(SchemaFromPB(producer_schema_pb->pending_schema(), &producer_schema));
-      if (consumer_schema.EquivalentForDataCopy(producer_schema)) {
-        resuming_replication = true;
-        auto pending_version = producer_schema_pb->pending_schema_version();
-        LOG(INFO) << "Consumer schema @ version " << consumer_schema_version
-                  << " is now data copy compatible with Producer: " << stream_id
-                  << " @ schema version " << pending_version;
-        // Clear meta we use to track progress on receiving all WAL entries with old schema.
-        producer_schema_pb->set_validated_schema_version(
-            std::max(producer_schema_pb->validated_schema_version(), pending_version));
-        producer_schema_pb->set_last_compatible_consumer_schema_version(consumer_schema_version);
-        producer_schema_pb->clear_pending_schema();
-        // Bump the ClusterConfig version so we'll broadcast new schema version & resume operation.
-        l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
-      } else {
-        LOG(INFO) << "Consumer schema not compatible for data copy of next Producer schema.";
-      }
-    }
-  }
-
-  if (resuming_replication) {
-    RETURN_NOT_OK_PREPEND(
-        sys_catalog_.Upsert(epoch, cluster_config.get()), "Failed updating cluster config");
-    l.Commit();
-    LOG(INFO) << "Resuming Replication on " << table_info.id() << " after Consumer ALTER.";
-  } else if (!found_schema) {
-    LOG(INFO) << "No pending schema change from Producer.";
-  }
-
-  return Status::OK();
-}
-
-Status XClusterTargetManager::ProcessPendingSchemaChanges(const LeaderEpoch& epoch) {
-  if (!GetAtomicFlag(&FLAGS_xcluster_wait_on_ddl_alter)) {
-    // See if any Streams are waiting on a pending_schema.
-    bool found_pending_schema = false;
-    auto cluster_config = catalog_manager_.ClusterConfig();
-    auto cl = cluster_config->LockForWrite();
-    auto replication_group_map =
-        cl.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
-    // For each user entry.
-    for (auto& replication_group_id_and_entry : *replication_group_map) {
-      // For each CDC stream in that Universe.
-      for (auto& stream_id_and_entry :
-           *replication_group_id_and_entry.second.mutable_stream_map()) {
-        auto& stream_entry = stream_id_and_entry.second;
-        if (stream_entry.has_producer_schema() &&
-            stream_entry.producer_schema().has_pending_schema()) {
-          // Force resume this stream.
-          auto schema = stream_entry.mutable_producer_schema();
-          schema->set_validated_schema_version(
-              std::max(schema->validated_schema_version(), schema->pending_schema_version()));
-          schema->clear_pending_schema();
-
-          found_pending_schema = true;
-          LOG(INFO) << "Force Resume Consumer schema: " << stream_id_and_entry.first
-                    << " @ schema version " << schema->pending_schema_version();
-        }
-      }
-    }
-
-    if (found_pending_schema) {
-      // Bump the ClusterConfig version so we'll broadcast new schema version & resume operation.
-      cl.mutable_data()->pb.set_version(cl.mutable_data()->pb.version() + 1);
-      RETURN_NOT_OK_PREPEND(
-          sys_catalog_.Upsert(epoch.leader_term, cluster_config.get()),
-          "Failed updating cluster config");
-      cl.Commit();
-    }
-  }
 
   return Status::OK();
 }
@@ -1321,6 +1203,228 @@ Status XClusterTargetManager::AddTableToReplicationGroup(
 
   return AlterUniverseReplicationHelper::AddTablesToReplication(
       master_, catalog_manager_, data, epoch);
+}
+
+Result<std::optional<HybridTime>> XClusterTargetManager::TryGetXClusterSafeTimeForBackfill(
+    const std::vector<TableId>& index_table_ids, const TableInfoPtr& indexed_table,
+    const LeaderEpoch& epoch) const {
+  auto& xcluster_manager = *master_.xcluster_manager();
+
+  SCHECK_FORMAT(
+      indexed_table->IsBackfilling(), IllegalState, "$0 is not backfilling", indexed_table->id());
+
+  const bool is_colocated = indexed_table->colocated();
+  auto indexed_table_id = indexed_table->id();
+
+  if (master_.xcluster_manager()->ShouldAutoAddIndexesToBiDirectionalXCluster(*indexed_table)) {
+    if (is_colocated) {
+      indexed_table_id = indexed_table->LockForRead()->pb.parent_table_id();
+    }
+    auto backfill_ht = VERIFY_RESULT_PREPEND(
+        PrepareAndGetBackfillTimeForBiDirectionalIndex(index_table_ids, indexed_table_id, epoch),
+        "Failed while preparing index for xCluster");
+
+    LOG(INFO) << "Using " << backfill_ht << " as the backfill read time";
+    return backfill_ht;
+  }
+
+  if (is_colocated) {
+    // Colocated indexes in a transactional xCluster will use the regular tablet safe time.
+    // Only the parent table is part of the xCluster replication, so new data that is added to the
+    // index on the source universe automatically flows to the target universe even before the index
+    // is created on it.
+    // We still need to run backfill since the WAL entries for the backfill are NOT replicated via
+    // xCluster. This is because both backfill entries and xCluster replicated entries use the same
+    // external HT field. To ensure transactional correctness we just need to pick a time higher
+    // than the time that was picked on the source side. Since the table is created on the source
+    // universe before the target this is always guaranteed to be true.
+
+    return std::nullopt;
+  }
+
+  if (xcluster_manager.IsTableReplicationConsumer(indexed_table_id)) {
+    auto safe_time_result = GetXClusterSafeTime(indexed_table->namespace_id());
+    if (safe_time_result.ok()) {
+      SCHECK(
+          !safe_time_result->is_special(), InvalidArgument,
+          "Invalid xCluster safe time for namespace ", indexed_table->namespace_id());
+
+      LOG(INFO) << "Using xCluster safe time " << *safe_time_result << " as the backfill read time";
+      return *safe_time_result;
+    }
+
+    if (safe_time_result.status().IsNotFound()) {
+      VLOG(1) << "Table " << indexed_table->id()
+              << "does not belong to transactional replication, continue with "
+                 "GetSafeTimeForTablet";
+      return std::nullopt;
+    }
+
+    return safe_time_result.status();
+  }
+
+  return std::nullopt;
+}
+
+Result<HybridTime> XClusterTargetManager::PrepareAndGetBackfillTimeForBiDirectionalIndex(
+    const std::vector<TableId>& index_table_ids, const TableId& indexed_table_id,
+    const LeaderEpoch& epoch) const {
+  // Online index creation in Yugabyte is based on the F1 paper, and has 4 stages: Delete Only,
+  // Insert and Delete Only, Backfill, Read, Insert and delete. Consistency is guaranteed as long as
+  // no two nodes in the system are more than 2 stages apart. Within a single universe the
+  // CatalogVersion is bumped to enforce this.
+  //
+  // With bi-directional xCluster writes happen on both universes, each with its own CatalogVersion.
+  // The regular Create Index flow does not have a way to synchronize the stages across the
+  // universes, which before this change meant the user could not write to the indexed table while
+  // creating indexes. Its important to note that in bi-directional xCluster the users have the
+  // responsibility to insert into different key ranges on each universe. This is important as
+  // xCluster which operates at the physical layer does not enforce YSQL layer constraints like
+  // Foreign keys.
+  //
+  // In order to allow Online Create Index we synchronize the two universe but only at the Backfill
+  // stage. We allow them to diverse by more than 2 stages, since for any given key range each
+  // universe will locally ensures the 2 stage apart policy. Only the backfill stage reads and
+  // writes data across the entire key range, so this alone needs to be synchronized across the two
+  // universe.
+  //
+  // The stream for the new index table has already been created as part of its DocDB table
+  // creation. (See CreateXClusterStreamForBiDirectionalIndexTask) This function performs the
+  // following steps:
+  // 1. Wait for the index and its stream to get created on the other universe.
+  // 2. Wait for the index on the other universe to reach atleast its backfill stage.
+  // 3. Add our index table to the xCluster replication group.
+  // 4. Pick the backfill read time.
+  // 5. Wait for the indexed table to catch up to the backfill time.
+  //
+  // For colocated tables, only the parent table is part of replication, so we skip the steps
+  // related to stream creation, and adding index to replication.
+
+  const auto deadline =
+      CoarseMonoClock::Now() +
+      MonoDelta::FromSeconds(FLAGS_add_new_index_to_bidirectional_xcluster_timeout_secs);
+
+  LOG(INFO) << "Preparing indexes " << yb::ToString(index_table_ids) << " on table "
+            << indexed_table_id << " for bi-directional xCluster replication";
+
+  auto indexed_table_streams = GetStreamIdsForTable(indexed_table_id);
+  // Complex scenarios like replicating between 3 universes with multiple bi-directional replication
+  // groups A <=> B <=> C <=> A is not supported.
+  SCHECK_EQ(
+      indexed_table_streams.size(), 1, IllegalState,
+      Format("Expected 1 xCluster stream for table $0", indexed_table_id));
+
+  auto& [replication_id, indexed_table_stream_id] = *indexed_table_streams.begin();
+
+  auto replication_group = catalog_manager_.GetUniverseReplication(replication_id);
+  SCHECK_FORMAT(replication_group, NotFound, "Replication group $0 not found", replication_id);
+
+  auto remote_client = VERIFY_RESULT(GetXClusterRemoteClientHolder(*replication_group));
+
+  std::vector<std::shared_ptr<MultiStepMonitoredTask>> tasks;
+  for (const auto& index_table_id : index_table_ids) {
+    auto index_table_info = VERIFY_RESULT(catalog_manager_.GetTableById(index_table_id));
+    tasks.emplace_back(std::make_shared<AddBiDirectionalIndexToXClusterTargetTask>(
+        std::move(index_table_info), replication_group, remote_client, master_, epoch, deadline));
+  }
+
+  Synchronizer sync;
+  RETURN_NOT_OK(MultiStepMonitoredTask::StartTasks(
+      tasks, [&sync](const Status& status) { sync.AsStdStatusCallback()(status); }));
+  RETURN_NOT_OK(sync.Wait());
+
+  // All indexes have reached the backfill stage on both universes. We can proceed once the indexed
+  // table is caught up.
+  const auto backfill_ht = master_.clock()->Now();
+  const auto backfill_time_micros =
+      backfill_ht.GetPhysicalValueMicros() + (3 * FLAGS_max_clock_skew_usec);
+
+  LOG(INFO) << "Waiting for replication of indexed table " << indexed_table_id << " stream "
+            << indexed_table_stream_id << " to catch up to backfill time " << backfill_ht;
+  RETURN_NOT_OK_PREPEND(
+      remote_client->GetXClusterClient().WaitForReplicationDrain(
+          indexed_table_stream_id, backfill_time_micros, deadline),
+      Format(
+          "Error waiting for replication drain of indexed table $0 stream $1", indexed_table_id,
+          indexed_table_stream_id));
+  LOG(INFO) << "Indexed table " << indexed_table_id << " xCluster stream "
+            << indexed_table_stream_id << " caught up to backfill time " << backfill_ht;
+
+  return backfill_ht;
+}
+
+Status XClusterTargetManager::InsertPackedSchemaForXClusterTarget(
+    const TableId& table_id, const SchemaPB& packed_schema_to_insert,
+    uint32_t current_schema_version, const LeaderEpoch& epoch) {
+  // Lookup the table and verify if it exists.
+  scoped_refptr<TableInfo> table = VERIFY_RESULT(catalog_manager_.FindTableById(table_id));
+  {
+    auto l = table->LockForWrite();
+    auto& table_pb = l.mutable_data()->pb;
+
+    // Compare the current schema version with the one in the request to avoid repeated updates.
+    if (table_pb.version() != current_schema_version) {
+      YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 10, 1)
+          << __func__ << ": Table " << table->ToString() << " has schema version "
+          << table_pb.version() << " but request has version " << current_schema_version
+          << ". Skipping update of packed schema.";
+      return Status::OK();
+    }
+
+    // Just bump the version up by two. We will insert the packed schema in as version + 1, and then
+    // revert back to the original version, but now with version + 2.
+    table_pb.set_version(table_pb.version() + 2);
+    RETURN_NOT_OK(sys_catalog_.Upsert(epoch, table));
+    l.Commit();
+  }
+
+  for (const auto& tablet : VERIFY_RESULT(table->GetTablets())) {
+    auto call = std::make_shared<AsyncInsertPackedSchemaForXClusterTarget>(
+        &master_, catalog_manager_.AsyncTaskPool(), tablet, table, packed_schema_to_insert, epoch);
+    table->AddTask(call);
+    RETURN_NOT_OK(catalog_manager_.ScheduleTask(call));
+  }
+
+  LOG(INFO) << "Successfully initiated InsertPackedSchemaForXClusterTarget "
+            << "(pending tablet schema updates) for " << table->ToString();
+
+  return Status::OK();
+}
+
+Status XClusterTargetManager::SetReplicationGroupEnabled(
+    const xcluster::ReplicationGroupId& replication_group_id, bool is_enabled,
+    const LeaderEpoch& epoch, CoarseTimePoint deadline) {
+  auto cluster_config = catalog_manager_.ClusterConfig();
+  auto l = cluster_config->LockForWrite();
+
+  auto replication_group_map =
+      l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
+  auto replication_group = FindOrNull(*replication_group_map, replication_group_id.ToString());
+  SCHECK(
+      replication_group, NotFound,
+      Format("Replication group $0 not found in Consumer Registry", replication_group_id));
+
+  if (replication_group->disable_stream() == !is_enabled) {
+    // Dont update the config version unnecessarily.
+    return Status::OK();
+  }
+
+  replication_group->set_disable_stream(!is_enabled);
+
+  l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
+  RETURN_NOT_OK(sys_catalog_.Upsert(epoch, cluster_config.get()));
+  l.Commit();
+
+  if (!is_enabled) {
+    return Wait(
+        std::bind(
+            &XClusterTargetManager::IsReplicationGroupFullyPaused, this, replication_group_id),
+        deadline, Format("Wait for replication group $0 to pause", replication_group_id));
+  }
+
+  CreateXClusterSafeTimeTableAndStartService();
+
+  return Status::OK();
 }
 
 }  // namespace yb::master

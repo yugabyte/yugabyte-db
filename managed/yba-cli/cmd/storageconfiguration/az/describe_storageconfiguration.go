@@ -14,6 +14,7 @@ var describeAZStorageConfigurationCmd = &cobra.Command{
 	Aliases: []string{"get"},
 	Short:   "Describe an Azure YugabyteDB Anywhere storage configuration",
 	Long:    "Describe an Azure storage configuration in YugabyteDB Anywhere",
+	Example: `yba storage-config azure describe --name <storage-configuration-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		storageconfigurationutil.DescribeStorageConfigurationValidation(cmd)
 	},

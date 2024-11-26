@@ -18,9 +18,11 @@ import (
 )
 
 var listNodeCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List YugabyteDB Anywhere universe nodes",
-	Long:  "List YugabyteDB Anywhere universe nodes",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List YugabyteDB Anywhere universe nodes",
+	Long:    "List YugabyteDB Anywhere universe nodes",
+	Example: `yba universe node list --name <universe-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -68,9 +70,9 @@ var listNodeCmd = &cobra.Command{
 		}
 		if len(nodes) < 1 {
 			if util.IsOutputType(formatter.TableFormatKey) {
-				logrus.Infoln("No universe node instances found\n")
+				logrus.Info("No universe node instances found\n")
 			} else {
-				logrus.Infoln("[]\n")
+				logrus.Info("[]\n")
 			}
 			return
 		}

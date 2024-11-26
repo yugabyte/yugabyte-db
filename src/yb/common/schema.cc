@@ -129,10 +129,12 @@ string ColumnSchema::ToString() const {
 }
 
 string ColumnSchema::TypeToString() const {
-  return Format("$0 $1 $2",
-                type_info()->name,
-                is_nullable_ ? "NULLABLE" : "NOT NULL",
-                kind_);
+  auto result = Format(
+      "$0 $1 $2", type_info()->name, is_nullable_ ? "NULLABLE" : "NOT NULL", kind_);
+  if (pg_typmod_) {
+    result += Format(" pg_typmod:$0", pg_typmod_);
+  }
+  return result;
 }
 
 size_t ColumnSchema::memory_footprint_excluding_this() const {

@@ -4,7 +4,6 @@ headerTitle: Change data capture (CDC)
 linkTitle: Change data capture
 description: CDC or Change data capture is a process to capture changes made to data in the database.
 headcontent: Capture changes made to data in the database
-image: fa-light fa-rotate
 tags:
   feature: early-access
 menu:
@@ -37,7 +36,7 @@ It works as follows:
 1. The connector uses replication slots to capture change events and publishes them directly to a Kafka topic.
 
 {{<lead link="./using-logical-replication/">}}
-To learn about CDC in YugabyteDB using the PostgreSQL Replication Protocol, see [CDC using PostgreSQL Replication Protocol](./using-logical-replication).
+Learn about CDC in YugabyteDB using the [PostgreSQL Replication Protocol](./using-logical-replication/).
 {{</lead>}}
 
 ## YugabyteDB gRPC Replication Protocol
@@ -51,5 +50,5 @@ It works as follows:
 1. The connector captures change events using YugabyteDB's native gRPC replication and directly publishes them to a Kafka topic.
 
 {{<lead link="./using-yugabytedb-grpc-replication/">}}
-To learn about CDC in YugabyteDB using the gRPC Replication Protocol, see [CDC using gRPC Replication Protocol](./using-yugabytedb-grpc-replication/).
+Learn about CDC in YugabyteDB using the [gRPC Replication Protocol](./using-yugabytedb-grpc-replication/).
 {{</lead>}}

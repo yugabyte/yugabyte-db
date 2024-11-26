@@ -39,7 +39,6 @@ interface EditGflagsModalProps {
   onClose: () => void;
   universeData: Universe;
   isGFlagMultilineConfEnabled: boolean;
-  isRollingUpradeMutlipleNodesEnabled: boolean;
 }
 
 export const useStyles = makeStyles((theme) => ({
@@ -97,8 +96,7 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
   open,
   onClose,
   universeData,
-  isGFlagMultilineConfEnabled,
-  isRollingUpradeMutlipleNodesEnabled
+  isGFlagMultilineConfEnabled
 }) => {
   const { t } = useTranslation();
   const { universeDetails, universeUUID, rollMaxBatchSize } = universeData;
@@ -161,10 +159,11 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
         clusters: []
       };
 
-      if (isRollingUpradeMutlipleNodesEnabled && isRollingUpgrade) {
+      if (isRollingUpgrade) {
         payload.rollMaxBatchSize = {
-          primaryBatchSize: values.numNodesToUpgradePrimary,
-          readReplicaBatchSize: values.numNodesToUpgradePrimary
+          primaryBatchSize: values.numNodesToUpgradePrimary ?? rollMaxBatchSize.primaryBatchSize,
+          readReplicaBatchSize:
+            values.numNodesToUpgradePrimary ?? rollMaxBatchSize.readReplicaBatchSize
         };
       }
 
@@ -331,6 +330,7 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
           flex={1}
           height="100%"
           data-testid="EditGflags-Modal"
+          style={{ scrollbarWidth: 'none' }}
         >
           {asyncClusterCopy && (
             <Box className={classes.toggleContainer}>

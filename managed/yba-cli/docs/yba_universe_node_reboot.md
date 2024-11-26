@@ -4,11 +4,16 @@ Reboot a node instance in YugabyteDB Anywhere universe
 
 ### Synopsis
 
-
-		Reboot a node instance in YugabyteDB Anywhere universe.
+Reboot a node instance in YugabyteDB Anywhere universe.
 
 ```
 yba universe node reboot [flags]
+```
+
+### Examples
+
+```
+yba universe node reboot --name <universe-name> --node-name <node-name>
 ```
 
 ### Options

@@ -12,6 +12,8 @@ import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
@@ -69,6 +71,8 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
     Architecture arch = universe.getUniverseDetails().arch;
     ReleaseContainer release = releaseManager.getReleaseByVersion(taskParams().ybSoftwareVersion);
     String ybServerPackage = release.getFilePath(arch);
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        universe.getUniverseDetails().getPrimaryCluster();
     String pgUpgradeBinaryLocation =
         nodeUniverseManager.getYbHomeDir(node, universe)
             + "/yb-software/"
@@ -79,7 +83,18 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
     String pgDataDir = Util.getDataDirectoryPath(universe, node, config) + "/pg_data";
     command.add(pgDataDir);
     command.add("--old-host");
-    command.add(node.cloudInfo.private_ip);
+    if (primaryCluster.userIntent.enableYSQLAuth) {
+      String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(node, universe);
+      command.add(String.format("'$(ls -d -t %s/.yb.* | head -1)'", customTmpDirectory));
+    } else {
+      command.add(node.cloudInfo.private_ip);
+    }
+    command.add("--old-port");
+    if (primaryCluster.userIntent.enableConnectionPooling) {
+      command.add(String.valueOf(node.internalYsqlServerRpcPort));
+    } else {
+      command.add(String.valueOf(node.ysqlServerRpcPort));
+    }
     command.add("--username");
     command.add("\"yugabyte\"");
     command.add("--check");

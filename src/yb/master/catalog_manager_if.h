@@ -343,7 +343,9 @@ class CatalogManagerIf {
   virtual Status CanSupportAdditionalTablet(
       const TableInfoPtr& table, const ReplicationInfoPB& replication_info) const = 0;
 
-  virtual Result<TSDescriptorPtr> GetClosestLiveTserver() const = 0;
+  virtual Result<TSDescriptorPtr> GetClosestLiveTserver(bool* local_ts = nullptr) const = 0;
+
+  virtual bool SkipCatalogVersionChecks() = 0;
 
   virtual ~CatalogManagerIf() = default;
 };

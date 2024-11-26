@@ -19,7 +19,7 @@ namespace yb {
 
 class Pg15UpgradeTestBase : public UpgradeTestBase {
  public:
-  Pg15UpgradeTestBase() : UpgradeTestBase(kBuild_2_20_2_4) {}
+  Pg15UpgradeTestBase() : UpgradeTestBase(kBuild_2024_2_0_0) {}
   virtual ~Pg15UpgradeTestBase() override = default;
 
   void SetUp() override;
@@ -30,8 +30,9 @@ class Pg15UpgradeTestBase : public UpgradeTestBase {
   // helper functions only upgrade one tserver (id=kMixedModeTserverPg15) to the current version and
   // keep the other tservers in the old version, helping us perform validations while in mixed mode.
 
-  const size_t kMixedModeTserverPg15 = 0;
-  const size_t kMixedModeTserverPg11 = 1;
+  static constexpr size_t kMixedModeTserverPg15 = 0;
+  static constexpr size_t kMixedModeTserverPg11 = 1;
+  static constexpr std::optional<size_t> kAnyTserver = std::nullopt;
 
   // Restarts all masters in the current version, runs ysql major version upgrade, and restarts
   // tserver kMixedModeTserverPg15 in the current version. Other tservers are kept in the pg11
@@ -48,14 +49,26 @@ class Pg15UpgradeTestBase : public UpgradeTestBase {
   // Connects to a random tserver and executes ysql statements.
   Status ExecuteStatements(const std::vector<std::string>& sql_statements);
   Status ExecuteStatement(const std::string& sql_statement);
+  Status ExecuteStatementsInFile(const std::string& file_name);
+  Status ExecuteStatementsInFiles(const std::vector<std::string>& file_names);
 
-  Result<pgwrapper::PGConn> CreateConnToTs(size_t ts_id);
+  Result<pgwrapper::PGConn> CreateConnToTs(std::optional<size_t> ts_id);
 
-  // Run a ysql statement via ysqlsh against a given tserver.
-  Result<std::string> ExecuteViaYsqlshOnTs(const std::string& sql_statement, size_t ts_id);
+  // Run a ysql statement via ysqlsh.
+  Result<std::string> ExecuteViaYsqlsh(const std::string& sql_statement,
+                                       std::optional<size_t> ts_id = std::nullopt,
+                                       const std::string &db_name = "yugabyte");
 
-  // Run a ysql statement via ysqlsh against a random tserver.
-  Result<std::string> ExecuteViaYsqlsh(const std::string& sql_statement);
+  Status CreateSimpleTable();
+  Status InsertRowInSimpleTableAndValidate(const std::optional<size_t> tserver = kAnyTserver);
+
+  Status TestUpgradeWithSimpleTable();
+  Status TestRollbackWithSimpleTable();
+
+  Result<std::string> DumpYsqlCatalogConfig();
+
+  constexpr static auto kSimpleTableName = "simple_tbl";
+  uint32 simple_tbl_row_count_ = 0;
 };
 
 }  // namespace yb

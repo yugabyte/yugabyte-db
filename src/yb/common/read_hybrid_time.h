@@ -19,6 +19,7 @@
 #include "yb/common/hybrid_time.h"
 
 #include "yb/util/compare_util.h"
+#include "yb/util/logging.h"
 #include "yb/util/tostring.h"
 
 namespace yb {
@@ -112,6 +113,17 @@ struct ReadHybridTime {
     } else {
       pb->clear_read_time();
     }
+  }
+
+  ReadHybridTime FormRestartReadHybridTime(
+      const HybridTime& restart_time, const HybridTime& safe_ht_to_read) const {
+    LOG_IF(DFATAL, restart_time <= read)
+        << "Restart time: " << restart_time << "must be greater than read time: " << read;
+    auto result = *this;
+    VLOG(1) << "Restart read required at: " << restart_time << ", original: " << result.ToString();
+    result.read = std::min(std::max(restart_time, safe_ht_to_read), global_limit);
+    result.local_limit = std::min(safe_ht_to_read, global_limit);
+    return result;
   }
 
   explicit operator bool() const {

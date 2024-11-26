@@ -17,6 +17,7 @@
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/xrepl_stream_stats.h"
+#include "yb/common/common.pb.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/gutil/thread_annotations.h"
@@ -55,45 +56,39 @@ class StreamMetadata {
   // used.
   StreamMetadata() = default;
 
-  // Create a pre loaded StreamMetadata object.
-  StreamMetadata(
-      NamespaceId ns_id,
-      std::vector<TableId> table_ids,
-      CDCRecordType record_type,
-      CDCRecordFormat record_format,
-      CDCRequestSource source_type,
-      CDCCheckpointType checkpoint_type,
-      StreamModeTransactional transactional)
-      : namespace_id_(std::move(ns_id)),
-        record_type_(record_type),
-        record_format_(record_format),
-        source_type_(source_type),
-        checkpoint_type_(checkpoint_type),
-        transactional_(transactional),
-        loaded_(true),
-        table_ids_(std::move(table_ids)) {}
+  xrepl::StreamId GetStreamId() const {
+    std::lock_guard l_table(mutex_);
+    DCHECK(loaded_);
+    return stream_id_;
+  }
 
   NamespaceId GetNamespaceId() const {
+    std::lock_guard l_table(mutex_);
     DCHECK(loaded_);
     return namespace_id_;
   }
   CDCRecordType GetRecordType() const {
+    std::lock_guard l_table(mutex_);
     DCHECK(loaded_);
     return record_type_;
   }
   CDCRecordFormat GetRecordFormat() const {
+    std::lock_guard l_table(mutex_);
     DCHECK(loaded_);
     return record_format_;
   }
   CDCRequestSource GetSourceType() const {
+    std::lock_guard l_table(mutex_);
     DCHECK(loaded_);
     return source_type_;
   }
   CDCCheckpointType GetCheckpointType() const {
+    std::lock_guard l_table(mutex_);
     DCHECK(loaded_);
     return checkpoint_type_;
   }
   std::optional<CDCSDKSnapshotOption> GetSnapshotOption() const {
+    std::lock_guard l_table(mutex_);
     DCHECK(loaded_);
     return consistent_snapshot_option_;
   }
@@ -129,10 +124,21 @@ class StreamMetadata {
     return replica_identitity_map_;
   }
   std::optional<std::string> GetReplicationSlotName() const {
+    std::lock_guard l_table(mutex_);
     DCHECK(loaded_);
     return replication_slot_name_;
   }
+  std::optional<ReplicationSlotLsnType> GetReplicationSlotLsnType() const {
+    std::lock_guard l_table(mutex_);
+    DCHECK(loaded_);
+    return replication_slot_lsn_type_;
+  }
 
+  std::optional<uint32_t> GetDbOidToGetSequencesFor() const {
+    std::lock_guard l_table(mutex_);
+    DCHECK(loaded_);
+    return db_oid_to_get_sequences_for_;
+  }
 
   std::shared_ptr<StreamTabletMetadata> GetTabletMetadata(const TabletId& tablet_id)
       EXCLUDES(tablet_metadata_map_mutex_);
@@ -148,18 +154,27 @@ class StreamMetadata {
   Status GetStreamInfoFromMaster(const xrepl::StreamId& stream_id, client::YBClient* client)
       REQUIRES(load_mutex_) EXCLUDES(table_ids_mutex_, tablet_metadata_map_mutex_);
 
- private:
-  NamespaceId namespace_id_;
-  CDCRecordType record_type_;
-  CDCRecordFormat record_format_;
-  CDCRequestSource source_type_;
-  CDCCheckpointType checkpoint_type_;
-  std::optional<CDCSDKSnapshotOption> consistent_snapshot_option_;
+  // Returns std::nullopt if this stream is not for a sequences_data tablet.
+  Result<std::optional<uint32_t>> GetDbOidToGetSequencesForUnlocked() const REQUIRES(mutex_);
+
+  mutable std::mutex mutex_;
+  xrepl::StreamId stream_id_ GUARDED_BY(mutex_) {xrepl::StreamId::Nil()};
+  NamespaceId namespace_id_ GUARDED_BY(mutex_);
+  CDCRecordType record_type_ GUARDED_BY(mutex_);
+  CDCRecordFormat record_format_ GUARDED_BY(mutex_);
+  CDCRequestSource source_type_ GUARDED_BY(mutex_);
+  CDCCheckpointType checkpoint_type_ GUARDED_BY(mutex_);
+  std::optional<CDCSDKSnapshotOption> consistent_snapshot_option_ GUARDED_BY(mutex_);
+  std::optional<ReplicationSlotLsnType> replication_slot_lsn_type_ GUARDED_BY(mutex_);
+  std::optional<std::string> replication_slot_name_ GUARDED_BY(mutex_);
+  // xCluster: if we are a sequences_data stream, then this holds the OID of the DB we are supposed
+  // to be getting sequences for.
+  std::optional<uint32_t> db_oid_to_get_sequences_for_ GUARDED_BY(mutex_);
+
   std::atomic<master::SysCDCStreamEntryPB_State> state_;
   std::atomic<StreamModeTransactional> transactional_{StreamModeTransactional::kFalse};
   std::atomic<std::optional<uint64_t>> consistent_snapshot_time_;
   std::atomic<std::optional<uint64_t>> stream_creation_time_;
-  std::optional<std::string> replication_slot_name_;
 
   std::mutex load_mutex_;  // Used to ensure only a single thread performs InitOrReload.
   std::atomic<bool> loaded_ = false;

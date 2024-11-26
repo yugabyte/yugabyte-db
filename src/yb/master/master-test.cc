@@ -357,8 +357,9 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   auto descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   ASSERT_EQ(0, descs.size()) << "Should not have registered anything";
 
-  shared_ptr<TSDescriptor> ts_desc;
-  ASSERT_FALSE(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID, &ts_desc));
+  auto ts_desc_result = mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID);
+  ASSERT_NOK(ts_desc_result);
+  ASSERT_TRUE(ts_desc_result.status().IsNotFound()) << "status is: " << ts_desc_result.status();
 
   // Register the fake TS, without sending any tablet report.
   TSRegistrationPB fake_reg;
@@ -385,7 +386,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   ASSERT_EQ(fake_reg.DebugString(), reg.DebugString())
       << "Master got different registration";
 
-  ASSERT_TRUE(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID, &ts_desc));
+  auto ts_desc = ASSERT_RESULT(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID));
   ASSERT_EQ(ts_desc, descs[0]);
 
   // If the tablet server somehow lost the response to its registration RPC, it would
@@ -439,7 +440,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   ASSERT_EQ(1, descs.size()) << "Should still only have one TS registered";
 
-  ASSERT_TRUE(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID, &ts_desc));
+  ts_desc = ASSERT_RESULT(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID));
   ASSERT_EQ(ts_desc, descs[0]);
 
   // Ensure that the ListTabletServers shows the faked server.
@@ -506,7 +507,9 @@ void MasterTest::TestRegisterDistBroadcastDupPrivate(
 
   shared_ptr<TSDescriptor> ts_desc;
   for (auto& uuid : tsUUIDs) {
-    ASSERT_FALSE(mini_master_->master()->ts_manager()->LookupTSByUUID(uuid, &ts_desc));
+    auto result = mini_master_->master()->ts_manager()->LookupTSByUUID(uuid);
+    ASSERT_NOK(result);
+    ASSERT_TRUE(result.status().IsNotFound()) << "status is: " << result.status();
   }
 
   // Each tserver will have a distinct broadcast address but the same private_rpc_address.
@@ -654,7 +657,7 @@ TEST_F(MasterTest, TestReRegisterRemovedUUID) {
 }
 
 TEST_F(MasterTest, TestRegistrationThroughHeartbeatPersisted) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_persist_tserver_registry) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
   TSToMasterCommonPB common;
   TSRegistrationPB registration;
   const std::string kUUID = "uuid";
@@ -675,7 +678,7 @@ TEST_F(MasterTest, TestRegistrationThroughHeartbeatPersisted) {
 }
 
 TEST_F(MasterTest, TestUnresponsiveMarkingPersisted) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_persist_tserver_registry) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 3000;
   TSToMasterCommonPB common;
   TSRegistrationPB registration;
@@ -700,7 +703,7 @@ TEST_F(MasterTest, TestUnresponsiveMarkingPersisted) {
 }
 
 TEST_F(MasterTest, TestHeartbeatFromRegisteredTSPersisted) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_persist_tserver_registry) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 3000;
   TSToMasterCommonPB common;
   TSRegistrationPB registration;
@@ -2778,10 +2781,12 @@ TEST_F(MasterStartUpTest, JoinExistingClusterUnsetWithoutMasterAddresses) {
 TEST_F(MasterTest, TestGetClosestLiveTserver) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5 * 60 * 1000;
 
+  bool local_ts = false;
   auto& catalog_manager = mini_master_->catalog_manager();
-  auto result = catalog_manager.GetClosestLiveTserver();
+  auto result = catalog_manager.GetClosestLiveTserver(&local_ts);
   // No valid tservers.
   ASSERT_NOK(result);
+  ASSERT_FALSE(local_ts);
 
   uint32 tserver_idx = 1;
   auto add_tserver = [this, &tserver_idx](
@@ -2805,23 +2810,25 @@ TEST_F(MasterTest, TestGetClosestLiveTserver) {
   {
     const auto tserver1_uuid = "uuid-1";
     ASSERT_OK(add_tserver(tserver1_uuid, "cloud2", "rack1", "zone", "host1"));
-    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver());
+    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver(&local_ts));
     ASSERT_EQ(closest_tserver->permanent_uuid(), tserver1_uuid);
+    ASSERT_FALSE(local_ts);
   }
 
   // Add tserver in same cloud, different region.
   {
     const auto tserver2_uuid = "uuid-2";
     ASSERT_OK(add_tserver(tserver2_uuid, "cloud1", "rack2", "zone", "host1"));
-    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver());
+    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver(&local_ts));
     ASSERT_EQ(closest_tserver->permanent_uuid(), tserver2_uuid);
+    ASSERT_FALSE(local_ts);
   }
 
   // Add tserver in same cloud, same region, different zone.
   {
     const auto tserver3_uuid = "uuid-3";
     ASSERT_OK(add_tserver(tserver3_uuid, "cloud1", "rack1", "zone2", "host1"));
-    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver());
+    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver(&local_ts));
     ASSERT_EQ(closest_tserver->permanent_uuid(), tserver3_uuid);
   }
 
@@ -2829,8 +2836,9 @@ TEST_F(MasterTest, TestGetClosestLiveTserver) {
   {
     const auto tserver4_uuid = "uuid-4";
     ASSERT_OK(add_tserver(tserver4_uuid, "cloud1", "rack1", "zone", "host1"));
-    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver());
+    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver(&local_ts));
     ASSERT_EQ(closest_tserver->permanent_uuid(), tserver4_uuid);
+    ASSERT_FALSE(local_ts);
   }
 
   // Add tserver in same host as master.
@@ -2840,8 +2848,9 @@ TEST_F(MasterTest, TestGetClosestLiveTserver) {
     auto master_host = master_registration.private_rpc_addresses().begin()->host();
     const auto tserver5_uuid = "uuid-5";
     ASSERT_OK(add_tserver(tserver5_uuid, "cloud1", "rack1", "zone", std::move(master_host)));
-    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver());
+    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver(&local_ts));
     ASSERT_EQ(closest_tserver->permanent_uuid(), tserver5_uuid);
+    ASSERT_TRUE(local_ts);
   }
 }
 

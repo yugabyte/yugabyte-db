@@ -23,6 +23,9 @@ var createHashicorpVaultEITCmd = &cobra.Command{
 	Aliases: []string{"add", "upload"},
 	Short:   "Create a YugabyteDB Anywhere Hashicorp Vault encryption in transit configuration",
 	Long:    "Create a Hashicorp Vault encryption in transit configuration in YugabyteDB Anywhere",
+	Example: `yba eit hashicorp-vault create --name <config-name> \
+	--token <token> --vault-address <vault-address> \
+	--secret-engine <secret-engine>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		eitutil.CreateEITValidation(cmd)
 	},
@@ -83,7 +86,7 @@ var createHashicorpVaultEITCmd = &cobra.Command{
 			Label:             configName,
 			CertType:          util.HashicorpVaultCertificateType,
 			CertContent:       "pki",
-			HcVaultCertParams: hcvParams,
+			HcVaultCertParams: &hcvParams,
 		}
 
 		eitutil.CreateEITUtil(authAPI, configName, util.HashicorpVaultCertificateType, requestBody)

@@ -13,9 +13,11 @@ import (
 
 var listEITCmd = &cobra.Command{
 	Use:     "list",
+	Aliases: []string{"ls"},
 	GroupID: "action",
 	Short:   "List YugabyteDB Anywhere Encryption In Transit (EIT) configurations",
 	Long:    "List YugabyteDB Anywhere Encryption In Transit (EIT) configurations",
+	Example: `yba eit list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		certType, err := cmd.Flags().GetString("cert-type")
 		if err != nil {
@@ -32,6 +34,6 @@ func init() {
 	listEITCmd.Flags().StringP("name", "n", "", "[Optional] Name of the configuration.")
 	listEITCmd.Flags().StringP("cert-type", "c", "",
 		"[Optional] Type of the certificate, defaults to list all configurations. "+
-			"Allowed values: SelfSigned, CustomCertHostPath, "+
+			"Allowed values (case sensitive): SelfSigned, CustomCertHostPath, "+
 			" HashicorpVault, K8sCertManager.")
 }

@@ -86,9 +86,9 @@ public class NodeInstance extends Model {
   @AllArgsConstructor
   @NoArgsConstructor
   public static class UniverseMetadata {
-    private boolean useSystemd = true;
-    private boolean assignStaticPublicIp = false;
-    private boolean otelCollectorEnabled = false;
+    @Builder.Default private boolean useSystemd = true;
+    private boolean assignStaticPublicIp;
+    private boolean otelCollectorEnabled;
   }
 
   public enum State {
@@ -109,7 +109,10 @@ public class NodeInstance extends Model {
   private String instanceTypeCode;
 
   @Column(nullable = false)
-  @ApiModelProperty(value = "The node's name", example = "India node")
+  @ApiModelProperty(
+      value = "The node's name in a universe",
+      example = "universe_node1",
+      accessMode = READ_ONLY)
   private String nodeName;
 
   @Column(nullable = false)
@@ -132,6 +135,10 @@ public class NodeInstance extends Model {
   @ApiModelProperty(value = "State of on-prem node", accessMode = READ_ONLY)
   @Enumerated(EnumType.STRING)
   private State state;
+
+  @Column(nullable = false)
+  @ApiModelProperty(value = "Manually set to decommissioned state by user", accessMode = READ_ONLY)
+  private boolean manuallyDecommissioned;
 
   @DbJson @JsonIgnore private UniverseMetadata universeMetadata;
 
@@ -178,6 +185,7 @@ public class NodeInstance extends Model {
     this.setState(State.FREE);
     this.setNodeName("");
     this.universeMetadata = null;
+    this.setManuallyDecommissioned(false);
     this.save();
   }
 
@@ -198,7 +206,8 @@ public class NodeInstance extends Model {
 
   @ApiModelProperty(
       value = "Node details (as a JSON object)",
-      example = "{\"ip\":\"1.1.1.1\",\"sshUser\":\"centos\"}")
+      example = "{\"ip\":\"1.1.1.1\",\"sshUser\":\"centos\"}",
+      accessMode = READ_ONLY)
   public String getDetailsJson() {
     return nodeDetailsJson;
   }

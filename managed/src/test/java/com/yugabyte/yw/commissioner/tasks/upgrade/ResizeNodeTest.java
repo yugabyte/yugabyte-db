@@ -65,7 +65,7 @@ import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
-import org.yb.client.ListMastersResponse;
+import org.yb.client.ListMasterRaftPeersResponse;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -112,9 +112,9 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             });
     try {
       when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
-      ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
-      when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
-      when(mockClient.listMasters()).thenReturn(listMastersResponse);
+      ListMasterRaftPeersResponse listMastersResponse = mock(ListMasterRaftPeersResponse.class);
+      when(listMastersResponse.getPeersList()).thenReturn(Collections.emptyList());
+      when(mockClient.listMasterRaftPeers()).thenReturn(listMastersResponse);
       setCheckNodesAreSafeToTakeDown(mockClient);
     } catch (Exception ignored) {
     }

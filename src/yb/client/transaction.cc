@@ -394,6 +394,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       } else {
         other->metadata_.start_time = other->read_point_.Now();
       }
+      other->metadata_.pg_txn_start_us = metadata_.pg_txn_start_us;
       state_.store(TransactionState::kAborted, std::memory_order_release);
     }
     DoAbort(TransactionRpcDeadline(), transaction);
@@ -933,7 +934,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   Status SetPgTxnStart(int64_t pg_txn_start_us) {
     VLOG_WITH_PREFIX(4) << "set pg_txn_start_us_=" << pg_txn_start_us;
     RSTATUS_DCHECK(
-        !metadata_.pg_txn_start_us || metadata_.pg_txn_start_us == pg_txn_start_us,
+        !metadata_.pg_txn_start_us,
         InternalError,
         Format("Tried to set pg_txn_start_us (= $0) to new value (= $1)",
                metadata_.pg_txn_start_us, pg_txn_start_us));
@@ -1069,6 +1070,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   void IncreaseMutationCounts(
       SubTransactionId subtxn_id, const TableId& table_id, uint64_t mutation_count) {
+    std::lock_guard lock(mutation_count_mutex_);
     auto it = subtxn_table_mutation_counter_map_.find(subtxn_id);
     if (it != subtxn_table_mutation_counter_map_.end()) {
       it->second[table_id] += mutation_count;
@@ -1078,6 +1080,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   std::unordered_map<TableId, uint64_t> GetTableMutationCounts() const {
+    std::lock_guard lock(mutation_count_mutex_);
     auto& aborted_sub_txn_set = subtransaction_.get().aborted;
     std::unordered_map<TableId, uint64_t> table_mutation_counts;
     for (const auto& [sub_txn_id, table_mutation_cnt_map] : subtxn_table_mutation_counter_map_) {
@@ -2309,7 +2312,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   // mutation counter that is in turn sent to the auto analyze service that maintains the cluster
   // level mutations (see PgMutationCounter).
   std::unordered_map<SubTransactionId, std::unordered_map<TableId, uint64_t>>
-      subtxn_table_mutation_counter_map_;
+      subtxn_table_mutation_counter_map_ GUARDED_BY(mutation_count_mutex_);
 
   std::atomic<bool> requested_status_tablet_{false};
   internal::RemoteTabletPtr status_tablet_ GUARDED_BY(mutex_);
@@ -2343,6 +2346,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       transaction_status_move_handles_ GUARDED_BY(mutex_);
 
   std::shared_mutex mutex_;
+  mutable std::mutex mutation_count_mutex_;
   TabletStates tablets_ GUARDED_BY(mutex_);
   std::vector<Waiter> waiters_ GUARDED_BY(mutex_);
 

@@ -20,6 +20,8 @@
 #include "yb/util/metric_entity.h"
 #include "yb/util/prometheus_metric_filter.h"
 
+static const char* const kSeverLevelAggregationId = "server_level";
+
 namespace yb {
 
 YB_STRONGLY_TYPED_BOOL(ExportHelpAndType);

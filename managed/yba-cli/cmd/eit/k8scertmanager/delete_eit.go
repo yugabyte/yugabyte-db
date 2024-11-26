@@ -12,9 +12,11 @@ import (
 
 // deleteK8sCertManagerEITCmd represents the eit command
 var deleteK8sCertManagerEITCmd = &cobra.Command{
-	Use:   "delete",
-	Short: "Delete a YugabyteDB Anywhere K8s Cert Manager encryption in transit configuration",
-	Long:  "Delete a K8s Cert Manager encryption in transit configuration in YugabyteDB Anywhere",
+	Use:     "delete",
+	Aliases: []string{"remove", "rm"},
+	Short:   "Delete a YugabyteDB Anywhere K8s Cert Manager encryption in transit configuration",
+	Long:    "Delete a K8s Cert Manager encryption in transit configuration in YugabyteDB Anywhere",
+	Example: `yba eit k8s-cert-manager delete --name <config-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		eitutil.DeleteEITValidation(cmd)
 	},

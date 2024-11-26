@@ -246,6 +246,31 @@ Status XClusterClient::IsBootstrapRequired(
       &yb_client_, deadline, replication_group_id, namespace_id, std::move(callback));
 }
 
+Status XClusterClient::EnsureSequenceUpdatesAreInWal(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const std::vector<NamespaceId>& namespace_ids, CoarseTimePoint deadline) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Invalid Replication group ID");
+  SCHECK(!namespace_ids.empty(), InvalidArgument, "No Namespace IDs provided");
+  for (const auto& namespace_id : namespace_ids) {
+    SCHECK(!namespace_id.empty(), InvalidArgument, "Invalid empty Namespace ID provided");
+  }
+
+  master::XClusterEnsureSequenceUpdatesAreInWalRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  for (const auto& namespace_id : namespace_ids) {
+    req.add_namespace_ids(namespace_id);
+  }
+
+  master::XClusterEnsureSequenceUpdatesAreInWalResponsePB resp;
+  RETURN_NOT_OK(yb_client_.data_->SyncLeaderMasterRpc(
+      deadline, req, &resp, "XClusterEnsureSequenceUpdatesAreInWal",
+      &master::MasterReplicationProxy::XClusterEnsureSequenceUpdatesAreInWalAsync));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
 Status XClusterClient::RemoveNamespaceFromOutboundReplicationGroup(
     const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
     const std::string& target_master_addresses) {
@@ -734,6 +759,62 @@ Status XClusterClient::AddNamespaceToDbScopedUniverseReplication(
     }
   }
 
+  return Status::OK();
+}
+
+Status XClusterClient::WaitForReplicationDrain(
+    const xrepl::StreamId& stream_id, MicrosecondsInt64 target_time, CoarseTimePoint deadline) {
+  master::WaitForReplicationDrainRequestPB req;
+  req.set_target_time(target_time);
+  req.add_stream_ids(stream_id.ToString());
+
+  master::WaitForReplicationDrainResponsePB resp;
+  RETURN_NOT_OK(yb_client_.data_->SyncLeaderMasterRpc(
+      deadline, req, &resp, "WaitForReplicationDrain",
+      &master::MasterReplicationProxy::WaitForReplicationDrainAsync));
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  return Status::OK();
+}
+
+Result<std::vector<xrepl::StreamId>> XClusterClient::GetXClusterStreams(const TableId& table_id) {
+  master::ListCDCStreamsRequestPB req;
+  req.set_id_type(yb::master::IdTypePB::TABLE_ID);
+  req.set_table_id(table_id);
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(ListCDCStreams, req);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  std::vector<xrepl::StreamId> stream_ids;
+  for (const auto& stream : resp.streams()) {
+    stream_ids.emplace_back(VERIFY_RESULT(xrepl::StreamId::FromString(stream.stream_id())));
+  }
+  return stream_ids;
+}
+
+Status XClusterClient::InsertPackedSchemaForXClusterTarget(
+    const TableId& table_id, const SchemaPB& packed_schema_to_insert,
+    uint32_t current_schema_version, const std::optional<ColocationId>& colocation_id) {
+  SCHECK(!table_id.empty(), InvalidArgument, "Table id is required.");
+
+  master::InsertPackedSchemaForXClusterTargetRequestPB req;
+  req.set_table_id(table_id);
+  req.mutable_packed_schema()->CopyFrom(packed_schema_to_insert);
+  req.set_current_schema_version(current_schema_version);
+  if (colocation_id) {
+    req.set_colocation_id(*colocation_id);
+  }
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(InsertPackedSchemaForXClusterTarget, req);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
   return Status::OK();
 }
 

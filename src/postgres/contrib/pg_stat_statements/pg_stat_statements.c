@@ -1950,6 +1950,9 @@ done:
 Datum
 pg_stat_statements_reset_1_7(PG_FUNCTION_ARGS)
 {
+	if (YBIsQueryDiagnosticsEnabled())
+		*yb_pgss_last_reset_time = GetCurrentTimestamp();
+
 	Oid			userid;
 	Oid			dbid;
 	uint64		queryid;
@@ -3624,6 +3627,12 @@ yb_track_nested_queries(void)
 	return pgss_track == PGSS_TRACK_ALL;
 }
 
+/*
+ * Get the normalized query text from the pgss_query_texts.stat file
+ * and copy it to the normalized_query buffer.
+ * Note that normalized_query is expected to be a buffer of at least
+ * query_len + 1 bytes.
+ */
 static void
 YbGetPgssNormalizedQueryText(Size query_offset, int query_len, char *normalized_query)
 {

@@ -310,7 +310,7 @@ class Tablet : public AbstractTablet,
 
   Status ImportData(const std::string& source_dir);
 
-  Result<docdb::ApplyTransactionState> ApplyIntents(const TransactionApplyData& data) override;
+  docdb::ApplyTransactionState ApplyIntents(const TransactionApplyData& data) override;
 
   Status RemoveIntents(
       const RemoveIntentsData& data, RemoveReason reason, const TransactionId& id) override;
@@ -461,6 +461,11 @@ class Tablet : public AbstractTablet,
 
   // Apply the Schema of the specified operation.
   Status AlterSchema(ChangeMetadataOperation* operation);
+
+  // Insert a historical packed schema, used by xCluster for automatic DDL replication.
+  Status InsertPackedSchemaForXClusterTarget(
+      ChangeMetadataOperation* operation,
+      std::shared_ptr<yb::tablet::TableInfo> current_table_info);
 
   // Used to update the tablets on the index table that the index has been backfilled.
   // This means that full compactions can now garbage collect delete markers.
@@ -748,7 +753,7 @@ class Tablet : public AbstractTablet,
   Status SetAllCDCRetentionBarriersUnlocked(
       int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
       HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
-      bool initial_retention_barrier);
+      bool initial_retention_barrier, HybridTime min_start_ht_cdc_unstreamed_txns);
 
   Status SetAllInitialCDCRetentionBarriers(
       log::Log* log, int64 cdc_wal_index, OpId cdc_sdk_intents_op_id,
@@ -763,7 +768,13 @@ class Tablet : public AbstractTablet,
       MonoDelta cdc_sdk_op_id_expiration, HybridTime cdc_sdk_history_cutoff,
       bool require_history_cutoff);
 
-//------------------------------------------------------------------------------------------------
+  HybridTime GetMinStartHTCDCUnstreamedTxns(log::Log* log) const;
+
+  HybridTime GetMinStartHTRunningTxnsForCDCProducer() const;
+
+  HybridTime GetMinStartHTRunningTxnsForCDCLogCallback() const;
+
+  //------------------------------------------------------------------------------------------------
 
   // Allows us to add tablet-specific information that will get deref'd when the tablet does.
   std::shared_ptr<void> AddAdditionalMetadata(
@@ -972,8 +983,6 @@ class Tablet : public AbstractTablet,
   MonoTime cdcsdk_block_barrier_revision_start_time = MonoTime::Now();
 
   void CleanupIntentFiles();
-
-  HybridTime GetMinStartHTRunningTxnsOrLeaderSafeTime();
 
  private:
   friend class Iterator;
@@ -1269,6 +1278,8 @@ class Tablet : public AbstractTablet,
   std::function<uint32_t(const TableId&, const ColocationId&)>
       get_min_xcluster_schema_version_ = nullptr;
 
+  VectorIndexThreadPoolProvider vector_index_thread_pool_provider_;
+
   simple_spinlock operation_filters_mutex_;
 
   boost::intrusive::list<OperationFilter> operation_filters_ GUARDED_BY(operation_filters_mutex_);
@@ -1278,6 +1289,12 @@ class Tablet : public AbstractTablet,
   std::unique_ptr<log::LogAnchor> completed_split_log_anchor_ GUARDED_BY(operation_filters_mutex_);
 
   std::unique_ptr<OperationFilter> restoring_operation_filter_ GUARDED_BY(operation_filters_mutex_);
+
+  std::atomic<bool> has_vector_indexes_{false};
+  std::shared_mutex vector_indexes_mutex_;
+  std::unordered_map<TableId, docdb::VectorIndexPtr> vector_indexes_map_
+      GUARDED_BY(vector_indexes_mutex_);
+  docdb::VectorIndexesPtr vector_indexes_list_ GUARDED_BY(vector_indexes_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

@@ -37,6 +37,7 @@ DECLARE_bool(TEST_fail_abort_request_with_try_again);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(TEST_skip_returning_old_transactions);
 DECLARE_uint64(force_single_shard_waiter_retry_ms);
+DECLARE_int32(tserver_unresponsive_timeout_ms);
 
 using namespace std::literals;
 using std::string;
@@ -778,10 +779,10 @@ TEST_F(PgGetLockStatusTest, TestPgLocksWhileDMLsInProgress) {
   ASSERT_OK(status_future.get());
 }
 
+#ifndef NDEBUG
 TEST_F(PgGetLockStatusTest, TestWaitStartTimeIsConsistentAcrossWaiterReEntries) {
   constexpr int kMinTxnAgeMs = 1;
-  constexpr auto waiter_refresh_secs = 2;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_refresh_waiter_timeout_ms) = waiter_refresh_secs * 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_refresh_waiter_timeout_ms) = 5 * 1000 * kTimeMultiplier;
 
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("SET yb_locks_min_txn_age='$0ms'", kMinTxnAgeMs));
@@ -789,6 +790,15 @@ TEST_F(PgGetLockStatusTest, TestWaitStartTimeIsConsistentAcrossWaiterReEntries) 
   auto session_1 = ASSERT_RESULT(Init("foo", "1"));
   auto init_stamp = ASSERT_RESULT(conn.FetchRow<MonoDelta>(
       "SELECT DISTINCT(waitend) FROM pg_locks WHERE granted"));
+
+  std::atomic<uint> total_num_waiting_requests{0};
+  yb::SyncPoint::GetInstance()->SetCallBack(
+      "ConflictResolver::MaybeSetWaitStartTime",
+      [&](void* arg) {
+        total_num_waiting_requests++;
+      });
+  yb::SyncPoint::GetInstance()->ClearTrace();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
 
   auto status_future_write_req = std::async(std::launch::async, [&]() -> Status {
     auto conn = VERIFY_RESULT(Connect());
@@ -805,8 +815,12 @@ TEST_F(PgGetLockStatusTest, TestWaitStartTimeIsConsistentAcrossWaiterReEntries) 
     return Status::OK();
   });
 
-
   SleepFor(2ms * FLAGS_heartbeat_interval_ms * kTimeMultiplier);
+  // The above two requests (read & write) should have been blocked by session_1 and should have
+  // entered the wait-queue, resulting in total_num_waiting_requests >= 2.
+  ASSERT_OK(WaitFor(
+      [&] { return total_num_waiting_requests >= 2; }, 10s * kTimeMultiplier,
+      "Long wait for waiting requests to enter the wait-queue"));
   auto now_stamp = ASSERT_RESULT(conn.FetchRow<MonoDelta>("SELECT NOW()"));
 
   auto wait_start_time_1_query =
@@ -822,8 +836,11 @@ TEST_F(PgGetLockStatusTest, TestWaitStartTimeIsConsistentAcrossWaiterReEntries) 
       ASSERT_RESULT(conn.FetchRow<MonoDelta>(wait_start_time_2_query));
   ASSERT_LE(init_stamp, wait_start_time_2);
   ASSERT_GE(now_stamp, wait_start_time_2);
-
-  SleepFor(2 * waiter_refresh_secs * 1s * kTimeMultiplier);
+  // Wait for the 2 waiter requests in the wait-queue to timeout, and re-enter the queue, resulting
+  // in total_num_waiting_requests >= 4.
+  ASSERT_OK(WaitFor(
+      [&] { return total_num_waiting_requests >= 4; }, 10s * kTimeMultiplier,
+      "Long wait for waiting requests to re-enter the wait-queue"));
   ASSERT_EQ(wait_start_time_1,
             ASSERT_RESULT(conn.FetchRow<MonoDelta>(wait_start_time_1_query)));
   ASSERT_EQ(wait_start_time_2,
@@ -832,6 +849,7 @@ TEST_F(PgGetLockStatusTest, TestWaitStartTimeIsConsistentAcrossWaiterReEntries) 
   ASSERT_OK(status_future_write_req.get());
   ASSERT_OK(status_future_read_req.get());
 }
+#endif // NDEBUG
 
 TEST_F(PgGetLockStatusTest, TestLockStatusRespHasHostNodeSet) {
   constexpr int kMinTxnAgeMs = 1;
@@ -1072,13 +1090,15 @@ TEST_F(PgGetLockStatusTest, TestPgLocksOutputAfterNodeOperations) {
   // invoved in the master <-> tserver heartbeats.
   cluster_->mini_tablet_server(1)->server()->Shutdown();
   ASSERT_OK(cluster_->mini_master()->Restart());
+  // Reduce the window needed for the leader master to mark the tserver as dead.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 3000;
   ASSERT_OK(WaitFor([&] {
     std::vector<master::TSInformationPB> tservers;
     if (!mini_ts_1->server()->GetLiveTServers(&tservers).ok()) {
       return false;
     }
     return tservers.size() == num_tservers;
-  }, 5s * kTimeMultiplier, "Failed to learn about removed tserver from master"));
+  }, 10s * kTimeMultiplier, "Failed to learn about removed tserver from master"));
 
   // Assert that the pg_locks query returns correct results after the remove node operation.
   ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchRow<int64>(kPgLocksQuery)), 2);

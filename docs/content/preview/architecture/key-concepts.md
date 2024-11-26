@@ -4,7 +4,6 @@ headerTitle: Key concepts
 linkTitle: Key concepts
 description: Learn about the Key concepts in YugabyteDB
 headcontent: Glossary of key concepts
-image: fa-sharp fa-thin fa-arrows-to-circle
 aliases:
   - /preview/architecture/concepts
   - /preview/architecture/concepts/universe

@@ -8,7 +8,7 @@
      "([.]sql$)",
      "([.]txt$)",
      "(^src/odyssey/.*$)",
-     "(^src/postgres/.*$)",
+     "(^src/inline-thirdparty/.*$)",
      "(^src/yb/integration-tests/upgrade-tests/builds.xml$)",
      "(^[.]gitmodules$)",
      "(^managed/src/main/resources/alert/alert_templates[.]yml$)",
@@ -87,32 +87,39 @@
         "(^yugabyted-ui/.*/go[.]mod)",
         "(^yugabyted-ui/.*/go[.]sum)",
         "(^yugabyted-ui/ui/src/api/)",
+        "(^yugabyted-ui/ui/src/assets/)",
         "(^yugabyted-ui/ui/src/translations/)",
         "(^thirdparty/thirdparty_src_checksums[.]txt$)",
         "(^java/yb-client/src/test/java/org/yb/client/TestYBClient[.]java$)",
         "(^cmake_modules/cotire[.]cmake$)",
         "(^cmake_modules/FindBoost[.]cmake$)",
-        "(^README[.]md$)",
         "(^java/pom[.]xml$)",
         "(^.*[.]patch$)",
         "(java/yb-cdc/pom.xml)",
-        "(java/yb-cdc/README.md)",
-        "(^docs/.*[.]md$)",
         "(^[.]fossa[.]yml$)",
         "(^managed/.*[.]conf)",
-        "(^[.]gitignore$)"
+        "(^src/postgres/)",
+        "(^[.]gitignore$)",
+        "(^.*[.]svg$)",
+        "(^.*[.]md$)",
+        "(^java/yb-pgsql/src/test/resources/expected/)"
       ]
     },
     "pycodestyle": {
       "type": "pep8",
       "include": "([.]py$)",
-      "exclude": "(^thirdparty/|^[.]ycm_extra_conf[.]py$)",
+      "exclude": [
+        "(^[.]ycm_extra_conf[.]py$)",
+        "(^src/postgres/)",
+        "(^thirdparty/)"
+      ],
       "bin": "pycodestyle",
       "flags": ["--max-line-length=100"]
     },
     "googlecpplint": {
       "type": "googlecpplint",
       "exclude": [
+        "(^src/postgres/)",
         "(^src/yb/yql/cql/ql/kwlist[.]h$)",
         "(^src/yb/gutil/linux_syscall_support[.]h$)",
         "(^src/yb/gutil/cycleclock-inl[.]h$)",
@@ -139,6 +146,20 @@
         "(^build/c[+][+]11$)": "disabled",
         "(.*)": "error"
       }
+    },
+    "postgres": {
+      "type": "script-and-regex",
+      "exclude": [
+        "(^src/postgres/third-party-extensions/)",
+        "(^src/yb/)"
+      ],
+      "include": [
+        "([.]c$)",
+        "([.]h$)"
+      ],
+      "script-and-regex.script": "src/postgres/ybsimplelint.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<message>\\w+):(?P<line>\\d+):(?P<original>.*)/m"
     }
   }
 }

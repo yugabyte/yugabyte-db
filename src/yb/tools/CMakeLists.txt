@@ -237,7 +237,7 @@ ADD_YB_TEST_LIBRARY(yb-backup-test_base
                     DEPS ${YB_BACKUP_TEST_BASE_DEPS})
 
 add_executable(hnsw_tool hnsw_tool.cc)
-target_link_libraries(hnsw_tool boost_program_options yb_util yb_docdb yb_vector)
+target_link_libraries(hnsw_tool boost_program_options yb_util yb_docdb vector_index)
 
 add_executable(clockbound_dump clockbound_dump.cc)
 target_link_libraries(clockbound_dump

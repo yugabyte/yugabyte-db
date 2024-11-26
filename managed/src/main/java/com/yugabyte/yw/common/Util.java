@@ -76,7 +76,6 @@ import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
@@ -117,7 +116,7 @@ public class Util {
   public static final String REDACT = "REDACTED";
   public static final String KEY_LOCATION_SUFFIX = "/backup_keys.json";
   public static final String SYSTEM_PLATFORM_DB = "system_platform";
-  public static final String WRITE_READ_TABLE = "write_read_table";
+  public static final String WRITE_READ_TABLE = "write_read_test";
   public static final int YB_SCHEDULER_INTERVAL = 2;
   public static final String DEFAULT_YB_SSH_USER = "yugabyte";
   public static final String DEFAULT_SUDO_SSH_USER = "centos";
@@ -1368,7 +1367,7 @@ public class Util {
     return t.negate();
   }
 
-  public static void doWithCorrelationId(Consumer<String> consumer) {
+  public static <T> T doWithCorrelationId(Function<String, T> function) {
     Map<String, String> originalContext = MDC.getCopyOfContextMap();
     try {
       String correlationId = UUID.randomUUID().toString();
@@ -1378,7 +1377,7 @@ public class Util {
       }
       context.put(LogUtil.CORRELATION_ID, correlationId);
       MDC.setContextMap(context);
-      consumer.accept(correlationId);
+      return function.apply(correlationId);
     } finally {
       if (MapUtils.isEmpty(originalContext)) {
         MDC.clear();

@@ -25,8 +25,8 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/test_util.h"
 
-DECLARE_bool(TEST_persist_tserver_registry);
 DECLARE_bool(enable_load_balancing);
+DECLARE_bool(persist_tserver_registry);
 DECLARE_int32(replication_factor);
 DECLARE_int32(transaction_table_num_tablets);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
@@ -275,7 +275,7 @@ Status MasterClusterTest::WaitForMasterLeaderToMarkTabletServerDead(
 }
 
 void RemoveTabletServerTest::SetUp() {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_persist_tserver_registry) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) = 1;
   MasterClusterTest::SetUp();
 }

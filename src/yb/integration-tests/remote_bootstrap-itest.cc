@@ -46,6 +46,7 @@
 
 #include "yb/common/wire_protocol-test-util.h"
 
+#include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/raft_consensus.h"
 
@@ -65,6 +66,8 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_client.proxy.h"
+#include "yb/master/master_cluster_client.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/mini_master.h"
 
@@ -79,6 +82,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/metrics.h"
@@ -110,6 +114,7 @@ DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_leader_failure_detection);
 DECLARE_int32(retryable_request_timeout_secs);
+DECLARE_int32(raft_heartbeat_interval_ms);
 
 using yb::client::YBClient;
 using yb::client::YBSchema;
@@ -210,6 +215,9 @@ class RemoteBootstrapITest : public CreateTableITestBase {
 
   void RBSWithLazySuperblockFlush(int num_tables);
 
+  Result<std::string> SetUp3TabletServerClusterAndTable(
+      const std::string& db_name, const std::string& table_name);
+
   void LongBootstrapTestSetUpAndVerify(
       const vector<string>& tserver_flags = vector<string>(),
       const vector<string>& master_flags = vector<string>(),
@@ -227,6 +235,20 @@ class RemoteBootstrapITest : public CreateTableITestBase {
                                                            const int leader_index,
                                                            const MonoDelta& timeout,
                                                            vector<string>* tablet_ids);
+
+  void AddNewPeerWithDiskspaceCheck(const int num_tablet_servers);
+  void ReplacePeerWithDiskspaceCheck(const int num_tablet_servers);
+
+  Result<master::GetTableLocationsResponsePB> GetTableLocations(
+      const master::MasterClientProxy& proxy, const std::string& table_id,
+      uint32_t max_num_tablets = 100) const;
+
+  Result<tserver::ListTabletsResponsePB> ListTablets(
+      const tserver::TabletServerServiceProxy& proxy) const;
+
+  std::optional<std::reference_wrapper<const tablet::TabletStatusPB>> FindTablet(
+      const tserver::ListTabletsResponsePB& resp, const std::string& tablet_id) const;
+
   MonoDelta crash_test_timeout_ = MonoDelta::FromSeconds(40);
   const MonoDelta kWaitForCrashTimeout_ = 60s;
   vector<string> crash_test_tserver_flags_;
@@ -317,14 +339,10 @@ void RemoteBootstrapITest::CrashTestSetUp(YBTableType table_type) {
   LOG(INFO) << "Started cluster";
   // We'll do a config change to remote bootstrap a replica here later. For
   // now, shut it down.
-  LOG(INFO) << "Shutting down TS " << cluster_->tablet_server(crash_test_tserver_index_)->uuid();
-  cluster_->tablet_server(crash_test_tserver_index_)->Shutdown();
-
-  // Bounce the Master so it gets new tablet reports and doesn't try to assign
-  // a replica to the dead TS.
-  cluster_->master()->Shutdown();
-  ASSERT_OK(cluster_->master()->Restart());
-  ASSERT_OK(cluster_->WaitForTabletServerCount(4, crash_test_timeout_));
+  auto crash_test_ts_uuid = cluster_->tablet_server(crash_test_tserver_index_)->uuid();
+  LOG(INFO) << "Shutting down TS " << crash_test_ts_uuid;
+  ASSERT_OK(cluster_->RemoveTabletServer(
+      crash_test_ts_uuid, MonoTime::Now() + MonoDelta::FromSeconds(20)));
 
   // Start a workload on the cluster, and run it for a little while.
   crash_test_workload_.reset(new TestWorkload(cluster_.get()));
@@ -719,20 +737,14 @@ void RemoteBootstrapITest::LongBootstrapTestSetUpAndVerify(
 
   // We'll do a config change to remote bootstrap a replica here later. For now, shut it down.
   vector<TServerDetails*> new_ts_list;
+  std::vector<std::reference_wrapper<const std::string>> uuids_to_remove;
   for (auto i = 0; i < num_concurrent_ts_changes; i++) {
     LOG(INFO) << "Shutting down TS " << cluster_->tablet_server(i)->uuid();
-    cluster_->tablet_server(i)->Shutdown();
+    uuids_to_remove.push_back(cluster_->tablet_server(i)->uuid());
     new_ts_list.push_back(ts_map_[cluster_->tablet_server(i)->uuid()].get());
   }
-
-  // Bounce the Master so it gets new tablet reports and doesn't try to assign a replica to the
-  // dead TS.
   const auto timeout = MonoDelta::FromSeconds(40);
-  cluster_->master()->Shutdown();
-  LOG(INFO) << "Restarting master " << cluster_->master()->uuid();
-  ASSERT_OK(cluster_->master()->Restart());
-  ASSERT_OK(
-      cluster_->WaitForTabletServerCount(num_tablet_servers - num_concurrent_ts_changes, timeout));
+  ASSERT_OK(cluster_->RemoveTabletServers(uuids_to_remove, MonoTime::Now() + timeout));
 
   // Populate a tablet with some data.
   LOG(INFO) << "Starting workload";
@@ -805,7 +817,8 @@ TEST_F(RemoteBootstrapITest, IncompleteWALDownloadDoesntCauseCrash) {
       "--use_preelection=false"s,
       "--memstore_size_mb=1"s,
       "--TEST_download_partial_wal_segments=true"s,
-      "--remote_bootstrap_idle_timeout_ms="s + std::to_string(kBootstrapIdleTimeoutMs)
+      Format("--remote_bootstrap_idle_timeout_ms=$0", kBootstrapIdleTimeoutMs),
+      Format("--remote_bootstrap_successful_session_idle_timeout_ms=$0", kBootstrapIdleTimeoutMs),
   };
 
   const int kNumTabletServers = 3;
@@ -1963,6 +1976,45 @@ void RemoteBootstrapITest::RBSWithLazySuperblockFlush(int num_tables) {
   }
 }
 
+Result<master::GetTableLocationsResponsePB> RemoteBootstrapITest::GetTableLocations(
+    const master::MasterClientProxy& proxy, const std::string& table_id,
+    uint32_t max_num_tablets) const {
+  master::GetTableLocationsRequestPB req;
+  master::GetTableLocationsResponsePB resp;
+  rpc::RpcController rpc;
+  req.set_max_returned_locations(max_num_tablets);
+  req.mutable_table()->set_table_id(table_id);
+  RETURN_NOT_OK(proxy.GetTableLocations(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return resp;
+}
+
+Result<tserver::ListTabletsResponsePB> RemoteBootstrapITest::ListTablets(
+    const tserver::TabletServerServiceProxy& proxy) const {
+  tserver::ListTabletsRequestPB req;
+  tserver::ListTabletsResponsePB resp;
+  rpc::RpcController rpc;
+  RETURN_NOT_OK(proxy.ListTablets(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return resp;
+}
+
+std::optional<std::reference_wrapper<const tablet::TabletStatusPB>>
+RemoteBootstrapITest::FindTablet(
+    const tserver::ListTabletsResponsePB& resp, const std::string& tablet_id) const {
+  auto it = std::find_if(
+      resp.status_and_schema().begin(), resp.status_and_schema().end(),
+      [&tablet_id](const auto& entry) { return tablet_id != entry.tablet_status().tablet_id(); });
+  if (it == resp.status_and_schema().end()) {
+    return std::nullopt;
+  }
+  return it->tablet_status();
+}
+
 TEST_F(RemoteBootstrapITest, TestRBSWithLazySuperblockFlush) {
   vector<string> ts_flags;
   // Enable lazy superblock flush.
@@ -1988,6 +2040,313 @@ TEST_F(RemoteBootstrapITest, TestRBSWithLazySuperblockFlush) {
   ASSERT_NO_FATALS(StartCluster(
       ts_flags, /* master_flags = */ {}, /* num_tablet_servers = */ 3, /* enable_ysql = */ true));
   RBSWithLazySuperblockFlush(/* num_tables */ 20);
+}
+
+TEST_F(RemoteBootstrapITest, TestRBSAddNewPeerWithDiskspaceCheck) {
+  AddNewPeerWithDiskspaceCheck(3);
+}
+
+TEST_F(RemoteBootstrapITest, TestRBSReplacePeerWithDiskspaceCheck) {
+  ReplacePeerWithDiskspaceCheck(3);
+}
+
+// The test simulates a scenario where remote bootstrap of a new tablet peer initially
+// fails due to insufficient disk space, and succeeds once disk space clears up.
+void RemoteBootstrapITest::AddNewPeerWithDiskspaceCheck(const int num_tablet_servers) {
+  ASSERT_NO_FATALS(StartCluster({}, {}, num_tablet_servers));
+
+  // the tserver on which we will add a replica
+  auto ts_to_add_peer = 2;
+  auto ts_uuid_to_add = cluster_->tablet_server(ts_to_add_peer)->uuid();
+
+  // stop the ts.
+  const auto timeout = MonoDelta::FromSeconds(40);
+  ASSERT_OK(cluster_->RemoveTabletServer(ts_uuid_to_add, MonoTime::Now() + timeout));
+  ASSERT_OK(
+      cluster_->WaitForTabletServerCount(num_tablet_servers - 1, timeout));
+
+  LOG(INFO) << "Starting workload";
+  TestWorkload workload(cluster_.get());
+  workload.set_sequential_write(true);
+  workload.Setup(YBTableType::YQL_TABLE_TYPE);
+  workload.Start();
+  workload.WaitInserted(100);
+  LOG(INFO) << "Stopping workload";
+  workload.StopAndJoin();
+
+  // Figure out the tablet id of the created tablet.
+  vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
+  TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()].get();
+  ASSERT_OK(WaitForNumTabletsOnTS(ts, 1, timeout, &tablets));
+  string tablet_id = tablets[0].tablet_status().tablet_id();
+  auto* ts_to_add_peer_details = ts_map_[ts_uuid_to_add].get();
+
+  TServerDetails* leader_ts;
+  // Find out who's leader.
+  ASSERT_OK(FindTabletLeader(ts_map_, tablet_id, timeout, &leader_ts));
+
+  ASSERT_OK(cluster_->tablet_server(ts_to_add_peer)->Restart(
+      ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      {std::make_pair("rbs_data_size_to_disk_space_ratio_threshold", "0.9"),
+       std::make_pair("TEST_simulate_free_space_bytes", "0")}));
+  LOG(INFO) << "Adding tserver with uuid " << ts_to_add_peer_details->uuid();
+  ASSERT_OK(itest::AddServer(
+      leader_ts, tablet_id, ts_to_add_peer_details, PeerMemberType::PRE_VOTER, boost::none,
+      MonoDelta::FromSeconds(5)));
+
+  // After adding TS, the leader will detect that the new TS needs to be remote bootstrapped.
+  // Verify that the new TS gets added to the tablet consensus.
+  ASSERT_OK(WaitUntilCommittedConfigMemberTypeIs(
+      1, leader_ts, tablet_id, timeout, PeerMemberType::PRE_VOTER));
+  SleepFor(3 * FLAGS_raft_heartbeat_interval_ms * 1ms);
+
+  // RBS attempts would have failed due to insufficient disk space, hence the tablet would
+  // still be in PRE_VOTER state.
+  ASSERT_OK(WaitUntilCommittedConfigMemberTypeIs(
+      1, leader_ts, tablet_id, timeout, PeerMemberType::PRE_VOTER));
+
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(ts_to_add_peer),
+                              "TEST_simulate_free_space_bytes", "-1"));
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(ts_to_add_peer, tablet_id, TABLET_DATA_READY));
+  LOG(INFO) << "Tablet " << tablet_id << " in state TABLET_DATA_READY in tablet server "
+            << ts_to_add_peer_details->uuid();
+  ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(
+      num_tablet_servers, leader_ts, tablet_id, timeout));
+
+  // Ensure all the servers agree before we proceed.
+  ASSERT_OK(WaitForServersToAgree(timeout, ts_map_, tablet_id, workload.batches_completed()));
+
+  ClusterVerifier cluster_verifier(cluster_.get());
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(),
+                                                  ClusterVerifier::AT_LEAST,
+                                                  workload.rows_inserted()));
+}
+
+// The test simulates a scenario where remote bootstrap of an existing (about to be replaced)
+// tablet peer initially fails due to insufficient disk space, and succeeds once disk space
+// clears up.
+void RemoteBootstrapITest::ReplacePeerWithDiskspaceCheck(const int num_tablet_servers) {
+  ASSERT_NO_FATALS(StartCluster({}, {}, num_tablet_servers));
+
+  // the tserver on which we will replace a replica
+  auto ts_to_replace_peer = 2;
+
+  // Populate a tablet with some data.
+  LOG(INFO) << "Starting workload";
+  TestWorkload workload(cluster_.get());
+  workload.set_sequential_write(true);
+  workload.Setup(YBTableType::YQL_TABLE_TYPE);
+  workload.Start();
+  workload.WaitInserted(100);
+  LOG(INFO) << "Stopping workload";
+  workload.StopAndJoin();
+
+  // Figure out the tablet id of the created tablet.
+  const auto timeout = MonoDelta::FromSeconds(40);
+  vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
+  TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()].get();
+  ASSERT_OK(WaitForNumTabletsOnTS(ts, 1, timeout, &tablets));
+  string tablet_id = tablets[0].tablet_status().tablet_id();
+  auto* ts_to_replace_peer_details =
+      ts_map_[cluster_->tablet_server(ts_to_replace_peer)->uuid()].get();
+
+  // Set ts 0 as leader. In case ts 2 is the leader, the leader switch may take long.
+  ASSERT_OK(itest::StartElection(ts, tablet_id, timeout));
+
+  TServerDetails* leader_ts;
+  // Find out who's leader.
+  ASSERT_OK(FindTabletLeader(ts_map_, tablet_id, timeout, &leader_ts));
+
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(ts_to_replace_peer),
+                              "TEST_simulate_free_space_bytes", "0"));
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(ts_to_replace_peer),
+                              "rbs_data_size_to_disk_space_ratio_threshold", "0.9"));
+  ASSERT_OK(itest::DeleteTablet(
+      ts_to_replace_peer_details, tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout));
+
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(
+      ts_to_replace_peer, tablet_id, TABLET_DATA_TOMBSTONED));
+  LOG(INFO) << "Tablet " << tablet_id << " in TABLET_DATA_TOMBSTONED state in tablet server "
+            << ts_to_replace_peer_details->uuid();
+  SleepFor(3 * FLAGS_raft_heartbeat_interval_ms * 1ms);
+
+  // RBS attempts would have failed due to insufficient disk space, hence the tablet would
+  // still be in tombstoned state.
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(
+      ts_to_replace_peer, tablet_id, TABLET_DATA_TOMBSTONED));
+
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(ts_to_replace_peer),
+                              "rbs_data_size_to_disk_space_ratio_threshold", "0"));
+
+  // wait for the bootstrap to complete
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(
+      ts_to_replace_peer, tablet_id, TABLET_DATA_READY));
+  LOG(INFO) << "Tablet " << tablet_id << " in state TABLET_DATA_READY in tablet server "
+            << ts_to_replace_peer_details->uuid();
+  ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(
+      num_tablet_servers, leader_ts, tablet_id, timeout));
+
+  // Ensure all the servers agree before we proceed.
+  ASSERT_OK(WaitForServersToAgree(timeout, ts_map_, tablet_id, workload.batches_completed()));
+
+  ClusterVerifier cluster_verifier(cluster_.get());
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(),
+                                                  ClusterVerifier::AT_LEAST,
+                                                  workload.rows_inserted()));
+}
+
+TEST_F(RemoteBootstrapITest, RejectRBSAfterTabletDeletion) {
+  const auto waitfor_timeout = MonoDelta::FromSeconds(60);
+  const auto table_id = ASSERT_RESULT(SetUp3TabletServerClusterAndTable("test_db", "test_table"));
+  auto master = ASSERT_NOTNULL(cluster_->GetLeaderMaster());
+  auto master_client_proxy =
+      master::MasterClientProxy(&client_->proxy_cache(), master->bound_rpc_addr());
+  std::unordered_set<std::string> tablet_ids;
+  auto table_locations_resp = ASSERT_RESULT(GetTableLocations(master_client_proxy, table_id));
+  for (const auto& tablet_location : table_locations_resp.tablet_locations()) {
+    tablet_ids.insert(tablet_location.tablet_id());
+  }
+  ASSERT_GT(tablet_ids.size(), 0);
+  ASSERT_OK(client_->DeleteTable(table_id, /* wait */ true));
+  auto tservers = cluster_->tserver_daemons();
+  auto& proxy_cache = client_->proxy_cache();
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        for (const auto tserver : tservers) {
+          auto proxy = tserver::TabletServerServiceProxy(&proxy_cache, tserver->bound_rpc_addr());
+          auto resp = VERIFY_RESULT(ListTablets(proxy));
+          if (std::any_of(
+                  resp.status_and_schema().begin(), resp.status_and_schema().end(),
+                  [&tablet_ids](const auto& entry) {
+                    return tablet_ids.contains(entry.tablet_status().tablet_id());
+                  })) {
+            return false;
+          }
+        }
+        return true;
+      },
+      waitfor_timeout,
+      "Timed out waiting for all tablets to be deleted on all tservers"));
+  auto cluster_client =
+      master::MasterClusterClient(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
+  auto list_tablets_response = ASSERT_RESULT(cluster_client.ListTabletServers());
+  ASSERT_GE(list_tablets_response.servers().size(), 3);
+  auto& rbs_dest_entry = list_tablets_response.servers(0);
+  auto& rbs_source_entry = list_tablets_response.servers(1);
+  consensus::StartRemoteBootstrapRequestPB req;
+  consensus::StartRemoteBootstrapResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(20));
+  req.set_dest_uuid(rbs_dest_entry.instance_id().permanent_uuid());
+  req.set_tablet_id(*tablet_ids.begin());
+  req.set_bootstrap_source_peer_uuid(rbs_source_entry.instance_id().permanent_uuid());
+  if (rbs_source_entry.registration().common().private_rpc_addresses().size() > 0) {
+    *req.add_bootstrap_source_private_addr() =
+        rbs_source_entry.registration().common().private_rpc_addresses(0);
+  }
+  if (rbs_source_entry.registration().common().broadcast_addresses().size() > 0) {
+    *req.add_bootstrap_source_broadcast_addr() =
+        rbs_source_entry.registration().common().broadcast_addresses(0);
+  }
+  *req.mutable_bootstrap_source_cloud_info() =
+      rbs_source_entry.registration().common().cloud_info();
+  req.set_caller_term(2);
+  auto status =
+      ts_map_[rbs_dest_entry.instance_id().permanent_uuid()]->consensus_proxy->StartRemoteBootstrap(
+          req, &resp, &rpc);
+  if (status.ok()) {
+    status = StatusFromPB(resp.error().status());
+  }
+  ASSERT_NOK(status);
+  ASSERT_TRUE(status.IsIllegalState());
+  ASSERT_STR_CONTAINS(
+      status.ToString(),
+      "Cannot bootstrap a new tablet replica for a previously deleted tablet replica");
+}
+
+TEST_F(RemoteBootstrapITest, AcceptRBSAfterTabletTombstone) {
+  const auto waitfor_timeout = MonoDelta::FromSeconds(60);
+  const auto table_id = ASSERT_RESULT(SetUp3TabletServerClusterAndTable("test_db", "test_table"));
+
+  auto master = ASSERT_NOTNULL(cluster_->GetLeaderMaster());
+  auto master_client_proxy =
+      master::MasterClientProxy(&client_->proxy_cache(), master->bound_rpc_addr());
+  std::unordered_set<std::string> tablet_ids;
+  auto table_locations_resp = ASSERT_RESULT(GetTableLocations(master_client_proxy, table_id));
+  for (const auto& tablet_location : table_locations_resp.tablet_locations()) {
+    tablet_ids.insert(tablet_location.tablet_id());
+  }
+  ASSERT_GT(tablet_ids.size(), 0);
+  const auto tablet_id = *tablet_ids.begin();
+  auto cluster_client =
+      master::MasterClusterClient(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
+
+  // Blacklist the "first" tserver.
+  auto tserver_to_blacklist = ASSERT_RESULT(cluster_client.ListTabletServers()).servers(0);
+  const auto& hp_to_blacklist =
+      tserver_to_blacklist.registration().common().private_rpc_addresses(0);
+  // Add a new tserver to host the tablet peer.
+  ASSERT_OK(cluster_->AddTabletServer());
+  ASSERT_OK(cluster_client.BlacklistHost(HostPortPB(hp_to_blacklist)));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto proxy = tserver::TabletServerServiceProxy(
+            &cluster_->proxy_cache(), HostPortFromPB(hp_to_blacklist));
+        auto resp = VERIFY_RESULT(ListTablets(proxy));
+        auto tablet = FindTablet(resp, tablet_id);
+        if (!tablet.has_value()) {
+          return true;
+        }
+        return tablet->get().tablet_data_state() == tablet::TABLET_DATA_DELETED ||
+               tablet->get().tablet_data_state() == tablet::TABLET_DATA_TOMBSTONED;
+      },
+      waitfor_timeout,
+      "Timed out waiting for the tablet peer to be moved from the target tserver"));
+  // Now clear the blacklist and blacklist another server.
+  ASSERT_OK(cluster_client.ClearBlacklist());
+  auto new_tserver_to_blacklist = cluster_->tablet_server(3);
+  ASSERT_OK(cluster_client.BlacklistHost(HostPortToPB(new_tserver_to_blacklist->bound_rpc_addr())));
+  // Wait for the tablet to show up again.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto proxy = tserver::TabletServerServiceProxy(
+            &cluster_->proxy_cache(), HostPortFromPB(hp_to_blacklist));
+        auto resp = VERIFY_RESULT(ListTablets(proxy));
+        auto tablet = FindTablet(resp, tablet_id);
+        return tablet.has_value() && tablet->get().tablet_data_state() == tablet::TABLET_DATA_READY;
+      },
+      waitfor_timeout,
+      "Timed out waiting for a new copy of the tablet replica to be added back to the target "
+      "tserver"));
+}
+
+Result<std::string> RemoteBootstrapITest::SetUp3TabletServerClusterAndTable(
+    const std::string& db_name, const std::string& table_name) {
+  StartCluster(
+      /* extra_tserver_flags */ {},
+      /* master_flags */ {},
+      /* num_tablet_servers */ 3, /* enable_ysql */ true);
+  auto yb_dbname = YBTableName(YQLDatabase::YQL_DATABASE_PGSQL);
+  yb_dbname.set_namespace_name(db_name);
+  RETURN_NOT_OK(
+      client_->CreateNamespaceIfNotExists(yb_dbname.namespace_name(), yb_dbname.namespace_type()));
+
+  auto table_creator = client_->NewTableCreator();
+  client::YBSchema client_schema(client::YBSchemaFromSchema(yb::GetSimpleTestSchema()));
+  table_creator->schema(&client_schema);
+  table_creator
+      ->table_name(
+          YBTableName(YQLDatabase::YQL_DATABASE_PGSQL, yb_dbname.namespace_name(), table_name))
+      .table_type(YBTableType::PGSQL_TABLE_TYPE)
+      .num_tablets(1)
+      .wait(true);
+  RETURN_NOT_OK(table_creator->Create());
+  SCHECK(!table_creator->get_table_id().empty(),
+         IllegalState, "Table id should not be empty.");
+  return table_creator->get_table_id();
 }
 
 class RemoteBootstrapMiniClusterITest: public YBMiniClusterTestBase<MiniCluster> {

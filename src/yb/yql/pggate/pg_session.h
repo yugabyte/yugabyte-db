@@ -34,6 +34,7 @@
 #include "yb/util/oid_generator.h"
 #include "yb/util/result.h"
 
+#include "yb/yql/pggate/insert_on_conflict_buffer.h"
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_doc_metrics.h"
 #include "yb/yql/pggate/pg_explicit_row_lock_buffer.h"
@@ -41,7 +42,6 @@
 #include "yb/yql/pggate/pg_operation_buffer.h"
 #include "yb/yql/pggate/pg_perform_future.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
-#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 
 namespace yb::pggate {
@@ -65,7 +65,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
       const YBCPgCallbacks& pg_callbacks,
       YBCPgExecStatsState& stats_state,
       YbctidReader&& ybctid_reader,
-      bool is_pg_binary_upgrade);
+      bool is_pg_binary_upgrade,
+      std::reference_wrapper<const WaitEventWatcher> wait_event_watcher);
   virtual ~PgSession();
 
   // Resets the read point for catalog tables.
@@ -239,6 +240,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   ExplicitRowLockBuffer& explicit_row_lock_buffer() { return explicit_row_lock_buffer_; }
 
+  InsertOnConflictBuffer& insert_on_conflict_buffer() { return insert_on_conflict_buffer_; }
+
   Result<int> TabletServerCount(bool primary_only = false);
 
   // Sets the specified timeout in the rpc service.
@@ -285,10 +288,13 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   Result<yb::tserver::PgServersMetricsResponsePB> ServersMetrics();
 
+  Status SetCronLastMinute(int64_t last_minute);
+  Result<int64_t> GetCronLastMinute();
+
  private:
   Result<PgTableDescPtr> DoLoadTable(
       const PgObjectId& table_id, bool fail_on_cache_hit,
-      master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
+      master::IncludeHidden include_hidden = master::IncludeHidden::kFalse);
   Result<PerformFuture> FlushOperations(BufferableOperations&& ops, bool transactional);
 
   const std::string LogPrefix() const;
@@ -340,6 +346,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   OidSet fk_intent_region_local_tables_;
 
   ExplicitRowLockBuffer explicit_row_lock_buffer_;
+  InsertOnConflictBuffer insert_on_conflict_buffer_;
 
   PgDocMetrics metrics_;
 
@@ -354,6 +361,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // This session is upgrading to PG15.
   const bool is_major_pg_version_upgrade_;
+
+  const WaitEventWatcher& wait_event_watcher_;
 };
 
 }  // namespace yb::pggate

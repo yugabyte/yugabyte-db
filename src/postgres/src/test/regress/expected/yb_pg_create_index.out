@@ -125,6 +125,72 @@ CREATE INDEX gin_relopts_test ON array_index_op_test USING gin (i)
 ERROR:  ybgin indexes do not support reloption fastupdate
 \d+ gin_relopts_test
 --
+-- Test unique null behavior
+--
+CREATE TABLE unique_tbl (i int, t text);
+CREATE UNIQUE INDEX unique_idx1 ON unique_tbl (i) NULLS DISTINCT;
+CREATE UNIQUE INDEX unique_idx2 ON unique_tbl (i) NULLS NOT DISTINCT;
+INSERT INTO unique_tbl VALUES (1, 'one');
+INSERT INTO unique_tbl VALUES (2, 'two');
+INSERT INTO unique_tbl VALUES (3, 'three');
+INSERT INTO unique_tbl VALUES (4, 'four');
+INSERT INTO unique_tbl VALUES (5, 'one');
+INSERT INTO unique_tbl (t) VALUES ('six');
+INSERT INTO unique_tbl (t) VALUES ('seven');  -- error from unique_idx2
+ERROR:  duplicate key value violates unique constraint "unique_idx2"
+DROP INDEX unique_idx1, unique_idx2;
+ERROR:  DROP multiple objects not supported yet
+LINE 1: DROP INDEX unique_idx1, unique_idx2;
+                   ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/880. React with thumbs up to raise its priority
+DROP INDEX unique_idx1;
+DROP INDEX unique_idx2;
+INSERT INTO unique_tbl (t) VALUES ('seven');
+-- build indexes on filled table
+CREATE UNIQUE INDEX unique_idx3 ON unique_tbl (i) NULLS DISTINCT;  -- ok
+CREATE UNIQUE INDEX unique_idx4 ON unique_tbl (i) NULLS NOT DISTINCT;  -- error
+ERROR:  ERROR:  duplicate key value violates unique constraint "unique_idx4"
+DROP INDEX unique_idx4;
+DELETE FROM unique_tbl WHERE t = 'seven';
+CREATE UNIQUE INDEX unique_idx4 ON unique_tbl (i) NULLS NOT DISTINCT;  -- ok now
+\d unique_tbl
+             Table "public.unique_tbl"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ i      | integer |           |          | 
+ t      | text    |           |          | 
+Indexes:
+    "unique_idx3" UNIQUE, lsm (i ASC)
+    "unique_idx4" UNIQUE, lsm (i ASC) NULLS NOT DISTINCT
+
+\d unique_idx3
+      Index "public.unique_idx3"
+ Column |  Type   | Key? | Definition 
+--------+---------+------+------------
+ i      | integer | yes  | i
+unique, lsm, for table "public.unique_tbl"
+
+\d unique_idx4
+      Index "public.unique_idx4"
+ Column |  Type   | Key? | Definition 
+--------+---------+------+------------
+ i      | integer | yes  | i
+unique nulls not distinct, lsm, for table "public.unique_tbl"
+
+SELECT pg_get_indexdef('unique_idx3'::regclass);
+                            pg_get_indexdef
+------------------------------------------------------------------------
+ CREATE UNIQUE INDEX unique_idx3 ON public.unique_tbl USING lsm (i ASC)
+(1 row)
+
+SELECT pg_get_indexdef('unique_idx4'::regclass);
+                                      pg_get_indexdef
+-------------------------------------------------------------------------------------------
+ CREATE UNIQUE INDEX unique_idx4 ON public.unique_tbl USING lsm (i ASC) NULLS NOT DISTINCT
+(1 row)
+
+DROP TABLE unique_tbl;
+--
 -- Try some concurrent index builds
 --
 -- Unfortunately this only tests about half the code paths because there are

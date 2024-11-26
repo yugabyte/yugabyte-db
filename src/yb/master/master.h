@@ -117,6 +117,10 @@ class Master : public tserver::DbServerBase {
 
   XClusterManager* xcluster_manager_impl() const;
 
+  YsqlManagerIf& ysql_manager() const;
+
+  YsqlManager& ysql_manager_impl() const;
+
   FlushManager* flush_manager() const { return flush_manager_.get(); }
 
   TestAsyncRpcManager* test_async_rpc_manager() const { return test_async_rpc_manager_.get(); }

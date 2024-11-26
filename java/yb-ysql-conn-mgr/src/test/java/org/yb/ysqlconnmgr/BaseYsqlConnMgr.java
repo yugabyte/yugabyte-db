@@ -50,6 +50,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   private static final String DEFAULT_PG_USER = "yugabyte";
   protected static final int STATS_UPDATE_INTERVAL = 2;
   private boolean warmup_random_mode = true;
+  private static boolean ysql_conn_mgr_superuser_sticky = false;
 
   protected static final String DISABLE_TEST_WITH_ASAN =
         "Test is not working correctly with asan build";
@@ -62,10 +63,27 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     builder.numTservers(NUM_TSERVER);
     builder.replicationFactor(NUM_TSERVER);
     builder.addCommonTServerFlag("ysql_conn_mgr_dowarmup", "false");
+    builder.addCommonTServerFlag("ysql_conn_mgr_superuser_sticky",
+      Boolean.toString(ysql_conn_mgr_superuser_sticky));
     if (warmup_random_mode) {
       builder.addCommonTServerFlag(
       "TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "random");
     }
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    // Mimic what we do in customizeMiniClusterBuilder.
+    Map<String, String> flagMap = super.getTServerFlags();
+
+    flagMap.put("enable_ysql_conn_mgr", "true");
+    flagMap.put("allowed_preview_flags_csv", "enable_ysql_conn_mgr");
+    flagMap.put("ysql_conn_mgr_dowarmup", "false");
+    if (warmup_random_mode) {
+      flagMap.put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "random");
+    }
+
+    return flagMap;
   }
 
   protected ConnectionBuilder getConnectionBuilder() {
@@ -85,6 +103,14 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
 
   protected boolean isTestRunningInWarmupRandomMode() {
     return warmup_random_mode;
+  }
+
+  protected void enableStickySuperuserConnsAndRestartCluster() throws Exception {
+    ysql_conn_mgr_superuser_sticky = true;
+    destroyMiniCluster();
+    waitForProperShutdown();
+    createMiniCluster();
+    waitForDatabaseToStart();
   }
 
   protected static class Row implements Comparable<Row>, Cloneable {

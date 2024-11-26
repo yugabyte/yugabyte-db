@@ -47,7 +47,7 @@ const (
 	// ProviderHeader
 	ProviderHeader = "Provider"
 	// StorageConfigurationHeader
-	StorageConfigurationHeader = "StorageConfiguration"
+	StorageConfigurationHeader = "Storage Configuration"
 	// CodeHeader
 	CodeHeader = "Code"
 	// UUIDHeader

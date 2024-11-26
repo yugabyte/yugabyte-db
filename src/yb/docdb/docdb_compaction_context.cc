@@ -154,8 +154,7 @@ class PackedRowData {
 
   // Handle packed row that was forwarded to underlying feed w/o changes.
   Status ProcessForwardedPackedRow(Slice value) {
-    UsedSchemaVersion(VERIFY_RESULT(ParseValueHeader(&value)).second);
-    return Status::OK();
+    return UsedSchemaVersion(VERIFY_RESULT(ParseValueHeader(&value)).second);
   }
 
   Status ProcessPackedRow(
@@ -169,7 +168,7 @@ class PackedRowData {
         "Double packed rows: $0, $1", key_.AsSlice().ToDebugHexString(),
         internal_key.ToDebugHexString()));
 
-    UsedSchemaVersion(new_packing_.schema_version);
+    RETURN_NOT_OK(UsedSchemaVersion(new_packing_.schema_version));
 
     InitKey(internal_key, doc_key_size, new_doc_key_serial);
     control_fields_size_ = control_fields_size;
@@ -186,17 +185,17 @@ class PackedRowData {
     return Status::OK();
   }
 
-  void StartPacking(
+  Status StartPacking(
       const Slice& internal_key, size_t doc_key_size,
       const EncodedDocHybridTime& encoded_doc_ht,
       size_t new_doc_key_serial) {
-    UsedSchemaVersion(new_packing_.schema_version);
+    RETURN_NOT_OK(UsedSchemaVersion(new_packing_.schema_version));
 
     InitKey(internal_key, doc_key_size, new_doc_key_serial);
     control_fields_size_ = 0;
     encoded_doc_ht_ = encoded_doc_ht;
     old_value_slice_ = Slice();
-    InitPacker();
+    return InitPacker();
   }
 
   void InitKey(
@@ -288,7 +287,10 @@ class PackedRowData {
       // CotablePacking returns desired packed row type, so keep type extracted from actual row.
       old_packing_.packed_row_version = packed_row_version;
     }
-    InitPacker();
+    if (!new_packing_.packed_row_version.has_value()) {
+      new_packing_.packed_row_version = old_packing_.packed_row_version;
+    }
+    RETURN_NOT_OK(InitPacker());
     switch (*old_packing_.packed_row_version) {
       case dockv::PackedRowVersion::kV1:
         CreateOldRowDecoderHelper<dockv::PackedRowDecoderV1>();
@@ -305,7 +307,10 @@ class PackedRowData {
     old_row_decoder_.emplace<Decoder>(*old_packing_.schema_packing, old_value_slice_.data());
   }
 
-  void InitPacker() {
+  Status InitPacker() {
+    if (!new_packing_.packed_row_version.has_value()) {
+      return STATUS(IllegalState, "Packed row version is not set");
+    }
     packing_started_ = true;
     if (!packer_) {
       auto packed_row_version = *new_packing_.packed_row_version;
@@ -317,14 +322,16 @@ class PackedRowData {
       switch (packed_row_version) {
         case dockv::PackedRowVersion::kV1:
           InitPackerHelper<dockv::RowPackerV1>();
-          break;
+          return Status::OK();
         case dockv::PackedRowVersion::kV2:
           InitPackerHelper<dockv::RowPackerV2>();
-          break;
+          return Status::OK();
       }
+      FATAL_INVALID_ENUM_VALUE(dockv::PackedRowVersion, packed_row_version);
     } else {
       CHECK(false);
     }
+    return Status::OK();
   }
 
   template <class Packer>
@@ -404,7 +411,15 @@ class PackedRowData {
     return Status::OK();
   }
 
-  void UsedSchemaVersion(SchemaVersion version) {
+  Status UsedSchemaVersion(SchemaVersion version) {
+    Status s = schema_packing_provider_->CheckCotablePacking(
+        new_packing_.cotable_id, version, HybridTime::kMax);
+    if (PREDICT_FALSE(!s.ok())) {
+      LOG_WITH_FUNC(DFATAL)
+          << Format("Check cotable packing for cotable $0 with schema version $1 failed: $2",
+                    new_packing_.cotable_id, version, s);
+      return s;
+    }
     if (used_schema_versions_it_ == used_schema_versions_.end()) {
       used_schema_versions_it_ = used_schema_versions_.emplace(
           new_packing_.cotable_id, std::make_pair(version, version)).first;
@@ -416,6 +431,7 @@ class PackedRowData {
     }
     old_packing_.schema_version = kLatestSchemaVersion;
     packer_.reset();
+    return Status::OK();
   }
 
   // Updates current coprefix. Coprefix is located at start of the key and identifies cotable or
@@ -951,9 +967,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     if (key_type == dockv::KeyEntryType::kColumnId ||
         key_type == dockv::KeyEntryType::kSystemColumnId) {
       Slice column_id_slice = key.WithoutPrefix(doc_key_size + 1);
-      auto column_id_as_int64 = VERIFY_RESULT(FastDecodeSignedVarIntUnsafe(&column_id_slice));
-      ColumnId column_id;
-      RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id));
+      auto column_id = VERIFY_RESULT(ColumnId::Decode(&column_id_slice));
 
       if (packed_row_.ColumnDeleted(column_id)) {
         return Status::OK();
@@ -977,10 +991,11 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
           << ", can have other data before: " << CanHaveOtherDataBefore(encoded_doc_ht)
           << ", start packing: " << start_packing;
       if (start_packing) {
-        packed_row_.StartPacking(internal_key, doc_key_size, encoded_doc_ht, doc_key_serial_);
+        RETURN_NOT_OK(packed_row_.StartPacking(
+            internal_key, doc_key_size, encoded_doc_ht, doc_key_serial_));
         AssignPrevSubDocKey(key.cdata(), same_bytes);
       }
-      if (packed_row_.active()) {
+      if (packed_row_.can_start_packing() && packed_row_.active()) {
         if (key_type == dockv::KeyEntryType::kSystemColumnId &&
             column_id == dockv::KeyEntryValue::kLivenessColumn.GetColumnId()) {
           return Status::OK();

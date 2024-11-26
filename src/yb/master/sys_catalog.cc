@@ -350,7 +350,7 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
   auto table_info = std::make_shared<tablet::TableInfo>(
       consensus::MakeTabletLogPrefix(kSysCatalogTabletId, fs_manager->uuid()),
       tablet::Primary::kTrue, kSysCatalogTableId, "", table_name(), TableType::YQL_TABLE_TYPE,
-      schema, qlexpr::IndexMap(), boost::none /* index_info */, 0 /* schema_version */,
+      schema, qlexpr::IndexMap(), std::nullopt /* index_info */, 0 /* schema_version */,
       partition_schema, "" /* pg_table_id */,
       tablet::SkipTableTombstoneCheck::kTrue);
   string data_root_dir = fs_manager->GetDataRootDirs()[0];
@@ -933,8 +933,7 @@ Status SysCatalogTable::ReadWithRestarts(
       VLOG(3) << __func__ << " restarting read with ht = " << safe_ht_to_read
               << " >= " << read_restart_ht << ". Encountered read restart when reading at "
               << read_time.ToString();
-      read_time.read.MakeAtLeast(safe_ht_to_read);
-      read_time.local_limit = std::min(safe_ht_to_read, read_time.global_limit);
+      read_time = read_time.FormRestartReadHybridTime(read_restart_ht, safe_ht_to_read);
       read_restart_ht = HybridTime::kInvalid;
     }
     RETURN_NOT_OK(read_fn(read_time, &read_restart_ht));

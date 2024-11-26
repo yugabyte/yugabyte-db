@@ -16,16 +16,19 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master.h"
+#include "yb/master/ysql/ysql_catalog_config.h"
 
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/is_operation_done_result.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/pg_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
-DECLARE_bool(TEST_online_pg11_to_pg15_upgrade);
 DECLARE_string(tmp_dir);
 DECLARE_bool(master_join_existing_universe);
 DECLARE_string(rpc_bind_addresses);
@@ -38,12 +41,26 @@ using yb::pgwrapper::PgWrapper;
 namespace yb::master {
 
 YsqlInitDBAndMajorUpgradeHandler::YsqlInitDBAndMajorUpgradeHandler(
-    Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog,
-    yb::ThreadPool& thread_pool)
+    Master& master, YsqlCatalogConfig& ysql_catalog_config, CatalogManager& catalog_manager,
+    SysCatalogTable& sys_catalog, yb::ThreadPool& thread_pool)
     : master_(master),
+      ysql_catalog_config_(ysql_catalog_config),
       catalog_manager_(catalog_manager),
       sys_catalog_(sys_catalog),
       thread_pool_(thread_pool) {}
+
+void YsqlInitDBAndMajorUpgradeHandler::SysCatalogLoaded(const LeaderEpoch& epoch) {
+  // A new yb-master leader has started. If we were in the middle of the ysql major catalog upgrade
+  // (initdb, pg_upgrade, or rollback) then mark the major upgrade as failed. No action is taken if
+  // we are in the monitoring phase.
+  if (IsYsqlMajorCatalogUpgradeInProgress()) {
+    ERROR_NOT_OK(
+        ysql_catalog_config_.TransitionMajorCatalogUpgradeState(
+            YsqlMajorCatalogUpgradeInfoPB::FAILED, epoch,
+            STATUS(InternalError, "yb-master restarted during ysql major catalog upgrade")),
+        "Failed to set major version upgrade state to FAILED");
+  }
+}
 
 Status YsqlInitDBAndMajorUpgradeHandler::StartNewClusterGlobalInitDB(const LeaderEpoch& epoch) {
   SCHECK(
@@ -54,27 +71,33 @@ Status YsqlInitDBAndMajorUpgradeHandler::StartNewClusterGlobalInitDB(const Leade
   return RunOperationAsync([this, epoch]() { RunNewClusterGlobalInitDB(epoch); });
 }
 
-Status YsqlInitDBAndMajorUpgradeHandler::StartYsqlMajorVersionUpgrade(const LeaderEpoch& epoch) {
-  SCHECK(
-      FLAGS_TEST_online_pg11_to_pg15_upgrade, IllegalState,
-      "Must be in upgrade mode (FLAGS_TEST_online_pg11_to_pg15_upgrade)");
+Status YsqlInitDBAndMajorUpgradeHandler::StartYsqlMajorCatalogUpgrade(const LeaderEpoch& epoch) {
+  RETURN_NOT_OK(ysql_catalog_config_.TransitionMajorCatalogUpgradeState(
+      YsqlMajorCatalogUpgradeInfoPB::PERFORMING_INIT_DB, epoch));
 
-  // Since StartYsqlMajorVersionUpgrade is idempotent, if run again we need to reset the
-  // pg15_initdb flags so that callers that check IsYsqlMajorVersionUpgradeInitdbDone won't get
-  // a false positive, while the new invocation goes through rollback and initdb.
-  RETURN_NOT_OK(ResetNextVerInitdbStatus(epoch));
+  auto status = RunOperationAsync([this, epoch]() { RunMajorVersionUpgrade(epoch); });
+  if (!status.ok()) {
+    ERROR_NOT_OK(
+        ysql_catalog_config_.TransitionMajorCatalogUpgradeState(
+            YsqlMajorCatalogUpgradeInfoPB::FAILED, epoch, status),
+        "Failed to set major version upgrade state");
+  }
 
-  return RunOperationAsync([this, epoch]() { RunMajorVersionUpgrade(epoch); });
+  return status;
 }
 
-Status YsqlInitDBAndMajorUpgradeHandler::RollbackYsqlMajorVersionUpgrade(const LeaderEpoch& epoch) {
-  // Note that as part of the rollback, we're getting rid of the catalog cache table for pg15, so we
-  // have to be in a mode that ensures that we read from a valid catalog table. Also, for simplicity
-  // it's best for DDLs to be disabled.
-  SCHECK(
-      FLAGS_TEST_online_pg11_to_pg15_upgrade, IllegalState,
-      "Must be in upgrade mode (FLAGS_TEST_online_pg11_to_pg15_upgrade)");
+IsOperationDoneResult YsqlInitDBAndMajorUpgradeHandler::IsYsqlMajorCatalogUpgradeDone() const {
+  return ysql_catalog_config_.IsYsqlMajorCatalogUpgradeDone();
+}
 
+Status YsqlInitDBAndMajorUpgradeHandler::FinalizeYsqlMajorCatalogUpgrade(const LeaderEpoch& epoch) {
+  return ysql_catalog_config_.TransitionMajorCatalogUpgradeState(
+      YsqlMajorCatalogUpgradeInfoPB::DONE, epoch);
+}
+
+Status YsqlInitDBAndMajorUpgradeHandler::RollbackYsqlMajorCatalogVersion(const LeaderEpoch& epoch) {
+  // Since Rollback is synchronous, we can perform the state transitions inside the async function.
+  // It also ensures there are no inflight operations when the rollback state transition occurs.
   Synchronizer sync;
   auto cb = sync.AsStdStatusCallback();
 
@@ -88,16 +111,8 @@ Status YsqlInitDBAndMajorUpgradeHandler::RollbackYsqlMajorVersionUpgrade(const L
   return sync.Wait();
 }
 
-Status YsqlInitDBAndMajorUpgradeHandler::ResetNextVerInitdbStatus(const LeaderEpoch& epoch) {
-  auto ysql_catalog_config = catalog_manager_.GetYsqlCatalogConfig();
-  auto l = ysql_catalog_config->LockForWrite();
-  auto* ysql_major_upgrade_info =
-      l.mutable_data()->pb.mutable_ysql_catalog_config()->mutable_ysql_major_upgrade_info();
-  ysql_major_upgrade_info->set_next_ver_initdb_done(false);
-  ysql_major_upgrade_info->clear_next_ver_initdb_error();
-  RETURN_NOT_OK(sys_catalog_.Upsert(epoch, ysql_catalog_config));
-  l.Commit();
-  return Status::OK();
+bool YsqlInitDBAndMajorUpgradeHandler::IsYsqlMajorCatalogUpgradeInProgress() const {
+  return !IsYsqlMajorCatalogUpgradeDone().done();
 }
 
 Status YsqlInitDBAndMajorUpgradeHandler::RunOperationAsync(std::function<void()> func) {
@@ -105,7 +120,7 @@ Status YsqlInitDBAndMajorUpgradeHandler::RunOperationAsync(std::function<void()>
   if (!is_running_.compare_exchange_strong(expected, true)) {
     return STATUS(
         IllegalState,
-        "Global initdb or ysql major version upgrade rollback is already in progress");
+        "Global initdb or ysql major catalog upgrade/rollback is already in progress");
   }
 
   auto status = thread_pool_.SubmitFunc([this, func = std::move(func)]() mutable {
@@ -121,14 +136,15 @@ Status YsqlInitDBAndMajorUpgradeHandler::RunOperationAsync(std::function<void()>
 }
 
 void YsqlInitDBAndMajorUpgradeHandler::RunNewClusterGlobalInitDB(const LeaderEpoch& epoch) {
-  auto status = InitDBAndSnapshotSysCatalog(/*db_name_to_oid_list=*/{}, epoch);
-  WARN_NOT_OK(
-      catalog_manager_.InitDbFinished(status, epoch.leader_term),
+  auto status =
+      InitDBAndSnapshotSysCatalog(/*db_name_to_oid_list=*/{}, /*is_major_upgrade=*/false, epoch);
+  ERROR_NOT_OK(
+      ysql_catalog_config_.SetInitDbDone(status, epoch),
       "Failed to set global initdb as finished in sys catalog");
 }
 
 Status YsqlInitDBAndMajorUpgradeHandler::InitDBAndSnapshotSysCatalog(
-    const DbNameToOidList& db_name_to_oid_list, const LeaderEpoch& epoch) {
+    const DbNameToOidList& db_name_to_oid_list, bool is_major_upgrade, const LeaderEpoch& epoch) {
   InitialSysCatalogSnapshotWriter* snapshot_writer = nullptr;
   if (FLAGS_create_initial_sys_catalog_snapshot) {
     snapshot_writer = &catalog_manager_.AllocateAndGetInitialSysCatalogSnapshotWriter();
@@ -139,7 +155,8 @@ Status YsqlInitDBAndMajorUpgradeHandler::InitDBAndSnapshotSysCatalog(
       server::MasterAddressesToString(*master_opts.GetMasterAddresses());
 
   RETURN_NOT_OK(PgWrapper::InitDbForYSQL(
-      master_addresses_str, FLAGS_tmp_dir, master_.GetSharedMemoryFd(), db_name_to_oid_list));
+      master_addresses_str, FLAGS_tmp_dir, master_.GetSharedMemoryFd(), db_name_to_oid_list,
+      is_major_upgrade));
 
   if (!snapshot_writer) {
     return Status::OK();
@@ -153,19 +170,50 @@ Status YsqlInitDBAndMajorUpgradeHandler::InitDBAndSnapshotSysCatalog(
 }
 
 void YsqlInitDBAndMajorUpgradeHandler::RunMajorVersionUpgrade(const LeaderEpoch& epoch) {
-  auto status = RunMajorVersionCatalogUpgrade(epoch);
-  WARN_NOT_OK(
-      MajorVersionCatalogUpgradeFinished(status, epoch), "Failed to run major version upgrade");
+  auto status = RunMajorVersionUpgradeImpl(epoch);
+  if (status.ok()) {
+    auto update_state_status = ysql_catalog_config_.TransitionMajorCatalogUpgradeState(
+        YsqlMajorCatalogUpgradeInfoPB::MONITORING, epoch);
+    if (update_state_status.ok()) {
+      LOG(INFO) << "Ysql major catalog upgrade completed successfully";
+    } else {
+      LOG(ERROR) << "Failed to set major version upgrade state: " << update_state_status;
+    }
+    return;
+  }
+
+  LOG(ERROR) << "Ysql major catalog upgrade failed: " << status;
+  ERROR_NOT_OK(
+      ysql_catalog_config_.TransitionMajorCatalogUpgradeState(
+          YsqlMajorCatalogUpgradeInfoPB::FAILED, epoch, status),
+      "Failed to set major version upgrade state");
+}
+
+Status YsqlInitDBAndMajorUpgradeHandler::RunMajorVersionUpgradeImpl(const LeaderEpoch& epoch) {
+  RETURN_NOT_OK(RunMajorVersionCatalogUpgrade(epoch));
+  RETURN_NOT_OK_PREPEND(UpdateCatalogVersions(epoch), "Failed to update catalog versions");
+
+  return Status::OK();
+}
+
+// pg_upgrade does not migrate the catalog version table, so we have to explicitly copy the contents
+// of the pre-existing catalog table to the PG15 version of the table.
+Status YsqlInitDBAndMajorUpgradeHandler::UpdateCatalogVersions(const LeaderEpoch& epoch) {
+  RETURN_NOT_OK(sys_catalog_.DeleteAllYsqlCatalogTableRows({kPgYbCatalogVersionTableId},
+                                                           epoch.leader_term));
+  RETURN_NOT_OK(sys_catalog_.CopyPgsqlTables({kPgYbCatalogVersionTableIdPg11},
+                                             {kPgYbCatalogVersionTableId}, epoch.leader_term));
+  return Status::OK();
 }
 
 Status YsqlInitDBAndMajorUpgradeHandler::RunMajorVersionCatalogUpgrade(const LeaderEpoch& epoch) {
-  // This process is idempotent, so it needs to roll back the state before re-running. This is a
-  // no-op if this is the first time the upgrade is running.
-  RETURN_NOT_OK_PREPEND(RunRollbackMajorVersionUpgrade(epoch), "Rollback failed");
-
   auto db_name_to_oid_list = VERIFY_RESULT(GetDbNameToOidListForMajorUpgrade());
   RETURN_NOT_OK_PREPEND(
-      InitDBAndSnapshotSysCatalog(db_name_to_oid_list, epoch), "Failed to run initdb");
+      InitDBAndSnapshotSysCatalog(db_name_to_oid_list, /*is_major_upgrade=*/true, epoch),
+      "Failed to run initdb");
+
+  RETURN_NOT_OK(ysql_catalog_config_.TransitionMajorCatalogUpgradeState(
+      YsqlMajorCatalogUpgradeInfoPB::PERFORMING_PG_UPGRADE, epoch));
 
   RETURN_NOT_OK_PREPEND(PerformPgUpgrade(epoch), "Failed to run pg_upgrade");
 
@@ -195,34 +243,6 @@ YsqlInitDBAndMajorUpgradeHandler::GetDbNameToOidListForMajorUpgrade() {
   return db_name_to_oid_list;
 }
 
-Status YsqlInitDBAndMajorUpgradeHandler::MajorVersionCatalogUpgradeFinished(
-    const Status& upgrade_status, const LeaderEpoch& epoch) {
-  if (upgrade_status.ok()) {
-    LOG(INFO) << "Ysql catalog migration for major upgrade completed successfully";
-  } else {
-    LOG(ERROR) << "Ysql major upgrade failed: " << upgrade_status;
-  }
-
-  auto ysql_catalog_config = catalog_manager_.GetYsqlCatalogConfig();
-  auto l = ysql_catalog_config->LockForWrite();
-  auto* mutable_ysql_catalog_config = l.mutable_data()->pb.mutable_ysql_catalog_config();
-  auto* ysql_major_upgrade_info = mutable_ysql_catalog_config->mutable_ysql_major_upgrade_info();
-  ysql_major_upgrade_info->set_next_ver_initdb_done(true);
-
-  if (upgrade_status.ok()) {
-    ysql_major_upgrade_info->clear_next_ver_initdb_error();
-  } else {
-    ysql_major_upgrade_info->mutable_next_ver_initdb_error()->set_code(
-        MasterErrorPB::INTERNAL_ERROR);
-    StatusToPB(
-        upgrade_status, ysql_major_upgrade_info->mutable_next_ver_initdb_error()->mutable_status());
-  }
-
-  RETURN_NOT_OK(sys_catalog_.Upsert(epoch, ysql_catalog_config));
-  l.Commit();
-  return Status::OK();
-}
-
 Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epoch) {
   const auto& master_opts = master_.opts();
 
@@ -243,19 +263,53 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
   auto se = ScopeExit([&pg_supervisor]() { pg_supervisor.Stop(); });
   RETURN_NOT_OK(pg_supervisor.Start());
 
-  auto closest_ts = VERIFY_RESULT(master_.catalog_manager()->GetClosestLiveTserver());
-  PgWrapper::PgUpgradeParams pg_upgrade_params{
-      .data_dir = pg_conf.data_dir,
-      .old_version_pg_address = VERIFY_RESULT(closest_ts->GetHostPort()).host(),
-      .old_version_pg_port = narrow_cast<uint16_t>(closest_ts->GetRegistration().pg_port()),
-      .new_version_pg_address = pg_conf.listen_addresses,
-      .new_version_pg_port = pg_conf.pg_port};
+  PgWrapper::PgUpgradeParams pg_upgrade_params;
+  pg_upgrade_params.data_dir = pg_conf.data_dir;
+  pg_upgrade_params.new_version_socket_dir =
+      PgDeriveSocketDir(HostPort(pg_conf.listen_addresses, pg_conf.pg_port));
+  pg_upgrade_params.new_version_pg_port = pg_conf.pg_port;
+
+  bool local_ts = false;
+  auto closest_ts = VERIFY_RESULT(master_.catalog_manager()->GetClosestLiveTserver(&local_ts));
+  auto closest_ts_hp = HostPort(
+      VERIFY_RESULT(closest_ts->GetHostPort()).host(),
+      narrow_cast<uint16_t>(closest_ts->GetRegistration().pg_port()));
+
+  if (local_ts) {
+    pg_upgrade_params.old_version_socket_dir = PgDeriveSocketDir(closest_ts_hp);
+  } else {
+    pg_upgrade_params.old_version_pg_address = closest_ts_hp.host();
+  }
+  pg_upgrade_params.old_version_pg_port = closest_ts_hp.port();
+
   RETURN_NOT_OK(PgWrapper::RunPgUpgrade(pg_upgrade_params));
 
   return Status::OK();
 }
 
 Status YsqlInitDBAndMajorUpgradeHandler::RunRollbackMajorVersionUpgrade(const LeaderEpoch& epoch) {
+  if (ysql_catalog_config_.GetMajorCatalogUpgradeState() == YsqlMajorCatalogUpgradeInfoPB::DONE) {
+    LOG_WITH_FUNC(INFO)
+        << "No inflight Ysql major catalog upgrade in progress. Nothing to rollback.";
+    return Status::OK();
+  }
+
+  RETURN_NOT_OK(ysql_catalog_config_.TransitionMajorCatalogUpgradeState(
+      YsqlMajorCatalogUpgradeInfoPB::PERFORMING_ROLLBACK, epoch));
+
+  auto status = RollbackMajorVersionCatalogImpl(epoch);
+  if (status.ok()) {
+    RETURN_NOT_OK(ysql_catalog_config_.TransitionMajorCatalogUpgradeState(
+        YsqlMajorCatalogUpgradeInfoPB::DONE, epoch));
+  } else {
+    RETURN_NOT_OK(ysql_catalog_config_.TransitionMajorCatalogUpgradeState(
+        YsqlMajorCatalogUpgradeInfoPB::FAILED, epoch, status));
+  }
+
+  return status;
+}
+
+Status YsqlInitDBAndMajorUpgradeHandler::RollbackMajorVersionCatalogImpl(const LeaderEpoch& epoch) {
   std::vector<scoped_refptr<NamespaceInfo>> namespaces;
   {
     std::vector<scoped_refptr<NamespaceInfo>> all_namespaces;
@@ -273,11 +327,11 @@ Status YsqlInitDBAndMajorUpgradeHandler::RunRollbackMajorVersionUpgrade(const Le
   }
 
   for (const auto& ns_info : namespaces) {
-    LOG(INFO) << "Deleting Ysql major version catalog tables for namespace " << ns_info->name();
-    RETURN_NOT_OK(catalog_manager_.DeleteYsqlDBTables(ns_info, epoch));
+    LOG(INFO) << "Deleting ysql major catalog tables for namespace " << ns_info->name();
+    RETURN_NOT_OK(catalog_manager_.DeleteYsqlDBTables(
+        ns_info,
+        /*is_for_ysql_major_rollback=*/true, epoch));
   }
-
-  RETURN_NOT_OK(ResetNextVerInitdbStatus(epoch));
 
   // Reset state machines for all YSQL namespaces.
   {

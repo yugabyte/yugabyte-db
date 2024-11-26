@@ -663,7 +663,8 @@ extern List *YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 									 ItemPointer tupleid,
 									 EState *estate,
 									 Bitmapset *updatedCols,
-									 bool is_pk_updated);
+									 bool is_pk_updated,
+									 bool is_inplace_update_enabled);
 
 /*
  * prototypes from functions in execReplication.c
@@ -702,5 +703,11 @@ extern ResultRelInfo *ExecLookupResultRelByOid(ModifyTableState *node,
 extern void YbBatchFetchConflictingRows(ResultRelInfo *resultRelInfo,
 										EState *estate,
 										List *arbiterIndexes);
+extern bool YbShouldCheckUniqueOrExclusionIndex(IndexInfo *indexInfo,
+												Relation indexRelation,
+												Relation heapRelation,
+												List *arbiterIndexes);
+extern bool YbIsAnyIndexKeyColumnNull(IndexInfo *indexInfo,
+									  bool isnull[INDEX_MAX_KEYS]);
 
 #endif							/* EXECUTOR_H  */

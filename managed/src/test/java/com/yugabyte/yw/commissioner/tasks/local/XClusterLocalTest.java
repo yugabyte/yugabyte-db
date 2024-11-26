@@ -7,6 +7,8 @@ import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.Util.YUGABYTE_DB;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static play.test.Helpers.contentAsString;
 
@@ -24,14 +26,18 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.TableType;
 import com.yugabyte.yw.models.XClusterTableConfig;
+import com.yugabyte.yw.models.XClusterTableConfig.Status;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import lombok.extern.slf4j.Slf4j;
@@ -211,6 +217,141 @@ public class XClusterLocalTest extends XClusterLocalTestBase {
     assertTrue(ysqlResponse.isSuccess());
     assertEquals("2", CommonUtils.extractJsonisedSqlResponse(ysqlResponse).trim());
     verifyPayload();
+  }
+
+  @Test
+  public void testTableExistsOnTargetUniverseInBiDirectionalReplication()
+      throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        getDefaultUserIntent("source-universe", false);
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    userIntent.ybcFlags = getYbcGFlags(userIntent);
+    Universe sourceUniverse = createUniverseWithYbc(userIntent);
+    initYSQL(sourceUniverse);
+    initYCQL(sourceUniverse);
+
+    userIntent = getDefaultUserIntent("target-universe", false);
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    userIntent.ybcFlags = getYbcGFlags(userIntent);
+    Universe targetUniverse = createUniverseWithYbc(userIntent);
+    initYSQL(targetUniverse);
+    initYCQL(targetUniverse);
+
+    // Set up the storage config.
+    CustomerConfig customerConfig =
+        ModelFactory.createNfsStorageConfig(customer, "test_nfs_storage", getBackupBaseDirectory());
+    log.info("Customer config here: {}", customerConfig.toString());
+
+    Db db = Db.create("test_xcluster_db", false);
+    Table table1 = Table.create("test_table_1", DEFAULT_TABLE_COLUMNS, db);
+    Table table2 = Table.create("test_table_2", DEFAULT_TABLE_COLUMNS, db);
+    Table table3 = Table.create("test_table_3", DEFAULT_TABLE_COLUMNS, db);
+    Table table4 = Table.create("test_table_4", DEFAULT_TABLE_COLUMNS, db);
+    createTestSet(sourceUniverse, Arrays.asList(db), Arrays.asList(table1, table2, table3));
+    createTestSet(targetUniverse, Arrays.asList(db), Arrays.asList(table1, table2, table3));
+
+    // Get the table info for the source universe.
+    List<TableInfoForm.TableInfoResp> resp =
+        tableHandler.listTables(
+            customer.getUuid(), sourceUniverse.getUniverseUUID(), false, false, true, true);
+    // Create source to target xCluster config.
+    XClusterConfigCreateFormData formData = new XClusterConfigCreateFormData();
+    formData.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
+    formData.targetUniverseUUID = targetUniverse.getUniverseUUID();
+    formData.name = "bi-directional-xcluster-1";
+    formData.tables = new HashSet<>();
+    for (TableInfoForm.TableInfoResp tableInfo : resp) {
+      if (tableInfo.keySpace.equals(db.name) && !tableInfo.tableName.equals(table4.name)) {
+        formData.tables.add(tableInfo.tableID);
+      }
+    }
+    formData.bootstrapParams = new XClusterConfigCreateFormData.BootstrapParams();
+    formData.bootstrapParams.tables = formData.tables;
+    formData.bootstrapParams.backupRequestParams = new BootstrapBackupParams();
+    formData.bootstrapParams.backupRequestParams.storageConfigUUID = customerConfig.getConfigUUID();
+
+    Result result = createXClusterConfig(formData);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    TaskInfo taskInfo =
+        waitForTask(UUID.fromString(json.get("taskUUID").asText()), sourceUniverse, targetUniverse);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    verifyUniverseState(Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()));
+    verifyUniverseState(Universe.getOrBadRequest(targetUniverse.getUniverseUUID()));
+    UUID xClusterConfigUuid = UUID.fromString(json.get("resourceUUID").asText());
+
+    // Verify the table status on xCluster config.
+    Result getXClusterConfigResult = getXClusterConfig(xClusterConfigUuid);
+    assertOk(getXClusterConfigResult);
+    XClusterConfig xClusterConfig =
+        Json.fromJson(Json.parse(contentAsString(getXClusterConfigResult)), XClusterConfig.class);
+
+    assertEquals(3, xClusterConfig.getTableIds().size());
+    for (XClusterTableConfig table : xClusterConfig.getTableDetails()) {
+      assertEquals(XClusterTableConfig.Status.Running, table.getStatus());
+    }
+
+    // Create target to source xCluster config.
+    resp =
+        tableHandler.listTables(
+            customer.getUuid(), targetUniverse.getUniverseUUID(), false, false, true, true);
+    XClusterConfigCreateFormData formData2 = new XClusterConfigCreateFormData();
+    formData2.sourceUniverseUUID = targetUniverse.getUniverseUUID();
+    formData2.targetUniverseUUID = sourceUniverse.getUniverseUUID();
+    formData2.name = "bi-directional-xcluster-2";
+    formData2.tables = new HashSet<>();
+    for (TableInfoForm.TableInfoResp tableInfo : resp) {
+      if (tableInfo.keySpace.equals(db.name)) {
+        formData2.tables.add(tableInfo.tableID);
+      }
+    }
+
+    result = createXClusterConfig(formData2);
+    assertOk(result);
+    json = Json.parse(contentAsString(result));
+    taskInfo =
+        waitForTask(UUID.fromString(json.get("taskUUID").asText()), sourceUniverse, targetUniverse);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    verifyUniverseState(Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()));
+    verifyUniverseState(Universe.getOrBadRequest(targetUniverse.getUniverseUUID()));
+    UUID xClusterConfigUuid2 = UUID.fromString(json.get("resourceUUID").asText());
+
+    getXClusterConfigResult = getXClusterConfig(xClusterConfigUuid2);
+    assertOk(getXClusterConfigResult);
+    xClusterConfig =
+        Json.fromJson(Json.parse(contentAsString(getXClusterConfigResult)), XClusterConfig.class);
+    assertEquals(3, xClusterConfig.getTableIds().size());
+    for (XClusterTableConfig table : xClusterConfig.getTableDetails()) {
+      assertEquals(XClusterTableConfig.Status.Running, table.getStatus());
+    }
+
+    createTable(sourceUniverse, table4);
+    String table4Id = "";
+    // Get the table info for the source universe.
+    resp =
+        tableHandler.listTables(
+            customer.getUuid(), sourceUniverse.getUniverseUUID(), false, false, true, true);
+    XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
+    editFormData.tables = new HashSet<String>();
+    for (TableInfoForm.TableInfoResp tableInfo : resp) {
+      if (tableInfo.keySpace.equals(db.name)) {
+        editFormData.tables.add(tableInfo.tableID);
+      }
+      if (tableInfo.tableName.equals(table4.name)) {
+        table4Id = tableInfo.tableID;
+      }
+    }
+    editFormData.bootstrapParams = null;
+    IllegalArgumentException exception =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> editXClusterConfig(editFormData, xClusterConfigUuid));
+    String errMsg =
+        String.format(
+            "Table ids [%s] do not have corresponding tables on the target universe and they must"
+                + " be bootstrapped but bootstrapParams is null",
+            table4Id);
+    assertEquals(errMsg, exception.getMessage());
   }
 
   @Test
@@ -573,5 +714,171 @@ public class XClusterLocalTest extends XClusterLocalTestBase {
     assertEquals(1, extraTablesOnTarget.size());
     assertEquals(
         "test_index_table_4", extraTablesOnTarget.iterator().next().getTargetTableInfo().tableName);
+  }
+
+  @Test
+  public void testXClusterConfigHandleDroppedAndReAddedTable() throws InterruptedException {
+    // Step 1: Create a new xCluster replication between source and target universes.
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        getDefaultUserIntent("source-universe", false);
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    userIntent.ybcFlags = getYbcGFlags(userIntent);
+    Universe source = createUniverseWithYbc(userIntent);
+    initYSQL(source);
+    initAndStartPayload(source);
+
+    userIntent = getDefaultUserIntent("target-universe", false);
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    userIntent.ybcFlags = getYbcGFlags(userIntent);
+    Universe target = createUniverseWithYbc(userIntent);
+
+    // Set up the storage config.
+    CustomerConfig customerConfig =
+        ModelFactory.createNfsStorageConfig(customer, "test_nfs_storage", getBackupBaseDirectory());
+    log.info("Customer config here: {}", customerConfig.toString());
+
+    // Get the table info for the source universe and create xCluster config.
+    List<TableInfoForm.TableInfoResp> resp =
+        tableHandler.listTables(
+            customer.getUuid(), source.getUniverseUUID(), false, false, true, true);
+    XClusterConfigCreateFormData formData = new XClusterConfigCreateFormData();
+    formData.sourceUniverseUUID = source.getUniverseUUID();
+    formData.targetUniverseUUID = target.getUniverseUUID();
+    formData.name = "Replication-Handle-Dropped-Table";
+    formData.tables = new HashSet<>();
+    Map<String, String> tableIdToName = new HashMap<>();
+    for (TableInfoForm.TableInfoResp tableInfo : resp) {
+      formData.tables.add(tableInfo.tableID);
+      tableIdToName.put(tableInfo.tableID, tableInfo.tableName);
+    }
+    log.debug("tableIdToName is {}", tableIdToName);
+
+    formData.bootstrapParams = new XClusterConfigCreateFormData.BootstrapParams();
+    formData.bootstrapParams.tables = formData.tables;
+    formData.bootstrapParams.backupRequestParams = new BootstrapBackupParams();
+    formData.bootstrapParams.backupRequestParams.storageConfigUUID = customerConfig.getConfigUUID();
+
+    Result result = createXClusterConfig(formData);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    TaskInfo taskInfo = waitForTask(UUID.fromString(json.get("taskUUID").asText()), source, target);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    verifyUniverseState(Universe.getOrBadRequest(source.getUniverseUUID()));
+    verifyUniverseState(Universe.getOrBadRequest(target.getUniverseUUID()));
+    UUID xClusterConfigUuid = UUID.fromString(json.get("resourceUUID").asText());
+
+    // Step 2: Drop a table from the source universe and validate the status change.
+    NodeDetails sourceNodeDetails = source.getUniverseDetails().nodeDetailsSet.iterator().next();
+    String tableToDropId = formData.tables.iterator().next(); // Pick the first table to drop.
+    ShellResponse ysqlResponse =
+        localNodeUniverseManager.runYsqlCommand(
+            sourceNodeDetails,
+            source,
+            YUGABYTE_DB,
+            String.format("DROP TABLE %s", tableIdToName.get(tableToDropId)),
+            10);
+    assertTrue(ysqlResponse.isSuccess());
+
+    // Verify that the table shows as "Dropped From Source" in the xCluster configuration.
+    Result getXClusterConfigResult = getXClusterConfig(xClusterConfigUuid);
+    assertOk(getXClusterConfigResult);
+    JsonNode xClusterConfigJson = Json.parse(contentAsString(getXClusterConfigResult));
+    XClusterConfig xClusterConfig = Json.fromJson(xClusterConfigJson, XClusterConfig.class);
+
+    assertTrue(xClusterConfig.getTableIds().contains(tableToDropId));
+    assertEquals(Status.DroppedFromSource, xClusterConfig.getTableById(tableToDropId).getStatus());
+
+    // Step 3: Re-add the table to the source universe (it will have a new table ID).
+    ysqlResponse =
+        localNodeUniverseManager.runYsqlCommand(
+            sourceNodeDetails,
+            source,
+            YUGABYTE_DB,
+            String.format(
+                "CREATE TABLE %s (id int, name text, age int, PRIMARY KEY(id, name))",
+                tableIdToName.get(tableToDropId)),
+            10);
+    assertTrue(ysqlResponse.isSuccess());
+    log.debug(
+        "tableToDropId: {}, tableToDropName: {}", tableToDropId, tableIdToName.get(tableToDropId));
+
+    // Fetch the new table information.
+    resp =
+        tableHandler.listTables(
+            customer.getUuid(), source.getUniverseUUID(), false, false, true, true);
+    String newTableID = null;
+    for (TableInfoForm.TableInfoResp tableInfo : resp) {
+      if (tableInfo.tableName.equals(tableIdToName.get(tableToDropId))
+          && !formData.tables.contains(tableInfo.tableID)) {
+        newTableID = tableInfo.tableID;
+        tableIdToName.put(newTableID, tableInfo.tableName);
+        break;
+      }
+    }
+    assertNotNull("New table ID should be found", newTableID);
+
+    // Verify that the re-added table shows as "Extra Table on Source".
+    getXClusterConfigResult = getXClusterConfig(xClusterConfigUuid);
+    assertOk(getXClusterConfigResult);
+    xClusterConfigJson = Json.parse(contentAsString(getXClusterConfigResult));
+    xClusterConfig = Json.fromJson(xClusterConfigJson, XClusterConfig.class);
+    assertTrue(xClusterConfig.getTableIds().contains(newTableID));
+    assertEquals(Status.ExtraTableOnSource, xClusterConfig.getTableById(newTableID).getStatus());
+
+    xClusterConfig
+        .getTables()
+        .forEach(
+            table -> {
+              log.debug(
+                  "Tables in the xCluster config: {} {}", table.getTableId(), table.getStatus());
+            });
+
+    // Step 4: Remove the dropped table from the existing replication.
+    XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
+    editFormData.tables =
+        formData.tables.stream().filter(t -> !t.equals(tableToDropId)).collect(Collectors.toSet());
+    editFormData.bootstrapParams = formData.bootstrapParams;
+    editFormData.bootstrapParams.tables = editFormData.tables;
+    result = editXClusterConfig(editFormData, xClusterConfig.getUuid());
+    assertOk(result);
+    json = Json.parse(contentAsString(result));
+    taskInfo = waitForTask(UUID.fromString(json.get("taskUUID").asText()), source, target);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+
+    getXClusterConfigResult = getXClusterConfig(xClusterConfigUuid);
+    assertOk(getXClusterConfigResult);
+    xClusterConfigJson = Json.parse(contentAsString(getXClusterConfigResult));
+    xClusterConfig = Json.fromJson(xClusterConfigJson, XClusterConfig.class);
+    xClusterConfig
+        .getTables()
+        .forEach(
+            table -> {
+              log.debug(
+                  "Tables in the xCluster config: {} {}", table.getTableId(), table.getStatus());
+            });
+
+    // Step 5: Add the re-added table to the existing replication.
+    XClusterConfigEditFormData editFormData2 = new XClusterConfigEditFormData();
+    editFormData2.tables = new HashSet<>(editFormData.tables);
+    editFormData2.tables.add(newTableID);
+    editFormData2.bootstrapParams = formData.bootstrapParams;
+    editFormData2.bootstrapParams.tables = editFormData2.tables;
+    result = editXClusterConfig(editFormData2, UUID.fromString(json.get("resourceUUID").asText()));
+    assertOk(result);
+    json = Json.parse(contentAsString(result));
+    taskInfo = waitForTask(UUID.fromString(json.get("taskUUID").asText()), source, target);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+
+    // Step 6: Validate the final status is "Running".
+    getXClusterConfigResult = getXClusterConfig(xClusterConfigUuid);
+    assertOk(getXClusterConfigResult);
+    xClusterConfigJson = Json.parse(contentAsString(getXClusterConfigResult));
+    xClusterConfig = Json.fromJson(xClusterConfigJson, XClusterConfig.class);
+    assertEquals(Status.Running, xClusterConfig.getTableById(newTableID).getStatus());
+
+    // Clean up and verify universe states.
+    verifyUniverseState(Universe.getOrBadRequest(source.getUniverseUUID()));
+    verifyUniverseState(Universe.getOrBadRequest(target.getUniverseUUID()));
+    log.info("Test completed successfully.");
   }
 }

@@ -2765,9 +2765,9 @@ create_nestloop_path(PlannerInfo *root,
 
 	 Relids outer_req_unbatched = YB_PATH_REQ_OUTER_UNBATCHED(outer_path);
 
-	 bool is_batched = bms_overlap(inner_req_batched,
-	 										 outer_path->parent->relids) &&
-							 !bms_overlap(outer_req_unbatched, inner_req_batched);
+	 bool is_batched = (bms_overlap(inner_req_batched,
+									outer_path->parent->relids) &&
+						!bms_overlap(outer_req_unbatched, inner_req_batched));
 	if (!is_batched && bms_overlap(inner_req_outer, outer_path->parent->relids))
 	{
 		Relids		inner_and_outer = bms_union(inner_path->parent->relids,
@@ -4918,7 +4918,7 @@ yb_create_distinct_index_path(PlannerInfo *root,
 		prefixExprs = lappend(prefixExprs, tle->expr);
 		i++;
 	}
-
+	pathnode->path.rows = clamp_row_est(pathnode->path.rows);
 	numDistinctRows = estimate_num_groups(root,
 										  prefixExprs,
 										  pathnode->path.rows,

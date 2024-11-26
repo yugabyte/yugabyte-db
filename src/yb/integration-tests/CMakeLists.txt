@@ -119,7 +119,8 @@ target_link_libraries(integration-tests
   master_test_common
   master_proto
   cdc_test_util
-  test_echo_service_proto)
+  test_echo_service_proto
+  tools_test_utils)
 
 add_dependencies(integration-tests
   "${YB_MASTER_DYNAMIC_EXE_NAME}"
@@ -130,7 +131,8 @@ add_dependencies(integration-tests
   generate_test_certs
   fips_install
   xcluster_ddl_replication_sql
-  upgrade_test_builds_tar)
+  upgrade_test_builds_tar
+  update_ysql_migrations)
 
 ADD_YB_TEST_LIBRARY(
     cql_test_util
@@ -179,7 +181,6 @@ ADD_YB_TEST(are_leaders_on_preferred_only-itest)
 ADD_YB_TEST(compaction-test)
 ADD_YB_TEST(clone-tablet-itest)
 ADD_YB_TEST(compressed_stream-test)
-ADD_YB_TEST(logging-test)
 ADD_YB_TEST(tablet_health_manager-itest)
 ADD_YB_TEST(master_replication-itest)
 ADD_YB_TEST(master_sysnamespace-itest)
@@ -251,18 +252,21 @@ ADD_YB_TEST(xcluster/xcluster_db_scoped-test)
 ADD_YB_TEST(xcluster/xcluster_ddl_replication-test)
 ADD_YB_TEST(xcluster/xcluster_ddl_replication_pgregress-test)
 ADD_YB_TEST(xcluster/xcluster_dr-itest)
-ADD_YB_TEST(xcluster/xcluster_upgrade-test)
 ADD_YB_TEST(xcluster/xcluster_safe_time-itest)
+ADD_YB_TEST(xcluster/xcluster_sequences-test)
 ADD_YB_TEST(xcluster/xcluster_topologies-test)
+ADD_YB_TEST(xcluster/xcluster_upgrade-test)
+ADD_YB_TEST(xcluster/xcluster_ysql-test)
 ADD_YB_TEST(xcluster/xcluster_ysql_colocated-test)
 ADD_YB_TEST(xcluster/xcluster_ysql_index-test)
-ADD_YB_TEST(xcluster/xcluster_ysql-test)
 ADD_YB_TEST(xcluster/xcluster-tablet-split-itest)
 ADD_YB_TEST(xcluster/xcluster-test)
 ADD_YB_TEST(xcluster/xcluster_outbound_replication_group-itest)
 ADD_YB_TEST(retryable_request-test)
 ADD_YB_TEST(upgrade-tests/basic_upgrade-test)
 ADD_YB_TEST(upgrade-tests/pg15_upgrade-test)
+ADD_YB_TEST(upgrade-tests/pg15_upgrade_pgregress-test)
+ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_rpcs-test)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra)

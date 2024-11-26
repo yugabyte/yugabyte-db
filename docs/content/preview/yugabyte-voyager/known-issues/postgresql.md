@@ -44,6 +44,11 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [Unsupported datatypes by YugabyteDB](#unsupported-datatypes-by-yugabytedb)
 - [Unsupported datatypes by Voyager during live migration](#unsupported-datatypes-by-voyager-during-live-migration)
 - [XID functions is not supported](#xid-functions-is-not-supported)
+- [REFERENCING clause for triggers](#referencing-clause-for-triggers)
+- [BEFORE ROW triggers on partitioned tables](#before-row-triggers-on-partitioned-tables)
+- [Advisory locks is not yet implemented](#advisory-locks-is-not-yet-implemented)
+- [System columns is not yet supported](#system-columns-is-not-yet-supported)
+- [XML functions is not yet supported](#xml-functions-is-not-yet-supported)
 
 ### Adding primary key to a partitioned table results in an error
 
@@ -1023,7 +1028,7 @@ Suggested changes to the schema can be done using the following steps:
 
 **GitHub**: [Issue 11323](https://github.com/yugabyte/yugabyte-db/issues/11323), [Issue 1731](https://github.com/yugabyte/yb-voyager/issues/1731)
 
-**Description**: If your source datatabase has any of these datatypes on the columns - `GEOMETRY`, `GEOGRAPHY`, `RASTER`, `PG_LSN`, or `TXID_SNAPSHOT`, it will be skipped during the migration.
+**Description**: The migration skips databases that have the following data types on any column: `GEOMETRY`, `GEOGRAPHY`, `BOX2D`, `BOX3D`, `TOPOGEOMETRY`, `RASTER`, `PG_LSN`, or `TXID_SNAPSHOT`.
 
 **Workaround**: None.
 
@@ -1046,7 +1051,9 @@ CREATE TABLE public.locations (
 
 **GitHub**: [Issue 1731](https://github.com/yugabyte/yb-voyager/issues/1731)
 
-**Description**: If your source datatabase has any of these datatypes on the columns - `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, or `CIRCLE`, it will be skipped during the migration.
+**Description**: For live migration, the migration skips databases that have the following data types on any column: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, or `CIRCLE`.
+
+For live migration with fall-forward/fall-back, the migration skips databases that have the following data types on any column: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `TSVECTOR`, `TSQUERY`, `CIRCLE`, or `ARRAY OF ENUMS`.
 
 **Workaround**: None.
 
@@ -1089,5 +1096,195 @@ CREATE TABLE xid_example (
       tx_id xid
 );
 ```
+
+---
+
+### REFERENCING clause for triggers
+
+**GitHub**: [Issue #1668](https://github.com/yugabyte/yugabyte-db/issues/1668)
+
+**Description**: If you have the REFERENCING clause (transition tables) in triggers in source schema, the trigger creation will fail in import schema as it is not currently supported in YugabyteDB.
+
+```output
+ERROR:  REFERENCING clause (transition tables) not supported yet
+```
+
+**Workaround**: Currently, there is no workaround.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE projects (
+    id SERIAL PRIMARY KEY,
+    name TEXT,
+    region TEXT
+);
+
+CREATE OR REPLACE FUNCTION log_deleted_projects()
+RETURNS TRIGGER AS $$
+BEGIN
+    --logic to use the old_table for deleted rows
+    SELECT id, name, region FROM old_table;
+
+END;
+$$ LANGUAGE plpgsql
+
+
+CREATE TRIGGER projects_loose_fk_trigger
+AFTER DELETE ON projects
+REFERENCING OLD TABLE AS old_table
+FOR EACH STATEMENT
+EXECUTE FUNCTION log_deleted_projects();
+```
+
+---
+
+### BEFORE ROW triggers on partitioned tables
+
+**GitHub**: [Issue #24830](https://github.com/yugabyte/yugabyte-db/issues/24830)
+
+**Description**: If you have the BEFORE ROW triggers on partitioned tables in source schema, the trigger creation will fail in import schema as it is not currently supported in YugabyteDB.
+
+```output
+ERROR: Partitioned tables cannot have BEFORE / FOR EACH ROW triggers.
+```
+
+**Workaround**: Create this trigger on the individual partitions.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE test_partition_trigger (
+    id INT,
+    val TEXT,
+    PRIMARY KEY (id)
+) PARTITION BY RANGE (id);
+
+CREATE TABLE test_partition_trigger_part1 PARTITION OF test_partition_trigger
+    FOR VALUES FROM (1) TO (100);
+
+CREATE TABLE test_partition_trigger_part2 PARTITION OF test_partition_trigger
+    FOR VALUES FROM (100) TO (200);
+
+CREATE OR REPLACE FUNCTION check_and_modify_val()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Check if id is even; if not, modify `val` to indicate an odd ID
+    IF (NEW.id % 2) <> 0 THEN
+        NEW.val := 'Odd ID';
+    END IF;
+
+    -- Return the row with modifications (if any)
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER before_insert_check
+BEFORE INSERT ON test_partition_trigger
+FOR EACH ROW
+EXECUTE FUNCTION check_and_modify_val();
+```
+
+Suggested change to the schema is as follows:
+
+```sql
+
+CREATE TABLE test_partition_trigger (
+    id INT,
+    val TEXT,
+    PRIMARY KEY (id)
+) PARTITION BY RANGE (id);
+
+CREATE TABLE test_partition_trigger_part1 PARTITION OF test_partition_trigger
+    FOR VALUES FROM (1) TO (100);
+
+CREATE TABLE test_partition_trigger_part2 PARTITION OF test_partition_trigger
+    FOR VALUES FROM (100) TO (200);
+
+CREATE OR REPLACE FUNCTION check_and_modify_val()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Check if id is even; if not, modify `val` to indicate an odd ID
+    IF (NEW.id % 2) <> 0 THEN
+        NEW.val := 'Odd ID';
+    END IF;
+
+    -- Return the row with modifications (if any)
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER before_insert_check
+BEFORE INSERT ON test_partition_trigger_part1
+FOR EACH ROW
+EXECUTE FUNCTION check_and_modify_val();
+
+CREATE TRIGGER before_insert_check
+BEFORE INSERT ON test_partition_trigger_part2
+FOR EACH ROW
+EXECUTE FUNCTION check_and_modify_val();
+
+```
+
+---
+
+### Advisory locks is not yet implemented
+
+**GitHub**: [Issue #3642](https://github.com/yugabyte/yugabyte-db/issues/3642)
+
+**Description**: YugabyteDB does not support PostgreSQL advisory locks (for example, pg_advisory_lock, pg_try_advisory_lock). Any attempt to use advisory locks will result in a "function-not-implemented" error as per the following example:
+
+```sql
+yugabyte=# SELECT pg_advisory_lock(100), COUNT(*) FROM cars;
+```
+
+```output
+ERROR:  advisory locks are not yet implemented
+HINT:  If the app doesn't need strict functionality, this error can be silenced by using the GFlag yb_silence_advisory_locks_not_supported_error. See https://github.com/yugabyte/yugabyte-db/issues/3642 for details
+```
+
+**Workaround**: Implement a custom locking mechanism in the application to coordinate actions without relying on database-level advisory locks.
+
+---
+
+### System columns is not yet supported
+
+**GitHub**: [Issue #24843](https://github.com/yugabyte/yugabyte-db/issues/24843)
+
+**Description**: System columns, including `xmin`, `xmax`, `cmin`, `cmax`, and `ctid`, are not available in YugabyteDB. Queries or applications referencing these columns will fail as per the following example:
+
+```sql
+yugabyte=# SELECT xmin, xmax FROM employees where id = 100;
+```
+
+```output
+ERROR:  System column "xmin" is not supported yet
+```
+
+**Workaround**: Use the application layer to manage tracking instead of relying on system columns.
+
+---
+
+### XML functions is not yet supported
+
+**GitHub**: [Issue #1043](https://github.com/yugabyte/yugabyte-db/issues/1043)
+
+**Description**: XML functions and the XML data type are unsupported in YugabyteDB. If you use functions like `xpath`, `xmlconcat`, and `xmlparse`, it will fail with an error as per the following example:
+
+```sql
+yugabyte=# SELECT xml_is_well_formed_content('<project>Alpha</project>') AS is_well_formed_content;
+```
+
+```output
+ERROR:  unsupported XML feature
+DETAIL:  This functionality requires the server to be built with libxml support.
+HINT:  You need to rebuild PostgreSQL using --with-libxml.
+```
+
+**Workaround**: Convert XML data to JSON format for compatibility with YugabyteDB, or handle XML processing at the application layer before inserting data.
 
 ---

@@ -10,6 +10,15 @@ Create an Azure encryption at rest configuration in YugabyteDB Anywhere
 yba ear azure create [flags]
 ```
 
+### Examples
+
+```
+yba ear azure create --name <config-name> \
+	--client-id <client-id> --tenant-id <tenant-id> \
+	--client-secret <client-secret> --vault-url <vault-url> \
+	--key-name <key-name>
+```
+
 ### Options
 
 ```
@@ -19,7 +28,7 @@ yba ear azure create [flags]
       --use-managed-identity   [Optional] Use Azure Managed Identity from the YugabyteDB Anywhere Host. EAR creation will fail on insufficient permissions on the host. (default false)
       --vault-url string       [Required] Azure Vault URL.
       --key-name string        [Required] Azure Key Name.If master key with same name already exists then it will be used, else a new one will be created automatically.
-      --key-algorithm string   [Optional] Azure Key Algorithm. Allowed values (case sensitive): RSA (default "RSA")
+      --key-algorithm string   [Optional] Azure Key Algorithm. Allowed values: rsa (default "rsa")
       --key-size int           [Optional] Azure Key Size. Allowed values per algorithm: RSA(Default:2048, 3072, 4096)
   -h, --help                   help for create
 ```

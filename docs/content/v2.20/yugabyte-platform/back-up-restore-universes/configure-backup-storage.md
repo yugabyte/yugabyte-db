@@ -96,6 +96,10 @@ You can configure Network File System (NFS) as your backup target, as follows:
 
 5. Click **Save**.
 
+{{< warning title="Prevent back up failure due to NFS unmount on cloud VM restart" >}}
+To avoid potential backup and restore errors, add the NFS mount to `/etc/fstab` on the nodes of universes using the backup configuration. When a cloud VM is restarted, the NFS mount may get unmounted if its entry is not in `/etc/fstab`. This can lead to backup failures, and errors during [backup](../back-up-universe-data/) or [restore](../restore-universe-data/).
+{{< /warning >}}
+
 ## Google Cloud Storage
 
 You can configure Google Cloud Storage (GCS) as your backup target, as follows:

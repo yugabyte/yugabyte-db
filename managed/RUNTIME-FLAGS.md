@@ -19,6 +19,7 @@
 | "Backup Garbage Collector Number of Retries" | "yb.backupGC.number_of_retries" | "CUSTOMER" | "Number of retries during backup deletion" | "Integer" |
 | "Enable Certificate Config Validation" | "yb.tls.enable_config_validation" | "CUSTOMER" | "Certificate configuration validation during the addition of new certificates." | "Boolean" |
 | "Default Metric Graph Point Count" | "yb.metrics.default_points" | "CUSTOMER" | "Default Metric Graph Point Count, if step is not defined in the query" | "Integer" |
+| "Fetch Batch Size of Task Info" | "yb.task_info_db_query_batch_size" | "CUSTOMER" | "Knob that can be used to make lesser number of calls to DB" | "Integer" |
 | "Allow Unsupported Instances" | "yb.internal.allow_unsupported_instances" | "PROVIDER" | "Enabling removes supported instance type filtering on AWS providers." | "Boolean" |
 | "Default AWS Instance Type" | "yb.aws.default_instance_type" | "PROVIDER" | "Default AWS Instance Type" | "String" |
 | "Default GCP Instance Type" | "yb.gcp.default_instance_type" | "PROVIDER" | "Default GCP Instance Type" | "String" |
@@ -89,6 +90,8 @@
 | "Shell Output Max Directory Size" | "yb.logs.shell.output_dir_max_size" | "GLOBAL" | "Output logs for shell commands are written to tmp folder.This setting defines rotation policy based on directory size." | "Bytes" |
 | "Max Size of each log message" | "yb.logs.max_msg_size" | "GLOBAL" | "We limit the length of each log line as sometimes we dump entire output of script. If you want to debug something specific and the script output isgetting truncated in application log then increase this limit" | "Bytes" |
 | "KMS Refresh Interval" | "yb.kms.refresh_interval" | "GLOBAL" | "Default refresh interval for the KMS providers." | "Duration" |
+| "Start Master On Stop Node" | "yb.start_master_on_stop_node" | "GLOBAL" | "Auto-start master process on a similar available node on stopping a master node" | "Boolean" |
+| "Start Master On Remove Node" | "yb.start_master_on_remove_node" | "GLOBAL" | "Auto-start master process on a similar available node on removal of a master node" | "Boolean" |
 | "Server certificate verification for LDAPs/LDAP-TLS" | "yb.security.ldap.enforce_server_cert_verification" | "GLOBAL" | "Enforce server certificate verification for LDAPs/LDAP-TLS" | "Boolean" |
 | "Pagination query size for LDAP server" | "yb.security.ldap.page_query_size" | "GLOBAL" | "Pagination query size for LDAP server" | "Integer" |
 | "Enable Detailed Logs" | "yb.security.enable_detailed_logs" | "GLOBAL" | "Enable detailed security logs" | "Boolean" |
@@ -106,7 +109,11 @@
 | "Path to pg_restore on the YBA node" | "db.default.pg_restore_path" | "GLOBAL" | "Set during yba-installer for both custom postgres and version specific postgres installation" | "String" |
 | "Regex for match Yugabyte DB release .tar.gz files" | "yb.regex.release_pattern.ybdb" | "GLOBAL" | "Regex pattern used to find Yugabyte DB release .tar.gz files" | "String" |
 | "Regex for match Yugabyte DB release helm .tar.gz files" | "yb.regex.release_pattern.helm" | "GLOBAL" | "Regex pattern used to find Yugabyte DB helm .tar.gz files" | "String" |
+| "Enables extra logging" | "yb.logging.enable_task_failed_request_logs" | "GLOBAL" | "Enables extra logging for task params and request body" | "Boolean" |
 | "tmp directory path" | "yb.filepaths.tmpDirectory" | "GLOBAL" | "Path to the tmp directory to be used by YBA" | "String" |
+| "Customer UUID to use with Kubernentes Operator" | "yb.kubernetes.operator.customer_uuid" | "GLOBAL" | "Customer UUID to use with Kubernentes Operator, do not change once set" | "String" |
+| "Enable Kubernentes Operator" | "yb.kubernetes.operator.enabled" | "GLOBAL" | "Enable Kubernentes Operator, requires restart to take effect" | "Boolean" |
+| "Change the namespace kubernetes operator listens on" | "yb.kubernetes.operator.namespace" | "GLOBAL" | "Change the namespace kubernetes operator listens on. By default, all namespaces are watched. Requires restart to take effect" | "String" |
 | "Whether to wait for clock skew decrease" | "yb.wait_for_clock_sync.inline_enabled" | "GLOBAL" | "Whether to wait for the clock skew to go below the threshold before starting the master and tserver processes" | "Boolean" |
 | "Delete Expired Backup MAX GC Size" | "yb.backup.delete_expired_backup_max_gc_size" | "GLOBAL" | "Number of expired backups to be deleted in a single GC iteration." | "Integer" |
 | "Prometheus external URL" | "yb.metrics.external.url" | "GLOBAL" | "URL used to generate Prometheus metrics on YBA UI and to set up HA metrics federation." | "String" |
@@ -128,14 +135,23 @@
 | "Disable hostname cert validation for HA communication" | "yb.ha.ws.ssl.loose.disableHostnameVerification" | "GLOBAL" | "When set, the hostname in https certs will not be validated for HA communication. Communication will still be encrypted." | "Boolean" |
 | "HA test connection request timeout" | "yb.ha.test_request_timeout" | "GLOBAL" | "The request to test HA connection to standby will timeout after the specified amount of time." | "Duration" |
 | "HA test connection connection timeout" | "yb.ha.test_connection_timeout" | "GLOBAL" | "The client will wait for the specified amount of time to make a connection to the remote address." | "Duration" |
+| "Crash YBA if Kubernentes Operator thread fails" | "yb.kubernetes.operator.crash_yba_on_operator_failure" | "GLOBAL" | "If Kubernetes Operator thread fails, crash YBA" | "Boolean" |
 | "XCluster isBootstrapRequired rpc max parallel threads" | "yb.xcluster.is_bootstrap_required_rpc_pool.max_threads" | "GLOBAL" | "Sets the maximum allowed number of threads to be run concurrently for xcluster isBootstrapRequired rpc" | "Integer" |
 | "Auto create user on SSO login" | "yb.security.oidc_enable_auto_create_users" | "GLOBAL" | "Enable user creation on SSO login" | "Boolean" |
+| "Kubernetes provider validation" | "yb.provider.kubernetes_provider_validation" | "GLOBAL" | "Enable the Kubernetes provider quick validation" | "Boolean" |
 | "YBC poll upgrade result tries" | "ybc.upgrade.poll_result_tries" | "GLOBAL" | "YBC poll upgrade result tries count." | "Integer" |
 | "YBC poll upgrade result Sleep time" | "ybc.upgrade.poll_result_sleep_ms" | "GLOBAL" | "YBC poll upgrade result sleep time." | "Long" |
 | "HA Shutdown Level" | "yb.ha.shutdown_level" | "GLOBAL" | "When to shutdown - 0 for never, 1 for promotion, 2 for promotion and demotion" | "Integer" |
 | "OIDC Refresh Access Token Interval" | "yb.security.oidcRefreshTokenInterval" | "GLOBAL" | "If configured, YBA will refresh the access token at the specified duration, defaulted to 5 minutes." | "Duration" |
 | "Allow Editing of in-use Linux Versions" | "yb.edit_provider.new.allow_used_bundle_edit" | "GLOBAL" | "Caution: If enabled, YBA will blindly allow editing the name/AMI associated with the bundle, without propagating it to the in-use Universes" | "Boolean" |
 | "Enable DB Audit Logging" | "yb.universe.audit_logging_enabled" | "GLOBAL" | "If this flag is enabled, user will be able to create telemetry providers and enable/disable DB audit logging on universes." | "Boolean" |
+| "Allow users to enable or disable connection pooling" | "yb.universe.allow_connection_pooling" | "GLOBAL" | "If this flag is enabled, user will be able to enable/disable connection pooling on universes." | "Boolean" |
+| "XCluster Sync Scheduler Interval" | "yb.xcluster.xcluster_sync_scheduler_interval" | "GLOBAL" | "Interval at which the XCluster Sync Scheduler runs" | "Duration" |
+| "XCluster Metrics Scheduler Interval" | "yb.xcluster.xcluster_metrics_scheduler_interval" | "GLOBAL" | "Interval at which the XCluster Metrics Scheduler runs" | "Duration" |
+| "Max retries on UNAVAILABLE status" | "ybc.client_settings.max_unavailable_retries" | "GLOBAL" | "Max client side retries when server returns UNAVAILABLE status" | "Integer" |
+| "Wait( in milliseconds ) between each retries on UNAVAILABLE status" | "ybc.client_settings.wait_each_unavailable_retry_ms" | "GLOBAL" | "Wait( in milliseconds ) between client side retries when server returns UNAVAILABLE status" | "Integer" |
+| "Wait( in milliseconds ) for YB-Controller RPC response" | "ybc.client_settings.deadline_ms" | "GLOBAL" | "Wait( in milliseconds ) for YB-Controller RPC response before throwing client-side DEADLINE_EXCEEDED" | "Integer" |
+| "Enable RBAC for Groups" | "yb.security.group_mapping_rbac_support" | "GLOBAL" | "Map LDAP/OIDC groups to custom roles defined by RBAC." | "Boolean" |
 | "Enable Per Process Metrics" | "yb.ui.feature_flags.enable_per_process_metrics" | "GLOBAL" | "Enable Per Process Metrics" | "Boolean" |
 | "Support bundle prometheus dump range" | "yb.support_bundle.default_prom_dump_range" | "GLOBAL" | "The start-end duration to collect the prometheus dump inside the support bundle (in minutes)" | "Integer" |
 | "Number of cloud YBA backups to retain" | "yb.auto_yba_backups.num_cloud_retention" | "GLOBAL" | "When continuous backups feature is enabled only the most recent n backups will be retained in the storage bucket" | "Integer" |
@@ -257,6 +273,16 @@
 | "Enable Clock Sync check" | "yb.wait_for_clock_sync.enabled" | "UNIVERSE" | "Enable Clock Sync check" | "Boolean" |
 | "Enable YBC" | "ybc.universe.enabled" | "UNIVERSE" | "Enable YBC for universes during software upgrade" | "Boolean" |
 | "Target Node Disk Usage Percentage" | "yb.checks.node_disk_size.target_usage_percentage" | "UNIVERSE" | "Percentage of current disk usage that may consume on the target nodes" | "Integer" |
+| "Enable Automated Master Failover" | "yb.auto_master_failover.enabled" | "UNIVERSE" | "Enable Automated Master Failover for universes in background process" | "Boolean" |
+| "Master Follower Lag Soft Threshold" | "yb.auto_master_failover.master_follower_lag_soft_threshold" | "UNIVERSE" | "Master follower lag soft threshold for potential master failure" | "Duration" |
+| "Master Follower Lag Hard Threshold" | "yb.auto_master_failover.master_follower_lag_hard_threshold" | "UNIVERSE" | "Master follower lag hard threshold for definite master failure" | "Duration" |
+| "Stop multiple nodes in az simultaneously during upgrade" | "yb.task.upgrade.batch_roll_enabled" | "UNIVERSE" | "Stop multiple nodes in az simultaneously during upgrade" | "Boolean" |
+| "Stop multiple nodes in az simultaneously during upgrade (in k8s)" | "yb.task.upgrade.batch_roll_enabled_k8s" | "UNIVERSE" | "Stop multiple nodes in az simultaneously during upgrade (in k8s)" | "Boolean" |
+| "Max percent of nodes to roll simultaneously during upgrade" | "yb.task.upgrade.batch_roll_auto_percent" | "UNIVERSE" | "Max percent of nodes to roll simultaneously during upgrade" | "Integer" |
+| "Max number of nodes to roll simultaneously during upgrade" | "yb.task.upgrade.batch_roll_auto_number" | "UNIVERSE" | "Max number of nodes to roll simultaneously during upgrade" | "Integer" |
+| "Automated Master Failover Detection Interval" | "yb.auto_master_failover.detect_interval" | "UNIVERSE" | "Automated master failover detection interval for a universe in background process" | "Duration" |
+| "Automated Sync Master Addresses Task Delay" | "yb.auto_master_failover.sync_master_addrs_task_delay" | "UNIVERSE" | "Automated sync master addresses task submission delay for a universe in background process" | "Duration" |
+| "XCluster Sync on Universe" | "yb.xcluster.xcluster_sync_on_universe" | "UNIVERSE" | "Enable automatic synchronization of XCluster on Universe" | "Boolean" |
 | "CPU usage alert aggregation interval" | "yb.alert.cpu_usage_interval_secs" | "UNIVERSE" | "CPU usage alert aggregation interval in seconds." | "Integer" |
 | "Enable health checks for time drift between nodes" | "yb.health_checks.check_clock_time_drift" | "UNIVERSE" | "Enable health checks for time drift between nodes." | "Boolean" |
 | "Time drift threshold for warning health check" | "yb.health_checks.time_drift_wrn_threshold_ms" | "UNIVERSE" | "Threshold to raise a warning when time drift exceeds this amount" | "Integer" |
@@ -264,3 +290,5 @@
 | "Enable consistency check for universe" | "yb.universe.consistency_check.enabled" | "UNIVERSE" | "When enabled, all universe operations will attempt consistency check validation before proceeding. Turn off in disaster scenarios to force perform actions." | "Boolean" |
 | "Fail the the health check if no clock sync service is found" | "yb.health_checks.clock_sync_service_required" | "UNIVERSE" | "Require chrony or ntp(d) to be installed for health check to pass" | "Boolean" |
 | "Node Agent Enabler Installation Time-out" | "yb.node_agent.enabler.install_timeout" | "UNIVERSE" | "Node agent enabler installation time-out for the universe" | "Duration" |
+| "Node Agent Enabler Reinstallation Cooldown Period" | "yb.node_agent.enabler.reinstall_cooldown" | "UNIVERSE" | "Node agent enabler reinstallation cooldown period for the universe" | "Duration" |
+| "Option for Off-Cluster PITR based Backup Schedule" | "yb.ui.feature_flags.off_cluster_pitr_enabled" | "UNIVERSE" | "Enable option for creating backup schedules that support off-cluster PITR" | "Boolean" |

@@ -10,8 +10,11 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.TableType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
+import com.yugabyte.yw.models.XClusterTableConfig.Status;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Set;
 import org.junit.Before;
 import org.junit.Test;
@@ -69,5 +72,36 @@ public class XClusterConfigTest extends FakeDBApplication {
     addConfig.removeNamespaces(dbIdsToRemove);
     XClusterConfig removeConfig = XClusterConfig.getOrBadRequest(xClusterConfig.getUuid());
     assertEquals(1, removeConfig.getNamespaces().size());
+  }
+
+  @Test
+  public void testXClusterTablesSortedByCode() {
+    XClusterConfig xClusterConfig =
+        XClusterConfig.create(
+            "xcluster config",
+            sourceUniverse.getUniverseUUID(),
+            targetUniverse.getUniverseUUID(),
+            XClusterConfigStatusType.Initialized,
+            false /* imported */);
+
+    XClusterTableConfig running = new XClusterTableConfig();
+    running.setStatus(Status.Running);
+    XClusterTableConfig extraTableOnTarget = new XClusterTableConfig();
+    extraTableOnTarget.setStatus(Status.ExtraTableOnTarget);
+    XClusterTableConfig droppedFromSource = new XClusterTableConfig();
+    droppedFromSource.setStatus(Status.DroppedFromSource);
+    XClusterTableConfig unableToFetch = new XClusterTableConfig();
+    unableToFetch.setStatus((Status.UnableToFetch));
+    Set<XClusterTableConfig> tableConfigs =
+        new HashSet<>(Arrays.asList(running, extraTableOnTarget, droppedFromSource, unableToFetch));
+    xClusterConfig.setTables(tableConfigs);
+
+    LinkedHashSet<XClusterTableConfig> sortedTablesSet =
+        (LinkedHashSet) xClusterConfig.getTableDetails();
+    ArrayList<XClusterTableConfig> sortedTablesList = new ArrayList<>(sortedTablesSet);
+    assertEquals(Status.ExtraTableOnTarget, sortedTablesList.get(0).getStatus());
+    assertEquals(Status.DroppedFromSource, sortedTablesList.get(1).getStatus());
+    assertEquals(Status.UnableToFetch, sortedTablesList.get(2).getStatus());
+    assertEquals(Status.Running, sortedTablesList.get(3).getStatus());
   }
 }

@@ -10,6 +10,12 @@ Describe a K8s Cert Manager YugabyteDB Anywhere Encryption In Transit (EIT) conf
 yba eit k8s-cert-manager describe [flags]
 ```
 
+### Examples
+
+```
+yba eit k8s-cert-manager describe --name <config-name>
+```
+
 ### Options
 
 ```
@@ -25,7 +31,7 @@ yba eit k8s-cert-manager describe [flags]
       --disable-color      Disable colors in output. (default false)
   -H, --host string        YugabyteDB Anywhere Host (default "http://localhost:9000")
   -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
-  -n, --name string        [Optional] The name of the configuration for the action. Required for create, delete, describe, update.
+  -n, --name string        [Optional] The name of the configuration for the action. Required for create, delete, describe, download.
   -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
       --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)
       --wait               Wait until the task is completed, otherwise it will exit immediately. (default true)

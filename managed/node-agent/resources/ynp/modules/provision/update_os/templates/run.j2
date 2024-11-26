@@ -20,6 +20,34 @@ if [[ {{ os_distribution }} == RedHat && {{ os_version }} == 8 && {{ is_airgap }
   fi
 fi
 
+if [[ {{ os_distribution }} == RedHat && {{ os_version }} == 9 && {{ is_airgap }} == 'False' ]]; then
+  if [[ -e /usr/bin/dnf ]]; then
+    dnf install -y polkit
+  fi
+fi
+
+if [[ -n "{{ ssh_user }}" || -n "{{ yb_server_ssh_user }}" || -n "{{ user_name }}" ]]; then
+  touch /etc/sudoers.d/yb_sudoers
+  chmod 0440 /etc/sudoers.d/yb_sudoers
+
+  # Collect the defined users and create the necessary sudoers entries
+  users=()
+  for user in "{{ ssh_user }}" "{{ yb_server_ssh_user }}" "{{ user_name }}"; do
+    if [[ -n "$user" ]]; then
+      users+=("$user")
+    fi
+  done
+
+  # Remove duplicate users and generate the sudoers lines
+  sudoers_content=""
+  for user in $(printf "%s\n" "${users[@]}" | sort -u); do
+    sudoers_content+="Defaults:${user} !requiretty\n"
+  done
+
+  # Write the content to /etc/sudoers.d/yb_sudoers
+  echo -e "$sudoers_content" | sudo tee /etc/sudoers.d/yb_sudoers > /dev/null
+fi
+
 # Pre-provisioning tasks on Ubuntu
 if [[ {{ os_distribution }} == ubuntu ]]; then
   if systemctl is-enabled --quiet apt-daily.timer; then

@@ -1113,6 +1113,21 @@ get_index_paths(PlannerInfo *root, RelOptInfo *rel,
 }
 
 /*
+ * Return TRUE if yb_hash_code() is LHS input, FALSE otherwise.
+ */
+static bool yb_hash_code_on_left(ScalarArrayOpExpr *saop)
+{
+	Expr *leftop = (Expr *) linitial(saop->args);
+
+	if (leftop && IsA(leftop, RelabelType))
+		leftop = ((RelabelType *) leftop)->arg;
+
+	Assert(leftop != NULL);
+
+	return IsA(leftop, FuncExpr) && ((FuncExpr *) leftop)->funcid == YB_HASH_CODE_OID;
+}
+
+/*
  * build_index_paths
  *	  Given an index and a set of index clauses for it, construct zero
  *	  or more IndexPaths. It also constructs zero or more partial IndexPaths.
@@ -1247,6 +1262,13 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			/* We might need to omit ScalarArrayOpExpr clauses */
 			if (IsA(rinfo->clause, ScalarArrayOpExpr))
 			{
+				/*
+				 * YB: Do not consider SAOP exprs with yb_hash_code() in the LHS as index clauses,
+				 * e.g. "WHERE yb_hash_code(i) in (1, 2, 3)".
+				*/
+				if (yb_hash_code_on_left((ScalarArrayOpExpr *) (rinfo->clause)))
+					continue;
+
 				if (!index->amsearcharray)
 				{
 					if (skip_nonnative_saop)
@@ -2978,8 +3000,8 @@ match_clause_to_indexcol(PlannerInfo *root,
 			match_index_to_operand((Node *) nt->arg, indexcol, index))
 		{
 			/* Cannot push down IS NOT NULL on hash columns in LSM Index */
-			if (IsYBRelationById(index->indexoid) && 
-				nt->nulltesttype == IS_NOT_NULL && 
+			if (IsYBRelationById(index->indexoid) &&
+				nt->nulltesttype == IS_NOT_NULL &&
 				is_hash_column_in_lsm_index(index, indexcol))
 				return false;
 

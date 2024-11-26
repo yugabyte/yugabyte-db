@@ -108,24 +108,19 @@ using tserver::TabletServerErrorPB;
 // ============================================================================
 //  Class PickSpecificUUID.
 // ============================================================================
-Status PickSpecificUUID::PickReplica(TSDescriptor** ts_desc) {
-  shared_ptr<TSDescriptor> ts;
-  if (!master_->ts_manager()->LookupTSByUUID(ts_uuid_, &ts)) {
-    return STATUS(NotFound, "unknown tablet server id", ts_uuid_);
-  }
-  *ts_desc = ts.get();
-  return Status::OK();
+Result<TSDescriptorPtr> PickSpecificUUID::PickReplica() {
+  return master_->ts_manager()->LookupTSByUUID(ts_uuid_);
 }
 
 string ReplicaMapToString(const TabletReplicaMap& replicas) {
   string ret = "";
-  for (const auto& r : replicas) {
+  for (const auto& [ts_uuid, _] : replicas) {
     if (!ret.empty()) {
       ret += ", ";
     } else {
       ret += "(";
     }
-    ret += r.second.ts_desc->id();
+    ret += ts_uuid;
   }
   ret += ")";
   return ret;
@@ -138,9 +133,8 @@ PickLeaderReplica::PickLeaderReplica(const TabletInfoPtr& tablet)
     : tablet_(tablet) {
 }
 
-Status PickLeaderReplica::PickReplica(TSDescriptor** ts_desc) {
-  *ts_desc = VERIFY_RESULT(tablet_->GetLeader());
-  return Status::OK();
+Result<TSDescriptorPtr> PickLeaderReplica::PickReplica() {
+  return tablet_->GetLeader();
 }
 
 // ============================================================================
@@ -575,7 +569,8 @@ RetryingTSRpcTask::RetryingTSRpcTask(
       replica_picker_(std::move(replica_picker)) {}
 
 Status RetryingTSRpcTask::PickReplica() {
-  return replica_picker_->PickReplica(&target_ts_desc_);
+  target_ts_desc_ = VERIFY_RESULT(replica_picker_->PickReplica());
+  return Status::OK();
 }
 
 // Handle the actual work of the RPC callback. This is run on the master's worker
@@ -1012,10 +1007,7 @@ void AsyncPrepareDeleteTransactionTablet::UnregisterAsyncTaskCallback() {
 //  Class AsyncDeleteReplica.
 // ============================================================================
 Status AsyncDeleteReplica::SetPendingDelete(AddPendingDelete add_pending_delete) {
-  TSDescriptorPtr ts_desc;
-  if (!master_->ts_manager()->LookupTSByUUID(permanent_uuid_, &ts_desc)) {
-    return STATUS(IllegalState, Format("Could not find tserver with uuid $0", permanent_uuid_));
-  }
+  auto ts_desc = VERIFY_RESULT(master_->ts_manager()->LookupTSByUUID(permanent_uuid_));
 
   if (add_pending_delete) {
     ts_desc->AddPendingTabletDelete(tablet_id());
@@ -1237,12 +1229,15 @@ bool AsyncAlterTable::SendRequest(int attempt) {
 
     if (table_type() == TableType::PGSQL_TABLE_TYPE && !transaction_id_.IsNil()) {
       VLOG_WITH_PREFIX(1) << "Transaction ID is provided for tablet " << tablet_->tablet_id()
-          << " with ID " << transaction_id_.ToString() << " for ALTER TABLE operation";
+                          << " with ID " << transaction_id_.ToString()
+                          << " for ALTER TABLE operation";
       req.set_should_abort_active_txns(true);
       req.set_transaction_id(transaction_id_.ToString());
     }
 
     schema_version_ = l->pb.version();
+
+    HandleInsertPackedSchema(req);
   }
 
   ts_admin_proxy_->AlterSchemaAsync(req, &resp_, &rpc_, BindRpcCallback());
@@ -1277,6 +1272,15 @@ bool AsyncBackfillDone::SendRequest(int attempt) {
       << "Send backfill done request to " << permanent_uuid() << " for " << tablet_->tablet_id()
       << " (attempt " << attempt << "):\n" << req.DebugString();
   return true;
+}
+
+void AsyncInsertPackedSchemaForXClusterTarget::HandleInsertPackedSchema(
+    tablet::ChangeMetadataRequestPB& req) {
+  // Update insert_packed_schema and update the schema to the packed schema to insert.
+  // This schema will get inserted into the historical packing schemas with [schema_version - 1],
+  // and then the current schema will be reinserted with [schema_version].
+  req.set_insert_packed_schema(true);
+  req.mutable_schema()->CopyFrom(packed_schema_);
 }
 
 // ============================================================================
@@ -1579,12 +1583,14 @@ void AsyncTryStepDown::HandleResponse(int attempt) {
 // ============================================================================
 AsyncAddTableToTablet::AsyncAddTableToTablet(
     Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
-    const scoped_refptr<TableInfo>& table, LeaderEpoch epoch)
+    const scoped_refptr<TableInfo>& table, LeaderEpoch epoch,
+    const std::shared_ptr<std::atomic<size_t>>& task_counter)
     : RetryingTSRpcTaskWithTable(
           master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), table.get(),
           std::move(epoch), /* async_task_throttler */ nullptr),
       tablet_(tablet),
-      tablet_id_(tablet->tablet_id()) {
+      tablet_id_(tablet->tablet_id()),
+      task_counter_(task_counter) {
   req_.set_tablet_id(tablet->id());
   auto& add_table = *req_.mutable_add_table();
   add_table.set_table_id(table_->id());
@@ -1595,6 +1601,9 @@ AsyncAddTableToTablet::AsyncAddTableToTablet(
     add_table.set_schema_version(l->pb.version());
     *add_table.mutable_schema() = l->pb.schema();
     *add_table.mutable_partition_schema() = l->pb.partition_schema();
+    if (l->pb.has_index_info()) {
+      *add_table.mutable_index_info() = l->pb.index_info();
+    }
   }
   add_table.set_pg_table_id(table_->pg_table_id());
   add_table.set_skip_table_tombstone_check(FLAGS_ysql_yb_enable_alter_table_rewrite);
@@ -1637,13 +1646,16 @@ void AsyncAddTableToTablet::HandleResponse(int attempt) {
     TransitionToFailedState(MonitoredTaskState::kRunning, tablets_running_result.status());
     return;
   }
-  DCHECK(*tablets_running_result);
-  VLOG_WITH_FUNC(1) << "Marking table " << table_->ToString() << " as RUNNING";
-  Status s = master_->catalog_manager()->PromoteTableToRunningState(table_, epoch());
-  if (!s.ok()) {
-    LOG(WARNING) << "Error updating table " << table_->ToString() << ": " << s;
-    TransitionToFailedState(MonitoredTaskState::kRunning, s);
-    return;
+  LOG_IF(DFATAL, !*tablets_running_result)
+      << "Not all tablets are running while processing AddTableToTablet response";
+  if (--*task_counter_ == 0) {
+    VLOG_WITH_FUNC(1) << "Marking table " << table_->ToString() << " as RUNNING";
+    Status s = master_->catalog_manager()->PromoteTableToRunningState(table_, epoch());
+    if (!s.ok()) {
+      LOG(DFATAL) << "Error updating table " << table_->ToString() << ": " << s;
+      TransitionToFailedState(MonitoredTaskState::kRunning, s);
+      return;
+    }
   }
 
   TransitionToCompleteState();

@@ -31,6 +31,7 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/string_case.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tostring.h"
@@ -46,6 +47,9 @@ DECLARE_uint64(ysql_node_level_mutation_reporting_interval_ms);
 DECLARE_uint32(ysql_cluster_level_mutation_persist_interval_ms);
 DECLARE_uint32(ysql_auto_analyze_threshold);
 DECLARE_double(ysql_auto_analyze_scale_factor);
+DECLARE_uint32(ysql_auto_analyze_batch_size);
+DECLARE_bool(TEST_sort_auto_analyze_target_table_ids);
+DECLARE_int32(TEST_simulate_analyze_deleted_table_secs);
 
 using namespace std::chrono_literals;
 
@@ -134,7 +138,7 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
           return false;
       }
       return true;
-    }, 5s * kTimeMultiplier, "Check mutations count"));
+    }, 10s * kTimeMultiplier, "Check mutations count"));
 
     return Status::OK();
   }
@@ -581,6 +585,267 @@ TEST_F(PgAutoAnalyzeTest, CheckIndexMutationsCount) {
   GetTableMutationsFromCQLTable(&table_mutations_in_cql_table);
   ASSERT_TRUE(!table_mutations_in_cql_table.contains(index_id));
   ASSERT_TRUE(!table_mutations_in_cql_table.contains(unique_index_id));
+}
+
+// Test that auto analyze service cleans up deleted tables' mutations count
+// when it detects that these deleted tables are absent in its table name cache.
+TEST_F(PgAutoAnalyzeTest, DeletedTableMutationsCount) {
+  // Set auto analyze threshold to a large number to prevent running ANALYZEs in this test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 100000;
+  auto conn = ASSERT_RESULT(Connect());
+  const std::string table_name = "test_tbl";
+  const std::string table_name2 = "db2_tbl";
+  const std::string table_name3 = "dummy_table";
+  const std::string db2 = "db2";
+  const std::string table_creation_stmt =
+      "CREATE TABLE $0 (h1 INT, v1 INT, PRIMARY KEY(h1))";
+  ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, table_name));
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", db2));
+  std::string table_id, table_id2;
+  {
+    auto conn2 = ASSERT_RESULT(ConnectToDB(db2));
+    ASSERT_OK(conn2.ExecuteFormat(table_creation_stmt, table_name2));
+
+    auto tables = ASSERT_RESULT(client_->ListTables(/* filter */ table_name));
+    ASSERT_EQ(1, tables.size());
+    table_id = tables.front().table_id();
+
+    tables = ASSERT_RESULT(client_->ListTables(/* filter */ table_name2));
+    ASSERT_EQ(1, tables.size());
+    table_id2 = tables.front().table_id();
+
+    ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+        [&conn, table_name, &conn2, table_name2] {
+          ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT s, s FROM generate_series(1,100) s",
+                                        table_name));
+          ASSERT_OK(conn2.ExecuteFormat("INSERT INTO $0 SELECT s, s FROM generate_series(1,50) s",
+                                        table_name2));
+        },
+        {{table_id, 100}, {table_id2, 50}}));
+  }
+
+  // Drop tables.
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table_name));
+  ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", db2));
+
+  // Increase mutations for a new table to cause name cache refresh.
+  ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, table_name3));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT s, s FROM generate_series(1,10) s",
+                               table_name3));
+
+  // Verify the mutations count of tables is deleted from the service table.
+  ASSERT_OK(WaitFor([this, &table_id, &table_id2]() -> Result<bool> {
+      std::unordered_map<TableId, uint64> table_mutations_in_cql_table;
+      GetTableMutationsFromCQLTable(&table_mutations_in_cql_table);
+      return !table_mutations_in_cql_table.contains(table_id)
+             && !table_mutations_in_cql_table.contains(table_id2);
+  }, 120s * kTimeMultiplier, "Check mutations count of deleted tables"));
+}
+
+// Test that auto analyze service cleans up deleted tables' mutations count
+// when it confirms a deleted table is deleted either directly or due to a deleted database.
+TEST_F(PgAutoAnalyzeTest, DeletedTableMutationsCount2) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0.1;
+
+  auto conn = ASSERT_RESULT(Connect());
+  const std::string table_name = "test_tbl";
+  const std::string table_name2 = "db2_tbl";
+  const std::string db2 = "db2";
+  const std::string table_creation_stmt =
+      "CREATE TABLE $0 (h1 INT, v1 INT, PRIMARY KEY(h1))";
+  ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, table_name));
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", db2));
+  std::string table_id, table_id2;
+  {
+    auto conn2 = ASSERT_RESULT(ConnectToDB(db2));
+    ASSERT_OK(conn2.ExecuteFormat(table_creation_stmt, table_name2));
+
+    auto tables = ASSERT_RESULT(client_->ListTables(/* filter */ table_name));
+    ASSERT_EQ(1, tables.size());
+    table_id = tables.front().table_id();
+
+    tables = ASSERT_RESULT(client_->ListTables(/* filter */ table_name2));
+    ASSERT_EQ(1, tables.size());
+    table_id2 = tables.front().table_id();
+
+    ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+        [&conn, table_name, &conn2, table_name2] {
+          ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT s, s FROM generate_series(1,2) s",
+                                       table_name));
+          ASSERT_OK(conn2.ExecuteFormat("INSERT INTO $0 SELECT s, s FROM generate_series(1,2) s",
+                                        table_name2));
+        },
+        {{table_id, 2}, {table_id2, 2}}));
+
+    // Sleep for few seconds to wait for auto analyze to populate its table_tuple_count_ cache.
+    std::this_thread::sleep_for(5s * kTimeMultiplier);
+
+    // The initial analyze threshold for all three tables are 10.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_analyze_deleted_table_secs)
+        = 6 * kTimeMultiplier;
+    ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+        [&conn, table_name, &conn2, table_name2] {
+          ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT s, s FROM generate_series(3,100) s",
+                                       table_name));
+          ASSERT_OK(conn2.ExecuteFormat("INSERT INTO $0 SELECT s, s FROM generate_series(3,50) s",
+                                        table_name2));
+        },
+        {{table_id, 98}, {table_id2, 48}}));
+  }
+
+  // Drop tables.
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table_name));
+  ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", db2));
+
+  // Verify the mutations count of tables is deleted from the service table.
+  ASSERT_OK(WaitFor([this, &table_id, &table_id2]() -> Result<bool> {
+      std::unordered_map<TableId, uint64> table_mutations_in_cql_table;
+      GetTableMutationsFromCQLTable(&table_mutations_in_cql_table);
+      return !table_mutations_in_cql_table.contains(table_id)
+             && !table_mutations_in_cql_table.contains(table_id2);
+  }, 120s * kTimeMultiplier, "Check mutaitons count of deleted tables"));
+}
+
+// Test the scenario where the auto analyze service splits four tables into
+// two batches and analyzes them using two ANALYZE statments.
+TEST_F(PgAutoAnalyzeTest, AnalyzeTablesInBatches) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0.1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_batch_size) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sort_auto_analyze_target_table_ids) = true;
+  google::SetVLOGLevel("pg_auto_analyze_service", 1);
+
+  const std::string schema_name = "abc";
+  const std::string table1_name = "tbl_test";
+  const std::string table2_name = "tbl2_test";
+  const std::string table3_name = "tbl3_test";
+  const std::string table4_name = "tbl4_test";
+
+  auto conn = ASSERT_RESULT(Connect());
+  const std::string table_creation_stmt =
+      "CREATE TABLE $0.$1 (h1 INT, v1 INT, PRIMARY KEY(h1))";
+  ASSERT_OK(conn.ExecuteFormat("CREATE SCHEMA $0", schema_name));
+  ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, schema_name, table1_name));
+  ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, schema_name, table2_name));
+  ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, schema_name, table3_name));
+  ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, schema_name, table4_name));
+
+  auto tables = ASSERT_RESULT(client_->ListTables(/* filter */ table1_name));
+  ASSERT_EQ(1, tables.size());
+  const auto table1_id = tables.front().table_id();
+
+  tables = ASSERT_RESULT(client_->ListTables(/* filter */ table2_name));
+  ASSERT_EQ(1, tables.size());
+  const auto table2_id = tables.front().table_id();
+
+  tables = ASSERT_RESULT(client_->ListTables(/* filter */ table3_name));
+  ASSERT_EQ(1, tables.size());
+  const auto table3_id = tables.front().table_id();
+
+  tables = ASSERT_RESULT(client_->ListTables(/* filter */ table4_name));
+  ASSERT_EQ(1, tables.size());
+  const auto table4_id = tables.front().table_id();
+
+  StringWaiterLogSink log_waiter1(
+      Format("run ANALYZE statement for tables in batch: ANALYZE \"$0\".\"$1\", \"$2\".\"$3\"",
+             schema_name, table1_name, schema_name, table2_name));
+  StringWaiterLogSink log_waiter2(
+      Format("run ANALYZE statement for tables in batch: ANALYZE \"$0\".\"$1\", \"$2\".\"$3\"",
+             schema_name, table3_name, schema_name, table4_name));
+
+  // The initial analyze threshold for all tables are 10.
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+      [&conn, schema_name, table1_name, table2_name, table3_name, table4_name] {
+        ASSERT_OK(conn.Execute("BEGIN"));
+        ASSERT_OK(conn.ExecuteFormat(
+            "INSERT INTO $0.$1 SELECT s, s FROM generate_series(1, 11) AS s",
+            schema_name, table1_name));
+        ASSERT_OK(conn.ExecuteFormat(
+            "INSERT INTO $0.$1 SELECT s, s FROM generate_series(1, 12) AS s",
+            schema_name, table2_name));
+        ASSERT_OK(conn.ExecuteFormat(
+            "INSERT INTO $0.$1 SELECT s, s FROM generate_series(1, 13) AS s",
+            schema_name, table3_name));
+        ASSERT_OK(conn.ExecuteFormat(
+            "INSERT INTO $0.$1 SELECT s, s FROM generate_series(1, 14) AS s",
+            schema_name, table4_name));
+        ASSERT_OK(conn.Execute("COMMIT"));
+      },
+      {{table1_id, 11}, {table2_id, 12}, {table3_id, 13}, {table4_id, 14}}));
+
+  ASSERT_OK(log_waiter1.WaitFor(40s));
+  ASSERT_OK(log_waiter2.WaitFor(40s));
+  ASSERT_OK(WaitForTableReltuples(conn, table1_name, 11));
+  ASSERT_OK(WaitForTableReltuples(conn, table2_name, 12));
+  ASSERT_OK(WaitForTableReltuples(conn, table3_name, 13));
+  ASSERT_OK(WaitForTableReltuples(conn, table4_name, 14));
+}
+
+// Create the scenario where a table is deleted when it is about to be analyzed
+// by auto analyze service. In this case, we need to successfully fall back to
+// analyze each table separately.
+TEST_F(PgAutoAnalyzeTest, FallBackToAnalyzeEachTableSeparately) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0.1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_batch_size) = 10;
+  google::SetVLOGLevel("pg_auto_analyze_service", 1);
+
+  const std::string table1_name = "tbl_test";
+  const std::string table2_name = "tbl2_test";
+  const std::string table3_name = "tbl3_test";
+  auto conn = ASSERT_RESULT(Connect());
+  const std::string table_creation_stmt =
+      "CREATE TABLE $0 (h1 INT, v1 INT, PRIMARY KEY(h1))";
+  ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, table1_name));
+  ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, table2_name));
+  ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, table3_name));
+
+  auto tables = ASSERT_RESULT(client_->ListTables(/* filter */ table1_name));
+  ASSERT_EQ(1, tables.size());
+  const auto table1_id = tables.front().table_id();
+
+  tables = ASSERT_RESULT(client_->ListTables(/* filter */ table2_name));
+  ASSERT_EQ(1, tables.size());
+  const auto table2_id = tables.front().table_id();
+
+  tables = ASSERT_RESULT(client_->ListTables(/* filter */ table3_name));
+  ASSERT_EQ(1, tables.size());
+  const auto table3_id = tables.front().table_id();
+
+  // Populate the table_tuple_count_ cache in auto analyze service.
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+    [&conn, table1_name, table2_name, table3_name] {
+      ASSERT_OK(conn.Execute("BEGIN"));
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT s, s FROM generate_series(1, 2) AS s",
+                                    table1_name));
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT s, s FROM generate_series(1, 2) AS s",
+                                    table2_name));
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT s, s FROM generate_series(1, 2) AS s",
+                                    table3_name));
+      ASSERT_OK(conn.Execute("COMMIT"));
+    },
+    {{table1_id, 2}, {table2_id, 2}, {table3_id, 2}}));
+
+  // The initial analyze threshold for all three tables are 10.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_analyze_deleted_table_secs) = 4;
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+      [&conn, table1_name, table2_name, table3_name] {
+        ASSERT_OK(conn.Execute("BEGIN"));
+        ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT s, s FROM generate_series(3, 100) AS s",
+                                     table1_name));
+        ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT s, s FROM generate_series(3, 20) AS s",
+                                     table2_name));
+        ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT s, s FROM generate_series(3, 30) AS s",
+                                     table3_name));
+        ASSERT_OK(conn.Execute("COMMIT"));
+      },
+      {{table1_id, 98}, {table2_id, 18}, {table3_id, 28}}));
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table2_name));
+
+  ASSERT_OK(StringWaiterLogSink("Fall back to analyze each table separately").WaitFor(40s));
+  ASSERT_OK(WaitForTableReltuples(conn, table1_name, 100));
+  ASSERT_OK(WaitForTableReltuples(conn, table3_name, 30));
 }
 
 } // namespace pgwrapper

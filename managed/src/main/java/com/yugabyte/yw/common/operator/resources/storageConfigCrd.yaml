@@ -51,6 +51,9 @@ spec:
                     - STORAGE_NFS
                     - STORAGE_GCS
                     - STORAGE_AZ
+                  x-kubernetes-validations:
+                  - message: Config type cannot be changed
+                    rule: self == oldSelf
                 data:
                   type: object
                   description: Data object to create storage configuration.
@@ -61,6 +64,9 @@ spec:
                     AWS_SECRET_ACCESS_KEY:
                       description: AWS secret access key for the S3 storage configuration.
                       type: string
+                    USE_IAM:
+                      description: Use IAM for storage account access. Valid for S3/GCS.
+                      type: boolean
                     BACKUP_LOCATION:
                       description: Backup location for the storage configuration.
                       type: string

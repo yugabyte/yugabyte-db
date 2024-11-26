@@ -87,6 +87,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   private static final List<CommandType> skipNamespaceCommands =
       Arrays.asList(CommandType.POD_INFO, CommandType.COPY_PACKAGE, CommandType.YBC_ACTION);
 
+  public static final int DEFAULT_YSQL_SERVER_RPC_PORT = 5433;
+  public static final int DEFAULT_INTERNAL_YSQL_SERVER_RPC_PORT = 6433;
+
   public enum CommandType {
     CREATE_NAMESPACE,
     APPLY_SECRET,
@@ -111,6 +114,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     COPY_PACKAGE,
     YBC_ACTION,
     NAMESPACED_SVC_DELETE,
+    PAUSE_AZ,
+    RESUME_AZ,
     // The following flag is deprecated.
     INIT_YSQL;
 
@@ -245,10 +250,40 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public Set<String> deleteServiceNames;
     // Only set false for create universe case initially
     public boolean masterJoinExistingCluster = true;
+
+    public String getTaskDetails() {
+      String details = String.format("Command: %s", commandType);
+      switch (commandType) {
+        case CREATE_NAMESPACE:
+        case APPLY_SECRET:
+          details += String.format(", Namespace: %s", namespace);
+          break;
+        case HELM_INIT:
+        case HELM_INSTALL:
+        case HELM_UPGRADE:
+        case HELM_DELETE:
+          details += String.format(", Helm Release: %s, Namespace: %s", helmReleaseName, namespace);
+          break;
+        case COPY_PACKAGE:
+          details += String.format(", YBC Server: %s", ybcServerName);
+          break;
+        case YBC_ACTION:
+          details += String.format(", action: %s, YBC Server: %s", command, ybcServerName);
+          break;
+        default:
+          break;
+      }
+      return details;
+    }
   }
 
   protected KubernetesCommandExecutor.Params taskParams() {
     return (KubernetesCommandExecutor.Params) taskParams;
+  }
+
+  @Override
+  public String getName() {
+    return super.getName() + "(" + taskParams().getTaskDetails() + ")";
   }
 
   protected Map<String, String> getConfig() {
@@ -298,7 +333,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         && taskParams().namespace == null) {
       throw new IllegalArgumentException("namespace can be null only in case of POD_INFO");
     }
-
+    boolean newNamingStyle = false;
     // TODO: add checks for the shell process handler return values.
     switch (taskParams().commandType) {
       case CREATE_NAMESPACE:
@@ -342,7 +377,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       case UPDATE_NUM_NODES:
         int numNodes = this.getNumNodes();
         if (numNodes > 0) {
-          boolean newNamingStyle =
+          newNamingStyle =
               Universe.getOrBadRequest(taskParams().getUniverseUUID())
                   .getUniverseDetails()
                   .useNewHelmNamingStyle;
@@ -414,7 +449,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         break;
       case STS_DELETE:
         u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-        boolean newNamingStyle = u.getUniverseDetails().useNewHelmNamingStyle;
+        newNamingStyle = u.getUniverseDetails().useNewHelmNamingStyle;
         // Ideally we should have called KubernetesUtil.getHelmFullNameWithSuffix()
         String appName = (newNamingStyle ? taskParams().helmReleaseName + "-" : "") + "yb-tserver";
         kubernetesManagerFactory
@@ -456,6 +491,30 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 "-c",
                 String.format("/home/yugabyte/tools/k8s_ybc_parent.py %s", taskParams().command));
         ybcManager.performActionOnYbcK8sNode(config, nodeDetails, commandArgs);
+        break;
+      case PAUSE_AZ:
+        newNamingStyle =
+            Universe.getOrBadRequest(taskParams().getUniverseUUID())
+                .getUniverseDetails()
+                .useNewHelmNamingStyle;
+        kubernetesManagerFactory
+            .getManager()
+            .PauseAllPodsInRelease(
+                config, taskParams().helmReleaseName, taskParams().namespace, newNamingStyle);
+
+        break;
+      case RESUME_AZ:
+        overridesFile = this.generateHelmOverride();
+        kubernetesManagerFactory
+            .getManager()
+            .helmResume(
+                taskParams().getUniverseUUID(),
+                taskParams().ybSoftwareVersion,
+                config,
+                taskParams().helmReleaseName,
+                taskParams().namespace,
+                overridesFile);
+
         break;
     }
   }
@@ -1140,7 +1199,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
           taskUniverseDetails.xClusterInfo.sourceRootCertDirPath);
     }
-    if (taskParams().masterJoinExistingCluster) {
+    if (taskParams().masterJoinExistingCluster
+        && universeFromDB
+            .getConfig()
+            .getOrDefault(Universe.K8S_SET_MASTER_EXISTING_UNIVERSE_GFLAG, "false")
+            .equals("true")) {
       masterGFlags.put(GFlagsUtil.MASTER_JOIN_EXISTING_UNIVERSE, "true");
     }
     if (!masterGFlags.isEmpty()) {
@@ -1155,6 +1218,28 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         .enableYSQL) { // In the UI, we can choose not to show these entries for read replica.
       tserverGFlags.put("enable_ysql", "false");
     }
+
+    if (primaryClusterIntent.enableYSQL) {
+      // For now, set a default value for the ysql server rpc port.
+      // TO DO:
+      // If the user passed in a custom value, use it as an override.
+      int ysqlServerRpcPort = DEFAULT_YSQL_SERVER_RPC_PORT;
+      if (primaryClusterIntent.enableConnectionPooling) {
+        // For now, set a default value for the internal ysql server rpc port.
+        // TO DO:
+        // Check if the user passed in a value for the internal ysql server rpc port.
+        // If given, use it as an override.
+        int internalYsqlServerRpcPort = DEFAULT_INTERNAL_YSQL_SERVER_RPC_PORT;
+        tserverGFlags.put("enable_ysql_conn_mgr", "true");
+        tserverGFlags.put("allowed_preview_flags_csv", "enable_ysql_conn_mgr");
+        tserverGFlags.put("ysql_conn_mgr_port", String.valueOf(ysqlServerRpcPort));
+        tserverGFlags.put(
+            "pgsql_proxy_bind_address",
+            (primaryClusterIntent.enableIPV6 ? "[::]:" : "0.0.0.0:")
+                + String.valueOf(internalYsqlServerRpcPort));
+      }
+    }
+
     if (!primaryClusterIntent.enableYCQL) {
       tserverGFlags.put("start_cql_proxy", "false");
     }
@@ -1206,7 +1291,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // timestamp_history_retention_sec gflag final value
     Duration timestampHistoryRetentionPlatform =
         Schedule.getMaxBackupIntervalInUniverseForPITRestore(
-            universeFromDB.getUniverseUUID(), true /* includeIntermediate */);
+            universeFromDB.getUniverseUUID(),
+            true /* includeIntermediate */,
+            null /* excludeScheduleUUID */);
     if (timestampHistoryRetentionPlatform.toSeconds() > 0L) {
       long historyRetentionBufferSecs =
           confGetter.getConfForScope(
@@ -1365,6 +1452,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (taskUniverseDetails.useNewHelmNamingStyle) {
       overrides.put("oldNamingStyle", false);
       overrides.put("fullnameOverride", taskParams().helmReleaseName);
+      overrides.put("useOldPodDisruptionBudget", false);
     }
 
     String defaultScope = "AZ";

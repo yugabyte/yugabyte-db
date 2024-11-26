@@ -187,6 +187,11 @@ class ClusterLoadBalancer {
   virtual Status AnalyzeTabletsUnlocked(const TableId& table_uuid)
       REQUIRES_SHARED(catalog_manager_->mutex_);
 
+  // Finds all under-replicated tablets and processes them in order of priority.
+  void ProcessUnderReplicatedTablets(
+      int& remaining_adds, uint32_t& master_errors, bool& task_added, TabletId& out_tablet_id,
+      TabletServerId& out_to_ts) REQUIRES_SHARED(catalog_manager_->mutex_);
+
   // Processes any required replica additions, as part of moving load from a highly loaded TS to
   // one that is less loaded.
   //
@@ -207,16 +212,12 @@ class ClusterLoadBalancer {
 
   virtual void InitTablespaceManager();
 
-  // Method called when initially analyzing tablets, to build up load and usage information.
-  // Returns an OK status if the method succeeded or an error if there are transient errors in
-  // updating the internal state.
-  Status UpdateTabletInfo(TabletInfo* tablet);
-
   // If a tablet is under-replicated, or has certain placements that have less than the minimum
   // required number of replicas, we need to add extra tablets to its peer set.
+  // Takes in a specific tablet id which we will try to fix.
   //
   // Returns true if a move was actually made.
-  Result<bool> HandleAddIfMissingPlacement(TabletId* out_tablet_id, TabletServerId* out_to_ts)
+  Result<bool> HandleAddIfMissingPlacement(const TabletId& tablet_id, TabletServerId* out_to_ts)
       REQUIRES_SHARED(catalog_manager_->mutex_);
 
   // If we find a tablet with peers that violate the placement information, we want to move load
@@ -309,10 +310,6 @@ class ClusterLoadBalancer {
       REQUIRES_SHARED(catalog_manager_->mutex_);
 
   // Methods called for returning tablet id sets, for figuring out tablets to move around.
-
-  const PlacementInfoPB& GetPlacementByTablet(const TabletId& tablet_id) const
-      REQUIRES_SHARED(catalog_manager_->mutex_);
-
   // Get access to all the tablets for the given table.
   Result<TabletInfos> GetTabletsForTable(const TableId& table_uuid) const
       REQUIRES_SHARED(catalog_manager_->mutex_);
@@ -389,6 +386,26 @@ class ClusterLoadBalancer {
       std::string* to_ts_path);
 
   virtual void SetBlacklistAndPendingDeleteTS();
+
+  struct UnderReplicatedTabletInfo {
+    TabletId tablet_id;
+    int tablet_count;
+    PerTableLoadState* table_state;
+
+    UnderReplicatedTabletInfo(TabletId tablet_id, int tablet_count, PerTableLoadState* table_state)
+        : tablet_id(tablet_id), tablet_count(tablet_count), table_state(table_state) {}
+
+    bool operator<(const UnderReplicatedTabletInfo& other) const {
+      return (tablet_count < other.tablet_count);
+    }
+  };
+
+  // Goes over all table states and returns a priority-sorted list of under-replicated tablets.
+  std::vector<UnderReplicatedTabletInfo> CollectUnderReplicatedTablets()
+      REQUIRES_SHARED(catalog_manager_->mutex_);
+
+  // Checks if we are at our RBS or overreplicated tablets limit.
+  Status CanAddReplicas() REQUIRES_SHARED(catalog_manager_->mutex_);
 
   // Random number generator for picking items at random from sets, using ReservoirSample.
   ThreadSafeRandom random_;

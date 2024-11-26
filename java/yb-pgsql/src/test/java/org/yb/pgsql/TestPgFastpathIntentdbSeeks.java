@@ -55,8 +55,7 @@ public class TestPgFastpathIntentdbSeeks extends BasePgSQLTestWithRpcMetric {
       // one seek per doc key component.
       runInvalidQuery(extraStmt, "UPDATE t SET v1 = 3, v2 = 3, v3 = 3, v4 = 3 WHERE k1 = 1 AND "
           + "k2 = 1 AND r1 = 1 AND r2 = 1", true,
-        "could not serialize access due to concurrent update",
-        "conflicts with higher priority transaction");
+        "could not serialize access due to concurrent update");
       updateCounter(counter);
       final int seeks = counter.intentdbSeeks.get("t").value();
 

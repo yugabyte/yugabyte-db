@@ -57,7 +57,7 @@ import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.ListMastersResponse;
+import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
 import play.libs.Json;
@@ -138,15 +138,15 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
         new ChangeMasterClusterConfigResponse(1112, "", null);
     GetLoadMovePercentResponse mockGetLoadMovePercentResponse =
         new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null);
-    ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
     try {
       when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
       when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockMasterChangeConfigResponse);
       when(mockClient.getLeaderBlacklistCompletion()).thenReturn(mockGetLoadMovePercentResponse);
-      when(mockClient.listMasters()).thenReturn(listMastersResponse);
-      when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
+      ListMasterRaftPeersResponse listMastersResponse = mock(ListMasterRaftPeersResponse.class);
+      when(listMastersResponse.getPeersList()).thenReturn(Collections.emptyList());
+      when(mockClient.listMasterRaftPeers()).thenReturn(listMastersResponse);
       when(mockClient.setFlag(any(), any(), any(), anyBoolean())).thenReturn(true);
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
     } catch (Exception e) {

@@ -19,6 +19,8 @@
     &::before {
       height: calc(7.5rem + 20px);
       margin-top: calc(-7.5rem - 20px);
+      display: block;
+      content: "";
     }
 
     > a[aria-hidden] {
@@ -32,6 +34,34 @@
 
       svg {
         display: none;
+      }
+    }
+  }
+
+  &.with-topbar {
+    h1[id],
+    h2[id],
+    h3[id],
+    h4[id],
+    h5[id] {
+      &::before {
+        height: calc(7.5rem + 100px);
+        margin-top: calc(-7.5rem - 100px);
+
+        @media (max-width: 1549px) {
+          height: calc(7.5rem + 70px);
+          margin-top: calc(-7.5rem - 70px);
+        }
+
+        @media (max-width: 991px) {
+          height: 7.1rem;
+          margin-top: -7.1rem;
+        }
+
+        @media (max-width: 767px) {
+          height: calc(7.5rem + 50px);
+          margin-top: calc(-7.5rem - 50px);
+        }
       }
     }
   }
@@ -60,7 +90,6 @@
     }
 
     &:not(:first-child) {
-      margin: 64px 0 24px 0;
       margin: 72px 0 16px 0;
     }
   }
@@ -80,6 +109,7 @@
       color: $yb-font-darkgray;
       margin-top: 16px;
     }
+
     & + {
       .lead {
         margin-top: 16px;
@@ -172,7 +202,6 @@
   }
 }
 
-
-.td-searchpage .td-content  h1{
+.td-searchpage .td-content h1 {
   margin-bottom: 16px;
 }

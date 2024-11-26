@@ -23,7 +23,7 @@ using std::make_unique;
 using std::string;
 using std::unique_ptr;
 
-DECLARE_bool(TEST_mini_cluster_mode);
+DECLARE_bool(TEST_use_custom_varz);
 DECLARE_bool(TEST_import_snapshot_failed);
 
 namespace yb {
@@ -38,8 +38,8 @@ class CqlBackupTest : public CqlTestBase<MiniCluster> {
   virtual ~CqlBackupTest() = default;
 
   void SetUp() override {
-    // Provide correct '--fs_data_dirs' via TS Web UI.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_mini_cluster_mode) = true;
+    // We need the following to be able to run yb-controller with internal mini cluster.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_use_custom_varz) = true;
     CqlTestBase<MiniCluster>::SetUp();
 
     // Start Yb Controllers for backup/restore.

@@ -42,6 +42,12 @@
 #include "yb/util/flags/auto_flags.h"
 
 // Macro for the registration of a flag validator.
+//
+// ==== DEFINE_validator ====
+// Flag validators enforce that the value assigned to a gFlag satisfy certain conditions. If a new
+// value does not pass all the validation functions then it is not assigned.
+// Check flag_validators.h for commonly used validation functions.
+//
 // The validation function should return true if the flag value is valid, and false otherwise. If
 // the function returns false for the new value of the flag, the flag will retain its current value.
 // If it returns false for the default value, the process will die. Use LOG_FLAG_VALIDATION_ERROR to
@@ -61,11 +67,16 @@
 #ifdef DEFINE_validator
 #undef DEFINE_validator
 #endif
-#define DEFINE_validator(name, validator) \
+#define VALIDATOR_AND_CALL_HELPER(r, unused, validator) && (validator)(_flag_name, _new_value)
+#define DEFINE_validator(name, ...) \
   static_assert( \
     sizeof(_DEFINE_FLAG_IN_FILE(name)), "validator must be DEFINED in the same file as the flag"); \
   static const bool BOOST_PP_CAT(name, _validator_registered) __attribute__((unused)) = \
-      google::RegisterFlagValidator(&BOOST_PP_CAT(FLAGS_, name), (validator))
+      google::RegisterFlagValidator(&BOOST_PP_CAT(FLAGS_, name), \
+      [](const char* _flag_name, auto _new_value) -> bool { \
+        return true BOOST_PP_SEQ_FOR_EACH(VALIDATOR_AND_CALL_HELPER, _, \
+                                          BOOST_PP_VARIADIC_TO_SEQ(__VA_ARGS__)); \
+      })
 
 #define SET_FLAG(name, value) \
   (::yb::flags_internal::SetFlag(&BOOST_PP_CAT(FLAGS_, name), BOOST_PP_STRINGIZE(name), value))

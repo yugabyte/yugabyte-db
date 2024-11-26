@@ -16,13 +16,20 @@
 # to create and setup the cgroup. If we created the cgroup in ansible, it would be deleted when the
 # vm reboots. This instead ensures that the cgroup always exists before the tserver gets started
 - block:
+  - name: Determine system or user scope
+    stat:
+      path: "{{ yb_home_dir | default('/home/yugabyte') }}/.config/systemd/user/"
+    register: systemd_user
+  - name: Print systemd_user
+    debug:
+      var: systemd_user
+
   - block:
     - set_fact:
         systemd_dir: "/etc/systemd/system"
     - set_fact:
         systemd_dir: "{{ yb_home_dir | default('/home/yugabyte') }}/.config/systemd/user"
       when: systemd_user.stat.exists
-    when: systemd_dir is undefined
 
   - name: check for cgconfig service
     ansible.builtin.shell:
@@ -71,7 +78,7 @@
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
       mode: 0644
-  - name: Run Cgroup oneshot service
+  - name: Run Cgroup oneshot service user systemd
     become: true
     become_user: "{{ user_name }}"
     ansible.builtin.systemd:
@@ -80,6 +87,16 @@
       name: yb-ysql-cgroup
       state: started
       enabled: true
+    when: systemd_user.stat.exists
+  - name: Run Cgroup oneshot service root systemd
+    become: true
+    become_user: "{{ user_name }}"
+    ansible.builtin.systemd:
+      daemon_reload: yes
+      name: yb-ysql-cgroup
+      state: started
+      enabled: true
+    when: not systemd_user.stat.exists
 
   when: systemd_option and pg_max_mem_mb > 0 and ansible_distribution_major_version == "9"
 

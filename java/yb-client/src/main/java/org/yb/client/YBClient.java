@@ -425,6 +425,16 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Get the list of all the master raft peers.
+   *
+   * @return a list of master raft peers
+   */
+  public ListMasterRaftPeersResponse listMasterRaftPeers() throws Exception {
+    Deferred<ListMasterRaftPeersResponse> d = asyncClient.listMastersRaftPeers();
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
    * Get the current cluster configuration.
    *
    * @return the configuration

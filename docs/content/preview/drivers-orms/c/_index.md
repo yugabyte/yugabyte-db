@@ -3,7 +3,6 @@ title: Build applications with C Drivers and ORMs
 headerTitle: C
 linkTitle: C
 description: C Drivers and ORMs support for YugabyteDB.
-image: fa-classic fa-c
 menu:
   preview:
     identifier: c-drivers

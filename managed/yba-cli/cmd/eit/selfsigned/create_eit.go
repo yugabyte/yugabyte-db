@@ -22,6 +22,8 @@ var createSelfSignedEITCmd = &cobra.Command{
 	Aliases: []string{"add", "upload"},
 	Short:   "Create a YugabyteDB Anywhere Self Signed encryption in transit configuration",
 	Long:    "Create a Self Signed encryption in transit configuration in YugabyteDB Anywhere",
+	Example: `yba eit self-signed create --name <config-name> \
+	--key-file-path <key-file-path> --root-cert-file-path <root-cert-file-path>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		eitutil.CreateEITValidation(cmd)
 	},
@@ -67,7 +69,7 @@ var createSelfSignedEITCmd = &cobra.Command{
 			Label:       configName,
 			CertType:    util.SelfSignedCertificateType,
 			CertContent: *rootCertContent,
-			KeyContent:  *keyContent,
+			KeyContent:  keyContent,
 		}
 
 		eitutil.CreateEITUtil(authAPI, configName, util.SelfSignedCertificateType, requestBody)

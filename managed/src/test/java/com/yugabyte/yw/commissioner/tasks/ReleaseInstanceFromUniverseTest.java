@@ -44,7 +44,7 @@ import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.ListMastersResponse;
+import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
 import play.libs.Json;
@@ -103,14 +103,14 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
         new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
     ChangeMasterClusterConfigResponse mockChangeConfigResponse =
         new ChangeMasterClusterConfigResponse(1111, "", null);
-    ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
+    ListMasterRaftPeersResponse listMastersResponse = mock(ListMasterRaftPeersResponse.class);
+    when(listMastersResponse.getPeersList()).thenReturn(Collections.emptyList());
 
     mockClient = mock(YBClient.class);
     try {
+      when(mockClient.listMasterRaftPeers()).thenReturn(listMastersResponse);
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockChangeConfigResponse);
-      when(mockClient.listMasters()).thenReturn(listMastersResponse);
-      when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
     } catch (Exception e) {
     }
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);

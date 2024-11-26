@@ -20,9 +20,12 @@ import (
 
 // updateGCSStorageConfigurationCmd represents the storage config command
 var updateGCSStorageConfigurationCmd = &cobra.Command{
-	Use:   "update",
-	Short: "Update an GCS YugabyteDB Anywhere storage configuration",
-	Long:  "Update an GCS storage configuration in YugabyteDB Anywhere",
+	Use:     "update",
+	Aliases: []string{"edit"},
+	Short:   "Update an GCS YugabyteDB Anywhere storage configuration",
+	Long:    "Update an GCS storage configuration in YugabyteDB Anywhere",
+	Example: `yba storage-config gcs update --name <storage-configuration-name> \
+	--new-name <new-storage-configuration-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		storageNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {

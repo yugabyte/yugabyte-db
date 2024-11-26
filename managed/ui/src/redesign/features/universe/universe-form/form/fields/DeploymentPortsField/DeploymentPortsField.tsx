@@ -93,7 +93,7 @@ export const DeploymentPortsField: FC<DeploymentPortsFieldids> = ({ disabled, is
     {
       id: 'ysqlServerRpcPort',
       visible: ysqlEnabled,
-      disabled: isEditMode,
+      disabled: isEditMode || provider?.code == CloudType.kubernetes,
       tooltip: (
         <Trans
           i18nKey={'universeForm.advancedConfig.dbRPCPortTooltip'}
@@ -104,7 +104,7 @@ export const DeploymentPortsField: FC<DeploymentPortsFieldids> = ({ disabled, is
     {
       id: 'internalYsqlServerRpcPort',
       visible: ysqlEnabled && connectionPoolingEnabled,
-      disabled: isEditMode,
+      disabled: isEditMode || provider?.code == CloudType.kubernetes,
       tooltip: (
         <Trans
           i18nKey={'universeForm.advancedConfig.ysqlConPortTooltip'}
@@ -231,6 +231,7 @@ export const DeploymentPortsField: FC<DeploymentPortsFieldids> = ({ disabled, is
                                   inputProps={{
                                     'data-testid': `DeploymentPortsField-Input${item.id}`
                                   }}
+                                  trimWhitespace={false}
                                 />
                               </Box>
                             </Box>

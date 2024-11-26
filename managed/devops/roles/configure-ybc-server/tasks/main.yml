@@ -9,11 +9,13 @@
   tags: ybc-install
 
 - name: Download ybc package
-  include: download-ybc-package.yml
+  import_tasks: download-ybc-package.yml
   become: yes
   become_method: sudo
   become_user: "{{ user_name }}"
-  tags: ybc-install
+  tags: 
+    - ybc-install
+    - reinstall-ybc
 
 - name: Create ybc symlink folders
   file:
@@ -24,6 +26,7 @@
     group: "{{ user_name }}"
   tags:
     - ybc-install
+    - reinstall-ybc
 
 - name: Install | Create symlink to ybc package folder
   file:
@@ -35,6 +38,7 @@
     state: link
   tags:
     - ybc-install
+    - reinstall-ybc
 
 - block:
   - set_fact:
@@ -50,6 +54,7 @@
       group: "{{ user_name }}"
     tags:
       - ybc-install
+      - reinstall-ybc
 
   - name: Setup | Symlink {{ yb_process_type }} logs directory
     file:
@@ -62,6 +67,7 @@
       force: yes
     tags:
       - ybc-install
+      - reinstall-ybc
 
   - name: Setup | Create ybc config directory
     file:
@@ -72,6 +78,7 @@
       group: "{{ user_name }}"
     tags:
       - ybc-install
+      - reinstall-ybc
 
   - name: Configure | Create ybc gflags
     set_fact:

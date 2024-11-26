@@ -47,9 +47,7 @@
 
 using std::string;
 using strings::Substitute;
-using yb::QLValuePB;
 using yb::util::CompareUsingLessThan;
-using yb::FastDecodeSignedVarIntUnsafe;
 using yb::util::kInt32SignBitFlipMask;
 using yb::util::AppendBigEndianUInt64;
 using yb::util::AppendBigEndianUInt32;
@@ -560,7 +558,7 @@ void KeyEntryValue::AppendToKey(KeyBytes* key_bytes) const {
       return;
 
     case KeyEntryType::kHybridTime:
-      hybrid_time_val_.AppendEncodedInDocDbFormat(key_bytes->mutable_data());
+      hybrid_time_val_.AppendEncodedInDocDbFormat(&key_bytes->data());
       return;
 
     case KeyEntryType::kUInt16Hash:
@@ -1162,12 +1160,10 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
 
     case KeyEntryType::kColumnId: FALLTHROUGH_INTENDED;
     case KeyEntryType::kSystemColumnId: {
-      // Decode varint
-      {
-        ColumnId dummy_column_id;
-        ColumnId& column_id_ref = out ? out->column_id_val_ : dummy_column_id;
-        int64_t column_id_as_int64 = VERIFY_RESULT(FastDecodeSignedVarIntUnsafe(slice));
-        RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id_ref));
+      if (out) {
+        out->column_id_val_ = VERIFY_RESULT(ColumnId::Decode(slice));
+      } else {
+        RETURN_NOT_OK(ColumnId::Decode(slice));
       }
 
       type_ref = type;

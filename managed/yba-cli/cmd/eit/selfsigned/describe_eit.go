@@ -15,6 +15,7 @@ var describeSelfSignedEITCmd = &cobra.Command{
 	Aliases: []string{"get"},
 	Short:   "Describe a Self Signed YugabyteDB Anywhere Encryption In Transit (EIT) configuration",
 	Long:    "Describe a Self Signed YugabyteDB Anywhere Encryption In Transit (EIT) configuration",
+	Example: `yba eit self-signed describe --name <config-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		eitutil.DescribeEITValidation(cmd)
 	},

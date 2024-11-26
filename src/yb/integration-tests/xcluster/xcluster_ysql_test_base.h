@@ -27,6 +27,10 @@ class XClusterYsqlTestBase : public XClusterTestBase {
     uint32_t num_masters = 1;
     bool ranged_partitioned = false;
     bool is_colocated = false;
+    // Should setup ensure that the DBs with the same names on the source and target universes have
+    // different OIDs?
+    bool use_different_database_oids = false;
+    bool start_yb_controller_servers = false;
   };
 
   void SetUp() override;
@@ -158,10 +162,14 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       const NamespaceId& source_namespace_id);
   Status AddNamespaceToXClusterReplication(
       const NamespaceId& source_namespace_id, const NamespaceId& target_namespace_id);
+  // A empty list for namespace_names (the default) means just the namespace namespace_name.
   Status CreateReplicationFromCheckpoint(
       const std::string& target_master_addresses = {},
-      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId);
-  Status WaitForCreateReplicationToFinish(const std::string& target_master_addresses);
+      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId,
+      std::vector<NamespaceName> namespace_names = {});
+  // A empty list for namespace_names (the default) means just the namespace namespace_name.
+  Status WaitForCreateReplicationToFinish(
+      const std::string& target_master_addresses, std::vector<NamespaceName> namespace_names = {});
 
  protected:
   void TestReplicationWithSchemaChanges(TableId producer_table_id, bool bootstrap);

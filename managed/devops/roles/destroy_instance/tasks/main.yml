@@ -13,4 +13,4 @@
       - cloud_type in allowed_cloud_types
 
 - name: Run the destroy on {{ cloud_type }} cloud
-  include: "{{ cloud_type }}.yml"
+  import_tasks: "{{ cloud_type }}.yml"

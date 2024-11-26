@@ -57,7 +57,7 @@ You can perform an airgapped installation on RHEL 8 and CentOS 8.
 1. Download the airgapped bundle:
 
     ```sh
-    wget https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/airgapped/yb-voyager-1.8.2-0-rhel-8-x86_64.tar.gz
+    https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/airgapped/yb-voyager-latest-rhel-8-x86_64.tar.gz
     ```
 
 1. Extract the bundle.
@@ -122,14 +122,6 @@ psql: Minimum version: 14
 - oracle-instantclient-jdbc with exact version 21.5.0.0.0
 - oracle-instantclient-sqlplus with exact version 21.5.0.0.0
 
-#### CPAN modules
-
-- DBD::mysql with minimum version 5.005
-- Test::NoWarnings with minimum version 1.06
-- DBD::Oracle with minimum version 1.83
-- String::Random (no version dependency)
-- IO::Compress::Base (no version dependency)
-
 ### Installation Script
 
 The script by default checks what dependencies are installed on the system and throws an error mentioning the missing dependencies. If all the dependencies are found to be installed, it proceeds with the installation of ora2pg, debezium, and yb-voyager.
@@ -171,7 +163,7 @@ You can perform an airgapped installation on Ubuntu 22 and later.
 1. Download the airgapped bundle:
 
     ```sh
-    wget https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/airgapped/yb-voyager-1.8.2_0_debian.tar.gz
+    wget https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/airgapped/yb-voyager-latest_debian.tar.gz
     ```
 
 1. Extract the bundle.
@@ -234,14 +226,6 @@ psql: Minimum version: 14
 - oracle-instantclient-devel with exact version 21.5.0.0.0
 - oracle-instantclient-jdbc with exact version 21.5.0.0.0
 - oracle-instantclient-sqlplus with exact version 21.5.0.0.0
-
-#### CPAN modules
-
-- DBD::mysql with minimum version 5.005
-- Test::NoWarnings with minimum version 1.06
-- DBD::Oracle with minimum version 1.83
-- String::Random (no version dependency)
-- IO::Compress::Base (no version dependency)
 
 ### Install script
 

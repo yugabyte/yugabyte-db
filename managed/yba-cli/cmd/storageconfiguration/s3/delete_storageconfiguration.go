@@ -12,9 +12,11 @@ import (
 
 // deleteS3StorageConfigurationCmd represents the storage command
 var deleteS3StorageConfigurationCmd = &cobra.Command{
-	Use:   "delete",
-	Short: "Delete a S3 YugabyteDB Anywhere storage configuration",
-	Long:  "Delete a S3 storage configuration in YugabyteDB Anywhere",
+	Use:     "delete",
+	Aliases: []string{"remove", "rm"},
+	Short:   "Delete a S3 YugabyteDB Anywhere storage configuration",
+	Long:    "Delete a S3 storage configuration in YugabyteDB Anywhere",
+	Example: `yba storage-config s3 delete --name <storage-configuration-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		storageconfigurationutil.DeleteStorageConfigurationValidation(cmd)
 	},

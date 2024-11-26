@@ -14,9 +14,11 @@ import (
 // deleteEITCmd represents the eit command
 var deleteEITCmd = &cobra.Command{
 	Use:     "delete",
+	Aliases: []string{"remove", "rm"},
 	GroupID: "action",
 	Short:   "Delete a YugabyteDB Anywhere encryption in transit configuration",
 	Long:    "Delete an encryption in transit configuration in YugabyteDB Anywhere",
+	Example: `yba eit delete --name <config-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		eitutil.DeleteEITValidation(cmd)
 	},
@@ -35,7 +37,7 @@ func init() {
 		"[Required] The name of the configuration to be deleted.")
 	deleteEITCmd.Flags().StringP("cert-type", "c", "",
 		"[Optional] Type of the certificate, defaults to list all configurations. "+
-			"Allowed values: SelfSigned, CustomCertHostPath,"+
+			"Allowed values (case sensitive): SelfSigned, CustomCertHostPath,"+
 			" HashicorpVault, K8sCertManager.")
 	deleteEITCmd.MarkFlagRequired("name")
 	deleteEITCmd.Flags().BoolP("force", "f", false,

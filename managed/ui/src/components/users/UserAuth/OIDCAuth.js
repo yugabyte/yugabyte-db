@@ -45,7 +45,8 @@ const OIDC_FIELDS = [
   'oidcEmailAttribute',
   'showJWTInfoOnLogin',
   'oidcRefreshTokenEndpoint',
-  'oidc_default_role'
+  'oidc_default_role',
+  'oidc_group_claim'
 ];
 
 const TOAST_OPTIONS = { autoClose: 1750 };
@@ -598,6 +599,31 @@ export const OIDCAuth = (props) => {
                                           </Row>
                                         </Col>
                                       </Row>
+                                      <Row key="oidc_group_claim_token">
+                                        <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c group-claim">
+                                          <Row className="ua-field-row">
+                                            <Col className="ua-label-c">
+                                              <div>
+                                                Groups Claim&nbsp;
+                                                <YBInfoTip
+                                                  title="Groups Claim"
+                                                  content="The claim in the ID token containing a list of groups the user is a member of"
+                                                >
+                                                  <i className="fa fa-info-circle" />
+                                                </YBInfoTip>
+                                              </div>
+                                            </Col>
+                                            <Col lg={12} className="ua-field">
+                                              <Field
+                                                name="oidc_group_claim"
+                                                component={YBFormInput}
+                                                disabled={isDisabled}
+                                                className="ua-form-field"
+                                              />
+                                            </Col>
+                                          </Row>
+                                        </Col>
+                                      </Row>
                                     </div>
                                   </div>
                                   <div className="ua-box-c ">
@@ -746,9 +772,9 @@ export const OIDCAuth = (props) => {
                             Configure OIDC Provider Metadata&nbsp;
                             <YBInfoTip
                               title="Configure OIDC Metadata"
-                              content={<div>If you have an airgapped installation, provide an OpenID Provider Configuration Document for your provider. <br/>
-                              This contains the provider OIDC endpoints, supported claims, and other metadata.<br/>
-                              YugabyteDB Anywhere uses the metadata to discover the URLs to use for authentication and the authentication service&apos;s public signing keys</div>}
+                              content={<div>If you have an airgapped installation, provide an OpenID Provider Configuration Document for your provider. <br />
+                                This contains the provider OIDC endpoints, supported claims, and other metadata.<br />
+                                YugabyteDB Anywhere uses the metadata to discover the URLs to use for authentication and the authentication service&apos;s public signing keys</div>}
                             >
                               <i className="fa fa-info-circle" />
                             </YBInfoTip>

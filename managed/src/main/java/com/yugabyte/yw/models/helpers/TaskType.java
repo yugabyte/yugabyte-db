@@ -83,6 +83,16 @@ public enum TaskType {
       CustomerTask.TaskType.Resume,
       CustomerTask.TargetType.Universe),
 
+  PauseKubernetesUniverse(
+      com.yugabyte.yw.commissioner.tasks.upgrade.PauseKubernetesUniverse.class,
+      CustomerTask.TaskType.Pause,
+      CustomerTask.TargetType.Universe),
+
+  ResumeKubernetesUniverse(
+      com.yugabyte.yw.commissioner.tasks.upgrade.ResumeKubernetesUniverse.class,
+      CustomerTask.TaskType.Resume,
+      CustomerTask.TargetType.Universe),
+
   DestroyKubernetesUniverse(
       com.yugabyte.yw.commissioner.tasks.DestroyKubernetesUniverse.class,
       CustomerTask.TaskType.Delete,
@@ -574,6 +584,11 @@ public enum TaskType {
       CustomerTask.TaskType.Update,
       CustomerTask.TargetType.Node),
 
+  DecommissionNodeInstance(
+      com.yugabyte.yw.commissioner.tasks.DecommissionNodeInstance.class,
+      CustomerTask.TaskType.Update,
+      CustomerTask.TargetType.Node),
+
   MasterFailover(
       com.yugabyte.yw.commissioner.tasks.MasterFailover.class,
       CustomerTask.TaskType.MasterFailover,
@@ -872,6 +887,9 @@ public enum TaskType {
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterBackupRestoreEntries
           .class),
 
+  AddExistingPitrToXClusterConfig(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.AddExistingPitrToXClusterConfig.class),
+
   SetRestoreState(com.yugabyte.yw.commissioner.tasks.subtasks.SetRestoreState.class),
 
   // Tasks belonging to subtasks.cloud classpath
@@ -936,6 +954,9 @@ public enum TaskType {
   KubernetesWaitForPod(com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod.class),
 
   KubernetesCheckNumPod(com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckNumPod.class),
+
+  PodDisruptionBudgetPolicy(
+      com.yugabyte.yw.commissioner.tasks.subtasks.PodDisruptionBudgetPolicy.class),
 
   SetActiveUniverseKeys(com.yugabyte.yw.commissioner.tasks.subtasks.SetActiveUniverseKeys.class),
 
@@ -1084,7 +1105,9 @@ public enum TaskType {
 
   UpdateUniverseFields(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseFields.class),
 
-  RunNodeCommand(com.yugabyte.yw.commissioner.tasks.subtasks.RunNodeCommand.class);
+  RunNodeCommand(com.yugabyte.yw.commissioner.tasks.subtasks.RunNodeCommand.class),
+
+  MasterLeaderStepdown(com.yugabyte.yw.commissioner.tasks.subtasks.MasterLeaderStepdown.class);
 
   private final Class<? extends ITask> taskClass;
 
@@ -1112,6 +1135,8 @@ public enum TaskType {
           .put(ReadOnlyKubernetesClusterCreate, 12)
           .put(ReadOnlyKubernetesClusterDelete, 13)
           .put(ResumeUniverse, 14)
+          .put(PauseKubernetesUniverse, 15) // You may want to assign a different code
+          .put(ResumeKubernetesUniverse, 16) // You may want to assign a different code
           // Upgrade/Maintenance (30-69):
           .put(CertsRotate, 30)
           .put(ConfigureDBApis, 31)

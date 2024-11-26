@@ -41,6 +41,7 @@ import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
 import com.yugabyte.yw.common.operator.KubernetesOperator;
+import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExtraMigration;
@@ -49,10 +50,15 @@ import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Principal;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.rbac.ResourceGroup;
+import com.yugabyte.yw.models.rbac.Role;
+import com.yugabyte.yw.models.rbac.RoleBinding;
+import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import com.yugabyte.yw.scheduler.JobScheduler;
 import com.yugabyte.yw.scheduler.Scheduler;
 import db.migration.default_.common.R__Sync_System_Roles;
 import io.ebean.DB;
+import io.ebean.PagedList;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Gauge;
 import io.prometheus.client.hotspot.DefaultExports;
@@ -125,7 +131,8 @@ public class AppInit {
       @Named("AppStartupTimeMs") Long startupTime,
       ReleasesUtils releasesUtils,
       JobScheduler jobScheduler,
-      NodeAgentEnabler nodeAgentEnabler)
+      NodeAgentEnabler nodeAgentEnabler,
+      RoleBindingUtil roleBindingUtil)
       throws ReflectiveOperationException {
     try {
       log.info("Yugaware Application has started");
@@ -154,13 +161,33 @@ public class AppInit {
           alertConfigurationService.createDefaultConfigs(customer);
           // Create system roles for the newly created customer.
           R__Sync_System_Roles.syncSystemRoles();
-          // Principal entry for newly created users.
+          // Principal entry and role bindings for newly created users.
           for (Users user : Users.find.all()) {
             Principal principal = Principal.get(user.getUuid());
             if (principal == null) {
               log.info("Adding Principal entry for user with email: " + user.getEmail());
               new Principal(user).save();
             }
+            ResourceGroup resourceGroup =
+                ResourceGroup.getSystemDefaultResourceGroup(customer.getUuid(), user);
+            // Create a single role binding for the user.
+            Users.Role usersRole = user.getRole();
+            Role newRbacRole = Role.get(customer.getUuid(), usersRole.name());
+            RoleBinding createdRoleBinding =
+                roleBindingUtil.createRoleBinding(
+                    user.getUuid(),
+                    newRbacRole.getRoleUUID(),
+                    RoleBindingType.System,
+                    resourceGroup);
+            log.info(
+                "Created system role binding for user '{}' (email '{}') of customer '{}', "
+                    + "with role '{}' (name '{}'), and default role binding '{}'.",
+                user.getUuid(),
+                user.getEmail(),
+                customer.getUuid(),
+                newRbacRole.getRoleUUID(),
+                newRbacRole.getName(),
+                createdRoleBinding.toString());
           }
         }
 
@@ -238,7 +265,12 @@ public class AppInit {
           log.debug("skipping fetch latest arm build for cloud enabled deployment");
         }
 
-        updateSensitiveGflagsforRedaction(gFlagsValidation);
+        Thread flagsThread =
+            new Thread(
+                () -> {
+                  updateSensitiveGflagsforRedaction(gFlagsValidation);
+                });
+        flagsThread.start();
 
         // initialize prometheus exports
         DefaultExports.initialize();
@@ -340,16 +372,31 @@ public class AppInit {
   }
 
   private void updateSensitiveGflagsforRedaction(GFlagsValidation gFlagsValidation) {
+    int pageSize = 50, pageIndex = 0;
+    PagedList<Release> pagedList;
     Set<String> sensitiveGflags = new HashSet<>();
-    for (Release release : Release.getAll()) {
-      // Extract sensitive flags and cache in DB for later use.
-      if (release.getSensitiveGflags() == null) {
-        release.setSensitiveGflags(
-            gFlagsValidation.getSensitiveJsonPathsForVersion(release.getVersion()));
-        release.save();
+    do {
+      pagedList =
+          Release.find
+              .query()
+              .setFirstRow(pageIndex++ * pageSize)
+              .setMaxRows(pageSize)
+              .findPagedList();
+      List<Release> releaseList = pagedList.getList();
+      releaseList.parallelStream()
+          .forEach(
+              release -> {
+                if (release.getSensitiveGflags() == null) {
+                  release.setSensitiveGflags(
+                      gFlagsValidation.getSensitiveJsonPathsForVersion(release.getVersion()));
+                  release.save();
+                }
+              });
+
+      for (Release r : releaseList) {
+        sensitiveGflags.addAll(r.getSensitiveGflags());
       }
-      sensitiveGflags.addAll(release.getSensitiveGflags());
-    }
+    } while (pagedList.hasNext());
     RedactingService.SECRET_JSON_PATHS_LOGS.addAll(
         sensitiveGflags.stream().map(JsonPath::compile).collect(Collectors.toList()));
   }

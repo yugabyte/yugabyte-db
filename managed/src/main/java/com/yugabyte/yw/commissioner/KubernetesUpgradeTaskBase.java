@@ -382,7 +382,6 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       if (enableYbc) {
         Set<NodeDetails> primaryTservers = new HashSet<>(universe.getTServersInPrimaryCluster());
         installYbcOnThePods(
-            universe.getName(),
             primaryTservers,
             false,
             ybcSoftwareVersion,
@@ -429,11 +428,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           Set<NodeDetails> replicaTservers =
               new HashSet<NodeDetails>(universe.getNodesInCluster(asyncCluster.uuid));
           installYbcOnThePods(
-              universe.getName(),
-              replicaTservers,
-              true,
-              ybcSoftwareVersion,
-              asyncCluster.userIntent.ybcFlags);
+              replicaTservers, true, ybcSoftwareVersion, asyncCluster.userIntent.ybcFlags);
           performYbcAction(replicaTservers, true, "stop");
           createWaitForYbcServerTask(replicaTservers);
         }
@@ -524,7 +519,6 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
         Set<NodeDetails> primaryTservers =
             new HashSet<NodeDetails>(universe.getTServersInPrimaryCluster());
         installYbcOnThePods(
-            universe.getName(),
             primaryTservers,
             false,
             ybcSoftwareVersion,
@@ -565,7 +559,6 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
                   universe.getNodesInCluster(
                       universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid));
           installYbcOnThePods(
-              universe.getName(),
               replicaTservers,
               true,
               ybcSoftwareVersion,

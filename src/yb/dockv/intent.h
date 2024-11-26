@@ -182,5 +182,19 @@ Status EnumerateIntents(
     KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents,
     LastKey last_key = LastKey::kFalse);
 
+struct ParsedIntent {
+  // Intent DocPath.
+  Slice doc_path;
+  dockv::IntentTypeSet types;
+  // Intent doc hybrid time.
+  Slice doc_ht;
+};
+
+// Parses the intent pointed to by intent_iter to a ParsedIntent.
+// Intent is encoded as Prefix + DocPath + IntentType + DocHybridTime.
+// `transaction_id_source` could be larger that 16 bytes, it is not problem here, because it is
+// used for error reporting.
+Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_source);
+
 }  // namespace dockv
 }  // namespace yb

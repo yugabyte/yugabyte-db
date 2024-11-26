@@ -19,9 +19,11 @@ import (
 )
 
 var listTaskCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List YugabyteDB Anywhere tasks",
-	Long:  "List YugabyteDB Anywhere tasks",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List YugabyteDB Anywhere tasks",
+	Long:    "List YugabyteDB Anywhere tasks",
+	Example: `yba task list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
@@ -31,7 +33,7 @@ var listTaskCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		// filter by uuid
-		taskUUID, err := cmd.Flags().GetString("task-uuid")
+		taskUUID, err := cmd.Flags().GetString("uuid")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -54,9 +56,9 @@ var listTaskCmd = &cobra.Command{
 		}
 		if len(r) < 1 {
 			if util.IsOutputType(formatter.TableFormatKey) {
-				logrus.Infoln("No tasks found\n")
+				logrus.Info("No tasks found\n")
 			} else {
-				logrus.Infoln("[]\n")
+				logrus.Info("[]\n")
 			}
 			return
 		}
@@ -68,6 +70,6 @@ var listTaskCmd = &cobra.Command{
 func init() {
 	listTaskCmd.Flags().SortFlags = false
 
-	listTaskCmd.Flags().String("task-uuid", "", "[Optional] UUID of the task.")
+	listTaskCmd.Flags().StringP("uuid", "u", "", "[Optional] UUID of the task.")
 
 }

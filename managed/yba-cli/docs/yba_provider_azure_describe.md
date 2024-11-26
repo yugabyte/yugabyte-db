@@ -10,6 +10,12 @@ Describe an Azure provider in YugabyteDB Anywhere
 yba provider azure describe [flags]
 ```
 
+### Examples
+
+```
+yba provider azure describe --name <provider-name>
+```
+
 ### Options
 
 ```

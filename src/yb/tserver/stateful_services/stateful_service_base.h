@@ -49,13 +49,13 @@ namespace stateful_service {
 #define STATEFUL_SERVICE_IMPL_METHOD_HELPER(i, data, method_name) \
   Status BOOST_PP_CAT(method_name, Impl)( \
       const BOOST_PP_CAT(method_name, RequestPB) & req, \
-      BOOST_PP_CAT(method_name, ResponsePB) * resp); \
+      BOOST_PP_CAT(method_name, ResponsePB) * resp, rpc::RpcContext & rpc); \
   void method_name( \
       const BOOST_PP_CAT(method_name, RequestPB) * req, \
-      BOOST_PP_CAT(method_name, ResponsePB) * resp, \
-      rpc::RpcContext rpc) override { \
-    HandleRpcRequestWithTermCheck( \
-        resp, &rpc, [req, resp, this]() { return BOOST_PP_CAT(method_name, Impl)(*req, resp); }); \
+      BOOST_PP_CAT(method_name, ResponsePB) * resp, rpc::RpcContext rpc) override { \
+    HandleRpcRequestWithTermCheck(resp, &rpc, [req, resp, &rpc, this]() { \
+      return BOOST_PP_CAT(method_name, Impl)(*req, resp, rpc); \
+    }); \
   }
 
 class StatefulServiceBase {
@@ -105,6 +105,7 @@ class StatefulServiceBase {
   Result<int64_t> GetLeaderTerm() EXCLUDES(service_state_mutex_);
 
   Result<std::shared_ptr<client::YBSession>> GetYBSession(MonoDelta delta);
+  Result<std::shared_ptr<client::YBSession>> GetYBSession(CoarseTimePoint deadline);
 
   Result<client::TableHandle*> GetServiceTable() EXCLUDES(table_handle_mutex_);
 

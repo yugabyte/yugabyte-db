@@ -195,7 +195,7 @@ client::TransactionPool& MasterTabletServer::TransactionPool() {
 }
 
 rpc::Messenger* MasterTabletServer::GetMessenger(ash::Component component) const {
-  LOG(FATAL) << "Unexpected call of GetMessenger()";
+  LOG(WARNING) << "Unexpected call of GetMessenger()";
   return nullptr;
 }
 
@@ -227,6 +227,10 @@ Result<pgwrapper::PGConn> MasterTabletServer::CreateInternalPGConn(
     const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) {
   LOG(DFATAL) << "Unexpected call of CreateInternalPGConn()";
   return STATUS_FORMAT(InternalError, "Unexpected call of CreateInternalPGConn()");
+}
+
+bool MasterTabletServer::SkipCatalogVersionChecks() {
+  return master_->catalog_manager()->SkipCatalogVersionChecks();
 }
 
 } // namespace master

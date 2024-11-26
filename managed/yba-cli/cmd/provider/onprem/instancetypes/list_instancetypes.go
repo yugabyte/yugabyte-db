@@ -18,9 +18,11 @@ import (
 
 // listInstanceTypesCmd represents the provider command
 var listInstanceTypesCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List instance types of a YugabyteDB Anywhere on-premises provider",
-	Long:  "List instance types of a YugabyteDB Anywhere on-premises provider",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List instance types of a YugabyteDB Anywhere on-premises provider",
+	Long:    "List instance types of a YugabyteDB Anywhere on-premises provider",
+	Example: `yba provider onprem instance-type list --name <provider-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -42,19 +44,14 @@ var listInstanceTypesCmd = &cobra.Command{
 		}
 
 		providerListRequest := authAPI.GetListOfProviders()
-		providerListRequest = providerListRequest.Name(providerName)
+		providerListRequest = providerListRequest.Name(providerName).ProviderCode(util.OnpremProviderType)
 		r, response, err := providerListRequest.Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Instance Type", "List - Get Provider")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		if len(r) < 1 {
-			logrus.Fatalf("No providers with name: %s found\n", providerName)
-		}
-
-		if r[0].GetCode() != util.OnpremProviderType {
-			errMessage := "Operation only supported for On-premises providers."
-			logrus.Fatalf(formatter.Colorize(errMessage+"\n", formatter.RedColor))
+			logrus.Fatalf("No on premises providers with name: %s found\n", providerName)
 		}
 
 		providerUUID := r[0].GetUuid()

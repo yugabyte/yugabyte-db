@@ -4,7 +4,6 @@ headerTitle: Prepare your infrastructure
 linkTitle: Prepare
 description: Prepare cloud permissions, networking, and servers for YugabyteDB Anywhere.
 headcontent: Prepare cloud permissions, networking, and servers for YugabyteDB Anywhere
-image: fa-thin fa-clipboard-list
 menu:
   stable_yugabyte-platform:
     parent: yugabytedb-anywhere

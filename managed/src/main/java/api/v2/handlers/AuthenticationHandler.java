@@ -40,8 +40,6 @@ public class AuthenticationHandler {
 
   public List<AuthGroupToRolesMapping> listMappings(UUID cUUID) throws Exception {
 
-    checkRuntimeConfig();
-
     List<GroupMappingInfo> groupInfoList =
         GroupMappingInfo.find.query().where().eq("customer_uuid", cUUID).findList();
     List<AuthGroupToRolesMapping> groupMappingList = new ArrayList<AuthGroupToRolesMapping>();
@@ -86,8 +84,6 @@ public class AuthenticationHandler {
       throw new PlatformServiceException(BAD_REQUEST, "Only SuperAdmin can create group mappings!");
     }
 
-    checkRuntimeConfig();
-
     for (AuthGroupToRolesMapping mapping : AuthGroupToRolesMapping) {
       GroupMappingInfo mappingInfo =
           GroupMappingInfo.find
@@ -124,6 +120,7 @@ public class AuthenticationHandler {
           // Resource group is null for system roles, so need to populate that before
           // adding role binding.
           if (rbacRole.getRoleType().equals(RoleType.Custom)) {
+            checkRuntimeConfig();
             RoleBinding.create(
                 mappingInfo, RoleBindingType.Custom, rbacRole, rrd.getResourceGroup());
           } else {
@@ -147,8 +144,6 @@ public class AuthenticationHandler {
       throw new PlatformServiceException(BAD_REQUEST, "Only SuperAdmin can delete group mappings!");
     }
 
-    checkRuntimeConfig();
-
     GroupMappingInfo entity =
         GroupMappingInfo.find
             .query()
@@ -167,7 +162,9 @@ public class AuthenticationHandler {
   private void checkRuntimeConfig() {
     if (!confGetter.getGlobalConf(GlobalConfKeys.groupMappingRbac)) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "yb.security.group_mapping_rbac_support runtime config is disabled!");
+          BAD_REQUEST,
+          "Enable yb.security.group_mapping_rbac_support runtime config to assign custom roles to"
+              + " auth groups!");
     }
   }
 

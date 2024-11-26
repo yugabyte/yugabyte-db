@@ -376,12 +376,12 @@ Result<ApplyTransactionState> GetIntentsBatch(
 
   auto reverse_index_iter = CreateRocksDBIterator(
       intents_db, &KeyBounds::kNoBounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
-      rocksdb::kDefaultQueryId, /* file_filter = */ nullptr, &reverse_index_upperbound,
+      rocksdb::kNoCacheQueryId, /* file_filter = */ nullptr, &reverse_index_upperbound,
       rocksdb::CacheRestartBlockKeys::kFalse);
 
   BoundedRocksDbIterator intent_iter = CreateRocksDBIterator(
       intents_db, key_bounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
-      rocksdb::kDefaultQueryId, /* file_filter = */ nullptr, /* iterate_upper_bound = */ nullptr,
+      rocksdb::kNoCacheQueryId, /* file_filter = */ nullptr, /* iterate_upper_bound = */ nullptr,
       rocksdb::CacheRestartBlockKeys::kFalse);
 
   reverse_index_iter.Seek(key_prefix);
@@ -427,7 +427,8 @@ Result<ApplyTransactionState> GetIntentsBatch(
             return ApplyTransactionState{};
           }
 
-          auto intent = VERIFY_RESULT(ParseIntentKey(intent_iter.key(), transaction_id_slice));
+          auto intent = VERIFY_RESULT(dockv::ParseIntentKey(
+              intent_iter.key(), transaction_id_slice));
 
           if (intent.types.Test(dockv::IntentType::kStrongWrite)) {
             auto decoded_value = VERIFY_RESULT(dockv::DecodeIntentValue(

@@ -38,7 +38,7 @@ The YugabyteDB Helm chart has been tested with the following software versions:
 - Kubernetes 1.20 or later with nodes such that a total of 12 CPU cores and 18 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 6 GB RAM allocated to YugabyteDB.
 - Helm 3.4 or later.
 - YugabyteDB Docker image (yugabytedb/yugabyte) 2.1.0 or later
-- For optimal performance, ensure you have set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#ulimits) on each node in your Kubernetes cluster.
+- For optimal performance, ensure you have set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#set-ulimits) on each node in your Kubernetes cluster.
 
 Confirm that `helm` and `kubectl` are configured correctly, as follows:
 
@@ -308,6 +308,46 @@ Replica count can be changed using the following command. Note that only the YB-
 helm upgrade --set replicas.tserver=5 yb-demo ./yugabyte
 ```
 
+### Readiness probes
+
+{{<tags/feature/ea>}}Readiness probes provide readiness checks for your Kubernetes deployment. Probes are compatible with both direct Helm deployments and [YugabyteDB Anywhere-managed deployments](../../../../../yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#configure-helm-overrides), and work with TLS enabled or restricted authorization environments. Use the probes to ensure pods are ready before being marked as available. The probes verify connectivity using ysqlsh for YSQL and ycqlsh for YCQL.
+
+The following probes are available:
+
+- YSQL Readiness. Uses ysqlsh to verify connectivity via local socket for credentialed setups.
+
+- YCQL Readiness. Uses ycqlsh to validate connectivity.
+
+- Master Readiness. Uses `httpGet` to probe master.
+
+- Custom Readiness. Supports custom readiness probe parameters, such as delays, timeouts, and thresholds.
+
+- Startup probes to delay enforcing of readiness probes.
+
+Readiness probes are disabled by default for compatibility.
+
+Enable probes via `values.yaml` or using Kubernetes overrides.
+
+```yaml
+master:
+  readinessProbe:
+    enabled: true
+
+tserver:
+  readinessProbe:
+    enabled: true
+```
+
+The following is example of custom readiness parameters:
+
+```yaml
+tserver:
+  customReadinessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 20
+    timeoutSeconds: 10
+```
+
 ### Independent LoadBalancers
 
 By default, the YugabyteDB Helm chart exposes the client API endpoints and master UI endpoint using two load balancers. If you want to expose the client APIs using independent LoadBalancers, you can execute the following command:
@@ -373,12 +413,21 @@ gflags.tserver.placement_cloud=myk8s-cloud,gflags.tserver.placement_region=myk8s
  --namespace yb-demo
 ```
 
-## Upgrade cluster
+## Upgrade the software version of YugabyteDB
 
-You can perform rolling upgrades on the YugabyteDB cluster with the following command. Change the `Image.tag` value to any valid tag from [YugabyteDB's listing on the Docker Hub registry](https://hub.docker.com/r/yugabytedb/yugabyte/tags/). By default, the installation uses the `latest` Docker image. In the following example, the Docker image specified is `2.1.6.0-b17`:
+You can upgrade the software on the YugabyteDB cluster with the following command. By default, this performs a [rolling update](https://github.com/yugabyte/charts/blob/853d7ac744cf6d637b5877f4681940825beda8f6/stable/yugabyte/values.yaml#L60) of the pods.
 
 ```sh
-helm upgrade yb-demo yugabytedb/yugabyte --set Image.tag=2.1.6.0-b17 --wait -n yb-demo
+helm repo update
+helm upgrade yb-demo yugabytedb/yugabyte --version {{<yb-version version="stable" format="short">}} --wait -n yb-demo
+```
+
+## Update the configuration of YugabyteDB pods
+
+You can update most settings in the helm chart by running a `helm upgrade` with the new values. By default, this performs a [rolling update](https://github.com/yugabyte/charts/blob/853d7ac744cf6d637b5877f4681940825beda8f6/stable/yugabyte/values.yaml#L60) of the pods.
+
+```sh
+helm upgrade yb-demo yugabytedb/yugabyte --set resource.tserver.requests.cpu=4 --wait -n yb-demo
 ```
 
 ## Delete cluster

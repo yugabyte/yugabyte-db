@@ -22,6 +22,10 @@ var createGCPEARCmd = &cobra.Command{
 	Aliases: []string{"add"},
 	Short:   "Create a YugabyteDB Anywhere GCP encryption at rest configuration",
 	Long:    "Create a GCP encryption at rest configuration in YugabyteDB Anywhere",
+	Example: `yba ear gcp create --name <config-name> \
+	--credentials-file-path <credentials-file-path> \
+	--key-ring-name <key-ring-name> --crypto-key-name <crypto-key-name> \
+	--protection-level <protection-level>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		earutil.CreateEARValidation(cmd)
 	},
@@ -92,21 +96,18 @@ var createGCPEARCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(strings.TrimSpace(protectionLevel)) != 0 {
-			requestBody[util.GCPProtectionLevelField] = protectionLevel
+			requestBody[util.GCPProtectionLevelField] = strings.ToUpper(protectionLevel)
 		}
 
-		rCreate, response, err := authAPI.CreateKMSConfig(util.GCPEARType).
+		rTask, response, err := authAPI.CreateKMSConfig(util.GCPEARType).
 			KMSConfig(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "EAR: GCP", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		configUUID := rCreate.GetResourceUUID()
-		taskUUID := rCreate.GetTaskUUID()
-
 		earutil.WaitForCreateEARTask(authAPI,
-			configName, configUUID, util.GCPEARType, taskUUID)
+			configName, rTask, util.GCPEARType)
 
 	},
 }
@@ -132,9 +133,9 @@ func init() {
 			"else a new one will be created automatically.")
 	createGCPEARCmd.MarkFlagRequired("crypto-key-name")
 	createGCPEARCmd.MarkFlagRequired("key-ring-name")
-	createGCPEARCmd.Flags().String("protection-level", "HSM",
+	createGCPEARCmd.Flags().String("protection-level", "hsm",
 		"[Optional] The protection level to use for this key. "+
-			"Allowed values (case sensitive): SOFTWARE and HSM.")
+			"Allowed values: software, hsm.")
 	createGCPEARCmd.Flags().String("endpoint", "",
 		"[Optional] GCP KMS Endpoint.")
 

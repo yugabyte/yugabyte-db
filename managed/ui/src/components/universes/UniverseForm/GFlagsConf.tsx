@@ -46,7 +46,8 @@ export const useStyles = makeStyles((theme: Theme) => ({
 
 const GFlagDescription = {
   ysql_hba_conf_csv: 'universeForm.gFlags.hbaConfDescription',
-  ysql_ident_conf_csv: 'universeForm.gFlags.identConfDescriptionFirst'
+  ysql_ident_conf_csv: 'universeForm.gFlags.identConfDescriptionFirst',
+  ysql_pg_conf_csv: 'universeForm.gFlags.pgConfDescription'
 } as const;
 
 const GFlagAdditionalDescription = {

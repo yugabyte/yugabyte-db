@@ -12,29 +12,18 @@ Create a database user and provide the user with READ access to all the resource
    CREATE USER ybvoyager PASSWORD 'password';
    ```
 
-1. Switch to the database that you want to migrate.
+1. Grant permissions for migration. Use the `yb-voyager-pg-grant-migration-permissions.sql` script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
 
    ```sql
-   \c <database_name>
+   psql -h <host> \
+        -d <database> \
+        -U <username> \
+        -v voyager_user='ybvoyager' \
+        -v schema_list='<comma_separated_schema_list>' \
+        -v is_live_migration=0 \
+        -v is_live_migration_fall_back=0 \
+        -f <path_to_the_script>
    ```
-
-1. Grant the `USAGE` permission to the `ybvoyager` user on all schemas of the database.
-
-   ```sql
-   SELECT 'GRANT USAGE ON SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
-   ```
-
-   The above `SELECT` statement generates a list of `GRANT USAGE` statements which are then executed by `psql` because of the `\gexec` switch. The `\gexec` switch works for PostgreSQL v9.6 and later. For older versions, you'll have to manually execute the `GRANT USAGE ON SCHEMA schema_name TO ybvoyager` statement, for each schema in the source PostgreSQL database.
-
-1. Grant `SELECT` permission on all the tables and sequences.
-
-   ```sql
-   SELECT 'GRANT SELECT ON ALL TABLES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
-
-   SELECT 'GRANT SELECT ON ALL SEQUENCES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
-   ```
-
-   Note that on RDS, you may get "Permission Denied" errors for `pg_catalog tables` (such as pg_statistic). These errors do not affect the migration and can be ignored.
 
    The `ybvoyager` user can now be used for migration.
 

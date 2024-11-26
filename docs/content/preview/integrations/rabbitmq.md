@@ -37,7 +37,7 @@ To run RabbitMQ with YugabyteDB, do the following:
     CDC Stream ID: 31dd4440caca46038ba4a9365bb89d36
     ```
 
-1. Create a table from your [ysql shell](../../admin/ysqlsh/#starting-ysqlsh) using the following command:
+1. Create a table from your [ysql shell](../../api/ysqlsh/#starting-ysqlsh) using the following command:
 
     ```sh
     create table test (id int primary key, name text, days_worked bigint);

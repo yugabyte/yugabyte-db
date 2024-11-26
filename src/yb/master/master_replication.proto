@@ -26,6 +26,12 @@ import "yb/rpc/service.proto";
 import "yb/tablet/operations.proto";
 import "yb/common/common.proto";
 
+message CDCStreamInfoOptionsPB {
+  // This field stores the type of the LSN being used by the replication slot.
+  optional ReplicationSlotLsnType cdcsdk_ysql_replication_slot_lsn_type =
+    1 [default = ReplicationSlotLsnType_UNSPECIFIED];
+}
+
 message CDCStreamInfoPB {
   optional bytes stream_id = 1;
   // For CDCSDK, table_id contains the qualified list of tables for the stream.
@@ -52,6 +58,9 @@ message CDCStreamInfoPB {
   // This field stores the list of user created tables that have been removed from CDCSDK
   // stream.
   repeated bytes unqualified_table_id = 13;
+
+  // Field to store all the metadata related to a CDC stream.
+  optional CDCStreamInfoOptionsPB cdc_stream_info_options = 14;
 }
 
 message ValidateReplicationInfoRequestPB {
@@ -488,6 +497,19 @@ message UpdateConsumerOnProducerMetadataResponsePB {
   optional cdc.SchemaVersionsPB schema_versions = 4;
 }
 
+message InsertPackedSchemaForXClusterTargetRequestPB {
+  // If this is an alter on a colocated table, then this is the colocated parent table id,
+  // and we also need to specify the colocation_id.
+  optional bytes table_id = 1;
+  optional SchemaPB packed_schema = 2;
+  optional uint32 current_schema_version = 3;
+  optional uint32 colocation_id = 4;
+}
+
+message InsertPackedSchemaForXClusterTargetResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 message GetXClusterSafeTimeRequestPB{}
 
 message GetXClusterSafeTimeResponsePB {
@@ -609,6 +631,15 @@ message IsXClusterBootstrapRequiredResponsePB {
   optional MasterErrorPB error = 1;
   optional bool not_ready = 2;
   optional bool initial_bootstrap_required = 3;
+}
+
+message XClusterEnsureSequenceUpdatesAreInWalRequestPB {
+  required string replication_group_id = 1;
+  repeated string namespace_ids = 2;
+}
+
+message XClusterEnsureSequenceUpdatesAreInWalResponsePB {
+  optional MasterErrorPB error = 1;
 }
 
 message GetXClusterStreamsRequestPB {
@@ -854,6 +885,8 @@ service MasterReplication {
       returns (UpdateConsumerOnProducerSplitResponsePB);
   rpc UpdateConsumerOnProducerMetadata(UpdateConsumerOnProducerMetadataRequestPB)
       returns (UpdateConsumerOnProducerMetadataResponsePB);
+  rpc InsertPackedSchemaForXClusterTarget(InsertPackedSchemaForXClusterTargetRequestPB)
+      returns (InsertPackedSchemaForXClusterTargetResponsePB);
 
   rpc GetUniverseReplications(GetUniverseReplicationsRequestPB)
       returns (GetUniverseReplicationsResponsePB);
@@ -894,6 +927,8 @@ service MasterReplication {
       returns (XClusterDeleteOutboundReplicationGroupResponsePB);
   rpc IsXClusterBootstrapRequired(IsXClusterBootstrapRequiredRequestPB)
       returns (IsXClusterBootstrapRequiredResponsePB);
+  rpc XClusterEnsureSequenceUpdatesAreInWal(XClusterEnsureSequenceUpdatesAreInWalRequestPB)
+      returns (XClusterEnsureSequenceUpdatesAreInWalResponsePB);
   rpc GetXClusterStreams(GetXClusterStreamsRequestPB)
       returns (GetXClusterStreamsResponsePB);
   rpc RepairOutboundXClusterReplicationGroupAddTable(

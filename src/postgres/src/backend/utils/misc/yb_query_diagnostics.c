@@ -30,29 +30,47 @@
 #include <unistd.h>
 
 #include "access/hash.h"
+#include "access/htup_details.h"
+#include "access/xact.h"
+#include "catalog/indexing.h"
+#include "catalog/pg_collation.h"
+#include "catalog/pg_constraint.h"
+#include "catalog/pg_namespace_d.h"
+#include "commands/dbcommands.h"
+#include "commands/tablespace.h"
 #include "commands/explain.h"
+#include "common/fe_memutils.h"
 #include "common/file_perm.h"
 #include "common/pg_prng.h"
 #include "common/pg_yb_common.h"
+#include "executor/spi.h"
+#include "foreign/foreign.h"
 #include "funcapi.h"
 #include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "postmaster/bgworker.h"
 #include "storage/ipc.h"
 #include "utils/builtins.h"
+#include "utils/fmgroids.h"
 #include "utils/jsonb.h"
 #include "utils/lsyscache.h"
+#include "utils/syscache.h"
 
 #define QUERY_DIAGNOSTICS_HASH_MAX_SIZE 100	/* Maximum number of entries in the hash table */
 #define BIND_VAR_FILE "bind_variables.csv"
 #define PGSS_FILE "pg_stat_statements.csv"
 #define ASH_FILE "active_session_history.csv"
 #define EXPLAIN_PLAN_FILE "explain_plan.txt"
+#define SCHEMA_DETAILS_FILE "schema_details.txt"
+/* Separates schema details for different tables by 60 '=' */
+#define SCHEMA_DETAILS_SEPARATOR "============================================================"
+
 /* Constants used for yb_query_diagnostics_status view */
 #define YB_QUERY_DIAGNOSTICS_STATUS_COLS 8
 #define DIAGNOSTICS_SUCCESS 0
 #define DIAGNOSTICS_IN_PROGRESS 1
 #define DIAGNOSTICS_ERROR 2
+#define DIAGNOSTICS_CANCELLED 3
 
 typedef struct BundleInfo
 {
@@ -87,7 +105,7 @@ TimestampTz *yb_pgss_last_reset_time;
 static HTAB *bundles_in_progress = NULL;
 static LWLock *bundles_in_progress_lock; /* protects bundles_in_progress hash table */
 static YbQueryDiagnosticsBundles *bundles_completed = NULL;
-static const char *status_msg[] = {"Success", "In Progress", "Error"};
+static const char *status_msg[] = {"Success", "In Progress", "Error", "Cancelled"};
 static bool current_query_sampled = false;
 
 static void YbQueryDiagnostics_ExecutorStart(QueryDesc *queryDesc, int eflags);
@@ -98,7 +116,7 @@ static void FetchParams(YbQueryDiagnosticsParams *params, FunctionCallInfo fcinf
 static void ConstructDiagnosticsPath(YbQueryDiagnosticsMetadata *metadata);
 static void FormatParams(StringInfo buf, const ParamListInfo params);
 static int DumpToFile(const char *path, const char *file_name, const char *data, char *description);
-static void RemoveExpiredEntries();
+static void FlushAndCleanBundles();
 static void AccumulateBindVariables(YbQueryDiagnosticsEntry *entry,
 									const double totaltime_ms, const ParamListInfo params);
 static void AccumulateExplain(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *entry,
@@ -110,17 +128,35 @@ static int YbQueryDiagnosticsBundlesShmemSize(void);
 static Datum CreateJsonb(const YbQueryDiagnosticsParams *params);
 static void CreateJsonbInt(JsonbParseState *state, char *key, int64 value);
 static void CreateJsonbBool(JsonbParseState *state, char *key, bool value);
-static void InsertCompletedBundleInfo(const YbQueryDiagnosticsMetadata *metadata, int status,
-							 		  const char *description);
+static void InsertBundlesIntoView(const YbQueryDiagnosticsMetadata *metadata, int status,
+								  const char *description);
 static void OutputBundle(const YbQueryDiagnosticsMetadata metadata, const char *description,
-			 			 const char *status, Tuplestorestate *tupstore, TupleDesc tupdesc);
+						 const char *status, Tuplestorestate *tupstore, TupleDesc tupdesc);
 static void ProcessActiveBundles(Tuplestorestate *tupstore, TupleDesc tupdesc);
 static void ProcessCompletedBundles(Tuplestorestate *tupstore, TupleDesc tupdesc);
 static inline int CircularBufferMaxEntries(void);
+static void RemoveBundleInfo(int64 query_id);
+static int MakeDirectory(const char *path, char *description);
+static void FinishBundleProcessing(YbQueryDiagnosticsMetadata *metadata,
+								  int status, const char *description);
+static int DumpBufferIfHalfFull(char *buffer, size_t max_len, const char *file_name,
+								 const char *folder_path, char *description, slock_t *mutex);
+
+/* Function used in gathering bind_variables data */
+static void AccumulateBindVariables(YbQueryDiagnosticsEntry *entry,
+									const double totaltime_ms, const ParamListInfo params);
+
+/* Functions used in gathering pg_stat_statements */
 static void PgssToString(int64 query_id, char *pgss_str, YbQueryDiagnosticsPgss pgss,
 						 const char *queryString);
 static void AccumulatePgss(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *result);
-static void RemoveBundleInfo(int64 query_id, int status, const char *description);
+
+/* Functions used in gathering schema details */
+static void FetchSchemaOids(List *rtable, Oid *schema_oids);
+static bool ExecuteQuery(StringInfo schema_details, const char *query,
+						 const char *title, char *description);
+static int DescribeOneTable(Oid oid, StringInfo schema_details, char *description);
+static void PrintTableName(Oid oid, StringInfo schema_details);
 
 void
 YbQueryDiagnosticsInstallHook(void)
@@ -228,12 +264,12 @@ CircularBufferMaxEntries(void)
 }
 
 /*
- * InsertBundleInfo
+ * InsertCompletedBundleInfo
  * 		Add a query diagnostics entry to the circular buffer.
  */
 static void
-InsertCompletedBundleInfo(const YbQueryDiagnosticsMetadata *metadata, int status,
-						  const char *description)
+InsertBundlesIntoView(const YbQueryDiagnosticsMetadata *metadata, int status,
+					  const char *description)
 {
 	BundleInfo *sample;
 
@@ -476,8 +512,8 @@ YbQueryDiagnosticsBgWorkerRegister(void)
 	MemSet(&worker, 0, sizeof(worker));
 	sprintf(worker.bgw_name, "yb_query_diagnostics bgworker");
 	sprintf(worker.bgw_type, "yb_query_diagnostics bgworker");
-	worker.bgw_flags = BGWORKER_SHMEM_ACCESS;
-	worker.bgw_start_time = BgWorkerStart_PostmasterStart;
+	worker.bgw_flags = BGWORKER_SHMEM_ACCESS | BGWORKER_BACKEND_DATABASE_CONNECTION;
+	worker.bgw_start_time = BgWorkerStart_RecoveryFinished;
 	/* Value of 1 allows the background worker for yb_query_diagnostics to restart */
 	worker.bgw_restart_time = 1;
 	sprintf(worker.bgw_library_name, "postgres");
@@ -542,7 +578,7 @@ YbQueryDiagnostics_ExecutorStart(QueryDesc *queryDesc, int eflags)
 
 	/* Enable per-node instrumentation iff explain_analyze is required. */
 	if (current_query_sampled &&
-	    (entry->metadata.params.explain_analyze && (eflags & EXEC_FLAG_EXPLAIN_ONLY) == 0))
+		(entry->metadata.params.explain_analyze && (eflags & EXEC_FLAG_EXPLAIN_ONLY) == 0))
 		queryDesc->instrument_options |= INSTRUMENT_ALL;
 
 	LWLockRelease(bundles_in_progress_lock);
@@ -581,9 +617,14 @@ YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc)
 		AccumulatePgss(queryDesc, entry);
 
 		if (current_query_sampled)
-		AccumulateExplain(queryDesc, entry,
-						  entry->metadata.params.explain_analyze,
-						  entry->metadata.params.explain_dist, totaltime_ms);
+			AccumulateExplain(queryDesc, entry,
+							  entry->metadata.params.explain_analyze,
+							  entry->metadata.params.explain_dist, totaltime_ms);
+
+		/* Fetch schema details only if it is not already fetched */
+		if (entry->schema_oids[0] == 0)
+			FetchSchemaOids(queryDesc->plannedstmt->rtable,
+							entry->schema_oids);
 	}
 
 	LWLockRelease(bundles_in_progress_lock);
@@ -598,8 +639,6 @@ static void
 AccumulateBindVariables(YbQueryDiagnosticsEntry *entry, const double totaltime_ms,
 						const ParamListInfo params)
 {
-	/* TODO(GH#22153): Handle the case when entry->bind_vars overflows */
-
 	/* Check if the bind_vars is already full */
 	SpinLockAcquire(&entry->mutex);
 	bool is_full = strlen(entry->bind_vars) == YB_QD_MAX_BIND_VARS_LEN - 1;
@@ -614,8 +653,12 @@ AccumulateBindVariables(YbQueryDiagnosticsEntry *entry, const double totaltime_m
 	appendStringInfo(&buf, "%lf\n", totaltime_ms);
 
 	SpinLockAcquire(&entry->mutex);
-	if (strlen(entry->bind_vars) + buf.len < YB_QD_MAX_BIND_VARS_LEN)
-		memcpy(entry->bind_vars + strlen(entry->bind_vars), buf.data, buf.len);
+	size_t		current_len = strlen(entry->bind_vars);
+	if (current_len + buf.len <= YB_QD_MAX_BIND_VARS_LEN - 1)
+	{
+		memcpy(entry->bind_vars + current_len, buf.data, buf.len);
+		entry->bind_vars[current_len + buf.len] = '\0'; /* Ensure null termination */
+	}
 	SpinLockRelease(&entry->mutex);
 
 	pfree(buf.data);
@@ -678,8 +721,6 @@ AccumulatePgss(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *entry)
 static void
 PgssToString(int64 query_id, char *pgss_str, YbQueryDiagnosticsPgss pgss, const char *query_str)
 {
-	/* TODO(GH#22153): Handle the case when pgss_str overflows */
-
 	if (!query_str)
 		query_str = "";
 
@@ -797,8 +838,10 @@ InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata)
 	if (!found)
 	{
 		entry->metadata = *metadata;
+		entry->metadata.directory_created = false;
 		MemSet(entry->bind_vars, 0, YB_QD_MAX_BIND_VARS_LEN);
 		MemSet(entry->explain_plan, 0, YB_QD_MAX_EXPLAIN_PLAN_LEN);
+		MemSet(entry->schema_oids, 0, sizeof(Oid) * YB_QD_MAX_SCHEMA_OIDS);
 		SpinLockInit(&entry->mutex);
 		entry->pgss = (YbQueryDiagnosticsPgss) {.counters = {0}, .query_offset = 0, .query_len = 0};
 	}
@@ -840,167 +883,778 @@ AppendToDescription(char *description, const char *format, ...)
 	va_end(args);
 }
 
+/*
+ * FlushAndCleanBundles
+ * 		This function is invoked every yb_query_diagnostics_bg_worker_interval_ms and is
+ * 		responsible for cleaning up expired query diagnostic bundles and flushing their
+ * 		data to disk.
+ *
+ * The function performs the following tasks:
+ * 1. Scans the hash table of in-progress bundles
+ * 2. For expired bundles:
+ *    - Dumps data to disk
+ *    - Removes the bundle from the in-progress table
+ * 3. For non-expired bundles:
+ *    - Performs intermediate flushing of explain plans and bind variables if they
+ *      are filled more than 50%
+ * Note:
+ * It's safe to acquire the entry-level lock here without holding the hash table lock.
+ * This is because only this background worker is responsible for removing entries,
+ * so we can be certain that the entry won't be removed while we're accessing it.
+ * Other threads may still modify the entry's contents, which is why we need entry level lock.
+ */
 static void
-RemoveExpiredEntries()
+FlushAndCleanBundles()
 {
 	/* TODO(GH#22447): Do this in O(1) */
 	TimestampTz current_time = GetCurrentTimestamp();
 	HASH_SEQ_STATUS status;
 	YbQueryDiagnosticsEntry *entry;
+	YbQueryDiagnosticsEntry expired_entries[QUERY_DIAGNOSTICS_HASH_MAX_SIZE];
+	int			expired_entries_index = 0;
+
+	memset(expired_entries, 0, sizeof(expired_entries));
 
 	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
+
 	/* Initialize the hash table scan */
 	hash_seq_init(&status, bundles_in_progress);
 
-	/* Scan the hash table */
+	/*
+	 * Scan the hash table for expired entries and store them in an array.
+	 * This approach is necessary to prevent holding the hash_seq_search() open
+	 * while calling CommitTransactionCommand(), which can lead to resource leaks
+	 * and potential inconsistencies in the hash table state.
+	 */
 	while ((entry = hash_seq_search(&status)) != NULL)
 	{
-		TimestampTz stop_time = BundleEndTime(entry);
-		if (current_time >= stop_time)
+		/* Release the shared lock before flushing to disk */
+		LWLockRelease(bundles_in_progress_lock);
+
+		/*
+		 * It is fine to read entry's metadata without holding the entry level lock
+		 * because that is set only once, when the bundle is created.
+		 */
+		char	   *folder_path = entry->metadata.path;
+		int			status = DIAGNOSTICS_SUCCESS;
+		bool		has_expired = current_time >= BundleEndTime(entry);
+
+		/* Description of the warnings/errors that occurred */
+		char		description[YB_QD_DESCRIPTION_LEN];
+		description[0] = '\0';
+
+		/* Since only the background worker accesses this variable, no lock is needed */
+		if (!entry->metadata.directory_created)
+		{
+			/* Creates the directory structure recursively for this bundle */
+			if (MakeDirectory(folder_path, description) == DIAGNOSTICS_ERROR)
+			{
+				FinishBundleProcessing(&entry->metadata, DIAGNOSTICS_ERROR, description);
+				goto end_of_loop;
+			}
+
+			entry->metadata.directory_created = true;
+		}
+
+		if (has_expired)
+		{
+			SpinLockAcquire(&entry->mutex);
+			/*
+			* To avoid holding the lock while flushing to disk, we create a copy of the data
+			* that is to be dumped, this protects us from potential overwriting of the entry
+			* during the flushing process.
+			*/
+			memcpy(&expired_entries[expired_entries_index++], entry, sizeof(YbQueryDiagnosticsEntry));
+			SpinLockRelease(&entry->mutex);
+		}
+		else
 		{
 			/*
-			 * To avoid holding the lock while flushing to disk, we create a copy of the data
-			 * that is to be dumped, this protects us from potential overwriting of the entry
-			 * during the flushing process.
+			 * Bundle has not expired, perform intermediate flushing if necessary.
+			 *
+			 * We dump the explain plan and bind variables if they are filled more than
+			 * 50% of the maximum allowed size. This is done to ensure no data is lost
+			 * while flushing to disk.
 			 */
-			SpinLockAcquire(&entry->mutex);
+			status = DumpBufferIfHalfFull(entry->bind_vars, YB_QD_MAX_BIND_VARS_LEN,
+										  BIND_VAR_FILE, folder_path, description,
+										  &entry->mutex);
 
-			char		bind_var_copy[YB_QD_MAX_BIND_VARS_LEN];
-			char		description[YB_QD_DESCRIPTION_LEN];
-			int			status = DIAGNOSTICS_SUCCESS;
-			char		explain_plan_copy[YB_QD_MAX_EXPLAIN_PLAN_LEN];
-			YbQueryDiagnosticsMetadata metadata_copy = entry->metadata;
-			YbQueryDiagnosticsPgss pgss_copy = entry->pgss;
-
-			memcpy(bind_var_copy, entry->bind_vars, YB_QD_MAX_BIND_VARS_LEN);
-			memcpy(&metadata_copy, &entry->metadata, sizeof(YbQueryDiagnosticsMetadata));
-			memcpy(explain_plan_copy, entry->explain_plan, YB_QD_MAX_EXPLAIN_PLAN_LEN);
-			description[0] = '\0';
-
-			SpinLockRelease(&entry->mutex);
-
-			/* release the shared lock before flushing to disk */
-			LWLockRelease(bundles_in_progress_lock);
-
-			/* creates the directory structure recursively for this bundle */
-			if (pg_mkdir_p((char *)metadata_copy.path, pg_dir_create_mode) == -1
-				&& errno != EEXIST)
+			if (status == DIAGNOSTICS_ERROR)
 			{
-				snprintf(description, YB_QD_DESCRIPTION_LEN,
-						 "Failed to create query diagnostics directory, %s;", strerror(errno));
-
-				status = DIAGNOSTICS_ERROR;
-				goto remove_entry;
-			}
-			else
-			{
-				/* No queries were executed that needed to be bundled */
-				if (pgss_copy.query_len == 0)
-				{
-					AppendToDescription(description, "No query executed;");
-					goto remove_entry;
-				}
-
-				/* Dump bind variables */
-				status = DumpToFile(metadata_copy.path, BIND_VAR_FILE,
-									bind_var_copy, description);
-
-				if (status == DIAGNOSTICS_ERROR)
-					goto remove_entry;
-
-				/* Get pgss normalized query string */
-				char query_str[pgss_copy.query_len + 1];
-				query_str[0] = '\0';
-
-				/*
-				 * Ensure that pg_stat_statements was not reset in the bundle duration
-				 *
-				 * Note that there are separate checks for pg_stat_statements reset and
-				 * pgss_copy.query_len == 0. This is because resetting pgss does not automatically
-				 * set pgss_copy.query_len to 0. The query_len is only updated when a new query
-				 * is executed. Therefore, even after a pgss reset, pgss_copy.query_len
-				 * may still hold a non-zero garbage value until a new query is run
-				 * and query_len is updated.
-				 */
-				if (*yb_pgss_last_reset_time >= metadata_copy.start_time)
-					AppendToDescription(description, "pg_stat_statements was reset, " \
-															 "query string not available;");
-				else
-				{
-					if (yb_get_normalized_query)
-					{
-						/* Extract query string from pgss_query_texts.stat file */
-						yb_get_normalized_query(pgss_copy.query_offset, pgss_copy.query_len, query_str);
-
-						if (query_str[0] == '\0')
-							AppendToDescription(description, "Error fetching pg_stat_statements normalized query string;");
-					}
-				}
-
-				char		pgss_str[YB_QD_MAX_PGSS_LEN];
-				PgssToString(entry->metadata.params.query_id, pgss_str, pgss_copy, query_str);
-
-				/* Dump pg_stat_statements */
-				status = DumpToFile(metadata_copy.path, PGSS_FILE,
-									pgss_str, description);
-
-				if (status == DIAGNOSTICS_ERROR)
-					goto remove_entry;
-
-				/* Dump explain plan */
-				status = DumpToFile(metadata_copy.path, EXPLAIN_PLAN_FILE,
-									explain_plan_copy, description);
-
-				if (status == DIAGNOSTICS_ERROR)
-					goto remove_entry;
-
-				/* Dump ASH */
-				if (yb_ash_enable_infra)
-				{
-					Assert(yb_enable_ash);
-
-					StringInfoData ash_buffer;
-					initStringInfo(&ash_buffer);
-
-					GetAshDataForQueryDiagnosticsBundle(metadata_copy.start_time, stop_time,
-														metadata_copy.params.query_id,
-														&ash_buffer, description);
-
-					status = DumpToFile(metadata_copy.path, ASH_FILE,
-										ash_buffer.data, description);
-
-					pfree(ash_buffer.data);
-				}
+				/* Expire the bundle as we are not able to dump */
+				FinishBundleProcessing(&entry->metadata, status, description);
+				goto end_of_loop;
 			}
 
-remove_entry:
-			InsertCompletedBundleInfo(&metadata_copy, status, description);
-			RemoveBundleInfo(metadata_copy.params.query_id, status, description);
-			LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
+			status = DumpBufferIfHalfFull(entry->explain_plan, YB_QD_MAX_EXPLAIN_PLAN_LEN,
+										  EXPLAIN_PLAN_FILE, folder_path, description,
+										  &entry->mutex);
+
+			if (status == DIAGNOSTICS_ERROR)
+			{
+				/* Expire the bundle as we are not able to dump */
+				FinishBundleProcessing(&entry->metadata, status, description);
+				goto end_of_loop;
+			}
 		}
+
+end_of_loop:
+		/* Re-acquire the shared lock before continuing the loop */
+		LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
 	}
 	LWLockRelease(bundles_in_progress_lock);
+
+	/* Handle expired entries */
+	for (int i = 0; i < expired_entries_index; i++)
+	{
+		YbQueryDiagnosticsEntry entry = expired_entries[i];
+
+		char		description[YB_QD_DESCRIPTION_LEN];
+		int			status = DIAGNOSTICS_SUCCESS;
+		int			query_len = Min(entry.pgss.query_len, YB_QD_MAX_PGSS_QUERY_LEN);
+		char		query_str[query_len + 1];
+
+		description[0] = '\0';
+		query_str[0] = '\0';
+
+		/* No queries were executed that needed to be bundled */
+		if (query_len == 0)
+		{
+			AppendToDescription(description, "No query executed;");
+			goto remove_entry;
+		}
+
+		/* Dump bind variables */
+		status = DumpToFile(entry.metadata.path, BIND_VAR_FILE,
+							entry.bind_vars, description);
+
+		if (status == DIAGNOSTICS_ERROR)
+			goto remove_entry;
+
+		/*
+		 * Ensure that pg_stat_statements was not reset in the bundle duration
+		 *
+		 * Note that there are separate checks for pg_stat_statements reset and
+		 * pgss_copy.query_len == 0. This is because resetting pgss does not automatically
+		 * set pgss_copy.query_len to 0. The query_len is only updated when a new query
+		 * is executed. Therefore, even after a pgss reset, pgss_copy.query_len
+		 * may still hold a non-zero garbage value until a new query is run
+		 * and query_len is updated.
+		 */
+		if (*yb_pgss_last_reset_time >= entry.metadata.start_time)
+			AppendToDescription(description, "pg_stat_statements was reset, " \
+													 "query string not available;");
+		else
+		{
+			if (yb_get_normalized_query)
+			{
+				/* Extract query string from pgss_query_texts.stat file */
+				yb_get_normalized_query(entry.pgss.query_offset, entry.pgss.query_len, query_str);
+
+				if (query_str[0] == '\0')
+					AppendToDescription(description,
+										"Error fetching pg_stat_statements normalized query string;");
+			}
+		}
+
+		/* Convert pg_stat_statements data to string format */
+		char		pgss_str[YB_QD_MAX_PGSS_LEN];
+		PgssToString(entry.metadata.params.query_id, pgss_str, entry.pgss, query_str);
+
+		/* Dump pg_stat_statements */
+		status = DumpToFile(entry.metadata.path, PGSS_FILE,
+							pgss_str, description);
+
+		if (status == DIAGNOSTICS_ERROR)
+			goto remove_entry;
+
+		/* Dump explain plan */
+		status = DumpToFile(entry.metadata.path, EXPLAIN_PLAN_FILE,
+							entry.explain_plan, description);
+
+		if (status == DIAGNOSTICS_ERROR)
+			goto remove_entry;
+
+		/* Collect schema details */
+		StringInfoData schema_details;
+		initStringInfo(&schema_details);
+
+		for (int i = 0; i < YB_QD_MAX_SCHEMA_OIDS; i++)
+		{
+			if (entry.schema_oids[i] == InvalidOid)
+				break;
+
+			status = DescribeOneTable(entry.schema_oids[i], &schema_details,
+									  description);
+
+			if (status == DIAGNOSTICS_ERROR)
+				goto remove_entry;
+
+			appendStringInfo(&schema_details, "\n%s\n\n", SCHEMA_DETAILS_SEPARATOR);
+		}
+
+		/* Dump schema details */
+		status = DumpToFile(entry.metadata.path, SCHEMA_DETAILS_FILE,
+							schema_details.data, description);
+
+		pfree(schema_details.data);
+
+		if (status == DIAGNOSTICS_ERROR)
+			goto remove_entry;
+
+		/* Dump ASH */
+		if (yb_ash_enable_infra)
+		{
+			Assert(yb_enable_ash);
+
+			StringInfoData ash_buffer;
+			initStringInfo(&ash_buffer);
+
+			GetAshDataForQueryDiagnosticsBundle(entry.metadata.start_time,
+												BundleEndTime(&entry),
+												entry.metadata.params.query_id,
+												&ash_buffer, description);
+
+			status = DumpToFile(entry.metadata.path, ASH_FILE,
+								ash_buffer.data, description);
+
+			pfree(ash_buffer.data);
+
+			if (status == DIAGNOSTICS_ERROR)
+				goto remove_entry;
+		}
+
+remove_entry:
+		FinishBundleProcessing(&entry.metadata, status, description);
+	}
 }
 
-static void
-RemoveBundleInfo(int64 query_id, int status, const char *description)
+/*
+ * DumpBufferIfHalfFull
+ *      Checks if the buffer is at least half full, and if so, dumps it to a file.
+ *
+ * Returns:
+ * DIAGNOSTICS_SUCCESS if successful, DIAGNOSTICS_ERROR otherwise
+ */
+static int
+DumpBufferIfHalfFull(char *buffer, size_t max_len, const char *file_name, const char *folder_path,
+					 char *description, slock_t *mutex)
 {
+	int			status = DIAGNOSTICS_SUCCESS;
+
+	SpinLockAcquire(mutex);
+
+	int buffer_len = strlen(buffer);
+	if (buffer_len >= max_len / 2)
+	{
+		char	   *buffer_copy = palloc(buffer_len + 1);
+
+		memcpy(buffer_copy, buffer, buffer_len + 1);
+		buffer[0] = '\0'; /* Reset the buffer */
+
+		SpinLockRelease(mutex);
+
+		status = DumpToFile(folder_path, file_name, buffer_copy, description);
+
+		pfree(buffer_copy);
+	}
+	else
+		SpinLockRelease(mutex);
+
+	return status;
+}
+
+/*
+ * FinishBundleProcessing
+ *		Stops the bundle processing by removing the entry from the bundles_in_progress hash table,
+ *		and inserting the completed bundle info into the bundles_completed circular buffer.
+ */
+static void
+FinishBundleProcessing(YbQueryDiagnosticsMetadata *metadata, int status, const char *description)
+{
+	/* Insert the completed bundle info into the bundles_completed circular buffer */
+	InsertBundlesIntoView(metadata, status, description);
+
+	/* Remove the entry from the bundles_in_progress hash table */
+	RemoveBundleInfo(metadata->params.query_id);
+}
+
+/*
+ * RemoveBundleInfo
+ *		Removes the entry from the bundles_in_progress hash table.
+ */
+static void
+RemoveBundleInfo(int64 query_id)
+{
+	/*
+	 * Acquire the exclusive lock on the bundles_in_progress hash table.
+	 * This is necessary to prevent other background workers from
+	 * accessing the hash table while we are removing the entry.
+	 */
 	LWLockAcquire(bundles_in_progress_lock, LW_EXCLUSIVE);
 
-	hash_search(bundles_in_progress, &query_id,
-				HASH_REMOVE, NULL);
+	hash_search(bundles_in_progress, &query_id, HASH_REMOVE, NULL);
 
 	LWLockRelease(bundles_in_progress_lock);
 }
 
 /*
+ * MakeDirectory
+ *		Creates the directory structure recursively for storing the diagnostics data.
+ */
+static int
+MakeDirectory(const char *path, char *description)
+{
+	if (pg_mkdir_p((char *)path, pg_dir_create_mode) == -1)
+	{
+		snprintf(description, YB_QD_DESCRIPTION_LEN,
+				 "Failed to create query diagnostics directory, %s;", strerror(errno));
+		return DIAGNOSTICS_ERROR;
+	}
+	return DIAGNOSTICS_SUCCESS;
+}
+
+/*
+ * DescribeOneTable
+ * 		This function prints table details for the given table oid into schema_details.
+ *		Note: This function is a modified version of DescribeOneTableDetails in describe.c
+ *
+ *		Returns DIAGNOSTICS_SUCCESS if the function executed successfully,
+ *		DIAGNOSTICS_ERROR in case of an error.
+ *		In case of an error, the function copies the error message to description.
+ */
+static int
+DescribeOneTable(Oid oid, StringInfo schema_details, char *description)
+{
+	const char *queries[] = {
+		/* Table info, tablegroup, and colocated status */
+		"SELECT pg_catalog.quote_ident(n.nspname) || '.' || "
+		"\n  pg_catalog.quote_ident(c.relname) AS \"Table Name\", "
+		"\n  gr.grpname AS \"Table Groupname\", "
+		"\n  CASE WHEN p.is_colocated THEN 'true' ELSE 'false' END AS \"Colocated\" "
+		"\nFROM pg_catalog.pg_class c "
+		"\nJOIN pg_catalog.pg_namespace n ON "
+		"\n  c.relnamespace = n.oid "
+		"\nLEFT JOIN pg_catalog.yb_table_properties(c.oid) p ON "
+		"\n  true "
+		"\nLEFT JOIN pg_catalog.pg_yb_tablegroup gr ON "
+		"\n  gr.oid = p.tablegroup_oid "
+		"\nWHERE c.oid = %u;",
+
+		/* Sequence details */
+		"SELECT pg_catalog.format_type(seqtypid, NULL) AS \"Type\", "
+		"\n  seqstart AS \"Start\", "
+		"\n  seqmin AS \"Minimum\", "
+		"\n  seqmax AS \"Maximum\", "
+		"\n  seqincrement AS \"Increment\", "
+		"\n  CASE WHEN seqcycle THEN 'yes' ELSE 'no' END AS \"Cycles?\", "
+		"\n  seqcache AS \"Cache\" "
+		"\nFROM pg_catalog.pg_sequence WHERE seqrelid = %u;",
+
+		/* Column that owns this sequence */
+		"SELECT pg_catalog.quote_ident(nspname) || '.' || "
+		"\n  pg_catalog.quote_ident(relname) || '.' || "
+		"\n  pg_catalog.quote_ident(attname) AS \"Owned By\" "
+		"\nFROM pg_catalog.pg_class c "
+		"\nINNER JOIN pg_catalog.pg_depend d ON "
+		"\n  c.oid=d.refobjid "
+		"\nINNER JOIN pg_catalog.pg_namespace n ON"
+		"\n  n.oid=c.relnamespace "
+		"\nINNER JOIN pg_catalog.pg_attribute a ON ("
+		"\n  a.attrelid=c.oid AND "
+		"\n  a.attnum=d.refobjsubid) "
+		"\nWHERE d.classid='pg_catalog.pg_class'::pg_catalog.regclass AND "
+		"\n  d.refclassid='pg_catalog.pg_class'::pg_catalog.regclass AND "
+		"\n  d.objid=%u AND d.deptype IN ('a', 'i');",
+
+		/* Per-column info */
+		"SELECT a.attname AS \"Column\", "
+		"\n  pg_catalog.format_type(a.atttypid, a.atttypmod) AS \"Type\", "
+		"\n  COALESCE((SELECT c.collname "
+		"\n    FROM pg_catalog.pg_collation c, pg_catalog.pg_type t "
+		"\n    WHERE c.oid = a.attcollation AND "
+		"\n      t.oid = a.atttypid AND "
+		"\n      a.attcollation <> t.typcollation), '') AS \"Collation\", "
+		"\n  CASE WHEN a.attnotnull THEN 'not null' ELSE '' END AS \"Nullable\", "
+		"\n  (SELECT substring(pg_catalog.pg_get_expr(d.adbin, d.adrelid) for 128) "
+		"\n   FROM pg_catalog.pg_attrdef d "
+		"\n   WHERE d.adrelid = a.attrelid AND "
+		"\n   d.adnum = a.attnum AND "
+		"\n   a.atthasdef) AS \"Default\", "
+		"\n  CASE a.attstorage "
+		"\n    WHEN 'p' THEN 'plain' "
+		"\n    WHEN 'x' THEN 'extended' "
+		"\n    WHEN 'm' THEN 'main' "
+		"\n    ELSE '' "
+		"\n  END AS \"Storage\", "
+		"\n  CASE WHEN a.attstattarget=-1 THEN '' ELSE a.attstattarget::text END AS \"Stats Target\", "
+		"\n  COALESCE(pg_catalog.col_description(a.attrelid, a.attnum), '') AS \"Description\" "
+		"\nFROM pg_catalog.pg_attribute a "
+		"\nWHERE a.attrelid = %u AND "
+		"\n  a.attnum > 0 AND "
+		"\n  NOT a.attisdropped "
+		"\nORDER BY a.attnum;",
+
+		/* Footers */
+		"SELECT inhparent::pg_catalog.regclass, "
+		"\n  pg_catalog.pg_get_expr(c.relpartbound, inhrelid), "
+		"\n  pg_catalog.pg_get_partition_constraintdef(inhrelid) "
+		"\nFROM pg_catalog.pg_class c "
+		"\nJOIN pg_catalog.pg_inherits i ON "
+		"\n  c.oid = inhrelid "
+		"\nWHERE c.oid = %u AND "
+		"\n  c.relispartition;",
+
+		/* Indexes */
+		"SELECT c2.relname AS \"Name\", "
+		"\n  pg_catalog.pg_get_indexdef(i.indexrelid, 0, true) AS \"Index Definition\", "
+		"\n  pg_catalog.pg_get_constraintdef(con.oid, true) AS \"Constraint Definition\" "
+		"\nFROM pg_catalog.pg_class c, "
+		"\n  pg_catalog.pg_class c2, "
+		"\n  pg_catalog.pg_index i "
+		"\nLEFT JOIN pg_catalog.pg_constraint con ON "
+		"\n  (conrelid = i.indrelid AND "
+		"\n  conindid = i.indexrelid AND "
+		"\n  contype IN ('p','u','x')) "
+		"\nWHERE c.oid = %u AND "
+		"\n  c.oid = i.indrelid AND "
+		"\n  i.indexrelid = c2.oid "
+		"\nORDER BY i.indisprimary DESC, i.indisunique DESC, c2.relname;",
+
+		/* Check constraints */
+		"SELECT r.conname AS \"Name\", "
+		"\n  pg_catalog.pg_get_constraintdef(r.oid, true) AS \"Constraint Definition\" "
+		"\nFROM pg_catalog.pg_constraint r "
+		"\nWHERE r.conrelid = %u AND "
+		"\n  r.contype = 'c' "
+		"\nORDER BY 1;",
+
+		/* Foreign-key constraints */
+		"SELECT conname AS \"Name\", "
+		"\n  pg_catalog.pg_get_constraintdef(r.oid, true) AS \"Constraint Definition\" "
+		"\nFROM pg_catalog.pg_constraint r "
+		"\nWHERE r.conrelid = %u AND "
+		"\n  r.contype = 'f' "
+		"\nORDER BY 1;",
+
+		/* Incoming foreign-key references */
+		"SELECT conname AS \"Name\", "
+		"\n  conrelid::pg_catalog.regclass as \"Relation Name\", "
+		"\n  pg_catalog.pg_get_constraintdef(c.oid, true) AS \"Constraint Definition\" "
+		"\nFROM pg_catalog.pg_constraint c "
+		"\nWHERE c.confrelid = %u AND "
+		"\n  c.contype = 'f' "
+		"\nORDER BY 1;",
+
+		/* Row-level policies */
+		"SELECT pol.polname AS \"Name\", "
+		"\n  CASE WHEN pol.polpermissive "
+		"\n    THEN 'Permissive' ELSE 'Restrictive' END AS \"Type\", "
+		"\n  CASE WHEN pol.polroles = '{0}' "
+		"\n    THEN 'ALL ROLES' "
+		"\n    ELSE pg_catalog.array_to_string(ARRAY(SELECT rolname FROM pg_catalog.pg_roles "
+		"\n      WHERE oid = ANY (pol.polroles) ORDER BY 1), ',') "
+		"\n  END AS \"Applicable Roles\", "
+		"\n  pg_catalog.pg_get_expr(pol.polqual, pol.polrelid) AS \"USING Expression\", "
+		"\n  pg_catalog.pg_get_expr(pol.polwithcheck, pol.polrelid) AS \"With CHECK Expression\", "
+		"\n  CASE pol.polcmd "
+		"\n    WHEN 'r' THEN 'SELECT' "
+		"\n    WHEN 'a' THEN 'INSERT' "
+		"\n    WHEN 'w' THEN 'UPDATE' "
+		"\n    WHEN 'd' THEN 'DELETE' "
+		"\n    ELSE 'ALL' "
+		"\n  END AS \"Applicable Command\" "
+		"\nFROM pg_catalog.pg_policy pol "
+		"\nWHERE pol.polrelid = %u "
+		"\nORDER BY 1;",
+
+		/* Extended statistics */
+		"SELECT oid AS \"OID\", "
+		"\n  stxrelid::pg_catalog.regclass AS \"TABLE\", "
+		"\n  stxnamespace::pg_catalog.regnamespace AS \"Namespace\", "
+		"\n  stxname AS \"Statistics Name\", "
+		"\n  (SELECT pg_catalog.string_agg(pg_catalog.quote_ident(attname),', ') "
+		"\n    FROM pg_catalog.unnest(stxkeys) s(attnum) "
+		"\n    JOIN pg_catalog.pg_attribute a ON "
+		"\n      (stxrelid = a.attrelid "
+		"\n      AND a.attnum = s.attnum "
+		"\n      AND NOT attisdropped)) AS \"Columns\", "
+		"\n  CASE WHEN 'd' = ANY(stxkind) THEN 'Yes' ELSE 'No' END AS \"N-Dinstinct Enabled\", "
+		"\n  CASE WHEN 'f' = ANY(stxkind) THEN 'Yes' ELSE 'No' END AS \"Functional Dependencies Enabled\" "
+		"\nFROM pg_catalog.pg_statistic_ext stat "
+		"\nWHERE stxrelid = %u "
+		"\nORDER BY 1;",
+
+		/* Rules */
+		"SELECT r.rulename AS \"Name\", "
+		"\n  regexp_replace(trim(trailing ';' from pg_catalog.pg_get_ruledef(r.oid, true)), E'\\n', ' ', 'g') AS \"Rule Definition\" "
+		"\nFROM pg_catalog.pg_rewrite r "
+		"\nWHERE r.ev_class = %u AND "
+		"\n  r.rulename != '_RETURN' "
+		"\nORDER BY 1;",
+
+		/* Publications */
+		"SELECT pubname AS \"Name\" "
+		"\nFROM pg_catalog.pg_publication p "
+		"\nJOIN pg_catalog.pg_publication_rel pr ON "
+		"\n  p.oid = pr.prpubid "
+		"\nWHERE pr.prrelid = %u "
+		"\nUNION ALL "
+		"\nSELECT pubname "
+		"\nFROM pg_catalog.pg_publication p "
+		"\nWHERE p.puballtables AND "
+		"\n  pg_catalog.pg_relation_is_publishable(%u) "
+		"\nORDER BY 1;",
+
+		/* Triggers */
+		"SELECT t.tgname AS \"Name\", "
+		"\n  pg_catalog.pg_get_triggerdef(t.oid, true) AS \"Trigger Definition\", "
+		"\n  CASE t.tgenabled "
+		"\n    WHEN 'O' THEN 'Enabled' "
+		"\n    WHEN 'D' THEN 'Disabled' "
+		"\n    WHEN 'R' THEN 'Replica' "
+		"\n    WHEN 'A' THEN 'Always' "
+		"\n    ELSE 'Unknown' "
+		"\n  END AS \"Trigger Status\", "
+		"\n  CASE WHEN t.tgisinternal THEN 'Yes' ELSE 'No' END AS \"Is Internal\" "
+		"\nFROM pg_catalog.pg_trigger t "
+		"\nWHERE t.tgrelid = %u AND "
+		"\n  (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled = 'D') OR "
+		"\n  EXISTS (SELECT 1 FROM pg_catalog.pg_depend WHERE objid = t.oid AND "
+		"\n    refclassid = 'pg_catalog.pg_trigger'::regclass)) "
+		"\nORDER BY 1;",
+
+		/* View definition */
+		"SELECT pg_catalog.pg_get_viewdef(%u::pg_catalog.oid, true) AS \"View Definition\";",
+
+		/* Foreign table information */
+		"SELECT s.srvname AS \"Server Name\", "
+		"\n  pg_catalog.array_to_string(ARRAY( "
+		"\n  SELECT pg_catalog.quote_ident(option_name) || ' ' || pg_catalog.quote_literal(option_value) "
+		"\n  FROM pg_catalog.pg_options_to_table(ftoptions)), ', ') AS \"FDW Options\" "
+		"\nFROM pg_catalog.pg_foreign_table f, "
+		"\n  pg_catalog.pg_foreign_server s "
+		"\nWHERE f.ftrelid = %u AND "
+		"\n  s.oid = f.ftserver;",
+	};
+
+	/* Titles corresponding to each query */
+	const char *titles[] = {
+		"Table information",
+		"Sequence details",
+		"Sequence owner",
+		"Columns",
+		"Partition information",
+		"Indexes",
+		"Check constraints",
+		"Foreign-key constraints",
+		"Referenced by",
+		"Policies",
+		"Statistics",
+		"Rules",
+		"Publications",
+		"Triggers",
+		"View definition",
+		"Foreign table information",
+	};
+
+	int			num_of_queries = sizeof(queries) / sizeof(queries[0]);
+	char		formatted_query[BLCKSZ];
+
+	PrintTableName(oid, schema_details);
+
+	for (int i = 0; i < num_of_queries; i++)
+	{
+		snprintf(formatted_query, sizeof(formatted_query), queries[i], oid);
+
+		if (!ExecuteQuery(schema_details, formatted_query, titles[i], description))
+			return DIAGNOSTICS_ERROR;
+	}
+
+	return DIAGNOSTICS_SUCCESS;
+}
+
+static void
+PrintTableName(Oid oid, StringInfo schema_details)
+{
+	StartTransactionCommand();
+
+	char		*table_name = get_rel_name(oid);
+
+	if (table_name)
+	{
+		appendStringInfo(schema_details, "Table name: %s\n", table_name);
+		pfree(table_name);
+	}
+
+	CommitTransactionCommand();
+}
+
+/*
+ * ExecuteQuery
+ *		Uses SPI framework to execute the given query and appends the results to schema_details.
+ *		The results are formatted as a table with a title.
+ *
+ *		Returns true if the query was executed successfully, false in case of an error.
+ *		Error is copied to description.
+ */
+static bool
+ExecuteQuery(StringInfo schema_details, const char *query, const char *title, char *description)
+{
+	int			ret;
+	int			num_cols;
+	int		   *col_widths;
+	bool		is_result_empty = true;
+	StringInfoData result;
+	StringInfoData columns;
+
+	initStringInfo(&result);
+	initStringInfo(&columns);
+
+	/*
+	 * Start a transaction on which we can run queries. Note that each StartTransactionCommand()
+	 * call should be preceded by a SetCurrentStatementStartTimestamp() call,
+	 * which sets the transaction start time.
+	 * Also, each other query sent to SPI should be preceded by
+	 * SetCurrentStatementStartTimestamp(), so that statement start time is always up to date.
+	 */
+	SetCurrentStatementStartTimestamp();
+	StartTransactionCommand();
+
+	/* Lets us run queries through the SPI manager */
+	ret = SPI_connect();
+	if (ret != SPI_OK_CONNECT)
+	{
+		snprintf(description, YB_QD_DESCRIPTION_LEN,
+				 "Failed to gather schema details. SPI_connect failed: %s",
+				 SPI_result_code_string(ret));
+		pgstat_report_activity(STATE_IDLE, NULL);
+		return false;
+	}
+
+	/* Creates an "active" snapshot which is necessary for queries to have MVCC data to work on */
+	PushActiveSnapshot(GetTransactionSnapshot());
+
+	/* Make our activity visible through the pgstat views */
+	pgstat_report_activity(STATE_RUNNING, query);
+
+	/* Execute the query and get all of the rows from the result set */
+	ret = SPI_execute(query, true /* read_only */, 0 /* tcount (0 = unlimited rows) */);
+	if (ret != SPI_OK_SELECT)
+	{
+		snprintf(description, YB_QD_DESCRIPTION_LEN,
+				 "Failed to gather schema details. SPI_execute failed: %s",
+				 SPI_result_code_string(ret));
+		pgstat_report_activity(STATE_IDLE, NULL);
+		return false;
+	}
+
+	/* Calculate column widths for formatting */
+	num_cols = SPI_tuptable->tupdesc->natts;
+	col_widths = (int *) palloc0(num_cols * sizeof(int));
+
+	/* Initialize column widths with column name lengths */
+	for (int i = 0; i < num_cols; i++)
+	{
+		Form_pg_attribute attr = TupleDescAttr(SPI_tuptable->tupdesc, i);
+		col_widths[i] = strlen(NameStr(attr->attname));
+	}
+
+	/* Adjust column widths based on data */
+	for (uint64 j = 0; j < SPI_processed; j++)
+	{
+		HeapTuple tuple = SPI_tuptable->vals[j];
+
+		for (int i = 0; i < num_cols; i++)
+		{
+			char	   *val = SPI_getvalue(tuple, SPI_tuptable->tupdesc, i + 1);
+			int			val_len = val ? strlen(val) : 0; /* Empty string for NULL */
+
+			col_widths[i] = Max(col_widths[i], val_len);
+
+			if (val)
+				pfree(val);
+		}
+	}
+
+	/* Format column names */
+	appendStringInfoChar(&columns, '|');
+	for (int i = 0; i < num_cols; i++)
+	{
+		Form_pg_attribute attr = TupleDescAttr(SPI_tuptable->tupdesc, i);
+		appendStringInfo(&columns, "%-*s |", col_widths[i], NameStr(attr->attname));
+	}
+
+	appendStringInfoChar(&columns, '\n');
+
+	/* Add separator line */
+	appendStringInfoChar(&columns, '+');
+	for (int i = 0; i < num_cols; i++)
+	{
+		for (int j = 0; j <= col_widths[i]; j++)
+		{
+			appendStringInfoChar(&columns, '-');
+		}
+		appendStringInfoChar(&columns, '+');
+	}
+
+	/* Format rows */
+	for (uint64 j = 0; j < SPI_processed; j++)
+	{
+		HeapTuple tuple = SPI_tuptable->vals[j];
+
+		appendStringInfoChar(&result, '|');
+		for (int i = 0; i < num_cols; i++)
+		{
+			char	   *val = SPI_getvalue(tuple, SPI_tuptable->tupdesc, i + 1);
+
+			appendStringInfo(&result, "%-*s |", col_widths[i], val ? val : "");
+			if (val)
+			{
+				is_result_empty = false;
+				pfree(val);
+			}
+		}
+		appendStringInfoChar(&result, '\n');
+	}
+
+	/* Append formatted results to schema_details if not empty */
+	if (!is_result_empty)
+		appendStringInfo(schema_details, "- %s:\n%s\n%s\n", title, columns.data, result.data);
+
+	/* Clean up */
+	pfree(result.data);
+	pfree(columns.data);
+	pfree(col_widths);
+
+	/* Close the SPI connection and clean up the transaction context */
+	ret = SPI_finish();
+	if (ret != SPI_OK_FINISH)
+	{
+		snprintf(description, YB_QD_DESCRIPTION_LEN,
+				 "Failed to gather schema details. SPI_finish failed: %s",
+				 SPI_result_code_string(ret));
+		pgstat_report_activity(STATE_IDLE, NULL);
+		return false;
+	}
+
+	PopActiveSnapshot();
+	CommitTransactionCommand();
+	pgstat_report_stat(true);
+	pgstat_report_activity(STATE_IDLE, NULL);
+	return true;
+}
+
+/*
  * DumpToFile
- *		Creates the file (/path/file_name) and writes the data to it.
+ *		Creates the file (/folder_path/file_name) and writes the data to it.
  * Returns:
  *		DIAGNOSTICS_SUCCESS if the file was successfully written, DIAGNOSTICS_ERROR otherwise.
  */
 static int
-DumpToFile(const char *path, const char *file_name, const char *data, char *description)
+DumpToFile(const char *folder_path, const char *file_name, const char *data,
+		   char *description)
 {
 	bool		ok = false;
 	File		file = 0;
@@ -1014,7 +1668,7 @@ DumpToFile(const char *path, const char *file_name, const char *data, char *desc
 #ifdef WIN32
 	snprintf(file_path, file_path_len, "%s\\%s", path, file_name);
 #else
-	snprintf(file_path, file_path_len, "%s/%s", path, file_name);
+	snprintf(file_path, file_path_len, "%s/%s", folder_path, file_name);
 #endif
 
 	/*
@@ -1024,13 +1678,14 @@ DumpToFile(const char *path, const char *file_name, const char *data, char *desc
 	PG_TRY();
 	{
 		if ((file = PathNameOpenFile(file_path,
-									 O_RDWR | O_CREAT | O_TRUNC)) < 0)
+									 O_RDWR | O_CREAT | O_APPEND)) < 0)
 			snprintf(description, YB_QD_DESCRIPTION_LEN,
-					 "out of file descriptors: %m; release and retry");
+					 "out of file descriptors: %s; release and retry", strerror(errno));
 
-		else if(FileWrite(file, (char *)data, strlen(data), 0,
+		else if(FileWrite(file, (char *)data, strlen(data), FileSize(file),
 						  WAIT_EVENT_DATA_FILE_WRITE) < 0)
-			snprintf(description, YB_QD_DESCRIPTION_LEN, "Error writing to file; %m");
+			snprintf(description, YB_QD_DESCRIPTION_LEN, "Error writing to file; %s",
+					 strerror(errno));
 
 		else
 			ok = true;
@@ -1081,6 +1736,9 @@ YbQueryDiagnosticsMain(Datum main_arg)
 	/* Initialize the worker process */
 	BackgroundWorkerUnblockSignals();
 
+	/* Connect to the database */
+	BackgroundWorkerInitializeConnection("yugabyte", NULL, 0);
+
 	pgstat_report_appname("yb_query_diagnostics bgworker");
 
 	while (!got_sigterm)
@@ -1090,7 +1748,7 @@ YbQueryDiagnosticsMain(Datum main_arg)
 		rc = WaitLatch(MyLatch,
 					   WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
 					   yb_query_diagnostics_bg_worker_interval_ms,
-					   YB_WAIT_EVENT_QUERY_DIAGNOSTICS_MAIN);
+					   WAIT_EVENT_YB_QUERY_DIAGNOSTICS_MAIN);
 		ResetLatch(MyLatch);
 
 		/* Bailout if postmaster has died */
@@ -1108,9 +1766,51 @@ YbQueryDiagnosticsMain(Datum main_arg)
 		}
 
 		/* Check for expired entries within the shared hash table */
-		RemoveExpiredEntries();
+		FlushAndCleanBundles();
 	}
+
 	proc_exit(0);
+}
+
+/*
+ * FetchSchemaOids
+ *		Fetches unique schema oids from the given rtable and stores them in schema_oids.
+ */
+static void
+FetchSchemaOids(List *rtable, Oid *schema_oids)
+{
+	ListCell   *lc;
+	int			i = 0;
+
+	foreach(lc, rtable)
+	{
+		if (i >= YB_QD_MAX_SCHEMA_OIDS)
+			break;
+
+		RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
+		bool		already_exist = false;
+
+		/*
+		 * Using a bitmapset (bitmapset.h) for schema_oids would make insertion cleaner,
+		 * but take up more memory and make iteration messier.
+		 * Since YB_QD_MAX_SCHEMA_OIDS is small, we stick to an array.
+		 */
+		if (rte->relid != InvalidOid)
+		{
+			/* Check if the schema oid is already present */
+			for (int j = 0; j < i; j++)
+			{
+				if (schema_oids[j] == rte->relid)
+				{
+					already_exist = true;
+					break;
+				}
+			}
+
+			if (!already_exist)
+				schema_oids[i++] = rte->relid;
+		}
+	}
 }
 
 /*
@@ -1123,12 +1823,12 @@ YbQueryDiagnosticsMain(Datum main_arg)
 static void
 ConstructDiagnosticsPath(YbQueryDiagnosticsMetadata *metadata)
 {
-	int		rand_num = DatumGetUInt32(hash_any((unsigned char*)&metadata->start_time,
+	uint32		rand_num =DatumGetUInt32(hash_any((unsigned char*)&metadata->start_time,
 										   sizeof(metadata->start_time)));
 #ifdef WIN32
-	const char *format = "%s\\%s\\%ld\\%d\\";
+	const char *format = "%s\\%s\\%ld\\%ud\\";
 #else
-	const char *format = "%s/%s/%ld/%d/";
+	const char *format = "%s/%s/%ld/%ud/";
 #endif
 	if (snprintf(metadata->path, MAXPGPATH, format,
 				 DataDir, "query-diagnostics", metadata->params.query_id, rand_num) >= MAXPGPATH)
@@ -1188,7 +1888,7 @@ yb_query_diagnostics(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("query diagnostics is not enabled"),
-				 errhint("set TEST_yb_enable_query_diagnostics gflag to true")));
+				 errhint("Set TEST_yb_enable_query_diagnostics gflag to true")));
 
 	YbQueryDiagnosticsMetadata metadata;
 	metadata.start_time = GetCurrentTimestamp();
@@ -1200,4 +1900,52 @@ yb_query_diagnostics(PG_FUNCTION_ARGS)
 	InsertNewBundleInfo(&metadata);
 
 	PG_RETURN_TEXT_P(cstring_to_text(metadata.path));
+}
+
+/*
+ * yb_cancel_query_diagnostics
+ *		Stops query diagnostics for the given query ID, and no data is dumped.
+ *	returns:
+ * 		Nothing is returned if the diagnostics stopped successfully,
+ *		otherwise raises an ereport(ERROR).
+ */
+Datum
+yb_cancel_query_diagnostics(PG_FUNCTION_ARGS)
+{
+	if (!YBIsQueryDiagnosticsEnabled())
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("query diagnostics is not enabled"),
+				 errhint("Set TEST_yb_enable_query_diagnostics gflag to true")));
+
+	int64			query_id = PG_GETARG_INT64(0);
+	YbQueryDiagnosticsEntry *entry;
+
+	if (query_id == 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("there cannot be a query with query_id 0")));
+
+	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
+
+	entry = (YbQueryDiagnosticsEntry *) hash_search(bundles_in_progress,
+													&query_id, HASH_FIND,
+													NULL);
+	if (entry)
+	{
+		InsertBundlesIntoView(&entry->metadata, DIAGNOSTICS_CANCELLED,
+							  "Bundle was cancelled");
+
+		LWLockRelease(bundles_in_progress_lock);
+		RemoveBundleInfo(query_id);
+	}
+	else
+	{
+		LWLockRelease(bundles_in_progress_lock);
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("query diagnostics is not enabled for query_id %ld", query_id)));
+	}
+
+	PG_RETURN_VOID();
 }

@@ -24,9 +24,9 @@ func rollbackUpgrade(backupDir string, state *ybactlstate.State) {
 		RestoreBackupScriptHelper(backup, common.GetBaseInstall(), true, true, false, false, true,
 			fmt.Sprintf("%s/yba_installer/packages/yugabyte-%s/devops/bin/yb_platform_backup.sh",
 				common.GetActiveSymlink(), state.Version),
-			common.GetBaseInstall() + "/data/yb-platform",
-			common.GetActiveSymlink() + "/ybdb/bin/ysqlsh",
-			common.GetActiveSymlink() + "/pgsql/bin/pg_restore")
+			common.GetBaseInstall()+"/data/yb-platform",
+			common.GetActiveSymlink()+"/ybdb/bin/ysqlsh",
+			common.GetActiveSymlink()+"/pgsql/bin/pg_restore")
 	}
 
 	// Validate symlink
@@ -56,7 +56,7 @@ func rollbackUpgrade(backupDir string, state *ybactlstate.State) {
 	}
 
 	// reconfigure with the old binary
-	if out:= shell.Run(filepath.Join(common.YbactlInstallDir(), "yba-ctl"), "reconfigure"); !out.SucceededOrLog() {
+	if out := shell.Run(filepath.Join(common.YbactlInstallDir(), "yba-ctl"), "reconfigure"); !out.SucceededOrLog() {
 		log.Warn(fmt.Sprintf("failed to reconfigure with old yba version: %w", out.Error))
 	}
 
@@ -139,13 +139,13 @@ func upgradeCmd() *cobra.Command {
 				log.Info(fmt.Sprintf("Taking YBA backup to %s", backupDir))
 				if errB := CreateBackupScriptHelper(backupDir, common.GetBaseInstall(), true, true, false, true, false,
 					fmt.Sprintf("%s/yba_installer/packages/yugabyte-%s/devops/bin/yb_platform_backup.sh", common.GetActiveSymlink(), state.Version),
-					common.GetActiveSymlink() + "/ybdb/postgres/bin/ysql_dump",
-					common.GetActiveSymlink() + "/pgsql/bin/pg_dump"); errB != nil {
-						if rollback{
-							rollbackUpgrade("", state)
-						}
-						log.Fatal("Failed taking backup of YBA")
+					common.GetActiveSymlink()+"/ybdb/postgres/bin/ysql_dump",
+					common.GetActiveSymlink()+"/pgsql/bin/pg_dump"); errB != nil {
+					if rollback {
+						rollbackUpgrade("", state)
 					}
+					log.Fatal("Failed taking backup of YBA")
+				}
 			}
 
 			/* This is the postgres major version upgrade workflow!
@@ -207,6 +207,11 @@ func upgradeCmd() *cobra.Command {
 				log.Info("Completed upgrade of component " + name)
 			}
 
+			// Permissions update to be safe
+			if err := common.SetAllPermissions(); err != nil {
+				log.Fatal("error updating permissions for data and software directories: " + err.Error())
+			}
+
 			for _, name := range serviceOrder {
 				log.Info("About to restart component " + name)
 				if err := services[name].Restart(); err != nil {
@@ -241,7 +246,7 @@ func upgradeCmd() *cobra.Command {
 					log.Fatal(status.Service + " is not running! upgrade failed")
 				}
 			}
-			common.PrintStatus(statuses...)
+			common.PrintStatus(state.CurrentStatus.String(), statuses...)
 			// Here ends the postgres minor version/no upgrade workflow
 
 			state.CurrentStatus = ybactlstate.InstalledStatus

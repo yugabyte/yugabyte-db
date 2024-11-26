@@ -12083,4 +12083,21 @@
   proargnames => '{uuid,metrics,status,error}',
   proargmodes => '{o,o,o,o}',
   prosrc => 'yb_servers_metrics'},
+
+{ oid => '8076', descr => 'get the YB database clones',
+  proname => 'yb_database_clones', prorows => '10',
+  proretset => 't', provolatile => 'v',  proparallel => 'r',
+  prorettype => 'record', proargtypes => '',
+  proallargtypes => '{oid,text,oid,text,text,timestamptz,text}',
+  proargmodes => '{o,o,o,o,o,o,o}',
+  proargnames => '{db_oid,db_name,parent_db_oid,parent_db_name,state,as_of_time,failure_reason}',
+  prosrc => 'yb_database_clones' },
+
+{ oid => '8077',
+  descr => 'cancels query diagnostics bundle',
+  proname => 'yb_cancel_query_diagnostics',
+  provolatile => 'v', proparallel => 's',
+  prorettype => 'void', proargtypes => 'int8',
+  proargnames => '{query_id}',
+  prosrc => 'yb_cancel_query_diagnostics'},
 ]

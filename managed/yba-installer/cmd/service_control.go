@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight/checks"
@@ -34,10 +35,6 @@ var startCmd = &cobra.Command{
 		if err != nil {
 			log.Fatal("unable to load yba installer state: " + err.Error())
 		}
-		if state.CurrentStatus != ybactlstate.InstalledStatus {
-			log.Fatal("cannot start services - need installed state got " +
-				state.CurrentStatus.String())
-		}
 
 		// Initialize if it has not already happened. Do this instead of normal start workflow
 		if !state.Initialized {
@@ -47,11 +44,20 @@ var startCmd = &cobra.Command{
 			if preflight.ShouldFail(results) {
 				log.Fatal("preflight failed")
 			}
+			if err := common.SetDataPermissions(); err != nil {
+				log.Fatal("Failed to change ownership of data directory: " + err.Error())
+			}
 			log.Info("Initializing YBA before starting services")
 			if err := common.Initialize(); err != nil {
 				log.Fatal("Failed to initialize common components: " + err.Error())
 			}
 			for _, name := range serviceOrder {
+				if name == "yb-platform" {
+					log.Info("Generating yb-platform config with fixPaths set to true")
+					plat := services[name].(Platform)
+					plat.FixPaths = true
+					config.GenerateTemplate(plat)
+				}
 				if err := services[name].Initialize(); err != nil {
 					log.Fatal("Failed to initialize " + name + ": " + err.Error())
 				}
@@ -63,13 +69,16 @@ var startCmd = &cobra.Command{
 			if err := common.WaitForYBAReady(ybaCtl.Version()); err != nil {
 				log.Fatal("failed to wait for yba ready: " + err.Error())
 			}
-			getAndPrintStatus()
+			getAndPrintStatus(state)
 			// We can exit early, as initialize will also start the services
 			return
 		}
 
 		if err := common.CheckDataVersionFile(); err != nil {
 			log.Fatal("Failed to validate data version: " + err.Error())
+		}
+		if err := common.SetAllPermissions(); err != nil {
+			log.Fatal("error updating permissions for data and software directories: " + err.Error())
 		}
 		if len(args) == 1 {
 			if err := services[args[0]].Start(); err != nil {
@@ -104,14 +113,6 @@ var stopCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		state, err := ybactlstate.Initialize()
-		if err != nil {
-			log.Fatal("unable to load yba installer state: " + err.Error())
-		}
-		if state.CurrentStatus != ybactlstate.InstalledStatus {
-			log.Fatal("cannot stop services - need installed state got " +
-				state.CurrentStatus.String())
-		}
 		if len(args) == 1 {
 			if err := services[args[0]].Stop(); err != nil {
 				log.Fatal("Failed to stop " + args[0] + ": " + err.Error())
@@ -145,14 +146,6 @@ var restartCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		state, err := ybactlstate.Initialize()
-		if err != nil {
-			log.Fatal("unable to load yba installer state: " + err.Error())
-		}
-		if state.CurrentStatus != ybactlstate.InstalledStatus {
-			log.Fatal("cannot restart services - need installed state got " +
-				state.CurrentStatus.String())
-		}
 		if len(args) == 1 {
 			if err := services[args[0]].Restart(); err != nil {
 				log.Fatal("Failed to restart " + args[0] + ": " + err.Error())

@@ -487,6 +487,10 @@ uint8_t YBCGetQueryIdForCatalogRequests() {
   return static_cast<uint8_t>(ash::FixedQueryId::kQueryIdForCatalogRequests);
 }
 
+uint32_t YBCWaitEventForWaitingOnTServer() {
+  return to_underlying(ash::WaitStateCode::kWaitingOnTServer);
+}
+
 // Get a random integer between a and b
 int YBCGetRandomUniformInt(int a, int b) {
   return RandomUniformInt<int>(a, b);
@@ -508,6 +512,10 @@ YBCWaitEventDescriptor YBCGetWaitEventDescription(size_t index) {
 
 int YBCGetCircularBufferSizeInKiBs() {
   return ash::WaitStateInfo::GetCircularBufferSizeInKiBs();
+}
+
+const char* YBCGetPggateRPCName(uint32_t pggate_rpc_enum_value) {
+  return NoPrefixName(static_cast<ash::PggateRPC>(pggate_rpc_enum_value));
 }
 
 int YBCGetCallStackFrames(void** result, int max_depth, int skip_count) {

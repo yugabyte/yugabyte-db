@@ -48,7 +48,7 @@ The examples in this tutorial use two tables, representing departments and emplo
 
 ### Open the YSQL shell
 
-Using the YugabyteDB SQL shell, [ysqlsh](../../../admin/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
+Using the YugabyteDB SQL shell, [ysqlsh](../../../api/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -518,7 +518,7 @@ SELECT * FROM emp_evaluation_period e1
 
 ### Cross table pivots
 
-Use a cross table to show the sum of salary per job, by department. The shell [\crosstabview](../../../admin/ysqlsh-meta-commands/#crosstabview-colv-colh-cold-sortcolh) meta-command displays rows as columns. The following statement sums the salaries across jobs and departments and displays them as a cross table:
+Use a cross table to show the sum of salary per job, by department. The shell [\crosstabview](../../../api/ysqlsh-meta-commands/#crosstabview-colv-colh-cold-sortcolh) meta-command displays rows as columns. The following statement sums the salaries across jobs and departments and displays them as a cross table:
 
 ```sql
 SELECT job, dname, sum(sal)
@@ -620,7 +620,7 @@ Thanks to the GIN index, this search doesn't need to read all rows and text.
 
 ### Stored procedures
 
-A [stored procedure](../../../explore/ysql-language-features/stored-procedures/) encapsulates procedural logic into an atomic operation. Use stored procedures to encapsulate transactions with error handling. The following example creates a procedure in PL/pgSQL, named "commission_transfer", that transfers a commission "amount" from `empno1` to `empno2`.
+A [stored procedure](../../../architecture/query-layer/join-strategies/#batched-nested-loop-join-bnl) encapsulates procedural logic into an atomic operation. Use stored procedures to encapsulate transactions with error handling. The following example creates a procedure in PL/pgSQL, named "commission_transfer", that transfers a commission "amount" from `empno1` to `empno2`.
 
 1. Create the procedure for the commission transfer between employees. The procedure has two SQL operations: decrease from `empno1` and add to `empno2`. It also adds error checking to raise a custom exception if `empno1` doesn't have sufficient funds to transfer.
 

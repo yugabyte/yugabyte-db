@@ -143,6 +143,18 @@ Optionally, use the **Helm Overrides** section, as follows:
 
     To enable the GKE service account service at the provider level, refer to [Overrides](../../configure-yugabyte-platform/kubernetes/#overrides).
 
+- If you want to enable [readiness probes](../../../deploy/kubernetes/single-zone/oss/helm-chart/#readiness-probes), add the following overrides:
+
+    ```yaml
+    master:
+      readinessProbe:
+        enabled: true
+
+    tserver:
+      readinessProbe:
+        enabled: true
+    ```
+
 - Select **Force Apply** if you want to override any previous overrides.
 
 - Click **Validate & Save**.

@@ -18,11 +18,13 @@ import (
 
 // upgradeVMImageCmd represents the universe upgrade vm image command
 var upgradeVMImageCmd = &cobra.Command{
-	Use:     "linux-os",
-	Aliases: []string{"vm-image", "os"},
+	Use:     "os",
+	Aliases: []string{"vm-image", "linux-os"},
 	Short:   "VM Linux OS patch for a YugabyteDB Anywhere Universe",
 	Long: "VM Linux OS patch for a YugabyteDB Anywhere Universe. Supported only for universes" +
-		" of cloud type AWS, GCP and Azure.",
+		" of cloud type AWS, GCP and Azure. Triggers Rolling restart of all DB nodes.",
+	Example: `yba universe upgrade os --name <universe-name> \
+		--primary-linux-version <image-bundle-name-in-provider> `,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		universeName, err := cmd.Flags().GetString("name")
@@ -174,14 +176,13 @@ var upgradeVMImageCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		taskUUID := rUpgrade.GetTaskUUID()
 		logrus.Info(
 			fmt.Sprintf("Patching universe %s (%s) linux OS\n",
 				formatter.Colorize(universeName, formatter.GreenColor),
 				universeUUID,
 			))
 
-		WaitForUpgradeUniverseTask(authAPI, universeName, universeUUID, taskUUID)
+		WaitForUpgradeUniverseTask(authAPI, universeName, rUpgrade)
 	},
 }
 
@@ -189,7 +190,7 @@ func init() {
 	upgradeVMImageCmd.Flags().SortFlags = false
 
 	upgradeVMImageCmd.Flags().String("primary-linux-version", "",
-		"[Required] Primary cluster linux OS version name to be applied.")
+		"[Required] Primary cluster linux OS version name to be applied as listed in the provider.")
 	upgradeVMImageCmd.MarkFlagRequired("primary-linux-version")
 	upgradeVMImageCmd.Flags().Bool("inherit-from-primary", true,
 		"[Optional] Apply the same linux OS version of primary cluster to read replica cluster.")

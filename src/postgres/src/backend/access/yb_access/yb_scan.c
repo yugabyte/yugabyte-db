@@ -733,7 +733,7 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 	 * types of scan.
 	 * - "querying_colocated_table": Support optimizations for (system,
 	 *   user database and tablegroup) colocated tables
-	 * - "index_oid, index_only_scan, use_secondary_index": Different index
+	 * - "index_oid, index_only_scan": Different index
 	 *   scans.
 	 * NOTE: Primary index is a special case as there isn't a primary index
 	 * table in YugaByte.
@@ -763,16 +763,15 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 
 	if (index)
 	{
-		ybScan->prepare_params.index_relfilenode_oid =
-			ybScan->prepare_params.fetch_ybctids_only &&
-				YBIsCoveredByMainTable(index)
-					? YbGetRelfileNodeId(relation)
-					: YbGetRelfileNodeId(index);
-		ybScan->prepare_params.index_only_scan = xs_want_itup;
-		ybScan->prepare_params.use_secondary_index =
-			!YBIsCoveredByMainTable(index) ||
-			(ybScan->prepare_params.fetch_ybctids_only &&
-			 !ybScan->prepare_params.querying_colocated_table);
+		YBCPgPrepareParameters *params = &ybScan->prepare_params;
+		params->index_relfilenode_oid = InvalidOid;
+		params->index_only_scan = xs_want_itup;
+		if (!YBIsCoveredByMainTable(index))
+			params->index_relfilenode_oid = YbGetRelfileNodeId(index);
+		else if (params->index_only_scan ||
+				(params->fetch_ybctids_only &&
+				 !params->querying_colocated_table))
+			params->index_relfilenode_oid = YbGetRelfileNodeId(relation);
 	}
 
 	/* Setup descriptors for target and bind. */
@@ -988,21 +987,6 @@ YbGetLengthOfKey(ScanKey *key_ptr)
 	/* We also want to include the last element. */
 	length_of_key++;
 	return length_of_key;
-}
-
-/*
- * Given a table attribute number, get a corresponding index attribute number.
- * Throw an error if it is not found.
- */
-static AttrNumber
-YbGetIndexAttnum(AttrNumber table_attno, Relation index)
-{
-	for (int i = 0; i < IndexRelationGetNumberOfAttributes(index); ++i)
-	{
-		if (table_attno == index->rd_index->indkey.values[i])
-			return i + 1;
-	}
-	elog(ERROR, "column is not in index");
 }
 
 /*
@@ -2716,7 +2700,7 @@ YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc, Relation index,
 					 * attribute number to an index-based one.
 					 */
 					if (index && xs_want_itup)
-						attno = YbGetIndexAttnum(attno, index);
+						attno = YbGetIndexAttnum(index, attno);
 					Form_pg_attribute attr = TupleDescAttr(tupdesc, attno - 1);
 					YBCPgTypeAttrs type_attrs = {attr->atttypmod};
 
@@ -3232,7 +3216,7 @@ SysScanDesc ybc_systable_begin_default_scan(Relation relation,
 			 *   must be used for bindings.
 			 */
 			for (int i = 0; i < nkeys; ++i)
-				key[i].sk_attno = YbGetIndexAttnum(key[i].sk_attno, index);
+				key[i].sk_attno = YbGetIndexAttnum(index, key[i].sk_attno);
 		}
 	}
 
@@ -3750,7 +3734,7 @@ YbFetchHeapTuple(Relation relation, Datum ybctid, HeapTuple* tuple)
 		}
 	}
 
-	
+
 	/* Free up memory and return data */
 	pfree(values);
 	pfree(nulls);
@@ -3937,28 +3921,23 @@ ybBeginSample(Relation rel, int targrows)
 	ybSample->deadrows = 0;
 	elog(DEBUG1, "Sampling %d rows from table %s", targrows, RelationGetRelationName(rel));
 
+	reservoir_init_selection_state(&rstate, targrows);
 	/*
 	 * Create new sampler command
 	 */
 	HandleYBStatus(YBCPgNewSample(dboid,
 								  YbGetRelfileNodeId(rel),
-								  targrows,
 								  YBCIsRegionLocal(rel),
+								  targrows,
+								  rstate.W,
+								  rstate.randstate.s0,
+								  rstate.randstate.s1,
 								  &ybSample->handle));
 	for (AttrNumber attnum = 1; attnum <= tupdesc->natts; attnum++)
 	{
 		if (!TupleDescAttr(tupdesc, attnum - 1)->attisdropped)
 			YbDmlAppendTargetRegular(tupdesc, attnum, ybSample->handle);
 	}
-
-	/*
-	 * Initialize sampler random state
-	 */
-	reservoir_init_selection_state(&rstate, targrows);
-	HandleYBStatus(YBCPgInitRandomState(ybSample->handle,
-										rstate.W,
-										rstate.randstate.s0,
-										rstate.randstate.s1));
 
 	return ybSample;
 }

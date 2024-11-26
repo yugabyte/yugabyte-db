@@ -161,6 +161,10 @@ func (plat Platform) Initialize() error {
 	if err := createPemFormatKeyAndCert(); err != nil {
 		return err
 	}
+	// Explicitly set data dir perms only in initialize because we know it exists
+	if err := plat.SetDataDirPerms(); err != nil {
+		return err
+	}
 	if err := plat.Start(); err != nil {
 		return err
 	}

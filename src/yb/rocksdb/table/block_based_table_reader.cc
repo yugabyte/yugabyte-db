@@ -130,6 +130,11 @@ void ReleaseCachedEntry(void* arg, void* h) {
   cache->Release(handle);
 }
 
+template <class TValue>
+void DestroyCachedEntry(void* arg, void* h) {
+  delete reinterpret_cast<TValue*>(arg);
+}
+
 Cache::Handle* GetEntryFromCache(Cache* block_cache, const Slice& key,
                                  Tickers block_cache_miss_ticker,
                                  Tickers block_cache_hit_ticker,
@@ -203,25 +208,33 @@ struct BlockBasedTable::FileReaderWithCachePrefix {
 //    was not read from cache, `cache_handle` will be nullptr.
 template <class TValue>
 struct BlockBasedTable::CachableEntry {
-  CachableEntry(TValue* _value, Cache::Handle* _cache_handle)
-      : value(_value), cache_handle(_cache_handle) {}
-  CachableEntry() : CachableEntry(nullptr, nullptr) {}
+  CachableEntry(TValue* _value, Cache::Handle& _cache_handle)
+      : value(_value), cache_handle(&_cache_handle) {}
+
+  CachableEntry(TValue* _value, bool _owns)
+      : value(_value), owns(_owns) {}
+
+  CachableEntry() = default;
+
   void Release(Cache* cache) {
     if (cache_handle) {
       cache->Release(cache_handle);
       value = nullptr;
       cache_handle = nullptr;
+    } else if (owns) {
+      delete value;
     }
   }
 
   TValue* value = nullptr;
   // if the entry is from the cache, cache_handle will be populated.
   Cache::Handle* cache_handle = nullptr;
+  bool owns = false;
 };
 
 struct BlockBasedTable::Rep {
   struct NotMatchingFilterEntry : public CachableEntry<FilterBlockReader> {
-    NotMatchingFilterEntry() : CachableEntry(&filter, nullptr) {}
+    NotMatchingFilterEntry() : CachableEntry(&filter, false) {}
     NotMatchingFilterBlockReader filter;
   };
 
@@ -1170,7 +1183,7 @@ BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(
   // prefetch_index_and_filter == false. That means bloom filters are not be used if
   // both prefetch_index_and_filter and table_options.cache_index_and_filter_blocks are false.
   if (!rep_->table_options.cache_index_and_filter_blocks && !is_fixed_size_filter) {
-    return {rep_->filter.get(), nullptr /* cache handle */};
+    return {rep_->filter.get(), false};
   }
 
   PERF_TIMER_GUARD(read_filter_block_nanos);
@@ -1181,7 +1194,7 @@ BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(
     // If we get here, we have:
     // table_options.cache_index_and_filter_blocks || is_fixed_size_filter
     // table_options.block_cache == nullptr
-    return {nullptr /* filter */, nullptr /* cache handle */};
+    return {};
   }
 
   const BlockHandle* filter_block_handle;
@@ -1202,7 +1215,7 @@ BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(
       RLOG(InfoLogLevel::ERROR_LEVEL, rep_->ioptions.info_log,
           "Failed to decode fixed-size filter block handle from filter index.");
       FAIL_IF_NOT_PRODUCTION();
-      return {nullptr /* filter */, nullptr /* cache handle */};
+      return {};
     }
   } else {
     filter_block_handle = &rep_->filter_handle;
@@ -1241,7 +1254,7 @@ BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(
     }
   }
 
-  return { filter, cache_handle };
+  return { filter, *cache_handle };
 }
 
 yb::Result<BlockBasedTable::CachableEntry<IndexReader>> BlockBasedTable::GetIndexReader(
@@ -1249,7 +1262,7 @@ yb::Result<BlockBasedTable::CachableEntry<IndexReader>> BlockBasedTable::GetInde
   auto* index_reader = rep_->data_index_reader.get(std::memory_order_acquire);
   if (index_reader) {
     // Index reader has already been pre-populated.
-    return BlockBasedTable::CachableEntry<IndexReader>{index_reader, /* cache_handle =*/ nullptr};
+    return BlockBasedTable::CachableEntry<IndexReader>{index_reader, false};
   }
   PERF_TIMER_GUARD(read_index_block_nanos);
 
@@ -1280,11 +1293,14 @@ yb::Result<BlockBasedTable::CachableEntry<IndexReader>> BlockBasedTable::GetInde
       RETURN_NOT_OK(block_cache->Insert(
           key, read_options.query_id, index_reader_unique.get(), index_reader_unique->usable_size(),
           &DeleteCachedEntry<IndexReader>, &cache_handle, statistics));
-      assert(cache_handle);
+      DCHECK(cache_handle || read_options.query_id == kNoCacheQueryId);
       index_reader = index_reader_unique.release();
+      if (!cache_handle) {
+        return BlockBasedTable::CachableEntry<IndexReader>{index_reader, true};
+      }
     }
 
-    return BlockBasedTable::CachableEntry<IndexReader>{index_reader, cache_handle};
+    return BlockBasedTable::CachableEntry<IndexReader>{index_reader, *cache_handle};
   } else {
     if (no_io) {
       return ReturnNoIOError();
@@ -1303,7 +1319,7 @@ yb::Result<BlockBasedTable::CachableEntry<IndexReader>> BlockBasedTable::GetInde
       index_reader = index_reader_holder.release();
       rep_->data_index_reader.reset(index_reader, std::memory_order_acq_rel);
     }
-    return BlockBasedTable::CachableEntry<IndexReader>{index_reader, /* cache_handle =*/ nullptr};
+    return BlockBasedTable::CachableEntry<IndexReader>{index_reader, false};
   }
 }
 
@@ -1324,11 +1340,14 @@ InternalIterator* BlockBasedTable::NewIndexIterator(
           this, ReadOptions::kDefault, skip_filters_for_index, BlockType::kIndex),
       read_options.total_order_seek);
 
+  auto iter = new_iter ? new_iter : input_iter;
   if (index_reader_result->cache_handle) {
-    auto iter = new_iter ? new_iter : input_iter;
     iter->RegisterCleanup(
         &ReleaseCachedEntry, rep_->table_options.block_cache.get(),
         index_reader_result->cache_handle);
+  } else if (index_reader_result->owns) {
+    iter->RegisterCleanup(
+        &DestroyCachedEntry<IndexReader>, index_reader_result->value, nullptr);
   }
 
   return new_iter;

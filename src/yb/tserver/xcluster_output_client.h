@@ -37,12 +37,10 @@ struct XClusterOutputClientResponse {
   Status status;
   OpIdPB last_applied_op_id;
   uint32_t processed_record_count;
-  uint32_t wait_for_version{0};
   std::shared_ptr<cdc::GetChangesResponsePB> get_changes_response;
 };
 
 class XClusterPoller;
-struct XClusterClient;
 
 class XClusterOutputClient : public XClusterAsyncExecutor {
  public:
@@ -54,9 +52,6 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
   ~XClusterOutputClient();
   void StartShutdown() override;
   void CompleteShutdown() override;
-
-  // Sets the last compatible consumer schema version
-  void SetLastCompatibleConsumerSchemaVersion(SchemaVersion schema_version);
 
   // Async call for applying changes. Will invoke the apply_changes_clbk when the changes are
   // applied, or when any error occurs.
@@ -82,6 +77,8 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
   // record, then we process the current changes first, wait for those to complete, then process
   // the ddl + other changes after.
   Status ProcessChangesStartingFromIndex(int start);
+
+  Result<cdc::CDCRecordPB> TransformSequencesDataRecord(const cdc::CDCRecordPB& record);
 
   Status ProcessRecordForTablet(
       const cdc::CDCRecordPB& record, const Result<client::internal::RemoteTabletPtr>& tablet);
@@ -124,6 +121,8 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
 
   bool UseLocalTserver();
 
+  bool IsSequencesDataTablet();
+
   // Even though this is a const we guard it with a lock, since it is unsafe to use after shutdown.
   // TODO: Once we move the async execution logic to the Poller, it will guarantee that our lifetime
   // is less than the pollers lifetime, making this always safe to use.
@@ -144,13 +143,11 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
   Status error_status_ GUARDED_BY(lock_);
   OpIdPB op_id_ GUARDED_BY(lock_) = consensus::MinimumOpId();
   bool done_processing_ GUARDED_BY(lock_) = false;
-  uint32_t wait_for_version_ GUARDED_BY(lock_) = 0;
   std::atomic<bool> shutdown_ = false;
 
   uint32_t processed_record_count_ GUARDED_BY(lock_) = 0;
   uint32_t record_count_ GUARDED_BY(lock_) = 0;
 
-  SchemaVersion last_compatible_consumer_schema_version_ GUARDED_BY(lock_) = 0;
   SchemaVersion producer_schema_version_ GUARDED_BY(lock_) = 0;
   ColocationId colocation_id_ GUARDED_BY(lock_) = 0;
 
@@ -165,6 +162,10 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
   std::unique_ptr<XClusterWriteInterface> write_strategy_ GUARDED_BY(lock_);
 
   rocksdb::RateLimiter* rate_limiter_;
+
+  // Only non-optional for sequences_data tablets, in which case it is
+  // the OID of the DB to write incoming sequence information to.
+  std::optional<uint32_t> db_oid_write_sequences_to_{std::nullopt};
 };
 
 std::shared_ptr<XClusterOutputClient> CreateXClusterOutputClient(

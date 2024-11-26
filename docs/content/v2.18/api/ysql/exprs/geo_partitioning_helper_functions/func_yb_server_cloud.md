@@ -29,12 +29,6 @@ yugabyte=# SELECT yb_server_cloud();
 (1 row)
 ```
 
-{{< note title="Note" >}}
-
-If you didn't set the placement_cloud flag at node startup, yb_server_cloud() returns NULL.
-
-{{< /note >}}
-
 ## See also
 
 - [`yb_server_region()`](../func_yb_server_region)

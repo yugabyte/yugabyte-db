@@ -43,7 +43,6 @@
 
 using namespace std::literals;
 
-DECLARE_string(fs_data_dirs);
 DEFINE_UNKNOWN_bool(allow_insecure_connections, true,
     "Whether we should allow insecure connections.");
 DEFINE_UNKNOWN_bool(dump_certificate_entries, false, "Whether we should dump certificate entries.");

@@ -80,8 +80,16 @@ public class SyncMasterAddresses extends UniverseDefinitionTaskBase {
                 params.isIgnoreError = isLocalProvider;
               })
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+      Set<NodeDetails> pendingMasters =
+          universe.getMasters().stream()
+              .filter(n -> n.autoSyncMasterAddrs)
+              .collect(Collectors.toSet());
+      Set<NodeDetails> pendingTservers =
+          universe.getTServers().stream()
+              .filter(n -> n.autoSyncMasterAddrs)
+              .collect(Collectors.toSet());
       createMasterAddressUpdateTask(
-          universe, universe.getMasters(), universe.getTServers(), false /* ignore error */);
+          universe, pendingMasters, pendingTservers, false /* ignore error */);
       createUpdateUniverseFieldsTask(u -> u.getNodes().forEach(n -> n.autoSyncMasterAddrs = false));
       createMarkUniverseUpdateSuccessTasks(universe.getUniverseUUID());
       getRunnableTask().runSubTasks();

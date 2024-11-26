@@ -225,7 +225,9 @@ Status XClusterTestBase::CreateDatabase(
 }
 
 Status XClusterTestBase::DropDatabase(Cluster& cluster, const std::string& namespace_name) {
-  auto conn = VERIFY_RESULT(cluster.Connect());
+  // Connect to template1 so we can delete yugabyte database if desired (you cannot DROP a database
+  // you are connected to).
+  auto conn = VERIFY_RESULT(cluster.ConnectToDB("template1"));
   return conn.ExecuteFormat("DROP DATABASE $0", namespace_name);
 }
 
@@ -449,8 +451,12 @@ Status XClusterTestBase::ToggleUniverseReplication(
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
-  // Sleep a few seconds for the change to be propagated.
-  SleepFor(3s);
+
+  if (is_enabled) {
+    // Sleep a few seconds for the change to be propagated.
+    // When disabling replication the RPC perform a sync wait.
+    SleepFor(3s);
+  }
   return Status::OK();
 }
 
@@ -755,21 +761,24 @@ Result<std::vector<xrepl::StreamId>> XClusterTestBase::BootstrapProducer(
 
 Status XClusterTestBase::WaitForReplicationDrain(
     int expected_num_nondrained, int timeout_secs, std::optional<uint64> target_time,
-    std::vector<TableId> producer_table_ids) {
+    std::vector<TableId> producer_table_ids, YBClient* source_client) {
+  if (!source_client) {
+    source_client = producer_client();
+  }
+  if (producer_table_ids.empty()) {
+    for (const auto& producer_table : producer_tables_) {
+      producer_table_ids.push_back(producer_table->id());
+    }
+  }
+
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
-      &producer_client()->proxy_cache(),
+      &source_client->proxy_cache(),
       VERIFY_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
 
   master::WaitForReplicationDrainRequestPB req;
   master::WaitForReplicationDrainResponsePB resp;
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(timeout_secs));
-
-  if (producer_table_ids.empty()) {
-    for (const auto& producer_table : producer_tables_) {
-      producer_table_ids.push_back(producer_table->id());
-    }
-  }
 
   for (const auto& table_id : producer_table_ids) {
     master::ListCDCStreamsResponsePB list_resp;
@@ -823,12 +832,9 @@ Status XClusterTestBase::VerifyReplicationError(
       [&]() -> Result<bool> {
         rpc.Reset();
         rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-        if (!master_proxy->GetReplicationStatus(req, &resp, &rpc).ok()) {
-          return false;
-        }
-
+        RETURN_NOT_OK(master_proxy->GetReplicationStatus(req, &resp, &rpc));
         if (resp.has_error()) {
-          return false;
+          return StatusFromPB(resp.error().status());
         }
 
         if (resp.statuses_size() == 0 || (resp.statuses()[0].table_id() != consumer_table_id &&
@@ -898,28 +904,35 @@ Status XClusterTestBase::WaitForSafeTime(
           return safe_time && safe_time->is_valid() && *safe_time > min_safe_time;
         },
         propagation_timeout_,
-        Format("Wait for safe_time to move above $0", min_safe_time.ToDebugString())));
+        Format(
+            "Wait for safe_time to move above $0 for namespace ID $1",
+            min_safe_time.ToDebugString(), namespace_id)));
   }
 
   return Status::OK();
 }
 
-Status XClusterTestBase::WaitForSafeTimeToAdvanceToNow() {
+Status XClusterTestBase::WaitForSafeTimeToAdvanceToNow(std::vector<NamespaceName> namespace_names) {
+  if (namespace_names.empty()) {
+    namespace_names = {namespace_name};
+  }
   auto producer_master = VERIFY_RESULT(producer_cluster()->GetLeaderMiniMaster())->master();
   HybridTime now = producer_master->clock()->Now();
   for (auto ts : producer_cluster()->mini_tablet_servers()) {
     now.MakeAtLeast(ts->server()->clock()->Now());
   }
 
-  master::GetNamespaceInfoResponsePB resp;
-  RETURN_NOT_OK(consumer_client()->GetNamespaceInfo(
-      std::string() /* namespace_id */, namespace_name, YQL_DATABASE_PGSQL, &resp));
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
+  for (const auto& name : namespace_names) {
+    master::GetNamespaceInfoResponsePB resp;
+    RETURN_NOT_OK(consumer_client()->GetNamespaceInfo(
+        std::string() /* namespace_id */, name, YQL_DATABASE_PGSQL, &resp));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    auto namespace_id = resp.namespace_().id();
+    RETURN_NOT_OK(WaitForSafeTime(namespace_id, now));
   }
-  auto namespace_id = resp.namespace_().id();
-
-  return WaitForSafeTime(namespace_id, now);
+  return Status::OK();
 }
 
 Status XClusterTestBase::PauseResumeXClusterProducerStreams(
@@ -1021,16 +1034,20 @@ Result<TableId> GetTablegroupParentTable(
 
 }  // namespace
 
-Result<TableId> XClusterTestBase::GetColocatedDatabaseParentTableId() {
+Result<TableId> XClusterTestBase::GetColocatedDatabaseParentTableId(Cluster* cluster) {
+  if (!cluster) {
+    cluster = &producer_cluster_;
+  }
+
   if (FLAGS_ysql_legacy_colocated_database_creation) {
     // Legacy colocated database
     master::GetNamespaceInfoResponsePB ns_resp;
     RETURN_NOT_OK(
-        producer_client()->GetNamespaceInfo("", namespace_name, YQL_DATABASE_PGSQL, &ns_resp));
+        cluster->client_->GetNamespaceInfo("", namespace_name, YQL_DATABASE_PGSQL, &ns_resp));
     return GetColocatedDbParentTableId(ns_resp.namespace_().id());
   }
   // Colocated database
-  return GetTablegroupParentTable(&producer_cluster_, namespace_name);
+  return GetTablegroupParentTable(cluster, namespace_name);
 }
 
 Result<master::MasterReplicationProxy> XClusterTestBase::GetProducerMasterProxy() {

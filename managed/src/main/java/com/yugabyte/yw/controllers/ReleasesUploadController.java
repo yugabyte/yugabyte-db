@@ -51,6 +51,7 @@ public class ReleasesUploadController extends AuthenticatedController {
   @ApiOperation(
       value = "upload a release tgz",
       nickname = "uploadRelease",
+      response = YBPCreateSuccess.class,
       notes = "WARNING: This is a preview API that could change: upload release tgz file")
   @AuthzPath({
     @RequiredPermissionOnResource(

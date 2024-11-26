@@ -4,7 +4,6 @@ headerTitle: Drivers and ORMs
 linkTitle: Drivers and ORMs
 description: Use drivers to power applications with YugabyteDB.
 headcontent: Drivers and ORMs reference
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.20:
     identifier: drivers

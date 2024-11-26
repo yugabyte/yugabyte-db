@@ -13,60 +13,51 @@
 
 #pragma once
 
+#include <memory>
+
 #include "yb/docdb/docdb_fwd.h"
 
-#include "yb/dockv/key_bytes.h"
-#include "yb/dockv/primitive_value.h"
+#include "yb/qlexpr/qlexpr_fwd.h"
 
-#include "yb/vector/graph_repr_defs.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+
+#include "yb/rpc/rpc_fwd.h"
+
+#include "yb/util/kv_util.h"
 
 namespace yb::docdb {
 
-using VertexId = vectorindex::VertexId;
-using VectorIndexLevel = vectorindex::VectorIndexLevel;
-using VectorNodeNeighbors = vectorindex::VectorNodeNeighbors;
+using EncodedDistance = size_t;
 
-template <class CoordinateType>
-struct VectorIndexTypes {
-  using IndexedVector = std::vector<CoordinateType>;
+struct VectorIndexInsertEntry {
+  KeyBuffer key;
+  ValueBuffer value;
 };
 
-template <class CoordinateType>
-class VectorIndexFetcher {
+struct VectorIndexSearchResultEntry {
+  EncodedDistance encoded_distance;
+  KeyBuffer key;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(encoded_distance, key);
+  }
+};
+
+class VectorIndex {
  public:
-  using Types = VectorIndexTypes<CoordinateType>;
-  using IndexedVector = typename Types::IndexedVector;
+  virtual ~VectorIndex() = default;
 
-  virtual Result<IndexedVector> GetVector(
-      const ReadOperationData& read_operation_data, VertexId id) = 0;
-  virtual Result<VectorNodeNeighbors> GetNeighbors(
-      const ReadOperationData& read_operation_data, VertexId id, VectorIndexLevel level) = 0;
-  virtual ~VectorIndexFetcher() = default;
+  virtual Slice indexed_table_key_prefix() const = 0;
+  virtual ColumnId column_id() const = 0;
+  virtual Status Insert(
+      const VectorIndexInsertEntries& entries, HybridTime write_time,
+      const rocksdb::UserFrontiers* frontiers) = 0;
+  virtual Result<VectorIndexSearchResult> Search(Slice vector, size_t max_num_results) = 0;
+  virtual Result<EncodedDistance> Distance(Slice lhs, Slice rhs) = 0;
 };
 
-namespace detail {
-
-void AppendSubkey(dockv::KeyBytes& key, VectorIndexLevel level);
-void AppendSubkey(dockv::KeyBytes& key, VertexId id);
-
-inline void AppendSubkeys(dockv::KeyBytes& key) {}
-
-template <class T, class... Subkeys>
-void AppendSubkeys(dockv::KeyBytes& key, const T& t, Subkeys&&... subkeys) {
-  AppendSubkey(key, t);
-  AppendSubkeys(key, std::forward<Subkeys>(subkeys)...);
-}
-
-} // namespace detail
-
-template <class... Subkeys>
-dockv::KeyBytes MakeVectorIndexKey(VertexId id, Subkeys&&... subkeys) {
-  dockv::KeyBytes key;
-  auto key_entry_value = dockv::KeyEntryValue::VectorVertexId(id);
-  key_entry_value.AppendToKey(&key);
-  key.AppendGroupEnd();
-  detail::AppendSubkeys(key, std::forward<Subkeys>(subkeys)...);
-  return key;
-}
+Result<VectorIndexPtr> CreateVectorIndex(
+    const std::string& data_root_dir, rpc::ThreadPool& thread_pool,
+    Slice indexed_table_key_prefix, const qlexpr::IndexInfo& index_info);
 
 }  // namespace yb::docdb

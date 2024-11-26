@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.commissioner.UpgradeTaskBase.SPLIT_FALLBACK;
+import static com.yugabyte.yw.commissioner.UpgradeTaskBase.isBatchRollEnabled;
 import static com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType.RotatingCert;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -816,15 +817,22 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   n ->
                       n.masterState == MasterState.ToStart
                           || n.masterState == MasterState.Configured)
-              .peek(n -> log.info("Found candidate master node: {}.", n.getNodeName()))
+              .peek(
+                  n ->
+                      log.info(
+                          "Found candidate master node {} in universe {}",
+                          n.getNodeName(),
+                          universe.getUniverseUUID()))
               .collect(Collectors.toList());
       if (markedNodes.size() > 1) {
         String errMsg =
             String.format(
-                "Multiple nodes %s are marked to start master. Only one node must be marked",
+                "Multiple nodes %s are marked to start master in universe %s. Only one node must be"
+                    + " marked",
                 markedNodes.stream()
                     .map(NodeDetails::getNodeName)
-                    .collect(Collectors.joining(", ")));
+                    .collect(Collectors.joining(", ")),
+                universe.getUniverseUUID());
         log.error(errMsg);
         throw new IllegalStateException(errMsg);
       }
@@ -833,12 +841,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         if (pickNewNode) {
           String errMsg =
               String.format(
-                  "Node %s is already marked to start master against picking a new node",
-                  selectedNode.getNodeName());
+                  "Node %s in universe %s is already marked to start master against picking a new"
+                      + " node",
+                  selectedNode.getNodeName(), universe.getUniverseUUID());
           log.error(errMsg);
           throw new IllegalStateException(errMsg);
         }
-        log.info("Found replacement node {}", selectedNode.getNodeName());
+        log.info(
+            "Found replacement node {} in universe {}",
+            selectedNode.getNodeName(),
+            universe.getUniverseUUID());
         if (selectedNode.masterState == MasterState.ToStart) {
           ensureRemoteProcessState(universe, selectedNode, "yb-master", false);
         }
@@ -852,11 +864,19 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             candidates.stream()
                 .filter(n -> NodeState.Live.equals(n.state) && !n.isMaster)
                 .filter(n -> liveTserverNodes.contains(n))
-                .peek(n -> log.info("Found candidate master node: {}.", n.getNodeName()))
+                .peek(
+                    n ->
+                        log.info(
+                            "Found candidate master node {} in universe {}",
+                            n.getNodeName(),
+                            universe.getUniverseUUID()))
                 .findFirst();
         if (optional.isPresent()) {
           selectedNode = optional.get();
-          log.info("Found replacement node {}", selectedNode.getNodeName());
+          log.info(
+              "Found replacement node {} in universe {}",
+              selectedNode.getNodeName(),
+              universe.getUniverseUUID());
           ensureRemoteProcessState(universe, selectedNode, "yb-master", false);
           return selectedNode.getNodeName();
         }
@@ -1119,6 +1139,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     // Change admin password for Admin user, as specified.
     checkAndCreateChangeAdminPasswordTask(primaryCluster);
+
+    if (primaryCluster.userIntent.providerType == CloudType.kubernetes
+        && taskParams().useNewHelmNamingStyle) {
+      // Create Pod Disruption Budget policy for the universe pods using the new Helm naming style.
+      createPodDisruptionBudgetPolicyTask(false /* deletePDB */)
+          .setSubTaskGroupType(SubTaskGroupType.CreatePodDisruptionBudgetPolicy);
+    }
 
     // Marks the update of this universe as a success only if all the tasks before it succeeded.
     createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -1608,11 +1635,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             throw new IllegalStateException(
                 "No cluster " + cluster.uuid + " found in " + taskParams().getUniverseUUID());
           }
-          if (!univCluster
+          if (!cluster
               .userIntent
               .instanceTags
               .get(NODE_NAME_KEY)
-              .equals(cluster.userIntent.instanceTags.get(NODE_NAME_KEY))) {
+              .equals(univCluster.userIntent.instanceTags.get(NODE_NAME_KEY))) {
             throw new IllegalArgumentException("'Name' tag value cannot be changed.");
           }
           if (cluster.clusterType == ClusterType.PRIMARY
@@ -1966,33 +1993,41 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           }
           return th;
         };
-    // Configure all tservers to update the masters list as well.
-    createConfigureServerTasks(
-            tserverNodes,
-            params -> {
-              params.updateMasterAddrsOnly = true;
-              params.masterAddrsOverride = getOrCreateExecutionContext().getMasterAddrsSupplier();
-            })
-        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
-        .setAfterRunHandler(failedMasterAddrUpdateHandler);
-    // Change the master addresses in the conf file for the all masters to reflect
-    // the changes.
-    createConfigureServerTasks(
-            masterNodes,
-            params -> {
-              params.updateMasterAddrsOnly = true;
-              params.isMaster = true;
-              params.masterAddrsOverride = getOrCreateExecutionContext().getMasterAddrsSupplier();
-            })
-        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
-        .setAfterRunHandler(failedMasterAddrUpdateHandler);
+    // Configure the tservers to update the masters addresses in their conf files.
+    if (CollectionUtils.isNotEmpty(tserverNodes)) {
+      createConfigureServerTasks(
+              tserverNodes,
+              params -> {
+                params.updateMasterAddrsOnly = true;
+                params.masterAddrsOverride = getOrCreateExecutionContext().getMasterAddrsSupplier();
+              })
+          .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
+          .setAfterRunHandler(failedMasterAddrUpdateHandler);
+    }
+    // Configure the masters to update the masters addresses in their conf files.
+    if (CollectionUtils.isNotEmpty(masterNodes)) {
+      createConfigureServerTasks(
+              masterNodes,
+              params -> {
+                params.updateMasterAddrsOnly = true;
+                params.isMaster = true;
+                params.masterAddrsOverride = getOrCreateExecutionContext().getMasterAddrsSupplier();
+              })
+          .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
+          .setAfterRunHandler(failedMasterAddrUpdateHandler);
+    }
     // Update the master addresses in memory.
-    createUpdateMasterAddrsInMemoryTasks(tserverNodes, ServerType.TSERVER)
-        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
-        .setAfterRunHandler(failedMasterAddrUpdateHandler);
-    createUpdateMasterAddrsInMemoryTasks(masterNodes, ServerType.MASTER)
-        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
-        .setAfterRunHandler(failedMasterAddrUpdateHandler);
+    if (CollectionUtils.isNotEmpty(tserverNodes)) {
+      createUpdateMasterAddrsInMemoryTasks(tserverNodes, ServerType.TSERVER)
+          .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
+          .setAfterRunHandler(failedMasterAddrUpdateHandler);
+    }
+    // Update the master addresses in memory.
+    if (CollectionUtils.isNotEmpty(masterNodes)) {
+      createUpdateMasterAddrsInMemoryTasks(masterNodes, ServerType.MASTER)
+          .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
+          .setAfterRunHandler(failedMasterAddrUpdateHandler);
+    }
   }
 
   /**
@@ -3390,8 +3425,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   protected RollMaxBatchSize getCurrentRollBatchSize(
       Universe universe, RollMaxBatchSize rollMaxBatchSizeFromParams) {
     RollMaxBatchSize rollMaxBatchSize = new RollMaxBatchSize();
-    if (rollMaxBatchSizeFromParams != null
-        && confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollEnabled)) {
+    if (!isBatchRollEnabled(universe, confGetter)) {
+      return rollMaxBatchSize;
+    }
+    if (rollMaxBatchSizeFromParams != null) {
       rollMaxBatchSize = rollMaxBatchSizeFromParams;
     } else {
       RollMaxBatchSize max = UpgradeTaskBase.getMaxNodesToRoll(universe);

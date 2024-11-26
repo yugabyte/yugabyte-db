@@ -24,6 +24,7 @@
 #include "access/table.h"
 #include "access/tableam.h"
 #include "access/transam.h"
+#include "access/yb_scan.h"
 #include "access/xlog.h"
 #include "catalog/catalog.h"
 #include "catalog/heap.h"
@@ -1002,13 +1003,19 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 	 */
 	if (IsYBRelation(rel))
 	{
-		*pages = rel->rd_rel->relpages;
-		*tuples = rel->rd_rel->reltuples;
-		*allvisfrac = 0;
-		return;
-	}
+		if (rel->rd_rel->reltuples < 0)
+		{
+			*tuples = YBC_DEFAULT_NUM_ROWS;
+		}
+		else
+		{
+			*tuples = rel->rd_rel->reltuples;
+		}
 
-	if (RELKIND_HAS_TABLE_AM(rel->rd_rel->relkind))
+		*pages = rel->rd_rel->relpages;
+		*allvisfrac = 0;
+	}
+	else if (RELKIND_HAS_TABLE_AM(rel->rd_rel->relkind))
 	{
 		table_relation_estimate_size(rel, attr_widths, pages, tuples,
 									 allvisfrac);
@@ -2267,9 +2274,11 @@ get_dependent_generated_columns(PlannerInfo *root, Index rti,
 	Relation	relation;
 	TupleDesc	tupdesc;
 	TupleConstr *constr;
+	AttrNumber	min_attr;
 
 	/* Assume we already have adequate lock */
 	relation = table_open(rte->relid, NoLock);
+	min_attr = YBGetFirstLowInvalidAttributeNumber(relation);
 
 	tupdesc = RelationGetDescr(relation);
 	constr = tupdesc->constr;
@@ -2288,11 +2297,11 @@ get_dependent_generated_columns(PlannerInfo *root, Index rti,
 
 			/* identify columns this generated column depends on */
 			expr = stringToNode(defval->adbin);
-			pull_varattnos(expr, 1, &attrs_used);
+			pull_varattnos_min_attr(expr, 1, &attrs_used, min_attr + 1);
 
 			if (bms_overlap(target_cols, attrs_used))
 				dependentCols = bms_add_member(dependentCols,
-											   defval->adnum - FirstLowInvalidHeapAttributeNumber);
+											   defval->adnum - min_attr);
 		}
 	}
 

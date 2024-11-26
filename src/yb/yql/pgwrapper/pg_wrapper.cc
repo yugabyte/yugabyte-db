@@ -24,6 +24,10 @@
 #include <variant>
 #include <vector>
 
+#ifndef __linux__
+#include <libproc.h>
+#endif
+
 #include <boost/algorithm/string.hpp>
 
 #include "yb/tserver/tablet_server_interface.h"
@@ -34,6 +38,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
 #include "yb/util/flags.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/path_util.h"
@@ -96,8 +101,8 @@ TAG_FLAG(pg_stat_statements_enabled, advanced);
 TAG_FLAG(pg_stat_statements_enabled, hidden);
 
 // Top-level postgres configuration flags.
-DEFINE_UNKNOWN_bool(ysql_enable_auth, false,
-              "True to enforce password authentication for all connections");
+DEFINE_NON_RUNTIME_bool(ysql_enable_auth, false,
+    "True to enforce password authentication for all connections");
 
 // Catch-all postgres configuration flags.
 DEFINE_RUNTIME_string(ysql_pg_conf_csv, "",
@@ -135,9 +140,6 @@ DEFINE_NON_RUNTIME_string(ysql_hba_conf, "",
               "Comma separated list of postgres hba rules (in order)");
 TAG_FLAG(ysql_hba_conf, sensitive_info);
 DECLARE_string(tmp_dir);
-DEFINE_test_flag(bool, online_pg11_to_pg15_upgrade, false,
-    "Enter the mode in which the master creates PG15 catalogs alongside PG11 catalogs, leaving "
-    "PG11 catalogs as they are, using pg_restore. This flag is only meaningful on the YB master.");
 
 DEFINE_RUNTIME_PG_FLAG(string, timezone, "",
     "Overrides the default ysql timezone for displaying and interpreting timestamps. If no value "
@@ -302,21 +304,19 @@ DEFINE_test_flag(bool, yb_enable_query_diagnostics, false,
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_fkey_catcache, true,
     "Enable preloading of foreign key information into the relation cache.");
 
-static bool ValidateXclusterConsistencyLevel(const char* flag_name, const std::string& value) {
-  if (value != "database" && value != "tablet") {
-    LOG_FLAG_VALIDATION_ERROR(flag_name, value) << "Must be 'database' or 'tablet'";
-    return false;
-  }
-  return true;
-}
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_nop_alter_role_optimization, true,
+    "Enable nop alter role statement optimization.");
 
-DEFINE_validator(ysql_yb_xcluster_consistency_level, &ValidateXclusterConsistencyLevel);
+DEFINE_validator(ysql_yb_xcluster_consistency_level, FLAG_IN_SET_VALIDATOR("database", "tablet"));
 
 DEFINE_NON_RUNTIME_string(ysql_conn_mgr_warmup_db, "yugabyte",
     "Database for which warmup needs to be done.");
 
 DEFINE_NON_RUNTIME_string(ysql_cron_database_name, "yugabyte",
     "Database in which pg_cron metadata is kept.");
+
+DEFINE_NON_RUNTIME_bool(ysql_trust_local_yugabyte_connections, true,
+            "Trust YSQL connections via the local socket from the yugabyte user.");
 
 DECLARE_bool(enable_pg_cron);
 
@@ -495,6 +495,11 @@ void AppendPgGFlags(vector<string>* lines) {
     lines->push_back(Format("$0=$1", pg_variable_name, flag.current_value));
   }
 }
+
+HostPort GetPgHostPort(const PgProcessConf& conf) {
+  return HostPort(conf.listen_addresses, conf.pg_port);
+}
+
 }  // namespace
 
 Result<string> WritePostgresConfig(const PgProcessConf& conf) {
@@ -598,6 +603,15 @@ Result<string> WritePgHbaConfig(const PgProcessConf& conf) {
     lines.push_back("host all all all trust");
   }
 
+  // Always allow local socket connections from the yugabyte user.
+  // This is used by ybc for backup and restores, and pg_upgrade for ysql major upgrades.
+  if (FLAGS_ysql_trust_local_yugabyte_connections) {
+    const auto trust_local_yugabyte = "local all yugabyte trust";
+    if (std::find(lines.begin(), lines.end(), trust_local_yugabyte) == lines.end()) {
+      lines.push_back("local all yugabyte trust");
+    }
+  }
+
   // Add comments to the hba config file noting the internally hardcoded config line.
   lines.insert(lines.begin(), {
       "# Internal configuration:",
@@ -685,6 +699,8 @@ Status PgWrapper::PreflightCheck() {
 }
 
 Status PgWrapper::Start() {
+  RETURN_NOT_OK(CleanupPreviousPostgres());
+
   auto postgres_executable = GetPostgresExecutablePath();
   RETURN_NOT_OK(CheckExecutableValid(postgres_executable));
 
@@ -735,8 +751,7 @@ Status PgWrapper::Start() {
   // Configure UNIX domain socket for index backfill tserver-postgres communication and for
   // Yugabyte Platform backups.
   argv.push_back("-k");
-  const std::string& socket_dir = PgDeriveSocketDir(
-      HostPort(conf_.listen_addresses, conf_.pg_port));
+  const std::string& socket_dir = PgDeriveSocketDir(GetPgHostPort(conf_));
   RETURN_NOT_OK(Env::Default()->CreateDirs(socket_dir));
   argv.push_back(socket_dir);
 
@@ -796,7 +811,7 @@ Status PgWrapper::Start() {
   proc_->SetEnv("FLAGS_tmp_dir", FLAGS_tmp_dir);
 
   // See YBSetParentDeathSignal in pg_yb_utils.c for how this is used.
-  proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGINT));
+  proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGQUIT));
   proc_->InheritNonstandardFd(conf_.tserver_shm_fd);
   SetCommonEnv(&*proc_, /* yb_enabled */ true);
 
@@ -859,11 +874,14 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
   initdb_subprocess.InheritNonstandardFd(conf_.tserver_shm_fd);
   bool global_initdb = std::holds_alternative<GlobalInitdbParams>(initdb_params);
   SetCommonEnv(&initdb_subprocess, global_initdb);
-  initdb_subprocess.SetEnv(
-      "FLAGS_TEST_online_pg11_to_pg15_upgrade",
-      FLAGS_TEST_online_pg11_to_pg15_upgrade ? "true" : "false");
   if (global_initdb) {
-    for (const auto& [db_name, db_oid] : std::get<GlobalInitdbParams>(initdb_params).db_to_oid) {
+    const auto& global_initdb_params = std::get<GlobalInitdbParams>(initdb_params);
+
+    if (global_initdb_params.is_major_upgrade) {
+      initdb_subprocess.SetEnv("YB_PG_MAJOR_UPGRADE_INITDB", "true");
+    }
+
+    for (const auto& [db_name, db_oid] : global_initdb_params.db_to_oid) {
       initdb_subprocess.SetEnv("YB_DATABASE_OID_" + db_name, std::to_string(db_oid));
     }
   }
@@ -892,11 +910,18 @@ Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
   std::vector<std::string> args{
       program_path,
       "--new-datadir", param.data_dir,
-      "--old-host", param.old_version_pg_address,
-      "--old-port", ToString(param.old_version_pg_port),
-      "--new-host", param.new_version_pg_address,
+      "--username", "yugabyte",
+      "--new-socketdir", param.new_version_socket_dir,
       "--new-port", ToString(param.new_version_pg_port),
-      "--username", "yugabyte"};
+      "--old-port", ToString(param.old_version_pg_port)};
+
+  if (!param.old_version_socket_dir.empty()) {
+    args.push_back("--old-socketdir");
+    args.push_back(param.old_version_socket_dir);
+  } else {
+    args.push_back("--old-host");
+    args.push_back(param.old_version_pg_address);
+  }
 
   LOG(INFO) << "Launching pg_upgrade: " << AsString(args);
   Subprocess subprocess(program_path, args);
@@ -1006,8 +1031,8 @@ Status PgWrapper::InitDbLocalOnlyIfNeeded() {
 }
 
 Status PgWrapper::InitDbForYSQL(
-    const string& master_addresses, const string& tmp_dir_base,
-    int tserver_shm_fd, std::vector<std::pair<string, YBCPgOid>> db_to_oid) {
+    const string& master_addresses, const string& tmp_dir_base, int tserver_shm_fd,
+    std::vector<std::pair<string, YBCPgOid>> db_to_oid, bool is_major_upgrade) {
   LOG(INFO) << "Running initdb to initialize YSQL cluster with master addresses "
             << master_addresses;
   PgProcessConf conf;
@@ -1032,7 +1057,7 @@ Status PgWrapper::InitDbForYSQL(
   });
   PgWrapper pg_wrapper(conf);
   auto start_time = std::chrono::steady_clock::now();
-  Status initdb_status = pg_wrapper.InitDb(GlobalInitdbParams{db_to_oid});
+  Status initdb_status = pg_wrapper.InitDb(GlobalInitdbParams{db_to_oid, is_major_upgrade});
   auto elapsed_time = std::chrono::steady_clock::now() - start_time;
   LOG(INFO)
       << "initdb took "
@@ -1095,11 +1120,13 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
 #ifdef THREAD_SANITIZER
     // Disable reporting signal-unsafe behavior for PostgreSQL because it does a lot of work in
     // signal handlers on shutdown.
+    // Disable thread leak detection since we use SIGQUIT to terminate Postgres which internally
+    // uses _exit. This causes TSAN to report false positives.
     static const std::string kTSANOptionsEnvName = "TSAN_OPTIONS";
     const char* tsan_options = getenv(kTSANOptionsEnvName.c_str());
     proc->SetEnv(
-        kTSANOptionsEnvName,
-        std::string(tsan_options ? tsan_options : "") + " report_signal_unsafe=0");
+        kTSANOptionsEnvName, std::string(tsan_options ? tsan_options : "") +
+                                 " report_signal_unsafe=0 report_thread_leaks=0");
 #endif
 
     // Pass non-default flags to the child process using FLAGS_... environment variables.
@@ -1124,6 +1151,85 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
   }
 }
 
+Status PgWrapper::CleanupPreviousPostgres() {
+  RETURN_NOT_OK(CleanupLockFileAndKillHungPg(JoinPathSegments(conf_.data_dir, "postmaster.pid")));
+  RETURN_NOT_OK(CleanupLockFileAndKillHungPg(PgDeriveSocketLockFile(GetPgHostPort(conf_))));
+
+  return Status::OK();
+}
+
+Status PgWrapper::CleanupLockFileAndKillHungPg(const std::string& lock_file) {
+  auto env = Env::Default();
+  if (!env->FileExists(lock_file)) {
+    return Status::OK();
+  }
+
+  pid_t postgres_pid = 0;
+
+  {
+    std::ifstream file_stream;
+    file_stream.open(lock_file, std::ios_base::in);
+
+    if (!file_stream.eof()) {
+      file_stream >> postgres_pid;
+    }
+    if (file_stream.good()) {
+      file_stream.close();
+    } else {
+      postgres_pid = 0;
+    }
+  }
+
+  if (postgres_pid == 0) {
+    LOG(ERROR) << strings::Substitute(
+        "Error reading postgres process ID from lock file $0. $1 $2", lock_file,
+        ErrnoToString(errno), errno);
+  } else {
+    bool postgres_process_found = false;
+#ifdef __linux__
+    const auto cmd_filename = "/proc/" + std::to_string(postgres_pid) + "/cmdline";
+    std::ifstream postmaster_cmd_file;
+    postmaster_cmd_file.open(cmd_filename, std::ios_base::in);
+    if (postmaster_cmd_file.good()) {
+      std::string cmdline = "";
+      postmaster_cmd_file >> cmdline;
+      postgres_process_found = (cmdline.find("/postgres") != std::string::npos);
+      postmaster_cmd_file.close();
+    }
+#else
+    struct proc_bsdshortinfo info;
+    auto result = proc_pidinfo(
+        postgres_pid, PROC_PIDT_SHORTBSDINFO, 0 /*SHOW_ZOMBIES*/, &info,
+        PROC_PIDT_SHORTBSDINFO_SIZE);
+
+    if (result == PROC_PIDT_SHORTBSDINFO_SIZE) {
+      postgres_process_found = (strcmp(info.pbsi_comm, "postgres") == 0);
+    } else if (errno != ESRCH && errno != EPERM) {
+      LOG(WARNING) << "proc_pidinfo failed for pid " << postgres_pid << ". result: " << result
+                   << ", error: " << ErrnoToString(errno) << "," << errno;
+    }
+#endif
+
+    if (postgres_process_found) {
+      LOG(WARNING) << "Killing older postgres process: " << postgres_pid;
+      // If process does not exist, system may return "process does not exist" or
+      // "operation not permitted" error. Ignore those errors.
+      if (kill(postgres_pid, SIGKILL) != 0 && errno != ESRCH && errno != EPERM) {
+        return STATUS_FORMAT(
+            RuntimeError, "Unable to kill older postgres process $0: $1 $2", postgres_pid,
+            ErrnoToString(errno), errno);
+      }
+      LOG(WARNING) << "Killed older postgres process: " << postgres_pid << ErrnoToString(errno)
+                   << "," << errno;
+    }
+  }
+
+  LOG(INFO) << "Removing stale postgres lock file " << lock_file;
+  WARN_NOT_OK(env->DeleteFile(lock_file), Format("Failed to remove lock file $0", lock_file));
+
+  return Status::OK();
+}
+
 // ------------------------------------------------------------------------------------------------
 // PgSupervisor: monitoring a PostgreSQL child process and restarting if needed
 // ------------------------------------------------------------------------------------------------
@@ -1138,51 +1244,6 @@ PgSupervisor::PgSupervisor(PgProcessConf conf, tserver::TabletServerIf* tserver)
 PgSupervisor::~PgSupervisor() {
   std::lock_guard lock(mtx_);
   DeregisterPgFlagChangeNotifications();
-}
-
-Status PgSupervisor::CleanupOldServerUnlocked() {
-  std::string postmaster_pid_filename = JoinPathSegments(conf_.data_dir, "postmaster.pid");
-  if (Env::Default()->FileExists(postmaster_pid_filename)) {
-    std::ifstream postmaster_pid_file;
-    postmaster_pid_file.open(postmaster_pid_filename, std::ios_base::in);
-    pid_t postgres_pid = 0;
-
-    if (!postmaster_pid_file.eof()) {
-      postmaster_pid_file >> postgres_pid;
-    }
-
-    if (!postmaster_pid_file.good() || postgres_pid == 0) {
-      LOG(ERROR) << strings::Substitute("Error reading postgres process ID from file $0. $1 $2",
-          postmaster_pid_filename, ErrnoToString(errno), errno);
-    } else {
-      LOG(WARNING) << "Killing older postgres process: " << postgres_pid;
-      // If process does not exist, system may return "process does not exist" or
-      // "operation not permitted" error. Ignore those errors.
-      postmaster_pid_file.close();
-      bool postgres_found = true;
-      string cmdline = "";
-#ifdef __linux__
-      string cmd_filename = "/proc/" + std::to_string(postgres_pid) + "/cmdline";
-      std::ifstream postmaster_cmd_file;
-      postmaster_cmd_file.open(cmd_filename, std::ios_base::in);
-      if (postmaster_cmd_file.good()) {
-        postmaster_cmd_file >> cmdline;
-        postgres_found = cmdline.find("/postgres") != std::string::npos;
-        postmaster_cmd_file.close();
-      }
-#endif
-      if (postgres_found) {
-        if (kill(postgres_pid, SIGKILL) != 0 && errno != ESRCH && errno != EPERM) {
-          return STATUS(RuntimeError, "Unable to kill", Errno(errno));
-        }
-      } else {
-        LOG(WARNING) << "Didn't find postgres in " << cmdline;
-      }
-    }
-    WARN_NOT_OK(Env::Default()->DeleteFile(postmaster_pid_filename),
-                "Failed to remove postmaster pid file");
-  }
-  return Status::OK();
 }
 
 Status PgSupervisor::ReloadConfig() {
@@ -1261,7 +1322,6 @@ void PgSupervisor::PrepareForStop() {
 }
 
 Status PgSupervisor::PrepareForStart() {
-  RETURN_NOT_OK(CleanupOldServerUnlocked());
   RETURN_NOT_OK(RegisterPgFlagChangeNotifications());
   return Status::OK();
 }

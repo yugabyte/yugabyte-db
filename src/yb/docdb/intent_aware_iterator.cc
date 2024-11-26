@@ -58,8 +58,7 @@ DEFINE_RUNTIME_uint64(max_next_calls_while_skipping_future_records, 3,
                       "After number of next calls is reached this limit, use seek to find non "
                       "future record.");
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 using dockv::KeyBytes;
 using dockv::KeyEntryType;
@@ -70,6 +69,51 @@ namespace {
 
 const char kKeyEntryTypeMaxByte = dockv::KeyEntryTypeAsChar::kMaxByte;
 const char kKeyEntryTypeMinByte = dockv::KeyEntryTypeAsChar::kLowest;
+
+const char kStrongWriteTail[] = {
+    KeyEntryTypeAsChar::kIntentTypeSet,
+    static_cast<char>(dockv::IntentTypeSet({dockv::IntentType::kStrongWrite}).ToUIntPtr()) };
+
+const Slice kStrongWriteTailSlice = Slice(kStrongWriteTail, sizeof(kStrongWriteTail));
+
+char kEmptyKeyStrongWriteTail[] = {
+    KeyEntryTypeAsChar::kGroupEnd,
+    KeyEntryTypeAsChar::kIntentTypeSet,
+    static_cast<char>(dockv::IntentTypeSet({dockv::IntentType::kStrongWrite}).ToUIntPtr()) };
+
+const Slice kEmptyKeyStrongWriteTailSlice =
+    Slice(kEmptyKeyStrongWriteTail, sizeof(kEmptyKeyStrongWriteTail));
+
+const char kMaxIntentTypeTail[] = {
+    KeyEntryTypeAsChar::kIntentTypeSet,
+    KeyEntryTypeAsChar::kMaxByte };
+
+const Slice kMaxIntentTypeTailSlice = Slice(kMaxIntentTypeTail, sizeof(kMaxIntentTypeTail));
+
+const char kEmptyKeyMaxIntentTypeTail[] = {
+    KeyEntryTypeAsChar::kGroupEnd,
+    KeyEntryTypeAsChar::kIntentTypeSet,
+    KeyEntryTypeAsChar::kMaxByte };
+
+const Slice kEmptyKeyMaxIntentTypeTailSlice =
+    Slice(kEmptyKeyMaxIntentTypeTail, sizeof(kEmptyKeyMaxIntentTypeTail));
+
+inline Slice StrongWriteSuffix(Slice key) {
+  return key.empty() ? kEmptyKeyStrongWriteTailSlice : kStrongWriteTailSlice;
+}
+
+inline Slice StrongWriteSuffix(const dockv::KeyBytes& key) {
+  return StrongWriteSuffix(key.AsSlice());
+}
+
+inline Slice MaxIntentTypeSuffix(const dockv::KeyBytes& key) {
+  return key.empty() ? kEmptyKeyMaxIntentTypeTailSlice : kMaxIntentTypeTailSlice;
+}
+
+inline Slice AppendMaxIntentTypeSuffix(KeyBytes& key) {
+  key.AppendRawBytes(MaxIntentTypeSuffix(key));
+  return key.AsSlice();
+}
 
 void AppendEncodedDocHt(const EncodedDocHybridTime& encoded_doc_ht, KeyBuffer* buffer) {
   buffer->PushBack(KeyEntryTypeAsChar::kHybridTime);
@@ -132,18 +176,6 @@ inline bool IsKeyOrderedBefore(Slice key, Slice other_key) {
   }
 }
 
-inline size_t PrepareIntentSeekBackward(dockv::KeyBytes& key_bytes) {
-  const auto prefix_len = key_bytes.size();
-  key_bytes.AppendRawBytes(StrongWriteSuffix(key_bytes.AsSlice()));
-
-  // Provided key is the key whose latest record we need to point. Thus it is required to add
-  // kMaxByte to correctly position to the desired key as `docdb::SeekBackward()` seeks to
-  // a key, which is previous to the provided key.
-  key_bytes.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
-
-  return prefix_len;
-}
-
 rocksdb::Statistics* GetIntentsDBStatistics(const DocDBStatistics* statistics) {
   return statistics ? statistics->IntentsDBStatistics() : nullptr;
 }
@@ -200,11 +232,12 @@ IntentAwareIterator::IntentAwareIterator(
 }
 
 void IntentAwareIterator::Seek(const dockv::DocKey &doc_key) {
-  Seek(doc_key.Encode(), Full::kFalse);
+  Seek(doc_key.Encode(), SeekFilter::kAll, Full::kFalse);
 }
 
-void IntentAwareIterator::Seek(Slice key, Full full) {
-  VLOG_WITH_FUNC(4) << "key: " << DebugDumpKeyToStr(key) << ", full: " << full;
+void IntentAwareIterator::Seek(Slice key, SeekFilter filter, Full full) {
+  VLOG_WITH_FUNC(4)
+      << "key: " << DebugDumpKeyToStr(key) << ", full: " << full << ", filter: " << filter;
   DOCDB_DEBUG_SCOPE_LOG(
       key.ToDebugString(),
       std::bind(&IntentAwareIterator::DebugDump, this));
@@ -214,7 +247,17 @@ void IntentAwareIterator::Seek(Slice key, Full full) {
 
   SeekTriggered();
 
-  SkipFutureRecords<Direction::kForward>(ROCKSDB_SEEK(&iter_, key));
+  [&] {
+    switch (filter) {
+      case SeekFilter::kAll:
+        SkipFutureRecords<Direction::kForward>(ROCKSDB_SEEK(&iter_, key));
+        return;
+      case SeekFilter::kIntentsOnly:
+        regular_entry_.Reset();
+        return;
+    }
+    FATAL_INVALID_ENUM_VALUE(SeekFilter, filter);
+  }();
   if (intent_iter_.Initialized()) {
     if (!SetIntentUpperbound()) {
       return;
@@ -316,7 +359,7 @@ void IntentAwareIterator::SeekPastSubKey(Slice key) {
   FillEntry();
 }
 
-void IntentAwareIterator::SeekOutOfSubDoc(KeyBytes* key_bytes) {
+void IntentAwareIterator::SeekOutOfSubDoc(SeekFilter filter, KeyBytes* key_bytes) {
   VLOG_WITH_FUNC(4) << DebugDumpKeyToStr(*key_bytes);
   if (!status_.ok()) {
     return;
@@ -326,7 +369,17 @@ void IntentAwareIterator::SeekOutOfSubDoc(KeyBytes* key_bytes) {
 
   auto prefix_len = intent_iter_.Initialized()
       ? IntentPrepareSeek(*key_bytes, KeyEntryTypeAsChar::kMaxByte) : 0;
-  SkipFutureRecords<Direction::kForward>(docdb::SeekOutOfSubKey(key_bytes, &iter_));
+  [&] {
+    switch (filter) {
+      case SeekFilter::kAll:
+        SkipFutureRecords<Direction::kForward>(docdb::SeekOutOfSubKey(key_bytes, &iter_));
+        return;
+      case SeekFilter::kIntentsOnly:
+        regular_entry_.Reset();
+        return;
+    }
+    FATAL_INVALID_ENUM_VALUE(SeekFilter, filter);
+  }();
   IntentSeekForward(prefix_len);
   FillEntry();
 }
@@ -580,8 +633,15 @@ void IntentAwareIterator::SeekBackward(dockv::KeyBytes& key_bytes) {
   key_bytes.RemoveLastByte();
 
   if (intent_iter_.Initialized()) {
-    const auto prefix_len = PrepareIntentSeekBackward(key_bytes);
-    IntentSeekBackward(key_bytes);
+    const auto prefix_len = key_bytes.size();
+
+    // It is not possible to use backward seek to kStrongWrite intent type directly as backward
+    // seek expects an upper bound of the target key, but intent type set is a bitset and hence
+    // intent's type could be a subset of several values (including kStrongWrite). That's why
+    // it is required to use kMaxByte (via AppendMaxIntentTypeSuffix), and subsequent call to
+    // SeekToSuitableIntent() will consider only required intents, with kStrongWrite set.
+    IntentSeekBackward(AppendMaxIntentTypeSuffix(key_bytes));
+
     key_bytes.Truncate(prefix_len);
   }
 
@@ -606,7 +666,7 @@ void IntentAwareIterator::SeekToLatestSubDocKeyInternal() {
     return;
   }
   subdockey_slice.remove_suffix(1);
-  Seek(subdockey_slice);
+  Seek(subdockey_slice, SeekFilter::kAll);
 }
 
 void IntentAwareIterator::SeekToLatestDocKeyInternal() {
@@ -617,13 +677,23 @@ void IntentAwareIterator::SeekToLatestDocKeyInternal() {
   if (!HandleStatus(dockey_size)) {
     return;
   }
-  Seek(Slice(subdockey_slice.data(), *dockey_size));
+  Seek(Slice(subdockey_slice.data(), *dockey_size), SeekFilter::kAll);
 }
 
-void IntentAwareIterator::Revalidate() {
+void IntentAwareIterator::Revalidate(SeekFilter seek_filter) {
   VLOG_WITH_FUNC(4);
 
-  SkipFutureRecords<Direction::kForward>(iter_.Entry());
+  [&] {
+    switch (seek_filter) {
+      case SeekFilter::kAll:
+        SkipFutureRecords<Direction::kForward>(iter_.Entry());
+        return;
+      case SeekFilter::kIntentsOnly:
+        regular_entry_.Reset();
+        return;
+    }
+    FATAL_INVALID_ENUM_VALUE(SeekFilter, seek_filter);
+  }();
   if (intent_iter_.Initialized()) {
     if (!SetIntentUpperbound()) {
       return;
@@ -660,18 +730,18 @@ Result<const FetchedEntry&> IntentAwareIterator::Fetch() {
             << ", kind: " << (result.same_transaction ? 'S' : (IsEntryRegular() ? 'R' : 'I'))
             << ", with time: " << result.write_time.ToString()
             << ", while read bounds are: " << read_time_;
+
+    YB_TRANSACTION_DUMP(
+        Read, txn_op_context_ ? txn_op_context_.txn_status_manager->tablet_id() : TabletId(),
+        txn_op_context_ ? txn_op_context_.transaction_id : TransactionId::Nil(),
+        read_time_, CHECK_RESULT(result.write_time.Decode()), result.same_transaction,
+        result.key.size(), result.key, result.value.size(), result.value);
   } else {
     DCHECK(entry_source_ == nullptr);
     VLOG(4) << "Fetched key <INVALID>";
   }
 
-  YB_TRANSACTION_DUMP(
-      Read, txn_op_context_ ? txn_op_context_.txn_status_manager->tablet_id() : TabletId(),
-      txn_op_context_ ? txn_op_context_.transaction_id : TransactionId::Nil(),
-      read_time_, CHECK_RESULT(result.write_time.Decode()), result.same_transaction,
-      result.key.size(), result.key, result.value.size(), result.value);
-
-  return &result;
+  return result;
 }
 
 template <bool kDescending>
@@ -1328,5 +1398,8 @@ void IntentAwareIterator::DebugSeekTriggered() {
 }
 #endif
 
-}  // namespace docdb
-}  // namespace yb
+void AppendStrongWrite(KeyBytes* out) {
+  out->AppendRawBytes(StrongWriteSuffix(*out));
+}
+
+}  // namespace yb::docdb

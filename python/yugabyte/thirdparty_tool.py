@@ -78,7 +78,6 @@ def main() -> None:
             metadata_items=metadata_items,
             os_type=args.os_type,
             architecture=args.architecture,
-            is_linuxbrew=args.is_linuxbrew,
             lto=args.lto,
             allow_older_os=args.allow_older_os)
         for compiler in compiler_list:
@@ -94,7 +93,6 @@ def main() -> None:
             compiler_type=args.compiler_type,
             os_type=args.os_type,
             architecture=args.architecture,
-            is_linuxbrew=args.is_linuxbrew,
             lto=args.lto,
             allow_older_os=args.allow_older_os)
 

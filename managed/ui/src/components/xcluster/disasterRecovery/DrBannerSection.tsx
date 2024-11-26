@@ -7,7 +7,12 @@ import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPerm
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { YBBanner, YBBannerVariant } from '../../common/descriptors';
 import { YBErrorIndicator } from '../../common/indicators';
-import { XClusterConfigAction, XClusterTableStatus } from '../constants';
+import {
+  I18N_KEY_PREFIX_XCLUSTER_TERMS,
+  XClusterConfigAction,
+  XCLUSTER_DR_DDL_STEPS_DOCUMENTATION_URL
+} from '../constants';
+import { getTableCountsOfConcern } from '../ReplicationUtils';
 import { DrConfigAction } from './constants';
 
 import { DrConfig, DrConfigState } from './dtos';
@@ -22,14 +27,17 @@ interface DrBannerSectionProps {
 
 const useStyles = makeStyles((theme) => ({
   bannerContainer: {
-    marginBottom: theme.spacing(2),
     display: 'flex',
     flexDirection: 'column',
-    gap: theme.spacing(1)
+    gap: theme.spacing(1),
+
+    marginBottom: theme.spacing(2)
   },
   bannerContent: {
     display: 'flex',
-    alignItems: 'center'
+    alignItems: 'center',
+
+    minHeight: '41px'
   },
   bannerActionButtonContainer: {
     display: 'flex',
@@ -40,6 +48,7 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery';
+const TRANSLATION_KEY_PREFIX_XCLUSTER_SHARED_COMPONENT = 'clusterDetail.xCluster.shared';
 
 export const DrBannerSection = ({
   drConfig,
@@ -53,7 +62,7 @@ export const DrBannerSection = ({
 
   const sourceUniverseUuid = drConfig.primaryUniverseUuid;
   if (!sourceUniverseUuid) {
-    // We expect the parent compoent to already handle this case.
+    // We expect the parent component to already handle this case.
     return (
       <YBErrorIndicator
         customErrorMessage={t('error.undefinedSourceUniverseUuid', {
@@ -63,15 +72,10 @@ export const DrBannerSection = ({
     );
   }
 
-  const numTablesRequiringBootstrap = drConfig.tableDetails.reduce(
-    (errorCount: number, xClusterTableDetails) => {
-      return xClusterTableDetails.status === XClusterTableStatus.ERROR
-        ? errorCount + 1
-        : errorCount;
-    },
-    0
-  );
-  const shouldShowRestartReplicationBanner = numTablesRequiringBootstrap > 0;
+  const tableCountsOfConcern = getTableCountsOfConcern(drConfig.tableDetails);
+  const shouldShowRestartReplicationBanner = tableCountsOfConcern.error > 0;
+
+  const shouldShowMismatchedTablesBanner = tableCountsOfConcern.mismatchedTable > 0;
   const isRepairDrPossible =
     enabledDrConfigActions.includes(DrConfigAction.EDIT_TARGET) ||
     enabledXClusterConfigActions.includes(XClusterConfigAction.RESTART);
@@ -198,6 +202,35 @@ export const DrBannerSection = ({
                 </YBButton>
               </RbacValidator>
             </div>
+          </div>
+        </YBBanner>
+      )}
+      {shouldShowMismatchedTablesBanner && (
+        <YBBanner variant={YBBannerVariant.DANGER} isFeatureBanner={true}>
+          <div className={classes.bannerContent}>
+            <Typography variant="body2">
+              <Trans
+                i18nKey={`${TRANSLATION_KEY_PREFIX_XCLUSTER_SHARED_COMPONENT}.banner.mismatchedTables`}
+                components={{
+                  bold: <b />,
+                  ddlChangeStepsDocsLink: (
+                    <a
+                      href={XCLUSTER_DR_DDL_STEPS_DOCUMENTATION_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    />
+                  )
+                }}
+                values={{
+                  sourceUniverseTerm: t('source.dr', {
+                    keyPrefix: I18N_KEY_PREFIX_XCLUSTER_TERMS
+                  }),
+                  targetUniverseTerm: t('target.dr', {
+                    keyPrefix: I18N_KEY_PREFIX_XCLUSTER_TERMS
+                  })
+                }}
+              />
+            </Typography>
           </div>
         </YBBanner>
       )}

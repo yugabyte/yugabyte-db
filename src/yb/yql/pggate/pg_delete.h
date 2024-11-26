@@ -15,36 +15,35 @@
 #pragma once
 
 #include <memory>
-#include <utility>
+
+#include "yb/util/result.h"
 
 #include "yb/yql/pggate/pg_dml_write.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
-//--------------------------------------------------------------------------------------------------
-// DELETE
-//--------------------------------------------------------------------------------------------------
-
-class PgDelete : public PgDmlWrite {
+class PgDelete final : public PgStatementLeafBase<PgDmlWrite, StmtOp::kDelete> {
  public:
-  PgDelete(PgSession::ScopedRefPtr pg_session,
-           const PgObjectId& table_id,
-           bool is_region_local,
-           YBCPgTransactionSetting transaction_setting)
-      : PgDmlWrite(std::move(pg_session), table_id, is_region_local, transaction_setting) {}
-
-  StmtOp stmt_op() const override { return StmtOp::STMT_DELETE; }
-
-  void SetIsPersistNeeded(const bool is_persist_needed) {
+  void SetIsPersistNeeded(bool is_persist_needed) {
     write_req_->set_is_delete_persist_needed(is_persist_needed);
   }
 
+  static Result<std::unique_ptr<PgDelete>> Make(
+      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool is_region_local,
+      YBCPgTransactionSetting transaction_setting) {
+    std::unique_ptr<PgDelete> result{new PgDelete{pg_session, transaction_setting}};
+    RETURN_NOT_OK(result->Prepare(table_id, is_region_local));
+    return result;
+  }
+
  private:
+  PgDelete(
+      const PgSession::ScopedRefPtr& pg_session, YBCPgTransactionSetting transaction_setting)
+      : BaseType(pg_session, transaction_setting) {}
+
   PgsqlWriteRequestPB::PgsqlStmtType stmt_type() const override {
     return PgsqlWriteRequestPB::PGSQL_DELETE;
   }
 };
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

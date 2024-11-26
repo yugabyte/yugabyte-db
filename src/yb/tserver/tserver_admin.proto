@@ -307,6 +307,7 @@ message UpgradeYsqlResponsePB {
 message WaitForYsqlBackendsCatalogVersionRequestPB {
   optional uint32 database_oid = 1; // required
   optional uint64 catalog_version = 2; // required
+  optional int32 requestor_pg_backend_pid = 4; // optional
   // Previously known number of YSQL backends that have not reached the requested catalog version.
   // -1 means unknown.
   optional int32 prev_num_lagging_backends = 3; // required

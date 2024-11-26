@@ -105,7 +105,8 @@ doBindsForIdxWrite(YBCPgStatement stmt,
 
 	/*
 	 * For unique indexes we need to set the key suffix system column:
-	 * - to ybbasectid if at least one index key column is null.
+	 * - to ybbasectid if the index uses nulls-are-distinct mode and at least
+	 * one index key column is null.
 	 * - to NULL otherwise (setting is_null to true is enough).
 	 */
 	if (unique_index)
@@ -114,7 +115,7 @@ doBindsForIdxWrite(YBCPgStatement stmt,
 							BYTEAOID,
 							InvalidOid,
 							ybbasectid,
-							!has_null_attr /* is_null */,
+							index->rd_index->indnullsnotdistinct ||!has_null_attr /* is_null */,
 							NULL /* null_type_entity */);
 
 	/*
@@ -221,7 +222,7 @@ doAssignForIdxUpdate(YBCPgStatement stmt,
 							BYTEAOID,
 							InvalidOid,
 							old_ybbasectid,
-							!has_null_attr /* is_null */,
+							index->rd_index->indnullsnotdistinct || !has_null_attr /* is_null */,
 							NULL /* null_type_entity */);
 }
 
@@ -254,10 +255,13 @@ ybcinbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
 	buildstate.index_tuples = 0;
 	buildstate.backfill_write_time = NULL;
 	/*
-	 * Primary key index is an implicit part of the base table in Yugabyte.
+	 * YB: Primary key index is an implicit part of the base table in Yugabyte.
 	 * We don't need to scan the base table to build a primary key index. (#8024)
+	 * We also don't need to build YB indexes during a major version upgrade,
+	 * as we simply link the old DocDB table on master.
 	 */
-	if (!index->rd_index->indisprimary)
+	if (!index->rd_index->indisprimary &&
+		!(IsYugaByteEnabled() && IsBinaryUpgrade))
 	{
 		heap_tuples = yb_table_index_build_scan(heap, index, indexInfo, true,
 												ybcinbuildCallback, &buildstate,

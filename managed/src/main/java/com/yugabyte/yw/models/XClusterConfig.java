@@ -29,6 +29,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import java.util.ArrayList;
@@ -240,7 +241,7 @@ public class XClusterConfig extends Model {
           "WARNING: This is a preview API that could change. "
               + "The list of PITR configs used for the txn xCluster config")
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.2.0")
-  @OneToMany
+  @ManyToMany
   @JoinTable(
       name = "xcluster_pitr",
       joinColumns = @JoinColumn(name = "xcluster_uuid", referencedColumnName = "uuid"),
@@ -391,7 +392,7 @@ public class XClusterConfig extends Model {
   @JsonProperty("tableDetails")
   public Set<XClusterTableConfig> getTableDetails() {
     return tables.stream()
-        .sorted(Comparator.comparing(XClusterTableConfig::getStatus))
+        .sorted(Comparator.comparing((table) -> table.getStatus().getCode()))
         .collect(Collectors.toCollection(LinkedHashSet::new));
   }
 

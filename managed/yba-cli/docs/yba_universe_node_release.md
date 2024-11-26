@@ -11,6 +11,12 @@ Release the instance to the IaaS/provider. Only for stopped/removed nodes.
 yba universe node release [flags]
 ```
 
+### Examples
+
+```
+yba universe node release --name <universe-name> --node-name <node-name>
+```
+
 ### Options
 
 ```

@@ -511,13 +511,12 @@ CreateTableHandleSplitOptions(YBCPgStatement handle, TupleDesc desc,
 }
 
 /*
- * The fields pgTableId and oldRelfileNodeId are used during table rewrite.
- * During table rewrite, pgTableId is used to relay to DocDB the pg table OID,
- * so that DocDB has a mapping from the table to the correct pg table OID.
- * oldRelfileNodeId is used to construct the old DocDB table ID that
- * corresponds to the rewritten table. This is used to determine if the
- * table being rewritten is a part of xCluster replication (if it is, the
- * rewrite operation must fail).
+ * The DocDB table is created using the relfileNodeId OID. The relationId is
+ * sent to DocDB to be stored as the pg table id.
+ * During table rewrite, oldRelfileNodeId is used to construct the old
+ * DocDB table ID that corresponds to the rewritten table.
+ * This is used to determine if the table being rewritten is a part of xCluster
+ * replication (if it is, the rewrite operation must fail).
  * tableName is used to specify the name of the DocDB table. For a typical
  * CREATE TABLE command, the tableName is the same as stmt->relation->relname.
  * However, during table rewrites, stmt->relation points to the new transient
@@ -527,7 +526,7 @@ CreateTableHandleSplitOptions(YBCPgStatement handle, TupleDesc desc,
 void
 YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			   Oid relationId, Oid namespaceId, Oid tablegroupId,
-			   Oid colocationId, Oid tablespaceId, Oid pgTableId,
+			   Oid colocationId, Oid tablespaceId, Oid relfileNodeId,
 			   Oid oldRelfileNodeId, bool isTruncate)
 {
 	bool is_internal_rewrite = oldRelfileNodeId != InvalidOid;
@@ -717,8 +716,9 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 		{
 			/*
 			 * In yb_binary_restore if tablespaceId is not valid but
-			 * binary_upgrade_next_tablegroup_oid is valid, that implies we are
-			 * restoring without tablespace information.
+			 * binary_upgrade_next_tablegroup_oid is valid, that implies either:
+			 * 1. it is a default tablespace.
+			 * 2. we are restoring without tablespace information.
 			 * In this case all tables are restored to default tablespace,
 			 * while maintaining the colocation properties, and tablegroup's name
 			 * will be colocation_restore_tablegroupId, while default tablegroup's
@@ -759,6 +759,13 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			tablegroupId = CreateTableGroup(tablegroup_stmt);
 			stmt->tablegroupname = pstrdup(tablegroup_name);
 		}
+		/*
+		 * Reset the binary_upgrade params as these are not needed anymore (only
+		 * required in CreateTableGroup), to ensure these parameter values are
+		 * not reused in subsequent unrelated statements.
+		 */
+		binary_upgrade_next_tablegroup_oid = InvalidOid;
+		binary_upgrade_next_tablegroup_default = false;
 
 		/* Record dependency between the table and tablegroup. */
 		ObjectAddress myself, tablegroup;
@@ -803,7 +810,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 									   schema_name,
 									   tableName,
 									   databaseId,
-									   relationId,
+									   relfileNodeId,
 									   is_shared_relation,
 									   is_sys_catalog_table,
 									   false, /* if_not_exists */
@@ -813,7 +820,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 									   colocationId,
 									   tablespaceId,
 									   is_matview,
-									   pgTableId,
+									   relationId,
 									   oldRelfileNodeId,
 									   isTruncate,
 									   &handle));
@@ -1024,10 +1031,10 @@ YbUnsafeTruncate(Relation rel)
 /* Utility function to handle split points */
 static void
 CreateIndexHandleSplitOptions(YBCPgStatement handle,
-                              TupleDesc desc,
-                              OptSplit *split_options,
-                              int16 * coloptions,
-                              int numIndexKeyAttrs)
+							  TupleDesc desc,
+							  OptSplit *split_options,
+							  int16 * coloptions,
+							  int numIndexKeyAttrs)
 {
 	/* Address both types of split options */
 	switch (split_options->split_type)
@@ -1111,8 +1118,9 @@ YBCBindCreateIndexColumns(YBCPgStatement handle,
 }
 
 /*
- * Similar to YBCCreateTable, pgTableId and oldRelfileNodeId are used during
- * table rewrite.
+ * Similar to YBCCreateTable, the DocDB table for the index is created using
+ * indexRelfileNodeId, indexId is sent to DocDB to be stored as the
+ * pg table id, and oldRelfileNodeId is used during table rewrite.
  */
 void
 YBCCreateIndex(const char *indexName,
@@ -1128,7 +1136,7 @@ YBCCreateIndex(const char *indexName,
 			   Oid tablegroupId,
 			   Oid colocationId,
 			   Oid tablespaceId,
-			   Oid pgTableId,
+			   Oid indexRelfileNodeId,
 			   Oid oldRelfileNodeId)
 {
 	Oid namespaceId = RelationGetNamespace(rel);
@@ -1150,7 +1158,7 @@ YBCCreateIndex(const char *indexName,
 									   schema_name,
 									   indexName,
 									   YBCGetDatabaseOid(rel),
-									   indexId,
+									   indexRelfileNodeId,
 									   YbGetRelfileNodeId(rel),
 									   rel->rd_rel->relisshared,
 									   is_sys_catalog_index,
@@ -1162,7 +1170,7 @@ YBCCreateIndex(const char *indexName,
 									   tablegroupId,
 									   colocationId,
 									   tablespaceId,
-									   pgTableId,
+									   indexId,
 									   oldRelfileNodeId,
 									   &handle));
 
@@ -1175,7 +1183,7 @@ YBCCreateIndex(const char *indexName,
 	/* Handle SPLIT statement, if present */
 	if (split_options)
 		CreateIndexHandleSplitOptions(handle, indexTupleDesc, split_options, coloptions,
-		                              indexInfo->ii_NumIndexKeyAttrs);
+									  indexInfo->ii_NumIndexKeyAttrs);
 
 	/* Create the index. */
 	HandleYBStatus(YBCPgExecCreateIndex(handle));
@@ -1625,6 +1633,25 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			break;
 		}
 
+		case AT_SetLogged:
+			switch_fallthrough();
+		case AT_SetUnLogged:
+			*needsYBAlter = false;
+			break;
+
+		case AT_SetRelOptions:
+		case AT_ResetRelOptions:
+			*needsYBAlter = false;
+			ereport(NOTICE,
+					(errmsg("storage parameters are currently ignored in YugabyteDB")));
+			break;
+
+		case AT_AddOf:
+			switch_fallthrough();
+		case AT_DropOf:
+			*needsYBAlter = false;
+			break;
+
 		default:
 			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					errmsg("This ALTER TABLE command is not yet supported.")));
@@ -1977,7 +2004,8 @@ void
 YBCCreateReplicationSlot(const char *slot_name,
 						 const char *plugin_name,
 						 CRSSnapshotAction snapshot_action,
-						 uint64_t *consistent_snapshot_time)
+						 uint64_t *consistent_snapshot_time,
+						 CRSLsnType lsn_type)
 {
 	YBCPgStatement handle;
 
@@ -1995,10 +2023,18 @@ YBCCreateReplicationSlot(const char *slot_name,
 			pg_unreachable();
 	}
 
+	// If lsn_type is specified as HYBRID_TIME, it would be handled
+	// in the if block, otherwise for the default case when nothing is
+	// specified or when SEQUENCE is specified, the value will stay the same.
+	YBCLsnType repl_slot_lsn_type = YB_REPLICATION_SLOT_LSN_TYPE_SEQUENCE;
+	if (lsn_type == CRS_HYBRID_TIME)
+		repl_slot_lsn_type = YB_REPLICATION_SLOT_LSN_TYPE_HYBRID_TIME;
+
 	HandleYBStatus(YBCPgNewCreateReplicationSlot(slot_name,
 												 plugin_name,
 												 MyDatabaseId,
 												 repl_slot_snapshot_action,
+												 repl_slot_lsn_type,
 												 &handle));
 
 	YBCStatus status = YBCPgExecCreateReplicationSlot(handle, consistent_snapshot_time);
@@ -2059,17 +2095,13 @@ YBCDropReplicationSlot(const char *slot_name)
 
 /*
  * Returns an of relfilenodes corresponding to input table_oids array.
+ * It is the responsibility of the caller to allocate and free the memory for relfilenodes.
  */
-static Oid *
-YBCGetRelfileNodes(Oid *table_oids, size_t num_relations)
+static void
+YBCGetRelfileNodes(Oid *table_oids, size_t num_relations, Oid* relfilenodes)
 {
-	Oid			*relfilenodes;
-
-	relfilenodes = palloc(sizeof(Oid) * num_relations);
 	for (size_t table_idx = 0; table_idx < num_relations; table_idx++)
 		relfilenodes[table_idx] = YbGetRelfileNodeIdFromRelId(table_oids[table_idx]);
-
-	return relfilenodes;
 }
 
 void
@@ -2079,10 +2111,13 @@ YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,
 	Assert(MyDatabaseId);
 
 	Oid *relfilenodes;
-	relfilenodes = YBCGetRelfileNodes(relations, numrelations);
+	relfilenodes = palloc(sizeof(Oid) * numrelations);
+	YBCGetRelfileNodes(relations, numrelations, relfilenodes);
 
 	HandleYBStatus(YBCPgInitVirtualWalForCDC(stream_id, MyDatabaseId, relations,
 											 relfilenodes, numrelations));
+
+	pfree(relfilenodes);
 }
 
 void
@@ -2092,11 +2127,14 @@ YBCUpdatePublicationTableList(const char *stream_id, Oid *relations,
 	Assert(MyDatabaseId);
 
 	Oid *relfilenodes;
-	relfilenodes = YBCGetRelfileNodes(relations, numrelations);
+	relfilenodes = palloc(sizeof(Oid) * numrelations);
+	YBCGetRelfileNodes(relations, numrelations, relfilenodes);
 
 	HandleYBStatus(YBCPgUpdatePublicationTableList(stream_id, MyDatabaseId,
 												   relations, relfilenodes,
 												   numrelations));
+
+	pfree(relfilenodes);
 }
 
 void

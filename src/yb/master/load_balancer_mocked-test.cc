@@ -92,16 +92,16 @@ TEST_F(LoadBalancerMockedTest, TestNoPlacement) {
   std::string expected_to_ts = ts_descs_[3]->permanent_uuid();
   // Equal load across the first three TSs. Picking the one with largest ID in string compare.
   std::string expected_from_ts = ts_descs_[2]->permanent_uuid();
-  TestAddLoad(placeholder, expected_from_ts, expected_to_ts);
+  ASSERT_OK(TestAddLoad(placeholder, expected_from_ts, expected_to_ts));
 
   // Perform another round on the updated in-memory load. The move should have made ts2 less
   // loaded, so next tablet should come from ts1 to ts3.
   expected_from_ts = ts_descs_[1]->permanent_uuid();
-  TestAddLoad(placeholder, expected_from_ts, expected_to_ts);
+  ASSERT_OK(TestAddLoad(placeholder, expected_from_ts, expected_to_ts));
 
   // One more round, finally expecting to move from ts0 to ts3.
   expected_from_ts = ts_descs_[0]->permanent_uuid();
-  TestAddLoad(placeholder, expected_from_ts, expected_to_ts);
+  ASSERT_OK(TestAddLoad(placeholder, expected_from_ts, expected_to_ts));
 
   // Final check on in-memory state after in-memory moves.
   ASSERT_EQ(total_num_tablets_ - 3, GetTotalRunningTablets());
@@ -133,13 +133,13 @@ TEST_F(LoadBalancerMockedTest, TestWithPlacement) {
   std::string placeholder;
   std::string expected_from_ts = ts_descs_[0]->permanent_uuid();
   std::string expected_to_ts = ts_descs_[4]->permanent_uuid();
-  TestAddLoad(placeholder, expected_from_ts, expected_to_ts);
+  ASSERT_OK(TestAddLoad(placeholder, expected_from_ts, expected_to_ts));
 
   // Recompute and expect to move to next least loaded TS, which matches placement, which should
   // be ts5 now. Load should still move from the only TS in the correct placement, which is ts0.
   expected_from_ts = ts_descs_[0]->permanent_uuid();
   expected_to_ts = ts_descs_[5]->permanent_uuid();
-  TestAddLoad(placeholder, expected_from_ts, expected_to_ts);
+  ASSERT_OK(TestAddLoad(placeholder, expected_from_ts, expected_to_ts));
 }
 
 TEST_F(LoadBalancerMockedTest, TestWithMissingPlacement) {
@@ -150,10 +150,8 @@ TEST_F(LoadBalancerMockedTest, TestWithMissingPlacement) {
 
   // Remove the only tablet peer from AZ "c".
   for (const auto& tablet : tablets_) {
-    std::shared_ptr<TabletReplicaMap> replica_map =
-      std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
-    replica_map->erase(ts_descs_[2]->permanent_uuid());
-    tablet->SetReplicaLocations(replica_map);
+    RemoveReplica(tablet.get(), ts_descs_[2]);
+    MoveTabletLeader(tablet.get(), ts_descs_[0]);
   }
   // Remove the tablet server from the list.
   ts_descs_.pop_back();
@@ -169,16 +167,16 @@ TEST_F(LoadBalancerMockedTest, TestWithMissingPlacement) {
   std::string placeholder;
   std::string expected_to_ts, expected_from_ts;
   expected_to_ts = ts_descs_[2]->permanent_uuid();
-  TestAddLoad(placeholder, placeholder, expected_to_ts);
+  ASSERT_OK(TestAddLoad(placeholder, placeholder, expected_to_ts));
   expected_to_ts = ts_descs_[3]->permanent_uuid();
-  TestAddLoad(placeholder, placeholder, expected_to_ts);
+  ASSERT_OK(TestAddLoad(placeholder, placeholder, expected_to_ts));
   expected_to_ts = ts_descs_[2]->permanent_uuid();
-  TestAddLoad(placeholder, placeholder, expected_to_ts);
+  ASSERT_OK(TestAddLoad(placeholder, placeholder, expected_to_ts));
   expected_to_ts = ts_descs_[3]->permanent_uuid();
-  TestAddLoad(placeholder, placeholder, expected_to_ts);
+  ASSERT_OK(TestAddLoad(placeholder, placeholder, expected_to_ts));
   // Now registered load should be 4,4,2,2. However, we cannot move load from AZ "a" and "b" to
   // the servers in AZ "c", under normal load conditions, so we should fail the call.
-  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&placeholder, &placeholder, &placeholder)));
+  ASSERT_NOK(TestAddLoad(placeholder, placeholder, placeholder));
 }
 
 TEST_F(LoadBalancerMockedTest, TestOverReplication) {
@@ -239,7 +237,7 @@ TEST_F(LoadBalancerMockedTest, TestOverReplication) {
   ASSERT_EQ(pending_tasks.adds, pending_add_replica_tasks_.size());
 
   std::string placeholder, tablet_id;
-  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &placeholder, &placeholder)));
+  ASSERT_NOK(TestAddLoad(tablet_id, placeholder, placeholder));
 
   // Clear pending_add_replica_tasks_ and reset the state of ClusterLoadBalancer.
   pending_add_replica_tasks_.clear();
@@ -250,7 +248,7 @@ TEST_F(LoadBalancerMockedTest, TestOverReplication) {
   expected_tablet_id = tablets_[2]->tablet_id();
   expected_from_ts = ts_descs_[2]->permanent_uuid();
   expected_to_ts = ts_descs_[5]->permanent_uuid();
-  TestAddLoad(expected_tablet_id, expected_from_ts, expected_to_ts);
+  ASSERT_OK(TestAddLoad(expected_tablet_id, expected_from_ts, expected_to_ts));
 
   // Add all tablets to the list of tablets with a pending remove operation and verify that
   // calling HandleRemoveReplicas fails because all the tablets have a pending remove operation.
@@ -307,12 +305,12 @@ TEST_F(LoadBalancerMockedTest, TestWithBlacklist) {
   expected_from_ts = ts_descs_[0]->permanent_uuid();
   expected_to_ts = ts_descs_[5]->permanent_uuid();
   for (const auto& tablet : tablets_) {
-    TestAddLoad(tablet->tablet_id(), expected_from_ts, expected_to_ts);
+    ASSERT_OK(TestAddLoad(tablet->tablet_id(), expected_from_ts, expected_to_ts));
   }
 
   // There is some opportunity to equalize load across the remaining servers also. However,
   // we cannot do so until the next run since all tablets have just been moved once.
-  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&placeholder, &placeholder, &placeholder)));
+  ASSERT_NOK(TestAddLoad(placeholder, placeholder, placeholder));
 
   // Move tablets off ts0 to ts5.
   for (const auto& tablet : tablets_) {
@@ -328,10 +326,10 @@ TEST_F(LoadBalancerMockedTest, TestWithBlacklist) {
   // this, we can only balance from ts1 to ts3, as they are in the same AZ.
   expected_from_ts = ts_descs_[1]->permanent_uuid();
   expected_to_ts = ts_descs_[3]->permanent_uuid();
-  TestAddLoad(placeholder, expected_from_ts, expected_to_ts);
-  TestAddLoad(placeholder, expected_from_ts, expected_to_ts);
+  ASSERT_OK(TestAddLoad(placeholder, expected_from_ts, expected_to_ts));
+  ASSERT_OK(TestAddLoad(placeholder, expected_from_ts, expected_to_ts));
   // Now we should have no more tablets we are able to move.
-  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&placeholder, &placeholder, &placeholder)));
+  ASSERT_NOK(TestAddLoad(placeholder, placeholder, placeholder));
 }
 
 TEST_F(LoadBalancerMockedTest, TestAddReplicaToTSWithPendingDelete) {
@@ -341,14 +339,12 @@ TEST_F(LoadBalancerMockedTest, TestAddReplicaToTSWithPendingDelete) {
   auto destination_ts = ts_descs_[2];
 
   RemoveReplica(underreplicated_tablet.get(), destination_ts);
+  MoveTabletLeader(underreplicated_tablet.get(), ts_descs_[0]);
   destination_ts->AddPendingTabletDelete(pending_delete_tablet->id());
   ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
   std::string tablet_id, out_ts, to_ts;
-  auto replica_added = ASSERT_RESULT(HandleAddReplicas(&tablet_id, &out_ts, &to_ts));
-  EXPECT_TRUE(replica_added);
-  EXPECT_EQ(tablet_id, underreplicated_tablet->id());
-  EXPECT_EQ(out_ts, "");
-  EXPECT_EQ(to_ts, destination_ts->permanent_uuid());
+  // We should still be able to add a replica to the TS with the pending delete.
+  ASSERT_OK(TestAddLoad(underreplicated_tablet->id(), "", destination_ts->permanent_uuid()));
 }
 
 // It's not clear how realistic this scenario is. The load balancer has checks in the addition
@@ -410,9 +406,9 @@ TEST_P(LoadBalancerMockedCloudInfoSimilarityTest, TestChooseTabletInSameZone) {
   std::string placeholder, expected_from_ts, expected_to_ts, actual_tablet_id;
   expected_from_ts = ts_descs_[0]->permanent_uuid();
   expected_to_ts = ts_descs_[5]->permanent_uuid();
-  TestAddLoad(placeholder, expected_from_ts, expected_to_ts, &actual_tablet_id);
+  ASSERT_OK(TestAddLoad(placeholder, expected_from_ts, expected_to_ts, &actual_tablet_id));
 
-  const auto* moved_tablet_leader = ASSERT_RESULT(tablet_map_[actual_tablet_id]->GetLeader());
+  auto moved_tablet_leader = ASSERT_RESULT(tablet_map_[actual_tablet_id]->GetLeader());
   // If ignoring cloud info, we should move a tablet whose leader is not in zone c (by the order
   // of the tablets, the first non-leader tablet we encounter is tablet 1 and we do not expect
   // to replace it). Otherwise, we should pick the tablet whose leader IS in zone c.
@@ -454,8 +450,8 @@ TEST_F(LoadBalancerMockedTest, TestMovingMultipleTabletsFromSameServer) {
   std::string placeholder, expected_from_ts, expected_to_ts, actual_tablet_id1, actual_tablet_id2;
   expected_from_ts = ts_descs_[0]->permanent_uuid();
   expected_to_ts = ts_descs_[5]->permanent_uuid();
-  TestAddLoad(placeholder, expected_from_ts, expected_to_ts, &actual_tablet_id1);
-  TestAddLoad(placeholder, expected_from_ts, expected_to_ts, &actual_tablet_id2);
+  ASSERT_OK(TestAddLoad(placeholder, expected_from_ts, expected_to_ts, &actual_tablet_id1));
+  ASSERT_OK(TestAddLoad(placeholder, expected_from_ts, expected_to_ts, &actual_tablet_id2));
   ASSERT_NE(actual_tablet_id1, actual_tablet_id2);
   ASSERT_EQ(ts_descs_[0]->permanent_uuid(),
             ASSERT_RESULT(tablets_[0]->GetLeader())->permanent_uuid());
@@ -470,10 +466,8 @@ TEST_F(LoadBalancerMockedTest, TestWithMissingPlacementAndLoadImbalance) {
 
   // Remove the only tablet peer from AZ "c".
   for (const auto& tablet : tablets_) {
-    std::shared_ptr<TabletReplicaMap> replica_map =
-      std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
-    replica_map->erase(ts_descs_[2]->permanent_uuid());
-    tablet->SetReplicaLocations(replica_map);
+    RemoveReplica(tablet.get(), ts_descs_[2]);
+    MoveTabletLeader(tablet.get(), ts_descs_[0]);
   }
   // Remove the tablet server from the list.
   ts_descs_.pop_back();
@@ -488,10 +482,10 @@ TEST_F(LoadBalancerMockedTest, TestWithMissingPlacementAndLoadImbalance) {
   std::string placeholder;
   std::string expected_to_ts;
   expected_to_ts = ts_descs_[2]->permanent_uuid();
-  TestAddLoad(placeholder, placeholder, expected_to_ts);
-  TestAddLoad(placeholder, placeholder, expected_to_ts);
-  TestAddLoad(placeholder, placeholder, expected_to_ts);
-  TestAddLoad(placeholder, placeholder, expected_to_ts);
+  ASSERT_OK(TestAddLoad(placeholder, placeholder, expected_to_ts));
+  ASSERT_OK(TestAddLoad(placeholder, placeholder, expected_to_ts));
+  ASSERT_OK(TestAddLoad(placeholder, placeholder, expected_to_ts));
+  ASSERT_OK(TestAddLoad(placeholder, placeholder, expected_to_ts));
 
   // Add yet 1 more server in that same AZ for some load-balancing.
   ts_descs_.push_back(SetupTS("2new", "c"));
@@ -507,11 +501,11 @@ TEST_F(LoadBalancerMockedTest, TestWithMissingPlacementAndLoadImbalance) {
 
   // Now we should be able to move 2 tablets to the second new TS.
   expected_to_ts = ts_descs_[3]->permanent_uuid();
-  TestAddLoad(placeholder, placeholder, expected_to_ts);
-  TestAddLoad(placeholder, placeholder, expected_to_ts);
+  ASSERT_OK(TestAddLoad(placeholder, placeholder, expected_to_ts));
+  ASSERT_OK(TestAddLoad(placeholder, placeholder, expected_to_ts));
 
   // And the load should now be balanced so no more move is expected.
-  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&placeholder, &placeholder, &placeholder)));
+  ASSERT_NOK(TestAddLoad(placeholder, placeholder, placeholder));
 }
 
 TEST_F(LoadBalancerMockedTest, TestBalancingLeaders) {
@@ -561,7 +555,7 @@ TEST_F(LoadBalancerMockedTest, TestBalancingLeaders) {
 
   // With ts0 blacklisted, the 2 leaders on ts0 should be moved to some undetermined servers.
   // ts1 still has 2 leaders and ts2 has 0 so 1 leader should be moved to ts2.
-  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&placeholder, &placeholder, &placeholder)));
+  ASSERT_NOK(TestAddLoad(placeholder, placeholder, placeholder));
   ASSERT_FALSE(ASSERT_RESULT(HandleRemoveReplicas(&placeholder, &placeholder)));
   expected_from_ts = ts_descs_[1]->permanent_uuid();
   expected_to_ts = ts_descs_[2]->permanent_uuid();
@@ -597,9 +591,11 @@ TEST_F(LoadBalancerMockedTest, TestMissingPlacementSingleAz) {
   SetupClusterConfig({"a"}, &replication_info_);
 
   // Under-replicate tablets 0, 1, 2.
-  RemoveReplica(tablets_[0].get(), ts_descs_[0]);
-  RemoveReplica(tablets_[1].get(), ts_descs_[1]);
-  RemoveReplica(tablets_[2].get(), ts_descs_[2]);
+  for (int i = 0; i < 3; i++) {
+    RemoveReplica(tablets_[i].get(), ts_descs_[i]);
+    // Ensure the tablet has a leader.
+    MoveTabletLeader(tablets_[i].get(), ts_descs_[(i + 1) % 3]);
+  }
 
   ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
 
@@ -609,22 +605,22 @@ TEST_F(LoadBalancerMockedTest, TestMissingPlacementSingleAz) {
   expected_tablet_id = tablets_[0]->tablet_id();
   expected_to_ts = ts_descs_[0]->permanent_uuid();
 
-  TestAddLoad(expected_tablet_id,  placeholder, expected_to_ts);
+  ASSERT_OK(TestAddLoad(expected_tablet_id, placeholder, expected_to_ts));
 
   // Make sure a replica is added for tablet 1 to ts 1.
   expected_tablet_id = tablets_[1]->tablet_id();
   expected_to_ts = ts_descs_[1]->permanent_uuid();
 
-  TestAddLoad(expected_tablet_id,  placeholder, expected_to_ts);
+  ASSERT_OK(TestAddLoad(expected_tablet_id, placeholder, expected_to_ts));
 
   // Make sure a replica is added for tablet 2 to ts 2.
   expected_tablet_id = tablets_[2]->tablet_id();
   expected_to_ts = ts_descs_[2]->permanent_uuid();
 
-  TestAddLoad(expected_tablet_id,  placeholder, expected_to_ts);
+  ASSERT_OK(TestAddLoad(expected_tablet_id, placeholder, expected_to_ts));
 
   // Everything is normal now, load balancer shouldn't do anything.
-  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&placeholder, &placeholder, &placeholder)));
+  ASSERT_NOK(TestAddLoad(placeholder, placeholder, placeholder));
 }
 
 TEST_F(LoadBalancerMockedTest, TestBalancingLeadersWithThreshold) {
@@ -716,6 +712,26 @@ TEST_F(LoadBalancerMockedTest, TestLeaderOverReplication) {
   TestRemoveLoad(tablets_[0]->tablet_id(), "");
 }
 
+TEST_F(LoadBalancerMockedTest, LimitRbsPerTserver) {
+  GetOptions()->kMaxInboundRemoteBootstrapsPerTs = 1;
+  PrepareTestStateMultiAz();
+  // Remove all replicas from ts2.
+  for (const auto& tablet : tablets_) {
+    RemoveReplica(tablet.get(), ts_descs_[2]);
+  }
+
+  // Add another tserver in zone c.
+  ts_descs_.push_back(SetupTS("3333", "c"));
+
+  // Load balancer should add a replica to ts2, then ts3, then stop because of the inbound RBS
+  // limit.
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_OK(TestAddLoad("", "", ts_descs_[2]->permanent_uuid()));
+  ASSERT_OK(TestAddLoad("", "", ts_descs_[3]->permanent_uuid()));
+  ASSERT_EQ(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)), false);
+}
+
 TEST_F(LoadBalancerMockedTest, TestLeaderBlacklist) {
   LOG(INFO) << "Testing moving overloaded leaders";
   PrepareTestStateMultiAz();
@@ -771,6 +787,48 @@ TEST_F(LoadBalancerMockedTest, TestLeaderBlacklist) {
   LOG(INFO) << "Leader distribution: 2 1 1 -OR- 1 2 1";
 }
 
+class LoadBalancerRF5MockedTest : public LoadBalancerMockedTest {
+  int NumReplicas() const override { return 5; }
+};
+
+TEST_F(LoadBalancerRF5MockedTest, TestUnderReplicatedPriority) {
+  // Test that we prioritize more under-replicated tablets when adding replicas.
+  PrepareTestStateMultiAz();
+  // Setup cluster level placement to multiple AZs.
+  SetupClusterConfig({"a", "b", "c", "d", "e"}, &replication_info_, /*rf*/ 5);
+
+  auto leader_ts = ts_descs_[0];
+  auto underreplicated_by_1_tablet = tablets_[0];
+  auto underreplicated_by_2_tablet = tablets_[1];
+  auto az_d_ts = ts_descs_[3];
+  auto az_e_ts = ts_descs_[4];
+
+  // Remove one replica from e for the first tablet.
+  RemoveReplica(underreplicated_by_1_tablet.get(), az_e_ts);
+  // Remove 2 replicas from e and d for the second tablet.
+  RemoveReplica(underreplicated_by_2_tablet.get(), az_d_ts);
+  RemoveReplica(underreplicated_by_2_tablet.get(), az_e_ts);
+
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+
+  std::string placeholder;
+  std::string expected_tablet, expected_to_ts;
+  // First should move the handle the most underreplicated tablet.
+  // Will move to the e node since it has the least load and is underreplicated.
+  expected_tablet = underreplicated_by_2_tablet->tablet_id();
+  expected_to_ts = az_e_ts->permanent_uuid();
+  ASSERT_OK(TestAddLoad(expected_tablet, placeholder, expected_to_ts));
+
+  // Next we move the next most underreplicated tablet.
+  // Will move to the e node since it is underreplicated.
+  expected_tablet = underreplicated_by_1_tablet->tablet_id();
+  expected_to_ts = az_e_ts->permanent_uuid();
+  ASSERT_OK(TestAddLoad(expected_tablet, placeholder, expected_to_ts));
+
+  // Shouldn't perform any more moves (can't move a tablet multiple times in one run).
+  ASSERT_FALSE(ASSERT_RESULT(HandleOneAddIfMissingPlacement(placeholder, placeholder)));
+  ASSERT_NOK(TestAddLoad(placeholder, placeholder, placeholder));
+}
 
 } // namespace master
 } // namespace yb

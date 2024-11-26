@@ -3,13 +3,12 @@ title: PostgreSQL extensions
 headerTitle: PostgreSQL extensions
 linkTitle: PostgreSQL extensions
 description: Summary of supported PostgreSQL extensions
-image: /images/section_icons/develop/ecosystem-integrations.png
 summary: Reference for YSQL extensions
 menu:
   stable:
     identifier: pg-extensions
     parent: explore-ysql-language-features
-    weight: 4400
+    weight: 1000
 showRightNav: true
 type: indexpage
 ---

@@ -32,6 +32,7 @@ public class DeleteRemnantStreams extends XClusterConfigTaskBase {
   }
 
   public static class Params extends XClusterConfigTaskParams {
+    // Target universe and xClusterConfig passed in.
     public String namespaceName;
   }
 
@@ -65,6 +66,9 @@ public class DeleteRemnantStreams extends XClusterConfigTaskBase {
           namespaceId,
           taskParams().namespaceName,
           universe.getName());
+
+      // TODO: For db scoped replication, delete any inbound replication group with different
+      // replication group name.
 
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList =
           XClusterConfigTaskBase.getTableInfoList(ybService, universe).stream()

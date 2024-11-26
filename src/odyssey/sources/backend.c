@@ -12,6 +12,8 @@
 #include <machinarium.h>
 #include <odyssey.h>
 
+#define YB_SHMEM_KEY_FORMAT "shmkey="
+
 void od_backend_close(od_server_t *server)
 {
 	assert(server->route == NULL);
@@ -37,15 +39,23 @@ static inline int od_backend_terminate(od_server_t *server)
 
 void od_backend_close_connection(od_server_t *server)
 {
+	/* YB NOTE: Log the type of the backend being closed. */
+	od_instance_t *instance = server->global->instance;
+	od_debug(&instance->logger, "backend", NULL, server,
+		"closing %s backend connection",
+		server->yb_auth_backend ? "auth" : "regular");
+
 	/* failed to connect to endpoint, so notring to do */
 	if (server->io.io == NULL) {
-		return;
+		/* YB NOTE: Cleanup error_connect and tls even if we cannot connect */
+		goto cleanup;
 	}
 	if (machine_connected(server->io.io))
 		od_backend_terminate(server);
 
 	od_io_close(&server->io);
 
+cleanup:
 	if (server->error_connect) {
 		machine_msg_free(server->error_connect);
 		server->error_connect = NULL;
@@ -63,31 +73,36 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 	od_instance_t *instance = server->global->instance;
 	kiwi_fe_error_t error;
 
+	od_client_t *yb_server_client = server->client;
+	od_client_t *yb_external_client = (yb_server_client->yb_is_authenticating) ?
+					 yb_server_client->yb_external_client :
+					 yb_server_client;
+
 	int rc;
 	rc = kiwi_fe_read_error(data, size, &error);
 	if (rc == -1) {
-		od_error(&instance->logger, context, server->client, server,
+		od_error(&instance->logger, context, yb_external_client, server,
 			 "failed to parse error message from server");
 		return;
 	}
 
-	od_error(&instance->logger, context, server->client, server, "%s %s %s",
+	od_error(&instance->logger, context, yb_external_client, server, "%s %s %s",
 		 error.severity, error.code, error.message);
 
 	if (error.detail) {
-		od_error(&instance->logger, context, server->client, server,
+		od_error(&instance->logger, context, yb_external_client, server,
 			 "DETAIL: %s", error.detail);
 	}
 
 	/* catch and store error to be forwarded later if we are in deploy phase */
 	if (od_server_in_deploy(server)) {
-		od_client_t* client = (od_client_t*) (server->client);
+		od_client_t* client = (od_client_t*) (yb_external_client);
 		client->deploy_err = (kiwi_fe_error_t *) malloc(sizeof(kiwi_fe_error_t));
 		kiwi_fe_read_error(data, size, client->deploy_err);
 	}
 
 	if (error.hint) {
-		od_error(&instance->logger, context, server->client, server,
+		od_error(&instance->logger, context, yb_external_client, server,
 			 "HINT: %s", error.hint);
 
 		if (strcmp(error.hint, "Database might have been dropped by another user") == 0)
@@ -95,10 +110,13 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 			/* Reset the route and close the client */
 			((od_route_t*)server->route)->yb_database_entry->status = YB_DB_DROPPED;
 
-			if (server->client != NULL &&
-				((od_client_t *)server->client)->type == OD_POOL_CLIENT_EXTERNAL)
-					od_frontend_error(server->client, KIWI_CONNECTION_DOES_NOT_EXIST,
-						error.hint, od_io_error(&server->io));
+			if (yb_external_client != NULL &&
+			    ((od_client_t *)yb_external_client)->type ==
+				    OD_POOL_CLIENT_EXTERNAL)
+				od_frontend_error(
+					yb_external_client,
+					KIWI_CONNECTION_DOES_NOT_EXIST,
+					error.hint, od_io_error(&server->io));
 		}
 	}
 }
@@ -135,35 +153,132 @@ int od_backend_ready(od_server_t *server, char *data, uint32_t size)
 	return 0;
 }
 
+static int yb_read_client_id_from_notice_pkt(od_client_t *client,
+					     od_server_t *server,
+					     od_instance_t *instance,
+					     machine_msg_t *msg)
+{
+	kiwi_fe_error_t hint;
+	int rc = -1;
+
+	/* Received a NOTICE packet, it can be the HINT containing the client id */
+	rc = kiwi_fe_read_notice(machine_msg_data(msg), machine_msg_size(msg),
+				&hint);
+	if (rc == -1) {
+		od_error(&instance->logger, "read clientid", client, server,
+			 "failed to parse notice message from server");
+		return -1;
+	}
+
+	/*
+	 * If the HINT contains the client id, store it. Ignore the data otherwise.
+	 */
+	char *data = hint.hint;
+	if (data != NULL &&
+		strncmp(data, YB_SHMEM_KEY_FORMAT, strlen(YB_SHMEM_KEY_FORMAT)) == 0) {
+		assert(client->client_id == 0);
+		client->client_id = atoi(data + strlen(YB_SHMEM_KEY_FORMAT));
+	}
+
+	return 0;
+}
+
 static inline int od_backend_startup(od_server_t *server,
 				     kiwi_params_t *route_params,
 				     od_client_t *client)
 {
 	od_instance_t *instance = server->global->instance;
 	od_route_t *route = server->route;
-	char db_name[64];
-	strcpy(db_name, (char *)route->yb_database_entry->name);
-	const int db_name_len = route->yb_database_entry->name_len;
+
+	bool is_authenticating = client->yb_is_authenticating;
+	char db_name[64], user_name[64];
+	int db_name_len, user_name_len;
+	char yb_logical_conn_type[2];
+
+	if (is_authenticating)
+	{
+		/*
+		 * While authenticating, the client parameter refers to the internal
+		 * control-connection client while this yb_external_client is the
+		 * original client that has made the connection to the connection
+		 * manager.
+		 */
+		assert(client->yb_external_client != NULL);
+		assert(instance->config.yb_use_auth_backend);
+
+		/*
+		 * Read and use the database and user values from the client instead of
+		 * the route since the route will have the user, db of the control pool.
+		 * See yb_auth_via_auth_backend for more.
+		 */
+		strcpy(db_name, (char *)client->startup.database.value);
+		db_name_len = client->startup.database.value_len;
+
+		strcpy(user_name, (char *)client->startup.user.value);
+		user_name_len = client->startup.user.value_len;
+
+		yb_logical_conn_type[0] = (client->yb_external_client->tls) ?
+						  YB_LOGICAL_ENCRYPTED_CONN :
+						  YB_LOGICAL_UNENCRYPTED_CONN;
+	}
+	else
+	{
+		strcpy(db_name, (char *)route->yb_database_entry->name);
+		db_name_len = route->yb_database_entry->name_len + 1;
+
+		strcpy(user_name, (char *)route->id.user);
+		user_name_len = route->id.user_len;
+
+		/*
+		 * The connection between connection manager and the backend is always
+		 * unencrypted.
+		 */
+		yb_logical_conn_type[0] = YB_LOGICAL_UNENCRYPTED_CONN;
+	}
+	yb_logical_conn_type[1] = '\0';
 
 	kiwi_fe_arg_t argv[] = { { "user", 5 },
-				 { route->id.user, route->id.user_len },
+				 { user_name, user_name_len },
 				 { "database", 9 },
-				 { db_name, db_name_len + 1},
+				 { db_name, db_name_len },
 				 { "yb_use_tserver_key_auth", 24 },
-				 { "1", 2 },
+				 { is_authenticating ? "0" : "1", 2 },
 				 { "yb_is_client_ysqlconnmgr", 25 },
 				 { "1", 2 },
+				 { "yb_authonly", 12 },
+				 { is_authenticating ? "1" : "0", 2 },
 				 { "replication", 12 },
-				 { NULL, 0 } };
-	int argc = 8;
+				 { NULL, 0 },
+				 { "yb_auth_remote_host", 20 },
+				 { NULL, 0},
+				 { "yb_logical_conn_type", 21 },
+				 { NULL, 0 }, };
+	int argc = 10;
 	if (route->id.physical_rep) {
-		argc = 10;
-		argv[9].name = "on";
-		argv[9].len = 3;
+		argc = 12;
+		argv[11].name = "on";
+		argv[11].len = 3;
 	} else if (route->id.logical_rep) {
-		argc = 10;
-		argv[9].name = "database";
-		argv[9].len = 9;
+		argc = 12;
+		argv[11].name = "database";
+		argv[11].len = 9;
+	}
+
+	/* write auth backend specific parameters. */
+	if (is_authenticating)
+	{
+		argc += 4;
+		/* override the remote host sent to the auth backend. */
+		argv[argc - 4].name = "yb_auth_remote_host";
+		argv[argc - 4].len = 20;
+		argv[argc - 3].name = client->yb_client_address;
+		argv[argc - 3].len = strlen(client->yb_client_address) + 1;
+
+		/* send the connection type to the auth backend. */
+		argv[argc - 2].name = "yb_logical_conn_type";
+		argv[argc - 2].len = 21;
+		argv[argc - 1].name = yb_logical_conn_type;
+		argv[argc - 1].len = 2;
 	}
 
 	machine_msg_t *msg;
@@ -202,7 +317,13 @@ static inline int od_backend_startup(od_server_t *server,
 			return 0;
 		case KIWI_BE_AUTHENTICATION:
 			rc = od_auth_backend(server, msg, client);
-			machine_msg_free(msg);
+			/*
+			 * Skip freeing the message in case of authentication backend.
+			 * In case of auth backend, od_auth_backend itself will free the
+			 * message after forwarding the packet to the client.
+			 */
+			if (!is_authenticating)
+				machine_msg_free(msg);
 			if (rc == -1)
 				return -1;
 			break;
@@ -239,25 +360,81 @@ static inline int od_backend_startup(od_server_t *server,
 				return -1;
 			}
 
-			/* set server parameters */
-			kiwi_vars_update(&server->vars, name, name_len, value,
-					 value_len);
+			if (is_authenticating)
+				od_debug(&instance->logger, "auth", NULL, server,
+			 			 "name: %s, value: %s", name, value);
+			else
+				od_debug(&instance->logger, "startup", NULL, server,
+			 			 "name: %s, value: %s", name, value);
 
-			if (route_params) {
+			/*
+			 * The parameters received during authentication are the initial set
+			 * of parameters that should be set on the transactional backend the
+			 * client is routed to. We achieve that by treating these values as
+			 * if they were set by the client. As a result, when the
+			 * transactional backend is assigned and setup, it is sent these
+			 * parameter values.
+			 * See od_frontend_setup_params() for more details.
+			 */
+			if (is_authenticating)
+			{
+				/*
+				 * Skip writing variables that shouldn't be sent to the 
+				 * transactional backend here.
+				 *
+				 * The server_encoding and is_superuser are internal GUC
+				 * variables that would throw errors if we tried to replay them
+				 * on the transactional backends.
+				 *
+				 * We skip session_authorization as well because it is redundant
+				 * to do so. Both the auth-backend and the transactional backend
+				 * will be set with the same user.
+				 */
+				if ((yb_od_streq(name, name_len,
+						 "server_encoding",
+						 sizeof("server_encoding")) ||
+				     yb_od_streq(name, name_len,
+					 	 "is_superuser",
+						 sizeof("is_superuser")) ||
+				     yb_od_streq(name, name_len,
+					     "session_authorization",
+					     sizeof("session_authorization")))) {
+					machine_msg_free(msg);
+					break;
+				}
+
+				/*
+				 * Set client parameters. There are variables such as
+				 * client_encoding, DateStyle etc. where the client's set value
+				 * should not be overridden by the value returned by the
+				 * auth-backend. Hence, we only set the variable if it doesn't
+				 * exist in the client vars.
+				 */
+				yb_kiwi_vars_set_if_not_exists(
+					&client->yb_external_client->vars, name,
+					name_len, value, value_len);
+			} else if ((name_len != sizeof("session_authorization") ||
+				strncmp(name, "session_authorization", name_len))) {
+				// set server parameters, ignore startup session_authorization
+				// session_authorization is sent by the server during startup,
+				// if not ignored, will make every connection sticky
+				kiwi_vars_update(&server->vars, name, name_len, value,
+						value_len);
+			}
+
+			if ((name_len != sizeof("session_authorization") ||
+				strncmp(name, "session_authorization", name_len)) &&
+				route_params) {
 				// skip volatile params
 				// we skip in_hot_standby here because it may change
 				// during connection lifetime, if server was
 				// promoted
 				if (name_len != sizeof("in_hot_standby") ||
-				    strncmp(name, "in_hot_standby", name_len)) {
+					strncmp(name, "in_hot_standby", name_len)) {
 					kiwi_param_t *param;
-					param = kiwi_param_allocate(name,
-								    name_len,
-								    value,
-								    value_len);
+					param = kiwi_param_allocate(name, name_len, value, value_len);
 					if (param)
-						kiwi_params_add(route_params,
-								param);
+						kiwi_params_add(route_params, param);
 				}
 			}
 
@@ -265,8 +442,27 @@ static inline int od_backend_startup(od_server_t *server,
 			break;
 		}
 		case KIWI_BE_NOTICE_RESPONSE:
+			/*
+			 * Store the client_id from the notice packet during authentication
+			 * if received.
+			 */
+			if (is_authenticating) {
+				rc = yb_read_client_id_from_notice_pkt(
+					client->yb_external_client, server,
+					instance, msg);
+				if (rc == -1) {
+					machine_msg_free(msg);
+					return -1;
+				}
+			}
 			machine_msg_free(msg);
 			break;
+		case YB_KIWI_BE_FATAL_FOR_LOGICAL_CONNECTION:
+				yb_handle_fatalforlogicalconnection_pkt(
+					is_authenticating ? client->yb_external_client : client,
+					server);
+			machine_msg_free(msg);
+			return -1;
 		case KIWI_BE_ERROR_RESPONSE:
 			od_backend_error(server, "startup",
 					 machine_msg_data(msg),
@@ -274,7 +470,13 @@ static inline int od_backend_startup(od_server_t *server,
 			server->error_connect = msg;
 			return -1;
 		case YB_OID_DETAILS:
-			rc = yb_handle_oid_pkt_server(instance, server, msg, db_name);
+			if (is_authenticating)
+				/* Read the oid details */
+				rc = yb_handle_oid_pkt_client(instance, client, msg);
+			else
+				rc = yb_handle_oid_pkt_server(instance, server, msg, db_name);
+
+			machine_msg_free(msg);
 			if (rc == -1)
 				return -1;
 			if (yb_is_route_invalid(route))
@@ -700,7 +902,7 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 		return -1;
 	}
 
-	/* ignore caching of role-dependent parameters, only store oid */
+	/* connection manager does not track role-dependent parameters */
 	if (strcmp("role", name) == 0 || strcmp("session_authorization", name) == 0)
 		return 0;
 
@@ -714,10 +916,6 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 	} else {
 		kiwi_vars_update_both(&client->vars, &server->vars, name,
 				      name_len, value, value_len);
-
-		/* reset role whenever session_authorization is changed by the user */
-		if (strcmp(name, "session_authorization_oid") == 0)
-			kiwi_vars_update_both(&client->vars, &server->vars, "role_oid", 9, "-1", 3);
 	}
 
 	return 0;

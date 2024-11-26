@@ -164,11 +164,13 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
   }, [formProps?.values?.flagname]);
 
   const getPlaceholder = (index: number, flagName: string) => {
+    let message = CONST_VALUES.EMPTY_STRING;
     if (flagName === MultilineGFlags.YSQL_IDENT_CONF_CSV) {
       return 'universeForm.gFlags.identConfLocal';
+    } else if (flagName === MultilineGFlags.YSQL_PG_CONF_CSV) {
+      return message;
     }
 
-    let message = CONST_VALUES.EMPTY_STRING;
     switch (index) {
       case 0:
         message = 'universeForm.gFlags.hbaLDAPConfLocal';

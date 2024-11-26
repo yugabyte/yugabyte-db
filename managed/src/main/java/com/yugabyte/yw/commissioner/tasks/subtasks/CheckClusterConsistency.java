@@ -26,7 +26,7 @@ import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.ListLiveTabletServersResponse;
-import org.yb.client.ListMastersResponse;
+import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.YBClient;
 
 @Slf4j
@@ -127,9 +127,15 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
       boolean cloudEnabled)
       throws Exception {
     List<String> errors = new ArrayList<>();
-    ListMastersResponse listMastersResponse = ybClient.listMasters();
+    if (ybClient.getLeaderMasterHostAndPort() == null) {
+      errors.add("No master leader!");
+    }
+    ListMasterRaftPeersResponse listMastersResponse = ybClient.listMasterRaftPeers();
     Set<String> masterIps =
-        listMastersResponse.getMasters().stream().map(m -> m.getHost()).collect(Collectors.toSet());
+        listMastersResponse.getPeersList().stream()
+            .flatMap(p -> p.getLastKnownPrivateIps().stream())
+            .map(hp -> hp.getHost())
+            .collect(Collectors.toSet());
 
     errors.addAll(
         checkServers(
@@ -140,11 +146,6 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
             strict,
             cloudEnabled));
 
-    boolean hasLeader =
-        listMastersResponse.getMasters().stream().filter(m -> m.isLeader()).findFirst().isPresent();
-    if (!hasLeader) {
-      errors.add("No master leader!");
-    }
     ListLiveTabletServersResponse liveTabletServersResponse = ybClient.listLiveTabletServers();
     Set<String> tserverIps =
         liveTabletServersResponse.getTabletServers().stream()

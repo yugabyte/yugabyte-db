@@ -297,6 +297,14 @@ DEFINE_RUNTIME_bool(enable_copy_retryable_requests_from_parent, true,
                     "Whether to copy retryable requests from parent tablet when opening"
                     "the child tablet");
 
+DEFINE_NON_RUNTIME_uint32(deleted_tablet_cache_max_size, 10000,
+                          "Maximum size for the cache of recently deleted tablet ids. Used to "
+                          "reject remote bootstrap requests for recently deleted tablets.");
+
+DEFINE_RUNTIME_bool(
+    reject_rbs_for_deleted_tablet, true,
+    "Whether to reject a request to RBS a tablet that the receiving tserver has recently deleted.");
+
 DEFINE_UNKNOWN_int32(flush_bootstrap_state_pool_max_threads, -1,
                      "The maximum number of threads used to flush retryable requests");
 
@@ -312,6 +320,10 @@ DEFINE_test_flag(bool, crash_before_clone_target_marked_ready, false,
 
 DEFINE_test_flag(bool, crash_before_mark_clone_attempted, false,
                  "Whether to crash before marking a clone op as completed on the source tablet.");
+
+DEFINE_NON_RUNTIME_uint32(vector_index_concurrent_writes, 0,
+                          "Number of threads used by vector index thread pool. "
+                          "0 - use number of CPUs for it.");
 
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
@@ -385,6 +397,10 @@ METRIC_DEFINE_gauge_int64(server, ts_supportable_tablet_peers,
     "Number of Tablet Peers this TServer can support", MetricUnit::kUnits,
     "Number of tablet peers that this TServer can support based on available RAM and cores or -1 "
     "if no tablet limit in effect.");
+
+METRIC_DEFINE_gauge_uint64(server, num_tablet_peers_undergoing_rbs,
+    "Number of Tablet Peers on the TServer undergoing remote bootstrap", MetricUnit::kUnits,
+    "Number of Tablet Peers on the TServer undergoing remote bootstrap i.e actively RBSing peers.");
 
 THREAD_POOL_METRICS_DEFINE(server, admin_triggered_compaction_pool,
     "Thread pool for admin-triggered tablet compaction jobs.");
@@ -489,6 +505,7 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
                                  MetricRegistry* metric_registry)
   : fs_manager_(fs_manager),
     server_(server),
+    deleted_tablet_ids_(FLAGS_deleted_tablet_cache_max_size),
     metric_registry_(metric_registry),
     state_(MANAGER_INITIALIZING) {
   ThreadPoolMetrics metrics = {
@@ -582,6 +599,8 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
   ts_open_metadata_time_us_ =
       METRIC_ts_open_metadata_time_us.Instantiate(server_->metric_entity(), 0);
   ts_data_size_metrics_ = std::make_unique<TsDataSizeMetrics>(this);
+  num_tablet_peers_undergoing_rbs_ = METRIC_num_tablet_peers_undergoing_rbs.Instantiate(
+      server->metric_entity(), 0);
 
   mem_manager_ = std::make_shared<TabletMemoryManager>(
       &tablet_options_,
@@ -921,6 +940,8 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
     const bool colocated,
     const std::vector<SnapshotScheduleId>& snapshot_schedules,
     const std::unordered_set<StatefulServiceKind>& hosted_services) {
+  LOG_WITH_FUNC(INFO) << "Table: " << table_info->ToString();
+
   SCOPED_WAIT_STATUS(CreatingNewTablet);
   if (state() != MANAGER_RUNNING) {
     return STATUS_FORMAT(IllegalState, "Manager is not running: $0", state());
@@ -1280,10 +1301,10 @@ Status TSTabletManager::DoApplyCloneTablet(
   const auto target_pg_table_id = request->target_pg_table_id().ToBuffer();
   const auto target_skip_table_tombstone_check =
       request->target_skip_table_tombstone_check();
-  const boost::optional<qlexpr::IndexInfo> target_table_index_info =
+  const std::optional<qlexpr::IndexInfo> target_table_index_info =
       request->has_target_index_info() ?
-      boost::optional<qlexpr::IndexInfo>(request->target_index_info().ToGoogleProtobuf()) :
-      boost::none;
+      std::optional<qlexpr::IndexInfo>(request->target_index_info().ToGoogleProtobuf()) :
+      std::nullopt;
   Schema target_schema;
   dockv::PartitionSchema target_partition_schema;
   RETURN_NOT_OK(SchemaFromPB(request->target_schema().ToGoogleProtobuf(), &target_schema));
@@ -1552,6 +1573,12 @@ Status HandleReplacingStaleTablet(
 
 Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB& req) {
   const TabletId& tablet_id = req.tablet_id();
+  if (FLAGS_reject_rbs_for_deleted_tablet) {
+    SharedLock<RWMutex> shared_lock(mutex_);
+    SCHECK(
+        !deleted_tablet_ids_.contains(tablet_id), IllegalState,
+        "Cannot bootstrap a new tablet replica for a previously deleted tablet replica.");
+  }
   const PeerId& bootstrap_peer_uuid = req.bootstrap_source_peer_uuid();
   const auto& kLogPrefix = TabletLogPrefix(tablet_id);
   const auto& private_addr = req.bootstrap_source_private_addr()[0].host();
@@ -1563,8 +1590,10 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   // populates bootstrap_source_addresses_ before looking up the tablet. Define this
   // ScopeExit before calling RegisterRemoteClientAndLookupTablet so that if it fails,
   // we cleanup as expected.
+  num_tablet_peers_undergoing_rbs_->Increment();
   auto decrement_num_session = ScopeExit([this, &private_addr]() {
     DecrementRemoteSessionCount(private_addr, &remote_bootstrap_clients_);
+    num_tablet_peers_undergoing_rbs_->Decrement();
   });
   TabletPeerPtr old_tablet_peer = VERIFY_RESULT(RegisterRemoteClientAndLookupTablet(
       tablet_id, private_addr, kLogPrefix, &remote_bootstrap_clients_,
@@ -1883,6 +1912,7 @@ Status TSTabletManager::DeleteTablet(
     RETURN_NOT_OK(CheckRunningUnlocked(error_code));
     CHECK_EQ(1, tablet_map_.erase(tablet_id)) << tablet_id;
     dirty_tablets_.erase(tablet_id);
+    deleted_tablet_ids_.insert(tablet_id);
   }
 
   // We unregister TOMBSTONED tablets in addition to DELETED tablets because they do not have
@@ -2050,7 +2080,9 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         .metadata_cache = metadata_cache,
         .get_min_xcluster_schema_version =
             std::bind(&TabletServer::GetMinXClusterSchemaVersion, server_, _1, _2),
-        .messenger = server_->messenger()};
+        .messenger = server_->messenger(),
+        .vector_index_thread_pool_provider = [this] { return VectorIndexThreadPool(); },
+    };
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
       .listener = tablet_peer->status_listener(),
@@ -2261,6 +2293,13 @@ void TSTabletManager::CompleteShutdown() {
     peer->CompleteShutdown(
         tablet::DisableFlushOnShutdown(FLAGS_TEST_disable_flush_on_shutdown),
         tablet::AbortOps::kFalse);
+  }
+
+  auto vector_index_thread_pool = vector_index_thread_pool_.get();
+  if (vector_index_thread_pool) {
+    std::lock_guard mutex(vector_index_thread_pool_mutex_);
+    vector_index_thread_pool->Shutdown();
+    vector_index_thread_pool_.reset();
   }
 
   // Shut down the apply pool.
@@ -3419,6 +3458,28 @@ client::YBMetaDataCache* TSTabletManager::CreateYBMetaDataCache() {
 // lock.
 client::YBMetaDataCache* TSTabletManager::YBMetaDataCache() const {
   return metadata_cache_.load(std::memory_order_acquire);
+}
+
+rpc::ThreadPool* TSTabletManager::VectorIndexThreadPool() {
+  auto result = vector_index_thread_pool_.get();
+  if (result) {
+    return result;
+  }
+  std::lock_guard lock(vector_index_thread_pool_mutex_);
+  result = vector_index_thread_pool_.get();
+  if (result) {
+    return result;
+  }
+  rpc::ThreadPoolOptions options = {
+    .name = "vector_index_tp",
+    .max_workers = FLAGS_vector_index_concurrent_writes,
+  };
+  if (options.max_workers == 0) {
+    options.max_workers = std::thread::hardware_concurrency();
+  }
+  LOG(INFO) << "Use " << options.max_workers << " for vector index thread pool";
+  vector_index_thread_pool_.reset(result = new rpc::ThreadPool(std::move(options)));
+  return result;
 }
 
 Status DeleteTabletData(const RaftGroupMetadataPtr& meta,

@@ -760,6 +760,15 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	/*
 	 * Check consistency of arguments
 	 */
+	if (IsYugaByteEnabled() && stmt->relation->relpersistence == RELPERSISTENCE_UNLOGGED)
+	{
+		/* UNLOGGED persistence is NO-OP in YugabyteDB. */
+		ereport(NOTICE,
+				(errmsg("unlogged option is currently ignored in YugabyteDB, "
+								"all non-temp relations will be logged")));
+		stmt->relation->relpersistence = RELPERSISTENCE_PERMANENT;
+	}
+
 	if (stmt->oncommit != ONCOMMIT_NOOP
 		&& stmt->relation->relpersistence != RELPERSISTENCE_TEMP)
 		ereport(ERROR,
@@ -1202,16 +1211,6 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	 */
 	CommandCounterIncrement();
 
-	if (IsYugaByteEnabled())
-	{
-		CheckIsYBSupportedRelationByKind(relkind);
-		YBCCreateTable(stmt, relname, relkind, descriptor, relationId,
-					   namespaceId, tablegroupId, colocation_id, tablespaceId,
-					   InvalidOid /* pgTableId */,
-					   InvalidOid /* oldRelfileNodeId */,
-					   false /* isTruncate */);
-	}
-
 	/*
 	 * Open the new relation and acquire exclusive lock on it.  This isn't
 	 * really necessary for locking out other backends (since they can't see
@@ -1219,6 +1218,17 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	 * complaining about deadlock risks.
 	 */
 	rel = relation_open(relationId, AccessExclusiveLock);
+
+	if (IsYugaByteEnabled())
+	{
+		CheckIsYBSupportedRelationByKind(relkind);
+		YBCCreateTable(stmt, relname, relkind, descriptor,
+					   relationId,
+					   namespaceId, tablegroupId, colocation_id, tablespaceId,
+					   YbGetRelfileNodeId(rel),
+					   InvalidOid /* oldRelfileNodeId */,
+					   false /* isTruncate */);
+	}
 
 	/*
 	 * Now add any newly specified column default and generation expressions
@@ -5031,6 +5041,16 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("cannot change persistence setting twice")));
 			tab->chgPersistence = ATPrepChangePersistence(rel, false);
+
+			if (IsYugaByteEnabled())
+			{
+				/* UNLOGGED persistence is NO-OP in YB. */
+				tab->chgPersistence = false;
+				ereport(NOTICE,
+						(errmsg("unlogged option is currently ignored in YugabyteDB, "
+										"all non-temp relations will be logged")));
+			}
+
 			/* force rewrite if necessary; see comment in ATRewriteTables */
 			if (tab->chgPersistence)
 			{
@@ -5888,8 +5908,11 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 		/*
 		 * Relations without storage may be ignored here.
 		 * Foreign tables have no storage, nor do partitioned tables and indexes.
+		 * YB: We do not need to rewrite tables during upgrade because we
+		 * link the DocDB table with the data on master.
 		 */
-		if (!RELKIND_HAS_STORAGE(tab->relkind))
+		if (!RELKIND_HAS_STORAGE(tab->relkind) ||
+			(IsYBRelationById(tab->relid) && IsBinaryUpgrade))
 			continue;
 		/*
 		 * YB Note: The following only applies to the old ALTER TYPE code.
@@ -6149,8 +6172,13 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 		Relation	rel = NULL;
 		ListCell   *lcon;
 
-		/* Relations without storage may be ignored here too */
-		if (!RELKIND_HAS_STORAGE(tab->relkind))
+		/*
+		 * Relations without storage may be ignored here too.
+		 * YB: We can also ignore YB relations during upgrade because their
+		 * constraints are already validated by the previous version.
+		 */
+		if (!RELKIND_HAS_STORAGE(tab->relkind) ||
+			(IsYBRelationById(tab->relid) && IsBinaryUpgrade))
 			continue;
 
 		foreach(lcon, tab->constraints)
@@ -15528,7 +15556,7 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 
 	/* Notify the user that this command is async */
 	ereport(NOTICE,
-			(errmsg("Data movement for table %s is successfully initiated.", 
+			(errmsg("Data movement for table %s is successfully initiated.",
 					RelationGetRelationName(rel)),
 			 errdetail("Data movement is a long running asynchronous process "
 					   "and can be monitored by checking the tablet placement "

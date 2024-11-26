@@ -36,10 +36,10 @@ public class TestUsingOlderSnapshot extends BasePgSQLTest {
       assertQuery(stmt, catalogVerClassEntrySql, catalogVerClassEntryRow);
     }
 
-    recreateWithYsqlVersion(YsqlSnapshotVersion.EARLIEST);
+    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_ALPHA);
 
     try (Statement stmt = connection.createStatement()) {
-      assertNoRows(stmt, catalogVerClassEntrySql);
+      assertQuery(stmt, catalogVerClassEntrySql, catalogVerClassEntryRow);
     }
 
     recreateWithYsqlVersion(YsqlSnapshotVersion.LATEST);

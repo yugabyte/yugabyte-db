@@ -175,6 +175,15 @@ func CreateSymlink(pkgDir string, linkDir string, binary string) error {
 
 // Symlink implements a more generic symlink utility.
 func Symlink(src string, dest string) error {
+	if stat, err := os.Lstat(dest); err == nil {
+		if stat.Mode()&os.ModeSymlink == 0 {
+			return fmt.Errorf("destination symlink '%s' already exists and is not a symlink", dest)
+		}
+		log.Debug("Deleting existing symlink at " + dest)
+		if err := os.Remove(dest); err != nil {
+			return fmt.Errorf("failed to delete symlink '%s': %w", dest, err)
+		}
+	}
 	out := shell.Run("ln", "-sf", src, dest)
 	out.SucceededOrLog()
 	return out.Error
@@ -1009,5 +1018,31 @@ func KeepMostRecentFiles(folderPath string, regexPattern string, toKeep int) err
 		}
 	}
 
+	return nil
+}
+
+func SetAllPermissions() error {
+	if err := SetSoftwarePermissions(); err != nil {
+		return err
+	}
+	if err := SetDataPermissions(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func SetSoftwarePermissions() error {
+	userName := viper.GetString("service_username")
+	if err := Chown(GetSoftwareDir(), userName, userName, true); err != nil {
+		return err
+	}
+	return nil
+}
+
+func SetDataPermissions() error {
+	userName := viper.GetString("service_username")
+	if err := Chown(GetDataRoot(), userName, userName, true); err != nil {
+		return err
+	}
 	return nil
 }

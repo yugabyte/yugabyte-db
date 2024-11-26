@@ -20,9 +20,10 @@ import (
 
 // listIncrementalBackupsCmd represents the universe backup command
 var listIncrementalBackupsCmd = &cobra.Command{
-	Use:   "list-increments",
-	Short: "List the incremental backups of a backup",
-	Long:  "List incremental backups of YugabyteDB Anywhere universe backup",
+	Use:     "list-increments",
+	Short:   "List the incremental backups of a backup",
+	Long:    "List incremental backups of YugabyteDB Anywhere universe backup",
+	Example: `yba backup list-increments --backup-uuid <backup-uuid>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		backupUUID, err := cmd.Flags().GetString("backup-uuid")
 		if err != nil {

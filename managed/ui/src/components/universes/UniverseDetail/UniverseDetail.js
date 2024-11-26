@@ -91,13 +91,30 @@ import ConnectionPoolDisabled from '../../../redesign/assets/connection-pool-dis
 
 import './UniverseDetail.scss';
 
-const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['g5','g6','g6e',
-  'gr6','i3','i3en','i4g','i4i','im4gn',
-  'is4gen','p5','p5e','trn1','trn1n','x1','x1e'];
+const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = [
+  'g5',
+  'g6',
+  'g6e',
+  'gr6',
+  'i3',
+  'i3en',
+  'i4g',
+  'i4i',
+  'im4gn',
+  'is4gen',
+  'p5',
+  'p5e',
+  'trn1',
+  'trn1n',
+  'x1',
+  'x1e'
+];
 
 export const isEphemeralAwsStorageInstance = (instanceType) => {
-  return INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(instanceType?.split?.('.')[0]) || 
-    instanceType?.split?.('.')[0].includes('d');
+  return (
+    INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(instanceType?.split?.('.')[0]) ||
+    instanceType?.split?.('.')[0].includes('d')
+  );
 };
 
 class UniverseDetail extends Component {
@@ -178,10 +195,13 @@ class UniverseDetail extends Component {
       universe: { currentUniverse },
       universeTables
     } = this.props;
-    // Always refresh universe info on Overview tab
-    if (prevProps.params.tab !== this.props.params.tab && this.props.params.tab === 'overview') {
-      this.props.getUniverseInfo(currentUniverse.data.universeUUID);
-      this.props.getUniverseLbState(currentUniverse.data.universeUUID);
+    // Always refresh universe info on Overview tab or when universe uuid in the route changes.
+    if (
+      (prevProps.params.tab !== this.props.params.tab && this.props.params.tab === 'overview') ||
+      prevProps.params.uuid !== this.props.params.uuid
+    ) {
+      this.props.getUniverseInfo(this.props.params.uuid);
+      this.props.getUniverseLbState(this.props.params.uuid);
     }
     if (
       getPromiseState(currentUniverse).isSuccess() &&
@@ -375,10 +395,6 @@ class UniverseDetail extends Component {
       runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.IS_GFLAG_MULTILINE_ENABLED
       )?.value === 'true';
-    const isReleasesEnabled =
-      runtimeConfigs?.data?.configEntries?.find(
-        (config) => config.key === RuntimeConfigKey.RELEASES_REDESIGN_UI_FEATURE_FLAG
-      )?.value === 'true';
     const isGFlagAllowDuringPrefinalize =
       runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.GFLAGS_ALLOW_DURING_PREFINALIZE
@@ -409,11 +425,6 @@ class UniverseDetail extends Component {
     const isK8OperatorBlocked =
       runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.BLOCK_K8_OPERATOR
-      )?.value === 'true';
-
-    const isRollingUpradeMutlipleNodesEnabled =
-      runtimeConfigs?.data?.configEntries?.find(
-        (c) => c.key === RuntimeConfigKey.BATCH_ROLLING_UPGRADE_FEATURE_FLAG
       )?.value === 'true';
 
     const isAuditLogEnabled =
@@ -507,7 +518,8 @@ class UniverseDetail extends Component {
       isK8ActionsDisabled;
     const isRollingRestartDisabled =
       isUniverseStatusPending ||
-      isActionFrozen(allowedTasks, UNIVERSE_TASKS.INITIATE_ROLLING_RESTART);
+      isActionFrozen(allowedTasks, UNIVERSE_TASKS.INITIATE_ROLLING_RESTART) ||
+      isK8ActionsDisabled;
     const isReadReplicaDisabled =
       isUniverseStatusPending ||
       hasAsymmetricAsyncCluster ||
@@ -564,7 +576,6 @@ class UniverseDetail extends Component {
               universe={universe}
               updateAvailable={updateAvailable}
               showSoftwareUpgradesModal={showSoftwareUpgradesModal}
-              isReleasesEnabled={isReleasesEnabled}
               universeLbState={universeLbState}
             />
           </Tab.Pane>
@@ -1225,7 +1236,6 @@ class UniverseDetail extends Component {
                     </RbacValidator>
                   )}
                   {!universePaused &&
-                    !isItKubernetesUniverse &&
                     isConnectionPoolEnabled &&
                     isConfigureYSQLEnabled &&
                     isYSQLEnabledInUniverse &&
@@ -1479,6 +1489,7 @@ class UniverseDetail extends Component {
                   <>
                     <SecurityMenu
                       backToMainMenu={backToMainMenu}
+                      isItKubernetesUniverse={isItKubernetesUniverse}
                       allowedTasks={allowedTasks}
                       showTLSConfigurationModal={showTLSConfigurationModal}
                       editTLSAvailability={editTLSAvailability}
@@ -1542,7 +1553,6 @@ class UniverseDetail extends Component {
           }}
           isGFlagMultilineConfEnabled={isGFlagMultilineConfEnabled}
           universeData={currentUniverse.data}
-          isRollingUpradeMutlipleNodesEnabled={isRollingUpradeMutlipleNodesEnabled}
         />
         <UpgradeLinuxVersionModal
           visible={showModal && visibleModal === 'linuxVersionUpgradeModal'}
@@ -1560,7 +1570,6 @@ class UniverseDetail extends Component {
             this.props.getUniverseInfo(currentUniverse.data.universeUUID);
           }}
           universeData={currentUniverse.data}
-          isReleasesEnabled={isReleasesEnabled}
         />
 
         <DBRollbackModal
@@ -1667,6 +1676,7 @@ class UniverseDetail extends Component {
             this.props.getUniverseInfo(currentUniverse.data.universeUUID);
           }}
           universeData={currentUniverse.data}
+          isItKubernetesUniverse={isItKubernetesUniverse}
         />
 
         <Measure onMeasure={this.onResize.bind(this)}>

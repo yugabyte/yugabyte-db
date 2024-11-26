@@ -180,6 +180,7 @@ bool Connection::Shutdown(const Status& provided_status) {
           ? STATUS_FORMAT(RuntimeError, "Connection shutdown called with OK status")
           : provided_status;
 
+  std::function<void()> shutdown_listener;
   {
     std::vector<OutboundDataPtr> outbound_data_being_processed;
     {
@@ -197,6 +198,7 @@ bool Connection::Shutdown(const Status& provided_status) {
 
       outbound_data_being_processed = std::move(outbound_data_to_process_);
       shutdown_status_ = status;
+      shutdown_listener = std::move(shutdown_listener_);
     }
 
     shutdown_time_.store(reactor_->cur_time(), std::memory_order_release);
@@ -224,9 +226,13 @@ bool Connection::Shutdown(const Status& provided_status) {
 
   timer_.Shutdown();
 
-  // TODO(bogdan): re-enable once we decide how to control verbose logs better...
-  // LOG_WITH_PREFIX(INFO) << "Connection::Shutdown completed, status: " << status;
+  VLOG_WITH_PREFIX(1) << "Connection::Shutdown completed, status: " << status;
   shutdown_completed_.store(true, std::memory_order_release);
+
+  if (shutdown_listener) {
+    shutdown_listener();
+  }
+
   return true;
 }
 
@@ -721,6 +727,13 @@ std::string Connection::LogPrefix() const {
 void Connection::ReportQueueTime(MonoDelta delta) {
   if (handler_latency_outbound_transfer_) {
     handler_latency_outbound_transfer_->Increment(delta.ToNanoseconds());
+  }
+}
+
+void Connection::ListenShutdown(const std::function<void()>& listener) {
+  std::lock_guard lock(outbound_data_queue_mtx_);
+  if (!shutdown_initiated_) {
+    shutdown_listener_ = listener;
   }
 }
 

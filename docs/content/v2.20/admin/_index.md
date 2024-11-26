@@ -3,8 +3,7 @@ title: CLIs and command line tools
 headerTitle: Command line tools
 linkTitle: CLIs
 description: Use these CLIs and command line tools to interact with YugabyteDB.
-image: /images/section_icons/index/admin.png
-headcontent: Tools for interacting with, configuring, and managing YugabuyteDB
+headcontent: Tools for interacting with, configuring, and managing YugabyteDB
 menu:
   v2.20:
     identifier: admin

@@ -6,7 +6,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
-import autovalue.shaded.com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
@@ -112,9 +112,10 @@ public class NodeInstanceTest extends FakeDBApplication {
     node.setState(NodeInstance.State.USED);
     node.save();
     node.clearNodeDetails();
-    assertEquals(node.getState(), NodeInstance.State.FREE);
-    assertEquals(node.getNodeName(), "");
-    assertEquals(node.getUniverseMetadata(), null);
+    assertEquals(NodeInstance.State.FREE, node.getState());
+    assertEquals("", node.getNodeName());
+    assertEquals(null, node.getUniverseMetadata());
+    assertEquals(false, node.isManuallyDecommissioned());
   }
 
   @Test

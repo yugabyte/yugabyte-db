@@ -108,7 +108,7 @@ class BruteforceSearch : public AlgorithmInterface<dist_t> {
         assert(k <= cur_element_count);
         std::priority_queue<std::pair<dist_t, labeltype >> topResults;
         if (cur_element_count == 0) return topResults;
-        for (int i = 0; i < k; i++) {
+        for (size_t i = 0; i < k; i++) {
             dist_t dist = fstdistfunc_(query_data, data_ + size_per_element_ * i, dist_func_param_);
             labeltype label = *((labeltype*) (data_ + size_per_element_ * i + data_size_));
             if ((!isIdAllowed) || (*isIdAllowed)(label)) {
@@ -173,7 +173,7 @@ class BruteforceSearch : public AlgorithmInterface<dist_t> {
 }  // namespace hnswlib
 
 // This file is part of the hnswlib inline third-party dependency of YugabyteDB.
-// Git repo: https://github.com/nmslib/hnswlib
-// Git commit: 2142dc6f4dd08e64ab727a7bbd93be7f732e80b0
+// Git repo: https://github.com/yugabyte/hnswlib
+// Git tag: vc1b9b79a-yb-1
 //
 // See also src/inline-thirdparty/README.md.

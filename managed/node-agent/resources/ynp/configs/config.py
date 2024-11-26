@@ -1,6 +1,8 @@
 import time
 import os
 import configparser
+import pwd
+import sys
 from jinja2 import Environment, FileSystemLoader
 from collections import defaultdict
 from pathlib import Path
@@ -73,9 +75,15 @@ def parse_config(ynp_config):
             } for section in config.sections()
         }
         if config.defaults():
-            config_dict['DEFAULT'] = {key.strip(): value.strip() for key, value in config.defaults().items()}
+            config_dict['DEFAULT'] = {key.strip(): value.strip()
+                                      for key, value in config.defaults().items()}
     except Exception as e:
         print("Error occurred while parsing config.ini:", str(e))
 
     # Post-process config_dict to handle nested keys
     return convert_dotted_keys_to_nested(config_dict)
+
+
+def validate_config(config):
+    # Validate the config file provided by the user.
+    return

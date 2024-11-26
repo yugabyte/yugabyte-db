@@ -1939,7 +1939,6 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
 
   Schema schema;
   RETURN_NOT_OK(SchemaFromPB(meta.schema(), &schema));
-  const vector<ColumnId>& column_ids = schema.column_ids();
   scoped_refptr<TableInfo> table;
 
   // First, check if namespace id and table id match. If, in addition, other properties match, we
@@ -2157,6 +2156,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     // We also ensure that the number of columns is the same for both regular tables and indexes.
     // Additionally, for indexes, we compare the column ids as we expect them to be
     // preserved.
+    const vector<ColumnId>& column_ids = schema.column_ids();
     if (!persisted_schema.Equals(schema, comparator)
         || persisted_schema.column_ids().size() != column_ids.size()
         || (table->is_index() && persisted_schema.column_ids() != column_ids)) {
@@ -2252,6 +2252,25 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       notify_ts_for_schema_change = true;
     }
 
+    // Set missing values for tables that were created with a default value. ysql_dump will not
+    // properly set that value because it is only set on ADD COLUMN, and it creates the column
+    // directly in CREATE TABLE.
+    {
+      auto l = table->LockForWrite();
+      for (auto i = 0; i < l.mutable_data()->pb.schema().columns_size(); ++i) {
+        auto& column = meta.schema().columns(i);
+        auto& persisted_column = *l.mutable_data()->pb.mutable_schema()->mutable_columns(i);
+        if (column.has_missing_value() && !persisted_column.has_missing_value()) {
+          *persisted_column.mutable_missing_value() = column.missing_value();
+        }
+      }
+      if (l.is_dirty()) {
+        RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
+        l.Commit();
+        notify_ts_for_schema_change = true;
+      }
+    }
+
     // Restore partition key version.
     if (persisted_schema.table_properties().partitioning_version() !=
         schema.table_properties().partitioning_version()) {
@@ -2281,7 +2300,16 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       scoped_refptr<TableInfo> source_table =
           VERIFY_RESULT(FindTableById(table_data->old_table_id));
       auto source_table_lock = source_table->LockForRead();
-      schema_version = source_table_lock->pb.version() + 1;
+      if (source_table_lock->table_type() == TableType::YQL_TABLE_TYPE &&
+          source_table_lock->is_index()) {
+        // CQL index tables as of November 2024 always have schema version 0 because we do not
+        // support dropping or renaming columns yet. CQL index deletes depend on this because they
+        // implicitly use a schema_version of 0 (by not setting the field in the protobuf write
+        // request). This is checked against the table schema_version when applying the write.
+        SCHECK_EQ(meta.version() == 0, true, IllegalState, "CQL index table should have version 0");
+      } else {
+        schema_version = source_table_lock->pb.version() + 1;
+      }
     } else if (meta.version() > table->LockForRead()->pb.version()) {
       schema_version = meta.version();
     }
@@ -2885,18 +2913,19 @@ void CatalogManager::CleanupHiddenTables(
   std::vector<TableInfo::WriteLock> locks;
   for (const auto& table : expired_tables) {
     auto write_lock = table->LockForWrite();
-    if (write_lock->started_deleting()) {
-      continue;
+    if (!write_lock->started_deleting()) {
+      // Because tablets for hidden tables are deleted first, there is nothing left to delete
+      // besides the table metadata itself now. So we skip the DELETING state and transition
+      // directly to DELETED.
+      write_lock.mutable_data()->set_state(
+          SysTablesEntryPB::DELETED, Format("Cleanup hidden table at $0", LocalTimeAsString()));
+      LOG_WITH_PREFIX(INFO) << Format(
+          "Cleaning up hidden table $0: $1", table->name(), AsString(table));
     }
-    // Because tablets for hidden tables are deleted first, there is nothing left to delete besides
-    // the table metadata itself now. So we skip the DELETING state and transition directly to
-    // DELETED.
-    write_lock.mutable_data()->set_state(
-        SysTablesEntryPB::DELETED, Format("Cleanup hidden table at $0", LocalTimeAsString()));
-    LOG_WITH_PREFIX(INFO) << Format(
-        "Cleaning up hidden table $0: $1", table->name(), AsString(table));
+
     locks.push_back(std::move(write_lock));
   }
+
   if (locks.empty()) {
     return;
   }

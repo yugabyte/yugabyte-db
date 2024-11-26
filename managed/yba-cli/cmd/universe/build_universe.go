@@ -11,7 +11,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
-	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/releases"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/release"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/upgrade"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
@@ -63,7 +63,10 @@ func buildClusters(
 	if len(strings.TrimSpace(providerType)) == 0 {
 		logrus.Fatalln(formatter.Colorize("No provider code found\n", formatter.RedColor))
 	}
-	providerListRequest = providerListRequest.ProviderCode(providerType)
+	if strings.Compare(providerType, "azure") == 0 {
+		providerType = util.AzureProviderType
+	}
+	providerListRequest = providerListRequest.ProviderCode(strings.ToLower(providerType))
 	providerName := v1.GetString("provider-name")
 	if strings.TrimSpace(providerName) != "" {
 		providerListRequest = providerListRequest.Name(providerName)
@@ -380,7 +383,7 @@ func buildClusters(
 	ybSoftwareVersion := v1.GetString("yb-db-version")
 	if len(ybSoftwareVersion) == 0 {
 		// Fetch the latest release
-		releasesListRequest := authAPI.GetListOfReleases(true)
+		releasesListRequest := authAPI.ListNewReleases()
 
 		r, response, err := releasesListRequest.Execute()
 		if err != nil {
@@ -389,9 +392,9 @@ func buildClusters(
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		sortedReleases := releases.SortReleasesWithMetadata(r)
+		sortedReleases := release.SortReleasesWithMetadata(r)
 		if len(sortedReleases) > 0 {
-			ybSoftwareVersion = sortedReleases[0]["version"].(string)
+			ybSoftwareVersion = sortedReleases[0].GetVersion()
 		} else {
 			return nil, fmt.Errorf("no YugabyteDB version found")
 		}

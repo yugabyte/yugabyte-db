@@ -23,7 +23,6 @@ set -euo pipefail
 . "${0%/*}/common-build-env.sh"
 
 assert_equals() {
-  local yb_fatal_quiet=false
   if [[ $# -lt 2 ]]; then
     fatal "assert_equals requires at least 2 arguments"
   fi
@@ -58,7 +57,6 @@ test_build_type_detection_by_jenkins_job_name() {
   )
 }
 
-yb_log_quiet=true
 test_build_type_detection_by_jenkins_job_name asan my-asan-job
 test_build_type_detection_by_jenkins_job_name asan Asan-my-job
 test_build_type_detection_by_jenkins_job_name asan my-job-ASAN
@@ -139,7 +137,6 @@ test_set_cmake_build_type_and_compiler_type() {
     unset cmake_build_type
     build_type=$_build_type
     OSTYPE=$os_type
-    yb_fatal_quiet=true
     set_cmake_build_type_and_compiler_type
     assert_equals "$expected_cmake_build_type" "$cmake_build_type" "$test_case_details" \
                   "Note: comparing CMake build type."

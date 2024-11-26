@@ -14,39 +14,41 @@
 
 #pragma once
 
+#include <memory>
+
+#include "yb/util/result.h"
+
 #include "yb/yql/pggate/pg_dml_write.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
-//--------------------------------------------------------------------------------------------------
-// INSERT
-//--------------------------------------------------------------------------------------------------
-
-class PgInsert : public PgDmlWrite {
+class PgInsert final : public PgStatementLeafBase<PgDmlWrite, StmtOp::kInsert> {
  public:
-  PgInsert(PgSession::ScopedRefPtr pg_session,
-           const PgObjectId& table_id,
-           bool is_region_local,
-           YBCPgTransactionSetting transaction_setting,
-           bool packed)
-      : PgDmlWrite(std::move(pg_session), table_id, is_region_local, transaction_setting, packed) {}
-
-  StmtOp stmt_op() const override { return StmtOp::STMT_INSERT; }
-
   void SetUpsertMode() {
     write_req_->set_stmt_type(PgsqlWriteRequestPB::PGSQL_UPSERT);
   }
 
-  void SetIsBackfill(const bool is_backfill) {
+  void SetIsBackfill(bool is_backfill) {
     write_req_->set_is_backfill(is_backfill);
   }
 
+  static Result<std::unique_ptr<PgInsert>> Make(
+      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool is_region_local,
+      YBCPgTransactionSetting transaction_setting, bool packed) {
+    std::unique_ptr<PgInsert> result{new PgInsert{pg_session, transaction_setting, packed}};
+    RETURN_NOT_OK(result->Prepare(table_id, is_region_local));
+    return result;
+  }
+
  private:
+  PgInsert(
+      const PgSession::ScopedRefPtr& pg_session, YBCPgTransactionSetting transaction_setting,
+      bool packed)
+      : BaseType(pg_session, transaction_setting, packed) {}
+
   PgsqlWriteRequestPB::PgsqlStmtType stmt_type() const override {
     return PgsqlWriteRequestPB::PGSQL_INSERT;
   }
 };
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

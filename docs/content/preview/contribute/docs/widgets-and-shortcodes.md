@@ -107,6 +107,13 @@ Markdown supports [tables](https://www.markdownguide.org/extended-syntax/#tables
  1 | 2
 (1 row)
 ```|
+|
+```sql
+insert
+```|
+```sql
+update
+```|
 <!-- row with tip block -->
 | {{</*warning title="Beware" */>}} start and end rows with the pipe symbol {{</*/warning*/>}} |
 {{</*tip title="Awesome tip" */>}} Use 3 ticks for code blocks with pipe symbols {{</*/tip*/>}} |
@@ -128,6 +135,13 @@ The above markdown should render a table as follows:
 ---+---
  1 | 2
 (1 row)
+```|
+|
+```sql
+insert
+```|
+```sql
+update
 ```|
 <!-- row with tip block -->
 | {{< warning title="Beware" >}} start and end rows with the pipe symbol {{</warning>}} |

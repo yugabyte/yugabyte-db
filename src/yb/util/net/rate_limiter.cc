@@ -21,6 +21,10 @@ using namespace yb::size_literals;
 DEFINE_UNKNOWN_int32(rate_limiter_min_size, 32_KB, "Minimum size for each transmission request");
 DEFINE_UNKNOWN_uint64(rate_limiter_min_rate, 1000, "Minimum transmission rate in bytes/sec");
 
+DEFINE_RUNTIME_uint64(rate_limiter_unexpected_sleep_ms, 5 * yb::MonoTime::kMillisecondsPerMinute,
+    "LOG(DFATAL) all instances of rate limiter sleeping over set ms.");
+TAG_FLAG(rate_limiter_unexpected_sleep_ms, hidden);
+
 namespace yb {
 
 RateLimiter::RateLimiter() {}
@@ -60,37 +64,59 @@ uint64_t RateLimiter::GetRate() {
 }
 
 void RateLimiter::UpdateDataSizeAndMaybeSleep(uint64_t data_size) {
-  auto now = MonoTime::Now();
-  auto elapsed = now.GetDeltaSince(end_time_);
-  end_time_ = now;
+  IterStats stats;
+  stats.start = end_time_;
+  stats.end = end_time_ = MonoTime::Now();
+  stats.data_size = data_size;
   total_bytes_ += data_size;
   UpdateRate();
-  UpdateTimeSlotSizeAndMaybeSleep(data_size, elapsed);
+  UpdateTimeSlotSizeAndMaybeSleep(std::move(stats));
 }
 
-void RateLimiter::UpdateTimeSlotSizeAndMaybeSleep(uint64_t data_size, MonoDelta elapsed) {
+void RateLimiter::UpdateTimeSlotSizeAndMaybeSleep(IterStats&& stats) {
   if (!active()) {
     return;
   }
 
+  stats.target_rate = target_rate_;
+  stats.time_slot_ms = time_slot_ms_;
+  const auto& data_size = stats.data_size;
+  const auto elapsed = stats.end.GetDeltaSince(stats.start);
   // If the rate is greater than target_rate_, sleep until both rates are equal.
   if (MonoTime::kMillisecondsPerSecond * data_size > target_rate_ * elapsed.ToMilliseconds()) {
-    auto sleep_time =
+    stats.sleep_time_ms =
         MonoTime::kMillisecondsPerSecond * data_size / target_rate_ - elapsed.ToMilliseconds();
+
+    if (PREDICT_FALSE(stats.sleep_time_ms >= FLAGS_rate_limiter_unexpected_sleep_ms)) {
+      auto max_sleep_ms = FLAGS_rate_limiter_unexpected_sleep_ms;
+      LOG(DFATAL) << "RateLimiter issued sleep >=" << max_sleep_ms << "ms."
+          << " Current iteration stats: " << AsString(stats)
+          << " Last few iteration stats: " << AsString(iteration_stats_)
+          << " Capping sleep at " << max_sleep_ms << " ms.";
+      stats.sleep_time_ms = max_sleep_ms;
+    }
+
     VLOG(1) << " target_rate_=" << target_rate_
-            << " elapsed=" << elapsed.ToMilliseconds()
-            << " received size=" << data_size
-            << " and sleeping for=" << sleep_time;
-    SleepFor(MonoDelta::FromMilliseconds(sleep_time));
-    total_time_slept_ += MonoDelta::FromMilliseconds(sleep_time);
+            << " elapsed=" << stats.end.GetDeltaSince(stats.start).ToMilliseconds()
+            << " received size=" << stats.data_size
+            << " and sleeping for=" << stats.sleep_time_ms;
+
+    SleepFor(MonoDelta::FromMilliseconds(stats.sleep_time_ms));
+    total_time_slept_ += MonoDelta::FromMilliseconds(stats.sleep_time_ms);
     end_time_ = MonoTime::Now();
     // If we slept for more than 80% of time_slot_ms_, reduce the size of this time slot.
-    if (sleep_time > time_slot_ms_ * 80 / 100) {
+    if (stats.sleep_time_ms > time_slot_ms_ * 80 / 100) {
       time_slot_ms_ = std::max(min_time_slot_, time_slot_ms_ / 2);
     }
   } else {
+    stats.sleep_time_ms = 0;
     time_slot_ms_ = std::min(max_time_slot_, time_slot_ms_ * 2);
   }
+  // Record transmission stats of last iteration of the rate limiter.
+  if (iteration_stats_.size() >= kIterStatsSize) {
+    iteration_stats_.pop_front();
+  }
+  iteration_stats_.push_back(std::move(stats));
 }
 
 void RateLimiter::UpdateRate() {
@@ -139,20 +165,19 @@ void RateLimiter::SetTargetRate(uint64_t target_rate) {
 
 Status RateLimiter::SendOrReceiveData(std::function<Status()> send_rcv_func,
                                       std::function<uint64()> reply_size_func) {
-  auto start = MonoTime::Now();
+  IterStats stats;
+  stats.start = MonoTime::Now();
   if (!init_) {
     Init();
   }
 
   UpdateRate();
   auto status = send_rcv_func();
-  auto now = MonoTime::Now();
-  auto elapsed = now.GetDeltaSince(start);
+  stats.end = end_time_ = MonoTime::Now();
   if (status.ok()) {
-    auto data_size = reply_size_func();
-    total_bytes_ += data_size;
-    end_time_ = MonoTime::Now();
-    UpdateTimeSlotSizeAndMaybeSleep(data_size, elapsed);
+    stats.data_size = reply_size_func();
+    total_bytes_ += stats.data_size;
+    UpdateTimeSlotSizeAndMaybeSleep(std::move(stats));
   }
   return status;
 }

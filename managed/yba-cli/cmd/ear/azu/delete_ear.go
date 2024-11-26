@@ -12,9 +12,11 @@ import (
 
 // deleteAzureEARCmd represents the ear command
 var deleteAzureEARCmd = &cobra.Command{
-	Use:   "delete",
-	Short: "Delete a YugabyteDB Anywhere Azure encryption at rest configuration",
-	Long:  "Delete an Azure encryption at rest configuration in YugabyteDB Anywhere",
+	Use:     "delete",
+	Aliases: []string{"remove", "rm"},
+	Short:   "Delete a YugabyteDB Anywhere Azure encryption at rest configuration",
+	Long:    "Delete an Azure encryption at rest configuration in YugabyteDB Anywhere",
+	Example: `yba ear azure delete --name <config-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		earutil.DeleteEARValidation(cmd)
 	},

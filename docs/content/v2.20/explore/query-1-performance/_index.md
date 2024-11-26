@@ -4,7 +4,6 @@ headerTitle: Query Tuning
 linkTitle: Query tuning
 description: Tuning and optimizing query performance
 headcontent: Tuning and optimizing query performance
-image: /images/section_icons/index/develop.png
 menu:
   v2.20:
     identifier: query-tuning

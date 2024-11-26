@@ -90,7 +90,7 @@ DEFINE_NON_RUNTIME_uint32(master_ts_ysql_catalog_lease_ms, 10000, // 10s
 TAG_FLAG(master_ts_ysql_catalog_lease_ms, advanced);
 TAG_FLAG(master_ts_ysql_catalog_lease_ms, hidden);
 
-DEFINE_NON_RUNTIME_PREVIEW_bool(
+DEFINE_NON_RUNTIME_bool(
     ysql_enable_colocated_tables_with_tablespaces, false,
     "Enable creation of colocated tables with a specified placement policy via a tablespace."
     "If true, creating a colocated table  will colocate the table on an implicit "
@@ -194,13 +194,6 @@ DEFINE_RUNTIME_AUTO_bool(enable_xcluster_auto_flag_validation, kLocalPersisted, 
 // --ysql_enable_ddl_atomicity_infra=true and --ysql_yb_ddl_rollback_enabled=true.
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_ddl_atomicity_infra, kLocalPersisted, false, true,
     "Enables YSQL DDL atomicity");
-
-// NOTE: This flag guards proto changes and it is not safe to enable during an upgrade, or rollback
-// once enabled. If you want to change the default to true then you will have to make it a
-// kLocalPersisted AutoFlag.
-DEFINE_NON_RUNTIME_PREVIEW_bool(enable_pg_cron, false,
-    "Enables the pg_cron extension. Jobs will be run on a single tserver node. The node should be "
-    "assumed to be selected randomly.");
 
 DEFINE_NON_RUNTIME_string(certs_for_cdc_dir, "",
     "The parent directory of where all certificates for xCluster source universes will "

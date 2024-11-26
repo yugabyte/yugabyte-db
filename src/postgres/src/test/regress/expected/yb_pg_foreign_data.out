@@ -857,13 +857,13 @@ ALTER FOREIGN TABLE ft1 ALTER COLUMN c7 OPTIONS (ADD p1 'v1', ADD p2 'v2'),
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 OPTIONS (SET p2 'V2', DROP p1);
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c1 SET STATISTICS 10000;
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c1 SET (n_distinct = 100);
-ERROR:  ALTER TABLE ALTER column not supported yet
+ERROR:  ALTER action ALTER COLUMN ... SET not supported yet
 LINE 1: ALTER FOREIGN TABLE ft1 ALTER COLUMN c1 SET (n_distinct = 10...
                                 ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 SET STATISTICS -1;
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 SET STORAGE PLAIN;
-ERROR:  ALTER TABLE ALTER column not supported yet
+ERROR:  ALTER action ALTER COLUMN ... SET STORAGE not supported yet
 LINE 1: ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 SET STORAGE PLAIN;
                                 ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
@@ -898,7 +898,7 @@ LINE 1: ALTER FOREIGN TABLE ft1 ADD PRIMARY KEY (c7);
                                     ^
 ALTER FOREIGN TABLE ft1 ADD CONSTRAINT ft1_c9_check CHECK (c9 < 0) NOT VALID;
 ALTER FOREIGN TABLE ft1 ALTER CONSTRAINT ft1_c9_check DEFERRABLE; -- ERROR
-ERROR:  ALTER TABLE ALTER CONSTRAINT not supported yet
+ERROR:  ALTER action ALTER CONSTRAINT not supported yet
 LINE 1: ALTER FOREIGN TABLE ft1 ALTER CONSTRAINT ft1_c9_check DEFERR...
                                 ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
@@ -909,7 +909,7 @@ ALTER FOREIGN TABLE ft1 DROP CONSTRAINT IF EXISTS no_const;
 NOTICE:  constraint "no_const" of relation "ft1" does not exist, skipping
 ALTER FOREIGN TABLE ft1 OWNER TO regress_test_role;
 ALTER FOREIGN TABLE ft1 OPTIONS (DROP delimiter, SET quote '~', ADD escape '@');
-ERROR:  ALTER TABLE not supported yet
+ERROR:  ALTER action OPTIONS not supported yet
 LINE 1: ALTER FOREIGN TABLE ft1 OPTIONS (DROP delimiter, SET quote '...
                                 ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
@@ -975,7 +975,7 @@ NOTICE:  relation "doesnt_exist_ft1" does not exist, skipping
 ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 OWNER TO regress_test_role;
 NOTICE:  relation "doesnt_exist_ft1" does not exist, skipping
 ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 OPTIONS (DROP delimiter, SET quote '~', ADD escape '@');
-ERROR:  ALTER TABLE not supported yet
+ERROR:  ALTER action OPTIONS not supported yet
 LINE 1: ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 OPTIONS (DROP...
                                                        ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
@@ -1470,7 +1470,7 @@ Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
 
 ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;
-ERROR:  ALTER TABLE INHERIT not supported yet
+ERROR:  ALTER action INHERIT not supported yet
 LINE 1: ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;
                                 ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
@@ -1535,13 +1535,13 @@ DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE fd_pt1 ALTER COLUMN c1 SET STATISTICS 10000;
 ALTER TABLE fd_pt1 ALTER COLUMN c1 SET (n_distinct = 100);
-ERROR:  ALTER TABLE ALTER column not supported yet
+ERROR:  ALTER action ALTER COLUMN ... SET not supported yet
 LINE 1: ALTER TABLE fd_pt1 ALTER COLUMN c1 SET (n_distinct = 100);
                            ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER TABLE fd_pt1 ALTER COLUMN c8 SET STATISTICS -1;
 ALTER TABLE fd_pt1 ALTER COLUMN c8 SET STORAGE EXTERNAL;
-ERROR:  ALTER TABLE ALTER column not supported yet
+ERROR:  ALTER action ALTER COLUMN ... SET STORAGE not supported yet
 LINE 1: ALTER TABLE fd_pt1 ALTER COLUMN c8 SET STORAGE EXTERNAL;
                            ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority

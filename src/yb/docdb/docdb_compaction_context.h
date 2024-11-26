@@ -133,6 +133,20 @@ class SchemaPackingProvider {
   virtual Result<CompactionSchemaInfo> ColocationPacking(
       ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) = 0;
 
+  // Check if the schema packing for provided cotable_id and schema version is existing,
+  // this check will be skipped if the table has already been dropped.
+  virtual Status CheckCotablePacking(
+      const Uuid& cotable_id, uint32_t schema_version, HybridTime history_cutoff) {
+    return Status::OK();
+  }
+
+  // Check if the schema packing for provided colocation_id and schema version is existing,
+  // this check will be skipped if the table has already been dropped.
+  virtual Status CheckColocationPacking(
+      ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) {
+    return Status::OK();
+  }
+
   virtual ~SchemaPackingProvider() = default;
 };
 // A strategy for deciding how the history of old database operations should be retained during

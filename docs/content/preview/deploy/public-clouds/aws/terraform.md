@@ -81,7 +81,7 @@ module "yugabyte-db-cluster" {
   # AWS key pair that you want to use to ssh into the instances.
   # Make sure this key pair is already present in the noted region of your account.
   ssh_keypair = "SSH_KEYPAIR_HERE"
-  ssh_key_path = "SSH_KEY_PATH_HERE"
+  ssh_private_key = "SSH_PRIVATE_KEY_PATH_HERE"
 
   # Existing vpc and subnet ids where the instances should be spawned.
   vpc_id = "VPC_ID_HERE"
@@ -92,6 +92,13 @@ module "yugabyte-db-cluster" {
 
   # The number of nodes in the cluster, this cannot be lower than the replication factor.
   num_instances = "3"
+  
+  # The AWS region for the cluster to be created
+  region_name = "REGION_NAME_HERE"
+
+  # The availability zones for the instances, the length
+  # of AZs must match num_instances and can contain duplicates.
+  availability_zones = ["AZ1_HERE", "AZ2_HERE", "AZ3_HERE"]
 }
 ```
 

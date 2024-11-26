@@ -2,14 +2,20 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import java.io.IOException;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import play.libs.Json;
 
 @Slf4j
 public class ResumeXClusterUniverses extends XClusterConfigTaskBase {
@@ -28,6 +34,14 @@ public class ResumeXClusterUniverses extends XClusterConfigTaskBase {
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
 
+    XClusterConfigTaskParams sourceUniverseParams = copyUniverseParams(sourceUniverse);
+    sourceUniverseParams.editFormData = taskParams().getEditFormData();
+    sourceUniverseParams.xClusterConfig = taskParams().getXClusterConfig();
+
+    XClusterConfigTaskParams targetUniverseParams = copyUniverseParams(targetUniverse);
+    targetUniverseParams.editFormData = taskParams().getEditFormData();
+    targetUniverseParams.xClusterConfig = taskParams().getXClusterConfig();
+
     try {
       // Lock the source universe.
       lockAndFreezeUniverseForUpdate(
@@ -37,13 +51,11 @@ public class ResumeXClusterUniverses extends XClusterConfigTaskBase {
         lockAndFreezeUniverseForUpdate(
             targetUniverse.getUniverseUUID(), targetUniverse.getVersion(), null /* Txn callback */);
 
-        taskParams().setUniverseUUID(sourceUniverse.getUniverseUUID());
-        taskParams().clusters = sourceUniverse.getUniverseDetails().clusters;
+        taskParams = sourceUniverseParams;
         createResumeUniverseTasks(
             sourceUniverse, Customer.get(sourceUniverse.getCustomerId()).getUuid());
 
-        taskParams().setUniverseUUID(targetUniverse.getUniverseUUID());
-        taskParams().clusters = targetUniverse.getUniverseDetails().clusters;
+        taskParams = targetUniverseParams;
         createResumeUniverseTasks(
             targetUniverse, Customer.get(targetUniverse.getCustomerId()).getUuid());
 
@@ -51,14 +63,14 @@ public class ResumeXClusterUniverses extends XClusterConfigTaskBase {
         createWaitForReplicationDrainTask(xClusterConfig);
 
         // Used in createUpdateWalRetentionTasks.
-        taskParams().setUniverseUUID(sourceUniverse.getUniverseUUID());
-        taskParams().clusters = sourceUniverse.getUniverseDetails().clusters;
+        taskParams = sourceUniverseParams;
         createUpdateWalRetentionTasks(sourceUniverse, XClusterUniverseAction.RESUME);
 
-        createMarkUniverseUpdateSuccessTasks(targetUniverse.getUniverseUUID())
+        createMarkUniverseUpdateSuccessTasks(sourceUniverse.getUniverseUUID())
             .setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
 
-        createMarkUniverseUpdateSuccessTasks(sourceUniverse.getUniverseUUID())
+        taskParams = targetUniverseParams;
+        createMarkUniverseUpdateSuccessTasks(targetUniverse.getUniverseUUID())
             .setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
 
         getRunnableTask().runSubTasks();
@@ -74,5 +86,19 @@ public class ResumeXClusterUniverses extends XClusterConfigTaskBase {
       unlockUniverseForUpdate(sourceUniverse.getUniverseUUID());
     }
     log.info("Completed {}", getName());
+  }
+
+  private XClusterConfigTaskParams copyUniverseParams(Universe universe) {
+    ObjectMapper mapper =
+        Json.mapper()
+            .copy()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+    try {
+      return mapper.readValue(
+          mapper.writeValueAsString(universe.getUniverseDetails()), XClusterConfigTaskParams.class);
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
   }
 }

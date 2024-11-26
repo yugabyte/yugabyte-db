@@ -32,6 +32,7 @@ import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
@@ -213,7 +214,9 @@ public class UniverseCRUDHandler {
             || isRegionListUpdate(cluster, currentCluster)
             || cluster.userIntent.replicationFactor != currentCluster.userIntent.replicationFactor
             || isKubernetesVolumeUpdate(cluster, currentCluster)
-            || isKubernetesNodeSpecUpdate(cluster, currentCluster);
+            || isKubernetesNodeSpecUpdate(cluster, currentCluster)
+            || cluster.userIntent.enableExposingService
+                != currentCluster.userIntent.enableExposingService;
 
     boolean nodeSettingsChanges =
         isAwsArnChanged(cluster, currentCluster)
@@ -857,9 +860,18 @@ public class UniverseCRUDHandler {
               BAD_REQUEST, "YSQL RPC port cannot be the same as internal YSQL RPC port");
         }
 
-        if (Common.CloudType.kubernetes.equals(userIntent.providerType)) {
-          throw new PlatformServiceException(
-              BAD_REQUEST, "Connection pooling is not yet supported for kubernetes universes.");
+        if (userIntent.providerType.equals(Common.CloudType.kubernetes)) {
+          if (taskParams.communicationPorts.ysqlServerRpcPort
+              != KubernetesCommandExecutor.DEFAULT_YSQL_SERVER_RPC_PORT) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Custom YSQL RPC port is not yet supported for Kubernetes universes.");
+          }
+          if (taskParams.communicationPorts.internalYsqlServerRpcPort
+              != KubernetesCommandExecutor.DEFAULT_INTERNAL_YSQL_SERVER_RPC_PORT) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                "Custom Internal YSQL RPC port is not yet supported for Kubernetes universes.");
+          }
         }
       }
 
@@ -949,6 +961,12 @@ public class UniverseCRUDHandler {
               // Default service scope should be 'Namespaced'
               primaryIntent.defaultServiceScopeAZ = false;
             }
+          }
+          if (KubernetesUtil.isNonRestartGflagsUpgradeSupported(
+              primaryCluster.userIntent.ybSoftwareVersion)) {
+            universe.updateConfig(
+                ImmutableMap.of(
+                    Universe.K8S_SET_MASTER_EXISTING_UNIVERSE_GFLAG, Boolean.toString(true)));
           }
           // Validate service endpoints
           try {
@@ -2342,9 +2360,15 @@ public class UniverseCRUDHandler {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot change communication ports for k8s universe");
     }
+    boolean rfChangeEnabled = confGetter.getGlobalConf(GlobalConfKeys.enableRFChange);
 
     for (Cluster newCluster : taskParams.clusters) {
       Cluster curCluster = universe.getCluster(newCluster.uuid);
+      if (curCluster.userIntent.replicationFactor != newCluster.userIntent.replicationFactor
+          && !rfChangeEnabled
+          && curCluster.clusterType == ClusterType.PRIMARY) {
+        throw new PlatformServiceException(BAD_REQUEST, "RF change is not available");
+      }
       UserIntent newIntent = newCluster.userIntent;
       UserIntent curIntent = curCluster.userIntent;
       Set<NodeDetails> nodeDetailsSet = taskParams.getNodesInCluster(newCluster.uuid);

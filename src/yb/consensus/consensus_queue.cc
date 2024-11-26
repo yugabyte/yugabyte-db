@@ -60,6 +60,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flags.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
@@ -109,13 +110,6 @@ DEFINE_RUNTIME_int32(consensus_lagging_follower_threshold, 10,
     "Number of retransmissions at tablet leader to mark a follower as lagging. "
     "-1 disables the feature.");
 TAG_FLAG(consensus_lagging_follower_threshold, advanced);
-
-DEFINE_RUNTIME_int64(cdc_intent_retention_ms, 4 * 3600 * 1000,
-    "Interval up to which CDC consumer's checkpoint is considered for retaining intents."
-    "If we haven't received an updated checkpoint from CDC consumer within the interval "
-    "specified by cdc_checkpoint_opid_interval, then CDC does not consider that "
-    "consumer while determining which op IDs to delete from the intent.");
-TAG_FLAG(cdc_intent_retention_ms, advanced);
 
 DEFINE_test_flag(bool, disallow_lmp_failures, false,
                  "Whether we disallow PRECEDING_ENTRY_DIDNT_MATCH failures for non new peers.");
@@ -1293,7 +1287,7 @@ MicrosTime PeerMessageQueue::HybridTimeLeaseExpirationWatermark() {
     }
 
     static result_type InfiniteWatermarkForLocalPeer() {
-      return HybridTime::kMax.GetPhysicalValueMicros();
+      return kInfiniteHybridTimeLeaseExpiration;
     }
 
     static result_type ExtractValue(const TrackedPeer& peer) {

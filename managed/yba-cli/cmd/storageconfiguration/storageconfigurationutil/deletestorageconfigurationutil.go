@@ -6,6 +6,7 @@ package storageconfigurationutil
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -15,6 +16,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ybatask"
 )
 
 func DeleteStorageConfigurationValidation(cmd *cobra.Command) {
@@ -94,7 +96,7 @@ func DeleteStorageConfigurationUtil(cmd *cobra.Command, commandCall string) {
 		storageUUID = r[0].GetConfigUUID()
 	}
 
-	rDelete, response, err := authAPI.DeleteCustomerConfig(storageUUID).Execute()
+	rTask, response, err := authAPI.DeleteCustomerConfig(storageUUID).Execute()
 	if err != nil {
 		callSite := "Storage Configuration"
 		if len(strings.TrimSpace(commandCall)) != 0 {
@@ -107,11 +109,13 @@ func DeleteStorageConfigurationUtil(cmd *cobra.Command, commandCall string) {
 	msg := fmt.Sprintf("The storage configuration %s is being deleted",
 		formatter.Colorize(storageName, formatter.GreenColor))
 
+	taskUUID := rTask.GetTaskUUID()
+
 	if viper.GetBool("wait") {
-		if rDelete.TaskUUID != nil {
+		if taskUUID != "" {
 			logrus.Info(fmt.Sprintf("Waiting for storage configuration %s (%s) to be deleted\n",
 				formatter.Colorize(storageName, formatter.GreenColor), storageUUID))
-			err = authAPI.WaitForTask(*rDelete.TaskUUID, msg)
+			err = authAPI.WaitForTask(taskUUID, msg)
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
@@ -121,4 +125,10 @@ func DeleteStorageConfigurationUtil(cmd *cobra.Command, commandCall string) {
 		return
 	}
 	logrus.Infoln(msg + "\n")
+	taskCtx := formatter.Context{
+		Command: "delete",
+		Output:  os.Stdout,
+		Format:  ybatask.NewTaskFormat(viper.GetString("output")),
+	}
+	ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
 }

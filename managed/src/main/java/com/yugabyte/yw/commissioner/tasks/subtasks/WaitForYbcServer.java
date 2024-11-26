@@ -33,13 +33,17 @@ public class WaitForYbcServer extends UniverseTaskBase {
   }
 
   public static class Params extends UniverseDefinitionTaskParams {
-    // The universe UUID must be stored in universeUUID field.
-    // The xCluster info object to persist.
     public Set<String> nodeNameList = null;
+    public int numRetries = 20;
   }
 
   protected Params taskParams() {
     return (Params) taskParams;
+  }
+
+  @Override
+  public String getName() {
+    return super.getName() + "(" + taskParams().nodeNameList + ")";
   }
 
   @Override
@@ -52,6 +56,6 @@ public class WaitForYbcServer extends UniverseTaskBase {
                 .map(nodeName -> universe.getNode(nodeName))
                 .collect(Collectors.toSet());
 
-    ybcManager.waitForYbc(universe, nodeDetailsSet);
+    ybcManager.waitForYbc(universe, nodeDetailsSet, taskParams().numRetries);
   }
 }

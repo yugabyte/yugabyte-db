@@ -66,10 +66,28 @@ if (typeof detectExternalLink === 'function') {
     window.addEventListener('load', function () {
       const askAiTopSpan = document.querySelector('.ask-ai-top > span');
       const kapaWidgetButton = document.querySelector('#kapa-widget-container > button');
-      if ( askAiTopSpan && kapaWidgetButton ) {
+      if (askAiTopSpan && kapaWidgetButton) {
         askAiTopSpan.addEventListener('click', function () {
           kapaWidgetButton.click();
         });
+      }
+
+      let clearbitAnonymousId = window.yugabyteGetCookie('cb_anonymous_id');
+      if (clearbitAnonymousId && clearbitAnonymousId !== 'null') {
+        clearbitAnonymousId = clearbitAnonymousId.replace(/%22/g, '').replace(/"/g, '');
+        const kapaUser = {
+          uniqueClientId: clearbitAnonymousId,
+        };
+
+        let clearbitUserId = window.yugabyteGetCookie('cb_user_id');
+        if (clearbitUserId && clearbitUserId !== 'null') {
+          clearbitUserId = clearbitUserId.replace(/%22/g, '').replace(/"/g, '');
+          kapaUser.email = clearbitUserId;
+        }
+
+        window.kapaSettings = {
+          user: kapaUser,
+        };
       }
     });
   })();

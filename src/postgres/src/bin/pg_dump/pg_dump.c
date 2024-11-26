@@ -144,11 +144,6 @@ static SimpleStringList table_exclude_patterns = {NULL, NULL};
 static SimpleOidList table_exclude_oids = {NULL, NULL};
 static SimpleStringList tabledata_exclude_patterns = {NULL, NULL};
 static SimpleOidList tabledata_exclude_oids = {NULL, NULL};
-/*
- * The string list records tablespaces used if the dumped database is
- * a colocated database.
- */
-static SimpleStringList colocated_database_tablespaces = {NULL, NULL};
 
 static SimpleStringList foreign_servers_include_patterns = {NULL, NULL};
 static SimpleOidList foreign_servers_include_oids = {NULL, NULL};
@@ -730,8 +725,11 @@ main(int argc, char **argv)
 	 * Binary upgrade mode implies dumping sequence data even in schema-only
 	 * mode.  This is not exposed as a separate option, but kept separate
 	 * internally for clarity.
+	 * YB: Before, during, and after online upgrade, we use the same sequence
+	 * data table, so we don't want to write anything to sequence data during
+	 * the restore.
 	 */
-	if (dopt.binary_upgrade || dopt.include_yb_metadata)
+	if ((!IsYugabyteEnabled && dopt.binary_upgrade) || dopt.include_yb_metadata)
 		dopt.sequence_data = 1;
 
 	if (dopt.dataOnly && dopt.schemaOnly)
@@ -3258,8 +3256,11 @@ dumpDatabase(Archive *fout)
 	/*
 	 * pg_largeobject comes from the old system intact, so set its
 	 * relfrozenxids, relminmxids and relfilenode.
+	 *
+	 * YB: We don't support pg_largeobject and thus don't need to upgrade this
+	 * table.
 	 */
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade && !IsYugabyteEnabled)
 	{
 		PGresult   *lo_res;
 		PQExpBuffer loFrozenQry = createPQExpBuffer();
@@ -13437,6 +13438,18 @@ dumpCollation(Archive *fout, const CollInfo *collinfo)
 	else
 		collctype = NULL;
 
+	/*
+	 * Before version 15, collcollate and collctype were of type NAME and
+	 * non-nullable. Treat empty strings as NULL for consistency.
+	 */
+	if (fout->remoteVersion < 150000)
+	{
+		if (collcollate[0] == '\0')
+			collcollate = NULL;
+		if (collctype[0] == '\0')
+			collctype = NULL;
+	}
+
 	if (!PQgetisnull(res, 0, i_colliculocale))
 		colliculocale = PQgetvalue(res, 0, i_colliculocale);
 	else
@@ -13463,29 +13476,54 @@ dumpCollation(Archive *fout, const CollInfo *collinfo)
 	if (strcmp(PQgetvalue(res, 0, i_collisdeterministic), "f") == 0)
 		appendPQExpBufferStr(q, ", deterministic = false");
 
-	if (colliculocale != NULL)
+	if (collprovider[0] == 'd')
 	{
-		appendPQExpBufferStr(q, ", locale = ");
-		appendStringLiteralAH(q, colliculocale, fout);
-	}
-	else
-	{
-		Assert(collcollate != NULL);
-		Assert(collctype != NULL);
+		if (collcollate || collctype || colliculocale)
+			pg_log_warning("invalid collation \"%s\"", qcollname);
 
-		if (strcmp(collcollate, collctype) == 0)
+		/* no locale -- the default collation cannot be reloaded anyway */
+	}
+	else if (collprovider[0] == 'i')
+	{
+		if (fout->remoteVersion >= 150000)
+		{
+			if (collcollate || collctype || !colliculocale)
+				pg_log_warning("invalid collation \"%s\"", qcollname);
+
+			appendPQExpBufferStr(q, ", locale = ");
+			appendStringLiteralAH(q, colliculocale ? colliculocale : "",
+								  fout);
+		}
+		else
+		{
+			if (!collcollate || !collctype || colliculocale ||
+				strcmp(collcollate, collctype) != 0)
+				pg_log_warning("invalid collation \"%s\"", qcollname);
+
+			appendPQExpBufferStr(q, ", locale = ");
+			appendStringLiteralAH(q, collcollate ? collcollate : "", fout);
+		}
+	}
+	else if (collprovider[0] == 'c')
+	{
+		if (colliculocale || !collcollate || !collctype)
+			pg_log_warning("invalid collation \"%s\"", qcollname);
+
+		if (collcollate && collctype && strcmp(collcollate, collctype) == 0)
 		{
 			appendPQExpBufferStr(q, ", locale = ");
-			appendStringLiteralAH(q, collcollate, fout);
+			appendStringLiteralAH(q, collcollate ? collcollate : "", fout);
 		}
 		else
 		{
 			appendPQExpBufferStr(q, ", lc_collate = ");
-			appendStringLiteralAH(q, collcollate, fout);
+			appendStringLiteralAH(q, collcollate ? collcollate : "", fout);
 			appendPQExpBufferStr(q, ", lc_ctype = ");
-			appendStringLiteralAH(q, collctype, fout);
+			appendStringLiteralAH(q, collctype ? collctype : "", fout);
 		}
 	}
+	else
+		pg_fatal("unrecognized collation provider '%c'", collprovider[0]);
 
 	/*
 	 * For binary upgrade, carry over the collation version.  For normal
@@ -15661,12 +15699,9 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 		 */
 		if (is_colocated_database && !is_legacy_colocated_database
 			&& (tbinfo->relkind == RELKIND_RELATION || tbinfo->relkind == RELKIND_MATVIEW
-				|| tbinfo->relkind == RELKIND_PARTITIONED_TABLE)
-			&& yb_properties && yb_properties->is_colocated
-			&& (!simple_string_list_member(&colocated_database_tablespaces, tbinfo->reltablespace)
-			|| dopt->outputNoTablespaces))
+				|| tbinfo->relkind == RELKIND_PARTITIONED_TABLE) && yb_properties
+			&& yb_properties->is_colocated)
 		{
-			simple_string_list_append(&colocated_database_tablespaces, tbinfo->reltablespace);
 			/*
 			 * Set the next implicit tablegroup oid in a colocated database.
 			 * It's mandatory to reuse the old tablegroup oid to match tablegroup parent table
@@ -15677,15 +15712,13 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 			appendPQExpBuffer(q,
 							  "SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('%u'::pg_catalog.oid);\n",
 							  yb_properties->tablegroup_oid);
-			if (dopt->outputNoTablespaces)
+
+			if(strcmp(yb_properties->tablegroup_name, "default") == 0)
 			{
-				if(strcmp(yb_properties->tablegroup_name, "default") == 0)
-				{
-					appendPQExpBufferStr(q,
-									"\n-- For YB colocation backup without tablespace information, must preserve default tablegroup tables\n");
-					appendPQExpBuffer(q,
-						"SELECT pg_catalog.binary_upgrade_set_next_tablegroup_default(true);\n");
-				}
+				appendPQExpBufferStr(q,
+									 "\n-- For YB colocation backup without tablespace information, must preserve default tablegroup tables\n");
+				appendPQExpBuffer(q,
+								  "SELECT pg_catalog.binary_upgrade_set_next_tablegroup_default(true);\n");
 			}
 		}
 
@@ -16641,7 +16674,7 @@ dumpIndex(Archive *fout, const IndxInfo *indxinfo)
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 indxinfo->dobj.catId.oid, true);
 
-		if (dopt->outputNoTablespaces && is_colocated_database && !is_legacy_colocated_database)
+		if (is_colocated_database && !is_legacy_colocated_database)
 		{
 			YbTableProperties yb_properties;
 			yb_properties = (YbTableProperties) pg_malloc(sizeof(YbTablePropertiesData));

@@ -16,8 +16,7 @@
 #include "yb/util/result.h"
 #include "yb/util/test_util.h"
 
-namespace yb {
-namespace test {
+namespace yb::test {
 
 class ResultTest : public YBTest {
 };
@@ -127,6 +126,22 @@ Result<const std::string&> GetConstStringReference() {
   return GetStringReference();
 }
 
+class Base {
+ public:
+  virtual ~Base() {}
+  virtual size_t func() = 0;
+};
+
+class Derived : public Base {
+ public:
+  explicit Derived(size_t value) : value_(value) {}
+
+  size_t func() override { return value_; }
+
+ private:
+  const size_t value_;
+};
+
 } // namespace
 
 TEST_F(ResultTest, Status) {
@@ -184,7 +199,13 @@ Result<std::unique_ptr<int>> ReturnVariable() {
 // Result<T>.
 TEST_F(ResultTest, ReturnVariable) {
   auto ptr = ASSERT_RESULT(ReturnVariable());
-  ASSERT_EQ(42, *ptr);
+  ASSERT_EQ(*ptr, 42);
+
+  auto base_ptr = ASSERT_RESULT([]() -> Result<std::unique_ptr<Base>>{
+    return std::make_unique<Derived>(42);
+  }());
+
+  ASSERT_EQ(base_ptr->func(), 42);
 }
 
 Result<std::unique_ptr<int>> ReturnBadVariable() {
@@ -306,5 +327,4 @@ TEST_F(ResultTest, NotOk) {
   TestNotOk<Status>(bad_result.status());
 }
 
-} // namespace test
-} // namespace yb
+} // namespace yb::test

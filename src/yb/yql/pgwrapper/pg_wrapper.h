@@ -90,15 +90,16 @@ class PgWrapper : public ProcessWrapper {
   // create a temporary PostgreSQL directory that is later deleted.
   static Status InitDbForYSQL(
       const std::string& master_addresses, const std::string& tmp_dir_base, int tserver_shm_fd,
-      std::vector<std::pair<std::string, YBCPgOid>> db_to_oid);
+      std::vector<std::pair<std::string, YBCPgOid>> db_to_oid, bool is_major_upgrade);
 
   Status SetYsqlConnManagerStatsShmKey(key_t statsshmkey);
 
   struct PgUpgradeParams {
     std::string data_dir;
     std::string old_version_pg_address;
+    std::string old_version_socket_dir;
     uint16_t old_version_pg_port;
-    std::string new_version_pg_address;
+    std::string new_version_socket_dir;
     uint16_t new_version_pg_port;
   };
 
@@ -110,6 +111,7 @@ class PgWrapper : public ProcessWrapper {
   };
   struct GlobalInitdbParams {
     std::vector<std::pair<std::string, YBCPgOid>> db_to_oid;
+    bool is_major_upgrade = false;
   };
   using InitdbParams = std::variant<LocalInitdbParams, GlobalInitdbParams>;
 
@@ -145,6 +147,9 @@ class PgWrapper : public ProcessWrapper {
   static std::string GetPostgresThirdPartyLibPath();
   static std::string GetInitDbExecutablePath();
 
+  Status CleanupPreviousPostgres();
+  Status CleanupLockFileAndKillHungPg(const std::string& lock_file);
+
   // Set common environment for a child process (initdb or postgres itself).
   void SetCommonEnv(Subprocess* proc, bool yb_enabled);
   PgProcessConf conf_;
@@ -170,7 +175,6 @@ class PgSupervisor : public ProcessSupervisor {
   key_t GetYsqlConnManagerStatsShmkey();
 
  private:
-  Status CleanupOldServerUnlocked();
   Status RegisterPgFlagChangeNotifications() REQUIRES(mtx_);
   Status RegisterReloadPgConfigCallback(const void* flag_ptr) REQUIRES(mtx_);
   void DeregisterPgFlagChangeNotifications() REQUIRES(mtx_);

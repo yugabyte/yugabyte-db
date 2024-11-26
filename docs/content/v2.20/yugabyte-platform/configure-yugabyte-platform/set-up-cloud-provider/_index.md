@@ -3,7 +3,6 @@ title: Create provider configurations
 headerTitle: Create provider configurations
 linkTitle: Create provider configurations
 description: Create provider configurations.
-image: /images/section_icons/deploy/manual-deployment.png
 menu:
   v2.20_yugabyte-platform:
     parent: configure-yugabyte-platform

@@ -117,7 +117,6 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
       // Install YBC on the RR tservers and wait for its completion
       if (universe.isYbcEnabled()) {
         installYbcOnThePods(
-            universe.getName(),
             tserversAdded,
             true,
             ybcManager.getStableYbcVersion(),

@@ -45,6 +45,9 @@
 #include "yb/master/mini_master.h"
 
 #include "yb/master/tasks_tracker.h"
+
+#include "yb/rpc/messenger.h"
+
 #include "yb/server/webui_util.h"
 
 #include "yb/tablet/tablet_types.pb.h"
@@ -72,14 +75,15 @@ DECLARE_bool(TEST_tserver_disable_heartbeat);
 
 DECLARE_int32(follower_unavailable_considered_failed_sec);
 
-DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
+DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_uint32(leaderless_tablet_alert_delay_secs);
 DECLARE_bool(TEST_assert_local_op);
 DECLARE_bool(TEST_echo_service_enabled);
+DECLARE_bool(enable_load_balancing);
 
 namespace yb {
 namespace master {
@@ -167,6 +171,11 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
     return table;
   }
 
+  void DeleteTestTable() {
+    auto client = CHECK_RESULT(cluster_->CreateClient());
+    CHECK_OK(client->DeleteTable(table_name, /*wait=*/true));
+  }
+
   Result<std::string> GetLeaderlessTabletsString() {
     faststring result;
     auto url = "/tablet-replication";
@@ -206,6 +215,39 @@ class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> 
   void SetUp() override {
     MasterPathHandlersBaseItest<MiniCluster>::SetUp();
     client_ = ASSERT_RESULT(cluster_->CreateClient());
+  }
+
+  void ExpectLoadDistributionViewTabletsShown(int tablet_count) {
+    // This code expects that we have 3 TServers, 1 table, and RF 3.
+    int expected_replicas = tablet_count * 3;
+
+    faststring result;
+    ASSERT_OK(GetUrl("/load-distribution", &result));
+    const auto webpage = result.ToString();
+
+    // Endpoint output includes:
+    //   test_table</a></td><td>1</td><td>1/1</td><td>1/0</td><td>1/0</td></tr></table>
+    //
+    // (First # is total number of tablets, later are #peers/#leaders for each TServer.)
+    std::string num_cell = "<td>([0-9]+)</td>";
+    std::string num_pair_cell = "<td>([0-9]+)/[0-9]+</td>";
+    const std::regex regex(
+        "test_table</a></td>" + num_cell + num_pair_cell + num_pair_cell + num_pair_cell +
+        "</tr></table>");
+    std::smatch match;
+    std::regex_search(webpage, match, regex);
+
+    ASSERT_TRUE(!match.empty()) << "Load distribution view does not seem to contain information "
+                                   "about the test table in the expected format";
+
+    ASSERT_EQ(match.size(), 5);  // [0] is full match
+    EXPECT_EQ(std::stoi(match[1].str()), tablet_count);
+
+    int peers = 0;
+    for (int i = 2; i < 5; i++) {
+      peers += std::stoi(match[i].str());
+    }
+    EXPECT_EQ(peers, expected_replicas);
   }
 
  protected:
@@ -712,7 +754,7 @@ TEST_F_EX(
       {table_name}, false /* add_indexes */, 30 /* timeout_secs */, false /* is_compaction */));
   ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
 
-  // The parent tablet should be retained because it's in a PITR snapshot.
+  // The parent tablet should be retained because of the snapshot schedule.
   ASSERT_OK(WaitFor(
       [&]() { return tablet->LockForRead()->is_hidden(); },
       30s /* timeout */,
@@ -746,6 +788,64 @@ TEST_F_EX(
 
   SleepFor(kLeaderlessTabletAlertDelaySecs * yb::kTimeMultiplier * 1s);
   string result = ASSERT_RESULT(GetLeaderlessTabletsString());
+  ASSERT_EQ(result.find(tablet->id()), string::npos);
+}
+
+class MasterPathHandlersLeaderlessITest : public MasterPathHandlersItest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_leaderless_tablet_alert_delay_secs) =
+        kLeaderlessTabletAlertDelaySecs;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) =
+        kMetricsHeartbeatIntervalMs;
+    MasterPathHandlersItest::SetUp();
+  }
+ protected:
+  const int kLeaderlessTabletAlertDelaySecs = 5;
+  const int kMetricsHeartbeatIntervalMs = 1000;
+};
+
+// A tablet changed from RF-1 to RF-3 shouldn't be shown as leaderless tablet.
+TEST_F(MasterPathHandlersLeaderlessITest, TestRF1ChangedToRF3) {
+  const auto kLeaderlessTabletAlertDelaySecs = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_leaderless_tablet_alert_delay_secs) =
+      kLeaderlessTabletAlertDelaySecs;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+
+  CreateTestTable(1 /* num_tablets */);
+  client::TableHandle table;
+  ASSERT_OK(table.Open(table_name, client_.get()));
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto tablet = ASSERT_RESULT(catalog_manager.GetTableInfo(table->id())->GetTablets())[0];
+  auto leader = ASSERT_RESULT(GetLeaderPeerForTablet(cluster_.get(), tablet->id()));
+  const auto proxy_cache = std::make_unique<rpc::ProxyCache>(client_->messenger());
+  auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(
+      ASSERT_RESULT(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>()),
+      proxy_cache.get()));
+  auto leader_uuid = leader->permanent_uuid();
+  for (const auto& replica : ts_map) {
+    auto uuid = replica.second->uuid();
+    if (uuid == leader_uuid) {
+      continue;
+    }
+    ASSERT_OK(itest::RemoveServer(
+        ts_map[leader_uuid].get(), tablet->id(), ts_map[uuid].get(), boost::none, 10s));
+  }
+  SleepFor(kLeaderlessTabletAlertDelaySecs * yb::kTimeMultiplier * 1s);
+  string result = ASSERT_RESULT(GetLeaderlessTabletsString());
+  ASSERT_EQ(result.find(tablet->id()), string::npos);
+  for (const auto& replica : ts_map) {
+    auto uuid = replica.second->uuid();
+    if (uuid == leader_uuid) {
+      continue;
+    }
+    ASSERT_OK(itest::AddServer(
+        ts_map[leader_uuid].get(), tablet->id(), ts_map[uuid].get(),
+        consensus::PeerMemberType::PRE_VOTER, boost::none, 10s));
+  }
+  SleepFor(kLeaderlessTabletAlertDelaySecs * yb::kTimeMultiplier * 1s);
+  result = ASSERT_RESULT(GetLeaderlessTabletsString());
   ASSERT_EQ(result.find(tablet->id()), string::npos);
 }
 
@@ -1072,7 +1172,7 @@ TEST_F_EX(MasterPathHandlersItest, TestTablePlacementInfo, MasterPathHandlersExt
 }
 
 template <int RF>
-class MasterPathHandlersLeaderlessITest : public MasterPathHandlersExternalItest {
+class MasterPathHandlersExternalLeaderlessITest : public MasterPathHandlersExternalItest {
  protected:
   int num_tablet_servers() const override {
     return RF;
@@ -1129,8 +1229,8 @@ class MasterPathHandlersLeaderlessITest : public MasterPathHandlersExternalItest
   static constexpr int kTserverHeartbeatMetricsIntervalMs = 1000;
 };
 
-typedef MasterPathHandlersLeaderlessITest<3> MasterPathHandlersLeaderlessRF3ITest;
-typedef MasterPathHandlersLeaderlessITest<1> MasterPathHandlersLeaderlessRF1ITest;
+typedef MasterPathHandlersExternalLeaderlessITest<3> MasterPathHandlersLeaderlessRF3ITest;
+typedef MasterPathHandlersExternalLeaderlessITest<1> MasterPathHandlersLeaderlessRF1ITest;
 
 TEST_F(MasterPathHandlersLeaderlessRF3ITest, TestLeaderlessTabletEndpoint) {
   ASSERT_OK(cluster_->SetFlagOnMasters("leaderless_tablet_alert_delay_secs", "5"));
@@ -1531,6 +1631,72 @@ TEST_F(MasterPathHandlersItestExtraTS, LoadDistributionViewWithFailedTServer) {
       20s * kTimeMultiplier, "Downed server still assigned tablet replicas"));
   faststring out;
   ASSERT_OK(GetUrl("/load-distribution", &out));
+}
+
+TEST_F_EX(
+    MasterPathHandlersItest, LoadDistributionViewExcludesDeletedSplitParents,
+    TabletSplitMasterPathHandlersItest) {
+  // Start with 3 regular tablets.
+  CreateTestTable(3 /* num_tablets */);
+  ExpectLoadDistributionViewTabletsShown(3);
+
+  // Split the first tablet, resulting in it becoming a split parent; 2 new children tablets are
+  // created as part of this.
+  client::TableHandle table;
+  ASSERT_OK(table.Open(table_name, client_.get()));
+  InsertRows(table, /* num_rows_to_insert = */ 500);
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto tablet = ASSERT_RESULT(catalog_manager.GetTableInfo(table->id())->GetTablets())[0];
+  ASSERT_OK(yb_admin_client_->FlushTables(
+      {table_name}, false /* add_indexes */, 30 /* timeout_secs */, false /* is_compaction */));
+  ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
+  ASSERT_OK(WaitFor(
+      [&]() { return tablet->LockForRead()->is_deleted(); }, 30s /* timeout */,
+      "Wait for tablet split to complete and parent to be deleted"));
+  ExpectLoadDistributionViewTabletsShown(4);
+}
+
+TEST_F_EX(
+    MasterPathHandlersItest, LoadDistributionViewIncludesHiddenSplitParents,
+    TabletSplitMasterPathHandlersItest) {
+  // Start with 3 regular tablets.
+  CreateTestTable(3 /* num_tablets */);
+  ExpectLoadDistributionViewTabletsShown(3);
+
+  // Create a snapshot schedule.
+  client::TableHandle table;
+  ASSERT_OK(table.Open(table_name, client_.get()));
+  InsertRows(table, /* num_rows_to_insert = */ 500);
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto tablet = ASSERT_RESULT(catalog_manager.GetTableInfo(table->id())->GetTablets())[0];
+  auto snapshot_util = std::make_unique<client::SnapshotTestUtil>();
+  snapshot_util->SetProxy(&client_->proxy_cache());
+  snapshot_util->SetCluster(cluster_.get());
+  const auto kInterval = 2s * kTimeMultiplier;
+  const auto kRetention = kInterval * 2;
+  auto schedule_id = ASSERT_RESULT(snapshot_util->CreateSchedule(
+      nullptr, YQL_DATABASE_CQL, table->name().namespace_name(),
+      client::WaitSnapshot::kFalse, kInterval, kRetention));
+  ASSERT_OK(snapshot_util->WaitScheduleSnapshot(schedule_id));
+  auto schedules = ASSERT_RESULT(snapshot_util->ListSchedules(schedule_id));
+  ASSERT_EQ(schedules.size(), 1);
+
+  // Split the first tablet, resulting in it becoming a split parent; 2 new children tablets are
+  // created as part of this.
+  ASSERT_OK(yb_admin_client_->FlushTables(
+      {table_name}, false /* add_indexes */, 30 /* timeout_secs */, false /* is_compaction */));
+  ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
+  // The parent tablet should be retained because of the snapshot schedule.
+  ASSERT_OK(WaitFor(
+      [&]() { return tablet->LockForRead()->is_hidden(); },
+      30s /* timeout */,
+      "Wait for tablet split to complete and parent to be hidden"));
+  // We continue to count the split tablet because it is hidden not deleted.
+  ExpectLoadDistributionViewTabletsShown(5);
+
+  // Delete the table; it and its tablets will be retained as hidden due to the schedule.
+  DeleteTestTable();
+  ExpectLoadDistributionViewTabletsShown(5);
 }
 
 TEST_F(MasterPathHandlersItest, StatefulServices) {

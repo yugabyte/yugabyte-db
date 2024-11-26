@@ -78,7 +78,6 @@ $YB_SRC_ROOT/python/yugabyte/split_long_command_line.py
 $YB_SRC_ROOT/python/yugabyte/update_test_result_xml.py
   export YB_SCRIPT_PATH_YB_RELEASE_CORE_DB=$YB_SRC_ROOT/python/yugabyte/yb_release_core_db.py
   export YB_SCRIPT_PATH_LIST_PACKAGED_TARGETS=$YB_SRC_ROOT/python/yugabyte/list_packaged_targets.py
-  export YB_SCRIPT_PATH_VALIDATE_BUILD_ROOT=$YB_SRC_ROOT/python/yugabyte/validate_build_root.py
   export YB_SCRIPT_PATH_ANALYZE_TEST_RESULTS=$YB_SRC_ROOT/python/yugabyte/analyze_test_results.py
 }
 
@@ -194,10 +193,6 @@ if [[ -z ${is_run_test_script:-} ]]; then
   is_run_test_script=false
 fi
 readonly is_run_test_script
-
-# Setting this to "true" will prevent any changes to the virtualenv (creating it or installing
-# modules into it) as part of activate_virtualenv.
-yb_readonly_virtualenv=false
 
 YB_NFS_DOWNLOAD_CACHE_DIR=${YB_NFS_DOWNLOAD_CACHE_DIR:-$YB_JENKINS_NFS_HOME_DIR/download_cache}
 
@@ -1990,8 +1985,8 @@ find_or_download_ysql_snapshots() {
   # Just one snapshot for now.
   # (disabling a code checker error about a singular loop iteration)
   # shellcheck disable=SC2043
-  for ver in "2.0.9.0"; do
-    for bt in "release" "debug"; do
+  for ver in "2.25.0.0-pg15-alpha-2"; do
+    for bt in "release" "sanitizers" "mac"; do
       local name="${prefix}_${ver}_${bt}"
       if [[ ! -d "$YSQL_SNAPSHOTS_DIR_PARENT/$name" ]]; then
         local url="${repo_url}/releases/download/v${ver}/${name}.tar.gz"
@@ -2048,13 +2043,14 @@ handle_predefined_build_root() {
     predefined_build_root=$( cd "$predefined_build_root" && pwd )
   fi
 
-  if [[ $predefined_build_root != $YB_BUILD_INTERNAL_PARENT_DIR/* && \
-        $predefined_build_root != $YB_BUILD_EXTERNAL_PARENT_DIR/* ]]; then
-    # Sometimes $predefined_build_root contains symlinks on its path.
-    "$YB_SCRIPT_PATH_VALIDATE_BUILD_ROOT" \
-      "$predefined_build_root" \
-      "$YB_BUILD_INTERNAL_PARENT_DIR" \
-      "$YB_BUILD_EXTERNAL_PARENT_DIR"
+  # Sometimes $predefined_build_root contains symlinks on its path.
+  local expanded_build_root
+  expanded_build_root=$(realpath -q "$predefined_build_root")
+  if [[ "${expanded_build_root}" != "$(realpath -q "$YB_BUILD_INTERNAL_PARENT_DIR")"/* && \
+        "${expanded_build_root}" != "$(realpath -q "$YB_BUILD_EXTERNAL_PARENT_DIR")"/* ]]
+    then
+    fatal "Build root '$predefined_build_root' is not within either " \
+          "'$YB_BUILD_INTERNAL_PARENT_DIR' or '$YB_BUILD_EXTERNAL_PARENT_DIR'"
   fi
 
   local basename=${predefined_build_root##*/}
@@ -2305,100 +2301,21 @@ run_shellcheck() {
 
 activate_virtualenv() {
   detect_architecture
-
   local virtualenv_parent_dir=$YB_BUILD_PARENT_DIR
   local virtualenv_dir=$virtualenv_parent_dir/$YB_VIRTUALENV_BASENAME
 
-  # On Apple Silicon, use separate virtualenv directories per architecture.
-  if is_apple_silicon; then
-    detect_architecture
-    virtualenv_dir+="-${YB_TARGET_ARCH}"
-  fi
+  log "Activating python virtual env"
 
-  if [[ ${YB_RECREATE_VIRTUALENV:-} == "1" &&
-        -d $virtualenv_dir &&
-        ${yb_readonly_virtualenv} == "false" ]]; then
-    log "YB_RECREATE_VIRTUALENV is set, deleting virtualenv at '$virtualenv_dir'"
-    rm -rf "$virtualenv_dir"
-    # We don't want to be re-creating the virtual environment over and over again.
-    unset YB_RECREATE_VIRTUALENV
-  fi
+  # Symlink the requirements files into the top level build directory
+  # We assume $YB_SRC_ROOT/build is already created by initialize_yugabyte_bash_common having
+  # already been called.
+  [[ -f "${YB_SRC_ROOT}/build/requirements.txt" ]] \
+    || ln -sf "${YB_SRC_ROOT}/requirements.txt" "${YB_SRC_ROOT}/build/"
+  [[ -f "${YB_SRC_ROOT}/build/requirements_frozen.txt" ]] \
+    || ln -sf "${YB_SRC_ROOT}/requirements_frozen.txt" "${YB_SRC_ROOT}/build/"
 
-  if [[ ! -d $virtualenv_dir ]]; then
-    if [[ ${yb_readonly_virtualenv} == "true" ]]; then
-      fatal "virtualenv does not exist at '$virtualenv_dir', and we are not allowed to create it"
-    fi
-    if [[ -n ${VIRTUAL_ENV:-} && -f $VIRTUAL_ENV/bin/activate ]]; then
-      local old_virtual_env=$VIRTUAL_ENV
-      # Re-activate and deactivate the other virtualenv we're in. Otherwise the deactivate
-      # function might not even be present in our current shell. This is necessary because otherwise
-      # the --user installation below will fail.
-      set +eu
-      # shellcheck disable=SC1090,SC1091
-      . "$VIRTUAL_ENV/bin/activate"
-      deactivate
-      set -eu
-      # Not clear why deactivate does not do this.
-      remove_path_entry "$old_virtual_env/bin"
-    fi
-    # We need to be using system python to install the virtualenv module or create a new virtualenv.
-    (
-      mkdir -p "$virtualenv_parent_dir"
-      cd "$virtualenv_parent_dir"
-      local python3_interpreter=python3
-      local arch_prefix=""
-      if is_apple_silicon; then
-        # On Apple Silicon, use the system Python 3 interpreter. This is necessary because the
-        # Homebrew Python was upgraded to version 3.11 in April 2023, and setup.py fails for
-        # the typed-ast module.
-        python3_interpreter=/usr/bin/python3
-        arch_prefix="arch -${YB_TARGET_ARCH}"
-      fi
+  yb_activate_virtualenv "${virtualenv_parent_dir}"
 
-      # Require Python version at least 3.7.
-      local python3_version
-      python3_version=$( "$python3_interpreter" -V )
-      if [ "$(echo "$python3_version" | cut -d. -f2)" -lt 7 ]; then
-        fatal "Python version too low: $python3_version"
-      fi
-
-      $arch_prefix "$python3_interpreter" -m venv "${virtualenv_dir##*/}"
-
-      # Validate the architecture of the virtualenv.
-      if [[ -n ${YB_TARGET_ARCH:-} ]]; then
-        local actual_python_arch
-        actual_python_arch=$(
-          "${virtualenv_dir}/bin/python3" -c "import platform; print(platform.machine())"
-        )
-        if [[ $actual_python_arch != "$YB_TARGET_ARCH" ]]; then
-          fatal "Failed to create virtualenv for $YB_TARGET_ARCH, got $actual_python_arch instead" \
-                "for virtualenv at $virtualenv_dir"
-        fi
-      fi
-    )
-  fi
-
-  set +u
-  # shellcheck disable=SC1090,SC1091
-  . "$virtualenv_dir"/bin/activate
-  set -u
-  local pip_no_cache=""
-  if [[ -n ${YB_PIP_NO_CACHE:-} ]]; then
-    pip_no_cache="--no-cache-dir"
-  fi
-
-  local pip_executable=pip3
-  if [[ ${yb_readonly_virtualenv} == "false" ]]; then
-    local requirements_file_path="$YB_SRC_ROOT/requirements_frozen.txt"
-    local installed_requirements_file_path=$virtualenv_dir/${requirements_file_path##*/}
-    "$pip_executable" --retries 0 install --upgrade pip
-    if ! cmp --silent "$requirements_file_path" "$installed_requirements_file_path"; then
-      run_with_retries 10 0.5 "$pip_executable" install -r "$requirements_file_path" \
-        $pip_no_cache
-    fi
-    # To avoid re-running pip install, save the requirements that we've installed in the virtualenv.
-    cp "$requirements_file_path" "$installed_requirements_file_path"
-  fi
 
   if [[ ${YB_DEBUG_VIRTUALENV:-0} == "1" ]]; then
     echo >&2 "
@@ -2579,7 +2496,8 @@ set_java_home() {
     return
   fi
   # macOS has a peculiar way of setting JAVA_HOME
-  local cmd_to_get_java_home="/usr/libexec/java_home --version 1.8"
+  local cmd_to_get_java_home
+  cmd_to_get_java_home="/usr/libexec/java_home --version 1.8"
   local new_java_home
   new_java_home=$( $cmd_to_get_java_home )
   if [[ ! -d $new_java_home ]]; then
@@ -2793,8 +2711,6 @@ adjust_compiler_type_on_mac() {
 # -------------------------------------------------------------------------------------------------
 # Initialization
 # -------------------------------------------------------------------------------------------------
-
-detect_os
 
 # http://man7.org/linux/man-pages/man7/signal.7.html
 if is_mac; then

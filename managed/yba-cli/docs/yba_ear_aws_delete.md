@@ -10,6 +10,12 @@ Delete an AWS encryption at rest configuration in YugabyteDB Anywhere
 yba ear aws delete [flags]
 ```
 
+### Examples
+
+```
+yba ear aws delete --name <config-name>
+```
+
 ### Options
 
 ```

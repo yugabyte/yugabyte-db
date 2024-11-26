@@ -19,34 +19,43 @@
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
+
+class IsOperationDoneResult;
 class ThreadPool;
 
 namespace master {
 struct LeaderEpoch;
+class YsqlCatalogConfig;
 
 // Helper class to handle global initdb and major version upgrade for YSQL.
 // Only one operation can be run at a time.
-// TODO: Move IsDone functions from CatalogManager to this class after pg15-upgrade merges into
-// master.
 class YsqlInitDBAndMajorUpgradeHandler {
  public:
   YsqlInitDBAndMajorUpgradeHandler(
-      Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog,
-      yb::ThreadPool& thread_pool);
+      Master& master, YsqlCatalogConfig& ysql_catalog_config, CatalogManager& catalog_manager,
+      SysCatalogTable& sys_catalog, yb::ThreadPool& thread_pool);
 
   ~YsqlInitDBAndMajorUpgradeHandler() = default;
+
+  void SysCatalogLoaded(const LeaderEpoch& epoch);
 
   // Starts the global initdb procedure to create the initial universe level ysql sys catalog using
   // the initdb process.
   Status StartNewClusterGlobalInitDB(const LeaderEpoch& epoch);
 
-  // Starts the ysql major version upgrade procedure which will run a major version initdb, and run
+  // Starts the ysql major catalog upgrade procedure which will run a major version initdb, and run
   // pg_upgrade using a temporary major version postgres process.
-  Status StartYsqlMajorVersionUpgrade(const LeaderEpoch& epoch);
+  Status StartYsqlMajorCatalogUpgrade(const LeaderEpoch& epoch);
+
+  IsOperationDoneResult IsYsqlMajorCatalogUpgradeDone() const;
+
+  Status FinalizeYsqlMajorCatalogUpgrade(const LeaderEpoch& epoch);
 
   // Rolls back the operations performed by major version upgrade procedure and return the cluster
   // to a clean state.
-  Status RollbackYsqlMajorVersionUpgrade(const LeaderEpoch& epoch);
+  Status RollbackYsqlMajorCatalogVersion(const LeaderEpoch& epoch);
+
+  bool IsYsqlMajorCatalogUpgradeInProgress() const;
 
  private:
   using DbNameToOidList = std::vector<std::pair<std::string, YBCPgOid>>;
@@ -59,14 +68,18 @@ class YsqlInitDBAndMajorUpgradeHandler {
 
   void RunMajorVersionUpgrade(const LeaderEpoch& epoch);
 
+  Status RunMajorVersionUpgradeImpl(const LeaderEpoch& epoch);
+
+  Status UpdateCatalogVersions(const LeaderEpoch& epoch);
+
   Status RunMajorVersionCatalogUpgrade(const LeaderEpoch& epoch);
 
   // Runs the initdb process to create the initial ysql sys catalog and snapshot the sys_catalog if
   // needed.
-  // ysql major version upgrade provides db_name_to_oid_list. The clean install initdb process will
+  // ysql major catalog upgrade provides db_name_to_oid_list. The clean install initdb process will
   // choose new OIDs.
   Status InitDBAndSnapshotSysCatalog(
-      const DbNameToOidList& db_name_to_oid_list, const LeaderEpoch& epoch);
+      const DbNameToOidList& db_name_to_oid_list, bool is_major_upgrade, const LeaderEpoch& epoch);
 
   // Starts a new postgres process to run pg_upgrade to migrate the old catalog to the new version
   // catalog.
@@ -76,16 +89,15 @@ class YsqlInitDBAndMajorUpgradeHandler {
 
   Status PerformMajorUpgrade(const DbNameToOidList& db_name_to_oid_list, const LeaderEpoch& epoch);
 
-  Status MajorVersionCatalogUpgradeFinished(const Status& upgrade_status, const LeaderEpoch& epoch);
-
   Status RunRollbackMajorVersionUpgrade(const LeaderEpoch& epoch);
 
-  Status ResetNextVerInitdbStatus(const LeaderEpoch& epoch);
+  Status RollbackMajorVersionCatalogImpl(const LeaderEpoch& epoch);
 
   // Get the address to a live tserver process that is closest to the master.
   Result<std::string> GetClosestLiveTserverAddress();
 
   Master& master_;
+  YsqlCatalogConfig& ysql_catalog_config_;
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;
   yb::ThreadPool& thread_pool_;

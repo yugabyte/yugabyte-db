@@ -10,6 +10,12 @@ List YugabyteDB Anywhere providers
 yba provider list [flags]
 ```
 
+### Examples
+
+```
+yba provider list
+```
+
 ### Options
 
 ```

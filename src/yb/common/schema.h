@@ -336,8 +336,8 @@ class ColumnSchema {
   bool is_static_;
   bool is_counter_;
   int32_t order_;
-  int32_t pg_type_oid_;
-  int32_t pg_typmod_;
+  int32_t pg_type_oid_ = 0;
+  int32_t pg_typmod_ = 0;
   bool marked_for_deletion_;
   QLValuePB missing_value_;
 };

@@ -53,7 +53,7 @@ class TestLoadBalancerPreferredLeader : public LoadBalancerMockedBase {
         std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
 
     TabletReplica replica;
-    NewReplica(ts_desc.get(), tablet::RaftGroupStatePB::RUNNING, PeerRole::FOLLOWER, &replica);
+    NewReplica(ts_desc, tablet::RaftGroupStatePB::RUNNING, PeerRole::FOLLOWER, &replica);
     InsertOrDie(replicas.get(), ts_desc->permanent_uuid(), replica);
     tablet->SetReplicaLocations(replicas);
   }
@@ -208,32 +208,29 @@ TEST_F(TestLoadBalancerPreferredLeader, TestReadOnlyLoadBalancing) {
   LOG(INFO) << "The replica count for each read_only tserver is: ts3: 4, ts4: 0";
   ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
 
-  string placeholder;
-
   // First we make sure that no load balancing happens during the live iteration.
-  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&placeholder, &placeholder, &placeholder)));
+  ASSERT_NOK(TestAddLoad("", "", ""));
 
-  cb_.SetOptions(READ_ONLY, read_only_placement_uuid);
+  cb_.SetOptions(ReplicaType::kReadOnly, read_only_placement_uuid);
   ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
-  // Now load balance an read_only replica.
+  // Now load balance a read_only replica.
   string expected_from_ts = ts_descs_[3]->permanent_uuid();
   string expected_to_ts = ts_descs_[4]->permanent_uuid();
-  string expected_tablet_id = tablets_[0]->tablet_id();
-  TestAddLoad(expected_tablet_id, expected_from_ts, expected_to_ts);
-  RemoveReplica(tablet_map_[expected_tablet_id].get(), ts_descs_[3]);
-  AddFollowerReplica(tablet_map_[expected_tablet_id].get(), ts_descs_[4]);
+  string actual_tablet_id;
+  ASSERT_OK(TestAddLoad("", expected_from_ts, expected_to_ts, &actual_tablet_id));
+  RemoveReplica(tablet_map_[actual_tablet_id].get(), ts_descs_[3]);
+  AddFollowerReplica(tablet_map_[actual_tablet_id].get(), ts_descs_[4]);
 
   ClearTabletsAddedForTest();
 
   expected_from_ts = ts_descs_[3]->permanent_uuid();
   expected_to_ts = ts_descs_[4]->permanent_uuid();
-  expected_tablet_id = tablets_[1]->tablet_id();
-  TestAddLoad(expected_tablet_id, expected_from_ts, expected_to_ts);
-  RemoveReplica(tablet_map_[expected_tablet_id].get(), ts_descs_[3]);
-  AddFollowerReplica(tablet_map_[expected_tablet_id].get(), ts_descs_[4]);
+  ASSERT_OK(TestAddLoad("", expected_from_ts, expected_to_ts, &actual_tablet_id));
+  RemoveReplica(tablet_map_[actual_tablet_id].get(), ts_descs_[3]);
+  AddFollowerReplica(tablet_map_[actual_tablet_id].get(), ts_descs_[4]);
 
   // Then make sure there is no more balancing, since both ts3 and ts4 have 2 replicas each.
-  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&placeholder, &placeholder, &placeholder)));
+  ASSERT_NOK(TestAddLoad("", "", ""));
   cb_.ResetOptions();
 }
 
@@ -256,7 +253,7 @@ TEST_F(TestLoadBalancerPreferredLeader, TestLeaderBalancingWithReadOnly) {
   string placeholder;
   ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
 
-  cb_.SetOptions(READ_ONLY, read_only_placement_uuid);
+  cb_.SetOptions(ReplicaType::kReadOnly, read_only_placement_uuid);
   ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
   ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&placeholder, &placeholder, &placeholder)));
   cb_.ResetOptions();

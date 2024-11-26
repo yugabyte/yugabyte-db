@@ -419,3 +419,27 @@ UPDATE child_2 SET v = (v - 1000000) * 2 + 1000000 WHERE k <= 5001; -- should fa
 
 UPDATE child_1 SET v = v * 2 WHERE k < 5001;
 UPDATE child_2 SET v = (v - 1000000) * 2 + 1000000 WHERE k < 5001;
+
+-- UNIQUE NULLS NOT DISTINCT
+CREATE TABLE pk(a INT PRIMARY KEY, b INT, c INT, UNIQUE NULLS NOT DISTINCT (b, c));
+
+CREATE TABLE fk_simple(b INT, c INT, FOREIGN KEY (b,c) REFERENCES pk(b, c) MATCH SIMPLE);
+INSERT INTO fk_simple VALUES (NULL, 1);
+INSERT INTO fk_simple VALUES (1, 1);
+INSERT INTO fk_simple VALUES (NULL, NULL);
+
+CREATE TABLE fk_full(b INT, c INT, FOREIGN KEY (b,c) REFERENCES pk(b, c) MATCH FULL);
+INSERT INTO fk_full VALUES (NULL, 1);
+INSERT INTO fk_full VALUES (1, 1);
+INSERT INTO fk_full VALUES (NULL, NULL);
+
+DROP TABLE pk, fk_simple, fk_full;
+
+-- Test foreign key on unique index such that column orders in fk and unique constraints differ.
+CREATE TABLE pk(id INT, name INT, add INT, PRIMARY KEY (id, name, add), UNIQUE (name, id));
+CREATE TABLE fk(id INT, name INT, FOREIGN KEY(id, name) REFERENCES pk(id, name));
+INSERT INTO pk VALUES (1, 500, 1000);
+INSERT INTO fk VALUES (1, 500);
+INSERT INTO fk VALUES (500, 1); -- should fail
+SELECT * from fk;
+DROP TABLE pk, fk;

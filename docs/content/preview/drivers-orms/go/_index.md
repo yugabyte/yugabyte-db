@@ -3,7 +3,6 @@ title: Go drivers and ORMs
 headerTitle: Go
 linkTitle: Go
 description: Go Drivers and ORMs support for YugabyteDB.
-image: fa-brands fa-golang
 menu:
   preview:
     identifier: go-drivers

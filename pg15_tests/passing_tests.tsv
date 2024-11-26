@@ -70,6 +70,7 @@ JAVA	org.yb.pgsql.TestPgRegressGenerated
 JAVA	org.yb.pgsql.TestPgRegressGin
 JAVA	org.yb.pgsql.TestPgRegressHashInQueries
 JAVA	org.yb.pgsql.TestPgRegressHashIndex
+JAVA	org.yb.pgsql.TestPgRegressIndex
 JAVA	org.yb.pgsql.TestPgRegressIsolation#testPgRegress
 JAVA	org.yb.pgsql.TestPgRegressIsolation#testPgRegressWithDelayedTxnApply
 JAVA	org.yb.pgsql.TestPgRegressIsolationWithoutWaitQueues

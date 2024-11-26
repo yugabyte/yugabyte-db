@@ -28,6 +28,7 @@ import {
   NTPSetupType,
   ProviderCode,
   ProviderOperation,
+  SshPrivateKeyInputType,
   VPCSetupType
 } from '../../constants';
 import { FieldGroup } from '../components/FieldGroup';
@@ -59,7 +60,6 @@ import {
 } from '../utils';
 import { EditProvider } from '../ProviderEditView';
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
-import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { VersionWarningBanner } from '../components/VersionWarningBanner';
 import { ACCEPTABLE_CHARS, RG_REGEX, UUID_REGEX } from '../../../../config/constants';
 import { NTP_SERVER_REGEX } from '../constants';
@@ -92,6 +92,7 @@ import { CloudType } from '../../../../../redesign/helpers/dtos';
 import { getYBAHost } from '../../utils';
 import { hostInfoQueryKey } from '../../../../../redesign/helpers/api';
 import { AZURE_FORM_MAPPERS } from './constants';
+import { SshPrivateKeyFormField } from '../../components/SshPrivateKeyField';
 
 interface AZUProviderEditFormProps {
   editProvider: EditProvider;
@@ -123,6 +124,8 @@ export interface AZUProviderEditFormFieldValues {
   sshKeypairManagement: KeyPairManagement;
   sshKeypairName: string;
   sshPort: number | null;
+  sshPrivateKeyInputType: SshPrivateKeyInputType;
+  sshPrivateKeyContentText: string;
   sshPrivateKeyContent: File;
   sshUser: string;
   version: number;
@@ -181,11 +184,26 @@ const VALIDATION_SCHEMA = object().shape({
       'SSH Keypair management choice is required.'
     )
   }),
-  sshPrivateKeyContent: mixed().when(['editSSHKeypair', 'sshKeypairManagement'], {
-    is: (editSSHKeypair, sshKeypairManagement) =>
-      editSSHKeypair && sshKeypairManagement === KeyPairManagement.SELF_MANAGED,
-    then: mixed().required('SSH private key is required.')
-  }),
+  sshPrivateKeyContent: mixed().when(
+    ['editSSHKeypair', 'sshKeypairManagement', 'sshPrivateKeyInputType'],
+    {
+      is: (editSSHKeypair, sshKeypairManagement, sshPrivateKeyInputType) =>
+        editSSHKeypair &&
+        sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
+        sshPrivateKeyInputType === SshPrivateKeyInputType.UPLOAD_KEY,
+      then: mixed().required('SSH private key is required.')
+    }
+  ),
+  sshPrivateKeyContentText: string().when(
+    ['editSSHKeypair', 'sshKeypairManagement', 'sshPrivateKeyInputType'],
+    {
+      is: (editSSHKeypair, sshKeypairManagement, sshPrivateKeyInputType) =>
+        editSSHKeypair &&
+        sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
+        sshPrivateKeyInputType === SshPrivateKeyInputType.PASTE_KEY,
+      then: string().required('SSH private key is required.')
+    }
+  ),
   hostedZoneId: string().when('enableHostedZone', {
     is: true,
     then: string().required('Route 53 zone id is required.')
@@ -728,22 +746,11 @@ export const AZUProviderEditForm = ({
                           fullWidth
                         />
                       </FormField>
-                      <FormField>
-                        <FieldLabel>SSH Private Key Content</FieldLabel>
-                        <YBDropZoneField
-                          name="sshPrivateKeyContent"
-                          control={formMethods.control}
-                          actionButtonText="Upload SSH Key PEM File"
-                          multipleFiles={false}
-                          showHelpText={false}
-                          disabled={getIsFieldDisabled(
-                            ProviderCode.AZU,
-                            'sshPrivateKeyContent',
-                            isFormDisabled,
-                            isProviderInUse
-                          )}
-                        />
-                      </FormField>
+                      <SshPrivateKeyFormField
+                        isFormDisabled={isFormDisabled}
+                        isProviderInUse={isProviderInUse}
+                        providerCode={ProviderCode.AZU}
+                      />
                     </>
                   )}
                 </>
@@ -887,6 +894,7 @@ const constructDefaultFormValues = (
     zones: region.zones
   })),
   sshKeypairManagement: getLatestAccessKey(providerConfig.allAccessKeys)?.keyInfo.managementState,
+  sshPrivateKeyInputType: SshPrivateKeyInputType.UPLOAD_KEY,
   sshPort: providerConfig.details.sshPort ?? null,
   sshUser: providerConfig.details.sshUser ?? '',
   version: providerConfig.version,
@@ -901,12 +909,16 @@ const constructProviderPayload = async (
   providerConfig: AZUProvider
 ): Promise<YBProviderMutation> => {
   let sshPrivateKeyContent = '';
-  try {
-    sshPrivateKeyContent = formValues.sshPrivateKeyContent
-      ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
-      : '';
-  } catch (error) {
-    throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
+  if (formValues.sshPrivateKeyInputType === SshPrivateKeyInputType.UPLOAD_KEY) {
+    try {
+      sshPrivateKeyContent = formValues.sshPrivateKeyContent
+        ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
+        : '';
+    } catch (error) {
+      throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
+    }
+  } else {
+    sshPrivateKeyContent = formValues.sshPrivateKeyContentText;
   }
 
   const imageBundles = constructImageBundlePayload(formValues);

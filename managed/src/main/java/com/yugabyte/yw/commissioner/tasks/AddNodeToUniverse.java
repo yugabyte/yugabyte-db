@@ -201,7 +201,12 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // ignore node status is true because generic callee checks for node state To Be Added.
       boolean isNextFallThrough =
           createCreateNodeTasks(
-              universe, nodeSet, true /* ignoreNodeStatus */, null /* param customizer */);
+              universe,
+              nodeSet,
+              true /* ignoreNodeStatus */,
+              setupServerParams -> {
+                setupServerParams.rebootNodeAllowed = true;
+              });
 
       Set<NodeDetails> mastersToAdd = null;
       Set<NodeDetails> tServersToAdd = null;

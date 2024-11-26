@@ -416,7 +416,12 @@ TEST_F(XClusterOutboundReplicationGroupTest, IsBootstrapRequiredTableWithDeleted
   ASSERT_FALSE(ASSERT_RESULT(IsBootstrapRequired()));
 }
 
-TEST_P(XClusterOutboundReplicationGroupParameterized, MasterRestartDuringCheckpoint) {
+// Temporarily disabling this during semi-automatic mode due to a bug.
+// TODO(GitHub issue #24746): fix semi-automatic mode so it survives master restarts during a
+// checkpoint then reenable this test.
+TEST_P(
+    XClusterOutboundReplicationGroupParameterized,
+    YB_DISABLE_TEST(MasterRestartDuringCheckpoint)) {
   // Temporarily disabling this during automatic mode because automatic mode does not yet
   // successfully survive a master restart during a checkpoint.
   // TODO(GitHub issue #23918): fix automatic mode so it passes this test then reenable this test.

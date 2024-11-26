@@ -108,6 +108,17 @@ var installCmd = &cobra.Command{
 			log.Info("Completed installing component " + name)
 		}
 
+		// Update permissions of data and software to service username
+		if dataless {
+			if err := common.SetSoftwarePermissions(); err != nil {
+				log.Fatal("error updating permissions for software directory: " + err.Error())
+			}
+		} else {
+			if err := common.SetAllPermissions(); err != nil {
+				log.Fatal("error updating permissions for software and data directories: " + err.Error())
+			}
+		}
+
 		// Update state config now that install is complete.
 		state.Config.Hostname = viper.GetString("host")
 		state.CurrentStatus = ybactlstate.InstalledStatus
@@ -126,12 +137,12 @@ var installCmd = &cobra.Command{
 			log.Fatal(err.Error())
 		}
 
-		getAndPrintStatus()
+		getAndPrintStatus(state)
 		log.Info("Successfully installed YugabyteDB Anywhere!")
 	},
 }
 
-func getAndPrintStatus() {
+func getAndPrintStatus(state *ybactlstate.State) {
 	var statuses []common.Status
 	for _, name := range serviceOrder {
 		status, err := services[name].Status()
@@ -145,7 +156,7 @@ func getAndPrintStatus() {
 		}
 	}
 
-	common.PrintStatus(statuses...)
+	common.PrintStatus(state.CurrentStatus.String(), statuses...)
 }
 
 func init() {

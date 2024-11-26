@@ -3,110 +3,58 @@ title: Secure
 headerTitle: Secure
 linkTitle: Secure
 description: Secure your deployment of YugabyteDB.
-headcontent: Secure your deployment of YugabyteDB.
-image: /images/section_icons/index/secure.png
+headcontent: Secure your deployment of YugabyteDB
 type: indexpage
 ---
-<div class="row">
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="security-checklist/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/checklist.png" aria-hidden="true" />
-        <div class="title">Security checklist</div>
-      </div>
-      <div class="body">
-          Consider these security measures when deploying your
-          YugabyteDB cluster.
-      </div>
-    </a>
-  </div>
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="enable-authentication/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
-        <div class="title">Enable authentication</div>
-      </div>
-      <div class="body">
-          Enable authentication for all clients connecting to YugabyteDB.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Security checklist"
+    body="Consider these security measures when deploying your YugabyteDB cluster."
+    href="security-checklist/"
+    icon="fa-thin fa-clipboard">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="authentication/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
-        <div class="title">Authentication methods</div>
-      </div>
-      <div class="body">
-          Choose the appropriate authentication mechanism.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Enable authentication"
+    body="Enable authentication for all clients connecting to YugabyteDB."
+    href="enable-authentication/"
+    icon="fa-thin fa-lock-keyhole">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="authorization/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/authorization.png" aria-hidden="true" />
-        <div class="title">Role-based access control</div>
-      </div>
-      <div class="body">
-          Manage users and roles, grant privileges, implement row-level security (RLS), and column-level security.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Authentication methods"
+    body="Choose the appropriate authentication mechanism."
+    href="authentication/"
+    icon="fa-thin fa-badge-check">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="tls-encryption/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/tls-encryption.png" aria-hidden="true" />
-        <div class="title">Encryption in transit</div>
-      </div>
-      <div class="body">
-          Enable encryption in transit (using TLS) to secure and protect network communication.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Role-based access control"
+    body="Manage users and roles, grant privileges, implement row-level security (RLS), and column-level security."
+    href="authorization/"
+    icon="fa-thin fa-user-group-crown">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="encryption-at-rest/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/tls-encryption.png"
-        aria-hidden="true" />
-        <div class="title">Encryption at rest</div>
-      </div>
-      <div class="body">
-          Enable encryption at rest in YugabyteDB (using TLS) to secure and protect data on disk.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Encryption in transit"
+    body="Secure and protect network communication using TLS."
+    href="tls-encryption/"
+    icon="fa-thin fa-file-certificate">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="audit-logging/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/tls-encryption.png"
-        aria-hidden="true" />
-        <div class="title">Audit logging</div>
-      </div>
-      <div class="body">
-          Configure YugabyteDB's session-level and object-level audit logging for security and compliance.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Encryption at rest"
+    body="Secure and protect data on disk."
+    href="encryption-at-rest/"
+    icon="fa-thin fa-binary-lock">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="column-level-encryption/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/tls-encryption.png"
-        aria-hidden="true" />
-        <div class="title">Column-level encryption</div>
-      </div>
-      <div class="body">
-          Encrypt data present in columns containing sensitive data using per-column encryption at the application layer in YugabyteDB (using symmetric and asymmetric encryption).
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Column-level encryption"
+    body="Encrypt sensitive data using per-column encryption at the application layer (using symmetric and asymmetric encryption)."
+    href="column-level-encryption/"
+    icon="fa-thin fa-table-cells-column-lock">}}
 
-</div>
+  {{<index/item
+    title="Audit logging"
+    body="Configure session- and object-level audit logging for security and compliance."
+    href="audit-logging/"
+    icon="fa-thin fa-calculator">}}
+
+{{</index/block>}}

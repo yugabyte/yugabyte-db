@@ -20,7 +20,7 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -243,10 +243,23 @@ public class UniverseYbDbAdminHandler {
                 CONNECTION_POOLING_STABLE_VERSION, CONNECTION_POOLING_PREVIEW_VERSION));
       }
 
-      if (CloudType.kubernetes.equals(
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType)) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Connection pooling is not yet supported for kubernetes universes.");
+      if (universe
+          .getUniverseDetails()
+          .getPrimaryCluster()
+          .userIntent
+          .providerType
+          .equals(Common.CloudType.kubernetes)) {
+        if (requestParams.communicationPorts.ysqlServerRpcPort
+            != KubernetesCommandExecutor.DEFAULT_YSQL_SERVER_RPC_PORT) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Custom YSQL RPC port is not yet supported for Kubernetes universes.");
+        }
+        if (requestParams.communicationPorts.internalYsqlServerRpcPort
+            != KubernetesCommandExecutor.DEFAULT_INTERNAL_YSQL_SERVER_RPC_PORT) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Custom Internal YSQL RPC port is not yet supported for Kubernetes universes.");
+        }
       }
     }
     // Verify request params

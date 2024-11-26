@@ -10,7 +10,6 @@ import com.yugabyte.yw.controllers.apiModels.ExtractMetadata;
 import com.yugabyte.yw.controllers.apiModels.ResponseExtractMetadata;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPCreateSuccess;
-import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
@@ -55,7 +54,7 @@ public class ReleasesExtractMetadataController extends AuthenticatedController {
 
   @ApiOperation(
       value = "helper to extract release metadata from a remote tarball",
-      response = YBPSuccess.class,
+      response = YBPCreateSuccess.class,
       nickname = "extractMetadata",
       notes =
           "WARNING: This is a preview API that could change: start extracting metadata from a"

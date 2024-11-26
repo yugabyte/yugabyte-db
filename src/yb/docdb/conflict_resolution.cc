@@ -267,8 +267,8 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
         break;
       }
 
-      auto existing_intent = VERIFY_RESULT(
-          docdb::ParseIntentKey(intent_iter_.key(), existing_value));
+      auto existing_intent = VERIFY_RESULT(dockv::ParseIntentKey(
+          intent_iter_.key(), existing_value));
 
       VLOG_WITH_PREFIX_AND_FUNC(4) << "Found: " << SubDocKey::DebugSliceToString(existing_key)
                                    << ", with value: " << existing_value.ToDebugString()
@@ -681,6 +681,7 @@ class WaitOnConflictResolver : public ConflictResolver {
     if (!wait_start_time_.Initialized()) {
       wait_start_time_ = MonoTime::Now();
     }
+    DEBUG_ONLY_TEST_SYNC_POINT("ConflictResolver::MaybeSetWaitStartTime");
   }
 
   void TryPreWait() {
@@ -705,13 +706,14 @@ class WaitOnConflictResolver : public ConflictResolver {
     VTRACE(3, "Waiting on $0 transactions after $1 tries.",
            conflict_data_->NumActiveTransactions(), wait_for_iters_);
 
-    MaybeSetWaitStartTime();
-    return wait_queue_->WaitOn(
+    RETURN_NOT_OK(wait_queue_->WaitOn(
         context_->transaction_id(), context_->subtransaction_id(), lock_batch_,
         ConsumeTransactionDataAndReset(), status_tablet_id_, serial_no_,
         context_->GetTxnStartUs(), request_start_us_, request_id_, deadline_,
         std::bind(&WaitOnConflictResolver::GetLockStatusInfo, shared_from(this)),
-        std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
+        std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2)));
+    MaybeSetWaitStartTime();
+    return Status::OK();
   }
 
   // Note: we must pass in shared_this to keep the WaitOnConflictResolver alive until the wait queue
@@ -1446,42 +1448,8 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
   return Status::OK();
 }
 
-#define INTENT_KEY_SCHECK(lhs, op, rhs, msg) \
-  BOOST_PP_CAT(SCHECK_, op)(lhs, \
-                            rhs, \
-                            Corruption, \
-                            Format("Bad intent key, $0 in $1, transaction from: $2", \
-                                   msg, \
-                                   intent_key.ToDebugHexString(), \
-                                   transaction_id_source.ToDebugHexString()))
-
-// transaction_id_slice used in INTENT_KEY_SCHECK
-Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_source) {
-  ParsedIntent result;
-  result.doc_path = intent_key;
-  // Intent is encoded as "DocPath + IntentType + DocHybridTime".
-  size_t doc_ht_size = VERIFY_RESULT(DocHybridTime::GetEncodedSize(result.doc_path));
-  // 3 comes from (ValueType::kIntentType, the actual intent type, ValueType::kHybridTime).
-  INTENT_KEY_SCHECK(result.doc_path.size(), GE, doc_ht_size + 3, "key too short");
-  result.doc_path.remove_suffix(doc_ht_size + 3);
-  auto intent_type_and_doc_ht = result.doc_path.end();
-  if (intent_type_and_doc_ht[0] == KeyEntryTypeAsChar::kObsoleteIntentType) {
-    result.types = dockv::ObsoleteIntentTypeToSet(intent_type_and_doc_ht[1]);
-  } else if (intent_type_and_doc_ht[0] == KeyEntryTypeAsChar::kObsoleteIntentTypeSet) {
-    result.types = dockv::ObsoleteIntentTypeSetToNew(intent_type_and_doc_ht[1]);
-  } else {
-    INTENT_KEY_SCHECK(intent_type_and_doc_ht[0], EQ, KeyEntryTypeAsChar::kIntentTypeSet,
-        "intent type set type expected");
-    result.types = IntentTypeSet(intent_type_and_doc_ht[1]);
-  }
-  INTENT_KEY_SCHECK(intent_type_and_doc_ht[2], EQ, KeyEntryTypeAsChar::kHybridTime,
-                    "hybrid time value type expected");
-  result.doc_ht = Slice(result.doc_path.end() + 2, doc_ht_size + 1);
-  return result;
-}
-
 std::string DebugIntentKeyToString(Slice intent_key) {
-  auto parsed = ParseIntentKey(intent_key, Slice());
+  auto parsed = dockv::ParseIntentKey(intent_key, Slice());
   if (!parsed.ok()) {
     LOG(WARNING) << "Failed to parse: " << intent_key.ToDebugHexString() << ": " << parsed.status();
     return intent_key.ToDebugHexString();
@@ -1498,7 +1466,7 @@ std::string DebugIntentKeyToString(Slice intent_key) {
 }
 
 Status PopulateLockInfoFromParsedIntent(
-    const ParsedIntent& parsed_intent, const dockv::DecodedIntentValue& decoded_value,
+    const dockv::ParsedIntent& parsed_intent, const dockv::DecodedIntentValue& decoded_value,
     const TableInfoProvider& table_info_provider, LockInfoPB* lock_info, bool intent_has_ht) {
   dockv::SubDocKey subdoc_key;
   RETURN_NOT_OK(subdoc_key.FullyDecodeFrom(

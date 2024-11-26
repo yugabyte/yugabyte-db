@@ -15,8 +15,8 @@ yba provider gcp create [flags]
 ```
 yba provider gcp create -n dkumar-cli \
 	--network yugabyte-network \
-	--region region-name=us-west1,shared-subnet=<subnet> \
-	--region region-name=us-west2,shared-subnet=<subnet> \
+	--region region-name=us-west1::shared-subnet=<subnet> \
+	--region region-name=us-west2::shared-subnet=<subnet> \
 	--credentials <path-to-credentials-file>
 ```
 
@@ -31,8 +31,8 @@ yba provider gcp create -n dkumar-cli \
       --use-host-vpc                          [Optional] Using VPC from YugabyteDB Anywhere Host. If set to false, specify an exsiting VPC using --network. Ignored if create-vpc is set. (default false)
       --project-id string                     [Optional] Project ID that hosts universe nodes in GCP.
       --shared-vpc-project-id string          [Optional] Shared VPC project ID in GCP.
-      --region stringArray                    [Required] Region associated with the GCP provider. Minimum number of required regions = 1. Provide the following comma separated fields as key-value pairs: "region-name=<region-name>,shared-subnet=<subnet-id>,instance-template=<instance-templates-for-YugabyteDB-nodes>". Region name and Shared subnet are required key-value pairs. YB Image (AMI) and Instance Template are optional. Each region can be added using separate --region flags. Example: --region region-name=us-west1,shared-subnet=<shared-subnet-id>
-      --image-bundle stringArray              [Optional] Intel x86_64 image bundles associated with GCP provider. Provide the following comma separated fields as key-value pairs: "image-bundle-name=<image-bundle-name>,machine-image=<custom-ami>,ssh-user=<ssh-user>,ssh-port=<ssh-port>,default=<true/false>". Image bundle name, machine image and SSH user are required key-value pairs. The default SSH Port is 22. Default marks the image bundle as default for the provider. Each image bundle can be added using separate --image-bundle flag. Example: --image-bundle <image-bundle-name>=<image-bundle>,machine-image=<custom-ami>,<ssh-user>=<ssh-user>,<ssh-port>=22
+      --region stringArray                    [Required] Region associated with the GCP provider. Minimum number of required regions = 1. Provide the following double colon (::) separated fields as key-value pairs: "region-name=<region-name>::shared-subnet=<subnet-id>::instance-template=<instance-templates-for-YugabyteDB-nodes>". Region name and Shared subnet are required key-value pairs. YB Image (AMI) and Instance Template are optional. Each region can be added using separate --region flags. Example: --region region-name=us-west1::shared-subnet=<shared-subnet-id>
+      --image-bundle stringArray              [Optional] Intel x86_64 image bundles associated with GCP provider. Provide the following double colon (::) separated fields as key-value pairs: "image-bundle-name=<image-bundle-name>::machine-image=<custom-ami>::ssh-user=<ssh-user>::ssh-port=<ssh-port>::default=<true/false>". Image bundle name, machine image and SSH user are required key-value pairs. The default SSH Port is 22. Default marks the image bundle as default for the provider. Each image bundle can be added using separate --image-bundle flag. Example: --image-bundle image-bundle-name=<image-bundle>::machine-image=<custom-ami>::ssh-user=<ssh-user>::ssh-port=22
       --custom-ssh-keypair-name string        [Optional] Provide custom key pair name to access YugabyteDB nodes. If left empty, YugabyteDB Anywhere will generate key pairs to access YugabyteDB nodes.
       --custom-ssh-keypair-file-path string   [Optional] Provide custom key pair file path to access YugabyteDB nodes. Required with --custom-ssh-keypair-name.
       --airgap-install                        [Optional] Are YugabyteDB nodes installed in an air-gapped environment, lacking access to the public internet for package downloads. (default false)

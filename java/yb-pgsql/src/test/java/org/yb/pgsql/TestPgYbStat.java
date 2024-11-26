@@ -13,8 +13,11 @@
 
 package org.yb.pgsql;
 
-import static org.yb.AssertionWrappers.*;
-import static org.junit.Assume.*;
+import static org.junit.Assume.assumeFalse;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertTrue;
+import static org.yb.AssertionWrappers.fail;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -23,14 +26,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.BuildTypeUtil;
 import org.yb.util.MiscUtil;
-import org.yb.util.ThrowingRunnable;
 import org.yb.util.ProcessUtil;
+import org.yb.util.ThrowingRunnable;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import com.yugabyte.util.PSQLException;
@@ -145,6 +149,7 @@ public class TestPgYbStat extends BasePgSQLTest {
     return false;
   }
 
+  @Ignore("#24297 - skipping until yb_terminated_queries is enabled")
   @Test
   public void testYbTerminatedQueriesMultipleCauses() throws Exception {
     // (DB-12741) Test is flaky with connection manager irrespective of warmup
@@ -209,6 +214,7 @@ public class TestPgYbStat extends BasePgSQLTest {
     }
   }
 
+  @Ignore("#24297 - skipping until yb_terminated_queries is enabled")
   @Test
   public void testYbTerminatedQueriesOverflow() throws Exception {
     // We need to restart the cluster to wipe the state currently contained in yb_terminated_queries
@@ -251,12 +257,17 @@ public class TestPgYbStat extends BasePgSQLTest {
     }
   }
 
+  @Ignore("#24297 - skipping until yb_terminated_queries is enabled")
   @Test
   public void testYBMultipleConnections() throws Exception {
     // We need to restart the cluster to wipe the state currently contained in yb_terminated_queries
     // that can potentially be leftover from another test in this class. This would let us start
     // with a clean slate.
-    restartCluster();
+    if (isTestRunningWithConnectionManager()) {
+      setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
+    } else {
+      restartCluster();
+    }
 
     final ArrayList<Connection> connections = createConnections(2);
     final Connection connection1 = connections.get(0);
@@ -285,6 +296,7 @@ public class TestPgYbStat extends BasePgSQLTest {
       }));
   }
 
+  @Ignore("#24297 - skipping until yb_terminated_queries is enabled")
   @Test
   public void testYBDBFiltering() throws Exception {
     // We need to restart the cluster to wipe the state currently contained in yb_terminated_queries

@@ -48,28 +48,21 @@
 
 #include "yb/util/atomic.h"
 
-using std::string;
-
-DEFINE_NON_RUNTIME_bool(
-    master_register_ts_check_desired_host_port, true,
+DEFINE_NON_RUNTIME_bool(master_register_ts_check_desired_host_port, true,
     "When set to true, master will only do duplicate address checks on the used host/port instead "
     "of on all. The used host/port combination depends on the value of --use_private_ip.");
 TAG_FLAG(master_register_ts_check_desired_host_port, advanced);
 
-DEFINE_RUNTIME_int32(
-    tserver_unresponsive_timeout_ms, 60 * 1000,
+DEFINE_RUNTIME_int32(tserver_unresponsive_timeout_ms, 60 * 1000,
     "The period of time that a Master can go without receiving a heartbeat from a tablet server "
     "before considering it unresponsive. Unresponsive servers are not selected when assigning "
     "replicas during table creation or re-replication.");
 TAG_FLAG(tserver_unresponsive_timeout_ms, advanced);
 
-DEFINE_test_flag(
-    bool, persist_tserver_registry, false,
+DEFINE_RUNTIME_AUTO_bool(persist_tserver_registry, kLocalPersisted, false, true,
     "Whether to persist the map of registered tservers in the universe to the sys catalog. Also "
     "controls whether to reload the map of registered tservers from the sys catalog when reloading "
     "the sys catalog.");
-
-DECLARE_int32(tserver_unresponsive_timeout_ms);
 
 namespace yb::master {
 namespace {
@@ -96,15 +89,19 @@ std::function<bool(const ServerRegistrationPB&)> GetHostPortCheckerFunction(
 
 class TSDescriptorLoader : public Visitor<PersistentTServerInfo> {
  public:
-  TSDescriptorLoader() noexcept {}
+  explicit TSDescriptorLoader(
+      const CloudInfoPB& local_cloud_info, rpc::ProxyCache* proxy_cache) noexcept
+      : local_cloud_info_(local_cloud_info), proxy_cache_(proxy_cache) {}
 
   std::unordered_map<std::string, TSDescriptorPtr>&& TakeMap();
 
  protected:
-  Status Visit(const std::string& id, const SysTServerEntryPB& metadata) override;
+  Status Visit(const std::string& id, const SysTabletServerEntryPB& metadata) override;
 
  private:
   std::unordered_map<std::string, TSDescriptorPtr> map_;
+  const CloudInfoPB& local_cloud_info_;
+  rpc::ProxyCache* proxy_cache_;
 };
 
 template <typename... Items>
@@ -125,7 +122,7 @@ Result<TSDescriptorPtr> TSManager::LookupTS(const NodeInstancePB& instance) cons
   }
   auto desc = std::move(maybe_desc).value();
   auto desc_lock = desc->LockForRead();
-  if (desc_lock->pb.state() == SysTServerEntryPB::REPLACED) {
+  if (desc_lock->pb.state() == SysTabletServerEntryPB::REPLACED) {
     return STATUS_FORMAT(
         NotFound,
         "Trying to lookup replaced tablet server, instance data: $0, entry: $1",
@@ -141,15 +138,15 @@ Result<TSDescriptorPtr> TSManager::LookupTS(const NodeInstancePB& instance) cons
   return desc;
 }
 
-bool TSManager::LookupTSByUUID(const std::string& uuid,
-                               TSDescriptorPtr* ts_desc) {
+Result<TSDescriptorPtr> TSManager::LookupTSByUUID(const std::string& uuid) {
   SharedLock<decltype(map_lock_)> l(map_lock_);
   auto maybe_desc = LookupTSInternalUnlocked(uuid);
   if (!maybe_desc || (*maybe_desc)->IsReplaced()) {
-    return false;
+    return STATUS_FORMAT(NotFound, "Tablet server $0 $1",
+                         uuid,
+                         maybe_desc ? "is replaced" : "not in ts descriptor map");
   }
-  *ts_desc = std::move(maybe_desc).value();
-  return true;
+  return std::move(maybe_desc).value();
 }
 
 std::optional<TSDescriptorPtr> TSManager::LookupTSInternalUnlocked(
@@ -183,7 +180,7 @@ TSManager::FindHostPortCollisions(
           instance.ShortDebugString(), registration.common().ShortDebugString(),
           l->pb.ShortDebugString());
     }
-    l.mutable_data()->pb.set_state(SysTServerEntryPB::REPLACED);
+    l.mutable_data()->pb.set_state(SysTabletServerEntryPB::REPLACED);
     descs.push_back(ts_desc);
     locks.push_back(std::move(l));
   }
@@ -214,8 +211,7 @@ Result<TSManager::RegistrationMutationData> TSManager::ComputeRegistrationMutati
     } else {
       // This tserver has registered before. We just need to update its registration metadata.
       reg_data.registered_desc_lock = VERIFY_RESULT(it->second->UpdateRegistration(
-          instance, registration, std::move(local_cloud_info), registered_through_heartbeat,
-          proxy_cache));
+          instance, registration, registered_through_heartbeat));
       reg_data.desc = it->second;
     }
   }
@@ -236,7 +232,7 @@ Result<TSDescriptorPtr> TSManager::LookupAndUpdateTSFromHeartbeat(
     const TSHeartbeatRequestPB& heartbeat_request, const LeaderEpoch& epoch) const {
   auto desc = VERIFY_RESULT(LookupTS(heartbeat_request.common().ts_instance()));
   auto lock = desc->LockForWrite();
-  RETURN_NOT_OK(desc->UpdateTSMetadataFromHeartbeat(heartbeat_request, &lock));
+  RETURN_NOT_OK(desc->UpdateTSMetadataFromHeartbeat(heartbeat_request, lock));
   RETURN_NOT_OK(UpsertIfRequired(epoch, sys_catalog_, desc));
   lock.Commit();
   return desc;
@@ -264,7 +260,7 @@ Result<TSDescriptorPtr> TSManager::RegisterInternal(
         registered_through_heartbeat));
     if (request.has_value()) {
       RETURN_NOT_OK(reg_data.desc->UpdateTSMetadataFromHeartbeat(
-          *request, &reg_data.registered_desc_lock));
+          *request, reg_data.registered_desc_lock));
     }
     std::tie(result, callback) =
       VERIFY_RESULT(DoRegistrationMutation(instance, registration, std::move(reg_data), epoch));
@@ -424,8 +420,8 @@ Status TSManager::MarkUnresponsiveTServers(const LeaderEpoch& epoch) {
       continue;
     }
     auto l = desc->LockForWrite();
-    if (l->pb.state() == SysTServerEntryPB::LIVE) {
-      l.mutable_data()->pb.set_state(SysTServerEntryPB::UNRESPONSIVE);
+    if (l->pb.state() == SysTabletServerEntryPB::LIVE) {
+      l.mutable_data()->pb.set_state(SysTabletServerEntryPB::UNRESPONSIVE);
       updated_descs.push_back(desc.get());
       cow_locks.push_back(std::move(l));
     }
@@ -437,19 +433,20 @@ Status TSManager::MarkUnresponsiveTServers(const LeaderEpoch& epoch) {
   return Status::OK();
 }
 
-Status TSManager::RunLoader() {
-  if (!GetAtomicFlag(&FLAGS_TEST_persist_tserver_registry)) {
+Status TSManager::RunLoader(
+    const CloudInfoPB& cloud_info, rpc::ProxyCache* proxy_cache, SysCatalogLoadingState& state) {
+  if (!GetAtomicFlag(&FLAGS_persist_tserver_registry)) {
     return Status::OK();
   }
-  auto loader = std::make_unique<TSDescriptorLoader>();
+  auto loader = std::make_unique<TSDescriptorLoader>(cloud_info, proxy_cache);
   RETURN_NOT_OK(sys_catalog_.Visit(loader.get()));
   MutexLock l_reg(registration_lock_);
   std::lock_guard l_map(map_lock_);
   servers_by_id_ = loader->TakeMap();
-  // todo(zdrudi): cluster can be wedged (permanently?) if we crash after registering enough
-  // tservers but before calling the callback.  so add a check to potentially schedule the callback
-  // here.
-  // https://github.com/yugabyte/yugabyte-db/issues/23744
+  if (servers_by_id_.size() >= ts_count_callback_min_count_ && ts_count_callback_) {
+    state.AddPostLoadTask(
+        std::move(ts_count_callback_), "Callback run at minimum number of tservers");
+  }
   return Status::OK();
 }
 
@@ -472,7 +469,7 @@ Status TSManager::RemoveTabletServer(
     }
     desc = std::move(maybe_desc).value();
     auto desc_lock = desc->LockForWrite();
-    if (desc_lock->pb.state() == SysTServerEntryPB::LIVE) {
+    if (desc_lock->pb.state() == SysTabletServerEntryPB::LIVE) {
       return STATUS_FORMAT(
           InvalidArgument, "Cannot remove tablet server $0 because it is live",
           desc->permanent_uuid());
@@ -497,8 +494,8 @@ Status TSManager::RemoveTabletServer(
   }
   // Update the TS to REMOVED to signal to code that still has a copy of the shared pointer that
   // this TS has been removed from the universe.
-  write_lock.mutable_data()->pb.set_state(SysTServerEntryPB::REMOVED);
-  if (GetAtomicFlag(&FLAGS_TEST_persist_tserver_registry)) {
+  write_lock.mutable_data()->pb.set_state(SysTabletServerEntryPB::REMOVED);
+  if (GetAtomicFlag(&FLAGS_persist_tserver_registry)) {
     auto status = sys_catalog_.Delete(epoch, desc);
     WARN_NOT_OK(status, Format("Failed to remove tablet server $0 from sys catalog", desc->id()));
     RETURN_NOT_OK(status);
@@ -578,23 +575,17 @@ std::unordered_map<std::string, TSDescriptorPtr>&& TSDescriptorLoader::TakeMap()
   return std::move(map_);
 }
 
-Status TSDescriptorLoader::Visit(
-    const std::string& id, const SysTServerEntryPB& metadata) {
-  // todo(zdrudi): not sure what we should do with registered_through_heartbeat.
-  TSDescriptorPtr desc = std::make_shared<TSDescriptor>(id, RegisteredThroughHeartbeat::kTrue);
-  // todo(zdrudi): should give some thought to state here, in particular LIVE.
-  // In the general case, the new leader will spin up seconds after the old leader loses leadership,
-  // so keeping the live state for all loaded ts descriptors is correct.
-  //
-  // However it could happen that a cluster is down for some time before a new master takes
-  // leadership. Concretely consider pausing a universe. In this case the new master leader should
-  // not assume all ts descriptors read from the sys catalog in the LIVE state describe live
-  // tservers.
-  //
-  // A simple solution is to add additional logic to MarkUnresponsiveTServers to update some object
-  // in the sys catalog with a "fresh as of" field so the loader can use that field to decide
-  // whether or not to trust the LIVE state.
-  desc->Load(metadata);
+Status TSDescriptorLoader::Visit(const std::string& id, const SysTabletServerEntryPB& metadata) {
+  // The RegisteredThroughHeartbeat parameter controls how last_heartbeat_ is initialized.
+  // If true, last_heartbeat_ is set to now. If false, last_heartbeat_ is an uninitialized MonoTime.
+  // Use true here because:
+  //   1. if the tserver is live, the only reasonable time to mark it as unresponsive is
+  //      tserver_unresponsive_timeout_ms from now.
+  //   2. if the tserver is unresponsive, this field doesn't matter.
+  DCHECK(metadata.persisted())
+      << "All TS descriptors written to the sys catalog should have their persisted bit set.";
+  auto desc =
+      TSDescriptor::LoadFromEntry(id, metadata, CloudInfoPB(local_cloud_info_), proxy_cache_);
   auto [it, inserted] = map_.insert({id, std::move(desc)});
   if (!inserted) {
     return STATUS(
@@ -606,12 +597,46 @@ Status TSDescriptorLoader::Visit(
   return Status::OK();
 }
 
+template <typename Item>
+void SetPersistedHelper(Item&& item);
+
+
+template <>
+void SetPersistedHelper(const TSDescriptorPtr& desc) {
+  desc->mutable_metadata()->mutable_dirty()->pb.set_persisted(true);
+}
+
+template <>
+void SetPersistedHelper(const std::vector<TSDescriptor*>& descs) {
+  for (const auto& desc : descs) {
+    desc->mutable_metadata()->mutable_dirty()->pb.set_persisted(true);
+  }
+}
+
+
+template <>
+void SetPersistedHelper(const std::vector<TSDescriptorPtr>& descs) {
+  for (const auto& desc : descs) {
+    desc->mutable_metadata()->mutable_dirty()->pb.set_persisted(true);
+  }
+}
+
+
+void SetPersisted() {}
+
+template <typename Item, typename... Items>
+void SetPersisted(const Item& item, Items&&... items) {
+  SetPersistedHelper(item);
+  SetPersisted(std::forward<Items>(items)...);
+}
+
 template <typename... Items>
 Status UpsertIfRequired(const LeaderEpoch& epoch, SysCatalogTable& sys_catalog, Items&&... items) {
-  if (!GetAtomicFlag(&FLAGS_TEST_persist_tserver_registry)) {
+  if (!GetAtomicFlag(&FLAGS_persist_tserver_registry)) {
     return Status::OK();
   }
-  return sys_catalog.Upsert(epoch, std::forward<Items>(items)...);
+  SetPersisted(items...);
+  return sys_catalog.Upsert(epoch, items...);
 }
 
 }  // namespace

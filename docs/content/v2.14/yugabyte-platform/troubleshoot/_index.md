@@ -2,8 +2,7 @@
 title: Troubleshoot
 linkTitle: Troubleshoot
 description: Troubleshoot
-image: /images/section_icons/troubleshoot/troubleshoot.png
-headcontent: Diagnose and troubleshoot issues that arise from YugabyteDB universes and YugabyteDB Anywhere.
+headcontent: Diagnose and troubleshoot issues that arise from YugabyteDB universes and YugabyteDB Anywhere
 menu:
   v2.14_yugabyte-platform:
     parent: yugabytedb-anywhere

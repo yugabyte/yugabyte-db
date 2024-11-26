@@ -76,6 +76,7 @@ set(MASTER_SRCS
   catalog_entity_info.cc
   catalog_entity_tasks.cc
   catalog_loaders.cc
+  catalog_loading_state.cc
   catalog_manager.cc
   catalog_manager_bg_tasks.cc
   catalog_manager_ext.cc
@@ -134,6 +135,7 @@ set(MASTER_SRCS
   ts_manager.cc
   universe_key_registry_service.cc
   util/yql_vtable_helpers.cc
+  xcluster/add_index_to_bidirectional_xcluster_target_task.cc
   xcluster/add_table_to_xcluster_source_task.cc
   xcluster/add_table_to_xcluster_target_task.cc
   xcluster/master_xcluster_util.cc
@@ -172,7 +174,9 @@ set(MASTER_SRCS
   yql_views_vtable.cc
   yql_virtual_table.cc
   yql_vtable_iterator.cc
+  ysql/ysql_catalog_config.cc
   ysql/ysql_initdb_major_upgrade_handler.cc
+  ysql/ysql_manager.cc
   ysql_backends_manager.cc
   ysql_ddl_handler.cc
   ysql_ddl_verification_task.cc

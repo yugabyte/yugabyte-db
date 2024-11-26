@@ -24,9 +24,13 @@ TEST(LRUCacheTest, Simple) {
   cache.insert(2);
   cache.insert(3);
   ASSERT_EQ(AsString(cache), "[3, 2]");
+  ASSERT_TRUE(cache.contains(3));
+  ASSERT_FALSE(cache.contains(1));
   ASSERT_EQ(0, cache.erase(1));
   ASSERT_EQ(1, cache.erase(3));
   ASSERT_EQ(AsString(cache), "[2]");
+  ASSERT_TRUE(cache.contains(2));
+  ASSERT_FALSE(cache.contains(3));
 }
 
 TEST(LRUCacheTest, Erase) {

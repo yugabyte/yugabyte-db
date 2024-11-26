@@ -8,13 +8,14 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/eit/hashicorp/download"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
 // HashicorpVaultEITCmd represents the eit command
 var HashicorpVaultEITCmd = &cobra.Command{
-	Use:     "hashicorp",
-	Aliases: []string{"hashicorp-vault", "hcv"},
+	Use:     "hashicorp-vault",
+	Aliases: []string{"hashicorp", "hcv"},
 	GroupID: "type",
 	Short: "Manage a YugabyteDB Anywhere Hashicorp Vault encryption " +
 		"in transit (EIT) certificate configuration",
@@ -33,10 +34,11 @@ func init() {
 	HashicorpVaultEITCmd.AddCommand(listHashicorpVaultEITCmd)
 	HashicorpVaultEITCmd.AddCommand(describeHashicorpVaultEITCmd)
 	HashicorpVaultEITCmd.AddCommand(deleteHashicorpVaultEITCmd)
+	HashicorpVaultEITCmd.AddCommand(download.DownloadHashicorpVaultEITCmd)
 
 	HashicorpVaultEITCmd.PersistentFlags().StringP("name", "n", "",
 		fmt.Sprintf("[Optional] The name of the configuration for the action. %s",
 			formatter.Colorize(
-				"Required for create, delete, describe, update.",
+				"Required for create, delete, describe, download, update.",
 				formatter.GreenColor)))
 }

@@ -84,10 +84,10 @@ docker_aware_cmd() {
 }
 
 run_sudo_cmd() {
-  if [[ "${USER}" = "root" ]]; then
-    $1
-  else
+  if sudo -n true 2>/dev/null; then
     sudo $1
+  else
+    $1
   fi
 }
 
@@ -312,7 +312,7 @@ delete_db_backup() {
 }
 
 create_backup() {
-  now=$(date +"%y-%m-%d-%H-%M")
+  now=$(date -u +"%y-%m-%d-%H-%M")
   output_path="${1}"
   data_dir="${2}"
   exclude_prometheus="${3}"
@@ -907,7 +907,7 @@ case $command in
           shift 2
           ;;
         -h|--db_host)
-          db_host=$2
+          db_host=$(echo "$2" | sed 's/^\[\(.*\)\]$/\1/')
           shift 2
           ;;
         -P|--db_port)
@@ -919,7 +919,7 @@ case $command in
           shift
           ;;
         -n|--prometheus_host)
-          prometheus_host=$2
+          prometheus_host=$(echo "$2" | sed 's/^\[\(.*\)\]$/\1/')
           shift 2
           ;;
         -t|--prometheus_port)
@@ -1030,7 +1030,7 @@ case $command in
           shift 2
           ;;
         -h|--db_host)
-          db_host=$2
+          db_host=$(echo "$2" | sed 's/^\[\(.*\)\]$/\1/')
           shift 2
           ;;
         -P|--db_port)
@@ -1038,7 +1038,7 @@ case $command in
           shift 2
           ;;
         -n|--prometheus_host)
-          prometheus_host=$2
+          prometheus_host=$(echo "$2" | sed 's/^\[\(.*\)\]$/\1/')
           shift 2
           ;;
         -t|--prometheus_port)

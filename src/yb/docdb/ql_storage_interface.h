@@ -29,6 +29,8 @@
 
 namespace yb::docdb {
 
+using YbctidBounds = std::pair<Slice, Slice>;
+
 // An interface to support various different storage backends for a QL table.
 class YQLStorageIf {
  public:
@@ -95,16 +97,14 @@ class YQLStorageIf {
       std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 
   // Create iterator for querying by ybctid.
-  virtual Status GetIteratorForYbctid(
+  virtual Result<std::unique_ptr<YQLRowwiseIteratorIf>> GetIteratorForYbctid(
       uint64 stmt_id,
       const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
       const ReadOperationData& read_operation_data,
-      const Slice& min_ybctid,
-      const Slice& max_ybctid,
+      const YbctidBounds& bounds,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      std::unique_ptr<YQLRowwiseIteratorIf>* iter,
       SkipSeek skip_seek = SkipSeek::kFalse) const = 0;
 
   virtual std::string ToString() const = 0;

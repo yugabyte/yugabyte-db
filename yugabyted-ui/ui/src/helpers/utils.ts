@@ -382,3 +382,23 @@ const regionCountryCodes: { [k: string]: string } = {
 
 export const getRegionCode = ({ region, zone }: { region?: string, zone?: string }) =>
   Object.entries(regionCountryCodes).find(([key]) => zone?.startsWith(key) || (region && key.startsWith(region)))?.[1]
+
+//Converts a snake_case string into a human readable, properly formatted string.
+export const formatSnakeCase = (inputText: string): string => {
+  if (!inputText.includes("_")) {
+    return inputText.length > 0
+      ? inputText[0].toUpperCase() + inputText.substring(1).toLowerCase()
+      : "";
+  }
+
+  return inputText
+    .toLowerCase()
+    .split("_")
+    .filter((word) => word.length > 0)
+    .map((singleWord) =>
+      singleWord.length > 0
+        ? singleWord[0].toUpperCase() + singleWord.substring(1).toLowerCase()
+        : ""
+    )
+    .join(" ");
+};

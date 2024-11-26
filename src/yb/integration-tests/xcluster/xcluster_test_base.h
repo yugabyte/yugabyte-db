@@ -279,7 +279,7 @@ class XClusterTestBase : public YBTest {
   Status WaitForReplicationDrain(
       int expected_num_nondrained = 0, int timeout_secs = kRpcTimeout,
       std::optional<uint64> target_time = std::nullopt,
-      std::vector<TableId> producer_table_ids = {});
+      std::vector<TableId> producer_table_ids = {}, YBClient* source_client = nullptr);
 
   YBClient* producer_client() {
     return producer_cluster_.client_.get();
@@ -333,8 +333,9 @@ class XClusterTestBase : public YBTest {
   // Wait for the xcluster safe time to advance to the given time on all TServers.
   Status WaitForSafeTime(const NamespaceId& namespace_id, const HybridTime& min_safe_time);
 
-  // Wait for the xcluster safe time to advance to Now on all TServers.
-  virtual Status WaitForSafeTimeToAdvanceToNow();
+  // Wait for the xcluster safe time to advance to Now on all TServers for the given namespaces.
+  // The empty list (the default) means just the namespace namespace_name.
+  virtual Status WaitForSafeTimeToAdvanceToNow(std::vector<NamespaceName> namespace_names = {});
 
   Status VerifyReplicationError(
       const std::string& consumer_table_id, const xrepl::StreamId& stream_id,
@@ -345,7 +346,7 @@ class XClusterTestBase : public YBTest {
   Status PauseResumeXClusterProducerStreams(
       const std::vector<xrepl::StreamId>& stream_ids, bool is_paused);
 
-  Result<TableId> GetColocatedDatabaseParentTableId();
+  Result<TableId> GetColocatedDatabaseParentTableId(Cluster* cluster = nullptr);
 
   Result<master::MasterReplicationProxy> GetProducerMasterProxy();
 

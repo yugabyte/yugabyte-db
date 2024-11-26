@@ -38,6 +38,10 @@ DEFINE_test_flag(bool, xcluster_ddl_queue_handler_fail_at_end, false,
     "Whether the ddl_queue handler should fail at the end of processing (this will cause it "
     "to reprocess the current batch in a loop).");
 
+DEFINE_test_flag(bool, xcluster_ddl_queue_handler_fail_at_start, false,
+    "Whether the ddl_queue handler should fail at the start of processing (this will cause it "
+    "to reprocess the current batch in a loop).");
+
 #define VALIDATE_MEMBER(doc, member_name, expected_type) \
   SCHECK( \
       doc.HasMember(member_name), NotFound, \
@@ -75,11 +79,91 @@ const char* kDDLJsonManualReplication = "manual_replication";
 const char* kDDLPrepStmtManualInsert = "manual_replication_insert";
 const char* kDDLPrepStmtAlreadyProcessed = "already_processed_row";
 
-const std::unordered_set<std::string> kSupportedCommandTags{
+const std::unordered_set<std::string> kSupportedCommandTags {
+    // Relations
     "CREATE TABLE",
     "CREATE INDEX",
     "DROP TABLE",
-    "DROP INDEX"};
+    "DROP INDEX",
+    "ALTER TABLE",
+    "ALTER INDEX",
+    // Pass thru DDLs
+    "CREATE ACCESS METHOD",
+    "CREATE AGGREGATE",
+    "CREATE CAST",
+    "CREATE COLLATION",
+    "CREATE DOMAIN",
+    "CREATE EXTENSION",
+    "CREATE FOREIGN DATA WRAPPER",
+    "CREATE FOREIGN TABLE",
+    "CREATE FUNCTION",
+    "CREATE OPERATOR",
+    "CREATE OPERATOR CLASS",
+    "CREATE OPERATOR FAMILY",
+    "CREATE POLICY",
+    "CREATE PROCEDURE",
+    "CREATE ROUTINE",
+    "CREATE RULE",
+    "CREATE SCHEMA",
+    "CREATE SERVER",
+    "CREATE STATISTICS",
+    "CREATE TEXT SEARCH CONFIGURATION",
+    "CREATE TEXT SEARCH DICTIONARY",
+    "CREATE TEXT SEARCH PARSER",
+    "CREATE TEXT SEARCH TEMPLATE",
+    "CREATE TRIGGER",
+    "CREATE USER MAPPING",
+    "CREATE VIEW",
+    "COMMENT",
+    "ALTER AGGREGATE",
+    "ALTER CAST",
+    "ALTER COLLATION",
+    "ALTER DOMAIN",
+    "ALTER FUNCTION",
+    "ALTER OPERATOR",
+    "ALTER OPERATOR CLASS",
+    "ALTER OPERATOR FAMILY",
+    "ALTER POLICY",
+    "ALTER PROCEDURE",
+    "ALTER ROUTINE",
+    "ALTER RULE",
+    "ALTER SCHEMA",
+    "ALTER STATISTICS",
+    "ALTER TEXT SEARCH CONFIGURATION",
+    "ALTER TEXT SEARCH DICTIONARY",
+    "ALTER TEXT SEARCH PARSER",
+    "ALTER TEXT SEARCH TEMPLATE",
+    "ALTER TRIGGER",
+    "ALTER VIEW",
+    "DROP ACCESS METHOD",
+    "DROP AGGREGATE",
+    "DROP CAST",
+    "DROP COLLATION",
+    "DROP DOMAIN",
+    "DROP EXTENSION",
+    "DROP FOREIGN DATA WRAPPER",
+    "DROP FOREIGN TABLE",
+    "DROP FUNCTION",
+    "DROP OPERATOR",
+    "DROP OPERATOR CLASS",
+    "DROP OPERATOR FAMILY",
+    "DROP POLICY",
+    "DROP PROCEDURE",
+    "DROP ROUTINE",
+    "DROP RULE",
+    "DROP SCHEMA",
+    "DROP SERVER",
+    "DROP STATISTICS",
+    "DROP TEXT SEARCH CONFIGURATION",
+    "DROP TEXT SEARCH DICTIONARY",
+    "DROP TEXT SEARCH PARSER",
+    "DROP TEXT SEARCH TEMPLATE",
+    "DROP TRIGGER",
+    "DROP USER MAPPING",
+    "DROP VIEW",
+    "IMPORT FOREIGN SCHEMA",
+    "SECURITY LABEL",
+};
 
 Result<rapidjson::Document> ParseSerializedJson(const std::string& raw_json_data) {
   SCHECK(!raw_json_data.empty(), InvalidArgument, "Received empty json to parse.");
@@ -130,6 +214,10 @@ Status XClusterDDLQueueHandler::ProcessDDLQueueTable(const XClusterOutputClientR
     LOG_WITH_PREFIX(WARNING) << "Received invalid safe time " << target_safe_ht;
     return Status::OK();
   }
+
+  SCHECK(
+      !FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start, InternalError,
+      "Failing due to xcluster_ddl_queue_handler_fail_at_start");
 
   // TODO(#20928): Make these calls async.
   HybridTime safe_time_ht = VERIFY_RESULT(GetXClusterSafeTimeForNamespace());

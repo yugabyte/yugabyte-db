@@ -57,22 +57,11 @@ namespace yb::pggate {
 
 class PgDmlRead : public PgDml {
  public:
-  PgDmlRead(
-      PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id,
-      bool is_region_local, const PrepareParameters& prepare_params = {},
-      const PgObjectId& index_id = {});
-
-  [[nodiscard]] StmtOp stmt_op() const override { return StmtOp::STMT_SELECT; }
-
-  virtual Status Prepare() = 0;
-
   // Allocate binds.
   virtual void PrepareBinds();
 
   // Set forward (or backward) scan.
   void SetForwardScan(bool is_forward_scan);
-
-  [[nodiscard]] bool KeepOrder() const;
 
   // Set prefix length, in columns, of distinct index scans.
   void SetDistinctPrefixLength(int distinct_prefix_length);
@@ -131,6 +120,8 @@ class PgDmlRead : public PgDml {
   [[nodiscard]] bool IsIndexOrderedScan() const;
 
  protected:
+  explicit PgDmlRead(const PgSession::ScopedRefPtr& pg_session);
+
   // Allocate column protobuf.
   Result<LWPgsqlExpressionPB*> AllocColumnBindPB(PgColumn* col, PgExpr* expr) override;
   LWPgsqlExpressionPB* AllocColumnBindConditionExprPB(PgColumn* col);

@@ -205,7 +205,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
     ASSERT_OK(proxy.SetFlag(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_EQ(server::SetFlagResponsePB::BAD_VALUE, resp.result());
-    ASSERT_STR_CONTAINS(resp.msg(), "Must be at least 1");
+    ASSERT_STR_CONTAINS(resp.msg(), "Must be greater than 0");
     ASSERT_EQ(12345, FLAGS_metrics_retirement_age_ms);
   }
 
@@ -869,7 +869,7 @@ TEST_F(TabletServerTest, TestWriteOutOfBounds) {
   dockv::Partition partition;
   auto table_info = std::make_shared<tablet::TableInfo>(
       "TEST: ", tablet::Primary::kTrue, "TestWriteOutOfBoundsTable", "test_ns", tabletId,
-      YQL_TABLE_TYPE, schema, qlexpr::IndexMap(), boost::none /* index_info */,
+      YQL_TABLE_TYPE, schema, qlexpr::IndexMap(), std::nullopt /* index_info */,
       0 /* schema_version */, partition_schema, "" /* pg_table_id */,
       tablet::SkipTableTombstoneCheck::kFalse);
   ASSERT_OK(mini_server_->server()->tablet_manager()->CreateNewTablet(

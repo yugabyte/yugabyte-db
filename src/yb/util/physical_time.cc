@@ -119,6 +119,11 @@ class AdjTimeClockImpl : public PhysicalClock {
 
 #endif
 
+PhysicalTime kFailedTime = {
+  .time_point = std::numeric_limits<MicrosTime>::max(),
+  .max_error = std::numeric_limits<MicrosTime>::max(),
+};
+
 } // namespace
 
 std::string PhysicalTime::ToString() const {
@@ -138,17 +143,26 @@ const PhysicalClockPtr& AdjTimeClock() {
 #endif
 
 Result<PhysicalTime> MockClock::Now() {
-  RETURN_NOT_OK(mock_status_);
-  return CheckClockSyncError(value_.load(boost::memory_order_acquire));
+  auto value = value_.load(std::memory_order_acquire);
+  if (value.time_point == kFailedTime.time_point) {
+    std::lock_guard lock(status_mutex_);
+    DCHECK(!mock_status_.ok());
+    return mock_status_;
+  }
+  return CheckClockSyncError(value);
 }
 
 void MockClock::Set(const PhysicalTime& value) {
-  value_.store(value, boost::memory_order_release);
-  mock_status_ = Status::OK();
+  value_.store(value, std::memory_order_release);
 }
 
 void MockClock::Set(Status status) {
-  mock_status_ = status;
+  DCHECK(!status.ok());
+  {
+    std::lock_guard lock(status_mutex_);
+    mock_status_ = std::move(status);
+  }
+  value_.store(kFailedTime, std::memory_order_release);
 }
 
 PhysicalClockPtr MockClock::AsClock() {

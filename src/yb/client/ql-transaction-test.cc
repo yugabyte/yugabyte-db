@@ -1882,9 +1882,8 @@ TEST_F_EX(
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   for (const auto& peer : peers) {
     if (peer->tablet_metadata()->table_id() == table_id) {
-      curr_min_start_ht_running_txns = peer->shared_tablet()
-                                           ->transaction_participant()
-                                           ->GetMinStartTimeAmongAllRunningTransactions();
+      curr_min_start_ht_running_txns =
+          peer->shared_tablet()->GetMinStartHTRunningTxnsForCDCLogCallback();
       ASSERT_NE(curr_min_start_ht_running_txns, HybridTime::kInvalid);
       break;
     }

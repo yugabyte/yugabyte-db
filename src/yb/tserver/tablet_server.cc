@@ -239,6 +239,12 @@ DECLARE_bool(enable_pg_cron);
 
 DEFINE_test_flag(bool, enable_pg_client_mock, false, "Enable mocking of PgClient service in tests");
 
+DEFINE_NON_RUNTIME_int32(stateful_svc_default_queue_length, 50,
+    "Default RPC queue length used for stateful services.");
+
+DEFINE_RUNTIME_bool(tserver_heartbeat_add_replication_status, true,
+    "Add replication status to heartbeats tserver sends to master");
+
 namespace yb::tserver {
 
 namespace {
@@ -654,13 +660,15 @@ Status TabletServer::RegisterServices() {
     LOG(INFO) << "yb::tserver::stateful_service::TestEchoService created at "
               << test_echo_service.get();
     RETURN_NOT_OK(test_echo_service->Init(tablet_manager_.get()));
-    RETURN_NOT_OK(RegisterService(FLAGS_TEST_echo_svc_queue_length, std::move(test_echo_service)));
+    RETURN_NOT_OK(
+        RegisterService(FLAGS_stateful_svc_default_queue_length, std::move(test_echo_service)));
   }
 
-  auto connect_to_pg = [this](const std::string& database_name) {
+  auto connect_to_pg = [this](const std::string& database_name,
+                              const std::optional<CoarseTimePoint>& deadline) {
     return pgwrapper::CreateInternalPGConnBuilder(pgsql_proxy_bind_address(), database_name,
                                                   GetSharedMemoryPostgresAuthKey(),
-                                                  std::nullopt).Connect();
+                                                  deadline).Connect();
   };
   auto pg_auto_analyze_service =
       std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity(), client_future(),
@@ -668,15 +676,18 @@ Status TabletServer::RegisterServices() {
   LOG(INFO) << "yb::tserver::stateful_service::PgAutoAnalyzeService created at "
             << pg_auto_analyze_service.get();
   RETURN_NOT_OK(pg_auto_analyze_service->Init(tablet_manager_.get()));
-  RETURN_NOT_OK(RegisterService(
-      FLAGS_TEST_echo_svc_queue_length, std::move(pg_auto_analyze_service)));
+  RETURN_NOT_OK(
+      RegisterService(FLAGS_stateful_svc_default_queue_length, std::move(pg_auto_analyze_service)));
 
   if (FLAGS_enable_pg_cron) {
-    pg_cron_leader_service_ = std::make_unique<stateful_service::PgCronLeaderService>(
-        std::bind(&TabletServer::SetCronLeaderLease, this, _1), client_future());
+    auto pg_cron_leader_service = std::make_unique<stateful_service::PgCronLeaderService>(
+        std::bind(&TabletServer::SetCronLeaderLease, this, _1), metric_entity(), client_future());
     LOG(INFO) << "yb::tserver::stateful_service::PgCronLeaderService created at "
-              << pg_cron_leader_service_.get();
-    RETURN_NOT_OK(pg_cron_leader_service_->Init(tablet_manager_.get()));
+              << pg_cron_leader_service.get();
+    RETURN_NOT_OK(pg_cron_leader_service->Init(tablet_manager_.get()));
+
+    RETURN_NOT_OK(RegisterService(
+        FLAGS_stateful_svc_default_queue_length, std::move(pg_cron_leader_service)));
   }
 
   return Status::OK();
@@ -714,10 +725,6 @@ void TabletServer::Shutdown() {
 
   bool expected = true;
   if (initted_.compare_exchange_strong(expected, false, std::memory_order_acq_rel)) {
-    if (pg_cron_leader_service_) {
-      pg_cron_leader_service_->Shutdown();
-    }
-
     auto xcluster_consumer = GetXClusterConsumer();
     if (xcluster_consumer) {
       xcluster_consumer->Shutdown();
@@ -1343,6 +1350,19 @@ Status TabletServer::CreateXClusterConsumer() {
   xcluster_consumer_ = VERIFY_RESULT(tserver::CreateXClusterConsumer(
       std::move(get_leader_term), permanent_uuid(), *client(), std::move(connect_to_pg),
       std::move(get_namespace_info), GetXClusterContext(), metric_entity()));
+
+  return Status::OK();
+}
+
+Status TabletServer::XClusterPopulateMasterHeartbeatRequest(
+    master::TSHeartbeatRequestPB& req, bool needs_full_tablet_report) {
+  // If a full report is needed, we will populate it via the metric data provider.
+  if (!needs_full_tablet_report && FLAGS_tserver_heartbeat_add_replication_status) {
+    auto xcluster_consumer = GetXClusterConsumer();
+    if (xcluster_consumer) {
+      xcluster_consumer->PopulateMasterHeartbeatRequest(&req, needs_full_tablet_report);
+    }
+  }
 
   return Status::OK();
 }

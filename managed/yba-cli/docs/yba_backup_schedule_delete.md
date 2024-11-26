@@ -10,6 +10,13 @@ Delete an universe backup schedule in YugabyteDB Anywhere
 yba backup schedule delete [flags]
 ```
 
+### Examples
+
+```
+yba backup schedule delete --name <backup-schedule-name> \
+	--universe-name <universe-name>
+```
+
 ### Options
 
 ```

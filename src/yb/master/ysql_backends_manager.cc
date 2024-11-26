@@ -204,7 +204,8 @@ Status YsqlBackendsManager::WaitForYsqlBackendsCatalogVersion(
       job->Touch();
     } else {
       job = std::make_shared<BackendsCatalogVersionJob>(
-          master_, callback_pool_, req->database_oid(), version);
+          master_, callback_pool_, req->database_oid(), version, req->requestor_ts_uuid(),
+          req->requestor_pg_backend_pid());
       jobs_[db_version] = job;
     }
   }
@@ -767,6 +768,9 @@ bool BackendsCatalogVersionTS::SendRequest(int attempt) {
   if (auto job = job_.lock()) {
     req.set_database_oid(job->database_oid());
     req.set_catalog_version(job->target_version());
+    if (job->requestor_ts_uuid() == permanent_uuid()) {
+      req.set_requestor_pg_backend_pid(job->requestor_pg_backend_pid());
+    }
     req.set_prev_num_lagging_backends(prev_num_lagging_backends_);
   } else {
     AbortTask(STATUS(Aborted, "job was destroyed"));

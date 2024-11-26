@@ -26,7 +26,7 @@ You create views based on the following syntax:
 CREATE VIEW view_name AS query_definition;
 ```
 
-*query_definition* can be a basic `SELECT` statement or a `SELECT` statement with joins.
+*query_definition* can be a basic SELECT statement or a SELECT statement with joins.
 
 Suppose you work with a database that includes the following table populated with data:
 
@@ -75,7 +75,7 @@ If you create a view based on multiple tables with joins, using this view in you
 
 ## Modify views
 
-You can modify the query based on which a view was created by combining the `CREATE VIEW` statement with `OR REPLACE`, as demonstrated by the following syntax:
+You can modify the query based on which a view was created by combining the CREATE VIEW statement with OR REPLACE, as demonstrated by the following syntax:
 
 ```output.sql
 CREATE OR REPLACE VIEW view_name AS query_definition;
@@ -107,13 +107,13 @@ The preceding query produces the following output:
 
 ## Delete views
 
-You can remove (drop) an existing view by using the `DROP VIEW` statement, as demonstrated by the following syntax:
+You can remove (drop) an existing view by using the DROP VIEW statement, as demonstrated by the following syntax:
 
 ```output.sql
 DROP VIEW [ IF EXISTS ] view_name;
 ```
 
-It is recommended to add the `IF EXISTS` option to the `DROP VIEW` statement: if you omit this option and attempt to drop the view, an error will occur.
+It is recommended to add the IF EXISTS option to the DROP VIEW statement: if you omit this option and attempt to drop the view, an error will occur.
 
 The following example shows how to remove a view from the database:
 
@@ -125,7 +125,7 @@ You can also remove more than one view by providing a comma-separated list of vi
 
 ## Use updatable views
 
-Some YSQL views are updatable. The defining query of such views (1) must have only one entry (either a table or another updatable view) in its `FROM` clause; and (2) cannot contain `DISTINCT`, `GROUP BY`, `HAVING`, `EXCEPT`, `INTERSECT`, or `LIMIT` clauses at the top level. In addition, the view's selection list cannot contain  window functions, set-returning or aggregate functions.
+Some YSQL views are updatable. The defining query of such views (1) must have only one entry (either a table or another updatable view) in its FROM clause; and (2) cannot contain DISTINCT, GROUP BY, HAVING, EXCEPT, INTERSECT, or LIMIT clauses at the top level. In addition, the view's selection list cannot contain  window functions, set-returning or aggregate functions.
 
 The following example shows how to update the `employees` table with a new row via the `employees_view` defined in [Create Views](#create-views):
 
@@ -134,7 +134,7 @@ INSERT INTO employees_view (employee_no, name)
   VALUES (1227, 'Lee Bo');
 ```
 
-If you select everything from the `employees` table by executing `SELECT * FROM employees;` , you should expect the following output:
+If you select everything from the `employees` table by executing `SELECT * FROM employees;`, you should expect the following output:
 
 ```output
  employee_no | name             | address        | department
@@ -146,9 +146,9 @@ If you select everything from the `employees` table by executing `SELECT * FROM 
  1222        | Bette Davis      | 2 Second Avenue| Sales
 ```
 
-Executing `INSERT`, `UPDATE`, or `DELETE` on an updatable view converts that statement into the corresponding statement of the base table.
+Executing INSERT, UPDATE, or DELETE on an updatable view converts that statement into the corresponding statement of the base table.
 
-If the defining query of a view contains a `WHERE` clause, you are allowed to modify the rows that are not visible via the view.
+If the defining query of a view contains a WHERE clause, you are allowed to modify the rows that are not visible via the view.
 
 An updatable view can contain a combination of updatable and non-updatable columns. An attempt to update the latter results in an error.
 
@@ -163,7 +163,7 @@ DELETE FROM employees_view
 
 ## Materialized views
 
-Materialized views are relations that persist the results of a query. They can be created using the `CREATE MATERIALIZED VIEW` command, and their contents can be updated using the `REFRESH MATERIALIZED VIEW` command.
+Materialized views are relations that persist the results of a query. They can be created using the CREATE MATERIALIZED VIEW command, and their contents can be updated using the REFRESH MATERIALIZED VIEW command.
 
 The following very simplified example creates a materialized view based on only one table and selects two of its columns:
 
@@ -194,7 +194,7 @@ INSERT INTO employees VALUES
   (1225, 'Jane Doe', '4 Fifth Street', 'Accounting');
 ```
 
-After inserting values into the base relation (`employees`), we will have to `REFRESH` the materialized view to update its contents.
+After inserting values into the base relation (`employees`), we will have to REFRESH the materialized view to update its contents.
 
 ```sql
 REFRESH MATERIALIZED VIEW employees_mview;

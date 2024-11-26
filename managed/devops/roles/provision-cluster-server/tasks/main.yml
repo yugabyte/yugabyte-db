@@ -117,6 +117,35 @@
       state: present
     tags: yb-prebuilt-ami
 
+  - name: Provision | Comment out existing journald.conf values
+    become: yes
+    become_method: sudo
+    lineinfile:
+      path: /etc/systemd/journald.conf
+      regexp: '^([^#].*?(Storage|MaxRetentionSec|SystemMaxUse)=.*)'
+      line: '# \1'
+      state: present
+      backrefs: yes
+
+  - name: Provision | Add Yugabyte specific journald.conf values
+    become: yes
+    become_method: sudo
+    blockinfile:
+      path: /etc/systemd/journald.conf
+      marker: "###### ADDED BY YUGABYTE ######"
+      insertbefore: EOF
+      block: |
+        Storage=persistent
+        MaxRetentionSec=30days
+        SystemMaxUse=400M
+
+  - name: Provision | Restart systemd-journald to apply changes
+    become: yes
+    become_method: sudo
+    service:
+      name: systemd-journald
+      state: restarted
+
 - name: Provision | Ensure mount paths exist.
   shell: |
     mkdir -p {{ item }}
@@ -181,6 +210,47 @@
     state: present
     mode: 0440
     validate: 'visudo -cf %s'
+  tags: yb-prebuilt-ami
+
+- block:
+  - name: Set ulimits for user scope in system.conf
+    lineinfile:
+      dest: /etc/systemd/system.conf
+      regexp: '^DefaultLimitNOFILE*'
+      line: 'DefaultLimitNOFILE=1048576'
+      create: yes
+      state: present
+      insertafter: 'EOF'
+
+  - name: Set ulimits for user scope in user.conf
+    lineinfile:
+      dest: /etc/systemd/user.conf
+      regexp: '^DefaultLimitNOFILE*'
+      line: 'DefaultLimitNOFILE=1048576'
+      create: yes
+      state: present
+      insertafter: 'EOF'
+  when:
+    - ansible_os_family == 'RedHat'
+    - ansible_distribution_major_version in ['8', '9']
+  tags: yb-prebuilt-ami
+
+- block:
+  - name: Reboot the system for new ulimits
+    reboot:
+      pre_reboot_delay: 60
+      post_reboot_delay: 120
+      reboot_timeout: 600
+    register: reboot
+
+  - name: Log reboot time
+    debug:
+      msg: "System took {{ reboot.elapsed }} seconds to reboot"
+
+  when:
+    - ansible_os_family == 'RedHat'
+    - ansible_distribution_major_version in ['8', '9']
+    - (reboot_node_allowed is defined and reboot_node_allowed)
   tags: yb-prebuilt-ami
 
 - block:

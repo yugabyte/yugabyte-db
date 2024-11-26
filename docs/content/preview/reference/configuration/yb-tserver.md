@@ -175,6 +175,12 @@ Location of the `.htpasswd` file containing usernames and hashed passwords, for 
 
 Default: `""`
 
+##### --time_source
+
+Specifies the time source used by the database. {{<tags/feature/tp>}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
+
+Default: `""`
+
 ## Logging flags
 
 ##### --log_dir
@@ -1805,6 +1811,24 @@ Default: 1024
 {{<tags/feature/ea>}} When set to true, tables and indexes are hash-partitioned based on the first column in the primary key or index. Setting this flag to false changes the first column in the primary key or index to be stored in ascending order.
 
 Default: true
+
+##### yb_read_from_followers
+
+Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/).
+
+Default: false
+
+##### yb_follower_read_staleness_ms
+
+Sets the maximum allowable staleness. Although the default is recommended, you can set the staleness to a shorter value. The tradeoff is the shorter the staleness, the more likely some reads may be redirected to the leader if the follower isn't sufficiently caught up. You shouldn't set `yb_follower_read_staleness_ms` to less than 2x the `raft_heartbeat_interval_ms` (which by default is 500 ms).
+
+Default: 30000 (30 seconds)
+
+##### default_transaction_read_only
+
+Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/#read-only-transaction).
+
+Default: false
 
 ##### default_transaction_isolation
 

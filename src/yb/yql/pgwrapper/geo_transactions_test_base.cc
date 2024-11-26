@@ -50,7 +50,7 @@ namespace client {
 
 namespace {
 
-const auto kStatusTabletCacheRefreshTimeout = MonoDelta::FromMilliseconds(20000);
+const auto kStatusTabletCacheRefreshTimeout = MonoDelta::FromMilliseconds(20000) * kTimeMultiplier;
 const auto kWaitLoadBalancerTimeout = MonoDelta::FromMilliseconds(30000) * kTimeMultiplier;
 
 }

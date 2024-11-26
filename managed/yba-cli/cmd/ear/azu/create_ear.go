@@ -22,6 +22,10 @@ var createAzureEARCmd = &cobra.Command{
 	Aliases: []string{"add"},
 	Short:   "Create a YugabyteDB Anywhere Azure encryption at rest configuration",
 	Long:    "Create an Azure encryption at rest configuration in YugabyteDB Anywhere",
+	Example: `yba ear azure create --name <config-name> \
+	--client-id <client-id> --tenant-id <tenant-id> \
+	--client-secret <client-secret> --vault-url <vault-url> \
+	--key-name <key-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		earutil.CreateEARValidation(cmd)
 		isIAM, err := cmd.Flags().GetBool("use-managed-identity")
@@ -119,7 +123,7 @@ var createAzureEARCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(strings.TrimSpace(keyAlgorithm)) != 0 {
-			requestBody[util.AzureKeyAlgorithmField] = keyAlgorithm
+			requestBody[util.AzureKeyAlgorithmField] = strings.ToUpper(keyAlgorithm)
 		}
 
 		if cmd.Flags().Changed("key-size") {
@@ -141,18 +145,15 @@ var createAzureEARCmd = &cobra.Command{
 			}
 		}
 
-		rCreate, response, err := authAPI.CreateKMSConfig(util.AzureEARType).
+		rTask, response, err := authAPI.CreateKMSConfig(util.AzureEARType).
 			KMSConfig(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "EAR: Azure", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		configUUID := rCreate.GetResourceUUID()
-		taskUUID := rCreate.GetTaskUUID()
-
 		earutil.WaitForCreateEARTask(authAPI,
-			configName, configUUID, util.AzureEARType, taskUUID)
+			configName, rTask, util.AzureEARType)
 
 	},
 }
@@ -185,8 +186,8 @@ func init() {
 			"If master key with same name already exists then it will be used,"+
 			" else a new one will be created automatically.")
 	createAzureEARCmd.MarkFlagRequired("key-name")
-	createAzureEARCmd.Flags().String("key-algorithm", "RSA",
-		"[Optional] Azure Key Algorithm. Allowed values (case sensitive): RSA")
+	createAzureEARCmd.Flags().String("key-algorithm", "rsa",
+		"[Optional] Azure Key Algorithm. Allowed values: rsa")
 	createAzureEARCmd.Flags().Int("key-size", 0,
 		"[Optional] Azure Key Size. Allowed values per algorithm: RSA(Default:2048, 3072, 4096)")
 }

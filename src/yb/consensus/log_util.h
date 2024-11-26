@@ -62,7 +62,6 @@
 DECLARE_bool(durable_wal_write);
 DECLARE_bool(require_durable_wal_write);
 DECLARE_string(fs_wal_dirs);
-DECLARE_string(fs_data_dirs);
 
 namespace yb {
 namespace log {

@@ -29,9 +29,11 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import io.ebean.annotation.Transactional;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -43,6 +45,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import play.inject.ApplicationLifecycle;
@@ -123,6 +126,22 @@ public class Commissioner {
    * @param taskUUID the task UUID
    */
   public UUID submit(TaskType taskType, ITaskParams taskParams, UUID taskUUID) {
+    return submit(taskType, taskParams, taskUUID, null);
+  }
+
+  /**
+   * Creates a new task runnable to run the required task, and submits it to the TaskExecutor.
+   *
+   * @param taskType the task type.
+   * @param taskParams the task parameters.
+   * @param taskUUID the task UUID
+   * @param preTaskSubmitWork function to run before task submission
+   */
+  public UUID submit(
+      TaskType taskType,
+      ITaskParams taskParams,
+      UUID taskUUID,
+      @Nullable Consumer<RunnableTask> preTaskSubmitWork) {
     RunnableTask taskRunnable = null;
     try {
       if (runtimeConfGetter.getGlobalConf(
@@ -134,7 +153,7 @@ public class Commissioner {
             "Executing TaskType {} with params {}", taskType.toString(), redactedJson.toString());
       }
       // Create the task runnable object based on the various parameters passed in.
-      taskRunnable = taskExecutor.createRunnableTask(taskType, taskParams, taskUUID);
+      taskRunnable = createRunnableTask(taskType, taskParams, taskUUID, preTaskSubmitWork);
       // Add the consumer to handle before task if available.
       taskRunnable.setTaskExecutionListener(getTaskExecutionListener());
       onTaskCreated(taskRunnable, taskParams);
@@ -146,7 +165,7 @@ public class Commissioner {
         TaskInfo taskInfo = taskRunnable.getTaskInfo();
         if (taskInfo.getTaskState() != TaskInfo.State.Failure) {
           taskInfo.setTaskState(TaskInfo.State.Failure);
-          taskInfo.save();
+          taskInfo.update();
         }
       }
       String msg = "Error processing " + taskType + " task for " + taskParams.toString();
@@ -156,6 +175,20 @@ public class Commissioner {
       }
       throw new RuntimeException(msg, t);
     }
+  }
+
+  @Transactional
+  private RunnableTask createRunnableTask(
+      TaskType taskType,
+      ITaskParams taskParams,
+      UUID taskUUID,
+      @Nullable Consumer<RunnableTask> preTaskSubmitWork) {
+    // Create the task runnable object based on the various parameters passed in.
+    RunnableTask taskRunnable = taskExecutor.createRunnableTask(taskType, taskParams, taskUUID);
+    if (preTaskSubmitWork != null) {
+      preTaskSubmitWork.accept(taskRunnable);
+    }
+    return taskRunnable;
   }
 
   private void onTaskCreated(RunnableTask taskRunnable, ITaskParams taskParams) {
@@ -237,12 +270,13 @@ public class Commissioner {
 
   public Optional<ObjectNode> buildTaskStatus(
       CustomerTask task,
-      TaskInfo taskInfo,
+      List<TaskInfo> subTaskInfos,
       Map<UUID, Set<String>> updatingTasks,
       Map<UUID, CustomerTask> lastTaskByTarget) {
-    if (task == null || taskInfo == null) {
+    if (task == null) {
       return Optional.empty();
     }
+    TaskInfo taskInfo = task.getTaskInfo();
     ObjectNode responseJson = Json.newObject();
     // Add some generic information about the task
     responseJson.put("title", task.getFriendlyDescription());
@@ -266,11 +300,9 @@ public class Commissioner {
     // Get subtask groups and add other details to it if applicable.
     UserTaskDetails userTaskDetails;
     Optional<RunnableTask> optional = taskExecutor.maybeGetRunnableTask(taskInfo.getUuid());
-    if (optional.isPresent()) {
-      userTaskDetails = taskInfo.getUserTaskDetails(optional.get().getTaskCache());
-    } else {
-      userTaskDetails = taskInfo.getUserTaskDetails();
-    }
+    userTaskDetails =
+        taskInfo.getUserTaskDetails(
+            subTaskInfos, optional.isPresent() ? optional.get().getTaskCache() : null);
     ObjectNode details = Json.newObject();
     if (userTaskDetails != null && userTaskDetails.taskDetails != null) {
       details.set("taskDetails", Json.toJson(userTaskDetails.taskDetails));
@@ -362,17 +394,10 @@ public class Commissioner {
     CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOne();
     if (task == null) {
       // We are not able to find the task. Report an error.
-      log.error("Error fetching task progress for {}. Customer task is not found", taskUUID);
+      log.error("Customer task with task UUID {} is not found", taskUUID);
       return Optional.empty();
     }
-    // Check if the task is in the DB.
-    Optional<TaskInfo> optional = TaskInfo.maybeGet(taskUUID);
-    if (!optional.isPresent()) {
-      // We are not able to find the task. Report an error.
-      log.error("Error fetching task progress for {}. TaskInfo is not found", taskUUID);
-      return Optional.empty();
-    }
-    TaskInfo taskInfo = optional.get();
+    TaskInfo taskInfo = task.getTaskInfo();
     Map<UUID, Set<String>> updatingTaskByTargetMap = new HashMap<>();
     Map<UUID, CustomerTask> lastTaskByTargetMap = new HashMap<>();
     Universe.getUniverseDetailsField(
@@ -395,7 +420,8 @@ public class Commissioner {
                     .add(id));
     lastTaskByTargetMap.put(
         task.getTargetUUID(), CustomerTask.getLastTaskByTargetUuid(task.getTargetUUID()));
-    return buildTaskStatus(task, taskInfo, updatingTaskByTargetMap, lastTaskByTargetMap);
+    return buildTaskStatus(
+        task, taskInfo.getSubTasks(), updatingTaskByTargetMap, lastTaskByTargetMap);
   }
 
   // Returns a map of target to updating task UUID.

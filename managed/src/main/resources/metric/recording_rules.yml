@@ -213,8 +213,8 @@ groups:
         expr: 'rate(yb_process_io_kb_total{type="write"}[120s])'
         labels:
           saved_name: process_io_write_rate
-      
+
       - record: ysql_conn_mgr_clients_total
-        expr: 'sum without (saved_name) (avg_over_time({saved_name=~"ysql_conn_mgr_active_clients|ysql_conn_mgr_queued_clients|ysql_conn_mgr_idle_or_pending_clients"}[30s]))'
+        expr: 'sum without (saved_name) (avg_over_time({saved_name=~"ysql_conn_mgr_active_clients|ysql_conn_mgr_queued_clients|ysql_conn_mgr_waiting_clients"}[30s]))'
         labels:
           saved_name: ysql_conn_mgr_clients_total

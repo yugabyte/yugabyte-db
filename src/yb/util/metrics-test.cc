@@ -310,9 +310,11 @@ TEST_F(MetricsTest, AggregationTest) {
     }
     MetricEntity::AttributeMap expected_attrs;
     expected_attrs["metric_type"] = "tablet";
-    // Check server aggregation. Using metric_entity_type as entity_id.
-    DoAggregationCheck(writer, "tablet", METRIC_test_sum_gauge.name(), 34, expected_attrs);
-    DoAggregationCheck(writer, "tablet", METRIC_test_max_gauge.name(), 10, expected_attrs);
+    // Check server aggregation.
+    DoAggregationCheck(
+        writer, kSeverLevelAggregationId, METRIC_test_sum_gauge.name(), 34, expected_attrs);
+    DoAggregationCheck(
+        writer, kSeverLevelAggregationId, METRIC_test_max_gauge.name(), 10, expected_attrs);
   }
 }
 

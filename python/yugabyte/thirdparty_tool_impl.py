@@ -39,8 +39,6 @@ from yugabyte.thirdparty_releases import (
 from yugabyte.os_versions import is_compatible_os
 from yugabyte.string_util import matches_maybe_empty
 
-from yugabyte.thirdparty_releases import PREFERRED_OS_TYPE
-
 from yugabyte.thirdparty_archives_metadata import MetadataUpdater
 
 from yugabyte import inline_thirdparty
@@ -88,7 +86,7 @@ def parse_args() -> argparse.Namespace:
              'The default value is determined automatically based on the current platform.')
     parser.add_argument(
         '--is-linuxbrew',
-        help='Whether the archive should be based on Linuxbrew.',
+        help='This option is deprecated and has no affect.',
         type=arg_str_to_bool,
         default=None)
     parser.add_argument(
@@ -110,7 +108,7 @@ def parse_args() -> argparse.Namespace:
              'associated with any of the releases. For use with --update.')
     parser.add_argument(
         '--allow-older-os',
-        help='Allow using third-party archives built for an older compatible OS, such as CentOS 7.'
+        help='Allow using third-party archives built for an older compatible OS.'
              'This is typically OK, as long as no runtime libraries for e.g. ASAN or UBSAN '
              'need to be used, which have to be built for the exact same version of OS.',
         action='store_true')
@@ -138,18 +136,13 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def filter_for_os(archive_candidates: List[MetadataItem], os_type: str) -> List[MetadataItem]:
-    filtered_exactly = [
-        candidate for candidate in archive_candidates if candidate.os_type == os_type
-    ]
-    if filtered_exactly:
-        return filtered_exactly
+def filter_for_os(
+        archive_candidates: List[MetadataItem],
+        os_type: str,
+        allow_older: bool) -> List[MetadataItem]:
     return [
         candidate for candidate in archive_candidates
-        # is_compatible_os does not take into account that some code built on CentOS 7 might run
-        # on AlmaLinux 8, etc. It only takes into account the equivalence of various flavors of RHEL
-        # compatible OSes.
-        if is_compatible_os(candidate.os_type, os_type)
+        if is_compatible_os(candidate.os_type, os_type, allow_older)
     ]
 
 
@@ -157,19 +150,12 @@ def get_compilers(
         metadata_items: List[MetadataItem],
         os_type: Optional[str],
         architecture: Optional[str],
-        is_linuxbrew: Optional[bool],
         lto: Optional[str],
         allow_older_os: bool) -> list:
     if not os_type:
         os_type = local_sys_conf().short_os_name_and_version()
     if not architecture:
         architecture = local_sys_conf().architecture
-    preferred_os_type: Optional[str] = None
-    if (allow_older_os and
-            not is_linuxbrew and
-            os_type != PREFERRED_OS_TYPE and
-            not os_type.startswith('mac')):
-        preferred_os_type = PREFERRED_OS_TYPE
 
     candidates: List[MetadataItem] = [
         metadata_item
@@ -178,15 +164,7 @@ def get_compilers(
         matches_maybe_empty(metadata_item.lto_type, lto)
     ]
 
-    os_candidates = filter_for_os(candidates, os_type)
-    if preferred_os_type:
-        candidates_for_preferred_os_type = filter_for_os(candidates, preferred_os_type)
-        os_candidates.extend(candidates_for_preferred_os_type)
-    if is_linuxbrew is not None:
-        os_candidates = [
-            candidate for candidate in os_candidates
-            if candidate.is_linuxbrew == is_linuxbrew
-        ]
+    os_candidates = filter_for_os(candidates, os_type, allow_older_os)
 
     compilers = sorted(set([metadata_item.compiler_type for metadata_item in os_candidates]))
 
@@ -218,17 +196,10 @@ def get_third_party_release(
         compiler_type: str,
         os_type: Optional[str],
         architecture: Optional[str],
-        is_linuxbrew: Optional[bool],
         lto: Optional[str],
         allow_older_os: bool) -> MetadataItem:
     if not os_type:
         os_type = local_sys_conf().short_os_name_and_version()
-    preferred_os_type: Optional[str] = None
-    if (allow_older_os and
-            not is_linuxbrew and
-            os_type != PREFERRED_OS_TYPE and
-            not os_type.startswith('mac')):
-        preferred_os_type = PREFERRED_OS_TYPE
 
     if not architecture:
         architecture = local_sys_conf().architecture
@@ -242,38 +213,13 @@ def get_third_party_release(
         matches_maybe_empty(archive.lto_type, lto)
     ]
 
-    if is_linuxbrew is not None:
-        candidates = [
-            candidate for candidate in candidates
-            if candidate.is_linuxbrew == is_linuxbrew
-        ]
+    candidates = filter_for_os(candidates, os_type, allow_older_os)
 
-    if is_linuxbrew is None or not is_linuxbrew or len(candidates) > 1:
-        # If a Linuxbrew archive is requested, we don't have to filter by OS, because archives
-        # should be OS-independent. But still do that if we have more than one candidate.
-        #
-        # Also, if we determine that we would rather use a "preferred OS type" (an old version of
-        # Linux that allows us to produce "universal packages"), we try to use it first.
-
-        filtered_for_os = False
-        if preferred_os_type:
-            candidates_for_preferred_os_type = filter_for_os(candidates, preferred_os_type)
-            if candidates_for_preferred_os_type:
-                candidates = candidates_for_preferred_os_type
-                filtered_for_os = True
-
-        if not filtered_for_os:
-            candidates = filter_for_os(candidates, os_type)
-
-    if len(candidates) == 1:
-        return candidates[0]
+    # If multiple matches (because we allow older), choose latest compatible OS.
+    candidates.sort(key=lambda c: c.os_type, reverse=True)
 
     if candidates:
-        i = 1
-        for candidate in candidates:
-            logging.warning("Third-party release archive candidate #%d: %s", i, candidate)
-            i += 1
-        wrong_count_str = 'more than one'
+        return candidates[0]
     else:
         if (is_macos() and
                 os_type == 'macos' and
@@ -284,16 +230,14 @@ def get_third_party_release(
                 compiler_type='clang',
                 os_type=os_type,
                 architecture=architecture,
-                is_linuxbrew=False,
                 lto=lto,
                 allow_older_os=False)
         logging.info(f"Available release archives:\n{to_yaml_str(available_archives)}")
-        wrong_count_str = 'no'
 
     raise ValueError(
-        f"Found {wrong_count_str} third-party release archives to download for OS type "
-        f"{os_type}, compiler type matching {compiler_type}, architecture {architecture}, "
-        f"is_linuxbrew={is_linuxbrew}. See more details above.")
+        f"Found no third-party release archives to download for OS type "
+        f"{os_type}, compiler type matching {compiler_type}, architecture {architecture}. "
+        f"See more details above.")
 
 
 def update_thirdparty_dependencies(args: argparse.Namespace) -> None:

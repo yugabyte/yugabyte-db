@@ -31,6 +31,7 @@ class Statistics;
 class TableAwareReadFileFilter;
 class TableReader;
 class UserFrontiers;
+class WritableFile;
 class WriteBatch;
 
 struct BlockBasedTableOptions;

@@ -10,6 +10,15 @@ Create a GCP encryption at rest configuration in YugabyteDB Anywhere
 yba ear gcp create [flags]
 ```
 
+### Examples
+
+```
+yba ear gcp create --name <config-name> \
+	--credentials-file-path <credentials-file-path> \
+	--key-ring-name <key-ring-name> --crypto-key-name <crypto-key-name> \
+	--protection-level <protection-level>
+```
+
 ### Options
 
 ```
@@ -17,7 +26,7 @@ yba ear gcp create [flags]
       --location string                [Optional] The geographical region where the Cloud KMS resource is stored and accessed. (default "global")
       --key-ring-name string           [Required] Name of the key ring. If key ring with same name already exists then it will be used, else a new one will be created automatically.
       --crypto-key-name string         [Required] Name of the cryptographic key that will be used for encrypting and decrypting universe key. If crypto key with same name already exists then it will be used, else a new one will be created automatically.
-      --protection-level string        [Optional] The protection level to use for this key. Allowed values (case sensitive): SOFTWARE and HSM. (default "HSM")
+      --protection-level string        [Optional] The protection level to use for this key. Allowed values: software, hsm. (default "hsm")
       --endpoint string                [Optional] GCP KMS Endpoint.
   -h, --help                           help for create
 ```

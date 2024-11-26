@@ -317,4 +317,19 @@ class ReverseLock {
   Lock& lock_;
 };
 
+template <class Semaphore>
+class SemaphoreLock {
+ public:
+  explicit SemaphoreLock(Semaphore& semaphore) : semaphore_(semaphore) {
+    semaphore.acquire();
+  }
+
+  ~SemaphoreLock() {
+    semaphore_.release();
+  }
+
+ private:
+  Semaphore& semaphore_;
+};
+
 } // namespace yb

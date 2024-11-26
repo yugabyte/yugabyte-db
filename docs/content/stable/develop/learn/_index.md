@@ -2,7 +2,6 @@
 title: Learn application development
 linkTitle: Learn app development
 description: Learn to develop YugabyteDB applications
-image: /images/section_icons/develop/learn.png
 menu:
   stable:
     identifier: learn
@@ -21,7 +20,7 @@ To understand how to use transactions when developing applications, see [Transac
 
 ## Text search
 
-YugabyteDB supports advanced text search schemes like similarity search, phonetic search, and full-text search, along with the standard pattern matching using the `LIKE` operator.
+YugabyteDB supports advanced text search schemes like similarity search, phonetic search, and full-text search, along with the standard pattern matching using the LIKE operator.
 
 {{<lead link="./transactions/acid-transactions-ysql">}}
 To understand build advanced search functionalities into your applications, see [Text search](./text-search/).
@@ -37,7 +36,7 @@ To understand how to best use aggregates in your applications, see [Aggregations
 
 ## Batch operations
 
-Sometimes it's better to batch multiple statements into one request to avoid round trips to the server. In [YSQL](/{{<version>}}/api/ysql), this can be done using [Stored Procedures](/{{<version>}}/explore/ysql-language-features/stored-procedures/), which are not supported in the [YCQL](/{{<version>}}/api/ycql) API.
+Sometimes it's better to batch multiple statements into one request to avoid round trips to the server. In [YSQL](/{{<version>}}/api/ysql), this can be done using [Stored Procedures](/{{<version>}}/explore/ysql-language-features/advanced-features/stored-procedures/), which are not supported in the [YCQL](/{{<version>}}/api/ycql) API.
 
 {{<lead link="./batch-operations-ycql">}}
 To understand how to best do batch operations in YCQL, see [Batch operations](./batch-operations-ycql).

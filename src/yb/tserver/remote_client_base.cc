@@ -72,17 +72,25 @@ RemoteClientBase::~RemoteClientBase() {
                           << " in RemoteClientBase destructor.";
     WARN_NOT_OK(EndRemoteSession(), LogPrefix() + "Unable to close remote session " + session_id());
   }
-  if (started_) {
-    auto old_count = remote_clients_started_.fetch_sub(1, std::memory_order_acq_rel);
-    if (old_count < 1) {
-      LOG_WITH_PREFIX(DFATAL) << "Invalid number of remote sessions: " << old_count;
-    }
-  }
 }
 
 Status RemoteClientBase::EndRemoteSession() {
   if (!started_) {
     return Status::OK();
+  }
+  // Once 'started_'is true, this function would only be called once:
+  // 1. Either through RemoteSnapshotTransferClient::Finish/RemoteBootstrapClient::Finish
+  // 2. RemoteClientBase::~RemoteClientBase when the session didn't 'succeeded_'
+  //
+  // Despite the above, we ensure that remote_clients_started_ is decremented exactly once by
+  // checking fetch_phase_active_. And since the remote client is handled from a single thread,
+  // there is no need to use an atomic type.
+  if (fetch_phase_active_) {
+    auto old_count = remote_clients_started_.fetch_sub(1, std::memory_order_acq_rel);
+    if (old_count < 1) {
+      LOG_WITH_PREFIX(DFATAL) << "Invalid number of remote sessions: " << old_count;
+    }
+    fetch_phase_active_ = false;
   }
 
   rpc::RpcController controller;
@@ -145,6 +153,7 @@ int32_t RemoteClientBase::StartedClientsCount() {
 
 void RemoteClientBase::Started() {
   started_ = true;
+  fetch_phase_active_ = true;
   auto old_count = remote_clients_started_.fetch_add(1, std::memory_order_acq_rel);
   if (old_count < 0) {
     LOG_WITH_PREFIX(DFATAL) << "Invalid number of remote clients: " << old_count;

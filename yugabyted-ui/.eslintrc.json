@@ -26,7 +26,7 @@
         "version": "detect"
       }
     },
-    "ignorePatterns": ["build/*", "src/types/*", "src/api/*", "snowpack.config.js"],
+    "ignorePatterns": ["src/assets/*","build/*", "src/types/*", "src/api/*", "snowpack.config.js"],
     "rules": {
       "indent": ["error", 2, { "SwitchCase": 1 }],
       "linebreak-style": ["error", "unix"],
@@ -85,4 +85,3 @@
     },
     "reportUnusedDisableDirectives": true
   }
-  

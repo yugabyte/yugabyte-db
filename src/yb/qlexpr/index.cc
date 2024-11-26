@@ -112,7 +112,6 @@ IndexInfo::IndexInfo(const IndexInfoPB& pb)
   }
 
   if (pb.has_vector_idx_options()) {
-    has_vector_idx_options_ = true;
     vector_idx_options_ = pb.vector_idx_options();
   }
 }
@@ -150,7 +149,7 @@ void IndexInfo::ToPB(IndexInfoPB* pb) const {
   }
 
   if (is_vector_idx()) {
-    *pb->mutable_vector_idx_options() = get_vector_idx_options();
+    *pb->mutable_vector_idx_options() = vector_idx_options();
   }
 }
 
@@ -284,11 +283,7 @@ size_t IndexInfo::DynamicMemoryUsage() const {
 }
 
 bool IndexInfo::is_vector_idx() const {
-  return has_vector_idx_options_;
-}
-
-const PgVectorIdxOptionsPB &IndexInfo::get_vector_idx_options() const {
-  return vector_idx_options_;
+  return vector_idx_options_.has_value();
 }
 
 IndexMap::IndexMap(const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes) {

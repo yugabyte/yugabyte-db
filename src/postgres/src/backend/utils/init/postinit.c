@@ -1119,38 +1119,6 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		return;
 	}
 
-	/*
-	 * We are done with the authentication. Now we can send the db oid to the
-	 * connection, process the startup options and return.
-	 *
-	 * This block of code must be after the values of global variables such as
-	 * MyDatabaseId are set, since YbCreateClientIdWithDatabaseOid relies on it.
-	 */
-	if (yb_is_auth_backend)
-	{
-		/*
-		 * Initialize the client id and also send the db oid back to the
-		 * connection manager.
-		 */
-		YbCreateClientIdWithDatabaseOid(MyDatabaseId);
-
-		/*
-		 * Process any options passed in the startup packet. This is important
-		 * to do here since this is what sets the GUC values sent to the client.
-		 */
-		if (MyProcPort != NULL)
-			process_startup_options(MyProcPort, am_superuser);
-
-		/* close the transaction we started above */
-		CommitTransactionCommand();
-
-		/*
-		 * The auth-backend is only responsible for authentication, so we skip
-		 * the remaining steps below.
-		 */
-		return;
-	}
-
 	if (MyDatabaseId != Template1DbOid && YBIsDBCatalogVersionMode())
 	{
 		/*
@@ -1310,6 +1278,41 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	 */
 	if (!bootstrap)
 		CheckMyDatabase(dbname, am_superuser, override_allow_connections);
+
+	/*
+	 * We are done with the authentication. Now we can send the db oid to the
+	 * connection, process the startup options and return.
+	 *
+	 * This block of code must be after the values of global variables such as
+	 * MyDatabaseId are set, since YbCreateClientIdWithDatabaseOid relies on it.
+	 */
+	if (yb_is_auth_backend)
+	{
+		/*
+		 * Initialize the client id and also send the db oid back to the
+		 * connection manager.
+		 */
+		YbCreateClientIdWithDatabaseOid(MyDatabaseId);
+
+		/*
+		 * Process any options passed in the startup packet. This is important
+		 * to do here since this is what sets the GUC values sent to the client.
+		 */
+		if (MyProcPort != NULL)
+			process_startup_options(MyProcPort, am_superuser);
+
+		/* Process pg_db_role_setting options */
+		process_settings(MyDatabaseId, GetSessionUserId());
+
+		/* close the transaction we started above */
+		CommitTransactionCommand();
+
+		/*
+		 * The auth-backend is only responsible for authentication, so we skip
+		 * the remaining steps below.
+		 */
+		return;
+	}
 
 	/*
 	 * Now process any command-line switches and any additional GUC variable

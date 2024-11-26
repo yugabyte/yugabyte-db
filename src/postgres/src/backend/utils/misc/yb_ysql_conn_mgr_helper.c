@@ -141,7 +141,7 @@ struct shmem_session_parameter
 	char value[SHMEM_MAX_STRING_LEN];
 };
 
-/* 
+/*
  * List (linked list) of changed session parameters for the current transaction.
  */
 struct changed_session_parameters_list
@@ -183,7 +183,7 @@ YbAddToChangedSessionParametersList(const char *session_parameter_name)
 	if (session_parameter_name == NULL || yb_logical_client_shmem_key == -1)
 		return;
 
-	/* 
+	/*
 	 * Length of `session_parameter_name` should be less than
 	 * SHMEM_MAX_STRING_LEN.
 	 */
@@ -623,7 +623,7 @@ YbHandleSetSessionParam(int yb_client_id)
 	/* This feature is only for Ysql Connection Manager */
 	Assert(yb_is_client_ysqlconnmgr);
 
-	/* 
+	/*
 	 * Create shared memory segment for the client is handled during the
 	 * authentication.
 	 */
@@ -703,7 +703,7 @@ SetLogicalClientUserDetailsIfValid(const char *rolename, bool *is_superuser,
 	* conn mgr to yb/database.
 	* CountUserBackends: Function returns total number of backend connections made by given
 	* user(roleid). It will be sum of physical connections from connection manager and direct
-	* connections to yb/database. 
+	* connections to yb/database.
 	*/
 
 	uint32_t yb_num_logical_conn = 0,
@@ -720,7 +720,7 @@ SetLogicalClientUserDetailsIfValid(const char *rolename, bool *is_superuser,
 		if (YbIsYsqlConnMgrWarmupModeEnabled())
 			yb_net_client_connections = yb_num_logical_conn;
 	}
-	
+
 	if (rform->rolconnlimit >= 0 &&
 			!rform->rolsuper &&
 			yb_net_client_connections + 1 > rform->rolconnlimit)
@@ -760,6 +760,14 @@ YbSendDatabaseOidAndSetupSharedMemory(Oid database_oid, Oid user, bool is_superu
 {
 	/* Send back the database oid */
 	send_oid_info('d', database_oid);
+	if (database_oid == InvalidOid)
+	{
+		YbSendFatalForLogicalConnectionPacket();
+		ereport(WARNING,
+				(errmsg("database \"%s\" does not exist",
+						MyProcPort->database_name)));
+		return;
+	}
 
 	/*
 	 * Create a shared memory block for a client connection if YB_GUC_SUPPORT_VIA_SHMEM
@@ -775,7 +783,7 @@ YbSendDatabaseOidAndSetupSharedMemory(Oid database_oid, Oid user, bool is_superu
 		1;
 	#endif
 	if (new_client_id > 0)
-		ereport(WARNING, (errhint("shmkey=%d", new_client_id)));
+		ereport(NOTICE, (errhint("shmkey=%d", new_client_id)));
 	else
 		ereport(FATAL, (errmsg("Unable to create the shared memory block")));
 }
@@ -790,7 +798,8 @@ YbCreateClientId(void)
 	/* This feature is only for Ysql Connection Manager */
 	Assert(yb_is_client_ysqlconnmgr);
 
-	if (SetLogicalClientUserDetailsIfValid(MyProcPort->user_name, &is_superuser, &user) < 0)
+	if (SetLogicalClientUserDetailsIfValid(MyProcPort->user_name, &is_superuser,
+										   &user) < 0)
 		return;
 
 	database = get_database_oid(MyProcPort->database_name, true);
@@ -882,8 +891,12 @@ yb_is_client_ysqlconnmgr_assign_hook(bool newval, void *extras)
 	 * Parallel workers are created and maintained by postmaster. So physical
 	 * connections can never be of parallel worker type, therefore it makes no
 	 * sense to perform any ysql connection manager specific operations on it.
-	*/
-	if (yb_is_client_ysqlconnmgr && !yb_is_parallel_worker)
+	 *
+	 * For the auth-backend, we already send the database_oid information to the
+	 * client when initializing the shared memory. So we can skip it here.
+	 */
+	if (yb_is_client_ysqlconnmgr && !yb_is_parallel_worker &&
+		!yb_is_auth_backend)
 		send_oid_info('d', get_database_oid(MyProcPort->database_name, false));
 }
 
@@ -964,7 +977,7 @@ YbGetNumYsqlConnMgrConnections(const char *db_name, const char *user_name,
 	return true;
 }
 
-/* 
+/*
  * Create a provision to send a ParameterStatus packet back to Connection Manager to
  * change the cached value of a certain GUC variable, outside of the usual
  * ReportGucOption function. This can be useful for some implicit changes to

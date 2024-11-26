@@ -157,6 +157,10 @@ DEFINE_test_flag(bool, dump_docdb_after_tablet_bootstrap, false,
 DEFINE_test_flag(bool, play_pending_uncommitted_entries, false,
                  "Play all the pending entries present in the log even if they are uncommitted.");
 
+DEFINE_NON_RUNTIME_bool(skip_wal_replay_from_beginning_with_cdc, true,
+                        "If false, read all the WAL segments starting from the "
+                        "beginning instead of starting post the flushed entries.");
+
 DECLARE_bool(enable_flush_retryable_requests);
 
 namespace yb {
@@ -1533,9 +1537,11 @@ class TabletBootstrap {
     log::SegmentSequence segments;
     RETURN_NOT_OK(log_->GetSegmentsSnapshot(&segments));
 
-    // If any cdc stream is active for this tablet, we do not want to skip flushed entries.
+    // If any cdc stream is active for this tablet, we will read WAL from beginning when
+    // FLAGS_skip_wal_replay_from_beginning_with_cdc is set to false.
     bool should_skip_flushed_entries = FLAGS_skip_flushed_entries;
-    if (should_skip_flushed_entries && tablet_->transaction_participant()) {
+    if (!GetAtomicFlag(&FLAGS_skip_wal_replay_from_beginning_with_cdc) &&
+        should_skip_flushed_entries && tablet_->transaction_participant()) {
       if (tablet_->transaction_participant()->GetRetainOpId() != OpId::Invalid()) {
         should_skip_flushed_entries = false;
         LOG_WITH_PREFIX(WARNING) << "Ignoring skip_flushed_entries even though it is set, because "

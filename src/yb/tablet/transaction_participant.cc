@@ -122,8 +122,6 @@ DEFINE_test_flag(bool, no_schedule_remove_intents, false,
 
 DECLARE_int64(transaction_abort_check_timeout_ms);
 
-DECLARE_int64(cdc_intent_retention_ms);
-
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(clear_deadlocked_txns_info_older_than_heartbeats);
 
@@ -547,7 +545,9 @@ class TransactionParticipant::Impl
   }
 
   // Cleans the intents those are consumed by consumers.
-  void SetIntentRetainOpIdAndTime(const OpId& op_id, const MonoDelta& cdc_sdk_op_id_expiration) {
+  void SetIntentRetainOpIdAndTime(
+      const OpId& op_id, const MonoDelta& cdc_sdk_op_id_expiration,
+      HybridTime min_start_ht_cdc_unstreamed_txns) {
     MinRunningNotifier min_running_notifier(&applier_);
     std::lock_guard lock(mutex_);
     VLOG(1) << "Setting RetainOpId: " << op_id
@@ -555,6 +555,16 @@ class TransactionParticipant::Impl
 
     cdc_sdk_min_checkpoint_op_id_expiration_ = CoarseMonoClock::now() + cdc_sdk_op_id_expiration;
     cdc_sdk_min_checkpoint_op_id_ = op_id;
+
+    if (min_start_ht_cdc_unstreamed_txns.is_valid() &&
+        (!min_start_ht_cdc_unstreamed_txns_.is_valid() ||
+         min_start_ht_cdc_unstreamed_txns_ < min_start_ht_cdc_unstreamed_txns)) {
+      VLOG_WITH_PREFIX(1) << "Setting min_start_ht_among_cdcsdk_interested_txns: "
+                          << min_start_ht_cdc_unstreamed_txns
+                          << ", previous min_start_ht_among_cdcsdk_interested_txns: "
+                          << min_start_ht_cdc_unstreamed_txns_;
+      min_start_ht_cdc_unstreamed_txns_ = min_start_ht_cdc_unstreamed_txns;
+    }
 
     // If new op_id same as  cdc_sdk_min_checkpoint_op_id_ it means already intent before it are
     // already cleaned up, so no need call clean transactions, else call clean the transactions.
@@ -581,19 +591,13 @@ class TransactionParticipant::Impl
     return min_checkpoint;
   }
 
-  HybridTime GetMinStartTimeAmongAllRunningTransactions() {
+  HybridTime GetMinStartHTCDCUnstreamedTxns() EXCLUDES(mutex_) {
     std::lock_guard<std::mutex> lock(mutex_);
-    for (const auto& transaction : transactions_.get<StartTimeTag>()) {
-      auto const& transaction_status = transaction->last_known_status();
-      if (transaction->local_commit_time() == HybridTime::kInvalid &&
-          transaction_status != TransactionStatus::ABORTED) {
-        return transaction->start_ht();
-      }
-    }
+    return GetMinStartHTCDCUnstreamedTxnsUnlocked();
+  }
 
-    VLOG_WITH_PREFIX(2) << "Running txns: " << transactions_.size()
-                        << ", returning HybridTime::kInvalid for min start time among running txns";
-    return HybridTime::kInvalid;
+  HybridTime GetMinStartHTCDCUnstreamedTxnsUnlocked() REQUIRES(mutex_) {
+    return min_start_ht_cdc_unstreamed_txns_;
   }
 
   OpId GetHistoricalMaxOpId() {
@@ -640,23 +644,16 @@ class TransactionParticipant::Impl
 
       if (it != transactions_.end() && !(**it).ProcessingApply()) {
         OpId op_id = (**it).GetApplyOpId();
-
-        if (op_id <= checkpoint_op_id) {
-          if (PREDICT_TRUE(!GetAtomicFlag(&FLAGS_TEST_no_schedule_remove_intents))) {
-            (**it).ScheduleRemoveIntents(*it, front.reason);
-          }
-        } else {
-          if (!GetAtomicFlag(&FLAGS_cdc_write_post_apply_metadata) ||
-              !GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
-            break;
-          }
-          post_apply_metadatas.push_back({
-            .transaction_id = id,
-            .apply_op_id = op_id,
-            .commit_ht = (**it).GetCommitHybridTime(),
-            .log_ht = (**it).GetApplyHybridTime(),
-          });
+        auto result = HandleTransactionCleanup(it, front.reason, checkpoint_op_id);
+        if(!result.should_remove_transaction) {
+          break;
         }
+
+        if (result.post_apply_metadata_entry.has_value()) {
+          DCHECK_EQ(result.should_remove_transaction, true);
+          post_apply_metadatas.push_back(std::move(result.post_apply_metadata_entry.value()));
+        }
+
         VLOG_WITH_PREFIX(2) << "Cleaning txn apply opid is: " << op_id.ToString()
                             << " checkpoint opid is: " << checkpoint_op_id.ToString()
                             << " txn id: " << id;
@@ -677,6 +674,15 @@ class TransactionParticipant::Impl
   void NotifyAbortedTransactionDecrement (const TransactionId& id) override {
     VLOG_WITH_PREFIX(4) << "Aborted Transaction: " << id << " is removed";
     metric_aborted_transactions_pending_cleanup_->Decrement();
+  }
+
+  void SignalAborted(const TransactionId& id) EXCLUDES(mutex_) override {
+    // We don't acquire this->mutex_ in here, but exclude it as the downstream code acquires
+    // wait-queue mutex which might be contentious. Additionally, this would also help avoid
+    // potential lock inversion issues.
+    if (wait_queue_) {
+      wait_queue_->SignalAborted(id);
+    }
   }
 
   void Abort(const TransactionId& id, TransactionStatusCallback callback) {
@@ -911,7 +917,7 @@ class TransactionParticipant::Impl
         // TODO(wait-queues): Consider signaling before replicating the transaction update.
         wait_queue_->SignalCommitted(data.transaction_id, data.commit_ht);
       }
-      auto apply_state = CHECK_RESULT(applier_.ApplyIntents(data));
+      auto apply_state = applier_.ApplyIntents(data);
 
       VLOG_WITH_PREFIX(4) << "TXN: " << data.transaction_id << ": apply state: "
                           << apply_state.ToString();
@@ -1722,6 +1728,47 @@ class TransactionParticipant::Impl
     return RemoveUnlocked(it, reason, min_running_notifier);
   }
 
+  struct TransactionMetaCleanupResult {
+    bool should_remove_transaction;
+    std::optional<PostApplyTransactionMetadata> post_apply_metadata_entry;
+  };
+
+  TransactionMetaCleanupResult HandleTransactionCleanup(
+      const Transactions::iterator& it, RemoveReason reason, const OpId& checkpoint_op_id)
+      REQUIRES(mutex_) {
+    bool should_remove_transaction = true;
+    std::optional<PostApplyTransactionMetadata> post_apply_metadata_entry;
+    bool is_txn_loaded_with_cdc = (**it).IsTxnLoadedWithCDC();
+    // Skip checking for intent removal or addition of post apply metadata entry for loaded txns
+    // if CDC is enabled on the tablet. Intents of such txns will be deleted by the intent SST
+    // file cleanup codepath after CDC streams them.
+    if (is_txn_loaded_with_cdc) {
+      return {should_remove_transaction, post_apply_metadata_entry};
+    }
+
+    const TransactionId& txn_id = (**it).id();
+    const OpId& op_id = (**it).GetApplyOpId();
+    if (op_id <= checkpoint_op_id) {
+      if (PREDICT_TRUE(!GetAtomicFlag(&FLAGS_TEST_no_schedule_remove_intents))) {
+        (**it).ScheduleRemoveIntents(*it, reason);
+      }
+    } else {
+      if (!GetAtomicFlag(&FLAGS_cdc_write_post_apply_metadata) ||
+          !GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
+        should_remove_transaction = false;
+        return {should_remove_transaction, post_apply_metadata_entry};
+      }
+      post_apply_metadata_entry = PostApplyTransactionMetadata{
+          .transaction_id = txn_id,
+          .apply_op_id = op_id,
+          .commit_ht = (**it).GetCommitHybridTime(),
+          .log_ht = (**it).GetApplyHybridTime(),
+      };
+    }
+
+    return {should_remove_transaction, post_apply_metadata_entry};
+  }
+
   bool RemoveUnlocked(
       const Transactions::iterator& it, RemoveReason reason,
       MinRunningNotifier* min_running_notifier,
@@ -1731,28 +1778,14 @@ class TransactionParticipant::Impl
     OpId op_id = (**it).GetApplyOpId();
 
     if (running_requests_.empty()) {
-      bool remove_transaction = true;
+      auto result = HandleTransactionCleanup(it, reason, checkpoint_op_id);
 
-      if (op_id < checkpoint_op_id) {
-        if (PREDICT_TRUE(!GetAtomicFlag(&FLAGS_TEST_no_schedule_remove_intents))) {
-          (**it).ScheduleRemoveIntents(*it, reason);
-        }
-      } else {
-        if (!GetAtomicFlag(&FLAGS_cdc_write_post_apply_metadata) ||
-            !GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
-          remove_transaction = false;
-        } else {
-          std::vector<PostApplyTransactionMetadata> rewrite = {{
-            .transaction_id = txn_id,
-            .apply_op_id = op_id,
-            .commit_ht = (**it).GetCommitHybridTime(),
-            .log_ht = (**it).GetApplyHybridTime(),
-          }};
-          QueueWritePostApplyMetadata(std::move(rewrite));
-        }
+      if (result.post_apply_metadata_entry.has_value()) {
+        DCHECK_EQ(result.should_remove_transaction, true);
+        QueueWritePostApplyMetadata({std::move(result.post_apply_metadata_entry.value())});
       }
 
-      if (remove_transaction) {
+      if (result.should_remove_transaction) {
         RemoveTransaction(it, reason, min_running_notifier, expected_deadlock_status);
         VLOG_WITH_PREFIX(2) << "Cleaned transaction: " << txn_id << ", reason: " << reason
                             << " , apply record op_id: " << op_id
@@ -1870,6 +1903,12 @@ class TransactionParticipant::Impl
       TransactionalBatchData&& last_batch_data,
       OneWayBitmap&& replicated_batches,
       const ApplyStateWithCommitHt* pending_apply) override {
+    auto start_time = metadata.start_time;
+    auto replay_start_time = MinReplayTxnStartTime();
+    if (start_time && replay_start_time && start_time < replay_start_time) {
+      return;
+    }
+
     MinRunningNotifier min_running_notifier(&applier_);
     std::lock_guard lock(mutex_);
     auto txn = std::make_shared<RunningTransaction>(
@@ -1880,6 +1919,15 @@ class TransactionParticipant::Impl
                           << pending_apply->ToString();
       txn->SetLocalCommitData(pending_apply->commit_ht, pending_apply->state.aborted);
       txn->SetApplyData(pending_apply->state);
+    }
+    // All transactions loaded during tablet bootstrap do not have an apply OpID. However, these
+    // transactions may still be needed by CDC (if enabled). To prevent unintended cleanup of
+    // intents for such transactions when CDC is active, we set an indentification marker which will
+    // be checked when we remove the txn from 'transactions_' and trigger cleanup of intents. Once
+    // CDC stream these txns, their intents will be cleaned up by the intent SST file cleanup
+    // codepath.
+    if (GetLatestCheckPointUnlocked() != OpId::Max()) {
+      txn->SetTxnLoadedWithCDC();
     }
     transactions_.insert(txn);
     mem_tracker_->Consume(kRunningTransactionSize);
@@ -1972,7 +2020,7 @@ class TransactionParticipant::Impl
   void SubmitUpdateTransaction(
       std::unique_ptr<tablet::UpdateTxnOperation> operation, int64_t term) {
     WARN_NOT_OK(
-        participant_context_.SubmitUpdateTransaction(std::move(operation), term),
+        participant_context_.SubmitUpdateTransaction(operation, term),
         Format("Could not submit transaction status update operation: $0", operation->ToString()));
   }
 
@@ -2013,9 +2061,10 @@ class TransactionParticipant::Impl
       operation->CompleteWithStatus(id.status());
       return;
     }
-    if (operation->request()->status() == TransactionStatus::IMMEDIATE_CLEANUP && wait_queue_) {
-      // We should only receive IMMEDIATE_CLEANUP from the client in case of certain txn abort.
-      wait_queue_->SignalAborted(*id);
+    if (operation->request()->status() == TransactionStatus::IMMEDIATE_CLEANUP) {
+      // We should only receive IMMEDIATE_CLEANUP from the client when the txn heartbeat
+      // realizes that the txn has been aborted.
+      SignalAborted(*id);
     }
 
     TransactionApplyData data = {
@@ -2309,6 +2358,10 @@ class TransactionParticipant::Impl
   }
 
   void UpdateMinReplayTxnStartTimeIfNeeded() REQUIRES(mutex_) {
+    if (!transactions_loaded_) {
+      return;
+    }
+
     if (min_replay_txn_start_ht_callback_) {
       auto ht = GetMinReplayTxnStartTime(recently_applied_);
       if (min_replay_txn_start_ht_.exchange(ht, std::memory_order_acq_rel) != ht) {
@@ -2441,6 +2494,10 @@ class TransactionParticipant::Impl
   OpId cdc_sdk_min_checkpoint_op_id_ = OpId::Invalid();
   std::atomic<OpId> historical_max_op_id = OpId::Invalid();
   CoarseTimePoint cdc_sdk_min_checkpoint_op_id_expiration_ = CoarseTimePoint::min();
+
+  // Time up to which intents SST files retained for CDC can be safely deleted, provided the maximum
+  // record time in the SST file is earlier than this value.
+  HybridTime min_start_ht_cdc_unstreamed_txns_ GUARDED_BY(mutex_) = HybridTime::kInvalid;
 
   std::condition_variable requests_completed_cond_;
 
@@ -2658,8 +2715,10 @@ HybridTime TransactionParticipantContext::Now() {
 }
 
 void TransactionParticipant::SetIntentRetainOpIdAndTime(
-    const yb::OpId& op_id, const MonoDelta& cdc_sdk_op_id_expiration) {
-  impl_->SetIntentRetainOpIdAndTime(op_id, cdc_sdk_op_id_expiration);
+    const yb::OpId& op_id, const MonoDelta& cdc_sdk_op_id_expiration,
+    HybridTime min_start_ht_cdc_unstreamed_txns) {
+  impl_->SetIntentRetainOpIdAndTime(
+      op_id, cdc_sdk_op_id_expiration, min_start_ht_cdc_unstreamed_txns);
 }
 
 OpId TransactionParticipant::GetRetainOpId() const {
@@ -2674,8 +2733,8 @@ OpId TransactionParticipant::GetLatestCheckPoint() const {
   return impl_->GetLatestCheckPoint();
 }
 
-HybridTime TransactionParticipant::GetMinStartTimeAmongAllRunningTransactions() const {
-  return impl_->GetMinStartTimeAmongAllRunningTransactions();
+HybridTime TransactionParticipant::GetMinStartHTCDCUnstreamedTxns() const {
+  return impl_->GetMinStartHTCDCUnstreamedTxns();
 }
 
 OpId TransactionParticipant::GetHistoricalMaxOpId() const {

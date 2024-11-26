@@ -59,7 +59,7 @@ class LoadBalancerMockedBase : public YBTest {
 
     // Generate 12 tablets total: 4 splits and 3 replicas each.
     std::vector<std::string> splits = {"a", "b", "c"};
-    const int num_replicas = 3;
+    const int num_replicas = NumReplicas();
     total_num_tablets_ = narrow_cast<int>(num_replicas * (splits.size() + 1));
 
     ASSERT_OK(CreateTable(splits, num_replicas, false, table.get(), &tablets));
@@ -70,6 +70,8 @@ class LoadBalancerMockedBase : public YBTest {
   }
 
  protected:
+  virtual int NumReplicas() const { return 3; }
+
   struct PendingTasks {
     int adds, removes, stepdowns;
   };
@@ -140,12 +142,28 @@ class LoadBalancerMockedBase : public YBTest {
         pending_remove_replica_tasks, pending_stepdown_leader_tasks);
   }
 
+  Result<bool> HandleOneAddIfMissingPlacement(TabletId& out_tablet_id, TabletServerId& out_to_ts)
+      NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {
+    // Only do one add at most. If we do an add then we'll call AddReplica which will update state.
+    int remaining_adds = 1;
+    uint32_t master_errors = 0;
+    bool task_added = false;
+    cb_.ProcessUnderReplicatedTablets(
+        remaining_adds, master_errors, task_added, out_tablet_id, out_to_ts);
+
+    SCHECK_EQ(master_errors, 0, IllegalState, "ProcessUnderReplicatedTablets hit an error");
+    SCHECK_NE(remaining_adds, task_added, IllegalState, "task_added and remaining_adds mismatch");
+    return task_added;
+  }
+
+  // cb_.HandleAddReplicas modifies state to account for the corresponding add.
   Result<bool> HandleAddReplicas(
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts)
       NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {
     return cb_.HandleAddReplicas(out_tablet_id, out_from_ts, out_to_ts);
   }
 
+  // cb_.HandleRemoveReplicas modifies state to account for the corresponding add.
   Result<bool> HandleRemoveReplicas(TabletId* out_tablet_id, TabletServerId* out_from_ts)
       NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {
     return cb_.HandleRemoveReplicas(out_tablet_id, out_from_ts);
@@ -158,17 +176,21 @@ class LoadBalancerMockedBase : public YBTest {
   }
 
   void PrepareTestStateSingleAz() {
-    std::shared_ptr<TSDescriptor> ts0 = SetupTS("0000", "a");
-    std::shared_ptr<TSDescriptor> ts1 = SetupTS("1111", "a");
-    std::shared_ptr<TSDescriptor> ts2 = SetupTS("2222", "a");
-    PrepareTestState({ts0, ts1, ts2});
+    std::vector<std::shared_ptr<TSDescriptor>> ts_descs;
+    for (int i = 0; i < NumReplicas(); ++i) {
+      // create TS with uuid 0000, 1111, etc and AZ a.
+      ts_descs.push_back(SetupTS(std::string(4, '0' + i), "a"));
+    }
+    PrepareTestState(ts_descs);
   }
 
   void PrepareTestStateMultiAz() {
-    std::shared_ptr<TSDescriptor> ts0 = SetupTS("0000", "a");
-    std::shared_ptr<TSDescriptor> ts1 = SetupTS("1111", "b");
-    std::shared_ptr<TSDescriptor> ts2 = SetupTS("2222", "c");
-    PrepareTestState({ts0, ts1, ts2});
+    std::vector<std::shared_ptr<TSDescriptor>> ts_descs;
+    for (int i = 0; i < NumReplicas(); ++i) {
+      // create TS with uuid 0000, 1111, etc and AZ a, b, etc.
+      ts_descs.push_back(SetupTS(std::string(4, '0' + i), std::string(1, 'a' + i)));
+    }
+    PrepareTestState(ts_descs);
   }
 
   // Methods to prepare the state of the current test.
@@ -200,7 +222,7 @@ class LoadBalancerMockedBase : public YBTest {
         auto ts_desc = ts_descs_[j];
         bool is_leader = i % ts_descs_.size() == j;
         PeerRole role = is_leader ? PeerRole::LEADER : PeerRole::FOLLOWER;
-        NewReplica(ts_desc.get(), state, role, &replica);
+        NewReplica(ts_desc, state, role, &replica);
         InsertOrDie(replica_map.get(), ts_desc->permanent_uuid(), replica);
       }
       // Set the replica locations directly into the tablet map.
@@ -221,7 +243,7 @@ class LoadBalancerMockedBase : public YBTest {
     }
   }
 
-  void TestAddLoad(const std::string& expected_tablet_id,
+  Status TestAddLoad(const std::string& expected_tablet_id,
                     const std::string& expected_from_ts,
                     const std::string& expected_to_ts,
                     std::string* actual_tablet_id = nullptr,
@@ -229,7 +251,11 @@ class LoadBalancerMockedBase : public YBTest {
                     std::string* actual_to_ts = nullptr) NO_THREAD_SAFETY_ANALYSIS {
     std::string tablet_id, from_ts, to_ts;
     auto over_replication_at_start = cb_.get_total_over_replication();
-    ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+    // First try to handle missing placement, otherwise handle regular adds.
+    if (!VERIFY_RESULT(HandleOneAddIfMissingPlacement(tablet_id, to_ts))) {
+      SCHECK_EQ(VERIFY_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)), true, IllegalState,
+                "Failed to add replica");
+    }
     if (actual_tablet_id) {
       *actual_tablet_id = tablet_id;
     }
@@ -241,19 +267,21 @@ class LoadBalancerMockedBase : public YBTest {
     }
 
     if (!expected_tablet_id.empty()) {
-      ASSERT_EQ(expected_tablet_id, tablet_id);
+      SCHECK_EQ(expected_tablet_id, tablet_id, IllegalState, "Tablet id mismatch");
     }
     if (!expected_from_ts.empty()) {
-      ASSERT_EQ(expected_from_ts, from_ts);
+      SCHECK_EQ(expected_from_ts, from_ts, IllegalState, "From ts mismatch");
     }
     if (!expected_to_ts.empty()) {
-      ASSERT_EQ(expected_to_ts, to_ts);
+      SCHECK_EQ(expected_to_ts, to_ts, IllegalState, "To ts mismatch");
     }
 
     if (!from_ts.empty() && GetAtomicFlag(&FLAGS_load_balancer_count_move_as_add)) {
-      ASSERT_EQ(1, cb_.get_total_over_replication() - over_replication_at_start);
-      ASSERT_OK(cb_.RemoveReplica(tablet_id, from_ts));
+      SCHECK_EQ(1, cb_.get_total_over_replication() - over_replication_at_start, IllegalState,
+                "Overreplication count mismatch");
+      RETURN_NOT_OK(cb_.RemoveReplica(tablet_id, from_ts));
     }
+    return Status::OK();
   }
 
   void TestMoveLeader(std::string* tablet_id,
@@ -268,13 +296,13 @@ class LoadBalancerMockedBase : public YBTest {
       ASSERT_EQ(expected_to_ts, to_ts);
     }
   }
-  void AddRunningReplica(TabletInfo* tablet, std::shared_ptr<TSDescriptor> ts_desc,
+  void AddRunningReplica(TabletInfo* tablet, const std::shared_ptr<TSDescriptor>& ts_desc,
                          bool is_live = true) {
     std::shared_ptr<TabletReplicaMap> replicas =
       std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
 
     TabletReplica replica;
-    NewReplica(ts_desc.get(), tablet::RaftGroupStatePB::RUNNING, PeerRole::FOLLOWER, &replica);
+    NewReplica(ts_desc, tablet::RaftGroupStatePB::RUNNING, PeerRole::FOLLOWER, &replica);
     InsertOrDie(replicas.get(), ts_desc->permanent_uuid(), replica);
     tablet->SetReplicaLocations(replicas);
   }
@@ -289,11 +317,11 @@ class LoadBalancerMockedBase : public YBTest {
   void MoveTabletLeader(TabletInfo* tablet, std::shared_ptr<TSDescriptor> ts_desc) {
     std::shared_ptr<TabletReplicaMap> replicas =
       std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
-    for (auto& replica : *replicas) {
-      if (replica.second.ts_desc->permanent_uuid() == ts_desc->permanent_uuid()) {
-        replica.second.role = PeerRole::LEADER;
+    for (auto& [ts_uuid, replica] : *replicas) {
+      if (ts_uuid == ts_desc->permanent_uuid()) {
+        replica.role = PeerRole::LEADER;
       } else {
-        replica.second.role = PeerRole::FOLLOWER;
+        replica.role = PeerRole::FOLLOWER;
       }
     }
     tablet->SetReplicaLocations(replicas);
@@ -302,6 +330,10 @@ class LoadBalancerMockedBase : public YBTest {
   // Clear the tablets_added_ field from the state, used for testing.
   void ClearTabletsAddedForTest() {
     cb_.state_->tablets_added_.clear();
+  }
+
+  Options* GetOptions() {
+    return cb_.state_->options_;
   }
 
   const TableId kTableId;
