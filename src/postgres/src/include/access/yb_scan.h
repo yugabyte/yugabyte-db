@@ -273,8 +273,11 @@ YbBindDatumToColumn(YBCPgStatement stmt,
 
 /* Add targets to the given statement. */
 extern void YbDmlAppendTargetSystem(AttrNumber attnum, YBCPgStatement handle);
-extern void YbDmlAppendTargetRegular(TupleDesc tupdesc, AttrNumber attnum,
-									 YBCPgStatement handle);
+extern void YbDmlAppendTargetRegular(
+	TupleDesc tupdesc, AttrNumber attnum, YBCPgStatement handle);
+extern void YbDmlAppendTargetRegularAttr(
+	const FormData_pg_attribute *attr, YBCPgStatement handle);
+
 extern void YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc,
 										Relation index, bool xs_want_itup,
 										YBCPgStatement handle);

@@ -2190,11 +2190,11 @@ bool YBCIsSysTablePrefetchingStarted() {
 }
 
 void YBCRegisterSysTableForPrefetching(
-  YBCPgOid database_oid, YBCPgOid table_oid, YBCPgOid index_oid, int row_oid_filtering_attr) {
+    YBCPgOid database_oid, YBCPgOid table_oid, YBCPgOid index_oid, int row_oid_filtering_attr,
+    bool fetch_ybctid) {
   pgapi->RegisterSysTableForPrefetching(
-      PgObjectId(database_oid, table_oid),
-      index_oid == kPgInvalidOid ? PgObjectId() : PgObjectId(database_oid, index_oid),
-      row_oid_filtering_attr);
+      PgObjectId(database_oid, table_oid), PgObjectId(database_oid, index_oid),
+      row_oid_filtering_attr, fetch_ybctid);
 }
 
 YBCStatus YBCPrefetchRegisteredSysTables() {

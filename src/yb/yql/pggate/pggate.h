@@ -746,7 +746,8 @@ class PgApiImpl {
   void StopSysTablePrefetching();
   bool IsSysTablePrefetchingStarted() const;
   void RegisterSysTableForPrefetching(
-      const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr);
+      const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr,
+      bool fetch_ybctid);
   Status PrefetchRegisteredSysTables();
 
   //------------------------------------------------------------------------------------------------

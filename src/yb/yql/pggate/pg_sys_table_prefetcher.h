@@ -69,7 +69,8 @@ class PgSysTablePrefetcher {
 
   // Register new sys table to be read on a first GetData method call.
   void Register(
-      const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr);
+      const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr,
+      bool fetch_ybctid);
 
   // Load registered tables
   Status Prefetch(PgSession* session);

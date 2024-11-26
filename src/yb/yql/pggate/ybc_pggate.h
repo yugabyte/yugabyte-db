@@ -848,10 +848,9 @@ void YBCStopSysTablePrefetching();
 
 bool YBCIsSysTablePrefetchingStarted();
 
-void YBCRegisterSysTableForPrefetching(YBCPgOid database_oid,
-                                       YBCPgOid table_oid,
-                                       YBCPgOid index_oid,
-                                       int row_oid_filtering_attr);
+void YBCRegisterSysTableForPrefetching(
+    YBCPgOid database_oid, YBCPgOid table_oid, YBCPgOid index_oid, int row_oid_filtering_attr,
+    bool fetch_ybctid);
 
 YBCStatus YBCPrefetchRegisteredSysTables();
 
