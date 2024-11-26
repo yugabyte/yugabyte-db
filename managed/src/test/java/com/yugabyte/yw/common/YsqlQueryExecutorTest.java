@@ -5,7 +5,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -17,6 +16,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.DatabaseUserDropFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -37,17 +37,20 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
 
   protected Config mockRuntimeConfig;
   protected NodeUniverseManager mockNodeUniverseManager;
+  protected GFlagsValidation mockGFlagsValidation;
   protected HealthChecker healthChecker;
 
   @Override
   protected Application provideApplication() {
     mockRuntimeConfig = mock(Config.class);
     mockNodeUniverseManager = mock(NodeUniverseManager.class);
+    mockGFlagsValidation = mock(GFlagsValidation.class);
     healthChecker = mock(HealthChecker.class);
     return new GuiceApplicationBuilder()
         .disable(GuiceModule.class)
         .configure(testDatabase())
         .overrides(bind(NodeUniverseManager.class).toInstance(mockNodeUniverseManager))
+        .overrides(bind(GFlagsValidation.class).toInstance(mockGFlagsValidation))
         .overrides(bind(HealthChecker.class).toInstance(healthChecker))
         .overrides(
             bind(RuntimeConfigFactory.class)
@@ -75,7 +78,9 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
     when(mockRuntimeConfig.getLong("yb.ysql_timeout_secs")).thenReturn(180L);
 
     ysqlQueryExecutor =
-        spy(new YsqlQueryExecutor(mockRuntimeConfigFactory, mockNodeUniverseManager));
+        spy(
+            new YsqlQueryExecutor(
+                mockRuntimeConfigFactory, mockNodeUniverseManager, mockGFlagsValidation));
 
     universe = mock(Universe.class);
     when(universe.getVersions()).thenReturn(ImmutableList.of("2.15.0.0-b1"));
@@ -118,7 +123,7 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
   public void createUser(boolean failure, int errorCode) {
     when(universe.getMasterLeaderNode()).thenReturn(errorCode == 500 ? null : node);
     when(mockNodeUniverseManager.runYsqlCommand(
-            any(), any(), any(), any(), anyLong(), anyBoolean(), anyBoolean(), anyInt()))
+            any(), any(), any(), any(), anyLong(), anyBoolean(), anyBoolean()))
         .thenReturn(errorCode == 400 ? failureResponse : new ShellResponse());
     if (failure) {
       PlatformServiceException exception =
@@ -135,7 +140,7 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
   public void createRestrictedUser(boolean failure, int errorCode) {
     when(universe.getMasterLeaderNode()).thenReturn(errorCode == 500 ? null : node);
     when(mockNodeUniverseManager.runYsqlCommand(
-            any(), any(), any(), any(), anyLong(), anyBoolean(), anyBoolean(), anyInt()))
+            any(), any(), any(), any(), anyLong(), anyBoolean(), anyBoolean()))
         .thenReturn(errorCode == 400 ? failureResponse : new ShellResponse());
     if (failure) {
       PlatformServiceException exception =
@@ -157,7 +162,7 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
 
     when(universe.getMasterLeaderNode()).thenReturn(errorCode == 500 ? null : node);
     when(mockNodeUniverseManager.runYsqlCommand(
-            any(), any(), any(), any(), anyLong(), anyBoolean(), anyBoolean(), anyInt()))
+            any(), any(), any(), any(), anyLong(), anyBoolean(), anyBoolean()))
         .thenReturn(errorCode == 400 ? failureResponse : new ShellResponse());
     if (failure) {
       PlatformServiceException exception =

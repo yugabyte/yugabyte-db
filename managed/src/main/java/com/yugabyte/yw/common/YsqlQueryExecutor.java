@@ -16,6 +16,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.DatabaseUserDropFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
@@ -25,6 +26,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -35,6 +37,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -79,12 +82,16 @@ public class YsqlQueryExecutor {
 
   RuntimeConfigFactory runtimeConfigFactory;
   NodeUniverseManager nodeUniverseManager;
+  GFlagsValidation gFlagsValidation;
 
   @Inject
   public YsqlQueryExecutor(
-      RuntimeConfigFactory runtimeConfigFactory, NodeUniverseManager nodeUniverseManager) {
+      RuntimeConfigFactory runtimeConfigFactory,
+      NodeUniverseManager nodeUniverseManager,
+      GFlagsValidation gFlagsValidation) {
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.nodeUniverseManager = nodeUniverseManager;
+    this.gFlagsValidation = gFlagsValidation;
   }
 
   private String wrapJsonAgg(String query) {
@@ -210,8 +217,7 @@ public class YsqlQueryExecutor {
         node,
         timeoutSec,
         authEnabled,
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling,
-        universe.getUniverseDetails().communicationPorts.internalYsqlServerRpcPort);
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling);
   }
 
   public JsonNode executeQueryInNodeShell(
@@ -219,16 +225,14 @@ public class YsqlQueryExecutor {
       RunQueryFormData queryParams,
       NodeDetails node,
       boolean authEnabled,
-      boolean enableConnectionPooling,
-      int internalYsqlServerRpcPort) {
+      boolean cpEnabled) {
     return executeQueryInNodeShell(
         universe,
         queryParams,
         node,
         runtimeConfigFactory.forUniverse(universe).getLong("yb.ysql_timeout_secs"),
         authEnabled,
-        enableConnectionPooling,
-        internalYsqlServerRpcPort);
+        cpEnabled);
   }
 
   public JsonNode executeQueryInNodeShell(
@@ -237,8 +241,7 @@ public class YsqlQueryExecutor {
       NodeDetails node,
       long timeoutSec,
       boolean authEnabled,
-      boolean enableConnectionPooling,
-      int internalYsqlServerRpcPort) {
+      boolean cpEnabled) {
     ObjectNode response = newObject();
     response.put("type", "ysql");
     String queryType = getQueryType(queryParams.getQuery());
@@ -255,8 +258,7 @@ public class YsqlQueryExecutor {
                   queryString,
                   timeoutSec,
                   authEnabled,
-                  enableConnectionPooling,
-                  internalYsqlServerRpcPort)
+                  cpEnabled)
               .processErrors("Ysql Query Execution Error");
     } catch (RuntimeException e) {
       response.put("error", ShellResponse.cleanedUpErrorMessage(e.getMessage()));
@@ -365,14 +367,31 @@ public class YsqlQueryExecutor {
       }
     }
 
-    StringBuilder resetPgStatStatements = new StringBuilder();
-    resetPgStatStatements.append(DEL_PG_ROLES_CMD_2).append(" SELECT pg_stat_statements_reset(); ");
-    runUserDbCommands(resetPgStatStatements.toString(), data.dbName, universe);
-    LOG.info(
-        "Dropped unrequired roles and assigned permissions to the restricted user='{}' for"
-            + " universe='{}'",
-        data.username,
-        universe.getName());
+    Optional<Integer> universeYSQLVersion;
+    try {
+      universeYSQLVersion =
+          gFlagsValidation.getYsqlMajorVersion(
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+
+    } catch (IOException e) {
+      LOG.error("Error getting YSQL version for universe='{}'", universe.getName(), e);
+      throw new PlatformServiceException(
+          Http.Status.INTERNAL_SERVER_ERROR, "Error getting YSQL version for universe");
+    }
+    if (!universeYSQLVersion.isPresent() || universeYSQLVersion.get() <= 11) {
+      StringBuilder resetPgStatStatements = new StringBuilder();
+      resetPgStatStatements
+          .append(DEL_PG_ROLES_CMD_2)
+          .append(" SELECT pg_stat_statements_reset(); ");
+      runUserDbCommands(resetPgStatStatements.toString(), data.dbName, universe);
+      LOG.info(
+          "Dropped unrequired roles and assigned permissions to the restricted user='{}' for"
+              + " universe='{}'",
+          data.username,
+          universe.getName());
+    } else {
+      LOG.info("Skipping dropping roles for universe='{}'", universe.getName());
+    }
   }
 
   public void createUser(Universe universe, DatabaseUserFormData data) {
@@ -432,10 +451,26 @@ public class YsqlQueryExecutor {
         }
       }
 
-      allQueries.setLength(0);
-      allQueries.append(String.format("%s ", DEL_PG_ROLES_CMD_2));
-      runUserDbCommands(allQueries.toString(), data.dbName, universe);
-      LOG.info("Dropped unrequired roles");
+      Optional<Integer> universeYSQLVersion;
+      try {
+
+        universeYSQLVersion =
+            gFlagsValidation.getYsqlMajorVersion(
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+
+      } catch (IOException e) {
+        LOG.error("Error getting YSQL version for universe='{}'", universe.getName(), e);
+        throw new PlatformServiceException(
+            Http.Status.INTERNAL_SERVER_ERROR, "Error getting YSQL version for universe");
+      }
+      if (!universeYSQLVersion.isPresent() || universeYSQLVersion.get() <= 11) {
+        allQueries.setLength(0);
+        allQueries.append(String.format("%s ", DEL_PG_ROLES_CMD_2));
+        runUserDbCommands(allQueries.toString(), data.dbName, universe);
+        LOG.info("Dropped unrequired roles");
+      } else {
+        LOG.info("Skipping dropping roles for universe='{}'", universe.getName());
+      }
 
       allQueries.setLength(0);
 

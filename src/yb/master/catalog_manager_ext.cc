@@ -2300,7 +2300,16 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       scoped_refptr<TableInfo> source_table =
           VERIFY_RESULT(FindTableById(table_data->old_table_id));
       auto source_table_lock = source_table->LockForRead();
-      schema_version = source_table_lock->pb.version() + 1;
+      if (source_table_lock->table_type() == TableType::YQL_TABLE_TYPE &&
+          source_table_lock->is_index()) {
+        // CQL index tables as of November 2024 always have schema version 0 because we do not
+        // support dropping or renaming columns yet. CQL index deletes depend on this because they
+        // implicitly use a schema_version of 0 (by not setting the field in the protobuf write
+        // request). This is checked against the table schema_version when applying the write.
+        SCHECK_EQ(meta.version() == 0, true, IllegalState, "CQL index table should have version 0");
+      } else {
+        schema_version = source_table_lock->pb.version() + 1;
+      }
     } else if (meta.version() > table->LockForRead()->pb.version()) {
       schema_version = meta.version();
     }

@@ -222,41 +222,49 @@ ybginBuildCommon(Relation heap, Relation index, struct IndexInfo *indexInfo,
 				 struct YbBackfillInfo *bfinfo,
 				 struct YbPgExecOutParam *bfresult)
 {
-	IndexBuildResult *result;
-	double		reltuples;
-	YbginBuildState buildstate;
+	IndexBuildResult   *result;
+	double				reltuples = 0;
+	YbginBuildState		buildstate;
 
-	initGinState(&buildstate.ginstate, index);
 	buildstate.indtuples = 0;
-	if (bfinfo)
-		buildstate.backfilltime = &bfinfo->read_time;
-	else
-		buildstate.backfilltime = NULL;
 
 	/*
-	 * create a temporary memory context that is used for calling
-	 * ginExtractEntries(), and can be reset after each tuple
+	 * We don't need to build YB indexes during a major version upgrade, as we
+	 * simply link the old DocDB table on master.
 	 */
-	buildstate.funcCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
-											   "Ybgin build temporary context for user-defined function",
-											   ALLOCSET_DEFAULT_SIZES);
+	if (!IsBinaryUpgrade)
+	{
+		initGinState(&buildstate.ginstate, index);
+		if (bfinfo)
+			buildstate.backfilltime = &bfinfo->read_time;
+		else
+			buildstate.backfilltime = NULL;
 
-	/*
-	 * Do the heap scan.
-	 */
-	if (!bfinfo)
-		reltuples = yb_table_index_build_scan(heap, index, indexInfo, true,
-											  ybginBuildCallback,
-											  (void *) &buildstate,
-											  NULL /* HeapScanDesc */);
-	else
-		reltuples = IndexBackfillHeapRangeScan(heap, index, indexInfo,
-											   ybginBuildCallback,
-											   (void *) &buildstate,
-											   bfinfo,
-											   bfresult);
+		/*
+		 * create a temporary memory context that is used for calling
+		 * ginExtractEntries(), and can be reset after each tuple
+		 */
+		buildstate.funcCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
+												   "Ybgin build temporary context for user-defined function",
+												   ALLOCSET_DEFAULT_SIZES);
 
-	MemoryContextDelete(buildstate.funcCtx);
+		/*
+		 * Do the heap scan.
+		 */
+		if (!bfinfo)
+			reltuples = yb_table_index_build_scan(heap, index, indexInfo, true,
+												ybginBuildCallback,
+												(void *) &buildstate,
+												NULL /* HeapScanDesc */);
+		else
+			reltuples = IndexBackfillHeapRangeScan(heap, index, indexInfo,
+												ybginBuildCallback,
+												(void *) &buildstate,
+												bfinfo,
+												bfresult);
+
+		MemoryContextDelete(buildstate.funcCtx);
+	}
 
 	/*
 	 * Return statistics

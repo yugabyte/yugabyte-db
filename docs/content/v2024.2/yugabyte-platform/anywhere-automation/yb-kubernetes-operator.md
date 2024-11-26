@@ -5,7 +5,7 @@ linkTitle: Kubernetes Operator
 description: Yugabyte Kubernetes Operator for YugabyteDB Anywhere.
 headcontent: Install YugabyteDB Anywhere and create universes using Yugabyte Kubernetes Operator
 tags:
-  feature: tech-preview
+  feature: early-access
 menu:
   v2024.2_yugabyte-platform:
     parent: anywhere-automation
@@ -310,7 +310,7 @@ spec:
 
 ## Limitations
 
-- Yugabyte Kubernetes Operator is in [Tech Preview](/preview/releases/versioning/#feature-maturity), and it is recommended to use the YugabyteDB Helm charts for production deployments.
+- Yugabyte Kubernetes Operator is in [Early access](/preview/releases/versioning/#feature-maturity), and it is recommended to use the YugabyteDB Helm charts for production deployments.
 - Yugabyte Kubernetes Operator can only deploy universes on the _same_ Kubernetes cluster it is deployed on.
 - Yugabyte Kubernetes Operator is single cluster only, and does not support multi-cluster universes.
 - Currently, Yugabyte Kubernetes Operator does not support the following features:

@@ -13,7 +13,7 @@ yba eit hashicorp-vault [flags]
 ### Options
 
 ```
-  -n, --name string   [Optional] The name of the configuration for the action. Required for create, delete, describe, update.
+  -n, --name string   [Optional] The name of the configuration for the action. Required for create, delete, describe, download, update.
   -h, --help          help for hashicorp-vault
 ```
 
@@ -37,6 +37,7 @@ yba eit hashicorp-vault [flags]
 * [yba eit hashicorp-vault create](yba_eit_hashicorp-vault_create.md)	 - Create a YugabyteDB Anywhere Hashicorp Vault encryption in transit configuration
 * [yba eit hashicorp-vault delete](yba_eit_hashicorp-vault_delete.md)	 - Delete a YugabyteDB Anywhere Hashicorp Vault encryption in transit configuration
 * [yba eit hashicorp-vault describe](yba_eit_hashicorp-vault_describe.md)	 - Describe a Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EIT) configuration
+* [yba eit hashicorp-vault download](yba_eit_hashicorp-vault_download.md)	 - Download a Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EIT) configuration's certifciates
 * [yba eit hashicorp-vault list](yba_eit_hashicorp-vault_list.md)	 - List Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EIT) certificate configurations
 * [yba eit hashicorp-vault update](yba_eit_hashicorp-vault_update.md)	 - Update a YugabyteDB Anywhere Hashicorp Vault encryption in transit configuration
 

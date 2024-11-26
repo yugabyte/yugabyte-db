@@ -681,6 +681,7 @@ class WaitOnConflictResolver : public ConflictResolver {
     if (!wait_start_time_.Initialized()) {
       wait_start_time_ = MonoTime::Now();
     }
+    DEBUG_ONLY_TEST_SYNC_POINT("ConflictResolver::MaybeSetWaitStartTime");
   }
 
   void TryPreWait() {
@@ -705,13 +706,14 @@ class WaitOnConflictResolver : public ConflictResolver {
     VTRACE(3, "Waiting on $0 transactions after $1 tries.",
            conflict_data_->NumActiveTransactions(), wait_for_iters_);
 
-    MaybeSetWaitStartTime();
-    return wait_queue_->WaitOn(
+    RETURN_NOT_OK(wait_queue_->WaitOn(
         context_->transaction_id(), context_->subtransaction_id(), lock_batch_,
         ConsumeTransactionDataAndReset(), status_tablet_id_, serial_no_,
         context_->GetTxnStartUs(), request_start_us_, request_id_, deadline_,
         std::bind(&WaitOnConflictResolver::GetLockStatusInfo, shared_from(this)),
-        std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
+        std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2)));
+    MaybeSetWaitStartTime();
+    return Status::OK();
   }
 
   // Note: we must pass in shared_this to keep the WaitOnConflictResolver alive until the wait queue

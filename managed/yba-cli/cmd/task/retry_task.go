@@ -25,9 +25,9 @@ var retryTaskCmd = &cobra.Command{
 	Use:     "retry",
 	Short:   "Retry a YugabyteDB Anywhere task",
 	Long:    "Retry a task in YugabyteDB Anywhere",
-	Example: `yba task retry --task-uuid <task-uuid>`,
+	Example: `yba task retry --uuid <uuid>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
-		taskUUID, err := cmd.Flags().GetString("task-uuid")
+		taskUUID, err := cmd.Flags().GetString("uuid")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -41,7 +41,7 @@ var retryTaskCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
-		taskUUID, err := cmd.Flags().GetString("task-uuid")
+		taskUUID, err := cmd.Flags().GetString("uuid")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -117,8 +117,8 @@ var retryTaskCmd = &cobra.Command{
 
 func init() {
 	retryTaskCmd.Flags().SortFlags = false
-	retryTaskCmd.Flags().String("task-uuid", "",
+	retryTaskCmd.Flags().StringP("uuid", "u", "",
 		"[Required] The task UUID to be retried.")
-	retryTaskCmd.MarkFlagRequired("task-uuid")
+	retryTaskCmd.MarkFlagRequired("uuid")
 
 }

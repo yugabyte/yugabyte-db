@@ -746,6 +746,22 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
 
   protected void verifyYSQL(
       Universe universe, boolean readFromRR, String dbName, String tableName, boolean authEnabled) {
+    verifyYSQL(
+        universe,
+        readFromRR,
+        dbName,
+        tableName,
+        authEnabled,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling);
+  }
+
+  protected void verifyYSQL(
+      Universe universe,
+      boolean readFromRR,
+      String dbName,
+      String tableName,
+      boolean authEnabled,
+      boolean cpEnabled) {
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     if (StringUtils.isBlank(tableName)) {
       tableName = "some_table";
@@ -766,7 +782,8 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
             dbName,
             String.format("select count(*) from %s", tableName),
             10,
-            authEnabled);
+            authEnabled,
+            cpEnabled);
     assertTrue(response.isSuccess());
     assertEquals("3", CommonUtils.extractJsonisedSqlResponse(response).trim());
     // Check universe sequence and DB sequence number

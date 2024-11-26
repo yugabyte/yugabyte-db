@@ -799,7 +799,7 @@ Default: `false`
 
 ##### --pg_client_use_shared_memory
 
-{{<tags/feature/ea>}} Enables the use of shared memory between PostgreSQL and the YB-TServer. Using shared memory can potentially improve the performance of your database operations.
+Enables the use of shared memory between PostgreSQL and the YB-TServer. Using shared memory can potentially improve the performance of your database operations.
 
 Default: `false`
 
@@ -1837,6 +1837,14 @@ Specifies the default isolation level of each new transaction. Every transaction
 See [transaction isolation levels](../../../architecture/transactions/isolation-levels) for reference.
 
 Default: `read committed`
+
+##### yb_skip_redundant_update_ops
+
+Enables skipping updates to columns that are part of secondary indexes and constraint checks when the column values remain unchanged.
+
+This parameter can only be configured during cluster startup, and adjusting this parameter does not require a cluster restart.
+
+Default: true
 
 ## Admin UI
 

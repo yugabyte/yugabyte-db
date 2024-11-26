@@ -70,6 +70,75 @@
 #include "utils/elog.h"
 #include "utils/typcache.h"
 
+typedef struct YbAttnumBmsState
+{
+	Bitmapset *bms;
+	const AttrNumber min_attr;
+} YbAttnumBmsState;
+
+static inline YbAttnumBmsState
+ybcAttnumBmsConstruct()
+{
+	return (YbAttnumBmsState)
+		{
+			.bms = NULL,
+			.min_attr = YBSystemFirstLowInvalidAttributeNumber
+		};
+}
+
+static inline void
+ybcAttnumBmsDestroy(YbAttnumBmsState *state)
+{
+	bms_free(state->bms);
+	state->bms = NULL;
+}
+
+static inline int
+ybcAttnumBmsIndex(const YbAttnumBmsState *state, AttrNumber attnum)
+{
+	return YBAttnumToBmsIndexWithMinAttr(state->min_attr, attnum);
+}
+
+static inline AttrNumber
+ybcAttnumBmsAttnum(const YbAttnumBmsState *state, int idx)
+{
+	return YBBmsIndexToAttnumWithMinAttr(state->min_attr, idx);
+}
+
+static inline void
+ybcAttnumBmsAdd(YbAttnumBmsState *state, AttrNumber attnum)
+{
+	state->bms = bms_add_member(state->bms, ybcAttnumBmsIndex(state, attnum));
+}
+
+static inline void
+ybcAttnumBmsDel(YbAttnumBmsState *state, AttrNumber attnum)
+{
+	state->bms = bms_del_member(state->bms, ybcAttnumBmsIndex(state, attnum));
+}
+
+static inline bool
+ybcAttnumBmsExists(const YbAttnumBmsState *state, AttrNumber attnum)
+{
+	return bms_is_member(ybcAttnumBmsIndex(state, attnum), state->bms);
+}
+
+static inline bool
+ybcAttnumBmsDelIfExists(YbAttnumBmsState *state, AttrNumber attnum)
+{
+	if (!ybcAttnumBmsExists(state, attnum))
+		return false;
+
+	ybcAttnumBmsDel(state, attnum);
+	return true;
+}
+
+static inline bool
+ybcAttnumBmsIsEmpty(const YbAttnumBmsState *state)
+{
+	return bms_is_empty(state->bms);
+}
+
 typedef struct YbScanPlanData
 {
 	/* The relation where to read data from */
@@ -360,6 +429,16 @@ YbBindDatumToColumn(YBCPgStatement stmt,
 	HandleYBStatus(YBCPgDmlBindColumn(stmt, attr_num, expr));
 }
 
+static void
+YbDmlAppendTargetImpl(YBCPgStatement handle, AttrNumber attnum, Oid typid, Oid collation, Oid typmod)
+{
+	const YBCPgTypeAttrs type_attrs = {.typmod = typmod};
+
+	HandleYBStatus(YBCPgDmlAppendTarget(
+		handle,
+		YBCNewColumnRef(handle, attnum, typid, collation, &type_attrs)));
+}
+
 /*
  * Add a system column as target to the given statement handle.
  */
@@ -367,44 +446,34 @@ void
 YbDmlAppendTargetSystem(AttrNumber attnum, YBCPgStatement handle)
 {
 	Assert(attnum < 0);
+	YbDmlAppendTargetImpl(
+		handle, attnum, InvalidOid /* typid */, InvalidOid /* collation */,
+		-1 /*typmod*/);
+}
 
-	YBCPgExpr	expr;
-	YBCPgTypeAttrs type_attrs;
+void
+YbDmlAppendTargetRegularAttr(
+	const FormData_pg_attribute *attr, YBCPgStatement handle)
+{
+	Assert(attr->attnum > 0);
+	Assert(!attr->attisdropped);
 
-	/* System columns don't use typmod. */
-	type_attrs.typmod = -1;
+	YbDmlAppendTargetImpl(
+		handle, attr->attnum, attr->atttypid, attr->attcollation,
+		attr->atttypmod);
 
-	expr = YBCNewColumnRef(handle,
-						   attnum,
-						   InvalidOid /* attr_typid */,
-						   InvalidOid /* attr_collation */,
-						   &type_attrs);
-	HandleYBStatus(YBCPgDmlAppendTarget(handle, expr));
 }
 
 /*
- * Add a regular column as target to the given statement handle.  Assume
- * tupdesc's relation is the same as handle's target relation.
+ * Add a regular column as target to the given statement handle.
+ * Assume tupdesc's relation is the same as handle's target relation.
  */
 void
-YbDmlAppendTargetRegular(TupleDesc tupdesc, AttrNumber attnum, YBCPgStatement handle)
+YbDmlAppendTargetRegular(
+	TupleDesc tupdesc, AttrNumber attnum, YBCPgStatement handle)
 {
 	Assert(attnum > 0);
-
-	Form_pg_attribute att;
-	YBCPgExpr	expr;
-	YBCPgTypeAttrs type_attrs;
-
-	att = TupleDescAttr(tupdesc, attnum - 1);
-	/* Should not be given dropped attributes. */
-	Assert(!att->attisdropped);
-	type_attrs.typmod = att->atttypmod;
-	expr = YBCNewColumnRef(handle,
-						   attnum,
-						   att->atttypid,
-						   att->attcollation,
-						   &type_attrs);
-	HandleYBStatus(YBCPgDmlAppendTarget(handle, expr));
+	YbDmlAppendTargetRegularAttr(TupleDescAttr(tupdesc, attnum - 1), handle);
 }
 
 static void ybcUpdateFKCache(YbScanDesc ybScan, Datum ybctid)
@@ -973,7 +1042,7 @@ YbIsNeverTrueNullCond(ScanKey key)
 }
 
 static int
-YbGetLengthOfKey(ScanKey *key_ptr)
+YbGetLengthOfKey(const ScanKey *key_ptr)
 {
 	if (!YbIsRowHeader(key_ptr[0]))
 		return 1;
@@ -2376,32 +2445,34 @@ YbBindHashKeys(YbScanDesc ybScan)
 }
 
 static void
-YbCollectHashKeyComponents(YbScanDesc ybScan, YbScanPlan scan_plan,
-						   Bitmapset **required_attrs, bool is_index_only_scan)
+YbCollectHashKeyComponents(
+	YbScanDesc ybScan, YbScanPlan scan_plan, bool is_index_only_scan,
+	YbAttnumBmsState *required_attrs)
 {
 	Relation index = ybScan->index;
-	Relation secondary_index =
-		index && !YBIsCoveredByMainTable(index) &&
-			!is_index_only_scan ? index : NULL;
+	const int16 *secondary_index_indkey_values =
+		index && !is_index_only_scan && !YBIsCoveredByMainTable(index)
+			? index->rd_index->indkey.values : NULL;
+
 	int idx = -1;
 	while ((idx = bms_next_member(scan_plan->hash_key, idx)) >= 0)
 	{
-		if (secondary_index)
-		{
-			AttrNumber attnum =
-				YBBmsIndexToAttnum(scan_plan->target_relation, idx);
-			attnum = secondary_index->rd_index->indkey.values[attnum - 1];
+		AttrNumber attnum =
+			YBBmsIndexToAttnum(scan_plan->target_relation, idx);
 
-			int hash_code_bms_idx = YBAttnumToBmsIndex(secondary_index, attnum);
+		if (secondary_index_indkey_values)
+			attnum = secondary_index_indkey_values[attnum - 1];
 
-			*required_attrs =
-				bms_add_member(*required_attrs, hash_code_bms_idx);
-		}
-		else
-		{
-			*required_attrs = bms_add_member(*required_attrs, idx);
-		}
+		ybcAttnumBmsAdd(required_attrs, attnum);
 	}
+}
+
+static inline void
+ybcPullVarattnosIntoAttnumBms(List *list, Index varno, YbAttnumBmsState *state)
+{
+	if (list)
+		pull_varattnos_min_attr(
+			(Node*) list, varno, &state->bms, state->min_attr);
 }
 
 /*
@@ -2412,154 +2483,154 @@ YbCollectHashKeyComponents(YbScanDesc ybScan, YbScanPlan scan_plan,
  * that they are removed from the YbBitmapTableScan node before calling this.
  */
 static void
-YbGetBitmapScanRecheckColumns(YbBitmapTableScan *plan,
-							  Bitmapset **required_attrs, Index target_relid,
-							  int min_attr)
+YbAddBitmapScanRecheckColumns(
+	YbBitmapTableScan *plan, Index target_relid,
+	YbAttnumBmsState *required_attrs)
 {
-	if (plan->fallback_local_quals)
-		pull_varattnos_min_attr((Node *) plan->fallback_local_quals, target_relid,
-								required_attrs, min_attr);
-	if (plan->recheck_local_quals)
-		pull_varattnos_min_attr((Node *) plan->recheck_local_quals, target_relid,
-								required_attrs, min_attr);
+	ybcPullVarattnosIntoAttnumBms(
+		plan->fallback_local_quals, target_relid, required_attrs);
+	ybcPullVarattnosIntoAttnumBms(
+		plan->recheck_local_quals, target_relid, required_attrs);
+
+}
+
+static bool
+YbHasOrdinaryColumnsNeedingPgRecheckImpl(
+	YbScanDesc yb_scan, YbAttnumBmsState *dest)
+{
+	if (yb_scan->all_ordinary_keys_bound)
+		return false;
+
+	bool result = false;
+	const ScanKey *keys = yb_scan->keys;
+	const bool is_index_only_scan = yb_scan->prepare_params.index_only_scan;
+	for (int i = 0; i < yb_scan->nkeys; i += YbGetLengthOfKey(&keys[i]))
+	{
+		const AttrNumber attnum = yb_scan->target_key_attnums[i];
+		if (is_index_only_scan ||
+			attnum == InvalidAttrNumber ||
+			keys[i]->sk_flags & ~(SK_SEARCHNULL | SK_SEARCHNOTNULL))
+		{
+			result = true;
+			if (dest)
+				ybcAttnumBmsAdd(dest, attnum);
+			else
+				break;
+
+		}
+	}
+	return result;
 }
 
 /*
- * Returns a bitmap of all non-hashcode columns that may require a PG recheck.
+ * Adds all non-hashcode columns that may require a PG recheck.
  */
-static Bitmapset *
-YbGetOrdinaryColumnsNeedingPgRecheck(YbScanDesc ybScan)
+static inline void
+YbAddOrdinaryColumnsNeedingPgRecheck(
+	YbScanDesc yb_scan, YbAttnumBmsState *attnums)
 {
-	if (ybScan->all_ordinary_keys_bound)
-		return NULL;
-
-	Bitmapset *columns = NULL;
-	ScanKey *keys = ybScan->keys;
-	const bool is_ioscan = ybScan->prepare_params.index_only_scan;
-	for (int i = 0; i < ybScan->nkeys; i += YbGetLengthOfKey(&keys[i]))
-	{
-		if (is_ioscan ||
-			ybScan->target_key_attnums[i] == InvalidAttrNumber ||
-			keys[i]->sk_flags & ~(SK_SEARCHNULL | SK_SEARCHNOTNULL))
-		{
-			int bms_idx = YBAttnumToBmsIndexWithMinAttr(
-				YBFirstLowInvalidAttributeNumber, ybScan->target_key_attnums[i]);
-			columns = bms_add_member(columns, bms_idx);
-		}
-	}
-	return columns;
+	YbHasOrdinaryColumnsNeedingPgRecheckImpl(yb_scan, attnums);
 }
 
-/* Setup the targets */
-static void
-ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
+/*
+ * Checks the existence of non-hashcode columns that may require a PG recheck.
+ */
+static inline bool
+YbHasOrdinaryColumnsNeedingPgRecheck(YbScanDesc yb_scan)
 {
-	Relation	index = ybScan->index;
-	bool		is_index_only_scan = ybScan->prepare_params.index_only_scan;
-	const int	min_attr = YBFirstLowInvalidAttributeNumber;
-	bool		all_attrs_required = !ybScan->prepare_params.fetch_ybctids_only;
+	return YbHasOrdinaryColumnsNeedingPgRecheckImpl(yb_scan, NULL);
+}
 
-	/*
-	 * required_attrs struct stores list of target columns required by scan
-	 * plan. All other non system columns may be excluded from reading from
-	 * DocDB for optimization. Required columns are:
-	 * - any bound key column that is required for PG recheck
-	 * - all query targets columns (from index for Index Only Scan case and from
-	 * table otherwise)
-	 * - all qual columns (not bound to the scan keys), they are required for
-	 * filtering results on the postgres side
-	 */
-	Bitmapset  *required_attrs = NULL;
+static void
+ybcAddNonDroppedAttr(
+	const TupleDescData *tup_desc, AttrNumber attnum, YbAttnumBmsState *attnums)
+{
+	if (!TupleDescAttr(tup_desc, attnum - 1)->attisdropped)
+		ybcAttnumBmsAdd(attnums, attnum);
+}
 
-	/*
-	 * Catalog requests do not have a pg_scan_plan and require ybctid
-	 */
-	if (!pg_scan_plan)
+/*
+ * Returns list of target columns required by scan plan.
+ */
+static YbAttnumBmsState
+ybcBuildRequiredAttrs(
+	YbScanDesc yb_scan, YbScanPlan scan_plan, Scan *pg_scan_plan)
+{
+	const YBCPgPrepareParameters *params = &yb_scan->prepare_params;
+	const bool is_index_only_scan = params->index_only_scan;
+	bool all_attrs_required = !params->fetch_ybctids_only;
+	Relation index = yb_scan->index;
+	Assert(!is_index_only_scan || index);
+
+	YbAttnumBmsState result = ybcAttnumBmsConstruct();
+
+	/* Catalog requests do not have a pg_scan_plan and require ybctid */
+	if (!pg_scan_plan || params->fetch_ybctids_only)
+		ybcAttnumBmsAdd(&result, YBTupleIdAttributeNumber);
+	else
 	{
-		required_attrs = bms_add_member(
-			required_attrs,
-			YBAttnumToBmsIndexWithMinAttr(min_attr, YBTupleIdAttributeNumber));
-	}
-	else if (!ybScan->prepare_params.fetch_ybctids_only)
-	{
-		Index target_relid = ybScan->prepare_params.index_only_scan ?
-								 INDEX_VAR :
-								 pg_scan_plan->scanrelid;
+		Index target_relid =
+			is_index_only_scan ? INDEX_VAR : pg_scan_plan->scanrelid;
 
 		/* Collect target attributes */
-		pull_varattnos_min_attr((Node *) pg_scan_plan->plan.targetlist,
-								target_relid, &required_attrs, min_attr);
+		ybcPullVarattnosIntoAttnumBms(
+			pg_scan_plan->plan.targetlist, target_relid, &result);
 
 		/* Collect table filtering attributes */
-		pull_varattnos_min_attr((Node *) pg_scan_plan->plan.qual, target_relid,
-								&required_attrs, min_attr);
+		ybcPullVarattnosIntoAttnumBms(
+			pg_scan_plan->plan.qual, target_relid, &result);
 
 		if (IsA(pg_scan_plan, YbBitmapTableScan))
-			YbGetBitmapScanRecheckColumns((YbBitmapTableScan *) pg_scan_plan,
-										  &required_attrs, target_relid,
-										  min_attr);
+			YbAddBitmapScanRecheckColumns(
+				(YbBitmapTableScan *) pg_scan_plan, target_relid,
+				&result);
 
-		if (ybScan->hash_code_keys != NIL)
-			YbCollectHashKeyComponents(ybScan, scan_plan, &required_attrs,
-									   is_index_only_scan);
+		if (yb_scan->hash_code_keys != NIL)
+			YbCollectHashKeyComponents(
+				yb_scan, scan_plan, is_index_only_scan, &result);
 
-		required_attrs = bms_join(required_attrs,
-								  YbGetOrdinaryColumnsNeedingPgRecheck(ybScan));
+		YbAddOrdinaryColumnsNeedingPgRecheck(yb_scan, &result);
 
 		/* Add any explicitly listed target keys */
-		AttrNumber *sk_attno = ybScan->target_key_attnums;
-		AttrNumber *sk_attno_end = sk_attno + ybScan->nkeys;
+		AttrNumber *sk_attno = yb_scan->target_key_attnums;
+		AttrNumber *sk_attno_end = sk_attno + yb_scan->nkeys;
 		for (; sk_attno != sk_attno_end; ++sk_attno)
 		{
-			{
-				int bms_idx =
-					YBAttnumToBmsIndexWithMinAttr(min_attr, *sk_attno);
-				required_attrs = bms_add_member(required_attrs, bms_idx);
-			}
+			ybcAttnumBmsAdd(&result, *sk_attno);
 		}
 
-		/* In case InvalidAttrNumber is set whole row columns are required */
-		all_attrs_required = bms_is_member(
-			YBAttnumToBmsIndexWithMinAttr(min_attr, InvalidAttrNumber),
-			required_attrs);
-
-		/* TableOidAttrNumber is a virtual column, do not send it. */
-		int table_oid_bms_index =
-			YBAttnumToBmsIndexWithMinAttr(min_attr, TableOidAttributeNumber);
-		if (bms_is_member(table_oid_bms_index, required_attrs))
+		/* TableOidAttrNumber is a virtual column, do not send it */
+		if (ybcAttnumBmsDelIfExists(&result, TableOidAttributeNumber))
 		{
-			required_attrs =
-				bms_del_member(required_attrs, table_oid_bms_index);
 			/*
 			 * TODO(#18870): A HeapTuple is required to store
 			 * TableOidAttrNumber. Force its creation by including ybctid.
 			 */
-			required_attrs = bms_add_member(
-				required_attrs, YBAttnumToBmsIndexWithMinAttr(
-									min_attr, YBTupleIdAttributeNumber));
+			ybcAttnumBmsAdd(&result, YBTupleIdAttributeNumber);
 		}
+
+		/*
+		 * TODO(#16717): Such placeholder target can be removed once the pg_dml
+		 * fetcher can recognize empty rows in a response with no explict
+		 * targets.
+		 *
+		 * TODO(#18870): ybctid can be large. Can we use a smaller placeholder
+		 * than this? (e.g. NULL)
+		 */
+		if (ybcAttnumBmsIsEmpty(&result))
+			ybcAttnumBmsAdd(&result, YBTupleIdAttributeNumber);
+
+		/*
+		 * Postgres uses InvalidAttrNumber as a marker that all columns are
+		 * required. It must not be set as a target.
+		 */
+		all_attrs_required =
+			ybcAttnumBmsDelIfExists(&result, InvalidAttrNumber);
 	}
 
-	/*
-	 * TODO(#16717): Such placeholder target can be removed once the pg_dml
-	 * fetcher can recognize empty rows in a response with no explict
-	 * targets.
-	 *
-	 * TODO(#18870): ybctid can be large. Can we use a smaller placeholder than
-	 * this? (e.g. NULL)
-	 */
-	if (bms_is_empty(required_attrs))
-		required_attrs = bms_add_member(
-			required_attrs,
-			YBAttnumToBmsIndexWithMinAttr(min_attr, YBTupleIdAttributeNumber));
-
-	/*
-	 * If we need every attribute, go through each (normal) attribute and
-	 * whatever is not in the bitmapset. Attributes in the bitmapset will be
-	 * added next.
-	 */
 	if (all_attrs_required)
 	{
+		TupleDesc target_desc = yb_scan->target_desc;
 		if (is_index_only_scan && YBIsCoveredByMainTable(index))
 		{
 			/*
@@ -2567,63 +2638,44 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 			 * primary key from the target table instead of the whole target
 			 * table.
 			 */
-			for (int i = 0; i < index->rd_index->indnatts; i++)
-			{
-				AttrNumber attnum = index->rd_index->indkey.values[i];
-				bool is_in_bms = bms_is_member(
-					YBAttnumToBmsIndexWithMinAttr(min_attr, attnum),
-					required_attrs);
-				bool is_dropped =
-					TupleDescAttr(ybScan->target_desc, attnum - 1)->attisdropped;
-				if (!is_in_bms && !is_dropped)
-					YbDmlAppendTargetRegular(ybScan->target_desc, attnum,
-											 ybScan->handle);
-			}
+			for (int i = 0; i < index->rd_index->indnatts; ++i)
+				ybcAddNonDroppedAttr(
+					target_desc, index->rd_index->indkey.values[i], &result);
 		}
 		else
-			for (AttrNumber attnum = 1; attnum <= ybScan->target_desc->natts;
-				 attnum++)
-			{
-				bool is_in_bms = bms_is_member(
-					YBAttnumToBmsIndexWithMinAttr(min_attr, attnum),
-					required_attrs);
-				bool is_dropped =
-					TupleDescAttr(ybScan->target_desc, attnum - 1)->attisdropped;
-				if (!is_in_bms && !is_dropped)
-					YbDmlAppendTargetRegular(ybScan->target_desc, attnum,
-											 ybScan->handle);
-			}
+			for (AttrNumber attnum = 1; attnum <= target_desc->natts; ++attnum)
+				ybcAddNonDroppedAttr(target_desc, attnum, &result);
 	}
 
-	/*
-	 * Add everything from the required_attrs bitmapset. This must happen even
-	 * if we already added everything through the bitmapset, because there may
-	 * be special (system) columns in the bitmapset. We iterate backwards
-	 * because that's the order that the prefetcher expects the columns.
-	 */
-	int idx = -1;
-	while ((idx = bms_prev_member(required_attrs, idx)) >= 0)
+	if (index && (YBIsCoveredByMainTable(index)
+		? (params->fetch_ybctids_only && !params->querying_colocated_table)
+		: !is_index_only_scan))
 	{
-		AttrNumber attnum = YBBmsIndexToAttnumWithMinAttr(min_attr, idx);
-		if (attnum > 0)
-			YbDmlAppendTargetRegular(ybScan->target_desc, attnum,
-									 ybScan->handle);
-		else if (attnum < 0)
-			YbDmlAppendTargetSystem(attnum, ybScan->handle);
+		ybcAttnumBmsAdd(&result, YBIdxBaseTupleIdAttributeNumber);
 	}
 
-	// If we are using a Bitmap Index scan on non-colocated primary keys
-	if (index && YBIsCoveredByMainTable(index) &&
-		ybScan->prepare_params.fetch_ybctids_only &&
-		!ybScan->prepare_params.querying_colocated_table)
-		YbDmlAppendTargetSystem(YBIdxBaseTupleIdAttributeNumber,
-								ybScan->handle);
+	Assert(!ybcAttnumBmsIsEmpty(&result));
+	return result;
+}
 
-	if (!is_index_only_scan && index && !YBIsCoveredByMainTable(index))
-		YbDmlAppendTargetSystem(YBIdxBaseTupleIdAttributeNumber,
-								ybScan->handle);
+static void
+ybcSetupTargets(YbScanDesc yb_scan, YbScanPlan scan_plan, Scan *pg_scan_plan)
+{
+	YbAttnumBmsState required_attrs =
+		ybcBuildRequiredAttrs(yb_scan, scan_plan, pg_scan_plan);
 
-	bms_free(required_attrs);
+	int idx = -1;
+	while ((idx = bms_next_member(required_attrs.bms, idx)) >= 0)
+	{
+		const AttrNumber attnum = ybcAttnumBmsAttnum(&required_attrs, idx);
+		Assert(attnum != InvalidAttrNumber);
+		if (attnum > 0)
+			YbDmlAppendTargetRegular(
+				yb_scan->target_desc, attnum, yb_scan->handle);
+		else
+			YbDmlAppendTargetSystem(attnum, yb_scan->handle);
+	}
+	ybcAttnumBmsDestroy(&required_attrs);
 }
 
 /*
@@ -2885,7 +2937,6 @@ ybcBeginScan(Relation relation,
 								  &ybScan->prepare_params,
 								  YBCIsRegionLocal(relation),
 								  &ybScan->handle));
-
 	/* Set up binds */
 	if (!YbBindScanKeys(ybScan, &scan_plan, false /* is_for_precheck */) ||
 		!YbBindHashKeys(ybScan))
@@ -3021,16 +3072,11 @@ ybIsTupMismatch(HeapTuple tup, YbScanDesc ybScan)
  * predetermined for the entire scan before tuples are fetched.
  */
 inline bool
-YbNeedsPgRecheck(YbScanDesc ybScan)
+YbNeedsPgRecheck(YbScanDesc yb_scan)
 {
-	if (ybScan->hash_code_keys != NIL)
-		return true;
-
-	Bitmapset *recheck_cols = YbGetOrdinaryColumnsNeedingPgRecheck(ybScan);
-	bool any_cols_need_recheck = !bms_is_empty(recheck_cols);
-	bms_free(recheck_cols);
-
-	return any_cols_need_recheck;
+	return
+		yb_scan->hash_code_keys ||
+		YbHasOrdinaryColumnsNeedingPgRecheck(yb_scan);
 }
 
 HeapTuple

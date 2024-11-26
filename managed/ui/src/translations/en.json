@@ -172,7 +172,7 @@
         "warning": {
           "title": "Potential master failure detected",
           "threshold": "Auto master failover will attempt to remediate in {{duration}}. ",
-          "snoozeBtnText": "Snooze for 1 hour",
+          "snoozeBtnText": "Snooze failover task for 1 hour",
           "runtimeConfigMsg": "Auto master failover can be permanently disabled through the runtime config yb.auto_master_failover.enabled. "
         }
       },
@@ -181,7 +181,7 @@
           "title": "Post auto master failover actions pending",
           "threshold": "Post auto master failover actions will be attempted in {{duration}}. ",
           "manualCleanup": "Any underlying node failures need to be addressed manually through the Replace Node action.",
-          "snoozeBtnText": "Snooze for 1 hour"
+          "snoozeBtnText": "Snooze post-failover task for 1 hour"
         }
       },
       "helmOverrides": {

@@ -530,6 +530,9 @@ ERROR:  ALTER TYPE DROP ATTRIBUTE not supported yet
 LINE 1: ALTER TYPE tt_t0 DROP ATTRIBUTE z;
                          ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. React with thumbs up to raise its priority
+-- YB: since we can't ALTER TYPE yet, work around by recreating the type.
+DROP TYPE tt_t0;
+CREATE TYPE tt_t0 AS (x int, y numeric(8,2));
 CREATE TABLE tt0 (x int NOT NULL, y numeric(8,2));	-- OK
 CREATE TABLE tt1 (x int, y bigint);					-- wrong base type
 CREATE TABLE tt2 (x int, y numeric(9,2));			-- wrong typmod
@@ -544,56 +547,22 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumb
 CREATE TABLE tt7 (x int, q text, y numeric(8,2));
 ALTER TABLE tt7 DROP q;								-- OK
 ALTER TABLE tt0 OF tt_t0;
-ERROR:  ALTER action OF not supported yet
-LINE 1: ALTER TABLE tt0 OF tt_t0;
-                        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER TABLE tt1 OF tt_t0;
-ERROR:  ALTER action OF not supported yet
-LINE 1: ALTER TABLE tt1 OF tt_t0;
-                        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+ERROR:  table "tt1" has different type for column "y"
 ALTER TABLE tt2 OF tt_t0;
-ERROR:  ALTER action OF not supported yet
-LINE 1: ALTER TABLE tt2 OF tt_t0;
-                        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+ERROR:  table "tt2" has different type for column "y"
 ALTER TABLE tt3 OF tt_t0;
-ERROR:  ALTER action OF not supported yet
-LINE 1: ALTER TABLE tt3 OF tt_t0;
-                        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+ERROR:  table has column "y" where type requires "x"
 ALTER TABLE tt4 OF tt_t0;
-ERROR:  ALTER action OF not supported yet
-LINE 1: ALTER TABLE tt4 OF tt_t0;
-                        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+ERROR:  table is missing column "y"
 ALTER TABLE tt5 OF tt_t0;
-ERROR:  ALTER action OF not supported yet
-LINE 1: ALTER TABLE tt5 OF tt_t0;
-                        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+ERROR:  table has extra column "z"
 ALTER TABLE tt6 OF tt_t0;
-ERROR:  ALTER action OF not supported yet
-LINE 1: ALTER TABLE tt6 OF tt_t0;
-                        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+ERROR:  relation "tt6" does not exist
 ALTER TABLE tt7 OF tt_t0;
-ERROR:  ALTER action OF not supported yet
-LINE 1: ALTER TABLE tt7 OF tt_t0;
-                        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 CREATE TYPE tt_t1 AS (x int, y numeric(8,2));
 ALTER TABLE tt7 OF tt_t1;			-- reassign an already-typed table
-ERROR:  ALTER action OF not supported yet
-LINE 1: ALTER TABLE tt7 OF tt_t1;
-                        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER TABLE tt7 NOT OF;
-ERROR:  ALTER action NOT OF not supported yet
-LINE 1: ALTER TABLE tt7 NOT OF;
-                        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 \d tt7
                    Table "public.tt7"
  Column |     Type     | Collation | Nullable | Default 

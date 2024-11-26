@@ -17,12 +17,12 @@ YugabyteDB uses a two-server architecture, with [YB-TServers](../yb-tserver/) ma
 
 {{< youtube id="ah_fPDpZjnc" title="How to Start YugabyteDB on Your Laptop" >}}
 
-The `yugabyted` executable file is located in the YugabyteDB home's `bin` directory.
+The yugabyted executable file is located in the YugabyteDB home `bin` directory.
 
 For examples of using yugabyted to deploy single- and multi-node clusters, see [Examples](#examples).
 
 {{<note title="Production deployments">}}
-You can use yugabyted for production deployments (v2.18.4 and later). You can also administer [`yb-tserver`](../yb-tserver/) and [`yb-master`](../yb-master/) directly (refer to [Deploy YugabyteDB](../../../deploy/)).
+You can use yugabyted for production deployments (v2.18.4 and later). You can also administer [YB-TServer](../yb-tserver/) and [YB-Master](../yb-master/) servers directly (refer to [Deploy YugabyteDB](../../../deploy/)).
 {{</note>}}
 
 {{% note title="Running on macOS" %}}
@@ -174,14 +174,8 @@ For example, to create node server certificates for hostnames 127.0.0.1, 127.0.0
 --hostnames *hostnames*
 : Hostnames of the nodes to be added in the cluster. Mandatory flag.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server.
-
 --base_dir *base-directory*
 : The base directory for the yugabyted server.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server.
 
 -----
 
@@ -200,17 +194,11 @@ Usage: yugabyted collect_logs [flags]
 -h | --help
 : Print the command-line help and exit.
 
---stdout *stdout*
+--stdout
 : Redirect the `logs.tar.gz` file's content to stdout. For example, `docker exec \<container-id\> bin/yugabyted collect_logs --stdout > yugabyted.tar.gz`
-
---data_dir *data-directory*
-: The data directory for the yugabyted server whose logs are desired.
 
 --base_dir *base-directory*
 : The base directory for the yugabyted server whose logs are desired.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server whose logs are desired.
 
 -----
 
@@ -262,14 +250,8 @@ For example, you would use the following command to create a multi-zone Yugabyte
 --rf *replication-factor*
 : Specify the replication factor for the cluster. This is an optional flag which takes a value of `3` or `5`.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server.
-
 --base_dir *base-directory*
 : The base directory for the yugabyted server.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server.
 
 #### encrypt_at_rest
 
@@ -294,20 +276,14 @@ To disable encryption at rest for a YugabyteDB cluster which has encryption at r
 -h | --help
 : Print the command-line help and exit.
 
---disable *disable*
+--disable
 : Disable encryption at rest for the cluster. There is no need to set a value for the flag. Use `--enable` or `--disable` flag to toggle encryption features on a YugabyteDB cluster.
 
---enable *enable*
+--enable
 : Enable encryption at rest for the cluster. There is no need to set a value for the flag. Use `--enable` or `--disable` flag to toggle encryption features on a YugabyteDB cluster.
-
---data_dir *data-directory*
-: The data directory for the yugabyted server.
 
 --base_dir *base-directory*
 : The base directory for the yugabyted server.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server.
 
 #### point_in_time_recovery
 
@@ -333,6 +309,32 @@ Display point-in-time schedules configured on the cluster:
 ./bin/yugabyted configure point_in_time_recovery --status
 ```
 
+##### point_in_time_recovery flags
+
+-h | --help
+: Print the command-line help and exit.
+
+--database *database*
+: Name of the YSQL database for which point-in-time recovery is to be configured.
+
+--keyspace *keyspace*
+: Name of the YCQL keyspace for which point-in-time recovery is to be configured.
+
+--enable
+: Enable point-in-time recovery for a database or keyspace.
+
+--disable
+: Disable point-in-time recovery for a database or keyspace.
+
+--retention *retention-period*
+: Specify the retention period in days for the snapshots, after which they will be automatically deleted, from the time they were created.
+
+--status
+: Display point-in-time recovery status for a YugabyteDB cluster.
+
+--base_dir *base-directory*
+: The base directory of the yugabyted server.
+
 #### admin_operation
 
 Use the `yugabyted configure admin_operation` command to run a yb-admin command on the YugabyteDB cluster.
@@ -348,8 +350,8 @@ For example, get the YugabyteDB universe configuration:
 -h | --help
 : Print the command-line help and exit.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server.
+--base_dir *base-directory*
+: The base directory of the yugabyted server.
 
 --command *yb-admin-command*
 : Specify the yb-admin command to be executed on the YugabyteDB cluster.
@@ -476,23 +478,43 @@ The following sub-commands are available for the `yugabyted connect` command:
 
 Use the `yugabyted connect ysql` sub-command to connect to YugabyteDB with [ysqlsh](../../../api/ysqlsh/).
 
-#### ycql
-
-Use the `yugabyted connect ycql` sub-command to connect to YugabyteDB with [ycqlsh](../../../api/ycqlsh).
-
-#### Flags
+#### ysql flags
 
 -h | --help
 : Print the command-line help and exit.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server to connect to.
+--username *username*
+: YSQL username to connect to the database.
+
+--password *password*
+: The password for YSQL user.
+
+--database *database*
+: Name of the YSQL database to connect to.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server to connect to.
+: The base directory of the yugabyted server to connect to.
 
---log_dir *log-directory*
-: The log directory for the yugabyted server to connect to.
+#### ycql
+
+Use the `yugabyted connect ycql` sub-command to connect to YugabyteDB with [ycqlsh](../../../api/ycqlsh/).
+
+#### ycql flags
+
+-h | --help
+: Print the command-line help and exit.
+
+--username *username*
+: YCQL username to connect to the keyspace.
+
+--password *password*
+: The password for YCQL user.
+
+--keyspace *keyspace*
+: Name of the YCQL keyspace to connect to.
+
+--base_dir *base-directory*
+: The base directory of the yugabyted server to connect to.
 
 -----
 
@@ -526,14 +548,8 @@ Use the `yugabyted demo destroy` sub-command to shut down the yugabyted single-n
 -h | --help
 : Print the help message and exit.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server to connect to or destroy.
-
 --base_dir *base-directory*
 : The base directory for the yugabyted server to connect to or destroy.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server to connect to or destroy.
 
 -----
 
@@ -554,20 +570,14 @@ For examples, see [Destroy a local cluster](#destroy-a-local-cluster).
 -h | --help
 : Print the command-line help and exit.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server that needs to be destroyed.
-
 --base_dir *base-directory*
 : The base directory for the yugabyted server that needs to be destroyed.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server that needs to be destroyed.
 
 -----
 
 ### finalize_upgrade
 
-Use the `yugabyted finalize_upgrade` command to finalize and upgrade the YSQL catalog to the new version and complete the upgrade process.
+Use the `yugabyted finalize_upgrade` command to finalize and upgrade the AutoFlags and YSQL catalog to the new version and complete the upgrade process.
 
 #### Syntax
 
@@ -716,13 +726,7 @@ For more advanced examples, see [Examples](#examples).
 : yugabyted advanced configuration file path. Refer to [Use a configuration file](#use-a-configuration-file).
 
 --base_dir *base-directory*
-: The directory where yugabyted stores data, configurations, and logs. Must be an absolute path.
-
---data_dir *data-directory*
-: The directory where yugabyted stores data. Must be an absolute path. Can be configured to a directory different from the one where configurations and logs are stored.
-
---log_dir *log-directory*
-: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored. By default, logs are written to `~/var/logs`.
+: The directory where yugabyted stores data, configurations, and logs. Must be an absolute path. By default base directory is `$HOME/var`.
 
 --background *bool*
 : Enable or disable running yugabyted in the background as a daemon. Does not persist on restart. Default: `true`
@@ -755,7 +759,7 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 : Enable or disable the backup daemon with yugabyted start. Default: `false`
 : If you start a cluster using the `--backup_daemon` flag, you also need to download and extract the [YB Controller release](https://downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the yugabyte-{{< yb-version version="stable" >}} release directory.
 
---enable_pg_parity_tech_preview *PostgreSQL-compatibilty*
+--enable_pg_parity_early_access *PostgreSQL-compatibilty*
 : Enable Enhanced PostgreSQL Compatibility Mode. Default: `false`
 
 #### Advanced flags
@@ -785,6 +789,15 @@ The advanced flags supported by the `start` command are as follows:
 
 --callhome *bool*
 : Enable or disable the *call home* feature that sends analytics data to Yugabyte. Default: `true`.
+
+--data_dir *data-directory*
+: The directory where yugabyted stores data. Must be an absolute path. Can be configured to a directory different from the one where configurations and logs are stored. By default, data directory is `<base_dir>/data`.
+
+--log_dir *log-directory*
+: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored. By default, logs are written to `<base_dir>/logs`.
+
+--certs_dir *certs-directory*
+: The path to the directory which has the certificates to be used for secure deployment. Must be an absolute path. Default path is `~/<base_dir>/certs`.
 
 --master_flags *master_flags*
 : Specify extra [master flags](../../../reference/configuration/yb-master#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
@@ -860,14 +873,8 @@ Usage: yugabyted status [flags]
 -h | --help
 : Print the command-line help and exit.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server whose status is desired.
-
 --base_dir *base-directory*
 : The base directory for the yugabyted server whose status is desired.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server whose status is desired.
 
 -----
 
@@ -886,14 +893,8 @@ Usage: yugabyted stop [flags]
 -h | --help
 : Print the command-line help and exit.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server that needs to be stopped.
-
 --base_dir *base-directory*
 : The base directory for the yugabyted server that needs to be stopped.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server that needs to be stopped.
 
 -----
 
@@ -912,16 +913,12 @@ Usage: yugabyted version [flags]
 -h | --help
 : Print the command-line help and exit.
 
---data_dir *data-directory*
-: The data directory for the yugabyted server whose version is desired.
-
 --base_dir *base-directory*
 : The base directory for the yugabyted server whose version is desired.
 
---log_dir *log-directory*
-: The log directory for the yugabyted server whose version is desired.
-
 ### xcluster
+
+xCluster support in yugabyted is {{<tags/feature/ea>}}.
 
 Use the `yugabyted xcluster` command to set up or delete [xCluster replication](../../../architecture/docdb-replication/async-replication/) between two clusters.
 

@@ -24,7 +24,12 @@ import { ProviderListView } from './ProviderListView';
 import { fetchTaskUntilItCompletes } from '../../../actions/xClusterReplication';
 import { ProviderCreateView } from './forms/ProviderCreateView';
 import { useCreateProvider, UseCreateProviderParams } from '../../../redesign/helpers/hooks';
-import { fetchCloudMetadata } from '../../../actions/cloud';
+import {
+  fetchCloudMetadata,
+  listAccessKeys,
+  listAccessKeysReqCompleted,
+  listAccessKeysResponse
+} from '../../../actions/cloud';
 
 import { YBProviderMutation } from './types';
 import { YBPBeanValidationError, YBPError, YBPTask } from '../../../redesign/helpers/dtos';
@@ -68,6 +73,16 @@ export const InfraProvider = (props: InfraProviderProps) => {
   const dispatch = useDispatch();
   const queryClient = useQueryClient();
   const providerListQuery = useQuery(providerQueryKey.ALL, () => api.fetchProviderList());
+
+  const updateCachedAccessKeys = (providerUuid: string) => {
+    dispatch(listAccessKeys(providerUuid) as any)
+      .then((response: any) => {
+        dispatch(listAccessKeysResponse(response.payload));
+      })
+      .then(() => {
+        dispatch(listAccessKeysReqCompleted());
+      });
+  };
   const createProviderMutation = useCreateProvider(queryClient, {
     onSuccess: (response) => {
       queryClient.invalidateQueries(providerQueryKey.ALL);
@@ -87,6 +102,9 @@ export const InfraProvider = (props: InfraProviderProps) => {
         }
         queryClient.invalidateQueries(providerQueryKey.ALL);
         dispatch(fetchCloudMetadata());
+        if (response.resourceUUID) {
+          updateCachedAccessKeys(response.resourceUUID);
+        }
       });
     }
   });

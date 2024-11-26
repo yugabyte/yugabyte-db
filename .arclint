@@ -8,6 +8,7 @@
      "([.]sql$)",
      "([.]txt$)",
      "(^src/odyssey/.*$)",
+     "(^src/inline-thirdparty/.*$)",
      "(^src/yb/integration-tests/upgrade-tests/builds.xml$)",
      "(^[.]gitmodules$)",
      "(^managed/src/main/resources/alert/alert_templates[.]yml$)",
@@ -149,6 +150,7 @@
     "postgres": {
       "type": "script-and-regex",
       "exclude": [
+        "(^src/postgres/third-party-extensions/)",
         "(^src/yb/)"
       ],
       "include": [

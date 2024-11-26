@@ -122,8 +122,9 @@ var createK8sProviderCmd = &cobra.Command{
 				AirGapInstall: util.GetBoolPointer(airgapInstall),
 				CloudInfo: &ybaclient.CloudInfo{
 					Kubernetes: &ybaclient.KubernetesInfo{
-						KubernetesImageRegistry:       util.GetStringPointer(imageRegistry),
-						KubernetesProvider:            util.GetStringPointer(providerType),
+						KubernetesImageRegistry: util.GetStringPointer(imageRegistry),
+						KubernetesProvider: util.GetStringPointer(
+							strings.ToLower(providerType)),
 						KubernetesPullSecretContent:   util.GetStringPointer(pullSecretContent),
 						KubernetesPullSecretName:      util.GetStringPointer(pullSecretName),
 						KubernetesImagePullSecretName: util.GetStringPointer(kubernetesImagePullSecretName),

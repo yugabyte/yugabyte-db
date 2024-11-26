@@ -58,7 +58,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <bitset>
 #include <chrono>
 #include <functional>
 #include <memory>
@@ -105,11 +104,9 @@
 #include "yb/dockv/partial_row.h"
 #include "yb/dockv/partition.h"
 
-#include "yb/gutil/atomicops.h"
 #include "yb/gutil/bind.h"
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/mathlimits.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/join.h"
@@ -146,7 +143,6 @@
 #include "yb/master/object_lock_info_manager.h"
 #include "yb/master/permissions_manager.h"
 #include "yb/master/post_tablet_create_task_base.h"
-#include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/tablet_split_manager.h"
@@ -157,7 +153,6 @@
 #include "yb/master/yql_auth_role_permissions_vtable.h"
 #include "yb/master/yql_auth_roles_vtable.h"
 #include "yb/master/yql_columns_vtable.h"
-#include "yb/master/yql_empty_vtable.h"
 #include "yb/master/yql_functions_vtable.h"
 #include "yb/master/yql_indexes_vtable.h"
 #include "yb/master/yql_keyspaces_vtable.h"
@@ -169,6 +164,7 @@
 #include "yb/master/yql_triggers_vtable.h"
 #include "yb/master/yql_types_vtable.h"
 #include "yb/master/yql_views_vtable.h"
+#include "yb/master/ysql/ysql_manager.h"
 #include "yb/master/ysql_ddl_verification_task.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 #include "yb/master/ysql/ysql_initdb_major_upgrade_handler.h"
@@ -178,7 +174,6 @@
 
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_retention_policy.h"
 
@@ -191,14 +186,10 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
-#include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
-#include "yb/util/hash_util.h"
 #include "yb/util/is_operation_done_result.h"
-#include "yb/util/locks.h"
 #include "yb/util/logging.h"
-#include "yb/util/math_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
@@ -206,8 +197,6 @@
 #include "yb/util/random_util.h"
 #include "yb/util/rw_mutex.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/semaphore.h"
-#include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -216,7 +205,6 @@
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
-#include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/to_stream.h"
 #include "yb/util/trace.h"
@@ -406,11 +394,6 @@ DEFINE_RUNTIME_int32(txn_table_wait_min_ts_count, 1,
     " Default value is 1. We wait for atleast --replication_factor if this value"
     " is smaller than that");
 TAG_FLAG(txn_table_wait_min_ts_count, advanced);
-
-// TODO (mbautin, 2019-12): switch the default to true after updating all external callers
-// (yb-ctl, YugaWare) and unit tests.
-DEFINE_RUNTIME_bool(master_auto_run_initdb, false,
-    "Automatically run initdb on master leader initialization");
 
 DEFINE_RUNTIME_bool(enable_ysql_tablespaces_for_placement, true,
     "If set, tablespaces will be used for placement of YSQL tables.");
@@ -939,7 +922,6 @@ std::vector<scoped_refptr<NamespaceInfo>> CatalogManager::NamespaceNameMapper::G
 CatalogManager::CatalogManager(Master* master, SysCatalogTable* sys_catalog)
     : master_(DCHECK_NOTNULL(master)),
       sys_catalog_(DCHECK_NOTNULL(sys_catalog)),
-      ysql_catalog_config_(*sys_catalog),
       tablet_exists_(false),
       state_(kConstructed),
       leader_ready_term_(-1),
@@ -961,8 +943,7 @@ CatalogManager::CatalogManager(Master* master, SysCatalogTable* sys_catalog)
   CHECK_OK(ThreadPoolBuilder("async-tasks").Build(&async_task_pool_));
   CHECK_OK(sys_catalog_->Start(Bind(&CatalogManager::ElectedAsLeaderCb, Unretained(this))));
   xcluster_manager_ = std::make_unique<XClusterManager>(*master_, *this, *sys_catalog_);
-  ysql_initdb_and_major_upgrade_helper_ = std::make_unique<YsqlInitDBAndMajorUpgradeHandler>(
-      *master_, *this, *sys_catalog_, *background_tasks_thread_pool_);
+  ysql_manager_ = std::make_unique<YsqlManager>(*master_, *this, *sys_catalog_);
 }
 
 CatalogManager::~CatalogManager() {
@@ -1033,6 +1014,8 @@ Status CatalogManager::Init() {
 XClusterManagerIf* CatalogManager::GetXClusterManager() {
   return xcluster_manager_.get();
 }
+
+YsqlManagerIf& CatalogManager::GetYsqlManager() { return GetYsqlManagerImpl(); }
 
 Status CatalogManager::ElectedAsLeaderCb() {
   if (FLAGS_emergency_repair_mode) {
@@ -1230,7 +1213,7 @@ Status CatalogManager::MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog(
     return Status::OK();
   }
 
-  if (ysql_initdb_and_major_upgrade_helper_->IsInitDbDone()) {
+  if (ysql_manager_->IsInitDbDone()) {
     LOG_WITH_PREFIX(INFO) << "initdb has been run before, no need to restore sys catalog from "
                           << "the initial snapshot";
     return Status::OK();
@@ -1257,7 +1240,7 @@ Status CatalogManager::MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog(
       state->epoch.leader_term, /* recreate = */ true));
 
   LOG_WITH_PREFIX(INFO) << "Restoring snapshot completed, considering initdb finished";
-  RETURN_NOT_OK(ysql_initdb_and_major_upgrade_helper_->SetInitDbDone(state->epoch));
+  RETURN_NOT_OK(ysql_manager_->SetInitDbDone(state->epoch));
   // TODO(asrivastava): Can we get rid of this Reset() by calling RunLoaders just once
   // instead of calling it here and in VisitSysCatalog?
   state->Reset();
@@ -1363,6 +1346,8 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
     // Prepare various default system configurations.
     RETURN_NOT_OK(PrepareDefaultSysConfig(term));
 
+    RETURN_NOT_OK(ysql_manager_->PrepareDefaultSysConfig(state->epoch));
+
     RETURN_NOT_OK(MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog(state));
 
     // Create the system namespaces (created only if they don't already exist).
@@ -1382,11 +1367,11 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
 
     permissions_manager_->BuildRecursiveRoles();
 
-    if (!VERIFY_RESULT(StartRunningInitDbIfNeeded(state->epoch))) {
+    if (!VERIFY_RESULT(ysql_manager_->StartRunningInitDbIfNeeded(state->epoch))) {
       // If we are not running initdb, this is an existing cluster, and we need to check whether we
       // need to do a one-time migration to make YSQL system catalog tables transactional.
       RETURN_NOT_OK(MakeYsqlSysCatalogTablesTransactional(
-          tables_->GetAllTables(), sys_catalog_, ysql_catalog_config_, state->epoch));
+          tables_->GetAllTables(), sys_catalog_, *ysql_manager_.get(), state->epoch));
     }
   }  // Exclusive mutex_ scope.
   return Status::OK();
@@ -1430,9 +1415,6 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   // Clear Object lock mapping.
   object_lock_info_manager_->Clear();
 
-  // Clear ysql catalog config.
-  ysql_catalog_config_.Reset();
-
   // Clear transaction tables config.
   transaction_tables_config_.reset();
 
@@ -1450,6 +1432,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
     ysql_ddl_txn_verfication_state_map_.clear();
   }
 
+  ysql_manager_->Clear();
   xcluster_manager_->Clear();
 
   // This is unnecessary if persist_tserver_registry is set.
@@ -1671,42 +1654,11 @@ Status CatalogManager::PrepareDefaultSysConfig(int64_t term) {
     RETURN_NOT_OK(permissions_manager()->PrepareDefaultSecurityConfigUnlocked(term));
   }
 
-  RETURN_NOT_OK(ysql_catalog_config_.PrepareDefaultIfNeeded(term));
-
   if (!transaction_tables_config_) {
     RETURN_NOT_OK(InitializeTransactionTablesConfig(term));
   }
 
   return Status::OK();
-}
-
-Result<bool> CatalogManager::StartRunningInitDbIfNeeded(const LeaderEpoch& epoch) {
-  if (ysql_initdb_and_major_upgrade_helper_->IsInitDbDone()) {
-    LOG(INFO) << "Cluster configuration indicates that initdb has already completed";
-    return false;
-  }
-
-  if (pg_proc_exists_.load(std::memory_order_acquire)) {
-    LOG(INFO) << "Table pg_proc exists, assuming initdb has already been run";
-    // Mark initdb as done, in case it was done externally.
-    // We assume pg_proc table means initdb is done.
-    // We do NOT handle the case when initdb was terminated mid-run (neither here nor in
-    // MakeYsqlSysCatalogTablesTransactional).
-    RETURN_NOT_OK(ysql_initdb_and_major_upgrade_helper_->SetInitDbDone( epoch));
-    return false;
-  }
-
-  if (!FLAGS_master_auto_run_initdb) {
-    LOG(INFO) << "--master_auto_run_initdb is set to false, not running initdb";
-    return false;
-  }
-
-  LOG(INFO) << "initdb has never been run on this cluster, running it";
-
-  RETURN_NOT_OK(ysql_initdb_and_major_upgrade_helper_->StartNewClusterGlobalInitDB(epoch));
-
-  LOG(INFO) << "Successfully started initdb";
-  return true;
 }
 
 Status CatalogManager::PrepareDefaultNamespaces(int64_t term) {
@@ -3217,52 +3169,6 @@ Status CatalogManager::DdlLog(
   return sys_catalog_->FetchDdlLog(resp->mutable_entries());
 }
 
-Status CatalogManager::StartYsqlMajorCatalogUpgrade(
-    const StartYsqlMajorCatalogUpgradeRequestPB* req, StartYsqlMajorCatalogUpgradeResponsePB* resp,
-    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
-  LOG(INFO) << "Running ysql major upgrade";
-  RETURN_NOT_OK(ysql_initdb_and_major_upgrade_helper_->StartYsqlMajorCatalogUpgrade(epoch));
-
-  return Status::OK();
-}
-
-Status CatalogManager::IsYsqlMajorCatalogUpgradeDone(
-    const IsYsqlMajorCatalogUpgradeDoneRequestPB* req,
-    IsYsqlMajorCatalogUpgradeDoneResponsePB* resp, rpc::RpcContext* rpc) {
-  LOG(INFO) << "Checking if ysql major catalog upgrade is done";
-  auto is_operation_done = ysql_initdb_and_major_upgrade_helper_->IsYsqlMajorCatalogUpgradeDone();
-  if (is_operation_done.done()) {
-    resp->set_done(true);
-    if (!is_operation_done.status().ok()) {
-      return is_operation_done.status();
-    }
-  } else {
-    resp->set_done(false);
-  }
-  return Status::OK();
-}
-
-Status CatalogManager::FinalizeYsqlMajorCatalogUpgrade(
-    const FinalizeYsqlMajorCatalogUpgradeRequestPB* req,
-    FinalizeYsqlMajorCatalogUpgradeResponsePB* resp, rpc::RpcContext* rpc,
-    const LeaderEpoch& epoch) {
-  LOG(INFO) << "Finalizing ysql major catalog upgrade";
-  return ysql_initdb_and_major_upgrade_helper_->FinalizeYsqlMajorCatalogUpgrade(epoch);
-}
-
-// Note that this function should be able to be called any number of times while in upgrade mode.
-Status CatalogManager::RollbackYsqlMajorCatalogVersion(
-    const RollbackYsqlMajorCatalogVersionRequestPB* req,
-    RollbackYsqlMajorCatalogVersionResponsePB* resp, rpc::RpcContext* rpc,
-    const LeaderEpoch& epoch) {
-  LOG(INFO) << "YSQL major catalog upgrade rollback initiated";
-
-  RETURN_NOT_OK(ysql_initdb_and_major_upgrade_helper_->RollbackYsqlMajorCatalogVersion(epoch));
-
-  LOG(INFO) << "YSQL major catalog upgrade rollback completed";
-  return Status::OK();
-}
-
 namespace {
 
 Status ValidateCreateTableSchema(const Schema& schema, CreateTableResponsePB* resp) {
@@ -3551,7 +3457,7 @@ Status CatalogManager::GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB*
     return Status::OK();
   }
 
-  resp->set_version(ysql_catalog_config_.GetVersion());
+  resp->set_version(ysql_manager_->GetYsqlCatalogVersion());
   return Status::OK();
 }
 
@@ -5608,6 +5514,14 @@ Result<scoped_refptr<TableInfo>> CatalogManager::FindTableByIdUnlocked(
         "Table with identifier $0 not found", table_id);
   }
   return table;
+}
+
+Result<TableId> CatalogManager::GetColocatedTableId(
+    const TablegroupId& tablegroup_id, ColocationId colocation_id) const {
+  SharedLock lock(mutex_);
+  const auto* tablegroup = tablegroup_manager_->Find(tablegroup_id);
+  SCHECK(tablegroup, NotFound, Substitute("Tablegroup with ID $0 not found", tablegroup_id));
+  return tablegroup->GetChildTableId(colocation_id);
 }
 
 Result<scoped_refptr<NamespaceInfo>> CatalogManager::FindNamespaceById(
@@ -9933,13 +9847,12 @@ Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
 }
 
 Result<uint64_t> CatalogManager::IncrementYsqlCatalogVersion() {
-  return ysql_catalog_config_.IncrementVersion(GetLeaderEpochInternal());
+  return ysql_manager_->IncrementYsqlCatalogVersion(GetLeaderEpochInternal());
 }
 
 Status CatalogManager::IsInitDbDone(
     const IsInitDbDoneRequestPB* req, IsInitDbDoneResponsePB* resp) {
-  resp->set_pg_proc_exists(pg_proc_exists_.load(std::memory_order_acquire));
-  auto is_operation_done = ysql_initdb_and_major_upgrade_helper_->IsInitDbDone();
+  auto is_operation_done = ysql_manager_->IsInitDbDone();
 
   if (is_operation_done.done()) {
     resp->set_done(true);
@@ -9994,7 +9907,7 @@ Status CatalogManager::GetYsqlDBCatalogVersion(uint32_t db_oid,
     // In this case we'd like to fall back to the legacy approach.
   }
 
-  const auto version = ysql_catalog_config_.GetVersion();
+  const auto version = ysql_manager_->GetYsqlCatalogVersion();
   // last_breaking_version is the last version (change) that invalidated ongoing transactions.
   // If using the old (protobuf-based) version method, we do not have any information about
   // breaking changes so assuming every change is a breaking change.
@@ -12289,10 +12202,7 @@ void CatalogManager::AbortAndWaitForAllTasksUnlocked() {
 }
 
 void CatalogManager::HandleNewTableId(const TableId& table_id) {
-  if (table_id == kPgProcTableId) {
-    // Needed to track whether initdb has started running.
-    pg_proc_exists_.store(true, std::memory_order_release);
-  }
+  ysql_manager_->HandleNewTableId(table_id);
 }
 
 scoped_refptr<TableInfo> CatalogManager::NewTableInfo(TableId id, bool colocated) {
@@ -12884,7 +12794,7 @@ void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
         "Failed to read all DB catalog versions");
   }
 
-  ysql_initdb_and_major_upgrade_helper_->SysCatalogLoaded(state.epoch);
+  ysql_manager_->SysCatalogLoaded(state.epoch);
 
   master_->snapshot_coordinator().SysCatalogLoaded(state.epoch.leader_term);
 
@@ -13452,7 +13362,7 @@ Result<TSDescriptorPtr> CatalogManager::GetClosestLiveTserver(bool* local_ts) co
 }
 
 bool CatalogManager::IsYsqlMajorCatalogUpgradeInProgress() const {
-  return ysql_initdb_and_major_upgrade_helper_->IsYsqlMajorCatalogUpgradeInProgress();
+  return ysql_manager_->IsYsqlMajorCatalogUpgradeInProgress();
 }
 
 bool CatalogManager::SkipCatalogVersionChecks() {

@@ -13,6 +13,8 @@
 
 #include "yb/tserver/pg_client_service.h"
 
+#include <sys/wait.h>
+
 #include <mutex>
 #include <queue>
 #include <unordered_map>
@@ -508,6 +510,11 @@ class PgClientServiceImpl::Impl {
     }
 
     context->ListenConnectionShutdown([this, session_id, pid = req.pid()]() {
+#if defined(__APPLE__)
+      auto delay = 250ms;
+#else
+      auto delay = RegularBuildVsSanitizers(50ms, 1000ms);
+#endif
       messenger_.scheduler().Schedule([this, session_id, pid](const Status& status) {
         if (!status.ok()) {
           // Task was aborted.
@@ -515,7 +522,7 @@ class PgClientServiceImpl::Impl {
         }
         CheckSessionShutdown(pid, session_id);
         // Give some time for process to exit after connection shutdown.
-      }, 50ms * kTimeMultiplier);
+      }, delay);
     });
 
     std::lock_guard lock(mutex_);

@@ -3,8 +3,6 @@ title: pg_cron extension
 headerTitle: pg_cron extension
 linkTitle: pg_cron
 description: Using the pg_cron extension in YugabyteDB
-tags:
-  feature: tech-preview
 menu:
   v2024.2:
     identifier: extension-pgcron
@@ -21,7 +19,7 @@ If the pg_cron leader node fails, another node is automatically elected as the n
 
 ## Set up pg_cron
 
-pg_cron in YugabyteDB is {{<tags/feature/tp>}}. Before you can use the feature, you must enable it by setting the `enable_pg_cron` flag. To do this, add `enable_pg_cron` to the `allowed_preview_flags_csv` flag and set the `enable_pg_cron` flag to true on all YB-Masters and YB-TServers.
+Before you can use the feature, you must enable it by setting the `enable_pg_cron` flag. To do this, add `enable_pg_cron` to the `allowed_preview_flags_csv` flag and set the `enable_pg_cron` flag to true on all YB-Masters and YB-TServers.
 
 The pg_cron extension is installed on only one database, which stores the extension data. The default cron database is `yugabyte`. You can change it by setting the `ysql_cron_database_name` flag on all YB-TServers. You can create the database after setting the flag.
 

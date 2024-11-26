@@ -20,7 +20,7 @@ yba eit list
 
 ```
   -n, --name string        [Optional] Name of the configuration.
-  -c, --cert-type string   [Optional] Type of the certificate, defaults to list all configurations. Allowed values: SelfSigned, CustomCertHostPath,  HashicorpVault, K8sCertManager.
+  -c, --cert-type string   [Optional] Type of the certificate, defaults to list all configurations. Allowed values (case sensitive): SelfSigned, CustomCertHostPath,  HashicorpVault, K8sCertManager.
   -h, --help               help for list
 ```
 

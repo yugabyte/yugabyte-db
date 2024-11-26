@@ -32,6 +32,7 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/common.pb.h"
 #include "yb/common/common_util.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/pgsql_error.h"
@@ -94,6 +95,7 @@ DEFINE_RUNTIME_uint64(big_shared_memory_segment_session_expiration_time_ms, 5000
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_bool(ysql_yb_enable_ddl_atomicity_infra);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
+DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
 
 DECLARE_uint64(rpc_max_message_size);
 
@@ -967,6 +969,20 @@ Status PgClientSession::CreateReplicationSlot(
     }
   }
 
+  std::optional<yb::ReplicationSlotLsnType> lsn_type;
+  if (FLAGS_ysql_yb_allow_replication_slot_lsn_types) {
+    switch (req.lsn_type()) {
+      case ReplicationSlotLsnTypePg_SEQUENCE:
+        lsn_type = ReplicationSlotLsnType::ReplicationSlotLsnType_SEQUENCE;
+        break;
+      case ReplicationSlotLsnTypePg_HYBRID_TIME:
+        lsn_type = ReplicationSlotLsnType::ReplicationSlotLsnType_HYBRID_TIME;
+        break;
+      default:
+        return STATUS_FORMAT(InvalidArgument, "invalid lsn_type $0", req.lsn_type());
+    }
+  }
+
   uint64_t consistent_snapshot_time;
   auto stream_result = VERIFY_RESULT(client().CreateCDCSDKStreamForNamespace(
       GetPgsqlNamespaceId(req.database_oid()), options,
@@ -975,7 +991,8 @@ Status PgClientSession::CreateReplicationSlot(
       req.output_plugin_name(), snapshot_option,
       context->GetClientDeadline(),
       CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED,
-      &consistent_snapshot_time));
+      &consistent_snapshot_time,
+      lsn_type));
   *resp->mutable_stream_id() = stream_result.ToString();
   resp->set_cdcsdk_consistent_snapshot_time(consistent_snapshot_time);
   return Status::OK();
@@ -993,7 +1010,8 @@ Status PgClientSession::WaitForBackendsCatalogVersion(
     rpc::RpcContext* context) {
   // TODO(jason): send deadline to client.
   const int num_lagging_backends = VERIFY_RESULT(client().WaitForYsqlBackendsCatalogVersion(
-      req.database_oid(), req.catalog_version(), context->GetClientDeadline()));
+      req.database_oid(), req.catalog_version(), context->GetClientDeadline(),
+      req.requestor_pg_backend_pid()));
   resp->set_num_lagging_backends(num_lagging_backends);
   return Status::OK();
 }

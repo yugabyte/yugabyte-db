@@ -23,20 +23,26 @@
 namespace yb::docdb {
 
 YB_STRONGLY_TYPED_BOOL(Index);
+YB_STRONGLY_TYPED_BOOL(SkipTableTombstoneCheck);
 
 struct DocReadContext {
   DocReadContext(
-      const std::string& log_prefix, TableType table_type, Index is_index);
+      const std::string& log_prefix, TableType table_type, Index is_index,
+      SkipTableTombstoneCheck skip_table_tombstone_check = SkipTableTombstoneCheck::kFalse);
 
   DocReadContext(
       const std::string& log_prefix, TableType table_type, Index is_index, const Schema& schema,
-      SchemaVersion schema_version);
+      SchemaVersion schema_version,
+      SkipTableTombstoneCheck skip_table_tombstone_check = SkipTableTombstoneCheck::kFalse);
 
-  DocReadContext(const DocReadContext& rhs, const Schema& schema, SchemaVersion schema_version);
+  DocReadContext(
+      const DocReadContext& rhs, const Schema& schema, SchemaVersion schema_version);
 
-  DocReadContext(const DocReadContext& rhs, const Schema& schema);
+  DocReadContext(
+      const DocReadContext& rhs, const Schema& schema);
 
-  DocReadContext(const DocReadContext& rhs, SchemaVersion min_schema_version);
+  DocReadContext(
+      const DocReadContext& rhs, SchemaVersion min_schema_version);
 
   template <class PB>
   Status LoadFromPB(const PB& pb) {
@@ -73,6 +79,7 @@ struct DocReadContext {
   }
 
   void SetCotableId(const Uuid& cotable_id);
+  void set_skip_table_tombstone_check(SkipTableTombstoneCheck skip_table_tombstone_check);
 
   // The number of bytes before actual key values for all encoded keys in this table.
   size_t key_prefix_encoded_len() const {
@@ -89,6 +96,10 @@ struct DocReadContext {
 
   Slice table_key_prefix() const {
     return Slice(shared_key_prefix_buffer_.data(), table_key_prefix_len_);
+  }
+
+  SkipTableTombstoneCheck skip_table_tombstone_check() const {
+    return skip_table_tombstone_check_;
   }
 
   void TEST_SetDefaultTimeToLive(uint64_t ttl_msec) {
@@ -148,6 +159,10 @@ struct DocReadContext {
   size_t table_key_prefix_len_ = 0;
 
   std::string log_prefix_;
+
+  // Whether we can skip table tombstone check for this table
+  // (only applies to colocated tables).
+  SkipTableTombstoneCheck skip_table_tombstone_check_;
 };
 
 } // namespace yb::docdb

@@ -1452,6 +1452,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (taskUniverseDetails.useNewHelmNamingStyle) {
       overrides.put("oldNamingStyle", false);
       overrides.put("fullnameOverride", taskParams().helmReleaseName);
+      overrides.put("useOldPodDisruptionBudget", false);
     }
 
     String defaultScope = "AZ";

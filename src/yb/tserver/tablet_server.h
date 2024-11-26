@@ -329,6 +329,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   encryption::UniverseKeyManager* GetUniverseKeyManager();
 
+  Status XClusterPopulateMasterHeartbeatRequest(
+      master::TSHeartbeatRequestPB& req, bool needs_full_tablet_report);
   Status XClusterHandleMasterHeartbeatResponse(const master::TSHeartbeatResponsePB& resp);
 
   Status ValidateAndMaybeSetUniverseUuid(const UniverseUuid& universe_uuid);

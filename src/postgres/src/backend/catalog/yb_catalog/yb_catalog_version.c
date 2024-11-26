@@ -525,45 +525,23 @@ bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version)
 	                              &ybc_stmt));
 
 	Datum oid_datum = Int32GetDatum(db_oid);
-	YBCPgExpr pkey_expr = YBCNewConstant(ybc_stmt,
-	                                     oid_attrdesc->atttypid,
-	                                     oid_attrdesc->attcollation,
-	                                     oid_datum,
-	                                     false /* is_null */);
+	YBCPgExpr pkey_expr = YBCNewConstant(
+		ybc_stmt, oid_attrdesc->atttypid, oid_attrdesc->attcollation, oid_datum,
+		false /* is_null */);
 
 	HandleYBStatus(YBCPgDmlBindColumn(ybc_stmt, 1, pkey_expr));
 
-	/* Add scan targets */
-	for (AttrNumber attnum = 1; attnum <= natts; attnum++)
-	{
-		/*
-		 * Before copying the following code, see if YbDmlAppendTargetRegular
-		 * or similar could be used instead.  Reason this doesn't use
-		 * YbDmlAppendTargetRegular is that it doesn't have access to
-		 * TupleDesc.  YbDmlAppendTargetRegular could be changed to take
-		 * Form_pg_attribute instead, but that would make it inconvenient for
-		 * other callers.
-		 */
-		Form_pg_attribute att = &Desc_pg_yb_catalog_version[attnum - 1];
-		YBCPgTypeAttrs type_attrs = { att->atttypmod };
-		YBCPgExpr   expr = YBCNewColumnRef(ybc_stmt, attnum, att->atttypid,
-										   att->attcollation, &type_attrs);
-		HandleYBStatus(YBCPgDmlAppendTarget(ybc_stmt, expr));
-	}
+	for (AttrNumber attnum = 1; attnum <= natts; ++attnum)
+		YbDmlAppendTargetRegularAttr(
+			&Desc_pg_yb_catalog_version[attnum - 1], ybc_stmt);
 
-	/*
-	 * Fetching of the YBTupleIdAttributeNumber attribute is required for
-	 * the ability to prefetch data from the pb_yb_catalog_version table via
-	 * PgSysTablePrefetcher.
-	 */
-	YbDmlAppendTargetSystem(YBTupleIdAttributeNumber, ybc_stmt);
 
 	HandleYBStatus(YBCPgExecSelect(ybc_stmt, NULL /* exec_params */));
 
-	bool      has_data = false;
+	bool has_data = false;
 
-	Datum           *values = (Datum *) palloc0(natts * sizeof(Datum));
-	bool            *nulls  = (bool *) palloc(natts * sizeof(bool));
+	Datum *values = palloc0(natts * sizeof(Datum));
+	bool *nulls  = palloc(natts * sizeof(bool));
 	YBCPgSysColumns syscols;
 	bool result = false;
 

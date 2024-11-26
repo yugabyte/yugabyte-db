@@ -825,7 +825,7 @@ Result<bool> HybridScanChoices::InterestedInRow(
         VERIFY_RESULT(dockv::IsColocatedTableTombstoneKey(row)), Corruption,
         "Key $0 is not table tombstone key.", row.ToDebugHexString());
     if (is_forward_scan_) {
-      iter->SeekOutOfSubDoc(row_key);
+      iter->SeekOutOfSubDoc(SeekFilter::kAll, row_key);
     } else {
       iter->SeekPrevDocKey(row);
     }

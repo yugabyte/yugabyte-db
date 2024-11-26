@@ -145,13 +145,13 @@ class PgsqlWriteOperation :
 };
 
 struct PgsqlReadOperationData {
-  const docdb::ReadOperationData& read_operation_data;
+  const ReadOperationData& read_operation_data;
   bool is_explicit_request_read_time;
   const PgsqlReadRequestPB& request;
   const DocReadContext& doc_read_context;
   const DocReadContext* index_doc_read_context;
   const TransactionOperationContext& txn_op_context;
-  const docdb::YQLStorageIf& ql_storage;
+  const YQLStorageIf& ql_storage;
   const ScopedRWOperation& pending_op;
   VectorIndexPtr vector_index;
 };
@@ -184,18 +184,17 @@ class PgsqlReadOperation : public DocExprExecutor {
 
   Status GetSpecialColumn(ColumnIdRep column_id, QLValuePB* result);
 
-  class KeyProvider;
-
  private:
   // Execute a READ operator for a given scalar argument.
   Result<std::tuple<size_t, bool>> ExecuteScalar();
 
   // Execute a READ operator for a given vector search.
   Result<std::tuple<size_t, bool>> ExecuteVectorSearch(
-      const DocReadContext& doc_read_context, const PgVectorReadOptionsPB& vector_idx_options);
+      const DocReadContext& doc_read_context, const PgVectorReadOptionsPB& options);
 
   // Execute a READ operator for a given batch of keys.
-  Result<size_t> ExecuteBatchKeys(KeyProvider* key_provider, bool use_indexed_table = false);
+  template <class KeyProvider>
+  Result<size_t> ExecuteBatchKeys(KeyProvider& key_provider, bool use_indexed_table = false);
 
   Result<std::tuple<size_t, bool>> ExecuteSample();
 
@@ -213,7 +212,9 @@ class PgsqlReadOperation : public DocExprExecutor {
   Result<bool> SetPagingState(
       YQLRowwiseIteratorIf* iter, const Schema& schema, const ReadHybridTime& read_time);
 
-  Result<size_t> ExecuteVectorLSMSearch(const PgVectorReadOptionsPB& vector_idx_options);
+  Result<size_t> ExecuteVectorLSMSearch(
+      const DocReadContext& doc_read_context, const PgVectorReadOptionsPB& options);
+
   void InitTargetEncoders(
       const google::protobuf::RepeatedPtrField<PgsqlExpressionPB>& targets,
       const dockv::PgTableRow& table_row);

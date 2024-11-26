@@ -69,6 +69,8 @@ MasterClusterHandler* MasterServiceBase::handler(MasterClusterHandler*) {
   return server_->master_cluster_handler();
 }
 
+YsqlManager* MasterServiceBase::handler(YsqlManager*) { return &server_->ysql_manager_impl(); }
+
 Status HandleLockAndCallFunction(
     const std::function<Status()>& f,
     HoldCatalogLock hold_catalog_lock,

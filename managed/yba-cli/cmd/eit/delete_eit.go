@@ -37,7 +37,7 @@ func init() {
 		"[Required] The name of the configuration to be deleted.")
 	deleteEITCmd.Flags().StringP("cert-type", "c", "",
 		"[Optional] Type of the certificate, defaults to list all configurations. "+
-			"Allowed values: SelfSigned, CustomCertHostPath,"+
+			"Allowed values (case sensitive): SelfSigned, CustomCertHostPath,"+
 			" HashicorpVault, K8sCertManager.")
 	deleteEITCmd.MarkFlagRequired("name")
 	deleteEITCmd.Flags().BoolP("force", "f", false,

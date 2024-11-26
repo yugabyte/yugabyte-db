@@ -28,54 +28,12 @@ var createReleaseCmd = &cobra.Command{
 	Short:   "Create a YugabyteDB version entry on YugabyteDB Anywhere",
 	Long: "Create a YugabyteDB version entry on YugabyteDB Anywhere. " +
 		"Run this command after the information provided in the " +
-		"\"yba yb-db-version artifact-create <url>\" commands.",
+		"\"yba yb-db-version artifact-create <url/upload>\" commands.",
 	Example: `yba yb-db-version create --version <version> --type PREVIEW --platform LINUX
 	--arch x86_64 --yb-type YBDB --url <url>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
-		version, err := cmd.Flags().GetString("version")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		if len(strings.TrimSpace(version)) == 0 {
-			cmd.Help()
-			logrus.Fatalln(
-				formatter.Colorize(
-					"No version found to create.\n",
-					formatter.RedColor))
-		}
-		fileID, err := cmd.Flags().GetString("file-id")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		url, err := cmd.Flags().GetString("url")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		if strings.TrimSpace(fileID) == "" && strings.TrimSpace(url) == "" {
-			cmd.Help()
-			logrus.Fatalln(
-				formatter.Colorize(
-					"One of file-id or url needed found to create.\n",
-					formatter.RedColor))
-		}
-
-		platform, err := cmd.Flags().GetString("platform")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		if strings.Compare("LINUX", strings.ToUpper(platform)) == 0 {
-			architecture, err := cmd.Flags().GetString("arch")
-			if err != nil {
-				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-			}
-			if len(strings.TrimSpace(architecture)) == 0 {
-				cmd.Help()
-				logrus.Fatalln(
-					formatter.Colorize(
-						"No architecture found when platform is Linux.\n",
-						formatter.RedColor))
-			}
-		}
+		releaseutil.VersionValidation(cmd, "create")
+		releaseutil.AddArchValidation(cmd)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()

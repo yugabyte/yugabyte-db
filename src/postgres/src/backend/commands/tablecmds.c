@@ -5908,8 +5908,11 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 		/*
 		 * Relations without storage may be ignored here.
 		 * Foreign tables have no storage, nor do partitioned tables and indexes.
+		 * YB: We do not need to rewrite tables during upgrade because we
+		 * link the DocDB table with the data on master.
 		 */
-		if (!RELKIND_HAS_STORAGE(tab->relkind))
+		if (!RELKIND_HAS_STORAGE(tab->relkind) ||
+			(IsYBRelationById(tab->relid) && IsBinaryUpgrade))
 			continue;
 		/*
 		 * YB Note: The following only applies to the old ALTER TYPE code.
@@ -6169,8 +6172,13 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 		Relation	rel = NULL;
 		ListCell   *lcon;
 
-		/* Relations without storage may be ignored here too */
-		if (!RELKIND_HAS_STORAGE(tab->relkind))
+		/*
+		 * Relations without storage may be ignored here too.
+		 * YB: We can also ignore YB relations during upgrade because their
+		 * constraints are already validated by the previous version.
+		 */
+		if (!RELKIND_HAS_STORAGE(tab->relkind) ||
+			(IsYBRelationById(tab->relid) && IsBinaryUpgrade))
 			continue;
 
 		foreach(lcon, tab->constraints)
@@ -15548,7 +15556,7 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 
 	/* Notify the user that this command is async */
 	ereport(NOTICE,
-			(errmsg("Data movement for table %s is successfully initiated.", 
+			(errmsg("Data movement for table %s is successfully initiated.",
 					RelationGetRelationName(rel)),
 			 errdetail("Data movement is a long running asynchronous process "
 					   "and can be monitored by checking the tablet placement "

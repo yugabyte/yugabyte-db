@@ -34,6 +34,7 @@ DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 DECLARE_bool(TEST_fail_universe_replication_merge);
 DECLARE_string(ysql_yb_test_block_index_phase);
 DECLARE_int32(ysql_yb_index_state_flags_update_delay);
+DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 
 using std::string;
 using namespace std::chrono_literals;
@@ -347,6 +348,9 @@ TEST_F(XClusterYsqlIndexTest, CreateIndexWithWorkload) {
 }
 
 TEST_F(XClusterYsqlIndexTest, FailedCreateIndex) {
+  // TODO(#24990): Bug in xCluster poller when we have more than 2 schema changes.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 5 * 60 * 1000;
+
   // Create index on consumer before producer should fail.
   ASSERT_NOK_STR_CONTAINS(
       CreateIndex(*consumer_conn_), "Failed to bootstrap table on the source universe");

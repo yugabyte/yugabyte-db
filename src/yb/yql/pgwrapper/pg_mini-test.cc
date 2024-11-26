@@ -1461,7 +1461,7 @@ TEST_F(PgMiniTest, AlterTableWithReplicaIdentity) {
   ASSERT_NOK(conn.Execute("CREATE TABLE t4 (a int primary key)"));
 }
 
-TEST_F(PgMiniTest, SkipTableTombstoneCheckMetadata) {
+TEST_F(PgMiniTest, TestSkipTableTombstoneCheck) {
   // Setup test data.
   const auto kNonColocatedTableName = "test";
   const auto kColocatedTableName = "colo_test";
@@ -1495,6 +1495,39 @@ TEST_F(PgMiniTest, SkipTableTombstoneCheckMetadata) {
   ASSERT_TRUE(ASSERT_RESULT(
       colocated_tablet_peer->tablet_metadata()->GetTableInfo(table_id))
       ->skip_table_tombstone_check);
+
+  const auto kRowCount = 100;
+
+  for (int i = 0; i < kRowCount; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, $1)", kColocatedTableName, i));
+  }
+
+  auto RunPointSelectQueriesOnColocatedTable = [&conn, &kColocatedTableName]() {
+    for (int i = 0; i < kRowCount; ++i) {
+      ASSERT_RESULT(conn.FetchFormat("SELECT * FROM $0 WHERE a = $1;", kColocatedTableName, i));
+    }
+  };
+
+  // Verify that read from the colocated table only does 100 seek.
+  auto num_seek_before_read = colocated_tablet_peer->shared_tablet()->regulardb_statistics()
+      ->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK);
+
+  RunPointSelectQueriesOnColocatedTable();
+
+  auto num_seek_after_read = colocated_tablet_peer->shared_tablet()->regulardb_statistics()
+      ->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK);
+  ASSERT_EQ(kRowCount, num_seek_after_read - num_seek_before_read);
+
+  // Verify that the number of seeks is still 100 even after a TRUNCATE
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE TABLE $0", kColocatedTableName));
+  num_seek_before_read = colocated_tablet_peer->shared_tablet()->regulardb_statistics()
+      ->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK);
+
+  RunPointSelectQueriesOnColocatedTable();
+
+  num_seek_after_read = colocated_tablet_peer->shared_tablet()->regulardb_statistics()
+      ->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK);
+  ASSERT_EQ(kRowCount, num_seek_after_read - num_seek_before_read);
 
   // Verify that skip_table_tombstone_check=false for pg system tables.
   table_id = ASSERT_RESULT(GetTableIDFromTableName("pg_class"));

@@ -103,7 +103,7 @@ class AnsibleProcess(object):
         node_agent_auth_token = vars.pop("node_agent_auth_token", None)
         offload = vars.pop("offload_ansible", False) and not disable_offloading
         if ssh_key_file is not None:
-            ssh_key_type = parse_private_key(ssh_key_file)
+            ssh_key_type, _ = parse_private_key(ssh_key_file)
         remote_tmp_dir = vars.get("remote_tmp_dir", "/tmp")
         env = os.environ.copy()
         if env.get('APPLICATION_CONSOLE_LOG_LEVEL') != 'INFO':

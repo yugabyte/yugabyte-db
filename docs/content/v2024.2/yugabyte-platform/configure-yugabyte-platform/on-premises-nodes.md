@@ -19,38 +19,9 @@ After creating the on-premises provider, you can add instances to its free pool 
 
 This displays the configured instance types and instances for the selected provider.
 
-<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
-  <li>
-    <a href="#automatic" class="nav-link active" id="automatic-tab" data-bs-toggle="tab"
-      role="tab" aria-controls="automatic" aria-selected="true">
-      Automatic Provisioning
-    </a>
-  </li>
-  <li>
-    <a href="#manual" class="nav-link" id="manual-tab" data-bs-toggle="tab"
-      role="tab" aria-controls="manual" aria-selected="false">
-      Manual Provisioning
-    </a>
-  </li>
-</ul>
-<div class="tab-content">
-  <div id="automatic" class="tab-pane fade show active" role="tabpanel" aria-labelledby="automatic-tab">
-
-For automatic provisioning, the **Instances** page is displayed as follows:
-
 ![Configure on-prem instances](/images/yb-platform/config/yba-onprem-config-instances.png)
 
-  </div>
-
-  <div id="manual" class="tab-pane fade" role="tabpanel" aria-labelledby="manual-tab">
-
-For manual provisioning, the **Instances** page includes the command for running the provisioning script, as follows:
-
-![On-prem pre-provisioning script](/images/yb-platform/config/yba-onprem-config-script.png)
-
-  </div>
-
-</div>
+(For classic manual provisioning, the **Instances** page additionally includes the command for running the provisioning script.)
 
 To add nodes, do the following:
 

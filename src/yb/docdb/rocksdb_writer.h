@@ -246,7 +246,7 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
   Result<bool> StoreApplyState(const Slice& key, rocksdb::DirectWriteHandler* handler);
   Status ProcessVectorIndexes(Slice key, Slice value);
   template <class Decoder>
-  Status ProcessVectorIndexesForPackedRow(Slice key, Slice value);
+  Status ProcessVectorIndexesForPackedRow(size_t prefix_size, Slice key, Slice value);
 
   const TabletId& tablet_id_;
   const ApplyTransactionState* apply_state_;
@@ -259,6 +259,10 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
   BoundedRocksDbIterator intent_iter_;
   // TODO(vector_index) Optimize memory management
   std::vector<VectorIndexInsertEntries> vector_index_batches_;
+
+  std::shared_ptr<const dockv::SchemaPacking> schema_packing_;
+  SchemaVersion schema_packing_version_ = std::numeric_limits<SchemaVersion>::max();
+  KeyBuffer schema_packing_table_prefix_;
 };
 
 class RemoveIntentsContext : public IntentsWriterContext {

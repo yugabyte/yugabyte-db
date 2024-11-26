@@ -116,9 +116,9 @@ TEST_F(Pg15UpgradeTest, BackslashD) {
 
   ASSERT_OK(UpgradeClusterToMixedMode());
 
-  result = ASSERT_RESULT(ExecuteViaYsqlshOnTs(kBackslashD, kMixedModeTserverPg15));
+  result = ASSERT_RESULT(ExecuteViaYsqlsh(kBackslashD, kMixedModeTserverPg15));
   ASSERT_EQ(result, kExpectedResult);
-  result = ASSERT_RESULT(ExecuteViaYsqlshOnTs(kBackslashD, kMixedModeTserverPg11));
+  result = ASSERT_RESULT(ExecuteViaYsqlsh(kBackslashD, kMixedModeTserverPg11));
   ASSERT_EQ(result, kExpectedResult);
 
   ASSERT_OK(FinalizeUpgradeFromMixedMode());
@@ -126,6 +126,62 @@ TEST_F(Pg15UpgradeTest, BackslashD) {
   // Verify the result from a random tserver.
   result = ASSERT_RESULT(ExecuteViaYsqlsh(kBackslashD));
   ASSERT_EQ(result, kExpectedResult);
+}
+
+TEST_F(Pg15UpgradeTest, CreateTableOf) {
+  static const auto t1 = "t1_pg11";
+  static const auto t2 = "t2_pg11";
+  static const auto t3 = "t3_pg15";
+  static const auto t4 = "t4_pg15";
+  static const auto type_name = "ty";
+
+  ASSERT_OK(ExecuteStatements({
+      Format("CREATE TYPE $0 AS (a INT)", type_name),
+      Format("CREATE TABLE $0 OF $1", t1, type_name),
+      Format("CREATE TABLE $0 (a INT)", t2),
+  }));
+
+  std::map<std::string, bool> table_is_typed = {{t1, true}, {t2, false}};
+
+  const auto check_tables = [this, &table_is_typed] (std::optional<size_t> tserver_idx) {
+    const auto kTypeTable = Format("Typed table of type: $0\n", type_name);
+    const auto kExpectedOutput =
+        "              Table \"public.$0\"\n"
+        " Column |  Type   | Collation | Nullable | Default \n"
+        "--------+---------+-----------+----------+---------\n"
+        " a      | integer |           |          | \n"
+        "$1\n";
+
+    for (const auto &[table, is_typed] : table_is_typed) {
+      auto result = ASSERT_RESULT(ExecuteViaYsqlsh(Format("\\d $0", table), tserver_idx));
+      ASSERT_EQ(result, Format(kExpectedOutput, table, is_typed ? kTypeTable : ""));
+    }
+  };
+
+  ASSERT_NO_FATALS(check_tables(kAnyTserver));
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  for (const auto tserver_idx : {kMixedModeTserverPg11, kMixedModeTserverPg15})
+    ASSERT_NO_FATALS(check_tables(tserver_idx));
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  ASSERT_NO_FATALS(check_tables(kAnyTserver));
+
+  ASSERT_OK(ExecuteStatements({
+      Format("ALTER TABLE $0 NOT OF", t1),
+      Format("ALTER TABLE $0 OF $1", t2, type_name),
+      Format("CREATE TABLE $0 OF $1", t3, type_name),
+      Format("CREATE TABLE $0 (a INT)", t4),
+  }));
+
+  table_is_typed[t1] = false;
+  table_is_typed[t2] = true;
+  table_is_typed[t3] = true;
+  table_is_typed[t4] = false;
+
+  ASSERT_NO_FATALS(check_tables(kAnyTserver));
 }
 
 TEST_F(Pg15UpgradeTest, Comments) {
@@ -588,17 +644,17 @@ TEST_F(Pg15UpgradeTest, Template1) {
       // Event triggers run only on DDLs, which are disallowed during upgrade. So we can't directly
       // test them, but we can check that they exist.
       {
-        auto result = ASSERT_RESULT(ExecuteViaYsqlshOnTs("\\dy", tserver, db_name));
+        auto result = ASSERT_RESULT(ExecuteViaYsqlsh("\\dy", tserver, db_name));
         ASSERT_STR_CONTAINS(result, kEventTrigger);
       }
       // Check that objects created in the schema are visible only in that schema.
       {
-        auto result = ASSERT_RESULT(ExecuteViaYsqlshOnTs("\\df", tserver, db_name));
+        auto result = ASSERT_RESULT(ExecuteViaYsqlsh("\\df", tserver, db_name));
         ASSERT_STR_NOT_CONTAINS(result, kSchema);
         ASSERT_STR_NOT_CONTAINS(result, kFunctionInSchema);
 
-        auto result_schema = ASSERT_RESULT(ExecuteViaYsqlshOnTs(Format("\\df $0.*", kSchema),
-                                                                      tserver, db_name));
+        auto result_schema = ASSERT_RESULT(ExecuteViaYsqlsh(Format("\\df $0.*", kSchema),
+                                                            tserver, db_name));
         ASSERT_STR_CONTAINS(result_schema, kSchema);
         ASSERT_STR_CONTAINS(result_schema, kFunctionInSchema);
       }
@@ -662,7 +718,8 @@ TEST_F(Pg15UpgradeTest, Template1) {
       ASSERT_OK(conn.ExecuteFormat("DROP SCHEMA $0 CASCADE", kSchema));
 
       // Validate that the function no longer exists.
-      auto all_functions = ASSERT_RESULT(ExecuteViaYsqlsh(Format("\\df *.*", kSchema), db_name));
+      auto all_functions = ASSERT_RESULT(ExecuteViaYsqlsh(Format("\\df *.*", kSchema), kAnyTserver,
+                                                          db_name));
       ASSERT_STR_NOT_CONTAINS(all_functions, kFunctionInSchema);
     }
   }
@@ -1019,6 +1076,89 @@ TEST_F(Pg15UpgradeTest, Indexes) {
   }
 }
 
+TEST_F(Pg15UpgradeTest, ForeignKeyTest) {
+  int a = 0;
+  int b = 100;
+  int c = 10000;
+
+  std::vector<int> a_values = {};
+  std::vector<int> b_values = {};
+  std::vector<int> c_values = {};
+
+  ASSERT_OK(ExecuteStatements({
+    "CREATE TABLE a_values (a int primary key)",
+    "CREATE TABLE b_values (b int primary key)",
+    "CREATE TABLE c_values (c int primary key)",
+
+    "CREATE TABLE referencing_table (a int references a_values(a), "
+    "                                b int, "
+    "                                c int, "
+    "                                foreign key (b) references b_values(b))",
+    "ALTER TABLE referencing_table ADD CONSTRAINT fk_c FOREIGN KEY (c) REFERENCES c_values(c)",
+  }));
+
+  for (size_t i = 0; i < 3; i++) {
+    a_values.push_back(++a);
+    b_values.push_back(++b);
+    c_values.push_back(++c);
+
+    ASSERT_OK(ExecuteStatement(Format("INSERT INTO a_values VALUES ($0)", a)));
+    ASSERT_OK(ExecuteStatement(Format("INSERT INTO b_values VALUES ($0)", b)));
+    ASSERT_OK(ExecuteStatement(Format("INSERT INTO c_values VALUES ($0)", c)));
+
+    ASSERT_OK(ExecuteStatement(Format("INSERT INTO referencing_table VALUES ($0, $1, $2)",
+                                      a, b, c)));
+  }
+
+  const auto add_and_check_new_row = [this, &a, &b, &c, &a_values, &b_values, &c_values]
+      (const std::optional<size_t> tserver_idx) {
+    auto conn = ASSERT_RESULT(CreateConnToTs(tserver_idx));
+
+    ASSERT_NOK_STR_CONTAINS(
+        conn.ExecuteFormat("INSERT INTO referencing_table VALUES ($0, $1, $2)", a + 1, b, c),
+        "is not present in table \"a_values\"");
+    ASSERT_NOK_STR_CONTAINS(
+        conn.ExecuteFormat("INSERT INTO referencing_table VALUES ($0, $1, $2)", a, b + 1, c),
+        "is not present in table \"b_values\"");
+    ASSERT_NOK_STR_CONTAINS(
+        conn.ExecuteFormat("INSERT INTO referencing_table VALUES ($0, $1, $2)", a, b, c + 1),
+        "is not present in table \"c_values\"");
+
+    a_values.push_back(++a);
+    b_values.push_back(++b);
+    c_values.push_back(++c);
+
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO a_values VALUES ($0)", a));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO b_values VALUES ($0)", b));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO c_values VALUES ($0)", c));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO referencing_table VALUES ($0, $1, $2)",
+                                 a, b, c));
+
+    for (std::string col : {"a", "b", "c"}) {
+      const auto expected = ((col == "a") ? a_values : (col == "b") ? b_values : c_values);
+
+      const auto actual = ASSERT_RESULT(conn.FetchRows<int>(
+          Format("SELECT $0 FROM $0_values ORDER BY $0", col)));
+      ASSERT_VECTORS_EQ(expected, actual);
+
+      const auto actual_referencing = ASSERT_RESULT(conn.FetchRows<int>(
+          Format("SELECT $0 FROM referencing_table ORDER BY $0", col)));
+      ASSERT_VECTORS_EQ(expected, actual_referencing);
+    }
+  };
+
+  ASSERT_NO_FATALS(add_and_check_new_row(kAnyTserver));
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  ASSERT_NO_FATALS(add_and_check_new_row(kMixedModeTserverPg11));
+  ASSERT_NO_FATALS(add_and_check_new_row(kMixedModeTserverPg15));
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  ASSERT_NO_FATALS(add_and_check_new_row(kAnyTserver));
+}
+
 class Pg15UpgradeSequenceTest : public Pg15UpgradeTest {
  public:
   Pg15UpgradeSequenceTest() = default;
@@ -1035,13 +1175,6 @@ class Pg15UpgradeSequenceTest : public Pg15UpgradeTest {
     cluster_->Shutdown();
     ASSERT_OK(cluster_->Restart());
 
-    // Set catalog version to 10000 so that tservers detect a catalog version mismatch if they're
-    // contacted.
-    ASSERT_OK(ExecuteStatements(
-        {"SET yb_non_ddl_txn_for_sys_tables_allowed TO on",
-        "UPDATE pg_yb_catalog_version SET current_version = 10000, last_breaking_version = 10000 "
-        "WHERE db_oid = (SELECT oid FROM pg_database WHERE datname = 'yugabyte')",
-        "RESET yb_non_ddl_txn_for_sys_tables_allowed"}));
     // Required to avoid a known issue documented in yb_catalog_version.sql
     ASSERT_NOK(ExecuteStatement("SELECT 1 FROM pg_yb_catalog_version"));
   }
@@ -1067,6 +1200,96 @@ class Pg15UpgradeSequenceTest : public Pg15UpgradeTest {
   int seq_val_pg11_ = 1;
   int seq_val_pg15_ = 1;
 };
+
+TEST_F(Pg15UpgradeTest, YbGinIndex) {
+  const auto kGinTableName = "expression";
+  const std::vector<std::string> kGinIndexes = {"gin_idx_1", "gin_idx_2", "gin_idx_3"};
+  ASSERT_OK(ExecuteStatements({
+    "SET yb_non_ddl_txn_for_sys_tables_allowed TO on",
+    "UPDATE pg_yb_catalog_version SET current_version = 10000, last_breaking_version = 10000",
+    "RESET yb_non_ddl_txn_for_sys_tables_allowed",
+
+    Format("CREATE TABLE $0 (v tsvector, a text[], j jsonb)", kGinTableName),
+  }));
+
+  const auto create_indexes = [this, kGinIndexes, kGinTableName]() {
+    ASSERT_OK(ExecuteStatements({
+      Format("CREATE INDEX $0 ON $1 USING ybgin (tsvector_to_array(v))",
+             kGinIndexes[0], kGinTableName),
+      Format("CREATE INDEX $0 ON $1 USING ybgin (array_to_tsvector(a))",
+             kGinIndexes[1], kGinTableName),
+      Format("CREATE INDEX $0 ON $1 USING ybgin (jsonb_to_tsvector('simple', j, '[\"string\"]'))",
+             kGinIndexes[2], kGinTableName),
+    }));
+  };
+
+  ASSERT_NO_FATALS(create_indexes());
+
+  const auto check_and_insert_rows = [kGinTableName](pgwrapper::PGConn& conn, int &expected) {
+    const auto kQueries = {
+      "SELECT count(*) FROM $0 WHERE tsvector_to_array(v) && ARRAY['b']",
+      "SELECT count(*) FROM $0 WHERE array_to_tsvector(a) @@ 'e'",
+      "SELECT count(*) FROM $0 WHERE jsonb_to_tsvector('simple', j, '[\"string\"]') @@ 'h'",
+    };
+
+    for (const auto &query : kQueries) {
+      const auto result = ASSERT_RESULT(
+          conn.FetchRow<pgwrapper::PGUint64>(Format(query, kGinTableName)));
+      ASSERT_EQ(result, expected);
+    }
+
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 VALUES "
+        "  (to_tsvector('simple', 'a b c'), ARRAY['d', 'e', 'f'], '{\"g\":[\"h\",\"i\"]}')",
+        kGinTableName
+    ));
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 VALUES (to_tsvector('simple', 'a a'), ARRAY['d', 'd'], '{\"g\":\"g\"}')",
+        kGinTableName
+    ));
+    expected++;
+
+    for (const auto &query : kQueries) {
+      const auto result = ASSERT_RESULT(
+          conn.FetchRow<pgwrapper::PGUint64>(Format(query, kGinTableName)));
+      ASSERT_EQ(result, expected);
+    }
+  };
+
+  int num_rows = 0;
+
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_NO_FATALS(check_and_insert_rows(conn, num_rows));
+  }
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg11));
+    ASSERT_NO_FATALS(check_and_insert_rows(conn, num_rows));
+  }
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg15));
+    ASSERT_NO_FATALS(check_and_insert_rows(conn, num_rows));
+  }
+
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_NO_FATALS(check_and_insert_rows(conn, num_rows));
+
+    // test dropping and recreating the indexes, to validate that these DDLs
+    // still work as expected in pg15
+    for (const auto &index : kGinIndexes) {
+      ASSERT_OK(conn.ExecuteFormat("DROP INDEX $0", index));
+    }
+    ASSERT_NO_FATALS(create_indexes());
+
+    ASSERT_NO_FATALS(check_and_insert_rows(conn, num_rows));
+  }
+}
 
 TEST_F(Pg15UpgradeSequenceTest, Sequences) {
   ASSERT_OK(ExecuteStatement(Format("CREATE SEQUENCE $0", kSequencePg11)));

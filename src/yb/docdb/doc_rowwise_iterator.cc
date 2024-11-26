@@ -153,8 +153,15 @@ void DocRowwiseIterator::InitResult() {
   }
 }
 
+void DocRowwiseIterator::Refresh(SeekFilter seek_filter) {
+  done_ = false;
+  seek_filter_ = seek_filter;
+}
+
 inline void DocRowwiseIterator::Seek(Slice key) {
   VLOG_WITH_FUNC(3) << " Seeking to " << key << "/" << dockv::DocKey::DebugSliceToString(key);
+
+  DCHECK(!done_);
 
   prev_doc_found_ = DocReaderResult::kNotFound;
 
@@ -164,18 +171,18 @@ inline void DocRowwiseIterator::Seek(Slice key) {
   // Another option would be changing kLowest value to kNullLow. But there are much more scenarios
   // that could be affected and should be tested.
   if (!key.empty() && key[0] >= dockv::KeyEntryTypeAsChar::kNullLow) {
-    db_iter_->Seek(key, Full::kTrue);
+    db_iter_->Seek(key, seek_filter_, Full::kTrue);
     return;
   }
 
   auto shared_prefix = shared_key_prefix();
   if (!shared_prefix.empty()) {
-    db_iter_->Seek(shared_prefix, Full::kFalse);
+    db_iter_->Seek(shared_prefix, seek_filter_, Full::kFalse);
     return;
   }
 
   const auto null_low = dockv::KeyEntryTypeAsChar::kNullLow;
-  db_iter_->Seek(Slice(&null_low, 1), Full::kFalse);
+  db_iter_->Seek(Slice(&null_low, 1), seek_filter_, Full::kFalse);
 }
 
 inline void DocRowwiseIterator::SeekPrevDocKey(Slice key) {
@@ -190,18 +197,20 @@ inline void DocRowwiseIterator::SeekPrevDocKey(Slice key) {
 
 Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow(bool row_finished,
                                                            bool current_fetched_row_skipped) {
-  if (!IsFetchedRowStatic() &&
+  if (seek_filter_ == SeekFilter::kAll && !IsFetchedRowStatic() &&
       VERIFY_RESULT(scan_choices_->AdvanceToNextRow(&row_key_, db_iter_.get(),
                                                     current_fetched_row_skipped))) {
     return Status::OK();
   }
   if (!is_forward_scan_) {
     VLOG(4) << __PRETTY_FUNCTION__ << " setting as PrevDocKey";
+    RSTATUS_DCHECK_EQ(seek_filter_, SeekFilter::kAll, IllegalState,
+                      "Backward scan is not supported with this filter");
     db_iter_->PrevDocKey(row_key_);
   } else if (row_finished) {
-    db_iter_->Revalidate();
+    db_iter_->Revalidate(seek_filter_);
   } else {
-    db_iter_->SeekOutOfSubDoc(&row_key_);
+    db_iter_->SeekOutOfSubDoc(seek_filter_, &row_key_);
   }
 
   return Status::OK();
@@ -293,6 +302,8 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     row_key = row_key_.AsSlice();
 
     if (has_bound_key_ && is_forward_scan_ == (row_key.compare(bound_key_) >= 0)) {
+      VLOG(3) << "Done since " << dockv::SubDocKey::DebugSliceToString(key_data.key)
+              << " out of bound: " << dockv::SubDocKey::DebugSliceToString(bound_key_);
       done_ = true;
       return false;
     }
@@ -309,8 +320,10 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
       doc_reader_ = std::make_unique<DocDBTableReader>(
           db_iter_.get(), deadline_info_, &projection_, table_type_,
           schema_packing_storage(), schema(), use_fast_backward_scan_);
-      RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(
-          VERIFY_RESULT(GetTableTombstoneTime(row_key))));
+      if (!skip_table_tombstone_check()) {
+        RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(
+            VERIFY_RESULT(GetTableTombstoneTime(row_key))));
+      }
       if (!ignore_ttl_) {
         doc_reader_->SetTableTtl(schema());
       }
@@ -342,14 +355,14 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
 Result<DocReaderResult> DocRowwiseIterator::FetchRow(
     const FetchedEntry& fetched_entry, dockv::PgTableRow* table_row) {
   CHECK_NE(doc_mode_, DocMode::kGeneric) << "Table type: " << table_type_;
-  return doc_reader_->GetFlat(row_key_.mutable_data(), fetched_entry, table_row);
+  return doc_reader_->GetFlat(&row_key_.data(), fetched_entry, table_row);
 }
 
 Result<DocReaderResult> DocRowwiseIterator::FetchRow(
     const FetchedEntry& fetched_entry, QLTableRowPair table_row) {
   return doc_mode_ == DocMode::kFlat
-      ? doc_reader_->GetFlat(row_key_.mutable_data(), fetched_entry, table_row.table_row)
-      : doc_reader_->Get(row_key_.mutable_data(), fetched_entry, &*row_);
+      ? doc_reader_->GetFlat(&row_key_.data(), fetched_entry, table_row.table_row)
+      : doc_reader_->Get(&row_key_.data(), fetched_entry, &*row_);
 }
 
 Status DocRowwiseIterator::FillRow(dockv::PgTableRow* out) {

@@ -486,7 +486,7 @@ TEST_F_EX(PgWaitEventAuxTest, YB_DISABLE_TEST_IN_TSAN(TabletSplitRPCs), PgTablet
 }
 
 TEST_F(PgAshSingleNode, CheckWaitEventsDescription) {
-  const std::string kPgEventsDesc = "This wait event was inherited from PostgreSQL.";
+  const std::string kPgEventsDesc = "Inherited from PostgreSQL.";
 
   std::unordered_set<std::string> pg_events = {
       "QueryProcessing",

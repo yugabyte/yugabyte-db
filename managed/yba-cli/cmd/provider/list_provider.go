@@ -5,6 +5,8 @@
 package provider
 
 import (
+	"strings"
+
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/providerutil"
@@ -23,7 +25,7 @@ var listProviderCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		providerutil.ListProviderUtil(cmd, "", providerCode)
+		providerutil.ListProviderUtil(cmd, "", strings.ToLower(providerCode))
 
 	},
 }

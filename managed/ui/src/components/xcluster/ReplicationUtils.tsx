@@ -57,6 +57,7 @@ import {
   XClusterConfig,
   XClusterConfigNeedBootstrapPerTableResponse,
   XClusterNeedBootstrapReason,
+  XClusterReplicationStatusError,
   XClusterTableDetails
 } from './dtos';
 import {
@@ -554,7 +555,12 @@ export const getTableCountsOfConcern = (tableDetails: XClusterTableDetails[]) =>
       },
       xClusterTableDetails
     ) => {
-      if (xClusterTableDetails.status === XClusterTableStatus.ERROR) {
+      if (
+        xClusterTableDetails.status === XClusterTableStatus.ERROR &&
+        xClusterTableDetails.replicationStatusErrors.includes(
+          XClusterReplicationStatusError.MISSING_OP
+        )
+      ) {
         tableCountsOfConcern.error += 1;
       } else if (MISMATCHED_TABLE_STATUSES.includes(xClusterTableDetails.status)) {
         tableCountsOfConcern.mismatchedTable += 1;

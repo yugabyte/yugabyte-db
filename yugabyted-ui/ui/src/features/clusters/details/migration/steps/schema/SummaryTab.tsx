@@ -51,7 +51,6 @@ export const SummaryTab: FC<SummaryTabProps> = ({ analysis }) => {
   );
 
   const total = automaticDDLImport + manualRefactoring;
-
   return (
     <Box>
       <Grid container>
@@ -87,7 +86,13 @@ export const SummaryTab: FC<SummaryTabProps> = ({ analysis }) => {
       </Grid>
 
       {analysis.summary.graph.length > 0 && total > 0 && (
-        <RefactoringGraph sqlObjects={analysis.summary.graph} />
+        <RefactoringGraph sqlObjects={analysis.summary.graph}
+          sqlObjectsList={[
+            ...(analysis.reviewRecomm.unsupportedFeatures ?? []),
+            ...(analysis.reviewRecomm.unsupportedDataTypes ?? []),
+            ...(analysis.reviewRecomm.unsupportedFunctions ?? [])
+          ]}
+        />
       )}
     </Box>
   );

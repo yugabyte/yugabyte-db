@@ -291,3 +291,4 @@
 | "Fail the the health check if no clock sync service is found" | "yb.health_checks.clock_sync_service_required" | "UNIVERSE" | "Require chrony or ntp(d) to be installed for health check to pass" | "Boolean" |
 | "Node Agent Enabler Installation Time-out" | "yb.node_agent.enabler.install_timeout" | "UNIVERSE" | "Node agent enabler installation time-out for the universe" | "Duration" |
 | "Node Agent Enabler Reinstallation Cooldown Period" | "yb.node_agent.enabler.reinstall_cooldown" | "UNIVERSE" | "Node agent enabler reinstallation cooldown period for the universe" | "Duration" |
+| "Option for Off-Cluster PITR based Backup Schedule" | "yb.ui.feature_flags.off_cluster_pitr_enabled" | "UNIVERSE" | "Enable option for creating backup schedules that support off-cluster PITR" | "Boolean" |

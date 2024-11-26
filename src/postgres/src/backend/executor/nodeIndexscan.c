@@ -1498,20 +1498,39 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 
 				Assert(leftop != NULL);
 
+				/*
+				 * Check for yb_hash_code() and set flag if present.
+				 */
+				if (IsA(leftop, FuncExpr)
+					&& ((FuncExpr *) leftop)->funcid == YB_HASH_CODE_OID)
+					flags |= YB_SK_IS_HASHED;
+
 				if (!(IsA(leftop, Var) &&
-					  ((Var *) leftop)->varno == INDEX_VAR))
+					((Var *) leftop)->varno == INDEX_VAR)
+					&& ((flags & YB_SK_IS_HASHED) == 0))
 					elog(ERROR, "indexqual doesn't have key on left side");
 
-				varattno = ((Var *) leftop)->varattno;
+				if ((flags & YB_SK_IS_HASHED) != 0)
+				{
+					varattno = InvalidAttrNumber;
+					opfamily = INTEGER_LSM_FAM_OID;
+				}
+				else
+				{
+					varattno = ((Var *) leftop)->varattno;
+					if (varattno < 1 || varattno > indnkeyatts)
+						elog(ERROR, "bogus index qualification");
 
-				/*
-				 * We have to look up the operator's associated btree support
-				 * function
-				 */
-				if ((index->rd_rel->relam != BTREE_AM_OID && index->rd_rel->relam != LSM_AM_OID) ||
+					if ((index->rd_rel->relam != BTREE_AM_OID && index->rd_rel->relam != LSM_AM_OID) ||
 					varattno < 1 || varattno > indnkeyatts)
-					elog(ERROR, "bogus RowCompare index qualification");
-				opfamily = index->rd_opfamily[varattno - 1];
+						elog(ERROR, "bogus RowCompare index qualification");
+
+					/*
+					 * We have to look up the operator's strategy number.  This
+					 * provides a cross-check that the operator does match the index.
+					 */
+					opfamily = index->rd_opfamily[varattno - 1];
+				}
 
 				get_op_opfamily_properties(opno, opfamily, isorderby,
 										   &op_strategy,

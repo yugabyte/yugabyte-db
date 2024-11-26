@@ -88,9 +88,8 @@ from yugabyte.test_descriptor import TEST_DESCRIPTOR_SEPARATOR  # noqa
 # that should be triggered earlier.
 TEST_TIMEOUT_UPPER_BOUND_SEC = 35 * 60
 
-# Defaults for maximum test failure threshold, after which the Spark job will be aborted
-DEFAULT_MAX_NUM_TEST_FAILURES_MACOS_DEBUG = 150
-DEFAULT_MAX_NUM_TEST_FAILURES = 100
+# Default for maximum test failure threshold, after which the Spark job will be aborted
+DEFAULT_MAX_NUM_TEST_FAILURES = 200
 
 # Default for test artifact size limit to copy back to the build host, in bytes.
 MAX_ARTIFACT_SIZE_BYTES = 100 * 1024 * 1024
@@ -398,7 +397,7 @@ def join_build_root_with(rel_path: str) -> str:
     return os.path.join(get_build_root(), rel_path)
 
 
-def parallel_run_test(test_descriptor_str: str, fail_count: Any) -> yb_dist_tests.TestResult:
+def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: Any) -> None:
     """
     This is invoked in parallel to actually run tests.
     """
@@ -533,14 +532,15 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any) -> yb_dist_test
                 os.path.relpath(os.path.abspath(artifact_path), global_conf.yb_src_root)
                 for artifact_path in artifact_paths]
 
-        return yb_dist_tests.TestResult(
-                exit_code=exit_code,
-                test_descriptor=test_descriptor,
-                elapsed_time_sec=elapsed_time_sec,
-                failed_without_output=failed_without_output,
-                artifact_paths=rel_artifact_paths,
-                artifact_copy_result=artifact_copy_result,
-                spark_error_copy_result=spark_error_copy_result)
+        test_results.add(yb_dist_tests.TestResult(
+            exit_code=exit_code,
+            test_descriptor=test_descriptor,
+            elapsed_time_sec=elapsed_time_sec,
+            failed_without_output=failed_without_output,
+            artifact_paths=rel_artifact_paths,
+            artifact_copy_result=artifact_copy_result,
+            spark_error_copy_result=spark_error_copy_result))
+        return None
     finally:
         delete_if_exists_log_errors(test_tmp_dir)
         delete_if_exists_log_errors(test_started_running_flag_file)
@@ -1095,18 +1095,18 @@ def propagate_env_vars() -> None:
     logging.info("Number of propagated environment variables: %s", num_propagated)
 
 
+# This action is a spark job, not individual task.
 def run_spark_action(action: Any) -> Any:
     import py4j  # type: ignore
+    results = None
     try:
         results = action()
     except py4j.protocol.Py4JJavaError as e:
         if "cancelled as part of cancellation of all jobs" in str(e):
-            logging.warning("Spark job was killed after hitting test failure threshold of %s",
-                            g_max_num_test_failures)
+            log_heading("Spark job was killed after hitting test failure threshold of {}".format(
+                        g_max_num_test_failures))
         else:
-            logging.error("Spark job failed to run! Jenkins should probably restart this build.")
-        raise
-
+            logging.error("Spark job failed to run!.")
     return results
 
 
@@ -1177,9 +1177,7 @@ def main() -> None:
     parser.add_argument('--max-num-test_failures', type=int, dest='max_num_test_failures',
                         default=None,
                         help='Maximum number of test failures before aborting the Spark test job.'
-                             'Default is {} for all the builds except {} for macOS debug.'.format(
-                              DEFAULT_MAX_NUM_TEST_FAILURES,
-                              DEFAULT_MAX_NUM_TEST_FAILURES_MACOS_DEBUG))
+                             'Default is {}.'.format(DEFAULT_MAX_NUM_TEST_FAILURES))
 
     args = parser.parse_args()
     global g_spark_master_url_override
@@ -1242,10 +1240,7 @@ def main() -> None:
 
     global g_max_num_test_failures
     if not (args.max_num_test_failures or os.environ.get('YB_MAX_NUM_TEST_FAILURES', None)):
-        if is_macos() and global_conf.build_type == 'debug':
-            g_max_num_test_failures = DEFAULT_MAX_NUM_TEST_FAILURES_MACOS_DEBUG
-        else:
-            g_max_num_test_failures = DEFAULT_MAX_NUM_TEST_FAILURES
+        g_max_num_test_failures = DEFAULT_MAX_NUM_TEST_FAILURES
     elif args.max_num_test_failures:
         g_max_num_test_failures = args.max_num_test_failures
     else:
@@ -1332,10 +1327,24 @@ def main() -> None:
 
     set_global_conf_for_spark_jobs()
 
+    # Rather than collect results from RDD dataset, accumulate them in the spark_context.
+    # That way we are not dependent on the entire test set to run successfully and can
+    # capture partial results.
+    from pyspark.accumulators import AccumulatorParam  # type: ignore
+
+    class ListAccumulatorParam(AccumulatorParam):  # type: ignore
+        def zero(self, value: Any) -> list:
+            return []
+
+        def addInPlace(self, listvar: list, newvalue: Any) -> list:
+            listvar.append(newvalue)
+            return listvar
+
+    test_results = spark_context.accumulator([], ListAccumulatorParam())  # type: ignore
+
     # By this point, test_descriptors have been duplicated the necessary number of times, with
     # attempt indexes attached to each test descriptor.
 
-    results: List[yb_dist_tests.TestResult] = []
     if test_descriptors:
         def monitor_fail_count(stop_event: threading.Event) -> None:
             while fail_count.value < g_max_num_test_failures and not stop_event.is_set():
@@ -1351,6 +1360,7 @@ def main() -> None:
         counter_thread = threading.Thread(target=monitor_fail_count, args=(counter_stop,))
         counter_thread.daemon = True
 
+        log_heading("Test Job Beginning")
         logging.info("Running {} tasks on Spark".format(total_num_tests))
         assert total_num_tests == len(test_descriptors), \
             "total_num_tests={}, len(test_descriptors)={}".format(
@@ -1364,13 +1374,20 @@ def main() -> None:
 
         try:
             counter_thread.start()
-            results = run_spark_action(lambda: test_names_rdd.map(
-              lambda test_name: parallel_run_test(test_name, fail_count)
+            # We are not passing in fail_count or test_results values, just references to
+            # the accumulator objects.
+            run_spark_action(lambda: test_names_rdd.map(
+              lambda test_name: parallel_run_test(test_name, fail_count, test_results)
             ).collect())
 
         finally:
             counter_stop.set()
             counter_thread.join(timeout=THREAD_JOIN_TIMEOUT_SEC)
+
+        # Each task (or executor?) adds a list of results, so we need to flatten to single list.
+        results = []
+        for rlist in test_results.value:
+            results.extend(rlist)
 
     else:
         # Allow running zero tests, for testing the reporting logic.

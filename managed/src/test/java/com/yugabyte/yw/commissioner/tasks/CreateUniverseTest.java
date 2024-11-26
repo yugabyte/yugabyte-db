@@ -11,7 +11,6 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -157,8 +156,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         .validateAdminPassword(any(), any());
     ShellResponse successResponse = new ShellResponse();
     successResponse.message = "Command output:\nCREATE TABLE";
-    when(mockNodeUniverseManager.runYsqlCommand(
-            any(), any(), any(), (any()), anyBoolean(), anyInt()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), (any()), anyBoolean()))
         .thenReturn(successResponse);
   }
 

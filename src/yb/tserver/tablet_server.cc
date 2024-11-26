@@ -242,6 +242,9 @@ DEFINE_test_flag(bool, enable_pg_client_mock, false, "Enable mocking of PgClient
 DEFINE_NON_RUNTIME_int32(stateful_svc_default_queue_length, 50,
     "Default RPC queue length used for stateful services.");
 
+DEFINE_RUNTIME_bool(tserver_heartbeat_add_replication_status, true,
+    "Add replication status to heartbeats tserver sends to master");
+
 namespace yb::tserver {
 
 namespace {
@@ -661,10 +664,11 @@ Status TabletServer::RegisterServices() {
         RegisterService(FLAGS_stateful_svc_default_queue_length, std::move(test_echo_service)));
   }
 
-  auto connect_to_pg = [this](const std::string& database_name) {
+  auto connect_to_pg = [this](const std::string& database_name,
+                              const std::optional<CoarseTimePoint>& deadline) {
     return pgwrapper::CreateInternalPGConnBuilder(pgsql_proxy_bind_address(), database_name,
                                                   GetSharedMemoryPostgresAuthKey(),
-                                                  std::nullopt).Connect();
+                                                  deadline).Connect();
   };
   auto pg_auto_analyze_service =
       std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity(), client_future(),
@@ -1346,6 +1350,19 @@ Status TabletServer::CreateXClusterConsumer() {
   xcluster_consumer_ = VERIFY_RESULT(tserver::CreateXClusterConsumer(
       std::move(get_leader_term), permanent_uuid(), *client(), std::move(connect_to_pg),
       std::move(get_namespace_info), GetXClusterContext(), metric_entity()));
+
+  return Status::OK();
+}
+
+Status TabletServer::XClusterPopulateMasterHeartbeatRequest(
+    master::TSHeartbeatRequestPB& req, bool needs_full_tablet_report) {
+  // If a full report is needed, we will populate it via the metric data provider.
+  if (!needs_full_tablet_report && FLAGS_tserver_heartbeat_add_replication_status) {
+    auto xcluster_consumer = GetXClusterConsumer();
+    if (xcluster_consumer) {
+      xcluster_consumer->PopulateMasterHeartbeatRequest(&req, needs_full_tablet_report);
+    }
+  }
 
   return Status::OK();
 }

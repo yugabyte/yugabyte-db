@@ -19,6 +19,9 @@
 #include "catalog/pg_collation_d.h"
 #include "catalog/pg_constraint_d.h"
 #include "catalog/pg_conversion_d.h"
+#include "catalog/pg_extension_d.h"
+#include "catalog/pg_foreign_data_wrapper_d.h"
+#include "catalog/pg_foreign_server_d.h"
 #include "catalog/pg_namespace_d.h"
 #include "catalog/pg_operator_d.h"
 #include "catalog/pg_opclass_d.h"
@@ -29,6 +32,7 @@
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_trigger_d.h"
 #include "catalog/pg_type_d.h"
+#include "catalog/pg_user_mapping_d.h"
 #include "executor/spi.h"
 #include "json_util.h"
 #include "lib/stringinfo.h"
@@ -50,10 +54,15 @@
 #define SQL_DROP_OBJECT_NAME_COLUMN_ID 5
 
 #define ALLOWED_DDL_LIST \
+	X(CMDTAG_COMMENT) \
 	X(CMDTAG_CREATE_AGGREGATE) \
+	X(CMDTAG_CREATE_ACCESS_METHOD) \
 	X(CMDTAG_CREATE_CAST) \
 	X(CMDTAG_CREATE_COLLATION) \
 	X(CMDTAG_CREATE_DOMAIN) \
+	X(CMDTAG_CREATE_EXTENSION) \
+	X(CMDTAG_CREATE_FOREIGN_DATA_WRAPPER) \
+	X(CMDTAG_CREATE_FOREIGN_TABLE) \
 	X(CMDTAG_CREATE_FUNCTION) \
 	X(CMDTAG_CREATE_OPERATOR) \
 	X(CMDTAG_CREATE_OPERATOR_CLASS) \
@@ -63,9 +72,16 @@
 	X(CMDTAG_CREATE_ROUTINE) \
 	X(CMDTAG_CREATE_RULE) \
 	X(CMDTAG_CREATE_SCHEMA) \
+	X(CMDTAG_CREATE_SERVER) \
 	X(CMDTAG_CREATE_STATISTICS) \
+	X(CMDTAG_CREATE_TEXT_SEARCH_CONFIGURATION) \
+	X(CMDTAG_CREATE_TEXT_SEARCH_DICTIONARY) \
+	X(CMDTAG_CREATE_TEXT_SEARCH_PARSER) \
+	X(CMDTAG_CREATE_TEXT_SEARCH_TEMPLATE) \
 	X(CMDTAG_CREATE_TRIGGER) \
+	X(CMDTAG_CREATE_USER_MAPPING) \
 	X(CMDTAG_CREATE_VIEW) \
+	X(CMDTAG_IMPORT_FOREIGN_SCHEMA) \
 	X(CMDTAG_ALTER_AGGREGATE) \
 	X(CMDTAG_ALTER_CAST) \
 	X(CMDTAG_ALTER_COLLATION) \
@@ -80,8 +96,13 @@
 	X(CMDTAG_ALTER_RULE) \
 	X(CMDTAG_ALTER_SCHEMA) \
 	X(CMDTAG_ALTER_STATISTICS) \
+	X(CMDTAG_ALTER_TEXT_SEARCH_CONFIGURATION) \
+	X(CMDTAG_ALTER_TEXT_SEARCH_DICTIONARY) \
+	X(CMDTAG_ALTER_TEXT_SEARCH_PARSER) \
+	X(CMDTAG_ALTER_TEXT_SEARCH_TEMPLATE) \
 	X(CMDTAG_ALTER_TRIGGER) \
-	X(CMDTAG_ALTER_VIEW)
+	X(CMDTAG_ALTER_VIEW) \
+	X(CMDTAG_SECURITY_LABEL)
 
 typedef struct NewRelMapEntry
 {
@@ -203,7 +224,7 @@ ShouldReplicateAlterReplication(Oid rel_oid)
 	YbTableProperties table_props = YbGetTableProperties(rel);
 	bool is_colocated = table_props->is_colocated;
 	RelationClose(rel);
-	if (is_colocated)
+	if (is_colocated && !TEST_AllowColocatedObjects)
 		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						errmsg("Colocated objects are not yet supported by "
 							   "yb_xcluster_ddl_replication\n%s",
@@ -337,6 +358,8 @@ ProcessSourceEventTriggerDroppedObjects()
 			case CollationRelationId:
 			case ConstraintRelationId:
 			case ConversionRelationId:
+			case ExtensionRelationId:
+			case ForeignDataWrapperRelationId:
 			case OperatorClassRelationId:
 			case OperatorFamilyRelationId:
 			case OperatorRelationId:
@@ -345,6 +368,7 @@ ProcessSourceEventTriggerDroppedObjects()
 			case StatisticExtRelationId:
 			case TriggerRelationId:
 			case TypeRelationId:
+			case UserMappingRelationId:
 				should_replicate_ddl = true;
 				break;
 			default:

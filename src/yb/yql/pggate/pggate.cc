@@ -1197,10 +1197,11 @@ Status PgApiImpl::ExecDropIndex(PgStatement* handle) {
   return ExecDdlWithSyscatalogChanges<PgDropIndex>(handle, *pg_session_);
 }
 
-Result<int> PgApiImpl::WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version) {
+Result<int> PgApiImpl::WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version, pid_t pid) {
   tserver::PgWaitForBackendsCatalogVersionRequestPB req;
   req.set_database_oid(dboid);
   req.set_catalog_version(version);
+  req.set_requestor_pg_backend_pid(pid);
   // Incorporate the margin into the deadline because master will subtract the margin for
   // responding.
   return pg_session_->pg_client().WaitForBackendsCatalogVersion(
@@ -2106,11 +2107,12 @@ Status PgApiImpl::PrefetchRegisteredSysTables() {
 }
 
 void PgApiImpl::RegisterSysTableForPrefetching(
-  const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr) {
+    const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr,
+    bool fetch_ybctid) {
   if (!pg_sys_table_prefetcher_) {
     LOG(DFATAL) << "Sys table prefetching was not started yet";
   } else {
-    pg_sys_table_prefetcher_->Register(table_id, index_id, row_oid_filtering_attr);
+    pg_sys_table_prefetcher_->Register(table_id, index_id, row_oid_filtering_attr, fetch_ybctid);
   }
 }
 
@@ -2144,10 +2146,10 @@ void PgApiImpl::RestoreSessionState(const YBCPgSessionState& session_data) {
 
 Status PgApiImpl::NewCreateReplicationSlot(
     const char* slot_name, const char* plugin_name, PgOid database_oid,
-    YBCPgReplicationSlotSnapshotAction snapshot_action, PgStatement** handle) {
+    YBCPgReplicationSlotSnapshotAction snapshot_action, YBCLsnType lsn_type, PgStatement** handle) {
   return AddToCurrentPgMemctx(
       std::make_unique<PgCreateReplicationSlot>(
-          pg_session_, slot_name, plugin_name, database_oid, snapshot_action),
+          pg_session_, slot_name, plugin_name, database_oid, snapshot_action, lsn_type),
       handle);
 }
 

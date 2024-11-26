@@ -51,6 +51,8 @@ Currently, you cannot downgrade a universe to an older YugabyteDB release. For a
 
     Select rolling upgrade to minimize application disruption (at the expense of a longer node-by-node iterative operation). Deselect this option if application downtime is not a concern, and you favor speed; the database cluster is taken offline to perform the upgrade.
 
+1. If you are performing a rolling upgrade and your universe supports [batched rolling restart](../edit-config-flags/#batched-rolling-restart), specify the maximum number of nodes to process per batch.
+
 1. If you are performing a rolling upgrade, specify the delay between node upgrades.
 
     The delay allows the newly restarted node to stabilize before proceeding to the next node. For example, it may take some time for the overall query performance to return to the baseline as leader roles move away and back to this node because read caches take time to warm up. The delay value implies the minimal amount of time allocated for all the operations with the node including, stop and start. This is a heuristic that varies according to the workload profile of the application hitting the database.

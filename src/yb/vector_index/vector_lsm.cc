@@ -55,6 +55,10 @@ DEFINE_test_flag(bool, vector_index_skip_update_metadata_during_shutdown, false,
 DEFINE_test_flag(uint64, vector_index_delay_saving_first_chunk_ms, 0,
                  "Delay saving the first chunk in VectorLSM for specified amount of milliseconds");
 
+DEFINE_NON_RUNTIME_uint32(vector_index_concurrent_reads, 0,
+                          "Max number of concurrent reads on vector index chunk. "
+                          "0 - use number of CPUs for it.");
+
 namespace yb::vector_index {
 
 namespace bi = boost::intrusive;
@@ -419,10 +423,10 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
     RETURN_NOT_OK(failed_status_);
 
     if (!mutable_chunk_) {
-      RETURN_NOT_OK(CreateNewMutableChunk());
+      RETURN_NOT_OK(CreateNewMutableChunk(entries.size()));
     }
     if (!mutable_chunk_->RegisterInsert(entries, options_, num_tasks, frontiers)) {
-      RETURN_NOT_OK(RollChunk());
+      RETURN_NOT_OK(RollChunk(entries.size()));
       RSTATUS_DCHECK(mutable_chunk_->RegisterInsert(entries, options_, num_tasks, frontiers),
                      RuntimeError, "Failed to register insert into a new mutable chunk");
     }
@@ -556,7 +560,7 @@ auto VectorLSM<Vector, DistanceResult>::Search(
   auto intermediate_results = insert_registry_->Search(query_vector, options.max_num_results);
 
   for (const auto& index : indexes) {
-    auto chunk_results = index->Search(query_vector, options.max_num_results);
+    auto chunk_results = VERIFY_RESULT(index->Search(query_vector, options.max_num_results));
     MergeChunkResults(intermediate_results, chunk_results, options.max_num_results);
   }
 
@@ -705,15 +709,21 @@ Status VectorLSM<Vector, DistanceResult>::DoFlush(std::promise<Status>* promise)
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-Status VectorLSM<Vector, DistanceResult>::RollChunk() {
+Status VectorLSM<Vector, DistanceResult>::RollChunk(size_t min_points) {
   RETURN_NOT_OK(DoFlush(/* promise=*/ nullptr));
-  return CreateNewMutableChunk();
+  return CreateNewMutableChunk(min_points);
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-Status VectorLSM<Vector, DistanceResult>::CreateNewMutableChunk() {
+Status VectorLSM<Vector, DistanceResult>::CreateNewMutableChunk(size_t min_points) {
   auto index = options_.vector_index_factory();
-  RETURN_NOT_OK(index->Reserve(options_.points_per_chunk));
+  auto max_concurrent_reads = FLAGS_vector_index_concurrent_reads;
+  if (max_concurrent_reads == 0) {
+    max_concurrent_reads = std::thread::hardware_concurrency();
+  }
+  RETURN_NOT_OK(index->Reserve(
+      std::max(min_points, options_.points_per_chunk),
+      options_.thread_pool->options().max_workers, max_concurrent_reads));
 
   mutable_chunk_ = std::make_shared<MutableChunk>();
   mutable_chunk_->index = std::move(index);
@@ -764,11 +774,12 @@ bool VectorLSM<Vector, DistanceResult>::TEST_HasBackgroundInserts() const {
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-DistanceResult VectorLSM<Vector, DistanceResult>::TEST_Distance(
+DistanceResult VectorLSM<Vector, DistanceResult>::Distance(
     const Vector& lhs, const Vector& rhs) const {
   VectorIndexPtr index;
+  // TODO(vector_index) Should improve scenario when there is no active chunk.
   {
-    std::lock_guard lock(mutex_);
+    SharedLock lock(mutex_);
     if (mutable_chunk_) {
       index = mutable_chunk_->index;
     } else if (!immutable_chunks_.empty()) {

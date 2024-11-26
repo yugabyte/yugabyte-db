@@ -123,7 +123,7 @@ us-west-2   1         2           4GB        10GB
 
 Endpoints
 Region      Accessibility   State     Host
-us-west-2   PUBLIC          ACTIVE    us-west-2.000f20da-3000-40c0-b10f-ef20004a3000.aws.ybdb.io
+us-west-2   PUBLIC          ACTIVE    us-west-2.000f20da-3000-40c0-b10f-ef20004a3000.aws.yugabyte.cloud
 
 
 Network AllowList

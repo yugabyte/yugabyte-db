@@ -1140,6 +1140,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Change admin password for Admin user, as specified.
     checkAndCreateChangeAdminPasswordTask(primaryCluster);
 
+    if (primaryCluster.userIntent.providerType == CloudType.kubernetes
+        && taskParams().useNewHelmNamingStyle) {
+      // Create Pod Disruption Budget policy for the universe pods using the new Helm naming style.
+      createPodDisruptionBudgetPolicyTask(false /* deletePDB */)
+          .setSubTaskGroupType(SubTaskGroupType.CreatePodDisruptionBudgetPolicy);
+    }
+
     // Marks the update of this universe as a success only if all the tasks before it succeeded.
     createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }

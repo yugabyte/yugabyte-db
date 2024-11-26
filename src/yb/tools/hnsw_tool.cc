@@ -362,7 +362,10 @@ class BenchmarkTool {
 
     vector_index_ = index_pre_factory_(hnsw_options())();
 
-    RETURN_NOT_OK(vector_index_->Reserve(num_points_to_insert()));
+    RETURN_NOT_OK(vector_index_->Reserve(
+        num_points_to_insert(),
+        std::thread::hardware_concurrency(),
+        std::thread::hardware_concurrency()));
     if (!args_.load_index_from_path.empty()) {
       LOG(INFO) << "Loading index from " << args_.load_index_from_path;
       auto load_start_time = MonoTime::Now();

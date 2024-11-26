@@ -22,7 +22,7 @@ sed -i 's/*          soft    nproc     4096/*          soft    nproc     \
 # Determine the PLATFORM_ID
 platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"')
 
-if [[ "$platform_id" == "platform:el8" ]]; then
+if [[ "$platform_id" == "platform:el8" ]] || [[ "$platform_id" == "platform:el9" ]]; then
   # Check and set DefaultLimitNOFILE in /etc/systemd/system.conf
   if ! grep -q "^DefaultLimitNOFILE={{ fd_limit }}" /etc/systemd/system.conf; then
     echo 'DefaultLimitNOFILE={{ fd_limit }}' | tee -a /etc/systemd/system.conf
@@ -33,7 +33,7 @@ if [[ "$platform_id" == "platform:el8" ]]; then
     echo 'DefaultLimitNOFILE={{ fd_limit }}' | tee -a /etc/systemd/user.conf
   fi
 else
-  echo "el8 not detected, not updating file limits"
+  echo "el8/9 not detected, not updating file limits"
 fi
 
 echo "Systemd file limits configured."
@@ -69,3 +69,16 @@ sysctl -w vm.max_map_count={{ vm_max_map_count }}
 echo "Kernel settings configured."
 
 echo "OS Configuration applied successfully."
+
+cat <<EOF >> /etc/systemd/journald.conf
+
+##### ADDED BY YUGABYTE #####
+Storage=persistent
+MaxRetentionSec=30days
+SystemMaxUse=400M
+##### ADDED BY YUGABYTE #####
+EOF
+
+systemctl restart systemd-journald
+
+echo "Journald settings configured."

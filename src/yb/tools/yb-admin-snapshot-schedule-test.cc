@@ -935,6 +935,44 @@ TEST_F(YbAdminSnapshotScheduleTest, CloneYcql) {
   ASSERT_EQ(target_rows.size(), 2 * rows_per_iter);
 }
 
+TEST_F(YbAdminSnapshotScheduleTest, DeleteRowsFromCloneYcql) {
+  ASSERT_RESULT(PrepareCql());
+  const auto kSourceNamespace = "ycql." + client::kTableName.namespace_name();
+  const auto kTableName = "test_table";
+
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+  ASSERT_OK(conn.ExecuteQueryFormat(
+      "CREATE TABLE $0(key INT PRIMARY KEY, value INT) WITH TRANSACTIONS = {'enabled' : true};",
+      kTableName));
+  ASSERT_OK(conn.ExecuteQueryFormat(
+      "CREATE INDEX idx ON $0(value) WITH TRANSACTIONS = {'enabled' : true};",
+      kTableName));
+  ASSERT_OK(conn.ExecuteQueryFormat("INSERT INTO $0(key, value) VALUES (1, 2)", kTableName));
+
+  // Create a window to restore in (we can only restore with 1s granularity).
+  SleepFor(3s);
+  Timestamp restore_time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  SleepFor(3s);
+
+  ASSERT_OK(conn.ExecuteQueryFormat("DELETE FROM $0 WHERE key=1", kTableName));
+
+  const auto kTargetNamespace = "cloned";
+  ASSERT_OK(cluster_->SetFlagOnMasters("allowed_preview_flags_csv", "enable_db_clone"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_db_clone", "true"));
+  ASSERT_OK(CloneAndWait(
+      kSourceNamespace, kTargetNamespace, 30s /* timeout */,
+      restore_time.ToFormattedString()));
+
+  auto target_conn = ASSERT_RESULT(CqlConnect(kTargetNamespace));
+  auto row_count = ASSERT_RESULT(target_conn.ExecuteWithResult(
+      Format("SELECT COUNT(*) FROM $0", kTableName)));
+  ASSERT_EQ(row_count.RenderToString(), "1");
+  ASSERT_OK(target_conn.ExecuteQueryFormat("DELETE FROM $0 WHERE key=1", kTableName));
+  row_count = ASSERT_RESULT(target_conn.ExecuteWithResult(
+      Format("SELECT COUNT(*) FROM $0", kTableName)));
+  ASSERT_EQ(row_count.RenderToString(), "0");
+}
+
 TEST_F(YbAdminSnapshotScheduleTest, CreateIntervalZero) {
   ASSERT_OK(PrepareCommon());
   ASSERT_OK(client_->CreateNamespaceIfNotExists(

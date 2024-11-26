@@ -413,6 +413,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
             createTblSpace,
             20,
             userIntent.isYSQLAuthEnabled(),
+            false,
             true);
     assertTrue("Message is " + response.getMessage(), response.isSuccess());
 

@@ -396,6 +396,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     if (defaultUniverse.getUniverseDetails().useNewHelmNamingStyle) {
       expectedOverrides.put("oldNamingStyle", false);
       expectedOverrides.put("fullnameOverride", "host");
+      expectedOverrides.put("useOldPodDisruptionBudget", false);
     }
     Map<String, Object> yugabytedUiInfo = new HashMap<>();
     Map<String, Object> metricsSnapshotterInfo = new HashMap<>();

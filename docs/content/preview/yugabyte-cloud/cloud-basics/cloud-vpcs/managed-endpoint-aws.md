@@ -65,7 +65,7 @@ To create or edit a PSE, do the following:
 
 The endpoints are displayed with the following values:
 
-- **Host** - The host name of the PSE. You use this to [connect to your cluster](../../../cloud-connect/connect-applications/). The host name of a PSE for AWS always ends in `aws.ybdb.io`.
+- **Host** - The host name of the PSE. You use this to [connect to your cluster](../../../cloud-connect/connect-applications/). The host name of a PSE for AWS always ends in `aws.yugabyte.cloud`.
 - **Service Name** - You use this service name when creating the private endpoint in AWS.
 
 You can also create the PSEs during [cluster creation](../../create-clusters/).
@@ -108,7 +108,7 @@ To create a PSE, do the following:
 
 Note the following values:
 
-- **Host** - The host name of the PSE. You will use this to [connect to your cluster](../../../cloud-connect/connect-applications/). The host name of a PSE for AWS always ends in `aws.ybdb.io`.
+- **Host** - The host name of the PSE. You will use this to [connect to your cluster](../../../cloud-connect/connect-applications/). The host name of a PSE for AWS always ends in `aws.yugabyte.cloud`.
 - **Service Name** - You will use this service name when creating the private endpoint in AWS.
 
 To delete a PSE, enter the following command:
@@ -163,7 +163,7 @@ To create an interface endpoint to connect to your cluster PSE, do the following
 
 The initial endpoint status is _Pending_. After the link is validated, the status is _Available_. The private DNS name may take a few minutes to propagate before you can connect.
 
-You can now connect to your cluster from your application in AWS using your cluster PSE host address (for example, `pse-us-west-2.65f14618-f86a-41c2-a8c6-7004edbb965a.aws.ybdb.io`).
+You can now connect to your cluster from your application in AWS using your cluster PSE host address (for example, `pse-us-west-2.65f14618-f86a-41c2-a8c6-7004edbb965a.aws.yugabyte.cloud`).
 
 ### Use AWS CLI
 

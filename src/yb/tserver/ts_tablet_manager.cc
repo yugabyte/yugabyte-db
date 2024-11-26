@@ -321,6 +321,10 @@ DEFINE_test_flag(bool, crash_before_clone_target_marked_ready, false,
 DEFINE_test_flag(bool, crash_before_mark_clone_attempted, false,
                  "Whether to crash before marking a clone op as completed on the source tablet.");
 
+DEFINE_NON_RUNTIME_uint32(vector_index_concurrent_writes, 0,
+                          "Number of threads used by vector index thread pool. "
+                          "0 - use number of CPUs for it.");
+
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
 DECLARE_bool(lazily_flush_superblock);
@@ -2077,8 +2081,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         .get_min_xcluster_schema_version =
             std::bind(&TabletServer::GetMinXClusterSchemaVersion, server_, _1, _2),
         .messenger = server_->messenger(),
-        // TODO(vector_index) find the best thread pool for this purpose
-        .rpc_thread_pool = raft_notifications_pool(),
+        .vector_index_thread_pool_provider = [this] { return VectorIndexThreadPool(); },
     };
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
@@ -2290,6 +2293,13 @@ void TSTabletManager::CompleteShutdown() {
     peer->CompleteShutdown(
         tablet::DisableFlushOnShutdown(FLAGS_TEST_disable_flush_on_shutdown),
         tablet::AbortOps::kFalse);
+  }
+
+  auto vector_index_thread_pool = vector_index_thread_pool_.get();
+  if (vector_index_thread_pool) {
+    std::lock_guard mutex(vector_index_thread_pool_mutex_);
+    vector_index_thread_pool->Shutdown();
+    vector_index_thread_pool_.reset();
   }
 
   // Shut down the apply pool.
@@ -3448,6 +3458,28 @@ client::YBMetaDataCache* TSTabletManager::CreateYBMetaDataCache() {
 // lock.
 client::YBMetaDataCache* TSTabletManager::YBMetaDataCache() const {
   return metadata_cache_.load(std::memory_order_acquire);
+}
+
+rpc::ThreadPool* TSTabletManager::VectorIndexThreadPool() {
+  auto result = vector_index_thread_pool_.get();
+  if (result) {
+    return result;
+  }
+  std::lock_guard lock(vector_index_thread_pool_mutex_);
+  result = vector_index_thread_pool_.get();
+  if (result) {
+    return result;
+  }
+  rpc::ThreadPoolOptions options = {
+    .name = "vector_index_tp",
+    .max_workers = FLAGS_vector_index_concurrent_writes,
+  };
+  if (options.max_workers == 0) {
+    options.max_workers = std::thread::hardware_concurrency();
+  }
+  LOG(INFO) << "Use " << options.max_workers << " for vector index thread pool";
+  vector_index_thread_pool_.reset(result = new rpc::ThreadPool(std::move(options)));
+  return result;
 }
 
 Status DeleteTabletData(const RaftGroupMetadataPtr& meta,
