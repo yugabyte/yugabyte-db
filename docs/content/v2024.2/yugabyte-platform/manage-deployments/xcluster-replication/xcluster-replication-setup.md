@@ -81,11 +81,11 @@ To set up replication for a universe, do the following:
 
     For YCQL, you can select individual tables.
 
-1. Click **Validate Table Selection**.
+1. Click **Next: Confirm Full Copy Plan**.
 
-    YugabyteDB Anywhere checks whether or not data needs to be copied to the target for the selected databases and its tables. See [Full copy during xCluster setup](#full-copy-during-xcluster-setup).
+    YugabyteDB Anywhere checks whether or not data [needs to be copied](#full-copy-during-xcluster-setup) to the target for the selected databases and its tables, and shows how many tables will require a full copy. To view the details, click the copy button to obtain the table IDs and description in JSON format.
 
-1. If data needs to be copied, click **Next: Configure Full Copy**, and select a storage configuration.
+1. Select a storage configuration.
 
     The storage is used to transfer the data to the target database. For information on how to configure storage, see [Configure backup storage](../../../back-up-restore-universes/configure-backup-storage/).
 
@@ -183,17 +183,43 @@ The replication details also provide all the tables in replication and their sta
 
 - To find out the replication lag for a specific table, click the graph icon corresponding to that table.
 
-- To check if the replication has been properly configured for a table, check the status. If properly configured, the table's replication status is shown as _Operational_.
-
-    The status will be _Not Reported_ momentarily after the replication configuration is created until metrics are available for the replication configuration. This should take about 10 seconds.
-
-    If the replication lag increases beyond maximum acceptable lag defined during the replication setup or the lag is not being reported, the table's status is shown as _Warning_.
-
-    If the replication lag has increased so much that resuming or continuing replication cannot be accomplished via WAL logs but instead requires making another full copy from source to target, the status is shown as _Error: the table's replication stream is broken_, and [restarting the replication](#restart-replication) is required for those tables. If a lag alert is enabled on the replication, you are notified when the lag is behind the specified limit, in which case you may open the table on the replication view to check if any of these tables have their replication status as Error.
-
-    If YugabyteDB Anywhere is unable to obtain the status (for example, due to a heavy workload being run on the universe) the status for that table will be _UnableToFetch_. You may refresh the page to retry gathering information.
-
 - To delete a table from the replication, click **... > Remove Table**. This removes both the table and its index tables from replication. If you decide to remove an index table from the replication group, it does not remove its main table from the replication group.
+
+- Use the search bar to filter the view by table name, database, size, and more.
+
+#### Status
+
+To check if the replication has been properly configured for a table, check the status. If properly configured, the table's replication status is shown as _Operational_.
+
+The status will be _Not Reported_ momentarily after the replication configuration is created until metrics are available for the replication configuration. This should take about 10 seconds.
+
+If the replication lag has increased so much that resuming or continuing replication cannot be accomplished via WAL logs but instead requires making another full copy from DR primary to DR replica, the status is shown as _Missing op ID_, and you must [restart replication](#restart-replication) for those tables. If a lag alert is enabled on the replication, you are notified when the lag is behind the [replication lag alert](#set-up-replication-lag-alerts) threshold; if the replication stream is not yet broken and the lag is due to some other issues, the status is shown as _Warning_.
+
+If YugabyteDB Anywhere is unable to obtain the status (for example, due to a heavy workload being run on the universe), the status for that table will be _Unable To Fetch_. You may refresh the page to retry gathering information.
+
+The table statuses are described in the following table.
+
+| Status | Description |
+| :--- | :--- |
+| In Progress | The table is undergoing changes, such as being added to or removed from replication. |
+| Bootstrapping | The table is undergoing a full copy; that is, being backed up from the DR primary and being restored to the DR replica. |
+| Validated | The table passes pre-checks and is eligible to be added to replication. |
+| Operational | The table is being replicated. |
+
+The following statuses [trigger an alert](#set-up-replication-lag-alerts).
+
+| Status | Description |
+| :--- | :--- |
+| Failed | The table failed to be added to replication. |
+| Warning | The table is in replication, but the replication lag is more than the [maximum acceptable lag](#set-up-replication-lag-alerts), or the lag is not being reported. |
+| Dropped From Source | The table was in replication, but dropped from the DR primary without first being [removed from replication](../disaster-recovery-tables/#remove-a-table-from-dr). If you are using Manual mode, you need to remove it manually from the configuration. In Semi-automatic mode, you don't need to remove it manually. |
+| Dropped From Target | The table was in replication, but was dropped from the DR replica without first being [removed from replication](../disaster-recovery-tables/#remove-a-table-from-dr). If you are using Manual mode, you need to remove it manually from the configuration. In Semi-automatic mode, you don't need to remove it manually. |
+| Extra Table On Source | The table is newly created on the DR primary but is not in replication yet. |
+| Extra Table On Target | The table is newly created on the DR replica but it is not in replication yet. |
+| Missing op ID | The replication is broken and cannot continue because the write-ahead-logs are garbage collected before they were replicated to the other universe and you will need to [restart replication](#restart-replication).|
+| Schema&nbsp;mismatch | The schema was updated on the table (on either of the universes) and replication is paused until the same schema change is made to the other universe. |
+| Missing table | For colocated tables, only the parent table is in the replication group; any child table that is part of the colocation will also be replicated. This status is displayed for a parent colocated table if a child table only exists on the DR primary. Create the same table on the DR replica. |
+| Auto flag config mismatch | Replication has stopped because one of the universes is running a version of YugabyteDB that is incompatible with the other. This can happen when upgrading universes that are in replication. Upgrade the other universe to the same version. |
 
 ### Set up replication lag alerts
 
@@ -268,6 +294,8 @@ Use the same version of YugabyteDB on both the source and target.
 When [upgrading universes](../../../manage-deployments/upgrade-software-install/) in xCluster Replication, you should upgrade and finalize the target universe before upgrading and finalizing the source universe.
 
 If you upgrade and finalize the source universe first, replication may be paused automatically until both universes are finalized to the same software version.
+
+If you have bidirectional xCluster replication, then you should upgrade and finalize both clusters at the same time. Perform the upgrade steps for each cluster individually and monitor both of them. If you encounter any issues, roll back both clusters. If everything appears to be in good condition, finalize both clusters with as little delay as possible.
 
 ### Rotating CA certificates
 
