@@ -1,7 +1,7 @@
 ---
 title: Manually provision on-premises nodes using a script
 headerTitle: Assisted manual provisioning
-linkTitle: Assisted manual
+linkTitle: Legacy assisted manual
 description: Provision the on-premises nodes using a script.
 headContent: Provision on-premises nodes using the script
 menu:
@@ -17,7 +17,7 @@ If the SSH user configured in the on-premises provider has sudo privileges that 
 The script is displayed under **Instances** on the **Instances** tab of the on-prem configuration you created.
 
 {{< warning title="Note" >}}
-If the SSH user does not have any sudo privileges at all, you can't use the script and need to manually provision nodes. Refer to [Fully manual](../../prepare/server-nodes-software/software-on-prem-manual/).
+If the SSH user does not have any sudo privileges at all, you can't use the script and need to manually provision nodes. Refer to [Legacy fully manual](../../prepare/server-nodes-software/software-on-prem-manual/).
 {{< /warning >}}
 
 ## Manually provision nodes using the script

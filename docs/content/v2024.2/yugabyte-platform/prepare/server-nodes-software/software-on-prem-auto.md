@@ -1,7 +1,7 @@
 ---
 title: YugabyteDB Anywhere on-premises node provisioning
-headerTitle: Provision on-premises nodes
-linkTitle: Provision nodes
+headerTitle: Legacy provisioning
+linkTitle: Legacy provisioning
 description: Software requirements for on-premises provider nodes.
 headContent: How to meet the software prerequisites for database nodes
 menu:
@@ -13,47 +13,33 @@ type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
-  <li>
-    <a href="../software-on-prem-na/" class="nav-link">
-      <i class="fa-solid fa-user-secret"></i>Node Agent</a>
-  </li>
-
-  <li>
-    <a href="../software-on-prem-auto/" class="nav-link active">
-      <i class="fa-regular fa-briefcase" aria-hidden="true"></i>Classic</a>
-  </li>
-
-</ul>
-
-<ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../software-on-prem-auto/" class="nav-link active">
       <i class="fa-regular fa-wand-magic-sparkles"></i>
-      Automatic
+      Automatic [Deprecated]
     </a>
   </li>
 
   <li>
     <a href="../software-on-prem-assist/" class="nav-link">
       <i class="fa-regular fa-scroll"></i>
-      Assisted manual
+      Assisted [Deprecated]
     </a>
   </li>
 
   <li>
     <a href="../software-on-prem-manual/" class="nav-link">
       <i class="icon-shell" aria-hidden="true"></i>
-      Fully manual
+      Fully manual [Deprecated]
     </a>
   </li>
 </ul>
 
+When YugabyteDB Anywhere (YBA) has access to an SSH user with passwordless sudo privileges (for example, the `ec2-user` on AWS EC2 instances), then YBA can provision the VMs automatically.
+
 {{<tip>}}
 For instructions for v2.20 and earlier, see [Create on-premises provider configuration](/v2.20/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
 {{</tip>}}
-
-When YugabyteDB Anywhere (YBA) has access to an SSH user with passwordless sudo privileges (for example, the `ec2-user` on AWS EC2 instances), then YBA can provision the VMs automatically.
 
 ## With Internet or Yum connectivity
 

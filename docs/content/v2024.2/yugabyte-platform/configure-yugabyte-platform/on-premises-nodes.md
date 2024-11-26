@@ -21,7 +21,7 @@ This displays the configured instance types and instances for the selected provi
 
 ![Configure on-prem instances](/images/yb-platform/config/yba-onprem-config-instances.png)
 
-(For classic manual provisioning, the **Instances** page additionally includes the command for running the provisioning script.)
+(For legacy manual provisioning (deprecated), the **Instances** page additionally includes the command for running the provisioning script.)
 
 To add nodes, do the following:
 
@@ -53,7 +53,7 @@ Before you add instances, you need the following:
 
 - The IP addresses of your VMs. See [Software requirements for nodes](../../prepare/server-nodes-software/).
 - Instance type to assign each instance. The instance types define properties of the instances, along with the mount points. See [Add instance types](#add-instance-types).
-- If you are doing [assisted manual provisioning](../on-premises/#stage-3-add-nodes-to-the-provider-free-pool), you must provision the nodes using the script. Follow the instructions in [Assisted manual provisioning](../on-premises-script/).
+- If you are doing legacy [assisted manual provisioning](../on-premises/#stage-3-add-nodes-to-the-provider-free-pool-1) (deprecated), you must provision the nodes using the script. Follow the instructions in [Assisted manual provisioning](../on-premises-script/).
 
 ### Add instances to the on-premises provider
 
