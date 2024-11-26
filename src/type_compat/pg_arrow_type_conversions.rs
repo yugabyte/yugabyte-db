@@ -95,8 +95,12 @@ pub(crate) fn timestamptz_to_i64(timestamptz: TimestampWithTimeZone) -> i64 {
     )
 }
 
-pub(crate) fn i64_to_timestamptz(i64_timestamptz: i64) -> TimestampWithTimeZone {
-    let timestamptz: TimestampWithTimeZone = i64_timestamptz
+pub(crate) fn i64_to_timestamptz(i64_timestamptz: i64, timezone: &str) -> TimestampWithTimeZone {
+    let timestamp: Timestamp = i64_timestamptz
+        .try_into()
+        .unwrap_or_else(|e| panic!("{}", e));
+
+    let timestamptz: TimestampWithTimeZone = (timestamp, timezone)
         .try_into()
         .unwrap_or_else(|e| panic!("{}", e));
 

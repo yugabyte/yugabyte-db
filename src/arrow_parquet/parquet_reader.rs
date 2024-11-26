@@ -1,24 +1,32 @@
+use std::sync::Arc;
+
 use arrow::array::RecordBatch;
+use arrow_cast::{cast_with_options, CastOptions};
 use futures::StreamExt;
 use parquet::arrow::async_reader::{ParquetObjectReader, ParquetRecordBatchStream};
 use pgrx::{
     check_for_interrupts,
     pg_sys::{
-        fmgr_info, getTypeBinaryOutputInfo, varlena, Datum, FmgrInfo, InvalidOid, SendFunctionCall,
+        fmgr_info, getTypeBinaryOutputInfo, varlena, Datum, FmgrInfo, FormData_pg_attribute,
+        InvalidOid, SendFunctionCall,
     },
     vardata_any, varsize_any_exhdr, void_mut_ptr, AllocatedByPostgres, PgBox, PgTupleDesc,
 };
 use url::Url;
 
 use crate::{
-    arrow_parquet::arrow_to_pg::to_pg_datum,
-    pgrx_utils::collect_valid_attributes,
+    arrow_parquet::{
+        arrow_to_pg::to_pg_datum, schema_parser::parquet_schema_string_from_attributes,
+    },
+    pgrx_utils::{collect_attributes_for, CollectAttributesFor},
     type_compat::{geometry::reset_postgis_context, map::reset_map_context},
 };
 
 use super::{
     arrow_to_pg::{collect_arrow_to_pg_attribute_contexts, ArrowToPgAttributeContext},
-    schema_parser::ensure_arrow_schema_match_tupledesc,
+    schema_parser::{
+        ensure_file_schema_match_tupledesc_schema, parse_arrow_schema_from_attributes,
+    },
     uri_utils::{parquet_reader_from_uri, PG_BACKEND_TOKIO_RUNTIME},
 };
 
@@ -41,12 +49,35 @@ impl ParquetReaderContext {
 
         let parquet_reader = parquet_reader_from_uri(&uri);
 
-        let schema = parquet_reader.schema();
-        ensure_arrow_schema_match_tupledesc(schema.clone(), tupledesc);
+        let parquet_file_schema = parquet_reader.schema();
 
-        let binary_out_funcs = Self::collect_binary_out_funcs(tupledesc);
+        let attributes = collect_attributes_for(CollectAttributesFor::CopyFrom, tupledesc);
 
-        let attribute_contexts = collect_arrow_to_pg_attribute_contexts(tupledesc, &schema.fields);
+        pgrx::debug2!(
+            "schema for tuples: {}",
+            parquet_schema_string_from_attributes(&attributes)
+        );
+
+        let tupledesc_schema = parse_arrow_schema_from_attributes(&attributes);
+
+        let tupledesc_schema = Arc::new(tupledesc_schema);
+
+        // Ensure that the file schema matches the tupledesc schema.
+        // Gets cast_to_types for each attribute if a cast is needed for the attribute's columnar array
+        // to match the expected columnar array for its tupledesc type.
+        let cast_to_types = ensure_file_schema_match_tupledesc_schema(
+            parquet_file_schema.clone(),
+            tupledesc_schema.clone(),
+            &attributes,
+        );
+
+        let attribute_contexts = collect_arrow_to_pg_attribute_contexts(
+            &attributes,
+            &tupledesc_schema.fields,
+            Some(cast_to_types),
+        );
+
+        let binary_out_funcs = Self::collect_binary_out_funcs(&attributes);
 
         ParquetReaderContext {
             buffer: Vec::new(),
@@ -60,13 +91,10 @@ impl ParquetReaderContext {
     }
 
     fn collect_binary_out_funcs(
-        tupledesc: &PgTupleDesc,
+        attributes: &[FormData_pg_attribute],
     ) -> Vec<PgBox<FmgrInfo, AllocatedByPostgres>> {
         unsafe {
             let mut binary_out_funcs = vec![];
-
-            let include_generated_columns = false;
-            let attributes = collect_valid_attributes(tupledesc, include_generated_columns);
 
             for att in attributes.iter() {
                 let typoid = att.type_oid();
@@ -94,11 +122,25 @@ impl ParquetReaderContext {
         for attribute_context in attribute_contexts {
             let name = attribute_context.name();
 
-            let column = record_batch
+            let column_array = record_batch
                 .column_by_name(name)
                 .unwrap_or_else(|| panic!("column {} not found", name));
 
-            let datum = to_pg_datum(column.to_data(), attribute_context);
+            let datum = if attribute_context.needs_cast() {
+                // should fail instead of returning None if the cast fails at runtime
+                let cast_options = CastOptions {
+                    safe: false,
+                    ..Default::default()
+                };
+
+                let casted_column_array =
+                    cast_with_options(&column_array, attribute_context.data_type(), &cast_options)
+                        .unwrap_or_else(|e| panic!("failed to cast column {}: {}", name, e));
+
+                to_pg_datum(casted_column_array.to_data(), attribute_context)
+            } else {
+                to_pg_datum(column_array.to_data(), attribute_context)
+            };
 
             datums.push(datum);
         }

@@ -2231,6 +2231,7 @@ name = "pg_parquet"
 version = "0.1.0"
 dependencies = [
  "arrow",
+ "arrow-cast",
  "arrow-schema",
  "aws-config",
  "aws-credential-types",

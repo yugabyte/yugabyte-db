@@ -8,12 +8,24 @@ use pgrx::{
     PgTupleDesc,
 };
 
-// collect_valid_attributes collects not-dropped attributes from the tuple descriptor.
-// If include_generated_columns is false, it will skip generated columns.
-pub(crate) fn collect_valid_attributes(
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum CollectAttributesFor {
+    CopyFrom,
+    CopyTo,
+    Struct,
+}
+
+// collect_attributes_for collects not-dropped attributes from the tuple descriptor.
+// If copy_operation is CopyTo, it also collects generated columns. Otherwise, it does not.
+pub(crate) fn collect_attributes_for(
+    copy_operation: CollectAttributesFor,
     tupdesc: &PgTupleDesc,
-    include_generated_columns: bool,
 ) -> Vec<FormData_pg_attribute> {
+    let include_generated_columns = match copy_operation {
+        CollectAttributesFor::CopyFrom => false,
+        CollectAttributesFor::CopyTo | CollectAttributesFor::Struct => true,
+    };
+
     let mut attributes = vec![];
     let mut attributes_set = HashSet::<&str>::new();
 

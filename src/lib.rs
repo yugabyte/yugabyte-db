@@ -37,8 +37,11 @@ pub extern "C" fn _PG_init() {
 #[cfg(any(test, feature = "pg_test"))]
 #[pg_schema]
 mod tests {
+    use std::fs::File;
     use std::io::Write;
     use std::marker::PhantomData;
+    use std::sync::Arc;
+    use std::vec;
     use std::{collections::HashMap, fmt::Debug};
 
     use crate::arrow_parquet::compression::PgParquetCompression;
@@ -46,8 +49,19 @@ mod tests {
     use crate::type_compat::geometry::Geometry;
     use crate::type_compat::map::Map;
     use crate::type_compat::pg_arrow_type_conversions::{
+        date_to_i32, time_to_i64, timestamp_to_i64, timestamptz_to_i64, timetz_to_i64,
         DEFAULT_UNBOUNDED_NUMERIC_PRECISION, DEFAULT_UNBOUNDED_NUMERIC_SCALE,
     };
+    use arrow::array::{
+        ArrayRef, BinaryArray, BooleanArray, Date32Array, Decimal128Array, Float32Array,
+        Float64Array, Int16Array, Int32Array, Int8Array, LargeBinaryArray, LargeStringArray,
+        ListArray, MapArray, RecordBatch, StringArray, StructArray, Time64MicrosecondArray,
+        TimestampMicrosecondArray, UInt16Array, UInt32Array, UInt64Array,
+    };
+    use arrow::buffer::{NullBuffer, OffsetBuffer, ScalarBuffer};
+    use arrow::datatypes::UInt16Type;
+    use arrow_schema::{DataType, Field, Schema, SchemaRef, TimeUnit};
+    use parquet::arrow::ArrowWriter;
     use pgrx::pg_sys::Oid;
     use pgrx::{
         composite_type,
@@ -338,6 +352,14 @@ mod tests {
         );
 
         Spi::get_one(&query).unwrap().unwrap()
+    }
+
+    fn write_record_batch_to_parquet(schema: SchemaRef, record_batch: RecordBatch) {
+        let file = File::create("/tmp/test.parquet").unwrap();
+        let mut writer = ArrowWriter::try_new(file, schema, None).unwrap();
+
+        writer.write(&record_batch).unwrap();
+        writer.close().unwrap();
     }
 
     #[pg_test]
@@ -1140,7 +1162,7 @@ mod tests {
         test_helper(test_table);
 
         let parquet_schema_command =
-            "select precision, scale, logical_type, type_name from parquet.schema('/tmp/test.parquet') WHERE name = 'a' ORDER BY logical_type;";
+            "select precision, scale, logical_type, type_name from parquet.schema('/tmp/test.parquet') WHERE name = 'element' ORDER BY logical_type;";
 
         let attribute_schema = Spi::connect(|client| {
             let tup_table = client.select(parquet_schema_command, None, None).unwrap();
@@ -1158,7 +1180,7 @@ mod tests {
             results
         });
 
-        assert_eq!(attribute_schema.len(), 2);
+        assert_eq!(attribute_schema.len(), 1);
         assert_eq!(
             attribute_schema[0],
             (
@@ -1168,7 +1190,6 @@ mod tests {
                 Some("FIXED_LEN_BYTE_ARRAY".to_string())
             )
         );
-        assert_eq!(attribute_schema[1], (None, None, "LIST".to_string(), None));
     }
 
     #[pg_test]
@@ -1389,6 +1410,973 @@ mod tests {
         Spi::run("DROP TABLE dog_owners;").unwrap();
         Spi::run("DROP TYPE dog_owner;").unwrap();
         Spi::run("DROP TYPE dog;").unwrap();
+    }
+
+    #[pg_test]
+    fn test_coerce_primitive_types() {
+        // INT16 => {int, bigint}
+        let x_nullable = false;
+        let y_nullable = true;
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("x", DataType::Int16, x_nullable),
+            Field::new("y", DataType::Int16, y_nullable),
+        ]));
+
+        let x = Arc::new(Int16Array::from(vec![1]));
+        let y = Arc::new(Int16Array::from(vec![2]));
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x, y]).unwrap();
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_table = "CREATE TABLE test_table (x int, y bigint)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let value = Spi::get_two::<i32, i64>("SELECT x, y FROM test_table LIMIT 1").unwrap();
+        assert_eq!(value, (Some(1), Some(2)));
+
+        let drop_table = "DROP TABLE test_table";
+        Spi::run(drop_table).unwrap();
+
+        // INT32 => {bigint}
+        let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Int32, true)]));
+
+        let x = Arc::new(Int32Array::from(vec![1]));
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x]).unwrap();
+
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_table = "CREATE TABLE test_table (x bigint)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let value = Spi::get_one::<i64>("SELECT x FROM test_table LIMIT 1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(value, 1);
+
+        let drop_table = "DROP TABLE test_table";
+        Spi::run(drop_table).unwrap();
+
+        // FLOAT32 => {double}
+        let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Float32, true)]));
+
+        let x = Arc::new(Float32Array::from(vec![1.123]));
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x]).unwrap();
+
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_table = "CREATE TABLE test_table (x double precision)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let value = Spi::get_one::<f64>("SELECT x FROM test_table LIMIT 1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(value as f32, 1.123);
+
+        let drop_table = "DROP TABLE test_table";
+        Spi::run(drop_table).unwrap();
+
+        // FLOAT64 => {float}
+        let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Float64, true)]));
+
+        let x = Arc::new(Float64Array::from(vec![1.123]));
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x]).unwrap();
+
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_table = "CREATE TABLE test_table (x real)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let value = Spi::get_one::<f32>("SELECT x FROM test_table LIMIT 1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(value, 1.123);
+
+        let drop_table = "DROP TABLE test_table";
+        Spi::run(drop_table).unwrap();
+
+        // DATE32 => {timestamp}
+        let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Date32, true)]));
+
+        let date = Date::new(2022, 5, 5).unwrap();
+
+        let x = Arc::new(Date32Array::from(vec![date_to_i32(date)]));
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x]).unwrap();
+
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_table = "CREATE TABLE test_table (x timestamp)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let value = Spi::get_one::<Timestamp>("SELECT x FROM test_table LIMIT 1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(value, Timestamp::from(date));
+
+        let drop_table = "DROP TABLE test_table";
+        Spi::run(drop_table).unwrap();
+
+        // TIMESTAMP => {timestamptz}
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "x",
+            DataType::Timestamp(TimeUnit::Microsecond, None),
+            true,
+        )]));
+
+        let timestamp = Timestamp::from(Date::new(2022, 5, 5).unwrap());
+
+        let x = Arc::new(TimestampMicrosecondArray::from(vec![timestamp_to_i64(
+            timestamp,
+        )]));
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x]).unwrap();
+
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_table = "CREATE TABLE test_table (x timestamptz)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let value = Spi::get_one::<TimestampWithTimeZone>("SELECT x FROM test_table LIMIT 1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(value.at_timezone("UTC").unwrap(), timestamp);
+
+        let drop_table = "DROP TABLE test_table";
+        Spi::run(drop_table).unwrap();
+
+        // TIMESTAMPTZ => {timestamp}
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "x",
+            DataType::Timestamp(TimeUnit::Microsecond, Some("Europe/Paris".into())),
+            true,
+        )]));
+
+        let timestamptz =
+            TimestampWithTimeZone::with_timezone(2022, 5, 5, 0, 0, 0.0, "Europe/Paris").unwrap();
+
+        let x = Arc::new(
+            TimestampMicrosecondArray::from(vec![timestamptz_to_i64(timestamptz)])
+                .with_timezone("Europe/Paris"),
+        );
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x]).unwrap();
+
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_table = "CREATE TABLE test_table (x timestamp)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let value = Spi::get_one::<Timestamp>("SELECT x FROM test_table LIMIT 1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(value, timestamptz.at_timezone("UTC").unwrap());
+
+        let drop_table = "DROP TABLE test_table";
+        Spi::run(drop_table).unwrap();
+
+        // TIME64 => {timetz}
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "x",
+            DataType::Time64(TimeUnit::Microsecond),
+            true,
+        )]));
+
+        let time = Time::new(13, 0, 0.0).unwrap();
+
+        let x = Arc::new(Time64MicrosecondArray::from(vec![time_to_i64(time)]));
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x]).unwrap();
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_table = "CREATE TABLE test_table (x timetz)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let value = Spi::get_one::<TimeWithTimeZone>("SELECT x FROM test_table LIMIT 1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(value, time.into());
+
+        let drop_table = "DROP TABLE test_table";
+        Spi::run(drop_table).unwrap();
+
+        // TIME64 => {time}
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "x",
+            DataType::Time64(TimeUnit::Microsecond),
+            true,
+        )
+        .with_metadata(HashMap::from_iter(vec![(
+            "adjusted_to_utc".into(),
+            "true".into(),
+        )]))]));
+
+        let timetz = TimeWithTimeZone::with_timezone(13, 0, 0.0, "UTC").unwrap();
+
+        let x = Arc::new(Time64MicrosecondArray::from(vec![timetz_to_i64(timetz)]));
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x]).unwrap();
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_table = "CREATE TABLE test_table (x time)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let value = Spi::get_one::<Time>("SELECT x FROM test_table LIMIT 1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(value, timetz.into());
+
+        let drop_table = "DROP TABLE test_table";
+        Spi::run(drop_table).unwrap();
+
+        // UINT16 => {smallint, int, bigint}
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("x", DataType::UInt16, true),
+            Field::new("y", DataType::UInt16, true),
+            Field::new("z", DataType::UInt16, true),
+        ]));
+
+        let x = Arc::new(UInt16Array::from(vec![1]));
+        let y = Arc::new(UInt16Array::from(vec![2]));
+        let z = Arc::new(UInt16Array::from(vec![3]));
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x, y, z]).unwrap();
+
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_table = "CREATE TABLE test_table (x smallint, y int, z bigint)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let value =
+            Spi::get_three::<i16, i32, i64>("SELECT x, y, z FROM test_table LIMIT 1").unwrap();
+        assert_eq!(value, (Some(1), Some(2), Some(3)));
+
+        let drop_table = "DROP TABLE test_table";
+        Spi::run(drop_table).unwrap();
+
+        // UINT32 => {int, bigint}
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("x", DataType::UInt32, true),
+            Field::new("y", DataType::UInt32, true),
+        ]));
+
+        let x = Arc::new(UInt32Array::from(vec![1]));
+        let y = Arc::new(UInt32Array::from(vec![2]));
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x, y]).unwrap();
+
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_table = "CREATE TABLE test_table (x int, y bigint)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let value = Spi::get_two::<i32, i64>("SELECT x, y FROM test_table LIMIT 1").unwrap();
+        assert_eq!(value, (Some(1), Some(2)));
+
+        let drop_table = "DROP TABLE test_table";
+        Spi::run(drop_table).unwrap();
+
+        // UINT64 => {bigint}
+        let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::UInt64, true)]));
+
+        let x = Arc::new(UInt64Array::from(vec![1]));
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x]).unwrap();
+
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_table = "CREATE TABLE test_table (x bigint)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let value = Spi::get_one::<i64>("SELECT x FROM test_table LIMIT 1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(value, 1);
+
+        let drop_table = "DROP TABLE test_table";
+        Spi::run(drop_table).unwrap();
+
+        // INT8 => {int64}
+        let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Int8, true)]));
+
+        let x = Arc::new(Int8Array::from(vec![1]));
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x]).unwrap();
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_table = "CREATE TABLE test_table (x bigint)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let value = Spi::get_one::<i64>("SELECT x FROM test_table LIMIT 1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(value, 1);
+
+        let drop_table = "DROP TABLE test_table";
+        Spi::run(drop_table).unwrap();
+
+        // BOOLEAN => {int}
+        let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Boolean, true)]));
+
+        let x = Arc::new(BooleanArray::from(vec![true]));
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x]).unwrap();
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_table = "CREATE TABLE test_table (x int)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let value = Spi::get_one::<i32>("SELECT x FROM test_table LIMIT 1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(value, 1);
+
+        let drop_table = "DROP TABLE test_table";
+        Spi::run(drop_table).unwrap();
+
+        // DECIMAL128 => {float}
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "x",
+            DataType::Decimal128(8, 5),
+            true,
+        )]));
+
+        let x = Arc::new(
+            Decimal128Array::from(vec!["12345000".parse::<i128>().expect("invalid decimal")])
+                .with_precision_and_scale(8, 5)
+                .unwrap(),
+        );
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x]).unwrap();
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_table = "CREATE TABLE test_table (x float8)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let value = Spi::get_one::<f64>("SELECT x FROM test_table LIMIT 1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(value, 123.45);
+
+        let drop_table = "DROP TABLE test_table";
+        Spi::run(drop_table).unwrap();
+
+        // Binary => {text}
+        let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Binary, true)]));
+
+        let x = Arc::new(BinaryArray::from(vec!["abc".as_bytes()]));
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x]).unwrap();
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_table = "CREATE TABLE test_table (x text)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let value = Spi::get_one::<String>("SELECT x FROM test_table LIMIT 1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(value, "abc");
+
+        let drop_table = "DROP TABLE test_table";
+        Spi::run(drop_table).unwrap();
+
+        // LargeUtf8 => {text}
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "x",
+            DataType::LargeUtf8,
+            true,
+        )]));
+
+        let x = Arc::new(LargeStringArray::from(vec!["test"]));
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x]).unwrap();
+
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_table = "CREATE TABLE test_table (x text)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let value = Spi::get_one::<String>("SELECT x FROM test_table LIMIT 1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(value, "test");
+
+        let drop_table = "DROP TABLE test_table";
+        Spi::run(drop_table).unwrap();
+
+        // LargeBinary => {bytea}
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "x",
+            DataType::LargeBinary,
+            true,
+        )]));
+
+        let x = Arc::new(LargeBinaryArray::from(vec!["abc".as_bytes()]));
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x]).unwrap();
+
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_table = "CREATE TABLE test_table (x bytea)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let value = Spi::get_one::<Vec<u8>>("SELECT x FROM test_table LIMIT 1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(value, "abc".as_bytes());
+
+        let drop_table = "DROP TABLE test_table";
+        Spi::run(drop_table).unwrap();
+    }
+
+    #[pg_test]
+    fn test_coerce_list_types() {
+        // [UINT16] => {int[], bigint[]}
+        let x_nullable = false;
+        let field_x = Field::new(
+            "x",
+            DataType::List(Field::new("item", DataType::UInt16, false).into()),
+            x_nullable,
+        );
+
+        let x = Arc::new(UInt16Array::from(vec![1, 2]));
+        let offsets = OffsetBuffer::new(ScalarBuffer::from(vec![0, 2]));
+        let x = Arc::new(ListArray::new(
+            Arc::new(Field::new("item", DataType::UInt16, false)),
+            offsets,
+            x,
+            None,
+        ));
+
+        let y_nullable = true;
+        let field_y = Field::new(
+            "y",
+            DataType::List(Field::new("item", DataType::UInt16, true).into()),
+            y_nullable,
+        );
+
+        let y = Arc::new(ListArray::from_iter_primitive::<UInt16Type, _, _>(vec![
+            Some(vec![Some(3), Some(4)]),
+        ]));
+
+        let schema = Arc::new(Schema::new(vec![field_x, field_y]));
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x, y]).unwrap();
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_table = "CREATE TABLE test_table (x int[], y bigint[])";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let value = Spi::get_two::<Vec<Option<i32>>, Vec<Option<i64>>>(
+            "SELECT x, y FROM test_table LIMIT 1",
+        )
+        .unwrap();
+        assert_eq!(
+            value,
+            (Some(vec![Some(1), Some(2)]), Some(vec![Some(3), Some(4)]))
+        );
+
+        let drop_table = "DROP TABLE test_table";
+        Spi::run(drop_table).unwrap();
+    }
+
+    #[pg_test]
+    fn test_coerce_struct_types() {
+        // STRUCT {a: UINT16, b: UINT16} => test_type {a: int, b: bigint}
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "x",
+            DataType::Struct(
+                vec![
+                    Field::new("a", DataType::UInt16, false),
+                    Field::new("b", DataType::UInt16, false),
+                ]
+                .into(),
+            ),
+            false,
+        )]));
+
+        let a: ArrayRef = Arc::new(UInt16Array::from(vec![Some(1)]));
+        let b: ArrayRef = Arc::new(UInt16Array::from(vec![Some(2)]));
+
+        let x = Arc::new(StructArray::try_from(vec![("a", a), ("b", b)]).unwrap());
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x]).unwrap();
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_type = "CREATE TYPE test_type AS (a int, b bigint)";
+        Spi::run(create_type).unwrap();
+
+        let create_table = "CREATE TABLE test_table (x test_type)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let value =
+            Spi::get_two::<i32, i64>("SELECT (x).a, (x).b FROM test_table LIMIT 1").unwrap();
+        assert_eq!(value, (Some(1), Some(2)));
+    }
+
+    #[pg_test]
+    fn test_coerce_list_of_struct() {
+        // [STRUCT {a: UINT16, b: UINT16}] => test_type {a: int, b: bigint}[]
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "x",
+            DataType::List(
+                Field::new(
+                    "item",
+                    DataType::Struct(
+                        vec![
+                            Field::new("a", DataType::UInt16, false),
+                            Field::new("b", DataType::UInt16, false),
+                        ]
+                        .into(),
+                    ),
+                    false,
+                )
+                .into(),
+            ),
+            false,
+        )]));
+
+        let a: ArrayRef = Arc::new(UInt16Array::from(vec![Some(1)]));
+        let b: ArrayRef = Arc::new(UInt16Array::from(vec![Some(2)]));
+
+        let x = Arc::new(StructArray::try_from(vec![("a", a), ("b", b)]).unwrap());
+        let offsets = OffsetBuffer::new(ScalarBuffer::from(vec![0, 1]));
+        let x = Arc::new(ListArray::new(
+            Arc::new(Field::new(
+                "item",
+                DataType::Struct(
+                    vec![
+                        Field::new("a", DataType::UInt16, false),
+                        Field::new("b", DataType::UInt16, false),
+                    ]
+                    .into(),
+                ),
+                false,
+            )),
+            offsets,
+            x,
+            None,
+        ));
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x]).unwrap();
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_type = "CREATE TYPE test_type AS (a int, b bigint)";
+        Spi::run(create_type).unwrap();
+
+        let create_table = "CREATE TABLE test_table (x test_type[])";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let value =
+            Spi::get_two::<i32, i64>("SELECT (x[1]).a, (x[1]).b FROM test_table LIMIT 1").unwrap();
+        assert_eq!(value, (Some(1), Some(2)));
+    }
+
+    #[pg_test]
+    #[should_panic(expected = "type mismatch for column \"x\" between table and parquet file.")]
+    fn test_not_coercable_list_of_struct() {
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "x",
+            DataType::List(
+                Field::new(
+                    "item",
+                    DataType::Struct(vec![Field::new("a", DataType::UInt16, false)].into()),
+                    false,
+                )
+                .into(),
+            ),
+            false,
+        )]));
+
+        let a: ArrayRef = Arc::new(UInt16Array::from(vec![Some(1)]));
+
+        let x = Arc::new(StructArray::try_from(vec![("a", a)]).unwrap());
+        let offsets = OffsetBuffer::new(ScalarBuffer::from(vec![0, 1]));
+        let x = Arc::new(ListArray::new(
+            Arc::new(Field::new(
+                "item",
+                DataType::Struct(vec![Field::new("a", DataType::UInt16, false)].into()),
+                false,
+            )),
+            offsets,
+            x,
+            None,
+        ));
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x]).unwrap();
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_type = "CREATE TYPE test_type AS (a int, b bigint)";
+        Spi::run(create_type).unwrap();
+
+        let create_table = "CREATE TABLE test_table (x test_type[])";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let value =
+            Spi::get_two::<i32, i64>("SELECT (x[1]).a, (x[1]).b FROM test_table LIMIT 1").unwrap();
+        assert_eq!(value, (Some(1), Some(2)));
+    }
+
+    #[pg_test]
+    #[should_panic(expected = "type mismatch for column \"x\" between table and parquet file.")]
+    fn test_coerce_struct_type_with_less_field() {
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "x",
+            DataType::Struct(vec![Field::new("a", DataType::UInt16, false)].into()),
+            false,
+        )]));
+
+        let a: ArrayRef = Arc::new(UInt16Array::from(vec![Some(1)]));
+
+        let x = Arc::new(StructArray::try_from(vec![("a", a)]).unwrap());
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x]).unwrap();
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_type = "CREATE TYPE test_type AS (a int, b bigint)";
+        Spi::run(create_type).unwrap();
+
+        let create_table = "CREATE TABLE test_table (x test_type)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+    }
+
+    #[pg_test]
+    #[should_panic(expected = "type mismatch for column \"x\" between table and parquet file.")]
+    fn test_coerce_struct_type_with_different_field_name() {
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "x",
+            DataType::Struct(
+                vec![
+                    Field::new("b", DataType::UInt16, false),
+                    Field::new("a", DataType::UInt16, false),
+                ]
+                .into(),
+            ),
+            false,
+        )]));
+
+        let a: ArrayRef = Arc::new(UInt16Array::from(vec![Some(1)]));
+        let b: ArrayRef = Arc::new(UInt16Array::from(vec![Some(2)]));
+
+        let x = Arc::new(StructArray::try_from(vec![("b", a), ("a", b)]).unwrap());
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x]).unwrap();
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_type = "CREATE TYPE test_type AS (a int, b bigint)";
+        Spi::run(create_type).unwrap();
+
+        let create_table = "CREATE TABLE test_table (x test_type)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+    }
+
+    #[pg_test]
+    #[should_panic(expected = "type mismatch for column \"x\" between table and parquet file.")]
+    fn test_coerce_struct_type_with_not_castable_field_type() {
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "x",
+            DataType::Struct(
+                vec![
+                    Field::new("a", DataType::UInt16, false),
+                    Field::new("b", DataType::Boolean, false),
+                ]
+                .into(),
+            ),
+            false,
+        )]));
+
+        let a: ArrayRef = Arc::new(UInt16Array::from(vec![Some(1)]));
+        let b: ArrayRef = Arc::new(BooleanArray::from(vec![Some(false)]));
+
+        let x = Arc::new(StructArray::try_from(vec![("a", a), ("b", b)]).unwrap());
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x]).unwrap();
+        write_record_batch_to_parquet(schema, batch);
+
+        let create_type = "CREATE TYPE test_type AS (a int, b date)";
+        Spi::run(create_type).unwrap();
+
+        let create_table = "CREATE TABLE test_table (x test_type)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+    }
+
+    #[pg_test]
+    fn test_coerce_map_types() {
+        // Skip the test if crunchy_map extension is not available
+        if !extension_exists("crunchy_map") {
+            return;
+        }
+
+        // MAP<TEXT, UINT16> => crunchy_map {key: text, val: bigint}
+        let entries_field = Arc::new(Field::new(
+            "x",
+            DataType::Struct(
+                vec![
+                    Field::new("key", DataType::Utf8, false),
+                    Field::new("val", DataType::UInt16, false),
+                ]
+                .into(),
+            ),
+            false,
+        ));
+
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "x",
+            DataType::Map(entries_field.clone(), false),
+            false,
+        )]));
+
+        let keys: ArrayRef = Arc::new(StringArray::from(vec![Some("aa"), Some("bb")]));
+        let values: ArrayRef = Arc::new(UInt16Array::from(vec![Some(1), Some(2)]));
+
+        let entries = StructArray::try_from(vec![("key", keys), ("val", values)]).unwrap();
+
+        let map_offsets = OffsetBuffer::new(ScalarBuffer::from(vec![0, 2]));
+
+        let map_nulls = NullBuffer::from(vec![true]);
+
+        let x = Arc::new(MapArray::new(
+            entries_field,
+            map_offsets,
+            entries,
+            Some(map_nulls),
+            false,
+        ));
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x]).unwrap();
+        write_record_batch_to_parquet(schema, batch);
+
+        Spi::run("DROP EXTENSION IF EXISTS crunchy_map; CREATE EXTENSION crunchy_map;").unwrap();
+
+        Spi::run("SELECT crunchy_map.create('text','bigint');").unwrap();
+
+        let create_table = "CREATE TABLE test_table (x crunchy_map.key_text_val_bigint)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let value = Spi::get_one::<bool>("select x = array[('aa',1),('bb',2)]::crunchy_map.key_text_val_bigint from test_table LIMIT 1;").unwrap().unwrap();
+        assert!(value);
+    }
+
+    #[pg_test]
+    fn test_coerce_list_of_map() {
+        // Skip the test if crunchy_map extension is not available
+        if !extension_exists("crunchy_map") {
+            return;
+        }
+
+        // [MAP<TEXT, UINT16>] => crunchy_map {key: text, val: bigint}[]
+        let entries_field = Arc::new(Field::new(
+            "key_value",
+            DataType::Struct(
+                vec![
+                    Field::new("key", DataType::Utf8, false),
+                    Field::new("val", DataType::UInt16, false),
+                ]
+                .into(),
+            ),
+            false,
+        ));
+
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "x",
+            DataType::List(
+                Field::new(
+                    "element",
+                    DataType::Map(entries_field.clone(), false),
+                    false,
+                )
+                .into(),
+            ),
+            false,
+        )]));
+
+        let keys: ArrayRef = Arc::new(StringArray::from(vec![Some("aa"), Some("bb")]));
+        let values: ArrayRef = Arc::new(UInt16Array::from(vec![Some(1), Some(2)]));
+
+        let entries = StructArray::try_from(vec![("key", keys), ("val", values)]).unwrap();
+
+        let map_offsets = OffsetBuffer::new(ScalarBuffer::from(vec![0, 2]));
+
+        let map_nulls = NullBuffer::from(vec![true]);
+
+        let map = Arc::new(MapArray::new(
+            entries_field.clone(),
+            map_offsets,
+            entries,
+            Some(map_nulls),
+            false,
+        ));
+
+        let offsets = OffsetBuffer::new(ScalarBuffer::from(vec![0, 1]));
+        let x = Arc::new(ListArray::new(
+            Arc::new(Field::new(
+                "element",
+                DataType::Map(entries_field, false),
+                false,
+            )),
+            offsets,
+            map,
+            None,
+        ));
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![x]).unwrap();
+        write_record_batch_to_parquet(schema, batch);
+
+        Spi::run("DROP EXTENSION IF EXISTS crunchy_map; CREATE EXTENSION crunchy_map;").unwrap();
+
+        Spi::run("SELECT crunchy_map.create('text','bigint');").unwrap();
+
+        let create_table = "CREATE TABLE test_table (x crunchy_map.key_text_val_bigint[])";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let value = Spi::get_one::<bool>("select x = array[array[('aa',1),('bb',2)]::crunchy_map.key_text_val_bigint] from test_table LIMIT 1;").unwrap().unwrap();
+        assert!(value);
+    }
+
+    #[pg_test]
+    #[should_panic(expected = "violates not-null constraint")]
+    fn test_copy_not_null_table() {
+        let create_table = "CREATE TABLE test_table (x int NOT NULL)";
+        Spi::run(create_table).unwrap();
+
+        // first copy non-null value to file
+        let copy_to = "COPY (SELECT 1 as x) TO '/tmp/test.parquet'";
+        Spi::run(copy_to).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let result = Spi::get_one::<i32>("SELECT x FROM test_table")
+            .unwrap()
+            .unwrap();
+        assert_eq!(result, 1);
+
+        // then copy null value to file
+        let copy_to = "COPY (SELECT NULL::int as x) TO '/tmp/test.parquet'";
+        Spi::run(copy_to).unwrap();
+
+        // this should panic
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+    }
+
+    #[pg_test]
+    fn test_table_with_different_field_position() {
+        let copy_to = "COPY (SELECT 1 as x, 'hello' as y) TO '/tmp/test.parquet'";
+        Spi::run(copy_to).unwrap();
+
+        let create_table = "CREATE TABLE test_table (y text, x int)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
+
+        let result = Spi::get_two::<&str, i32>("SELECT y, x FROM test_table LIMIT 1").unwrap();
+        assert_eq!(result, (Some("hello"), Some(1)));
+    }
+
+    #[pg_test]
+    #[should_panic(expected = "type mismatch for column \"x\" between table and parquet file.")]
+    fn test_coerce_custom_cast_fail() {
+        let custom_cast = "CREATE FUNCTION float_to_date(float) RETURNS date AS $$
+                            BEGIN
+                                RETURN now()::date;
+                            END;
+                            $$ LANGUAGE plpgsql;";
+        Spi::run(custom_cast).unwrap();
+
+        let copy_to = "COPY (SELECT 1.0::float as x) TO '/tmp/test.parquet'";
+        Spi::run(copy_to).unwrap();
+
+        let create_table = "CREATE TABLE test_table (x date)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
     }
 
     #[pg_test]
@@ -2018,15 +3006,28 @@ mod tests {
             ),
             (
                 "/tmp/test.parquet".into(),
-                "id".into(),
-                Some("INT32".into()),
+                "element".into(),
+                None,
                 None,
                 Some("OPTIONAL".into()),
+                Some(2),
                 None,
                 None,
                 None,
+                Some(2),
                 None,
-                Some(5),
+            ),
+            (
+                "/tmp/test.parquet".into(),
+                "element".into(),
+                None,
+                None,
+                Some("OPTIONAL".into()),
+                Some(2),
+                None,
+                None,
+                None,
+                Some(4),
                 None,
             ),
             (
@@ -2040,6 +3041,19 @@ mod tests {
                 None,
                 None,
                 Some(0),
+                None,
+            ),
+            (
+                "/tmp/test.parquet".into(),
+                "id".into(),
+                Some("INT32".into()),
+                None,
+                Some("OPTIONAL".into()),
+                None,
+                None,
+                None,
+                None,
+                Some(5),
                 None,
             ),
             (
@@ -2109,19 +3123,6 @@ mod tests {
             ),
             (
                 "/tmp/test.parquet".into(),
-                "p".into(),
-                None,
-                None,
-                Some("OPTIONAL".into()),
-                Some(2),
-                None,
-                None,
-                None,
-                Some(4),
-                None,
-            ),
-            (
-                "/tmp/test.parquet".into(),
                 "workers".into(),
                 None,
                 None,
@@ -2132,19 +3133,6 @@ mod tests {
                 None,
                 Some(1),
                 Some("LIST".into()),
-            ),
-            (
-                "/tmp/test.parquet".into(),
-                "workers".into(),
-                None,
-                None,
-                Some("OPTIONAL".into()),
-                Some(2),
-                None,
-                None,
-                None,
-                Some(2),
-                None,
             ),
         ];
 
@@ -2268,7 +3256,7 @@ mod tests {
                 1,
                 0,
                 5,
-                "workers.list.workers.p.list.p.id".into(),
+                "workers.list.element.p.list.element.id".into(),
                 "INT32".into(),
                 Some(5),
                 None,
@@ -2282,7 +3270,7 @@ mod tests {
                 2,
                 0,
                 5,
-                "workers.list.workers.p.list.p.name".into(),
+                "workers.list.element.p.list.element.name".into(),
                 "BYTE_ARRAY".into(),
                 Some(5),
                 None,
@@ -2296,7 +3284,7 @@ mod tests {
                 3,
                 0,
                 5,
-                "workers.list.workers.monthly_salary".into(),
+                "workers.list.element.monthly_salary".into(),
                 "INT64".into(),
                 Some(5),
                 None,
@@ -2338,7 +3326,7 @@ mod tests {
                 1,
                 0,
                 5,
-                "workers.list.workers.p.list.p.id".into(),
+                "workers.list.element.p.list.element.id".into(),
                 "INT32".into(),
                 Some(5),
                 None,
@@ -2352,7 +3340,7 @@ mod tests {
                 2,
                 0,
                 5,
-                "workers.list.workers.p.list.p.name".into(),
+                "workers.list.element.p.list.element.name".into(),
                 "BYTE_ARRAY".into(),
                 Some(5),
                 None,
@@ -2366,7 +3354,7 @@ mod tests {
                 3,
                 0,
                 5,
-                "workers.list.workers.monthly_salary".into(),
+                "workers.list.element.monthly_salary".into(),
                 "INT64".into(),
                 Some(5),
                 None,
@@ -2592,74 +3580,74 @@ mod tests {
             "/tmp/test.parquet".into(),
             vec![65, 82, 82, 79, 87, 58, 115, 99, 104, 101, 109, 97],
             Some(vec![
-                47, 47, 47, 47, 47, 43, 103, 68, 65, 65, 65, 81, 65, 65, 65, 65, 65, 65, 65, 75,
+                47, 47, 47, 47, 47, 43, 119, 68, 65, 65, 65, 81, 65, 65, 65, 65, 65, 65, 65, 75,
                 65, 65, 119, 65, 67, 103, 65, 74, 65, 65, 81, 65, 67, 103, 65, 65, 65, 66, 65, 65,
                 65, 65, 65, 65, 65, 81, 81, 65, 67, 65, 65, 73, 65, 65, 65, 65, 66, 65, 65, 73, 65,
-                65, 65, 65, 66, 65, 65, 65, 65, 65, 77, 65, 65, 65, 66, 69, 65, 119, 65, 65, 97,
-                65, 65, 65, 65, 65, 81, 65, 65, 65, 68, 97, 47, 80, 47, 47, 75, 65, 65, 65, 65, 66,
+                65, 65, 65, 66, 65, 65, 65, 65, 65, 77, 65, 65, 65, 66, 73, 65, 119, 65, 65, 97,
+                65, 65, 65, 65, 65, 81, 65, 65, 65, 68, 87, 47, 80, 47, 47, 75, 65, 65, 65, 65, 66,
                 81, 65, 65, 65, 65, 77, 65, 65, 65, 65, 65, 65, 65, 66, 66, 81, 119, 65, 65, 65,
                 65, 65, 65, 65, 65, 65, 109, 80, 55, 47, 47, 119, 99, 65, 65, 65, 66, 106, 98, 50,
-                49, 119, 89, 87, 53, 53, 65, 65, 69, 65, 65, 65, 65, 69, 65, 65, 65, 65, 118, 80,
+                49, 119, 89, 87, 53, 53, 65, 65, 69, 65, 65, 65, 65, 69, 65, 65, 65, 65, 117, 80,
                 122, 47, 47, 119, 103, 65, 65, 65, 65, 77, 65, 65, 65, 65, 65, 81, 65, 65, 65, 68,
                 103, 65, 65, 65, 65, 81, 65, 65, 65, 65, 85, 69, 70, 83, 85, 86, 86, 70, 86, 68,
-                112, 109, 97, 87, 86, 115, 90, 70, 57, 112, 90, 65, 65, 65, 65, 65, 65, 54, 47,
-                102, 47, 47, 107, 65, 73, 65, 65, 66, 103, 65, 65, 65, 65, 77, 65, 65, 65, 65, 65,
-                65, 65, 66, 68, 72, 81, 67, 65, 65, 65, 66, 65, 65, 65, 65, 67, 65, 65, 65, 65, 80,
-                122, 43, 47, 47, 57, 101, 47, 102, 47, 47, 76, 65, 73, 65, 65, 66, 119, 65, 65, 65,
-                65, 77, 65, 65, 65, 65, 65, 65, 65, 66, 68, 82, 65, 67, 65, 65, 65, 67, 65, 65, 65,
-                65, 102, 65, 65, 65, 65, 65, 103, 65, 65, 65, 65, 107, 47, 47, 47, 47, 104, 118,
-                51, 47, 47, 122, 103, 65, 65, 65, 65, 85, 65, 65, 65, 65, 68, 65, 65, 65, 65, 65,
-                65, 65, 65, 81, 99, 85, 65, 65, 65, 65, 65, 65, 65, 65, 65, 70, 68, 57, 47, 47, 56,
-                71, 65, 65, 65, 65, 68, 119, 65, 65, 65, 65, 52, 65, 65, 65, 66, 116, 98, 50, 53,
-                48, 97, 71, 120, 53, 88, 51, 78, 104, 98, 71, 70, 121, 101, 81, 65, 65, 65, 81, 65,
-                65, 65, 65, 81, 65, 65, 65, 66, 52, 47, 102, 47, 47, 67, 65, 65, 65, 65, 65, 119,
-                65, 65, 65, 65, 66, 65, 65, 65, 65, 78, 119, 65, 65, 65, 66, 65, 65, 65, 65, 66,
-                81, 81, 86, 74, 82, 86, 85, 86, 85, 79, 109, 90, 112, 90, 87, 120, 107, 88, 50,
-                108, 107, 65, 65, 65, 65, 65, 80, 98, 57, 47, 47, 57, 85, 65, 81, 65, 65, 71, 65,
-                65, 65, 65, 65, 119, 65, 65, 65, 65, 65, 65, 65, 69, 77, 80, 65, 69, 65, 65, 65,
-                69, 65, 65, 65, 65, 73, 65, 65, 65, 65, 117, 80, 47, 47, 47, 120, 114, 43, 47, 47,
-                47, 48, 65, 65, 65, 65, 72, 65, 65, 65, 65, 65, 119, 65, 65, 65, 65, 65, 65, 65,
-                69, 78, 51, 65, 65, 65, 65, 65, 73, 65, 65, 65, 66, 119, 65, 65, 65, 65, 67, 65,
-                65, 65, 65, 79, 68, 47, 47, 47, 57, 67, 47, 118, 47, 47, 76, 65, 65, 65, 65, 66,
-                103, 65, 65, 65, 65, 77, 65, 65, 65, 65, 65, 65, 65, 66, 66, 82, 65, 65, 65, 65,
-                65, 65, 65, 65, 65, 65, 66, 65, 65, 69, 65, 65, 81, 65, 65, 65, 65, 69, 65, 65, 65,
-                65, 98, 109, 70, 116, 90, 81, 65, 65, 65, 65, 65, 66, 65, 65, 65, 65, 66, 65, 65,
-                65, 65, 67, 106, 43, 47, 47, 56, 73, 65, 65, 65, 65, 68, 65, 65, 65, 65, 65, 69,
+                112, 109, 97, 87, 86, 115, 90, 70, 57, 112, 90, 65, 65, 65, 65, 65, 65, 50, 47,
+                102, 47, 47, 108, 65, 73, 65, 65, 66, 103, 65, 65, 65, 65, 77, 65, 65, 65, 65, 65,
+                65, 65, 66, 68, 72, 103, 67, 65, 65, 65, 66, 65, 65, 65, 65, 67, 65, 65, 65, 65,
+                80, 122, 43, 47, 47, 57, 97, 47, 102, 47, 47, 77, 65, 73, 65, 65, 66, 119, 65, 65,
+                65, 65, 77, 65, 65, 65, 65, 65, 65, 65, 66, 68, 82, 81, 67, 65, 65, 65, 67, 65, 65,
+                65, 65, 102, 65, 65, 65, 65, 65, 103, 65, 65, 65, 65, 107, 47, 47, 47, 47, 103,
+                118, 51, 47, 47, 122, 103, 65, 65, 65, 65, 85, 65, 65, 65, 65, 68, 65, 65, 65, 65,
+                65, 65, 65, 65, 81, 99, 85, 65, 65, 65, 65, 65, 65, 65, 65, 65, 69, 122, 57, 47,
+                47, 56, 71, 65, 65, 65, 65, 68, 119, 65, 65, 65, 65, 52, 65, 65, 65, 66, 116, 98,
+                50, 53, 48, 97, 71, 120, 53, 88, 51, 78, 104, 98, 71, 70, 121, 101, 81, 65, 65, 65,
+                81, 65, 65, 65, 65, 81, 65, 65, 65, 66, 48, 47, 102, 47, 47, 67, 65, 65, 65, 65,
+                65, 119, 65, 65, 65, 65, 66, 65, 65, 65, 65, 78, 119, 65, 65, 65, 66, 65, 65, 65,
+                65, 66, 81, 81, 86, 74, 82, 86, 85, 86, 85, 79, 109, 90, 112, 90, 87, 120, 107, 88,
+                50, 108, 107, 65, 65, 65, 65, 65, 80, 76, 57, 47, 47, 57, 89, 65, 81, 65, 65, 71,
+                65, 65, 65, 65, 65, 119, 65, 65, 65, 65, 65, 65, 65, 69, 77, 81, 65, 69, 65, 65,
+                65, 69, 65, 65, 65, 65, 73, 65, 65, 65, 65, 117, 80, 47, 47, 47, 120, 98, 43, 47,
+                47, 47, 52, 65, 65, 65, 65, 72, 65, 65, 65, 65, 65, 119, 65, 65, 65, 65, 65, 65,
+                65, 69, 78, 51, 65, 65, 65, 65, 65, 73, 65, 65, 65, 66, 119, 65, 65, 65, 65, 67,
+                65, 65, 65, 65, 79, 68, 47, 47, 47, 56, 43, 47, 118, 47, 47, 76, 65, 65, 65, 65,
+                66, 103, 65, 65, 65, 65, 77, 65, 65, 65, 65, 65, 65, 65, 66, 66, 82, 65, 65, 65,
+                65, 65, 65, 65, 65, 65, 65, 66, 65, 65, 69, 65, 65, 81, 65, 65, 65, 65, 69, 65, 65,
+                65, 65, 98, 109, 70, 116, 90, 81, 65, 65, 65, 65, 65, 66, 65, 65, 65, 65, 66, 65,
+                65, 65, 65, 67, 84, 43, 47, 47, 56, 73, 65, 65, 65, 65, 68, 65, 65, 65, 65, 65, 69,
                 65, 65, 65, 65, 50, 65, 65, 65, 65, 69, 65, 65, 65, 65, 70, 66, 66, 85, 108, 70,
                 86, 82, 86, 81, 54, 90, 109, 108, 108, 98, 71, 82, 102, 97, 87, 81, 65, 65, 65, 65,
-                65, 112, 118, 55, 47, 47, 121, 119, 65, 65, 65, 65, 81, 65, 65, 65, 65, 71, 65, 65,
-                65, 65, 65, 65, 65, 65, 81, 73, 85, 65, 65, 65, 65, 108, 80, 55, 47, 47, 121, 65,
+                65, 111, 118, 55, 47, 47, 121, 119, 65, 65, 65, 65, 81, 65, 65, 65, 65, 71, 65, 65,
+                65, 65, 65, 65, 65, 65, 81, 73, 85, 65, 65, 65, 65, 107, 80, 55, 47, 47, 121, 65,
                 65, 65, 65, 65, 65, 65, 65, 65, 66, 65, 65, 65, 65, 65, 65, 73, 65, 65, 65, 66,
-                112, 90, 65, 65, 65, 65, 81, 65, 65, 65, 65, 81, 65, 65, 65, 67, 77, 47, 118, 47,
+                112, 90, 65, 65, 65, 65, 81, 65, 65, 65, 65, 81, 65, 65, 65, 67, 73, 47, 118, 47,
                 47, 67, 65, 65, 65, 65, 65, 119, 65, 65, 65, 65, 66, 65, 65, 65, 65, 78, 81, 65,
                 65, 65, 66, 65, 65, 65, 65, 66, 81, 81, 86, 74, 82, 86, 85, 86, 85, 79, 109, 90,
-                112, 90, 87, 120, 107, 88, 50, 108, 107, 65, 65, 65, 65, 65, 65, 69, 65, 65, 65,
-                66, 119, 65, 65, 65, 65, 65, 81, 65, 65, 65, 65, 81, 65, 65, 65, 68, 73, 47, 118,
-                47, 47, 67, 65, 65, 65, 65, 65, 119, 65, 65, 65, 65, 66, 65, 65, 65, 65, 78, 65,
-                65, 65, 65, 66, 65, 65, 65, 65, 66, 81, 81, 86, 74, 82, 86, 85, 86, 85, 79, 109,
-                90, 112, 90, 87, 120, 107, 88, 50, 108, 107, 65, 65, 65, 65, 65, 65, 69, 65, 65,
-                65, 66, 119, 65, 65, 65, 65, 65, 81, 65, 65, 65, 65, 81, 65, 65, 65, 65, 69, 47,
-                47, 47, 47, 67, 65, 65, 65, 65, 65, 119, 65, 65, 65, 65, 66, 65, 65, 65, 65, 77,
-                119, 65, 65, 65, 66, 65, 65, 65, 65, 66, 81, 81, 86, 74, 82, 86, 85, 86, 85, 79,
-                109, 90, 112, 90, 87, 120, 107, 88, 50, 108, 107, 65, 65, 65, 65, 65, 65, 99, 65,
-                65, 65, 66, 51, 98, 51, 74, 114, 90, 88, 74, 122, 65, 65, 69, 65, 65, 65, 65, 69,
-                65, 65, 65, 65, 82, 80, 47, 47, 47, 119, 103, 65, 65, 65, 65, 77, 65, 65, 65, 65,
-                65, 81, 65, 65, 65, 68, 73, 65, 65, 65, 65, 81, 65, 65, 65, 65, 85, 69, 70, 83, 85,
-                86, 86, 70, 86, 68, 112, 109, 97, 87, 86, 115, 90, 70, 57, 112, 90, 65, 65, 65, 65,
-                65, 65, 72, 65, 65, 65, 65, 100, 50, 57, 121, 97, 50, 86, 121, 99, 119, 65, 66, 65,
-                65, 65, 65, 66, 65, 65, 65, 65, 73, 84, 47, 47, 47, 56, 73, 65, 65, 65, 65, 68, 65,
-                65, 65, 65, 65, 69, 65, 65, 65, 65, 120, 65, 65, 65, 65, 69, 65, 65, 65, 65, 70,
-                66, 66, 85, 108, 70, 86, 82, 86, 81, 54, 90, 109, 108, 108, 98, 71, 82, 102, 97,
-                87, 81, 65, 65, 66, 73, 65, 71, 65, 65, 85, 65, 66, 73, 65, 69, 119, 65, 73, 65,
-                65, 65, 65, 68, 65, 65, 69, 65, 66, 73, 65, 65, 65, 65, 48, 65, 65, 65, 65, 71, 65,
-                65, 65, 65, 67, 65, 65, 65, 65, 65, 65, 65, 65, 69, 67, 72, 65, 65, 65, 65, 65,
-                103, 65, 68, 65, 65, 69, 65, 65, 115, 65, 67, 65, 65, 65, 65, 67, 65, 65, 65, 65,
-                65, 65, 65, 65, 65, 66, 65, 65, 65, 65, 65, 65, 73, 65, 65, 65, 66, 112, 90, 65,
-                65, 65, 65, 81, 65, 65, 65, 65, 119, 65, 65, 65, 65, 73, 65, 65, 119, 65, 67, 65,
-                65, 69, 65, 65, 103, 65, 65, 65, 65, 73, 65, 65, 65, 65, 68, 65, 65, 65, 65, 65,
-                69, 65, 65, 65, 65, 119, 65, 65, 65, 65, 69, 65, 65, 65, 65, 70, 66, 66, 85, 108,
+                112, 90, 87, 120, 107, 88, 50, 108, 107, 65, 65, 65, 65, 65, 65, 99, 65, 65, 65,
+                66, 108, 98, 71, 86, 116, 90, 87, 53, 48, 65, 65, 69, 65, 65, 65, 65, 69, 65, 65,
+                65, 65, 121, 80, 55, 47, 47, 119, 103, 65, 65, 65, 65, 77, 65, 65, 65, 65, 65, 81,
+                65, 65, 65, 68, 81, 65, 65, 65, 65, 81, 65, 65, 65, 65, 85, 69, 70, 83, 85, 86, 86,
+                70, 86, 68, 112, 109, 97, 87, 86, 115, 90, 70, 57, 112, 90, 65, 65, 65, 65, 65, 65,
+                66, 65, 65, 65, 65, 99, 65, 65, 65, 65, 65, 69, 65, 65, 65, 65, 69, 65, 65, 65, 65,
+                66, 80, 47, 47, 47, 119, 103, 65, 65, 65, 65, 77, 65, 65, 65, 65, 65, 81, 65, 65,
+                65, 68, 77, 65, 65, 65, 65, 81, 65, 65, 65, 65, 85, 69, 70, 83, 85, 86, 86, 70, 86,
+                68, 112, 109, 97, 87, 86, 115, 90, 70, 57, 112, 90, 65, 65, 65, 65, 65, 65, 72, 65,
+                65, 65, 65, 90, 87, 120, 108, 98, 87, 86, 117, 100, 65, 65, 66, 65, 65, 65, 65, 66,
+                65, 65, 65, 65, 69, 84, 47, 47, 47, 56, 73, 65, 65, 65, 65, 68, 65, 65, 65, 65, 65,
+                69, 65, 65, 65, 65, 121, 65, 65, 65, 65, 69, 65, 65, 65, 65, 70, 66, 66, 85, 108,
                 70, 86, 82, 86, 81, 54, 90, 109, 108, 108, 98, 71, 82, 102, 97, 87, 81, 65, 65, 65,
-                65, 65,
+                65, 65, 66, 119, 65, 65, 65, 72, 100, 118, 99, 109, 116, 108, 99, 110, 77, 65, 65,
+                81, 65, 65, 65, 65, 81, 65, 65, 65, 67, 69, 47, 47, 47, 47, 67, 65, 65, 65, 65, 65,
+                119, 65, 65, 65, 65, 66, 65, 65, 65, 65, 77, 81, 65, 65, 65, 66, 65, 65, 65, 65,
+                66, 81, 81, 86, 74, 82, 86, 85, 86, 85, 79, 109, 90, 112, 90, 87, 120, 107, 88, 50,
+                108, 107, 65, 65, 65, 83, 65, 66, 103, 65, 70, 65, 65, 83, 65, 66, 77, 65, 67, 65,
+                65, 65, 65, 65, 119, 65, 66, 65, 65, 83, 65, 65, 65, 65, 78, 65, 65, 65, 65, 66,
+                103, 65, 65, 65, 65, 103, 65, 65, 65, 65, 65, 65, 65, 66, 65, 104, 119, 65, 65, 65,
+                65, 73, 65, 65, 119, 65, 66, 65, 65, 76, 65, 65, 103, 65, 65, 65, 65, 103, 65, 65,
+                65, 65, 65, 65, 65, 65, 65, 81, 65, 65, 65, 65, 65, 67, 65, 65, 65, 65, 97, 87, 81,
+                65, 65, 65, 69, 65, 65, 65, 65, 77, 65, 65, 65, 65, 67, 65, 65, 77, 65, 65, 103,
+                65, 66, 65, 65, 73, 65, 65, 65, 65, 67, 65, 65, 65, 65, 65, 119, 65, 65, 65, 65,
+                66, 65, 65, 65, 65, 77, 65, 65, 65, 65, 66, 65, 65, 65, 65, 66, 81, 81, 86, 74, 82,
+                86, 85, 86, 85, 79, 109, 90, 112, 90, 87, 120, 107, 88, 50, 108, 107, 65, 65, 65,
+                65, 65, 65, 61, 61,
             ]),
         )];
 

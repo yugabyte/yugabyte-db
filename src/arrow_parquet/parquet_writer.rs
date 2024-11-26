@@ -12,9 +12,12 @@ use url::Url;
 use crate::{
     arrow_parquet::{
         compression::{PgParquetCompression, PgParquetCompressionWithLevel},
-        schema_parser::parse_arrow_schema_from_tupledesc,
+        schema_parser::{
+            parquet_schema_string_from_attributes, parse_arrow_schema_from_attributes,
+        },
         uri_utils::{parquet_writer_from_uri, PG_BACKEND_TOKIO_RUNTIME},
     },
+    pgrx_utils::{collect_attributes_for, CollectAttributesFor},
     type_compat::{geometry::reset_postgis_context, map::reset_map_context},
 };
 
@@ -57,12 +60,20 @@ impl ParquetWriterContext {
             .set_created_by("pg_parquet".to_string())
             .build();
 
-        let schema = parse_arrow_schema_from_tupledesc(tupledesc);
+        let attributes = collect_attributes_for(CollectAttributesFor::CopyTo, tupledesc);
+
+        pgrx::debug2!(
+            "schema for tuples: {}",
+            parquet_schema_string_from_attributes(&attributes)
+        );
+
+        let schema = parse_arrow_schema_from_attributes(&attributes);
         let schema = Arc::new(schema);
 
         let parquet_writer = parquet_writer_from_uri(&uri, schema.clone(), writer_props);
 
-        let attribute_contexts = collect_pg_to_arrow_attribute_contexts(tupledesc, &schema.fields);
+        let attribute_contexts =
+            collect_pg_to_arrow_attribute_contexts(&attributes, &schema.fields);
 
         ParquetWriterContext {
             parquet_writer,

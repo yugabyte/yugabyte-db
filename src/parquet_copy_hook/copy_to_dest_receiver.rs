@@ -15,10 +15,9 @@ use crate::{
         parquet_writer::{
             ParquetWriterContext, DEFAULT_ROW_GROUP_SIZE, DEFAULT_ROW_GROUP_SIZE_BYTES,
         },
-        schema_parser::parquet_schema_string_from_tupledesc,
         uri_utils::parse_uri,
     },
-    pgrx_utils::collect_valid_attributes,
+    pgrx_utils::{collect_attributes_for, CollectAttributesFor},
 };
 
 #[repr(C)]
@@ -118,11 +117,6 @@ impl CopyToParquetDestReceiver {
             })
             .collect::<Vec<_>>();
 
-        pgrx::debug2!(
-            "schema for tuples: {}",
-            parquet_schema_string_from_tupledesc(&tupledesc)
-        );
-
         let current_parquet_writer_context =
             peek_parquet_writer_context().expect("parquet writer context is not found");
         current_parquet_writer_context.write_new_row_group(tuples);
@@ -179,8 +173,7 @@ extern "C" fn copy_startup(dest: *mut DestReceiver, _operation: i32, tupledesc: 
     let tupledesc = unsafe { BlessTupleDesc(tupledesc) };
     let tupledesc = unsafe { PgTupleDesc::from_pg(tupledesc) };
 
-    let include_generated_columns = true;
-    let attributes = collect_valid_attributes(&tupledesc, include_generated_columns);
+    let attributes = collect_attributes_for(CollectAttributesFor::CopyTo, &tupledesc);
 
     // update the parquet dest receiver's missing fields
     parquet_dest.tupledesc = tupledesc.as_ptr();

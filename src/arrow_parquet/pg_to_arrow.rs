@@ -7,16 +7,17 @@ use pgrx::{
     datum::{Date, Time, TimeWithTimeZone, Timestamp, TimestampWithTimeZone, UnboxDatum},
     heap_tuple::PgHeapTuple,
     pg_sys::{
-        Oid, BOOLOID, BYTEAOID, CHAROID, DATEOID, FLOAT4OID, FLOAT8OID, INT2OID, INT4OID, INT8OID,
-        NUMERICOID, OIDOID, TEXTOID, TIMEOID, TIMESTAMPOID, TIMESTAMPTZOID, TIMETZOID,
+        FormData_pg_attribute, Oid, BOOLOID, BYTEAOID, CHAROID, DATEOID, FLOAT4OID, FLOAT8OID,
+        INT2OID, INT4OID, INT8OID, NUMERICOID, OIDOID, TEXTOID, TIMEOID, TIMESTAMPOID,
+        TIMESTAMPTZOID, TIMETZOID,
     },
-    AllocatedByRust, AnyNumeric, FromDatum, PgTupleDesc,
+    AllocatedByRust, AnyNumeric, FromDatum,
 };
 
 use crate::{
     pgrx_utils::{
-        array_element_typoid, collect_valid_attributes, domain_array_base_elem_typoid,
-        is_array_type, is_composite_type, tuple_desc,
+        array_element_typoid, collect_attributes_for, domain_array_base_elem_typoid, is_array_type,
+        is_composite_type, tuple_desc, CollectAttributesFor,
     },
     type_compat::{
         fallback_to_text::{reset_fallback_to_text_context, FallbackToText},
@@ -146,7 +147,10 @@ impl PgToArrowAttributeContext {
                 _ => unreachable!(),
             };
 
-            collect_pg_to_arrow_attribute_contexts(&attribute_tupledesc, &fields)
+            let attributes =
+                collect_attributes_for(CollectAttributesFor::Struct, &attribute_tupledesc);
+
+            collect_pg_to_arrow_attribute_contexts(&attributes, &fields)
         });
 
         Self {
@@ -166,11 +170,9 @@ impl PgToArrowAttributeContext {
 }
 
 pub(crate) fn collect_pg_to_arrow_attribute_contexts(
-    tupledesc: &PgTupleDesc,
+    attributes: &[FormData_pg_attribute],
     fields: &Fields,
 ) -> Vec<PgToArrowAttributeContext> {
-    let include_generated_columns = true;
-    let attributes = collect_valid_attributes(tupledesc, include_generated_columns);
     let mut attribute_contexts = vec![];
 
     for attribute in attributes {

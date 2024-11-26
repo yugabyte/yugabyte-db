@@ -7,11 +7,16 @@ use super::{ArrowArrayToPgType, ArrowToPgAttributeContext};
 
 // Timestamptz
 impl ArrowArrayToPgType<TimestampWithTimeZone> for TimestampMicrosecondArray {
-    fn to_pg_type(self, _context: &ArrowToPgAttributeContext) -> Option<TimestampWithTimeZone> {
+    fn to_pg_type(self, context: &ArrowToPgAttributeContext) -> Option<TimestampWithTimeZone> {
         if self.is_null(0) {
             None
         } else {
-            Some(i64_to_timestamptz(self.value(0)))
+            let timezone = context
+                .timezone
+                .as_ref()
+                .expect("timezone is required for timestamptz");
+
+            Some(i64_to_timestamptz(self.value(0), timezone))
         }
     }
 }
@@ -20,11 +25,17 @@ impl ArrowArrayToPgType<TimestampWithTimeZone> for TimestampMicrosecondArray {
 impl ArrowArrayToPgType<Vec<Option<TimestampWithTimeZone>>> for TimestampMicrosecondArray {
     fn to_pg_type(
         self,
-        _context: &ArrowToPgAttributeContext,
+        context: &ArrowToPgAttributeContext,
     ) -> Option<Vec<Option<TimestampWithTimeZone>>> {
         let mut vals = vec![];
+
+        let timezone = context
+            .timezone
+            .as_ref()
+            .expect("timezone is required for timestamptz[]");
+
         for val in self.iter() {
-            let val = val.map(i64_to_timestamptz);
+            let val = val.map(|v| i64_to_timestamptz(v, timezone));
             vals.push(val);
         }
         Some(vals)
