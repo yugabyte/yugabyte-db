@@ -829,6 +829,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>>* tablets,
       std::optional<std::unordered_set<TableId>*> expected_tables = std::nullopt,
       std::optional<std::unordered_set<TabletId>*> expected_tablets = std::nullopt);
+
+  void TestLagMetricWithConsistentSnapshotStream(bool expire_table);
 };
 
 }  // namespace cdc
