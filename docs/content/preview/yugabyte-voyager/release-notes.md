@@ -19,7 +19,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 - Unsupported PL/pgSQL objects detection. Introduced a capability in assess-migration and analyze-schema commands to detect and report SQL features and constructs within PL/pgSQL objects in the source schema that are not supported by YugabyteDB, such as advisory locks, system columns, and XML functions. Voyager reports individual queries within these objects that contain unsupported constructs, such as queries in PL/pgSQL blocks for functions and procedures, or select statements in views and materialized views.
 
-## Enhancements
+### Enhancements
 
 - Using arguments `--table-list` and `--exclude-table-list` in guardrails checks for PostgreSQL export to determine which tables require permission checks.
 - Added a check for Java as a dependency in guardrails for PostgreSQL export during live migration.
