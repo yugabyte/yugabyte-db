@@ -21,59 +21,59 @@ export default class CpuUsagePanel extends Component {
     } = this.props;
     const usage = {
       system: undefined,
-      user: undefined
+      user: undefined,
+      total: undefined
     };
 
     const masterUsage = {
       system: undefined,
-      user: undefined
+      user: undefined,
+      total: undefined
     };
 
     try {
       if (isNonEmptyArray(metric.data)) {
         if (isKubernetes) {
-          usage.system = parseFloat(
+          usage.total = parseFloat(
             metric.data.find((item) => item.name === 'cpu_usage').y.slice(-1)[0]
           );
         } else {
-          usage.system = parseFloat(
-            metric.data.find((item) => item.name === 'System').y.slice(-1)[0]
+          usage.total = parseFloat(
+            metric.data.find((item) => item.name === 'Total').y.slice(-1)[0]
           );
-          usage.user = parseFloat(metric.data.find((item) => item.name === 'User').y.slice(-1)[0]);
         }
       }
 
       if (masterMetric && isNonEmptyArray(masterMetric.data)) {
         if (isKubernetes) {
-          masterUsage.system = parseFloat(
+          masterUsage.total = parseFloat(
             masterMetric.data.find((item) => item.name === 'cpu_usage').y.slice(-1)[0]
           );
         } else {
-          masterUsage.system = parseFloat(
-            masterMetric.data.find((item) => item.name === 'System').y.slice(-1)[0]
-          );
-          masterUsage.user = parseFloat(
-            masterMetric.data.find((item) => item.name === 'User').y.slice(-1)[0]
+          masterUsage.total = parseFloat(
+            masterMetric.data.find((item) => item.name === 'Total').y.slice(-1)[0]
           );
         }
       }
     } catch (err) {
       console.error('CPU metric processing failed with: ' + err);
     }
-    const value = usage.system
-      ? Math.round((usage.system + (usage.user !== undefined ? usage.user : 0)) * 10) / 1000
+    const value = usage.total
+      ? Math.round(usage.total * 10) / 1000
+      : usage.system
+      ? Math.round(usage.system * 10) / 1000
       : 0;
 
-    const masterValue = masterUsage.system
-      ? Math.round(
-          (masterUsage.system + (masterUsage.user !== undefined ? masterUsage.user : 0)) * 10
-        ) / 1000
+    const masterValue = masterUsage.total
+      ? Math.round(masterUsage.total * 10) / 1000
+      : masterUsage.system
+      ? Math.round(masterUsage.system * 10) / 1000
       : 0;
     const customClassName = isDedicatedNodes ? 'dedicated' : 'colocated';
 
     return (
       <div className={`metrics-padded-panel cpu-usage-panel ${customClassName}-mode-panel`}>
-        {isNaN(usage.system) ? (
+        {isNaN(usage.total) ? (
           <Fragment>
             {isKubernetes && useK8CustomResources && (
               <span className="node-type-label cpu">{NodeType.TServer}</span>
