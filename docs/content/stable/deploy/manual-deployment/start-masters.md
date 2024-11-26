@@ -46,11 +46,13 @@ The number of comma-separated addresses in `--master_addresses` should equal the
 
 You can specify multiple directories using the [`--fs_data_dirs`](../../../reference/configuration/yb-master/#fs-data-dirs) flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-master/#rpc-bind-addresses) value with the private IP address of the host, and set the `placement_cloud`, `placement_region`, and `placement_zone` values appropriately. For single zone deployment, use the same value for the `placement_zone` flag.
 
+{{<tags/feature/tp>}} Highly accurate clocks can be configured by specifying `--time_source=clockbound`. Requires [system configuration](../system-config#set-up-time-synchronization).
+
 For the full list of configuration flags, see the [YB-Master reference](../../../reference/configuration/yb-master/).
 
 ## Run YB-Master servers with configuration file
 
-Alternatively, you can also create a `master.conf` file with the following flags and then run `yb-master` with the [`--flagfile`](../../../reference/configuration/yb-master/#flagfile) option as shown below. For each YB-Master server, replace the [`--rpc-bind-addresses`](../../../reference/configuration/yb-master/#rpc-bind-addresses) configuration flag with the private IP address of the YB-Master server.
+Alternatively, you can also create a `master.conf` file with the following flags and then run yb-master with the [`--flagfile`](../../../reference/configuration/yb-master/#flagfile) option as shown below. For each YB-Master server, replace the [`--rpc-bind-addresses`](../../../reference/configuration/yb-master/#rpc-bind-addresses) configuration flag with the private IP address of the YB-Master server.
 
 ```sh
 --master_addresses=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
@@ -89,7 +91,7 @@ I0912 16:11:06.899287 27220 raft_consensus.cc:738] T 000000000000000000000000000
 
 {{< tip title="Tip" >}}
 
-Remember to add the command with which you launched `yb-master` to a cron to restart it if it goes down.
+Remember to add the command with which you launched yb-master to a cron to restart it if it goes down.
 
 {{< /tip >}}
 

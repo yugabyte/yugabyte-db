@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-This section describes how top-level SQL statements, sent to the PostgreSQL server using TCP/IP, execute. The same model, of course, applies for how YugabyteDB's YSQL subsystem  executes such statements. The chapter [Frontend/Backend Protocol](https://www.postgresql.org/docs/11/protocol.html) in the PostgreSQL documentation describes how the server processes, and responds to, SQL statements that are sent this way. 
+This section describes how top-level SQL statements, sent to the PostgreSQL server using TCP/IP, execute. The same model, of course, applies for how YugabyteDB's YSQL subsystem  executes such statements. The chapter [Frontend/Backend Protocol](https://www.postgresql.org/docs/11/protocol.html) in the PostgreSQL documentation describes how the server processes, and responds to, SQL statements that are sent this way.
 
 ## Client-side libraries and tools
 
@@ -19,7 +19,7 @@ Various client-side libraries are available to allow you to send and receive req
 - [libpq — C Library](https://www.postgresql.org/docs/current/libpq.html) (documented as part of the overall PostgreSQL documentation set);
 - [pgJDBC — the PostgreSQL JDBC Driver](https://jdbc.postgresql.org/) from _postgresql.org_;
 - [psycopg — for Python](https://www.psycopg.org/);
-- and, of course, [_psql_](https://www.postgresql.org/docs/11/app-psql.html), the so-called PostgreSQL interactive terminal, together with the YugabyteDB equivalent, [_ysqlsh_](../../../api/ysqlsh/).
+- and, of course, [_psql_](https://www.postgresql.org/docs/11/app-psql.html), the so-called PostgreSQL interactive terminal, together with the YugabyteDB equivalent, [_ysqlsh_](../../ysqlsh/).
 
 There are many others.
 
@@ -44,7 +44,7 @@ Notice that _commit_ (or _end_) and _rollback_ (or _abort_) are meaningful only 
 
 ## Semantics of issuing non-transaction-control SQL statements during an ongoing transaction
 
-The effects of ordinary non-transaction-control SQL statements that are issued during an ongoing transaction are essentially private to the current session and invisible to any other concurrent sessions. If the current session issues _rollback_, then from the point of view of other sessions, it's the same as if the current session had done nothing. Only if the current session issues _commit_ will the effects of its transaction become visible in other concurrent sessions. 
+The effects of ordinary non-transaction-control SQL statements that are issued during an ongoing transaction are essentially private to the current session and invisible to any other concurrent sessions. If the current session issues _rollback_, then from the point of view of other sessions, it's the same as if the current session had done nothing. Only if the current session issues _commit_ will the effects of its transaction become visible in other concurrent sessions.
 
 {{< tip title="See the dedicated YSQL documentation section on isolation levels." >}}
 The behavior of concurrent sessions, each of which has an ongoing transaction, needs very careful description—and it depends critically on which so-called _isolation level_ was specified when each transaction was started. See the section [Isolation levels](../../../explore/transactions/isolation-levels/). The isolation level of each session affects, for example:

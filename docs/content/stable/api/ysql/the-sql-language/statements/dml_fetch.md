@@ -85,7 +85,7 @@ rollback;
 This is the result. (Blanks lines were added manually to improve the readability.)
 
 ```output
-  k |  v  
+  k |  v
 ----+------
   2 |  200
   4 |  400

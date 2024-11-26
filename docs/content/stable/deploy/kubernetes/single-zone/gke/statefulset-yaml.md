@@ -33,7 +33,6 @@ type: docs
   </li>
 </ul>
 
-
 ## Prerequisites
 
 Before starting deployment, perform the following:

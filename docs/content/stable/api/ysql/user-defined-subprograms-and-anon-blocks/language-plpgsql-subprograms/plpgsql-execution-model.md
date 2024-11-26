@@ -93,7 +93,7 @@ select s.f1();
 This is the result:
 
 ```output
- f1  
+ f1
 -----
  cat
 ```
@@ -211,7 +211,7 @@ select z from s.f(1);
 This is the result, as expected:
 
 ```output
-      z      
+      z
 -------------
  false  42.3
  true   59.7
@@ -443,7 +443,7 @@ create function s.f(v_in in s.num)
   set search_path = pg_catalog, pg_temp
   language plpgsql
 as $body$
-declare 
+declare
   r text not null := '';
 begin
   select k::text into strict r from s.t where v = v_in;

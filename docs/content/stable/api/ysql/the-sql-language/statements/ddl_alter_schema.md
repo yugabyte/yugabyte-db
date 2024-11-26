@@ -29,7 +29,7 @@ Use the `ALTER SCHEMA` statement to change the definition of a schema.
 
 ### *alter_schema*
 
-#### ALTER SCHEMA *schema_name* 
+#### ALTER SCHEMA *schema_name*
 
 Specify the name of the schema (*schema_name*). An error is raised if a schema with that name does not exist in the current database.
 
@@ -89,7 +89,7 @@ yugabyte=# \dn
 
 ```
    List of schemas
-   Name   |  Owner   
+   Name   |  Owner
 ----------+----------
  public   | postgres
  schema25 | yugabyte
@@ -113,7 +113,7 @@ yugabyte=# \dn
 
 ```
    List of schemas
-   Name   |  Owner   
+   Name   |  Owner
 ----------+----------
  public   | postgres
  schema25 | postgres

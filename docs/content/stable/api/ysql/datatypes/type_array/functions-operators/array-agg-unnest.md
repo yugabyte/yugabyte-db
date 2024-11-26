@@ -112,7 +112,7 @@ Each of the three _"select... as arr"_ queries above produces the same result, a
 
 To prepare for the demonstration of `unnest()`, save the single-valued result from the most recent of the three queries (but any one of them would do) into a `ysqlsh` variable by using the `\gset` meta-command. This takes a single argument, conventionally spelled with a trailing underscore (for example, _"result&#95;"_) and re-runs the `SELECT` statement that, as the last submitted `ysqlsh` command, is still in the command buffer. (If the `SELECT` doesn't return a single row, then you get a clear error.) In general, when the `SELECT` list has _N_ members, called _"c1"_ through _"cN"_, each of these values is stored in automatically-created variables called _"result&#95;c1"_ through _"result&#95;cN"_.
 
-if you aren't already familiar with the `\gset` meta-command, you can read a brief account of how it works in [Meta-commands](../../../../../../api/ysqlsh-meta-commands/) within the major section on `ysqlsh`.
+if you aren't already familiar with the `\gset` meta-command, you can read a brief account of how it works in [Meta-commands](../../../../../ysqlsh-meta-commands/) within the major section on `ysqlsh`.
 
 Immediately after running the _"with... select array_agg(...) as arr..."_ query above, do this:
 
@@ -629,7 +629,7 @@ Notice that if you choose the _"masters&#95;with&#95;details"_ approach (either 
   set detail_name = 'bobcat'
   where master_pk = 2
   and detail_name = 'squirrel';
-  
+
   select
     master_pk,
     master_name,
@@ -658,7 +658,7 @@ Notice that if you choose the _"masters&#95;with&#95;details"_ approach (either 
   update masters_with_details
   set details = array_replace(details, '(3,squirrel)', '(3,bobcat)')
   where master_pk = 2;
-  
+
   select
     master_pk,
     master_name,
@@ -707,7 +707,7 @@ as $body$
 $body$;
 ```
 
-Now demonstrate the basic behavior _generate_subscripts():_ 
+Now demonstrate the basic behavior _generate_subscripts():_
 
 ```plpgsql
 select generate_subscripts(arr(), 1) as subscripts;
@@ -716,7 +716,7 @@ select generate_subscripts(arr(), 1) as subscripts;
 This is the result:
 
 ```output
- subscripts 
+ subscripts
 ------------
           1
           2
@@ -733,7 +733,7 @@ select generate_subscripts(arr(), 1, true) as subscripts;
 This is the result:
 
 ```output
- subscripts 
+ subscripts
 ------------
           4
           3
@@ -862,7 +862,7 @@ from generate_subscripts((select arr from t where k = 'Array One'), 1) as g(i);
 It produces this result:
 
 ```output
- i | arr 
+ i | arr
 ---+-----
  1 |  17
  2 |  42
@@ -902,7 +902,7 @@ order by k;
 It produces this result:
 
 ```output
-     k     | idx | a  
+     k     | idx | a
 -----------+-----+----
  Array One |   1 | 17
  Array One |   2 | 42
@@ -933,7 +933,7 @@ $body$;
 The result (after manually stripping the "INFO:" prompts), is the same as the SQL approach that uses `generate_subscripts()` with _cross join lateral_, shown above, produces:
 
 ```output
- 5 | 19 
+ 5 | 19
  6 | 47
  7 | 59
 ```
