@@ -5742,6 +5742,60 @@
       },
       "type" : "object"
     },
+    "GFlagDetails" : {
+      "properties" : {
+        "current" : {
+          "description" : "WARNING: This is a preview API that could change. Current value of the gflag",
+          "type" : "string"
+        },
+        "default" : {
+          "description" : "WARNING: This is a preview API that could change. Default value of the gflag",
+          "type" : "string"
+        },
+        "file" : {
+          "description" : "WARNING: This is a preview API that could change. File where the gflag is defined",
+          "type" : "string"
+        },
+        "initial" : {
+          "description" : "WARNING: This is a preview API that could change. Initial value of the gflag",
+          "type" : "string"
+        },
+        "meaning" : {
+          "description" : "WARNING: This is a preview API that could change. Meaning of the gflag",
+          "type" : "string"
+        },
+        "name" : {
+          "description" : "WARNING: This is a preview API that could change. Name of the gflag",
+          "type" : "string"
+        },
+        "tags" : {
+          "description" : "WARNING: This is a preview API that could change. Tags of the gflag",
+          "type" : "string"
+        },
+        "target" : {
+          "description" : "WARNING: This is a preview API that could change. Target of the gflag",
+          "type" : "string"
+        },
+        "type" : {
+          "description" : "WARNING: This is a preview API that could change. Type of the gflag",
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "GFlagValidationDetails" : {
+      "properties" : {
+        "error" : {
+          "description" : "WARNING: This is a preview API that could change. Error message if gflag is invalid",
+          "type" : "string"
+        },
+        "exist" : {
+          "description" : "WARNING: This is a preview API that could change. Flag to indicate if gflag exists",
+          "type" : "boolean"
+        }
+      },
+      "type" : "object"
+    },
     "GFlagsUpgradeParams" : {
       "properties" : {
         "allowInsecure" : {
@@ -5989,6 +6043,52 @@
         }
       },
       "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "masterGFlags", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tserverGFlags", "upgradeOption" ],
+      "type" : "object"
+    },
+    "GFlagsValidationFormData" : {
+      "properties" : {
+        "gflags" : {
+          "description" : "WARNING: This is a preview API that could change. List of gflags to validate",
+          "items" : {
+            "$ref" : "#/definitions/GFlagsValidationRequest"
+          },
+          "type" : "array"
+        }
+      },
+      "type" : "object"
+    },
+    "GFlagsValidationRequest" : {
+      "properties" : {
+        "MASTER" : {
+          "description" : "WARNING: This is a preview API that could change. Value of the gflag for master",
+          "type" : "string"
+        },
+        "Name" : {
+          "description" : "WARNING: This is a preview API that could change. Name of the gflag",
+          "type" : "string"
+        },
+        "TSERVER" : {
+          "description" : "WARNING: This is a preview API that could change. Value of the gflag for tserver",
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "GFlagsValidationResponse" : {
+      "properties" : {
+        "MASTER" : {
+          "$ref" : "#/definitions/GFlagValidationDetails",
+          "description" : "WARNING: This is a preview API that could change. Validation details for master"
+        },
+        "Name" : {
+          "description" : "WARNING: This is a preview API that could change. Name of the gflag",
+          "type" : "string"
+        },
+        "TSERVER" : {
+          "$ref" : "#/definitions/GFlagValidationDetails",
+          "description" : "WARNING: This is a preview API that could change. Validation details for tserver"
+        }
+      },
       "type" : "object"
     },
     "GroupMappingInfo" : {
@@ -29941,6 +30041,155 @@
         "tags" : [ "Instance types" ]
       }
     },
+    "/api/v1/metadata/version/{version}/gflag" : {
+      "get" : {
+        "description" : "WARNING: This is a preview API that could change.",
+        "operationId" : "getGFlagMetadata",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "version",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "name",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "server",
+          "required" : false,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/GFlagDetails"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/GFlagDetails"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get gflag metadata",
+        "tags" : [ "GFlags Validation APIs" ]
+      }
+    },
+    "/api/v1/metadata/version/{version}/list_gflags" : {
+      "get" : {
+        "description" : "WARNING: This is a preview API that could change.",
+        "operationId" : "listGFlags",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "version",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "name",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "server",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "mostUsedGFlags",
+          "required" : false,
+          "type" : "boolean"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/GFlagDetails"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/GFlagDetails"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List all gflags for a release",
+        "tags" : [ "GFlags Validation APIs" ]
+      }
+    },
+    "/api/v1/metadata/version/{version}/validate_gflags" : {
+      "post" : {
+        "description" : "WARNING: This is a preview API that could change.",
+        "operationId" : "validateGFlags",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "version",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "GFlag validation form data",
+          "in" : "body",
+          "name" : "gflag_validation_form_data",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/GFlagsValidationFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/GFlagsValidationResponse"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/GFlagsValidationResponse"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Validate gflags",
+        "tags" : [ "GFlags Validation APIs" ]
+      }
+    },
     "/api/v1/node_agents/download" : {
       "get" : {
         "description" : "",
@@ -30232,6 +30481,8 @@
     "name" : "Encryption at rest"
   }, {
     "name" : "Extract metadata from remote tarball"
+  }, {
+    "name" : "GFlags Validation APIs"
   }, {
     "name" : "Grafana Dashboard"
   }, {
