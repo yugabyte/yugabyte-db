@@ -1636,7 +1636,7 @@ Default: false
 
 ##### ysql_enable_table_mutation_counter
 Enable counting of mutations on a per-table basis. These mutations are used to automatically run ANALYZE as soon as the mutations of a table cross 
-a certain threshold (decided based on [ysql_auto_analyze_threshold](#ysql_auto_analyze_threshold) and [ysql_auto_analyze_scale_factor](#ysql_auto_analyze_scale_factor)).
+a certain threshold (decided based on [ysql_auto_analyze_threshold](#ysql-auto-analyze-threshold) and [ysql_auto_analyze_scale_factor](#ysql-auto-analyze-scale-factor)).
 
 Default: false
 
