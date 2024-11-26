@@ -24,13 +24,11 @@ Perform the following steps to install `yb_voyager` using an installer script:
     ./install-yb-voyager
     ```
 
-    {{< note>}}
+    To install a specific version of `yb-voyager` on your machine, use the following command:
 
-Install a specific version of `yb-voyager` on your machine using the following command:
-
+    ```sh
     ./install-yb-voyager –version <VERSION>
-
-    {{< /note >}}
+    ```
 
     It is safe to execute the script multiple times. If the script fails, check the `/tmp/install-yb-voyager.log` file.
 
