@@ -5220,9 +5220,8 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 										 AT_NUM_PASSES,
 										 main_relid,
 										 &rollbackHandle,
-										 false /* isPartitionOfAlteredTable */);
-	if (handles)
-		*ybAlteredTableIds = lappend_oid(*ybAlteredTableIds, main_relid);
+										 false /* isPartitionOfAlteredTable */,
+										 ybAlteredTableIds);
 	if (rollbackHandle)
 		*rollbackHandles = lappend(*rollbackHandles, rollbackHandle);
 
@@ -5246,9 +5245,8 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 												   AT_NUM_PASSES,
 												   childrelid,
 												   &childRollbackHandle,
-												   true /*isPartitionOfAlteredTable */);
-		if (child_handles)
-			*ybAlteredTableIds = lappend_oid(*ybAlteredTableIds, childrelid);
+												   true /*isPartitionOfAlteredTable */,
+												   ybAlteredTableIds);
 		ListCell *listcell = NULL;
 		foreach(listcell, child_handles)
 		{

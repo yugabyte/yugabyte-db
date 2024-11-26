@@ -222,3 +222,13 @@ ALTER TABLE test_validate_constraint_part
 DELETE FROM test_validate_constraint_part WHERE a % 2 = 1;
 ALTER TABLE test_validate_constraint_part
     VALIDATE CONSTRAINT test_validate_constraint_part_check;
+
+-- validate fix for "schema version mismatch" after failed ALTER TABLE.
+CREATE TABLE pk(a int primary key);
+INSERT INTO pk values (1);
+CREATE TABLE fk(a int);
+INSERT INTO fk values (2);
+ALTER TABLE fk ADD FOREIGN KEY (a) REFERENCES pk; -- should fail due to FK constraint violation.
+BEGIN;
+SELECT * from pk;
+COMMIT;
