@@ -11,6 +11,7 @@ var InstallChecks = []Check{
 	checks.Memory,
 	checks.Port,
 	checks.Python,
+	checks.OpenSSL,
 	checks.DiskAvail,
 	checks.License,
 	checks.DBConfigCheck,
@@ -31,6 +32,7 @@ var UpgradeChecks = []Check{
 	checks.Cpu,
 	checks.Memory,
 	checks.Python,
+	checks.OpenSSL,
 	checks.Prometheus,
 	checks.NonRootUpgradeCheck,
 }
@@ -38,6 +40,7 @@ var UpgradeChecks = []Check{
 var ReplicatedMigrateChecks = []Check{
 	checks.InstallNotExists,
 	checks.Python,
+	checks.OpenSSL,
 	checks.License,
 	checks.ValidateLocaleConfig,
 	checks.MigrateDiskCheck,
