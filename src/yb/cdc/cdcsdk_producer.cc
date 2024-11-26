@@ -96,6 +96,11 @@ DEFINE_RUNTIME_bool(cdc_read_wal_segment_by_segment,
                     "return these records in response. If no valid records are found then next "
                     "segment will be read.");
 
+DEFINE_RUNTIME_bool(cdc_send_null_before_image_if_not_exists,
+                    false,
+                    "When this flag is set to true, GetChanges will return a null before image if "
+                    "it is not able to find one.");
+
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 
@@ -370,12 +375,14 @@ void MakeNewProtoRecord(
 }
 
 void EquateOldAndNewTuple(RowMessage* row_message) {
-  if (row_message->new_tuple_size() > row_message->old_tuple_size()) {
-    for (int i = 0; i < (row_message->new_tuple_size() - row_message->old_tuple_size()); i++) {
+  auto new_tuple_size = row_message->new_tuple_size();
+  auto old_tuple_size = row_message->old_tuple_size();
+  if (new_tuple_size > old_tuple_size) {
+    for (int i = 0; i < (new_tuple_size - old_tuple_size); i++) {
       row_message->add_old_tuple();
     }
   } else {
-    for (int i = 0; i < (row_message->old_tuple_size() - row_message->new_tuple_size()); i++) {
+    for (int i = 0; i < (old_tuple_size - new_tuple_size); i++) {
       row_message->add_new_tuple();
     }
   }
@@ -514,9 +521,24 @@ Status PopulateBeforeImage(
 
   qlexpr::QLTableRow row;
   QLValue ql_value;
-  // If CDC is failed to get the before image row, skip adding before image columns.
+  // If CDC failed to get the before image row, skip adding before image columns if
+  // FLAGS_cdc_send_null_before_image_if_not_exists is false. If it is set to true, return null
+  // before image.
   auto result = VERIFY_RESULT(iter.FetchNext(&row));
   if (!result) {
+    if (tablet_peer->get_cdc_sdk_safe_time() > read_time.read) {
+      return STATUS_FORMAT(
+          InternalError,
+          "Failed to get the beforeimage for tablet_id: $0 due to compaction, cdc_sdk_safe_time: "
+          "$1, read_time: $2",
+          tablet_peer->tablet_id(), tablet_peer->get_cdc_sdk_safe_time(), read_time);
+    }
+
+    if (FLAGS_cdc_send_null_before_image_if_not_exists) {
+      LOG(WARNING) << "Failed to get the beforeimage for tablet_id:" << tablet_peer->tablet_id();
+      EquateOldAndNewTuple(row_message);
+      return Status::OK();
+    }
     return STATUS_FORMAT(
         InternalError, "Failed to get the beforeimage for tablet_id: $0", tablet_peer->tablet_id());
   }
