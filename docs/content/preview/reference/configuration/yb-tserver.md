@@ -1624,6 +1624,52 @@ After a DDL statement that includes updating DocDB system catalog completes, YB-
 When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL waits for any YB-Master background operations to finish before returning control to the user.
 {{< /note >}}
 
+## Auto Analyze Service flags
+
+Auto Analyze service flags are {{<tags/feature/tp>}}.
+
+##### ysql_enable_auto_analyze_service
+
+Enable the Auto Analyze service which automatically runs ANALYZEs to update table statistics for tables which have changed more than a configurable threshold.
+
+Default: false
+
+##### ysql_enable_table_mutation_counter
+Enable counting of mutations on a per-table basis. These mutations are used to automatically run ANALYZE as soon as the mutations of a table cross 
+a certain threshold (decided based on ysql_auto_analyze_threshold and ysql_auto_analyze_scale_factor).
+
+Default: false
+
+##### ysql_auto_analyze_threshold
+
+The minimum number of mutations needed to run ANALYZE on a table.
+
+Default: 50
+
+##### ysql_auto_analyze_scale_factor
+
+A fraction of the table size to add to ysql_auto_analyze_threshold when deciding whether to run ANALYZE.
+
+Default: 0.1
+
+##### ysql_auto_analyze_batch_size
+
+The max number of tables the auto analyze service tries to analyze in a single ANALYZE statement.
+
+Default: 10
+
+##### ysql_cluster_level_mutation_persist_interval_ms
+
+Interval at which the reported node level table mutation counts are persisted to the underlying YCQL table by the auto analyze service.
+
+Default: 10000
+
+##### ysql_cluster_level_mutation_persist_rpc_timeout_ms
+
+Timeout for rpcs involved in persisting mutations in the auto-analyze table.
+
+Default: 10000
+
 ## Advanced flags
 
 ##### backfill_index_client_rpc_timeout_ms

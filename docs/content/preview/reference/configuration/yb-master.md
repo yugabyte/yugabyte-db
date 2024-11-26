@@ -987,6 +987,16 @@ expensive when the number of yb-tservers, or the number of databases goes up.
 
 {{< /note >}}
 
+## Auto Analyze Service flags
+
+Auto Analyze service flags are {{<tags/feature/tp>}}.
+
+##### ysql_enable_auto_analyze_service
+
+Enable the Auto Analyze service which automatically runs ANALYZEs to update table statistics for tables which have changed more than a configurable threshold.
+
+Default: false
+
 ## Advanced flags
 
 ##### --allowed_preview_flags_csv
