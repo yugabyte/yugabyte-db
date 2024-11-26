@@ -82,14 +82,18 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 | flag | Description | Default |
 |:---- | :---------- | :------ |
 | enable_ysql_conn_mgr | Enables YSQL Connection Manager for the cluster. YB-TServer starts a YSQL Connection Manager process as a child process. | false |
+| enable_ysql_conn_mgr_stats | Enable statistics collection from YSQL Connection Manager. These statistics are displayed at the endpoint `<ip_address_of_cluster>:13000/connections`. | true |
 | ysql_conn_mgr_idle_time | Specifies the maximum idle time (in seconds) allowed for database connections created by YSQL Connection Manager. If a database connection remains idle without serving a client connection for a duration equal to, or exceeding this value, it is automatically closed by YSQL Connection Manager. | 60 |
-| ysql_conn_mgr_max_client_connections | Maximum number of concurrent database connections YSQL Connection Manager can create per pool. | 10000 |
+| ysql_conn_mgr_max_client_connections | Maximum number of concurrent client connections allowed. | 10000 |
+| ysql_conn_mgr_max_conns_per_db | Maximum number of concurrent database connections YSQL Connection Manager can create per pool. If set to zero, get max connections from pgconf file, 10% for control connection and 90% for global. | 0 |
 | ysql_conn_mgr_min_conns_per_db | Minimum number of physical connections that is present in the pool. This limit is not considered while closing a broken physical connection. | 1 |
 | ysql_conn_mgr_num_workers | Number of worker threads used by YSQL Connection Manager. If set to 0, the number of worker threads will be half of the number of CPU cores. | 0 |
-| ysql_conn_mgr_stats_interval | Interval (in seconds) for updating the YSQL Connection Manager statistics. | 10 |
+| ysql_conn_mgr_stats_interval | Interval (in seconds) for updating the YSQL Connection Manager statistics. | 1 |
+| ysql_conn_mgr_username | Username to be used by YSQL Connection Manager for creating database connections. | yugabyte |
 | ysql_conn_mgr_password | Password to be used by YSQL Connection Manager for creating database connections. | yugabyte |
-| ysql_conn_mgr_username | Username to be used by YSQL Connection Manager for creating database connections.| yugabyte |
-| ysql_conn_mgr_warmup_db | Database for which warmup needs to be done. | yugabyte |
-| enable_ysql_conn_mgr_stats | Enable statistics collection from YSQL Connection Manager. These statistics are displayed at the endpoint `<ip_address_of_cluster>:13000/connections`. | true |
+| ysql_conn_mgr_internal_conn_db | Database to which YSQL Connection Manager will make connections to execute internal queries. | yugabyte |
+| ysql_conn_mgr_superuser_sticky | Make superuser connections sticky. | true |
 | ysql_conn_mgr_port | YSQL Connection Manager port to which clients can connect. This must be different from the PostgreSQL port set via `pgsql_proxy_bind_address`. | 5433 |
-| ysql_conn_mgr_dowarmup | Enable pre-creation of server connections in YSQL Connection Manager. If set to false, the server connections are created lazily (on-demand) in YSQL Connection Manager. | false |
+| ysql_conn_mgr_server_lifetime | The maximum duration (in seconds) that a backend PostgreSQL connection managed by YSQL Connection Manager can remain open after creation. | 3600 |
+| ysql_conn_mgr_log_settings | Comma-separated list of log settings for YSQL Connection Manger. Can include  'log_debug', 'log_config', 'log_session', 'log_query', and 'log_stats'. | "" |
+| ysql_conn_mgr_use_auth_backend | Enable the use of the auth-backend for authentication of logical connections. When false, the older auth-passthrough implementation is used. | true |
