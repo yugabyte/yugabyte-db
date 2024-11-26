@@ -66,7 +66,7 @@ Set the following options in the provisioning file to the correct values:
 | `chrony_servers` | The addresses of your Network Time Protocol servers. |
 | `yb_user_id` | The UID for the `yugabyte` user. |
 | `is_airgap` | If you are performing an airgapped installation, set to true. |
-| `use_system_level_systemd` | Defaults to false (which uses user-level systemd for service management). Set this to true to use system-level systemd.  With system-level systemd, YugabyteDB Anywhere will require SSH access to the node. |
+| `use_system_level_systemd` | Defaults to false (which uses user-level systemd for service management). |
 | `node_ip` | The IP address of the node you are provisioning. Must be accessible to other nodes. |
 | `tmp_directory` | The directory on the node to use for storing temporary files during provisioning. |
 
