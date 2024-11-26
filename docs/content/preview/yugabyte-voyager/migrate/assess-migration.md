@@ -36,11 +36,11 @@ When running migration assessment, keep in mind the following:
 
 - The recommendations are based on testing using a [RF3](../../../architecture/docdb-replication/replication/#replication-factor) YugabyteDB cluster on instance types with 4GiB memory per core and running v2024.1.
 
-- For unsupported query construct detection, ensure the [pg_stat_statements extension](../../../explore/ysql-language-features/pg-extensions/extension-pgstatstatements/) is properly installed and enabled on source.
+- To detect unsupported query constructs, ensure the [pg_stat_statements extension](../../../explore/ysql-language-features/pg-extensions/extension-pgstatstatements/) is properly installed and enabled on source.
 
-- To disable unsupported query construct feature, set the environment variable `REPORT_UNSUPPORTED_QUERY_CONSTRUCTS=false`.
+- To disable unsupported query construct detection, set the environment variable `REPORT_UNSUPPORTED_QUERY_CONSTRUCTS=false`.
 
-- To disable unsupported PL/pgSQL objects feature, set the environment variable `REPORT_UNSUPPORTED_PLPGSQL_OBJECTS=false`.
+- To disable unsupported PL/pgSQL object detection, set the environment variable `REPORT_UNSUPPORTED_PLPGSQL_OBJECTS=false`.
 
 The following table describes the type of data that is collected during a migration assessment.
 
