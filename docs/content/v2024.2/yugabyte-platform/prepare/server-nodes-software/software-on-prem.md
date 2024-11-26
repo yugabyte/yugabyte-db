@@ -1,6 +1,6 @@
 ---
 title: YugabyteDB Anywhere node software requirements
-headerTitle: Software requirements for on-premises nodes
+headerTitle: Automatically provision on-premises nodes
 linkTitle: On-premises provider
 description: Software requirements for on-premises provider nodes.
 headContent: Prepare a VM for deploying universes on-premises
@@ -12,53 +12,117 @@ menu:
 type: docs
 ---
 
-{{<tip>}}
-For instructions for v2.20 and earlier, see [Create on-premises provider configuration](/v2.20/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
-{{</tip>}}
+When deploying database clusters using an on-premises provider, YugabyteDB Anywhere relies on you to manually create the VMs and provide these pre-created VMs to YugabyteDB Anywhere.
 
-When deploying database clusters using an on-premises provider, YugabyteDB Anywhere (YBA) relies on you to manually create the VMs and provide these pre-created VMs to YBA.
-
-With the on-premises provider, you must provide to YBA one, three, five, or more VM(s) with the following installed:
+With the on-premises provider, you must provide one, three, five, or more VM(s) with the following installed:
 
 - [Supported Linux OS](../#linux-os)
 - [Additional software](../#additional-software)
 - If you are not connected to the Internet, [additional software for airgapped](../#additional-software-for-airgapped-deployment)
 
-## How to provision the nodes for use in a database cluster
+## How to prepare the nodes for use in a database cluster
 
-After you have created the VMs, they must be provisioned with YugabyteDB and related software before they can be deployed in a universe.
+After you have created the VMs with the operating system and additional software, you must further prepare the VMs as follows:
 
-### Node agent provisioning
+1. Download the YugabyteDB Anywhere node agent package to the VM.
+1. Modify the configuration file.
+1. Run the provisioning script (as root or via sudo).
 
-The [YugabyteDB Anywhere Node agent](/preview/faq/yugabyte-platform/#what-is-a-node-agent) is an RPC service running on a YugabyteDB node, and is used to manage communication between YugabyteDB Anywhere and the nodes in universes. Node agent can also be used to provision on-premises nodes.
+These steps prepare the node for use by YugabyteDB Anywhere. If YugabyteDB Anywhere is already installed and running, the last step additionally creates (or updates) an [on-premises provider](../../../configure-yugabyte-platform/on-premises/) with the node already added.
 
-With this method, you:
+### Download the package
 
-1. Download the node agent package to the VM.
-1. Set the configuration options in the provisioning configuration file.
-1. With sudo permissions, run the provisioning script.
+To begin, download the YugabyteDB Anywhere node agent package to the node you want to provision.
 
-If you have already installed and are running YugabyteDB Anywhere, the node agent will additionally create or update an [on-premises provider](../../../configure-yugabyte-platform/on-premises/), as appropriate.
+- If YugabyteDB Anywhere has been installed and is running, you can download the node agent package from YugabyteDB Anywhere using the following API command:
 
-See [Node agent provisioning](../software-on-prem-na/).
+    ```sh
+    curl https://<yba_address>/api/v1/node_agents/download\?downloadType\=package\&os\=LINUX\&arch\=AMD64 --fail --header 'X-AUTH-YW-API-TOKEN: <api_token>'  > node-agent.tar.gz
+    ```
 
-### Classic provisioning
+    `<yba_address>` is the address of your YugabyteDB Anywhere installation. `<api_token>` is an API token you created. For information on creating an API token, refer to [API authentication](../../../anywhere-automation/#authentication).
 
-With classic provisioning, how you provision nodes for use with an on-premises provider depends on the SSH access that you can grant YugabyteDB Anywhere:
+- Alternatively, download the latest package at the following address:
 
-- If you can grant YugabyteDB Anywhere SSH access to nodes, YugabyteDB Anywhere can provision the nodes when you add nodes to the on-premises provider. You do this after installing YugabyteDB Anywhere and creating an on-premises provider.
-- If you are unable to grant SSH access to the nodes, you must manually install each prerequisite software component. You can do this immediately after creating the VM.
+    ```sh
+    wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_installer_full-{{<yb-version version="stable" format="build">}}-node-agent.tar.gz
+    ```
 
-| SSH mode | Description | Notes | For more details |
-| :--- | :--- | :--- | :--- |
-| Permissive | You can allow SSH to a root-privileged user, AND<br>You can provide YBA with SSH login credentials for that user. | For example, the ec2-user for AWS EC2 instances meets this requirement. In this mode, YugabyteDB Anywhere will sign in to the VM and automatically provision the nodes when you are adding instances to the on-premises provider. | See [Automatic Manual Provisioning](../software-on-prem-auto/). |
-| Medium | You can allow SSH to a root-privileged user, AND<br>You can't provide YBA with SSH login credentials for that user; however you can enter the password interactively. | In this mode, you run a script on the VM, and are prompted for a password for each sudo action to install the required software. | See [Assisted Manual Provisioning](../software-on-prem-assist/). |
-| Restrictive | All other cases (you disallow SSH login to a root-privileged user at setup time). | In this mode, you'll manually install each prerequisite software component. | See [Fully Manual Provisioning](../software-on-prem-manual/). |
+Extract the package and go to the `scripts` directory.
 
-Note that, for Permissive and Medium modes, the root-privileged SSH user can have any username except `yugabyte`. When YBA later uses this provided SSH user to sign in and prepare the node, YBA will automatically create and configure a second user – named `yugabyte` – which will be largely de-privileged, and will have very limited sudo commands available to it. YBA uses the `yugabyte` user to run the various YugabyteDB software processes.
+```sh
+tar -xvzf node-agent.tar.gz && cd <to-do>/scripts/
+```
 
-SSH access is required for initial setup of a new database cluster (and when adding new nodes to the cluster). After setup is completed, SSH can be disabled, at your option. Leaving SSH enabled, however, is still recommended to provide access to nodes for troubleshooting.
+### Modify the configuration file
 
-## Best practices
+Edit the `node-agent-provision.yaml` file in the scripts directory.
 
-When creating your VMs, create at least two virtual disks: one as the boot disk, and another for data and logs.
+Set the following options in the provisioning file to the correct values:
+
+| Option | Value |
+| :--- | :--- |
+| `yb_home_dir` | The directory on the node where YugabyteDB will be installed. |
+| `chrony_servers` | The addresses of your Network Time Protocol servers. |
+| `yb_user_id` | The UID for the `yugabyte` user. |
+| `is_airgap` | If you are performing an airgapped installation, set to true. |
+| `use_system_level_systemd` | Defaults to false (which uses user-level systemd for service management). |
+| `node_ip` | The IP address of the node you are provisioning. Must be accessible to other nodes. |
+| `tmp_directory` | The directory on the node to use for storing temporary files during provisioning. |
+
+Optionally, if YugabyteDB Anywhere is already installed and running, you can set the following options to have node agent conveniently create (or update) the [on-premises provider configuration](../../../configure-yugabyte-platform/on-premises-provider/) where you want to add the node.
+
+| Option | Value |
+| :--- | :--- |
+| `url` | The base URL of your YugabyteDB Anywhere instance. |
+| `customer_uuid` | Your customer ID. To view your customer ID, in YugabyteDB Anywhere, click the **Profile** icon in the top right corner of the window, and choose **User Profile**. |
+| `api_key` | Your API token. To obtain this, in YugabyteDB Anywhere, click the Profile icon in the top right corner of the window, and choose **User Profile**. Then click **Generate Key**. |
+| `node_name` | A name for the node. |
+| `node_external_fqdn` | The external FQDN or IP address of the node. Must be accessible from YugabyteDB Anywhere. |
+
+Enter the following provider details. If the provider does not exist, node agent creates it; otherwise, it adds the node instance to the existing provider.
+
+| Option | Value |
+| :--- | :--- |
+| `provider name` | Name for the provider (if new) or of the existing provider where you want to add the node. |
+| `region name` | Name of the region where the node is located. For example, `us-west-1`. |
+| `zone name` | Name of the zone where the node is located. For example, `us-west-1a`. |
+| `instance_type name` | Name of the instance type to use. If you are creating a new instance type, provide a name to be used internally to identify the type of VM. For example, for cloud provider VMs, you might name the instance type 'c5.large' for AWS, or 'n1-standard-4' for GCP. |
+| `cores` | The number of cores. Optional if the node is using an existing instance type. |
+| `memory_size` | The amount of memory (in GB) allocated to the instance. Optional if the node is using an existing instance type. |
+| `volume_size` | The size of the storage volume (in GB).  Optional if the node is using an existing instance type. |
+| `mount_points` | List the mount points for data storage. This is where the data directories are mounted. Optional if the node is using an existing instance type. |
+
+The following options are used for logging the provisioning itself.
+
+| Option | Value |
+| :--- | :--- |
+| `logging level` | Set the logging level for the node provisioning. |
+| `logging directory` | Set the directory where node provisioning log files will be stored. |
+| `logging file` | Name of the node provisioning log file. |
+
+### Run the provisioning script
+
+Run the script either as a root user, or via sudo as follows:
+
+```sh
+sudo ./node-agent-provision.sh
+```
+
+The script provisions the node and installs node agent.
+
+If specified, node agent creates the on-premises provider configuration; or, if the provider already exists, adds the instance to the provider.
+
+After the node is provisioned, YugabyteDB Anywhere does not need sudo access to the node.
+
+## Next steps
+
+If you did not provide configuration details for the provider, you will need to do the following:
+
+1. If the on-premises provider has not been created, create one.
+
+    Refer to [Create the provider configuration](../../../configure-yugabyte-platform/on-premises-provider/).
+
+1. Add the node to the provider.
+
+    Refer to [Add nodes to the on-premises provider](../../../configure-yugabyte-platform/on-premises-nodes/).
