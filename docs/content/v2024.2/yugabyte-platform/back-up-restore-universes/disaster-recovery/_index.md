@@ -143,14 +143,12 @@ Note that a universe configured for xCluster DR cannot be used for xCluster Repl
 
 (As an alternative to xCluster DR, you can perform setup, failover, and switchover manually. Refer to [Set up transactional xCluster Replication](../../../deploy/multi-dc/async-replication/async-transactional-setup/).)
 
-For more information on xCluster Replication in YugabyteDB, see the following:
-
 {{<lead link="../../../architecture/docdb-replication/async-replication/">}}
 [xCluster Replication: overview and architecture](../../../architecture/docdb-replication/async-replication/)
 {{</lead>}}
 
 {{<lead link="../../../deploy/multi-dc/async-replication/">}}
-- [xCluster Replication between universes in YugabyteDB](../../../deploy/multi-dc/async-replication/)
+[xCluster replication between universes in YugabyteDB](../../../deploy/multi-dc/async-replication/)
 {{</lead>}}
 
 ## Limitations
