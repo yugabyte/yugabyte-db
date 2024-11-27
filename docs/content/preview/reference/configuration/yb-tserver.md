@@ -1626,7 +1626,15 @@ When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL 
 
 ## Auto Analyze Service flags
 
-Auto Analyze service flags are {{<tags/feature/tp>}}.
+Auto Analyze service flags are {{<tags/feature/ea>}}.
+
+{{< note title="Note" >}}
+
+To fully enable Auto Analyze service, you need to enable `ysql_enable_auto_analyze_service` on all YB-Masters and YB-TServers, as well as `ysql_enable_table_mutation_counter` on all YB-TServers.
+
+{{< /note >}}
+
+See also [Auto Analyze Service Master flags](../configuration/yb-master.md#auto-analyze-service-flags).
 
 ##### ysql_enable_auto_analyze_service
 
@@ -1648,7 +1656,8 @@ Default: 50
 
 ##### ysql_auto_analyze_scale_factor
 
-A fraction of the table size to add to ysql_auto_analyze_threshold when deciding whether to run ANALYZE.
+The fraction defining when sufficient mutations have been accumulated to run ANALYZE for a table.
+ANALYZE runs when the mutation count becomes larger than `ysql_auto_analyze_scale_factor * <table_size> + ysql_auto_analyze_threshold`.
 
 Default: 0.1
 
@@ -1660,15 +1669,27 @@ Default: 10
 
 ##### ysql_cluster_level_mutation_persist_interval_ms
 
-Interval at which the reported node level table mutation counts are persisted to the underlying YCQL table by the auto analyze service.
+Interval at which the reported node level table mutation counts are persisted to the underlying auto-analyze mutations table.
 
 Default: 10000
 
 ##### ysql_cluster_level_mutation_persist_rpc_timeout_ms
 
-Timeout for rpcs involved in persisting mutations in the auto-analyze table.
+Timeout for the rpcs used to persist mutation counts in the auto-analyze mutations table.
 
 Default: 10000
+
+##### ysql_node_level_mutation_reporting_interval_ms
+
+Interval at which the node level table mutation counts are sent to the auto analyze service which tracks table mutation counts at the cluster level.
+
+Default: 5000
+
+##### ysql_node_level_mutation_reporting_timeout_ms
+
+Timeout for the node level mutation reporting rpc to auto-analyze service.
+
+Default: 5000
 
 ## Advanced flags
 

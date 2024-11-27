@@ -989,7 +989,9 @@ expensive when the number of yb-tservers, or the number of databases goes up.
 
 ## Auto Analyze Service flags
 
-Auto Analyze service flags are {{<tags/feature/tp>}}.
+Auto Analyze service flags are {{<tags/feature/ea>}}.
+
+See also [Auto Analyze Service TServer flags](../configuration/yb-tserver.md/#auto-analyze-service-flags).
 
 ##### ysql_enable_auto_analyze_service
 
