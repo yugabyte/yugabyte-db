@@ -366,7 +366,9 @@
       state: present
       mode: 0644
 
-  tags: systemd_upgrade
+  tags: 
+  - systemd_upgrade
+  - install-software
   when: systemd_option
 
 - block:
