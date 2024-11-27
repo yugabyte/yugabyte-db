@@ -2250,7 +2250,7 @@ void TSTabletManager::StartShutdown() {
 
   verify_tablet_data_poller_->Shutdown();
 
-  tablet_metadata_validator_->Shutdown();
+  tablet_metadata_validator_->StartShutdown();
 
   data_size_metric_updater_->Shutdown();
 
@@ -2286,9 +2286,15 @@ void TSTabletManager::StartShutdown() {
   if (waiting_txn_registry_) {
     waiting_txn_registry_->StartShutdown();
   }
+
+  if (superblock_flush_bg_task_) {
+    superblock_flush_bg_task_->StartShutdown();
+  }
 }
 
 void TSTabletManager::CompleteShutdown() {
+  tablet_metadata_validator_->CompleteShutdown();
+
   for (const TabletPeerPtr& peer : shutting_down_peers_) {
     peer->CompleteShutdown(
         tablet::DisableFlushOnShutdown(FLAGS_TEST_disable_flush_on_shutdown),
@@ -2324,7 +2330,7 @@ void TSTabletManager::CompleteShutdown() {
     admin_triggered_compaction_pool_->Shutdown();
   }
   if (superblock_flush_bg_task_) {
-    superblock_flush_bg_task_->Shutdown();
+    superblock_flush_bg_task_->CompleteShutdown();
   }
   if (full_compaction_pool_) {
     full_compaction_pool_->Shutdown();

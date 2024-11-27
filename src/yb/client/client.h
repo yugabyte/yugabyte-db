@@ -863,6 +863,7 @@ class YBClient {
 
   void OpenTableAsync(const YBTableName& table_name, const OpenTableAsyncCallback& callback);
   void OpenTableAsync(const TableId& table_id, const OpenTableAsyncCallback& callback,
+                      master::IncludeHidden include_hidden = master::IncludeHidden::kFalse,
                       master::GetTableSchemaResponsePB* resp = nullptr);
 
   Result<YBTablePtr> OpenTable(const TableId& table_id);
@@ -1047,6 +1048,8 @@ class YBClient {
       const tserver::TabletConsensusInfoPB& newly_received_info);
 
   int64_t GetRaftConfigOpidIndex(const TabletId& tablet_id);
+
+  void RequestAbortAllRpcs();
 
  private:
   class Data;

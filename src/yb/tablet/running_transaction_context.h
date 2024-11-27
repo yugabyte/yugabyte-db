@@ -93,6 +93,8 @@ class RunningTransactionContext {
     return delayer_;
   }
 
+  virtual std::weak_ptr<void> RetainWeak() = 0;
+
   virtual bool Closing() const = 0;
 
  protected:

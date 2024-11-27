@@ -196,8 +196,14 @@ void RunningTransaction::Abort(client::YBClient* client,
           nullptr /* tablet */,
           client,
           &req,
-          std::bind(&RunningTransaction::AbortReceived, this, status_tablet,
-                    _1, _2, shared_from_this())),
+          [status_tablet, self = shared_from_this(), weak_context = context_.RetainWeak()](
+              const Status& status, const tserver::AbortTransactionResponsePB& response) {
+            auto context_lock = weak_context.lock();
+            if (!context_lock) {
+              return;
+            }
+            self->AbortReceived(status_tablet, status, response);
+          }),
       &abort_handle_);
 }
 
@@ -523,8 +529,7 @@ Result<TransactionStatusResult> RunningTransaction::MakeAbortResult(
 
 void RunningTransaction::AbortReceived(const TabletId& status_tablet,
                                        const Status& status,
-                                       const tserver::AbortTransactionResponsePB& response,
-                                       const RunningTransactionPtr& shared_self) {
+                                       const tserver::AbortTransactionResponsePB& response) {
   if (response.has_propagated_hybrid_time()) {
     context_.participant_context_.UpdateClock(HybridTime(response.propagated_hybrid_time()));
   }
@@ -532,7 +537,7 @@ void RunningTransaction::AbortReceived(const TabletId& status_tablet,
   decltype(abort_waiters_) abort_waiters;
   auto result = MakeAbortResult(status, response);
 
-  VLOG_WITH_PREFIX(3) << "AbortReceived: " << yb::ToString(result);
+  VLOG_WITH_PREFIX(3) << "AbortReceived: " << AsString(result);
 
   bool did_abort_txn = false;
   {
@@ -543,7 +548,7 @@ void RunningTransaction::AbortReceived(const TabletId& status_tablet,
         << "inconsistentcy issues in case of Geo-Partition workloads.";
     abort_request_in_progress_ = false;
 
-    LOG_IF(DFATAL, status_tablet != shared_self->status_tablet())
+    LOG_IF(DFATAL, status_tablet != this->status_tablet())
         << "Status Tablet switched while Abort txn request was in progress. This might lead "
         << "to data consistency issues.";
 

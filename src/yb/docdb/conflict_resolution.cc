@@ -959,7 +959,8 @@ class StrongConflictChecker {
           return STATUS_EC_FORMAT(
               TryAgain, TransactionError(TransactionErrorCode::kConflict),
               "Conflict with concurrently committed data. Value write after transaction start: "
-              "doc ht ($0) >= read time ($1)", doc_ht.hybrid_time(), read_time_);
+              "doc ht ($0) >= read time ($1), key: $2",
+              doc_ht.hybrid_time(), read_time_, SubDocKey::DebugSliceToString(intent_key));
         }
       }
       buffer_.Reset(existing_key);
