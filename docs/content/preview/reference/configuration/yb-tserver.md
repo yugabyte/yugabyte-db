@@ -1634,7 +1634,7 @@ To fully enable Auto Analyze service, you need to enable `ysql_enable_auto_analy
 
 {{< /note >}}
 
-See also [Auto Analyze Service Master flags](../configuration/yb-master#auto-analyze-service-flags).
+See also [Auto Analyze Service Master flags](../yb-master#auto-analyze-service-flags).
 
 ##### ysql_enable_auto_analyze_service
 
