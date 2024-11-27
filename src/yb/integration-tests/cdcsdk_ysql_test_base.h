@@ -26,6 +26,7 @@
 #include "yb/client/schema.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/transaction.h"
+#include "yb/consensus/log.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/tablet/transaction_participant.h"
 
