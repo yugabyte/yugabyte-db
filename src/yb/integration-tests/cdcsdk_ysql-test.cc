@@ -10235,6 +10235,88 @@ TEST_F(CDCSDKYsqlTest, TestWithMajorityReplicatedButNonCommittedSingleShardTxn) 
   ASSERT_GE(total, 12);
 }
 
+TEST_F(CDCSDKYsqlTest, TestWithMajorityReplicatedButNonCommittedMultiShardTxn) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  constexpr int num_tservers = 1;
+  ASSERT_OK(SetUpWithParams(num_tservers, /* num_masters */ 1, false));
+
+  constexpr auto num_tablets = 1;
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key) SPLIT INTO 1 tablets;"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(
+      table, 0, &tablets,
+      /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  const auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  const auto& tablet_id = tablets.Get(0).tablet_id();
+
+  auto checkpoint_result = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablet_id));
+  // Switch to streaming directly.
+  checkpoint_result.set_write_id(0);
+
+  constexpr int num_inserts = 10;
+  LOG(INFO) << "Starting txn";
+  ASSERT_OK(conn.Execute("BEGIN"));
+  for (int i = 0; i < num_inserts; i++) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES ($0)", i));
+  }
+
+  // Explicitly rollover so that the UPDATE_TXN_OP of txn1 goes into the next segment.
+  log::SegmentSequence segments;
+  for (const auto& peer : test_cluster()->GetTabletPeers(num_tservers - 1)) {
+    if (peer->tablet_id() != tablet_id) {
+      continue;
+    }
+    auto tablet = ASSERT_RESULT(peer->shared_tablet_safe());
+    ASSERT_OK(peer->log()->AllocateSegmentAndRollOver());
+    ASSERT_OK(peer->log()->GetSegmentsSnapshot(&segments));
+    ASSERT_EQ(segments.size(), 2);
+  }
+
+  uint64_t min_start_time_running_txns;
+  const log::ReadableLogSegmentPtr& last_segment = ASSERT_RESULT(segments.back());
+  for (const auto& segment : segments) {
+    // All segments except for the last should have a footer.
+    if (&segment == &last_segment) {
+      continue;
+    }
+    ASSERT_TRUE(segment->HasFooter());
+    ASSERT_TRUE(segment->footer().has_min_start_time_running_txns());
+    min_start_time_running_txns = segment->footer().min_start_time_running_txns();
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_stop_committed_op_id_updation) = true;
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // DDL record will be read but it will be filtered due to commit time threshold.
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &checkpoint_result));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+
+  // Segment-1 will be read till the end but no WAL OPs relevant for CDC would be found.
+  auto change_resp2 = ASSERT_RESULT(GetChangesFromCDC(
+      stream_id, tablets, &change_resp.cdc_sdk_checkpoint(), 0, change_resp.safe_hybrid_time(),
+      change_resp.wal_segment_index()));
+  ASSERT_EQ(change_resp2.cdc_sdk_proto_records_size(), 0);
+  // safe time received in the response should match with the footer value of segment-1.
+  ASSERT_EQ(change_resp2.safe_hybrid_time(), min_start_time_running_txns);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_stop_committed_op_id_updation) = false;
+  // Perform another txn so that committed_op_id gets updated.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES (10)"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  auto change_resp3 = ASSERT_RESULT(GetChangesFromCDC(
+      stream_id, tablets, &change_resp2.cdc_sdk_checkpoint(), 0, change_resp2.safe_hybrid_time(),
+      change_resp2.wal_segment_index()));
+  // 1 DDL + Txn1 (B + 10 inserts + C) + Txn2 (B + 1 insert + C)
+  ASSERT_EQ(change_resp3.cdc_sdk_proto_records_size(), 16);
+}
+
 TEST_F(CDCSDKYsqlTest, TestCleanupOfTableNotOfInterest) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;

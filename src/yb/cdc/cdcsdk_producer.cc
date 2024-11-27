@@ -2042,13 +2042,14 @@ Status GetConsistentWALRecords(
     bool* wait_for_wal_update, OpId* last_seen_op_id, int64_t& last_readable_opid_index,
     const int64_t& safe_hybrid_time_req, const CoarseTimePoint& deadline,
     std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>* consistent_wal_records,
-    std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>* all_checkpoints) {
+    std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>* all_checkpoints,
+    HybridTime* last_read_wal_op_record_time, bool* is_entire_wal_read) {
   VLOG(2) << "Getting consistent WAL records. safe_hybrid_time_req: " << safe_hybrid_time_req
           << ", consistent_safe_time: " << *consistent_safe_time
           << ", last_seen_op_id: " << last_seen_op_id->ToString()
           << ", historical_max_op_id: " << historical_max_op_id;
   auto raft_consensus = VERIFY_RESULT(tablet_peer->GetRaftConsensus());
-  bool read_entire_wal = false;
+  HybridTime last_read_segment_footer_safe_time = HybridTime::kInvalid;
 
   do {
     consensus::ReadOpsResult read_ops;
@@ -2062,16 +2063,10 @@ Status GetConsistentWALRecords(
       // end of the WAL.
       read_ops = VERIFY_RESULT(raft_consensus->ReadReplicatedMessagesInSegmentForCDC(
           *last_seen_op_id, deadline, /* fetch_single_entry */ false, &last_readable_opid_index,
-          &consistent_stream_safe_time_footer));
+          &consistent_stream_safe_time_footer, is_entire_wal_read));
 
-      if (!consistent_stream_safe_time_footer) {
-        // HybridTime::kInvalid in consistent_stream_safe_time_footer indicates that we have read
-        // the currently active segment.
-        read_entire_wal = true;
-        consistent_stream_safe_time_footer = HybridTime(*consistent_safe_time);
-      }
     } else {
-      read_entire_wal = true;
+      *is_entire_wal_read = true;
       // Read all the committed WAL messages with hybrid time <= consistent_stream_safe_time. If
       // there exist messages in the WAL which are replicated but not yet committed,
       // ReadReplicatedMessagesForConsistentCDC waits for them to get committed and eventually
@@ -2088,6 +2083,7 @@ Status GetConsistentWALRecords(
     for (const auto& msg : read_ops.messages) {
       last_seen_op_id->term = msg->id().term();
       last_seen_op_id->index = msg->id().index();
+      *last_read_wal_op_record_time = HybridTime(msg->hybrid_time());
 
       if (IsIntent(msg) || (IsUpdateTransactionOp(msg) &&
                             msg->transaction_state().status() != TransactionStatus::APPLYING)) {
@@ -2104,7 +2100,8 @@ Status GetConsistentWALRecords(
                 << ", commit_time: " << GetTransactionCommitTime(msg)
                 << ", consistent safe_time: " << *consistent_safe_time
                 << ", consistent_stream_safe_time_footer: " << consistent_stream_safe_time_footer
-                << ", safe_hybrid_time_req: " << safe_hybrid_time_req;
+                << ", safe_hybrid_time_req: " << safe_hybrid_time_req
+                << ", is_entire_wal_read: " << *is_entire_wal_read;
       } else if (VLOG_IS_ON(3)) {
         VLOG(3) << "Read WAL msg on "
                 << "tablet_id: " << tablet_peer->tablet_id() << ", op_type: " << msg->op_type()
@@ -2112,7 +2109,8 @@ Status GetConsistentWALRecords(
                 << ", commit_time: " << GetTransactionCommitTime(msg)
                 << ", consistent safe_time: " << *consistent_safe_time
                 << ", consistent_stream_safe_time_footer: " << consistent_stream_safe_time_footer
-                << ", safe_hybrid_time_req: " << safe_hybrid_time_req;
+                << ", safe_hybrid_time_req: " << safe_hybrid_time_req
+                << ", is_entire_wal_read: " << *is_entire_wal_read;
       }
 
       all_checkpoints->push_back(msg);
@@ -2126,7 +2124,7 @@ Status GetConsistentWALRecords(
 
     // Handle the case where WAL doesn't have the apply record for all the committed transactions.
     if (historical_max_op_id.valid() && historical_max_op_id > *last_seen_op_id &&
-        read_entire_wal) {
+        *is_entire_wal_read) {
       *wait_for_wal_update = true;
       break;
     }
@@ -2140,23 +2138,35 @@ Status GetConsistentWALRecords(
 
     SortConsistentWALRecords(consistent_wal_records);
 
+    // For closed segments, consistent_stream_safe_time_footer corresponds to the value read from
+    // segment footer. For active segment, it will be Invalid.
+    if (FLAGS_cdc_read_wal_segment_by_segment && consistent_stream_safe_time_footer.is_valid()) {
+      last_read_segment_footer_safe_time = consistent_stream_safe_time_footer;
+    }
+
     if (!consistent_wal_records->empty()) {
       auto record = consistent_wal_records->front();
       if (FLAGS_cdc_read_wal_segment_by_segment &&
           GetTransactionCommitTime(record) <= consistent_stream_safe_time_footer.ToUint64()) {
         // Since there exists atleast one message with commit_time <= consistent_stream_safe_time,
         // we don't need to read the next segment.
-        *consistent_safe_time = consistent_stream_safe_time_footer.ToUint64();
         break;
       }
     }
 
     // No need for another iteration if we have read the entire WAL.
-    if (read_entire_wal) {
+    if (*is_entire_wal_read) {
       break;
     }
 
   } while (last_seen_op_id->index < last_readable_opid_index);
+
+  // Skip updating consistent safe time when entire WAL is read and we can ship all records
+  // till the consistent safe time computed in cdc producer.
+  if (FLAGS_cdc_read_wal_segment_by_segment && !(*is_entire_wal_read) &&
+      last_read_segment_footer_safe_time.is_valid()) {
+    *consistent_safe_time = last_read_segment_footer_safe_time.ToUint64();
+  }
 
   VLOG_WITH_FUNC(1) << "Got a total of " << consistent_wal_records->size() << " WAL records "
                     << "in the current segment";
@@ -2520,6 +2530,22 @@ bool IsReplicationSlotStream(const StreamMetadata& stream_metadata) {
          !stream_metadata.GetReplicationSlotName()->empty();
 }
 
+// Response safe time follows the invaraint:
+// Request safe time <= Response safe time <= value from GetConsistentStreamSafeTime().
+// If response safe time is set to GetConsistentStreamSafeTime()'s value, then it implies that we
+// have read the entire WAL. In any other case, the response safe time can either be the last read
+// WAL segment's footer safe time ('min_start_time_running_txns') or commit time of the last
+// transaction being shipped in the current response. Both these values (footer safe time or commit
+// time of last txn) will be <= last read WAL OP's record time.
+bool CheckResponseSafeTimeCorrectness(
+    HybridTime last_read_wal_op_record_time, HybridTime resp_safe_time, bool is_entire_wal_read) {
+  if (!last_read_wal_op_record_time.is_valid() || resp_safe_time <= last_read_wal_op_record_time) {
+    return true;
+  }
+
+  return is_entire_wal_read;
+}
+
 // CDC get changes is different from xCluster as it doesn't need
 // to read intents from WAL.
 
@@ -2580,6 +2606,8 @@ Status GetChangesForCDCSDK(
 
   auto safe_hybrid_time_resp = HybridTime::kInvalid;
   HaveMoreMessages have_more_messages(false);
+  HybridTime last_read_wal_op_record_time = HybridTime::kInvalid;
+  bool is_entire_wal_read = false;
   // It is snapshot call.
   if (from_op_id.write_id() == -1) {
     snapshot_operation = true;
@@ -2607,7 +2635,8 @@ Status GetChangesForCDCSDK(
       RETURN_NOT_OK(GetConsistentWALRecords(
           tablet_peer, mem_tracker, msgs_holder, &consumption, &consistent_stream_safe_time,
           historical_max_op_id, &wait_for_wal_update, &last_seen_op_id, *last_readable_opid_index,
-          safe_hybrid_time_req, deadline, &wal_records, &all_checkpoints));
+          safe_hybrid_time_req, deadline, &wal_records, &all_checkpoints,
+          &last_read_wal_op_record_time, &is_entire_wal_read));
     else
       // 'skip_intents' is true here because we want the first transaction to be the partially
       // streamed transaction.
@@ -2701,7 +2730,8 @@ Status GetChangesForCDCSDK(
         RETURN_NOT_OK(GetConsistentWALRecords(
             tablet_peer, mem_tracker, msgs_holder, &consumption, &consistent_stream_safe_time,
             historical_max_op_id, &wait_for_wal_update, &last_seen_op_id, *last_readable_opid_index,
-            safe_hybrid_time_req, deadline, &wal_records, &all_checkpoints));
+            safe_hybrid_time_req, deadline, &wal_records, &all_checkpoints,
+            &last_read_wal_op_record_time, &is_entire_wal_read));
       else
         // 'skip_intents' is false otherwise in case the complete wal segment is filled with
         // intents we will break the loop thinking that WAL has no more records.
@@ -3085,11 +3115,25 @@ Status GetChangesForCDCSDK(
 
   // If we need to wait for WAL to get up to date with all committed transactions, we will send the
   // request safe in the response as well.
+  auto computed_safe_hybrid_time_req =
+      HybridTime((safe_hybrid_time_req > 0) ? safe_hybrid_time_req : 0);
   auto safe_time = wait_for_wal_update
-                       ? HybridTime((safe_hybrid_time_req > 0) ? safe_hybrid_time_req : 0)
+                       ? computed_safe_hybrid_time_req
                        : GetCDCSDKSafeTimeForTarget(
                              leader_safe_time.get(), safe_hybrid_time_resp, have_more_messages,
                              consistent_stream_safe_time, snapshot_operation);
+
+  if (!snapshot_operation && !CheckResponseSafeTimeCorrectness(
+                                 last_read_wal_op_record_time, safe_time, is_entire_wal_read)) {
+    LOG(WARNING) << "Stream_id: " << stream_id << ", tablet_id: " << tablet_id
+                 << ", response safe time: " << safe_time
+                 << " is greater than last read WAL OP's record time: "
+                 << last_read_wal_op_record_time
+                 << ", req_safe_time: " << computed_safe_hybrid_time_req
+                 << ", consistent stream safe time: " << HybridTime(consistent_stream_safe_time)
+                 << ", leader safe time: " << leader_safe_time.get()
+                 << ", is_entire_wal_read: " << is_entire_wal_read;
+  }
   resp->set_safe_hybrid_time(safe_time.ToUint64());
 
   // It is possible in case of a partially streamed transaction.
