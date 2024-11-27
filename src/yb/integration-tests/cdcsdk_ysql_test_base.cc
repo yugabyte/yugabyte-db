@@ -2802,7 +2802,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
               continue;
             }
 
-            if (row.checkpoint == OpId::Max()) {
+            if (*row.checkpoint == OpId::Max()) {
               continue;
             }
 
