@@ -7872,7 +7872,8 @@ set_config_option(const char *name, const char *value,
 	 * the value is modified by a client-issued SET statement. We cannot use
 	 * the assign hook to do so, as postgres utilizes it at connection startup.
 	 */
-	if (YbIsClientYsqlConnMgr() &&
+	if (source == PGC_S_SESSION &&
+		YbIsClientYsqlConnMgr() &&
 		((strncmp(name, "session_authorization", strlen("session_authorization")) == 0) ||
 		(strncmp(name, "role", strlen("role")) == 0)))
 			yb_ysql_conn_mgr_sticky_guc = true;
