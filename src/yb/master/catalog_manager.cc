@@ -10504,7 +10504,7 @@ Status CatalogManager::DeleteOrHideTabletsAndSendRequests(
     if (hide_only) {
       // Don't call table()->RemoveTablet for hidden tablets as they are needed to support
       // CLONE, PITR, SELECT AS-OF.
-      LOG(INFO) << "Hiding tablet " << tablet->tablet_id();
+      LOG(INFO) << "Hiding tablet" << tablet->tablet_id() << " with hide time:" << hide_hybrid_time;
       if (!tablet_lock->ListedAsHidden()) {
         marked_as_hidden.push_back(tablet);
       }
@@ -13110,7 +13110,15 @@ Result<TabletDeleteRetainerInfo> CatalogManager::GetDeleteRetainerInfoForTableDr
 void CatalogManager::MarkTabletAsHidden(
     SysTabletsEntryPB& tablet_pb, const HybridTime& hide_ht,
     const TabletDeleteRetainerInfo& delete_retainer) const {
-  tablet_pb.set_hide_hybrid_time(hide_ht.ToUint64());
+  // Update the hide time only if there isn't already a hide time.
+  // During a tablet split, a parent tablet may already have been marked hidden as a result of
+  // deactivating the parent tablet. In such cases the tablet may already have a hide time which
+  // should not be updated on any subsequent operation such as Drop table.
+  // Note that, PITR may bring back a parent tablet, but it does that by rewriting the
+  // SysTabletsEntryPB from the past which will have the hide_hybrid_time not set.
+  if (!tablet_pb.has_hide_hybrid_time()) {
+    tablet_pb.set_hide_hybrid_time(hide_ht.ToUint64());
+  }
   const auto retained_by_snapshot_schedules = delete_retainer.RetainedBySnapshotSchedules();
   if (!retained_by_snapshot_schedules.empty()) {
     *tablet_pb.mutable_retained_by_snapshot_schedules() = retained_by_snapshot_schedules;
