@@ -2,8 +2,8 @@
 Description=Yugabyte tserver service
 Requires=network-online.target
 After=network.target network-online.target multi-user.target
-StartLimitInterval=100
-StartLimitBurst=10
+# Disable restart limits, using RestartSec to rate limit restarts
+StartLimitInterval=0
 Wants=yb-ysql-cgroup.service
 
 [Path]
