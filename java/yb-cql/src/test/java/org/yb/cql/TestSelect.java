@@ -3252,13 +3252,17 @@ public class TestSelect extends BaseCQLTest {
   @Test
   public void testGroupBy() throws Exception
   {
+    Map<String, String> flags = new HashMap<>();
+    flags.put("ycql_ignore_group_by_error", "false");
+    restartClusterWithTSFlags(flags);
+
     // Expect error in SELECT with GROUP BY.
     session.execute("CREATE TABLE test_tbl (id int primary key, v int);");
     runInvalidStmt("SELECT * FROM test_tbl GROUP BY v;");
 
-    // Restart with GROUP BY queries with error suppressed.
-    Map<String, String> flags = new HashMap<>();
-    flags.put("ycql_suppress_group_by_error", "true");
+    // Restart with GROUP BY queries with error suppressed (default behaviour).
+    flags = new HashMap<>();
+    flags.put("ycql_ignore_group_by_error", "true");
     restartClusterWithTSFlags(flags);
 
     session.execute("CREATE TABLE test_tbl (id int primary key, v int);");

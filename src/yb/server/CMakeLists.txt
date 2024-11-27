@@ -93,6 +93,7 @@ set(SERVER_PROCESS_SRCS
   rpcz-path-handler.cc
   server_base.cc
   server_base_options.cc
+  server_common_flags.cc
   skewed_clock.cc
   tcmalloc_metrics.cc
   total_mem_watcher.cc
