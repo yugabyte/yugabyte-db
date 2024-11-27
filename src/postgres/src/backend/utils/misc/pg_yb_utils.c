@@ -1438,7 +1438,7 @@ bool yb_enable_inplace_index_update = true;
 
 YBUpdateOptimizationOptions yb_update_optimization_options = {
 	.has_infra = true,
-	.is_enabled = true,
+	.is_enabled = false,
 	.num_cols_to_compare = 50,
 	.max_cols_size_to_compare = 10 * 1024
 };
