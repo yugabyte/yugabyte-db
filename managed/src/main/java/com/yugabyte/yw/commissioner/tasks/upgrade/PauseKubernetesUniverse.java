@@ -61,37 +61,35 @@ public class PauseKubernetesUniverse extends KubernetesUpgradeTaskBase {
 
   @Override
   public void run() {
-    runUpgrade(
-        () -> {
-          Universe universe = getUniverse();
-
-          taskParams().useNewHelmNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
-          taskParams().nodePrefix = universe.getUniverseDetails().nodePrefix;
-
-          // Pause the kubernetes universe
-          createPauseKubernetesUniverseTasks(universe.getName());
-
-          // Update swamper targets, metrics, and alerts
-          createSwamperTargetUpdateTask(false);
-          createUnivManageAlertDefinitionsTask(false)
-              .setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
-          createMarkSourceMetricsTask(universe, MetricSourceState.INACTIVE)
-              .setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
-
-          // Mark the universe as paused
-          createUpdateUniverseFieldsTask(
-              u -> {
-                UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
-                universeDetails.universePaused = true;
-                u.setUniverseDetails(universeDetails);
-              });
-
-          // Mark universe task state to success.
-          createMarkUniverseUpdateSuccessTasks()
-              .setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
-
-          // Run all the tasks.
-          getRunnableTask().runSubTasks();
-        });
+    try {
+      Universe universe = lockAndFreezeUniverseForUpdate(-1, null);
+      taskParams().useNewHelmNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
+      taskParams().nodePrefix = universe.getUniverseDetails().nodePrefix;
+      // Pause the kubernetes universe
+      createPauseKubernetesUniverseTasks(universe.getName());
+      // Update swamper targets, metrics, and alerts
+      createSwamperTargetUpdateTask(false);
+      createUnivManageAlertDefinitionsTask(false)
+          .setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
+      createMarkSourceMetricsTask(universe, MetricSourceState.INACTIVE)
+          .setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
+      // Mark the universe as paused
+      createUpdateUniverseFieldsTask(
+          u -> {
+            UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
+            universeDetails.universePaused = true;
+            u.setUniverseDetails(universeDetails);
+          });
+      // Mark universe task state to success.
+      createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
+      // Run all the tasks.
+      getRunnableTask().runSubTasks();
+    } catch (Throwable t) {
+      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      throw t;
+    } finally {
+      unlockUniverseForUpdate();
+    }
+    log.info("Finished {} task.", getName());
   }
 }
