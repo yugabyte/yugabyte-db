@@ -1425,9 +1425,11 @@ components:
       title: Schema for Suggested refactoring tab in Migrate Schema page
       type: object
     RefactoringCount:
-      description: count for automatic and manual refactoring
+      description: Count of automatic, manual and invalid SQL objects displayed in
+        Schema analysis page
       example:
         sql_object_type: sql_object_type
+        invalid: 5
         automatic: 1
         manual: 6
       properties:
@@ -1437,16 +1439,20 @@ components:
           type: integer
         automatic:
           type: integer
-      title: Count of automatic and manual refactoring
+        invalid:
+          type: integer
+      title: Count of automatic, manual and invalid SQL objects
       type: object
     RecommendedRefactoringGraph:
       description: Refectoring recommendations for migrating SQL objects
       example:
         refactor_details:
         - sql_object_type: sql_object_type
+          invalid: 5
           automatic: 1
           manual: 6
         - sql_object_type: sql_object_type
+          invalid: 5
           automatic: 1
           manual: 6
       properties:
@@ -1501,9 +1507,11 @@ components:
         recommended_refactoring:
           refactor_details:
           - sql_object_type: sql_object_type
+            invalid: 5
             automatic: 1
             manual: 6
           - sql_object_type: sql_object_type
+            invalid: 5
             automatic: 1
             manual: 6
         unsupported_datatypes:
@@ -1604,7 +1612,7 @@ components:
     SqlObjectsDetails:
       description: Sql obejcts type and count
       example:
-        invalidCount: 5
+        invalidCount: 2
         totalCount: 5
         objectNames: objectNames
         objectDetails: objectDetails
@@ -1647,12 +1655,12 @@ components:
         overall_status: overall_status
         analyze_schema: analyze_schema
         sql_objects:
-        - invalidCount: 5
+        - invalidCount: 2
           totalCount: 5
           objectNames: objectNames
           objectDetails: objectDetails
           objectType: objectType
-        - invalidCount: 5
+        - invalidCount: 2
           totalCount: 5
           objectNames: objectNames
           objectDetails: objectDetails
@@ -1701,9 +1709,11 @@ components:
           recommended_refactoring:
             refactor_details:
             - sql_object_type: sql_object_type
+              invalid: 5
               automatic: 1
               manual: 6
             - sql_object_type: sql_object_type
+              invalid: 5
               automatic: 1
               manual: 6
           unsupported_datatypes:
@@ -1826,9 +1836,11 @@ components:
           recommended_refactoring:
             refactor_details:
             - sql_object_type: sql_object_type
+              invalid: 5
               automatic: 1
               manual: 6
             - sql_object_type: sql_object_type
+              invalid: 5
               automatic: 1
               manual: 6
           unsupported_datatypes:
@@ -1952,9 +1964,11 @@ components:
           recommended_refactoring:
             refactor_details:
             - sql_object_type: sql_object_type
+              invalid: 5
               automatic: 1
               manual: 6
             - sql_object_type: sql_object_type
+              invalid: 5
               automatic: 1
               manual: 6
           unsupported_datatypes:
@@ -2324,9 +2338,11 @@ components:
         recommended_refactoring:
           refactor_details:
           - sql_object_type: sql_object_type
+            invalid: 5
             automatic: 1
             manual: 6
           - sql_object_type: sql_object_type
+            invalid: 5
             automatic: 1
             manual: 6
         assessment_status: true
@@ -4039,12 +4055,12 @@ components:
           overall_status: overall_status
           analyze_schema: analyze_schema
           sql_objects:
-          - invalidCount: 5
+          - invalidCount: 2
             totalCount: 5
             objectNames: objectNames
             objectDetails: objectDetails
             objectType: objectType
-          - invalidCount: 5
+          - invalidCount: 2
             totalCount: 5
             objectNames: objectNames
             objectDetails: objectDetails
@@ -4093,9 +4109,11 @@ components:
             recommended_refactoring:
               refactor_details:
               - sql_object_type: sql_object_type
+                invalid: 5
                 automatic: 1
                 manual: 6
               - sql_object_type: sql_object_type
+                invalid: 5
                 automatic: 1
                 manual: 6
             unsupported_datatypes:
@@ -4218,9 +4236,11 @@ components:
             recommended_refactoring:
               refactor_details:
               - sql_object_type: sql_object_type
+                invalid: 5
                 automatic: 1
                 manual: 6
               - sql_object_type: sql_object_type
+                invalid: 5
                 automatic: 1
                 manual: 6
             unsupported_datatypes:
@@ -4344,9 +4364,11 @@ components:
             recommended_refactoring:
               refactor_details:
               - sql_object_type: sql_object_type
+                invalid: 5
                 automatic: 1
                 manual: 6
               - sql_object_type: sql_object_type
+                invalid: 5
                 automatic: 1
                 manual: 6
             unsupported_datatypes:
@@ -4472,9 +4494,11 @@ components:
           recommended_refactoring:
             refactor_details:
             - sql_object_type: sql_object_type
+              invalid: 5
               automatic: 1
               manual: 6
             - sql_object_type: sql_object_type
+              invalid: 5
               automatic: 1
               manual: 6
           assessment_status: true
