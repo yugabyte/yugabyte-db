@@ -833,6 +833,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void TestRemovalOfColocatedTableFromCDCStream(bool start_removal_from_first_table);
 
+  void TestMetricObjectRemovalAfterStreamDeletion(bool use_logical_replication);
+
   Status CreateTables(
       const size_t num_tables, std::vector<YBTableName>* tables,
       vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>>* tablets,
