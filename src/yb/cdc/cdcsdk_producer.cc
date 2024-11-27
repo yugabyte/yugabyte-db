@@ -403,6 +403,10 @@ Status PopulateBeforeImageForDeleteOp(
           RETURN_NOT_OK(AddColumnToMap(
               tablet_peer, columns[index], dockv::KeyEntryValue(), enum_oid_label_map,
               composite_atts_map, request_source, row_message->add_old_tuple(), &ql_value.value()));
+        } else {
+          RETURN_NOT_OK(AddColumnToMap(
+              tablet_peer, columns[index], PrimitiveValue(), enum_oid_label_map,
+              composite_atts_map, request_source, row_message->add_old_tuple(), nullptr));
         }
       }
     }
@@ -431,20 +435,26 @@ Status PopulateBeforeImageForUpdateOp(
       switch (record_type) {
         case CDCRecordType::MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES: FALLTHROUGH_INTENDED;
         case CDCRecordType::PG_CHANGE_OLD_NEW: {
-          if (!ql_value.IsNull() && shouldAddColumn) {
+          if (shouldAddColumn) {
             RETURN_NOT_OK(AddColumnToMap(
                 tablet_peer, columns[index], PrimitiveValue(), enum_oid_label_map,
                 composite_atts_map, request_source, row_message->add_old_tuple(),
-                &ql_value.value()));
+                ql_value.IsNull() ? nullptr : &ql_value.value()));
           }
           break;
         }
         case CDCRecordType::FULL_ROW_NEW_IMAGE: {
-          if (!ql_value.IsNull() && !shouldAddColumn) {
-            RETURN_NOT_OK(AddColumnToMap(
-                tablet_peer, columns[index], dockv::KeyEntryValue(), enum_oid_label_map,
-                composite_atts_map, request_source, row_message->add_new_tuple(),
-                &ql_value.value()));
+          if (!shouldAddColumn) {
+            if (!ql_value.IsNull()) {
+              RETURN_NOT_OK(AddColumnToMap(
+                  tablet_peer, columns[index], dockv::KeyEntryValue(), enum_oid_label_map,
+                  composite_atts_map, request_source, row_message->add_new_tuple(),
+                  &ql_value.value()));
+            } else {
+              RETURN_NOT_OK(AddColumnToMap(
+                  tablet_peer, columns[index], PrimitiveValue(), enum_oid_label_map,
+                  composite_atts_map, request_source, row_message->add_new_tuple(), nullptr));
+            }
           }
           break;
         }
@@ -455,29 +465,34 @@ Status PopulateBeforeImageForUpdateOp(
                 tablet_peer, columns[index], dockv::KeyEntryValue(), enum_oid_label_map,
                 composite_atts_map, request_source, row_message->add_old_tuple(),
                 &ql_value.value()));
-            if (!shouldAddColumn) {
-              auto new_tuple_pb = row_message->mutable_new_tuple()->Add();
-              new_tuple_pb->CopyFrom(row_message->old_tuple(static_cast<int>(found_columns)));
-            }
-            found_columns++;
+          } else {
+            RETURN_NOT_OK(AddColumnToMap(
+              tablet_peer, columns[index], PrimitiveValue(), enum_oid_label_map, composite_atts_map,
+              request_source, row_message->add_old_tuple(), nullptr));
           }
+          // Add the non-modified column values in new tuples.
+          if (!shouldAddColumn) {
+            auto new_tuple_pb = row_message->mutable_new_tuple()->Add();
+            new_tuple_pb->CopyFrom(row_message->old_tuple(static_cast<int>(found_columns)));
+          }
+          found_columns++;
           break;
         }
         case CDCRecordType::PG_DEFAULT: {
-          if (!ql_value.IsNull() && !shouldAddColumn) {
+          if (!shouldAddColumn) {
             RETURN_NOT_OK(AddColumnToMap(
                 tablet_peer, columns[index], PrimitiveValue(), enum_oid_label_map,
                 composite_atts_map, request_source, row_message->add_new_tuple(),
-                &ql_value.value()));
+                ql_value.IsNull() ? nullptr : &ql_value.value()));
           }
           break;
         }
         case CDCRecordType::PG_NOTHING: {
-          if (!ql_value.IsNull() && !shouldAddColumn) {
+          if (!shouldAddColumn) {
             RETURN_NOT_OK(AddColumnToMap(
                 tablet_peer, columns[index], PrimitiveValue(), enum_oid_label_map,
                 composite_atts_map, request_source, row_message->add_new_tuple(),
-                &ql_value.value()));
+                ql_value.IsNull() ? nullptr : &ql_value.value()));
           }
           break;
         }
