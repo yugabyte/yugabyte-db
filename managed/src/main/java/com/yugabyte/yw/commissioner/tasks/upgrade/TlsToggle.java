@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.TlsToggleParams;
@@ -66,7 +67,10 @@ public class TlsToggle extends UpgradeTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     super.createPrecheckTasks(universe);
-    addBasicPrecheckTasks();
+    // Skip running prechecks if Node2Node certs has expired
+    if (!CertificateHelper.checkNode2NodeCertsExpiry(universe)) {
+      addBasicPrecheckTasks();
+    }
     if (taskParams().enableNodeToNodeEncrypt || taskParams().enableClientToNodeEncrypt) {
       createCheckCertificateConfigTask();
     }
