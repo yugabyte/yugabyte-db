@@ -1838,13 +1838,16 @@ See [transaction isolation levels](../../../architecture/transactions/isolation-
 
 Default: `read committed`
 
+<!--
+DOC-339 - This needs to be added 2024.2.1
+
 ##### yb_skip_redundant_update_ops
 
 Enables skipping updates to columns that are part of secondary indexes and constraint checks when the column values remain unchanged.
 
 This parameter can only be configured during cluster startup, and adjusting this parameter does not require a cluster restart.
 
-Default: true
+Default: true -->
 
 ## Admin UI
 
