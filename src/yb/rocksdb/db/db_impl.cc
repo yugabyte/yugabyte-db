@@ -176,7 +176,7 @@ DEFINE_RUNTIME_bool(
     "rocksdb_determine_compaction_input_at_start is set to false.");
 TAG_FLAG(rocksdb_allow_multiple_pending_compactions_for_priority_thread_pool, hidden);
 
-DEFINE_RUNTIME_bool(rocksdb_determine_compaction_input_at_start, false,
+DEFINE_RUNTIME_bool(rocksdb_determine_compaction_input_at_start, true,
     "Whether to determine compaction input files at compaction start rather than on queueing "
     "compaction. Only has effect when use_priority_thread_pool_for_compactions is set to true.");
 TAG_FLAG(rocksdb_determine_compaction_input_at_start, hidden);
