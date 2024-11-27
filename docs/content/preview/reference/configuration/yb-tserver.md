@@ -1626,7 +1626,7 @@ When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL 
 
 ## Auto Analyze Service flags
 
-Auto Analyze service flags are {{<tags/feature/ea>}}.
+Auto Analyze service flags are {{<tags/feature/tp>}}.
 
 {{< note title="Note" >}}
 
