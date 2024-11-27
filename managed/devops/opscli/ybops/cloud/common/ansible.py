@@ -267,6 +267,7 @@ class AnsibleProcess(object):
             stdout_str = stdout.decode('utf-8')
             stderr_str = stderr.decode('utf-8') if rc != 0 else ""
         if print_output:
+            # Write output to stderr by default.
             logging.info(stdout_str)
 
         if rc != 0:
