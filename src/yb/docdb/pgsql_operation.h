@@ -231,6 +231,7 @@ class PgsqlReadOperation : public DocExprExecutor {
   YQLRowwiseIteratorIf::UniPtr index_iter_;
   uint64_t scanned_table_rows_ = 0;
   uint64_t scanned_index_rows_ = 0;
+  Status delayed_failure_;
 };
 
 Status GetIntents(

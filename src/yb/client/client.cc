@@ -2771,8 +2771,9 @@ void YBClient::OpenTableAsync(
 }
 
 void YBClient::OpenTableAsync(const TableId& table_id, const OpenTableAsyncCallback& callback,
+                              master::IncludeHidden include_hidden,
                               master::GetTableSchemaResponsePB* resp) {
-  DoOpenTableAsync(table_id, callback, master::IncludeHidden::kFalse, resp);
+  DoOpenTableAsync(table_id, callback, include_hidden, resp);
 }
 
 template <class Id>
@@ -3014,6 +3015,10 @@ bool YBClient::RefreshTabletInfoWithConsensusInfo(
 
 int64_t YBClient::GetRaftConfigOpidIndex(const TabletId& tablet_id) {
   return data_->meta_cache_->GetRaftConfigOpidIndex(tablet_id);
+}
+
+void YBClient::RequestAbortAllRpcs() {
+  data_->rpcs_.RequestAbortAll();
 }
 
 }  // namespace client

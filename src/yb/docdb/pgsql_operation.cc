@@ -653,6 +653,7 @@ struct IndexState {
   FilteringIterator iter;
   const size_t ybbasectid_idx;
   uint64_t scanned_rows;
+  Status delayed_failure;
 };
 
 Result<FetchResult> FetchTableRow(
@@ -682,15 +683,16 @@ Result<FetchResult> FetchTableRow(
       index ? table_iter->FetchTuple(tuple_id, row) : table_iter->FetchNext(row));
   switch(fetch_result) {
     case FetchResult::NotFound: {
-      if (!index) {
-        break;
+      if (index && index->delayed_failure.ok()) {
+        const auto* fmt = FLAGS_TEST_ysql_suppress_ybctid_corruption_details
+            ? "ybctid not found in indexed table"
+            : "$0 not found in indexed table. Index table id is $1, row $2";
+        index->delayed_failure = STATUS_FORMAT(
+            Corruption, fmt,
+            DocKey::DebugSliceToString(tuple_id), table_id,
+            DocKey::DebugSliceToString(index->iter.impl().GetTupleId()));
       }
-      if (FLAGS_TEST_ysql_suppress_ybctid_corruption_details) {
-        return STATUS(Corruption, "ybctid not found in indexed table");
-      }
-      return STATUS_FORMAT(
-          Corruption, "ybctid $0 not found in indexed table. index table id is $1",
-          DocKey::DebugSliceToString(tuple_id), table_id);
+      break;
     }
     case FetchResult::FilteredOut:
       VLOG(1) << "Row filtered out by the condition";
@@ -1901,6 +1903,9 @@ Result<size_t> PgsqlReadOperation::Execute() {
   if (index_iter_) {
     restart_read_ht_->MakeAtLeast(VERIFY_RESULT(index_iter_->RestartReadHt()));
   }
+  if (!restart_read_ht_->is_valid()) {
+    RETURN_NOT_OK(delayed_failure_);
+  }
 
   // Versions of pggate < 2.17.1 are not capable of processing response protos that contain RPC
   // sidecars holding data other than the rows returned by DocDB. During an upgrade, it is possible
@@ -2266,6 +2271,9 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
 
   if (index_state) {
     scanned_index_rows_ += index_state->scanned_rows;
+    if (delayed_failure_.ok()) {
+      delayed_failure_ = index_state->delayed_failure;
+    }
   }
   return std::tuple<size_t, bool>{fetched_rows, has_paging_state};
 }

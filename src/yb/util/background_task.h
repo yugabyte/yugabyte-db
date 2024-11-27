@@ -41,6 +41,9 @@ class BackgroundTask {
   void SetInterval(std::chrono::milliseconds interval_msec);
 
   // Wait for pending tasks and shut down.
+  void StartShutdown();
+  void CompleteShutdown();
+
   void Shutdown();
 
   Status Wake();
