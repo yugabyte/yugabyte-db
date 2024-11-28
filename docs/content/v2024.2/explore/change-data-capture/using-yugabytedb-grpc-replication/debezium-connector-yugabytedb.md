@@ -1135,7 +1135,7 @@ PGCompatible differs from `YBExtractNewRecordState` by recursively modifying all
 
 ## Transaction ordering
 
-{{< note title="Deprecation Notice" >}}
+{{< warn title="Deprecation Notice" >}}
 
 Starting YugabyteDB 2024.2 and YugabyteDB gRPC Connector dz.1.9.5.yb.grpc.2024.2, the configuration `transaction.ordering` is deprecated. This config will be removed in future releases. The [YugabyteDB connector](../using-logical-replication/yugabytedb-connector) based on logical replication model offers the same transactional ordering properties by default, users are advised to use the same for their use cases.
 
@@ -1150,7 +1150,7 @@ For cases where using transactional ordering is absolutely necessary with the gR
 }
 ```
 
-{{< /note >}}
+{{< /warn >}}
 
 In a CDC Stream, events from different transactions in different tablets across tables may appear at different times. This works well in use cases such as archiving, or with applications where only eventual consistency is required. There is another class of applications, where the end destination is another OLTP / operational database. These databases can have constraints (such as foreign keys) and strict transactional consistency requirements. In these cases, the stream of events cannot be applied as is, as events of the same transaction may appear out of order because transactions in YugabyteDB can span two tablets.
 
