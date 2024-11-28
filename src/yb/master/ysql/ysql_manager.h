@@ -77,6 +77,8 @@ class YsqlManager : public YsqlManagerIf {
       const IsYsqlMajorCatalogUpgradeDoneRequestPB* req,
       IsYsqlMajorCatalogUpgradeDoneResponsePB* resp, rpc::RpcContext* rpc);
 
+  bool IsCurrentVersionCatalogEstablished() const;
+
   Status FinalizeYsqlMajorCatalogUpgrade(
       const FinalizeYsqlMajorCatalogUpgradeRequestPB* req,
       FinalizeYsqlMajorCatalogUpgradeResponsePB* resp, rpc::RpcContext* rpc,

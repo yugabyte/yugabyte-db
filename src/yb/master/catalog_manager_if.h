@@ -345,6 +345,8 @@ class CatalogManagerIf {
 
   virtual Result<TSDescriptorPtr> GetClosestLiveTserver(bool* local_ts = nullptr) const = 0;
 
+  virtual Result<TableId> GetVersionSpecificCatalogTableId(const TableId& table_id) const = 0;
+
   virtual bool SkipCatalogVersionChecks() = 0;
 
   virtual ~CatalogManagerIf() = default;

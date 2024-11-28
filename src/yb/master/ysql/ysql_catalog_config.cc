@@ -207,6 +207,18 @@ YsqlMajorCatalogUpgradeInfoPB::State YsqlCatalogConfig::GetMajorCatalogUpgradeSt
   return pb.ysql_major_catalog_upgrade_info().state();
 }
 
+bool YsqlCatalogConfig::IsCurrentVersionCatalogEstablished() const {
+  auto [l, pb] = LockForRead();
+  auto major_upgrade_info = pb.ysql_major_catalog_upgrade_info();
+
+  // In the DONE state we either have not started the catalog upgrade or have completed it.
+  if (major_upgrade_info.state() == YsqlMajorCatalogUpgradeInfoPB::DONE) {
+    return major_upgrade_info.catalog_version() == GetMajorVersionOfCurrentBuild();
+  }
+
+  return major_upgrade_info.state() == YsqlMajorCatalogUpgradeInfoPB::MONITORING;
+}
+
 const std::unordered_map<
     YsqlMajorCatalogUpgradeInfoPB::State, std::unordered_set<YsqlMajorCatalogUpgradeInfoPB::State>>
     kAllowedTransitions = {

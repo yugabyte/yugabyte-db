@@ -2302,7 +2302,8 @@ Status CatalogManager::ValidateTableReplicationInfo(
 }
 
 Result<shared_ptr<TablespaceIdToReplicationInfoMap>> CatalogManager::GetYsqlTablespaceInfo() {
-  auto table_info = GetTableInfo(kPgTablespaceTableId);
+  auto table_info =
+      GetTableInfo(VERIFY_RESULT(GetVersionSpecificCatalogTableId(kPgTablespaceTableId)));
   if (table_info == nullptr) {
     return STATUS(InternalError, "pg_tablespace table info not found");
   }
@@ -2476,8 +2477,10 @@ Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablesp
                    << nsid << " with error: " << table_tablespace_status.ToString();
     }
 
-    const bool pg_yb_tablegroup_exists = VERIFY_RESULT(DoesTableExist(FindTableById(
-      GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid))));
+    const TableId tablegroup_table_id = VERIFY_RESULT(
+        GetVersionSpecificCatalogTableId(GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid)));
+    const bool pg_yb_tablegroup_exists =
+        VERIFY_RESULT(DoesTableExist(FindTableById(tablegroup_table_id)));
 
     // no pg_yb_tablegroup means we only need to check pg_class
     if (table_tablespace_status.ok() && !pg_yb_tablegroup_exists) {
@@ -3701,8 +3704,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   auto ns = VERIFY_RESULT(FindNamespace(orig_req->namespace_()));
 
   // If we're doing a ysql major catalog upgrade, then for a user table, we expect it to already
-  // exist. We will wire the PG15 catalog to it. For a PG catalog table, we expect it to be creating
-  // the new version's PG catalog, and so the table must not already exist.
+  // exist. We will wire the current version's catalog to it. For a PG catalog table, we expect it
+  // to be creating the new version's PG catalog, and so the table must not already exist.
   if (IsYsqlMajorCatalogUpgradeInProgress()) {
     LockGuard lock(mutex_);
     auto ns_lock = ns->LockForRead();
@@ -7085,10 +7088,10 @@ Status ApplyAlterSteps(server::Clock* clock,
 }
 
 // Verifies that the request steps are to drop columns, the columns are not present in the YB
-// master's schema, and the columns being dropped were dropped previously in PG11. The PG restore
-// process created the table with a dummy column in this column's place, but we returned early from
-// CreateTable, whose existing schema doesn't have the dropped column.
-// For use only during a ysql major catalog upgrade.
+// master's schema, and the columns being dropped were dropped previously in the prior version. The
+// PG restore process created the table with a dummy column in this column's place, but we returned
+// early from CreateTable, whose existing schema doesn't have the dropped column. For use only
+// during a ysql major catalog upgrade.
 Status VerifyDroppedColumnsForUpgrade(
     const Schema& schema,
     const google::protobuf::RepeatedPtrField<AlterTableRequestPB::Step>& steps) {
@@ -8365,18 +8368,18 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
                                const scoped_refptr<NamespaceInfo>& ns, bool by_id) -> Status {
       Status return_status;
       if (is_ysql_major_upgrade_in_progress) {
-        // During a ysql major catalog upgrade, each system namespace (template1, template0,
+        // During a ysql major catalog upgrade, each *system* namespace (template1, template0,
         // postgres, yugabyte, and system_platform) is "created" twice: once by initdb, and then
         // once again after a DROP DATABASE that's part of upstream Postgres's dump and restore
-        // process. In both cases, the PG11 version of the namespace must already exist, and we re-
-        // use it. Therefore it's an error if ns is nullptr.
+        // process. In both cases, the namespace must already exist in DocDB for the prior version,
+        // and we reuse it. Therefore, it's an error if ns is nullptr.
         //
         // The first time through this process, ysql_next_major_version_state is NEXT_VER_RUNNING.
         // The second time, it's NEXT_VER_DELETED, as a means to work around the fact we're only
-        // effectively "dropping" and "recreating" the not-yet-in-use PG15 namespace.
+        // effectively "dropping" and "recreating" the not-yet-in-use current-version namespace.
         //
         // User-created namespaces are expected to be "created" once by pg_restore. In this case,
-        // the PG11 version of the namespace must already exist, and we will re-use it.
+        // again, the DocDB namespace already exists for the prior version, and we will re-use it.
         if (ns == nullptr) {
           std::string context;
           if (by_id) {
@@ -8422,8 +8425,8 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
       return Status::OK();
     };
 
-    // Verify that the namespace with same id does not already exist, except in the case of online
-    // PG11 -> PG15 upgrade, in which case it will be reused.
+    // Verify that the namespace with same id does not already exist, except in the case of ysql
+    // major catalog upgrade, in which case it will be reused.
     ns = FindPtrOrNull(namespace_ids_map_, req->namespace_id());
     RETURN_NOT_OK(check_ns_errors(ns, true /* by_id */));
 
@@ -8435,8 +8438,8 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
 
     // Add the new namespace.
 
-    // Create unique id for this new namespace, unless it already exists in the online PG11->PG15
-    // upgrade case.
+    // Create unique id for this new namespace, unless it already exists in the online ysql major
+    // version catalog upgrade case.
     if (!IsYsqlMajorCatalogUpgradeInProgress()) {
       NamespaceId new_id = !req->namespace_id().empty()
                                ? req->namespace_id()
@@ -8448,9 +8451,9 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     metadata->set_name(req->name());
     metadata->set_database_type(db_type);
     metadata->set_colocated(req->colocated());
-    // Note that during online PG11 -> PG15 upgrade, a namespace whose PG15 catalogs are being
-    // prepared will switch into state PREPARING. This is safe because DDLs are not allowed during
-    // the upgrade.
+    // Note that during online ysql major version catalog upgrade, a namespace whose current-version
+    // catalogs are being prepared will switch into state PREPARING. This is safe because DDLs are
+    // not allowed during the upgrade.
     metadata->set_state(SysNamespaceEntryPB::PREPARING);
 
     // For namespace created for a Postgres database, save the list of tables and indexes for
@@ -8468,29 +8471,30 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
           // The expectation is that we're copying "all" of the PG tables from the source namespace
           // to the target namespace. There are 3 situations in which we copy a namespace:
           //  1) initdb, during a clean install
-          //  2) initdb, running as part of a PG11 to PG15 upgrade
+          //  2) initdb, running as part of a ysql major catalog upgrade
           //  3) steady state in either case (post-universe-creation, or post-upgrade)
           //
           // What does "all" mean in these cases?
-          //  * In case #1, it means all PG tables, though they will all be PG15 catalog tables.
-          //  * In case #2, it means only PG15 system catalog tables, because PG11 catalog tables
-          //    and user tables (which do not have a version) have already been added to the
-          //    namespace previously.
-          //  * In case #3, it means all PG tables. Valid tables are either PG15 catalog tables or
-          //    user tables (which do not have a version). Any PG11 catalog tables are around just
-          //    because they have not been cleaned up yet.
+          //  * In case #1, it means all PG tables, though they will all be current-version catalog
+          //    tables.
+          //  * In case #2, it means only current-version system catalog tables, because prior-
+          //    version catalog tables and user tables (which do not have a version) have already
+          //    been added to the namespace previously.
+          //  * In case #3, it means all PG tables. Valid tables are either current-version catalog
+          //    tables, or user tables (which do not have a version). Any prior-version catalog
+          //    tables are around just because they haven't been cleaned up yet.
           //
-          // So in case #2, we must accept only PG15 catalog tables.
+          // So in case #2, we must accept only current-version catalog tables.
           const auto& table_id = table->id();
           if (IsPgsqlId(table_id) && CHECK_RESULT(GetPgsqlDatabaseOid(table_id)) == *source_oid) {
             if (IsYsqlMajorCatalogUpgradeInProgress()) {
-              if (!IsPg15CatalogId(table_id)) {
+              if (!IsCurrentVersionCatalogId(table_id)) {
                 continue;
               }
             } else {
-              // YB_TODO: Remove when we support cleanup of PG11 catalog tables after the YSQL
-              // major version upgrade.
-              if (IsPg11CatalogId(table_id)) {
+              // YB_TODO: Remove when we support cleanup of prior-version catalog tables after the
+              // YSQL major version upgrade.
+              if (IsPriorVersionCatalogId(table_id)) {
                 continue;
               }
             }
@@ -9224,12 +9228,12 @@ Status CatalogManager::DeleteYsqlDBTables(
     for (const auto& table : tables_->GetAllTables()) {
       // In ysql major catalog upgrade mode, there are two possibilities:
       //  * To propagate database-level properties for certain databases in an upgrade, pg_upgrade
-      //    drops those databases and recreates them. We pretend to do so, but only delete the PG15
-      //    catalog tables, so the restore portion doesn't get confused.
-      //  * The rollback deletes all PG15 catalog tables in order to prepare for the next upgrade
-      //    attempt.
-      // In both cases, we delete only the PG15 catalog tables.
-      if (is_ysql_major_upgrade && !IsPg15CatalogId(table->id())) {
+      //    drops those databases and recreates them. We pretend to do so, but only delete the
+      //    current version's catalog tables, so the restore portion doesn't get confused.
+      //  * The rollback deletes all current-version catalog tables in order to prepare for the next
+      //    upgrade attempt.
+      // In both cases, we delete only the current version's catalog tables.
+      if (is_ysql_major_upgrade && !IsCurrentVersionCatalogId(table->id())) {
         continue;
       }
       if (table->namespace_id() != database->id()) {
@@ -9245,9 +9249,9 @@ Status CatalogManager::DeleteYsqlDBTables(
       // comment at the beginning of the for loop), because such tables are technically global
       // tables, not contained in template1.
       //
-      // During YSQL major catalog upgrade rollback, shared PG15 tables hosted in the template1
-      // namespace must be deleted so that we return to a clean state. This is safe because DDLs are
-      // disabled and there are no PG15 tservers connected.
+      // During YSQL major catalog upgrade rollback, shared tables for the current version hosted in
+      // the template1 namespace must be deleted so that we return to a clean state. This is safe
+      // because DDLs are disabled and there are no current-version tservers connected.
       if (is_ysql_major_upgrade) {
         if (l->pb.is_pg_shared_table() && !is_for_ysql_major_rollback) {
           continue;
@@ -9874,24 +9878,7 @@ Status CatalogManager::GetYsqlCatalogVersion(uint64_t* catalog_version,
 Status CatalogManager::GetYsqlDBCatalogVersion(uint32_t db_oid,
                                                uint64_t* catalog_version,
                                                uint64_t* last_breaking_version) {
-  // When a yb-master goes through the upgrade process from PG11 to PG15, the process begins before
-  // PG15 initdb has been run, so there is no PG15 pg_yb_catalog_version table at all. Even after
-  // PG15 initdb starts, no user-initiated DDLs are permitted during the upgrade, and no PG15
-  // tservers may start until initdb + pg_restore has occurred. Therefore, the PG11 catalog will be
-  // unchanged, and the fixed PG11 catalog version is the only relevant catalog version during the
-  // upgrade. Note that pg_restore will be the sole writer to the PG15 catalog during the upgrade,
-  // using one postgres process.
-  //
-  // After the entire cluster has been upgraded to PG15, to allow DDLs once again, restart the
-  // masters without the upgrade flag. A refinement would be to not require a restart to switch out
-  // of upgrade mode, in which case we might need to do a one-time bump of the PG15
-  // pg_yb_catalog_version number.
-  TableId table_id;
-  if (IsYsqlMajorCatalogUpgradeInProgress()) {
-    table_id = kPgYbCatalogVersionTableIdPg11;
-  } else {
-    table_id = kPgYbCatalogVersionTableId;
-  }
+  auto table_id = VERIFY_RESULT(GetVersionSpecificCatalogTableId(kPgYbCatalogVersionTableId));
   auto table_info = GetTableInfo(table_id);
   if (table_info != nullptr) {
     RETURN_NOT_OK(sys_catalog_->ReadYsqlDBCatalogVersion(table_id,
@@ -9921,13 +9908,7 @@ Status CatalogManager::GetYsqlDBCatalogVersion(uint32_t db_oid,
 }
 
 Status CatalogManager::GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap* versions) {
-  // See comment in GetYsqlDBCatalogVersion.
-  TableId table_id;
-  if (IsYsqlMajorCatalogUpgradeInProgress()) {
-    table_id = kPgYbCatalogVersionTableIdPg11;
-  } else {
-    table_id = kPgYbCatalogVersionTableId;
-  }
+  auto table_id = VERIFY_RESULT(GetVersionSpecificCatalogTableId(kPgYbCatalogVersionTableId));
   auto table_info = GetTableInfo(table_id);
   if (table_info != nullptr) {
     RETURN_NOT_OK(sys_catalog_->ReadYsqlAllDBCatalogVersions(table_id, versions));
@@ -13371,6 +13352,22 @@ Result<TSDescriptorPtr> CatalogManager::GetClosestLiveTserver(bool* local_ts) co
 
 bool CatalogManager::IsYsqlMajorCatalogUpgradeInProgress() const {
   return ysql_manager_->IsYsqlMajorCatalogUpgradeInProgress();
+}
+
+Result<TableId> CatalogManager::GetVersionSpecificCatalogTableId(const TableId& table_id) const {
+  if (!ysql_manager_->IsCurrentVersionCatalogEstablished()) {
+    // When a yb-master goes through the ysql major catalog upgrade process, the process begins
+    // before the current version's initdb and catalog upgrade have been run, so we can't depend on
+    // the existence of valid current-version catalog tables. We therefore utilize prior-version
+    // catalog tables while initdb and the catalog upgrade are in progress. Once we enter the
+    // MONITORING state, we switch to the current version's catalogs so that they can be exercised
+    // and tested.
+    uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_id));
+    uint32_t table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
+    return GetPgsqlTableIdPriorVersion(database_oid, table_oid);
+  } else {
+    return table_id;
+  }
 }
 
 bool CatalogManager::SkipCatalogVersionChecks() {

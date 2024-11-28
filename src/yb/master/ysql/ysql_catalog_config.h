@@ -53,6 +53,8 @@ class YsqlCatalogConfig {
 
   YsqlMajorCatalogUpgradeInfoPB::State GetMajorCatalogUpgradeState() const EXCLUDES(mutex_);
 
+  bool IsCurrentVersionCatalogEstablished() const EXCLUDES(mutex_);
+
   // Transition the ysql major catalog upgrade to a new state if allowed.
   // failed_status must be set to a NonOk status if and only if transitioning to FAILED state.
   // Check kAllowedTransitions for list of allowed transitions.
