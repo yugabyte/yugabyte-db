@@ -1062,6 +1062,7 @@ message PgServersMetricsResponsePB {
 
 message PgCronSetLastMinuteRequestPB {
   int64 last_minute = 1;
+  AshMetadataPB ash_metadata = 2;
 }
 
 message PgCronSetLastMinuteResponsePB {
@@ -1069,6 +1070,7 @@ message PgCronSetLastMinuteResponsePB {
 }
 
 message PgCronGetLastMinuteRequestPB {
+  AshMetadataPB ash_metadata = 1;
 }
 
 message PgCronGetLastMinuteResponsePB {

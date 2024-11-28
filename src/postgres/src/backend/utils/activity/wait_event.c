@@ -204,7 +204,7 @@ pgstat_get_wait_event(uint32 wait_event_info)
 	if (wait_event_info == 0)
 	{
 		if (yb_ash_enable_infra)
-			return "QueryProcessing";
+			return "OnCpu_Active";
 		return NULL;
 	}
 
@@ -1293,7 +1293,7 @@ yb_wait_event_desc(PG_FUNCTION_ARGS)
 
 	MemoryContextSwitchTo(oldcontext);
 
-	/* for query processing */
+	/* for cpu event */
 	yb_insert_pg_events(0, tupdesc, tupstore);
 
 	/* wait events defined in wait_state.h */

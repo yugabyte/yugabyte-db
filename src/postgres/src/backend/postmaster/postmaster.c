@@ -6166,6 +6166,9 @@ BackgroundWorkerInitializeConnection(const char *dbname, const char *username, u
 				 NULL,			/* no out_dbname */
 				 NULL);			/* session id */
 
+	if (yb_ash_enable_infra)
+		YbAshSetMetadataForBgworkers();
+
 	/* it had better not gotten out of "init" mode yet */
 	if (!IsInitProcessingMode())
 		ereport(ERROR,
@@ -6194,6 +6197,9 @@ YbBackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid,
 				 (flags & BGWORKER_BYPASS_ALLOWCONN) != 0,	/* ignore datallowconn? */
 				 NULL,			/* no out_dbname */
 				 session_id);	/* session id */
+
+	if (yb_ash_enable_infra)
+		YbAshSetMetadataForBgworkers();
 
 	/* it had better not gotten out of "init" mode yet */
 	if (!IsInitProcessingMode())

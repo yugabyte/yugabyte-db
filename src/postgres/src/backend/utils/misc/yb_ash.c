@@ -194,7 +194,8 @@ YbAshInit(void)
 	YbAshInstallHooks();
 	/* Keep the default query id in the stack */
 	query_id_stack.top_index = 0;
-	query_id_stack.query_ids[0] = YBCGetQueryIdForCatalogRequests();
+	query_id_stack.query_ids[0] =
+		YBCGetConstQueryId(QUERY_ID_TYPE_DEFAULT);
 	query_id_stack.num_query_ids_not_pushed = 0;
 }
 
@@ -217,12 +218,15 @@ YbAshInstallHooks(void)
 	ProcessUtility_hook = yb_ash_ProcessUtility;
 }
 
+/*
+ * This function doesn't need locks, check the comments of
+ * YbAshSetOneTimeMetadata.
+ */
 void
 YbAshSetDatabaseId(Oid database_id)
 {
-	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
+	Assert(MyProc->yb_is_ash_metadata_set == false);
 	MyProc->yb_ash_metadata.database_id = database_id;
-	LWLockRelease(&MyProc->yb_ash_metadata_lock);
 }
 
 static int
@@ -513,15 +517,18 @@ YbAshResetQueryId(uint64 query_id)
 	}
 }
 
+/*
+ * This function doesn't need locks, check the comments of
+ * YbAshSetOneTimeMetadata.
+ */
 void
 YbAshSetMetadata(void)
 {
 	/* The stack should have the default query id at the start of a request */
 	Assert(query_id_stack.top_index == 0);
+	Assert(MyProc->yb_is_ash_metadata_set == false);
 
-	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
 	YBCGenerateAshRootRequestId(MyProc->yb_ash_metadata.root_request_id);
-	LWLockRelease(&MyProc->yb_ash_metadata_lock);
 }
 
 void
@@ -549,26 +556,29 @@ YbAshUnsetMetadata(void)
  * code and ASH keeps working without client address and port for the current PG
  * backend.
  *
- * ASH samples only normal backends and this excludes background workers.
- * So it's fine in that case to not set the client address.
+ * Until MyProc->yb_is_ash_metadata_set is set to true, the backend won't be sampled,
+ * that means there will be no readers or writers of the fields proctected by the lock,
+ * that's why this function is safe without locks.
  */
 void
 YbAshSetOneTimeMetadata()
 {
-	/* Background workers which creates a postgres backend may have null MyProcPort. */
+	Assert(MyProc->yb_is_ash_metadata_set == false);
+
+	/* Set the address family, pid and null the client_addr and client_port */
+	MyProc->yb_ash_metadata.pid = MyProcPid;
+	MyProc->yb_ash_metadata.addr_family = AF_UNSPEC;
+	MemSet(MyProc->yb_ash_metadata.client_addr, 0, 16);
+	MyProc->yb_ash_metadata.client_port = 0;
+
+	/* Background workers and bootstrap processing may have null MyProcPort */
 	if (MyProcPort == NULL)
 	{
 		Assert(MyProc->isBackgroundWorker == true);
 		return;
 	}
 
-	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
-
-	/* Set the address family and null the client_addr and client_port */
 	MyProc->yb_ash_metadata.addr_family = MyProcPort->raddr.addr.ss_family;
-	MemSet(MyProc->yb_ash_metadata.client_addr, 0, 16);
-	MyProc->yb_ash_metadata.client_port = 0;
-	MyProc->yb_ash_metadata.pid = MyProcPid;
 
 	switch (MyProcPort->raddr.addr.ss_family)
 	{
@@ -578,7 +588,6 @@ YbAshSetOneTimeMetadata()
 #endif
 			break;
 		default:
-			LWLockRelease(&MyProc->yb_ash_metadata_lock);
 			return;
 	}
 
@@ -597,8 +606,6 @@ YbAshSetOneTimeMetadata()
 				 errdetail("%s\naddress family: %u",
 						   gai_strerror(ret),
 						   MyProcPort->raddr.addr.ss_family)));
-
-		LWLockRelease(&MyProc->yb_ash_metadata_lock);
 		return;
 	}
 
@@ -610,8 +617,15 @@ YbAshSetOneTimeMetadata()
 
 	/* Setting port */
 	MyProc->yb_ash_metadata.client_port = atoi(MyProcPort->remote_port);
+}
 
-	LWLockRelease(&MyProc->yb_ash_metadata_lock);
+void
+YbAshSetMetadataForBgworkers(void)
+{
+	YBCGenerateAshRootRequestId(MyProc->yb_ash_metadata.root_request_id);
+	MyProc->yb_ash_metadata.query_id =
+		YBCGetConstQueryId(QUERY_ID_TYPE_BACKGROUND_WORKER);
+	MyProc->yb_is_ash_metadata_set = true;
 }
 
 /*
@@ -689,6 +703,9 @@ YbAshMain(Datum main_arg)
 	BackgroundWorkerUnblockSignals();
 
 	BackgroundWorkerInitializeConnection(NULL, NULL, 0);
+
+	/* We will always get CPU events in ASH, so don't sample ASH collector */
+	MyProc->yb_is_ash_metadata_set = false;
 
 	pgstat_report_appname("yb_ash collector");
 
