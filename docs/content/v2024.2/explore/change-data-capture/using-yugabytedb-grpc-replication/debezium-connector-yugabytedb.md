@@ -1077,7 +1077,7 @@ Advanced connector configuration properties:
 | tombstones.on.delete | `true` | Controls whether a delete event is followed by a tombstone event.<br/><br/> `true` - a delete operation is represented by a delete event and a subsequent tombstone event.<br/><br/> `false` - only a delete event is emitted.<br/><br/> After a source record is deleted, emitting a tombstone event (the default behavior) allows Kafka to completely delete all events that pertain to the key of the deleted row in case log compaction is enabled for the topic. |
 | auto.add.new.tables | `true` | Controls whether the connector should keep polling the server to check if any new table has been added to the configured change data stream ID. If a new table has been found in the stream ID and if it has been included in the `table.include.list`, the connector will be restarted automatically. |
 | new.table.poll.interval.ms | 300000 | The interval at which the poller thread will poll the server to check if there are any new tables in the configured change data stream ID. |
-| transaction.ordering | `false` | Whether to order transactions by their commit time.<br/><br/>{{< note title="Note" >}} This configuration property has been deprecated, see [transaction ordering](#transaction-ordering) for more details. {{< /note >}} |
+| transaction.ordering | `false` | Whether to order transactions by their commit time.<br/><br/>{{< warn title="Deprecation Notice" >}} This configuration property has been deprecated, see [transaction ordering](#transaction-ordering) for more details. {{< /warn >}} |
 
 ### Transformers
 
