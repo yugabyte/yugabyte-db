@@ -102,7 +102,7 @@ class DummyANN final : public VectorANN<Vector> {
     // or implement an iterator object over map to iterate keys only.
     std::vector<VectorId> vertex_ids;
     vertex_ids.reserve(vectors_.size());
-    std::transform(vectors_.begin(), vectors_.end(), vertex_ids.begin(),
+    std::transform(vectors_.begin(), vectors_.end(), std::back_inserter(vertex_ids),
                    [](const auto& item){ return item.first; });
     auto topk = BruteForcePreciseNearestNeighbors<Vector, DistanceResult>(
         query_vec, vertex_ids, modified_dist, k);

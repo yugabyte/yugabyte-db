@@ -2043,11 +2043,9 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteVectorSearch(
   // Build the vectorann and then make an index_doc_read_context on the vectorann
   // to get the index iterator. Then do ExecuteBatchKeys on the index iterator.
   RSTATUS_DCHECK(options.has_vector(), InvalidArgument, "Query vector not provided");
-  RSTATUS_DCHECK(
-      doc_read_context.vector_idx_options.has_value(), IllegalState,
-      "Table does not have vector index");
 
-  if (doc_read_context.vector_idx_options->idx_type() == PgVectorIndexType::HNSW) {
+  if (doc_read_context.vector_idx_options.has_value() &&
+      doc_read_context.vector_idx_options->idx_type() == PgVectorIndexType::HNSW) {
     return std::tuple<size_t, bool>(VERIFY_RESULT(ExecuteVectorLSMSearch(
         doc_read_context, options)), false);
   }
