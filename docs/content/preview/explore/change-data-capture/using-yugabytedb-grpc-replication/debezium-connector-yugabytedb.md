@@ -1083,7 +1083,7 @@ Advanced connector configuration properties:
 | tombstones.on.delete | `true` | Controls whether a delete event is followed by a tombstone event.<br/><br/> `true` - a delete operation is represented by a delete event and a subsequent tombstone event.<br/><br/> `false` - only a delete event is emitted.<br/><br/> After a source record is deleted, emitting a tombstone event (the default behavior) allows Kafka to completely delete all events that pertain to the key of the deleted row in case log compaction is enabled for the topic. |
 | auto.add.new.tables | `true` | Controls whether the connector should keep polling the server to check if any new table has been added to the configured change data stream ID. If a new table has been found in the stream ID and if it has been included in the `table.include.list`, the connector will be restarted automatically. |
 | new.table.poll.interval.ms | 300000 | The interval at which the poller thread will poll the server to check if there are any new tables in the configured change data stream ID. |
-| transaction.ordering | `false` | Whether to order transactions by their commit time.<br/><br/>{{< warn title="Deprecation Notice" >}} This configuration property has been deprecated, see [transaction ordering](#transaction-ordering) for more details. {{< /warn >}} |
+| transaction.ordering | `false` | Whether to order transactions by their commit time.<br/>{{< warning title="Deprecation Notice" >}} This configuration property has been deprecated. For more details, see [transaction ordering](#transaction-ordering). {{< /warning >}} |
 
 ### Transformers
 
@@ -1141,11 +1141,11 @@ PGCompatible differs from `YBExtractNewRecordState` by recursively modifying all
 
 ## Transaction ordering
 
-{{< warn title="Deprecation Notice" >}}
+{{< warning title="Deprecation Notice" >}}
 
-Starting YugabyteDB 2024.2 and YugabyteDB gRPC Connector dz.1.9.5.yb.grpc.2024.2, the configuration `transaction.ordering` is deprecated. This config will be removed in future releases. The [YugabyteDB connector](../using-logical-replication/yugabytedb-connector) based on logical replication model offers the same transactional ordering properties by default, users are advised to use the same for their use cases.
+Starting with YugabyteDB v2024.2, and YugabyteDB gRPC Connector `dz.1.9.5.yb.grpc.2024.2`, the configuration `transaction.ordering` is deprecated. This configuration will be removed in future releases. As the [YugabyteDB connector](../using-logical-replication/yugabytedb-connector) based on logical replication model offers the same transactional ordering properties by default, you are advised to use the same for your use cases.
 
-For cases where using transactional ordering is absolutely necessary with the gRPC connector for now, add the following configurations to use the deprecated configuration:
+Currently, for cases where using transactional ordering is absolutely necessary with the gRPC connector, add the following configurations to use the deprecated configuration:
 
 ```output.json
 {
@@ -1156,7 +1156,7 @@ For cases where using transactional ordering is absolutely necessary with the gR
 }
 ```
 
-{{< /warn >}}
+{{< /warning >}}
 
 In a CDC Stream, events from different transactions in different tablets across tables may appear at different times. This works well in use cases such as archiving, or with applications where only eventual consistency is required. There is another class of applications, where the end destination is another OLTP / operational database. These databases can have constraints (such as foreign keys) and strict transactional consistency requirements. In these cases, the stream of events cannot be applied as is, as events of the same transaction may appear out of order because transactions in YugabyteDB can span two tablets.
 
