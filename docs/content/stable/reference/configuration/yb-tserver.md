@@ -589,6 +589,14 @@ For more details, see [clusters in colocated tables](../../../explore/colocation
 
 Default: `false`
 
+##### --ysql_enable_colocated_tables_with_tablespaces
+
+When enabled, placement policy can be specified for each colocated table via tablespaces.
+
+For more details, see [Colocated tables with tablespaces](../../../explore/colocation/#colocated-tables-with-tablespaces).
+
+Default: `false`
+
 ##### tablet_replicas_per_core_limit
 
 The number of tablet replicas that each core on a YB-TServer can support.

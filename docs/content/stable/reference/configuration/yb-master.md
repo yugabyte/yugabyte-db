@@ -619,6 +619,14 @@ For more details, see [clusters in colocated tables](../../../explore/colocation
 
 Default: `false`
 
+##### --ysql_enable_colocated_tables_with_tablespaces
+
+When enabled, placement policy can be specified for each colocated table via tablespaces.
+
+For more details, see [Colocated tables with tablespaces](../../../explore/colocation/#colocated-tables-with-tablespaces).
+
+Default: `false`
+
 ##### enforce_tablet_replica_limits
 
 Enables/disables blocking of requests which would bring the total number of tablets in the system over a limit. For more information, see [Tablet limits](../../../architecture/docdb-sharding/tablet-splitting/#tablet-limits).
