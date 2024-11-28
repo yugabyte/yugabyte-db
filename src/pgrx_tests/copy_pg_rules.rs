@@ -102,6 +102,21 @@ mod tests {
     }
 
     #[pg_test]
+    #[should_panic(expected = "COPY FROM parquet with generated columns is not supported")]
+    fn test_copy_from_by_position_with_generated_columns_not_supported() {
+        Spi::run("DROP TABLE IF EXISTS test_table;").unwrap();
+
+        Spi::run("CREATE TABLE test_table (a int, b int generated always as (10) stored, c text);")
+            .unwrap();
+
+        let copy_from_query = format!(
+            "COPY test_table FROM '{}' WITH (format parquet);",
+            LOCAL_TEST_FILE_PATH
+        );
+        Spi::run(copy_from_query.as_str()).unwrap();
+    }
+
+    #[pg_test]
     fn test_with_generated_and_dropped_columns() {
         Spi::run("DROP TABLE IF EXISTS test_table;").unwrap();
 
@@ -123,7 +138,7 @@ mod tests {
         Spi::run("TRUNCATE test_table;").unwrap();
 
         let copy_from_query = format!(
-            "COPY test_table FROM '{}' WITH (format parquet);",
+            "COPY test_table FROM '{}' WITH (format parquet, match_by 'name');",
             LOCAL_TEST_FILE_PATH
         );
         Spi::run(copy_from_query.as_str()).unwrap();

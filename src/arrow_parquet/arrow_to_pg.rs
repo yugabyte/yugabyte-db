@@ -163,7 +163,7 @@ impl ArrowToPgAttributeContext {
             };
 
             let attributes =
-                collect_attributes_for(CollectAttributesFor::Struct, attribute_tupledesc);
+                collect_attributes_for(CollectAttributesFor::Other, attribute_tupledesc);
 
             // we only cast the top-level attributes, which already covers the nested attributes
             let cast_to_types = None;

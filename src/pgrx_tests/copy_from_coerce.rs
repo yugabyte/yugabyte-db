@@ -966,7 +966,7 @@ mod tests {
     }
 
     #[pg_test]
-    fn test_table_with_different_field_position() {
+    fn test_table_with_different_position_match_by_name() {
         let copy_to = format!(
             "COPY (SELECT 1 as x, 'hello' as y) TO '{}'",
             LOCAL_TEST_FILE_PATH
@@ -976,11 +976,42 @@ mod tests {
         let create_table = "CREATE TABLE test_table (y text, x int)";
         Spi::run(create_table).unwrap();
 
-        let copy_from = format!("COPY test_table FROM '{}'", LOCAL_TEST_FILE_PATH);
+        let copy_from = format!(
+            "COPY test_table FROM '{}' WITH (match_by 'name')",
+            LOCAL_TEST_FILE_PATH
+        );
         Spi::run(&copy_from).unwrap();
 
         let result = Spi::get_two::<&str, i32>("SELECT y, x FROM test_table LIMIT 1").unwrap();
         assert_eq!(result, (Some("hello"), Some(1)));
+    }
+
+    #[pg_test]
+    fn test_table_with_different_name_match_by_position() {
+        let copy_to = "COPY (SELECT 1 as a, 'hello' as b) TO '/tmp/test.parquet'";
+        Spi::run(copy_to).unwrap();
+
+        let create_table = "CREATE TABLE test_table (x bigint, y varchar)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet' WITH (match_by 'position')";
+        Spi::run(copy_from).unwrap();
+
+        let result = Spi::get_two::<i64, &str>("SELECT x, y FROM test_table LIMIT 1").unwrap();
+        assert_eq!(result, (Some(1), Some("hello")));
+    }
+
+    #[pg_test]
+    #[should_panic(expected = "column count mismatch between table and parquet file")]
+    fn test_table_with_different_name_match_by_position_fail() {
+        let copy_to = "COPY (SELECT 1 as a, 'hello' as b) TO '/tmp/test.parquet'";
+        Spi::run(copy_to).unwrap();
+
+        let create_table = "CREATE TABLE test_table (x bigint, y varchar, z int)";
+        Spi::run(create_table).unwrap();
+
+        let copy_from = "COPY test_table FROM '/tmp/test.parquet'";
+        Spi::run(copy_from).unwrap();
     }
 
     #[pg_test]
@@ -992,7 +1023,10 @@ mod tests {
         let copy_to_parquet = format!("copy (select 100 as id) to '{}';", LOCAL_TEST_FILE_PATH);
         Spi::run(&copy_to_parquet).unwrap();
 
-        let copy_from = format!("COPY test_table FROM '{}'", LOCAL_TEST_FILE_PATH);
+        let copy_from = format!(
+            "COPY test_table FROM '{}' with (match_by 'name')",
+            LOCAL_TEST_FILE_PATH
+        );
         Spi::run(&copy_from).unwrap();
     }
 

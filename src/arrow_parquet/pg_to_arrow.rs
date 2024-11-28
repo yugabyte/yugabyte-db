@@ -148,7 +148,7 @@ impl PgToArrowAttributeContext {
             };
 
             let attributes =
-                collect_attributes_for(CollectAttributesFor::Struct, &attribute_tupledesc);
+                collect_attributes_for(CollectAttributesFor::Other, &attribute_tupledesc);
 
             collect_pg_to_arrow_attribute_contexts(&attributes, &fields)
         });

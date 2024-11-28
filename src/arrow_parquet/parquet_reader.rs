@@ -16,7 +16,11 @@ use url::Url;
 
 use crate::{
     arrow_parquet::{
-        arrow_to_pg::to_pg_datum, schema_parser::parquet_schema_string_from_attributes,
+        arrow_to_pg::to_pg_datum,
+        schema_parser::{
+            error_if_copy_from_match_by_position_with_generated_columns,
+            parquet_schema_string_from_attributes,
+        },
     },
     pgrx_utils::{collect_attributes_for, CollectAttributesFor},
     type_compat::{geometry::reset_postgis_context, map::reset_map_context},
@@ -24,6 +28,7 @@ use crate::{
 
 use super::{
     arrow_to_pg::{collect_arrow_to_pg_attribute_contexts, ArrowToPgAttributeContext},
+    match_by::MatchBy,
     schema_parser::{
         ensure_file_schema_match_tupledesc_schema, parse_arrow_schema_from_attributes,
     },
@@ -38,14 +43,17 @@ pub(crate) struct ParquetReaderContext {
     parquet_reader: ParquetRecordBatchStream<ParquetObjectReader>,
     attribute_contexts: Vec<ArrowToPgAttributeContext>,
     binary_out_funcs: Vec<PgBox<FmgrInfo>>,
+    match_by: MatchBy,
 }
 
 impl ParquetReaderContext {
-    pub(crate) fn new(uri: Url, tupledesc: &PgTupleDesc) -> Self {
+    pub(crate) fn new(uri: Url, match_by: MatchBy, tupledesc: &PgTupleDesc) -> Self {
         // Postgis and Map contexts are used throughout reading the parquet file.
         // We need to reset them to avoid reading the stale data. (e.g. extension could be dropped)
         reset_postgis_context();
         reset_map_context();
+
+        error_if_copy_from_match_by_position_with_generated_columns(tupledesc, match_by);
 
         let parquet_reader = parquet_reader_from_uri(&uri);
 
@@ -69,6 +77,7 @@ impl ParquetReaderContext {
             parquet_file_schema.clone(),
             tupledesc_schema.clone(),
             &attributes,
+            match_by,
         );
 
         let attribute_contexts = collect_arrow_to_pg_attribute_contexts(
@@ -85,6 +94,7 @@ impl ParquetReaderContext {
             attribute_contexts,
             parquet_reader,
             binary_out_funcs,
+            match_by,
             started: false,
             finished: false,
         }
@@ -116,15 +126,23 @@ impl ParquetReaderContext {
     fn record_batch_to_tuple_datums(
         record_batch: RecordBatch,
         attribute_contexts: &[ArrowToPgAttributeContext],
+        match_by: MatchBy,
     ) -> Vec<Option<Datum>> {
         let mut datums = vec![];
 
-        for attribute_context in attribute_contexts {
+        for (attribute_idx, attribute_context) in attribute_contexts.iter().enumerate() {
             let name = attribute_context.name();
 
-            let column_array = record_batch
-                .column_by_name(name)
-                .unwrap_or_else(|| panic!("column {} not found", name));
+            let column_array = match match_by {
+                MatchBy::Position => record_batch
+                    .columns()
+                    .get(attribute_idx)
+                    .unwrap_or_else(|| panic!("column {} not found", name)),
+
+                MatchBy::Name => record_batch
+                    .column_by_name(name)
+                    .unwrap_or_else(|| panic!("column {} not found", name)),
+            };
 
             let datum = if attribute_context.needs_cast() {
                 // should fail instead of returning None if the cast fails at runtime
@@ -181,8 +199,11 @@ impl ParquetReaderContext {
                 self.buffer.extend_from_slice(&attnum_len_bytes);
 
                 // convert the columnar arrays in record batch to tuple datums
-                let tuple_datums =
-                    Self::record_batch_to_tuple_datums(record_batch, &self.attribute_contexts);
+                let tuple_datums = Self::record_batch_to_tuple_datums(
+                    record_batch,
+                    &self.attribute_contexts,
+                    self.match_by,
+                );
 
                 // write the tuple datums to the ParquetReader's internal buffer in PG copy format
                 for (datum, out_func) in tuple_datums.into_iter().zip(self.binary_out_funcs.iter())

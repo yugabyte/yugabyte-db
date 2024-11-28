@@ -12,7 +12,7 @@ use pgrx::{
 pub(crate) enum CollectAttributesFor {
     CopyFrom,
     CopyTo,
-    Struct,
+    Other,
 }
 
 // collect_attributes_for collects not-dropped attributes from the tuple descriptor.
@@ -23,7 +23,7 @@ pub(crate) fn collect_attributes_for(
 ) -> Vec<FormData_pg_attribute> {
     let include_generated_columns = match copy_operation {
         CollectAttributesFor::CopyFrom => false,
-        CollectAttributesFor::CopyTo | CollectAttributesFor::Struct => true,
+        CollectAttributesFor::CopyTo | CollectAttributesFor::Other => true,
     };
 
     let mut attributes = vec![];
@@ -35,7 +35,7 @@ pub(crate) fn collect_attributes_for(
             continue;
         }
 
-        if !include_generated_columns && attribute.attgenerated != 0 {
+        if !include_generated_columns && is_generated_attribute(attribute) {
             continue;
         }
 
@@ -53,6 +53,10 @@ pub(crate) fn collect_attributes_for(
     }
 
     attributes
+}
+
+pub(crate) fn is_generated_attribute(attribute: &FormData_pg_attribute) -> bool {
+    attribute.attgenerated != 0
 }
 
 pub(crate) fn tuple_desc(typoid: Oid, typmod: i32) -> PgTupleDesc<'static> {

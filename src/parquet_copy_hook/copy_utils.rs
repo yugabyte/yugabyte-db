@@ -15,6 +15,7 @@ use url::Url;
 
 use crate::arrow_parquet::{
     compression::{all_supported_compressions, PgParquetCompression},
+    match_by::MatchBy,
     parquet_writer::{DEFAULT_ROW_GROUP_SIZE, DEFAULT_ROW_GROUP_SIZE_BYTES},
     uri_utils::parse_uri,
 };
@@ -109,7 +110,7 @@ pub(crate) fn validate_copy_to_options(p_stmt: &PgBox<PlannedStmt>, uri: &Url) {
 }
 
 pub(crate) fn validate_copy_from_options(p_stmt: &PgBox<PlannedStmt>) {
-    validate_copy_option_names(p_stmt, &["format", "freeze"]);
+    validate_copy_option_names(p_stmt, &["format", "match_by", "freeze"]);
 
     let format_option = copy_stmt_get_option(p_stmt, "format");
 
@@ -251,6 +252,24 @@ pub(crate) fn copy_from_stmt_create_option_list(p_stmt: &PgBox<PlannedStmt>) -> 
     }
 
     new_copy_options
+}
+
+pub(crate) fn copy_from_stmt_match_by(p_stmt: &PgBox<PlannedStmt>) -> MatchBy {
+    let match_by_option = copy_stmt_get_option(p_stmt, "match_by");
+
+    if match_by_option.is_null() {
+        MatchBy::default()
+    } else {
+        let match_by = unsafe { defGetString(match_by_option.as_ptr()) };
+
+        let match_by = unsafe {
+            CStr::from_ptr(match_by)
+                .to_str()
+                .expect("match_by option is not a valid CString")
+        };
+
+        MatchBy::from_str(match_by).unwrap_or_else(|e| panic!("{}", e))
+    }
 }
 
 pub(crate) fn copy_stmt_get_option(

@@ -392,4 +392,19 @@ mod tests {
 
         assert_eq!(result_metadata, vec![10]);
     }
+
+    #[pg_test]
+    #[should_panic(expected = "unrecognized match_by method: invalid_match_by")]
+    fn test_invalid_match_by() {
+        let mut copy_from_options = HashMap::new();
+        copy_from_options.insert(
+            "match_by".to_string(),
+            CopyOptionValue::StringOption("invalid_match_by".to_string()),
+        );
+
+        let test_table =
+            TestTable::<i32>::new("int4".into()).with_copy_from_options(copy_from_options);
+        test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
+        test_table.assert_expected_and_result_rows();
+    }
 }
