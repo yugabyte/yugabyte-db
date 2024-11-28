@@ -254,7 +254,6 @@ TableInfo::~TableInfo() = default;
 
 void TableInfo::CompleteInit() {
   if (index_info && index_info->is_vector_idx()) {
-    CHECK_EQ(index_info->vector_idx_options().idx_type(), PgVectorIndexType::HNSW);
     doc_read_context->vector_idx_options = index_info->vector_idx_options();
   }
 
