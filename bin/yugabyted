@@ -525,6 +525,14 @@ def find_binary_location(binary_name):
         os.path.join(YUGABYTE_DIR, "build", "latest", "gobin"),
     ]
 
+    # Paths for pg_isready
+    dir_candidates.extend([
+        # If tar is downloaded
+        os.path.join(YUGABYTE_DIR, "postgres", "bin"),
+        # Development environment
+        os.path.join(YUGABYTE_DIR, "build", "debug-clang17-dynamic-ninja", "postgres", "bin")
+    ])
+
     # Jenkins Test Environment
     dir_candidates += [
         os.path.join(YUGABYTE_JENKINS_BUILD_DIR, "bin")
@@ -1109,9 +1117,11 @@ class ControlScript(object):
     def status(self):
         if len(os.listdir(self.configs.saved_data.get("data_dir"))) != 0:
             Output.init_animation("Fetching status...")
-            status_output = self.get_status_string().strip()
+            status_output, ret_code = self.get_status_string()
             Output.update_animation("", Output.ANIMATION_STOP)
-            Output.print_out("\n" + status_output)
+            Output.print_out("\n" + status_output.strip())
+            if ret_code:
+                sys.exit(ret_code)
         else:
             Output.print_out("{} is not running.".format(SCRIPT_NAME))
 
@@ -3270,8 +3280,8 @@ class ControlScript(object):
                     warning_msg += "\n" + warning_help_msg
 
             if is_first_run:
-                status = self.get_status_string() + \
-                    "{} YugabyteDB started successfully! To load a sample dataset, " \
+                status, _ = self.get_status_string()
+                status += "{} YugabyteDB started successfully! To load a sample dataset, " \
                     "try '{} demo'.\n" \
                     "{} Join us on Slack at {}\n" \
                     "{} Claim your free t-shirt at {}\n".format(
@@ -3497,8 +3507,8 @@ class ControlScript(object):
                     warning_msg += "\n" + warning_help_msg
 
             if is_first_run:
-                status = self.get_status_string() + \
-                    "{} YugabyteDB started successfully! To load a sample dataset, " \
+                status, _ = self.get_status_string()
+                status += "{} YugabyteDB started successfully! To load a sample dataset, " \
                     "try '{} demo'.\n" \
                     "{} Join us on Slack at {}\n" \
                     "{} Claim your free t-shirt at {}\n".format(
@@ -5823,6 +5833,18 @@ class ControlScript(object):
         Output.log("Failed to login: {}".format(err))
         return "Timeout: " + err
 
+    def check_pg_isready(self, timeout = 5, retries = 10):
+        advertise_ip = self.advertise_ip()
+        path = find_binary_location("pg_isready")
+        cmd = [path, "-h", str(advertise_ip)]
+
+        (out, err, retcode) = run_process_with_retries(cmd=cmd, log_cmd=True, retries=retries,
+                                                       timeout=timeout)
+        if retcode:
+            return False
+        else:
+            return True
+
     # Returns pretty output table.
     def get_status_string(self):
 
@@ -5858,14 +5880,18 @@ class ControlScript(object):
 
         status_info = []
         status_display_info = dict()
+        ret_code = 0
         # Make sure ascii escape characters for color encoding do not count towards char limit.
         if self.get_failed_node_processes():
             title = Output.make_bold(Output.make_red(SCRIPT_NAME))
             extra_len = len(Output.make_bold(Output.make_red("")))
             status = "Stopped"
+            ysql_status = "Not Ready"
             status_info = [
                 (Output.make_yellow("Status"), status),
+                (Output.make_yellow("YSQL Status"), ysql_status),
             ]
+            ret_code = 1
         else:
             title = Output.make_bold(Output.make_green(SCRIPT_NAME))
             extra_len = len(Output.make_bold(Output.make_green("")))
@@ -5875,17 +5901,39 @@ class ControlScript(object):
             # the leader election
             # In case of manual start or some other route, we can have a smaller timeout
             status = ""
+            if self.configs.temp_data.get("yugabyted_cmd") == "start":
+                Output.init_animation("Checking YSQL Status...")
+            pg_isready = self.check_pg_isready()
+            if self.configs.temp_data.get("yugabyted_cmd") == "start":
+                Output.update_animation("", Output.ANIMATION_STOP)
             if was_already_setup:
                 if master_addrs:
                     status = "Running."
+                    if pg_isready:
+                        ysql_status = "Ready"
+                        ret_code = 0
+                    else:
+                        ysql_status = "Not Ready"
+                        ret_code = 1
+
                 else:
                     status = "Bootstrapping."
+                    ysql_status = "Not Ready"
+                    ret_code = 0
             else:
                 if self.wait_get_all_masters(timeout=10):
                     status = "Running."
+                    if pg_isready:
+                        ysql_status = "Ready"
+                        ret_code = 0
+                    else:
+                        ysql_status = "Not Ready"
+                        ret_code = 1
                 else:
                     status = "Status command timed out as YugabyteDB \"yb-master\" " + \
                                 "process is not responding."
+                    ysql_status = "Not Ready"
+                    ret_code = 1
 
             enabled_security_features = []
             if self.configs.temp_data.get("yugabyted_cmd") == "status":
@@ -5913,7 +5961,10 @@ class ControlScript(object):
             else:
                 rf = YBAdminProxy.get_cluster_rf(master_addrs)
 
-            status_info = [(Output.make_yellow("Status"), status)]
+            status_info = [
+                (Output.make_yellow("Status"), status),
+                (Output.make_yellow("YSQL Status"), ysql_status),
+            ]
             if rf:
                 status_info.append((Output.make_yellow("Replication Factor"), rf))
 
@@ -6011,7 +6062,7 @@ class ControlScript(object):
                     format(v if v is not None else "None")
 
         status += div_line
-        return status
+        return status, ret_code
 
     # Returns pretty output table
     def get_status_string_common(self, status_info, status_display_info = None):
