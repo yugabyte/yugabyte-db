@@ -211,6 +211,11 @@ struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB> {
     return pb.colocated();
   }
 
+  HybridTime hide_hybrid_time() const {
+    DCHECK(is_hidden());
+    return HybridTime::FromPB(pb.hide_hybrid_time());
+  }
+
   // Helper to set the state of the tablet with a custom message.
   // Requires that the caller has prepared this object for write.
   // The change will only be visible after Commit().
@@ -427,6 +432,11 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
     return pb.table_type();
   }
 
+  HybridTime hide_hybrid_time() const {
+    DCHECK(is_hidden());
+    return HybridTime::FromPB(pb.hide_hybrid_time());
+  }
+
   // Return the table's namespace id.
   const NamespaceId& namespace_id() const { return pb.namespace_id(); }
   // Return the table's namespace name.
@@ -552,6 +562,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
     }
     return false;
   }
+
+  HybridTime hide_hybrid_time() const;
 
   std::string ToString() const override;
   std::string ToStringWithState() const;
