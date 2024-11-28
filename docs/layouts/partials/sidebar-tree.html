@@ -1,6 +1,8 @@
 {{ $currentPage := . }}
 {{ $menuName := .Scratch.Get "leftNavName" }}
 {{ $pageUrl := .Page.RelPermalink }}
+{{ $productsMenu := .Site.Menus.products }}
+{{ $versionDir := .Scratch.Get "docVersion" }}
 
 {{ if not (isset .Site.Menus $menuName) }}
   {{ $menuName = .Scratch.Get "docVersion" }}
@@ -10,30 +12,35 @@
 <div class="left-sidebar-wrap">
   <div class="left-sidebar-wrap-inner">
     <nav>
+      {{- range (index .Site.Menus $menuName).ByWeight -}}
+        {{- if .Params.productsDropdown -}}
+          {{- partial "products-dropdown.html" (dict "pageUrl" $pageUrl "productsMenu" $productsMenu "versionDir" $versionDir) -}}
+        {{- end -}}
+        {{- break -}}
+      {{- end -}}
       <ul class="list pa0 nl2">
-        {{- range $key, $value := .Site.Menus -}}
-          {{- if eq $menuName $key -}}
-            {{- range .ByWeight -}}
-              {{- if .Params.showSection -}}
-                {{- if .Params.hideLink -}}
-                  {{- if .HasChildren -}}
-                    {{- $parentIdentifier := printf "%s" .Identifier -}}
+        {{- range (index .Site.Menus $menuName).ByWeight -}}
+          {{- if .Params.productsDropdown -}}
+            {{- continue -}}
+          {{- end -}}
+          {{- if .Params.showSection -}}
+            {{- if .Params.hideLink -}}
+              {{- if .HasChildren -}}
+                {{- $parentIdentifier := printf "%s" .Identifier -}}
 
-                    {{- template "left-nav-tree-section" (dict "currentMenu" . "currentPage" $currentPage "menuName" $menuName "newList" false "parentIdentifier" $parentIdentifier) -}}
-                  {{- end -}}
-                {{- else -}}
-                  <li class="section{{- if .HasChildren }} submenu parent-menu {{- if or ($currentPage.HasMenuCurrent $menuName .) (eq .URL $pageUrl) }} open{{ end }}{{- end }}{{- if .Params.classes }} {{ .Params.classes }}{{- end }}">
-                    <a {{ if .URL }}href="{{ .URL }}"{{ else }}role="button"{{- end }} {{- if eq .URL $pageUrl }} class="current"{{end}} title="{{- if .Title }}{{.Title}}{{else}}{{.Name}}{{- end }}" data-identifier="{{ .Identifier }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>{{ .Name }}</a>
-
-                    {{- if and (.HasChildren) (not .Params.hideChildren) -}}
-                      {{- $parentIdentifier := printf "%s" .Identifier -}}
-                      <i></i>
-
-                      {{- template "left-nav-tree-section" (dict "currentMenu" . "currentPage" $currentPage "menuName" $menuName "newList" true "parentIdentifier" $parentIdentifier ) -}}
-                    {{- end -}}
-                  </li>
-                {{- end -}}
+                {{- template "left-nav-tree-section" (dict "currentMenu" . "currentPage" $currentPage "menuName" $menuName "newList" false "parentIdentifier" $parentIdentifier) -}}
               {{- end -}}
+            {{- else -}}
+              <li class="section{{- if .HasChildren }} submenu parent-menu {{- if or ($currentPage.HasMenuCurrent $menuName .) (eq .URL $pageUrl) }} open{{ end }}{{- end }}{{- if .Params.classes }} {{ .Params.classes }}{{- end }}">
+                <a {{ if .URL }}href="{{ .URL }}"{{ else }}role="button"{{- end }} {{- if eq .URL $pageUrl }} class="current"{{end}} title="{{- if .Title }}{{.Title}}{{else}}{{.Name}}{{- end }}" data-identifier="{{ .Identifier }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>{{ .Pre }}{{ .Name }}</a>
+
+                {{- if and (.HasChildren) (not .Params.hideChildren) -}}
+                  {{- $parentIdentifier := printf "%s" .Identifier -}}
+                  <i></i>
+
+                  {{- template "left-nav-tree-section" (dict "currentMenu" . "currentPage" $currentPage "menuName" $menuName "newList" true "parentIdentifier" $parentIdentifier ) -}}
+                {{- end -}}
+              </li>
             {{- end -}}
           {{- end -}}
         {{- end -}}

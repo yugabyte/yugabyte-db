@@ -1,7 +1,7 @@
 ---
 title: YugabyteDB Anywhere
 headerTitle: YugabyteDB Anywhere
-linkTitle: YugabyteDB Anywhere
+linkTitle: Overview
 headcontent: Self-managed Database-as-a-Service
 description: YugabyteDB delivered as a private database-as-a-service for enterprises.
 menu:
@@ -9,8 +9,6 @@ menu:
     parent: yugabytedb-anywhere
     identifier: overview-yp
     weight: 10
-    params:
-      classes: separator
 type: indexpage
 breadcrumbDisable: true
 resourcesIntro: Quick Links

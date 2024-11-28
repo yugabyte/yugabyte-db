@@ -190,6 +190,14 @@ $(document).ready(() => {
       $(event.currentTarget.parentNode).find('.open').toggleClass('open');
     });
 
+    $(document).on('click', '.products-dropdown .selected', (event) => {
+      $(event.currentTarget).toggleClass('open');
+    });
+
+    $(document).on('click', '.products-dropdown .dropdown-submenu', (event) => {
+      $(event.currentTarget.parentNode).find('.open').toggleClass('open');
+    });
+
     $(document).on('click', '.mobile-menu', () => {
       $('.page-header').toggleClass('open');
       $('.mobile-menu').toggleClass('open');

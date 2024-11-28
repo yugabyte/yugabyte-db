@@ -12,6 +12,7 @@ menu:
     parent: yugabytedb-managed
     weight: 2
     params:
+      classes: separator
       hideLink: true
 ---
 

@@ -9,6 +9,8 @@ menu:
     identifier: yba-overview
     parent: yugabytedb-anywhere
     weight: 600
+    params:
+      classes: separator
 type: docs
 ---
 

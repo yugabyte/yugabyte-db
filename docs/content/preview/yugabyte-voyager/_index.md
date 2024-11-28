@@ -1,7 +1,7 @@
 ---
 title: Migrate to YugabyteDB using Voyager
 headerTitle: YugabyteDB Voyager
-linkTitle: YugabyteDB Voyager
+linkTitle: Overview
 headcontent: Simplify migration from legacy and cloud databases to YugabyteDB
 cascade:
   unversioned: true
@@ -15,8 +15,6 @@ menu:
     identifier: yugabyte-voyager
     parent: yugabytedb-voyager
     weight: 99
-    params:
-      classes: separator
 breadcrumbDisable: true
 resourcesIntro: Quick Links
 resources:
