@@ -1312,7 +1312,8 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_last_minute(last_minute);
     tserver::PgCronSetLastMinuteResponsePB resp;
 
-    RETURN_NOT_OK(proxy_->CronSetLastMinute(req, &resp, PrepareController()));
+    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::CronSetLastMinute,
+        req, resp, ash::PggateRPC::kCronSetLastMinute));
     return ResponseStatus(resp);
   }
 
@@ -1320,7 +1321,8 @@ class PgClient::Impl : public BigDataFetcher {
     tserver::PgCronGetLastMinuteRequestPB req;
     tserver::PgCronGetLastMinuteResponsePB resp;
 
-    RETURN_NOT_OK(proxy_->CronGetLastMinute(req, &resp, PrepareController()));
+    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::CronGetLastMinute,
+        req, resp, ash::PggateRPC::kCronGetLastMinute));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp.last_minute();
   }
