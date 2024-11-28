@@ -2070,11 +2070,6 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteVectorSearch(
   // Vector should be the first value after the key.
   auto vector_col_id =
       doc_read_context.schema().column_id(doc_read_context.schema().num_key_columns());
-
-  if (request_.vector_idx_options().has_vector_column_id()) {
-    vector_col_id = request_.vector_idx_options().vector_column_id();
-  }
-
   index_doc_projection.Init(doc_read_context.schema(), {key_col_id, vector_col_id});
 
   FilteringIterator table_iter(&table_iter_);

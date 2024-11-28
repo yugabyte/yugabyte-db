@@ -62,7 +62,7 @@ class PgDml : public PgStatement {
   Status BindColumn(int attnum, PgExpr* attr_value);
 
   // Bind query vector to the current vector index search.
-  Status ANNBindVector(int vec_att_no, PgExpr* query_vec);
+  Status ANNBindVector(PgExpr* query_vec);
 
   // Bind prefetch size to the current vector index search.
   Status ANNSetPrefetchSize(int32_t prefetch_size);

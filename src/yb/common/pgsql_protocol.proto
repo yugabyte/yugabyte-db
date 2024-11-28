@@ -297,12 +297,6 @@ message PgsqlWriteRequestPB {
   optional PgsqlFetchSequenceParamsPB fetch_sequence_params = 25;
 }
 
-message PgVectorReadOptionsPB {
-  optional QLValuePB vector = 1;
-  optional int32 prefetch_size = 2;
-  optional int32 vector_column_id = 3;
-}
-
 //--------------------------------------------------------------------------------------------------
 // Data Reading Instructions - SELECT
 //--------------------------------------------------------------------------------------------------

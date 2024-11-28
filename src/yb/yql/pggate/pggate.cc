@@ -1550,8 +1550,8 @@ Status PgApiImpl::FetchRequestedYbctids(
   return select.Exec(exec_params);
 }
 
-Status PgApiImpl::DmlANNBindVector(PgStatement* handle, int vec_att_no, PgExpr* vector) {
-  return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle)).ANNBindVector(vec_att_no, vector);
+Status PgApiImpl::DmlANNBindVector(PgStatement* handle, PgExpr* vector) {
+  return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle)).ANNBindVector(vector);
 }
 
 Status PgApiImpl::DmlANNSetPrefetchSize(PgStatement* handle, int prefetch_size) {
