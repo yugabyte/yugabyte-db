@@ -249,6 +249,9 @@ class CDCServiceImpl : public CDCServiceIf {
       const ProducerTabletInfo& producer_tablet, int64_t last_active_time_passed = 0,
       bool deletion_check = false);
 
+  bool CheckTabletExpiredOrNotOfInterest(
+      const ProducerTabletInfo& producer_tablet, int64_t last_active_time_passed);
+
   Result<int64_t> GetLastActiveTime(
       const ProducerTabletInfo& producer_tablet, bool ignore_cache = false);
 
