@@ -19,17 +19,17 @@ It is strongly recommended that you take appropriate measures as outlined in the
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta 23476>}}
+|YCQL Timestamp Precision (Millis vs Micros)
+| {{<product "ycql">}}
+| {{<release "All">}}
+| {{<nobreak "21 November 2024">}}
+|
 | {{<ta CL-23623>}}
 |Upgrade failure from v2.20 to v2024.1 series
 | {{<product "ybdb">}}
 | {{<release "2.20.6.x">}}
 | {{<nobreak "02 October 2024">}}
-|
-| {{<ta 23476>}}
-|YCQL currenttimestamp() precision
-| {{<product "ycql">}}
-| {{<release "All">}}
-| {{<nobreak "27 August 2024">}}
 |
 | {{<ta 22935>}}
 |Potential issues with server-side sequence caching in multi-database clusters
