@@ -3190,10 +3190,7 @@ TEST_F(PgLibPqTest, CollationRangePresplit) {
 }
 
 Result<string> PgLibPqTest::GetPostmasterPidViaShell(pid_t backend_pid) {
-  string postmaster_pid;
-  if (!RunShellProcess(Format("ps -o ppid= $0", backend_pid), &postmaster_pid)) {
-    return STATUS_FORMAT(RuntimeError, "Failed to get postmaster pid via shell");
-  }
+  auto postmaster_pid = VERIFY_RESULT(RunShellProcess(Format("ps -o ppid= $0", backend_pid)));
 
   postmaster_pid.erase(
       std::remove(postmaster_pid.begin(), postmaster_pid.end(), '\n'), postmaster_pid.end());
@@ -3259,17 +3256,15 @@ TEST_F_EX(PgLibPqTest,
           PgLibPqYSQLBackendCrash) {
   string postmaster_pid = ASSERT_RESULT(GetPostmasterPid());
 
-  string message;
   for (int i = 0; i < 50; i++) {
     ASSERT_OK(WaitFor([postmaster_pid]() -> Result<bool> {
-      string count;
       // The Mac implementation of pgrep has a bug and requires -P before -f.
       // Otherwise, the -f argument is ignored.
-      RunShellProcess(Format("pgrep -P $0 -f 'YSQL webserver' | wc -l", postmaster_pid), &count);
+      auto count = VERIFY_RESULT(RunShellProcess(
+          Format("pgrep -P $0 -f 'YSQL webserver' | wc -l", postmaster_pid)));
       return count.find("1") != string::npos;
     }, 2500ms, "Webserver restarting..."));
-    ASSERT_TRUE(RunShellProcess(Format("pkill -9 -f 'YSQL webserver' -P $0", postmaster_pid),
-                                &message));
+    ASSERT_OK(RunShellProcess(Format("pkill -9 -f 'YSQL webserver' -P $0", postmaster_pid)));
   }
 }
 
@@ -3287,8 +3282,8 @@ TEST_F_EX(PgLibPqTest, YB_LINUX_ONLY_TEST(TestOomScoreAdjPGWebserver), PgLibPqYS
   string postmaster_pid = ASSERT_RESULT(GetPostmasterPid());
 
   // Get the webserver pid using postmaster pid
-  string webserver_pid;
-  RunShellProcess(Format("pgrep -f 'YSQL webserver' -P $0", postmaster_pid), &webserver_pid);
+  auto webserver_pid = ASSERT_RESULT(RunShellProcess(
+      Format("pgrep -f 'YSQL webserver' -P $0", postmaster_pid)));
   webserver_pid.erase(std::remove(webserver_pid.begin(), webserver_pid.end(), '\n'),
                       webserver_pid.end());
 
@@ -4357,9 +4352,8 @@ class PgPostmasterExitTest : public PgLibPqTest {
     // SIGKILL to a signal that can be caught and handled.
     RETURN_NOT_OK(WaitFor(
         [&backend_pid]() -> Result<bool> {
-          string output;
           // Ensure that the backend is no longer running.
-          return !RunShellProcess(Format("ps -p $0", backend_pid), &output);
+          return !RunShellProcess(Format("ps -p $0", backend_pid)).ok();
         },
         500ms, "Backend still running, should have exited"));
 
