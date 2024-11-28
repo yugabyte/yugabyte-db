@@ -7,11 +7,14 @@ import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
+import com.yugabyte.yw.common.operator.utils.OperatorUtils;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.ReleaseArtifact;
 import com.yugabyte.yw.models.ReleaseArtifact.Platform;
 import io.ebean.DB;
 import io.ebean.Transaction;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
+import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.informers.ResourceEventHandler;
@@ -19,11 +22,10 @@ import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Lister;
 import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.ReleaseStatus;
-import io.yugabyte.operator.v1alpha1.releasespec.config.DownloadConfig;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.util.Pair;
 
 @Slf4j
 public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnable {
@@ -35,49 +37,10 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
   private final GFlagsValidation gFlagsValidation;
   private final String namespace;
   private final RuntimeConfGetter confGetter;
+  private final OperatorUtils operatorUtils;
 
   public static Pair<String, ReleaseMetadata> crToReleaseMetadata(Release release) {
-    DownloadConfig downloadConfig = release.getSpec().getConfig().getDownloadConfig();
-    String version = release.getSpec().getConfig().getVersion();
-    ReleaseMetadata metadata = ReleaseMetadata.create(version);
-    if (downloadConfig.getS3() != null) {
-      metadata.s3 = new ReleaseMetadata.S3Location();
-      metadata.s3.paths = new ReleaseMetadata.PackagePaths();
-      metadata.s3.accessKeyId = downloadConfig.getS3().getAccessKeyId();
-      metadata.s3.secretAccessKey = downloadConfig.getS3().getSecretAccessKey();
-      metadata.s3.paths.x86_64 = downloadConfig.getS3().getPaths().getX86_64();
-      metadata.filePath = downloadConfig.getS3().getPaths().getX86_64();
-      metadata.s3.paths.x86_64_checksum = downloadConfig.getS3().getPaths().getX86_64_checksum();
-      metadata.s3.paths.helmChart = downloadConfig.getS3().getPaths().getHelmChart();
-      metadata.s3.paths.helmChartChecksum =
-          downloadConfig.getS3().getPaths().getHelmChartChecksum();
-    }
-
-    if (downloadConfig.getGcs() != null) {
-      metadata.gcs = new ReleaseMetadata.GCSLocation();
-      metadata.gcs.paths = new ReleaseMetadata.PackagePaths();
-      metadata.gcs.credentialsJson = downloadConfig.getGcs().getCredentialsJson();
-      metadata.gcs.paths.x86_64 = downloadConfig.getGcs().getPaths().getX86_64();
-      metadata.filePath = downloadConfig.getGcs().getPaths().getX86_64();
-      metadata.gcs.paths.x86_64_checksum = downloadConfig.getGcs().getPaths().getX86_64_checksum();
-      metadata.gcs.paths.helmChart = downloadConfig.getGcs().getPaths().getHelmChart();
-      metadata.gcs.paths.helmChartChecksum =
-          downloadConfig.getGcs().getPaths().getHelmChartChecksum();
-    }
-
-    if (downloadConfig.getHttp() != null) {
-      metadata.http = new ReleaseMetadata.HttpLocation();
-      metadata.http.paths = new ReleaseMetadata.PackagePaths();
-      metadata.http.paths.x86_64 = downloadConfig.getHttp().getPaths().getX86_64();
-      metadata.filePath = downloadConfig.getHttp().getPaths().getX86_64();
-      metadata.http.paths.x86_64_checksum =
-          downloadConfig.getHttp().getPaths().getX86_64_checksum();
-      metadata.http.paths.helmChart = downloadConfig.getHttp().getPaths().getHelmChart();
-      metadata.http.paths.helmChartChecksum =
-          downloadConfig.getHttp().getPaths().getHelmChartChecksum();
-    }
-    Pair<String, ReleaseMetadata> output = new Pair<>(version, metadata);
-    return output;
+    return OperatorUtils.crToReleaseMetadata(release);
   }
 
   public ReleaseReconciler(
@@ -86,7 +49,8 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
       ReleaseManager releaseManager,
       GFlagsValidation gFlagsValidation,
       String namespace,
-      RuntimeConfGetter confGetter) {
+      RuntimeConfGetter confGetter,
+      OperatorUtils operatorUtils) {
     this.resourceClient = resourceClient;
     this.informer = releaseInformer;
     this.lister = new Lister<>(informer.getIndexer());
@@ -94,14 +58,15 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
     this.namespace = namespace;
     this.gFlagsValidation = gFlagsValidation;
     this.confGetter = confGetter;
+    this.operatorUtils = operatorUtils;
   }
 
   @Override
   public void onAdd(Release release) {
-    log.info("Adding release {} ", release.getMetadata().getName());
+    ObjectMeta releaseMetadata = release.getMetadata();
+    log.info("Adding release {} ", releaseMetadata.getName());
     if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
       String version = release.getSpec().getConfig().getVersion();
-
       com.yugabyte.yw.models.Release ybRelease =
           com.yugabyte.yw.models.Release.getByVersion(version);
       if (ybRelease != null) {
@@ -111,6 +76,9 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
         return;
       }
       try (Transaction transaction = DB.beginTransaction()) {
+        releaseMetadata.setFinalizers(
+            Collections.singletonList("finalizer.k8soperator.yugabyte.com"));
+        resourceClient.inNamespace(namespace).withName(releaseMetadata.getName()).patch(release);
         ybRelease = com.yugabyte.yw.models.Release.create(version, "LTS");
         List<ReleaseArtifact> artifacts = createReleaseArtifacts(release);
         for (ReleaseArtifact artifact : artifacts) {
@@ -127,6 +95,9 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
     } else {
       Pair<String, ReleaseMetadata> releasePair = crToReleaseMetadata(release);
       try {
+        releaseMetadata.setFinalizers(
+            Collections.singletonList("finalizer.k8soperator.yugabyte.com"));
+        resourceClient.inNamespace(namespace).withName(releaseMetadata.getName()).patch(release);
         releaseManager.addReleaseWithMetadata(releasePair.getFirst(), releasePair.getSecond());
         gFlagsValidation.addDBMetadataFiles(releasePair.getFirst());
         releaseManager.updateCurrentReleases();
@@ -142,6 +113,11 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
 
   @Override
   public void onUpdate(Release oldRelease, Release newRelease) {
+    // Handle the delete workflow first, as we get a this call before onDelete is called
+    if (newRelease.getMetadata().getDeletionTimestamp() != null) {
+      onDelete(newRelease, true);
+      return;
+    }
     if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
       String version = newRelease.getSpec().getConfig().getVersion();
       com.yugabyte.yw.models.Release ybRelease =
@@ -202,15 +178,7 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
 
   @Override
   public void onDelete(Release release, boolean deletedFinalStateUnknown) {
-    log.info("Removing Release {}", release.getMetadata().getName());
-    Pair<String, ReleaseMetadata> releasePair = crToReleaseMetadata(release);
-    try {
-      releaseManager.removeRelease(releasePair.getFirst());
-      releaseManager.updateCurrentReleases();
-    } catch (RuntimeException re) {
-      log.error("Error in deleting release", re);
-    }
-    log.info("Removed release {}", release.getMetadata().getName());
+    operatorUtils.deleteReleaseCr(release);
   }
 
   @Override
