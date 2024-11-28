@@ -129,31 +129,33 @@ Status GetThreadStats(int64_t tid, ThreadStats* stats) {
   return ParseStat(buffer, nullptr, stats); // don't want the name
 }
 
-bool RunShellProcess(const string& cmd, string* msg) {
-  DCHECK(msg != nullptr);
+Result<std::string> RunShellProcess(const string& cmd) {
   FILE* fp = popen(cmd.c_str(), "r");
   if (fp == nullptr) {
-    *msg = Substitute("Failed to execute shell cmd: '$0', error was: $1", cmd,
-        ErrnoToString(errno));
-    return false;
+    return STATUS_FORMAT(
+        RuntimeError, "Failed to execute shell cmd: '$0', error was: $1",
+        cmd, ErrnoToString(errno));
   }
   // Read the first 1024 bytes of any output before pclose() so we have some idea of what
   // happened on failure.
   char buf[1024];
   size_t len = fread(buf, 1, 1024, fp);
-  string output;
-  output.assign(buf, len);
+  std::string output(buf, len);
 
   // pclose() returns an encoded form of the sub-process' exit code.
   int status = pclose(fp);
-  if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
-    *msg = output;
-    return true;
+  if (!WIFEXITED(status)) {
+    return STATUS_FORMAT(
+      RuntimeError, "Shell cmd: '$0' still running, output: $1", cmd, output);
   }
 
-  *msg = Substitute("Shell cmd: '$0' exited with an error: '$1'. Output was: '$2'", cmd,
-      ErrnoToString(errno), output);
-  return false;
+  auto exit_code = WEXITSTATUS(status);
+  if (exit_code) {
+    return STATUS_FORMAT(
+        RuntimeError, "Shell cmd: '$0' exited with an error: '$1'. Output was: '$2'",
+        cmd, exit_code, output);
+  }
+  return output;
 }
 
 } // namespace yb
