@@ -220,14 +220,6 @@ extern Bitmapset *YBGetTableFullPrimaryKeyBms(Relation rel);
 extern bool YbIsDatabaseColocated(Oid dbid, bool *legacy_colocated_database);
 
 /*
- * These functions return whether an index relation is "covered" by the main
- * table. A YB index is said to be covered if it shares the same YB storage
- * as the main table. Primary indexes are by default covered.
- */
-bool YBIsOidCoveredByMainTable(Oid index_oid);
-bool YBIsCoveredByMainTable(Relation rel);
-
-/*
  * Check if a relation has row triggers that may reference the old row.
  * Specifically for an update/delete DML (where there actually is an old row).
  */

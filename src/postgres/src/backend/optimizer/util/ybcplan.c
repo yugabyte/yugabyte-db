@@ -257,7 +257,7 @@ is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
 				{
 					Relation index;
 					index = RelationIdGetRelation(indexinfo->indexoid);
-					bool is_primary = YBIsCoveredByMainTable(index);
+					bool is_primary = index->rd_index->indisprimary;
 					RelationClose(index);
 
 					if (is_primary)

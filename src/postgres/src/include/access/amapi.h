@@ -339,10 +339,9 @@ typedef struct IndexAmRoutine
 	aminitparallelscan_function aminitparallelscan; /* can be NULL */
 	amparallelrescan_function amparallelrescan; /* can be NULL */
 
-	/* YB properties */
-	/* Whether this AM is for YB relations. */
-	bool		yb_amisforybrelation;
-	bool 		yb_amiscoveredbymaintable;
+	 /* YB properties */
+	 /* Whether this AM is for YB relations. */
+	 bool		yb_amisforybrelation;
 
 	/* YB functions */
 	yb_aminsert_function yb_aminsert;

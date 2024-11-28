@@ -4345,14 +4345,14 @@ create_indexscan_plan(PlannerInfo *root,
 		if (bitmapindex)
 			need_idx_remote = true;
 		/*
-		 * For hypothetical index where no covered index is involved, there is
+		 * For hypothetical index where primary index isn't involved, there is
 		 * no Relation. Hence don't make change to need_idx_remote.
 		 */
 		else if (!indexonly && !best_path->indexinfo->hypothetical)
 		{
 			Relation index;
 			index = RelationIdGetRelation(best_path->indexinfo->indexoid);
-			need_idx_remote = !YBIsCoveredByMainTable(index);
+			need_idx_remote = !index->rd_index->indisprimary;
 			RelationClose(index);
 		}
 		else

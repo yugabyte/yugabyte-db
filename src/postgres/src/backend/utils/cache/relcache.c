@@ -5863,7 +5863,7 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 			   relation->rd_rel->relkind == RELKIND_RELATION);
 
 		if (relation->rd_rel->relkind == RELKIND_INDEX &&
-			!YBIsCoveredByMainTable(relation))
+			!relation->rd_index->indisprimary)
 			/*
 			 * Note: caller is responsible for dropping the old DocDB table
 			 * associated with the index, if required.

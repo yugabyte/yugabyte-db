@@ -222,12 +222,12 @@ Status PgDml::BindColumn(int attr_num, PgExpr* attr_value) {
   return Status::OK();
 }
 
-Status PgDml::ANNBindVector(int vec_att_no, PgExpr *query_vec) {
+Status PgDml::ANNBindVector(PgExpr *query_vec) {
   if (secondary_index_query_) {
-    return secondary_index_query_->ANNBindVector(vec_att_no, query_vec);
+    return secondary_index_query_->ANNBindVector(query_vec);
   }
 
-  return down_cast<PgDmlRead*>(this)->ANNBindVector(vec_att_no, query_vec);
+  return down_cast<PgDmlRead*>(this)->ANNBindVector(query_vec);
 }
 
 Status PgDml::ANNSetPrefetchSize(int32_t prefetch_size) {
