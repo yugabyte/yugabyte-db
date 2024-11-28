@@ -4151,21 +4151,8 @@ YbStorePgAshSamples(TimestampTz sample_time)
 		int			pgprocno = arrayP->pgprocnos[i];
 		PGPROC 	   *proc = &allProcs[pgprocno];
 
-		/*
-		 * Don't sample prepared transactions, background workers,
-		 * if the address family has not been set yet, or if the wait
-		 * event is something that should ignored.
-		 * We don't need to take lock for reading addr_family because
-		 * we might only miss a few samples. With the default sampling
-		 * interval of 1000ms, missed samples should be at most one per
-		 * session. For large number of samples, this shouldn't matter much.
-		 * We might also have some samples, where the root_request_id and
-		 * query_id has not been set yet, but the number of such samples
-		 * should be pretty low.
-		 */
-		if (proc->pid == 0 || proc->isBackgroundWorker ||
-			proc->yb_ash_metadata.addr_family == AF_UNSPEC ||
-			!proc->yb_is_ash_metadata_set)
+		/* Don't sample if ASH metadata is not set */
+		if (!proc->yb_is_ash_metadata_set)
 			continue;
 
 		YbAshMaybeIncludeSample(proc, arrayP->numProcs, sample_time,

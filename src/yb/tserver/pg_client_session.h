@@ -362,8 +362,7 @@ void TryUpdateAshWaitState(const Pb& req) {
 // they are called before ASH is able to sample them as of 08-10-2024
 //
 // NOTE: New sync RPCs should have ASH metadata along with it, and it shouldn't
-// be overloaded here. PG background workers RPCs should also be overloaded
-// until #23901 is done
+// be overloaded here.
 inline void TryUpdateAshWaitState(const PgHeartbeatRequestPB&) {}
 inline void TryUpdateAshWaitState(const PgActiveSessionHistoryRequestPB&) {}
 inline void TryUpdateAshWaitState(const PgFetchDataRequestPB&) {}
@@ -373,7 +372,5 @@ inline void TryUpdateAshWaitState(const PgSetActiveSubTransactionRequestPB&) {}
 inline void TryUpdateAshWaitState(const PgGetDatabaseInfoRequestPB&) {}
 inline void TryUpdateAshWaitState(const PgIsInitDbDoneRequestPB&) {}
 inline void TryUpdateAshWaitState(const PgCreateSequencesDataTableRequestPB&) {}
-inline void TryUpdateAshWaitState(const PgCronSetLastMinuteRequestPB&) {}
-inline void TryUpdateAshWaitState(const PgCronGetLastMinuteRequestPB&) {}
 
 }  // namespace yb::tserver

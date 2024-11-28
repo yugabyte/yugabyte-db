@@ -767,6 +767,11 @@ typedef struct WaitEventDescriptor {
   const char *description;
 } YBCWaitEventDescriptor;
 
+typedef enum AshConstQueryIdType {
+  QUERY_ID_TYPE_DEFAULT,
+  QUERY_ID_TYPE_BACKGROUND_WORKER
+} YBCAshConstQueryIdType;
+
 typedef struct YBCBindColumn {
   int attr_num;
   const YBCPgTypeEntity* type_entity;

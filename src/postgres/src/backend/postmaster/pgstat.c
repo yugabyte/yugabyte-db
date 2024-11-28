@@ -3676,7 +3676,7 @@ pgstat_get_wait_event(uint32 wait_event_info)
 	if (wait_event_info == 0)
 	{
 		if (yb_enable_ash)
-			return "QueryProcessing";
+			return "OnCpu_Active";
 		return NULL;
 	}
 

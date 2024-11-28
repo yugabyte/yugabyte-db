@@ -1043,9 +1043,9 @@ PostmasterMain(int argc, char *argv[])
 	if (!YBIsEnabledInPostgresEnvVar())
 		ApplyLauncherRegister();
 
-	/* Register the query diagnostics background worker */	
+	/* Register the query diagnostics background worker */
 	if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())
-		YbQueryDiagnosticsBgWorkerRegister(); 
+		YbQueryDiagnosticsBgWorkerRegister();
 
 	/* Register ASH collector */
 	if (YBIsEnabledInPostgresEnvVar() && yb_enable_ash)
@@ -6053,6 +6053,9 @@ BackgroundWorkerInitializeConnection(const char *dbname, const char *username, u
 	InitPostgres(dbname, InvalidOid, username, InvalidOid, NULL, NULL,
 				 (flags & BGWORKER_BYPASS_ALLOWCONN) != 0);
 
+	if (yb_enable_ash)
+		YbAshSetMetadataForBgworkers();
+
 	/* it had better not gotten out of "init" mode yet */
 	if (!IsInitProcessingMode())
 		ereport(ERROR,
@@ -6077,6 +6080,9 @@ YbBackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid,
 
 	InitPostgres(NULL, dboid, NULL, useroid, NULL, session_id,
 				 (flags & BGWORKER_BYPASS_ALLOWCONN) != 0);
+
+	if (yb_enable_ash)
+		YbAshSetMetadataForBgworkers();
 
 	/* it had better not gotten out of "init" mode yet */
 	if (!IsInitProcessingMode())

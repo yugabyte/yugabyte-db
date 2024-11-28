@@ -200,8 +200,9 @@ YB_DEFINE_TYPED_ENUM(FixedQueryId, uint8_t,
   ((kQueryIdForFlush, 2))
   ((kQueryIdForCompaction, 3))
   ((kQueryIdForRaftUpdateConsensus, 4))
-  ((kQueryIdForCatalogRequests, 5))
+  ((kQueryIdForUncomputedQueryId, 5))
   ((kQueryIdForLogBackgroundSync, 6))
+  ((kQueryIdForYSQLBackgroundWorker, 7))
 );
 
 YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
@@ -259,6 +260,8 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kYCQLStatementStats)
   (kServersMetrics)
   (kListClones)
+  (kCronGetLastMinute)
+  (kCronSetLastMinute)
 );
 
 struct WaitStatesDescription {
