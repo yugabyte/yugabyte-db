@@ -135,6 +135,10 @@ Status YsqlManager::IsYsqlMajorCatalogUpgradeDone(
   return Status::OK();
 }
 
+bool YsqlManager::IsCurrentVersionCatalogEstablished() const {
+  return ysql_catalog_config_.IsCurrentVersionCatalogEstablished();
+}
+
 Status YsqlManager::FinalizeYsqlMajorCatalogUpgrade(
     const FinalizeYsqlMajorCatalogUpgradeRequestPB* req,
     FinalizeYsqlMajorCatalogUpgradeResponsePB* resp, rpc::RpcContext* rpc,

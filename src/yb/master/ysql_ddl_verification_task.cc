@@ -227,7 +227,6 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
     // We need to check a tablegroup instead.
     const auto tablegroup_id = GetTablegroupIdFromParentTableId(table->id());
     const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTablegroupId(tablegroup_id));
-    const auto pg_yb_tablegroup_table_id = GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid);
     oid = VERIFY_RESULT(GetPgsqlTablegroupOid(tablegroup_id));
     pg_catalog_table_id = GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid);
     name_col = kTablegroupNameColName;

@@ -42,7 +42,7 @@ static const uint32_t kTemplate1Oid = 1;              // Hardcoded for template1
 
 extern const TableId kPgProcTableId;
 extern const TableId kPgYbCatalogVersionTableId;
-extern const TableId kPgYbCatalogVersionTableIdPg11;
+extern const TableId kPgYbCatalogVersionTableIdPriorVersion;
 extern const TableId kPgTablespaceTableId;
 extern const TableId kPgSequencesDataTableId;
 extern const std::string kPgSequencesDataNamespaceId;
@@ -52,6 +52,7 @@ NamespaceId GetPgsqlNamespaceId(uint32_t database_oid);
 
 // Get YB table id for a Postgres table.
 TableId GetPgsqlTableId(uint32_t database_oid, uint32_t table_oid);
+TableId GetPgsqlTableIdPriorVersion(uint32_t database_oid, uint32_t table_oid);
 
 // Get YB tablegroup id for a Postgres tablegroup.
 TablegroupId GetPgsqlTablegroupId(uint32_t database_oid, uint32_t tablegroup_oid);
@@ -71,10 +72,12 @@ Result<uint32_t> GetPgsqlDatabaseOidByTableId(const TableId& table_id);
 Result<uint32_t> GetPgsqlDatabaseOidByTablegroupId(const TablegroupId& tablegroup_id);
 Result<uint32_t> GetPgsqlTablespaceOid(const TablespaceId& tablespace_id);
 
-// Called with any table UUID, is it a PG11 catalog ID? All other cases return false.
-bool IsPg11CatalogId(const TableId& id);
+// Called with any table UUID, is it a catalog ID for the prior version (pre-ysql major catalog
+// upgrade)? All other cases return false.
+bool IsPriorVersionCatalogId(const TableId& id);
 
-// Called with any table UUID, is it a PG15 catalog ID? All other cases return false.
-bool IsPg15CatalogId(const TableId& id);
+// Called with any table UUID, is it a catalog ID for the current version? All other cases return
+// false.
+bool IsCurrentVersionCatalogId(const TableId& id);
 
 }  // namespace yb
