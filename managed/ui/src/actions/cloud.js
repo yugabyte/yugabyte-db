@@ -96,8 +96,8 @@ export const BOOTSTRAP_PROVIDER_RESPONSE = 'BOOTSTRAP_PROVIDER_RESPONSE';
 export const DELETE_INSTANCE = 'DELETE_INSTANCE';
 export const DELETE_INSTANCE_RESPONSE = 'DELETE_INSTANCE_RESPONSE';
 
-export const RECOMMISSION_INSTANCE = 'RECOMMISSION_INSTANCE';
-export const RECOMMISSION_INSTANCE_RESPONSE = 'RECOMMISSION_INSTANCE_RESPONSE';
+export const CHANGE_NODE_INSTANCE_STATUS = 'CHANGE_NODE_INSTANCE_STATUS';
+export const CHANGE_NODE_INSTANCE_STATUS_RESPONSE = 'CHANGE_NODE_INSTANCE_STATUS_RESPONSE';
 
 export const PRECHECK_INSTANCE = 'PRECHECK_INSTANCE';
 export const PRECHECK_INSTANCE_RESPONSE = 'PRECHECK_INSTANCE_RESPONSE';
@@ -701,18 +701,18 @@ export function deleteInstanceResponse(response) {
   };
 }
 
-export function recommissionInstance(providerUUID, instanceIP) {
+export function changeNodeInstanceStatus(providerUUID, instanceIP, nodeInstanceStatus) {
   const uri = `${getProviderEndpoint(providerUUID)}/instances/${instanceIP}/state`;
-  const request = axios.put(uri, { state: 'FREE' });
+  const request = axios.put(uri, nodeInstanceStatus);
   return {
-    type: RECOMMISSION_INSTANCE,
+    type: CHANGE_NODE_INSTANCE_STATUS,
     payload: request
   };
 }
 
-export function recommissionInstanceResponse(response) {
+export function changeNodeInstanceStatusResponse(response) {
   return {
-    type: RECOMMISSION_INSTANCE_RESPONSE,
+    type: CHANGE_NODE_INSTANCE_STATUS_RESPONSE,
     payload: response
   };
 }
