@@ -45,13 +45,13 @@ To begin, download the YugabyteDB Anywhere node agent package to the node you wa
 - Alternatively, download the latest package at the following address:
 
     ```sh
-    wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_installer_full-{{<yb-version version="stable" format="build">}}-node-agent.tar.gz
+    wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/{{<yb-version version="stable" format="build">}}-node-agent.tar.gz
     ```
 
 Extract the package and go to the `scripts` directory.
 
 ```sh
-tar -xvzf node-agent.tar.gz && cd <to-do>/scripts/
+tar -xvzf {{<yb-version version="stable" format="build">}}-node-agent.tar.gz && cd {{<yb-version version="stable" format="build">}}-node-agent/scripts/
 ```
 
 ### Modify the configuration file
