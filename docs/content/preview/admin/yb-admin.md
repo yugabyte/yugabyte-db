@@ -1779,9 +1779,9 @@ A successful operation of the above command returns a message with a DB stream I
 CDC Stream ID: d540f5e4890c4d3b812933cbfd703ed3
 ```
 
-{{< note title="Note" >}}
+{{< note title="IMPLICIT checkpointing is deprecated" >}}
 
-It is recommended that you create a stream ID with `EXPLICIT` checkpointing mode only, which is also the default checkpointing mode now. The `IMPLICIT` checkpointing mode will be completely removed in future releases.
+It is recommended that you create streams in EXPLICIT checkpointing mode only (the default). IMPLICIT checkpointing mode will be completely removed in future releases.
 
 {{< /note >}}
 

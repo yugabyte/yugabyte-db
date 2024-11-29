@@ -1143,9 +1143,9 @@ PGCompatible differs from `YBExtractNewRecordState` by recursively modifying all
 
 {{< warning title="Deprecation Notice" >}}
 
-Starting with YugabyteDB v2024.2, and YugabyteDB gRPC Connector `dz.1.9.5.yb.grpc.2024.2`, the configuration `transaction.ordering` is deprecated. This configuration will be removed in future releases. As the [YugabyteDB connector](../using-logical-replication/yugabytedb-connector) based on logical replication model offers the same transactional ordering properties by default, you are advised to use the same for your use cases.
+Starting with YugabyteDB v2024.2, and YugabyteDB gRPC Connector `dz.1.9.5.yb.grpc.2024.2`, the configuration `transaction.ordering` is deprecated. This configuration will be removed in future releases. As the PostgreSQL Logical Replication-based [YugabyteDB connector](../../using-logical-replication/yugabytedb-connector) offers the same transactional ordering properties by default, you are advised to use the same for your use cases.
 
-Currently, for cases where using transactional ordering is absolutely necessary with the gRPC connector, add the following configurations to use the deprecated configuration:
+Currently, for cases where you absolutely need to use transactional ordering with the YugabyteDB gRPC Connector, add the following configurations to use the deprecated configuration:
 
 ```output.json
 {
