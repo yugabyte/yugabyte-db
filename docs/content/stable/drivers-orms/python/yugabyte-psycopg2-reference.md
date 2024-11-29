@@ -76,7 +76,7 @@ For more information, see [Cluster-aware load balancing](../../smart-drivers/#cl
 
 To use the driver, pass new connection properties for load balancing in the connection string or in the dictionary.
 
-To enable uniform load balancing across all servers, you set the `load_balance` property to `true` or `any` in the Connection string or dictionary, as per the following examples:
+To enable uniform load balancing across all servers, you set the `load_balance` property to `true` or `any` in the connection string or dictionary, as per the following examples:
 
 - Connection String
 
