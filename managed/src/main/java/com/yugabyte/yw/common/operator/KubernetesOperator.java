@@ -218,8 +218,7 @@ public class KubernetesOperator {
                           releaseManager,
                           gFlagsValidation,
                           namespace,
-                          confGetter,
-                          operatorUtils);
+                          confGetter);
                   SupportBundleReconciler supportBundleReconciler =
                       new SupportBundleReconciler(
                           ybSupportBundleIndexInformer,
