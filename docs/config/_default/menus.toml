@@ -379,7 +379,7 @@
   weight = 6
   [home.params]
     showSection = true
-    classes = "no-link no-transform"
+    classes = "no-link"
 
 [[home]]
   name = "YugabyteDB"
