@@ -260,7 +260,6 @@ class CppCassandraDriverTestIndexSlower : public CppCassandraDriverTestIndex {
   std::vector<std::string> ExtraMasterFlags() override {
     auto flags = CppCassandraDriverTestIndex::ExtraMasterFlags();
     flags.push_back("--TEST_slowdown_backfill_alter_table_rpcs_ms=3000");
-    flags.push_back("--vmodule=backfill_index=3");
     return flags;
   }
 };
@@ -2427,7 +2426,6 @@ class CppCassandraDriverTestWithMasterFailover : public CppCassandraDriverTestIn
   virtual std::vector<std::string> ExtraMasterFlags() {
     auto flags = CppCassandraDriverTest::ExtraMasterFlags();
     flags.push_back("--TEST_slowdown_backfill_alter_table_rpcs_ms=200");
-    flags.push_back("--vmodule=backfill_index=3,async_rpc_tasks=3");
     return flags;
   }
 
