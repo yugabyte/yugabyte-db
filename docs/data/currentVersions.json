@@ -10,9 +10,9 @@
       "appVersion": "2024.2.0.0-b136",
       "isStable": true,
       "isLTS": true,
-      "initialRelease": "2024-11-27",
-      "endOfMaintenance": "2026-11-27",
-      "endOfLife": "2026-05-27",
+      "initialRelease": "2024-12-02",
+      "endOfMaintenance": "2026-12-02",
+      "endOfLife": "2026-06-02",
       "PreviewBehindStable": true
     },
     {
