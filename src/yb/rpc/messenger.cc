@@ -225,7 +225,7 @@ void Messenger::Shutdown() {
     std::lock_guard guard(mutex_scheduled_tasks_);
     LOG_IF(DFATAL, !scheduled_tasks_.empty())
         << "Scheduled tasks is not empty after messenger shutdown: "
-        << yb::ToString(scheduled_tasks_);
+        << AsString(scheduled_tasks_);
   }
 
   // Safe to clear only after reactors have been shutdown as there may be CleanupHooks which access
