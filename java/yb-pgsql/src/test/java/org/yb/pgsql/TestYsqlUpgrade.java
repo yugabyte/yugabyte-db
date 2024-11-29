@@ -858,8 +858,10 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    */
   @Test
   public void dmlsUpdatePgCache() throws Exception {
-    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
+    // (DB-13032) This test touches system tables, so enable stickiness for
+    // superuser connections when Connection Manager is enabled.
     if (isTestRunningWithConnectionManager()) {
+      enableStickySuperuserConnsAndRestartCluster();
       beforeTestYsqlUpgrade();
     }
     // Querying pg_sequence_parameters involves pg_sequence cache lookup, not an actual table scan.

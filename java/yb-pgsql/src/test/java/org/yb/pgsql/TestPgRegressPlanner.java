@@ -27,14 +27,11 @@ public class TestPgRegressPlanner extends BasePgRegressTest {
         return 1800;
     }
 
-    @Override
-    protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
-        super.customizeMiniClusterBuilder(builder);
-        builder.addCommonTServerFlag("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "none");
-    }
-
     @Test
     public void testPgRegressPlanner() throws Exception {
+        // (DB-13032) This test touches system tables, so enable stickiness for
+        // superuser connections when Connection Manager is enabled.
+        enableStickySuperuserConnsAndRestartCluster();
         runPgRegressTest("yb_planner_serial_schedule");
     }
 }
