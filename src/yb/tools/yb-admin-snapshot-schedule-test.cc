@@ -296,11 +296,12 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
 
   virtual std::vector<std::string> ExtraMasterFlags() {
     // To speed up tests.
-    return { "--snapshot_coordinator_cleanup_delay_ms=1000",
+    return {
+             "--snapshot_coordinator_cleanup_delay_ms=1000",
              "--snapshot_coordinator_poll_interval_ms=500",
              "--enable_automatic_tablet_splitting=true",
              "--enable_transactional_ddl_gc=false",
-             "--vmodule=restore_sys_catalog_state=3,catalog*=3"};
+           };
   }
 
   Result<std::string> PrepareQl(MonoDelta interval = kInterval, MonoDelta retention = kRetention) {
@@ -4113,7 +4114,6 @@ class YbAdminRestoreAfterSplitTest : public YbAdminSnapshotScheduleTest {
             "--snapshot_coordinator_poll_interval_ms=500",
             "--enable_automatic_tablet_splitting=false",
             "--enable_transactional_ddl_gc=false",
-            "--vmodule=restore_sys_catalog_state=3",
             "--leader_lease_duration_ms=6000",
             "--leader_failure_max_missed_heartbeat_periods=12" };
   }
@@ -4746,10 +4746,10 @@ class YbAdminSnapshotScheduleTestWithYsqlAndManualSplitting
     : public YbAdminSnapshotScheduleAutoSplitting {
  public:
   std::vector<std::string> ExtraMasterFlags() override {
-    return { "--snapshot_coordinator_cleanup_delay_ms=1000",
-            "--snapshot_coordinator_poll_interval_ms=500",
-            "--enable_automatic_tablet_splitting=false",
-            "--vmodule=restore_sys_catalog_state=3"
+    return {
+             "--snapshot_coordinator_cleanup_delay_ms=1000",
+             "--snapshot_coordinator_poll_interval_ms=500",
+             "--enable_automatic_tablet_splitting=false",
     };
   }
   std::vector<std::string> ExtraTSFlags() override {
@@ -5121,8 +5121,7 @@ class YbAdminSnapshotScheduleFlushTest : public YbAdminSnapshotScheduleTest {
              "--snapshot_coordinator_poll_interval_ms=500",
              "--enable_automatic_tablet_splitting=true",
              "--enable_transactional_ddl_gc=false",
-             "--flush_rocksdb_on_shutdown=false",
-             "--vmodule=tablet_bootstrap=3" };
+             "--flush_rocksdb_on_shutdown=false" };
   }
 };
 
@@ -5177,7 +5176,6 @@ class YbAdminSnapshotScheduleFailoverTests : public YbAdminSnapshotScheduleTest 
              "--enable_automatic_tablet_splitting=true",
              "--max_concurrent_restoration_rpcs=1",
              "--schedule_restoration_rpcs_out_of_band=false",
-             "--vmodule=tablet_bootstrap=4",
              "--TEST_fatal_on_snapshot_verify=false",
              Format("--TEST_play_pending_uncommitted_entries=$0",
                     replay_uncommitted_ ? "true" : "false")};

@@ -7201,6 +7201,12 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   auto l = table->LockForWrite();
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
+  if (l->pb.state() == SysTablesEntryPB::PREPARING) {
+    return STATUS_EC_FORMAT(
+        TryAgain, MasterError(MasterErrorPB::TABLE_NOT_RUNNING), "Table $0 is not ready yet",
+        table->name());
+  }
+
   // If the table is already undergoing an alter operation, return failure.
   if (req->ysql_yb_ddl_rollback_enabled() && l->has_ysql_ddl_txn_verifier_state()) {
     if (l->pb_transaction_id() != req->transaction().transaction_id()) {

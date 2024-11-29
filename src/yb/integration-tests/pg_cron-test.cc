@@ -55,7 +55,6 @@ class PgCronTest : public MiniClusterTestWithClient<ExternalMiniCluster> {
 
     opts.extra_master_flags.push_back("--enable_pg_cron=true");
 
-    opts.extra_tserver_flags.push_back("--vmodule=pg_cron*=4");
     opts.extra_tserver_flags.push_back("--enable_pg_cron=true");
 
     opts.extra_tserver_flags.push_back(
