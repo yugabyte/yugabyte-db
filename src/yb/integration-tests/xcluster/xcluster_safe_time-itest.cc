@@ -180,11 +180,11 @@ class XClusterSafeTimeTest : public XClusterTestBase {
   }
 
   void VerifyHistoryCutoffTime() {
-    tserver::TSTabletManager::TabletPtrs tablet_ptrs;
     for (auto& mini_tserver : consumer_cluster()->mini_tablet_servers()) {
-      auto* ts_manager = mini_tserver->server()->tablet_manager();
-      auto* tserver = consumer_cluster()->mini_tablet_servers().front()->server();
-      /*auto tablet_peers =*/ts_manager->GetTabletPeers(&tablet_ptrs);
+      auto* tserver = mini_tserver->server();
+      auto* ts_manager = tserver->tablet_manager();
+      tserver::TSTabletManager::TabletPtrs tablet_ptrs;
+      ts_manager->GetTabletPeers(&tablet_ptrs);
       auto safe_time_result = GetSafeTime(tserver, namespace_id_);
       if (!safe_time_result) {
         FAIL() << "Expected safe time should be present.";
@@ -194,8 +194,8 @@ class XClusterSafeTimeTest : public XClusterTestBase {
       auto safe_time = *safe_time_result.get();
       for (auto& tablet : tablet_ptrs) {
         if (tablet->metadata()->namespace_id() == namespace_id_) {
-          ASSERT_EQ(safe_time, ts_manager->AllowedHistoryCutoff(
-              tablet->metadata()).primary_cutoff_ht);
+          ASSERT_EQ(safe_time,
+                    ts_manager->AllowedHistoryCutoff(tablet->metadata()).primary_cutoff_ht);
         }
       }
     }
