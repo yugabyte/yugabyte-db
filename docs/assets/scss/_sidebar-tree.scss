@@ -188,6 +188,9 @@
             cursor: auto;
             line-height: normal;
             letter-spacing: 0.5px;
+            &:before{
+              display: none;
+            }
           }
         }
 
@@ -206,27 +209,27 @@
             }
 
             &.icon-home {
-              background-image: url('/icons/home-icon.svg');
+              background-image: url('/icons/home.svg');
             }
 
             &.icon-quick-start {
-              background-image: url('/icons/connect-icon.svg');
+              background-image: url('/icons/connect.svg');
             }
 
             &.icon-database {
-              background-image: url('/icons/database-icon.svg');
+              background-image: url('/icons/database.svg');
             }
 
             &.icon-server {
-              background-image: url('/icons/server-icon.svg');
+              background-image: url('/icons/server.svg');
             }
 
             &.icon-cloud {
-              background-image: url('/icons/cloud-icon.svg');
+              background-image: url('/icons/cloud.svg');
             }
 
             &.icon-migrate {
-              background-image: url('/icons/migration-icon.svg');
+              background-image: url('/icons/migration.svg');
             }
           }
         }
@@ -235,27 +238,27 @@
           &:hover,
           &.current {
             i.icon-home {
-              background-image: url('/icons/home-hover-icon.svg');
+              background-image: url('/icons/home-hover.svg');
             }
 
             i.icon-quick-start {
-              background-image: url('/icons/connect-hover-icon.svg');
+              background-image: url('/icons/connect-hover.svg');
             }
 
             i.icon-database {
-              background-image: url('/icons/database-hover-icon.svg');
+              background-image: url('/icons/database-hover.svg');
             }
 
             i.icon-server {
-              background-image: url('/icons/server-hover-icon.svg');
+              background-image: url('/icons/server-hover.svg');
             }
 
             i.icon-cloud {
-              background-image: url('/icons/cloud-hover-icon.svg');
+              background-image: url('/icons/cloud-hover.svg');
             }
 
             i.icon-migrate {
-              background-image: url('/icons/migration-hover-icon.svg');
+              background-image: url('/icons/migration-hover.svg');
             }
           }
         }
@@ -630,7 +633,7 @@
           display: block;
           line-height: 0;
 
-          &:after{
+          &:after {
             display: inline-block;
             content: "\f107";
             color: #0B1117;
