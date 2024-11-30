@@ -132,6 +132,50 @@ def remove_internal_schemas_and_properties():
     global_openapi_dict["components"] = global_component_list
 
 
+# Remove responses marked with x-yba-api-visibility: "internal"
+def remove_internal_response():
+    global global_component_list
+    responses_to_remove = []
+    for response_name, response in global_component_list['responses'].items():
+        if is_internal(response):
+            responses_to_remove.append(response_name)
+
+    # remove internal responses
+    for response_name in responses_to_remove:
+        global_component_list["responses"].pop(response_name)
+        logger.debug("Removed internal response " + response_name)
+    # Update the global_openapi_dict with the removed components
+    global_openapi_dict["components"] = global_component_list
+
+
+# Remove request bodies marked with x-yba-api-visibility: "internal"
+def remove_internal_request_bodies():
+    global global_component_list
+    request_bodies_to_remove = []
+    for request_body_name, request_bodies in global_component_list['requestBodies'].items():
+        if is_internal(request_bodies):
+            request_bodies_to_remove.append(request_body_name)
+
+    # remove internal request bodies
+    for request_body_name in request_bodies_to_remove:
+        global_component_list["responses"].pop(request_body_name)
+        logger.debug("Removed internal response " + request_body_name)
+    # Update the global_openapi_dict with the removed components
+    global_openapi_dict["components"] = global_component_list
+
+
+# Remove components marked with x-yba-api-visibility: "internal"
+def remove_internal_components():
+    logger.info("Removing paths that are marked 'x-yba-api-visibility: internal'")
+    remove_internal_paths()
+    logger.info("Removing schemas and properties that are marked 'x-yba-api-visibility: internal'")
+    remove_internal_schemas_and_properties()
+    logger.info("Removing responses that are marked 'x-yba-api-visibility: internal'")
+    remove_internal_response()
+    logger.info("Removing request bodies that are marked 'x-yba-api-visibility: internal'")
+    remove_internal_request_bodies()
+
+
 # For paths marked with "x-yba-api-visibility: deprecated" or "preview" this method ensures:
 # 1. there is also a corresponding "x-yba-api-since: <yba-version>" at the same level
 # 2. generates the deprecation message "<b style=\"color:#ff0000\">Deprecated since YBA version
@@ -231,7 +275,7 @@ def generate_openapi_public_file():
         yaml.dump(global_openapi_dict, file, encoding='utf-8', allow_unicode=True, sort_keys=False)
 
 
-# checks if this object has x-yba-api-visibility set to given visiblity
+# checks if this object has x-yba-api-visibility set to given visibility
 def has_visibility(obj, visibility):
     return X_YBA_API_VISIBILITY in obj and obj[X_YBA_API_VISIBILITY] == visibility
 
@@ -273,13 +317,10 @@ logging.basicConfig(format='%(asctime)s [%(filename)s:%(lineno)d] %(message)s',
                     level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 load_global_file()
-logger.info("Removing paths that are marked 'x-yba-api-vibility: internal'")
-remove_internal_paths()
-logger.info("Removing schemas and properties that are marked 'x-yba-api-vibility: internal'")
-remove_internal_schemas_and_properties()
-logger.info("Processing paths that are marked 'x-yba-api-vibility: deprecated' or 'preview'")
+remove_internal_components()
+logger.info("Processing paths that are marked 'x-yba-api-visibility: deprecated' or 'preview'")
 process_visibility_in_paths()
-logger.info(("Processing schemas and properties that are marked 'x-yba-api-vibility: deprecated'"
+logger.info(("Processing schemas and properties that are marked 'x-yba-api-visibility: deprecated'"
              " or 'preview'"))
 process_visibility_in_schemas_and_properties()
 logger.info("Processing audit and authz in paths")
