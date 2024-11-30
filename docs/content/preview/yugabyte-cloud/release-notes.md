@@ -18,6 +18,12 @@ rightNav:
 
 ### 2024
 
+#### November 29, 2024
+
+##### New features
+
+- General availability for [exporting cluster metrics](../cloud-monitor/managed-integrations/) from clusters deployed in AWS and GCP to [VictoriaMetrics](https://docs.victoriametrics.com/).
+
 #### November 12, 2024
 
 ##### New features
