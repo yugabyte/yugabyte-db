@@ -79,7 +79,8 @@ using std::string;
 
 using namespace std::literals;
 
-DEFINE_NON_RUNTIME_int32(num_iter, 10000, "Number of iterations to run StaleMasterReads test");
+DEFINE_NON_RUNTIME_int32(num_iter, yb::RegularBuildVsSanitizers(10000, 1000),
+                         "Number of iterations to run StaleMasterReads test");
 
 DECLARE_int64(external_mini_cluster_max_log_bytes);
 
