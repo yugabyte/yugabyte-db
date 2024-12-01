@@ -113,6 +113,37 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     waitForDatabaseToStart();
   }
 
+protected void enableVersionMatchingAndRestartCluster(boolean higher_version_matching)
+        throws Exception {
+    Map<String, String> tsFlagMap = getTServerFlags();
+    tsFlagMap.put("allowed_preview_flags_csv",
+            ",enable_ysql_conn_mgr,ysql_conn_mgr_version_matching");
+    tsFlagMap.put("enable_ysql_conn_mgr", "true");
+    tsFlagMap.put("ysql_conn_mgr_version_matching", "true");
+
+    if (higher_version_matching) {
+        tsFlagMap.put("allowed_preview_flags_csv",
+                ",enable_ysql_conn_mgr,ysql_conn_mgr_version_matching,"
+                + "ysql_conn_mgr_version_matching_connect_higher_version");
+        tsFlagMap.put("ysql_conn_mgr_version_matching_connect_higher_version", "true");
+    } else {
+       tsFlagMap.put("allowed_preview_flags_csv",
+                ",enable_ysql_conn_mgr,ysql_conn_mgr_version_matching,"
+                + "ysql_conn_mgr_version_matching_connect_higher_version");
+        tsFlagMap.put("ysql_conn_mgr_version_matching_connect_higher_version", "false");
+    }
+
+    Map<String, String> masterFlagMap = getMasterFlags();
+    destroyMiniCluster();
+    waitForProperShutdown();
+    createMiniCluster(masterFlagMap, tsFlagMap);
+    waitForDatabaseToStart();
+  }
+
+  protected void enableVersionMatchingAndRestartCluster() throws Exception {
+    enableVersionMatchingAndRestartCluster(true);
+  }
+
   protected static class Row implements Comparable<Row>, Cloneable {
     static Row fromResultSet(ResultSet rs) throws SQLException {
       List<Object> elems = new ArrayList<>();
