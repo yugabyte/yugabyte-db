@@ -93,7 +93,7 @@ class AnsibleProcess(object):
         ask_sudo_pass = vars.pop("ask_sudo_pass", None)
         sudo_pass_file = vars.pop("sudo_pass_file", None)
         ssh_key_file = vars.pop("private_key_file", None)
-        ssh2_enabled = vars.pop("ssh2_enabled", False) and check_ssh2_bin_present()
+        ssh2_enabled = vars.pop("ssh2_enabled", False)
         local_package_path = vars.pop("local_package_path", None)
         connection_type = vars.pop("connection_type", self.DEFAULT_SSH_CONNECTION_TYPE)
         node_agent_home = vars.pop("node_agent_home", None)
