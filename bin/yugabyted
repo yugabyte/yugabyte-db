@@ -532,7 +532,7 @@ def find_binary_location(binary_name):
         # If tar is downloaded
         os.path.join(YUGABYTE_DIR, "postgres", "bin"),
         # Development environment
-        os.path.join(YUGABYTE_DIR, "build", "debug-clang17-dynamic-ninja", "postgres", "bin")
+        os.path.join(YUGABYTE_DIR, "build", "latest", "postgres", "bin")
     ])
 
     # Jenkins Test Environment
