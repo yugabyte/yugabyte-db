@@ -40,7 +40,7 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
   public void testModifiedTableWrite() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE t(k INT PRIMARY KEY, v1 INT DEFAULT 10, v2 INT DEFAULT 20)");
-      int count = BuildTypeUtil.isASAN() ? 10 : 50;
+      int count = BuildTypeUtil.isSanitizerBuild() ? 10 : 50;
 
       final AtomicBoolean errorsDetected = new AtomicBoolean(false);
       final AtomicBoolean stopped = new AtomicBoolean(false);
