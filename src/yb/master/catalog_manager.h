@@ -205,9 +205,7 @@ struct YsqlTableDdlTxnState;
 // the state of each tablet on a given tablet-server.
 //
 // Thread-safe.
-class CatalogManager : public tserver::TabletPeerLookupIf,
-                       public CatalogManagerIf,
-                       public SnapshotCoordinatorContext {
+class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContext {
   typedef std::unordered_map<NamespaceName, scoped_refptr<NamespaceInfo> > NamespaceInfoMap;
 
   class NamespaceNameMapper {
