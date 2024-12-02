@@ -15534,19 +15534,6 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 	/* Update can be done, so change reltablespace */
 	SetRelationTableSpace(rel, newTableSpace, InvalidOid);
 
-#ifdef YB_TODO
-	/* Record dependency on tablespace */
-	/* jasonk@yugabyte
-	 * - This change is needed to be moved elsewhere.
-	 * - This change is done by the following commit.
-	 *   commit 20281bd9c777d825cbf50c5bc0a0a615463a1944
-	 *   Author: Deepayan Patra <dpatra@yugabyte.com>
-	 *   Date:   Thu Nov 4 15:50:42 2021 -0400
-	 */
-	changeDependencyOnTablespace(RelationRelationId,
-								 RelationGetRelid(rel), rd_rel->reltablespace);
-#endif
-
 	InvokeObjectPostAlterHook(RelationRelationId, RelationGetRelid(rel), 0);
 
 	/* Make sure the reltablespace change is visible */
