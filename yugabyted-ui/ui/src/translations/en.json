@@ -1073,6 +1073,7 @@
               "heading": "Recommended Schema Changes",
               "objectType": "Object Type",
               "automaticDDLImport": "Automatic DDL Import",
+              "invalidObjectCount": "Invalid Object Count",
               "manualRefactoring": "Manual Refactoring",
               "compatibilityIssues": "Compatibility Issues",
               "issues": "Issues",
