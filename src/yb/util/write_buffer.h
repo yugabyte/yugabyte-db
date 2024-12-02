@@ -76,6 +76,11 @@ class WriteBuffer {
     DoAppend(value);
   }
 
+  template <class... Values>
+  void AppendValues(Values&&... values) {
+    DoAppend(std::forward<Values>(values)...);
+  }
+
   Status Write(const WriteBufferPos& pos, const char* data, const char* end);
 
   Status Write(const WriteBufferPos& pos, const char* data, size_t length) {
@@ -133,28 +138,46 @@ class WriteBuffer {
 
  private:
   void ShrinkLastBlock();
+
   template <class Out>
   void DoAppendTo(Out* out) const;
 
+  inline static size_t AppendSize(char value) {
+    return sizeof(decltype(value));
+  }
+
   template <class Value>
-  static size_t AppendSize(Value value) {
+  inline static size_t AppendSize(Value value) {
     return value.size();
   }
 
-  template <class Value>
-  static void AppendCopyTo(char* out, Value value) {
-    value.CopyTo(out);
+  template <class Value, class... Values>
+  inline static size_t AppendSize(Value&& value, Values&&... values) {
+    return AppendSize(std::forward<Value>(value)) + AppendSize(std::forward<Values>(values)...);
+  }
+
+  inline static size_t DoAppendCopyTo(char* out, char value) {
+    *out = value;
+    return AppendSize(value);
   }
 
   template <class Value>
-  static size_t AppendSize(char prefix, Value value) {
-    return value.size() + 1;
+  inline static size_t DoAppendCopyTo(char* out, Value&& value) {
+    value.CopyTo(out);
+    return AppendSize(std::forward<Value>(value));
   }
 
   template <class Value>
-  static void AppendCopyTo(char* out, char prefix, Value value) {
-    *out++ = prefix;
-    value.CopyTo(out);
+  inline static size_t DoAppendCopyTo(char* out, Value&& value, size_t copy_size) {
+    return DoAppendCopyTo(out, value.AsSlice(), copy_size);
+  }
+
+  template <class Value, class... Values>
+  inline static void AppendCopyTo(char* out, Value&& value, Values&&... values) {
+    [[maybe_unused]] const auto copied_size = DoAppendCopyTo(out, std::forward<Value>(value));
+    if constexpr (sizeof...(Values)) {
+      AppendCopyTo(out + copied_size, std::forward<Values>(values)...);
+    }
   }
 
   template <class... Args>
@@ -163,6 +186,7 @@ class WriteBuffer {
 
     auto out = last_block_free_begin_;
     auto end = last_block_free_end_;
+
     // Use bit_cast to make UBSAN happy. Otherwise, it does not like adding non-zero to nullptr.
     auto new_end = bit_cast<char*>(bit_cast<ptrdiff_t>(out) + len);
     if (PREDICT_TRUE(new_end <= end)) {
@@ -174,24 +198,73 @@ class WriteBuffer {
     DoAppendFallback(out, end - out, std::forward<Args>(value)...);
   }
 
-  void AppendToNewBlock(Slice slice);
-  void AppendToNewBlock(char prefix, Slice slice);
-
-  void DoAppendSplit(char* out, size_t out_size, Slice slice);
-  void DoAppendSplit(char* out, size_t out_size, char ch, Slice slice);
-
-  template <class Value>
-  void DoAppendFallback(char* out, size_t out_size, Value value) {
-    DoAppendFallback(out, out_size, value.AsSlice());
+  template <class... Values>
+  void AppendToNewBlock(Values&&... values) {
+    auto total_size = AppendSize(std::forward<Values>(values)...);
+    auto block_size = std::max(total_size, block_size_);
+    AllocateBlock(block_size);
+    auto& block = blocks_.back();
+    auto* block_start = block.data();
+    AppendCopyTo(block_start, std::forward<Values>(values)...);
+    last_block_free_begin_ = block_start + total_size;
+    last_block_free_end_   = block_start + block_size;
   }
 
-  template <class Value>
-  void DoAppendFallback(char* out, size_t out_size, char ch, Value value) {
-    DoAppendFallback(out, out_size, ch, value.AsSlice());
+  inline void DoAppendSplit(char* out, size_t out_size, Slice value) {
+    // It is definitely known, that the given slice does not fit the given space.
+    DoAppendSplitAtValue(out, out_size, value);
   }
 
-  void DoAppendFallback(char* out, size_t out_size, Slice slice);
-  void DoAppendFallback(char* out, size_t out_size, char ch, Slice slice);
+  template <class... Values>
+  inline void DoAppendSplitAtValue(char* out, size_t out_size, Slice value, Values&&... values) {
+    DCHECK_GT(out_size, 0);
+    DCHECK_LT(out_size, AppendSize(value));
+    memcpy(out, value.data(), out_size);
+    AppendToNewBlock(value.WithoutPrefix(out_size), std::forward<Values>(values)...);
+  }
+
+  template <class... Values>
+  inline void DoAppendSplit(char* out, size_t out_size, char value, Values&&... values) {
+    DCHECK_GT(out_size, 0);
+
+    // It is expected char value always fits the given space.
+    *(out++) = value;
+
+    // It is required to go via fallback to check the remaining available size, because this
+    // current value could be somewhere in the middle of the original list of values.
+    DoAppendFallback(out, out_size - 1, std::forward<Values>(values)...);
+  }
+
+  template <class... Values>
+  inline void DoAppendSplit(char* out, size_t out_size, Slice value, Values&&... values) {
+    DCHECK_GT(out_size, 0);
+
+    // If the value does not fit into the given space, split at this value.
+    if (out_size < value.size()) {
+      return DoAppendSplitAtValue(out, out_size, value, std::forward<Values>(values)...);
+    }
+
+    // The value fits into the given space, hence copy the value to the buffer and continue
+    // with the remaining values.
+    const auto copied = DoAppendCopyTo(out, value);
+    DCHECK_EQ(copied, value.size());
+    DoAppendFallback(out + copied, out_size - copied, std::forward<Values>(values)...);
+  }
+
+  // It is expected a value is either a char, or a Slice, or implements AsSlice().
+  template <class Value, class... Values>
+  inline void DoAppendSplit(char* out, size_t out_size, Value&& value, Values&&... values) {
+    return DoAppendSplit(out, out_size, value.AsSlice(), std::forward<Values>(values)...);
+  }
+
+  template <class... Values>
+  inline void DoAppendFallback(char* out, size_t out_size, Values&&... values) {
+    if (out_size == 0) {
+      return AppendToNewBlock(std::forward<Values>(values)...);
+    }
+
+    DoAppendSplit(out, out_size, std::forward<Values>(values)...);
+  }
 
   size_t filled_in_last_block() const {
     return last_block_free_begin_ ? last_block_free_begin_ - blocks_.back().data() : 0;

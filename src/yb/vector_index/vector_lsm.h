@@ -16,18 +16,14 @@
 #include <future>
 #include <map>
 
-#include "yb/common/hybrid_time.h"
-
-#include "yb/dockv/key_bytes.h"
-
 #include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/metadata.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/util/kv_util.h"
 #include "yb/util/locks.h"
 
-#include "yb/vector_index/vector_lsm.fwd.h"
 #include "yb/vector_index/vector_index_if.h"
 
 namespace yb::vector_index {
@@ -81,9 +77,15 @@ struct VectorLSMTypes {
 
 using BaseTableKeysBatch = std::vector<std::pair<VectorId, Slice>>;
 
+struct VectorLSMInsertContext {
+  const rocksdb::UserFrontiers* frontiers = nullptr;
+};
+
 class VectorLSMKeyValueStorage {
  public:
-  virtual Status StoreBaseTableKeys(const BaseTableKeysBatch& batch, HybridTime write_time) = 0;
+  virtual Status StoreBaseTableKeys(
+      const BaseTableKeysBatch& batch, const VectorLSMInsertContext& context) = 0;
+
   virtual Result<KeyBuffer> ReadBaseTableKey(VectorId vertex_id) = 0;
 
   virtual ~VectorLSMKeyValueStorage() = default;
@@ -129,9 +131,7 @@ class VectorLSM {
 
   rocksdb::UserFrontierPtr GetFlushedFrontier();
 
-  Status Insert(
-      std::vector<InsertEntry> entries, HybridTime write_time,
-      const rocksdb::UserFrontiers* frontiers);
+  Status Insert(std::vector<InsertEntry> entries, const VectorLSMInsertContext& context);
 
   Result<SearchResults> Search(const Vector& query_vector, const SearchOptions& options) const;
 

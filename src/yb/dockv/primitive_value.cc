@@ -70,8 +70,6 @@ using yb::util::DecodeDoubleFromKey;
     case ValueEntryType::kRedisSortedSet: [[fallthrough]];  \
     case ValueEntryType::kRedisTS: [[fallthrough]]; \
     case ValueEntryType::kRowLock: [[fallthrough]]; \
-    case ValueEntryType::kFloatVector: [[fallthrough]]; \
-    case ValueEntryType::kUInt64Vector: [[fallthrough]]; \
     case ValueEntryType::kTombstone: \
   break
 
@@ -352,6 +350,8 @@ std::string PrimitiveValue::ValueToString() const {
       return FormatBytesAsStr(str_val_);
     case ValueEntryType::kUuid:
       return uuid_val_.ToString();
+    case ValueEntryType::kVectorId:
+      return Substitute("VectorId($0)", uuid_val_.ToString());
     case ValueEntryType::kRowLock:
       return "l";
     case ValueEntryType::kArrayIndex:
@@ -383,10 +383,6 @@ std::string PrimitiveValue::ValueToString() const {
       return Substitute("SubTransactionId($0)", uint32_val_);
     case ValueEntryType::kWriteId:
       return Format("WriteId($0)", int32_val_);
-    case ValueEntryType::kFloatVector:
-      return AsString(*float_vector_);
-    case ValueEntryType::kUInt64Vector:
-      return AsString(*uint64_vector_);
     case ValueEntryType::kMaxByte:
       return "0xff";
   }
@@ -395,6 +391,7 @@ std::string PrimitiveValue::ValueToString() const {
 
 // Values that contains only KeyEntryType, w/o any additional data.
 #define CASE_EMPTY_KEY_ENTRY_TYPES \
+    case KeyEntryType::kVectorIndexMetadata: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kCounter: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kFalse: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kFalseDescending: FALLTHROUGH_INTENDED; \
@@ -467,7 +464,6 @@ void KeyEntryValue::AppendToKey(KeyBytes* key_bytes) const {
       return;
 
     case KeyEntryType::kUInt64:
-    case KeyEntryType::kVertexId:
       key_bytes->AppendUInt64(uint64_val_);
       return;
 
@@ -532,6 +528,11 @@ void KeyEntryValue::AppendToKey(KeyBytes* key_bytes) const {
 
     case KeyEntryType::kInetaddressDescending: {
       key_bytes->AppendDescendingString(inetaddress_val_->ToBytes());
+      return;
+    }
+
+    case KeyEntryType::kVectorId: {
+      key_bytes->AppendRawBytes(uuid_val_.AsSlice());
       return;
     }
 
@@ -1030,7 +1031,6 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
 
     case KeyEntryType::kUInt64Descending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kUInt64:
-    case KeyEntryType::kVertexId:
       if (slice->size() < sizeof(uint64_t)) {
         return STATUS_SUBSTITUTE(Corruption,
                                  "Not enough bytes to decode a 64-bit integer: $0",
@@ -1120,7 +1120,8 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
     }
 
     case KeyEntryType::kTransactionApplyState: FALLTHROUGH_INTENDED;
-    case KeyEntryType::kExternalTransactionId:
+    case KeyEntryType::kExternalTransactionId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kVectorId:
       if (slice->size() < boost::uuids::uuid::static_size()) {
         return STATUS_FORMAT(Corruption, "Not enough bytes for UUID: $0", slice->size());
       }
@@ -1402,16 +1403,22 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
       type_ = value_type;
       return Status::OK();
     }
-    case ValueEntryType::kRowLock: {
+
+    case ValueEntryType::kVectorId: {
+      if (slice.size() != kUuidSize) {
+        return STATUS_FORMAT(Corruption,
+            "Invalid number of bytes to decode Uuid: $0, need $1",
+            slice.size(), kUuidSize);
+      }
+      new(&uuid_val_) Uuid(VERIFY_RESULT(Uuid::FullyDecode(slice)));
       type_ = value_type;
       return Status::OK();
     }
 
-    case ValueEntryType::kFloatVector:
-      return DecodeVector(slice, value_type, float_vector_, FloatReader());
-
-    case ValueEntryType::kUInt64Vector:
-      return DecodeVector(slice, value_type, uint64_vector_, UInt64Reader());
+    case ValueEntryType::kRowLock: {
+      type_ = value_type;
+      return Status::OK();
+    }
 
     case ValueEntryType::kInvalid: [[fallthrough]];
     case ValueEntryType::kPackedRowV1: [[fallthrough]];
@@ -1611,6 +1618,18 @@ Status PrimitiveValue::DecodeToQLValuePB(
       return Status::OK();
     }
 
+    case ValueEntryType::kVectorId: {
+      Uuid uuid = VERIFY_RESULT(Uuid::FullyDecode(slice));
+      if (data_type == DataType::UUID) {
+        QLValue::set_uuid_value(uuid, ql_value);
+      } else if (data_type == DataType::TIMEUUID) {
+        QLValue::set_timeuuid_value(uuid, ql_value);
+      } else {
+        break;
+      }
+      return Status::OK();
+    }
+
     case ValueEntryType::kJsonb: {
       if (slice.size() < sizeof(int64_t)) {
         return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
@@ -1639,9 +1658,7 @@ Status PrimitiveValue::DecodeToQLValuePB(
     case ValueEntryType::kRedisSet: [[fallthrough]];
     case ValueEntryType::kRedisTS: [[fallthrough]];
     case ValueEntryType::kRedisSortedSet: [[fallthrough]];
-    case ValueEntryType::kGinNull: [[fallthrough]];
-    case ValueEntryType::kFloatVector: [[fallthrough]];
-    case ValueEntryType::kUInt64Vector:
+    case ValueEntryType::kGinNull:
       break;
 
     case ValueEntryType::kInvalid: [[fallthrough]];
@@ -1791,6 +1808,7 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueEntryType::kInetaddress: return *inetaddress_val_ == *(other.inetaddress_val_);
     case ValueEntryType::kTransactionId: FALLTHROUGH_INTENDED;
     case ValueEntryType::kTableId: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kVectorId: FALLTHROUGH_INTENDED;
     case ValueEntryType::kUuid: return uuid_val_ == other.uuid_val_;
 
     case ValueEntryType::kGinNull: return gin_null_val_ == other.gin_null_val_;
@@ -1851,6 +1869,7 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
     }
     case ValueEntryType::kTransactionId: FALLTHROUGH_INTENDED;
     case ValueEntryType::kTableId: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kVectorId: FALLTHROUGH_INTENDED;
     case ValueEntryType::kUuid:
       return CompareUsingLessThan(uuid_val_, other.uuid_val_);
     case ValueEntryType::kGinNull:
@@ -1871,7 +1890,7 @@ PrimitiveValue::PrimitiveValue(ValueEntryType value_type)
     new(&str_val_) std::string();
   } else if (value_type == ValueEntryType::kInetaddress) {
     inetaddress_val_ = new InetAddress();
-  } else if (value_type == ValueEntryType::kUuid) {
+  } else if (value_type == ValueEntryType::kUuid || value_type == ValueEntryType::kVectorId) {
     new(&uuid_val_) Uuid();
   } else if (value_type == ValueEntryType::kFrozen) {
     frozen_val_ = new FrozenContainer();
@@ -1885,7 +1904,7 @@ PrimitiveValue::PrimitiveValue(const PrimitiveValue& other) {
   } else if (other.type_ == ValueEntryType::kInetaddress) {
     type_ = other.type_;
     inetaddress_val_ = new InetAddress(*(other.inetaddress_val_));
-  } else if (other.type_ == ValueEntryType::kUuid) {
+  } else if (other.type_ == ValueEntryType::kUuid || other.type_ == ValueEntryType::kVectorId) {
     type_ = other.type_;
     new(&uuid_val_) Uuid(std::move((other.uuid_val_)));
   } else if (other.type_ == ValueEntryType::kFrozen) {
@@ -1946,10 +1965,6 @@ PrimitiveValue::~PrimitiveValue() {
     delete inetaddress_val_;
   } else if (type_ == ValueEntryType::kFrozen) {
     delete frozen_val_;
-  } else if (type_ == ValueEntryType::kFloatVector) {
-    delete float_vector_;
-  } else if (type_ == ValueEntryType::kUInt64Vector) {
-    delete uint64_vector_;
   }
   // HybridTime does not need its destructor to be called, because it is a simple wrapper over an
   // unsigned 64-bit integer.
@@ -2061,7 +2076,7 @@ const FrozenContainer& PrimitiveValue::GetFrozen() const {
 }
 
 const Uuid& PrimitiveValue::GetUuid() const {
-  DCHECK(type_ == ValueEntryType::kUuid ||
+  DCHECK(type_ == ValueEntryType::kUuid || type_ == ValueEntryType::kVectorId ||
          type_ == ValueEntryType::kTransactionId || type_ == ValueEntryType::kTableId);
   return uuid_val_;
 }
@@ -2085,7 +2100,7 @@ void PrimitiveValue::MoveFrom(PrimitiveValue* other) {
   } else if (other->type_ == ValueEntryType::kInetaddress) {
     type_ = other->type_;
     inetaddress_val_ = new InetAddress(std::move(*(other->inetaddress_val_)));
-  } else if (other->type_ == ValueEntryType::kUuid) {
+  } else if (other->type_ == ValueEntryType::kUuid || other->type_ == ValueEntryType::kVectorId) {
     type_ = other->type_;
     new(&uuid_val_) Uuid(std::move((other->uuid_val_)));
   } else if (other->type_ == ValueEntryType::kFrozen) {
@@ -2541,13 +2556,6 @@ KeyEntryValue KeyEntryValue::GinNull(uint8_t v) {
   return result;
 }
 
-KeyEntryValue KeyEntryValue::VectorVertexId(uint64_t v) {
-  KeyEntryValue result;
-  result.type_ = KeyEntryType::kVertexId;
-  result.uint64_val_ = v;
-  return result;
-}
-
 KeyEntryValue::~KeyEntryValue() {
   Destroy();
 }
@@ -2772,7 +2780,6 @@ std::string KeyEntryValue::ToString(AutoDecodeKeys auto_decode_keys) const {
     case KeyEntryType::kUInt32Descending:
       return std::to_string(uint32_val_);
     case KeyEntryType::kUInt64: [[fallthrough]];
-    case KeyEntryType::kVertexId: [[fallthrough]];
     case KeyEntryType::kUInt64Descending:
       return std::to_string(uint64_val_);
     case KeyEntryType::kInt64Descending: FALLTHROUGH_INTENDED;
@@ -2834,6 +2841,8 @@ std::string KeyEntryValue::ToString(AutoDecodeKeys auto_decode_keys) const {
       return "kWeakObjectLock";
     case KeyEntryType::kStrongObjectLock:
       return "kStrongObjectLock";
+    case KeyEntryType::kVectorIndexMetadata:
+      return "Vector Index Metadata";
     case KeyEntryType::kMergeFlags: FALLTHROUGH_INTENDED;
     case KeyEntryType::kBitSet: FALLTHROUGH_INTENDED;
     case KeyEntryType::kGroupEnd: FALLTHROUGH_INTENDED;
@@ -2844,6 +2853,8 @@ std::string KeyEntryValue::ToString(AutoDecodeKeys auto_decode_keys) const {
     case KeyEntryType::kExternalIntents: FALLTHROUGH_INTENDED;
     case KeyEntryType::kGreaterThanIntentType:
       break;
+    case KeyEntryType::kVectorId:
+      return Substitute("VectorId($0)", uuid_val_.ToString());
     case KeyEntryType::kLowest:
       return "-Inf";
     case KeyEntryType::kHighest:
@@ -2887,7 +2898,6 @@ int KeyEntryValue::CompareTo(const KeyEntryValue& other) const {
     case KeyEntryType::kUInt64Descending:
       return CompareUsingLessThan(other.uint64_val_, uint64_val_);
     case KeyEntryType::kUInt64:
-    case KeyEntryType::kVertexId:
       return CompareUsingLessThan(uint64_val_, other.uint64_val_);
     case KeyEntryType::kInt64: FALLTHROUGH_INTENDED;
     case KeyEntryType::kArrayIndex:
@@ -2935,6 +2945,7 @@ int KeyEntryValue::CompareTo(const KeyEntryValue& other) const {
     case KeyEntryType::kExternalTransactionId: FALLTHROUGH_INTENDED;
     case KeyEntryType::kTransactionId: FALLTHROUGH_INTENDED;
     case KeyEntryType::kTableId: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kVectorId: FALLTHROUGH_INTENDED;
     case KeyEntryType::kUuidDescending:
       return CompareUsingLessThan(other.uuid_val_, uuid_val_);
     case KeyEntryType::kUuid:
@@ -3108,7 +3119,6 @@ bool operator==(const KeyEntryValue& lhs, const KeyEntryValue& rhs) {
 
     case KeyEntryType::kUInt64Descending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kUInt64:
-    case KeyEntryType::kVertexId:
         return lhs.uint64_val_ == rhs.uint64_val_;
 
     case KeyEntryType::kInt64Descending: FALLTHROUGH_INTENDED;
@@ -3147,7 +3157,8 @@ bool operator==(const KeyEntryValue& lhs, const KeyEntryValue& rhs) {
     case KeyEntryType::kTransactionId: FALLTHROUGH_INTENDED;
     case KeyEntryType::kTableId: FALLTHROUGH_INTENDED;
     case KeyEntryType::kUuidDescending: FALLTHROUGH_INTENDED;
-    case KeyEntryType::kUuid:
+    case KeyEntryType::kUuid: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kVectorId:
         return lhs.uuid_val_ == rhs.uuid_val_;
 
     case KeyEntryType::kColumnId: FALLTHROUGH_INTENDED;
@@ -3161,30 +3172,6 @@ bool operator==(const KeyEntryValue& lhs, const KeyEntryValue& rhs) {
     IGNORE_SPECIAL_KEY_ENTRY_TYPES;
   }
   FATAL_INVALID_ENUM_VALUE(KeyEntryType, lhs.type_);
-}
-
-void PrimitiveValue::AppendEncodedTo(const FloatVector& v, ValueBuffer& buffer) {
-  AppendEncodedVector(
-      dockv::ValueEntryType::kFloatVector, v, buffer, [](auto*& out, float entry) {
-    Write<uint32_t, VectorEndian>(out, bit_cast<uint32_t>(util::CanonicalizeFloat(entry)));
-  });
-}
-
-void PrimitiveValue::AppendEncodedTo(const UInt64Vector& v, ValueBuffer& buffer) {
-  AppendEncodedVector(
-      dockv::ValueEntryType::kUInt64Vector, v, buffer, [](auto*& out, uint64_t entry) {
-    Write<uint64_t, VectorEndian>(out, entry);
-  });
-}
-
-Result<FloatVector> PrimitiveValue::DecodeFloatVector(Slice input) {
-  return DoDecodeVector<FloatVector>(
-      input, dockv::ValueEntryType::kFloatVector, FloatReader());
-}
-
-Result<UInt64Vector> PrimitiveValue::DecodeUInt64Vector(Slice input) {
-  return DoDecodeVector<UInt64Vector>(
-      input, dockv::ValueEntryType::kUInt64Vector, UInt64Reader());
 }
 
 Slice PrimitiveValue::NullSlice() {

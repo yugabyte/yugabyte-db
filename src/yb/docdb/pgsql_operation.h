@@ -108,6 +108,11 @@ class PgsqlWriteOperation :
 
   class RowPackContext;
 
+  template <typename Value>
+  Status DoInsertColumn(
+      const DocOperationApplyData& data, ColumnId column_id, const ColumnSchema& column,
+      Value&& column_value, RowPackContext* pack_context);
+
   Status InsertColumn(
       const DocOperationApplyData& data, const PgsqlColumnValuePB& column_value,
       RowPackContext* pack_context);

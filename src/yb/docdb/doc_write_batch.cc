@@ -29,6 +29,7 @@
 #include "yb/dockv/schema_packing.h"
 #include "yb/dockv/subdocument.h"
 #include "yb/dockv/value_type.h"
+#include "yb/dockv/vector_id.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/write_batch.h"
@@ -448,12 +449,17 @@ Status DocWriteBatch::SetPrimitiveInternal(
       });
       kv_pair_ptr = &put_batch_.back();
     }
+
     auto& encoded_value = kv_pair_ptr->value;
     control_fields.AppendEncoded(&encoded_value);
     size_t prefix_len = encoded_value.size();
 
     if (value.encoded_value()) {
+      // TODO(AR) This assignment completely neglects control_fields and prefix_len. It looks very
+      // unsafe and could be a bug.
       encoded_value.assign(value.encoded_value()->cdata(), value.encoded_value()->size());
+    } else if (value.vector_value()) {
+      value.vector_value()->EncodeTo(&encoded_value);
     } else {
       dockv::AppendEncodedValue(value.value_pb(), &encoded_value);
       if (value.custom_value_type() != ValueEntryType::kInvalid) {
@@ -955,6 +961,14 @@ const QLValuePB kNullValuePB;
 }
 
 ValueRef::ValueRef(ValueEntryType value_type) : value_pb_(&kNullValuePB), value_type_(value_type) {
+}
+
+ValueRef::ValueRef(std::reference_wrapper<const dockv::DocVectorValue> vector_value,
+                   SortingType sorting_type)
+      : value_pb_(&(vector_value.get().value())),
+        sorting_type_(sorting_type),
+        value_type_(dockv::ValueEntryType::kInvalid),
+        vector_value_(&vector_value.get()) {
 }
 
 std::string ValueRef::ToString() const {

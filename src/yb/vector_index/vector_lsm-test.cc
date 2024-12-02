@@ -15,10 +15,6 @@
 
 #include <google/protobuf/any.pb.h>
 
-#include "yb/docdb/docdb_rocksdb_util.h"
-
-#include "yb/dockv/doc_key.h"
-
 #include "yb/rocksdb/metadata.h"
 
 #include "yb/rpc/thread_pool.h"
@@ -47,7 +43,7 @@ class SimpleVectorLSMKeyValueStorage : public VectorLSMKeyValueStorage {
  public:
   SimpleVectorLSMKeyValueStorage() = default;
 
-  Status StoreBaseTableKeys(const BaseTableKeysBatch& batch, HybridTime write_time) {
+  Status StoreBaseTableKeys(const BaseTableKeysBatch& batch, const VectorLSMInsertContext&) {
     for (const auto& [vertex_id, base_table_key] : batch) {
       storage_.emplace(vertex_id, KeyBuffer(base_table_key));
     }
@@ -217,7 +213,6 @@ auto GenerateVectorIds(size_t num) {
 Status VectorLSMTest::InsertCube(
     FloatVectorLSM& lsm, size_t dimensions, size_t block_size,
     size_t min_entry_idx) {
-  HybridTime write_time(1000, 0);
   inserted_entries_ = CubeInsertEntries(dimensions);
   for (size_t i = 0; i < inserted_entries_.size(); i += block_size) {
     auto begin = inserted_entries_.begin() + i;
@@ -233,7 +228,7 @@ Status VectorLSMTest::InsertCube(
     TestFrontiers frontiers;
     frontiers.Smallest().SetVertexId(block_entries.front().vertex_id);
     frontiers.Largest().SetVertexId(block_entries.front().vertex_id);
-    RETURN_NOT_OK(lsm.Insert(block_entries, write_time, &frontiers));
+    RETURN_NOT_OK(lsm.Insert(block_entries, { .frontiers = &frontiers }));
   }
   return Status::OK();
 }

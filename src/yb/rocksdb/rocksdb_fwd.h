@@ -23,6 +23,7 @@ class CompactionContext;
 class CompactionFeed;
 class DataBlockAwareIndexInternalIterator;
 class DB;
+class DirectWriteHandler;
 class Env;
 class MemTable;
 class InternalIterator;

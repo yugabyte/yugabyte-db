@@ -52,6 +52,7 @@
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/primitive_value_util.h"
 #include "yb/dockv/reader_projection.h"
+#include "yb/dockv/vector_id.h"
 
 #include "yb/gutil/macros.h"
 
@@ -857,10 +858,11 @@ class VectorIndexKeyProvider {
       auto vector_value = table_row.GetValueByIndex(indexed_column_index);
       RSTATUS_DCHECK(vector_value, Corruption, "Vector column ($0) missing in row: $1",
                      vector_index_.column_id(), table_row.ToString());
+      auto encoded_value = dockv::EncodedDocVectorValue::FromSlice(vector_value->binary_value());
       search_result_.push_back(VectorIndexSearchResultEntry {
         // TODO(vector_index) Avoid decoding vector_slice for each vector
         .encoded_distance = VERIFY_RESULT(vector_index_.Distance(
-            vector_slice_, vector_value->binary_value())),
+            vector_slice_, encoded_value.data)),
         .key = KeyBuffer(iterator.impl().GetTupleId()),
       });
     }
@@ -1157,19 +1159,32 @@ Status PgsqlWriteOperation::InsertColumn(
                     InvalidArgument, "Only values support during insert");
   const auto& value = column_value.expr().value();
 
-  if (!pack_context || !VERIFY_RESULT(pack_context->Add(column_id, value))) {
-    // Inserting into specified column.
-    DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(column_id));
-    // If the column has a missing value, we don't want any null values that are inserted to be
-    // compacted away. So we store kNullLow instead of kTombstone.
-    RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-        sub_path,
-        IsNull(value) && !IsNull(column.missing_value()) ?
-            ValueRef(dockv::ValueEntryType::kNullLow) : ValueRef(value, column.sorting_type()),
-        data.read_operation_data, request_.stmt_id()));
+  if (!column.is_vector()) {
+    return DoInsertColumn(data, column_id, column, value, pack_context);
   }
 
-  return Status::OK();
+  dockv::DocVectorValue vector_value(value, vector_index::VectorId::GenerateRandom());
+  return DoInsertColumn(data, column_id, column, vector_value, pack_context);
+}
+
+template <class Value>
+Status PgsqlWriteOperation::DoInsertColumn(
+    const DocOperationApplyData& data, ColumnId column_id, const ColumnSchema& column,
+    Value&& value, RowPackContext* pack_context) {
+  if (pack_context && VERIFY_RESULT(pack_context->Add(column_id, value))) {
+    return Status::OK();
+  }
+
+  // Inserting into specified column.
+  DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(column_id));
+
+  // If the column has a missing value, we don't want any null values that are inserted to be
+  // compacted away. So we store kNullLow instead of kTombstone.
+  return data.doc_write_batch->InsertSubDocument(
+      sub_path,
+      IsNull(value) && !IsNull(column.missing_value()) ?
+          ValueRef(dockv::ValueEntryType::kNullLow) : ValueRef(value, column.sorting_type()),
+      data.read_operation_data, request_.stmt_id());
 }
 
 Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUpsert is_upsert) {
@@ -2062,8 +2077,6 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteVectorSearch(
   DummyANNFactory<FloatVector> ann_factory;
   auto ann_store = ann_factory.Create(ysql_query_vec->dim);
 
-  auto index_extraction_schema = Schema();
-  std::vector<ColumnSchema> indexed_column_ids;
   dockv::ReaderProjection index_doc_projection;
 
   auto key_col_id = doc_read_context.schema().column_id(0);
@@ -2090,14 +2103,15 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteVectorSearch(
     ++scanned_table_rows_;
     if (fetch_result == FetchResult::Found) {
       auto vec_value = row.GetValueByColumnId(vector_col_id);
-      if (!vec_value.has_value()) continue;
+      if (!vec_value.has_value()) {
+        continue;
+      }
+
       // Add the vector to the ANN store
-      auto vec = VERIFY_RESULT(VectorANN<FloatVector>::GetVectorFromYSQLWire(
-          *pointer_cast<const vector_index::YSQLVector*>(vec_value->binary_value().data()),
-          vec_value->binary_value().size()));
+      auto encoded = dockv::EncodedDocVectorValue::FromSlice(vec_value->binary_value());
+      auto vec = VERIFY_RESULT(VectorANN<FloatVector>::GetVectorFromYSQLWire(encoded.data));
       auto doc_iter = down_cast<DocRowwiseIterator*>(table_iter_.get());
-      ann_store->Add(vector_index::VectorId::GenerateRandom(),
-                     std::move(vec), doc_iter->GetTupleId());
+      ann_store->Add(VERIFY_RESULT(encoded.DecodeId()), std::move(vec), doc_iter->GetTupleId());
     }
   }
 

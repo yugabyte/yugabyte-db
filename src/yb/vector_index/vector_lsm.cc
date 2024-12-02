@@ -25,7 +25,7 @@
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/flags.h"
-#include "yb/util/file_util.h"
+#include "yb/util/path_util.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/unique_lock.h"
 
@@ -415,8 +415,7 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::Insert(
-    std::vector<InsertEntry> entries, HybridTime write_time,
-    const rocksdb::UserFrontiers* frontiers) {
+    std::vector<InsertEntry> entries, const VectorLSMInsertContext& context) {
   std::shared_ptr<MutableChunk> chunk;
   size_t num_tasks = ceil_div<size_t>(entries.size(), FLAGS_vector_index_task_size);
   {
@@ -426,10 +425,11 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
     if (!mutable_chunk_) {
       RETURN_NOT_OK(CreateNewMutableChunk(entries.size()));
     }
-    if (!mutable_chunk_->RegisterInsert(entries, options_, num_tasks, frontiers)) {
+    if (!mutable_chunk_->RegisterInsert(entries, options_, num_tasks, context.frontiers)) {
       RETURN_NOT_OK(RollChunk(entries.size()));
-      RSTATUS_DCHECK(mutable_chunk_->RegisterInsert(entries, options_, num_tasks, frontiers),
-                     RuntimeError, "Failed to register insert into a new mutable chunk");
+      RSTATUS_DCHECK(
+          mutable_chunk_->RegisterInsert(entries, options_, num_tasks, context.frontiers),
+          RuntimeError, "Failed to register insert into a new mutable chunk");
     }
     chunk = mutable_chunk_;
   }
@@ -448,7 +448,7 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
     tasks_it->Add(vertex_id, std::move(v));
     keys_batch.emplace_back(vertex_id, base_table_key.AsSlice());
   }
-  RETURN_NOT_OK(options_.key_value_storage->StoreBaseTableKeys(keys_batch, write_time));
+  RETURN_NOT_OK(options_.key_value_storage->StoreBaseTableKeys(keys_batch, context));
   insert_registry_->ExecuteTasks(tasks);
 
   return Status::OK();

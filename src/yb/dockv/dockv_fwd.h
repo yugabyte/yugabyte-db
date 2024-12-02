@@ -26,6 +26,7 @@ namespace yb::dockv {
 class DocKey;
 class DocKeyDecoder;
 class DocPath;
+class DocVectorValue;
 class KeyBytes;
 class KeyEntryValue;
 class PackedValueV1;

@@ -183,6 +183,8 @@ class Slice {
 
   char consume_byte();
 
+  char consume_byte_back();
+
   bool FirstByteIs(char c) const {
     return !empty() && *begin_ == c;
   }

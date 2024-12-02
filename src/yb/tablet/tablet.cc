@@ -2590,7 +2590,7 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
     if (it == vector_indexes_map_.end()) {
       auto vector_index = VERIFY_RESULT(docdb::CreateVectorIndex(
           metadata_->rocksdb_dir(), *vector_index_thread_pool_provider_(),
-          indexed_table_info->doc_read_context->table_key_prefix(), *index_info));
+          indexed_table_info->doc_read_context->table_key_prefix(), *index_info, doc_db()));
       it = vector_indexes_map_.emplace(table_info.table_id(), std::move(vector_index)).first;
       auto& indexes = vector_indexes_list_;
       if (indexes) {

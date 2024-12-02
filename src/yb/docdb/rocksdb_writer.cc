@@ -782,10 +782,11 @@ Status ApplyIntentsContext::Complete(rocksdb::DirectWriteHandler* handler) {
     PutApplyState(transaction_id().AsSlice(), commit_ht_, write_id_, value_parts, handler);
   }
   if (vector_indexes_) {
+    DocHybridTime write_time { commit_ht_, write_id_ };
     for (size_t i = 0; i != vector_index_batches_.size(); ++i) {
       if (!vector_index_batches_[i].empty()) {
         RETURN_NOT_OK((*vector_indexes_)[i]->Insert(
-            vector_index_batches_[i], commit_ht_, frontiers()));
+            vector_index_batches_[i], frontiers(), handler, write_time));
       }
     }
   }
