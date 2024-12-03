@@ -1,19 +1,27 @@
-## yba user
+## yba user update
 
-Manage YugabyteDB Anywhere users
+Update a YugabyteDB Anywhere user
 
 ### Synopsis
 
-Manage YugabyteDB Anywhere users
+Update a user in YugabyteDB Anywhere
 
 ```
-yba user [flags]
+yba user update [flags]
+```
+
+### Examples
+
+```
+yba user update --email <user-email> --timezone "America/Los_Angeles"
 ```
 
 ### Options
 
 ```
-  -h, --help   help for user
+  -e, --email string      [Required] The email of the user to be updated.
+      --timezone string   [Optional] The timezone of the user to be updated.
+  -h, --help              help for update
 ```
 
 ### Options inherited from parent commands
@@ -32,11 +40,5 @@ yba user [flags]
 
 ### SEE ALSO
 
-* [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
-* [yba user create](yba_user_create.md)	 - Create a YugabyteDB Anywhere user
-* [yba user delete](yba_user_delete.md)	 - Delete a YugabyteDB Anywhere user
-* [yba user describe](yba_user_describe.md)	 - Describe a YugabyteDB Anywhere user
-* [yba user list](yba_user_list.md)	 - List YugabyteDB Anywhere users
-* [yba user reset-password](yba_user_reset-password.md)	 - Reset password of currently logged in YugabyteDB Anywhere user
-* [yba user update](yba_user_update.md)	 - Update a YugabyteDB Anywhere user
+* [yba user](yba_user.md)	 - Manage YugabyteDB Anywhere users
 
