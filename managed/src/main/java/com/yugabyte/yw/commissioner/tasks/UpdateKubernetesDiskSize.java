@@ -48,6 +48,11 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
   }
 
   @Override
+  protected boolean isSkipPrechecks() {
+    return true;
+  }
+
+  @Override
   public void run() {
     try {
       checkUniverseVersion();
@@ -59,7 +64,6 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
               taskParams().expectedUniverseVersion, null /* Txn callback */);
       taskParams().useNewHelmNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
       preTaskActions();
-      addBasicPrecheckTasks();
 
       // String softwareVersion = userIntent.ybSoftwareVersion;
       // primary and readonly clusters disk resize
