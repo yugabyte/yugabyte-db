@@ -18,6 +18,8 @@
 #include "yb/util/logging.h"
 
 #include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/lock_manager_traits.h"
+
 #include "yb/dockv/intent.h"
 
 #include "yb/gutil/macros.h"
@@ -28,25 +30,20 @@
 
 namespace yb {
 
-class RefCntPrefix;
-
 namespace docdb {
 
 // We don't care about actual content of this struct here, since it is an implementation detail
 // of LockManagerImpl.
-template <typename T>
+template <typename LockManager>
 struct LockedBatchEntry;
 
-// With the exception of table-locks/object-locks, type T below always takes value 'RefCntPrefix'.
-// In context of table/object locking, T takes the value 'ObjectLockPrefix'. The LockManagerImpl
-// uses the field 'key' to handle lock acquisition requests.
-template <typename T>
+template <typename LockManager>
 struct LockBatchEntry {
-  T key;
+  LockManagerTraits<LockManager>::KeyType key;
   dockv::IntentTypeSet intent_types;
 
   // Memory is owned by LockManagerImpl.
-  LockedBatchEntry<T>* locked = nullptr;
+  LockedBatchEntry<LockManager>* locked = nullptr;
 
   // In context of object locking, we need to ignore conflicts with self when obtaining another
   // mode of lock on an object. The field is set to the transaction's current lock state on the
@@ -66,7 +63,7 @@ class LockBatch {
  public:
   LockBatch() {}
   LockBatch(SharedLockManager* lock_manager,
-            LockBatchEntries<RefCntPrefix>&& key_to_intent_type,
+            LockBatchEntries<SharedLockManager>&& key_to_intent_type,
             CoarseTimePoint deadline);
   // Construct a LockBatch from the provided unlocked_batch instance. If successful, assumes
   // ownership of UnlockedBatch::key_to_type_.
@@ -95,7 +92,7 @@ class LockBatch {
   // re-lock the keys.
   std::optional<UnlockedBatch> Unlock();
 
-  const LockBatchEntries<RefCntPrefix>& Get() const { return data_.key_to_type; }
+  const LockBatchEntries<SharedLockManager>& Get() const { return data_.key_to_type; }
 
  private:
   void MoveFrom(LockBatch* other);
@@ -108,7 +105,8 @@ class LockBatch {
 
   struct Data {
     Data() = default;
-    Data(LockBatchEntries<RefCntPrefix>&& key_to_type_, SharedLockManager* shared_lock_manager_)
+    Data(LockBatchEntries<SharedLockManager>&& key_to_type_,
+         SharedLockManager* shared_lock_manager_)
         : key_to_type(std::move(key_to_type_)), shared_lock_manager(shared_lock_manager_) {}
 
     Data(Data&&) = default;
@@ -117,7 +115,7 @@ class LockBatch {
     Data(const Data&) = delete;
     Data& operator=(const Data&) = delete;
 
-    LockBatchEntries<RefCntPrefix> key_to_type;
+    LockBatchEntries<SharedLockManager> key_to_type;
 
     SharedLockManager* shared_lock_manager = nullptr;
 
@@ -131,7 +129,7 @@ class LockBatch {
 // UnlockedBatch via LockBatch::Unlock().
 class UnlockedBatch {
  public:
-  UnlockedBatch(LockBatchEntries<RefCntPrefix>&& key_to_type_,
+  UnlockedBatch(LockBatchEntries<SharedLockManager>&& key_to_type_,
                 SharedLockManager* shared_lock_manager_);
 
   UnlockedBatch(UnlockedBatch&& other) { MoveFrom(&other); }
@@ -145,12 +143,12 @@ class UnlockedBatch {
 
   UnlockedBatch& operator=(UnlockedBatch&& other) { MoveFrom(&other); return *this; }
 
-  const LockBatchEntries<RefCntPrefix>& Get() const { return key_to_type_; }
+  const LockBatchEntries<SharedLockManager>& Get() const { return key_to_type_; }
 
  private:
   void MoveFrom(UnlockedBatch* other);
 
-  LockBatchEntries<RefCntPrefix> key_to_type_;
+  LockBatchEntries<SharedLockManager> key_to_type_;
 
   SharedLockManager* shared_lock_manager_ = nullptr;
 

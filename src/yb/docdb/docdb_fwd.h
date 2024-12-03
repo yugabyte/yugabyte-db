@@ -76,8 +76,8 @@ struct VersionedTransaction;
 
 using DocKeyHash = uint16_t;
 using DocReadContextPtr = std::shared_ptr<DocReadContext>;
-template <typename T>
-using LockBatchEntries = std::vector<LockBatchEntry<T>>;
+template <typename LockManager>
+using LockBatchEntries = std::vector<LockBatchEntry<LockManager>>;
 // Lock state stores the number of locks acquired for each intent type.
 // The count for each intent type resides in sequential bits (block) in lock state.
 // For example the count of locks on a particular intent type could be received as:

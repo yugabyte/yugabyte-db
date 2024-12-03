@@ -26,7 +26,7 @@ namespace yb {
 namespace docdb {
 
 LockBatch::LockBatch(
-    SharedLockManager* lock_manager, LockBatchEntries<RefCntPrefix>&& key_to_intent_type,
+    SharedLockManager* lock_manager, LockBatchEntries<SharedLockManager>&& key_to_intent_type,
     CoarseTimePoint deadline) : data_(std::move(key_to_intent_type), lock_manager) {
   Init(deadline);
   if (!data_.status.ok()) {
@@ -45,7 +45,7 @@ LockBatch::LockBatch(UnlockedBatch* unlocked_batch, CoarseTimePoint deadline)
 }
 
 void LockBatch::Init(CoarseTimePoint deadline) {
-  if (!empty() && !data_.shared_lock_manager->Lock(&data_.key_to_type, deadline)) {
+  if (!empty() && !data_.shared_lock_manager->Lock(data_.key_to_type, deadline)) {
     std::string batch_str;
     if (FLAGS_dump_lock_keys) {
       batch_str = Format(", batch: $0", data_.key_to_type);
@@ -81,13 +81,13 @@ void LockBatch::MoveFrom(LockBatch* other) {
   other->data_.key_to_type.clear();
 }
 
-template <typename T>
-std::string LockBatchEntry<T>::ToString() const {
+template <typename LockManager>
+std::string LockBatchEntry<LockManager>::ToString() const {
   return YB_STRUCT_TO_STRING(key, intent_types, existing_state);
 }
 
 UnlockedBatch::UnlockedBatch(
-    LockBatchEntries<RefCntPrefix>&& key_to_type,
+    LockBatchEntries<SharedLockManager>&& key_to_type,
     SharedLockManager* shared_lock_manager):
   key_to_type_(std::move(key_to_type)), shared_lock_manager_(shared_lock_manager) {}
 
@@ -108,8 +108,8 @@ void UnlockedBatch::MoveFrom(UnlockedBatch* other) {
   other->shared_lock_manager_ = nullptr;
 }
 
-template struct LockBatchEntry<RefCntPrefix>;
-template struct LockBatchEntry<ObjectLockPrefix>;
+template struct LockBatchEntry<SharedLockManager>;
+template struct LockBatchEntry<ObjectLockManager>;
 
 }  // namespace docdb
 }  // namespace yb
