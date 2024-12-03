@@ -708,6 +708,38 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
+  @Test
+  public void testTablegroupAcls() throws Exception {
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE USER user_1");
+      stmt.execute("GRANT CREATE ON SCHEMA public TO user_1");
+      stmt.execute("CREATE TABLEGROUP test_grant");
+      stmt.execute("GRANT ALL ON TABLEGROUP test_grant TO user_1");
+      stmt.execute("SET ROLE user_1");
+      stmt.execute("CREATE TABLE e(a text) TABLEGROUP test_grant");
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      stmt.execute("CREATE USER user_2");  // While user is yugabyte
+      stmt.execute("SET ROLE user_1");
+      stmt.execute("CREATE TABLE e2(a text) TABLEGROUP test_grant");
+      stmt.execute("SET ROLE user_2");
+      runInvalidQuery(stmt, "CREATE TABLE e3(a text) TABLEGROUP test_grant",
+                      "permission denied for tablegroup test_grant");
+    }
+  }
+
   private void doColocatedDatabaseRestoreToOriginalDB() throws Exception {
     String initialDBName = "yb_colocated";
     int num_tables = 2;
