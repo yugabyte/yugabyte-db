@@ -150,6 +150,7 @@ PrepareQuery(ParseState *pstate, PrepareStmt *stmt,
 		 * made sticky.
 		 */
 		increment_sticky_object_count();
+		elog(LOG, "Incrementing sticky object count for prepared statement %s", stmt->name);
 	}
 }
 
