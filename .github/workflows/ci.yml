@@ -41,7 +41,7 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.82.0
+          toolchain: 1.83.0
           target: x86_64-unknown-linux-gnu
           components: rustfmt, clippy, llvm-tools-preview
 
@@ -88,7 +88,7 @@ jobs:
 
       - name: Install and configure pgrx
         run: |
-          cargo install --locked cargo-pgrx@0.12.8
+          cargo install --locked cargo-pgrx@0.12.9
           cargo pgrx init --pg${{ env.PG_MAJOR }} $(which pg_config)
 
       - name: Install cargo-llvm-cov for coverage report

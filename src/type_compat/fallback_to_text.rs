@@ -14,6 +14,7 @@ use pgrx::{
 static mut FALLBACK_TO_TEXT_CONTEXT: OnceCell<FallbackToTextContext> = OnceCell::new();
 
 fn get_fallback_to_text_context() -> &'static mut FallbackToTextContext {
+    #[allow(static_mut_refs)]
     unsafe {
         FALLBACK_TO_TEXT_CONTEXT
             .get_mut()
@@ -22,8 +23,12 @@ fn get_fallback_to_text_context() -> &'static mut FallbackToTextContext {
 }
 
 pub(crate) fn reset_fallback_to_text_context(typoid: Oid, typmod: i32) {
-    unsafe { FALLBACK_TO_TEXT_CONTEXT.take() };
+    #[allow(static_mut_refs)]
+    unsafe {
+        FALLBACK_TO_TEXT_CONTEXT.take()
+    };
 
+    #[allow(static_mut_refs)]
     unsafe {
         FALLBACK_TO_TEXT_CONTEXT
             .set(FallbackToTextContext::new(typoid, typmod))

@@ -29,10 +29,14 @@ use super::copy_utils::{
 static mut PARQUET_READER_CONTEXT_STACK: Vec<ParquetReaderContext> = vec![];
 
 pub(crate) fn peek_parquet_reader_context() -> Option<&'static mut ParquetReaderContext> {
-    unsafe { PARQUET_READER_CONTEXT_STACK.last_mut() }
+    #[allow(static_mut_refs)]
+    unsafe {
+        PARQUET_READER_CONTEXT_STACK.last_mut()
+    }
 }
 
 pub(crate) fn pop_parquet_reader_context(throw_error: bool) {
+    #[allow(static_mut_refs)]
     let mut current_parquet_reader_context = unsafe { PARQUET_READER_CONTEXT_STACK.pop() };
 
     if current_parquet_reader_context.is_none() {
@@ -53,7 +57,10 @@ pub(crate) fn pop_parquet_reader_context(throw_error: bool) {
 }
 
 pub(crate) fn push_parquet_reader_context(reader_ctx: ParquetReaderContext) {
-    unsafe { PARQUET_READER_CONTEXT_STACK.push(reader_ctx) };
+    #[allow(static_mut_refs)]
+    unsafe {
+        PARQUET_READER_CONTEXT_STACK.push(reader_ctx)
+    };
 }
 
 // This function is called by the COPY FROM command to read data from the parquet file

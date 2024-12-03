@@ -15,6 +15,7 @@ use pgrx::{
 static mut POSTGIS_CONTEXT: OnceCell<PostgisContext> = OnceCell::new();
 
 fn get_postgis_context() -> &'static PostgisContext {
+    #[allow(static_mut_refs)]
     unsafe {
         POSTGIS_CONTEXT
             .get()
@@ -23,8 +24,12 @@ fn get_postgis_context() -> &'static PostgisContext {
 }
 
 pub(crate) fn reset_postgis_context() {
-    unsafe { POSTGIS_CONTEXT.take() };
+    #[allow(static_mut_refs)]
+    unsafe {
+        POSTGIS_CONTEXT.take()
+    };
 
+    #[allow(static_mut_refs)]
     unsafe {
         POSTGIS_CONTEXT
             .set(PostgisContext::new())

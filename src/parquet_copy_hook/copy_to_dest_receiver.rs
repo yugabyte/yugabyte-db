@@ -134,10 +134,14 @@ impl CopyToParquetDestReceiver {
 static mut PARQUET_WRITER_CONTEXT_STACK: Vec<ParquetWriterContext> = vec![];
 
 pub(crate) fn peek_parquet_writer_context() -> Option<&'static mut ParquetWriterContext> {
-    unsafe { PARQUET_WRITER_CONTEXT_STACK.last_mut() }
+    #[allow(static_mut_refs)]
+    unsafe {
+        PARQUET_WRITER_CONTEXT_STACK.last_mut()
+    }
 }
 
 pub(crate) fn pop_parquet_writer_context(throw_error: bool) {
+    #[allow(static_mut_refs)]
     let mut current_parquet_writer_context = unsafe { PARQUET_WRITER_CONTEXT_STACK.pop() };
 
     if current_parquet_writer_context.is_none() {
@@ -158,7 +162,10 @@ pub(crate) fn pop_parquet_writer_context(throw_error: bool) {
 }
 
 pub(crate) fn push_parquet_writer_context(writer_ctx: ParquetWriterContext) {
-    unsafe { PARQUET_WRITER_CONTEXT_STACK.push(writer_ctx) };
+    #[allow(static_mut_refs)]
+    unsafe {
+        PARQUET_WRITER_CONTEXT_STACK.push(writer_ctx)
+    };
 }
 
 #[pg_guard]

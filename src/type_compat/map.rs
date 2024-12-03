@@ -17,6 +17,7 @@ use crate::pgrx_utils::is_domain_of_array_type;
 static mut MAP_CONTEXT: OnceCell<MapExtensionContext> = OnceCell::new();
 
 fn get_map_context() -> &'static mut MapExtensionContext {
+    #[allow(static_mut_refs)]
     unsafe {
         MAP_CONTEXT
             .get_mut()
@@ -25,8 +26,12 @@ fn get_map_context() -> &'static mut MapExtensionContext {
 }
 
 pub(crate) fn reset_map_context() {
-    unsafe { MAP_CONTEXT.take() };
+    #[allow(static_mut_refs)]
+    unsafe {
+        MAP_CONTEXT.take()
+    };
 
+    #[allow(static_mut_refs)]
     unsafe {
         MAP_CONTEXT
             .set(MapExtensionContext::new())
@@ -146,8 +151,9 @@ impl FromDatum for Map<'_> {
     }
 }
 
-unsafe impl<'a> UnboxDatum for Map<'a> {
-    type As<'src> = Self
+unsafe impl UnboxDatum for Map<'_> {
+    type As<'src>
+        = Self
     where
         Self: 'src;
 

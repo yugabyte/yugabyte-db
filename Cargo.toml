@@ -37,12 +37,12 @@ parquet = {version = "53", default-features = false, features = [
     "zstd",
     "object_store",
 ]}
-pgrx = "=0.12.8"
+pgrx = "=0.12.9"
 tokio = {version = "1", default-features = false, features = ["rt", "time", "macros"]}
 url = "2"
 
 [dev-dependencies]
-pgrx-tests = "=0.12.8"
+pgrx-tests = "=0.12.9"
 
 [profile.dev]
 panic = "unwind"

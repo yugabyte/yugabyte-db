@@ -34,6 +34,7 @@ static mut PREV_PROCESS_UTILITY_HOOK: ProcessUtility_hook_type = None;
 #[pg_guard]
 #[no_mangle]
 pub(crate) extern "C" fn init_parquet_copy_hook() {
+    #[allow(static_mut_refs)]
     unsafe {
         if ProcessUtility_hook.is_some() {
             PREV_PROCESS_UTILITY_HOOK = ProcessUtility_hook
