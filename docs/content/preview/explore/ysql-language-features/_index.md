@@ -38,9 +38,9 @@ YugabyteDB offers extensive support for SQL data types, closely aligning with Po
 To learn more, see [Data types](data-types/)
 {{</lead>}}
 
-## Reading data
+## Read data
 
-YugabyteDB provides robust support for **Data Manipulation Language (DML)** statements, which are used to query data in a database. These include standard SQL commands like SELECT, FROM, GROUP BY, HAVING. YugabyteDB's DML capabilities align closely with PostgreSQL, allowing for complex queries in a distributed environment. Understanding these DML features is crucial for developers and database users to effectively interact with and manipulate data in YugabyteDB's distributed environment.
+YugabyteDB provides robust support for Data Manipulation Language (DML) statements, which are used to query data in a database. These include standard SQL commands like SELECT, FROM, GROUP BY, and HAVING. YugabyteDB's DML capabilities align closely with PostgreSQL, allowing for complex queries in a distributed environment. Understanding these DML features is crucial for developers and database users to effectively interact with and manipulate data in YugabyteDB's distributed environment.
 
 {{<lead link="queries/">}}
 To learn more, see [Read data](queries/)
@@ -48,7 +48,7 @@ To learn more, see [Read data](queries/)
 
 ## Write data
 
-YugabyteDB provides robust support for **Data Manipulation Language (DML)** statements, which are used to modify data in a database. These include standard SQL commands like INSERT, UPDATE, and DELETE. YugabyteDB's DML capabilities align closely with PostgreSQL, allowing for complex queries, transactions, and data modifications in a distributed environment. Understanding these DML features is crucial for developers and database users to effectively interact with and manipulate data in YugabyteDB's distributed environment.
+YugabyteDB provides robust support for Data Manipulation Language (DML) statements, which are used to modify data in a database. These include standard SQL commands like INSERT, UPDATE, and DELETE. YugabyteDB's DML capabilities align closely with PostgreSQL, allowing for complex queries, transactions, and data modifications in a distributed environment. Understanding these DML features is crucial for developers and database users to effectively interact with and manipulate data in YugabyteDB's distributed environment.
 
 {{<lead link="data-manipulation/">}}
 To learn more, see [Write data](data-manipulation/)

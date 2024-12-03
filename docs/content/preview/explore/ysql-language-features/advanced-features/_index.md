@@ -72,5 +72,5 @@ To understand how to use triggers effectively in your applications, see [Trigger
 Views are virtual tables that present a customized view of data from underlying tables. They are defined by a SELECT statement and can be used to simplify complex queries, restrict access to certain data, or provide a more user-friendly interface.
 
 {{<lead link="views/">}}
-To understand how to create and operate on view, see [Views](views/)
+To understand how to create and operate on views, see [Views](views/)
 {{</lead>}}
