@@ -67,7 +67,6 @@
 	(yb_ash_track_nested_queries != NULL && yb_ash_track_nested_queries()))
 
 /* GUC variables */
-bool yb_ash_enable_infra;
 bool yb_enable_ash;
 int yb_ash_circular_buffer_size;
 int yb_ash_sampling_interval_ms;
@@ -148,17 +147,6 @@ static YBCAshSample *ExtractAshDataFromRange(int start_index, int end_index,
 void GetAshDataForQueryDiagnosticsBundle(TimestampTz start_time, TimestampTz end_time,
 										 int64 query_id, StringInfo output_buffer,
 										 char *description);
-
-bool
-yb_enable_ash_check_hook(bool *newval, void **extra, GucSource source)
-{
-	if (*newval && !yb_ash_enable_infra)
-	{
-		GUC_check_errdetail("ysql_yb_ash_enable_infra must be enabled.");
-		return false;
-	}
-	return true;
-}
 
 bool
 yb_ash_circular_buffer_size_check_hook(int *newval, void **extra, GucSource source)
@@ -923,7 +911,7 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 	if (!yb_ash)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("ysql_yb_ash_enable_infra gflag must be enabled")));
+				 errmsg("ysql_yb_enable_ash gflag must be enabled")));
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))

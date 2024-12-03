@@ -1077,7 +1077,7 @@ PostmasterMain(int argc, char *argv[])
 		YbQueryDiagnosticsBgWorkerRegister();
 
 	/* Register ASH collector */
-	if (YBIsEnabledInPostgresEnvVar() && yb_ash_enable_infra)
+	if (YBIsEnabledInPostgresEnvVar() && yb_enable_ash)
 		YbAshRegister();
 
 	/*
@@ -6166,7 +6166,7 @@ BackgroundWorkerInitializeConnection(const char *dbname, const char *username, u
 				 NULL,			/* no out_dbname */
 				 NULL);			/* session id */
 
-	if (yb_ash_enable_infra)
+	if (yb_enable_ash)
 		YbAshSetMetadataForBgworkers();
 
 	/* it had better not gotten out of "init" mode yet */
@@ -6198,7 +6198,7 @@ YbBackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid,
 				 NULL,			/* no out_dbname */
 				 session_id);	/* session id */
 
-	if (yb_ash_enable_infra)
+	if (yb_enable_ash)
 		YbAshSetMetadataForBgworkers();
 
 	/* it had better not gotten out of "init" mode yet */

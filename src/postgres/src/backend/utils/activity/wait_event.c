@@ -141,7 +141,7 @@ pgstat_get_wait_event_type(uint32 wait_event_info)
 	/* report process as not waiting. */
 	if (wait_event_info == 0)
 	{
-		if (yb_ash_enable_infra)
+		if (yb_enable_ash)
 			return "Cpu";
 		return NULL;
 	}
@@ -179,7 +179,7 @@ pgstat_get_wait_event_type(uint32 wait_event_info)
 			break;
 		default:
 			event_type = "???";
-			if (yb_ash_enable_infra)
+			if (yb_enable_ash)
 				event_type = YBCGetWaitEventType(wait_event_info);
 			break;
 	}
@@ -203,7 +203,7 @@ pgstat_get_wait_event(uint32 wait_event_info)
 	/* report process as not waiting. */
 	if (wait_event_info == 0)
 	{
-		if (yb_ash_enable_infra)
+		if (yb_enable_ash)
 			return "OnCpu_Active";
 		return NULL;
 	}
@@ -262,7 +262,7 @@ pgstat_get_wait_event(uint32 wait_event_info)
 			}
 		default:
 			event_name = "unknown wait event";
-			if (yb_ash_enable_infra)
+			if (yb_enable_ash)
 				event_name = YBCGetWaitEventName(wait_event_info);
 			break;
 	}
@@ -1260,10 +1260,10 @@ yb_wait_event_desc(PG_FUNCTION_ARGS)
 	uint32		i;
 
 	/* ASH must be loaded first */
-	if (!yb_ash_enable_infra)
+	if (!yb_enable_ash)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("ysql_yb_ash_enable_infra gflag must be enabled")));
+				 errmsg("ysql_yb_enable_ash gflag must be enabled")));
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))

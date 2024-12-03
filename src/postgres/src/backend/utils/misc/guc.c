@@ -2949,30 +2949,15 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_ash_enable_infra", PGC_POSTMASTER, STATS_MONITORING,
-			gettext_noop("Allocate shared memory for ASH, start the "
-							"background worker, create instrumentation hooks "
-							"and enable querying the yb_active_session_history "
-							"view."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&yb_ash_enable_infra,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"yb_enable_ash", PGC_SIGHUP, STATS_MONITORING,
-			gettext_noop("Starts sampling and instrumenting YSQL and YCQL queries, "
-						 "and various background activities. This does nothing if "
-						 "ysql_yb_ash_enable_infra is disabled."),
+		{"yb_enable_ash", PGC_POSTMASTER, STATS_MONITORING,
+			gettext_noop("Enable Active Session History for sampling and instrumenting YSQL "
+						 "and YCQL queries, and various background activities."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_ash,
 		true,
-		yb_enable_ash_check_hook, NULL, NULL
+		NULL, NULL, NULL
 	},
 
 	{
