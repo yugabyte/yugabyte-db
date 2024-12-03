@@ -631,9 +631,20 @@ activate_pex() {
       log "detected python version mismatch between pex venv and ${PYTHON_EXECUTABLE}. Deleting pex venv to regenerate"
       rm -rf "$pex_venv_dir"
     fi
-    if [[ ! -d $pex_venv_dir && -d $PEX_PATH ]]; then
+    if [[ ! -e $pex_marker && -d $PEX_PATH ]]; then
+      rm -rf "$pex_venv_dir"
       deactivate_virtualenv
+      export PEX_VERBOSE=3
       PEX_TOOLS=1 $PYTHON_EXECUTABLE $PEX_PATH venv $pex_venv_dir
+      unset PEX_VERBOSE
+    fi
+    $VENV_PY -c "import ybops"
+    if [[ $? -eq 0 ]]; then
+      touch $pex_marker
+    else
+      log "Error importing ybops in pex environment, pexvenv may need to be regenerated"
+      rm -rf "$pex_venv_dir"
+      exit 1
     fi
   ) 9>>"$pex_lock"
   set +e
@@ -673,4 +684,5 @@ log_dir=$HOME/logs
 
 readonly virtualenv_dir=$yb_devops_home/$YB_VIRTUALENV_BASENAME
 readonly pex_venv_dir=$yb_devops_home/$YB_PEXVENV_BASENAME
+readonly pex_marker="$pex_venv_dir/.pex_valid"
 readonly pex_lock="/tmp/pexlock"
