@@ -70,4 +70,4 @@ set(YB_TEST_LINK_LIBS
 
 ADD_YB_TEST(hnsw_util-test)
 ADD_YB_TEST(vector_lsm-test)
-ADD_YB_TEST(hnswlib_index_merge-test)
+ADD_YB_TEST(index_merge-test)
