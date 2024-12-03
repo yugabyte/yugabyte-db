@@ -409,6 +409,14 @@ const (
 	RotateUniverseKeyKMSOpType = "ROTATE-UNIVERSE-KEY"
 )
 
+// TLSOpType
+const (
+	// EnableTLSOpType type
+	EnableTLSOpType = "ENABLE"
+	// DisableTLSOpType type
+	DisableTLSOpType = "DISABLE"
+)
+
 // ResourceType
 const (
 	// UniverseResourceType type

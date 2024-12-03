@@ -1,22 +1,25 @@
-## yba universe security
+## yba host
 
-Manage security settings for a universe
+Refer to YugabyteDB Anywhere host details
 
 ### Synopsis
 
-Manage security settings for a universe
+Refer to YugabyteDB Anywhere host details
 
 ```
-yba universe security [flags]
+yba host [flags]
+```
+
+### Examples
+
+```
+yba host
 ```
 
 ### Options
 
 ```
-  -f, --force              [Optional] Bypass the prompt for non-interactive usage.
-  -n, --name string        [Required] The name of the universe for the operation.
-  -s, --skip-validations   [Optional] Skip validations before running the CLI command.
-  -h, --help               help for security
+  -h, --help   help for host
 ```
 
 ### Options inherited from parent commands
@@ -35,7 +38,5 @@ yba universe security [flags]
 
 ### SEE ALSO
 
-* [yba universe](yba_universe.md)	 - Manage YugabyteDB Anywhere universes
-* [yba universe security ear](yba_universe_security_ear.md)	 - Encryption-at-rest settings for a universe
-* [yba universe security eit](yba_universe_security_eit.md)	 - Encryption-in-transit settings for a universe
+* [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
 
