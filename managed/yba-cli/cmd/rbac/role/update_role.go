@@ -174,6 +174,5 @@ func addPermissions(
 		}
 		rolePermissions = append(rolePermissions, r)
 	}
-
 	return rolePermissions
 }

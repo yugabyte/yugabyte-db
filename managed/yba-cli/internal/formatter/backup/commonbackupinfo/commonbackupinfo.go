@@ -93,8 +93,8 @@ func NewCommonBackupInfoContext() *Context {
 		"StorageConfig":          backup.StorageConfigHeader,
 		"TableByTableBackup":     tableByTableBackupHeader,
 		"TotalBackupSizeInBytes": totalBackupSizeInBytesHeader,
-		"CreateTime":             backup.CreateTimeHeader,
-		"UpdateTime":             backup.BackupTypeHeader,
+		"CreateTime":             formatter.CreateTimeHeader,
+		"UpdateTime":             formatter.UpdateTimeHeader,
 		"CompletionTime":         backup.CompletionTimeHeader,
 	}
 	return &commonBackupInfoCtx
