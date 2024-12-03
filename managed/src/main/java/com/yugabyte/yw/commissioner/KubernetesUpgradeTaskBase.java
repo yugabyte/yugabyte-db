@@ -62,12 +62,18 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
   }
 
   @Override
+  protected boolean isSkipPrechecks() {
+    return taskParams().skipNodeChecks;
+  }
+
+  @Override
   protected void createPrecheckTasks(Universe universe) {
     MastersAndTservers nodesToBeRestarted = getNodesToBeRestarted();
     log.debug("Nodes to be restarted {}", nodesToBeRestarted);
     if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE
         && nodesToBeRestarted != null
-        && !nodesToBeRestarted.isEmpty()) {
+        && !nodesToBeRestarted.isEmpty()
+        && !isSkipPrechecks()) {
       Optional<NodeDetails> nonLive =
           nodesToBeRestarted.getAllNodes().stream()
               .filter(n -> n.state != NodeDetails.NodeState.Live)
@@ -90,7 +96,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
   @Override
   protected void addBasicPrecheckTasks() {
-    if (isFirstTry()) {
+    if (isFirstTry() && !isSkipPrechecks()) {
       verifyClustersConsistency();
     }
   }
