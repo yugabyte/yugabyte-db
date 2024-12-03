@@ -281,40 +281,40 @@ void Messenger::BreakConnectivity(const IpAddress& address, bool incoming, bool 
   LOG(INFO) << "TEST: Break " << (incoming ? "incoming" : "") << "/" << (outgoing ? "outgoing" : "")
             << " connectivity with: " << address;
 
-  boost::optional<CountDownLatch> latch;
+  bool inserted_from = false;
+  bool inserted_to = false;
+  std::optional<CountDownLatch> latch;
   {
-    std::lock_guard guard(lock_);
+    std::lock_guard guard(broken_connectivity_lock_);
     if (broken_connectivity_from_.empty() || broken_connectivity_to_.empty()) {
       has_broken_connectivity_.store(true, std::memory_order_release);
     }
-    bool inserted_from = false;
     if (incoming) {
       inserted_from = broken_connectivity_from_.insert(address).second;
     }
-    bool inserted_to = false;
     if (outgoing) {
       inserted_to = broken_connectivity_to_.insert(address).second;
     }
-    if (inserted_from || inserted_to) {
-      latch.emplace(reactors_.size());
-      for (const auto& reactor : reactors_) {
-        auto scheduling_status = reactor->ScheduleReactorTask(MakeFunctorReactorTask(
-            [&latch, address, incoming, outgoing](Reactor* reactor) {
-              ReactorThreadRoleGuard guard;
-              if (incoming) {
-                reactor->DropIncomingWithRemoteAddress(address);
-              }
-              if (outgoing) {
-                reactor->DropOutgoingWithRemoteAddress(address);
-              }
-              latch->CountDown();
-            },
-            SOURCE_LOCATION()));
-        if (!scheduling_status.ok()) {
-          LOG(DFATAL) << "Failed to schedule drop connection with: "
-                      << address.to_string() << ": " << scheduling_status;
-          latch->CountDown();
-        }
+  }
+  if (inserted_from || inserted_to) {
+    latch.emplace(reactors_.size());
+    for (const auto& reactor : reactors_) {
+      auto scheduling_status = reactor->ScheduleReactorTask(MakeFunctorReactorTask(
+          [&latch, address, incoming, outgoing](Reactor* reactor) {
+            ReactorThreadRoleGuard guard;
+            if (incoming) {
+              reactor->DropIncomingWithRemoteAddress(address);
+            }
+            if (outgoing) {
+              reactor->DropOutgoingWithRemoteAddress(address);
+            }
+            latch->CountDown();
+          },
+          SOURCE_LOCATION()));
+      if (!scheduling_status.ok()) {
+        LOG(DFATAL) << "Failed to schedule drop connection with: "
+                    << address.to_string() << ": " << scheduling_status;
+        latch->CountDown();
       }
     }
   }
@@ -339,7 +339,7 @@ void Messenger::RestoreConnectivity(const IpAddress& address, bool incoming, boo
   LOG(INFO) << "TEST: Restore " << (incoming ? "incoming" : "") << "/"
             << (outgoing ? "outgoing" : "") << " connectivity with: " << address;
 
-  std::lock_guard guard(lock_);
+  std::lock_guard guard(broken_connectivity_lock_);
   if (incoming) {
     broken_connectivity_from_.erase(address);
   }
@@ -353,7 +353,7 @@ void Messenger::RestoreConnectivity(const IpAddress& address, bool incoming, boo
 
 bool Messenger::TEST_ShouldArtificiallyRejectIncomingCallsFrom(const IpAddress &remote) {
   if (has_broken_connectivity_.load(std::memory_order_acquire)) {
-    PerCpuRwSharedLock guard(lock_);
+    PerCpuRwSharedLock guard(broken_connectivity_lock_);
     return broken_connectivity_from_.count(remote) != 0;
   }
   return false;
@@ -361,7 +361,7 @@ bool Messenger::TEST_ShouldArtificiallyRejectIncomingCallsFrom(const IpAddress &
 
 bool Messenger::TEST_ShouldArtificiallyRejectOutgoingCallsTo(const IpAddress &remote) {
   if (has_broken_connectivity_.load(std::memory_order_acquire)) {
-    PerCpuRwSharedLock guard(lock_);
+    PerCpuRwSharedLock guard(broken_connectivity_lock_);
     return broken_connectivity_to_.count(remote) != 0;
   }
   return false;
