@@ -15,13 +15,6 @@ func (a *AuthAPIClient) ListUsers() (
 	return a.APIClient.UserManagementApi.ListUsers(a.ctx, a.CustomerUUID)
 }
 
-// ChangePassword changes the password of the user
-func (a *AuthAPIClient) ChangePassword(
-	uUUID string,
-) ybaclient.UserManagementApiApiChangePasswordRequest {
-	return a.APIClient.UserManagementApi.ChangePassword(a.ctx, a.CustomerUUID, uUUID)
-}
-
 // CreateUser creates a new user
 func (a *AuthAPIClient) CreateUser() (
 	ybaclient.UserManagementApiApiCreateUserRequest,
