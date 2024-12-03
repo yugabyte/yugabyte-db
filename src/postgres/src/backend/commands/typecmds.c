@@ -221,17 +221,10 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("must be superuser or a member of the yb_extension "
-				 		"role to create a base type")));
+						"role to create a base type")));
 
 	/* Convert list of names to a name and namespace */
 	typeNamespace = QualifiedNameGetCreationNamespace(names, &typeName);
-
-	/*
-	 * Increment sticky object count if the object is a create type of the
-	 * form base or shell type.
-	 */
-	if (YbIsClientYsqlConnMgr())
-		increment_sticky_object_count();
 
 #ifdef NOT_USED
 	/* XXX this is unnecessary given the superuser check above */
