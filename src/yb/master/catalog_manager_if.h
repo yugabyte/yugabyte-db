@@ -37,6 +37,8 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
+#include "yb/tserver/tablet_peer_lookup.h"
+
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 
@@ -62,7 +64,7 @@ YB_STRONGLY_TYPED_BOOL(HideOnly);
 YB_STRONGLY_TYPED_BOOL(KeepData);
 YB_STRONGLY_TYPED_BOOL(PrimaryTablesOnly);
 
-class CatalogManagerIf {
+class CatalogManagerIf : public tserver::TabletPeerLookupIf {
  public:
   virtual void CheckTableDeleted(const TableInfoPtr& table, const LeaderEpoch& epoch) = 0;
 
@@ -116,8 +118,6 @@ class CatalogManagerIf {
     // TODO ENG-282 We currently don't support per-namespace replication factor.
     return GetReplicationFactor();
   }
-
-  virtual const NodeInstancePB& NodeInstance() const = 0;
 
   virtual Status GetYsqlCatalogVersion(
       uint64_t* catalog_version, uint64_t* last_breaking_version) = 0;
