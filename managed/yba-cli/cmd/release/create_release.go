@@ -161,11 +161,11 @@ func init() {
 	createReleaseCmd.MarkFlagRequired("version")
 
 	createReleaseCmd.Flags().String("type", "",
-		"[Required] Release type. Allowed values: LTS, STS, PREVIEW")
+		"[Required] Release type. Allowed values: lts, sts, preview")
 	createReleaseCmd.MarkFlagRequired("type")
 
 	createReleaseCmd.Flags().String("platform", "LINUX",
-		"[Optional] Platform supported by this version. Allowed values: LINUX, KUBERNETES")
+		"[Optional] Platform supported by this version. Allowed values: linux, kubernetes")
 
 	createReleaseCmd.Flags().String("arch", "",
 		fmt.Sprintf(

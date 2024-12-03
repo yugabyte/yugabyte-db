@@ -20,7 +20,7 @@ yba yb-db-version architecture add  --version <version> \
 ### Options
 
 ```
-      --platform string   [Optional] Platform supported by this version. Allowed values: LINUX, KUBERNETES (default "LINUX")
+      --platform string   [Optional] Platform supported by this version. Allowed values: linux, kubernetes (default "LINUX")
       --arch string       [Optional] Architecture supported by this version. Required if platform is LINUX. Allowed values: x86_64, aarch64
       --file-id string    [Optional] File ID of the release tgz file to be used. This is the metadata UUID from the "yba yb-db-version artifact-create upload" command. Provide either file-id or url.
       --url string        [Optional] URL to extract release metadata from a remote tarball. Provide either file-id or url.

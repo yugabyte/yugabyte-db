@@ -174,7 +174,7 @@ func init() {
 	editArchitectureReleaseCmd.Flags().SortFlags = false
 
 	editArchitectureReleaseCmd.Flags().String("platform", "",
-		"[Required] Platform supported by this version. Allowed values: LINUX, KUBERNETES")
+		"[Required] Platform supported by this version. Allowed values: linux, kubernetes")
 	editArchitectureReleaseCmd.MarkFlagRequired("platform")
 
 	editArchitectureReleaseCmd.Flags().String("arch", "",

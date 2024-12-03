@@ -20,7 +20,7 @@ yba yb-db-version architecture edit  --version <version> \
 ### Options
 
 ```
-      --platform string   [Required] Platform supported by this version. Allowed values: LINUX, KUBERNETES
+      --platform string   [Required] Platform supported by this version. Allowed values: linux, kubernetes
       --arch string       [Optional] Architecture supported by this version. Required if platform is LINUX. Allowed values: x86_64, aarch64
       --sha256 string     [Optional] SHA256 of the release tgz file.
   -h, --help              help for edit
