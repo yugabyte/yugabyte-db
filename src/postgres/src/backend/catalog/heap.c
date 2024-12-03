@@ -1667,7 +1667,10 @@ heap_create_with_catalog(const char *relname,
 
 	/* Increment sticky object count if the object is a TEMP TABLE. */
 	if (YbIsClientYsqlConnMgr() && new_rel_desc->rd_islocaltemp)
+	{
+		elog(LOG, "Incrementing sticky object count for TEMP TABLE %s", relname);
 		increment_sticky_object_count();
+	}
 
 	/*
 	 * ok, the relation has been cataloged, so close our relations and return

@@ -8276,7 +8276,11 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 												newextra);
 								changed = true;
 								if (conf->gen.flags & GUC_YB_CUSTOM_STICKY)
+								{
+									elog(LOG, "Making connection sticky for %s",
+										conf->gen.name);
 									yb_ysql_conn_mgr_sticky_guc = true;
+								}
 							}
 
 							/*
@@ -9278,7 +9282,10 @@ set_config_option_ext(const char *name, const char *value,
 		YbIsClientYsqlConnMgr() &&
 		((strncmp(name, "session_authorization", strlen("session_authorization")) == 0) ||
 		(strncmp(name, "role", strlen("role")) == 0)))
+		{
+			elog(LOG, "Making connection sticky for setting %s", name);
 			yb_ysql_conn_mgr_sticky_guc = true;
+		}
 
 	if (elevel == 0)
 	{
@@ -10009,7 +10016,10 @@ set_config_option_ext(const char *name, const char *value,
 					conf->gen.scontext = context;
 					conf->gen.srole = srole;
 					if (conf->gen.flags & GUC_YB_CUSTOM_STICKY)
+					{
+						elog(LOG, "Making connection sticky for setting %s", name);
 						yb_ysql_conn_mgr_sticky_guc = true;
+					}
 				}
 
 				if (makeDefault)
@@ -15202,7 +15212,10 @@ yb_check_no_txn(int *newVal, void **extra, GucSource source)
 	 * explicit transaction block.
 	 */
 	if (YbIsClientYsqlConnMgr())
+	{
+		elog(LOG, "Making connection sticky for non-transactional GUC variable");
 		yb_ysql_conn_mgr_sticky_guc = true;
+	}
 	return true;
 }
 
