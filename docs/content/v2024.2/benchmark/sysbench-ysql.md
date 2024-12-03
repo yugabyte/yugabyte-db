@@ -9,6 +9,8 @@ menu:
     identifier: sysbench-ysql
     parent: benchmark
     weight: 5
+rightNav:
+  hideH4: true
 type: docs
 ---
 
@@ -18,23 +20,34 @@ sysbench is a popular tool for benchmarking databases like PostgreSQL and MySQL,
 
 ### Prerequisites
 
-To ensure the recommended hardware requirements are met and the database is correctly configured before benchmarking, review the [deployment checklist](../../deploy/checklist/).
-
-Install sysbench using the following steps:
-
-```sh
-$ cd $HOME
-$ git clone https://github.com/yugabyte/sysbench.git
-$ cd sysbench
-$ ./autogen.sh && ./configure --with-pgsql && make -j && sudo make install
-```
-
-This installs the sysbench utility in `/usr/local/bin`.
-
-Make sure you have the [YSQL shell](../../api/ysqlsh/) `ysqlsh` exported to the `PATH` variable.
+To ensure the recommended hardware requirements are met and the database is correctly configured before benchmarking, review the [deployment checklist](../../deploy/checklist/). Make sure you have the [YSQL shell](../../api/ysqlsh/) `ysqlsh` exported to the `PATH` variable.
 
 ```sh
 $ export PATH=$PATH:/path/to/ysqlsh
+```
+
+Install sysbench using the following steps for your operating system.
+
+{{<tip>}}
+For the latest packages please see [sysbench package](https://github.com/yugabyte/sysbench/releases/latest)
+{{</tip>}}
+
+#### Linux
+
+```sh
+wget https://github.com/yugabyte/sysbench/releases/download/1.0.0-yb/sysbench-1.0.0-1.el8.x86_64.rpm
+
+sudo yum install -y sysbench-1.0.0-1.el8.x86_64.rpm
+```
+
+#### MacOS
+
+```sh
+brew install postgresql@14 wget
+
+wget https://github.com/yugabyte/sysbench/releases/download/1.0.0-yb/Sysbench.pkg
+
+sudo  installer -pkg Sysbench.pkg -target /
 ```
 
 ### Start YugabyteDB
