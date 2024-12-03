@@ -1,19 +1,28 @@
-## yba user
+## yba user reset-password
 
-Manage YugabyteDB Anywhere users
+Reset password of currently logged in YugabyteDB Anywhere user
 
 ### Synopsis
 
-Manage YugabyteDB Anywhere users
+Reset password of currently logged in user in YugabyteDB Anywhere
 
 ```
-yba user [flags]
+yba user reset-password [flags]
+```
+
+### Examples
+
+```
+yba user reset-password \
+	 --current-password <current-password> --new-password <new-password>
 ```
 
 ### Options
 
 ```
-  -h, --help   help for user
+      --current-password string   [Required] The current password of the user.
+      --new-password string       [Required] The new password of the user.
+  -h, --help                      help for reset-password
 ```
 
 ### Options inherited from parent commands
@@ -32,11 +41,5 @@ yba user [flags]
 
 ### SEE ALSO
 
-* [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
-* [yba user create](yba_user_create.md)	 - Create a YugabyteDB Anywhere user
-* [yba user delete](yba_user_delete.md)	 - Delete a YugabyteDB Anywhere user
-* [yba user describe](yba_user_describe.md)	 - Describe a YugabyteDB Anywhere user
-* [yba user list](yba_user_list.md)	 - List YugabyteDB Anywhere users
-* [yba user reset-password](yba_user_reset-password.md)	 - Reset password of currently logged in YugabyteDB Anywhere user
-* [yba user update](yba_user_update.md)	 - Update a YugabyteDB Anywhere user
+* [yba user](yba_user.md)	 - Manage YugabyteDB Anywhere users
 

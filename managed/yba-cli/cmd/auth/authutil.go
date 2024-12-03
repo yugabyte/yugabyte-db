@@ -89,6 +89,7 @@ func authUtil(url *url.URL, apiToken string) {
 
 	viper.GetViper().Set("apiToken", apiToken)
 	r.SetApiToken(apiToken)
+	viper.GetViper().Set("user-uuid", r.GetUserUUID())
 
 	authWriteConfigFile(r)
 }

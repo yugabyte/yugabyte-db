@@ -24,5 +24,7 @@ func init() {
 	UserCmd.AddCommand(describeUserCmd)
 	UserCmd.AddCommand(deleteUserCmd)
 	UserCmd.AddCommand(createUserCmd)
+	UserCmd.AddCommand(updateUserCmd)
+	UserCmd.AddCommand(resetPasswordUserCmd)
 
 }
