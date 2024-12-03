@@ -35,8 +35,6 @@ import tempfile
 import time
 import zipfile
 
-from yugabyte.git_util import get_github_token
-
 from typing import List, Optional
 
 
@@ -371,13 +369,20 @@ def main() -> None:
         global g_verbose
         g_verbose = True
 
+    github_token: Optional[str]
+    if args.github_token_file:
+        logging.info("Reading GitHub token from %s", args.github_token_file)
+        github_token = read_file_and_strip(args.github_token_file)
+    else:
+        github_token = os.getenv('GITHUB_TOKEN')
+
     download_and_extract(
         url=args.url,
         checksum_url=args.checksum_url or args.url + CHECKSUM_EXTENSION,
         dest_dir_parent=args.dest_dir_parent,
         local_cache_dir=args.local_cache_dir,
         nfs_cache_dir=args.nfs_cache_dir,
-        github_token=get_github_token(args.github_token_file))
+        github_token=github_token)
 
 
 if __name__ == '__main__':
