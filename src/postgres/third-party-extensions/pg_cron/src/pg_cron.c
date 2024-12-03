@@ -2418,6 +2418,14 @@ ExecuteSqlString(const char *sql)
 static bool
 jobCanceled(CronTask *task)
 {
+	if (IsYugaByteEnabled() && !ybIsLeader)
+	{
+		task->errorMessage = "pg_cron leader changed";
+		task->state = CRON_TASK_ERROR;
+		task->pollingStatus = 0;
+		return true;
+	}
+
     Assert(task->state == CRON_TASK_CONNECTING || \
             task->state == CRON_TASK_SENDING || \
             task->state == CRON_TASK_BGW_RUNNING || \
