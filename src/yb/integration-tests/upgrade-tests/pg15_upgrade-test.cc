@@ -990,6 +990,33 @@ TEST_F(Pg15UpgradeTest, ColocatedTables) {
   }
 }
 
+TEST_F(Pg15UpgradeTest, Tablegroup) {
+  ASSERT_OK(ExecuteStatements({
+    "CREATE USER user_1",
+    "GRANT CREATE ON SCHEMA public TO user_1",
+    "CREATE TABLEGROUP test_grant",
+    "GRANT ALL ON TABLEGROUP test_grant TO user_1",
+    "SET ROLE user_1",
+    "CREATE TABLE e(i text) TABLEGROUP test_grant",
+    "CREATE INDEX ON e(i)"
+  }));
+  ASSERT_OK(UpgradeClusterToMixedMode());
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  // After the upgrade, the tablegroup ACL must allow user_1 to create a table in the tablegroup,
+  // but not user_2.
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_OK(conn.Execute("CREATE USER user_2"));  // While user is yugabyte
+    ASSERT_OK(conn.Execute("SET ROLE user_1"));
+    ASSERT_OK(conn.Execute("CREATE TABLE e2(i text) TABLEGROUP test_grant"));
+    ASSERT_OK(conn.Execute("SET ROLE user_2"));
+    ASSERT_NOK_STR_CONTAINS(
+        conn.Execute("CREATE TABLE e3(i text) TABLEGROUP test_grant"),
+        "permission denied for tablegroup test_grant");
+  }
+}
+
 class Pg15UpgradeTestWithAuth : public Pg15UpgradeTest {
  public:
   Pg15UpgradeTestWithAuth() = default;

@@ -1141,12 +1141,16 @@ DefineIndex(Oid relationId,
 					errmsg("TABLESPACE is not supported for indexes on colocated tables.")));
 
 		/*
-		 * Skip the check in a colocated database because any user can create tables
-		 * in an implicit tablegroup.
-		 * Check permissions for tablegroup. To create an index within a tablegroup, a user must
-		 * either be a superuser, the owner of the tablegroup, or have create perms on it.
+		 * YB: Check permissions for tablegroup. To create an index within a
+		 * tablegroup, a user must either be a superuser, the owner of the
+		 * tablegroup, or have create perms on it. Skip the check in a colocated
+		 * database because any user can create tables in an implicit
+		 * tablegroup. Skip the check during binary upgrade because ACLs have
+		 * not yet been restored, and CREATE INDEX, unlike CREATE TABLE, is
+		 * normally run as the table owner due to CVE-2022-1552. (See upstream
+		 * PG commit a117cebd638dd02e5c2e791c25e43745f233111b for details.)
 		 */
-		if (!MyDatabaseColocated &&
+		if (!MyDatabaseColocated && !IsBinaryUpgrade &&
 			OidIsValid(tablegroupId) && !pg_tablegroup_ownercheck(tablegroupId, GetUserId()))
 		{
 			AclResult  aclresult;
