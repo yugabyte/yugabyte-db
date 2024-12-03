@@ -208,8 +208,7 @@ struct YsqlTableDdlTxnState;
 // the state of each tablet on a given tablet-server.
 //
 // Thread-safe.
-class CatalogManager : public tserver::TabletPeerLookupIf,
-                       public TabletSplitCandidateFilterIf,
+class CatalogManager : public TabletSplitCandidateFilterIf,
                        public TabletSplitDriverIf,
                        public CatalogManagerIf,
                        public CDCSplitDriverIf,
