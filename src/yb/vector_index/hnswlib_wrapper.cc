@@ -104,8 +104,14 @@ class HnswlibIndex :
       std::tie(it, std::ignore) = vector_id_label_map_.insert({vertex_id, label});
     }
     hnsw_->addPoint(v.data(), it->second);
+
     return Status::OK();
   }
+
+  size_t MaxVectors() const override {
+    return hnsw_->getInternalParameters().max_elements;
+  }
+
 
   Status DoSaveToFile(const std::string& path) {
     try {
