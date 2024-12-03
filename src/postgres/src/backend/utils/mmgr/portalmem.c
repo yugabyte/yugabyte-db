@@ -582,13 +582,6 @@ PortalDrop(Portal portal, bool isTopCommit)
 	portal->resowner = NULL;
 
 	/*
-	 * If the portal is WITH HOLD, decrease the count of database
-	 * objects that need stickiness.
-	 */
-	if (YbIsClientYsqlConnMgr()	&& (portal->cursorOptions & CURSOR_OPT_HOLD))
-		decrement_sticky_object_count();
-
-	/*
 	 * Delete tuplestore if present.  We should do this even under error
 	 * conditions; since the tuplestore would have been using cross-
 	 * transaction storage, its temp files need to be explicitly deleted.

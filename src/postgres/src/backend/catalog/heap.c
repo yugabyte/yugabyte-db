@@ -2052,10 +2052,6 @@ heap_drop_with_catalog(Oid relid)
 	if (relid == defaultPartOid)
 		update_default_partition_oid(parentOid, InvalidOid);
 
-	/* Decrement sticky object count if the relation being dropped is a TEMP TABLE. */
-	if (YbIsClientYsqlConnMgr() && (rel)->rd_islocaltemp)
-		decrement_sticky_object_count();
-	
 	/*
 	 * Schedule unlinking of the relation's physical files at commit.
 	 * For Yugabyte-backed relations, there aren't any physical files to remove.
