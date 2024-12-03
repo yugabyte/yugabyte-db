@@ -149,7 +149,6 @@ static MongoCollection * GetCollectionReferencedByDocumentVar(Expr *documentExpr
 															  ParamListInfo boundParams);
 static MongoCollection * GetCollectionForRTE(RangeTblEntry *rte, ParamListInfo
 											 boundParams);
-static Expr * CreateShardKeyValueFilter(int collectionVarNo, Const *valueConst);
 static Expr * CreateExprForDollarRegex(bson_iter_t *currIter, bson_value_t **options,
 									   BsonQueryOperatorContext *context,
 									   const MongoQueryOperator *operator,
@@ -2614,23 +2613,20 @@ CreateShardKeyFiltersForQuery(const bson_value_t *queryDocument, pgbson *shardKe
 							  uint64_t collectionId, Index collectionVarno)
 {
 	/* compute the hash of the shard key valeus */
-	int64 shardKeyHash = 0;
-	if (!ComputeShardKeyHashForQueryValue(shardKeyBson, collectionId, queryDocument,
-										  &shardKeyHash))
+	if (shardKeyBson == NULL)
 	{
-		/* not all shard key values are set */
-		return NULL;
+		/* create Const for the hash of shard key field values */
+		Datum shardKeyFieldValuesHashDatum = Int64GetDatum(collectionId);
+		Const *shardKeyValueConst = makeConst(INT8OID, -1, InvalidOid, 8,
+											  shardKeyFieldValuesHashDatum, false, true);
+
+		/* construct document <operator> <value> expression */
+		return CreateShardKeyValueFilter(collectionVarno, shardKeyValueConst);
 	}
 
-	/* all shard key values are set, build the shard_key_value filter */
-
-	/* create Const for the hash of shard key field values */
-	Datum shardKeyFieldValuesHashDatum = Int64GetDatum(shardKeyHash);
-	Const *shardKeyValueConst = makeConst(INT8OID, -1, InvalidOid, 8,
-										  shardKeyFieldValuesHashDatum, false, true);
-
-	/* construct document <operator> <value> expression */
-	return CreateShardKeyValueFilter(collectionVarno, shardKeyValueConst);
+	/* Now for sharded cases */
+	return ComputeShardKeyExprForQueryValue(shardKeyBson, collectionId, queryDocument,
+											collectionVarno);
 }
 
 
@@ -2709,28 +2705,6 @@ CreateNonShardedShardKeyValueFilter(int collectionVarno, const
 											   Int64GetDatum(shardKeyValue), false, true);
 
 	return CreateShardKeyValueFilter(collectionVarno, nonShardedShardKeyConst);
-}
-
-
-/*
- * CreateZeroShardKeyValueFilter creates a filter of the form shard_key_value = <value>
- * for the given varno (read: rtable index).
- */
-static Expr *
-CreateShardKeyValueFilter(int collectionVarno, Const *valueConst)
-{
-	/* shard_key_value is always the first column in our data tables */
-	AttrNumber shardKeyAttNum = MONGO_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER;
-	Var *shardKeyValueVar = makeVar(collectionVarno, shardKeyAttNum, INT8OID, -1,
-									InvalidOid, 0);
-
-	/* construct document <operator> <value> expression */
-	Expr *shardKeyValueFilter = make_opclause(BigintEqualOperatorId(), BOOLOID, false,
-											  (Expr *) shardKeyValueVar,
-											  (Expr *) valueConst, InvalidOid,
-											  InvalidOid);
-
-	return shardKeyValueFilter;
 }
 
 

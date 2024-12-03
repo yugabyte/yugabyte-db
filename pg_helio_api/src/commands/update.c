@@ -293,7 +293,8 @@ static UpdateAllMatchingDocsResult UpdateAllMatchingDocuments(MongoCollection *c
 															  hasShardKeyValueFilter,
 															  int64 shardKeyHash,
 															  ExprEvalState *
-															  stateForSchemaValidation);
+															  stateForSchemaValidation,
+															  bool *hasObjectIdFilter);
 static void CallUpdateOne(MongoCollection *collection, UpdateOneParams *updateOneParams,
 						  int64 shardKeyHash, text *transactionId,
 						  UpdateOneResult *result, bool forceInlineWrites,
@@ -312,7 +313,7 @@ static bool SelectUpdateCandidate(uint64 collectionId, const char *shardTableNam
 								  shardKeyHash, pgbson *query,
 								  pgbson *update, pgbson *arrayFilters, pgbson *sort,
 								  UpdateCandidate *updateCandidate,
-								  bool getOriginalDocument);
+								  bool getOriginalDocument, bool *hasObjectIdFilter);
 static bool UpdateDocumentByTID(uint64 collectionId, const char *shardTableName, int64
 								shardKeyHash,
 								ItemPointer tid, pgbson *updatedDocument);
@@ -325,7 +326,8 @@ static void UpdateOneObjectId(MongoCollection *collection,
 							  ExprEvalState *stateForSchemaValidation);
 static pgbson * UpsertDocument(MongoCollection *collection, pgbson *update,
 							   pgbson *query, pgbson *arrayFilters,
-							   ExprEvalState *stateForSchemaValidation);
+							   ExprEvalState *stateForSchemaValidation,
+							   bool hasObjectIdFilter);
 static List * ValidateQueryAndUpdateDocuments(BatchUpdateSpec *batchSpec);
 static pgbson * BuildResponseMessage(BatchUpdateResult *batchResult);
 static void BuildUpdates(BatchUpdateSpec *spec);
@@ -500,6 +502,28 @@ command_update(PG_FUNCTION_ARGS)
 	values[1] = BoolGetDatum(!hasWriteErrors);
 	resultTuple = heap_form_tuple(resultTupDesc, values, isNulls);
 	PG_RETURN_DATUM(HeapTupleGetDatum(resultTuple));
+}
+
+
+/*
+ * Does an insert or upsert for an update. If the original query was for an object_id
+ * Does an InsertOrReplace. Otherwise does an Insert to fail if there's an object_id
+ * constraint that fails.
+ */
+static inline void
+DoInsertForUpdate(MongoCollection *collection, uint64_t shardKeyHash, pgbson *objectId,
+				  pgbson *newDocument, bool hasObjectIdFilter)
+{
+	if (hasObjectIdFilter)
+	{
+		InsertOrReplaceDocument(collection->collectionId, collection->shardTableName,
+								shardKeyHash, objectId, newDocument);
+	}
+	else
+	{
+		InsertDocument(collection->collectionId, collection->shardTableName,
+					   shardKeyHash, objectId, newDocument);
+	}
 }
 
 
@@ -1177,10 +1201,12 @@ ProcessUpdate(MongoCollection *collection, UpdateSpec *updateSpec,
 		 * Update as many document as match the query. This is not a retryable
 		 * operation, so we ignore transactionId.
 		 */
+		bool hasObjectIdFilter = false;
 		UpdateAllMatchingDocsResult updateAllResult = UpdateAllMatchingDocuments(
 			collection, query, update, arrayFilters,
 			hasShardKeyValueFilter,
-			shardKeyHash, stateForSchemaValidation);
+			shardKeyHash, stateForSchemaValidation,
+			&hasObjectIdFilter);
 
 		result->rowsMatched = updateAllResult.matchedDocs;
 		result->rowsModified = updateAllResult.rowsUpdated;
@@ -1197,7 +1223,8 @@ ProcessUpdate(MongoCollection *collection, UpdateSpec *updateSpec,
 			result->performedUpsert = true;
 			result->upsertedObjectId = UpsertDocument(collection, update, query,
 													  arrayFilters,
-													  stateForSchemaValidation);
+													  stateForSchemaValidation,
+													  hasObjectIdFilter);
 		}
 	}
 	else
@@ -1281,9 +1308,12 @@ static UpdateAllMatchingDocsResult
 UpdateAllMatchingDocuments(MongoCollection *collection, pgbson *queryDoc,
 						   pgbson *updateDoc, pgbson *arrayFilters,
 						   bool hasShardKeyValueFilter, int64 shardKeyHash,
-						   ExprEvalState *schemaValidationExprEvalState)
+						   ExprEvalState *schemaValidationExprEvalState,
+						   bool *hasObjectIdFilter)
 {
 	pgbson *objectIdFilter = GetObjectIdFilterFromQueryDocument(queryDoc);
+
+	*hasObjectIdFilter = objectIdFilter != NULL;
 
 	const char *tableName = collection->tableName;
 	bool isLocalShardQuery = false;
@@ -1586,8 +1616,13 @@ UpdateOne(MongoCollection *collection, UpdateOneParams *updateOneParams,
 		/* extract object ID */
 		pgbson *objectId = PgbsonGetDocumentId(result->reinsertDocument);
 
-		InsertOrReplaceDocument(collection->collectionId, collection->shardTableName,
-								newShardKeyHash, objectId, result->reinsertDocument);
+		/* If we have to reinsert the document in a different shard */
+		pgbson *objectIdFilter = GetObjectIdFilterFromQueryDocument(
+			updateOneParams->query);
+		bool hasObjectIdFilter = objectIdFilter != NULL;
+
+		DoInsertForUpdate(collection, newShardKeyHash, objectId, result->reinsertDocument,
+						  hasObjectIdFilter);
 	}
 }
 
@@ -2265,6 +2300,7 @@ UpdateOneInternal(MongoCollection *collection, UpdateOneParams *updateOneParams,
 						  updateOneParams->returnFields != NULL ||
 						  NeedExistingDocForValidation(stateForSchemaValidation,
 													   collection);
+	bool hasObjectIdFilter = false;
 	bool foundDocument = SelectUpdateCandidate(collection->collectionId,
 											   collection->shardTableName,
 											   shardKeyHash,
@@ -2273,7 +2309,8 @@ UpdateOneInternal(MongoCollection *collection, UpdateOneParams *updateOneParams,
 											   updateOneParams->arrayFilters,
 											   updateOneParams->sort,
 											   &updateCandidate,
-											   getExistingDoc);
+											   getExistingDoc,
+											   &hasObjectIdFilter);
 
 	if (!foundDocument)
 	{
@@ -2301,10 +2338,8 @@ UpdateOneInternal(MongoCollection *collection, UpdateOneParams *updateOneParams,
 			if (newShardKeyHash == shardKeyHash)
 			{
 				/* shard key unchanged, upsert now */
-				InsertOrReplaceDocument(collection->collectionId,
-										collection->shardTableName,
-										newShardKeyHash, objectId, newDoc);
-
+				DoInsertForUpdate(collection, newShardKeyHash, objectId, newDoc,
+								  hasObjectIdFilter);
 				result->reinsertDocument = NULL;
 			}
 			else
@@ -2430,13 +2465,15 @@ static bool
 SelectUpdateCandidate(uint64 collectionId, const char *shardTableName, int64 shardKeyHash,
 					  pgbson *query,
 					  pgbson *update, pgbson *arrayFilters, pgbson *sort,
-					  UpdateCandidate *updateCandidate, bool getOriginalDocument)
+					  UpdateCandidate *updateCandidate, bool getOriginalDocument,
+					  bool *hasObjectIdFilter)
 {
 	uint64 planId = QUERY_UPDATE_SELECT_UPDATE_CANDIDATE;
 	StringInfoData updateQuery;
 	List *sortFieldDocuments = sort != NULL ? PgbsonDecomposeFields(sort) : NIL;
 
 	pgbson *objectIdFilter = GetObjectIdFilterFromQueryDocument(query);
+	*hasObjectIdFilter = objectIdFilter != NULL;
 
 	int argCount = 2 + list_length(sortFieldDocuments);
 	argCount += objectIdFilter != NULL ? 1 : 0;
@@ -2811,7 +2848,8 @@ UpdateOneObjectId(MongoCollection *collection, UpdateOneParams *updateOneParams,
 static pgbson *
 UpsertDocument(MongoCollection *collection, pgbson *update,
 			   pgbson *query, pgbson *arrayFilters,
-			   ExprEvalState *stateForSchemaValidation)
+			   ExprEvalState *stateForSchemaValidation,
+			   bool hasObjectIdFilter)
 {
 	pgbson *emptyDocument = PgbsonInitEmpty();
 	pgbson *newDoc = BsonUpdateDocument(emptyDocument, update, query, arrayFilters);
@@ -2828,10 +2866,7 @@ UpsertDocument(MongoCollection *collection, pgbson *update,
 		ValidateSchemaOnDocumentInsert(stateForSchemaValidation, &newDocValue);
 	}
 
-	InsertOrReplaceDocument(collection->collectionId, collection->shardTableName,
-							newShardKeyHash,
-							objectId, newDoc);
-
+	DoInsertForUpdate(collection, newShardKeyHash, objectId, newDoc, hasObjectIdFilter);
 	return objectId;
 }
 

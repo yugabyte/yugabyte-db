@@ -628,3 +628,24 @@ SELECT helio_api.shard_collection('update', 'single', '{ "_id": "hashed" }', fal
 
 SELECT helio_api.update('update', '{ "update": "single", "updates": [ { "q": { "_id":8011 }, "u": { "value": "1" }, "upsert": true }] }');
 ROLLBACK;
+
+-- test update for upsert error cases
+BEGIN;
+
+-- this inserts the document
+SELECT helio_api.update('update', '{ "update": "single", "updates": [ { "q": { "_id":8010 }, "u": { "value": "1" }, "upsert": true }] }');
+
+-- this will collide and produce a unique conflict.
+SELECT helio_api.update('update', '{ "update": "single", "updates": [ { "q": { "value": "1123" }, "u": { "_id": 8010 }, "upsert": true }] }');
+ROLLBACK;
+
+
+-- test update for upsert error cases
+BEGIN;
+
+-- this inserts the document
+SELECT helio_api.update('update', '{ "update": "single", "updates": [ { "q": { "_id":8010 }, "u": { "value": "1" }, "upsert": true }] }');
+
+-- this will collide and produce a unique conflict.
+SELECT helio_api.update('update', '{ "update": "single", "updates": [ { "q": { "value": "21020" }, "u": { "$set": { "_id": 8010 } }, "upsert": true, "multi": true }] }');
+ROLLBACK;

@@ -41,6 +41,8 @@
 #define QUERY_ID_RETRY_RECORD_DELETE (21L << 32)
 #define QUERY_ID_RETRY_RECORD_SELECT (22L << 32)
 
+#define QUERY_ID_INSERT_OR_REPLACE (23L << 32)
+
 
 /* GUC that controls the query plan cache size */
 extern int QueryPlanCacheSizeLimit;

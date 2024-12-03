@@ -652,16 +652,16 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": 
 (13 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "in_opt_tests", "filter": {"$or": [{"val": { "$eq": 1}, "accid":{ "$eq": 1}, "vid": { "$eq": 1}}, {"val": { "$eq": 3}, "accid":{ "$eq": 1}, "vid": { "$eq": 1}}] } }'); 
-                                                                                                               QUERY PLAN                                                                                                                
+                                                                                                                                     QUERY PLAN                                                                                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
-   Task Count: 8
-   Tasks Shown: One of 8
+   Task Count: 1
+   Tasks Shown: All
    ->  Task
          Node: host=localhost port=58070 dbname=regression
-         ->  Bitmap Heap Scan on documents_33000_330016 collection
+         ->  Bitmap Heap Scan on documents_33000_330023 collection
                Recheck Cond: ((document OPERATOR(helio_api_catalog.@=) '{ "accid" : { "$numberInt" : "1" } }'::helio_core.bson) AND (document OPERATOR(helio_api_catalog.@=) '{ "vid" : { "$numberInt" : "1" } }'::helio_core.bson))
-               Filter: ((document OPERATOR(helio_api_catalog.@=) '{ "val" : { "$numberInt" : "1" } }'::helio_core.bson) OR (document OPERATOR(helio_api_catalog.@=) '{ "val" : { "$numberInt" : "3" } }'::helio_core.bson))
+               Filter: ((shard_key_value = '4322365043291501017'::bigint) AND ((document OPERATOR(helio_api_catalog.@=) '{ "val" : { "$numberInt" : "1" } }'::helio_core.bson) OR (document OPERATOR(helio_api_catalog.@=) '{ "val" : { "$numberInt" : "3" } }'::helio_core.bson)))
                ->  Bitmap Index Scan on a_val_accid_vid
                      Index Cond: ((document OPERATOR(helio_api_catalog.@=) '{ "accid" : { "$numberInt" : "1" } }'::helio_core.bson) AND (document OPERATOR(helio_api_catalog.@=) '{ "vid" : { "$numberInt" : "1" } }'::helio_core.bson))
 (10 rows)

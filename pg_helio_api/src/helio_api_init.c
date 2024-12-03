@@ -297,6 +297,9 @@ char *ClusterAdminRole = DEFAULT_CLUSTER_ADMIN_ROLE;
 #define SCRAM_DEFAULT_SALT_LEN 28
 int ScramDefaultSaltLen = SCRAM_DEFAULT_SALT_LEN;
 
+#define DEFAULT_ENABLE_SHARDING_OR_FILTERS true
+bool EnableShardingOrFilters = DEFAULT_ENABLE_SHARDING_OR_FILTERS;
+
 #define DEFAULT_THROW_DEADLOCK_ON_CRUD false
 bool ThrowDeadlockOnCrud = DEFAULT_THROW_DEADLOCK_ON_CRUD;
 
@@ -889,6 +892,14 @@ InitApiConfigurations(char *prefix)
 		PGC_SUSET,
 		0,
 		NULL, NULL, NULL);
+
+
+	DefineCustomBoolVariable(
+		"helio_api.enableShardingOrFilters",
+		gettext_noop(
+			"Whether to enable OR filter based detection for the shard key."),
+		NULL, &EnableShardingOrFilters, DEFAULT_ENABLE_SHARDING_OR_FILTERS,
+		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
 		"helio_api.throwDeadlockOnCRUD",

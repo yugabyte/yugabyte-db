@@ -1208,7 +1208,8 @@ InsertOrReplaceDocument(uint64 collectionId, const char *shardTableName, int64
 	argValues[2] = PointerGetDatum(CastPgbsonToBytea(document));
 
 	SPIPlanPtr plan = GetSPIQueryPlanWithLocalShard(collectionId, shardTableName,
-													QUERY_ID_INSERT, query.data, argTypes,
+													QUERY_ID_INSERT_OR_REPLACE,
+													query.data, argTypes,
 													argCount);
 
 	spiStatus = SPI_execute_plan(plan, argValues, NULL, false, 1);
