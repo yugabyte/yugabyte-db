@@ -397,6 +397,8 @@ typedef struct PgGFlagsAccessor {
   const char*     TEST_ysql_conn_mgr_dowarmup_all_pools_mode;
   const bool*     TEST_ysql_enable_db_logical_client_version_mode;
   const bool*     ysql_conn_mgr_superuser_sticky;
+  const bool*     ysql_conn_mgr_version_matching;
+  const bool*     ysql_conn_mgr_version_matching_connect_higher_version;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {

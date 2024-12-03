@@ -136,6 +136,15 @@ DEFINE_NON_RUNTIME_bool(
     ysql_minimal_catalog_caches_preload, false,
     "Fill postgres' caches with system items only");
 
+DEFINE_RUNTIME_PREVIEW_bool(
+  ysql_conn_mgr_version_matching, false,
+  "If true, does selection of transactional backends based on logical client version");
+
+DEFINE_RUNTIME_PREVIEW_bool(
+    ysql_conn_mgr_version_matching_connect_higher_version, true,
+    "If ysql_conn_mgr_version_matching is enabled is enabled, then connect to higher version "
+    "server if this flag is set to true");
+
 DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 
@@ -2053,6 +2062,9 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .TEST_ysql_enable_db_logical_client_version_mode =
           &FLAGS_TEST_ysql_enable_db_logical_client_version_mode,
       .ysql_conn_mgr_superuser_sticky = &FLAGS_ysql_conn_mgr_superuser_sticky,
+      .ysql_conn_mgr_version_matching = &FLAGS_ysql_conn_mgr_version_matching,
+      .ysql_conn_mgr_version_matching_connect_higher_version =
+          &FLAGS_ysql_conn_mgr_version_matching_connect_higher_version,
   };
   // clang-format on
   return &accessor;

@@ -37,6 +37,7 @@
 #include "access/tuptoaster.h"
 #include "c.h"
 #include "postgres.h"
+#include "libpq/pqformat.h"
 #include "miscadmin.h"
 #include "access/htup.h"
 #include "access/htup_details.h"
@@ -175,6 +176,27 @@ YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version)
 		ereport(LOG,
 				(errmsg("set local catalog version: %" PRIu64,
 						yb_catalog_cache_version)));
+}
+
+void
+SendLogicalClientCacheVersionToFrontend()
+{
+	StringInfoData buf;
+
+	// Initialize buffer to store the outgoing message
+	initStringInfo(&buf);
+
+	// Use 'S' for a PARAMETER_STATUS message
+	pq_beginmessage(&buf, 'S');
+	pq_sendstring(&buf, "yb_logical_client_version"); // Key
+	char yb_logical_client_cache_version_str[16];
+	snprintf(yb_logical_client_cache_version_str, 16, "%" PRIu64,
+			 yb_logical_client_cache_version);
+	pq_sendstring(&buf, yb_logical_client_cache_version_str); // Value
+	pq_endmessage(&buf);
+
+	// Ensure the message is sent to the frontend
+	pq_flush();
 }
 
 void

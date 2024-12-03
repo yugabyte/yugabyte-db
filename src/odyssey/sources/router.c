@@ -244,6 +244,10 @@ static inline int od_router_expire_server_tick_cb(od_server_t *server,
 		goto expire_server;
 
 	if (!server->offline) {
+		/* Expire server if is marked for closing */
+		if (server->marked_for_close)
+			goto expire_server;
+
 		/* advance idle time for 1 sec */
 		if (server_life < lifetime &&
 		    server->idle_time < route->rule->pool->ttl) {
@@ -614,10 +618,36 @@ od_router_status_t od_router_attach(od_router_t *router,
 	is_warmup_needed = is_warmup_needed_flag != NULL && strcmp(is_warmup_needed_flag, "none") != 0;
 	random_allot = is_warmup_needed && strcmp(is_warmup_needed_flag, "random") == 0;
 
-	for (;;) {
+	od_debug(&instance->logger, "router-attach", client_for_router, NULL,
+		 "client_for_router logical client version = %d",
+		 client_for_router->logical_client_version);
 
-		if (is_warmup_needed)
-		{
+	for (;;) {
+		if (version_matching) {
+
+			server = yb_od_server_pool_idle_version_matching(
+				&route->server_pool,
+				client_for_router->logical_client_version,
+				version_matching_connect_higher_version);
+
+			if (server)
+				goto attach;
+			else if (route->max_logical_client_version >
+					 client_for_router->logical_client_version &&
+				 !version_matching_connect_higher_version) {
+				od_debug(
+					&instance->logger, "router-attach",
+					client_for_router, NULL,
+					"old logical client, need to disconect, "
+					"max_logical_client_version of pool = %d, and version of client = %d",
+					route->max_logical_client_version,
+					client_for_router->logical_client_version);
+				od_route_unlock(route);
+				return OD_ROUTER_ERROR;
+			}
+		}
+
+		else if (is_warmup_needed) {
 			if (random_allot)
 				server = yb_od_server_pool_idle_random(&route->server_pool);
 			else /* round_robin allotment */
@@ -628,8 +658,7 @@ od_router_status_t od_router_attach(od_router_t *router,
 			     route->rule->min_pool_size))
 				goto attach;
 		}
-		else
-		{
+		else {
 			server = od_pg_server_pool_next(&route->server_pool,
 						OD_SERVER_IDLE);
 			if (server)
