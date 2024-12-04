@@ -13,14 +13,26 @@
 
 #include "yb/master/ysql/ysql_manager.h"
 
+#include "yb/client/schema.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/tserver/ysql_advisory_lock_table.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/ysql/ysql_initdb_major_upgrade_handler.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/is_operation_done_result.h"
 
 // TODO (mbautin, 2019-12): switch the default to true after updating all external callers
 // (yb-ctl, YugaWare) and unit tests.
 DEFINE_RUNTIME_bool(master_auto_run_initdb, false,
     "Automatically run initdb on master leader initialization");
+
+DEFINE_NON_RUNTIME_uint32(num_advisory_locks_tablets, 1,
+                          "Number of advisory lock tablets. Must be set "
+                          "before yb_enable_advisory_lock is set to true");
+DEFINE_validator(num_advisory_locks_tablets, FLAG_GT_VALUE_VALIDATOR(0));
+
+DECLARE_bool(yb_enable_advisory_lock);
 
 namespace yb::master {
 
@@ -157,6 +169,41 @@ Status YsqlManager::RollbackYsqlMajorCatalogVersion(
   RETURN_NOT_OK(ysql_initdb_and_major_upgrade_helper_->RollbackYsqlMajorCatalogVersion(epoch));
 
   LOG(INFO) << "YSQL major catalog upgrade rollback completed";
+  return Status::OK();
+}
+
+Status YsqlManager::CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch) {
+  if (advisory_locks_table_created_ || !FLAGS_enable_ysql || !FLAGS_yb_enable_advisory_lock) {
+    return Status::OK();
+  }
+
+  TableProperties table_properties;
+  table_properties.SetTransactional(true);
+  client::YBSchemaBuilder schema_builder;
+  schema_builder.AddColumn("dbid")->Type(DataType::UINT32)->HashPrimaryKey();
+  schema_builder.AddColumn("classid")->Type(DataType::UINT32)->PrimaryKey();
+  schema_builder.AddColumn("objid")->Type(DataType::UINT32)->PrimaryKey();
+  schema_builder.AddColumn("objsubid")->Type(DataType::UINT32)->PrimaryKey();
+  schema_builder.SetTableProperties(table_properties);
+  client::YBSchema yb_schema;
+  CHECK_OK(schema_builder.Build(&yb_schema));
+
+  CreateTableRequestPB req;
+  CreateTableResponsePB resp;
+  req.set_name(kPgAdvisoryLocksTableName);
+  req.mutable_namespace_()->set_name(kSystemNamespaceName);
+  req.set_table_type(TableType::YQL_TABLE_TYPE);
+  req.set_num_tablets(FLAGS_num_advisory_locks_tablets);
+
+  auto schema = yb::client::internal::GetSchema(yb_schema);
+
+  SchemaToPB(schema, req.mutable_schema());
+
+  Status s = catalog_manager_.CreateTable(&req, &resp, /* RpcContext */ nullptr, epoch);
+  if (!s.ok() && !s.IsAlreadyPresent()) {
+    return s;
+  }
+  advisory_locks_table_created_ = true;
   return Status::OK();
 }
 

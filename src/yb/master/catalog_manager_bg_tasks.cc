@@ -39,6 +39,7 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
+#include "yb/master/ysql/ysql_manager.h"
 #include "yb/master/ysql_backends_manager.h"
 
 #include "yb/util/callsite_profiling.h"
@@ -200,6 +201,9 @@ void CatalogManagerBgTasks::Run() {
             catalog_manager_->CreateTestEchoService(l.epoch()),
             "Failed to create Test Echo service");
       }
+
+      WARN_NOT_OK(catalog_manager_->ysql_manager_->CreateYbAdvisoryLocksTableIfNeeded(l.epoch()),
+                  "Failed to create YB advisory locks table");
 
       // TODO(auto-analyze, #19464): we allow enabling this service at runtime. We should also allow
       // disabling this service at runtime i.e., the service should stop on the tserver hosting it
