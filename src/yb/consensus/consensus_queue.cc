@@ -874,17 +874,24 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesInSegmentForCDC(
     int64_t* last_committed_index, HybridTime* consistent_stream_safe_time_footer,
     bool* read_entire_wal) {
   auto read_ops = ReadOpsResult();
-  int64_t start_op_id_index;
-  int64_t current_segment_num;
-  int64_t segment_last_index;
-  int64_t committed_op_id_index;
-  int64_t last_replicated_op_id_index;
+  int64_t start_op_id_index = -1;
+  int64_t current_segment_num = -1;
+  int64_t segment_last_index = -1;
+  int64_t committed_op_id_index = -1;
+  int64_t last_replicated_op_id_index = -1;
+  bool pending_messages;
 
   do {
     // We wait till committed_op_id_index becomes >= last index of the segment that contains the
     // from_op_id. If we reach deadline, then return have_more_messages as true to wait for wal
     // update.
     if (deadline - CoarseMonoClock::Now() <= FLAGS_cdcsdk_wal_reads_deadline_buffer_secs * 1s) {
+      LOG(INFO) << "Deadline reached on tablet: " << tablet_id_
+                << " while waiting for committed_op_id_index: " << committed_op_id_index
+                << " to become >= segment's last index: " << segment_last_index
+                << ", current_segment_num: " << current_segment_num
+                << ", start_op_id_index: " << start_op_id_index
+                << ", last_replicated_op_id_index: " << last_replicated_op_id_index;
       read_ops.have_more_messages = HaveMoreMessages(true);
       return read_ops;
     }
@@ -893,7 +900,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesInSegmentForCDC(
         GetCommittedAndMajorityReplicatedIndex();
 
     // Determine if there are pending operations in RAFT but not yet LogCache.
-    auto pending_messages = committed_op_id_index != last_replicated_op_id_index;
+    pending_messages = committed_op_id_index != last_replicated_op_id_index;
 
     if (last_committed_index) {
       *last_committed_index = committed_op_id_index;
@@ -970,6 +977,14 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesInSegmentForCDC(
     if (!result.messages.empty()) {
       current_index = result.messages.back()->id().index();
     }
+  }
+
+  // In addition to actually reading the active segment, the following condition also indicates that
+  // we have read the entire WAL. This can happen if a new segment has been allocated but there are
+  // no more writes on the tablet. Hence, last replicated op id falls in the last closed segment and
+  // active segment is essentially empty.
+  if(!pending_messages && current_index == last_replicated_op_id_index) {
+    *read_entire_wal = true;
   }
 
   return read_ops;
