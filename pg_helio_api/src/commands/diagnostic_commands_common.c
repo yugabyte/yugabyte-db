@@ -132,6 +132,15 @@ GetWorkerBsonsFromAllWorkers(const char *query, Datum *paramValues,
 						"canceling statement due to conflict with recovery");
 					StringView outOfMemoryView = CreateStringViewFromString(
 						"out of memory");
+					StringView errorStartView = CreateStringViewFromString(
+						"ERROR: ");
+
+					if (StringViewStartsWithStringView(&errorView, &errorStartView))
+					{
+						errorView = StringViewSubstring(&errorView,
+														errorStartView.length);
+					}
+
 					if (StringViewStartsWithStringView(&errorView, &connectivityView))
 					{
 						ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE),
