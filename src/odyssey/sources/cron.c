@@ -88,6 +88,8 @@ static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 			route->server_pool.count_active;
 		instance->yb_stats[index].idle_servers =
 			route->server_pool.count_idle;
+		instance->yb_stats[index].sticky_connections =
+			route->server_pool.yb_count_sticky;
 		instance->yb_stats[index].query_rate = avg->count_query;
 		instance->yb_stats[index].transaction_rate = avg->count_tx;
 		instance->yb_stats[index].avg_wait_time_ns = avg->wait_time;
