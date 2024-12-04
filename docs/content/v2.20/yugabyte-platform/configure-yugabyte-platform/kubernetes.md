@@ -48,113 +48,7 @@ Before you create a Kubernetes provider, perform the following:
 - Create a `yugabyte-platform-universe-management` service account.
 - Create a `kubeconfig` file of the service account you created to configure access to the Kubernetes cluster.
 
-This needs to be done for each Kubernetes cluster if you are doing a multi-cluster setup.
-
-If YBA is installed on Kubernetes, you can use the existing service account to discover details about the Kubernetes cluster and auto-fill the provider configuration. You can then modify these settings to further customize the provider. See [Create a provider](#create-a-provider).
-
-### Service account
-
-The secret of a service account can be used to generate a `kubeconfig` file. This account should not be deleted once it is in use by YBA.
-
-Set the `YBA_NAMESPACE` environment variable to the namespace where your YBA is installed, as follows:
-
-```sh
-export YBA_NAMESPACE="yb-platform"
-```
-
-Note that the `YBA_NAMESPACE` variable is used in the commands throughout this document.
-
-Run the following `kubectl` command to apply the YAML file:
-
-```sh
-export YBA_NAMESPACE="yb-platform"
-
-kubectl apply -f https://raw.githubusercontent.com/yugabyte/charts/master/rbac/yugabyte-platform-universe-management-sa.yaml -n ${YBA_NAMESPACE}
-```
-
-Expect the following output:
-
-```output
-serviceaccount/yugabyte-platform-universe-management created
-```
-
-The next step is to grant access to this service account using ClusterRoles and Roles, as well as ClusterRoleBindings and RoleBindings, thus allowing it to manage the YugabyteDB universe's resources for you.
-
-The namespace in the following commands needs to be replaced with the correct namespace of the previously created service account.
-
-The tasks you can perform depend on your access level.
-
-**Global Admin** can grant broad cluster level admin access by executing the following command:
-
-```sh
-export YBA_NAMESPACE="yb-platform"
-
-curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-global-admin.yaml \
-  | sed "s/namespace: <SA_NAMESPACE>/namespace: ${YBA_NAMESPACE}"/g \
-  | kubectl apply -n ${YBA_NAMESPACE} -f -
-```
-
-**Global Restricted** can grant access to only the specific cluster roles to create and manage YugabyteDB universes across all the namespaces in a cluster using the following command:
-
-```sh
-export YBA_NAMESPACE="yb-platform"
-
-curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-global.yaml \
-  | sed "s/namespace: <SA_NAMESPACE>/namespace: ${YBA_NAMESPACE}"/g \
-  | kubectl apply -n ${YBA_NAMESPACE} -f -
-```
-
-This contains ClusterRoles and ClusterRoleBindings for the required set of permissions.
-
-**Namespace Admin** can grant namespace-level admin access by using the following command:
-
-```sh
-export YBA_NAMESPACE="yb-platform"
-
-curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced-admin.yaml \
-  | sed "s/namespace: <SA_NAMESPACE>/namespace: ${YBA_NAMESPACE}"/g \
-  | kubectl apply -n ${YBA_NAMESPACE} -f -
-```
-
-If you have multiple target namespaces, then you have to apply the YAML in all of them.
-
-**Namespace Restricted** can grant access to only the specific roles required to create and manage YugabyteDB universes in a particular namespace. Contains Roles and RoleBindings for the required set of permissions.
-
-For example, if your goal is to allow YBA to manage YugabyteDB universes in the namespaces `yb-db-demo` and `yb-db-us-east4-a` (the target namespaces), then you need to apply in both the target namespaces, as follows:
-
-```sh
-export YBA_NAMESPACE="yb-platform"
-
-curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced.yaml \
-  | sed "s/namespace: <SA_NAMESPACE>/namespace: ${YBA_NAMESPACE}"/g \
-  | kubectl apply -n ${YBA_NAMESPACE} -f -
-```
-
-### kubeconfig file
-
-You can create a `kubeconfig` file for the previously created `yugabyte-platform-universe-management` service account as follows:
-
-1. Run the following `wget` command to get the Python script for generating the `kubeconfig` file:
-
-    ```sh
-    wget https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/generate_kubeconfig.py
-    ```
-
-2. Run the following command to generate the `kubeconfig` file:
-
-    ```sh
-    export YBA_NAMESPACE="yb-platform"
-
-    python generate_kubeconfig.py -s yugabyte-platform-universe-management -n ${YBA_NAMESPACE}
-    ```
-
-    Expect the following output:
-
-    ```output
-    Generated the kubeconfig file: /tmp/yugabyte-platform-universe-management.conf
-    ```
-
-3. Use this generated `kubeconfig` file for your Kubernetes provider configuration.
+Refer to [To deploy nodes](../../prepare/cloud-permissions/cloud-permissions-nodes/).
 
 ## Configure Kubernetes
 
@@ -196,7 +90,7 @@ Enter a Provider name. The Provider name is an internal tag used for organizing 
 
 Choose the **Kubernetes Provider Type**.
 
-In the **Image Registry** field, specify from where to pull the YugabyteDB image. Accept the default setting, unless you are hosting the registry, in which case refer to steps described in [Pull and push YugabyteDB Docker images to private container registry](../../install-yugabyte-platform/prepare-environment/kubernetes/#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
+In the **Image Registry** field, specify from where to pull the YugabyteDB image. Accept the default setting, unless you are hosting the registry, in which case refer to steps described in [Pull and push YugabyteDB Docker images to private container registry](../../prepare/server-nodes-software/software-kubernetes/#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
 
 Use **Pull Secret** to upload the pull secret to download the image of the Enterprise YugabyteDB that is in a private repository. Your Yugabyte sales representative should have provided this secret.
 
@@ -216,7 +110,7 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 
 1. Optionally, use **Kube Config** to upload the `kubeconfig` file. If this file is available at the provider level, you are not required to supply it.
 
-1. Optionally, use the **Storage Classes** field to enter a comma-delimited value. If you do not specify this value, it would default to standard. You need to ensure that this storage class exists in your Kubernetes cluster and takes into account [storage class considerations](../../install-yugabyte-platform/prepare-environment/kubernetes/#configure-storage-class).
+1. Optionally, use the **Storage Classes** field to enter a comma-delimited value. If you do not specify this value, it would default to standard. You need to ensure that this storage class exists in your Kubernetes cluster. Refer to [Hardware requirements for pods](../../prepare/server-nodes-hardware/).
 
 1. Optionally, use the **Kube Pod Address Template** field to enter the pod address template.
 

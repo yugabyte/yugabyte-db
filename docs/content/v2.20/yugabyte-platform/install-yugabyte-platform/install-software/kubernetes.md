@@ -143,7 +143,7 @@ If you are looking for a customization which is not listed, you can view all the
 
 ### Specify custom container registry
 
-If you have pushed the container images to a custom registry as mentioned in [Pull and push YugabyteDB Docker images to private container registry](../../prepare-environment/kubernetes/#pull-and-push-yugabytedb-docker-images-to-private-container-registry), set the registry address, as follows:
+If you have pushed the container images to a custom registry as mentioned in [Pull and push YugabyteDB Docker images to private container registry](../../../prepare/server-nodes-software/software-kubernetes/#pull-and-push-yugabytedb-docker-images-to-private-container-registry), set the registry address, as follows:
 
 ```yaml
 # yba-values.yaml
@@ -295,7 +295,7 @@ The value is passed to Nginx frontend as [ssl_protocols](https://nginx.org/r/ssl
 
 ### Control placement of YugabyteDB Anywhere pods
 
-The Helm chart allows you to control the placement of the pods when installing YugabyteDB Anywhere in your Kubernetes cluster via `nodeSelector`, `zoneAffinity`, and `toleration`. When you are using these constraints, ensure that you are following recommendations provided in [Configure storage class](../../prepare-environment/kubernetes/#configure-storage-class). For more information about pod placement, see [Assigning pods to nodes](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/).
+The Helm chart allows you to control the placement of the pods when installing YugabyteDB Anywhere in your Kubernetes cluster via `nodeSelector`, `zoneAffinity`, and `toleration`. When you are using these constraints, ensure that you are following recommendations provided in [Hardware requirements](../../../prepare/server-nodes-hardware/). For more information about pod placement, see [Assigning pods to nodes](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/).
 
 #### nodeSelector
 
@@ -414,7 +414,7 @@ yugaware:
   storage: "200Gi"
 ```
 
-You should use a storage class that has been configured based on recommendations provided in [Configure storage class](../../prepare-environment/kubernetes/#configure-storage-class).
+You should use a storage class that has been configured based on recommendations provided in [Hardware requirements (Kubernetes)](../../../prepare/server-nodes-hardware/).
 
 In addition, it is recommended to set a large initial storage size, because resizing the volumes later is challenging.
 
