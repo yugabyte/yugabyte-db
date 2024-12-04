@@ -194,6 +194,7 @@ PrepareQuery(PrepareStmt *stmt, const char *queryString,
 		 * made sticky.
 		 */
 		increment_sticky_object_count();
+		elog(LOG, "Incrementing sticky object count for prepared statement %s", stmt->name);
 	}
 }
 
