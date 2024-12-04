@@ -408,8 +408,7 @@ class PeerMessageQueue {
   Result<ReadOpsResult> ReadReplicatedMessagesInSegmentForCDC(
       const OpId& from_op_id, CoarseTimePoint deadline, bool fetch_single_entry = false,
       int64_t* last_committed_index = nullptr,
-      HybridTime* consistent_stream_safe_time_footer = nullptr,
-      bool* read_entire_wal = nullptr);
+      HybridTime* consistent_stream_safe_time_footer = nullptr);
 
   void UpdateCDCConsumerOpId(const yb::OpId& op_id);
 

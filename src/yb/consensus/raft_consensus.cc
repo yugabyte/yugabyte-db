@@ -3653,11 +3653,10 @@ Result<ReadOpsResult> RaftConsensus::ReadReplicatedMessagesForConsistentCDC(
 
 Result<ReadOpsResult> RaftConsensus::ReadReplicatedMessagesInSegmentForCDC(
     const OpId& from_op_id, CoarseTimePoint deadline, bool fetch_single_entry,
-    int64_t* last_committed_index, HybridTime* consistent_stream_safe_time_footer,
-    bool* read_entire_wal) {
+    int64_t* last_committed_index, HybridTime* consistent_stream_safe_time_footer) {
   return queue_->ReadReplicatedMessagesInSegmentForCDC(
       from_op_id, deadline, fetch_single_entry, last_committed_index,
-      consistent_stream_safe_time_footer, read_entire_wal);
+      consistent_stream_safe_time_footer);
 }
 
 void RaftConsensus::UpdateCDCConsumerOpId(const yb::OpId& op_id) {
