@@ -27,6 +27,7 @@ OBJS = \
 	spccache.o \
 	syscache.o \
 	ts_cache.o \
-	typcache.o
+	typcache.o \
+	yb_tuplecache.o
 
 include $(top_srcdir)/src/backend/common.mk
