@@ -494,6 +494,7 @@ public class GFlagsUtil {
     ybcFlags.put("ysqlsh", getYbHomeDir(providerUUID) + YSQLSH_PATH);
     ybcFlags.put("ycqlsh", getYbHomeDir(providerUUID) + YCQLSH_PATH);
     ybcFlags.put("log_filename", YBC_LOG_FILENAME);
+    ybcFlags.put("log_utc_time", "true");
 
     if (taskParam.enableNodeToNodeEncrypt) {
       ybcFlags.put(CERT_NODE_FILENAME, node.cloudInfo.private_ip);
@@ -560,6 +561,7 @@ public class GFlagsUtil {
     ybcFlags.put("ysqlsh", ybHomeDir + YSQLSH_PATH);
     ybcFlags.put("ycqlsh", ybHomeDir + YCQLSH_PATH);
     ybcFlags.put("log_filename", YBC_LOG_FILENAME);
+    ybcFlags.put("log_utc_time", "true");
 
     if (MapUtils.isNotEmpty(userIntent.ybcFlags)) {
       ybcFlags.putAll(userIntent.ybcFlags);
