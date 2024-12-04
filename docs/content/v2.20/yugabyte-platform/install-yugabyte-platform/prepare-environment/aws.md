@@ -86,7 +86,7 @@ You should see a configuration similar to the one shown in the following illustr
 
 ## Create an IAM role (optional)
 
-To manage YugabyteDB nodes, YugabyteDB Anywhere requires limited access to your AWS infrastructure. To grant the required access, you can provide a set of credentials when configuring the AWS provider, as described in [Configure the AWS cloud provider](../../../configure-yugabyte-platform/set-up-cloud-provider/aws/).
+To manage YugabyteDB nodes, YugabyteDB Anywhere requires limited access to your AWS infrastructure. To grant the required access, you can provide a set of credentials when configuring the AWS provider, as described in [Configure the AWS cloud provider](../../../configure-yugabyte-platform/aws/).
 
 Alternatively, the EC2 instance where the YugabyteDB Anywhere will be running can be brought up with an IAM role with enough permissions to take all the actions required by YugabyteDB Anywhere. The following is a sample of such a role:
 
@@ -148,7 +148,7 @@ Alternatively, the EC2 instance where the YugabyteDB Anywhere will be running ca
 }
 ```
 
-Note that if you will be using YugabyteDB Anywhere to create a VPC on AWS (this feature is Beta, see [Configure the AWS cloud provider](../../../configure-yugabyte-platform/set-up-cloud-provider/aws/#regions)) rather than use a VPC you have already configured, the role requires the following additional permissions:
+Note that if you will be using YugabyteDB Anywhere to create a VPC on AWS (this feature is Beta, see [Configure the AWS cloud provider](../../../configure-yugabyte-platform/aws/#regions)) rather than use a VPC you have already configured, the role requires the following additional permissions:
 
 ```sh
                 "ec2:CreateSecurityGroup",

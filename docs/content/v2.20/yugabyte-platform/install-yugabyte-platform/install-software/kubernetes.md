@@ -123,7 +123,7 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
     [info] AkkaHttpServer.scala:447 [main] Listening for HTTP on /0.0.0.0:9000
     ```
 
-    If YugabyteDB Anywhere fails to start for the first time, verify that your system meets the installation requirements, as per [Prerequisites for Kubernetes-based installations](../../prerequisites/kubernetes). See [Install and upgrade issues on Kubernetes](../../../troubleshoot/install-upgrade-issues/kubernetes/) to troubleshoot the problem.
+    If YugabyteDB Anywhere fails to start for the first time, verify that your system meets the installation requirements, as per [Hardware requirements (Kubernetes)](../../../prepare/server-nodes-hardware/). See [Install and upgrade issues on Kubernetes](../../../troubleshoot/install-upgrade-issues/kubernetes/) to troubleshoot the problem.
 
 ## Customize YugabyteDB Anywhere
 

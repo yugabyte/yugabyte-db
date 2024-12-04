@@ -235,7 +235,7 @@ helm delete yw-test -n yb-platform
 
 ## Find the availability zone labels
 
-You need to find the region name and availability zone codes where the cluster is running. This information is required by YugabyteDB Anywhere (see [Create a Provider in YugabyteDB Anywhere](../../../configure-yugabyte-platform/set-up-cloud-provider/openshift#create-a-provider-in-yugabyte-platform/)). For example, if your OCP cluster is in the US East, then the cloud provider's zone labels can be us-east4-a, us-east4-b, and so on.
+You need to find the region name and availability zone codes where the cluster is running. This information is required by YugabyteDB Anywhere (see [Create a Provider in YugabyteDB Anywhere](../../../configure-yugabyte-platform/openshift/#create-a-provider-in-yugabyte-platform)). For example, if your OCP cluster is in the US East, then the cloud provider's zone labels can be us-east4-a, us-east4-b, and so on.
 
 You can use the OpenShift web console or the command line to search for the availability zone codes.
 

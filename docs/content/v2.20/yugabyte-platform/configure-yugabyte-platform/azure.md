@@ -47,8 +47,6 @@ When deploying a universe, YBA uses the provider configuration settings to do th
 
 - Provision those VMs with YugabyteDB software
 
-Note: YBA needs network connectivity to the VMs, resource group for the provisioning step above, and for subsequent management, as described in [Cloud prerequisites](../../../install-yugabyte-platform/prepare-environment/azure/).
-
 ## Prerequisites
 
 You need to add the following Azure cloud provider credentials via YBA:
@@ -61,7 +59,7 @@ You need to add the following Azure cloud provider credentials via YBA:
 
 YBA uses the credentials to automatically provision and deprovision YugabyteDB instances.
 
-For more information on setting up an Azure account and resource groups, refer to [Cloud prerequisites](../../../install-yugabyte-platform/prepare-environment/azure/).
+For more information on setting up an Azure account and resource groups, refer to [Cloud permissions to deploy nodes](../../prepare/cloud-permissions/cloud-permissions-nodes-azure/).
 
 ## Configure Azure
 
@@ -83,7 +81,7 @@ This process includes configuring a network, subnetworks in all available region
 
 When the configuration is completed, you can see all the resources managed by YBA in your resource group, including virtual machines, network interface, network security groups, public IP addresses, and disks.
 
-If you encounter problems, see [Troubleshoot Azure cloud provider configuration](../../../troubleshoot/cloud-provider-config-issues/#azure-cloud-provider-configuration-problems).
+If you encounter problems, see [Troubleshoot Azure cloud provider configuration](../../troubleshoot/cloud-provider-config-issues/#azure-cloud-provider-configuration-problems).
 
 ### View and edit providers
 

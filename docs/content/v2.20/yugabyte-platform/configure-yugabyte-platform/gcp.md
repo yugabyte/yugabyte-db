@@ -53,7 +53,7 @@ When deploying a universe, YBA uses the provider configuration settings to do th
 
 - Cloud provider credentials. YBA uses your credentials to automatically provision and de-provision instances that run YugabyteDB. An instance for YugabyteDB includes a compute instance, as well as local or remote disk storage attached to the compute instance.
 
-For more information on setting up a GCP service account, refer to [Cloud prerequisites](../../../install-yugabyte-platform/prepare-environment/gcp/).
+For more information on setting up a GCP service account, refer to [Cloud permissions to deploy nodes](../../prepare/cloud-permissions/cloud-permissions-nodes-gcp/).
 
 ## GCP instance templates
 

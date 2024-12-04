@@ -52,7 +52,7 @@ sudo firewall-cmd --reload
 
 ### Networking for xCluster
 
-When two database clusters are connected via [xCluster replication](../../manage-deployments/xcluster-replication/), you need to ensure that the yb-master and yb-tserver RPC ports (default 7100 and 9100 respectively) are open in both directions between all nodes in both clusters. If nodes use DNS addresses, those addresses must be resolvable on all nodes.
+When two database clusters are connected via [xCluster replication](../../create-deployments/async-replication-platform/), you need to ensure that the yb-master and yb-tserver RPC ports (default 7100 and 9100 respectively) are open in both directions between all nodes in both clusters. If nodes use DNS addresses, those addresses must be resolvable on all nodes.
 
 ### Overriding default port assignments
 

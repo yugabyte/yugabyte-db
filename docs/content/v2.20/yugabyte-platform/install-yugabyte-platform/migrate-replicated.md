@@ -115,7 +115,7 @@ To migrate to a different VM, do the following:
 1. Disable [high availability](../../administer-yugabyte-platform/high-availability/) (if configured) on the Replicated installation.
 1. Perform a full [backup of YBA](../../administer-yugabyte-platform/back-up-restore-yp/) on the Replicated installation.
 
-    This backup includes Prometheus data and all [imported releases](../../manage-deployments/ybdb-releases/).
+    This backup includes Prometheus data and all [imported releases](../../manage-deployments/upgrade-software-install/).
 
     If the backup is too large, consider removing unused releases; and/or reducing the Prometheus retention interval in the Replicated Admin console.
 

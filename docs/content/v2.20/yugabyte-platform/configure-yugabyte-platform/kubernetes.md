@@ -196,7 +196,7 @@ Enter a Provider name. The Provider name is an internal tag used for organizing 
 
 Choose the **Kubernetes Provider Type**.
 
-In the **Image Registry** field, specify from where to pull the YugabyteDB image. Accept the default setting, unless you are hosting the registry, in which case refer to steps described in [Pull and push YugabyteDB Docker images to private container registry](../../../install-yugabyte-platform/prepare-environment/kubernetes/#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
+In the **Image Registry** field, specify from where to pull the YugabyteDB image. Accept the default setting, unless you are hosting the registry, in which case refer to steps described in [Pull and push YugabyteDB Docker images to private container registry](../../install-yugabyte-platform/prepare-environment/kubernetes/#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
 
 Use **Pull Secret** to upload the pull secret to download the image of the Enterprise YugabyteDB that is in a private repository. Your Yugabyte sales representative should have provided this secret.
 
@@ -216,7 +216,7 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 
 1. Optionally, use **Kube Config** to upload the `kubeconfig` file. If this file is available at the provider level, you are not required to supply it.
 
-1. Optionally, use the **Storage Classes** field to enter a comma-delimited value. If you do not specify this value, it would default to standard. You need to ensure that this storage class exists in your Kubernetes cluster and takes into account [storage class considerations](../../../install-yugabyte-platform/prepare-environment/kubernetes/#configure-storage-class).
+1. Optionally, use the **Storage Classes** field to enter a comma-delimited value. If you do not specify this value, it would default to standard. You need to ensure that this storage class exists in your Kubernetes cluster and takes into account [storage class considerations](../../install-yugabyte-platform/prepare-environment/kubernetes/#configure-storage-class).
 
 1. Optionally, use the **Kube Pod Address Template** field to enter the pod address template.
 
@@ -224,9 +224,9 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 
 1. Use the **Kube Namespace** field to specify the namespace. If the provided service account has the `Cluster Admin` permissions, you are not required to complete this field. The service account used in the provided `kubeconfig` file should have access to this namespace.
 
-1. Complete the **Overrides** field using one of the provided [options](#overrides). If you do not specify anything, YBA uses defaults specified inside the Helm chart. For additional information, see [Open source Kubernetes](../../../../deploy/kubernetes/single-zone/oss/helm-chart/).
+1. Complete the **Overrides** field using one of the provided [options](#overrides). If you do not specify anything, YBA uses defaults specified inside the Helm chart. For additional information, see [Open source Kubernetes](../../../deploy/kubernetes/single-zone/oss/helm-chart/).
 
-1. If you are using [Kubernetes cert-manager](https://cert-manager.io) to manage TLS certificates, specify the issuer type and enter the issuer name. For more information, refer to [Enable encryption in transit](../../../security/enable-encryption-in-transit/#kubernetes-cert-manager).
+1. If you are using [Kubernetes cert-manager](https://cert-manager.io) to manage TLS certificates, specify the issuer type and enter the issuer name. For more information, refer to [Enable encryption in transit](../../security/enable-encryption-in-transit/#kubernetes-cert-manager).
 
 If required, add a new zone by clicking **Add Zone**, as your configuration may have multiple zones.
 
@@ -393,7 +393,7 @@ The following overrides are available:
     tolerations: []
   ```
 
-  Tolerations work in combination with taints: `Taints` are applied on nodes and `Tolerations` are applied to pods. Taints and tolerations ensure that pods do not schedule onto inappropriate nodes. You need to set `nodeSelector` to schedule YugabyteDB pods onto specific nodes, and then use taints and tolerations to prevent other pods from getting scheduled on the dedicated nodes, if required. For more information, see [toleration](../../../install-yugabyte-platform/install-software/kubernetes/#toleration) and [Toleration API](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#toleration-v1-core).
+  Tolerations work in combination with taints: `Taints` are applied on nodes and `Tolerations` are applied to pods. Taints and tolerations ensure that pods do not schedule onto inappropriate nodes. You need to set `nodeSelector` to schedule YugabyteDB pods onto specific nodes, and then use taints and tolerations to prevent other pods from getting scheduled on the dedicated nodes, if required. For more information, see [toleration](../../install-yugabyte-platform/install-software/kubernetes/#toleration) and [Toleration API](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#toleration-v1-core).
 
 - Overrides to use `nodeSelector` to schedule YB-Master and YB-TServer pods on dedicated nodes:
 
@@ -404,7 +404,7 @@ The following overrides are available:
     topology.kubernetes.io/zone: asia-south2-a
   ```
 
-  For more information, see [nodeSelector](../../../install-yugabyte-platform/install-software/kubernetes/#nodeselector) and [Kubernetes: Node Selector](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector).
+  For more information, see [nodeSelector](../../install-yugabyte-platform/install-software/kubernetes/#nodeselector) and [Kubernetes: Node Selector](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector).
 
 - Overrides to add `affinity` in YB-Master and YB-TServer pods:
 
@@ -473,9 +473,9 @@ The following overrides are available:
     skipUlimit: false
   ```
 
-  For more information, see [Helm chart: Prerequisites](../../../../deploy/kubernetes/single-zone/oss/helm-chart/#prerequisites).
+  For more information, see [Helm chart: Prerequisites](../../../deploy/kubernetes/single-zone/oss/helm-chart/#prerequisites).
 
-- Overrides to use a secret for LDAP authentication. Refer to [Create secrets for Kubernetes](../../../../secure/authentication/ldap-authentication-ysql/#create-secrets-for-kubernetes).
+- Overrides to use a secret for LDAP authentication. Refer to [Create secrets for Kubernetes](../../../secure/authentication/ldap-authentication-ysql/#create-secrets-for-kubernetes).
 
 ## Configure Kubernetes multi-cluster environment
 

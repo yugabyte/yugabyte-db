@@ -44,10 +44,6 @@ SSH is required only during initial provisioning of the nodes. After a node is p
 
 In this provisioning workflow, after creating the VMs, installing YBA, and creating an on-premises provider, YBA creates a script (`provision_instance.py`) for you to use to provision the nodes interactively. The script signs in to each of your VMs with SSH credentials that you provide (including username and password), and prepares the VM.
 
-{{<tip>}}
-For instructions for v2.20 and earlier, see [Create on-premises provider configuration](/v2.20/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
-{{</tip>}}
-
 ## With Internet or Yum connectivity
 
 If your VM has Internet or Yum connectivity, you must provide to YBA a VM with the following pre-installed:
