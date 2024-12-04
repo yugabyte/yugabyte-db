@@ -20,11 +20,12 @@
 #include <unordered_map>
 #include <vector>
 
+#include "yb/util/memory/arena_list.h"
+
 #include "yb/yql/pggate/pg_doc_op.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_table.h"
-
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
 namespace yb::pggate {
@@ -37,10 +38,6 @@ class PgDml : public PgStatement {
 
   // Append a target in SELECT or RETURNING.
   Status AppendTarget(PgExpr* target);
-
-  // Append a filter condition.
-  // Supported expression kind is serialized Postgres expression
-  Status AppendQual(PgExpr* qual, bool is_primary);
 
   // Append a column reference.
   // If any serialized Postgres expressions appended to other lists require explicit addition
@@ -105,12 +102,6 @@ class PgDml : public PgStatement {
   // Allocate protobuf for a SELECTed expression.
   virtual LWPgsqlExpressionPB* AllocTargetPB() = 0;
 
-  // Allocate protobuf for a WHERE clause expression.
-  // Subclasses use different protobuf message types for their requests, so they should
-  // implement this method that knows how to add a PgsqlExpressionPB entry into their where_clauses
-  // field.
-  virtual LWPgsqlExpressionPB* AllocQualPB() = 0;
-
   // Allocate protobuf for expression whose value is bounded to a column.
   virtual Result<LWPgsqlExpressionPB*> AllocColumnBindPB(PgColumn* col, PgExpr* expr) = 0;
 
@@ -132,16 +123,7 @@ class PgDml : public PgStatement {
   void ColumnRefsToPB(LWPgsqlColumnRefsPB* column_refs);
 
   // Transfer columns information from target_.columns() to the request's col_refs list field.
-  // Subclasses use different protobuf message types to make requests, so they must implement
-  // the ClearColRefPBs and AllocColRefPB virtual methods to respectively remove all old col_refs
-  // entries and allocate new entry in their requests.
   void ColRefsToPB();
-
-  // Clear previously allocated PgsqlColRefPB entries from the protobuf request
-  virtual void ClearColRefPBs() = 0;
-
-  // Allocate a PgsqlColRefPB entity in the protobuf request
-  virtual LWPgsqlColRefPB* AllocColRefPB() = 0;
 
   Status UpdateRequestWithYbctids(
       const std::vector<Slice>& ybctids, KeepOrder keep_order = KeepOrder::kFalse);
@@ -232,6 +214,9 @@ class PgDml : public PgStatement {
   // Yugabyte has a few IN/OUT parameters of statement execution, "pg_exec_params_" is used to sent
   // OUT value back to postgres.
   const PgExecParameters* pg_exec_params_ = nullptr;
+
+ private:
+  [[nodiscard]] virtual ArenaList<LWPgsqlColRefPB>& ColRefPBs() = 0;
 };
 
 }  // namespace yb::pggate

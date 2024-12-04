@@ -297,10 +297,7 @@ CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 			scanstate->ss.ps.state);
 		if (recheck_pushdown)
 		{
-			YbDmlAppendQuals(recheck_pushdown->quals,
-							 true /* is_primary */, ybScan->handle);
-			YbDmlAppendColumnRefs(recheck_pushdown->colrefs,
-								  true /* is_primary */, ybScan->handle);
+			YbApplyPrimaryPushdown(ybScan->handle, recheck_pushdown);
 			pfree(recheck_pushdown);
 		}
 	}

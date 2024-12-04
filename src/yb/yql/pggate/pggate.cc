@@ -1227,7 +1227,7 @@ Status PgApiImpl::DmlAppendTarget(PgStatement* handle, PgExpr* target) {
 }
 
 Status PgApiImpl::DmlAppendQual(PgStatement* handle, PgExpr* qual, bool is_primary) {
-  return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle)).AppendQual(qual, is_primary);
+  return VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle)).AppendQual(qual, is_primary);
 }
 
 Status PgApiImpl::DmlAppendColumnRef(PgStatement* handle, PgColumnRef* colref, bool is_primary) {
