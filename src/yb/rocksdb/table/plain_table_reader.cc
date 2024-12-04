@@ -618,6 +618,12 @@ InternalIterator* PlainTableReader::NewIndexIterator(const ReadOptions& read_opt
       STATUS(NotSupported, "NewIndexIterator() is not supported for PlainTableBuilder"));
 }
 
+DataBlockAwareIndexInternalIterator* PlainTableReader::NewDataBlockAwareIndexIterator(
+    const ReadOptions& read_options) {
+  return NewErrorIterator<DataBlockAwareIndexInternalIterator>(STATUS(
+      NotSupported, "NewDataBlockAwareIndexIterator() is not supported for PlainTableBuilder"));
+}
+
 PlainTableIterator::PlainTableIterator(PlainTableReader* table,
                                        bool use_prefix_seek)
     : table_(table),

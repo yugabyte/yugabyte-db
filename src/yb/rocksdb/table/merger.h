@@ -26,6 +26,8 @@
 #include <memory>
 
 #include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/rocksdb/table/internal_iterator.h"
+#include "yb/rocksdb/table/iterator_wrapper.h"
 
 namespace rocksdb {
 
@@ -49,6 +51,7 @@ InternalIterator* NewMergingIterator(
 template <typename IteratorWrapperType>
 class MergeIteratorBuilderBase {
  public:
+  using IteratorType = typename IteratorWrapperType::IteratorType;
   // comparator: the comparator used in merging comparator
   // arena: where the merging iterator needs to be allocated from.
   explicit MergeIteratorBuilderBase(const Comparator* comparator, Arena* arena);
@@ -71,19 +74,26 @@ class MergeIteratorBuilderBase {
   Arena* arena;
 };
 
+template <typename IteratorType>
+class MergingIterator : public InternalIterator {
+ public:
+  virtual IteratorType* GetCurrentIterator() = 0;
+};
+
 // Same as MergeIteratorBuilder but uses heap instead of arena.
 // DO NOT USE for critical code paths.
 template <typename IteratorWrapperType>
 class MergeIteratorInHeapBuilder {
  public:
+  using IteratorType = typename IteratorWrapperType::IteratorType;
   explicit MergeIteratorInHeapBuilder(const Comparator* comparator);
   ~MergeIteratorInHeapBuilder();
 
   // Add iter to the merging iterator.
-  void AddIterator(InternalIterator* iter);
+  void AddIterator(IteratorType* iter);
 
   // Return the result merging iterator.
-  std::unique_ptr<InternalIterator> Finish();
+  std::unique_ptr<MergingIterator<IteratorType>> Finish();
 
  private:
   std::unique_ptr<MergingIteratorBase<IteratorWrapperType>> merge_iter;

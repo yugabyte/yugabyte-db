@@ -35,6 +35,8 @@ struct ScanForwardResult {
 
 class InternalIterator : public Cleanable {
  public:
+  class Empty;
+
   InternalIterator() {}
   virtual ~InternalIterator() {}
 
@@ -151,10 +153,22 @@ class InternalIterator : public Cleanable {
   InternalIterator& operator=(const InternalIterator&) = delete;
 };
 
-// Return an empty iterator (yields nothing).
-extern InternalIterator* NewEmptyInternalIterator();
+// Enhanced interface with ability to get info from the current data block index iterator points to.
+class DataBlockAwareIndexInternalIterator : public InternalIterator {
+ public:
+  class Empty;
+  virtual yb::Result<std::pair<std::string, std::string>> GetCurrentDataBlockBounds() const = 0;
+};
 
-// Return an empty iterator with the specified status.
-extern InternalIterator* NewErrorInternalIterator(const Status& status);
+class Arena;
+
+// Return an empty iterator (yields nothing) allocated from arena if specified.
+extern InternalIterator* NewEmptyInternalIterator(Arena* arena = nullptr);
+
+// Return an empty iterator with the specified status, allocated arena if specified.
+extern InternalIterator* NewErrorInternalIterator(const Status& status, Arena* arena = nullptr);
+
+template <class IteratorType>
+extern IteratorType* NewErrorIterator(const Status& status, Arena* arena = nullptr);
 
 }  // namespace rocksdb

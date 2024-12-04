@@ -1337,6 +1337,25 @@ yb::Result<BlockBasedTable::CachableEntry<IndexReader>> BlockBasedTable::GetInde
   }
 }
 
+template <typename IndexIteratorType>
+void BlockBasedTable::RegisterCleanupForIndexIterator(
+    const CachableEntry<IndexReader>& index_reader_entry, IndexIteratorType* iter) {
+  if (index_reader_entry.cache_handle) {
+    iter->RegisterCleanup(
+        &ReleaseCachedEntry, rep_->table_options.block_cache.get(),
+        index_reader_entry.cache_handle);
+  } else if (index_reader_entry.owns) {
+    iter->RegisterCleanup(
+        &DestroyCachedEntry<IndexReader>, index_reader_entry.value, nullptr);
+  }
+}
+
+namespace {
+
+constexpr bool kSkipFiltersForIndex = true;
+
+} // namespace
+
 // TODO: consider allocating index iterator on arena, try and measure potential performance
 // improvements.
 InternalIterator* BlockBasedTable::NewIndexIterator(
@@ -1346,29 +1365,39 @@ InternalIterator* BlockBasedTable::NewIndexIterator(
     return ReturnErrorIterator(index_reader_result.status(), input_iter);
   }
 
-  const bool skip_filters_for_index = true;
-
   auto* new_iter = index_reader_result->value->NewIterator(
       input_iter,
       std::make_unique<BlockEntryIteratorState>(
-          this, ReadOptions::kDefault, skip_filters_for_index, BlockType::kIndex),
+          this, ReadOptions::kDefault, kSkipFiltersForIndex, BlockType::kIndex),
       read_options.total_order_seek);
 
-  auto iter = new_iter ? new_iter : input_iter;
-  if (index_reader_result->cache_handle) {
-    iter->RegisterCleanup(
-        &ReleaseCachedEntry, rep_->table_options.block_cache.get(),
-        index_reader_result->cache_handle);
-  } else if (index_reader_result->owns) {
-    iter->RegisterCleanup(
-        &DestroyCachedEntry<IndexReader>, index_reader_result->value, nullptr);
-  }
+  auto* iter = new_iter ? new_iter : input_iter;
+  RegisterCleanupForIndexIterator(index_reader_result.get(), iter);
 
   return new_iter;
 }
 
 InternalIterator* BlockBasedTable::NewIndexIterator(const ReadOptions& read_options) {
   return NewIndexIterator(read_options, /* input_iter = */ nullptr);
+}
+
+DataBlockAwareIndexInternalIterator* BlockBasedTable::NewDataBlockAwareIndexIterator(
+    const ReadOptions& read_options) {
+  const auto index_reader_result = GetIndexReader(read_options);
+  if (!index_reader_result.ok()) {
+    return NewErrorIterator<DataBlockAwareIndexInternalIterator>(index_reader_result.status());
+  }
+
+  auto* iter = index_reader_result->value->NewDataBlockAwareIterator(
+      /* iter = */ nullptr,
+      std::make_unique<BlockEntryIteratorState>(
+          this, ReadOptions::kDefault, kSkipFiltersForIndex, BlockType::kIndex),
+      std::make_unique<BlockEntryIteratorState>(
+          this, ReadOptions::kDefault, /* skip_filters = */ false, BlockType::kData),
+      read_options.total_order_seek);
+
+  RegisterCleanupForIndexIterator(index_reader_result.get(), iter);
+  return iter;
 }
 
 // Using status return value because returning Result<BlockBasedTable::BlockRetrievalInfo> leads to
