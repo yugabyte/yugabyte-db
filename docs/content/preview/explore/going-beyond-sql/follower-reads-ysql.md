@@ -54,7 +54,7 @@ The following table provides information on the expected behavior when a read ha
 
 ## Read-only transaction
 
-You can mark a transaction as read-only by applying the following guidelines:
+You can mark a transaction as read-only by applying any of the following:
 
 - `SET TRANSACTION READ ONLY` applies only to the current transaction block.
 - `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY` applies the read-only setting to all statements and transaction blocks that follow.
@@ -67,7 +67,6 @@ Note: The use of `pg_hint_plan` to mark a statement as read-only is not recommen
 - If the follower's safe-time is at least `<current_time> - <staleness>`, the follower may serve the read without any delay.
 
 - If the follower is not yet caught up to `<current_time> - <staleness>`, the read is redirected to a different replica transparently from the end-user. The end-user may see a slight increase in latency depending on the location of the replica which satisfies the read.
-
 
 ## Examples
 
@@ -120,7 +119,9 @@ select * from table1, table2 where table1.k = 3 and table2.v = table3.v;
 (1 row)
 ```
 
-The following examples demonstrate staleness after enabling the `yb_follower_read_staleness_ms` property:
+The following examples demonstrate staleness in a single session after enabling the `yb_follower_read_staleness_ms` property:
+
+The `read write` setting is the default, and shown here for clarity.
 
 ```sql
 set session characteristics as transaction read write;
@@ -136,15 +137,20 @@ select * from t where k = 'k1';
 (1 row)
 ```
 
+Next run some updates separated by sleep statements of 10 seconds each.
+
 ```sql
 UPDATE t SET  v = 'v1+1' where k = 'k1';
 /* sleep 10s */
 UPDATE t SET  v = 'v1+2' where k = 'k1';
 /* sleep 10s */
-select * from t where k = 'k1';
 ```
 
-This selects the latest version of the row because the transaction setting for the session is `read write`.
+This query displays the latest version of the row because the transaction setting for the session is still `read write`.
+
+```sql
+select * from t where k = 'k1';
+```
 
 ```output
  k  |  v
@@ -152,6 +158,8 @@ This selects the latest version of the row because the transaction setting for t
  k1 | v1+2
 (1 row)
 ```
+
+Next, set the transaction to `read only` and enable follower reads. The default value for `yb_follower_read_staleness_ms` is 30000 (30 seconds), so this query will display the version of the row from 30 seconds ago.
 
 ```sql
 set session characteristics as transaction read only;
@@ -166,9 +174,11 @@ select * from t where k = 'k1';
 (1 row)
 ```
 
+Set the yb_follower_read_staleness_ms property to 5000 (5 seconds) and run the query again. The query will display the version of the row from 5 seconds ago.
+
 ```sql
 set yb_follower_read_staleness_ms = 5000;
-select * from t where k = 'k1';   /* up to 5s old value */
+select * from t where k = 'k1';  
 ```
 
 ```output
@@ -178,9 +188,11 @@ select * from t where k = 'k1';   /* up to 5s old value */
 (1 row)
 ```
 
+Next, set the yb_follower_read_staleness_ms to 15000 (15 seconds) and run the query again. This query will display the version of the row from 15 seconds ago.
+
 ```sql
 set yb_follower_read_staleness_ms = 15000;
-select * from t where k = 'k1';   /* up to 15s old value */
+select * from t where k = 'k1';  
 ```
 
 ```output
@@ -190,9 +202,11 @@ select * from t where k = 'k1';   /* up to 15s old value */
 (1 row)
 ```
 
+Finally, set the yb_follower_read_staleness_ms to 25000 (25 seconds) and run the query again. This query will display the version of the row from 25 seconds ago.
+
 ```sql
 set yb_follower_read_staleness_ms = 25000;
-select * from t where k = 'k1';   /* up to 25s old value */
+select * from t where k = 'k1';   
 ```
 
 ```output
@@ -201,3 +215,5 @@ select * from t where k = 'k1';   /* up to 25s old value */
  k1 | v1
 (1 row)
 ```
+
+Note that your results may differ slightly depending on how quickly you run the queries.
