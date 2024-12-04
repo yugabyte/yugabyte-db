@@ -1070,8 +1070,7 @@ YBCExecuteUpdate(ResultRelInfo *resultRelInfo,
 	YbDmlAppendTargets(mt_plan->ybReturningColumns, update_stmt);
 
 	/* Column references to prepare data to evaluate pushed down expressions */
-	YbDmlAppendColumnRefs(mt_plan->ybColumnRefs, true /* is_primary */,
-						  update_stmt);
+	YbAppendPrimaryColumnRefs(update_stmt, mt_plan->ybColumnRefs);
 
 	/* Execute the statement. */
 

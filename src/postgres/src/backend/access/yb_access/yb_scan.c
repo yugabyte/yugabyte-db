@@ -2811,45 +2811,21 @@ YbDmlAppendTargets(List *colrefs, YBCPgStatement handle)
 	}
 }
 
-/*
- * YbDmlAppendQuals
- *
- * Add storage filter expressions to the statement.
- * The expression are pushed down to DocDB and used to filter rows early to
- * avoid sending them across network.
- * Set is_primary to false if the filter expression is to apply to secondary
- * index. In this case Var nodes must be properly adjusted to refer the index
- * columns rather than main relation columns.
- * For primary key scan or sequential scan is_primary should be true.
- */
 void
-YbDmlAppendQuals(List *quals, bool is_primary, YBCPgStatement handle)
+YbAppendPrimaryColumnRef(YBCPgStatement dml, YBCPgExpr colref)
 {
-	ListCell   *lc;
-
-	foreach(lc, quals)
-	{
-		Expr *expr = (Expr *) lfirst(lc);
-		/* Create new PgExpr wrapper for the expression */
-		YBCPgExpr yb_expr = YBCNewEvalExprCall(handle, expr);
-		/* Add the PgExpr to the statement */
-		HandleYBStatus(YbPgDmlAppendQual(handle, yb_expr, is_primary));
-	}
+	HandleYBStatus(YbPgDmlAppendColumnRef(dml, colref, true /* is_primary */));
 }
 
 /*
- * YbDmlAppendColumnRefs
+ * YbDmlAppendColumnRefsImpl
  *
  * Add the list of column references used by pushed down expressions to the
  * statement.
  * The colref list is expected to be the list of YbExprColrefDesc nodes.
- * Set is_primary to false if the filter expression is to apply to secondary
- * index. In this case attno field values must be properly adjusted to refer
- * the index columns rather than main relation columns.
- * For primary key scan or sequential scan is_primary should be true.
  */
-void
-YbDmlAppendColumnRefs(List *colrefs, bool is_primary, YBCPgStatement handle)
+static void
+YbAppendColumnRefsImpl(YBCPgStatement dml, List *colrefs, bool is_primary)
 {
 	ListCell   *lc;
 
@@ -2857,15 +2833,48 @@ YbDmlAppendColumnRefs(List *colrefs, bool is_primary, YBCPgStatement handle)
 	{
 		YbExprColrefDesc *param = lfirst_node(YbExprColrefDesc, lc);
 		YBCPgTypeAttrs type_attrs = { param->typmod };
-		/* Create new PgExpr wrapper for the column reference */
-		YBCPgExpr yb_expr = YBCNewColumnRef(handle,
-											param->attno,
-											param->typid,
-											param->collid,
-											&type_attrs);
-		/* Add the PgExpr to the statement */
-		HandleYBStatus(YbPgDmlAppendColumnRef(handle, yb_expr, is_primary));
+		HandleYBStatus(YbPgDmlAppendColumnRef(
+			dml,
+			YBCNewColumnRef(
+				dml, param->attno, param->typid, param->collid, &type_attrs),
+			is_primary));
 	}
+}
+
+void
+YbAppendPrimaryColumnRefs(YBCPgStatement dml, List *colrefs)
+{
+	YbAppendColumnRefsImpl(dml, colrefs, true /* is_primary */);
+}
+
+static void
+YbApplyPushdownImpl(
+	YBCPgStatement dml, const PushdownExprs *pushdown, bool is_primary)
+{
+	if (!pushdown)
+		return;
+
+	YbAppendColumnRefsImpl(dml, pushdown->colrefs, is_primary);
+
+	ListCell *lc;
+	foreach(lc, pushdown->quals)
+	{
+		Expr *expr = lfirst(lc);
+		HandleYBStatus(YbPgDmlAppendQual(
+			dml, YBCNewEvalExprCall(dml, expr), is_primary));
+	}
+}
+
+void
+YbApplyPrimaryPushdown(YBCPgStatement dml, const PushdownExprs *pushdown)
+{
+	YbApplyPushdownImpl(dml, pushdown, true /* is_primary */);
+}
+
+void
+YbApplySecondaryIndexPushdown(YBCPgStatement dml, const PushdownExprs *pushdown)
+{
+	YbApplyPushdownImpl(dml, pushdown, false /* is_primary */);
 }
 
 /*
@@ -2961,23 +2970,8 @@ ybcBeginScan(Relation relation,
 	else
 		ybcSetupTargets(ybScan, &scan_plan, pg_scan_plan);
 
-	/*
-	 * Set up pushdown expressions.
-	 */
-	if (rel_pushdown != NULL)
-	{
-		YbDmlAppendQuals(rel_pushdown->quals, true /* is_primary */,
-						 ybScan->handle);
-		YbDmlAppendColumnRefs(rel_pushdown->colrefs, true /* is_primary */,
-							  ybScan->handle);
-	}
-	if (idx_pushdown != NULL)
-	{
-		YbDmlAppendQuals(idx_pushdown->quals, false /* is_primary */,
-						 ybScan->handle);
-		YbDmlAppendColumnRefs(idx_pushdown->colrefs, false /* is_primary */,
-							  ybScan->handle);
-	}
+	YbApplyPrimaryPushdown(ybScan->handle, rel_pushdown);
+	YbApplySecondaryIndexPushdown(ybScan->handle, idx_pushdown);
 
 	/*
 	 * Set the current syscatalog version (will check that we are up to

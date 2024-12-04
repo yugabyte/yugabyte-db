@@ -282,12 +282,16 @@ extern void YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc,
 										Relation index, bool xs_want_itup,
 										YBCPgStatement handle);
 extern void YbDmlAppendTargets(List *colrefs, YBCPgStatement handle);
-/* Add quals to the given statement. */
-extern void YbDmlAppendQuals(List *quals, bool is_primary,
-							 YBCPgStatement handle);
-/* Add column references to the given statement. */
-extern void YbDmlAppendColumnRefs(List *colrefs, bool is_primary,
-								  YBCPgStatement handle);
+
+extern void YbAppendPrimaryColumnRef(YBCPgStatement dml, YBCPgExpr colref);
+
+extern void YbAppendPrimaryColumnRefs(YBCPgStatement dml, List *colrefs);
+
+extern void YbApplyPrimaryPushdown(
+	YBCPgStatement dml, const PushdownExprs *pushdown);
+
+extern void YbApplySecondaryIndexPushdown(
+	YBCPgStatement dml, const PushdownExprs *pushdown);
 
 /*
  * The ybc_idx API is used to process the following SELECT.

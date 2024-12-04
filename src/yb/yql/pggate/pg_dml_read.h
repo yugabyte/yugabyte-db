@@ -57,6 +57,10 @@ namespace yb::pggate {
 
 class PgDmlRead : public PgDml {
  public:
+  // Append a filter condition.
+  // Supported expression kind is serialized Postgres expression.
+  Status AppendQual(PgExpr* qual, bool is_primary);
+
   // Allocate binds.
   virtual void PrepareBinds();
 
@@ -130,15 +134,6 @@ class PgDmlRead : public PgDml {
   // Allocate protobuf for target.
   LWPgsqlExpressionPB* AllocTargetPB() override;
 
-  // Allocate protobuf for a qual in the read request's where_clauses list.
-  LWPgsqlExpressionPB* AllocQualPB() override;
-
-  // Allocate protobuf for a column reference in the read request's col_refs list.
-  LWPgsqlColRefPB* AllocColRefPB() override;
-
-  // Clear the read request's col_refs list.
-  void ClearColRefPBs() override;
-
   // Allocate column expression.
   LWPgsqlExpressionPB* AllocColumnAssignPB(PgColumn* col) override;
 
@@ -149,6 +144,8 @@ class PgDmlRead : public PgDml {
   std::shared_ptr<LWPgsqlReadRequestPB> read_req_;
 
  private:
+  [[nodiscard]] ArenaList<LWPgsqlColRefPB>& ColRefPBs() override;
+
   // Indicates that current operation reads concrete row by specifying row's DocKey.
   [[nodiscard]] bool IsConcreteRowRead() const;
   Status ProcessEmptyPrimaryBinds();

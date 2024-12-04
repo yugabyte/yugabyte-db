@@ -165,17 +165,8 @@ LWPgsqlExpressionPB* PgDmlWrite::AllocTargetPB() {
   return write_req_->add_targets();
 }
 
-LWPgsqlExpressionPB* PgDmlWrite::AllocQualPB() {
-  LOG(FATAL) << "Pure virtual function is being called";
-  return nullptr;
-}
-
-LWPgsqlColRefPB* PgDmlWrite::AllocColRefPB() {
-  return write_req_->add_col_refs();
-}
-
-void PgDmlWrite::ClearColRefPBs() {
-  write_req_->mutable_col_refs()->clear();
+ArenaList<LWPgsqlColRefPB>& PgDmlWrite::ColRefPBs() {
+  return *write_req_->mutable_col_refs();
 }
 
 template <class T>

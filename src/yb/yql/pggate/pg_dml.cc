@@ -66,23 +66,6 @@ Status PgDml::AppendTargetPB(PgExpr* target) {
   return target->PrepareForRead(this, AllocTargetPB());
 }
 
-Status PgDml::AppendQual(PgExpr* qual, bool is_primary) {
-  if (!is_primary) {
-    DCHECK(secondary_index_query_) << "The secondary index query is expected";
-    return secondary_index_query_->AppendQual(qual, true);
-  }
-
-  // Allocate associated protobuf.
-  auto* expr_pb = AllocQualPB();
-
-  // Populate the expr_pb with data from the qual expression.
-  // Side effect of PrepareForRead is to call PrepareColumnForRead on "this" being passed in
-  // for any column reference found in the expression. However, the serialized Postgres expressions,
-  // the only kind of Postgres expressions supported as quals, can not be searched.
-  // Their column references should be explicitly appended with AppendColumnRef()
-  return qual->PrepareForRead(this, expr_pb);
-}
-
 Status PgDml::AppendColumnRef(PgColumnRef* colref, bool is_primary) {
   if (!is_primary) {
     DCHECK(secondary_index_query_) << "The secondary index query is expected";
@@ -170,21 +153,22 @@ void PgDml::ColumnRefsToPB(LWPgsqlColumnRefsPB* column_refs) {
 
 void PgDml::ColRefsToPB() {
   // Remove previously set column references in case if the statement is being reexecuted
-  ClearColRefPBs();
+  auto& col_refs = ColRefPBs();
+  col_refs.clear();
   for (const auto& col : target_.columns()) {
     // Only used columns are added to the request
     if (col.read_requested() || col.write_requested()) {
       // Allocate a protobuf entry
-      auto* col_ref = AllocColRefPB();
+      auto& col_ref = col_refs.emplace_back();
       // Add DocDB identifier
-      col_ref->set_column_id(col.id());
+      col_ref.set_column_id(col.id());
       // Add Postgres identifier
-      col_ref->set_attno(col.attr_num());
+      col_ref.set_attno(col.attr_num());
       // Add Postgres type information, if defined
       if (col.has_pg_type_info()) {
-        col_ref->set_typid(col.pg_typid());
-        col_ref->set_typmod(col.pg_typmod());
-        col_ref->set_collid(col.pg_collid());
+        col_ref.set_typid(col.pg_typid());
+        col_ref.set_typmod(col.pg_typmod());
+        col_ref.set_collid(col.pg_collid());
       }
     }
   }
