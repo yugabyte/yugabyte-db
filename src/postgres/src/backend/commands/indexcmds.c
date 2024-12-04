@@ -70,6 +70,7 @@
 /* YB includes. */
 #include "catalog/binary_upgrade.h"
 #include "catalog/pg_database.h"
+#include "catalog/yb_catalog_version.h"
 #include "commands/progress.h"
 #include "commands/tablegroup.h"
 #include "miscadmin.h"
@@ -3157,6 +3158,17 @@ YbWaitForBackendsCatalogVersion()
 	if (yb_disable_wait_for_backends_catalog_version)
 		return;
 
+	/*
+	 * We don't get the current catalog version after
+	 * YBDecrementDdlNestingLevel(), so we have to send another RPC to fetch
+	 * it.  This is needed because YbGetCatalogCacheVersion() may be behind in
+	 * case other DDLs happened concurrently.  This also means the version we
+	 * are waiting on may be higher than necessary in case other DDLs finished
+	 * before we collect the version.
+	 */
+	uint64_t catalog_version = YbGetMasterCatalogVersion();
+	Assert(catalog_version >= YbGetCatalogCacheVersion());
+
 	int num_lagging_backends = -1;
 	int retries_left = 10;
 	const TimestampTz start = GetCurrentTimestamp();
@@ -3175,12 +3187,12 @@ YbWaitForBackendsCatalogVersion()
 								   " catalog version %" PRIu64 ".",
 								   num_lagging_backends,
 								   MyDatabaseId,
-								   YbGetCatalogCacheVersion()),
+								   catalog_version),
 						 errhint("Run the following query on all tservers to find"
 								 " the lagging backends: SELECT * FROM"
 								 " pg_stat_activity WHERE catalog_version < %"
 								 PRIu64 " AND datid = %u;",
-								 YbGetCatalogCacheVersion(),
+								 catalog_version,
 								 MyDatabaseId)));
 			else
 			{
@@ -3192,12 +3204,13 @@ YbWaitForBackendsCatalogVersion()
 								   " database %u are still behind"
 								   " catalog version %" PRIu64 ".",
 								   MyDatabaseId,
-								   YbGetCatalogCacheVersion())));
+								   catalog_version)));
 			}
 		}
 
 		YBCStatus s = YBCPgWaitForBackendsCatalogVersion(MyDatabaseId,
-														 YbGetCatalogCacheVersion(),
+														 catalog_version,
+														 MyProcPid,
 														 &num_lagging_backends);
 
 		if (!s)		/* ok */

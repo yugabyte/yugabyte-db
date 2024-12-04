@@ -421,7 +421,7 @@ class PgApiImpl {
 
   Status ExecDropIndex(PgStatement *handle);
 
-  Result<int> WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version);
+  Result<int> WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version, pid_t pid);
 
   Status BackfillIndex(const PgObjectId& table_id);
 
