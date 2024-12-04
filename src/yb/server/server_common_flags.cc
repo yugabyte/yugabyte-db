@@ -38,3 +38,6 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(
 // ycql_ignore_group_by_error in introduced for the same functionality.
 DEFINE_RUNTIME_AUTO_bool(ycql_suppress_group_by_error, kLocalVolatile, true, false,
     "This flag is deprecated, please use ycql_ignore_group_by_error");
+
+DEFINE_RUNTIME_bool(yb_enable_advisory_lock, false,
+                    "Whether to enable advisory locks.");
