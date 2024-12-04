@@ -2530,22 +2530,6 @@ bool IsReplicationSlotStream(const StreamMetadata& stream_metadata) {
          !stream_metadata.GetReplicationSlotName()->empty();
 }
 
-// Response safe time follows the invaraint:
-// Request safe time <= Response safe time <= value from GetConsistentStreamSafeTime().
-// If response safe time is set to GetConsistentStreamSafeTime()'s value, then it implies that we
-// have read the entire WAL. In any other case, the response safe time can either be the last read
-// WAL segment's footer safe time ('min_start_time_running_txns') or commit time of the last
-// transaction being shipped in the current response. Both these values (footer safe time or commit
-// time of last txn) will be <= last read WAL OP's record time.
-bool CheckResponseSafeTimeCorrectness(
-    HybridTime last_read_wal_op_record_time, HybridTime resp_safe_time, bool is_entire_wal_read) {
-  if (!last_read_wal_op_record_time.is_valid() || resp_safe_time <= last_read_wal_op_record_time) {
-    return true;
-  }
-
-  return is_entire_wal_read;
-}
-
 // CDC get changes is different from xCluster as it doesn't need
 // to read intents from WAL.
 
@@ -3123,17 +3107,6 @@ Status GetChangesForCDCSDK(
                              leader_safe_time.get(), safe_hybrid_time_resp, have_more_messages,
                              consistent_stream_safe_time, snapshot_operation);
 
-  if (!snapshot_operation && !CheckResponseSafeTimeCorrectness(
-                                 last_read_wal_op_record_time, safe_time, is_entire_wal_read)) {
-    LOG(WARNING) << "Stream_id: " << stream_id << ", tablet_id: " << tablet_id
-                 << ", response safe time: " << safe_time
-                 << " is greater than last read WAL OP's record time: "
-                 << last_read_wal_op_record_time
-                 << ", req_safe_time: " << computed_safe_hybrid_time_req
-                 << ", consistent stream safe time: " << HybridTime(consistent_stream_safe_time)
-                 << ", leader safe time: " << leader_safe_time.get()
-                 << ", is_entire_wal_read: " << is_entire_wal_read;
-  }
   resp->set_safe_hybrid_time(safe_time.ToUint64());
 
   // It is possible in case of a partially streamed transaction.
