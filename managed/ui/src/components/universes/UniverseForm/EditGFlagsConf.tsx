@@ -133,7 +133,7 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
   const isOIDCSupported = versionDifference >= 0;
 
   if (isNonEmptyString(flagValue) && !GFlagValueConfObject) {
-    unformattedLDAPConf = unformatConf(flagValue);
+    unformattedLDAPConf = unformatConf(formProps?.values, flagValue);
   }
 
   const [flagName, setFlagName] = useState<string>(formProps?.values?.flagname);
@@ -393,6 +393,7 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
                                       ? GFlagRows[index].content
                                       : CONST_VALUES.EMPTY_STRING
                                   }
+                                  disabled={item?.disabled}
                                   onChange={(e: any) => handleChange(e.target.value, index)}
                                   error={GFlagRows[index]?.error}
                                   helperText={t(GFlagRows[index].errorMessageKey!)}

@@ -478,7 +478,7 @@
         "flagsModifiedModalLine2": "Note that current changes will be lost.",
         "numNodesToRollingUpgrade": "Max batch size: ",
         "rollingUpgradeMsg": "Refers to the number of nodes that can be unavailable during upgrade process across AZs. This can possibly affect the performance of the cluster till the upgrade is finished",
-        "pgGroupWarning": "You can't change this flag because it was set using the Enhanced Postgres Compatibility option"
+        "pgGroupWarning": "You can't change the disabled fields because it was set using the Enhanced Postgres Compatibility option"
       },
       "helmOverrides": {
         "addK8sOverrides": "Add Kubernetes Overrides",
