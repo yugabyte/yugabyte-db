@@ -6,39 +6,11 @@ description: Install YugabyteDB Anywhere software in your OpenShift environment
 headContent: Install YBA software in an OpenShift environment
 menu:
   v2.20_yugabyte-platform:
-    parent: install-yugabyte-platform
+    parent: install-software-2-kubernetes
     identifier: install-software-2-openshift
     weight: 81
 type: docs
 ---
-
-Use the following instructions to install YugabyteDB Anywhere software. For guidance on which method to choose, see [YBA prerequisites](../../prerequisites/installer/).
-
-Note: For higher availability, one or more additional YugabyteDB Anywhere instances can be separately installed, and then configured later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
-
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-
-  <li>
-    <a href="../installer/" class="nav-link">
-      <i class="fa-solid fa-building"></i>YBA Installer</a>
-  </li>
-
-  <li>
-    <a href="../default/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>Replicated</a>
-  </li>
-
-  <li>
-    <a href="../kubernetes/" class="nav-link">
-      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
-  </li>
-
-  <li>
-    <a href="../openshift/" class="nav-link active">
-      <i class="fa-brands fa-redhat"></i>OpenShift</a>
-  </li>
-
-</ul>
 
 To install YugabyteDB Anywhere on an OpenShift cluster, you can use the Helm tool. Red Hat certified Helm charts are also available.
 

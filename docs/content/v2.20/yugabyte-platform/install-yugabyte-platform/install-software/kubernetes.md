@@ -8,24 +8,17 @@ menu:
   v2.20_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: install-software-2-kubernetes
-    weight: 80
+    weight: 10
 type: docs
 ---
 
-Use the following instructions to install YugabyteDB Anywhere software. For guidance on which method to choose, see [YBA prerequisites](../../prerequisites/installer/).
-
-Note: For higher availability, one or more additional YugabyteDB Anywhere instances can be separately installed, and then configured later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
+For higher availability, you can install additional YugabyteDB Anywhere (YBA) instances, and configure them later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
     <a href="../installer/" class="nav-link">
-      <i class="fa-solid fa-building"></i>YBA Installer</a>
-  </li>
-
-  <li>
-    <a href="../default/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>Replicated</a>
+      <i class="fa-solid fa-building"></i>On-premises and public clouds</a>
   </li>
 
   <li>
@@ -33,14 +26,11 @@ Note: For higher availability, one or more additional YugabyteDB Anywhere instan
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
   </li>
 
-  <li>
-    <a href="../openshift/" class="nav-link">
-      <i class="fa-brands fa-redhat"></i>OpenShift</a>
-  </li>
-
 </ul>
 
-## Install YugabyteDB Anywhere on a Kubernetes cluster
+For information on installing YugabyteDB Anywhere on OpenShift, refer to [Install YugabyteDB Anywhere on OpenShift](../openshift/).
+
+## Install YugabyteDB Anywhere
 
 You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
 
