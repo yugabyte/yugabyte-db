@@ -188,7 +188,7 @@
             cursor: auto;
             line-height: normal;
             letter-spacing: 0.5px;
-            &:before{
+            &::before{
               display: none;
             }
           }
@@ -633,17 +633,15 @@
           display: block;
           line-height: 0;
 
-          &:after {
+          &::after {
+            content: "";
             display: inline-block;
-            content: "\f107";
-            color: #0B1117;
-            font-family: "font awesome 6 pro";
-            font-weight: 700;
             border: 0;
             width: 24px;
             height: 24px;
             text-align: center;
             line-height: 24px;
+            background: url(/icons/dropdown-icon.svg);
           }
         }
 
@@ -732,7 +730,7 @@
               &.desc {
                 display: block;
                 margin: 4px 0 0px;
-                font-weight: 700;
+                font-weight: 400;
                 font-size: 12px;
                 line-height: 16px;
                 color: #4E5F6D;
