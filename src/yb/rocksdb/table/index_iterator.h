@@ -22,20 +22,23 @@
 
 namespace rocksdb {
 
-// SST data blocks index keys has structure of (userkey, sequence_number, type) => block handle.
-// IndexIterator implements Iterator interface that hides sequence_number and type from the user.
+class UserKeyIterator;
+
+// SST data blocks index entries has structure of (userkey, sequence_number, type) => block handle.
+// IndexIterator implements Iterator interface that ignores and hides sequence_number and type from
+// the user.
 // TODO(index_iter): add arena support.
-class IndexIterator : public Iterator {
+template <typename IndexIteratorBaseType, typename IndexInternalIteratorType>
+class IndexIteratorBase : public IndexIteratorBaseType {
  public:
-  IndexIterator(
-      std::unique_ptr<InternalIterator>&& internal_index_iter, SequenceNumber sequence_number)
-      : internal_index_iter_(std::move(internal_index_iter)),
-        sequence_number_(sequence_number) {}
+  using Base = IndexIteratorBaseType;
+  explicit IndexIteratorBase(
+      std::unique_ptr<IndexInternalIteratorType>&& internal_index_iter);
 
-  IndexIterator(const IndexIterator&) = delete;
-  IndexIterator& operator=(const IndexIterator&) = delete;
+  IndexIteratorBase(const IndexIteratorBase&) = delete;
+  IndexIteratorBase& operator=(const IndexIteratorBase&) = delete;
 
-  virtual ~IndexIterator() {}
+  virtual ~IndexIteratorBase();
 
   const KeyValueEntry& Entry() const override;
 
@@ -50,24 +53,34 @@ class IndexIterator : public Iterator {
   bool ScanForward(
       Slice upperbound, KeyFilterCallback* key_filter_callback,
       ScanCallback* scan_callback) override {
-    LOG(FATAL) << "IndexIterator::ScanForward is not supported.";
+    LOG(FATAL) << "IndexIteratorBase::ScanForward is not supported.";
+    return false;
   }
 
   void RevalidateAfterUpperBoundChange() override {
-    LOG(FATAL) << "IndexIterator::RevalidateAfterUpperBoundChange is not supported.";
+    LOG(FATAL) << "IndexIteratorBase::RevalidateAfterUpperBoundChange is not supported.";
   }
 
   void UseFastNext(bool value) override {
-    LOG(FATAL) << "IndexIterator::UseFastNext is not supported.";
+    LOG(FATAL) << "IndexIteratorBase::UseFastNext is not supported.";
   }
 
- private:
-  const KeyValueEntry& UpdateEntryFromInternal(const KeyValueEntry& entry) const;
+ protected:
+  std::unique_ptr<IndexInternalIteratorType> internal_index_iter_;
+  std::unique_ptr<UserKeyIterator> index_iter_;
+};
 
-  std::unique_ptr<InternalIterator> internal_index_iter_;
-  SequenceNumber const sequence_number_;
-  IterKey target_key_;
-  mutable KeyValueEntry entry_;
+using IndexIteratorImpl = IndexIteratorBase<Iterator, InternalIterator>;
+
+class DataBlockAwareIndexIteratorImpl
+    : public IndexIteratorBase<
+          DataBlockAwareIndexIterator, MergingIterator<DataBlockAwareIndexInternalIterator>> {
+ public:
+  explicit DataBlockAwareIndexIteratorImpl(
+      std::unique_ptr<MergingIterator<DataBlockAwareIndexInternalIterator>>&& internal_index_iter)
+      : IndexIteratorBase(std::move(internal_index_iter)) {}
+
+  yb::Result<std::pair<std::string, std::string>> GetCurrentDataBlockBounds() const override;
 };
 
 } // namespace rocksdb

@@ -97,7 +97,7 @@ class Block {
                                 bool total_order_seek = true,
                                 size_t restart_block_cache_capacity = 0) const;
 
-  inline InternalIterator* NewIndexIterator(
+  inline InternalIterator* NewIndexBlockIterator(
       const Comparator* comparator, BlockIter* iter = nullptr, bool total_order_seek = true) const {
     return NewIterator(
         comparator, kIndexBlockKeyValueEncodingFormat, iter, total_order_seek);

@@ -44,6 +44,7 @@ struct FileDescriptor;
 class GetContext;
 class HistogramImpl;
 class InternalIterator;
+class DataBlockAwareIndexInternalIterator;
 
 class TableCache {
  public:
@@ -98,6 +99,8 @@ class TableCache {
       const ReadOptions& options, TableReaderWithHandle* trwh, Slice filter,
       bool for_compaction = false, Arena* arena = nullptr, bool skip_filters = false);
   InternalIterator* NewIndexIterator(
+      const ReadOptions& options, TableReaderWithHandle* trwh);
+  DataBlockAwareIndexInternalIterator* NewDataBlockAwareIndexIterator(
       const ReadOptions& options, TableReaderWithHandle* trwh);
 
   // If a seek to internal key "k" in specified file finds an entry,
