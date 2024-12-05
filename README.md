@@ -92,7 +92,7 @@ Simplified management of YSQL transactional xCluster replication by operating at
 
 Improvements to backward scan performance now allows such queries to be 10X faster out of the box!
 
-### v2024.2 (Stable) - Dec, 2024
+## v2024.2 (Stable) - Dec, 2024
 
 **v2024.2** is the current [stable](https://docs.yugabyte.com/preview/releases/versioning/#stable-releases) release. Stable releases undergo rigorous testing for a longer period of time and are ready for production use. For the full list of features and improvements in this release, see [Release notes - v2024.2](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2024.2/). Here are some of the prominent features.
 
