@@ -38,9 +38,9 @@ import java.util.concurrent.Executors;
 import java.util.function.Function;
 import kamon.instrumentation.play.GuiceModule;
 import org.junit.Before;
+import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
-import org.pac4j.play.store.PlaySessionStore;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.YBClient;
 import play.Application;
@@ -134,7 +134,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(SetUniverseKey.class).toInstance(mockSetUniverseKey))
                 .overrides(bind(ShellKubernetesManager.class).toInstance(mockKubernetesManager))
                 .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
-                .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
+                .overrides(bind(SessionStore.class).toInstance(mockSessionStore))
                 .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
                 .overrides(
                     bind(CustomerLicenseManager.class).toInstance(mockCustomerLicenseManager))

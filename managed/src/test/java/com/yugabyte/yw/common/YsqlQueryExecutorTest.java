@@ -29,6 +29,7 @@ import kamon.instrumentation.play.GuiceModule;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.pac4j.play.LogoutController;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 
@@ -38,17 +39,20 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
   protected Config mockRuntimeConfig;
   protected NodeUniverseManager mockNodeUniverseManager;
   protected HealthChecker healthChecker;
+  protected LogoutController mockLogoutController;
 
   @Override
   protected Application provideApplication() {
     mockRuntimeConfig = mock(Config.class);
     mockNodeUniverseManager = mock(NodeUniverseManager.class);
     healthChecker = mock(HealthChecker.class);
+    mockLogoutController = mock(LogoutController.class);
     return new GuiceApplicationBuilder()
         .disable(GuiceModule.class)
         .configure(testDatabase())
         .overrides(bind(NodeUniverseManager.class).toInstance(mockNodeUniverseManager))
         .overrides(bind(HealthChecker.class).toInstance(healthChecker))
+        .overrides(bind(LogoutController.class).toInstance(mockLogoutController))
         .overrides(
             bind(RuntimeConfigFactory.class)
                 .toInstance(new DummyRuntimeConfigFactoryImpl(mockRuntimeConfig)))
