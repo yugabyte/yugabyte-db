@@ -60,13 +60,7 @@ import {
   XClusterReplicationStatusError,
   XClusterTableDetails
 } from './dtos';
-import {
-  MetricTrace,
-  TableType,
-  Universe,
-  UniverseNamespace,
-  YBTable
-} from '../../redesign/helpers/dtos';
+import { MetricTrace, TableType, Universe, UniverseNamespace } from '../../redesign/helpers/dtos';
 import {
   AlertTemplate,
   AlertThresholdCondition,
@@ -853,6 +847,18 @@ const updateTableStatusWithReplicationLag = (
     : tableStatus;
 
 /**
+ * Returns the single string representation of a table status. This is used for search and sorting.
+ */
+const getStringRepresentationOfTableStatus = (
+  tableStatus: XClusterTableStatus,
+  replicationStatusErrors: XClusterReplicationStatusError[]
+) =>
+  tableStatus === XClusterTableStatus.ERROR
+    ? replicationStatusErrors[0] ??
+      i18n.t(`${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.${tableStatus}`)
+    : i18n.t(`${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.${tableStatus}`);
+
+/**
  * Returns array of XClusterReplicationTable or array of XClusterTable by augmenting YBTable with XClusterTableDetails.
  * - XClusterReplicationTable: may contain dropped tables
  * - XClusterTable: doest not contain dropped tables
@@ -904,7 +910,10 @@ export const augmentTablesWithXClusterDetails = <TIncludeDroppedTables extends b
         ...sourceTableInfo,
         ...xClusterTableDetails,
         status: tableStatus,
-        statusLabel: i18n.t(`${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.${tableStatus}`),
+        statusLabel: getStringRepresentationOfTableStatus(
+          tableStatus,
+          tableDetails.replicationStatusErrors
+        ),
         replicationLag
       });
     } else if (targetTableInfo) {
@@ -912,7 +921,10 @@ export const augmentTablesWithXClusterDetails = <TIncludeDroppedTables extends b
         ...targetTableInfo,
         ...xClusterTableDetails,
         status: tableStatus,
-        statusLabel: i18n.t(`${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.${tableStatus}`),
+        statusLabel: getStringRepresentationOfTableStatus(
+          tableStatus,
+          tableDetails.replicationStatusErrors
+        ),
         replicationLag
       });
     } else {
