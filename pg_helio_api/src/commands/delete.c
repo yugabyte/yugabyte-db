@@ -659,9 +659,10 @@ ProcessDeletion(MongoCollection *collection, DeletionSpec *deletionSpec,
 
 	bson_value_t idFromQueryDocument = { 0 };
 	bool errorOnConflict = false;
+	bool queryHasNonIdFilters = false;
 	bool hasObjectIdFilter =
 		TraverseQueryDocumentAndGetId(&queryDocIter, &idFromQueryDocument,
-									  errorOnConflict);
+									  errorOnConflict, &queryHasNonIdFilters);
 
 	if (deletionSpec->limit == 0)
 	{
@@ -719,8 +720,9 @@ DeleteAllMatchingDocuments(MongoCollection *collection, pgbson *queryDoc,
 	uint64 collectionId = collection->collectionId;
 
 	StringInfoData deleteQuery;
-
-	pgbson *objectIdFilter = GetObjectIdFilterFromQueryDocument(queryDoc);
+	bool queryHasNonIdFilters = false;
+	pgbson *objectIdFilter = GetObjectIdFilterFromQueryDocument(queryDoc,
+																&queryHasNonIdFilters);
 
 	int argCount = 1;
 	Oid argTypes[3];
@@ -1042,8 +1044,9 @@ DeleteOneInternal(MongoCollection *collection, DeleteOneParams *deleteOneParams,
 	uint64 planId = QUERY_DELETE_ONE;
 	List *sortFieldDocuments = deleteOneParams->sort == NULL ? NIL :
 							   PgbsonDecomposeFields(deleteOneParams->sort);
-
-	pgbson *objectIdFilter = GetObjectIdFilterFromQueryDocument(deleteOneParams->query);
+	bool queryHasNonIdFilters = false;
+	pgbson *objectIdFilter = GetObjectIdFilterFromQueryDocument(deleteOneParams->query,
+																&queryHasNonIdFilters);
 
 	int argCount = 2 + list_length(sortFieldDocuments);
 	argCount += objectIdFilter != NULL ? 1 : 0;

@@ -174,13 +174,14 @@ IsCommonSpecIgnoredField(const char *fieldName)
  * Returns NULL otherwise.
  */
 pgbson *
-GetObjectIdFilterFromQueryDocument(pgbson *queryDoc)
+GetObjectIdFilterFromQueryDocument(pgbson *queryDoc, bool *queryHasNonIdFilters)
 {
 	bson_iter_t queryIterator;
 	bson_value_t queryIdValue;
 	bool errorOnConflict = false;
 	PgbsonInitIterator(queryDoc, &queryIterator);
-	if (TraverseQueryDocumentAndGetId(&queryIterator, &queryIdValue, errorOnConflict))
+	if (TraverseQueryDocumentAndGetId(&queryIterator, &queryIdValue, errorOnConflict,
+									  queryHasNonIdFilters))
 	{
 		return BsonValueToDocumentPgbson(&queryIdValue);
 	}

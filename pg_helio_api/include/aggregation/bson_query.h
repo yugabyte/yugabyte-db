@@ -19,12 +19,15 @@
  */
 typedef void (*ProcessQueryValueFunc)(void *context, const char *path, const
 									  bson_value_t *value);
+typedef void (*ProcessQueryFilterFunc)(void *context);
 
 bool TraverseQueryDocumentAndGetId(bson_iter_t *queryDocument,
-								   bson_value_t *idValue, bool errorOnConflict);
+								   bson_value_t *idValue, bool errorOnConflict,
+								   bool *hasNonIdFields);
 
 void TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 									 ProcessQueryValueFunc processValueFunc,
+									 ProcessQueryFilterFunc processFilterFunc,
 									 bool isUpsert);
 
 #endif

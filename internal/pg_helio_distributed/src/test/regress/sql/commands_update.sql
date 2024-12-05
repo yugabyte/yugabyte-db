@@ -619,6 +619,39 @@ select helio_api.update('update', '{"update":"single", "updates":[{"q":{"$and" :
 select helio_api.update('update', '{"update":"single", "updates":[{"q":{"$expr": {"$gt" : ["$x",10]}},"u":{},"upsert":true}]}');
 select helio_api.update('update', '{"update":"single", "updates":[{"q":{"$and" : [{"a": 10}, {"$or" : [{"x": 10},{"$expr" : {"$gte": ["$c", 100]}}, {"y": 10}]}, {"b":11} ]},"u":{"$set": {"a" :10}},"upsert":true}]}');
 
+-- below query will be updating document although we don't have @@ in query match but for below query only object id filter is sufficient.
+
+BEGIN;
+
+SELECT helio_api.insert_one('update','NonID',' { "_id" :  1, "b" : 1 }', NULL);
+
+set local citus.log_remote_commands to on;
+SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"a":{"$eq":1}},"u":{"$set":{"b":0 }},"multi":false}]}');
+SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"a":{"$eq":1}, "_id" : 1},"u":{"$set":{"b":0 }},"multi":false}]}');
+SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"_id":{"$eq":1}, "a" : 1},"u":{"$set":{"b":0 }},"multi":false}]}');
+SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"_id":{"$gt":1}},"u":{"$set":{"b":0 }},"multi":false}]}');
+SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"_id":{"$lt":1}},"u":{"$set":{"b":0 }},"multi":false}]}');
+SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"_id":{"$in": []}},"u":{"$set":{"b":0 }},"multi":false}]}');
+SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"_id":{"$in": [2]}},"u":{"$set":{"b":0 }},"multi":false}]}');
+SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"_id":{"$in": [2,3,4]}},"u":{"$set":{"b":0 }},"multi":false}]}');
+SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"_id":{"$all": [1,2]}},"u":{"$set":{"b":0 }},"multi":false}]}');
+SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"$expr":{"$gt": ["$_id",1]}},"u":{"$set":{"b":0 }},"multi":false}]}');
+SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"$and":[{"_id":1},{"_id":2}]},"u":{"$set":{"b":0}},"multi":false}]}');
+SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"$or":[{"_id":2}, {"a" : 1}]},"u":{"$set":{"b":0}},"multi":false}]}');
+SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"$or":[{"b":2}]},"u":{"$set":{"b":0}},"multi":false}]}');
+
+SELECT document from helio_api.collection('update', 'NonID');
+
+-- below query will be updating document although we don't have @@ in query match but for below query only object id filter is sufficient.
+SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"_id":{"$eq":1}},"u":{"$inc":{"b": 1 }},"multi":false}]}');
+SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"$and":[{"_id":1}]},"u":{"$inc":{"b":1}},"multi":false}]}');
+SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"$or":[{"_id":1}, {"b" : 1}]},"u":{"$inc":{"b":1}},"multi":false}]}');
+SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"$or":[{"_id":1}]},"u":{"$inc":{"b":1}},"multi":false}]}');
+SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"_id":{"$all": [1]}},"u":{"$inc":{"b":1 }},"multi":false}]}');
+SELECT helio_api.update('update', '{"update":"NonID", "updates":[{"q":{"_id":{"$all": [1,1]}},"u":{"$inc":{"b":1 }},"multi":false}]}');
+SELECT document from helio_api.collection('update', 'NonID');
+
+ROLLBACK;
 -- test update with upsert
 BEGIN;
 set helio_api.useLocalExecutionShardQueries to off;

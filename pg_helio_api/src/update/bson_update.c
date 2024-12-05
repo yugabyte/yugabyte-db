@@ -661,8 +661,10 @@ BuildBsonDocumentFromQuery(pgbson *sourceDoc, pgbson *querySpec,
 	QueryProjectionContext context = { .root = root, .updateType = updateType };
 
 	bool isUpsert = true;
+	const ProcessQueryFilterFunc processFilterFunc = NULL;
 	TraverseQueryDocumentAndProcess(&queryDocIterator, &context,
 									&ProcessQueryProjectionValue,
+									processFilterFunc,
 									isUpsert);
 	pgbson_writer writer;
 	PgbsonWriterInit(&writer);

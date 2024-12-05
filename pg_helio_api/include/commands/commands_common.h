@@ -72,7 +72,7 @@ bool IsCommonSpecIgnoredField(const char *fieldName);
 WriteError * GetWriteErrorFromErrorData(ErrorData *errorData, int writeErrorIdx);
 bool TryGetErrorMessageAndCode(ErrorData *errorData, int *code, char **errmessage);
 
-pgbson * GetObjectIdFilterFromQueryDocument(pgbson *queryDoc);
+pgbson * GetObjectIdFilterFromQueryDocument(pgbson *queryDoc, bool *hasNonIdFields);
 
 
 pgbson * RewriteDocumentAddObjectId(pgbson *document);

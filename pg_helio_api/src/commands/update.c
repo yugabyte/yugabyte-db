@@ -1262,10 +1262,10 @@ ProcessUpdate(MongoCollection *collection, UpdateSpec *updateSpec,
 			PgbsonInitIterator(query, &queryDocIter);
 			bson_value_t idFromQueryDocument = { 0 };
 			bool errorOnConflict = false;
-
+			bool queryHasNonIdFilters = false;
 			bool hasObjectIdFilter =
 				TraverseQueryDocumentAndGetId(&queryDocIter, &idFromQueryDocument,
-											  errorOnConflict);
+											  errorOnConflict, &queryHasNonIdFilters);
 
 			if (hasObjectIdFilter)
 			{
@@ -1311,7 +1311,9 @@ UpdateAllMatchingDocuments(MongoCollection *collection, pgbson *queryDoc,
 						   ExprEvalState *schemaValidationExprEvalState,
 						   bool *hasObjectIdFilter)
 {
-	pgbson *objectIdFilter = GetObjectIdFilterFromQueryDocument(queryDoc);
+	bool queryHasNonIdFilters = false;
+	pgbson *objectIdFilter = GetObjectIdFilterFromQueryDocument(queryDoc,
+																&queryHasNonIdFilters);
 
 	*hasObjectIdFilter = objectIdFilter != NULL;
 
@@ -1617,8 +1619,9 @@ UpdateOne(MongoCollection *collection, UpdateOneParams *updateOneParams,
 		pgbson *objectId = PgbsonGetDocumentId(result->reinsertDocument);
 
 		/* If we have to reinsert the document in a different shard */
+		bool queryHasNonIdFilters = false;
 		pgbson *objectIdFilter = GetObjectIdFilterFromQueryDocument(
-			updateOneParams->query);
+			updateOneParams->query, &queryHasNonIdFilters);
 		bool hasObjectIdFilter = objectIdFilter != NULL;
 
 		DoInsertForUpdate(collection, newShardKeyHash, objectId, result->reinsertDocument,
@@ -2472,7 +2475,9 @@ SelectUpdateCandidate(uint64 collectionId, const char *shardTableName, int64 sha
 	StringInfoData updateQuery;
 	List *sortFieldDocuments = sort != NULL ? PgbsonDecomposeFields(sort) : NIL;
 
-	pgbson *objectIdFilter = GetObjectIdFilterFromQueryDocument(query);
+	bool queryHasNonIdFilters = false;
+	pgbson *objectIdFilter = GetObjectIdFilterFromQueryDocument(query,
+																&queryHasNonIdFilters);
 	*hasObjectIdFilter = objectIdFilter != NULL;
 
 	int argCount = 2 + list_length(sortFieldDocuments);
@@ -2503,14 +2508,21 @@ SelectUpdateCandidate(uint64 collectionId, const char *shardTableName, int64 sha
 						 collectionId);
 	}
 
-	appendStringInfo(&updateQuery,
-					 " WHERE shard_key_value = $1 AND "
-					 "document OPERATOR(%s.@@) $2::%s",
-					 ApiCatalogSchemaName, FullBsonTypeName);
+	appendStringInfo(&updateQuery, " WHERE shard_key_value = $1");
+
+	if (queryHasNonIdFilters)
+	{
+		planId = QUERY_UPDATE_SELECT_UPDATE_CANDIDATE_NON_OBJECT_ID;
+		appendStringInfo(&updateQuery, " AND document OPERATOR(%s.@@) $2::%s",
+						 ApiCatalogSchemaName, FullBsonTypeName);
+	}
 
 	if (objectIdFilter != NULL)
 	{
-		planId = QUERY_UPDATE_SELECT_UPDATE_CANDIDATE_OBJECT_ID;
+		planId = queryHasNonIdFilters ?
+				 QUERY_UPDATE_SELECT_UPDATE_CANDIDATE_BOTH_FILTER :
+				 QUERY_UPDATE_SELECT_UPDATE_CANDIDATE_ONLY_OBJECT_ID;
+
 		appendStringInfo(&updateQuery,
 						 " AND object_id OPERATOR(%s.=) $3::%s", CoreSchemaName,
 						 FullBsonTypeName);

@@ -31,9 +31,13 @@ typedef struct
 
 	/* throw an error if _id is re-defined */
 	bool errorOnConflict;
+
+	/* other fields also present apart from _id */
+	bool queryHasNonIdFilters;
 } QueryIdContext;
 
 static void ProcessIdInQuery(void *context, const char *path, const bson_value_t *value);
+static void SetQueryHasNonIdFilters(void *context);
 
 /*
  * Extract any _id values that uniquely identify a document from the filters.
@@ -44,7 +48,7 @@ static void ProcessIdInQuery(void *context, const char *path, const bson_value_t
  */
 bool
 TraverseQueryDocumentAndGetId(bson_iter_t *queryDocument, bson_value_t *idValue,
-							  bool errorOnConflict)
+							  bool errorOnConflict, bool *queryHasNonIdFilters)
 {
 	QueryIdContext idContext;
 	memset(&idContext, 0, sizeof(QueryIdContext));
@@ -53,9 +57,10 @@ TraverseQueryDocumentAndGetId(bson_iter_t *queryDocument, bson_value_t *idValue,
 
 	bool isUpsert = false;
 	TraverseQueryDocumentAndProcess(queryDocument, (void *) &idContext,
-									&ProcessIdInQuery, isUpsert);
+									&ProcessIdInQuery, &SetQueryHasNonIdFilters,
+									isUpsert);
 
-
+	*queryHasNonIdFilters = idContext.queryHasNonIdFilters;
 	if (idContext.foundId && !idContext.foundMultipleIds)
 	{
 		*idValue = idContext.idValue;
@@ -75,10 +80,14 @@ TraverseQueryDocumentAndGetId(bson_iter_t *queryDocument, bson_value_t *idValue,
  * exactly one item (since a $or with 1 item can be used to infer fields).
  * if isUpsert is true and querySpec has $expr operator then will throw an error,
  * this is to match the native mongo behaviour in case of upsert
+ *
+ * processFilterFunc use to set set queryHasNonIdFilters to true for certain operators like $gt, $lt, $expr.
+ * This ensures that we use the @@ operator to get an exact match later while building Update query.
  */
 void
 TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 								ProcessQueryValueFunc processValueFunc,
+								ProcessQueryFilterFunc processFilterFunc,
 								bool isUpsert)
 {
 	/* for the query, walk all "$and", and "$eq" trying to find an _id. */
@@ -87,6 +96,10 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 		const char *key = bson_iter_key(queryDocument);
 		if (strcmp(key, "$nor") == 0)
 		{
+			if (processFilterFunc)
+			{
+				processFilterFunc(context);
+			}
 			continue;
 		}
 		else if (strcmp(key, "$and") == 0)
@@ -111,6 +124,7 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 
 				TraverseQueryDocumentAndProcess(&andElementIterator, context,
 												processValueFunc,
+												processFilterFunc,
 												isUpsert);
 			}
 		}
@@ -136,6 +150,7 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 										 orElement.bsonValue.value.v_doc.data_len);
 				TraverseQueryDocumentAndProcess(&orElementIterator, context,
 												processValueFunc,
+												processFilterFunc,
 												isUpsert);
 			}
 			else if (isUpsert &&
@@ -147,13 +162,26 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 								errmsg(
 									"$expr is not allowed in the query predicate for an upsert")));
 			}
+
+			if (processFilterFunc)
+			{
+				processFilterFunc(context);
+			}
 		}
-		else if (isUpsert && strcmp(key, "$expr") == 0)
+		else if (strcmp(key, "$expr") == 0)
 		{
-			/* to match native mongo 5.0 behaviour throw an error in case of upsert if querySpec holds $expr */
-			ereport(ERROR, (errcode(ERRCODE_HELIO_QUERYFEATURENOTALLOWED),
-							errmsg(
-								"$expr is not allowed in the query predicate for an upsert")));
+			if (isUpsert)
+			{
+				/* to match native mongo 5.0 behaviour throw an error in case of upsert if querySpec holds $expr */
+				ereport(ERROR, (errcode(ERRCODE_HELIO_QUERYFEATURENOTALLOWED),
+								errmsg(
+									"$expr is not allowed in the query predicate for an upsert")));
+			}
+
+			if (processFilterFunc)
+			{
+				processFilterFunc(context);
+			}
 		}
 		else
 		{
@@ -216,6 +244,11 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 								processValueFunc(context, key, inValue);
 							}
 						}
+
+						if (processFilterFunc)
+						{
+							processFilterFunc(context);
+						}
 					}
 					else if (strlen(op) > 0 && op[0] != '$')
 					{
@@ -225,8 +258,14 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 						processValueFunc(context, key, bson_iter_value(queryDocument));
 						break;
 					}
-
-					/* Other operators like $gt, $lt, $ne etc. are ignored */
+					else
+					{
+						/* Other operators like $gt, $lt, $ne etc. are ignored we don't call processValueFunc */
+						if (processFilterFunc)
+						{
+							processFilterFunc(context);
+						}
+					}
 				}
 				if (isEmptyDoc)
 				{
@@ -253,16 +292,20 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 static void
 ProcessIdInQuery(void *context, const char *path, const bson_value_t *value)
 {
+	QueryIdContext *idContext = (QueryIdContext *) context;
+
 	if (strcmp(path, "_id") != 0)
 	{
+		idContext->queryHasNonIdFilters = true;
 		return;
 	}
 
-	QueryIdContext *idContext = (QueryIdContext *) context;
 
 	if (idContext->foundMultipleIds)
 	{
 		/* already found multiple values */
+		/* we need to set it to true in case of multiple ID's as to match against multiple _id we need @@ filter */
+		idContext->queryHasNonIdFilters = true;
 		return;
 	}
 
@@ -279,6 +322,8 @@ ProcessIdInQuery(void *context, const char *path, const bson_value_t *value)
 		}
 		else
 		{
+			/* we need to set it to true in case of multiple ID's as to match against multiple _id we need @@ filter */
+			idContext->queryHasNonIdFilters = true;
 			idContext->foundMultipleIds = true;
 		}
 	}
@@ -288,4 +333,16 @@ ProcessIdInQuery(void *context, const char *path, const bson_value_t *value)
 		idContext->idValue = *value;
 		idContext->foundId = true;
 	}
+}
+
+
+/*
+ * When traversing the query specification, we need to set queryHasNonIdFilters to true for certain operators like $gt, $lt, $expr.
+ * This ensures that we use the @@ operator to get an exact match later while building Update query.
+ */
+static void
+SetQueryHasNonIdFilters(void *context)
+{
+	QueryIdContext *idContext = (QueryIdContext *) context;
+	idContext->queryHasNonIdFilters = true;
 }
