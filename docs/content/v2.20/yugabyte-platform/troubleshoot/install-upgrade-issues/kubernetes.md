@@ -85,7 +85,7 @@ For more information, see [Kubernetes: Specify a CPU request that is too big for
 
 **Resolution**
 
-- Ensure that you have enough resources in the Kubernetes cluster to schedule the YugabyteDB Anywhere pods. For more information, see [Prerequisites - Kubernetes](../../../install-yugabyte-platform/prerequisites/kubernetes/#hardware-requirements).
+- Ensure that you have enough resources in the Kubernetes cluster to schedule the YugabyteDB Anywhere pods. For more information, see [Hardware requirements (Kubernetes)](../../../prepare/server-nodes-hardware).
 - Modify the YugabyteDB Anywhere pods resources configuration. For more information, see [Modify resources](../../../install-yugabyte-platform/install-software/kubernetes/#modify-resources).
 
 ### Mismatch in node selector, affinity, taints, tolerations
