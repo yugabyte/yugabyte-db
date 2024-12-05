@@ -12,6 +12,9 @@ ynp_dir = {{ ynp_dir }}
 execution_start_time = {{ start_time }}
 yb_home_dir = {{ ynp.yb_home_dir }}
 yb_user = yugabyte
+tmp_directory = {{ ynp.tmp_directory }}
+
+[Preprovision]
 
 [ConfigureChrony]
 chrony_servers = "{{ ynp.chrony_servers | join(', ') }}"
@@ -67,9 +70,7 @@ ports = 7000 7100 9000 9100 18018 22 5433 9042 9070 9300 12000 13000
 
 [InstallNodeAgent]
 {{ render_section(yba) -}}
-tmp_directory = {{ ynp.tmp_directory }}
 node_ip = {{ yba.node_external_fqdn }}
 bind_ip = {{ ynp.node_ip }}
 
 [RebootNode]
-tmp_directory = {{ynp.tmp_directory}}
