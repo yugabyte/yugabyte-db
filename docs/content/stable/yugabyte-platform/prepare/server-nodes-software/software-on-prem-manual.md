@@ -47,10 +47,6 @@ Your responsibility now (to meet prerequisites) is to provide a VM with the foll
 | :--- | :--- |
 | VM IP addresses | [On-premises provider](../../../configure-yugabyte-platform/on-premises/) |
 
-{{<tip>}}
-For instructions for v2.20 and earlier, see [Create on-premises provider configuration](/v2.20/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
-{{</tip>}}
-
 ## Manually provision a VM
 
 After you have created the VM, use the following instructions to provision the VM for use with an on-premises provider.

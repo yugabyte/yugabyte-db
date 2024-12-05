@@ -37,10 +37,6 @@ type: docs
 
 When YugabyteDB Anywhere (YBA) has access to an SSH user with passwordless sudo privileges (for example, the `ec2-user` on AWS EC2 instances), then YBA can provision the VMs automatically.
 
-{{<tip>}}
-For instructions for v2.20 and earlier, see [Create on-premises provider configuration](/v2.20/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
-{{</tip>}}
-
 ## With Internet or Yum connectivity
 
 If your VM has Internet or Yum connectivity, you must provide to YBA a VM with the following pre-installed:
