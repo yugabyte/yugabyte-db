@@ -189,8 +189,11 @@ public class Restore extends Model {
     if (matcher.find()) {
       restore.setSourceUniverseUUID(UUID.fromString(matcher.group(0)));
     }
-    boolean isSourceUniversePresent =
-        BackupUtil.checkIfUniverseExists(restore.getSourceUniverseUUID());
+    boolean isSourceUniversePresent = false;
+    if (restore.getSourceUniverseUUID() != null) {
+      isSourceUniversePresent = BackupUtil.checkIfUniverseExists(restore.getSourceUniverseUUID());
+    }
+
     restore.setSourceUniverseName(
         isSourceUniversePresent
             ? Universe.getOrBadRequest(restore.getSourceUniverseUUID()).getName()
