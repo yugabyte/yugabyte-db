@@ -2,7 +2,6 @@ SET search_path TO helio_api_catalog, postgis_public;
 SET citus.next_shard_id TO 167400;
 SET helio_api.next_collection_id TO 16740;
 SET helio_api.next_collection_index_id TO 16740;
-SET helio_api.enableGeospatial TO ON;
 SELECT helio_api.drop_collection('db', 'geoquerytest') IS NOT NULL;
  ?column? 
 ---------------------------------------------------------------------
@@ -1767,4 +1766,3 @@ SELECT helio_api.drop_collection('db', 'geoquerytest') IS NOT NULL;
  t
 (1 row)
 
-RESET helio_api.enableGeospatial;

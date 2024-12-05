@@ -244,9 +244,6 @@ static WindowFunc * HandleDollarMaxWindowOperator(const bson_value_t *opValue,
 												  WindowOperatorContext *context);
 
 
-/* GUC to enable SetWindowFields stage */
-extern bool EnableSetWindowFields;
-
 /*
  * Window operators definitions.
  *
@@ -568,13 +565,6 @@ HandleSetWindowFieldsCore(const bson_value_t *existingValue,
 {
 	ReportFeatureUsage(FEATURE_STAGE_SETWINDOWFIELDS);
 
-	if (!EnableSetWindowFields || !IsClusterVersionAtleastThis(1, 19, 0))
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
-						errmsg(
-							"$setWindowFields is not supported yet.")));
-	}
-
 	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
 	{
 		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
@@ -803,7 +793,7 @@ HandleSetWindowFieldsCore(const bson_value_t *existingValue,
 
 		/* Use bson_repath_and_build to merge the output of all window operations */
 		Expr *repathExpr = GenerateMultiExpressionRepathExpression(repathArgs);
-		FuncExpr *mergeDocumentsExpr = makeFuncExpr(GetMergeDocumentsFunctionOid(),
+		FuncExpr *mergeDocumentsExpr = makeFuncExpr(BsonDollaMergeDocumentsFunctionOid(),
 													BsonTypeId(),
 													list_make2(
 														(Expr *) firstEntryAfterSubQuery->

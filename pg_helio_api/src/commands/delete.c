@@ -37,7 +37,6 @@
 #include "utils/query_utils.h"
 #include "api_hooks.h"
 
-extern bool EnableUnshardedBatchDelete;
 
 /*
  * DeletionSpec describes a single delete operation.
@@ -208,7 +207,7 @@ command_delete(PG_FUNCTION_ARGS)
 			collection->shardTableName[0] = '\0';
 		}
 
-		if (DefaultInlineWriteOperations || !EnableUnshardedBatchDelete ||
+		if (DefaultInlineWriteOperations ||
 			collection->shardKey != NULL || collection->shardTableName[0] != '\0')
 		{
 			BatchDeletionResult batchResult = { 0 };

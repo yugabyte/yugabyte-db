@@ -107,9 +107,6 @@ bool ForceRUMIndexScanToBitmapHeapScan = DEFAULT_FORCE_RUM_INDEXSCAN_TO_BITMAPHE
 #define DEFAULT_ENABLE_EXTENDED_INDEX_FILTERS false
 bool EnableExtendedIndexFilters = DEFAULT_ENABLE_EXTENDED_INDEX_FILTERS;
 
-#define DEFAULT_ENABLE_DEVELOPER_EXPLAIN false
-bool EnableDeveloperExplain = DEFAULT_ENABLE_DEVELOPER_EXPLAIN;
-
 #define DEFAULT_ENABLE_IN_QUERY_OPTIMIZATION false
 bool EnableInQueryOptimization = DEFAULT_ENABLE_IN_QUERY_OPTIMIZATION;
 
@@ -130,9 +127,6 @@ int32_t MaxWorkerCursorSize = DEFAULT_MAX_WORKER_CURSOR_SIZE;
 /* Use 512 to line up with Mongo spark client to minimize splitting transactions */
 #define DEFAULT_BATCH_WRITE_SUB_TRANSACTION_COUNT 512
 int BatchWriteSubTransactionCount = DEFAULT_BATCH_WRITE_SUB_TRANSACTION_COUNT;
-
-#define DEFAULT_ENABLE_GEOSPATIAL true
-bool EnableGeospatialSupport = DEFAULT_ENABLE_GEOSPATIAL;
 
 /*
  * GUC to enable HNSW index type and query for vector search.
@@ -180,9 +174,6 @@ int IndexQueueEvictionIntervalInSec = DEFAULT_INDEX_BUILD_EVICTION_INTERVAL_IN_S
 #define DEFAULT_FORCE_INDEX_TERM_TRUNCATION false
 bool ForceIndexTermTruncation = DEFAULT_FORCE_INDEX_TERM_TRUNCATION;
 
-#define DEFAULT_ENABLE_LARGE_INDEX_KEYS true
-bool DefaultEnableLargeIndexKeys = DEFAULT_ENABLE_LARGE_INDEX_KEYS;
-
 #define DEFAULT_ENABLE_LARGE_UNIQUE_INDEX_KEYS false
 bool DefaultEnableLargeUniqueIndexKeys = DEFAULT_ENABLE_LARGE_UNIQUE_INDEX_KEYS;
 
@@ -201,20 +192,8 @@ int32 MaxSegmentVertices = DEFAULT_MAX_SEGMENT_VERTICES;
 #define DEFAULT_MAX_INDEXES_PER_COLLECTION 64
 int32 MaxIndexesPerCollection = DEFAULT_MAX_INDEXES_PER_COLLECTION;
 
-#define DEFAULT_UNSHARDED_BATCH_DELETE true
-bool EnableUnshardedBatchDelete = DEFAULT_UNSHARDED_BATCH_DELETE;
-
-#define DEFAULT_ENABLE_MERGE_OBJECTS_SUPPORT false
-bool EnableGroupMergeObjectsSupport = DEFAULT_ENABLE_MERGE_OBJECTS_SUPPORT;
-
 #define DEFAULT_ENABLE_RUM_INDEX_SCAN false
 bool EnableRumIndexScan = DEFAULT_ENABLE_RUM_INDEX_SCAN;
-
-#define DEFAULT_ENABLE_MERGE_STAGE true
-bool EnableMergeStage = DEFAULT_ENABLE_MERGE_STAGE;
-
-#define DEFAULT_ENABLE_OUT_STAGE true
-bool EnableOutStage = DEFAULT_ENABLE_OUT_STAGE;
 
 #define DEFAULT_ENABLE_MERGE_TARGET_CREATION false
 bool EnableMergeTargetCreation = DEFAULT_ENABLE_MERGE_TARGET_CREATION;
@@ -252,10 +231,6 @@ char *BackgroundWorkerDatabaseName = DEFAULT_BG_DATABASE_NAME;
 
 #define DEFAULT_BG_LATCH_TIMEOUT_SEC 10
 int LatchTimeOutSec = DEFAULT_BG_LATCH_TIMEOUT_SEC;
-
-#define DEFAULT_ENABLE_STAGE_SET_WINDOW_FIELDS true
-bool EnableSetWindowFields = DEFAULT_ENABLE_STAGE_SET_WINDOW_FIELDS;
-
 #define DEFAULT_ENABLE_NATIVE_COLOCATION true
 bool EnableNativeColocation = DEFAULT_ENABLE_NATIVE_COLOCATION;
 
@@ -390,14 +365,6 @@ InitApiConfigurations(char *prefix)
 		NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		psprintf("%s.mongoEnableDeveloperExplain", prefix),
-		gettext_noop("Determines whether the explain can show internal information"),
-		NULL,
-		&EnableDeveloperExplain,
-		DEFAULT_ENABLE_DEVELOPER_EXPLAIN,
-		PGC_USERSET, 0, NULL, NULL, NULL);
-
-	DefineCustomBoolVariable(
 		"helio_api.mongoEnableInQueryOptimization",
 		gettext_noop("Determines whether in queries are rewritten to equality"),
 		NULL,
@@ -512,13 +479,6 @@ InitApiConfigurations(char *prefix)
 		NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		psprintf("%s.enableGeospatial", prefix),
-		gettext_noop(
-			"Enables support for geospatial indexes and queries in pg_helio_api."),
-		NULL, &EnableGeospatialSupport, DEFAULT_ENABLE_GEOSPATIAL,
-		PGC_USERSET, 0, NULL, NULL, NULL);
-
-	DefineCustomBoolVariable(
 		psprintf("%s.enableVectorHNSWIndex", prefix),
 		gettext_noop(
 			"Enables support for HNSW index type and query for vector search in pg_helio_api."),
@@ -598,12 +558,6 @@ InitApiConfigurations(char *prefix)
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.enable_large_index_keys",
-		gettext_noop("Whether or not to enable large index keys support"),
-		NULL, &DefaultEnableLargeIndexKeys, DEFAULT_ENABLE_LARGE_INDEX_KEYS,
-		PGC_USERSET, 0, NULL, NULL, NULL);
-
-	DefineCustomBoolVariable(
 		"helio_api.enable_large_unique_index_keys",
 		gettext_noop("Whether or not to enable large index keys on unique indexes."),
 		NULL, &DefaultEnableLargeUniqueIndexKeys, DEFAULT_ENABLE_LARGE_UNIQUE_INDEX_KEYS,
@@ -649,14 +603,6 @@ InitApiConfigurations(char *prefix)
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.enableUnshardedBatchDelete",
-		gettext_noop(
-			"Feature flag to enable pushing an unsharded batch update to the worker"),
-		NULL,
-		&EnableUnshardedBatchDelete, DEFAULT_UNSHARDED_BATCH_DELETE, PGC_USERSET, 0,
-		NULL, NULL, NULL);
-
-	DefineCustomBoolVariable(
 		"helio_api.useLocalExecutionShardQueries",
 		gettext_noop(
 			"Determines whether or not to push local shard queries to the shard directly."),
@@ -672,13 +618,6 @@ InitApiConfigurations(char *prefix)
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.enableGroupMergeObjectsSupport",
-		gettext_noop("Feature flag for the group mergeObjects support"), NULL,
-		&EnableGroupMergeObjectsSupport, DEFAULT_ENABLE_MERGE_OBJECTS_SUPPORT,
-		PGC_USERSET, 0,
-		NULL, NULL, NULL);
-
-	DefineCustomBoolVariable(
 		"helio_api.enableRumIndexScan",
 		gettext_noop(
 			"Allow rum index scans."),
@@ -688,20 +627,6 @@ InitApiConfigurations(char *prefix)
 		PGC_USERSET,
 		0,
 		NULL, NULL, NULL);
-
-	DefineCustomBoolVariable(
-		"helio_api.enableMergeStage",
-		gettext_noop(
-			"Enables support for merge stage in pg_helio_api."),
-		NULL, &EnableMergeStage, DEFAULT_ENABLE_MERGE_STAGE,
-		PGC_USERSET, 0, NULL, NULL, NULL);
-
-	DefineCustomBoolVariable(
-		"helio_api.enableOutStage",
-		gettext_noop(
-			"Enables support for out stage in pg_helio_api."),
-		NULL, &EnableOutStage, DEFAULT_ENABLE_OUT_STAGE,
-		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
 		"helio_api.enableMergeTargetCreation",
@@ -787,16 +712,6 @@ InitApiConfigurations(char *prefix)
 		NULL, &EnableBackgroundWorker, DEFAULT_ENABLE_BG_WORKER,
 		PGC_SUSET, 0, NULL, NULL, NULL);
 
-	DefineCustomBoolVariable(
-		"helio_api.enableStageSetWindowFields",
-		gettext_noop(
-			"Enables support for setWindowFields stage in pg_helio_api."),
-		NULL,
-		&EnableSetWindowFields,
-		DEFAULT_ENABLE_STAGE_SET_WINDOW_FIELDS,
-		PGC_USERSET,
-		0,
-		NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
 		psprintf("%s.enableNativeColocation", prefix),

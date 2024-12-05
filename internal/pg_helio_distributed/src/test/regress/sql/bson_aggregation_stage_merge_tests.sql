@@ -8,9 +8,6 @@ SET helio_api.next_collection_index_id TO 7850;
 SELECT helio_api.insert_one('sourceDB','withoutFlag',' { "_id" :  1, "item" : "almonds", "price" : 12, "quantity" : 2 }', NULL);
 SELECT * FROM aggregate_cursor_first_page('sourceDB', '{ "aggregate": "withoutFlag", "pipeline": [ {"$merge" : { "into": "targetwithoutFlag" }} ] , "cursor": { "batchSize": 1 } }', 4294967294);
 
---set Feature flag for $merge stage
-SET helio_api.enableMergeStage TO ON;
-
 --set Feature flag for $merge across DB support
 SET helio_api.enableMergeAcrossDB TO ON;
 

@@ -18,7 +18,6 @@ SELECT helio_api.create_collection('db', 'geoquerytest') IS NOT NULL;
 -- Geometries
 BEGIN;
 set local enable_seqscan TO on;
-set local helio_api.enableGeospatial TO on;
 \i sql/bson_query_operator_geospatial_core.sql
 
 ROLLBACK;
@@ -26,7 +25,6 @@ ROLLBACK;
 -- Geographies
 BEGIN;
 set local enable_seqscan TO on;
-set local helio_api.enableGeospatial TO on;
 \i sql/bson_query_operator_geospatial_geography_core.sql
 ROLLBACK;
 
@@ -38,7 +36,6 @@ SELECT helio_api.shard_collection('db', 'geoquerytest', '{ "_id": "hashed" }', f
 -- Geometries
 BEGIN;
 set local enable_seqscan TO on;
-set local helio_api.enableGeospatial TO on;
 \i sql/bson_query_operator_geospatial_core.sql
 
 ROLLBACK;
@@ -46,6 +43,5 @@ ROLLBACK;
 -- Geographies
 BEGIN;
 set local enable_seqscan TO on;
-set local helio_api.enableGeospatial TO on;
 \i sql/bson_query_operator_geospatial_geography_core.sql
 ROLLBACK;

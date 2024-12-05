@@ -9,7 +9,6 @@ NOTICE:  creating collection
 -- Geometries
 BEGIN;
 set local enable_seqscan TO on;
-set local helio_api.enableGeospatial TO on;
 \i sql/bson_query_operator_geospatial_core.sql
 -- Insert multiple items
 SELECT helio_api.insert_one('db','geoquerytest','{ "_id" : 1, "a" : { "b": [10, 10] } }', NULL);
@@ -101,7 +100,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
 SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$geoWithin": {"$box": [[19.00001, 19.00002], [29.9999, 29.9999]]}}}' ORDER BY object_id;
                                                                                                                       document                                                                                                                      
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
 (2 rows)
 
@@ -109,7 +108,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                                     document                                                                                                                                    
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
  { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ [ { "$numberInt" : "40" }, { "$numberInt" : "40" } ], [ { "$numberInt" : "45" }, { "$numberInt" : "45" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "55" }, { "$numberInt" : "55" } ] ] } }
 (4 rows)
@@ -118,7 +117,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                                     document                                                                                                                                    
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
  { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ [ { "$numberInt" : "40" }, { "$numberInt" : "40" } ], [ { "$numberInt" : "45" }, { "$numberInt" : "45" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "55" }, { "$numberInt" : "55" } ] ] } }
 (4 rows)
@@ -144,7 +143,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
 SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$within": {"$box": [[19.00001, 19.00002], [29.9999, 29.9999]]}}}' ORDER BY object_id;
                                                                                                                       document                                                                                                                      
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
 (2 rows)
 
@@ -152,7 +151,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                                     document                                                                                                                                    
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
  { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ [ { "$numberInt" : "40" }, { "$numberInt" : "40" } ], [ { "$numberInt" : "45" }, { "$numberInt" : "45" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "55" }, { "$numberInt" : "55" } ] ] } }
 (4 rows)
@@ -161,7 +160,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                                     document                                                                                                                                    
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
  { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ [ { "$numberInt" : "40" }, { "$numberInt" : "40" } ], [ { "$numberInt" : "45" }, { "$numberInt" : "45" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "55" }, { "$numberInt" : "55" } ] ] } }
 (4 rows)
@@ -186,16 +185,16 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
 (1 row)
 
 SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$geoWithin": {"$center": [[15, 14], 10]}}}' ORDER BY object_id;
-                                                         document                                                          
+                                                          document                                                          
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
 (2 rows)
 
 SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$geoWithin": {"$center": [[50, 50], 50]}}}' ORDER BY object_id; -- This will not include [10, 10]
                                                                                                                                     document                                                                                                                                    
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
  { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ [ { "$numberInt" : "40" }, { "$numberInt" : "40" } ], [ { "$numberInt" : "45" }, { "$numberInt" : "45" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "55" }, { "$numberInt" : "55" } ] ] } }
 (3 rows)
@@ -204,7 +203,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                                     document                                                                                                                                    
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
  { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ [ { "$numberInt" : "40" }, { "$numberInt" : "40" } ], [ { "$numberInt" : "45" }, { "$numberInt" : "45" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "55" }, { "$numberInt" : "55" } ] ] } }
 (4 rows)
@@ -222,16 +221,16 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
 (1 row)
 
 SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$within": {"$center": [[15, 14], 10]}}}' ORDER BY object_id;
-                                                         document                                                          
+                                                          document                                                          
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
 (2 rows)
 
 SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$within": {"$center": [[50, 50], 50]}}}' ORDER BY object_id; -- This will not include [10, 10]
                                                                                                                                     document                                                                                                                                    
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
  { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ [ { "$numberInt" : "40" }, { "$numberInt" : "40" } ], [ { "$numberInt" : "45" }, { "$numberInt" : "45" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "55" }, { "$numberInt" : "55" } ] ] } }
 (3 rows)
@@ -240,7 +239,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                                     document                                                                                                                                    
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
  { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ [ { "$numberInt" : "40" }, { "$numberInt" : "40" } ], [ { "$numberInt" : "45" }, { "$numberInt" : "45" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "55" }, { "$numberInt" : "55" } ] ] } }
 (4 rows)
@@ -255,7 +254,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                                     document                                                                                                                                    
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
  { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ [ { "$numberInt" : "40" }, { "$numberInt" : "40" } ], [ { "$numberInt" : "45" }, { "$numberInt" : "45" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "55" }, { "$numberInt" : "55" } ] ] } }
 (4 rows)
@@ -313,7 +312,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                       document                                                                                                                      
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
 (3 rows)
 
@@ -321,7 +320,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                       document                                                                                                                      
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
 (3 rows)
 
@@ -329,7 +328,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                       document                                                                                                                      
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
 (3 rows)
 
@@ -337,7 +336,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                                     document                                                                                                                                    
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
  { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ [ { "$numberInt" : "40" }, { "$numberInt" : "40" } ], [ { "$numberInt" : "45" }, { "$numberInt" : "45" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "55" }, { "$numberInt" : "55" } ] ] } }
 (4 rows)
@@ -370,7 +369,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                       document                                                                                                                      
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
 (3 rows)
 
@@ -378,7 +377,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                       document                                                                                                                      
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
 (3 rows)
 
@@ -386,7 +385,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                       document                                                                                                                      
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
 (3 rows)
 
@@ -394,7 +393,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                                     document                                                                                                                                    
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
  { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ [ { "$numberInt" : "40" }, { "$numberInt" : "40" } ], [ { "$numberInt" : "45" }, { "$numberInt" : "45" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "55" }, { "$numberInt" : "55" } ] ] } }
 (4 rows)
@@ -486,7 +485,6 @@ ROLLBACK;
 -- Geographies
 BEGIN;
 set local enable_seqscan TO on;
-set local helio_api.enableGeospatial TO on;
 \i sql/bson_query_operator_geospatial_geography_core.sql
 -- Insert multiple items
 -- Old format legacy points are valid for geography
@@ -1172,7 +1170,6 @@ SELECT helio_api.shard_collection('db', 'geoquerytest', '{ "_id": "hashed" }', f
 -- Geometries
 BEGIN;
 set local enable_seqscan TO on;
-set local helio_api.enableGeospatial TO on;
 \i sql/bson_query_operator_geospatial_core.sql
 -- Insert multiple items
 SELECT helio_api.insert_one('db','geoquerytest','{ "_id" : 1, "a" : { "b": [10, 10] } }', NULL);
@@ -1264,7 +1261,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
 SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$geoWithin": {"$box": [[19.00001, 19.00002], [29.9999, 29.9999]]}}}' ORDER BY object_id;
                                                                                                                       document                                                                                                                      
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
 (2 rows)
 
@@ -1272,7 +1269,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                                     document                                                                                                                                    
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
  { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ [ { "$numberInt" : "40" }, { "$numberInt" : "40" } ], [ { "$numberInt" : "45" }, { "$numberInt" : "45" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "55" }, { "$numberInt" : "55" } ] ] } }
 (4 rows)
@@ -1281,7 +1278,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                                     document                                                                                                                                    
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
  { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ [ { "$numberInt" : "40" }, { "$numberInt" : "40" } ], [ { "$numberInt" : "45" }, { "$numberInt" : "45" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "55" }, { "$numberInt" : "55" } ] ] } }
 (4 rows)
@@ -1307,7 +1304,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
 SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$within": {"$box": [[19.00001, 19.00002], [29.9999, 29.9999]]}}}' ORDER BY object_id;
                                                                                                                       document                                                                                                                      
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
 (2 rows)
 
@@ -1315,7 +1312,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                                     document                                                                                                                                    
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
  { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ [ { "$numberInt" : "40" }, { "$numberInt" : "40" } ], [ { "$numberInt" : "45" }, { "$numberInt" : "45" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "55" }, { "$numberInt" : "55" } ] ] } }
 (4 rows)
@@ -1324,7 +1321,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                                     document                                                                                                                                    
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
  { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ [ { "$numberInt" : "40" }, { "$numberInt" : "40" } ], [ { "$numberInt" : "45" }, { "$numberInt" : "45" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "55" }, { "$numberInt" : "55" } ] ] } }
 (4 rows)
@@ -1349,16 +1346,16 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
 (1 row)
 
 SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$geoWithin": {"$center": [[15, 14], 10]}}}' ORDER BY object_id;
-                                                         document                                                          
+                                                          document                                                          
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
 (2 rows)
 
 SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$geoWithin": {"$center": [[50, 50], 50]}}}' ORDER BY object_id; -- This will not include [10, 10]
                                                                                                                                     document                                                                                                                                    
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
  { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ [ { "$numberInt" : "40" }, { "$numberInt" : "40" } ], [ { "$numberInt" : "45" }, { "$numberInt" : "45" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "55" }, { "$numberInt" : "55" } ] ] } }
 (3 rows)
@@ -1367,7 +1364,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                                     document                                                                                                                                    
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
  { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ [ { "$numberInt" : "40" }, { "$numberInt" : "40" } ], [ { "$numberInt" : "45" }, { "$numberInt" : "45" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "55" }, { "$numberInt" : "55" } ] ] } }
 (4 rows)
@@ -1385,16 +1382,16 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
 (1 row)
 
 SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$within": {"$center": [[15, 14], 10]}}}' ORDER BY object_id;
-                                                         document                                                          
+                                                          document                                                          
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
 (2 rows)
 
 SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$within": {"$center": [[50, 50], 50]}}}' ORDER BY object_id; -- This will not include [10, 10]
                                                                                                                                     document                                                                                                                                    
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
  { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ [ { "$numberInt" : "40" }, { "$numberInt" : "40" } ], [ { "$numberInt" : "45" }, { "$numberInt" : "45" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "55" }, { "$numberInt" : "55" } ] ] } }
 (3 rows)
@@ -1403,7 +1400,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                                     document                                                                                                                                    
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
  { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ [ { "$numberInt" : "40" }, { "$numberInt" : "40" } ], [ { "$numberInt" : "45" }, { "$numberInt" : "45" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "55" }, { "$numberInt" : "55" } ] ] } }
 (4 rows)
@@ -1418,7 +1415,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                                     document                                                                                                                                    
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
  { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ [ { "$numberInt" : "40" }, { "$numberInt" : "40" } ], [ { "$numberInt" : "45" }, { "$numberInt" : "45" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "55" }, { "$numberInt" : "55" } ] ] } }
 (4 rows)
@@ -1476,7 +1473,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                       document                                                                                                                      
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
 (3 rows)
 
@@ -1484,7 +1481,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                       document                                                                                                                      
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
 (3 rows)
 
@@ -1492,7 +1489,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                       document                                                                                                                      
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
 (3 rows)
 
@@ -1500,7 +1497,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                                     document                                                                                                                                    
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
  { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ [ { "$numberInt" : "40" }, { "$numberInt" : "40" } ], [ { "$numberInt" : "45" }, { "$numberInt" : "45" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "55" }, { "$numberInt" : "55" } ] ] } }
 (4 rows)
@@ -1533,7 +1530,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                       document                                                                                                                      
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
 (3 rows)
 
@@ -1541,7 +1538,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                       document                                                                                                                      
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
 (3 rows)
 
@@ -1549,7 +1546,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                       document                                                                                                                      
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
 (3 rows)
 
@@ -1557,7 +1554,7 @@ SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @
                                                                                                                                     document                                                                                                                                    
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20"}, "lat" : { "$numberInt" : "20" } } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "long" : { "$numberLong" : "20" }, "lat" : { "$numberInt" : "20" } } } }
  { "_id" : { "$numberInt" : "3" }, "a" : [ { "b" : { "long" : { "$numberInt" : "25" }, "lat" : { "$numberInt" : "25" } } }, [ { "$numberDouble" : "30.0" }, { "$numberDecimal" : "30" } ], [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] ] }
  { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ [ { "$numberInt" : "40" }, { "$numberInt" : "40" } ], [ { "$numberInt" : "45" }, { "$numberInt" : "45" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "55" }, { "$numberInt" : "55" } ] ] } }
 (4 rows)
@@ -1649,7 +1646,6 @@ ROLLBACK;
 -- Geographies
 BEGIN;
 set local enable_seqscan TO on;
-set local helio_api.enableGeospatial TO on;
 \i sql/bson_query_operator_geospatial_geography_core.sql
 -- Insert multiple items
 -- Old format legacy points are valid for geography

@@ -50,7 +50,6 @@ ROLLBACK;
 
 -- Create an index
 -- Also create a geospatial index first so that we can test these are ignore for the sort clause and only vector index is considered
-SET helio_api.enableGeospatial = 'on';
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "vectorIndexColl", "indexes": [ { "key": { "myvector": "2dsphere" }, "name": "foo_1_2ds" } ] }', true);
 SET client_min_messages TO WARNING;
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "vectorIndexColl", "indexes": [ { "key": { "myvector": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 2, "similarity": "COS", "dimensions": 3 } } ] }', true);
@@ -73,7 +72,6 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorInde
 
 -- Drop the geospatial index
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "vectorIndexColl", "index": "foo_1_2ds"}');
-RESET helio_api.enableGeospatial;
 
 -- direct query that does not require rewrite
 SELECT document -> 'myvector' FROM helio_api.collection('db', 'vectorIndexColl') ORDER BY 

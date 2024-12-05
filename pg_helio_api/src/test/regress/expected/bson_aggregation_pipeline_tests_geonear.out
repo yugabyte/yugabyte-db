@@ -314,16 +314,3 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggr
 (4 rows)
 
 ROLLBACK;
-SET helio_api.enableGeospatial to off;
--- Make sure we fail if the helio_api.enableGeospatial is not set
-SELECT helio_api.insert_one('db','not_enabled_test','{ "_id": 1, "a": { "b": [ 0, 0]} }', NULL);
-NOTICE:  creating collection
-                              insert_one                              
-----------------------------------------------------------------------
- { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
-(1 row)
-
-SELECT document FROM helio_api.collection('db', 'not_enabled_test') WHERE document @@
-    '{"a.b": {"$geoWithin": { "$geometry": { "type": "Polygon", "coordinates": [ [ [100, 0], [103, 0], [103, 3], [100, 3], [100, 0] ] ] } } }}';
-ERROR:  Geospatial features are not supported yet
-RESET helio_api.enableGeospatial;

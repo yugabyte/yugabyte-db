@@ -2,7 +2,6 @@ SET search_path TO helio_api_catalog, postgis_public;
 SET citus.next_shard_id TO 168300;
 SET helio_api.next_collection_id TO 16830;
 SET helio_api.next_collection_index_id TO 16830;
-SET helio_api.enableGeospatial TO ON;
 
 
 \set prevEcho :ECHO
@@ -35,7 +34,6 @@ ROLLBACK;
 -- Geographies
 BEGIN;
 set local enable_seqscan TO on;
-set local helio_api.enableGeospatial TO on;
 \i sql/bson_query_operator_geospatial_geography_core.sql
 ROLLBACK;
 
@@ -52,8 +50,5 @@ ROLLBACK;
 -- Geographies
 BEGIN;
 set local enable_seqscan TO on;
-set local helio_api.enableGeospatial TO on;
 \i sql/bson_query_operator_geospatial_geography_core.sql
 ROLLBACK;
-
-RESET helio_api.enableGeospatial;

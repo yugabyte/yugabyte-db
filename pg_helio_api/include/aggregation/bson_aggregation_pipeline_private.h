@@ -230,22 +230,6 @@ MakeFloat8Const(float8 floatValue)
 }
 
 
-inline static Oid
-GetMergeDocumentsFunctionOid(void)
-{
-	if (IsClusterVersionAtleastThis(1, 18, 0) ||
-		IsClusterVersionEqualToAndAtLeastPatch(1, 17, 1) ||
-		IsClusterVersionEqualToAndAtLeastPatch(1, 16, 1))
-	{
-		return BsonDollaMergeDocumentsFunctionOid();
-	}
-	else
-	{
-		return BsonDollarAddFieldsFunctionOid();
-	}
-}
-
-
 /*
  * Helper function that creates a UNION ALL Set operation statement
  * that returns a single BSON field.

@@ -76,13 +76,3 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggr
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [5, 6], "distanceField": "dist.calculated", "key": "a.b", "spherical": true, "includeLocs": "dist.location", "minDistance": 0, "maxDistance": 0.1} } ]}'); -- Upto 0.1 radians
 ROLLBACK;
-
-
-SET helio_api.enableGeospatial to off;
-
--- Make sure we fail if the helio_api.enableGeospatial is not set
-SELECT helio_api.insert_one('db','not_enabled_test','{ "_id": 1, "a": { "b": [ 0, 0]} }', NULL);
-SELECT document FROM helio_api.collection('db', 'not_enabled_test') WHERE document @@
-    '{"a.b": {"$geoWithin": { "$geometry": { "type": "Polygon", "coordinates": [ [ [100, 0], [103, 0], [103, 3], [100, 3], [100, 0] ] ] } } }}';
-
-RESET helio_api.enableGeospatial;

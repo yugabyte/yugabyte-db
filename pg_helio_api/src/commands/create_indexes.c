@@ -225,7 +225,6 @@ extern bool EnableExtendedIndexFilters;
 extern bool ForceIndexTermTruncation;
 extern int IndexTruncationLimitOverride;
 extern int MaxWildcardIndexKeySize;
-extern bool DefaultEnableLargeIndexKeys;
 extern bool DefaultEnableLargeUniqueIndexKeys;
 extern bool SkipFailOnCollation;
 extern bool ForceEnableNewUniqueOpClass;
@@ -2478,7 +2477,6 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 		if (indexKind == MongoIndexKind_2d)
 		{
 			ReportFeatureUsage(FEATURE_CREATE_INDEX_2D);
-			EnsureGeospatialFeatureEnabled();
 			if (indexDefKey->has2dIndex)
 			{
 				/* Can't have more than one 2d index fields */
@@ -2503,7 +2501,6 @@ ParseIndexDefKeyDocument(const bson_iter_t *indexDefDocIter)
 		if (indexKind == MongoIndexKind_2dsphere)
 		{
 			ReportFeatureUsage(FEATURE_CREATE_INDEX_2DSPHERE);
-			EnsureGeospatialFeatureEnabled();
 			if (isWildcardKeyPath)
 			{
 				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
@@ -4503,8 +4500,7 @@ CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int inde
 		bool enableLargeIndexKeys = false;
 		if (IndexSupportsTruncation(indexDef) && indexDef->unique != BoolIndexOption_True)
 		{
-			enableLargeIndexKeys = DefaultEnableLargeIndexKeys &&
-								   indexDef->enableLargeIndexKeys !=
+			enableLargeIndexKeys = indexDef->enableLargeIndexKeys !=
 								   BoolIndexOption_False;
 		}
 

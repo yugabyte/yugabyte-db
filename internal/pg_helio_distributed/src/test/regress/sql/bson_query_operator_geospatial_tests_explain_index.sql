@@ -2,7 +2,6 @@ SET search_path TO helio_api_catalog, postgis_public;
 SET citus.next_shard_id TO 167400;
 SET helio_api.next_collection_id TO 16740;
 SET helio_api.next_collection_index_id TO 16740;
-SET helio_api.enableGeospatial TO ON;
 
 SELECT helio_api.drop_collection('db', 'geoquerytest') IS NOT NULL;
 SELECT helio_api.create_collection('db', 'geoquerytest') IS NOT NULL;
@@ -86,4 +85,3 @@ EXPLAIN (COSTS OFF) SELECT document FROM helio_api.collection('db', 'geoquerytes
 ROLLBACK;
 
 SELECT helio_api.drop_collection('db', 'geoquerytest') IS NOT NULL;
-RESET helio_api.enableGeospatial;

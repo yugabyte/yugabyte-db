@@ -31,8 +31,6 @@
 #include "aggregation/bson_aggregation_pipeline.h"
 #include "aggregation/bson_aggregation_pipeline_private.h"
 
-extern bool EnableNativeColocation;
-
 PG_FUNCTION_INFO_V1(command_get_shard_map);
 PG_FUNCTION_INFO_V1(command_list_shards);
 
@@ -177,12 +175,6 @@ HandleDistributedColocation(MongoCollection *collection, const
 	{
 		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg("unexpected - collection for colocation was null")));
-	}
-
-	if (!EnableNativeColocation)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
-						errmsg("Colocation is not supported yet")));
 	}
 
 	if (colocationValue->value_type != BSON_TYPE_DOCUMENT)
@@ -487,10 +479,7 @@ RewriteListCollectionsQueryForDistribution(Query *source)
 											COERCE_EXPLICIT_CALL);
 
 
-	Oid addFieldsOid = IsClusterVersionAtleastThis(1, 18, 0) ?
-					   BsonDollaMergeDocumentsFunctionOid() :
-					   BsonDollarAddFieldsFunctionOid();
-
+	Oid addFieldsOid = BsonDollaMergeDocumentsFunctionOid();
 	TargetEntry *firstEntry = linitial(source->targetList);
 	FuncExpr *addFields = makeFuncExpr(addFieldsOid, BsonTypeId(),
 									   list_make2(firstEntry->expr, colocationArgs),

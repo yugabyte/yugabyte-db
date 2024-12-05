@@ -163,7 +163,6 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feat
 SELECT helio_distributed_test_helpers.get_feature_counter_pretty(true);
 
 -- Test feature counters for geospatial
-SET helio_api.enableGeospatial = 'on';
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "mongo_feature_counter", "indexes": [ { "key": { "2dkey": "2d"}, "name": "my_2d_idx"  } ] }', true);
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "mongo_feature_counter", "indexes": [ { "key": { "2dspherekey": "2dsphere"}, "name": "my_2dsphere_idx"  } ] }', true);
 
@@ -178,8 +177,6 @@ SELECT document -> '2dspherekey' FROM helio_api.collection('db', 'mongo_feature_
 SELECT document -> '2dspherekey' FROM helio_api.collection('db', 'mongo_feature_counter3') WHERE document @@ '{"2dspherekey": {"$geoIntersects": {"$geometry": { "type": "Point", "coordinates": [1, 1] } }}}';
 
 SELECT helio_distributed_test_helpers.get_feature_counter_pretty(true);
-
-RESET helio_api.enableGeospatial;
 
 -- Test feature counter for $text
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "mongo_feature_counter3", "indexes": [ { "key": { "textkey": "text" }, "name": "my_txt_idx" } ] }', true);

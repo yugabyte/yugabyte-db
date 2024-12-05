@@ -9,18 +9,7 @@ SELECT helio_api.create_collection('db', 'geoquerytest') IS NOT NULL;
 -- avoid plans that use the primary key index
 SELECT helio_distributed_test_helpers.drop_primary_key('db','geoquerytest');
 
--- Verify that geospatial query operators throw not supported
--- if helio_api.enableGeospatial is not turned ON
-SET helio_api.enableGeospatial = OFF;
--- $geoWithin / $within
-SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$box": [[10, 10], [100, 100]]}}}';
-SELECT document FROM helio_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$box": [[10, 10], [100, 100]]}}}';
-
-RESET helio_api.enableGeospatial;
-
 -- Top level validations
-SET helio_api.enableGeospatial = ON;
-
 -- Insert so that validations kick in
 SELECT helio_api.insert_one('db','geoquerytest','{ "z" : { "y": [10, 10] } }', NULL);
 

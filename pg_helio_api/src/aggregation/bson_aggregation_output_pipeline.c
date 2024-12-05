@@ -114,9 +114,6 @@ typedef struct OutArgs
 	StringView targetCollection;
 } OutArgs;
 
-/* GUC to enable $merge aggregation stage */
-extern bool EnableMergeStage;
-
 /* GUC to enable $merge target collection creatation if not exist */
 extern bool EnableMergeTargetCreation;
 
@@ -124,8 +121,6 @@ extern bool EnableMergeTargetCreation;
 extern bool EnableMergeAcrossDB;
 
 /* GUC to enable $out aggregation stage */
-extern bool EnableOutStage;
-
 extern bool EnableCollation;
 
 static void ParseMergeStage(const bson_value_t *existingValue, const
@@ -435,14 +430,6 @@ HandleMerge(const bson_value_t *existingValue, Query *query,
 	{
 		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED), errmsg(
 							"collation is not supported with $merge yet")));
-	}
-
-	if (!EnableMergeStage)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
-						errmsg("Stage $merge is not supported yet in native pipeline"),
-						errdetail_log(
-							"Stage $merge is not supported yet in native pipeline")));
 	}
 
 	bool isTopLevel = true;
@@ -1701,12 +1688,6 @@ HandleOut(const bson_value_t *existingValue, Query *query,
 		  AggregationPipelineBuildContext *context)
 {
 	ReportFeatureUsage(FEATURE_STAGE_OUT);
-
-	if (!EnableOutStage)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
-						errmsg("$out aggregation stage is not supported yet.")));
-	}
 
 	OutArgs outArgs = { 0 };
 

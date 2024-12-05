@@ -2004,8 +2004,6 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 		case QUERY_OPERATOR_WITHIN:
 		case QUERY_OPERATOR_GEOWITHIN:
 		{
-			EnsureGeospatialFeatureEnabled();
-
 			if (!BSON_ITER_HOLDS_DOCUMENT(operatorDocIterator))
 			{
 				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
@@ -2032,8 +2030,6 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 
 		case QUERY_OPERATOR_GEOINTERSECTS:
 		{
-			EnsureGeospatialFeatureEnabled();
-
 			if (!BSON_ITER_HOLDS_DOCUMENT(operatorDocIterator))
 			{
 				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
@@ -2077,15 +2073,6 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 		case QUERY_OPERATOR_NEARSPHERE:
 		case QUERY_OPERATOR_GEONEAR:
 		{
-			EnsureGeospatialFeatureEnabled();
-
-			if (!IsClusterVersionAtleastThis(1, 17, 2))
-			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
-								errmsg(
-									"$near and $nearSphere are not supported yet.")));
-			}
-
 			if (!BSON_ITER_HOLDS_DOCUMENT(operatorDocIterator) &&
 				!BSON_ITER_HOLDS_ARRAY(operatorDocIterator))
 			{

@@ -28,11 +28,6 @@
 /* Utility macro to check equality of double value */
 #define DOUBLE_EQUALS(a, b) (fabs((a) - (b)) < DBL_EPSILON)
 
-/*
- * helio_api.enableGeospatial GUC determines geospatial indexes
- * and queries are enabled in pg_helio_api or not.
- */
-extern bool EnableGeospatialSupport;
 
 /* Forward declaration of struct */
 typedef struct ProcessCommonGeospatialState ProcessCommonGeospatialState;
@@ -213,18 +208,6 @@ InitProcessCommonGeospatialState(ProcessCommonGeospatialState *state,
 	 * ereports to throw error where valid
 	 */
 	state->errorCtxt = errCtxt;
-}
-
-
-static inline void
-EnsureGeospatialFeatureEnabled()
-{
-	if (!EnableGeospatialSupport)
-	{
-		ereport(ERROR, (
-					errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
-					errmsg("Geospatial features are not supported yet")));
-	}
 }
 
 

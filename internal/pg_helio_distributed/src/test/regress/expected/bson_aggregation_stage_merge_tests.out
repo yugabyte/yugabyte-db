@@ -12,8 +12,6 @@ NOTICE:  creating collection
 
 SELECT * FROM aggregate_cursor_first_page('sourceDB', '{ "aggregate": "withoutFlag", "pipeline": [ {"$merge" : { "into": "targetwithoutFlag" }} ] , "cursor": { "batchSize": 1 } }', 4294967294);
 ERROR:  $merge target collection create not supported yet, Please create target collection first and try again
---set Feature flag for $merge stage
-SET helio_api.enableMergeStage TO ON;
 --set Feature flag for $merge across DB support
 SET helio_api.enableMergeAcrossDB TO ON;
 --Test without Enabling flag for $merge stage target collection creation 
@@ -106,9 +104,9 @@ NOTICE:  creating collection
 (1 row)
 
 SELECT * FROM aggregate_cursor_first_page('defDb', '{ "aggregate": "defSrc", "pipeline": [  {"$merge" : { "into": "defTar" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
-                                                            cursorpage                                                            | continuation | persistconnection | cursorid 
+                                                            cursorpage                                                             | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "defDb.defSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "defDb.defSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('defDb', 'defTar');
@@ -135,9 +133,9 @@ NOTICE:  creating collection
 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "salaries", "pipeline": [  {"$merge" : { "into": "budgets" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
 NOTICE:  creating collection
-                                                           cursorpage                                                            | continuation | persistconnection | cursorid 
+                                                            cursorpage                                                            | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.salaries", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.salaries", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('db', 'budgets');
@@ -161,9 +159,9 @@ NOTICE:  creating collection
 
 SELECT * FROM aggregate_cursor_first_page('sourceDB', '{ "aggregate": "sourceDumpData", "pipeline": [ {"$merge" : { "into": {"db" : "targetDB" , "coll" : "targetDumpData"}, "on" : "_id", "whenMatched" : "replace" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
 NOTICE:  creating collection
-                                                                 cursorpage                                                                  | continuation | persistconnection | cursorid 
+                                                                  cursorpage                                                                  | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "sourceDB.sourceDumpData", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "sourceDB.sourceDumpData", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('targetDB', 'targetDumpData');
@@ -175,9 +173,9 @@ SELECT document FROM helio_api.collection('targetDB', 'targetDumpData');
 -- object id missing test
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "salaries", "pipeline": [ {"$project" : {"_id" : 0}}, {"$merge" : { "into": "budgets2" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
 NOTICE:  creating collection
-                                                           cursorpage                                                            | continuation | persistconnection | cursorid 
+                                                            cursorpage                                                            | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.salaries", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.salaries", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT count(document) FROM helio_api.collection('db', 'budgets2');
@@ -189,16 +187,16 @@ SELECT count(document) FROM helio_api.collection('db', 'budgets2');
 -- test when merge input is string 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "salaries", "pipeline": [ {"$merge" : "normalString" } ], "cursor": { "batchSize": 1 } }', 4294967294);
 NOTICE:  creating collection
-                                                           cursorpage                                                            | continuation | persistconnection | cursorid 
+                                                            cursorpage                                                            | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.salaries", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.salaries", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "salaries", "pipeline": [ {"$merge" : "dotted.String" } ], "cursor": { "batchSize": 1 } }', 4294967294);
 NOTICE:  creating collection
-                                                           cursorpage                                                            | continuation | persistconnection | cursorid 
+                                                            cursorpage                                                            | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.salaries", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.salaries", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('db','normalString');
@@ -257,33 +255,33 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes
 (1 row)
 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "uniqueIndexTestSrc", "pipeline": [ {"$merge" : { "on" : ["b" , "c" , "a"],"into": "uniqueIndexTestTarget" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
-                                                                cursorpage                                                                 | continuation | persistconnection | cursorid 
+                                                                 cursorpage                                                                 | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.uniqueIndexTestSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.uniqueIndexTestSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "uniqueIndexTestSrc", "pipeline": [ {"$merge" : { "on" : ["c" , "b" , "a"],"into": "uniqueIndexTestTarget" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
-                                                                cursorpage                                                                 | continuation | persistconnection | cursorid 
+                                                                 cursorpage                                                                 | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.uniqueIndexTestSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.uniqueIndexTestSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "uniqueIndexTestSrc", "pipeline": [ {"$merge" : { "on" : "_id", "into": "uniqueIndexTestTarget" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
-                                                                cursorpage                                                                 | continuation | persistconnection | cursorid 
+                                                                 cursorpage                                                                 | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.uniqueIndexTestSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.uniqueIndexTestSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "uniqueIndexTestSrc", "pipeline": [ {"$merge" : { "into": "uniqueIndexTestTarget" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
-                                                                cursorpage                                                                 | continuation | persistconnection | cursorid 
+                                                                 cursorpage                                                                 | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.uniqueIndexTestSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.uniqueIndexTestSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "uniqueIndexTestSrc", "pipeline": [ {"$merge" : { "on" : ["_id"], "into": "uniqueIndexTestTarget" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
-                                                                cursorpage                                                                 | continuation | persistconnection | cursorid 
+                                                                 cursorpage                                                                 | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.uniqueIndexTestSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.uniqueIndexTestSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('db', 'uniqueIndexTestTarget');
@@ -307,27 +305,27 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes
 (1 row)
 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "objectIDUniqueIndex", "pipeline": [ {"$merge" : { "on" : "_id","into": "uniqueIndexTestTarget" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
-                                                                 cursorpage                                                                 | continuation | persistconnection | cursorid 
+                                                                 cursorpage                                                                  | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.objectIDUniqueIndex", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.objectIDUniqueIndex", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "objectIDUniqueIndex", "pipeline": [ {"$merge" : { "on" : ["_id"],"into": "uniqueIndexTestTarget" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
-                                                                 cursorpage                                                                 | continuation | persistconnection | cursorid 
+                                                                 cursorpage                                                                  | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.objectIDUniqueIndex", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.objectIDUniqueIndex", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "objectIDUniqueIndex", "pipeline": [ {"$merge" : { "on" : ["field1","_id","field2"],"into": "uniqueIndexTestTarget" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
-                                                                 cursorpage                                                                 | continuation | persistconnection | cursorid 
+                                                                 cursorpage                                                                  | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.objectIDUniqueIndex", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.objectIDUniqueIndex", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "objectIDUniqueIndex", "pipeline": [ {"$merge" : { "into": "uniqueIndexTestTarget" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
-                                                                 cursorpage                                                                 | continuation | persistconnection | cursorid 
+                                                                 cursorpage                                                                  | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.objectIDUniqueIndex", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.objectIDUniqueIndex", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 --test source collection is sharded.
@@ -353,9 +351,9 @@ SELECT helio_api.shard_collection('db', 'soruceShardedTest', '{ "employee": "has
 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "soruceShardedTest", "pipeline": [ {"$merge" : { "into": "soruceShardedTarget" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
 NOTICE:  creating collection
-                                                                cursorpage                                                                | continuation | persistconnection | cursorid 
+                                                                cursorpage                                                                 | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.soruceShardedTest", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.soruceShardedTest", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('db', 'soruceShardedTarget');
@@ -370,9 +368,9 @@ SELECT document FROM helio_api.collection('db', 'soruceShardedTarget');
 (6 rows)
 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "soruceShardedTest", "pipeline": [{"$project" : { "_id" : 1, "employee" : 1, "salary" : {"$add" : ["$salary" , 1000]} }} ,{"$merge" : { "into": "soruceShardedTarget", "whenMatched" : "replace" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
-                                                                cursorpage                                                                | continuation | persistconnection | cursorid 
+                                                                cursorpage                                                                 | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.soruceShardedTest", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.soruceShardedTest", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('db', 'soruceShardedTarget');
@@ -410,9 +408,9 @@ NOTICE:  creating collection
 (1 row)
 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceDataReplace", "pipeline": [  {"$merge": {"into": "targetDataReplace", "whenMatched": "replace", "whenNotMatched": "discard"}} ], "cursor": { "batchSize": 1 } }', 4294967294);
-                                                                cursorpage                                                                | continuation | persistconnection | cursorid 
+                                                                cursorpage                                                                 | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.sourceDataReplace", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceDataReplace", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('db','targetDataReplace');
@@ -445,9 +443,9 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes
 (1 row)
 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceDataReplaceId", "pipeline": [ {"$merge" : { "into": "targetDataReplaceId", "on" : "a", "whenMatched" : "replace" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
-                                                                 cursorpage                                                                 | continuation | persistconnection | cursorid 
+                                                                 cursorpage                                                                  | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.sourceDataReplaceId", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceDataReplaceId", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('db','targetDataReplaceId');
@@ -484,9 +482,9 @@ SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceDataRepla
 "pipeline": [  {"$project" : { "_id": 0 }},
                {"$merge" : { "into": "targetDataReplaceIdDiff", "on" : "a", "whenMatched" : "replace" }} 
             ], "cursor": { "batchSize": 1 } }', 4294967294);
-                                                                   cursorpage                                                                   | continuation | persistconnection | cursorid 
+                                                                   cursorpage                                                                    | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.sourceDataReplaceIdDiff", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceDataReplaceIdDiff", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('db','targetDataReplaceIdDiff');
@@ -526,9 +524,9 @@ NOTICE:  creating collection
 
 -- As all doc from source matches with target so there should not be any change in target collection. 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceWhenMatchMerge", "pipeline": [  {"$merge" : { "into": "targetWhenMatchMerge", "whenMatched" : "merge" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
-                                                                 cursorpage                                                                  | continuation | persistconnection | cursorid 
+                                                                  cursorpage                                                                  | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.sourceWhenMatchMerge", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceWhenMatchMerge", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 select document from helio_api.collection('db', 'targetWhenMatchMerge');
@@ -549,9 +547,9 @@ SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceWhenMatch
                {"$merge" : { "into": "targetWhenMatchMerge", "whenMatched" : "merge" }} 
             ], 
 "cursor": { "batchSize": 1 } }', 4294967294);
-                                                                 cursorpage                                                                  | continuation | persistconnection | cursorid 
+                                                                  cursorpage                                                                  | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.sourceWhenMatchMerge", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceWhenMatchMerge", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 select document from helio_api.collection('db', 'targetWhenMatchMerge');
@@ -572,9 +570,9 @@ SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceWhenMatch
                {"$merge" : { "into": "targetWhenMatchMerge", "whenMatched" : "merge" }} 
             ], 
 "cursor": { "batchSize": 1 } }', 4294967294);
-                                                                 cursorpage                                                                  | continuation | persistconnection | cursorid 
+                                                                  cursorpage                                                                  | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.sourceWhenMatchMerge", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceWhenMatchMerge", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 select document from helio_api.collection('db', 'targetWhenMatchMerge');
@@ -610,9 +608,9 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes
 (1 row)
 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceDataMergeId", "pipeline": [ {"$merge" : { "into": "targetDataMergeId", "on" : "a", "whenMatched" : "merge" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
-                                                                cursorpage                                                                | continuation | persistconnection | cursorid 
+                                                                cursorpage                                                                 | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.sourceDataMergeId", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceDataMergeId", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('db','targetDataMergeId');
@@ -655,9 +653,9 @@ SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceDataMerge
 "pipeline": [  {"$project" : { "_id": 0 }},
                {"$merge" : { "into": "targetDataMergeIdDiff", "on" : "a", "whenMatched" : "merge" }} 
             ], "cursor": { "batchSize": 1 } }', 4294967294);
-                                                                  cursorpage                                                                  | continuation | persistconnection | cursorid 
+                                                                  cursorpage                                                                   | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.sourceDataMergeIdDiff", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceDataMergeIdDiff", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('db','targetDataMergeIdDiff');
@@ -703,9 +701,9 @@ SELECT * FROM aggregate_cursor_first_page('db',
                            "cursor": { "batchSize": 1 } 
                }',  4294967294
             );
-                                                                  cursorpage                                                                   | continuation | persistconnection | cursorid 
+                                                                   cursorpage                                                                   | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.sourceNotMatchedFailed", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceNotMatchedFailed", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 select document FROM helio_api.collection('db','targetNotMatchedFailed');
@@ -775,9 +773,9 @@ SELECT * FROM aggregate_cursor_first_page('db',
                                         "whenNotMatched" : "discard" }
                                  } 
                               ] , "cursor": { "batchSize": 1 } }', 4294967294);
-                                                                   cursorpage                                                                   | continuation | persistconnection | cursorid 
+                                                                   cursorpage                                                                    | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.sourceNotMatchedDiscard", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceNotMatchedDiscard", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 select document FROM helio_api.collection('db','targetNotMatchedDiscard');
@@ -821,9 +819,9 @@ SELECT * FROM aggregate_cursor_first_page('db',
                                         "whenNotMatched" : "insert" }
                                  } 
                               ] , "cursor": { "batchSize": 1 } }', 4294967294);
-                                                                    cursorpage                                                                    | continuation | persistconnection | cursorid 
+                                                                    cursorpage                                                                     | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.sourceMatchedKeepExisting", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceMatchedKeepExisting", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 select document from helio_api.collection('db','targetMatchedKeepExisting');
@@ -958,9 +956,9 @@ SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "pipelinetoMerge
       {"$merge" : { "into": "pipelineFinalMerge", "whenMatched": "replace", "whenNotMatched": "insert" }} 
    ], "cursor": { "batchSize": 1 } }', 4294967294);
 NOTICE:  creating collection
-                                                               cursorpage                                                               | continuation | persistconnection | cursorid 
+                                                               cursorpage                                                                | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.pipelinetoMerge", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.pipelinetoMerge", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('db','pipelineFinalMerge');
@@ -998,9 +996,9 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes
 (1 row)
 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceTargetHasArray", "pipeline":[  {"$merge" : { "into": "targetTargetHasArray", "on" : "a", "whenMatched" : "replace", "whenNotMatched" : "insert" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
-                                                                 cursorpage                                                                  | continuation | persistconnection | cursorid 
+                                                                  cursorpage                                                                  | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.sourceTargetHasArray", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceTargetHasArray", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('db','target');
@@ -1024,9 +1022,9 @@ SELECT helio_api.insert_one('db','sortClauseToTable','{ "_id": 2, "item": "chees
 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sortClauseToTable",  "pipeline": [  {"$sort"  : {"_id" :  -1}} , {"$merge" : { "into": "sortClauseTarget", "whenMatched": "replace", "whenNotMatched": "insert" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
 NOTICE:  creating collection
-                                                                cursorpage                                                                | continuation | persistconnection | cursorid 
+                                                                cursorpage                                                                 | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.sortClauseToTable", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sortClauseToTable", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('db','sortClauseTarget');
@@ -1038,9 +1036,9 @@ SELECT document FROM helio_api.collection('db','sortClauseTarget');
 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "pipelinetoMerge",  "pipeline": [  {"$sort"  : {"_id" :  -1}} , {"$group" : {"_id" :  "$_id"}}, {"$merge" : { "into": "sortClauseGroup", "whenMatched": "replace", "whenNotMatched": "insert" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
 NOTICE:  creating collection
-                                                               cursorpage                                                               | continuation | persistconnection | cursorid 
+                                                               cursorpage                                                                | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.pipelinetoMerge", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.pipelinetoMerge", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('db','sortClauseGroup');
@@ -1103,9 +1101,9 @@ SELECT helio_api.insert_one('db','resJunkSrc',' { "_id" :  8, "a" : 13, "b" : 20
 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "resJunkSrc",  "pipeline": [  {"$sort"  : {"a" :  -1, "b" : 1}} , {"$merge" : { "into": "resJunkeTarget", "whenMatched": "replace", "whenNotMatched": "insert" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
 NOTICE:  creating collection
-                                                            cursorpage                                                             | continuation | persistconnection | cursorid 
+                                                             cursorpage                                                             | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.resJunkSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.resJunkSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('db','resJunkeTarget');
@@ -1155,9 +1153,9 @@ SELECT helio_api.create_collection_view('db', '{ "create": "sourceView", "viewOn
 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceView", "pipeline": [  {"$merge" : { "into" : "targetViewedOutput" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
 NOTICE:  creating collection
-                                                            cursorpage                                                             | continuation | persistconnection | cursorid 
+                                                             cursorpage                                                             | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.sourceView", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceView", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM  helio_api.collection('db', 'targetViewedOutput');
@@ -1312,9 +1310,9 @@ SELECT helio_api.insert_one('db','AsSourceAsTarget',' { "_id" :  1, "a" : 1, "b"
 (1 row)
 
 SELECT * FROM  aggregate_cursor_first_page('db', '{ "aggregate": "AsSourceAsTarget", "pipeline": [ {"$project" : {"new" : "data"}}, {"$merge" : { "into": "AsSourceAsTarget" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
-                                                               cursorpage                                                                | continuation | persistconnection | cursorid 
+                                                                cursorpage                                                                | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.AsSourceAsTarget", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.AsSourceAsTarget", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('db', 'AsSourceAsTarget');
@@ -1710,9 +1708,9 @@ NOTICE:  creating collection
 --insert
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "nativeSrc", "pipeline": [  {"$merge" : { "into": "nativeTar" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
 NOTICE:  creating collection
-                                                            cursorpage                                                            | continuation | persistconnection | cursorid 
+                                                            cursorpage                                                             | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.nativeSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.nativeSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('db', 'nativeTar');
@@ -1728,9 +1726,9 @@ SELECT document FROM helio_api.collection('db', 'nativeTar');
 
 --replace
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "nativeSrc", "pipeline": [  {"$merge" : { "into": "nativeTar"}} ], "cursor": { "batchSize": 1 } }', 4294967294);
-                                                            cursorpage                                                            | continuation | persistconnection | cursorid 
+                                                            cursorpage                                                             | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.nativeSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.nativeSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('db', 'nativeTar');

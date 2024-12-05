@@ -73,12 +73,12 @@ Check constraints:
  index_options              | bson    |           |          | 
 
 SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('db','{ "listIndexes": "create_indexes_vector" }') ORDER BY 1;
-                                                                                                                                                                                 bson_dollar_unwind                                                                                                                                                                                  
+                                                                                                                                                                                  bson_dollar_unwind                                                                                                                                                                                  
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.create_indexes_vector", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.create_indexes_vector", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : "cosmosSearch" }, "name" : "foo_1", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : { "$numberInt" : "100" }, "similarity" : "COS", "dimensions" : { "$numberInt" : "3" } } } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.create_indexes_vector", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "b" : "cosmosSearch" }, "name" : "foo_2", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : { "$numberInt" : "200" }, "similarity" : "IP", "dimensions" : { "$numberInt" : "3" } } } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.create_indexes_vector", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "c" : "cosmosSearch" }, "name" : "foo_3", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : { "$numberInt" : "300" }, "similarity" : "L2", "dimensions" : { "$numberInt" : "3" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.create_indexes_vector", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.create_indexes_vector", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : "cosmosSearch" }, "name" : "foo_1", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : { "$numberInt" : "100" }, "similarity" : "COS", "dimensions" : { "$numberInt" : "3" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.create_indexes_vector", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "b" : "cosmosSearch" }, "name" : "foo_2", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : { "$numberInt" : "200" }, "similarity" : "IP", "dimensions" : { "$numberInt" : "3" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.create_indexes_vector", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "c" : "cosmosSearch" }, "name" : "foo_3", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : { "$numberInt" : "300" }, "similarity" : "L2", "dimensions" : { "$numberInt" : "3" } } } }, "ok" : { "$numberDouble" : "1.0" } }
 (4 rows)
 
 SELECT helio_api.insert_one('db', 'create_indexes_vector', '{ "a": "some sentence", "elem": [3.0, 5.0, 1.1 ] }');
@@ -159,7 +159,6 @@ EXPLAIN(COSTS OFF) SELECT document -> 'a' FROM helio_api.collection('db', 'creat
 ROLLBACK;
 -- Create an index
 -- Also create a geospatial index first so that we can test these are ignore for the sort clause and only vector index is considered
-SET helio_api.enableGeospatial = 'on';
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "vectorIndexColl", "indexes": [ { "key": { "myvector": "2dsphere" }, "name": "foo_1_2ds" } ] }', true);
 NOTICE:  creating collection
                                                                                                    create_indexes_non_concurrently                                                                                                   
@@ -226,12 +225,11 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorInde
 ERROR:  $vectorSearch.queryVector cannot be an empty array.
 -- Drop the geospatial index
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "vectorIndexColl", "index": "foo_1_2ds"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "3"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "3" } }
 (1 row)
 
-RESET helio_api.enableGeospatial;
 -- direct query that does not require rewrite
 SELECT document -> 'myvector' FROM helio_api.collection('db', 'vectorIndexColl') ORDER BY 
 helio_api_internal.bson_extract_vector(document, 'myvector') <=> helio_api_internal.bson_extract_vector('{ "path" : "myvector", "vector": [8.0, 1.0, 9.0], "k": 10 }', 'vector') LIMIT 1;
@@ -242,9 +240,9 @@ helio_api_internal.bson_extract_vector(document, 'myvector') <=> helio_api_inter
 
 -- same index with different dimensions
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "vectorIndexColl", "index": "foo_1"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "vectorIndexColl", "indexes": [ { "key": { "myvector": "cosmosSearch" }, "name": "foo_2", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 2, "similarity": "COS", "dimensions": 4 } } ] }', true);
@@ -406,12 +404,12 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexe
 
 RESET client_min_messages;
 SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('db','{ "listIndexes": "vectorIndexColl" }') ORDER BY 1;
-                                                                                                                                                                                  bson_dollar_unwind                                                                                                                                                                                   
+                                                                                                                                                                                   bson_dollar_unwind                                                                                                                                                                                   
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.vectorIndexColl", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "myvector" : "cosmosSearch" }, "name" : "foo_1", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : { "$numberInt" : "2" }, "similarity" : "COS", "dimensions" : { "$numberInt" : "3" } } } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.vectorIndexColl", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "myvector2" : "cosmosSearch" }, "name" : "foo_2", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : { "$numberInt" : "2" }, "similarity" : "COS", "dimensions" : { "$numberInt" : "4" } } } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.vectorIndexColl", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "myvector3" : "cosmosSearch" }, "name" : "foo_3_ip", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : { "$numberInt" : "2" }, "similarity" : "IP", "dimensions" : { "$numberInt" : "3" } } } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.vectorIndexColl", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "myvector4" : "cosmosSearch" }, "name" : "foo_4_l2", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : { "$numberInt" : "2" }, "similarity" : "L2", "dimensions" : { "$numberInt" : "4" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.vectorIndexColl", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "myvector" : "cosmosSearch" }, "name" : "foo_1", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : { "$numberInt" : "2" }, "similarity" : "COS", "dimensions" : { "$numberInt" : "3" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.vectorIndexColl", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "myvector2" : "cosmosSearch" }, "name" : "foo_2", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : { "$numberInt" : "2" }, "similarity" : "COS", "dimensions" : { "$numberInt" : "4" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.vectorIndexColl", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "myvector3" : "cosmosSearch" }, "name" : "foo_3_ip", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : { "$numberInt" : "2" }, "similarity" : "IP", "dimensions" : { "$numberInt" : "3" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.vectorIndexColl", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "myvector4" : "cosmosSearch" }, "name" : "foo_4_l2", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : { "$numberInt" : "2" }, "similarity" : "L2", "dimensions" : { "$numberInt" : "4" } } } }, "ok" : { "$numberDouble" : "1.0" } }
 (4 rows)
 
 \d helio_data.documents_91001;
@@ -1100,9 +1098,9 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexe
 ERROR:  An equivalent index already exists with a different name and options. Requested index: { "v" : 2, "key" : { "v" : "cosmosSearch" }, "name" : "foo_3", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : 100, "similarity" : "COS", "dimensions" : 3 } }, existing index: { "v" : 2, "key" : { "v" : "cosmosSearch" }, "name" : "foo_1", "cosmosSearchOptions" : { "kind" : "vector-hnsw", "m" : 4, "efConstruction" : 16, "similarity" : "IP", "dimensions" : 3 } }
 -- create a ivf index
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "multiple_indexes", "index": "foo_1"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 SET client_min_messages TO WARNING;
@@ -1133,8 +1131,8 @@ ERROR:  An equivalent index already exists with a different name and options. Re
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "multiple_indexes", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_4", "cosmosSearchOptions": { "kind": "vector-hnsw", "m": 4, "efConstruction": 16, "similarity": "IP", "dimensions": 3 } } ] }', true);
 ERROR:  An equivalent index already exists with a different name and options. Requested index: { "v" : 2, "key" : { "v" : "cosmosSearch" }, "name" : "foo_4", "cosmosSearchOptions" : { "kind" : "vector-hnsw", "m" : 4, "efConstruction" : 16, "similarity" : "IP", "dimensions" : 3 } }, existing index: { "v" : 2, "key" : { "v" : "cosmosSearch" }, "name" : "foo_1", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : 100, "similarity" : "COS", "dimensions" : 3 } }
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "multiple_indexes", "index": "foo_1"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 

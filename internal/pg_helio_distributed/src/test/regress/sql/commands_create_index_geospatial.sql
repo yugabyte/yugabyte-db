@@ -6,16 +6,6 @@ SET helio_api.next_collection_index_id TO 16720;
 SELECT helio_api.create_collection('db', '2dindextest') IS NOT NULL;
 SELECT helio_api.create_collection('db', '2dsphereindextest') IS NOT NULL;
 
--- Verify that creating 2d index doesn't work
--- if helio_api.enableGeospatial is not turned ON
-SET helio_api.enableGeospatial = OFF;
-
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dindextest", "indexes": [{"key": {"a": "2d"}, "name": "my_2d_a_idx" }]}', true);
-SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dsphereindextest", "indexes": [{"key": {"a": "2dsphere"}, "name": "my_2ds_a_idx" }]}', true);
-
-RESET helio_api.enableGeospatial;
-
-SET helio_api.enableGeospatial = ON;
 -- Test invalid 2d index creation scenarios
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dindextest", "indexes": [{"key": {"a": "2d"}, "name": "my_2d_a_idx", "unique": true }]}', true); -- 2d with unique
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dindextest", "indexes": [{"key": {"a": "2d", "b": "2d"}, "name": "my_2d_a_idx" }]}', true); -- Multi 2d
@@ -219,7 +209,6 @@ SELECT helio_api.insert_one('db','2dsphereindextest','{"a" : {"type": "Polygon",
 -- Test whether invalid document after valid documents are correctly errored out without OOM
 BEGIN;
 set local enable_seqscan TO on;
-set local helio_api.enableGeospatial TO on;
 
 -- Valid and then invalid doc for `a` 2dsphere field
 SELECT helio_api.insert_one('db','2dsOOMTest','{ "_id" : 1, "a": [2.1, 2.2] }', NULL);

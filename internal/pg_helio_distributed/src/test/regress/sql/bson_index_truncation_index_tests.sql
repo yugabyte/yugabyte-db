@@ -820,27 +820,22 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api.collection('db', 
 set helio_api.indexTermLimitOverride to 60;
 
 /* enableLargeIndexKeys should be false because it was explicitly set to false */
-set helio_api.enable_large_index_keys to false;
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "test_default_trunc1", "indexes": [ { "key": { "a.b": 1 }, "name": "key" } ] }');
 SELECT * FROM helio_api_catalog.collection_indexes WHERE collection_id = 6405 ORDER BY index_id;
 
 /* enableLargeIndexKeys should be true because it was not explicitly set to false */
-set helio_api.enable_large_index_keys to true;
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "test_default_trunc2", "indexes": [ { "key": { "a.b": 1 }, "name": "key" } ] }');
 SELECT * FROM helio_api_catalog.collection_indexes WHERE collection_id = 6406 ORDER BY index_id;
 
 /* enableLargeIndexKeys should be false because index does not support it (ttl index) */
-set helio_api.enable_large_index_keys to true;
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "test_default_trunc3", "indexes": [{"key": {"ttl": 1}, "name": "ttl_index", "v" : 1, "expireAfterSeconds": 5}]}');
 SELECT * FROM helio_api_catalog.collection_indexes WHERE collection_id = 6407 ORDER BY index_id;
 
 /* enableLargeIndexKeys should be false because index does not support it (hashed) */
-set helio_api.enable_large_index_keys to true;
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "test_default_trunc4", "indexes": [ { "key": { "a.b": "hashed" }, "name": "key" } ] }');
 SELECT * FROM helio_api_catalog.collection_indexes WHERE collection_id = 6408 ORDER BY index_id;
 
 /* enableLargeIndexKeys should be false because index does not support it (text) */
-set helio_api.enable_large_index_keys to true;
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "test_default_trunc5", "indexes": [ { "key": { "a.b": "text" }, "name": "key" } ] }');
 SELECT * FROM helio_api_catalog.collection_indexes WHERE collection_id = 6409 ORDER BY index_id;
 

@@ -441,7 +441,6 @@ SELECT helio_distributed_test_helpers.get_feature_counter_pretty(true);
 (1 row)
 
 -- Test feature counters for geospatial
-SET helio_api.enableGeospatial = 'on';
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "mongo_feature_counter", "indexes": [ { "key": { "2dkey": "2d"}, "name": "my_2d_idx"  } ] }', true);
                                                                                                    create_indexes_non_concurrently                                                                                                    
 ---------------------------------------------------------------------
@@ -502,7 +501,6 @@ SELECT helio_distributed_test_helpers.get_feature_counter_pretty(true);
  {"Feature_usage":[{"command_insert" : 2}, {"query_operator_geointersects" : 1}, {"query_operator_geowithin" : 3}]}
 (1 row)
 
-RESET helio_api.enableGeospatial;
 -- Test feature counter for $text
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "mongo_feature_counter3", "indexes": [ { "key": { "textkey": "text" }, "name": "my_txt_idx" } ] }', true);
                                                                                                    create_indexes_non_concurrently                                                                                                    
@@ -605,10 +603,10 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes
 
 -- 2. List All indexes --
 SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('db','{ "listIndexes": "feature_usage_ttlcoll" }') ORDER BY 1;
-                                                                                                                                    bson_dollar_unwind                                                                                                                                     
+                                                                                                                                     bson_dollar_unwind                                                                                                                                     
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.feature_usage_ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "1" }, "key" : { "ttl" : { "$numberInt" : "1" } }, "name" : "ttl_index", "expireAfterSeconds" : { "$numberInt" : "5" } } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.feature_usage_ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.feature_usage_ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "1" }, "key" : { "ttl" : { "$numberInt" : "1" } }, "name" : "ttl_index", "expireAfterSeconds" : { "$numberInt" : "5" } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.feature_usage_ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
 (2 rows)
 
 SELECT * FROM helio_distributed_test_helpers.get_collection_indexes('db', 'feature_usage_ttlcoll') ORDER BY collection_id, index_id;

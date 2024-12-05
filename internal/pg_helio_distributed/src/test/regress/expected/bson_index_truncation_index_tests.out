@@ -789,7 +789,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM helio_d
  length |                                         term                                          
 ---------------------------------------------------------------------
      58 | { "$" : [ { "$numberInt" : "1234" }, "This is a string that needs to" ], "t" : true }
-     16 | { "$" : { "$numberLong" : "1234"}, "t" : false }
+     16 | { "$" : { "$numberLong" : "1234" }, "t" : false }
      60 | { "$" : "This is a string that needs to be truncated aft", "t" : true }
       8 | { "" : true, "t" : false }
       7 | { "" : { "$maxKey" : 1 }, "t" : true }
@@ -3183,7 +3183,6 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api.collection('db', 
 /* test that term truncation is enabled by default if user doesn't explicitly disable it. */
 set helio_api.indexTermLimitOverride to 60;
 /* enableLargeIndexKeys should be false because it was explicitly set to false */
-set helio_api.enable_large_index_keys to false;
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "test_default_trunc1", "indexes": [ { "key": { "a.b": 1 }, "name": "key" } ] }');
 NOTICE:  creating collection
                                                                                                    create_indexes_non_concurrently                                                                                                   
@@ -3199,7 +3198,6 @@ SELECT * FROM helio_api_catalog.collection_indexes WHERE collection_id = 6405 OR
 (2 rows)
 
 /* enableLargeIndexKeys should be true because it was not explicitly set to false */
-set helio_api.enable_large_index_keys to true;
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "test_default_trunc2", "indexes": [ { "key": { "a.b": 1 }, "name": "key" } ] }');
 NOTICE:  creating collection
                                                                                                    create_indexes_non_concurrently                                                                                                   
@@ -3215,7 +3213,6 @@ SELECT * FROM helio_api_catalog.collection_indexes WHERE collection_id = 6406 OR
 (2 rows)
 
 /* enableLargeIndexKeys should be false because index does not support it (ttl index) */
-set helio_api.enable_large_index_keys to true;
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "test_default_trunc3", "indexes": [{"key": {"ttl": 1}, "name": "ttl_index", "v" : 1, "expireAfterSeconds": 5}]}');
 NOTICE:  creating collection
                                                                                                    create_indexes_non_concurrently                                                                                                   
@@ -3231,7 +3228,6 @@ SELECT * FROM helio_api_catalog.collection_indexes WHERE collection_id = 6407 OR
 (2 rows)
 
 /* enableLargeIndexKeys should be false because index does not support it (hashed) */
-set helio_api.enable_large_index_keys to true;
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "test_default_trunc4", "indexes": [ { "key": { "a.b": "hashed" }, "name": "key" } ] }');
 NOTICE:  creating collection
                                                                                                    create_indexes_non_concurrently                                                                                                   
@@ -3247,7 +3243,6 @@ SELECT * FROM helio_api_catalog.collection_indexes WHERE collection_id = 6408 OR
 (2 rows)
 
 /* enableLargeIndexKeys should be false because index does not support it (text) */
-set helio_api.enable_large_index_keys to true;
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "test_default_trunc5", "indexes": [ { "key": { "a.b": "text" }, "name": "key" } ] }');
 NOTICE:  creating collection
                                                                                                    create_indexes_non_concurrently                                                                                                   

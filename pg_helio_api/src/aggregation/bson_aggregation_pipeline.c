@@ -70,7 +70,6 @@
 
 extern bool EnableLetSupport;
 extern bool IgnoreLetOnQuerySupport;
-extern bool EnableGroupMergeObjectsSupport;
 extern bool EnableCursorsOnAggregationQueryRewrite;
 extern bool EnableLookupUnwindSupport;
 extern bool EnableCollation;
@@ -1907,7 +1906,7 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec)
 	pgbson *addFieldsSpec = PgbsonWriterGetPgbson(&addFieldsWriter);
 	bson_value_t addFieldsValue = ConvertPgbsonToBsonValue(addFieldsSpec);
 	query = HandleSimpleProjectionStage(&addFieldsValue, query, &context, "$addFields",
-										GetMergeDocumentsFunctionOid(), NULL);
+										BsonDollaMergeDocumentsFunctionOid(), NULL);
 
 	return query;
 }
@@ -3835,15 +3834,6 @@ HandleGeoNear(const bson_value_t *existingValue, Query *query,
 {
 	ReportFeatureUsage(FEATURE_STAGE_GEONEAR);
 
-	EnsureGeospatialFeatureEnabled();
-
-	if (!IsClusterVersionAtleastThis(1, 17, 2))
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
-						errmsg(
-							"$geoNear is not supported yet.")));
-	}
-
 	if (context->stageNum != 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40603),
@@ -5111,37 +5101,29 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$mergeObjects"))
 		{
-			if (EnableGroupMergeObjectsSupport || IsClusterVersionAtleastThis(1, 18, 0))
+			if (context->sortSpec.value_type == BSON_TYPE_EOD)
 			{
-				if (context->sortSpec.value_type == BSON_TYPE_EOD)
-				{
-					repathArgs = AddSimpleGroupAccumulator(query,
-														   &accumulatorElement.bsonValue,
-														   repathArgs,
-														   accumulatorText, parseState,
-														   identifiers,
-														   origEntry->expr,
-														   BsonMergeObjectsOnSortedFunctionOid(),
-														   context->variableSpec);
-				}
-				else
-				{
-					repathArgs = AddMergeObjectsGroupAccumulator(query,
-																 &accumulatorElement.
-																 bsonValue,
-																 repathArgs,
-																 accumulatorText,
-																 parseState,
-																 identifiers,
-																 origEntry->expr,
-																 &context->sortSpec,
-																 context->variableSpec);
-				}
+				repathArgs = AddSimpleGroupAccumulator(query,
+													   &accumulatorElement.bsonValue,
+													   repathArgs,
+													   accumulatorText, parseState,
+													   identifiers,
+													   origEntry->expr,
+													   BsonMergeObjectsOnSortedFunctionOid(),
+													   context->variableSpec);
 			}
 			else
 			{
-				ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
-								errmsg("Accumulator $mergeObjects not implemented yet")));
+				repathArgs = AddMergeObjectsGroupAccumulator(query,
+															 &accumulatorElement.
+															 bsonValue,
+															 repathArgs,
+															 accumulatorText,
+															 parseState,
+															 identifiers,
+															 origEntry->expr,
+															 &context->sortSpec,
+															 context->variableSpec);
 			}
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$push"))
