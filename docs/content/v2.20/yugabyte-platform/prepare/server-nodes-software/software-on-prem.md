@@ -66,13 +66,13 @@ To begin, download the YugabyteDB Anywhere node agent package to the node you wa
     Extract the node agent package and go to the `scripts` directory:
 
     ```sh
-    tar -xf node_agent-{{<yb-version version="v2.20" format="build">}}-linux-amd_64.tar.gz && cd {{<yb-version version="v2.20" format="build">}}/scripts/
+    tar -xf node_agent-{{<yb-version version="v2.20" format="build">}}-linux-amd64.tar.gz && cd {{<yb-version version="v2.20" format="build">}}/scripts/
     ```
 
     or
 
     ```sh
-    tar -xf node_agent-{{<yb-version version="v2.20" format="build">}}-linux-arm_64.tar.gz && cd {{<yb-version version="v2.20" format="build">}}/scripts/
+    tar -xf node_agent-{{<yb-version version="v2.20" format="build">}}-linux-arm64.tar.gz && cd {{<yb-version version="v2.20" format="build">}}/scripts/
     ```
 
 ### Modify the configuration file
