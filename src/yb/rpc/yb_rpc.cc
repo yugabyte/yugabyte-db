@@ -392,14 +392,14 @@ void YBInboundCall::DoSerialize(ByteBlocks* output) {
 Status YBInboundCall::ParseParam(RpcCallParams* params) {
   RETURN_NOT_OK(ThrottleRpcStatus(consumption_.mem_tracker(), *this));
 
-  auto consumption = params->ParseRequest(serialized_request(), request_data_.holder());
-  if (!consumption.ok()) {
-    auto status = consumption.status().CloneAndPrepend(
+  auto status = params->ParseRequest(serialized_request(), request_data_.holder());
+  if (!status.ok()) {
+    status = status.CloneAndPrepend(
         Format("Invalid parameter for call $0", header_.RemoteMethodAsString()));
     LOG(WARNING) << status;
     return status;
   }
-  consumption_.Add(*consumption);
+  consumption_.Add(serialized_request().size());
 
   if (PREDICT_FALSE(FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms > 0 &&
           implicit_cast<ssize_t>(request_data_.size()) > FLAGS_rpc_throttle_threshold_bytes)) {
