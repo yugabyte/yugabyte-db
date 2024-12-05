@@ -271,6 +271,9 @@ void InboundCall::QueueResponse(bool is_success) {
   TRACE_FUNC();
   ASH_ENABLE_CONCURRENT_UPDATES_FOR(wait_state_);
   SET_WAIT_STATUS_TO(wait_state_, OnCpu_Passive);
+  if (is_success) {
+    IncrementCounter(rpc_metrics_->inbound_calls_failed);
+  }
 }
 
 std::string InboundCall::LogPrefix() const {
