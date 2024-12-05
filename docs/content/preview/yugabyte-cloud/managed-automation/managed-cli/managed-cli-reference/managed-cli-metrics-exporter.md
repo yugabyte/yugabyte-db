@@ -13,7 +13,7 @@ type: docs
 ---
 
 {{< warning >}}
-`metrics-exporter` is deprecated. Use `integration` instead.
+`metrics-exporter` is deprecated. Use [integration](../managed-cli-integration/) instead.
 {{< /warning >}}
 
 Use the `metrics-exporter` resource to create metrics export configurations for third-party tools, and assign them to clusters.
