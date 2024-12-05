@@ -42,17 +42,38 @@ To begin, download the YugabyteDB Anywhere node agent package to the node you wa
 
     `<yba_address>` is the address of your YugabyteDB Anywhere installation. `<api_token>` is an API token you created. For information on creating an API token, refer to [API authentication](../../../anywhere-automation/#authentication).
 
-- Alternatively, download the latest package at the following address:
+    Extract the package and go to the `scripts` directory.
 
     ```sh
-    wget https://releases.yugabyte.com/{{<yb-version version="v2.20" format="long">}}/node_agent-{{<yb-version version="v2.20" format="build">}}-linux-amd64.tar.gz
+    tar -xvzf node-agent.tar.gz && cd {{<yb-version version="v2.20" format="build">}}/scripts/
     ```
 
-Extract the package and go to the `scripts` directory.
+- Alternatively, the node agent package is included in the YBA Installer package. Download and extract the YBA Installer by entering the following commands:
 
-```sh
-tar -xvzf node-agent.tar.gz && cd <to-do>/scripts/
-```
+    ```sh
+    wget https://downloads.yugabyte.com/releases/{{<yb-version version="preview" format="long">}}/yba_installer_full-{{<yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
+    tar -xf yba_installer_full-{{<yb-version version="v2.20" format="build">}}-linux-x86_64.tar.gz
+    cd yba_installer_full-{{<yb-version version="v2.20" format="build">}}/
+    ```
+
+    Extract the yugabundle package:
+
+    ```sh
+    tar -xf yugabundle-{{<yb-version version="v2.20" format="build">}}-centos-x86_64.tar.gz
+    cd yugabyte-{{<yb-version version="v2.20" format="build">}}/
+    ```
+
+    Extract the node agent package and go to the `scripts` directory:
+
+    ```sh
+    tar -xf node_agent-{{<yb-version version="v2.20" format="build">}}-linux-amd_64.tar.gz && cd {{<yb-version version="v2.20" format="build">}}/scripts/
+    ```
+
+    or
+
+    ```sh
+    tar -xf node_agent-{{<yb-version version="v2.20" format="build">}}-linux-arm_64.tar.gz && cd {{<yb-version version="v2.20" format="build">}}/scripts/
+    ```
 
 ### Modify the configuration file
 
