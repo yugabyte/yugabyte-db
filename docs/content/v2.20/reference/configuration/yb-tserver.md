@@ -740,7 +740,7 @@ Specifies the lowest YSQL message level to log.
 
 Size of YSQL layer output buffer, in bytes. YSQL buffers query responses in this output buffer until either a buffer flush is requested by the client or the buffer overflows.
 
-As long as no data has been flushed from the buffer, the database can retry queries on retryable errors. For example, you can increase the size of the buffer so that YSQL can retry [read restart errors](../../../architecture/transactions/read-restart-error).
+As long as no data has been flushed from the buffer, the database can retry queries on retryable errors. For example, you can increase the size of the buffer so that YSQL can retry [read restart errors](../../../architecture/transactions/read-committed/#read-restart-errors).
 
 Default: `262144` (256kB, type: int32)
 
@@ -1406,7 +1406,7 @@ Default: 1024
 
 ##### yb_read_from_followers
 
-Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/).
+Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/).
 
 Default: false
 
@@ -1418,7 +1418,7 @@ Default: 30000 (30 seconds)
 
 ##### default_transaction_read_only
 
-Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/#read-only-transaction).
+Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [Follower reads](../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/).
 
 Default: false
 

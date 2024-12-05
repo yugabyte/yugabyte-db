@@ -168,7 +168,7 @@ The following sub-commands are available for `yugabyted configure` command:
 
 #### data_placement
 
-Use the `yugabyted configure data_placement` sub-command to set or modify placement policy of the nodes of the deployed cluster, and specify the [preferred region(s)](../../../architecture/key-concepts/#preferred-region).
+Use the `yugabyted configure data_placement` sub-command to set or modify placement policy of the nodes of the deployed cluster, and specify the preferred region(s).
 
 For example, you would use the following command to create a multi-zone YugabyteDB cluster:
 
@@ -185,7 +185,7 @@ For example, you would use the following command to create a multi-zone Yugabyte
 : Specify the fault tolerance for the cluster. This flag can accept one of the following values: zone, region, cloud. For example, when the flag is set to zone (`--fault_tolerance=zone`), yugabyted applies zone fault tolerance to the cluster, placing the nodes in three different zones, if available.
 
 --constraint_value *data-placement-constraint-value*
-: Specify the data placement and preferred region(s) for the YugabyteDB cluster. This is an optional flag. The flag takes comma-separated values in the format `cloud.region.zone:priority`. The priority is an integer and is optional, and determines the preferred region(s) in order of preference. You must specify the same number of data placement values as the [replication factor](../../../architecture/key-concepts/#replication-factor-rf).
+: Specify the data placement and preferred region(s) for the YugabyteDB cluster. This is an optional flag. The flag takes comma-separated values in the format `cloud.region.zone:priority`. The priority is an integer and is optional, and determines the preferred region(s) in order of preference. You must specify the same number of data placement values as the [replication factor](../../../architecture/docdb-replication/replication/#replication-factor).
 
 --rf *replication-factor*
 : Specify the replication factor for the cluster. This is an optional flag which takes a value of `3` or `5`.
@@ -250,7 +250,7 @@ For example, get the YugabyteDB universe configuration:
 
 ### configure_read_replica
 
-Use the `yugabyted configure_read_replica` command to configure, modify, or delete a [read replica cluster](../../../architecture/key-concepts/#read-replica-cluster).
+Use the `yugabyted configure_read_replica` command to configure, modify, or delete a [read replica cluster](../../../architecture/docdb-replication/read-replicas/).
 
 #### Syntax
 
@@ -504,7 +504,7 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 : Enable or disable the webserver UI (available at <http://localhost:15433>). Default: `true`
 
 --secure
-: Enable [encryption in transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/authentication-ysql/) for the node.
+: Enable [encryption in transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/ysql/) for the node.
 : Encryption in transit requires SSL/TLS certificates for each node in the cluster.
 : - When starting a local single-node cluster, a certificate is automatically generated for the cluster.
 : - When deploying a node in a multi-node cluster, you need to generate the certificate for the node using the `--cert generate_server_certs` command and copy it to the node *before* you start the node using the `--secure` flag, or the node creation will fail.
