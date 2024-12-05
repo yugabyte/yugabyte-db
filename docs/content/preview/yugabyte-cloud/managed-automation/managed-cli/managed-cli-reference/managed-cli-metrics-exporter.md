@@ -56,6 +56,8 @@ Assign an export configuration to the specified cluster.
 
 ### create
 
+Deprecated 2024-11-30 and will be supported until 2025-2-28. Use `integration create` instead.
+
 Create an export configuration.
 
 | Flag | Description |
@@ -68,6 +70,8 @@ Create an export configuration.
 
 ### delete
 
+Deprecated 2024-11-30 and will be supported until 2025-2-28. Use `integration delete` instead.
+
 Delete a specified export configuration. You can't delete configurations that are in use by a cluster.
 
 | Flag | Description |
@@ -76,6 +80,8 @@ Delete a specified export configuration. You can't delete configurations that ar
 
 ### describe
 
+Deprecated 2024-11-30 and will be supported until 2025-2-28.
+
 Describe a specified export configuration.
 
 | Flag | Description |
@@ -83,6 +89,8 @@ Describe a specified export configuration.
 | --config-name | Required. Name of the export configuration. |
 
 ### list
+
+Deprecated 2024-11-30 and will be supported until 2025-2-28. Use `integration list` instead.
 
 List the export configurations.
 
@@ -103,6 +111,8 @@ Remove the export configuration from the specified cluster.
 | --cluster-name | Required. Name of the cluster. |
 
 ### update
+
+Deprecated 2024-11-30 and will be supported until 2025-2-28. Use `integration` instead.
 
 Update an export configuration.
 
