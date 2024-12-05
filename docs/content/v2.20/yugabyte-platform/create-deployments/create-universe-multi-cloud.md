@@ -92,7 +92,7 @@ Click **Add Instance Type** and enter a machine description that matches the nod
 
 Click **Add Instances** to add nodes in the regions you defined for the provider configuration. For each node, select the zone where you want it deployed, choose the instance type, and enter the IP address of the node. The address should be a private IP address of the VPN you configured.
 
-For more information, refer to [Configure hardware for YugabyteDB nodes](../../configure-yugabyte-platform/on-premises/#configure-hardware-for-yugabytedb-nodes).
+For more information, refer to [Add nodes to the on-premises provider](../../configure-yugabyte-platform/on-premises-nodes/).
 
 ## Create a universe
 

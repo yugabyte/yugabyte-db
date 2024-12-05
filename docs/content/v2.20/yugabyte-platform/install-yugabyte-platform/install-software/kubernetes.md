@@ -123,7 +123,7 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
     [info] AkkaHttpServer.scala:447 [main] Listening for HTTP on /0.0.0.0:9000
     ```
 
-    If YugabyteDB Anywhere fails to start for the first time, verify that your system meets the installation requirements, as per [Hardware requirements (Kubernetes)](../../../prepare/server-nodes-hardware/). See [Install and upgrade issues on Kubernetes](../../../troubleshoot/install-upgrade-issues/kubernetes/) to troubleshoot the problem.
+    If YugabyteDB Anywhere fails to start for the first time, verify that your system meets the installation requirements, as per [Hardware requirements (Kubernetes)](../../../prepare/server-yba-kubernetes/). See [Install and upgrade issues on Kubernetes](../../../troubleshoot/install-upgrade-issues/kubernetes/) to troubleshoot the problem.
 
 ## Customize YugabyteDB Anywhere
 
@@ -295,7 +295,7 @@ The value is passed to Nginx frontend as [ssl_protocols](https://nginx.org/r/ssl
 
 ### Control placement of YugabyteDB Anywhere pods
 
-The Helm chart allows you to control the placement of the pods when installing YugabyteDB Anywhere in your Kubernetes cluster via `nodeSelector`, `zoneAffinity`, and `toleration`. When you are using these constraints, ensure that you are following recommendations provided in [Hardware requirements](../../../prepare/server-nodes-hardware/). For more information about pod placement, see [Assigning pods to nodes](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/).
+The Helm chart allows you to control the placement of the pods when installing YugabyteDB Anywhere in your Kubernetes cluster via `nodeSelector`, `zoneAffinity`, and `toleration`. When you are using these constraints, ensure that you are following recommendations provided in [Hardware requirements](../../../prepare/server-yba-kubernetes/). For more information about pod placement, see [Assigning pods to nodes](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/).
 
 #### nodeSelector
 

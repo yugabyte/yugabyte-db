@@ -149,7 +149,7 @@ You can also provide a license when running the `install` command. Refer to [Ins
 
 ### Run preflight checks
 
-Start by running the preflight checks to ensure that the expected ports are available, the hardware meets the [minimum requirements](../../../prepare/server-nodes-hardware/), and so forth. The preflight check generates a report you can use to fix any issues before continuing with the installation.
+Start by running the preflight checks to ensure that the expected ports are available, the hardware meets the [minimum requirements](../../../prepare/server-yba/), and so forth. The preflight check generates a report you can use to fix any issues before continuing with the installation.
 
 ```sh
 sudo ./yba-ctl preflight
