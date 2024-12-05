@@ -3070,6 +3070,16 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_enable_advisory_locks,
 		false,
+	},
+
+	{
+		{"yb_ignore_freeze_with_copy", PGC_USERSET, ERROR_HANDLING_OPTIONS,
+			gettext_noop("Ignore the FREEZE flag on COPY FROM command."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_ignore_freeze_with_copy,
+		true,
 		NULL, NULL, NULL
 	},
 

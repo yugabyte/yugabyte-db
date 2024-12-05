@@ -595,6 +595,11 @@ extern bool yb_enable_fkey_catcache;
  */
 extern bool yb_enable_nop_alter_role_optimization;
 
+/*
+ * Compatibility option to ignore FREEZE with COPY FROM.
+ */
+extern bool yb_ignore_freeze_with_copy;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
