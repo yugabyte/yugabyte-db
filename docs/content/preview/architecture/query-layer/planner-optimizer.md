@@ -15,21 +15,15 @@ rightnav:
   hideH4: true
 ---
 
-The query planner is responsible for determining the most efficient way to execute a given SQL query. TThe planner's optimizer calculates the costs of different execution plans, taking into account factors like index lookups, table scans, CPU usage, and network latency. It then selects the most cost-effective path for query execution. YugabyteDB supports 3 different types of optimizers. The query planner, also known as CBO comprises primarily of selectivity estimation and cost modeling. We have implemented a new cost model for YugabyteDB which improves the accuracy of the CBO.
+The query planner is responsible for determining the most efficient way to execute a given query. The optimizer is the critical component in the planner that calculates the costs of different execution plans, taking into account factors like index lookups, table scans, network round trips and storage costs. It then selects the most cost-effective path for query execution. YugabyteDB implements completely different types of optimizers for the YSQL and YCQL APIs.
 
-## Rule-based optimizer
+## Rule based optimizer (YCQL)
 
-This is the basic, default optimizer in YugabyteDB. It operates by applying a predefined set of rules to optimize queries, such as reordering joins to minimize the number of rows processed, pushing selection conditions down the query tree, and utilizing indexes and views to enhance performance. While the RBO is effective for simpler queries, it faces challenges with more complex queries because it does not account for the actual costs of execution plans, like I/O and CPU costs.
+YugabyteDB implements a simple rules based optimizer (RBO) for YCQL. It operates by applying a predefined set of rules to optimize queries, such as reordering joins to minimize the number of rows processed, pushing selection conditions down the query tree, and utilizing indexes and views to enhance performance.
 
-## Default Cost based optimizer
+## Heuristics based optimizer (YSQL)
 
-{{<note>}}
-CBO is [YSQL](../../../api/ysql/) only.
-{{</note>}}
-
-The Cost-Based Optimizer (CBO) selects the most efficient execution plan for a query by estimating the "cost" of different plan options. It evaluates factors such as disk I/O, CPU, and memory usage to assign a cost to each possible execution path. The optimizer relies on configurable cost parameters and table statistics, including row counts and data distribution, to estimate how selective each query condition is, which helps minimize data scanned and reduce resource usage.
-
-The default cost model for evaluating execution path costs in YugabyteDB is based on PostgreSQL's model. It relies on basic statistics, such as the number of rows in tables and whether an index can be utilized for a specific query, which works well for most queries. However, since this model was originally designed for a single-node database (PostgreSQL), it doesn’t account for YugabyteDB’s distributed nature or leverage cluster topology in plan generation.
+YugabyteDB’s YSQL API uses a simple heuristics based optimizer to determine the most efficient execution plan for a query. It relies on basic statistics, like table sizes, and applies heuristics to estimate the cost of different plans. The cost model is based on PostgreSQL’s approach, using data such as row counts and index availability and assigns some heuristic costs to the number of result rows depending on the type of the scan. Although this works well for most queries, because this model was designed for single-node databases like PostgreSQL, it doesn’t account for YugabyteDB’s distributed architecture or take cluster topology into consideration during query planning.
 
 {{<tip>}}
 
@@ -42,9 +36,9 @@ SET yb_enable_optimizer_statistics = TRUE;
 
 {{</tip>}}
 
-## YugabyteDB Cost model
+## Cost based optimizer - CBO (YSQL)
 
-To account for the distributed nature of the data, YugabyteDB introduces an advanced cost model that takes into consideration the cost of network requests, operations on lower level storage layer and the cluster toplogy. Let us see in detail how this works.
+To account for the distributed nature of the data, YugabyteDB has implemented a Cost based optimizer for YSQL that uses an advanced cost model that takes into consideration of accurate table statistics, the cost of network round trips, operations on lower level storage layer and the cluster toplogy. Let us see in detail how this works.
 
 {{<tip>}}
 
@@ -59,19 +53,19 @@ SET yb_enable_base_scans_cost_model = TRUE;
 
 ### Plan search algorithm
 
-To optimize the search for the best plan, CBO uses a dynamic programming-based algorithm. Instead of enumerating and evaluating the cost of each possible execution plan, it breaks the problem down and finds the most optimal sub-plans for each part of the query. The sub-plans are then combined to find the best overall plan.
+To optimize the search for the best plan, the CBO uses a dynamic programming-based algorithm. Instead of enumerating and evaluating the cost of each possible execution plan, it breaks the problem down and finds the most optimal sub-plans for each part of the query. The sub-plans are then combined to find the best overall plan.
 
 ### Statistics gathering
 
 The optimizer relies on accurate statistics about the tables, including the number of rows, the distribution of data in columns, and the cardinality of results from operations. These statistics are essential for estimating the selectivity of filters and costs of various query plans accurately. These statistics are gathered by the [ANALYZE](../../../api/ysql/the-sql-language/statements/cmd_analyze/) command and are provided in a display-friendly format by the [pg_stats](../../../architecture/system-catalog/#data-statistics) view.
 
-{{< note title="Run ANALYZE manually" >}}
+{{<note title="Run ANALYZE manually" >}}
 Currently, YugabyteDB doesn't run a background job like PostgreSQL autovacuum to analyze the tables. To collect or update statistics, run the ANALYZE command manually. If you have enabled CBO, you must run ANALYZE on user tables after data load for the CBO to create optimal execution plans. Multiple projects are in progress to trigger this automatically.
 {{</note>}}
 
 ### Cost estimation
 
-For each potential execution plan, the optimizer calculates costs in terms of I/O, CPU usage, and memory consumption. These costs help the optimizer compare which plan would likely be the most efficient to execute given the current database state and query context.
+For each potential execution plan, the optimizer calculates costs in terms of storage layer lookups both cache and disk, number of network round trips and other factors. These costs help the optimizer compare which plan would likely be the most efficient to execute given the current database state and query context.
 
 {{<tip>}}
 These estimates can be seen when using the DEBUG option in the [EXPLAIN](../../../api/ysql/the-sql-language/statements/perf_explain) command as EXPLAIN (ANALYZE, DEBUG).
@@ -81,7 +75,7 @@ Some of the factors included in the cost estimation are discussed below.
 
 1. **Data fetch**
 
-    To estimate the cost of fetching a tuple from [DocDB](../../docdb/),  CBO takes into account factors such as the number of SST files that may need to be read, and the estimated number of [seeks](../../docdb/lsm-sst/#seek), [previous](../../docdb/lsm-sst/#previous), and [next](../../docdb/lsm-sst/#next) operations that may be executed in the LSM subsystem, are taken into account.
+    To estimate the cost of fetching a tuple from [DocDB](../../docdb/), the CBO takes into account factors such as the number of SST files that may need to be read, and the estimated number of [seeks](../../docdb/lsm-sst/#seek), [previous](../../docdb/lsm-sst/#previous), and [next](../../docdb/lsm-sst/#next) operations that may be executed in the LSM subsystem.
 
 1. **Index scan**
 
@@ -89,11 +83,11 @@ Some of the factors included in the cost estimation are discussed below.
 
 1. **Pushdown to storage layer**
 
-    CBO identifies possible operations that can be pushed down to the storage layer for aggregates, filters, and distinct clauses. This can considerably reduce network data transfer.
+    The CBO identifies possible operations that can be pushed down to the storage layer for aggregates, filters, and distinct clauses. This can considerably reduce network data transfer.
 
 1. **Join strategies**
 
-    For queries involving multiple tables, CBO evaluates the cost of different join strategies like [Nested loop](../join-strategies/#nested-loop-join), [BNL](../join-strategies/#batched-nested-loop-join-bnl), [Merge](../join-strategies/#merge-join), or [Hash](../join-strategies/#hash-join) join, as well as various join orders.
+    For queries involving multiple tables, the CBO evaluates the cost of different join strategies like [Nested loop](../join-strategies/#nested-loop-join), [BNL](../join-strategies/#batched-nested-loop-join-bnl), [Merge](../join-strategies/#merge-join), or [Hash](../join-strategies/#hash-join) join, as well as various join orders.
 
 1. **Data transfer**
 
