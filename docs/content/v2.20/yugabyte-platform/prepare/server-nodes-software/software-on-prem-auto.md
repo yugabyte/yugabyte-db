@@ -14,23 +14,29 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
+    <a href="../software-on-prem-legacy/" class="nav-link">
+      How to Choose
+    </a>
+  </li>
+
+  <li>
     <a href="../software-on-prem-auto/" class="nav-link active">
       <i class="fa-regular fa-wand-magic-sparkles"></i>
-      Automatic [Deprecated]
+      Automatic
     </a>
   </li>
 
   <li>
     <a href="../software-on-prem-assist/" class="nav-link">
       <i class="fa-regular fa-scroll"></i>
-      Assisted [Deprecated]
+      Assisted
     </a>
   </li>
 
   <li>
     <a href="../software-on-prem-manual/" class="nav-link">
       <i class="icon-shell" aria-hidden="true"></i>
-      Fully manual [Deprecated]
+      Fully manual
     </a>
   </li>
 </ul>
