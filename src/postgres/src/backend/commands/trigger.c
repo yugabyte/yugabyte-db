@@ -1009,6 +1009,11 @@ CreateTriggerFiringOn(CreateTrigStmt *stmt, const char *queryString,
 		HeapTuple	newtup;
 
 		newtup = heap_form_tuple(tgrel->rd_att, values, nulls);
+		/*
+		 * YB: On replace, pg_trigger's PK (oid) remains the same, hence ybctid
+		 * remains the same.
+		 */
+		HEAPTUPLE_YBCTID(newtup) = HEAPTUPLE_YBCTID(tuple);
 		CatalogTupleUpdate(tgrel, &tuple->t_self, newtup);
 		heap_freetuple(newtup);
 	}
