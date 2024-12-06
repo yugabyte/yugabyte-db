@@ -31,57 +31,57 @@ set local helio_api.forceUseIndexIfAvailable to on;
 -- Test $elemMatch query operator
 /* Insert with a being an array of elements*/
 SELECT helio_api.insert_one('db','elemmatchtest', '{"_id": 1, "a" : [ 1, 2 ] }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 /* Insert with a.b being an array of elements*/
 SELECT helio_api.insert_one('db','elemmatchtest', '{"_id": 2, "a" : { "b" : [ 10, 15, 18 ] } }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','elemmatchtest', '{"_id": 3, "a" : { "b" : [ 7, 18, 19 ] } }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 /* Insert with a being an array of objects*/
 SELECT helio_api.insert_one('db','elemmatchtest', '{"_id": 4, "a" : [ {"b" : 1 }, {"b" : 2 } ] }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','elemmatchtest', '{"_id": 5, "a" : [ {"b" : 3 }, {"b" : 2 } ] }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','elemmatchtest', '{"_id": 6, "a": [ {}, {"b": 2} ] }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','elemmatchtest', '{"_id": 7, "a": [ {"b": 1, "c": 2}, {"b": 2, "c": 2} ] }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','elemmatchtest', '{"_id": 8, "a": [ 1, 15, [18] ] }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','elemmatchtest', '{"_id": 9, "a": [ 1, 15, {"b" : [18]} ] }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
@@ -271,19 +271,19 @@ SELECT object_id, document FROM helio_api.collection('db', 'elemmatchtest') wher
 
 /* Insert with a being an array of objects and a.b is also an array*/
 SELECT helio_api.insert_one('db','elemmatchtest', '{"_id": 21, "a": [{ "b": [ 10, 15, 18 ], "d": [ {"e": 2} ] }] }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','elemmatchtest', '{"_id": 22, "a": [{ "b": [ 7, 18, 19 ], "d": [ {"e": 3} ], "f" : 1 }] }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','elemmatchtest', '{"_id": 23, "a": [{ "d": [ {"e": [2] } ] }] }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
@@ -323,73 +323,73 @@ SELECT object_id, document FROM helio_api.collection('db', 'elemmatchtest') wher
 
 /* Insert with a being an array of array or fieldPath contains number */
 SELECT helio_api.insert_one('db','elemmatchtest', '{"_id": 31, "a": [ [ 100, 200, 300 ] ] }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','elemmatchtest', '{"_id": 32, "a": [ [ { "b" : 1 } ] ] }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','elemmatchtest', '{"_id": 33, "a": [ [ { "b" : [1] } ] ] }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','elemmatchtest', '{"_id": 34, "a": [ 100 ] }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','elemmatchtest', '{"_id": 35, "a": { "0" : 100 } }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','elemmatchtest', '{"_id": 36, "a": { "0" : [ 100 ] } }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','elemmatchtest', '{"_id": 37, "a": [ { "0" : 100 } ] }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','elemmatchtest', '{"_id": 38, "a": [ { "0" : [ 100 ] } ] }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','elemmatchtest', '{"_id": 39, "a": [ { "-1" : 100 } ] }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','elemmatchtest', '{"_id": 40, "a": { "b" : [ [ 100, 200, 300 ] ] } }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','elemmatchtest', '{"_id": 41, "a": { "b" : [ { "c" : [100] } ] } }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','elemmatchtest', '{"_id": 42, "a": { "b" : [ { "c" : [[100]] } ] } }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)

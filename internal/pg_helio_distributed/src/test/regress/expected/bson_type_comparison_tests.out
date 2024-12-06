@@ -258,19 +258,19 @@ SELECT helio_api.insert_one('db','bsontypetests', '{ "a" : { "$maxKey": 1 } }', 
 -- Symbol
 -- DBPointer
 SELECT document -> 'a' FROM helio_api.collection('db', 'bsontypetests') ORDER BY document -> 'a', object_id;
-                                      ?column?                                       
+                                       ?column?                                       
 ---------------------------------------------------------------------
  { "" : { "$minKey" : 1 } }
  { "" : null }
  { "" : { "$numberInt" : "-25" } }
- { "" : { "$numberLong" : "-25"} }
+ { "" : { "$numberLong" : "-25" } }
  { "" : { "$numberDouble" : "-1.0" } }
  { "" : { "$numberDouble" : "3.0" } }
  { "" : { "$numberDouble" : "5.0" } }
  { "" : { "$numberInt" : "25" } }
- { "" : { "$numberLong" : "25"} }
+ { "" : { "$numberLong" : "25" } }
  { "" : { "$numberInt" : "13486" } }
- { "" : { "$numberLong" : "13486"} }
+ { "" : { "$numberLong" : "13486" } }
  { "" : "Actual string" }
  { "" : "Hell" }
  { "" : "hell" }
@@ -281,8 +281,8 @@ SELECT document -> 'a' FROM helio_api.collection('db', 'bsontypetests') ORDER BY
  { "" : { "c" : { "$numberInt" : "1" } } }
  { "" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
  { "" : [ true, "string", { "$numberDouble" : "2.0" } ] }
- { "" : { "$binary" : { "base64": "VGhpcyBpcyBhIHN0cmluZw==", "subType" : "00" } } }
- { "" : { "$binary" : { "base64": "QSBxdWljayBicm93biBmb3g=", "subType" : "00" } } }
+ { "" : { "$binary" : { "base64" : "VGhpcyBpcyBhIHN0cmluZw==", "subType" : "00" } } }
+ { "" : { "$binary" : { "base64" : "QSBxdWljayBicm93biBmb3g=", "subType" : "00" } } }
  { "" : { "$oid" : "000102030405060708090a0b" } }
  { "" : { "$oid" : "0102030405060708090a0b0c" } }
  { "" : false }

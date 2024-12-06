@@ -79,10 +79,10 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes
 
 -- 2. List All indexes --
 SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('db','{ "listIndexes": "ttlcoll" }') ORDER BY 1;
-                                                                                                                             bson_dollar_unwind                                                                                                                              
+                                                                                                                              bson_dollar_unwind                                                                                                                              
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "1" }, "key" : { "ttl" : { "$numberInt" : "1" } }, "name" : "ttl_index", "expireAfterSeconds" : { "$numberInt" : "5" } } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "1" }, "key" : { "ttl" : { "$numberInt" : "1" } }, "name" : "ttl_index", "expireAfterSeconds" : { "$numberInt" : "5" } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
 (2 rows)
 
 SELECT * FROM helio_distributed_test_helpers.get_collection_indexes('db', 'ttlcoll') ORDER BY collection_id, index_id;
@@ -315,13 +315,13 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes
 (1 row)
 
 SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('db','{ "listIndexes": "ttlcoll" }') ORDER BY 1;
-                                                                                                                                                bson_dollar_unwind                                                                                                                                                 
+                                                                                                                                                 bson_dollar_unwind                                                                                                                                                 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "1" }, "key" : { "ttl" : { "$numberInt" : "1" } }, "name" : "ttl_index", "expireAfterSeconds" : { "$numberInt" : "5" } } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttl1" : { "$numberInt" : "1" } }, "name" : "ttl_index1", "sparse" : true, "expireAfterSeconds" : { "$numberInt" : "100" } } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttl2" : { "$numberInt" : "1" } }, "name" : "ttl_index2", "unique" : true, "expireAfterSeconds" : { "$numberInt" : "100" } } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttl3" : { "$numberInt" : "1" } }, "name" : "ttl_index3", "sparse" : true, "unique" : true, "expireAfterSeconds" : { "$numberInt" : "100" } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "1" }, "key" : { "ttl" : { "$numberInt" : "1" } }, "name" : "ttl_index", "expireAfterSeconds" : { "$numberInt" : "5" } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttl1" : { "$numberInt" : "1" } }, "name" : "ttl_index1", "sparse" : true, "expireAfterSeconds" : { "$numberInt" : "100" } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttl2" : { "$numberInt" : "1" } }, "name" : "ttl_index2", "unique" : true, "expireAfterSeconds" : { "$numberInt" : "100" } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttl3" : { "$numberInt" : "1" } }, "name" : "ttl_index3", "sparse" : true, "unique" : true, "expireAfterSeconds" : { "$numberInt" : "100" } } }, "ok" : { "$numberDouble" : "1.0" } }
 (5 rows)
 
 -- 14. TTL index creation restrictions
@@ -376,17 +376,17 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes
 (1 row)
 
 SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('db','{ "listIndexes": "ttlcoll" }') ORDER BY 1;
-                                                                                                                                                   bson_dollar_unwind                                                                                                                                                    
+                                                                                                                                                    bson_dollar_unwind                                                                                                                                                    
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "1" }, "key" : { "ttl" : { "$numberInt" : "1" } }, "name" : "ttl_index", "expireAfterSeconds" : { "$numberInt" : "5" } } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttl1" : { "$numberInt" : "1" } }, "name" : "ttl_index1", "sparse" : true, "expireAfterSeconds" : { "$numberInt" : "100" } } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttl2" : { "$numberInt" : "1" } }, "name" : "ttl_index2", "unique" : true, "expireAfterSeconds" : { "$numberInt" : "100" } } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttl3" : { "$numberInt" : "1" } }, "name" : "ttl_index3", "sparse" : true, "unique" : true, "expireAfterSeconds" : { "$numberInt" : "100" } } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttlnew" : { "$numberInt" : "1" } }, "name" : "ttl_new_index1", "sparse" : true, "expireAfterSeconds" : { "$numberInt" : "10" } } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttlnew" : { "$numberInt" : "1" } }, "name" : "ttl_new_index2", "sparse" : false, "expireAfterSeconds" : { "$numberInt" : "10" } } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttlnew" : { "$numberInt" : "1" } }, "name" : "ttl_new_index3", "sparse" : true, "unique" : true, "expireAfterSeconds" : { "$numberInt" : "100" } } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttlnew2" : { "$numberInt" : "5" } }, "name" : "ttl_new_indexj", "sparse" : true, "expireAfterSeconds" : { "$numberInt" : "10" } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "1" }, "key" : { "ttl" : { "$numberInt" : "1" } }, "name" : "ttl_index", "expireAfterSeconds" : { "$numberInt" : "5" } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttl1" : { "$numberInt" : "1" } }, "name" : "ttl_index1", "sparse" : true, "expireAfterSeconds" : { "$numberInt" : "100" } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttl2" : { "$numberInt" : "1" } }, "name" : "ttl_index2", "unique" : true, "expireAfterSeconds" : { "$numberInt" : "100" } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttl3" : { "$numberInt" : "1" } }, "name" : "ttl_index3", "sparse" : true, "unique" : true, "expireAfterSeconds" : { "$numberInt" : "100" } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttlnew" : { "$numberInt" : "1" } }, "name" : "ttl_new_index1", "sparse" : true, "expireAfterSeconds" : { "$numberInt" : "10" } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttlnew" : { "$numberInt" : "1" } }, "name" : "ttl_new_index2", "sparse" : false, "expireAfterSeconds" : { "$numberInt" : "10" } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttlnew" : { "$numberInt" : "1" } }, "name" : "ttl_new_index3", "sparse" : true, "unique" : true, "expireAfterSeconds" : { "$numberInt" : "100" } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttlnew2" : { "$numberInt" : "5" } }, "name" : "ttl_new_indexj", "sparse" : true, "expireAfterSeconds" : { "$numberInt" : "10" } } }, "ok" : { "$numberDouble" : "1.0" } }
 (9 rows)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttlnew3": "hashed"}, "name": "ttl_new_indexk", "unique" : true, "expireAfterSeconds" : 10}]}', true);
@@ -421,10 +421,10 @@ NOTICE:  creating collection
 (1 row)
 
 SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('db','{ "listIndexes": "ttlcoll2" }') ORDER BY 1;
-                                                                                                                                                                                                                 bson_dollar_unwind                                                                                                                                                                                                                 
+                                                                                                                                                                                                                 bson_dollar_unwind                                                                                                                                                                                                                  
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.ttlcoll2", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.ttlcoll2", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttl" : { "$numberInt" : "1" } }, "name" : "ttl_pfe_index", "partialFilterExpression" : { "$and" : [ { "b" : { "$numberInt" : "55" } }, { "a" : { "$exists" : true } }, { "c" : { "$exists" : { "$numberInt" : "1" } } } ] }, "expireAfterSeconds" : { "$numberInt" : "5" } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll2", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll2", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttl" : { "$numberInt" : "1" } }, "name" : "ttl_pfe_index", "partialFilterExpression" : { "$and" : [ { "b" : { "$numberInt" : "55" } }, { "a" : { "$exists" : true } }, { "c" : { "$exists" : { "$numberInt" : "1" } } } ] }, "expireAfterSeconds" : { "$numberInt" : "5" } } }, "ok" : { "$numberDouble" : "1.0" } }
 (2 rows)
 
 SELECT * FROM helio_distributed_test_helpers.get_collection_indexes('db', 'ttlcoll2') ORDER BY collection_id, index_id;
@@ -528,10 +528,10 @@ NOTICE:  creating collection
 (1 row)
 
 SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('db','{ "listIndexes": "ttlcoll3" }') ORDER BY 1;
-                                                                                                                                            bson_dollar_unwind                                                                                                                                            
+                                                                                                                                            bson_dollar_unwind                                                                                                                                             
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.ttlcoll3", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.ttlcoll3", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttl" : { "$numberInt" : "1" } }, "name" : "ttl_large_expireAfterSeconds", "expireAfterSeconds" : { "$numberInt" : "2147483647" } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll3", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll3", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttl" : { "$numberInt" : "1" } }, "name" : "ttl_large_expireAfterSeconds", "expireAfterSeconds" : { "$numberInt" : "2147483647" } } }, "ok" : { "$numberDouble" : "1.0" } }
 (2 rows)
 
 SELECT * FROM helio_distributed_test_helpers.get_collection_indexes('db', 'ttlcoll3') ORDER BY collection_id, index_id;
@@ -630,10 +630,10 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes
 (1 row)
 
 SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('db','{ "listIndexes": "ttlcoll1" }') ORDER BY 1;
-                                                                                                                                             bson_dollar_unwind                                                                                                                                             
+                                                                                                                                             bson_dollar_unwind                                                                                                                                              
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.ttlcoll1", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.ttlcoll1", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttlnew" : { "$numberInt" : "1" } }, "name" : "ttl_new_index5", "sparse" : true, "expireAfterSeconds" : { "$numberInt" : "12345" } } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.ttlcoll1", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttlnew" : { "$numberInt" : "1" } }, "name" : "ttl_new_index6", "sparse" : false, "expireAfterSeconds" : { "$numberInt" : "12345" } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll1", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll1", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttlnew" : { "$numberInt" : "1" } }, "name" : "ttl_new_index5", "sparse" : true, "expireAfterSeconds" : { "$numberInt" : "12345" } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll1", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttlnew" : { "$numberInt" : "1" } }, "name" : "ttl_new_index6", "sparse" : false, "expireAfterSeconds" : { "$numberInt" : "12345" } } }, "ok" : { "$numberDouble" : "1.0" } }
 (3 rows)
 

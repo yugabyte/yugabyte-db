@@ -15,7 +15,7 @@ EXTENSIONLOAD := --load-extension=vector --load-extension=postgis --load-extensi
 
 MAKEFILE_DIR := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
 export PATH := $(MAKEFILE_DIR)bin:$(PATH)
-export PG_REGRESS_DIFF_OPTS = -dU10 -w
+export PG_REGRESS_DIFF_OPTS = -dU10
 
 export PGISOLATIONTIMEOUT = 60
 

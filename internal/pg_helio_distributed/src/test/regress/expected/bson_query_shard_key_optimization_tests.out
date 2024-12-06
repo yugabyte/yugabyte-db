@@ -27,7 +27,7 @@ BEGIN;
 set local enable_seqscan TO off;
 set local helio_api.forceUseIndexIfAvailable to on;
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$eq" : 1 }}';
-                                                           QUERY PLAN                                                           
+                                                           QUERY PLAN                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -41,7 +41,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$ne" : 1 }}';
-                                                           QUERY PLAN                                                            
+                                                            QUERY PLAN                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -55,7 +55,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$ne" : 1 }, "_id": { "$gt": { "$minKey": 1 } }}';
-                                                                                                      QUERY PLAN                                                                                                       
+                                                                                                       QUERY PLAN                                                                                                        
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -68,7 +68,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
 (8 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "_id": { "$gt": { "$minKey": 1 } }}';
-                                                                        QUERY PLAN                                                                         
+                                                                     QUERY PLAN                                                                      
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -93,7 +93,7 @@ BEGIN;
 set local enable_seqscan TO off;
 set local helio_api.forceUseIndexIfAvailable to on;
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$eq" : 1 }}';
-                                                           QUERY PLAN                                                           
+                                                           QUERY PLAN                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 8
@@ -107,7 +107,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$ne" : 1 }}';
-                                                           QUERY PLAN                                                            
+                                                            QUERY PLAN                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 8
@@ -121,7 +121,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$ne" : 1 }, "_id": { "$gt": { "$minKey": 1 } }}';
-                                                                                                         QUERY PLAN                                                                                                          
+                                                                                                          QUERY PLAN                                                                                                           
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 8
@@ -138,7 +138,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
 (12 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "_id": { "$gt": { "$minKey": 1 } }}';
-                                                        QUERY PLAN                                                         
+                                                         QUERY PLAN                                                         
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 8
@@ -152,7 +152,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$eq" : 1 }, "c": 2 }';
-                                                                                     QUERY PLAN                                                                                      
+                                                                                      QUERY PLAN                                                                                      
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -170,7 +170,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
 (13 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$ne" : 1 }, "c": 2 }';
-                                                                                      QUERY PLAN                                                                                      
+                                                                                      QUERY PLAN                                                                                       
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -188,7 +188,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
 (13 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$ne" : 1 }, "c": 2, "_id": { "$gt": { "$minKey": 1 } }}';
-                                                                                                                               QUERY PLAN                                                                                                                               
+                                                                                                                            QUERY PLAN                                                                                                                             
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -206,7 +206,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', '
 (13 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "c": 2, "_id": { "$gt": { "$minKey": 1 } }}';
-                                                                                                     QUERY PLAN                                                                                                     
+                                                                                                      QUERY PLAN                                                                                                      
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1

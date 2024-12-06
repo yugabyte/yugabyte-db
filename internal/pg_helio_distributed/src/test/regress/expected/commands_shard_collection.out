@@ -201,7 +201,7 @@ SET LOCAL enable_seqscan TO OFF;
 SET LOCAL seq_page_cost TO 9999999;
 EXPLAIN (COSTS OFF)
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberLong" : "134311"}}' ORDER BY object_id;
-                                                          QUERY PLAN                                                          
+                                                          QUERY PLAN                                                           
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -210,13 +210,13 @@ SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"v
          Node: host=localhost port=58070 dbname=regression
          ->  Index Scan using _id_ on documents_24000_2400020 collection
                Index Cond: (shard_key_value = '7547761715150210803'::bigint)
-               Filter: (document OPERATOR(helio_api_catalog.@=) '{ "value" : { "$numberLong" : "134311"} }'::helio_core.bson)
+               Filter: (document OPERATOR(helio_api_catalog.@=) '{ "value" : { "$numberLong" : "134311" } }'::helio_core.bson)
 (8 rows)
 
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberLong" : "134311"}}' ORDER BY object_id;
-                        document                        
+                        document                         
 ---------------------------------------------------------------------
- { "_id" : "2", "value" : { "$numberLong" : "134311"} }
+ { "_id" : "2", "value" : { "$numberLong" : "134311" } }
 (1 row)
 
 ROLLBACK;
@@ -238,9 +238,9 @@ SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"v
 (8 rows)
 
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberInt" : "134311"}}' ORDER BY object_id;
-                        document                        
+                        document                         
 ---------------------------------------------------------------------
- { "_id" : "2", "value" : { "$numberLong" : "134311"} }
+ { "_id" : "2", "value" : { "$numberLong" : "134311" } }
 (1 row)
 
 ROLLBACK;

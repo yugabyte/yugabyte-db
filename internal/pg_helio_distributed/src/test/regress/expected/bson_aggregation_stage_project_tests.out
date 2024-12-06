@@ -4,55 +4,55 @@ SET helio_api.next_collection_id TO 3200;
 SET helio_api.next_collection_index_id TO 3200;
 SELECT helio_api.insert_one('db','projectops','{"_id":"1", "a" : { "b" : 1 } }', NULL);
 NOTICE:  creating collection
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','projectops','{"_id":"2", "a" : { "b" : [ 0, 1, 2]} }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','projectops','{"_id":"3", "a" : [ { "b": 0 }, { "b": 1 }, { "b": 3}] }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','projectops','{"_id":"4", "a" : [ { "b": [-1, 1, 2] }, { "b": [0, 1, 2] }, { "b": [0, 1, 7] }] }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','projectops','{"_id":"5", "a" : { "b" : [ { "1" : [ 1, 2, 3 ] } ] } }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','projectops','{"_id":"6", "a" : [ { "c" : 0 }, 2 ] }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','projectops','{"_id":"7", "a" : [ { "c" : 0 }, { "c" : 1 }, { "b" : 2 } ] }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','projectops','{"_id":"8", "a" : { "c" : 1 } }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','projectops','{"_id":"9", "c" : { "d" : 1 } }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
@@ -822,7 +822,7 @@ ERROR:  FieldPath field names may not start with '$'. Consider using $getField o
 SELECT bson_dollar_project(document, '{"$keyName": "newVal"}')  FROM helio_api.collection('db', 'projectops') ORDER BY object_id;
 ERROR:  FieldPath field names may not start with '$'. Consider using $getField or $setField
 SELECT helio_api.insert_one('db','projectops','{"_id":"10", "a" : { "b" : { "c" : "abc" } } }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
@@ -889,7 +889,7 @@ SELECT bson_dollar_project(document, '{"a" : { "b" : { "c": 1}}}')  FROM helio_a
 (10 rows)
 
 SELECT helio_api.insert_one('db','projectops','{"_id":"11", "a" : { "b_" : { "c" : { "d" : 100 } }, "c" : { "d" : { "e" : "_e"}}}}', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
@@ -913,7 +913,7 @@ SELECT bson_dollar_project(document, '{"a.b.c" : { "d" : 1 }, "a.c.d" : {"e" : "
 
 -- test to check if internal "_id" respects the inclusion/exclusion
 SELECT helio_api.insert_one('db','projectops','{"_id":"12", "a" : { "_id" : { "idVal" : 100 }, "b" : { "c" : { "_id" : "idVal"}}}}', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)

@@ -614,9 +614,9 @@ PREPARE q2(text, text, bson) AS
          r5 AS (SELECT document, cursorState FROM r4 WHERE document @@ '{ "e.f" : "foo" }')
          SELECT * FROM r5;
 EXECUTE q2('db', 'cursors_basic', '{}');
-                                                                                                       document                                                                                                        |                                                    cursorstate                                                    
+                                                                                                       document                                                                                                        |                                                    cursorstate                                                     
 ---------------------------------------------------------------------
- { "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" }, "d" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }, "d" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "4" }, "e" : { "f" : "foo" } } | { "table_name" : "documents_6700_6700003", "value" : { "$binary" : { "base64": "AAAAABQA", "subType" : "00" } } }
+ { "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" }, "d" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }, "d" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "4" }, "e" : { "f" : "foo" } } | { "table_name" : "documents_6700_6700003", "value" : { "$binary" : { "base64" : "AAAAABQA", "subType" : "00" } } }
 (1 row)
 
 EXECUTE q2('db', 'cursors_non_existent', '{}');

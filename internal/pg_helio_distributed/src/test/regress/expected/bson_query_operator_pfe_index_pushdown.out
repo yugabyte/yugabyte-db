@@ -108,12 +108,12 @@ Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = '10980'::bigint)
 
 SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('db','{ "listIndexes": "bsonquery" }') ORDER BY 1;
-                                                                                                                                                                      bson_dollar_unwind                                                                                                                                                                       
+                                                                                                                                                                       bson_dollar_unwind                                                                                                                                                                       
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.bsonquery", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.bsonquery", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a.b" : { "$numberInt" : "1" } }, "name" : "my_idx_1", "partialFilterExpression" : { "a.b" : { "$exists" : true } } } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.bsonquery", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a.c" : { "$numberInt" : "1" } }, "name" : "my_idx_2", "partialFilterExpression" : { "a.c" : { "$gte" : "abc" } } } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.bsonquery", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a.e" : { "$numberInt" : "1" }, "a.f" : { "$numberInt" : "1" } }, "name" : "my_idx_3", "partialFilterExpression" : { "a.e" : { "$numberInt" : "1" }, "a.f" : { "$numberInt" : "1" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.bsonquery", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.bsonquery", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a.b" : { "$numberInt" : "1" } }, "name" : "my_idx_1", "partialFilterExpression" : { "a.b" : { "$exists" : true } } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.bsonquery", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a.c" : { "$numberInt" : "1" } }, "name" : "my_idx_2", "partialFilterExpression" : { "a.c" : { "$gte" : "abc" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.bsonquery", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a.e" : { "$numberInt" : "1" }, "a.f" : { "$numberInt" : "1" } }, "name" : "my_idx_3", "partialFilterExpression" : { "a.e" : { "$numberInt" : "1" }, "a.f" : { "$numberInt" : "1" } } } }, "ok" : { "$numberDouble" : "1.0" } }
 (4 rows)
 
 SELECT helio_distributed_test_helpers.drop_primary_key('db','bsonquery');;

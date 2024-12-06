@@ -26,9 +26,9 @@ NOTICE:  creating collection
 
 -- Collection without docs and with only id index/no user defined indexes
 SELECT helio_api.validate('db', '{"validate" : "validatecoll"}');
-                                                                                                            validate                                                                                                             
+                                                                                                             validate                                                                                                             
 ---------------------------------------------------------------------
- { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "1"}, "indexDetails" : { "_id_" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
+ { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "1" }, "indexDetails" : { "_id_" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 -- Collection with id index and an additional index
@@ -39,9 +39,9 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', helio_distribute
 (1 row)
 
 SELECT helio_api.validate('db', '{"validate" : "validatecoll"}');
-                                                                                                                            validate                                                                                                                             
+                                                                                                                             validate                                                                                                                             
 ---------------------------------------------------------------------
- { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "2"}, "indexDetails" : { "_id_" : { "valid" : true }, "index_1" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
+ { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "2" }, "indexDetails" : { "_id_" : { "valid" : true }, "index_1" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 -- Insert few docs
@@ -65,50 +65,50 @@ SELECT helio_api.insert_one('db','validatecoll','{"_id":"1", "a": 102, "b": 202 
 
 -- Collection with docs and user defined index
 SELECT helio_api.validate('db', '{"validate" : "validatecoll"}');
-                                                                                                                            validate                                                                                                                             
+                                                                                                                             validate                                                                                                                             
 ---------------------------------------------------------------------
- { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "2"}, "indexDetails" : { "_id_" : { "valid" : true }, "index_1" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
+ { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "2" }, "indexDetails" : { "_id_" : { "valid" : true }, "index_1" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 -- Valid input options --
 -- only validate
 SELECT helio_api.validate('db', '{"validate" : "validatecoll"}');
-                                                                                                                            validate                                                                                                                             
+                                                                                                                             validate                                                                                                                             
 ---------------------------------------------------------------------
- { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "2"}, "indexDetails" : { "_id_" : { "valid" : true }, "index_1" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
+ { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "2" }, "indexDetails" : { "_id_" : { "valid" : true }, "index_1" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 -- validate with repair: true or repair: false remains same
 SELECT helio_api.validate('db', '{"validate" : "validatecoll", "full" : null, "repair" : false}');
-                                                                                                                            validate                                                                                                                             
+                                                                                                                             validate                                                                                                                             
 ---------------------------------------------------------------------
- { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "2"}, "indexDetails" : { "_id_" : { "valid" : true }, "index_1" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
+ { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "2" }, "indexDetails" : { "_id_" : { "valid" : true }, "index_1" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 -- validate with full: true or full: false remains same
 SELECT helio_api.validate('db', '{"validate" : "validatecoll", "full" : false}');
-                                                                                                                            validate                                                                                                                             
+                                                                                                                             validate                                                                                                                             
 ---------------------------------------------------------------------
- { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "2"}, "indexDetails" : { "_id_" : { "valid" : true }, "index_1" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
+ { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "2" }, "indexDetails" : { "_id_" : { "valid" : true }, "index_1" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.validate('db', '{"validate" : "validatecoll", "full" : true}');
-                                                                                                                            validate                                                                                                                             
+                                                                                                                             validate                                                                                                                             
 ---------------------------------------------------------------------
- { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "2"}, "indexDetails" : { "_id_" : { "valid" : true }, "index_1" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
+ { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "2" }, "indexDetails" : { "_id_" : { "valid" : true }, "index_1" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 -- validate with metadata: true or metadata: false remains same
 SELECT helio_api.validate('db', '{"validate" : "validatecoll", "full" : null, "repair" : null, "metadata" : false}');
-                                                                                                                            validate                                                                                                                             
+                                                                                                                             validate                                                                                                                             
 ---------------------------------------------------------------------
- { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "2"}, "indexDetails" : { "_id_" : { "valid" : true }, "index_1" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
+ { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "2" }, "indexDetails" : { "_id_" : { "valid" : true }, "index_1" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.validate('db', '{"validate" : "validatecoll", "full" : null, "repair" : null, "metadata" : true}');
-                                                                                                                            validate                                                                                                                             
+                                                                                                                             validate                                                                                                                             
 ---------------------------------------------------------------------
- { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "2"}, "indexDetails" : { "_id_" : { "valid" : true }, "index_1" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
+ { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "2" }, "indexDetails" : { "_id_" : { "valid" : true }, "index_1" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 -- Invalid input options --

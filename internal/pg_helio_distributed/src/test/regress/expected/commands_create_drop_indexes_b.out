@@ -39,9 +39,9 @@ CALL helio_api.drop_indexes(
      "index": "my_idx_1"
    }'
 );
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 SELECT count(*)=0 AS index_does_not_exist
@@ -102,9 +102,9 @@ CALL helio_api.drop_indexes(
      "index": ["my_idx_1"]
    }'
 );
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "5"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "5" } }
 (1 row)
 
 CALL helio_api.drop_indexes(
@@ -114,9 +114,9 @@ CALL helio_api.drop_indexes(
      "index": ["my_idx_2", "my_idx_3"]
    }'
 );
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "4"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "4" } }
 (1 row)
 
 SELECT count(*)=0 AS index_does_not_exist FROM (

@@ -83,9 +83,9 @@ select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection
 -- In Native Mongo : if type is different is value is not fixed integer then it is not considering that as a match, e.g, double's 1.1 is not equals to decimal's 1.1
 -- In Native Mongo : if type is different and values can be converted to fixed integer  then only it is considering as a match, e.g, double's 1.0 is equals to decimal's 1.0 
 select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[ { "$numberLong" : "1" },2,3],[1,2,3]]} }');
-                                             bson_dollar_project                                              
+                                              bson_dollar_project                                              
 ---------------------------------------------------------------------
- { "_id" : "1", "intersection" : [ { "$numberInt" : "2" }, { "$numberLong" : "1"}, { "$numberInt" : "3" } ] }
+ { "_id" : "1", "intersection" : [ { "$numberInt" : "2" }, { "$numberLong" : "1" }, { "$numberInt" : "3" } ] }
 (1 row)
 
 select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[ { "$numberDecimal" : "1" },2,3],[1,2,3]]} }');
@@ -206,9 +206,9 @@ select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersectio
 (1 row)
 
 select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [ [{"$binary": { "base64": "ww==", "subType": "01"}}], [{"$binary": { "base64": "ww==", "subType": "01"}}] ]} }');
-                                     bson_dollar_project                                      
+                                      bson_dollar_project                                      
 ---------------------------------------------------------------------
- { "_id" : "1", "intersection" : [ { "$binary" : { "base64": "ww==", "subType" : "01" } } ] }
+ { "_id" : "1", "intersection" : [ { "$binary" : { "base64" : "ww==", "subType" : "01" } } ] }
 (1 row)
 
 select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [ [{"$binary": { "base64": "ww==", "subType": "01"}}], [{"$binary": { "base64": "ww==", "subType": "02"}}] ]} }');
@@ -396,9 +396,9 @@ select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[1.1,2.1,
 -- In Native Mongo : if type is different is value is not fixed integer then it is not considering that as a match, e.g, double's 1.1 is not equals to decimal's 1.1
 -- In Native Mongo : if type is different and values can be converted to fixed integer  then only it is considering as a match, e.g, double's 1.0 is equals to decimal's 1.0
 select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[ { "$numberLong" : "1" },2,3],[1,2,3]]} }');
-                                          bson_dollar_project                                          
+                                          bson_dollar_project                                           
 ---------------------------------------------------------------------
- { "_id" : "1", "union" : [ { "$numberInt" : "2" }, { "$numberLong" : "1"}, { "$numberInt" : "3" } ] }
+ { "_id" : "1", "union" : [ { "$numberInt" : "2" }, { "$numberLong" : "1" }, { "$numberInt" : "3" } ] }
 (1 row)
 
 select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[ { "$numberDecimal" : "1" },2,3],[1,2,3]]} }');
@@ -513,21 +513,21 @@ select bson_dollar_project('{"_id":"1","a":[1,2,3] }', '{"union" : { "$setUnion"
 
 ---- $setUnion operator: Other BsonType Binary, code, DateTime, Timestamp, Minkey, Maxkey:
 select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [ [{"$binary": { "base64": "ww==", "subType": "01"}}], [{"$binary": { "base64": "zg==", "subType": "01"}}] ]} }');
-                                                              bson_dollar_project                                                              
+                                                               bson_dollar_project                                                               
 ---------------------------------------------------------------------
- { "_id" : "1", "union" : [ { "$binary" : { "base64": "zg==", "subType" : "01" } }, { "$binary" : { "base64": "ww==", "subType" : "01" } } ] }
+ { "_id" : "1", "union" : [ { "$binary" : { "base64" : "zg==", "subType" : "01" } }, { "$binary" : { "base64" : "ww==", "subType" : "01" } } ] }
 (1 row)
 
 select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [ [{"$binary": { "base64": "ww==", "subType": "01"}}], [{"$binary": { "base64": "ww==", "subType": "01"}}] ]} }');
-                                  bson_dollar_project                                  
+                                  bson_dollar_project                                   
 ---------------------------------------------------------------------
- { "_id" : "1", "union" : [ { "$binary" : { "base64": "ww==", "subType" : "01" } } ] }
+ { "_id" : "1", "union" : [ { "$binary" : { "base64" : "ww==", "subType" : "01" } } ] }
 (1 row)
 
 select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [ [{"$binary": { "base64": "ww==", "subType": "01"}}], [{"$binary": { "base64": "ww==", "subType": "02"}}] ]} }');
-                                                              bson_dollar_project                                                              
+                                                               bson_dollar_project                                                               
 ---------------------------------------------------------------------
- { "_id" : "1", "union" : [ { "$binary" : { "base64": "ww==", "subType" : "01" } }, { "$binary" : { "base64": "ww==", "subType" : "02" } } ] }
+ { "_id" : "1", "union" : [ { "$binary" : { "base64" : "ww==", "subType" : "01" } }, { "$binary" : { "base64" : "ww==", "subType" : "02" } } ] }
 (1 row)
 
 select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{"$timestamp" : { "t": 1670981326, "i": 1 } }], [{"$timestamp" : { "t": 1670981326, "i": 1 } }]]} }');

@@ -217,9 +217,9 @@ SELECT COUNT(*) FROM helio_api.collection('db', 'write_batching') WHERE document
 (1 row)
 
 SELECT bulk_write.do_bulk_update(10, false);
-                                                do_bulk_update                                                
+                                                 do_bulk_update                                                 
 ---------------------------------------------------------------------
- { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberLong" : "10"}, "n" : { "$numberLong" : "10"} }
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberLong" : "10" }, "n" : { "$numberLong" : "10" } }
 (1 row)
 
 SELECT COUNT(*) FROM helio_api.collection('db', 'write_batching') WHERE document->'_id' = document->'a';
@@ -231,9 +231,9 @@ SELECT COUNT(*) FROM helio_api.collection('db', 'write_batching') WHERE document
 ROLLBACK;
 BEGIN;
 SELECT bulk_write.do_bulk_update(10, true);
-                                                do_bulk_update                                                
+                                                 do_bulk_update                                                 
 ---------------------------------------------------------------------
- { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberLong" : "10"}, "n" : { "$numberLong" : "10"} }
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberLong" : "10" }, "n" : { "$numberLong" : "10" } }
 (1 row)
 
 ROLLBACK;
@@ -254,25 +254,25 @@ ROLLBACK;
 BEGIN;
 -- do a large number
 SELECT bulk_write.do_bulk_update(10000, false);
-                                                   do_bulk_update                                                   
+                                                    do_bulk_update                                                    
 ---------------------------------------------------------------------
- { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberLong" : "10000"}, "n" : { "$numberLong" : "10000"} }
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberLong" : "10000" }, "n" : { "$numberLong" : "10000" } }
 (1 row)
 
 ROLLBACK;
 -- introduce an error in one document
 BEGIN;
 SELECT helio_api.update('db', '{ "update": "write_batching", "updates": [{ "q": { "_id": 5 }, "u": { "$set": { "a": "this is a string" } } }] }');
-                                                               update                                                               
+                                                                update                                                                
 ---------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
 (1 row)
 
 set local helio_api.batchWriteSubTransactionCount TO 40;
 SELECT bulk_write.do_bulk_update(50, false);
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           do_bulk_update                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            do_bulk_update                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            
 ---------------------------------------------------------------------
- { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberLong" : "45"}, "n" : { "$numberLong" : "45"}, "writeErrors" : [ { "index" : { "$numberInt" : "3" }, "code" : { "$numberInt" : "67108893" }, "errmsg" : "Cannot apply $inc to a value of non-numeric type. { _id: 5 } has the field 'a' of non-numeric type string" }, { "index" : { "$numberInt" : "13" }, "code" : { "$numberInt" : "67108893" }, "errmsg" : "Cannot apply $inc to a value of non-numeric type. { _id: 5 } has the field 'a' of non-numeric type string" }, { "index" : { "$numberInt" : "23" }, "code" : { "$numberInt" : "67108893" }, "errmsg" : "Cannot apply $inc to a value of non-numeric type. { _id: 5 } has the field 'a' of non-numeric type string" }, { "index" : { "$numberInt" : "33" }, "code" : { "$numberInt" : "67108893" }, "errmsg" : "Cannot apply $inc to a value of non-numeric type. { _id: 5 } has the field 'a' of non-numeric type string" }, { "index" : { "$numberInt" : "43" }, "code" : { "$numberInt" : "67108893" }, "errmsg" : "Cannot apply $inc to a value of non-numeric type. { _id: 5 } has the field 'a' of non-numeric type string" } ] }
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberLong" : "45" }, "n" : { "$numberLong" : "45" }, "writeErrors" : [ { "index" : { "$numberInt" : "3" }, "code" : { "$numberInt" : "67108893" }, "errmsg" : "Cannot apply $inc to a value of non-numeric type. { _id: 5 } has the field 'a' of non-numeric type string" }, { "index" : { "$numberInt" : "13" }, "code" : { "$numberInt" : "67108893" }, "errmsg" : "Cannot apply $inc to a value of non-numeric type. { _id: 5 } has the field 'a' of non-numeric type string" }, { "index" : { "$numberInt" : "23" }, "code" : { "$numberInt" : "67108893" }, "errmsg" : "Cannot apply $inc to a value of non-numeric type. { _id: 5 } has the field 'a' of non-numeric type string" }, { "index" : { "$numberInt" : "33" }, "code" : { "$numberInt" : "67108893" }, "errmsg" : "Cannot apply $inc to a value of non-numeric type. { _id: 5 } has the field 'a' of non-numeric type string" }, { "index" : { "$numberInt" : "43" }, "code" : { "$numberInt" : "67108893" }, "errmsg" : "Cannot apply $inc to a value of non-numeric type. { _id: 5 } has the field 'a' of non-numeric type string" } ] }
 (1 row)
 
 ROLLBACK;

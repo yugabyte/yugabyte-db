@@ -413,7 +413,7 @@ EXPLAIN (COSTS OFF, BUFFERS OFF, ANALYZE ON, TIMING OFF, SUMMARY OFF) EXECUTE di
          ->  Aggregate (actual rows=1 loops=1)
                ->  HashAggregate (actual rows=1 loops=1)
                      Group Key: helio_api_catalog.bson_distinct_unwind(collection.document, $3)
-                     Batches: 1  Memory Usage: 53kB
+                     Batches: 1  Memory Usage: 37kB
                      ->  ProjectSet (actual rows=1 loops=1)
                            ->  Result (actual rows=1 loops=1)
                                  One-Time Filter: helio_api_catalog.bson_true_match($4)

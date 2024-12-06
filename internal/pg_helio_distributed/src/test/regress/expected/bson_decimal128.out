@@ -157,7 +157,7 @@ SELECT object_id, document FROM helio_api.collection('db', 'decimal128') WHERE d
 ---------------------------------------------------------------------
  { "" : { "$numberInt" : "1" } }  | { "_id" : { "$numberInt" : "1" }, "a" : { "$numberDecimal" : "1.0" }, "b" : { "$numberInt" : "1" } }
  { "" : { "$numberInt" : "2" } }  | { "_id" : { "$numberInt" : "2" }, "a" : { "$numberDecimal" : "1" }, "b" : { "$numberInt" : "2" } }
- { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1"}, "b" : { "$numberInt" : "11" } }
+ { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1" }, "b" : { "$numberInt" : "11" } }
  { "" : { "$numberInt" : "13" } } | { "_id" : { "$numberInt" : "13" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "13" } }
  { "" : { "$numberInt" : "16" } } | { "_id" : { "$numberInt" : "16" }, "a" : { "$numberDouble" : "1.0" }, "b" : { "$numberInt" : "16" } }
  { "" : { "$numberInt" : "17" } } | { "_id" : { "$numberInt" : "17" }, "a" : [ { "$numberDecimal" : "1.00" }, { "$numberDecimal" : "2.00" }, { "$numberDecimal" : "3.50" }, { "$numberDecimal" : "5.00001" } ], "b" : { "$numberInt" : "17" } }
@@ -168,7 +168,7 @@ SELECT object_id, document FROM helio_api.collection('db', 'decimal128') WHERE d
 ---------------------------------------------------------------------
  { "" : { "$numberInt" : "1" } }  | { "_id" : { "$numberInt" : "1" }, "a" : { "$numberDecimal" : "1.0" }, "b" : { "$numberInt" : "1" } }
  { "" : { "$numberInt" : "2" } }  | { "_id" : { "$numberInt" : "2" }, "a" : { "$numberDecimal" : "1" }, "b" : { "$numberInt" : "2" } }
- { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1"}, "b" : { "$numberInt" : "11" } }
+ { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1" }, "b" : { "$numberInt" : "11" } }
  { "" : { "$numberInt" : "13" } } | { "_id" : { "$numberInt" : "13" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "13" } }
  { "" : { "$numberInt" : "16" } } | { "_id" : { "$numberInt" : "16" }, "a" : { "$numberDouble" : "1.0" }, "b" : { "$numberInt" : "16" } }
  { "" : { "$numberInt" : "17" } } | { "_id" : { "$numberInt" : "17" }, "a" : [ { "$numberDecimal" : "1.00" }, { "$numberDecimal" : "2.00" }, { "$numberDecimal" : "3.50" }, { "$numberDecimal" : "5.00001" } ], "b" : { "$numberInt" : "17" } }
@@ -178,7 +178,7 @@ SELECT object_id, document FROM helio_api.collection('db', 'decimal128') WHERE d
             object_id             |                                                document                                                
 ---------------------------------------------------------------------
  { "" : { "$numberInt" : "3" } }  | { "_id" : { "$numberInt" : "3" }, "a" : { "$numberDecimal" : "-1.0" }, "b" : { "$numberInt" : "3" } }
- { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1"}, "b" : { "$numberInt" : "12" } }
+ { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1" }, "b" : { "$numberInt" : "12" } }
  { "" : { "$numberInt" : "14" } } | { "_id" : { "$numberInt" : "14" }, "a" : { "$numberInt" : "-1" }, "b" : { "$numberInt" : "14" } }
  { "" : { "$numberInt" : "15" } } | { "_id" : { "$numberInt" : "15" }, "a" : { "$numberDouble" : "-1.0" }, "b" : { "$numberInt" : "15" } }
 (4 rows)
@@ -187,7 +187,7 @@ SELECT object_id, document FROM helio_api.collection('db', 'decimal128') WHERE d
             object_id             |                                                document                                                
 ---------------------------------------------------------------------
  { "" : { "$numberInt" : "3" } }  | { "_id" : { "$numberInt" : "3" }, "a" : { "$numberDecimal" : "-1.0" }, "b" : { "$numberInt" : "3" } }
- { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1"}, "b" : { "$numberInt" : "12" } }
+ { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1" }, "b" : { "$numberInt" : "12" } }
  { "" : { "$numberInt" : "14" } } | { "_id" : { "$numberInt" : "14" }, "a" : { "$numberInt" : "-1" }, "b" : { "$numberInt" : "14" } }
  { "" : { "$numberInt" : "15" } } | { "_id" : { "$numberInt" : "15" }, "a" : { "$numberDouble" : "-1.0" }, "b" : { "$numberInt" : "15" } }
 (4 rows)
@@ -209,10 +209,10 @@ SELECT object_id, document FROM helio_api.collection('db', 'decimal128') ORDER B
  { "" : { "$numberInt" : "14" } } | { "_id" : { "$numberInt" : "14" }, "a" : { "$numberInt" : "-1" }, "b" : { "$numberInt" : "14" } }
  { "" : { "$numberInt" : "3" } }  | { "_id" : { "$numberInt" : "3" }, "a" : { "$numberDecimal" : "-1.0" }, "b" : { "$numberInt" : "3" } }
  { "" : { "$numberInt" : "15" } } | { "_id" : { "$numberInt" : "15" }, "a" : { "$numberDouble" : "-1.0" }, "b" : { "$numberInt" : "15" } }
- { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1"}, "b" : { "$numberInt" : "12" } }
+ { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1" }, "b" : { "$numberInt" : "12" } }
  { "" : { "$numberInt" : "10" } } | { "_id" : { "$numberInt" : "10" }, "a" : { "$numberDecimal" : "0" }, "b" : { "$numberInt" : "10" } }
  { "" : { "$numberInt" : "1" } }  | { "_id" : { "$numberInt" : "1" }, "a" : { "$numberDecimal" : "1.0" }, "b" : { "$numberInt" : "1" } }
- { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1"}, "b" : { "$numberInt" : "11" } }
+ { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1" }, "b" : { "$numberInt" : "11" } }
  { "" : { "$numberInt" : "16" } } | { "_id" : { "$numberInt" : "16" }, "a" : { "$numberDouble" : "1.0" }, "b" : { "$numberInt" : "16" } }
  { "" : { "$numberInt" : "17" } } | { "_id" : { "$numberInt" : "17" }, "a" : [ { "$numberDecimal" : "1.00" }, { "$numberDecimal" : "2.00" }, { "$numberDecimal" : "3.50" }, { "$numberDecimal" : "5.00001" } ], "b" : { "$numberInt" : "17" } }
  { "" : { "$numberInt" : "2" } }  | { "_id" : { "$numberInt" : "2" }, "a" : { "$numberDecimal" : "1" }, "b" : { "$numberInt" : "2" } }
@@ -229,14 +229,14 @@ SELECT object_id, document FROM helio_api.collection('db', 'decimal128') ORDER B
  { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.23456789123456E+2009" }, "b" : { "$numberInt" : "9" } }
  { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2345678901234567890.12345678901234" }, "b" : { "$numberInt" : "8" } }
  { "" : { "$numberInt" : "17" } } | { "_id" : { "$numberInt" : "17" }, "a" : [ { "$numberDecimal" : "1.00" }, { "$numberDecimal" : "2.00" }, { "$numberDecimal" : "3.50" }, { "$numberDecimal" : "5.00001" } ], "b" : { "$numberInt" : "17" } }
- { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1"}, "b" : { "$numberInt" : "11" } }
+ { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1" }, "b" : { "$numberInt" : "11" } }
  { "" : { "$numberInt" : "13" } } | { "_id" : { "$numberInt" : "13" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "13" } }
  { "" : { "$numberInt" : "2" } }  | { "_id" : { "$numberInt" : "2" }, "a" : { "$numberDecimal" : "1" }, "b" : { "$numberInt" : "2" } }
  { "" : { "$numberInt" : "16" } } | { "_id" : { "$numberInt" : "16" }, "a" : { "$numberDouble" : "1.0" }, "b" : { "$numberInt" : "16" } }
  { "" : { "$numberInt" : "1" } }  | { "_id" : { "$numberInt" : "1" }, "a" : { "$numberDecimal" : "1.0" }, "b" : { "$numberInt" : "1" } }
  { "" : { "$numberInt" : "10" } } | { "_id" : { "$numberInt" : "10" }, "a" : { "$numberDecimal" : "0" }, "b" : { "$numberInt" : "10" } }
  { "" : { "$numberInt" : "15" } } | { "_id" : { "$numberInt" : "15" }, "a" : { "$numberDouble" : "-1.0" }, "b" : { "$numberInt" : "15" } }
- { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1"}, "b" : { "$numberInt" : "12" } }
+ { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1" }, "b" : { "$numberInt" : "12" } }
  { "" : { "$numberInt" : "3" } }  | { "_id" : { "$numberInt" : "3" }, "a" : { "$numberDecimal" : "-1.0" }, "b" : { "$numberInt" : "3" } }
  { "" : { "$numberInt" : "14" } } | { "_id" : { "$numberInt" : "14" }, "a" : { "$numberInt" : "-1" }, "b" : { "$numberInt" : "14" } }
  { "" : { "$numberInt" : "7" } }  | { "_id" : { "$numberInt" : "7" }, "a" : { "$numberDecimal" : "-Infinity" }, "b" : { "$numberInt" : "7" } }
@@ -256,8 +256,8 @@ SELECT object_id, document FROM helio_api.collection('db', 'decimal128') WHERE d
  { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2345678901234567890.12345678901234" }, "b" : { "$numberInt" : "8" } }
  { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.23456789123456E+2009" }, "b" : { "$numberInt" : "9" } }
  { "" : { "$numberInt" : "10" } } | { "_id" : { "$numberInt" : "10" }, "a" : { "$numberDecimal" : "0" }, "b" : { "$numberInt" : "10" } }
- { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1"}, "b" : { "$numberInt" : "11" } }
- { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1"}, "b" : { "$numberInt" : "12" } }
+ { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1" }, "b" : { "$numberInt" : "11" } }
+ { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1" }, "b" : { "$numberInt" : "12" } }
  { "" : { "$numberInt" : "13" } } | { "_id" : { "$numberInt" : "13" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "13" } }
  { "" : { "$numberInt" : "14" } } | { "_id" : { "$numberInt" : "14" }, "a" : { "$numberInt" : "-1" }, "b" : { "$numberInt" : "14" } }
  { "" : { "$numberInt" : "15" } } | { "_id" : { "$numberInt" : "15" }, "a" : { "$numberDouble" : "-1.0" }, "b" : { "$numberInt" : "15" } }
@@ -276,8 +276,8 @@ SELECT object_id, document FROM helio_api.collection('db', 'decimal128') WHERE d
  { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2345678901234567890.12345678901234" }, "b" : { "$numberInt" : "8" } }
  { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.23456789123456E+2009" }, "b" : { "$numberInt" : "9" } }
  { "" : { "$numberInt" : "10" } } | { "_id" : { "$numberInt" : "10" }, "a" : { "$numberDecimal" : "0" }, "b" : { "$numberInt" : "10" } }
- { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1"}, "b" : { "$numberInt" : "11" } }
- { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1"}, "b" : { "$numberInt" : "12" } }
+ { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1" }, "b" : { "$numberInt" : "11" } }
+ { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1" }, "b" : { "$numberInt" : "12" } }
  { "" : { "$numberInt" : "13" } } | { "_id" : { "$numberInt" : "13" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "13" } }
  { "" : { "$numberInt" : "14" } } | { "_id" : { "$numberInt" : "14" }, "a" : { "$numberInt" : "-1" }, "b" : { "$numberInt" : "14" } }
  { "" : { "$numberInt" : "15" } } | { "_id" : { "$numberInt" : "15" }, "a" : { "$numberDouble" : "-1.0" }, "b" : { "$numberInt" : "15" } }
@@ -300,8 +300,8 @@ SELECT object_id, document FROM helio_api.collection('db', 'decimal128') WHERE d
  { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2345678901234567890.12345678901234" }, "b" : { "$numberInt" : "8" } }
  { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.23456789123456E+2009" }, "b" : { "$numberInt" : "9" } }
  { "" : { "$numberInt" : "10" } } | { "_id" : { "$numberInt" : "10" }, "a" : { "$numberDecimal" : "0" }, "b" : { "$numberInt" : "10" } }
- { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1"}, "b" : { "$numberInt" : "11" } }
- { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1"}, "b" : { "$numberInt" : "12" } }
+ { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1" }, "b" : { "$numberInt" : "11" } }
+ { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1" }, "b" : { "$numberInt" : "12" } }
  { "" : { "$numberInt" : "13" } } | { "_id" : { "$numberInt" : "13" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "13" } }
  { "" : { "$numberInt" : "14" } } | { "_id" : { "$numberInt" : "14" }, "a" : { "$numberInt" : "-1" }, "b" : { "$numberInt" : "14" } }
  { "" : { "$numberInt" : "15" } } | { "_id" : { "$numberInt" : "15" }, "a" : { "$numberDouble" : "-1.0" }, "b" : { "$numberInt" : "15" } }
@@ -320,8 +320,8 @@ SELECT object_id, document FROM helio_api.collection('db', 'decimal128') WHERE d
  { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2345678901234567890.12345678901234" }, "b" : { "$numberInt" : "8" } }
  { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.23456789123456E+2009" }, "b" : { "$numberInt" : "9" } }
  { "" : { "$numberInt" : "10" } } | { "_id" : { "$numberInt" : "10" }, "a" : { "$numberDecimal" : "0" }, "b" : { "$numberInt" : "10" } }
- { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1"}, "b" : { "$numberInt" : "11" } }
- { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1"}, "b" : { "$numberInt" : "12" } }
+ { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1" }, "b" : { "$numberInt" : "11" } }
+ { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1" }, "b" : { "$numberInt" : "12" } }
  { "" : { "$numberInt" : "13" } } | { "_id" : { "$numberInt" : "13" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "13" } }
  { "" : { "$numberInt" : "14" } } | { "_id" : { "$numberInt" : "14" }, "a" : { "$numberInt" : "-1" }, "b" : { "$numberInt" : "14" } }
  { "" : { "$numberInt" : "15" } } | { "_id" : { "$numberInt" : "15" }, "a" : { "$numberDouble" : "-1.0" }, "b" : { "$numberInt" : "15" } }
@@ -365,8 +365,8 @@ SELECT object_id, document FROM helio_api.collection('db', 'decimal128') WHERE d
  { "" : { "$numberInt" : "3" } }  | { "_id" : { "$numberInt" : "3" }, "a" : { "$numberDecimal" : "-1.0" }, "b" : { "$numberInt" : "3" } }
  { "" : { "$numberInt" : "7" } }  | { "_id" : { "$numberInt" : "7" }, "a" : { "$numberDecimal" : "-Infinity" }, "b" : { "$numberInt" : "7" } }
  { "" : { "$numberInt" : "10" } } | { "_id" : { "$numberInt" : "10" }, "a" : { "$numberDecimal" : "0" }, "b" : { "$numberInt" : "10" } }
- { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1"}, "b" : { "$numberInt" : "11" } }
- { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1"}, "b" : { "$numberInt" : "12" } }
+ { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1" }, "b" : { "$numberInt" : "11" } }
+ { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1" }, "b" : { "$numberInt" : "12" } }
  { "" : { "$numberInt" : "13" } } | { "_id" : { "$numberInt" : "13" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "13" } }
  { "" : { "$numberInt" : "14" } } | { "_id" : { "$numberInt" : "14" }, "a" : { "$numberInt" : "-1" }, "b" : { "$numberInt" : "14" } }
  { "" : { "$numberInt" : "15" } } | { "_id" : { "$numberInt" : "15" }, "a" : { "$numberDouble" : "-1.0" }, "b" : { "$numberInt" : "15" } }
@@ -382,8 +382,8 @@ SELECT object_id, document FROM helio_api.collection('db', 'decimal128') WHERE d
  { "" : { "$numberInt" : "3" } }  | { "_id" : { "$numberInt" : "3" }, "a" : { "$numberDecimal" : "-1.0" }, "b" : { "$numberInt" : "3" } }
  { "" : { "$numberInt" : "7" } }  | { "_id" : { "$numberInt" : "7" }, "a" : { "$numberDecimal" : "-Infinity" }, "b" : { "$numberInt" : "7" } }
  { "" : { "$numberInt" : "10" } } | { "_id" : { "$numberInt" : "10" }, "a" : { "$numberDecimal" : "0" }, "b" : { "$numberInt" : "10" } }
- { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1"}, "b" : { "$numberInt" : "11" } }
- { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1"}, "b" : { "$numberInt" : "12" } }
+ { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1" }, "b" : { "$numberInt" : "11" } }
+ { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1" }, "b" : { "$numberInt" : "12" } }
  { "" : { "$numberInt" : "13" } } | { "_id" : { "$numberInt" : "13" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "13" } }
  { "" : { "$numberInt" : "14" } } | { "_id" : { "$numberInt" : "14" }, "a" : { "$numberInt" : "-1" }, "b" : { "$numberInt" : "14" } }
  { "" : { "$numberInt" : "15" } } | { "_id" : { "$numberInt" : "15" }, "a" : { "$numberDouble" : "-1.0" }, "b" : { "$numberInt" : "15" } }
@@ -411,8 +411,8 @@ SELECT object_id, document FROM helio_api.collection('db', 'decimal128') WHERE d
  { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2345678901234567890.12345678901234" }, "b" : { "$numberInt" : "8" } }
  { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.23456789123456E+2009" }, "b" : { "$numberInt" : "9" } }
  { "" : { "$numberInt" : "10" } } | { "_id" : { "$numberInt" : "10" }, "a" : { "$numberDecimal" : "0" }, "b" : { "$numberInt" : "10" } }
- { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1"}, "b" : { "$numberInt" : "11" } }
- { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1"}, "b" : { "$numberInt" : "12" } }
+ { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1" }, "b" : { "$numberInt" : "11" } }
+ { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1" }, "b" : { "$numberInt" : "12" } }
  { "" : { "$numberInt" : "13" } } | { "_id" : { "$numberInt" : "13" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "13" } }
  { "" : { "$numberInt" : "14" } } | { "_id" : { "$numberInt" : "14" }, "a" : { "$numberInt" : "-1" }, "b" : { "$numberInt" : "14" } }
  { "" : { "$numberInt" : "15" } } | { "_id" : { "$numberInt" : "15" }, "a" : { "$numberDouble" : "-1.0" }, "b" : { "$numberInt" : "15" } }
@@ -430,7 +430,7 @@ SELECT object_id, document FROM helio_api.collection('db', 'decimal128') WHERE d
  { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2345678901234567890.12345678901234" }, "b" : { "$numberInt" : "8" } }
  { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.23456789123456E+2009" }, "b" : { "$numberInt" : "9" } }
  { "" : { "$numberInt" : "10" } } | { "_id" : { "$numberInt" : "10" }, "a" : { "$numberDecimal" : "0" }, "b" : { "$numberInt" : "10" } }
- { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1"}, "b" : { "$numberInt" : "11" } }
+ { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1" }, "b" : { "$numberInt" : "11" } }
  { "" : { "$numberInt" : "13" } } | { "_id" : { "$numberInt" : "13" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "13" } }
  { "" : { "$numberInt" : "16" } } | { "_id" : { "$numberInt" : "16" }, "a" : { "$numberDouble" : "1.0" }, "b" : { "$numberInt" : "16" } }
  { "" : { "$numberInt" : "17" } } | { "_id" : { "$numberInt" : "17" }, "a" : [ { "$numberDecimal" : "1.00" }, { "$numberDecimal" : "2.00" }, { "$numberDecimal" : "3.50" }, { "$numberDecimal" : "5.00001" } ], "b" : { "$numberInt" : "17" } }
@@ -447,8 +447,8 @@ SELECT object_id, document FROM helio_api.collection('db', 'decimal128') WHERE d
  { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2345678901234567890.12345678901234" }, "b" : { "$numberInt" : "8" } }
  { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.23456789123456E+2009" }, "b" : { "$numberInt" : "9" } }
  { "" : { "$numberInt" : "10" } } | { "_id" : { "$numberInt" : "10" }, "a" : { "$numberDecimal" : "0" }, "b" : { "$numberInt" : "10" } }
- { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1"}, "b" : { "$numberInt" : "11" } }
- { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1"}, "b" : { "$numberInt" : "12" } }
+ { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1" }, "b" : { "$numberInt" : "11" } }
+ { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1" }, "b" : { "$numberInt" : "12" } }
  { "" : { "$numberInt" : "13" } } | { "_id" : { "$numberInt" : "13" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "13" } }
  { "" : { "$numberInt" : "14" } } | { "_id" : { "$numberInt" : "14" }, "a" : { "$numberInt" : "-1" }, "b" : { "$numberInt" : "14" } }
  { "" : { "$numberInt" : "15" } } | { "_id" : { "$numberInt" : "15" }, "a" : { "$numberDouble" : "-1.0" }, "b" : { "$numberInt" : "15" } }
@@ -475,8 +475,8 @@ SELECT object_id, document FROM helio_api.collection('db', 'decimal128') WHERE d
  { "" : { "$numberInt" : "4" } }  | { "_id" : { "$numberInt" : "4" }, "a" : { "$numberDecimal" : "NaN" }, "b" : { "$numberInt" : "4" } }
  { "" : { "$numberInt" : "5" } }  | { "_id" : { "$numberInt" : "5" }, "a" : { "$numberDecimal" : "NaN" }, "b" : { "$numberInt" : "5" } }
  { "" : { "$numberInt" : "10" } } | { "_id" : { "$numberInt" : "10" }, "a" : { "$numberDecimal" : "0" }, "b" : { "$numberInt" : "10" } }
- { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1"}, "b" : { "$numberInt" : "11" } }
- { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1"}, "b" : { "$numberInt" : "12" } }
+ { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1" }, "b" : { "$numberInt" : "11" } }
+ { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1" }, "b" : { "$numberInt" : "12" } }
  { "" : { "$numberInt" : "13" } } | { "_id" : { "$numberInt" : "13" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "13" } }
  { "" : { "$numberInt" : "14" } } | { "_id" : { "$numberInt" : "14" }, "a" : { "$numberInt" : "-1" }, "b" : { "$numberInt" : "14" } }
  { "" : { "$numberInt" : "15" } } | { "_id" : { "$numberInt" : "15" }, "a" : { "$numberDouble" : "-1.0" }, "b" : { "$numberInt" : "15" } }
@@ -519,9 +519,9 @@ SELECT object_id, document FROM helio_api.collection('db', 'decimal128') WHERE d
 -- Update operations with $mul and $inc
 BEGIN;
 SELECT helio_api.update('db', '{"update": "decimal128", "updates":[{"q": {"a": -1},"u":{"$mul":{"a": {"$numberDecimal": "11.1"}}},"multi":true}]}');
-                                                               update                                                               
+                                                                update                                                                
 ---------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""4""}, ""n"" : { ""$numberLong"" : ""4""} }",t)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""4"" }, ""n"" : { ""$numberLong"" : ""4"" } }",t)
 (1 row)
 
 SELECT object_id, document FROM helio_api.collection('db', 'decimal128') WHERE document @@ '{ "$and": [{ "a": {"$gte": { "$numberDecimal" : "-11.1"}}}, {"a" : {"$lte" : { "$numberDecimal" : "11.1"}}}] }';
@@ -531,7 +531,7 @@ SELECT object_id, document FROM helio_api.collection('db', 'decimal128') WHERE d
  { "" : { "$numberInt" : "2" } }  | { "_id" : { "$numberInt" : "2" }, "a" : { "$numberDecimal" : "1" }, "b" : { "$numberInt" : "2" } }
  { "" : { "$numberInt" : "3" } }  | { "_id" : { "$numberInt" : "3" }, "a" : { "$numberDecimal" : "-11.10" }, "b" : { "$numberInt" : "3" } }
  { "" : { "$numberInt" : "10" } } | { "_id" : { "$numberInt" : "10" }, "a" : { "$numberDecimal" : "0" }, "b" : { "$numberInt" : "10" } }
- { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1"}, "b" : { "$numberInt" : "11" } }
+ { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1" }, "b" : { "$numberInt" : "11" } }
  { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberDecimal" : "-11.1" }, "b" : { "$numberInt" : "12" } }
  { "" : { "$numberInt" : "13" } } | { "_id" : { "$numberInt" : "13" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "13" } }
  { "" : { "$numberInt" : "14" } } | { "_id" : { "$numberInt" : "14" }, "a" : { "$numberDecimal" : "-11.1" }, "b" : { "$numberInt" : "14" } }
@@ -543,9 +543,9 @@ SELECT object_id, document FROM helio_api.collection('db', 'decimal128') WHERE d
 ROLLBACK;
 BEGIN;
 SELECT helio_api.update('db', '{"update": "decimal128", "updates":[{"q": {"a": 1},"u":{"$inc":{"a": {"$numberDecimal": "50.012e2"}}},"multi":true}]}');
-                                                                                                                                                                                     update                                                                                                                                                                                     
+                                                                                                                                                                                      update                                                                                                                                                                                      
 ---------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""67108893"" }, ""errmsg"" : ""Cannot apply $inc to a value of non-numeric type. { _id: 17 } has the field 'a' of non-numeric type array"" } ] }",f)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""67108893"" }, ""errmsg"" : ""Cannot apply $inc to a value of non-numeric type. { _id: 17 } has the field 'a' of non-numeric type array"" } ] }",f)
 (1 row)
 
 SELECT object_id, document FROM helio_api.collection('db', 'decimal128') WHERE document @@ '{ "$and": [{ "a": {"$gte": {"$numberInt": "5000"}}}, {"a" : {"$lte" : {"$numberInt": "5003"}}}] }';

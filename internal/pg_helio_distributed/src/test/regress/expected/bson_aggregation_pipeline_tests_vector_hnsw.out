@@ -125,9 +125,9 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexe
 (1 row)
 
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "aggregation_pipeline_vector", "index": "foo_1"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "1"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "1" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline_vector", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-hnsw", "m": 4, "similarity": "L2", "dimensions": 3 } } ] }', true);
@@ -137,9 +137,9 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexe
 (1 row)
 
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "aggregation_pipeline_vector", "index": "foo_1"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "1"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "1" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline_vector", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-hnsw", "efConstruction": 32, "similarity": "IP", "dimensions": 3 } } ] }', true);
@@ -150,9 +150,9 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexe
 
 -- HNSW search, success cases
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "aggregation_pipeline_vector", "index": "foo_1"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "1"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "1" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline_vector", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-hnsw", "m": 4, "efConstruction": 16, "similarity": "COS", "dimensions": 3 } } ] }', true);
@@ -172,9 +172,9 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 
 COMMIT;
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "aggregation_pipeline_vector", "index": "foo_1"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "1"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "1" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline_vector", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-hnsw", "m": 4, "efConstruction": 16, "similarity": "IP", "dimensions": 3 } } ] }', true);
@@ -195,9 +195,9 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 
 COMMIT;
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "aggregation_pipeline_vector", "index": "foo_1"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "1"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "1" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline_vector", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-hnsw", "m": 4, "efConstruction": 16, "similarity": "L2", "dimensions": 3 } } ] }', true);
@@ -399,9 +399,9 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
 
 COMMIT;
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "aggregation_pipeline_vector", "index": "foo_1"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "1"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "1" } }
 (1 row)
 
 ---------------------------------------------------------------------
@@ -1843,9 +1843,9 @@ ROLLBACK;
 -- hnsw search: with filter, different distance metric
 -- hnsw search: cosine similarity
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "aggregation_pipeline_hnsw_filter", "index": "hnsw_index"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "7"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "7" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline_hnsw_filter", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "hnsw_index_cos", "cosmosSearchOptions": { "kind": "vector-hnsw", "m": 4, "efConstruction": 16, "similarity": "COS", "dimensions": 3 } } ] }', true);
@@ -1896,9 +1896,9 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
 ROLLBACK;
 -- hnsw search: inner product
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "aggregation_pipeline_hnsw_filter", "index": "hnsw_index_cos"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "7"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "7" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline_hnsw_filter", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "hnsw_index_ip", "cosmosSearchOptions": { "kind": "vector-hnsw", "m": 4, "efConstruction": 16, "similarity": "IP", "dimensions": 3 } } ] }', true);
@@ -1948,9 +1948,9 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
 ROLLBACK;
 -- hnsw search: restore to euclidean distance
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "aggregation_pipeline_hnsw_filter", "index": "hnsw_index_ip"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "7"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "7" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline_hnsw_filter", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "hnsw_index", "cosmosSearchOptions": { "kind": "vector-hnsw", "m": 4, "efConstruction": 16, "similarity": "L2", "dimensions": 3 } } ] }', true);
@@ -2368,9 +2368,9 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 (2 rows)
 
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "aggregation_pipeline_vector", "index": "foo_1"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "1"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "1" } }
 (1 row)
 
 -- create ivf index and search with efSearch
@@ -2421,9 +2421,9 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_vector", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v", "nProbes": 10, "nProbes": 5 }  } } ], "cursor": {} }');
 ERROR:  Only one search option can be specified. You have specified options nProbes already, and the second option nProbes is not allowed.
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "aggregation_pipeline_vector", "index": "foo_1"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "1"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "1" } }
 (1 row)
 
 -- create ivf index and search with efSearch, hnsw index is disabled
@@ -2465,9 +2465,9 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 (2 rows)
 
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "aggregation_pipeline_vector", "index": "foo_1"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "1"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "1" } }
 (1 row)
 
 ---------------------------------------------------------------------

@@ -16,16 +16,16 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsSecond": {"$undefined"
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsSecond": { "$timestamp": { "t": 1234567890, "i": 1 }} }}');
-              bson_dollar_project               
+               bson_dollar_project               
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "1234567890"} }
+ { "result" : { "$numberLong" : "1234567890" } }
 (1 row)
 
 -- $tsSecond operator , input document tests
 SELECT * FROM bson_dollar_project('{"a": { "$timestamp": { "t": 1234567890, "i": 1 }} }', '{"result": { "$tsSecond": "$a" }}');
-              bson_dollar_project               
+               bson_dollar_project               
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "1234567890"} }
+ { "result" : { "$numberLong" : "1234567890" } }
 (1 row)
 
 -- $tsSecond operator negative tests
@@ -57,9 +57,9 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsIncrement": {"$undefin
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsIncrement": { "$timestamp": { "t": 1234567890, "i": 1 }} }}');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "1"} }
+ { "result" : { "$numberLong" : "1" } }
 (1 row)
 
 -- Create Collection
@@ -102,13 +102,13 @@ SELECT helio_api.insert_one('db','timestampTest','{ "symbol": "b", "saleTimestam
 (1 row)
 
 SELECT document FROM bson_aggregation_pipeline('db', '{"aggregate": "timestampTest", "pipeline": [{ "$project": {"_id": 0, "saleTimestamp": 1, "saleIncrement": {"$tsIncrement": "$saleTimestamp"}, "saleSecond": {"$tsSecond": "$saleTimestamp"}}}  ]}');
-                                                                             document                                                                             
+                                                                              document                                                                              
 ---------------------------------------------------------------------
- { "saleTimestamp" : { "$timestamp" : { "t" : 1622731060, "i" : 1 } }, "saleIncrement" : { "$numberLong" : "1"}, "saleSecond" : { "$numberLong" : "1622731060"} }
- { "saleTimestamp" : { "$timestamp" : { "t" : 1622731060, "i" : 2 } }, "saleIncrement" : { "$numberLong" : "2"}, "saleSecond" : { "$numberLong" : "1622731060"} }
- { "saleTimestamp" : { "$timestamp" : { "t" : 1714124193, "i" : 1 } }, "saleIncrement" : { "$numberLong" : "1"}, "saleSecond" : { "$numberLong" : "1714124193"} }
- { "saleTimestamp" : { "$timestamp" : { "t" : 1714124192, "i" : 1 } }, "saleIncrement" : { "$numberLong" : "1"}, "saleSecond" : { "$numberLong" : "1714124192"} }
- { "saleTimestamp" : { "$timestamp" : { "t" : 1714124192, "i" : 2 } }, "saleIncrement" : { "$numberLong" : "2"}, "saleSecond" : { "$numberLong" : "1714124192"} }
+ { "saleTimestamp" : { "$timestamp" : { "t" : 1622731060, "i" : 1 } }, "saleIncrement" : { "$numberLong" : "1" }, "saleSecond" : { "$numberLong" : "1622731060" } }
+ { "saleTimestamp" : { "$timestamp" : { "t" : 1622731060, "i" : 2 } }, "saleIncrement" : { "$numberLong" : "2" }, "saleSecond" : { "$numberLong" : "1622731060" } }
+ { "saleTimestamp" : { "$timestamp" : { "t" : 1714124193, "i" : 1 } }, "saleIncrement" : { "$numberLong" : "1" }, "saleSecond" : { "$numberLong" : "1714124193" } }
+ { "saleTimestamp" : { "$timestamp" : { "t" : 1714124192, "i" : 1 } }, "saleIncrement" : { "$numberLong" : "1" }, "saleSecond" : { "$numberLong" : "1714124192" } }
+ { "saleTimestamp" : { "$timestamp" : { "t" : 1714124192, "i" : 2 } }, "saleIncrement" : { "$numberLong" : "2" }, "saleSecond" : { "$numberLong" : "1714124192" } }
 (5 rows)
 
 -- $tsIncrement operator negative tests

@@ -1001,7 +1001,7 @@ SELECT helio_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "abc", "cos
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
                                                                                          document                                                                                         
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberLong" : "500"} }
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberLong" : "500" } }
  { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberDouble" : "501.0" } }
  { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDouble" : "502.0" } }
  { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberDouble" : "503.0" } }
@@ -1065,7 +1065,7 @@ SELECT helio_api.insert_one('db','setWindowFields','{ "_id": 8, "a": "abc", "cos
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
                                                                                                document                                                                                               
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberLong" : "500"} }
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberLong" : "500" } }
  { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberDouble" : "501.0" } }
  { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDouble" : "502.0" } }
  { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberDouble" : "503.0" } }

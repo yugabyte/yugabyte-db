@@ -23,9 +23,9 @@ SELECT * FROM bson_dollar_project('{"a":{"$numberDouble": "10.2"}}', '{"result":
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a":{"$numberLong": "10"}}', '{"result": { "$add": [ "$a", 1]}}');
-          bson_dollar_project           
+           bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "11"} }
+ { "result" : { "$numberLong" : "11" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a":{"$date": { "$numberLong" : "0" }}}', '{"result": { "$add": [ "$a", 86400000]}}');
@@ -54,9 +54,9 @@ SELECT * FROM bson_dollar_project('{"a":{"$date": { "$numberLong" : "0" }}}', '{
 
 -- A single expression is also valid
 SELECT * FROM bson_dollar_project('{"a":{"$numberLong": "10"}}', '{"result": { "$add": "$a"}}');
-          bson_dollar_project           
+           bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "10"} }
+ { "result" : { "$numberLong" : "10" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a":{"$numberLong": "10"}}', '{"result": { "$add": "$b"}}');
@@ -79,15 +79,15 @@ SELECT * FROM bson_dollar_project('{"a":{"$numberLong": "10"}}', '{"result": { "
 
 -- Int32 overflow to -> Int64
 SELECT * FROM bson_dollar_project('{"a":2147483646}', '{"result": { "$add": [ "$a", 2]}}');
-              bson_dollar_project               
+               bson_dollar_project               
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "2147483648"} }
+ { "result" : { "$numberLong" : "2147483648" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a":1073741823, "b": 1073741825}', '{"result": { "$add": [ "$a", "$b"]}}');
-              bson_dollar_project               
+               bson_dollar_project               
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "2147483648"} }
+ { "result" : { "$numberLong" : "2147483648" } }
 (1 row)
 
 -- Int64 overflow coerce to double
@@ -270,9 +270,9 @@ SELECT * FROM bson_dollar_project('{"a":{"$numberDecimal": "102123"}}', '{"resul
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a":{"$numberLong": "10"}}', '{"result": { "$subtract": [ "$a", -1000]}}');
-           bson_dollar_project            
+            bson_dollar_project            
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "1010"} }
+ { "result" : { "$numberLong" : "1010" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a":{"$date": { "$numberLong" : "0" }}}', '{"result": { "$subtract": [ "$a", 86400000]}}');
@@ -294,22 +294,22 @@ SELECT * FROM bson_dollar_project('{"a":{"$date": { "$numberLong" : "0" }}}', '{
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a":{"$date": { "$numberLong" : "0" }}, "b": {"$date": { "$numberLong" : "86000" }}}', '{"result": { "$subtract": [ "$a", "$b"]}}');
-            bson_dollar_project             
+             bson_dollar_project             
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "-86000"} }
+ { "result" : { "$numberLong" : "-86000" } }
 (1 row)
 
 -- Int32 overflow to -> Int64
 SELECT * FROM bson_dollar_project('{"a":2147483646}', '{"result": { "$subtract": [ "$a", -2]}}');
-              bson_dollar_project               
+               bson_dollar_project               
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "2147483648"} }
+ { "result" : { "$numberLong" : "2147483648" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a":-1073741825, "b": 1073741825}', '{"result": { "$subtract": [ "$a", "$b"]}}');
-               bson_dollar_project               
+               bson_dollar_project                
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "-2147483650"} }
+ { "result" : { "$numberLong" : "-2147483650" } }
 (1 row)
 
 -- Int64 overflow coerce to double
@@ -477,22 +477,22 @@ SELECT * FROM bson_dollar_project('{"a":{"$numberDecimal": "102123"}}', '{"resul
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a":{"$numberLong": "10"}}', '{"result": { "$multiply": [ "$a", -1000]}}');
-            bson_dollar_project             
+             bson_dollar_project             
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "-10000"} }
+ { "result" : { "$numberLong" : "-10000" } }
 (1 row)
 
 -- Int32 overflow to -> Int64
 SELECT * FROM bson_dollar_project('{"a":1073741824}', '{"result": { "$multiply": [ "$a", 2]}}');
-              bson_dollar_project               
+               bson_dollar_project               
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "2147483648"} }
+ { "result" : { "$numberLong" : "2147483648" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a":-1073741824}', '{"result": { "$multiply": [ "$a", 2, 2]}}');
-               bson_dollar_project               
+               bson_dollar_project                
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "-4294967296"} }
+ { "result" : { "$numberLong" : "-4294967296" } }
 (1 row)
 
 -- Int64 overflow coerce to double
@@ -765,9 +765,9 @@ SELECT * FROM bson_dollar_project('{"a":{"$numberDouble": "0.99999999999999999"}
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a":{"$numberLong": "10"}}', '{"result": { "$mod": [ "$a", 5]}}');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a":{"$numberLong": "500000000000"}}', '{"result": { "$mod": [ "$a", {"$numberDouble": "450000000000.0"}]}}');
@@ -777,15 +777,15 @@ SELECT * FROM bson_dollar_project('{"a":{"$numberLong": "500000000000"}}', '{"re
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a":{"$numberLong": "500000000000"}}', '{"result": { "$mod": [ "$a", {"$numberLong": "450000000000"}]}}');
-               bson_dollar_project               
+               bson_dollar_project                
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "50000000000"} }
+ { "result" : { "$numberLong" : "50000000000" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a":{"$numberLong": "5"}}', '{"result": { "$mod": [ "$a", {"$numberDouble": "3"}]}}');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "2"} }
+ { "result" : { "$numberLong" : "2" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a":5}', '{"result": { "$mod": [ "$a", {"$numberDouble": "3"}]}}');
@@ -929,9 +929,9 @@ ERROR:  $mod only supports numeric types
 --  Any operand Long and the result has no fraction => Result is Long
 --  Everything else => Result is Double
 SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$mod": [ {"$numberLong": "10"}, {"$numberLong": "-1"}]}}');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$mod": [ {"$numberLong": "10"}, {"$numberDouble": "1.032"}]}}');
@@ -941,9 +941,9 @@ SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$mod": [ {"$numberL
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$mod": [ {"$numberLong": "10"}, 21]}}');
-          bson_dollar_project           
+           bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "10"} }
+ { "result" : { "$numberLong" : "10" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$mod": [ {"$numberLong": "10"}, {"$numberDecimal": "1.032"}]}}');
@@ -989,9 +989,9 @@ SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$mod": [ {"$numberD
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$mod": [ {"$numberDouble": "10"}, {"$numberLong": "-1"}]}}');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$mod": [ {"$numberDouble": "10.78"}, {"$numberLong": "-1"}]}}');
@@ -1026,21 +1026,21 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$abs": {"$numberDouble": 
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$abs": {"$numberLong": "-2323232"}}}');
-             bson_dollar_project             
+             bson_dollar_project              
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "2323232"} }
+ { "result" : { "$numberLong" : "2323232" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$abs": {"$numberLong": "-9223372036854775807"}}}');
-                   bson_dollar_project                   
+                   bson_dollar_project                    
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "9223372036854775807"} }
+ { "result" : { "$numberLong" : "9223372036854775807" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$abs": -2147483648}}');
-              bson_dollar_project               
+               bson_dollar_project               
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "2147483648"} }
+ { "result" : { "$numberLong" : "2147483648" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$abs": {"$numberDecimal": "-9223372036854775808"}}}');
@@ -1119,15 +1119,15 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$ceil": 1}}');
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$ceil": {"$numberLong": "1"}}}');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "1"} }
+ { "result" : { "$numberLong" : "1" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$ceil": {"$numberLong": "-1"}}}');
-          bson_dollar_project           
+           bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "-1"} }
+ { "result" : { "$numberLong" : "-1" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$ceil": {"$numberDouble": "23064.000001"}}}');
@@ -1303,15 +1303,15 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$floor": 1}}');
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$floor": {"$numberLong": "1"}}}');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "1"} }
+ { "result" : { "$numberLong" : "1" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$floor": {"$numberLong": "-1"}}}');
-          bson_dollar_project           
+           bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "-1"} }
+ { "result" : { "$numberLong" : "-1" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$floor": {"$numberDouble": "23064.000001"}}}');
@@ -1749,21 +1749,21 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [2, { "$numberDoub
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [2, { "$numberLong": "10"}]}}');
-           bson_dollar_project            
+            bson_dollar_project            
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "1024"} }
+ { "result" : { "$numberLong" : "1024" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [2, { "$numberLong": "62"}]}}');
-                   bson_dollar_project                   
+                   bson_dollar_project                    
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "4611686018427387904"} }
+ { "result" : { "$numberLong" : "4611686018427387904" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [{ "$numberLong": "10"}, 2]}}');
-           bson_dollar_project           
+           bson_dollar_project            
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "100"} }
+ { "result" : { "$numberLong" : "100" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [{ "$numberDecimal": "10"}, 2]}}');
@@ -1804,9 +1804,9 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [{ "$numberDouble"
 
 -- should lose precision only when a double is returned
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [3, 35]}}');
-                  bson_dollar_project                  
+                  bson_dollar_project                   
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "50031545098999707"} }
+ { "result" : { "$numberLong" : "50031545098999707" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [3, {"$numberDecimal": "35"}]}}');
@@ -1824,15 +1824,15 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [3, {"$numberDoubl
 -- $pow: should coerce when there is overflow
 -- int32 -> int64
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [2, 31]}}');
-              bson_dollar_project               
+               bson_dollar_project               
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "2147483648"} }
+ { "result" : { "$numberLong" : "2147483648" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [2, 62]}}');
-                   bson_dollar_project                   
+                   bson_dollar_project                    
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "4611686018427387904"} }
+ { "result" : { "$numberLong" : "4611686018427387904" } }
 (1 row)
 
 -- int32 -> double
@@ -1881,15 +1881,15 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [-4, -2]}}');
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [{ "$numberLong": "-1" }, -2]}}');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "1"} }
+ { "result" : { "$numberLong" : "1" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [{ "$numberLong": "1" }, -2]}}');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "1"} }
+ { "result" : { "$numberLong" : "1" } }
 (1 row)
 
 -- $pow: null/undefined should return null
@@ -2079,9 +2079,9 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": 10023 }}');
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": { "$numberLong": "10023" }}}');
-            bson_dollar_project            
+            bson_dollar_project             
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "10023"} }
+ { "result" : { "$numberLong" : "10023" } }
 (1 row)
 
 -- $round: double, long or int
@@ -2104,15 +2104,15 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDoubl
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberLong": "132" }, 100]}}');
-           bson_dollar_project           
+           bson_dollar_project            
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "132"} }
+ { "result" : { "$numberLong" : "132" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberLong": "132" }, 20]}}');
-           bson_dollar_project           
+           bson_dollar_project            
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "132"} }
+ { "result" : { "$numberLong" : "132" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [132, 20]}}');
@@ -2226,15 +2226,15 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDecim
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberLong": "1234532345" }, -5]}}');
-              bson_dollar_project               
+               bson_dollar_project               
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "1234500000"} }
+ { "result" : { "$numberLong" : "1234500000" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberLong": "1234532345" }, -20]}}');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [123402345, -8]}}');
@@ -2306,9 +2306,9 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [343, "$a"]}}');
 
 -- $round: overflow
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [2147483647, -1]}}');
-              bson_dollar_project               
+               bson_dollar_project               
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "2147483650"} }
+ { "result" : { "$numberLong" : "2147483650" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{"$numberLong": "9223372036854775806"}, -1]}}');
@@ -2395,9 +2395,9 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": 10023 }}');
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": { "$numberLong": "10023" }}}');
-            bson_dollar_project            
+            bson_dollar_project             
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "10023"} }
+ { "result" : { "$numberLong" : "10023" } }
 (1 row)
 
 -- $trunc: double, long or int
@@ -2420,15 +2420,15 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDoubl
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberLong": "132" }, 100]}}');
-           bson_dollar_project           
+           bson_dollar_project            
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "132"} }
+ { "result" : { "$numberLong" : "132" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberLong": "132" }, 20]}}');
-           bson_dollar_project           
+           bson_dollar_project            
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "132"} }
+ { "result" : { "$numberLong" : "132" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [132, 20]}}');
@@ -2542,15 +2542,15 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDecim
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberLong": "1234532345" }, -5]}}');
-              bson_dollar_project               
+               bson_dollar_project               
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "1234500000"} }
+ { "result" : { "$numberLong" : "1234500000" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberLong": "1234532345" }, -20]}}');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "0"} }
+ { "result" : { "$numberLong" : "0" } }
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [123402345, -8]}}');

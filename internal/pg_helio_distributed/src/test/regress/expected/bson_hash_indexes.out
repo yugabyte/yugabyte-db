@@ -30,9 +30,9 @@ SELECT * FROM helio_distributed_test_helpers.get_collection_indexes('db', 'query
 (1 row)
 
 SELECT helio_api.list_indexes_cursor_first_page('db','{ "listIndexes": "queryhashindex" }') ORDER BY 1;
-                                                                                                                     list_indexes_cursor_first_page                                                                                                                     
+                                                                                                                     list_indexes_cursor_first_page                                                                                                                      
 ---------------------------------------------------------------------
- ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0""}, ""ns"" : ""db.queryhashindex"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""a.b"" : ""hashed"" }, ""name"" : ""hashIndex"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.queryhashindex"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""a.b"" : ""hashed"" }, ""name"" : ""hashIndex"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
 (1 row)
 
 -- Explain various hash index scenarios.

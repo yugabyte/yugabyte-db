@@ -125,11 +125,11 @@ SELECT bson_dollar_unwind('{"_id":"1", "a" : { } }', '{"path":"$a.b", "preserveN
 
 -- Project idx field
 SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : [1, 2, 3] } }', '{"path":"$a.b", "includeArrayIndex":"idx"}'::bson);
-                                   bson_dollar_unwind                                    
+                                    bson_dollar_unwind                                    
 ---------------------------------------------------------------------
- { "_id" : "1", "a" : { "b" : { "$numberInt" : "1" } }, "idx" : { "$numberLong" : "0"} }
- { "_id" : "1", "a" : { "b" : { "$numberInt" : "2" } }, "idx" : { "$numberLong" : "1"} }
- { "_id" : "1", "a" : { "b" : { "$numberInt" : "3" } }, "idx" : { "$numberLong" : "2"} }
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "1" } }, "idx" : { "$numberLong" : "0" } }
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "2" } }, "idx" : { "$numberLong" : "1" } }
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "3" } }, "idx" : { "$numberLong" : "2" } }
 (3 rows)
 
 SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : [] } }', '{"path":"$a.b", "preserveNullAndEmptyArrays":false, "includeArrayIndex":"idx"}'::bson);
@@ -155,11 +155,11 @@ SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : null } }', '{"path":"$a.b",
 (1 row)
 
 SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : [1, 2, 3] } }', '{"path":"$a.b", "includeArrayIndex":""}'::bson);
-                                  bson_dollar_unwind                                  
+                                  bson_dollar_unwind                                   
 ---------------------------------------------------------------------
- { "_id" : "1", "a" : { "b" : { "$numberInt" : "1" } }, "" : { "$numberLong" : "0"} }
- { "_id" : "1", "a" : { "b" : { "$numberInt" : "2" } }, "" : { "$numberLong" : "1"} }
- { "_id" : "1", "a" : { "b" : { "$numberInt" : "3" } }, "" : { "$numberLong" : "2"} }
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "1" } }, "" : { "$numberLong" : "0" } }
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "2" } }, "" : { "$numberLong" : "1" } }
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "3" } }, "" : { "$numberLong" : "2" } }
 (3 rows)
 
 SELECT bson_dollar_unwind('{"_id":"1", "a" : { } }', '{"path":"$a.b", "includeArrayIndex":"","preserveNullAndEmptyArrays":true}'::bson);
@@ -175,11 +175,11 @@ SELECT bson_dollar_unwind('{"_id":"1", "a" : { } }', '{"path":"$a.b", "includeAr
 
 -- Project conflicting idx
 SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : [1, 2, 3] } }', '{"path":"$a.b", "includeArrayIndex":"_id"}'::bson);
-                             bson_dollar_unwind                             
+                             bson_dollar_unwind                              
 ---------------------------------------------------------------------
- { "_id" : { "$numberLong" : "0"}, "a" : { "b" : { "$numberInt" : "1" } } }
- { "_id" : { "$numberLong" : "1"}, "a" : { "b" : { "$numberInt" : "2" } } }
- { "_id" : { "$numberLong" : "2"}, "a" : { "b" : { "$numberInt" : "3" } } }
+ { "_id" : { "$numberLong" : "0" }, "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberLong" : "1" }, "a" : { "b" : { "$numberInt" : "2" } } }
+ { "_id" : { "$numberLong" : "2" }, "a" : { "b" : { "$numberInt" : "3" } } }
 (3 rows)
 
 -- Test invalid paths

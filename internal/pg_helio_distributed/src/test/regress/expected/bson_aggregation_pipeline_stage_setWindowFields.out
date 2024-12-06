@@ -2492,150 +2492,150 @@ SELECT helio_api.insert_one('db','long_col',' { "_id": 3, "x": 4, "y": {"$number
 (1 row)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"covariancePop": { "$covariancePop": ["$x", "$y"], "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                                         document                                                                         
+                                                                         document                                                                          
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004"}, "covariancePop" : { "$numberDouble" : "0.0" } }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007"}, "covariancePop" : { "$numberDouble" : "0.75" } }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013"}, "covariancePop" : { "$numberDouble" : "3.0" } }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016"}, "covariancePop" : { "$numberDouble" : "5.25" } }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004" }, "covariancePop" : { "$numberDouble" : "0.0" } }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007" }, "covariancePop" : { "$numberDouble" : "0.75" } }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013" }, "covariancePop" : { "$numberDouble" : "3.0" } }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016" }, "covariancePop" : { "$numberDouble" : "5.25" } }
 (4 rows)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"covarianceSamp": { "$covarianceSamp": ["$x", "$y"], "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                                         document                                                                         
+                                                                         document                                                                          
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004"}, "covarianceSamp" : null }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007"}, "covarianceSamp" : { "$numberDouble" : "1.5" } }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013"}, "covarianceSamp" : { "$numberDouble" : "4.5" } }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016"}, "covarianceSamp" : { "$numberDouble" : "7.0" } }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004" }, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007" }, "covarianceSamp" : { "$numberDouble" : "1.5" } }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013" }, "covarianceSamp" : { "$numberDouble" : "4.5" } }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016" }, "covarianceSamp" : { "$numberDouble" : "7.0" } }
 (4 rows)
 
 -- evaluate data in expression
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"covariancePop": { "$covariancePop": ["$x", {"$multiply": ["$x", "$y"]}], "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                                                 document                                                                                  
+                                                                                  document                                                                                  
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004"}, "covariancePop" : { "$numberDouble" : "0.0" } }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007"}, "covariancePop" : { "$numberDouble" : "2500000002.5" } }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013"}, "covariancePop" : { "$numberDouble" : "6666666678.3333330154" } }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016"}, "covariancePop" : { "$numberDouble" : "12500000025.625" } }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004" }, "covariancePop" : { "$numberDouble" : "0.0" } }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007" }, "covariancePop" : { "$numberDouble" : "2500000002.5" } }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013" }, "covariancePop" : { "$numberDouble" : "6666666678.3333330154" } }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016" }, "covariancePop" : { "$numberDouble" : "12500000025.625" } }
 (4 rows)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"covarianceSamp": { "$covarianceSamp": ["$x", {"$multiply": ["$x", "$y"]}], "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                                                  document                                                                                  
+                                                                                  document                                                                                   
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004"}, "covarianceSamp" : null }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007"}, "covarianceSamp" : { "$numberDouble" : "5000000005.0" } }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013"}, "covarianceSamp" : { "$numberDouble" : "10000000017.5" } }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016"}, "covarianceSamp" : { "$numberDouble" : "16666666700.833333969" } }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004" }, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007" }, "covarianceSamp" : { "$numberDouble" : "5000000005.0" } }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013" }, "covarianceSamp" : { "$numberDouble" : "10000000017.5" } }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016" }, "covarianceSamp" : { "$numberDouble" : "16666666700.833333969" } }
 (4 rows)
 
 -- negative cases
 -- incorrect arguments won't throw error
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"covariancePop": { "$covariancePop": ["$x"], "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                             document                                                             
+                                                             document                                                              
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004"}, "covariancePop" : null }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007"}, "covariancePop" : null }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013"}, "covariancePop" : null }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016"}, "covariancePop" : null }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004" }, "covariancePop" : null }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007" }, "covariancePop" : null }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013" }, "covariancePop" : null }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016" }, "covariancePop" : null }
 (4 rows)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"covariancePop": { "$covariancePop": ["$x", "$y", "$z"], "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                             document                                                             
+                                                             document                                                              
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004"}, "covariancePop" : null }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007"}, "covariancePop" : null }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013"}, "covariancePop" : null }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016"}, "covariancePop" : null }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004" }, "covariancePop" : null }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007" }, "covariancePop" : null }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013" }, "covariancePop" : null }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016" }, "covariancePop" : null }
 (4 rows)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"covariancePop": { "$covariancePop": [5], "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                             document                                                             
+                                                             document                                                              
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004"}, "covariancePop" : null }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007"}, "covariancePop" : null }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013"}, "covariancePop" : null }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016"}, "covariancePop" : null }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004" }, "covariancePop" : null }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007" }, "covariancePop" : null }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013" }, "covariancePop" : null }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016" }, "covariancePop" : null }
 (4 rows)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"covariancePop": { "$covariancePop": ["a", {}], "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                             document                                                             
+                                                             document                                                              
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004"}, "covariancePop" : null }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007"}, "covariancePop" : null }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013"}, "covariancePop" : null }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016"}, "covariancePop" : null }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004" }, "covariancePop" : null }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007" }, "covariancePop" : null }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013" }, "covariancePop" : null }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016" }, "covariancePop" : null }
 (4 rows)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"covariancePop": { "$covariancePop": 3, "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                             document                                                             
+                                                             document                                                              
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004"}, "covariancePop" : null }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007"}, "covariancePop" : null }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013"}, "covariancePop" : null }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016"}, "covariancePop" : null }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004" }, "covariancePop" : null }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007" }, "covariancePop" : null }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013" }, "covariancePop" : null }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016" }, "covariancePop" : null }
 (4 rows)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"covariancePop": { "$covariancePop": {"a": "$x"}, "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                             document                                                             
+                                                             document                                                              
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004"}, "covariancePop" : null }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007"}, "covariancePop" : null }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013"}, "covariancePop" : null }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016"}, "covariancePop" : null }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004" }, "covariancePop" : null }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007" }, "covariancePop" : null }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013" }, "covariancePop" : null }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016" }, "covariancePop" : null }
 (4 rows)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"covarianceSamp": { "$covarianceSamp": ["$x"], "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                             document                                                              
+                                                              document                                                              
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004"}, "covarianceSamp" : null }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007"}, "covarianceSamp" : null }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013"}, "covarianceSamp" : null }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016"}, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004" }, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007" }, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013" }, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016" }, "covarianceSamp" : null }
 (4 rows)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"covarianceSamp": { "$covarianceSamp": ["$x", "$y", "$z"], "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                             document                                                              
+                                                              document                                                              
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004"}, "covarianceSamp" : null }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007"}, "covarianceSamp" : null }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013"}, "covarianceSamp" : null }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016"}, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004" }, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007" }, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013" }, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016" }, "covarianceSamp" : null }
 (4 rows)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"covarianceSamp": { "$covarianceSamp": [5], "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                             document                                                              
+                                                              document                                                              
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004"}, "covarianceSamp" : null }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007"}, "covarianceSamp" : null }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013"}, "covarianceSamp" : null }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016"}, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004" }, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007" }, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013" }, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016" }, "covarianceSamp" : null }
 (4 rows)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"covarianceSamp": { "$covarianceSamp": ["a", {}], "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                             document                                                              
+                                                              document                                                              
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004"}, "covarianceSamp" : null }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007"}, "covarianceSamp" : null }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013"}, "covarianceSamp" : null }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016"}, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004" }, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007" }, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013" }, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016" }, "covarianceSamp" : null }
 (4 rows)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"covarianceSamp": { "$covarianceSamp": 3, "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                             document                                                              
+                                                              document                                                              
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004"}, "covarianceSamp" : null }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007"}, "covarianceSamp" : null }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013"}, "covarianceSamp" : null }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016"}, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004" }, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007" }, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013" }, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016" }, "covarianceSamp" : null }
 (4 rows)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"covarianceSamp": { "$covarianceSamp": {"a": "$x"}, "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                             document                                                              
+                                                              document                                                              
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004"}, "covarianceSamp" : null }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007"}, "covarianceSamp" : null }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013"}, "covarianceSamp" : null }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016"}, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "y" : { "$numberLong" : "10000000004" }, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "y" : { "$numberLong" : "10000000007" }, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "y" : { "$numberLong" : "10000000013" }, "covarianceSamp" : null }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "y" : { "$numberLong" : "10000000016" }, "covarianceSamp" : null }
 (4 rows)
 
 SELECT helio_api.insert_one('db','window_col',' { "_id": 0, "x": 1, "y": 2, "type": "a", "date": { "$date": { "$numberLong": "1718841600000" } } }');
@@ -5586,21 +5586,21 @@ SELECT helio_api.insert_one('db','long_stddev_col',' { "_id": 3, "x": 4, "num": 
 (1 row)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_stddev_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"stdDevPop": { "$stdDevPop": "$num", "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                                                document                                                                                 
+                                                                                 document                                                                                 
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "num" : { "$numberLong" : "10000000004"}, "stdDevPop" : { "$numberDouble" : "0.0" } }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "num" : { "$numberLong" : "10000000007"}, "stdDevPop" : { "$numberDouble" : "1.5" } }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "num" : { "$numberLong" : "10000000013"}, "stdDevPop" : { "$numberDouble" : "3.7416573867739413295" } }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "num" : { "$numberLong" : "10000000016"}, "stdDevPop" : { "$numberDouble" : "4.7434164902525690621" } }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "num" : { "$numberLong" : "10000000004" }, "stdDevPop" : { "$numberDouble" : "0.0" } }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "num" : { "$numberLong" : "10000000007" }, "stdDevPop" : { "$numberDouble" : "1.5" } }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "num" : { "$numberLong" : "10000000013" }, "stdDevPop" : { "$numberDouble" : "3.7416573867739413295" } }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "num" : { "$numberLong" : "10000000016" }, "stdDevPop" : { "$numberDouble" : "4.7434164902525690621" } }
 (4 rows)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_stddev_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"stdDevSamp": { "$stdDevSamp": "$num", "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                                                 document                                                                                 
+                                                                                 document                                                                                  
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "num" : { "$numberLong" : "10000000004"}, "stdDevSamp" : null }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "num" : { "$numberLong" : "10000000007"}, "stdDevSamp" : { "$numberDouble" : "2.1213203435596423851" } }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "num" : { "$numberLong" : "10000000013"}, "stdDevSamp" : { "$numberDouble" : "4.582575694955839829" } }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "num" : { "$numberLong" : "10000000016"}, "stdDevSamp" : { "$numberDouble" : "5.4772255750516611883" } }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "num" : { "$numberLong" : "10000000004" }, "stdDevSamp" : null }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "num" : { "$numberLong" : "10000000007" }, "stdDevSamp" : { "$numberDouble" : "2.1213203435596423851" } }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "num" : { "$numberLong" : "10000000013" }, "stdDevSamp" : { "$numberDouble" : "4.582575694955839829" } }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "num" : { "$numberLong" : "10000000016" }, "stdDevSamp" : { "$numberDouble" : "5.4772255750516611883" } }
 (4 rows)
 
 -- large values return nan
@@ -5633,78 +5633,78 @@ SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggre
 
 -- evaluate data in expression
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_stddev_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"stdDevPop": { "$stdDevPop": {"$multiply": ["$x", "$num"]}, "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                                                document                                                                                 
+                                                                                 document                                                                                 
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "num" : { "$numberLong" : "10000000004"}, "stdDevPop" : { "$numberDouble" : "0.0" } }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "num" : { "$numberLong" : "10000000007"}, "stdDevPop" : { "$numberDouble" : "5000000005.0" } }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "num" : { "$numberLong" : "10000000013"}, "stdDevPop" : { "$numberDouble" : "8164965823.5659503937" } }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "num" : { "$numberLong" : "10000000016"}, "stdDevPop" : { "$numberDouble" : "11180339910.418645859" } }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "num" : { "$numberLong" : "10000000004" }, "stdDevPop" : { "$numberDouble" : "0.0" } }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "num" : { "$numberLong" : "10000000007" }, "stdDevPop" : { "$numberDouble" : "5000000005.0" } }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "num" : { "$numberLong" : "10000000013" }, "stdDevPop" : { "$numberDouble" : "8164965823.5659503937" } }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "num" : { "$numberLong" : "10000000016" }, "stdDevPop" : { "$numberDouble" : "11180339910.418645859" } }
 (4 rows)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_stddev_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"stdDevSamp": { "$stdDevSamp": {"$multiply": ["$x", "$num"]}, "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                                                 document                                                                                 
+                                                                                 document                                                                                  
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "num" : { "$numberLong" : "10000000004"}, "stdDevSamp" : null }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "num" : { "$numberLong" : "10000000007"}, "stdDevSamp" : { "$numberDouble" : "7071067818.936542511" } }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "num" : { "$numberLong" : "10000000013"}, "stdDevSamp" : { "$numberDouble" : "10000000017.5" } }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "num" : { "$numberLong" : "10000000016"}, "stdDevSamp" : { "$numberDouble" : "12909944513.823442459" } }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "num" : { "$numberLong" : "10000000004" }, "stdDevSamp" : null }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "num" : { "$numberLong" : "10000000007" }, "stdDevSamp" : { "$numberDouble" : "7071067818.936542511" } }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "num" : { "$numberLong" : "10000000013" }, "stdDevSamp" : { "$numberDouble" : "10000000017.5" } }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "num" : { "$numberLong" : "10000000016" }, "stdDevSamp" : { "$numberDouble" : "12909944513.823442459" } }
 (4 rows)
 
 -- array value
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_stddev_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"stdDevPop": { "$stdDevPop": ["$num"], "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                            document                                                            
+                                                            document                                                             
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "num" : { "$numberLong" : "10000000004"}, "stdDevPop" : null }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "num" : { "$numberLong" : "10000000007"}, "stdDevPop" : null }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "num" : { "$numberLong" : "10000000013"}, "stdDevPop" : null }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "num" : { "$numberLong" : "10000000016"}, "stdDevPop" : null }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "num" : { "$numberLong" : "10000000004" }, "stdDevPop" : null }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "num" : { "$numberLong" : "10000000007" }, "stdDevPop" : null }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "num" : { "$numberLong" : "10000000013" }, "stdDevPop" : null }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "num" : { "$numberLong" : "10000000016" }, "stdDevPop" : null }
 (4 rows)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_stddev_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"stdDevSamp": { "$stdDevSamp": ["$num"], "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                            document                                                             
+                                                             document                                                             
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "num" : { "$numberLong" : "10000000004"}, "stdDevSamp" : null }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "num" : { "$numberLong" : "10000000007"}, "stdDevSamp" : null }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "num" : { "$numberLong" : "10000000013"}, "stdDevSamp" : null }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "num" : { "$numberLong" : "10000000016"}, "stdDevSamp" : null }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "num" : { "$numberLong" : "10000000004" }, "stdDevSamp" : null }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "num" : { "$numberLong" : "10000000007" }, "stdDevSamp" : null }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "num" : { "$numberLong" : "10000000013" }, "stdDevSamp" : null }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "num" : { "$numberLong" : "10000000016" }, "stdDevSamp" : null }
 (4 rows)
 
 -- negative cases
 -- incorrect arguments won't throw error
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_stddev_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"stdDevPop": { "$stdDevPop": 3, "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                                       document                                                                        
+                                                                        document                                                                        
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "num" : { "$numberLong" : "10000000004"}, "stdDevPop" : { "$numberDouble" : "0.0" } }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "num" : { "$numberLong" : "10000000007"}, "stdDevPop" : { "$numberDouble" : "0.0" } }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "num" : { "$numberLong" : "10000000013"}, "stdDevPop" : { "$numberDouble" : "0.0" } }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "num" : { "$numberLong" : "10000000016"}, "stdDevPop" : { "$numberDouble" : "0.0" } }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "num" : { "$numberLong" : "10000000004" }, "stdDevPop" : { "$numberDouble" : "0.0" } }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "num" : { "$numberLong" : "10000000007" }, "stdDevPop" : { "$numberDouble" : "0.0" } }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "num" : { "$numberLong" : "10000000013" }, "stdDevPop" : { "$numberDouble" : "0.0" } }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "num" : { "$numberLong" : "10000000016" }, "stdDevPop" : { "$numberDouble" : "0.0" } }
 (4 rows)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_stddev_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"stdDevPop": { "$stdDevPop": {"a": "$num"}, "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                            document                                                            
+                                                            document                                                             
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "num" : { "$numberLong" : "10000000004"}, "stdDevPop" : null }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "num" : { "$numberLong" : "10000000007"}, "stdDevPop" : null }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "num" : { "$numberLong" : "10000000013"}, "stdDevPop" : null }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "num" : { "$numberLong" : "10000000016"}, "stdDevPop" : null }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "num" : { "$numberLong" : "10000000004" }, "stdDevPop" : null }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "num" : { "$numberLong" : "10000000007" }, "stdDevPop" : null }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "num" : { "$numberLong" : "10000000013" }, "stdDevPop" : null }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "num" : { "$numberLong" : "10000000016" }, "stdDevPop" : null }
 (4 rows)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_stddev_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"stdDevSamp": { "$stdDevSamp": 3, "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                                        document                                                                        
+                                                                        document                                                                         
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "num" : { "$numberLong" : "10000000004"}, "stdDevSamp" : null }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "num" : { "$numberLong" : "10000000007"}, "stdDevSamp" : { "$numberDouble" : "0.0" } }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "num" : { "$numberLong" : "10000000013"}, "stdDevSamp" : { "$numberDouble" : "0.0" } }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "num" : { "$numberLong" : "10000000016"}, "stdDevSamp" : { "$numberDouble" : "0.0" } }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "num" : { "$numberLong" : "10000000004" }, "stdDevSamp" : null }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "num" : { "$numberLong" : "10000000007" }, "stdDevSamp" : { "$numberDouble" : "0.0" } }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "num" : { "$numberLong" : "10000000013" }, "stdDevSamp" : { "$numberDouble" : "0.0" } }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "num" : { "$numberLong" : "10000000016" }, "stdDevSamp" : { "$numberDouble" : "0.0" } }
 (4 rows)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "long_stddev_col", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1}, "output": {"stdDevSamp": { "$stdDevSamp": {"a": "$x"}, "window": { "documents": ["unbounded", "current"]}}}}}]}');
-                                                            document                                                             
+                                                             document                                                             
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "num" : { "$numberLong" : "10000000004"}, "stdDevSamp" : null }
- { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "num" : { "$numberLong" : "10000000007"}, "stdDevSamp" : null }
- { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "num" : { "$numberLong" : "10000000013"}, "stdDevSamp" : null }
- { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "num" : { "$numberLong" : "10000000016"}, "stdDevSamp" : null }
+ { "_id" : { "$numberInt" : "0" }, "x" : { "$numberInt" : "1" }, "num" : { "$numberLong" : "10000000004" }, "stdDevSamp" : null }
+ { "_id" : { "$numberInt" : "1" }, "x" : { "$numberInt" : "2" }, "num" : { "$numberLong" : "10000000007" }, "stdDevSamp" : null }
+ { "_id" : { "$numberInt" : "2" }, "x" : { "$numberInt" : "3" }, "num" : { "$numberLong" : "10000000013" }, "stdDevSamp" : null }
+ { "_id" : { "$numberInt" : "3" }, "x" : { "$numberInt" : "4" }, "num" : { "$numberLong" : "10000000016" }, "stdDevSamp" : null }
 (4 rows)
 
 SELECT helio_api.insert_one('db','window_stddev_col',' { "_id": 0, "num": 2, "type": "a", "date": { "$date": { "$numberLong": "1718841600000" } } }');

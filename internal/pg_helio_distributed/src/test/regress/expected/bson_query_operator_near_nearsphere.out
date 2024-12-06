@@ -197,9 +197,9 @@ ERROR:  geo $near must be top-level expr
 SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": {}, "projection": { "p" : {"$elemMatch": {"geo": {"$near": [1,1]}}}}}');
 ERROR:  $geoNear, $near, and $nearSphere are not allowed in this context, as these operators require sorting geospatial data. If you do not need sort, consider using $geoWithin instead.
 SELECT helio_api.update('db', '{"update":"near_sphere", "updates":[{"q":{},"u":{"$set": {"a.$[elem].b": 1}},"multi":false,"upsert":true, "arrayFilters": [{"elem.geo": {"$near": [1, 1]}}]}]}');
-                                                                                                                                                                                                                         update                                                                                                                                                                                                                         
+                                                                                                                                                                                                                          update                                                                                                                                                                                                                          
 ---------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""21757981"" }, ""errmsg"" : ""$geoNear, $near, and $nearSphere are not allowed in this context, as these operators require sorting geospatial data. If you do not need sort, consider using $geoWithin instead."" } ] }",f)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""21757981"" }, ""errmsg"" : ""$geoNear, $near, and $nearSphere are not allowed in this context, as these operators require sorting geospatial data. If you do not need sort, consider using $geoWithin instead."" } ] }",f)
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "near_sphere", "indexes": [{"key": {"t": 1}, "name": "my_invalid_idx", "partialFilterExpression": {"geo": {"$near": [1,1]}} }]}', true);
@@ -888,21 +888,21 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filt
 -- check update
 BEGIN;
 SELECT helio_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1,1]}} ,"u":{"$set": {"t": 1}},"multi":false,"upsert":false}]}');
-                                                                                                                                                                update                                                                                                                                                                 
+                                                                                                                                                                 update                                                                                                                                                                  
 ---------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""21757981"" }, ""errmsg"" : ""$geoNear, $near, and $nearSphere are not allowed in this context"" } ] }",f)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""21757981"" }, ""errmsg"" : ""$geoNear, $near, and $nearSphere are not allowed in this context"" } ] }",f)
 (1 row)
 
 SELECT helio_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1.1,1.1]}} ,"u":{"$set": {"t": 1}},"multi":false,"upsert":false}]}');
-                                                                                                                                                                update                                                                                                                                                                 
+                                                                                                                                                                 update                                                                                                                                                                  
 ---------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""21757981"" }, ""errmsg"" : ""$geoNear, $near, and $nearSphere are not allowed in this context"" } ] }",f)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""21757981"" }, ""errmsg"" : ""$geoNear, $near, and $nearSphere are not allowed in this context"" } ] }",f)
 (1 row)
 
 SELECT helio_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1,1]}} ,"u":{"$set": {"t": 1}},"multi":true,"upsert":false}]}');
-                                                                                                                                                                update                                                                                                                                                                 
+                                                                                                                                                                 update                                                                                                                                                                  
 ---------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""21757981"" }, ""errmsg"" : ""$geoNear, $near, and $nearSphere are not allowed in this context"" } ] }",f)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""21757981"" }, ""errmsg"" : ""$geoNear, $near, and $nearSphere are not allowed in this context"" } ] }",f)
 (1 row)
 
 ROLLBACK;
@@ -1570,9 +1570,9 @@ ROLLBACK;
 -- update with sharded
 BEGIN;
 SELECT helio_api.update('db', '{"update":"near_sphere", "updates":[{"q":{"a.b": {"$near": [1,1]}} ,"u":{"$set": {"t": 1}},"multi":true,"upsert":false}]}');
-                                                                                                                                                                update                                                                                                                                                                 
+                                                                                                                                                                 update                                                                                                                                                                  
 ---------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""21757981"" }, ""errmsg"" : ""$geoNear, $near, and $nearSphere are not allowed in this context"" } ] }",f)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""21757981"" }, ""errmsg"" : ""$geoNear, $near, and $nearSphere are not allowed in this context"" } ] }",f)
 (1 row)
 
 ROLLBACK;

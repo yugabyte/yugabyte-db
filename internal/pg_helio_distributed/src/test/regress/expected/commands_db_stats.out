@@ -26,21 +26,21 @@ SELECT helio_api.drop_database('db1');
 
 -- Non existing database should return zero values
 SELECT helio_api.db_stats('db1');
-                                                                                                                                                                                                                              db_stats                                                                                                                                                                                                                              
+                                                                                                                                                                                                                                db_stats                                                                                                                                                                                                                                
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "0"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "0"}, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "0.0" }, "indexes" : { "$numberLong" : "0"}, "indexSize" : { "$numberDouble" : "0.0" }, "totalSize" : { "$numberDouble" : "0.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "0" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "0" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "0.0" }, "indexes" : { "$numberLong" : "0" }, "indexSize" : { "$numberDouble" : "0.0" }, "totalSize" : { "$numberDouble" : "0.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 SELECT helio_api.db_stats('db1', 1);
-                                                                                                                                                                                                                              db_stats                                                                                                                                                                                                                              
+                                                                                                                                                                                                                                db_stats                                                                                                                                                                                                                                
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "0"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "0"}, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "0.0" }, "indexes" : { "$numberLong" : "0"}, "indexSize" : { "$numberDouble" : "0.0" }, "totalSize" : { "$numberDouble" : "0.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "0" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "0" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "0.0" }, "indexes" : { "$numberLong" : "0" }, "indexSize" : { "$numberDouble" : "0.0" }, "totalSize" : { "$numberDouble" : "0.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 SELECT helio_api.db_stats('db1', 1024);
-                                                                                                                                                                                                                               db_stats                                                                                                                                                                                                                                
+                                                                                                                                                                                                                                 db_stats                                                                                                                                                                                                                                  
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "0"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "0"}, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "0.0" }, "indexes" : { "$numberLong" : "0"}, "indexSize" : { "$numberDouble" : "0.0" }, "totalSize" : { "$numberDouble" : "0.0" }, "scaleFactor" : { "$numberInt" : "1024" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "0" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "0" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "0.0" }, "indexes" : { "$numberLong" : "0" }, "indexSize" : { "$numberDouble" : "0.0" }, "totalSize" : { "$numberDouble" : "0.0" }, "scaleFactor" : { "$numberInt" : "1024" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 --=============== Tests for "collections" & "objects" count ===============+=--
@@ -54,21 +54,21 @@ NOTICE:  creating collection
 
 -- db_stats with one empty collection
 SELECT helio_api.db_stats('db1');
-                                                                                                                                                                                                                                   db_stats                                                                                                                                                                                                                                   
+                                                                                                                                                                                                                                     db_stats                                                                                                                                                                                                                                     
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "1"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "0"}, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "8192.0" }, "indexes" : { "$numberLong" : "1"}, "indexSize" : { "$numberDouble" : "8192.0" }, "totalSize" : { "$numberDouble" : "16384.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "1" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "0" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "8192.0" }, "indexes" : { "$numberLong" : "1" }, "indexSize" : { "$numberDouble" : "8192.0" }, "totalSize" : { "$numberDouble" : "16384.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 SELECT helio_api.db_stats('db1', 1);
-                                                                                                                                                                                                                                   db_stats                                                                                                                                                                                                                                   
+                                                                                                                                                                                                                                     db_stats                                                                                                                                                                                                                                     
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "1"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "0"}, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "8192.0" }, "indexes" : { "$numberLong" : "1"}, "indexSize" : { "$numberDouble" : "8192.0" }, "totalSize" : { "$numberDouble" : "16384.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "1" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "0" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "8192.0" }, "indexes" : { "$numberLong" : "1" }, "indexSize" : { "$numberDouble" : "8192.0" }, "totalSize" : { "$numberDouble" : "16384.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 SELECT helio_api.db_stats('db1', 1024);
-                                                                                                                                                                                                                                db_stats                                                                                                                                                                                                                                
+                                                                                                                                                                                                                                  db_stats                                                                                                                                                                                                                                  
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "1"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "0"}, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "8.0" }, "indexes" : { "$numberLong" : "1"}, "indexSize" : { "$numberDouble" : "8.0" }, "totalSize" : { "$numberDouble" : "16.0" }, "scaleFactor" : { "$numberInt" : "1024" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "1" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "0" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "8.0" }, "indexes" : { "$numberLong" : "1" }, "indexSize" : { "$numberDouble" : "8.0" }, "totalSize" : { "$numberDouble" : "16.0" }, "scaleFactor" : { "$numberInt" : "1024" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- Add one doc
@@ -83,9 +83,9 @@ SELECT helio_api.insert_one('db1','col1',' { "a" : 100 }', NULL);
 ANALYZE;
 -- db_stats with single collection and single document
 SELECT helio_api.db_stats('db1');
-                                                                                                                                                                                                                                     db_stats                                                                                                                                                                                                                                     
+                                                                                                                                                                                                                                       db_stats                                                                                                                                                                                                                                       
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "1"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "1"}, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "30.0" }, "storageSize" : { "$numberDouble" : "16384.0" }, "indexes" : { "$numberLong" : "1"}, "indexSize" : { "$numberDouble" : "16384.0" }, "totalSize" : { "$numberDouble" : "32768.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "1" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "1" }, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "30.0" }, "storageSize" : { "$numberDouble" : "16384.0" }, "indexes" : { "$numberLong" : "1" }, "indexSize" : { "$numberDouble" : "16384.0" }, "totalSize" : { "$numberDouble" : "32768.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- Insert few docs in the collection
@@ -99,9 +99,9 @@ SELECT insert_docs('db1', 'col1', 20, 1);
 ANALYZE;
 -- "objects" should be 21, "collections" should be 1, and fsStorageSize > fsUsedSize
 SELECT helio_api.db_stats('db1');
-                                                                                                                                                                                                                                      db_stats                                                                                                                                                                                                                                      
+                                                                                                                                                                                                                                        db_stats                                                                                                                                                                                                                                        
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "1"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "21"}, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "630.0" }, "storageSize" : { "$numberDouble" : "16384.0" }, "indexes" : { "$numberLong" : "1"}, "indexSize" : { "$numberDouble" : "16384.0" }, "totalSize" : { "$numberDouble" : "32768.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "1" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "21" }, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "630.0" }, "storageSize" : { "$numberDouble" : "16384.0" }, "indexes" : { "$numberLong" : "1" }, "indexSize" : { "$numberDouble" : "16384.0" }, "totalSize" : { "$numberDouble" : "32768.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- Create 4 more Collections
@@ -135,9 +135,9 @@ NOTICE:  creating collection
 
 -- "collections" and "indexes" count should increase to 5
 SELECT helio_api.db_stats('db1');
-                                                                                                                                                                                                                                      db_stats                                                                                                                                                                                                                                      
+                                                                                                                                                                                                                                        db_stats                                                                                                                                                                                                                                        
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "5"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "21"}, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "630.0" }, "storageSize" : { "$numberDouble" : "49152.0" }, "indexes" : { "$numberLong" : "5"}, "indexSize" : { "$numberDouble" : "49152.0" }, "totalSize" : { "$numberDouble" : "98304.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "21" }, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "630.0" }, "storageSize" : { "$numberDouble" : "49152.0" }, "indexes" : { "$numberLong" : "5" }, "indexSize" : { "$numberDouble" : "49152.0" }, "totalSize" : { "$numberDouble" : "98304.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- Add one doc to each new collection
@@ -169,9 +169,9 @@ SELECT helio_api.insert_one('db1','col5',' { "a" : 100 }', NULL);
 ANALYZE;
 -- "objects" count should increase to 25
 SELECT helio_api.db_stats('db1');
-                                                                                                                                                                                                                                      db_stats                                                                                                                                                                                                                                       
+                                                                                                                                                                                                                                        db_stats                                                                                                                                                                                                                                         
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "5"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "25"}, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "750.0" }, "storageSize" : { "$numberDouble" : "81920.0" }, "indexes" : { "$numberLong" : "5"}, "indexSize" : { "$numberDouble" : "81920.0" }, "totalSize" : { "$numberDouble" : "163840.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "25" }, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "750.0" }, "storageSize" : { "$numberDouble" : "81920.0" }, "indexes" : { "$numberLong" : "5" }, "indexSize" : { "$numberDouble" : "81920.0" }, "totalSize" : { "$numberDouble" : "163840.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- Insert 20 more docs in each new collection
@@ -203,9 +203,9 @@ SELECT insert_docs('db1', 'col5', 20, 1);
 ANALYZE;
 -- "objects" count should increase to 105
 SELECT helio_api.db_stats('db1');
-                                                                                                                                                                                                                                       db_stats                                                                                                                                                                                                                                        
+                                                                                                                                                                                                                                         db_stats                                                                                                                                                                                                                                          
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "5"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "105"}, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "3150.0" }, "storageSize" : { "$numberDouble" : "81920.0" }, "indexes" : { "$numberLong" : "5"}, "indexSize" : { "$numberDouble" : "81920.0" }, "totalSize" : { "$numberDouble" : "163840.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "105" }, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "3150.0" }, "storageSize" : { "$numberDouble" : "81920.0" }, "indexes" : { "$numberLong" : "5" }, "indexSize" : { "$numberDouble" : "81920.0" }, "totalSize" : { "$numberDouble" : "163840.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- Delete 1 document
@@ -219,9 +219,9 @@ SELECT helio_api.delete('db1', '{"delete":"col1", "deletes":[{"q":{"a":{"$gte": 
 ANALYZE;
 -- "objects" count should reduce to 104
 SELECT helio_api.db_stats('db1');
-                                                                                                                                                                                                                                       db_stats                                                                                                                                                                                                                                        
+                                                                                                                                                                                                                                         db_stats                                                                                                                                                                                                                                          
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "5"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "104"}, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "3120.0" }, "storageSize" : { "$numberDouble" : "81920.0" }, "indexes" : { "$numberLong" : "5"}, "indexSize" : { "$numberDouble" : "81920.0" }, "totalSize" : { "$numberDouble" : "163840.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "104" }, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "3120.0" }, "storageSize" : { "$numberDouble" : "81920.0" }, "indexes" : { "$numberLong" : "5" }, "indexSize" : { "$numberDouble" : "81920.0" }, "totalSize" : { "$numberDouble" : "163840.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- Delete 1 document from each remaining collections
@@ -253,9 +253,9 @@ SELECT helio_api.delete('db1', '{"delete":"col5", "deletes":[{"q":{"a":{"$gte": 
 ANALYZE;
 -- "objects" count should reduce to 100
 SELECT helio_api.db_stats('db1');
-                                                                                                                                                                                                                                       db_stats                                                                                                                                                                                                                                        
+                                                                                                                                                                                                                                         db_stats                                                                                                                                                                                                                                          
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "5"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "100"}, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "3000.0" }, "storageSize" : { "$numberDouble" : "81920.0" }, "indexes" : { "$numberLong" : "5"}, "indexSize" : { "$numberDouble" : "81920.0" }, "totalSize" : { "$numberDouble" : "163840.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "100" }, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "3000.0" }, "storageSize" : { "$numberDouble" : "81920.0" }, "indexes" : { "$numberLong" : "5" }, "indexSize" : { "$numberDouble" : "81920.0" }, "totalSize" : { "$numberDouble" : "163840.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- Now shard all collections
@@ -291,9 +291,9 @@ SELECT helio_api.shard_collection('db1','col5', '{"a":"hashed"}', false);
 
 -- "objects" count should remain 100
 SELECT helio_api.db_stats('db1');
-                                                                                                                                                                                                                                       db_stats                                                                                                                                                                                                                                        
+                                                                                                                                                                                                                                         db_stats                                                                                                                                                                                                                                          
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "5"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "100"}, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "5"}, "indexSize" : { "$numberDouble" : "1269760.0" }, "totalSize" : { "$numberDouble" : "1884160.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "100" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "5" }, "indexSize" : { "$numberDouble" : "1269760.0" }, "totalSize" : { "$numberDouble" : "1884160.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 --===================== Test for "indexes", "indexSize" =====================--
@@ -306,9 +306,9 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db1', helio_distribut
 
 -- "indexes" count should increase to 6, "indexSize" should increase
 SELECT helio_api.db_stats('db1');
-                                                                                                                                                                                                                                       db_stats                                                                                                                                                                                                                                        
+                                                                                                                                                                                                                                         db_stats                                                                                                                                                                                                                                          
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "5"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "100"}, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "6"}, "indexSize" : { "$numberDouble" : "1400832.0" }, "totalSize" : { "$numberDouble" : "2015232.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "100" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "6" }, "indexSize" : { "$numberDouble" : "1400832.0" }, "totalSize" : { "$numberDouble" : "2015232.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- Create one more index in each remaining collections
@@ -338,55 +338,55 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db1', helio_distribut
 
 -- "indexes" count should increase to 10, "indexSize" should increase
 SELECT helio_api.db_stats('db1');
-                                                                                                                                                                                                                                        db_stats                                                                                                                                                                                                                                        
+                                                                                                                                                                                                                                          db_stats                                                                                                                                                                                                                                          
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "5"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "100"}, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "10"}, "indexSize" : { "$numberDouble" : "1925120.0" }, "totalSize" : { "$numberDouble" : "2539520.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "100" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "10" }, "indexSize" : { "$numberDouble" : "1925120.0" }, "totalSize" : { "$numberDouble" : "2539520.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- Drop one index
 CALL helio_api.drop_indexes('db1', '{"dropIndexes": "col1", "index": "index_a_1"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 -- "indexes" count should reduce to 9
 SELECT helio_api.db_stats('db1');
-                                                                                                                                                                                                                                       db_stats                                                                                                                                                                                                                                        
+                                                                                                                                                                                                                                         db_stats                                                                                                                                                                                                                                          
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "5"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "100"}, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "9"}, "indexSize" : { "$numberDouble" : "1794048.0" }, "totalSize" : { "$numberDouble" : "2408448.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "100" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "9" }, "indexSize" : { "$numberDouble" : "1794048.0" }, "totalSize" : { "$numberDouble" : "2408448.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- Drop one index from each remaining collections
 CALL helio_api.drop_indexes('db1', '{"dropIndexes": "col2", "index": "index_a_1"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 CALL helio_api.drop_indexes('db1', '{"dropIndexes": "col3", "index": "index_a_1"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 CALL helio_api.drop_indexes('db1', '{"dropIndexes": "col4", "index": "index_a_1"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 CALL helio_api.drop_indexes('db1', '{"dropIndexes": "col5", "index": "index_a_1"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 -- "indexes" count should be back to 5 (one default _id index in each collection), "indexSize" should decrease
 SELECT helio_api.db_stats('db1');
-                                                                                                                                                                                                                                       db_stats                                                                                                                                                                                                                                        
+                                                                                                                                                                                                                                         db_stats                                                                                                                                                                                                                                          
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "5"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "100"}, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "5"}, "indexSize" : { "$numberDouble" : "1269760.0" }, "totalSize" : { "$numberDouble" : "1884160.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "100" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "5" }, "indexSize" : { "$numberDouble" : "1269760.0" }, "totalSize" : { "$numberDouble" : "1884160.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 --===================== Test with Views =====================================--
@@ -399,9 +399,9 @@ SELECT helio_api.create_collection_view('db1', '{ "create": "col1_view1", "viewO
 
 -- "views" should be 1
 SELECT helio_api.db_stats('db1');
-                                                                                                                                                                                                                                       db_stats                                                                                                                                                                                                                                        
+                                                                                                                                                                                                                                         db_stats                                                                                                                                                                                                                                          
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "5"}, "views" : { "$numberLong" : "1"}, "objects" : { "$numberLong" : "100"}, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "5"}, "indexSize" : { "$numberDouble" : "1269760.0" }, "totalSize" : { "$numberDouble" : "1884160.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "1" }, "objects" : { "$numberLong" : "100" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "5" }, "indexSize" : { "$numberDouble" : "1269760.0" }, "totalSize" : { "$numberDouble" : "1884160.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- create one view on each remaining collection
@@ -431,9 +431,9 @@ SELECT helio_api.create_collection_view('db1', '{ "create": "col5_view1", "viewO
 
 -- "views" should be 5
 SELECT helio_api.db_stats('db1');
-                                                                                                                                                                                                                                       db_stats                                                                                                                                                                                                                                        
+                                                                                                                                                                                                                                         db_stats                                                                                                                                                                                                                                          
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "5"}, "views" : { "$numberLong" : "5"}, "objects" : { "$numberLong" : "100"}, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "5"}, "indexSize" : { "$numberDouble" : "1269760.0" }, "totalSize" : { "$numberDouble" : "1884160.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "5" }, "views" : { "$numberLong" : "5" }, "objects" : { "$numberLong" : "100" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "614400.0" }, "indexes" : { "$numberLong" : "5" }, "indexSize" : { "$numberDouble" : "1269760.0" }, "totalSize" : { "$numberDouble" : "1884160.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- Drop one collection (despite a view on it)
@@ -447,9 +447,9 @@ SELECT helio_api.drop_collection('db1', 'col5');
 ANALYZE;
 -- "collections" should be 4, and "objects" will reduce
 SELECT helio_api.db_stats('db1');
-                                                                                                                                                                                                                                         db_stats                                                                                                                                                                                                                                         
+                                                                                                                                                                                                                                           db_stats                                                                                                                                                                                                                                           
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "4"}, "views" : { "$numberLong" : "5"}, "objects" : { "$numberLong" : "80"}, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "2400.0" }, "storageSize" : { "$numberDouble" : "491520.0" }, "indexes" : { "$numberLong" : "4"}, "indexSize" : { "$numberDouble" : "1015808.0" }, "totalSize" : { "$numberDouble" : "1507328.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "4" }, "views" : { "$numberLong" : "5" }, "objects" : { "$numberLong" : "80" }, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "2400.0" }, "storageSize" : { "$numberDouble" : "491520.0" }, "indexes" : { "$numberLong" : "4" }, "indexSize" : { "$numberDouble" : "1015808.0" }, "totalSize" : { "$numberDouble" : "1507328.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- Drop one view
@@ -463,9 +463,9 @@ NOTICE:  table "retry_6310" does not exist, skipping
 
 -- "views" should be 4
 SELECT helio_api.db_stats('db1');
-                                                                                                                                                                                                                                         db_stats                                                                                                                                                                                                                                         
+                                                                                                                                                                                                                                           db_stats                                                                                                                                                                                                                                           
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "4"}, "views" : { "$numberLong" : "4"}, "objects" : { "$numberLong" : "80"}, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "2400.0" }, "storageSize" : { "$numberDouble" : "491520.0" }, "indexes" : { "$numberLong" : "4"}, "indexSize" : { "$numberDouble" : "1015808.0" }, "totalSize" : { "$numberDouble" : "1507328.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "4" }, "views" : { "$numberLong" : "4" }, "objects" : { "$numberLong" : "80" }, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "2400.0" }, "storageSize" : { "$numberDouble" : "491520.0" }, "indexes" : { "$numberLong" : "4" }, "indexSize" : { "$numberDouble" : "1015808.0" }, "totalSize" : { "$numberDouble" : "1507328.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- Drop all remaining collections
@@ -495,9 +495,9 @@ SELECT helio_api.drop_collection('db1', 'col4');
 
 -- Only "views" and fs stats should be available, rest all should be zero values.
 SELECT helio_api.db_stats('db1');
-                                                                                                                                                                                                                              db_stats                                                                                                                                                                                                                              
+                                                                                                                                                                                                                                db_stats                                                                                                                                                                                                                                
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "0"}, "views" : { "$numberLong" : "4"}, "objects" : { "$numberLong" : "0"}, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "0.0" }, "indexes" : { "$numberLong" : "0"}, "indexSize" : { "$numberDouble" : "0.0" }, "totalSize" : { "$numberDouble" : "0.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "0" }, "views" : { "$numberLong" : "4" }, "objects" : { "$numberLong" : "0" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "0.0" }, "indexes" : { "$numberLong" : "0" }, "indexSize" : { "$numberDouble" : "0.0" }, "totalSize" : { "$numberDouble" : "0.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 --===================== Test with another database =============================--
@@ -520,58 +520,58 @@ NOTICE:  creating collection
 ANALYZE;
 -- various stats should be available
 SELECT helio_api.db_stats('db2');
-                                                                                                                                                                                                                                     db_stats                                                                                                                                                                                                                                     
+                                                                                                                                                                                                                                       db_stats                                                                                                                                                                                                                                       
 ---------------------------------------------------------------------
- { "db" : "db2", "collections" : { "$numberLong" : "1"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "1"}, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "30.0" }, "storageSize" : { "$numberDouble" : "16384.0" }, "indexes" : { "$numberLong" : "1"}, "indexSize" : { "$numberDouble" : "16384.0" }, "totalSize" : { "$numberDouble" : "32768.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db2", "collections" : { "$numberLong" : "1" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "1" }, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "30.0" }, "storageSize" : { "$numberDouble" : "16384.0" }, "indexes" : { "$numberLong" : "1" }, "indexSize" : { "$numberDouble" : "16384.0" }, "totalSize" : { "$numberDouble" : "32768.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 --===================== Test for "scale" Values =============================--
 SELECT helio_api.db_stats('db2', 1);
-                                                                                                                                                                                                                                     db_stats                                                                                                                                                                                                                                     
+                                                                                                                                                                                                                                       db_stats                                                                                                                                                                                                                                       
 ---------------------------------------------------------------------
- { "db" : "db2", "collections" : { "$numberLong" : "1"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "1"}, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "30.0" }, "storageSize" : { "$numberDouble" : "16384.0" }, "indexes" : { "$numberLong" : "1"}, "indexSize" : { "$numberDouble" : "16384.0" }, "totalSize" : { "$numberDouble" : "32768.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db2", "collections" : { "$numberLong" : "1" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "1" }, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "30.0" }, "storageSize" : { "$numberDouble" : "16384.0" }, "indexes" : { "$numberLong" : "1" }, "indexSize" : { "$numberDouble" : "16384.0" }, "totalSize" : { "$numberDouble" : "32768.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 SELECT helio_api.db_stats('db2', 2);
-                                                                                                                                                                                                                                    db_stats                                                                                                                                                                                                                                    
+                                                                                                                                                                                                                                      db_stats                                                                                                                                                                                                                                      
 ---------------------------------------------------------------------
- { "db" : "db2", "collections" : { "$numberLong" : "1"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "1"}, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "15.0" }, "storageSize" : { "$numberDouble" : "8192.0" }, "indexes" : { "$numberLong" : "1"}, "indexSize" : { "$numberDouble" : "8192.0" }, "totalSize" : { "$numberDouble" : "16384.0" }, "scaleFactor" : { "$numberInt" : "2" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db2", "collections" : { "$numberLong" : "1" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "1" }, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "15.0" }, "storageSize" : { "$numberDouble" : "8192.0" }, "indexes" : { "$numberLong" : "1" }, "indexSize" : { "$numberDouble" : "8192.0" }, "totalSize" : { "$numberDouble" : "16384.0" }, "scaleFactor" : { "$numberInt" : "2" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 SELECT helio_api.db_stats('db2', 2.5);
-                                                                                                                                                                                                                                    db_stats                                                                                                                                                                                                                                    
+                                                                                                                                                                                                                                      db_stats                                                                                                                                                                                                                                      
 ---------------------------------------------------------------------
- { "db" : "db2", "collections" : { "$numberLong" : "1"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "1"}, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "15.0" }, "storageSize" : { "$numberDouble" : "8192.0" }, "indexes" : { "$numberLong" : "1"}, "indexSize" : { "$numberDouble" : "8192.0" }, "totalSize" : { "$numberDouble" : "16384.0" }, "scaleFactor" : { "$numberInt" : "2" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db2", "collections" : { "$numberLong" : "1" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "1" }, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "15.0" }, "storageSize" : { "$numberDouble" : "8192.0" }, "indexes" : { "$numberLong" : "1" }, "indexSize" : { "$numberDouble" : "8192.0" }, "totalSize" : { "$numberDouble" : "16384.0" }, "scaleFactor" : { "$numberInt" : "2" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 SELECT helio_api.db_stats('db2', 2.99);
-                                                                                                                                                                                                                                    db_stats                                                                                                                                                                                                                                    
+                                                                                                                                                                                                                                      db_stats                                                                                                                                                                                                                                      
 ---------------------------------------------------------------------
- { "db" : "db2", "collections" : { "$numberLong" : "1"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "1"}, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "15.0" }, "storageSize" : { "$numberDouble" : "8192.0" }, "indexes" : { "$numberLong" : "1"}, "indexSize" : { "$numberDouble" : "8192.0" }, "totalSize" : { "$numberDouble" : "16384.0" }, "scaleFactor" : { "$numberInt" : "2" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db2", "collections" : { "$numberLong" : "1" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "1" }, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "15.0" }, "storageSize" : { "$numberDouble" : "8192.0" }, "indexes" : { "$numberLong" : "1" }, "indexSize" : { "$numberDouble" : "8192.0" }, "totalSize" : { "$numberDouble" : "16384.0" }, "scaleFactor" : { "$numberInt" : "2" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 SELECT helio_api.db_stats('db2', 100);
-                                                                                                                                                                                                                                                                   db_stats                                                                                                                                                                                                                                                                    
+                                                                                                                                                                                                                                                                     db_stats                                                                                                                                                                                                                                                                      
 ---------------------------------------------------------------------
- { "db" : "db2", "collections" : { "$numberLong" : "1"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "1"}, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "0.2999999999999999889" }, "storageSize" : { "$numberDouble" : "163.84000000000000341" }, "indexes" : { "$numberLong" : "1"}, "indexSize" : { "$numberDouble" : "163.84000000000000341" }, "totalSize" : { "$numberDouble" : "327.68000000000000682" }, "scaleFactor" : { "$numberInt" : "100" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db2", "collections" : { "$numberLong" : "1" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "1" }, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "0.2999999999999999889" }, "storageSize" : { "$numberDouble" : "163.84000000000000341" }, "indexes" : { "$numberLong" : "1" }, "indexSize" : { "$numberDouble" : "163.84000000000000341" }, "totalSize" : { "$numberDouble" : "327.68000000000000682" }, "scaleFactor" : { "$numberInt" : "100" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 SELECT helio_api.db_stats('db2', 1024.99);
-                                                                                                                                                                                                                                     db_stats                                                                                                                                                                                                                                      
+                                                                                                                                                                                                                                       db_stats                                                                                                                                                                                                                                        
 ---------------------------------------------------------------------
- { "db" : "db2", "collections" : { "$numberLong" : "1"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "1"}, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "0.029296875" }, "storageSize" : { "$numberDouble" : "16.0" }, "indexes" : { "$numberLong" : "1"}, "indexSize" : { "$numberDouble" : "16.0" }, "totalSize" : { "$numberDouble" : "32.0" }, "scaleFactor" : { "$numberInt" : "1024" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db2", "collections" : { "$numberLong" : "1" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "1" }, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "0.029296875" }, "storageSize" : { "$numberDouble" : "16.0" }, "indexes" : { "$numberLong" : "1" }, "indexSize" : { "$numberDouble" : "16.0" }, "totalSize" : { "$numberDouble" : "32.0" }, "scaleFactor" : { "$numberInt" : "1024" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 SELECT helio_api.db_stats('db2', 2147483647);      -- INT_MAX
-                                                                                                                                                                                                                                                                               db_stats                                                                                                                                                                                                                                                                               
+                                                                                                                                                                                                                                                                                 db_stats                                                                                                                                                                                                                                                                                 
 ---------------------------------------------------------------------
- { "db" : "db2", "collections" : { "$numberLong" : "1"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "1"}, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "1.3969838625737390769e-08" }, "storageSize" : { "$numberDouble" : "7.6293945348027136788e-06" }, "indexes" : { "$numberLong" : "1"}, "indexSize" : { "$numberDouble" : "7.6293945348027136788e-06" }, "totalSize" : { "$numberDouble" : "1.5258789069605427358e-05" }, "scaleFactor" : { "$numberInt" : "2147483647" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db2", "collections" : { "$numberLong" : "1" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "1" }, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "1.3969838625737390769e-08" }, "storageSize" : { "$numberDouble" : "7.6293945348027136788e-06" }, "indexes" : { "$numberLong" : "1" }, "indexSize" : { "$numberDouble" : "7.6293945348027136788e-06" }, "totalSize" : { "$numberDouble" : "1.5258789069605427358e-05" }, "scaleFactor" : { "$numberInt" : "2147483647" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 SELECT helio_api.db_stats('db2', 2147483647000);   -- More than INT_MAX
-                                                                                                                                                                                                                                                                               db_stats                                                                                                                                                                                                                                                                               
+                                                                                                                                                                                                                                                                                 db_stats                                                                                                                                                                                                                                                                                 
 ---------------------------------------------------------------------
- { "db" : "db2", "collections" : { "$numberLong" : "1"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "1"}, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "1.3969838625737390769e-08" }, "storageSize" : { "$numberDouble" : "7.6293945348027136788e-06" }, "indexes" : { "$numberLong" : "1"}, "indexSize" : { "$numberDouble" : "7.6293945348027136788e-06" }, "totalSize" : { "$numberDouble" : "1.5258789069605427358e-05" }, "scaleFactor" : { "$numberInt" : "2147483647" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db2", "collections" : { "$numberLong" : "1" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "1" }, "avgObjSize" : { "$numberDouble" : "30.0" }, "dataSize" : { "$numberDouble" : "1.3969838625737390769e-08" }, "storageSize" : { "$numberDouble" : "7.6293945348027136788e-06" }, "indexes" : { "$numberLong" : "1" }, "indexSize" : { "$numberDouble" : "7.6293945348027136788e-06" }, "totalSize" : { "$numberDouble" : "1.5258789069605427358e-05" }, "scaleFactor" : { "$numberInt" : "2147483647" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 --===================== ERROR Cases =============================--
@@ -598,9 +598,9 @@ SELECT helio_api.drop_database('db1');
 
 -- Should return Zero values for non-existing collection (except of fs stats)
 SELECT helio_api.db_stats('db1');
-                                                                                                                                                                                                                              db_stats                                                                                                                                                                                                                              
+                                                                                                                                                                                                                                db_stats                                                                                                                                                                                                                                
 ---------------------------------------------------------------------
- { "db" : "db1", "collections" : { "$numberLong" : "0"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "0"}, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "0.0" }, "indexes" : { "$numberLong" : "0"}, "indexSize" : { "$numberDouble" : "0.0" }, "totalSize" : { "$numberDouble" : "0.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db1", "collections" : { "$numberLong" : "0" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "0" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "0.0" }, "indexes" : { "$numberLong" : "0" }, "indexSize" : { "$numberDouble" : "0.0" }, "totalSize" : { "$numberDouble" : "0.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 -- Clean up
@@ -612,9 +612,9 @@ SELECT helio_api.drop_database('db2');
 
 -- Should return Zero values for non-existing collection (except of fs stats)
 SELECT helio_api.db_stats('db2');
-                                                                                                                                                                                                                              db_stats                                                                                                                                                                                                                              
+                                                                                                                                                                                                                                db_stats                                                                                                                                                                                                                                
 ---------------------------------------------------------------------
- { "db" : "db2", "collections" : { "$numberLong" : "0"}, "views" : { "$numberLong" : "0"}, "objects" : { "$numberLong" : "0"}, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "0.0" }, "indexes" : { "$numberLong" : "0"}, "indexSize" : { "$numberDouble" : "0.0" }, "totalSize" : { "$numberDouble" : "0.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+ { "db" : "db2", "collections" : { "$numberLong" : "0" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "0" }, "avgObjSize" : { "$numberDouble" : "0.0" }, "dataSize" : { "$numberDouble" : "0.0" }, "storageSize" : { "$numberDouble" : "0.0" }, "indexes" : { "$numberLong" : "0" }, "indexSize" : { "$numberDouble" : "0.0" }, "totalSize" : { "$numberDouble" : "0.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
 (1 row)
 
 SET client_min_messages TO DEFAULT;

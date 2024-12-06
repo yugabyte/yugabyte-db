@@ -20,9 +20,9 @@ NOTICE:  creating collection
 (1 row)
 
 CALL helio_api.drop_indexes('db', '{"dropIndexes": "drop_all_test", "index": ["*"]}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "3"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "3" } }
 (1 row)
 
 SELECT * FROM helio_distributed_test_helpers.count_collection_indexes('db', 'drop_all_test') ORDER BY 1,2;
@@ -50,9 +50,9 @@ SELECT helio_api_internal.create_indexes_non_concurrently(
 -- Whatever rest of the arguments are, having "*" as the first one would drop
 -- all indexes.
 CALL helio_api.drop_indexes('db', '{"dropIndexes": "drop_all_test", "index": ["*", "_id_", "index_dne"]}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "3"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "3" } }
 (1 row)
 
 SELECT * FROM helio_distributed_test_helpers.count_collection_indexes('db', 'drop_all_test') ORDER BY 1,2;
@@ -94,9 +94,9 @@ ERROR:  cannot drop _id index
 CALL helio_api.drop_indexes('db', '{"dropIndexes": "drop_all_test", "index": ["_id_", "*"]}');
 ERROR:  cannot drop _id index
 CALL helio_api.drop_indexes('db', '{"dropIndexes": "drop_all_test", "index": "*"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "3"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "3" } }
 (1 row)
 
 SELECT * FROM helio_distributed_test_helpers.count_collection_indexes('db', 'drop_all_test') ORDER BY 1,2;
@@ -155,9 +155,9 @@ ERROR:  can't find index with key: { "$**.c.d" : 1 }
 CALL helio_api.drop_indexes('db', '{"dropIndexes": "drop_by_key", "index": "*",
                                                                      "index": {"a": 1, "c.e": 1},
                                                                      "index": {"b.$**": 1}}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "3"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "3" } }
 (1 row)
 
 SELECT * FROM helio_distributed_test_helpers.get_collection_indexes('db', 'drop_by_key') ORDER BY collection_id, index_id;
@@ -172,9 +172,9 @@ CALL helio_api.drop_indexes('db', '{"dropIndexes": "drop_by_key", "index": {"c.e
 ERROR:  can't find index with key: { "c.e" : 1, "a" : 1 }
 -- now drop "idx_1" too, but specify collection name using "deleteIndexes"
 CALL helio_api.drop_indexes('db', '{"deleteIndexes": "drop_by_key", "index": {"a": 1, "c.e": 1}}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 SELECT * FROM helio_distributed_test_helpers.get_collection_indexes('db', 'drop_by_key') ORDER BY collection_id, index_id;

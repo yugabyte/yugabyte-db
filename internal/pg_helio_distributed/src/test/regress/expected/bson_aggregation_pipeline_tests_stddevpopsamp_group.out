@@ -68,7 +68,7 @@ NOTICE:  creating collection
 (1 row)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "single_num", "pipeline": [ { "$group": { "_id": 1, "stdDev": { "$stdDevPop": "$num" } } } ] }');
-                               document                                
+                                  document                                  
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "stdDev" : { "$numberDouble" : "0.0" } }
 (1 row)
@@ -140,7 +140,7 @@ SELECT helio_api.insert_one('db','single_num_char',' {"num": "a" }');
 (1 row)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "single_num_char", "pipeline": [ { "$group": { "_id": 1, "stdDev": { "$stdDevPop": "$num" } } } ] }');
-                               document                                
+                                  document                                  
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "stdDev" : { "$numberDouble" : "0.0" } }
 (1 row)

@@ -93,9 +93,9 @@ SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@
 ERROR:  Too many text expressions
 -- now let's try Mongo's text search example
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "text_search", "index": "a_text" }');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 11, "subject": "coffee", "author": "xyz", "views": 50 }');
@@ -267,9 +267,9 @@ SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@
 
 -- now repeat the above with default_languages.
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "text_search", "index": "subject_text" }');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 21, "sujeito": "Café", "author": "xyz", "views": 50 }');
@@ -385,9 +385,9 @@ SELECT bson_dollar_project_find(document, '{ "_id": 1, "sujeito": 1, "rank": { "
 (7 rows)
 
 SELECT cursorPage, continuation, persistConnection FROM helio_api.find_cursor_first_page('db', '{ "find": "text_search", "filter": { "$text": { "$search": "Café bolo cozinhar" } }, "projection": { "_id": 1, "sujeito": 1, "rank": { "$meta": "textScore" }} }');
-                                                                                                                                                                                                                                                                                                                                                                                                                                         cursorpage                                                                                                                                                                                                                                                                                                                                                                                                                                          | continuation | persistconnection 
+                                                                                                                                                                                                                                                                                                                                                                                                                                          cursorpage                                                                                                                                                                                                                                                                                                                                                                                                                                          | continuation | persistconnection 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.text_search", "firstBatch" : [ { "_id" : { "$numberInt" : "21" }, "sujeito" : "Café", "rank" : { "$numberDouble" : "1.0" } }, { "_id" : { "$numberInt" : "22" }, "sujeito" : "Comprar Café", "rank" : { "$numberDouble" : "1.0" } }, { "_id" : { "$numberInt" : "28" }, "sujeito" : "Cafe com azeite e leite", "rank" : { "$numberDouble" : "1.0" } }, { "_id" : { "$numberInt" : "23" }, "sujeito" : "Cozinhando um bolo", "rank" : { "$numberDouble" : "2.0" } }, { "_id" : { "$numberInt" : "25" }, "sujeito" : "Café com leite", "rank" : { "$numberDouble" : "1.0" } }, { "_id" : { "$numberInt" : "27" }, "sujeito" : "Café com azeite", "rank" : { "$numberDouble" : "1.0" } }, { "_id" : { "$numberInt" : "24" }, "sujeito" : "Cozinhar", "rank" : { "$numberDouble" : "1.0" } } ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.text_search", "firstBatch" : [ { "_id" : { "$numberInt" : "21" }, "sujeito" : "Café", "rank" : { "$numberDouble" : "1.0" } }, { "_id" : { "$numberInt" : "22" }, "sujeito" : "Comprar Café", "rank" : { "$numberDouble" : "1.0" } }, { "_id" : { "$numberInt" : "28" }, "sujeito" : "Cafe com azeite e leite", "rank" : { "$numberDouble" : "1.0" } }, { "_id" : { "$numberInt" : "23" }, "sujeito" : "Cozinhando um bolo", "rank" : { "$numberDouble" : "2.0" } }, { "_id" : { "$numberInt" : "25" }, "sujeito" : "Café com leite", "rank" : { "$numberDouble" : "1.0" } }, { "_id" : { "$numberInt" : "27" }, "sujeito" : "Café com azeite", "rank" : { "$numberDouble" : "1.0" } }, { "_id" : { "$numberInt" : "24" }, "sujeito" : "Cozinhar", "rank" : { "$numberDouble" : "1.0" } } ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f
 (1 row)
 
 -- pipeline cases
@@ -469,9 +469,9 @@ ERROR:  query requires text score metadata, but it is not available
 CONTEXT:  while executing command on localhost:58070
 -- test with custom weights.
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "text_search", "index": "sujeito_text" }');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 31, "x": "az b x", "y": "c d m" }');

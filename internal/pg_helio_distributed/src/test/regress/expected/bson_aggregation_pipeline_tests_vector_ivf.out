@@ -212,9 +212,9 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 COMMIT;
 -- numLists > data size, pgvector will generate randomized centroids, using original vector data to query
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "aggregation_pipeline_vector", "index": "foo_1"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "1"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "1" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline_vector", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 1000, "similarity": "COS", "dimensions": 3 } } ] }', true);
@@ -1938,9 +1938,9 @@ ROLLBACK;
 -- ivf search: with filter, different distance metric
 -- ivf search: cosine similarity
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "aggregation_pipeline_ivf_filter", "index": "ivf_index"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "7"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "7" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline_ivf_filter", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "ivf_index_cos", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 4, "similarity": "COS", "dimensions": 3 } } ] }', true);
@@ -2015,9 +2015,9 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
 ROLLBACK;
 -- ivf search: inner product
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "aggregation_pipeline_ivf_filter", "index": "ivf_index_cos"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "7"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "7" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline_ivf_filter", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "ivf_index_ip", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 4, "similarity": "IP", "dimensions": 3 } } ] }', true);
@@ -2092,9 +2092,9 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
 ROLLBACK;
 -- ivf search: restore to euclidean distance
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "aggregation_pipeline_ivf_filter", "index": "ivf_index_ip"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "7"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "7" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline_ivf_filter", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "ivf_index", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 4, "similarity": "L2", "dimensions": 3 } } ] }', true);
@@ -2471,9 +2471,9 @@ END;
 ANALYZE;
 -- reindex, numLists = 2
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "aggregation_pipeline_ivf_filter", "index": "ivf_index"}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "7"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "7" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline_ivf_filter", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "ivf_index", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 2, "similarity": "L2", "dimensions": 3 } } ] }', true);

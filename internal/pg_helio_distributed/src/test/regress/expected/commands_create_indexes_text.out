@@ -37,9 +37,9 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexe
 (1 row)
 
 SELECT helio_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
-                                                                                                                                                                                                                                                                            list_indexes_cursor_first_page                                                                                                                                                                                                                                                                            
+                                                                                                                                                                                                                                                                            list_indexes_cursor_first_page                                                                                                                                                                                                                                                                             
 ---------------------------------------------------------------------
- ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0""}, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""a_text"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""a_text"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
 (1 row)
 
 SELECT * FROM helio_api_catalog.collection_indexes WHERE collection_id = 6770 ORDER BY 1,2,3;
@@ -64,9 +64,9 @@ Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
 
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "a_text" }');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "a": "text", "b": "text", "c": 1 }, "name": "idx1" } ] }', true);
@@ -76,9 +76,9 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexe
 (1 row)
 
 SELECT helio_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
-                                                                                                                                                                                                                                                                                                                 list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                  
+                                                                                                                                                                                                                                                                                                                  list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                  
 ---------------------------------------------------------------------
- ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0""}, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" }, ""c"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" }, ""b"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" }, ""c"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" }, ""b"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
 (1 row)
 
 \d helio_data.documents_6770
@@ -96,9 +96,9 @@ Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
 
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "a": 1, "b": "text", "c": 1 }, "name": "idx1" } ] }', true);
@@ -108,15 +108,15 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexe
 (1 row)
 
 SELECT helio_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
-                                                                                                                                                                                                                                                                                                               list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                               
+                                                                                                                                                                                                                                                                                                               list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                
 ---------------------------------------------------------------------
- ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0""}, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""a"" : { ""$numberInt"" : ""1"" }, ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" }, ""c"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""b"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""a"" : { ""$numberInt"" : ""1"" }, ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" }, ""c"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""b"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
 (1 row)
 
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "a": 1, "b": "text", "c": "text" }, "name": "idx1" } ] }', true);
@@ -126,9 +126,9 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexe
 (1 row)
 
 SELECT helio_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
-                                                                                                                                                                                                                                                                                                                 list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                  
+                                                                                                                                                                                                                                                                                                                  list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                  
 ---------------------------------------------------------------------
- ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0""}, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""a"" : { ""$numberInt"" : ""1"" }, ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""b"" : { ""$numberDouble"" : ""1.0"" }, ""c"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""a"" : { ""$numberInt"" : ""1"" }, ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""b"" : { ""$numberDouble"" : ""1.0"" }, ""c"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
 (1 row)
 
 \d helio_data.documents_6770
@@ -146,9 +146,9 @@ Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
 
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "$**": "text" }, "name": "idx1" } ] }', true);
@@ -158,9 +158,9 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexe
 (1 row)
 
 SELECT helio_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
-                                                                                                                                                                                                                                                                            list_indexes_cursor_first_page                                                                                                                                                                                                                                                                            
+                                                                                                                                                                                                                                                                            list_indexes_cursor_first_page                                                                                                                                                                                                                                                                             
 ---------------------------------------------------------------------
- ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0""}, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""$**"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""$**"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
 (1 row)
 
 \d helio_data.documents_6770
@@ -178,9 +178,9 @@ Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
 
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "a": "text" }, "name": "idx1", "default_language": "es" } ] }', true);
@@ -190,9 +190,9 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexe
 (1 row)
 
 SELECT helio_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
-                                                                                                                                                                                                                                                                                          list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                           
+                                                                                                                                                                                                                                                                                           list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                           
 ---------------------------------------------------------------------
- ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0""}, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""default_language"" : ""es"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""default_language"" : ""es"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
 (1 row)
 
 \d helio_data.documents_6770
@@ -210,9 +210,9 @@ Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
 
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "a": "text", "b": "text", "c": 1 }, "name": "idx1", "weights": { "b": 100, "c": 200 } } ] }', true);
@@ -222,9 +222,9 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexe
 (1 row)
 
 SELECT helio_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
-                                                                                                                                                                                                                                                                                                                                        list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                                        
+                                                                                                                                                                                                                                                                                                                                        list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                                         
 ---------------------------------------------------------------------
- ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0""}, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" }, ""c"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" }, ""b"" : { ""$numberDouble"" : ""100.0"" }, ""c"" : { ""$numberDouble"" : ""200.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" }, ""c"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" }, ""b"" : { ""$numberDouble"" : ""100.0"" }, ""c"" : { ""$numberDouble"" : ""200.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
 (1 row)
 
 \d helio_data.documents_6770
@@ -242,9 +242,9 @@ Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
 
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "a": "text", "b": "text", "c": 1 }, "name": "idx1", "weights": { "c": 200, "d": 10 } } ] }', true);
@@ -254,9 +254,9 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexe
 (1 row)
 
 SELECT helio_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
-                                                                                                                                                                                                                                                                                                                                                            list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                                                            
+                                                                                                                                                                                                                                                                                                                                                            list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                                                             
 ---------------------------------------------------------------------
- ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0""}, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" }, ""c"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" }, ""b"" : { ""$numberDouble"" : ""1.0"" }, ""c"" : { ""$numberDouble"" : ""200.0"" }, ""d"" : { ""$numberDouble"" : ""10.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" }, ""c"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" }, ""b"" : { ""$numberDouble"" : ""1.0"" }, ""c"" : { ""$numberDouble"" : ""200.0"" }, ""d"" : { ""$numberDouble"" : ""10.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
 (1 row)
 
 \d helio_data.documents_6770
@@ -274,9 +274,9 @@ Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
 
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "a": 1, "$**": "text" }, "name": "idx1" } ] }', true);
@@ -286,9 +286,9 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexe
 (1 row)
 
 SELECT helio_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
-                                                                                                                                                                                                                                                                                              list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                              
+                                                                                                                                                                                                                                                                                              list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                               
 ---------------------------------------------------------------------
- ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0""}, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""a"" : { ""$numberInt"" : ""1"" }, ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""$**"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""a"" : { ""$numberInt"" : ""1"" }, ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""$**"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
 (1 row)
 
 \d helio_data.documents_6770
@@ -306,9 +306,9 @@ Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
 
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "$**": "text", "a": 1 }, "name": "idx1" } ] }', true);
@@ -318,9 +318,9 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexe
 (1 row)
 
 SELECT helio_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
-                                                                                                                                                                                                                                                                                              list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                              
+                                                                                                                                                                                                                                                                                              list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                               
 ---------------------------------------------------------------------
- ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0""}, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" }, ""a"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""$**"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" }, ""a"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""$**"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
 (1 row)
 
 \d helio_data.documents_6770
@@ -338,9 +338,9 @@ Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
 
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "a": "text" }, "language_override": "idioma", "name": "idx1" } ] }', true);
@@ -350,9 +350,9 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexe
 (1 row)
 
 SELECT helio_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
-                                                                                                                                                                                                                                                                          list_indexes_cursor_first_page                                                                                                                                                                                                                                                                          
+                                                                                                                                                                                                                                                                          list_indexes_cursor_first_page                                                                                                                                                                                                                                                                           
 ---------------------------------------------------------------------
- ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0""}, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""idioma"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""idioma"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
 (1 row)
 
 \d helio_data.documents_6770
@@ -370,9 +370,9 @@ Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
 
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "$**": "text" }, "name": "idx1", "default_language": "es" } ] }', true);
@@ -382,9 +382,9 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexe
 (1 row)
 
 SELECT helio_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
-                                                                                                                                                                                                                                                                                           list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                            
+                                                                                                                                                                                                                                                                                            list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                            
 ---------------------------------------------------------------------
- ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0""}, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""default_language"" : ""es"", ""weights"" : { ""$**"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""default_language"" : ""es"", ""weights"" : { ""$**"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
 (1 row)
 
 \d helio_data.documents_6770
@@ -409,9 +409,9 @@ SELECT helio_api.shard_collection('db', 'create_indexes_text', '{ "_id" : "hashe
 (1 row)
 
 SELECT helio_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
-                                                                                                                                                                                                                                                                                           list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                            
+                                                                                                                                                                                                                                                                                            list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                            
 ---------------------------------------------------------------------
- ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0""}, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""default_language"" : ""es"", ""weights"" : { ""$**"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""default_language"" : ""es"", ""weights"" : { ""$**"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
 (1 row)
 
 \d helio_data.documents_6770
@@ -430,9 +430,9 @@ Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = get_shard_key_value('{ "_id" : "hashed" }'::bson, 6770::bigint, document))
 
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 -- now create an index

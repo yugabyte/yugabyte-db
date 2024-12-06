@@ -48,9 +48,9 @@ SELECT helio_api.insert_one('db','sample',' { "_id" : 6, "item" : "almonds", "pr
 -- https://www.postgresql.org/docs/current/tsm-system-rows.html
 -- Sample with cursor for unsharded collection not supported - use persisted cursor
 SELECT * FROM helio_api.aggregate_cursor_first_page(database => 'db', commandSpec => '{ "aggregate": "sample", "pipeline": [ { "$sample": { "size": 3 } }, { "$project": { "_id": 0 } } ], "cursor": { "batchSize": 1 } }', cursorId => 4294967294);
-                                                                                                             cursorpage                                                                                                              |                                                                continuation                                                                | persistconnection |  cursorid  
+                                                                                                              cursorpage                                                                                                              |                                                                continuation                                                                 | persistconnection |  cursorid  
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "4294967294"}, "ns" : "db.sample", "firstBatch" : [ { "item" : "almonds", "price" : { "$numberInt" : "1" }, "quantity" : { "$numberInt" : "1" } } ] }, "ok" : { "$numberDouble" : "1.0" } } | { "qk" : { "$numberInt" : "2" }, "qn" : "cursor_4294967294", "qi" : { "$numberLong" : "4294967294"}, "numIters" : { "$numberInt" : "0" } } | t                 | 4294967294
+ { "cursor" : { "id" : { "$numberLong" : "4294967294" }, "ns" : "db.sample", "firstBatch" : [ { "item" : "almonds", "price" : { "$numberInt" : "1" }, "quantity" : { "$numberInt" : "1" } } ] }, "ok" : { "$numberDouble" : "1.0" } } | { "qk" : { "$numberInt" : "2" }, "qn" : "cursor_4294967294", "qi" : { "$numberLong" : "4294967294" }, "numIters" : { "$numberInt" : "0" } } | t                 | 4294967294
 (1 row)
 
 -- Shard orders collection on item 

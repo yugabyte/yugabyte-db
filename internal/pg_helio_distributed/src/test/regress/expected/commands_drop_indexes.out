@@ -26,9 +26,9 @@ CALL helio_api.drop_indexes('db', '{"dropIndexes": "collection_3"}');
 ERROR:  BSON field 'dropIndexes.index' is missing but a required field
 -- this is ok
 CALL helio_api.drop_indexes('db', '{"dropIndexes": "collection_3", "index":[]}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "1"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "1" } }
 (1 row)
 
 CALL helio_api.drop_indexes('db', '{"dropIndexes": 1, "index":[]}');
@@ -64,9 +64,9 @@ SELECT helio_api_internal.create_indexes_non_concurrently(p_arg=>'{"createIndexe
 (1 row)
 
 CALL helio_api.drop_indexes('db', '{"dropIndexes": "collection_3", "index": ["idx_1"]}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "3"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "3" } }
 (1 row)
 
 -- test drop_collection

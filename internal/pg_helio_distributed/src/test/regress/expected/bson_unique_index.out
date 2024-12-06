@@ -136,9 +136,9 @@ SELECT helio_api.insert_one('db','queryuniqueindex','{"_id": "8", "a": { "b": 20
 
 -- drop the unique index.
 CALL helio_api.drop_indexes('db', '{"dropIndexes": "queryuniqueindex", "index": ["rumConstraint1"]}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 SELECT * FROM helio_distributed_test_helpers.get_collection_indexes('db', 'queryuniqueindex') ORDER BY collection_id, index_id;
@@ -209,9 +209,9 @@ SELECT helio_api.insert_one('db','queryuniqueindex','{"_id":"14", "c": null }', 
 
 -- drop the unique index by key.
 CALL helio_api.drop_indexes('db', '{"dropIndexes": "queryuniqueindex", "index": {"c": 1} }');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 SELECT * FROM helio_distributed_test_helpers.get_collection_indexes('db', 'queryuniqueindex') ORDER BY collection_id, index_id;
@@ -477,9 +477,9 @@ SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "h": 5 }');
 set helio_api.enable_large_unique_index_keys to on;
 DELETE FROM helio_data.documents_5600;
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "rumConstraint1", "rumConstraint2", "rumConstraint3" ] }');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "4"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "4" } }
 (1 row)
 
 \d helio_data.documents_5600
@@ -719,9 +719,9 @@ SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key3": [1, 2] }');
 set helio_api.enable_large_unique_index_keys to on;
 DELETE FROM helio_data.documents_5600;
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "constraint1" ] }');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 \d helio_data.documents_5600
@@ -831,9 +831,9 @@ SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "key1": 5, "key2": null
 set helio_api.enable_large_unique_index_keys to on;
 DELETE FROM helio_data.documents_5600;
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "constraint1" ] }');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 \d helio_data.documents_5600
@@ -925,9 +925,9 @@ SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": 1, "b": 1 }');
 set helio_api.enable_large_unique_index_keys to on;
 DELETE FROM helio_data.documents_5600;
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "index": [ "constraint1" ] }');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 \d helio_data.documents_5600
@@ -1017,87 +1017,87 @@ SELECT helio_api.insert_one('db', 'queryuniqueindex', '{ "a": 1, "b": 1 }');
 
 -- test new op class (generate_unique_shard_document) for composite sparse indexes
 SELECT helio_api_internal.generate_unique_shard_document('{ "key1": 1, "key2": "b" }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true);
-                                                                           generate_unique_shard_document                                                                           
+                                                                           generate_unique_shard_document                                                                            
 ---------------------------------------------------------------------
- { "$shard_key_value" : { "$numberLong" : "1"}, "$numTerms" : { "$numberInt" : "2" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ { "$numberInt" : "1" } ], "key2" : [ "b" ] }
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "2" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ { "$numberInt" : "1" } ], "key2" : [ "b" ] }
 (1 row)
 
 SELECT helio_api_internal.generate_unique_shard_document('{ "key1": 1, "key3": "b" }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true);
-                                                                  generate_unique_shard_document                                                                  
+                                                                  generate_unique_shard_document                                                                   
 ---------------------------------------------------------------------
- { "$shard_key_value" : { "$numberLong" : "1"}, "$numTerms" : { "$numberInt" : "1" }, "$numPaths" : { "$numberInt" : "1" }, "key1" : [ { "$numberInt" : "1" } ] }
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "1" }, "$numPaths" : { "$numberInt" : "1" }, "key1" : [ { "$numberInt" : "1" } ] }
 (1 row)
 
 SELECT helio_api_internal.generate_unique_shard_document('{ "key1": [1, 2, 3, 4, 5] }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true);
-                                                                                                                                                                                generate_unique_shard_document                                                                                                                                                                                
+                                                                                                                                                                                generate_unique_shard_document                                                                                                                                                                                 
 ---------------------------------------------------------------------
- { "$shard_key_value" : { "$numberLong" : "1"}, "$numTerms" : { "$numberInt" : "6" }, "$numPaths" : { "$numberInt" : "1" }, "key1" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ] }
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "6" }, "$numPaths" : { "$numberInt" : "1" }, "key1" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ] }
 (1 row)
 
 SELECT helio_api_internal.generate_unique_shard_document('{ "key1": [1, 2, 3, 4, 5], "key2": 3 }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true);
-                                                                                                                                                                                                  generate_unique_shard_document                                                                                                                                                                                                   
+                                                                                                                                                                                                   generate_unique_shard_document                                                                                                                                                                                                   
 ---------------------------------------------------------------------
- { "$shard_key_value" : { "$numberLong" : "1"}, "$numTerms" : { "$numberInt" : "7" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], "key2" : [ { "$numberInt" : "3" } ] }
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "7" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], "key2" : [ { "$numberInt" : "3" } ] }
 (1 row)
 
 SELECT helio_api_internal.generate_unique_shard_document('{ "key1": [1, 2, 3, 4, 5], "key2": ["a"] }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true);
-                                                                                                                                                                                             generate_unique_shard_document                                                                                                                                                                                              
+                                                                                                                                                                                              generate_unique_shard_document                                                                                                                                                                                              
 ---------------------------------------------------------------------
- { "$shard_key_value" : { "$numberLong" : "1"}, "$numTerms" : { "$numberInt" : "8" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], "key2" : [ [ "a" ], "a" ] }
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "8" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], "key2" : [ [ "a" ], "a" ] }
 (1 row)
 
 SELECT helio_api_internal.generate_unique_shard_document('{ "key1": "abobora", "key2": ["jabuticaba"] }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true);
-                                                                                  generate_unique_shard_document                                                                                  
+                                                                                  generate_unique_shard_document                                                                                   
 ---------------------------------------------------------------------
- { "$shard_key_value" : { "$numberLong" : "1"}, "$numTerms" : { "$numberInt" : "3" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ "abobora" ], "key2" : [ [ "jabuticaba" ], "jabuticaba" ] }
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "3" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ "abobora" ], "key2" : [ [ "jabuticaba" ], "jabuticaba" ] }
 (1 row)
 
 SELECT helio_api_internal.generate_unique_shard_document('{ "key3": "b" }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true);
-                                               generate_unique_shard_document                                                
+                                                generate_unique_shard_document                                                
 ---------------------------------------------------------------------
- { "$shard_key_value" : { "$numberLong" : "1"}, "$numTerms" : { "$numberInt" : "0" }, "$numPaths" : { "$numberInt" : "0" } }
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "0" }, "$numPaths" : { "$numberInt" : "0" } }
 (1 row)
 
 -- test new op class (generate_unique_shard_document) for composite not sparse indexes
 SELECT helio_api_internal.generate_unique_shard_document('{ "key1": 1, "key2": "b" }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false);
-                                                                           generate_unique_shard_document                                                                           
+                                                                           generate_unique_shard_document                                                                            
 ---------------------------------------------------------------------
- { "$shard_key_value" : { "$numberLong" : "1"}, "$numTerms" : { "$numberInt" : "2" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ { "$numberInt" : "1" } ], "key2" : [ "b" ] }
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "2" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ { "$numberInt" : "1" } ], "key2" : [ "b" ] }
 (1 row)
 
 SELECT helio_api_internal.generate_unique_shard_document('{ "key1": 1, "key3": "b" }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false);
-                                                                           generate_unique_shard_document                                                                            
+                                                                            generate_unique_shard_document                                                                            
 ---------------------------------------------------------------------
- { "$shard_key_value" : { "$numberLong" : "1"}, "$numTerms" : { "$numberInt" : "2" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ { "$numberInt" : "1" } ], "key2" : [ null ] }
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "2" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ { "$numberInt" : "1" } ], "key2" : [ null ] }
 (1 row)
 
 SELECT helio_api_internal.generate_unique_shard_document('{ "key1": [1, 2, 3, 4, 5] }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false);
-                                                                                                                                                                                         generate_unique_shard_document                                                                                                                                                                                          
+                                                                                                                                                                                          generate_unique_shard_document                                                                                                                                                                                          
 ---------------------------------------------------------------------
- { "$shard_key_value" : { "$numberLong" : "1"}, "$numTerms" : { "$numberInt" : "7" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], "key2" : [ null ] }
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "7" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], "key2" : [ null ] }
 (1 row)
 
 SELECT helio_api_internal.generate_unique_shard_document('{ "key1": [1, 2, 3, 4, 5], "key2": 3 }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false);
-                                                                                                                                                                                                  generate_unique_shard_document                                                                                                                                                                                                   
+                                                                                                                                                                                                   generate_unique_shard_document                                                                                                                                                                                                   
 ---------------------------------------------------------------------
- { "$shard_key_value" : { "$numberLong" : "1"}, "$numTerms" : { "$numberInt" : "7" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], "key2" : [ { "$numberInt" : "3" } ] }
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "7" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], "key2" : [ { "$numberInt" : "3" } ] }
 (1 row)
 
 SELECT helio_api_internal.generate_unique_shard_document('{ "key1": [1, 2, 3, 4, 5], "key2": ["a"] }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false);
-                                                                                                                                                                                             generate_unique_shard_document                                                                                                                                                                                              
+                                                                                                                                                                                              generate_unique_shard_document                                                                                                                                                                                              
 ---------------------------------------------------------------------
- { "$shard_key_value" : { "$numberLong" : "1"}, "$numTerms" : { "$numberInt" : "8" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], "key2" : [ [ "a" ], "a" ] }
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "8" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], "key2" : [ [ "a" ], "a" ] }
 (1 row)
 
 SELECT helio_api_internal.generate_unique_shard_document('{ "key1": "abobora", "key2": ["jabuticaba"] }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false);
-                                                                                  generate_unique_shard_document                                                                                  
+                                                                                  generate_unique_shard_document                                                                                   
 ---------------------------------------------------------------------
- { "$shard_key_value" : { "$numberLong" : "1"}, "$numTerms" : { "$numberInt" : "3" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ "abobora" ], "key2" : [ [ "jabuticaba" ], "jabuticaba" ] }
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "3" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ "abobora" ], "key2" : [ [ "jabuticaba" ], "jabuticaba" ] }
 (1 row)
 
 SELECT helio_api_internal.generate_unique_shard_document('{ "key3": "b" }', 1, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false);
-                                                                  generate_unique_shard_document                                                                   
+                                                                   generate_unique_shard_document                                                                   
 ---------------------------------------------------------------------
- { "$shard_key_value" : { "$numberLong" : "1"}, "$numTerms" : { "$numberInt" : "2" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ null ], "key2" : [ null ] }
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "2" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ null ], "key2" : [ null ] }
 (1 row)
 

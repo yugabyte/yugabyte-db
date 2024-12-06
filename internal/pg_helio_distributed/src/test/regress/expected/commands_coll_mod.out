@@ -179,9 +179,9 @@ SELECT * FROM helio_api_catalog.collection_indexes
 
 SELECT helio_api.coll_mod('commands', 'collModTest',
                              '{"collMod": "collModTest", "index": {"name": "b_ttl", "expireAfterSeconds": 2}}');
-                                                                     coll_mod                                                                     
+                                                                     coll_mod                                                                      
 ---------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "expireAfterSeconds_old" : { "$numberLong" : "10000"}, "expireAfterSeconds_new" : { "$numberDouble" : "2.0" } }
+ { "ok" : { "$numberInt" : "1" }, "expireAfterSeconds_old" : { "$numberLong" : "10000" }, "expireAfterSeconds_new" : { "$numberDouble" : "2.0" } }
 (1 row)
 
 SELECT * FROM helio_api_catalog.collection_indexes

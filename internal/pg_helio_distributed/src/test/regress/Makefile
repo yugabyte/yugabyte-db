@@ -15,7 +15,7 @@ EXTENSIONLOAD :=  --load-extension=tsm_system_rows --load-extension=pg_cron --lo
 
 MAKEFILE_DIR := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
 export PATH := $(MAKEFILE_DIR)bin:$(PATH)
-export PG_REGRESS_DIFF_OPTS = -dU10 -w
+export PG_REGRESS_DIFF_OPTS = -dU10
 
 export PGISOLATIONTIMEOUT = 60
 

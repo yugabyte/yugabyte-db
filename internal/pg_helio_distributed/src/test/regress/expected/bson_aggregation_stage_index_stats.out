@@ -42,9 +42,9 @@ NOTICE:  creating collection
 (1 row)
 
 SELECT * FROM bson_aggregation_pipeline('db', '{ "aggregate": "indexstats1", "pipeline": [ { "$indexStats": {} }, { "$project": { "accesses.since": 0 }} ]}');
-                                                                                                         document                                                                                                         
+                                                                                                         document                                                                                                          
 ---------------------------------------------------------------------
- { "name" : "_id_", "key" : { "_id" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "0"} }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }
+ { "name" : "_id_", "key" : { "_id" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "0" } }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }
 (1 row)
 
 -- Add 1000 docs
@@ -62,36 +62,36 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexe
 (1 row)
 
 SELECT * FROM bson_aggregation_pipeline('db', '{ "aggregate": "indexstats1", "pipeline": [ { "$indexStats": {} }, { "$project": { "accesses.since": 0 }} ]}');
-                                                                                                         document                                                                                                         
+                                                                                                         document                                                                                                          
 ---------------------------------------------------------------------
- { "name" : "_id_", "key" : { "_id" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "0"} }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }
- { "name" : "a_1", "key" : { "a" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "0"} }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" } }, "name" : "a_1" } }
+ { "name" : "_id_", "key" : { "_id" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "0" } }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }
+ { "name" : "a_1", "key" : { "a" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "0" } }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" } }, "name" : "a_1" } }
 (2 rows)
 
 -- query using index.
 SELECT query_and_flush('_id');
-                                                                            query_and_flush                                                                            
+                                                                            query_and_flush                                                                             
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.indexstats1", "firstBatch" : [ { "c" : { "$numberInt" : "9500" } } ] }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.indexstats1", "firstBatch" : [ { "c" : { "$numberInt" : "9500" } } ] }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT query_and_flush('_id');
-                                                                            query_and_flush                                                                            
+                                                                            query_and_flush                                                                             
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.indexstats1", "firstBatch" : [ { "c" : { "$numberInt" : "9500" } } ] }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.indexstats1", "firstBatch" : [ { "c" : { "$numberInt" : "9500" } } ] }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT query_and_flush('a');
-                                                                            query_and_flush                                                                            
+                                                                            query_and_flush                                                                             
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.indexstats1", "firstBatch" : [ { "c" : { "$numberInt" : "9500" } } ] }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.indexstats1", "firstBatch" : [ { "c" : { "$numberInt" : "9500" } } ] }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT * FROM bson_aggregation_pipeline('db', '{ "aggregate": "indexstats1", "pipeline": [ { "$indexStats": {} }, { "$project": { "accesses.since": 0 }} ]}');
-                                                                                                         document                                                                                                         
+                                                                                                         document                                                                                                          
 ---------------------------------------------------------------------
- { "name" : "_id_", "key" : { "_id" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "2"} }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }
- { "name" : "a_1", "key" : { "a" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "1"} }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" } }, "name" : "a_1" } }
+ { "name" : "_id_", "key" : { "_id" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "2" } }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }
+ { "name" : "a_1", "key" : { "a" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "1" } }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" } }, "name" : "a_1" } }
 (2 rows)
 
 -- shard
@@ -102,36 +102,36 @@ SELECT helio_api.shard_collection('db', 'indexstats1', '{ "_id": "hashed" }', fa
 (1 row)
 
 SELECT * FROM bson_aggregation_pipeline('db', '{ "aggregate": "indexstats1", "pipeline": [ { "$indexStats": {} }, { "$project": { "accesses.since": 0 }} ]}');
-                                                                                                         document                                                                                                         
+                                                                                                         document                                                                                                          
 ---------------------------------------------------------------------
- { "name" : "_id_", "key" : { "_id" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "0"} }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }
- { "name" : "a_1", "key" : { "a" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "0"} }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" } }, "name" : "a_1" } }
+ { "name" : "_id_", "key" : { "_id" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "0" } }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }
+ { "name" : "a_1", "key" : { "a" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "0" } }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" } }, "name" : "a_1" } }
 (2 rows)
 
 -- query using index.
 SELECT query_and_flush('_id');
-                                                                            query_and_flush                                                                            
+                                                                            query_and_flush                                                                             
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.indexstats1", "firstBatch" : [ { "c" : { "$numberInt" : "9500" } } ] }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.indexstats1", "firstBatch" : [ { "c" : { "$numberInt" : "9500" } } ] }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT query_and_flush('_id');
-                                                                            query_and_flush                                                                            
+                                                                            query_and_flush                                                                             
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.indexstats1", "firstBatch" : [ { "c" : { "$numberInt" : "9500" } } ] }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.indexstats1", "firstBatch" : [ { "c" : { "$numberInt" : "9500" } } ] }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT query_and_flush('a');
-                                                                            query_and_flush                                                                            
+                                                                            query_and_flush                                                                             
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.indexstats1", "firstBatch" : [ { "c" : { "$numberInt" : "9500" } } ] }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.indexstats1", "firstBatch" : [ { "c" : { "$numberInt" : "9500" } } ] }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT * FROM bson_aggregation_pipeline('db', '{ "aggregate": "indexstats1", "pipeline": [ { "$indexStats": {} }, { "$project": { "accesses.since": 0 }} ]}');
-                                                                                                         document                                                                                                          
+                                                                                                          document                                                                                                          
 ---------------------------------------------------------------------
- { "name" : "_id_", "key" : { "_id" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "16"} }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }
- { "name" : "a_1", "key" : { "a" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "8"} }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" } }, "name" : "a_1" } }
+ { "name" : "_id_", "key" : { "_id" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "16" } }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }
+ { "name" : "a_1", "key" : { "a" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "8" } }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" } }, "name" : "a_1" } }
 (2 rows)
 
 -- invalid cases

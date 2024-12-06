@@ -1932,37 +1932,37 @@ SELECT helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('
 
 -- binary
 SELECT helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : { "$binary": { "base64": "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=", "subType": "00" } } }', '', true, true, false, 45);
-                                 gin_bson_get_single_path_generated_terms                                 
+                                 gin_bson_get_single_path_generated_terms                                  
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "13" } }
- { "a" : { "$binary" : { "base64": "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVo=", "subType" : "00" } } }
+ { "a" : { "$binary" : { "base64" : "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVo=", "subType" : "00" } } }
  { "" : true }
  { "" : { "$maxKey" : 1 } }
 (4 rows)
 
 SELECT helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : { "$binary": { "base64": "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=", "subType": "00" } } }', '', true, true, false, 100);
-                                                                     gin_bson_get_single_path_generated_terms                                                                     
+                                                                     gin_bson_get_single_path_generated_terms                                                                      
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "13" } }
- { "a" : { "$binary" : { "base64": "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdS", "subType" : "00" } } }
+ { "a" : { "$binary" : { "base64" : "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdS", "subType" : "00" } } }
  { "" : true }
  { "" : { "$maxKey" : 1 } }
 (4 rows)
 
 SELECT helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : { "$binary": { "base64": "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=", "subType": "00" } } }', '', true, true, false, 20);
-                 gin_bson_get_single_path_generated_terms                 
+                 gin_bson_get_single_path_generated_terms                  
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "13" } }
- { "a" : { "$binary" : { "base64": "cDg2UFhxRw==", "subType" : "00" } } }
+ { "a" : { "$binary" : { "base64" : "cDg2UFhxRw==", "subType" : "00" } } }
  { "" : true }
  { "" : { "$maxKey" : 1 } }
 (4 rows)
 
 SELECT helio_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : { "$binary": { "base64": "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=", "subType": "00" } } }', '', true, true, false, 500);
-                                                                                                                                                                             gin_bson_get_single_path_generated_terms                                                                                                                                                                             
+                                                                                                                                                                             gin_bson_get_single_path_generated_terms                                                                                                                                                                              
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "13" } }
- { "a" : { "$binary" : { "base64": "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=", "subType" : "00" } } }
+ { "a" : { "$binary" : { "base64" : "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=", "subType" : "00" } } }
  { "" : true }
 (3 rows)
 

@@ -24,9 +24,9 @@ SELECT helio_api.insert_one('db','testAggregates','{"_id":"3", "i32": { "$number
 
 -- Compute sum/Avg; they should be in the respective types.
 SELECT BSONSUM(document-> 'i32'), BSONSUM(document-> 'i64'), BSONSUM(document -> 'idbl') FROM helio_api.collection('db', 'testAggregates');
-             bsonsum              |             bsonsum              |                bsonsum                
+             bsonsum              |              bsonsum              |                bsonsum                
 ---------------------------------------------------------------------
- { "" : { "$numberInt" : "29" } } | { "" : { "$numberLong" : "29"} } | { "" : { "$numberDouble" : "29.0" } }
+ { "" : { "$numberInt" : "29" } } | { "" : { "$numberLong" : "29" } } | { "" : { "$numberDouble" : "29.0" } }
 (1 row)
 
 SELECT BSONAVERAGE(document-> 'i32'), BSONAVERAGE(document-> 'i64'), BSONAVERAGE(document -> 'idbl') FROM helio_api.collection('db', 'testAggregates');
@@ -75,9 +75,9 @@ SELECT BSONSUM(document), BSONAVERAGE(document) FROM helio_api.collection('db', 
 
 -- Compute sum/Avg; They should be the same since non-numeric values do not impact the sum/avg.
 SELECT BSONSUM(document-> 'i32'), BSONSUM(document-> 'i64'), BSONSUM(document -> 'idbl') FROM helio_api.collection('db', 'testAggregates');
-             bsonsum              |             bsonsum              |                bsonsum                
+             bsonsum              |              bsonsum              |                bsonsum                
 ---------------------------------------------------------------------
- { "" : { "$numberInt" : "29" } } | { "" : { "$numberLong" : "29"} } | { "" : { "$numberDouble" : "29.0" } }
+ { "" : { "$numberInt" : "29" } } | { "" : { "$numberLong" : "29" } } | { "" : { "$numberDouble" : "29.0" } }
 (1 row)
 
 SELECT BSONAVERAGE(document-> 'i32'), BSONAVERAGE(document-> 'i64'), BSONAVERAGE(document -> 'idbl') FROM helio_api.collection('db', 'testAggregates');
@@ -97,9 +97,9 @@ SELECT helio_api.insert_one('db','testAggregates','{"_id":"7", "i32": { "$number
 
 -- sum/Avg should now move to the next available type
 SELECT BSONSUM(document-> 'i32'), BSONSUM(document-> 'i64'), BSONSUM(document -> 'idbl') FROM helio_api.collection('db', 'testAggregates');
-                 bsonsum                  |                        bsonsum                         |                bsonsum                 
+                  bsonsum                  |                        bsonsum                         |                bsonsum                 
 ---------------------------------------------------------------------
- { "" : { "$numberLong" : "2147483674"} } | { "" : { "$numberDouble" : "9223372036854775808.0" } } | { "" : { "$numberDouble" : "1e+20" } }
+ { "" : { "$numberLong" : "2147483674" } } | { "" : { "$numberDouble" : "9223372036854775808.0" } } | { "" : { "$numberDouble" : "1e+20" } }
 (1 row)
 
 SELECT BSONAVERAGE(document-> 'i32'), BSONAVERAGE(document-> 'i64'), BSONAVERAGE(document -> 'idbl') FROM helio_api.collection('db', 'testAggregates');
@@ -259,9 +259,9 @@ SELECT BSONAVERAGE(document-> 'i32'), BSONAVERAGE(document-> 'i64'), BSONAVERAGE
 (1 row)
 
 SELECT BSONMIN(document-> 'i32'), BSONMIN(document-> 'i64'), BSONMIN(document -> 'idbl') FROM helio_api.collection('db', 'testAggregates');
-             bsonmin              |             bsonmin              |                bsonmin                
+             bsonmin              |              bsonmin              |                bsonmin                
 ---------------------------------------------------------------------
- { "" : { "$numberInt" : "-2" } } | { "" : { "$numberLong" : "-2"} } | { "" : { "$numberDouble" : "-2.0" } }
+ { "" : { "$numberInt" : "-2" } } | { "" : { "$numberLong" : "-2" } } | { "" : { "$numberDouble" : "-2.0" } }
 (1 row)
 
 SELECT BSONMAX(document-> 'i32'), BSONMAX(document-> 'i64'), BSONMAX(document -> 'idbl') FROM helio_api.collection('db', 'testAggregates');
@@ -291,9 +291,9 @@ SELECT BSONAVERAGE(document-> 'i32'), BSONAVERAGE(document-> 'i64'), BSONAVERAGE
 (1 row)
 
 SELECT BSONMIN(document-> 'i32'), BSONMIN(document-> 'i64'), BSONMIN(document -> 'idbl') FROM helio_api.collection('db', 'testAggregates');
-             bsonmin              |             bsonmin              |                bsonmin                
+             bsonmin              |              bsonmin              |                bsonmin                
 ---------------------------------------------------------------------
- { "" : { "$numberInt" : "-2" } } | { "" : { "$numberLong" : "-2"} } | { "" : { "$numberDouble" : "-2.0" } }
+ { "" : { "$numberInt" : "-2" } } | { "" : { "$numberLong" : "-2" } } | { "" : { "$numberDouble" : "-2.0" } }
 (1 row)
 
 SELECT BSONMAX(document-> 'i32'), BSONMAX(document-> 'i64'), BSONMAX(document -> 'idbl') FROM helio_api.collection('db', 'testAggregates');

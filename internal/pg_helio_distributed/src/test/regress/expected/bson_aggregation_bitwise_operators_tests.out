@@ -44,27 +44,27 @@ ERROR:  $bitXor only supports int and long operands.
 select *from bson_dollar_project('{}', '{"result": { "$bitNot": {"$numberDecimal": "1.18"} } }');
 ERROR:  $bitNot only supports int and long, not: decimal.
 select *from bson_dollar_project('{}', '{"result": { "$bitAnd": [123456789012345678,3] } }');
-          bson_dollar_project          
+          bson_dollar_project           
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "2"} }
+ { "result" : { "$numberLong" : "2" } }
 (1 row)
 
 select *from bson_dollar_project('{}', '{"result": { "$bitOr": [123456789012345678,3] } }');
-                  bson_dollar_project                   
+                   bson_dollar_project                   
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "123456789012345679"} }
+ { "result" : { "$numberLong" : "123456789012345679" } }
 (1 row)
 
 select *from bson_dollar_project('{}', '{"result": { "$bitXor": [123456789012345678,3] } }');
-                  bson_dollar_project                   
+                   bson_dollar_project                   
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "123456789012345677"} }
+ { "result" : { "$numberLong" : "123456789012345677" } }
 (1 row)
 
 select *from bson_dollar_project('{}', '{"result": { "$bitNot": 123456789012345678 } }');
-                   bson_dollar_project                   
+                   bson_dollar_project                    
 ---------------------------------------------------------------------
- { "result" : { "$numberLong" : "-123456789012345679"} }
+ { "result" : { "$numberLong" : "-123456789012345679" } }
 (1 row)
 
 select *from bson_dollar_project('{}', '{"result": { "$bitAnd": 1.3 } }');

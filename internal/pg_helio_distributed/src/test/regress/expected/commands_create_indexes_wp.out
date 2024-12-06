@@ -143,9 +143,9 @@ SELECT helio_distributed_test_helpers.mongo_index_get_pg_def('wp_test', 'ok_test
 (1 row)
 
 SELECT helio_api.list_indexes_cursor_first_page('wp_test','{ "listIndexes": "ok_test_2" }') ORDER BY 1;
-                                                                                                                                                                                                                                            list_indexes_cursor_first_page                                                                                                                                                                                                                                            
+                                                                                                                                                                                                                                            list_indexes_cursor_first_page                                                                                                                                                                                                                                             
 ---------------------------------------------------------------------
- ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0""}, ""ns"" : ""wp_test.ok_test_2"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx_1"", ""wildcardProjection"" : { ""a"" : true, ""b"" : { ""b"" : { ""a$a"" : { ""k$"" : true } } }, ""_id"" : false } } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""wp_test.ok_test_2"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx_1"", ""wildcardProjection"" : { ""a"" : true, ""b"" : { ""b"" : { ""a$a"" : { ""k$"" : true } } }, ""_id"" : false } } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('wp_test',
@@ -173,9 +173,9 @@ SELECT helio_distributed_test_helpers.drop_primary_key('wp_test', 'ok_test_3');
 (1 row)
 
 SELECT helio_api.list_indexes_cursor_first_page('wp_test','{ "listIndexes": "ok_test_3" }') ORDER BY 1;
-                                                                                                                                                                                   list_indexes_cursor_first_page                                                                                                                                                                                   
+                                                                                                                                                                                   list_indexes_cursor_first_page                                                                                                                                                                                    
 ---------------------------------------------------------------------
- ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0""}, ""ns"" : ""wp_test.ok_test_3"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx_1"", ""wildcardProjection"" : { ""a"" : true, ""b"" : { ""c"" : true, ""d"" : { ""e"" : true } }, ""_id"" : false } } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""wp_test.ok_test_3"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx_1"", ""wildcardProjection"" : { ""a"" : true, ""b"" : { ""c"" : true, ""d"" : { ""e"" : true } }, ""_id"" : false } } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
 (1 row)
 
 SET citus.propagate_set_commands TO 'local';
@@ -299,9 +299,9 @@ SELECT helio_distributed_test_helpers.drop_primary_key('wp_test', 'ok_test_4');
 (1 row)
 
 SELECT helio_api.list_indexes_cursor_first_page('wp_test', '{ "listIndexes": "ok_test_4" }') ORDER BY 1;
-                                                                                                                                                                                                        list_indexes_cursor_first_page                                                                                                                                                                                                        
+                                                                                                                                                                                                        list_indexes_cursor_first_page                                                                                                                                                                                                         
 ---------------------------------------------------------------------
- ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0""}, ""ns"" : ""wp_test.ok_test_4"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx_1"", ""wildcardProjection"" : { ""a"" : false, ""b"" : { ""c"" : false, ""d"" : { ""e"" : false } }, ""f"" : { ""g"" : { ""h"" : false } }, ""_id"" : false } } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""wp_test.ok_test_4"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx_1"", ""wildcardProjection"" : { ""a"" : false, ""b"" : { ""c"" : false, ""d"" : { ""e"" : false } }, ""f"" : { ""g"" : { ""h"" : false } }, ""_id"" : false } } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
 (1 row)
 
 SET citus.propagate_set_commands TO 'local';
@@ -546,9 +546,9 @@ NOTICE:  creating collection
 (1 row)
 
 SELECT helio_api.list_indexes_cursor_first_page('wp_test','{ "listIndexes": "ok_test_5" }') ORDER BY 1;
-                                                                                                                                                                                                                                                           list_indexes_cursor_first_page                                                                                                                                                                                                                                                           
+                                                                                                                                                                                                                                                           list_indexes_cursor_first_page                                                                                                                                                                                                                                                            
 ---------------------------------------------------------------------
- ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0""}, ""ns"" : ""wp_test.ok_test_5"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx_1"", ""wildcardProjection"" : { ""a"" : false, ""b"" : { ""c"" : { ""p"" : false, ""r"" : false }, ""d"" : { ""_id"" : false } }, ""_id"" : true } } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""wp_test.ok_test_5"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx_1"", ""wildcardProjection"" : { ""a"" : false, ""b"" : { ""c"" : { ""p"" : false, ""r"" : false }, ""d"" : { ""_id"" : false } }, ""_id"" : true } } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
 (1 row)
 
 SELECT helio_distributed_test_helpers.drop_primary_key('wp_test', 'ok_test_5');

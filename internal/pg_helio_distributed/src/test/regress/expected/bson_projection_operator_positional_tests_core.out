@@ -256,13 +256,13 @@ ERROR:  Executor error during find command :: caused by :: positional operator '
 BEGIN;
 SELECT helio_api.insert_one('db','positionalProjection', '{"_id": 1, "a" : { "b" : [{"c": 1, "d": 1}, {"c": 2, "d": 2}]}, "x": [1,2]}', NULL);
 NOTICE:  creating collection
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','positionalProjection', '{"_id": 2, "a" : { "b" : {"c": [11, 12], "d": [13, 14]} }, "x": [1,2]}', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
@@ -310,25 +310,25 @@ BEGIN;
 -- Insert data into a new collection to be sharded
 SELECT helio_api.insert_one('db','positional_sharded',' { "_id" : 0, "key": {"a": "b"}, "a" : [{"b": 1, "c": 1}, {"b": 1, "c": 2}], "x":[11,12,13] }', NULL);
 NOTICE:  creating collection
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','positional_sharded',' { "_id" : 1, "key": {"a": "b"}, "a" : [{"b": {"c": 1}}, {"b": {"c": 2}}], "x":[11,12,13] }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','positional_sharded',' { "_id" : 2, "key": {"b": "c"}, "a" : { "b": [{"c": 1, "d": 1}, {"c": 2, "d": 2}] }, "x":[11,12,13] }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 SELECT helio_api.insert_one('db','positional_sharded',' { "_id" : 3, "key": {"c": "d"}, "a" : { "b": {"c": [{"d": 1, "d": 2}], "e": [1,2,3]} }, "x":[11,12,13] }', NULL);
-                           insert_one                            
+                              insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)

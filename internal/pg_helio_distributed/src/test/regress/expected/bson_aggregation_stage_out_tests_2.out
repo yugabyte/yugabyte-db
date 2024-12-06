@@ -19,9 +19,9 @@ NOTICE:  creating collection
 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "source", "pipeline": [  {"$out" : "target"} ], "cursor": { "batchSize": 1 } }', 4294967294);
 NOTICE:  creating collection
-                                                          cursorpage                                                           | continuation | persistconnection | cursorid 
+                                                           cursorpage                                                           | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('db', 'target');
@@ -37,9 +37,9 @@ SELECT document FROM helio_api.collection('db', 'target');
 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "source", "pipeline": [  {"$out" : { "db" : "db", "coll" : "target2" }  } ], "cursor": { "batchSize": 1 } }', 4294967294);
 NOTICE:  creating collection
-                                                          cursorpage                                                           | continuation | persistconnection | cursorid 
+                                                           cursorpage                                                           | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "db.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('db', 'target2');
@@ -88,9 +88,9 @@ NOTICE:  creating collection
 
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "source", "pipeline": [  {"$out" : "target"} ], "cursor": { "batchSize": 1 } }', 4294967294);
 NOTICE:  creating collection
-                                                            cursorpage                                                            | continuation | persistconnection | cursorid 
+                                                            cursorpage                                                             | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "newdb.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('newdb', 'target');
@@ -106,9 +106,9 @@ SELECT document FROM helio_api.collection('newdb', 'target');
 
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "source", "pipeline": [  {"$out" : { "db" : "newdb", "coll" : "target2" }  } ], "cursor": { "batchSize": 1 } }', 4294967294);
 NOTICE:  creating collection
-                                                            cursorpage                                                            | continuation | persistconnection | cursorid 
+                                                            cursorpage                                                             | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "newdb.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('newdb', 'target2');
@@ -178,9 +178,9 @@ NOTICE:  creating collection
 (1 row)
 
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "source", "pipeline": [  {"$out" : { "db" : "newdb", "coll" : "target" }  } ], "cursor": { "batchSize": 1 } }', 4294967294);
-                                                            cursorpage                                                            | continuation | persistconnection | cursorid 
+                                                            cursorpage                                                             | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "newdb.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('newdb', 'target');
@@ -211,9 +211,9 @@ NOTICE:  creating collection
 
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "source", "pipeline": [  {"$out" : { "db" : "db2", "coll" : "target" }  } ], "cursor": { "batchSize": 1 } }', 4294967294);
 NOTICE:  creating collection
-                                                            cursorpage                                                            | continuation | persistconnection | cursorid 
+                                                            cursorpage                                                             | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "newdb.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM helio_api.collection('db2', 'target');
@@ -256,21 +256,21 @@ SELECT helio_api_internal.create_indexes_non_concurrently('newdb', '{ "createInd
 (1 row)
 
 SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('newdb', '{ "listIndexes": "src" }') ORDER BY 1;
-                                                                                                                                 bson_dollar_unwind                                                                                                                                  
+                                                                                                                                  bson_dollar_unwind                                                                                                                                  
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "newdb.src", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "newdb.src", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } }, "name" : "index_1" } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "newdb.src", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "his is some index" : { "$numberInt" : "1" } }, "name" : "index_2" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.src", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.src", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } }, "name" : "index_1" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.src", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "his is some index" : { "$numberInt" : "1" } }, "name" : "index_2" } }, "ok" : { "$numberDouble" : "1.0" } }
 (3 rows)
 
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "src", "pipeline": [ {"$project" : {"data" : "updating data"} }, {"$out" : { "db" : "newdb", "coll" : "src" }  } ], "cursor": { "batchSize": 1 } }', 4294967294);
 ERROR:  The target collection cannot be the same as the source collection in $out stage.
 SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('newdb', '{ "listIndexes": "src" }') ORDER BY 1;
-                                                                                                                                 bson_dollar_unwind                                                                                                                                  
+                                                                                                                                  bson_dollar_unwind                                                                                                                                  
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "newdb.src", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "newdb.src", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } }, "name" : "index_1" } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "newdb.src", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "his is some index" : { "$numberInt" : "1" } }, "name" : "index_2" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.src", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.src", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } }, "name" : "index_1" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.src", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "his is some index" : { "$numberInt" : "1" } }, "name" : "index_2" } }, "ok" : { "$numberDouble" : "1.0" } }
 (3 rows)
 
 SELECT document FROM helio_api.collection('newdb', 'src');
@@ -313,25 +313,25 @@ SELECT helio_api_internal.create_indexes_non_concurrently('newdb', '{ "createInd
 (1 row)
 
 SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('newdb', '{ "listIndexes": "tar" }') ORDER BY 1;
-                                                                                                                                 bson_dollar_unwind                                                                                                                                  
+                                                                                                                                  bson_dollar_unwind                                                                                                                                  
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "newdb.tar", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "newdb.tar", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } }, "name" : "index_1" } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "newdb.tar", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "his is some index" : { "$numberInt" : "1" } }, "name" : "index_2" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.tar", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.tar", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } }, "name" : "index_1" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.tar", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "his is some index" : { "$numberInt" : "1" } }, "name" : "index_2" } }, "ok" : { "$numberDouble" : "1.0" } }
 (3 rows)
 
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "src", "pipeline": [ {"$project" : {"data" : "updating data"} }, {"$out" : { "db" : "newdb", "coll" : "tar" }  } ], "cursor": { "batchSize": 1 } }', 4294967294);
-                                                          cursorpage                                                           | continuation | persistconnection | cursorid 
+                                                           cursorpage                                                           | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "newdb.src", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.src", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('newdb', '{ "listIndexes": "tar" }') ORDER BY 1;
-                                                                                                                                 bson_dollar_unwind                                                                                                                                  
+                                                                                                                                  bson_dollar_unwind                                                                                                                                  
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "newdb.tar", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "newdb.tar", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } }, "name" : "index_1" } }, "ok" : { "$numberDouble" : "1.0" } }
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "newdb.tar", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "his is some index" : { "$numberInt" : "1" } }, "name" : "index_2" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.tar", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.tar", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } }, "name" : "index_1" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.tar", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "his is some index" : { "$numberInt" : "1" } }, "name" : "index_2" } }, "ok" : { "$numberDouble" : "1.0" } }
 (3 rows)
 
 SELECT document FROM helio_api.collection('newdb', 'tar');
@@ -402,9 +402,9 @@ SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "target",
       {"$group" :{"_id" :  "$restaurant_name"}},
       {"$project" : {"matched_docs" : 0}}
    ], "cursor": { "batchSize": 1 } }', 4294967294);
-                                                                                 cursorpage                                                                                  |                                                                continuation                                                                | persistconnection |  cursorid  
+                                                                                  cursorpage                                                                                  |                                                                continuation                                                                 | persistconnection |  cursorid  
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "4294967294"}, "ns" : "newdb.target", "firstBatch" : [ { "_id" : "American Steak House" } ] }, "ok" : { "$numberDouble" : "1.0" } } | { "qk" : { "$numberInt" : "2" }, "qn" : "cursor_4294967294", "qi" : { "$numberLong" : "4294967294"}, "numIters" : { "$numberInt" : "0" } } | t                 | 4294967294
+ { "cursor" : { "id" : { "$numberLong" : "4294967294" }, "ns" : "newdb.target", "firstBatch" : [ { "_id" : "American Steak House" } ] }, "ok" : { "$numberDouble" : "1.0" } } | { "qk" : { "$numberInt" : "2" }, "qn" : "cursor_4294967294", "qi" : { "$numberLong" : "4294967294" }, "numIters" : { "$numberInt" : "0" } } | t                 | 4294967294
 (1 row)
 
 SELECT document FROM helio_api.collection('newdb','target');
@@ -437,9 +437,9 @@ NOTICE:  creating collection
 
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "source", "pipeline": [ {"$project" : {"_id" : 0} } ,{"$out" : "target"  } ], "cursor": { "batchSize": 1 } }', 4294967294);
 NOTICE:  creating collection
-                                                            cursorpage                                                            | continuation | persistconnection | cursorid 
+                                                            cursorpage                                                             | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "newdb.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT bson_dollar_project(document,'{"_id" : {"$gt" :  ["$_id", null]} }') FROM helio_api.collection('newdb','target');
@@ -476,9 +476,9 @@ SELECT helio_api.create_collection_view('newdb', '{ "create": "sourceView", "vie
 
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "sourceView", "pipeline": [  {"$out" : "target" } ], "cursor": { "batchSize": 1 } }', 4294967294);
 NOTICE:  creating collection
-                                                              cursorpage                                                              | continuation | persistconnection | cursorid 
+                                                              cursorpage                                                               | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "newdb.sourceView", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.sourceView", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document FROM  helio_api.collection('newdb', 'target');
@@ -515,9 +515,9 @@ SELECT helio_api.shard_collection('newdb', 'source', '{ "a": "hashed" }', false)
 
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "source", "pipeline": [ {"$out" : "target" } ], "cursor": { "batchSize": 1 } }', 4294967294);
 NOTICE:  creating collection
-                                                            cursorpage                                                            | continuation | persistconnection | cursorid 
+                                                            cursorpage                                                             | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "newdb.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
 (1 row)
 
 SELECT document from helio_api.collection('newdb','target');

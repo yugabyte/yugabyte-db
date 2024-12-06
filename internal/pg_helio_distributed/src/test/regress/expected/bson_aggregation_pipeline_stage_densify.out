@@ -470,17 +470,17 @@ SELECT document FROM bson_aggregation_pipeline('db',
 -- Explains
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "empty_table", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [1, 10], "step": 1 } } }]}');
-                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                  
+                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                         
 ---------------------------------------------------------------------
  ProjectSet
    Output: bson_lookup_unwind((bson_densify_range(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : [ { "$numberInt" : "1" }, { "$numberInt" : "10" } ], "step" : { "$numberInt" : "1" } } }'::bson) OVER (?)), '_'::text)
    ->  WindowAgg
-         Output: bson_densify_range(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : [ { "$numberInt" : "1" }, { "$numberInt" : "10" } ], "step" : { "$numberInt" : "1" } } }'::bson) OVER (?), (bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::bson)), (bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::bson))
+         Output: bson_densify_range(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : [ { "$numberInt" : "1" }, { "$numberInt" : "10" } ], "step" : { "$numberInt" : "1" } } }'::bson) OVER (?), (bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::bson)), (bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::bson))
          ->  Sort
-               Output: (bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::bson)), (bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::bson)), collection.document
-               Sort Key: (bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::bson)), (bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::bson)) NULLS FIRST
+               Output: (bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::bson)), (bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::bson)), collection.document
+               Sort Key: (bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::bson)), (bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::bson)) NULLS FIRST
                ->  Result
-                     Output: bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::bson), bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::bson), collection.document
+                     Output: bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::bson), bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::bson), collection.document
                      ->  Append
                            ->  Function Scan on helio_api_internal.empty_data_table collection
                                  Output: collection.document
@@ -491,24 +491,24 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [8, 12], "step": 1 } } }]}');
-                                                                                                                                                                                                                                                                                                                                                                                                                                         QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                          
+                                                                                                                                                                                                                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT helio_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT helio_api_internal.bson_densify_range(agg_stage_0_1.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (PARTITION BY (helio_api_internal.bson_expression_partition_by_fields_get(agg_stage_0_1.document, '{ "" : [ "a" ] }'::helio_core.bson)) ORDER BY (helio_api_catalog.bson_orderby(agg_stage_0_1.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST) AS document FROM (SELECT collection.document FROM helio_data.documents_4770_477002 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '4770'::bigint) UNION ALL SELECT NULL::helio_core.bson AS document) agg_stage_0_1) agg_stage_0
+         Query: SELECT helio_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT helio_api_internal.bson_densify_range(agg_stage_0_1.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (PARTITION BY (helio_api_internal.bson_expression_partition_by_fields_get(agg_stage_0_1.document, '{ "" : [ "a" ] }'::helio_core.bson)) ORDER BY (helio_api_catalog.bson_orderby(agg_stage_0_1.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)) NULLS FIRST) AS document FROM (SELECT collection.document FROM helio_data.documents_4770_477002 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '4770'::bigint) UNION ALL SELECT NULL::helio_core.bson AS document) agg_stage_0_1) agg_stage_0
          Node: host=localhost port=58070 dbname=regression
          ->  ProjectSet
                Output: helio_api_catalog.bson_lookup_unwind((helio_api_internal.bson_densify_range(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?)), '_'::text)
                ->  WindowAgg
-                     Output: helio_api_internal.bson_densify_range(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?), (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), (helio_api_internal.bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::helio_core.bson))
+                     Output: helio_api_internal.bson_densify_range(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?), (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)), (helio_api_internal.bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::helio_core.bson))
                      ->  Sort
-                           Output: (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), (helio_api_internal.bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::helio_core.bson)), collection.document
-                           Sort Key: (helio_api_internal.bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::helio_core.bson)), (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST
+                           Output: (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)), (helio_api_internal.bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::helio_core.bson)), collection.document
+                           Sort Key: (helio_api_internal.bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::helio_core.bson)), (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)) NULLS FIRST
                            ->  Result
-                                 Output: helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson), helio_api_internal.bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::helio_core.bson), collection.document
+                                 Output: helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson), helio_api_internal.bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::helio_core.bson), collection.document
                                  ->  Append
                                        ->  Bitmap Heap Scan on helio_data.documents_4770_477002 collection
                                              Output: collection.document
@@ -521,24 +521,24 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": "partition", "step": 1 } } }]}');
-                                                                                                                                                                                                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                  
+                                                                                                                                                                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                        
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT helio_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT helio_api_internal.bson_densify_partition(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "partition", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (PARTITION BY (helio_api_internal.bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::helio_core.bson)) ORDER BY (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST) AS document FROM helio_data.documents_4770_477002 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '4770'::bigint)) agg_stage_0
+         Query: SELECT helio_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT helio_api_internal.bson_densify_partition(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "partition", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (PARTITION BY (helio_api_internal.bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::helio_core.bson)) ORDER BY (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)) NULLS FIRST) AS document FROM helio_data.documents_4770_477002 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '4770'::bigint)) agg_stage_0
          Node: host=localhost port=58070 dbname=regression
          ->  ProjectSet
                Output: helio_api_catalog.bson_lookup_unwind((helio_api_internal.bson_densify_partition(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "partition", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?)), '_'::text)
                ->  WindowAgg
-                     Output: helio_api_internal.bson_densify_partition(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "partition", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?), (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), (helio_api_internal.bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::helio_core.bson))
+                     Output: helio_api_internal.bson_densify_partition(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "partition", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?), (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)), (helio_api_internal.bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::helio_core.bson))
                      ->  Sort
-                           Output: (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), (helio_api_internal.bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::helio_core.bson)), collection.document
-                           Sort Key: (helio_api_internal.bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::helio_core.bson)), (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST
+                           Output: (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)), (helio_api_internal.bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::helio_core.bson)), collection.document
+                           Sort Key: (helio_api_internal.bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::helio_core.bson)), (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)) NULLS FIRST
                            ->  Bitmap Heap Scan on helio_data.documents_4770_477002 collection
-                                 Output: helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson), helio_api_internal.bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::helio_core.bson), collection.document
+                                 Output: helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson), helio_api_internal.bson_expression_partition_by_fields_get(collection.document, '{ "" : [ "a" ] }'::helio_core.bson), collection.document
                                  Recheck Cond: (collection.shard_key_value = '4770'::bigint)
                                  ->  Bitmap Index Scan on _id_
                                        Index Cond: (collection.shard_key_value = '4770'::bigint)
@@ -546,24 +546,24 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": "full", "step": 1 } } }]}');
-                                                                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                                                                 
+                                                                                                                                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                                                                                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT helio_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT helio_api_internal.bson_densify_full(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "full", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (ORDER BY (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST) AS document FROM helio_data.documents_4770_477002 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '4770'::bigint)) agg_stage_0
+         Query: SELECT helio_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT helio_api_internal.bson_densify_full(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "full", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (ORDER BY (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)) NULLS FIRST) AS document FROM helio_data.documents_4770_477002 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '4770'::bigint)) agg_stage_0
          Node: host=localhost port=58070 dbname=regression
          ->  ProjectSet
                Output: helio_api_catalog.bson_lookup_unwind((helio_api_internal.bson_densify_full(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "full", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?)), '_'::text)
                ->  WindowAgg
-                     Output: helio_api_internal.bson_densify_full(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "full", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?), (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson))
+                     Output: helio_api_internal.bson_densify_full(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "full", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?), (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson))
                      ->  Sort
-                           Output: (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), collection.document
-                           Sort Key: (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST
+                           Output: (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)), collection.document
+                           Sort Key: (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)) NULLS FIRST
                            ->  Bitmap Heap Scan on helio_data.documents_4770_477002 collection
-                                 Output: helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson), collection.document
+                                 Output: helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson), collection.document
                                  Recheck Cond: (collection.shard_key_value = '4770'::bigint)
                                  ->  Bitmap Index Scan on _id_
                                        Index Cond: (collection.shard_key_value = '4770'::bigint)
@@ -683,11 +683,11 @@ SELECT document FROM bson_aggregation_pipeline('db',
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [8, 12], "step": 1 } } }]}');
-                                                                                                                                                                                                                                                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                   
+                                                                                                                                                                                                                                                                                                                                                                                                                         QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                          
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
-   ->  Distributed Subplan 53_1
+   ->  Distributed Subplan 54_1
          ->  Custom Scan (Citus Adaptive)
                Output: remote_scan.document
                Task Count: 8
@@ -697,57 +697,57 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
                      Node: host=localhost port=58070 dbname=regression
                      ->  Seq Scan on helio_data.documents_4770_477016 collection
                            Output: document
-   ->  Distributed Subplan 53_2
+   ->  Distributed Subplan 54_2
          ->  Custom Scan (Citus Adaptive)
                Output: remote_scan.document
                Task Count: 1
                Tasks Shown: All
                ->  Task
-                     Query: SELECT intermediate_result.document FROM read_intermediate_result('53_1'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson) UNION ALL SELECT NULL::helio_core.bson AS document
+                     Query: SELECT intermediate_result.document FROM read_intermediate_result('54_1'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson) UNION ALL SELECT NULL::helio_core.bson AS document
                      Node: host=localhost port=58070 dbname=regression
                      ->  Append
                            ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
                                  Output: intermediate_result.document
-                                 Function Call: read_intermediate_result('53_1'::text, 'binary'::citus_copy_format)
+                                 Function Call: read_intermediate_result('54_1'::text, 'binary'::citus_copy_format)
                            ->  Result
                                  Output: NULL::helio_core.bson
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT helio_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT helio_api_internal.bson_densify_range(agg_stage_0_1.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (PARTITION BY (helio_api_internal.bson_expression_partition_by_fields_get(agg_stage_0_1.document, '{ "" : [ "a" ] }'::helio_core.bson)) ORDER BY (helio_api_catalog.bson_orderby(agg_stage_0_1.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('53_2'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson)) agg_stage_0_1) agg_stage_0
+         Query: SELECT helio_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT helio_api_internal.bson_densify_range(agg_stage_0_1.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (PARTITION BY (helio_api_internal.bson_expression_partition_by_fields_get(agg_stage_0_1.document, '{ "" : [ "a" ] }'::helio_core.bson)) ORDER BY (helio_api_catalog.bson_orderby(agg_stage_0_1.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)) NULLS FIRST) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('54_2'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson)) agg_stage_0_1) agg_stage_0
          Node: host=localhost port=58070 dbname=regression
          ->  ProjectSet
                Output: helio_api_catalog.bson_lookup_unwind((helio_api_internal.bson_densify_range(intermediate_result.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?)), '_'::text)
                ->  WindowAgg
-                     Output: helio_api_internal.bson_densify_range(intermediate_result.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?), (helio_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), (helio_api_internal.bson_expression_partition_by_fields_get(intermediate_result.document, '{ "" : [ "a" ] }'::helio_core.bson))
+                     Output: helio_api_internal.bson_densify_range(intermediate_result.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?), (helio_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)), (helio_api_internal.bson_expression_partition_by_fields_get(intermediate_result.document, '{ "" : [ "a" ] }'::helio_core.bson))
                      ->  Sort
-                           Output: (helio_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), (helio_api_internal.bson_expression_partition_by_fields_get(intermediate_result.document, '{ "" : [ "a" ] }'::helio_core.bson)), intermediate_result.document
-                           Sort Key: (helio_api_internal.bson_expression_partition_by_fields_get(intermediate_result.document, '{ "" : [ "a" ] }'::helio_core.bson)), (helio_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST
+                           Output: (helio_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)), (helio_api_internal.bson_expression_partition_by_fields_get(intermediate_result.document, '{ "" : [ "a" ] }'::helio_core.bson)), intermediate_result.document
+                           Sort Key: (helio_api_internal.bson_expression_partition_by_fields_get(intermediate_result.document, '{ "" : [ "a" ] }'::helio_core.bson)), (helio_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)) NULLS FIRST
                            ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
-                                 Output: helio_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson), helio_api_internal.bson_expression_partition_by_fields_get(intermediate_result.document, '{ "" : [ "a" ] }'::helio_core.bson), intermediate_result.document
-                                 Function Call: read_intermediate_result('53_2'::text, 'binary'::citus_copy_format)
+                                 Output: helio_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson), helio_api_internal.bson_expression_partition_by_fields_get(intermediate_result.document, '{ "" : [ "a" ] }'::helio_core.bson), intermediate_result.document
+                                 Function Call: read_intermediate_result('54_2'::text, 'binary'::citus_copy_format)
 (41 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": "partition", "step": 1 } } }]}');
-                                                                                                                                                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                                                                                                                                                            
+                                                                                                                                                                                                                                                                                                                            QUERY PLAN                                                                                                                                                                                                                                                                                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 8
    Tasks Shown: One of 8
    ->  Task
-         Query: SELECT helio_api_catalog.bson_lookup_unwind(worker_column_1, '_'::text) AS document FROM (SELECT agg_stage_0.document AS worker_column_1 FROM (SELECT helio_api_internal.bson_densify_partition(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "partition", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (PARTITION BY collection.shard_key_value ORDER BY (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST) AS document FROM helio_data.documents_4770_477016 collection) agg_stage_0) worker_subquery
+         Query: SELECT helio_api_catalog.bson_lookup_unwind(worker_column_1, '_'::text) AS document FROM (SELECT agg_stage_0.document AS worker_column_1 FROM (SELECT helio_api_internal.bson_densify_partition(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "partition", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (PARTITION BY collection.shard_key_value ORDER BY (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)) NULLS FIRST) AS document FROM helio_data.documents_4770_477016 collection) agg_stage_0) worker_subquery
          Node: host=localhost port=58070 dbname=regression
          ->  ProjectSet
                Output: helio_api_catalog.bson_lookup_unwind((helio_api_internal.bson_densify_partition(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "partition", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?)), '_'::text)
                ->  WindowAgg
-                     Output: helio_api_internal.bson_densify_partition(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "partition", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?), (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), collection.shard_key_value
+                     Output: helio_api_internal.bson_densify_partition(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "partition", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?), (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)), collection.shard_key_value
                      ->  Sort
-                           Output: (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), collection.shard_key_value, collection.document
-                           Sort Key: collection.shard_key_value, (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST
+                           Output: (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)), collection.shard_key_value, collection.document
+                           Sort Key: collection.shard_key_value, (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)) NULLS FIRST
                            ->  Seq Scan on helio_data.documents_4770_477016 collection
-                                 Output: helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson), collection.shard_key_value, collection.document
+                                 Output: helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson), collection.shard_key_value, collection.document
 (16 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db',
@@ -756,7 +756,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
-   ->  Distributed Subplan 57_1
+   ->  Distributed Subplan 59_1
          ->  WindowAgg
                Output: bson_densify_full(remote_scan.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "full", "step" : { "$numberInt" : "1" } } }'::bson) OVER (?), remote_scan.worker_column_2
                ->  Sort
@@ -767,20 +767,20 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
                            Task Count: 8
                            Tasks Shown: One of 8
                            ->  Task
-                                 Query: SELECT document, helio_api_catalog.bson_orderby(document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson) AS worker_column_2 FROM helio_data.documents_4770_477016 collection WHERE true
+                                 Query: SELECT document, helio_api_catalog.bson_orderby(document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson) AS worker_column_2 FROM helio_data.documents_4770_477016 collection WHERE true
                                  Node: host=localhost port=58070 dbname=regression
                                  ->  Seq Scan on helio_data.documents_4770_477016 collection
-                                       Output: document, helio_api_catalog.bson_orderby(document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)
+                                       Output: document, helio_api_catalog.bson_orderby(document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT helio_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('57_1'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson)) agg_stage_0
+         Query: SELECT helio_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('59_1'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson)) agg_stage_0
          Node: host=localhost port=58070 dbname=regression
          ->  ProjectSet
                Output: helio_api_catalog.bson_lookup_unwind(intermediate_result.document, '_'::text)
                ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
                      Output: intermediate_result.document
-                     Function Call: read_intermediate_result('57_1'::text, 'binary'::citus_copy_format)
+                     Function Call: read_intermediate_result('59_1'::text, 'binary'::citus_copy_format)
 (27 rows)
 
 -- Reshard multikey
@@ -1031,11 +1031,11 @@ SELECT document FROM bson_aggregation_pipeline('db',
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a", "quantity"], "range": { "bounds": [8, 12], "step": 1 } } }]}');
-                                                                                                                                                                                                                                                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                               
+                                                                                                                                                                                                                                                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                      
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
-   ->  Distributed Subplan 78_1
+   ->  Distributed Subplan 80_1
          ->  Custom Scan (Citus Adaptive)
                Output: remote_scan.document
                Task Count: 8
@@ -1045,57 +1045,57 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
                      Node: host=localhost port=58070 dbname=regression
                      ->  Seq Scan on helio_data.documents_4770_477024 collection
                            Output: document
-   ->  Distributed Subplan 78_2
+   ->  Distributed Subplan 80_2
          ->  Custom Scan (Citus Adaptive)
                Output: remote_scan.document
                Task Count: 1
                Tasks Shown: All
                ->  Task
-                     Query: SELECT intermediate_result.document FROM read_intermediate_result('78_1'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson) UNION ALL SELECT NULL::helio_core.bson AS document
+                     Query: SELECT intermediate_result.document FROM read_intermediate_result('80_1'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson) UNION ALL SELECT NULL::helio_core.bson AS document
                      Node: host=localhost port=58070 dbname=regression
                      ->  Append
                            ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
                                  Output: intermediate_result.document
-                                 Function Call: read_intermediate_result('78_1'::text, 'binary'::citus_copy_format)
+                                 Function Call: read_intermediate_result('80_1'::text, 'binary'::citus_copy_format)
                            ->  Result
                                  Output: NULL::helio_core.bson
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT helio_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT helio_api_internal.bson_densify_range(agg_stage_0_1.document, '{ "field" : "cost", "partitionByFields" : [ "a", "quantity" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (PARTITION BY (helio_api_internal.bson_expression_partition_by_fields_get(agg_stage_0_1.document, '{ "" : [ "a", "quantity" ] }'::helio_core.bson)) ORDER BY (helio_api_catalog.bson_orderby(agg_stage_0_1.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('78_2'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson)) agg_stage_0_1) agg_stage_0
+         Query: SELECT helio_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT helio_api_internal.bson_densify_range(agg_stage_0_1.document, '{ "field" : "cost", "partitionByFields" : [ "a", "quantity" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (PARTITION BY (helio_api_internal.bson_expression_partition_by_fields_get(agg_stage_0_1.document, '{ "" : [ "a", "quantity" ] }'::helio_core.bson)) ORDER BY (helio_api_catalog.bson_orderby(agg_stage_0_1.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)) NULLS FIRST) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('80_2'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson)) agg_stage_0_1) agg_stage_0
          Node: host=localhost port=58070 dbname=regression
          ->  ProjectSet
                Output: helio_api_catalog.bson_lookup_unwind((helio_api_internal.bson_densify_range(intermediate_result.document, '{ "field" : "cost", "partitionByFields" : [ "a", "quantity" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?)), '_'::text)
                ->  WindowAgg
-                     Output: helio_api_internal.bson_densify_range(intermediate_result.document, '{ "field" : "cost", "partitionByFields" : [ "a", "quantity" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?), (helio_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), (helio_api_internal.bson_expression_partition_by_fields_get(intermediate_result.document, '{ "" : [ "a", "quantity" ] }'::helio_core.bson))
+                     Output: helio_api_internal.bson_densify_range(intermediate_result.document, '{ "field" : "cost", "partitionByFields" : [ "a", "quantity" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?), (helio_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)), (helio_api_internal.bson_expression_partition_by_fields_get(intermediate_result.document, '{ "" : [ "a", "quantity" ] }'::helio_core.bson))
                      ->  Sort
-                           Output: (helio_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), (helio_api_internal.bson_expression_partition_by_fields_get(intermediate_result.document, '{ "" : [ "a", "quantity" ] }'::helio_core.bson)), intermediate_result.document
-                           Sort Key: (helio_api_internal.bson_expression_partition_by_fields_get(intermediate_result.document, '{ "" : [ "a", "quantity" ] }'::helio_core.bson)), (helio_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST
+                           Output: (helio_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)), (helio_api_internal.bson_expression_partition_by_fields_get(intermediate_result.document, '{ "" : [ "a", "quantity" ] }'::helio_core.bson)), intermediate_result.document
+                           Sort Key: (helio_api_internal.bson_expression_partition_by_fields_get(intermediate_result.document, '{ "" : [ "a", "quantity" ] }'::helio_core.bson)), (helio_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)) NULLS FIRST
                            ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
-                                 Output: helio_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson), helio_api_internal.bson_expression_partition_by_fields_get(intermediate_result.document, '{ "" : [ "a", "quantity" ] }'::helio_core.bson), intermediate_result.document
-                                 Function Call: read_intermediate_result('78_2'::text, 'binary'::citus_copy_format)
+                                 Output: helio_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson), helio_api_internal.bson_expression_partition_by_fields_get(intermediate_result.document, '{ "" : [ "a", "quantity" ] }'::helio_core.bson), intermediate_result.document
+                                 Function Call: read_intermediate_result('80_2'::text, 'binary'::citus_copy_format)
 (41 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a", "quantity"], "range": { "bounds": "partition", "step": 1 } } }]}');
-                                                                                                                                                                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                                                                                                                                                                  
+                                                                                                                                                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                                                                                                                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 8
    Tasks Shown: One of 8
    ->  Task
-         Query: SELECT helio_api_catalog.bson_lookup_unwind(worker_column_1, '_'::text) AS document FROM (SELECT agg_stage_0.document AS worker_column_1 FROM (SELECT helio_api_internal.bson_densify_partition(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a", "quantity" ], "range" : { "bounds" : "partition", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (PARTITION BY collection.shard_key_value ORDER BY (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST) AS document FROM helio_data.documents_4770_477024 collection) agg_stage_0) worker_subquery
+         Query: SELECT helio_api_catalog.bson_lookup_unwind(worker_column_1, '_'::text) AS document FROM (SELECT agg_stage_0.document AS worker_column_1 FROM (SELECT helio_api_internal.bson_densify_partition(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a", "quantity" ], "range" : { "bounds" : "partition", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (PARTITION BY collection.shard_key_value ORDER BY (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)) NULLS FIRST) AS document FROM helio_data.documents_4770_477024 collection) agg_stage_0) worker_subquery
          Node: host=localhost port=58070 dbname=regression
          ->  ProjectSet
                Output: helio_api_catalog.bson_lookup_unwind((helio_api_internal.bson_densify_partition(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a", "quantity" ], "range" : { "bounds" : "partition", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?)), '_'::text)
                ->  WindowAgg
-                     Output: helio_api_internal.bson_densify_partition(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a", "quantity" ], "range" : { "bounds" : "partition", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?), (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), collection.shard_key_value
+                     Output: helio_api_internal.bson_densify_partition(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a", "quantity" ], "range" : { "bounds" : "partition", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?), (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)), collection.shard_key_value
                      ->  Sort
-                           Output: (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), collection.shard_key_value, collection.document
-                           Sort Key: collection.shard_key_value, (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST
+                           Output: (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)), collection.shard_key_value, collection.document
+                           Sort Key: collection.shard_key_value, (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)) NULLS FIRST
                            ->  Seq Scan on helio_data.documents_4770_477024 collection
-                                 Output: helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson), collection.shard_key_value, collection.document
+                                 Output: helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson), collection.shard_key_value, collection.document
 (16 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db',
@@ -1104,7 +1104,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
-   ->  Distributed Subplan 82_1
+   ->  Distributed Subplan 84_1
          ->  WindowAgg
                Output: bson_densify_full(remote_scan.document, '{ "field" : "cost", "partitionByFields" : [ "a", "quantity" ], "range" : { "bounds" : "full", "step" : { "$numberInt" : "1" } } }'::bson) OVER (?), remote_scan.worker_column_2
                ->  Sort
@@ -1115,20 +1115,20 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
                            Task Count: 8
                            Tasks Shown: One of 8
                            ->  Task
-                                 Query: SELECT document, helio_api_catalog.bson_orderby(document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson) AS worker_column_2 FROM helio_data.documents_4770_477024 collection WHERE true
+                                 Query: SELECT document, helio_api_catalog.bson_orderby(document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson) AS worker_column_2 FROM helio_data.documents_4770_477024 collection WHERE true
                                  Node: host=localhost port=58070 dbname=regression
                                  ->  Seq Scan on helio_data.documents_4770_477024 collection
-                                       Output: document, helio_api_catalog.bson_orderby(document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)
+                                       Output: document, helio_api_catalog.bson_orderby(document, '{ "cost" : { "$numberLong" : "1" } }'::helio_core.bson)
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT helio_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('82_1'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson)) agg_stage_0
+         Query: SELECT helio_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('84_1'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson)) agg_stage_0
          Node: host=localhost port=58070 dbname=regression
          ->  ProjectSet
                Output: helio_api_catalog.bson_lookup_unwind(intermediate_result.document, '_'::text)
                ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
                      Output: intermediate_result.document
-                     Function Call: read_intermediate_result('82_1'::text, 'binary'::citus_copy_format)
+                     Function Call: read_intermediate_result('84_1'::text, 'binary'::citus_copy_format)
 (27 rows)
 
 -- Test that internal number of documents generated limits are working

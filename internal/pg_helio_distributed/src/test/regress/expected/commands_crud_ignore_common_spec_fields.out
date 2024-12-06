@@ -82,9 +82,9 @@ select helio_api.update('db', '{
 	"writeConcern": { "w": "majority", "wtimeout": 5000 },
 	"apiVersion": 1
 	}');
-                                                               update                                                               
+                                                                update                                                                
 ---------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""} }",t)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" } }",t)
 (1 row)
 
 -- create index tests
@@ -118,9 +118,9 @@ CALL helio_api.drop_indexes('db', '{
 	"comment": "NoOp1",
 	"apiVersion": 1
 	}');
-                         retval                          
+                          retval                          
 ---------------------------------------------------------------------
- { "ok" : true, "nIndexesWas" : { "$numberLong" : "2"} }
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
 (1 row)
 
 -- query

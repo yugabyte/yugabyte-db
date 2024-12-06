@@ -63,7 +63,7 @@ then
 	mv "$file1.replace" "$file1"
 	mv "$file2.replace" "$file2"
 
-	"$DIFF" -w $args "$file1.modified" "$file2.modified" | LC_CTYPE=C.UTF-8 diff-filter "$BASEDIR/normalize.sed"
+	"$DIFF" -Z $args "$file1.modified" "$file2.modified" | LC_CTYPE=C.UTF-8 diff-filter "$BASEDIR/normalize.sed"
 	exit ${PIPESTATUS[0]}
 else
 	exec "$DIFF" -w $args "$file1" "$file2"
