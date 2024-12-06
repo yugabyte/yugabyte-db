@@ -153,7 +153,7 @@ class PgClientSession {
 
   Status Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context);
 
-  std::shared_ptr<CountDownLatch> ProcessSharedRequest(size_t size, SharedExchange* exchange);
+  void ProcessSharedRequest(size_t size, SharedExchange* exchange);
 
   #define PG_CLIENT_SESSION_METHOD_DECLARE(r, data, method) \
   Status method( \

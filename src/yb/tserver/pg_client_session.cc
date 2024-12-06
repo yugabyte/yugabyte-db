@@ -571,7 +571,7 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
 
   CoarseTimePoint deadline;
 
-  CountDownLatch latch{1};
+  std::atomic<bool> responded_{false};
 
   SharedExchangeQuery(
       std::shared_ptr<PgClientSession> session_, PgTableCache* table_cache_,
@@ -580,6 +580,10 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
             session_->id(), table_cache_, &exchange_req, &exchange_resp, &exchange_sidecars),
         session(std::move(session_)), exchange(exchange_),
         stats_exchange_response_size(stats_exchange_response_size_) {
+  }
+
+  ~SharedExchangeQuery() {
+    LOG_IF(DFATAL, !responded_.load()) << "Response did not send";
   }
 
   // Initialize query from data stored in exchange with specified size.
@@ -594,11 +598,13 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
     return pb_util::ParseFromArray(&req, input, end - input);
   }
 
-  void Wait() {
-    latch.Wait();
-  }
-
   void SendResponse() override {
+    auto locked_session = session.lock();
+    if (!locked_session) {
+      responded_ = true;
+      return;
+    }
+
     using google::protobuf::io::CodedOutputStream;
     rpc::ResponseHeader header;
     header.set_call_id(42);
@@ -617,14 +623,10 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
     auto* start = exchange->Obtain(full_size);
     std::pair<uint64_t, std::byte*> shared_memory_segment(0, nullptr);
     RefCntBuffer buffer;
-    std::shared_ptr<PgClientSession> locked_session;
     if (!start) {
-      locked_session = session.lock();
-      if (locked_session) {
-        shared_memory_segment = locked_session->ObtainBigSharedMemorySegment(full_size);
-        if (shared_memory_segment.second) {
-          start = shared_memory_segment.second;
-        }
+      shared_memory_segment = locked_session->ObtainBigSharedMemorySegment(full_size);
+      if (shared_memory_segment.second) {
+        start = shared_memory_segment.second;
       }
 
       if (!start) {
@@ -648,13 +650,10 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
                           (shared_memory_segment.first << kBigSharedMemoryIdShift));
       }
     } else {
-      if (!locked_session) {
-        locked_session = session.lock();
-      }
-      auto id = locked_session ? locked_session->SaveData(buffer, std::move(sidecars.buffer())) : 0;
+      auto id = locked_session->SaveData(buffer, std::move(sidecars.buffer()));
       exchange->Respond(kTooBigResponseMask | id);
     }
-    latch.CountDown();
+    responded_ = true;
   }
 };
 
@@ -2227,12 +2226,11 @@ Status PgClientSession::CheckPlainSessionPendingUsedReadTime(uint64_t txn_serial
   return Status::OK();
 }
 
-std::shared_ptr<CountDownLatch> PgClientSession::ProcessSharedRequest(
-    size_t size, SharedExchange* exchange) {
+void PgClientSession::ProcessSharedRequest(size_t size, SharedExchange* exchange) {
   auto shared_this = shared_this_.lock();
   if (!shared_this) {
     LOG_WITH_FUNC(DFATAL) << "Shared this is null in ProcessSharedRequest";
-    return nullptr;
+    return;
   }
   auto data = std::make_shared<SharedExchangeQuery>(
       shared_this, &table_cache_, exchange, stats_exchange_response_size_);
@@ -2256,9 +2254,7 @@ std::shared_ptr<CountDownLatch> PgClientSession::ProcessSharedRequest(
   if (!status.ok()) {
     StatusToPB(status, data->resp.mutable_status());
     data->SendResponse();
-    return nullptr;
   }
-  return rpc::SharedField(data, &data->latch);
 }
 
 void PgClientSession::ScheduleBigSharedMemExpirationCheck(
