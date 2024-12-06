@@ -239,5 +239,5 @@ export const convertBackupToFormValues = (backup: IBackup, storage_config: IStor
 };
 
 export const isBackupPITREnabled = (runtimeConfigs: RunTimeConfig) => {
-  return find(runtimeConfigs.configEntries, (config) => config.key === BACKUP_PITR_ENABLED)?.value === 'true';
+  return find(runtimeConfigs?.configEntries, (config) => config.key === BACKUP_PITR_ENABLED)?.value === 'true';
 };
