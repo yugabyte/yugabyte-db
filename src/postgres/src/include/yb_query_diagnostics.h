@@ -41,6 +41,12 @@
 #define YB_QD_MAX_SCHEMA_OIDS 10
 #define YB_QD_MAX_CONSTANTS 100
 
+/* Status codes for query diagnostics bundles in yb_query_diagnostics view */
+#define YB_DIAGNOSTICS_SUCCESS			 0
+#define YB_DIAGNOSTICS_IN_PROGRESS		 1
+#define YB_DIAGNOSTICS_ERROR			 2
+#define YB_DIAGNOSTICS_CANCELLED		 3
+
 /*
  * Currently, if the explain plan is larger than 16KB, we truncate it.
  * Github issue #23720: handles queries with explain plans excedding 16KB.
@@ -161,7 +167,8 @@ typedef struct YbQueryDiagnosticsEntry
 
 extern TimestampTz *yb_pgss_last_reset_time;
 
-typedef void (*YbGetNormalizedQueryFuncPtr)(Size query_offset, int query_len, char *normalized_query);
+typedef int (*YbGetNormalizedQueryFuncPtr)(Size query_offset, int pgss_query_len,
+										   char *normalized_query);
 extern YbGetNormalizedQueryFuncPtr yb_get_normalized_query;
 
 typedef void (*PgssFillInConstantLengths)(JumbleState *jstate, const char *query, int query_loc);

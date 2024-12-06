@@ -71,10 +71,6 @@ const char *schema_details_separator = "========================================
 
 /* Constants used for yb_query_diagnostics_status view */
 #define YB_QUERY_DIAGNOSTICS_STATUS_COLS 8
-#define DIAGNOSTICS_SUCCESS 0
-#define DIAGNOSTICS_IN_PROGRESS 1
-#define DIAGNOSTICS_ERROR 2
-#define DIAGNOSTICS_CANCELLED 3
 
 typedef struct BundleInfo
 {
@@ -457,7 +453,7 @@ ProcessActiveBundles(Tuplestorestate *tupstore, TupleDesc tupdesc)
 
 	while ((entry = hash_seq_search(&status)) != NULL)
 		OutputBundle(entry->metadata, "",
-					 status_msg[DIAGNOSTICS_IN_PROGRESS], tupstore, tupdesc);
+					 status_msg[YB_DIAGNOSTICS_IN_PROGRESS], tupstore, tupdesc);
 
 	LWLockRelease(bundles_in_progress_lock);
 }
@@ -1020,10 +1016,10 @@ FlushAndCleanBundles()
 	TimestampTz current_time = GetCurrentTimestamp();
 	HASH_SEQ_STATUS status;
 	YbQueryDiagnosticsEntry *entry;
-	YbQueryDiagnosticsEntry expired_entries[QUERY_DIAGNOSTICS_HASH_MAX_SIZE];
+	MemoryContext curr_context = GetCurrentMemoryContext();
 	int			expired_entries_index = 0;
-
-	memset(expired_entries, 0, sizeof(expired_entries));
+	YbQueryDiagnosticsEntry *expired_entries = palloc0(
+		sizeof(YbQueryDiagnosticsEntry) * QUERY_DIAGNOSTICS_HASH_MAX_SIZE);
 
 	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
 
@@ -1046,7 +1042,7 @@ FlushAndCleanBundles()
 		 * because that is set only once, when the bundle is created.
 		 */
 		char	   *folder_path = entry->metadata.path;
-		int			status = DIAGNOSTICS_SUCCESS;
+		int			status = YB_DIAGNOSTICS_SUCCESS;
 		bool		has_expired = current_time >= BundleEndTime(entry);
 
 		/* Description of the warnings/errors that occurred */
@@ -1057,9 +1053,9 @@ FlushAndCleanBundles()
 		if (!entry->metadata.directory_created)
 		{
 			/* Creates the directory structure recursively for this bundle */
-			if (MakeDirectory(folder_path, description) == DIAGNOSTICS_ERROR)
+			if (MakeDirectory(folder_path, description) == YB_DIAGNOSTICS_ERROR)
 			{
-				FinishBundleProcessing(&entry->metadata, DIAGNOSTICS_ERROR, description);
+				FinishBundleProcessing(&entry->metadata, YB_DIAGNOSTICS_ERROR, description);
 				goto end_of_loop;
 			}
 
@@ -1090,7 +1086,7 @@ FlushAndCleanBundles()
 										  constants_and_bind_variables_file, folder_path, description,
 										  &entry->mutex);
 
-			if (status == DIAGNOSTICS_ERROR)
+			if (status == YB_DIAGNOSTICS_ERROR)
 			{
 				/* Expire the bundle as we are not able to dump */
 				FinishBundleProcessing(&entry->metadata, status, description);
@@ -1101,7 +1097,7 @@ FlushAndCleanBundles()
 										  explain_plan_file, folder_path, description,
 										  &entry->mutex);
 
-			if (status == DIAGNOSTICS_ERROR)
+			if (status == YB_DIAGNOSTICS_ERROR)
 			{
 				/* Expire the bundle as we are not able to dump */
 				FinishBundleProcessing(&entry->metadata, status, description);
@@ -1121,7 +1117,7 @@ end_of_loop:
 		YbQueryDiagnosticsEntry *entry = &expired_entries[i];
 
 		char		description[YB_QD_DESCRIPTION_LEN];
-		int			status = DIAGNOSTICS_SUCCESS;
+		int			status = YB_DIAGNOSTICS_SUCCESS;
 		int			query_len = Min(entry->pgss.query_len, YB_QD_MAX_PGSS_QUERY_LEN);
 		char		query_str[query_len + 1];
 
@@ -1129,7 +1125,7 @@ end_of_loop:
 		query_str[0] = '\0';
 
 		/* No queries were executed that needed to be bundled */
-		if (query_len == 0)
+		if (entry->pgss.query_len == 0)
 		{
 			AppendToDescription(description, "No query executed;");
 			goto remove_entry;
@@ -1139,7 +1135,7 @@ end_of_loop:
 		status = DumpToFile(entry->metadata.path, constants_and_bind_variables_file,
 							entry->bind_vars, description);
 
-		if (status == DIAGNOSTICS_ERROR)
+		if (status == YB_DIAGNOSTICS_ERROR)
 			goto remove_entry;
 
 		/*
@@ -1157,15 +1153,51 @@ end_of_loop:
 													 "query string not available;");
 		else
 		{
-			if (yb_get_normalized_query)
+			PG_TRY();
 			{
-				/* Extract query string from pgss_query_texts.stat file */
-				yb_get_normalized_query(entry->pgss.query_offset, entry->pgss.query_len, query_str);
+				if (yb_get_normalized_query)
+				{
+					/* Extract query string from pgss_query_texts.stat file */
+					status = yb_get_normalized_query(entry->pgss.query_offset,
+													 entry->pgss.query_len,
+													 query_str);
 
-				if (query_str[0] == '\0')
-					AppendToDescription(description,
-										"Error fetching pg_stat_statements normalized query string;");
+					if (query_str[0] == '\0')
+						AppendToDescription(description, "Error fetching "
+														 "pg_stat_statements "
+														 "normalized query "
+														 "string;");
+				}
 			}
+			PG_CATCH();
+			{
+				/*
+				 * Not setting status = YB_DIAGNOSTICS_ERROR,
+				 * so that rest of the data can be printed
+				 */
+				ErrorData *edata;
+
+				/* save error info */
+				MemoryContextSwitchTo(curr_context);
+				edata = CopyErrorData();
+				FlushErrorState();
+
+				AppendToDescription(description,
+									"Fetching pg_stat_statements normalized "
+									"query string "
+									"errored out, with the following message: "
+									"%s;",
+									edata->message);
+
+				ereport(LOG,
+						(errmsg("error while fetching normalized query string; "
+								"%s",
+								edata->message)),
+						(errhint("%s", edata->hint)));
+
+				FreeErrorData(edata);
+			}
+			PG_END_TRY();
 		}
 
 		/* Convert pg_stat_statements data to string format */
@@ -1175,34 +1207,64 @@ end_of_loop:
 		/* Dump pg_stat_statements */
 		status = DumpToFile(entry->metadata.path, pgss_file, pgss_str, description);
 
-		if (status == DIAGNOSTICS_ERROR)
+		if (status == YB_DIAGNOSTICS_ERROR)
 			goto remove_entry;
 
 		/* Dump explain plan */
 		status = DumpToFile(entry->metadata.path, explain_plan_file,
 							entry->explain_plan, description);
 
-		if (status == DIAGNOSTICS_ERROR)
+		if (status == YB_DIAGNOSTICS_ERROR)
 			goto remove_entry;
 
 		/* Collect schema details */
 		StringInfoData schema_details;
 		initStringInfo(&schema_details);
 
-		/* Fetch schema details for each schema oid */
-		for (int i = 0; i < YB_QD_MAX_SCHEMA_OIDS; i++)
+		PG_TRY();
 		{
-			if (entry->schema_oids[i] == InvalidOid)
-				break;
+			/* Fetch schema details for each schema oid */
+			for (int i = 0; i < YB_QD_MAX_SCHEMA_OIDS; i++)
+			{
+				if (entry->schema_oids[i] == InvalidOid)
+					break;
 
-			status = DescribeOneTable(entry->schema_oids[i], &schema_details,
-									description);
+				status = DescribeOneTable(entry->schema_oids[i],
+										  &schema_details, description);
 
-			if (status == DIAGNOSTICS_ERROR)
-				goto remove_entry;
+				if (status == YB_DIAGNOSTICS_ERROR)
+					goto remove_entry;
 
-			appendStringInfo(&schema_details, "\n%s\n\n", schema_details_separator);
+				appendStringInfo(&schema_details, "\n%s\n\n",
+								 schema_details_separator);
+			}
 		}
+		PG_CATCH();
+		{
+			/*
+			 * Not setting status = YB_DIAGNOSTICS_ERROR,
+			 * so that rest of the data can be printed
+			 */
+			ErrorData *edata;
+
+			/* save error info */
+			MemoryContextSwitchTo(curr_context);
+			edata = CopyErrorData();
+			FlushErrorState();
+
+			AppendToDescription(description,
+								"Fetching schema details errored out "
+								"with the following message: %s",
+								edata->message);
+
+			ereport(LOG,
+					(errmsg("error while dumping schema details %s\n%s",
+							edata->message, YBCGetStackTrace())),
+					(errhint("%s", edata->hint)));
+
+			FreeErrorData(edata);
+		}
+		PG_END_TRY();
 
 		/* Dump schema details */
 		status = DumpToFile(entry->metadata.path, schema_details_file,
@@ -1210,7 +1272,7 @@ end_of_loop:
 
 		pfree(schema_details.data);
 
-		if (status == DIAGNOSTICS_ERROR)
+		if (status == YB_DIAGNOSTICS_ERROR)
 			goto remove_entry;
 
 		/* Dump ASH */
@@ -1229,13 +1291,15 @@ end_of_loop:
 
 			pfree(ash_buffer.data);
 
-			if (status == DIAGNOSTICS_ERROR)
+			if (status == YB_DIAGNOSTICS_ERROR)
 				goto remove_entry;
 		}
 
 remove_entry:
 		FinishBundleProcessing(&entry->metadata, status, description);
 	}
+
+	pfree(expired_entries);
 }
 
 /*
@@ -1243,13 +1307,13 @@ remove_entry:
  *      Checks if the buffer is at least half full, and if so, dumps it to a file.
  *
  * Returns:
- * DIAGNOSTICS_SUCCESS if successful, DIAGNOSTICS_ERROR otherwise
+ * YB_DIAGNOSTICS_SUCCESS if successful, YB_DIAGNOSTICS_ERROR otherwise
  */
 static int
 DumpBufferIfHalfFull(char *buffer, size_t max_len, const char *file_name, const char *folder_path,
 					 char *description, slock_t *mutex)
 {
-	int			status = DIAGNOSTICS_SUCCESS;
+	int			status = YB_DIAGNOSTICS_SUCCESS;
 
 	SpinLockAcquire(mutex);
 
@@ -1312,7 +1376,7 @@ RemoveBundleInfo(int64 query_id)
  *		Creates the directory structure recursively for storing the diagnostics data.
  *
  * Returns:
- * DIAGNOSTICS_SUCCESS if successful, DIAGNOSTICS_ERROR otherwise
+ * YB_DIAGNOSTICS_SUCCESS if successful, YB_DIAGNOSTICS_ERROR otherwise
  */
 static int
 MakeDirectory(const char *path, char *description)
@@ -1329,9 +1393,9 @@ MakeDirectory(const char *path, char *description)
 	{
 		snprintf(description, YB_QD_DESCRIPTION_LEN,
 				 "Failed to create query diagnostics directory, %s;", strerror(errno));
-		return DIAGNOSTICS_ERROR;
+		return YB_DIAGNOSTICS_ERROR;
 	}
-	return DIAGNOSTICS_SUCCESS;
+	return YB_DIAGNOSTICS_SUCCESS;
 }
 
 /*
@@ -1339,8 +1403,8 @@ MakeDirectory(const char *path, char *description)
  * 		This function prints table details for the given table oid into schema_details.
  *		Note: This function is a modified version of DescribeOneTableDetails in describe.c
  *
- *		Returns DIAGNOSTICS_SUCCESS if the function executed successfully,
- *		DIAGNOSTICS_ERROR in case of an error.
+ *		Returns YB_DIAGNOSTICS_SUCCESS if the function executed successfully,
+ *		YB_DIAGNOSTICS_ERROR in case of an error.
  *		In case of an error, the function copies the error message to description.
  */
 static int
@@ -1588,10 +1652,10 @@ DescribeOneTable(Oid oid, StringInfo schema_details, char *description)
 		snprintf(formatted_query, sizeof(formatted_query), queries[i], oid);
 
 		if (!ExecuteQuery(schema_details, formatted_query, titles[i], description))
-			return DIAGNOSTICS_ERROR;
+			return YB_DIAGNOSTICS_ERROR;
 	}
 
-	return DIAGNOSTICS_SUCCESS;
+	return YB_DIAGNOSTICS_SUCCESS;
 }
 
 static void
@@ -1769,7 +1833,7 @@ ExecuteQuery(StringInfo schema_details, const char *query, const char *title, ch
  * DumpToFile
  *		Creates the file (/folder_path/file_name) and writes the data to it.
  * Returns:
- *		DIAGNOSTICS_SUCCESS if the file was successfully written, DIAGNOSTICS_ERROR otherwise.
+ *		YB_DIAGNOSTICS_SUCCESS if the file was successfully written, YB_DIAGNOSTICS_ERROR otherwise.
  */
 static int
 DumpToFile(const char *folder_path, const char *file_name, const char *data,
@@ -1779,10 +1843,11 @@ DumpToFile(const char *folder_path, const char *file_name, const char *data,
 	File		file = 0;
 	const int	file_path_len = MAXPGPATH + strlen(file_name) + 1;
 	char		file_path[file_path_len];
+	MemoryContext curr_context = GetCurrentMemoryContext();
 
 	/* No data to write */
 	if (data[0] == '\0')
-		return DIAGNOSTICS_SUCCESS;
+		return YB_DIAGNOSTICS_SUCCESS;
 
 #ifdef WIN32
 	snprintf(file_path, file_path_len, "%s\\%s", path, file_name);
@@ -1813,11 +1878,15 @@ DumpToFile(const char *folder_path, const char *file_name, const char *data,
 	{
 		ErrorData *edata;
 
-		/* Capture the error data */
+		/* save the error data */
+		MemoryContextSwitchTo(curr_context);
 		edata = CopyErrorData();
 		FlushErrorState();
 
 		snprintf(description, YB_QD_DESCRIPTION_LEN, "%s", edata->message);
+
+		ereport(LOG, (errmsg("error while dumping to file %s", edata->message)),
+				(errhint("%s", edata->hint)));
 
 		FreeErrorData(edata);
 	}
@@ -1826,7 +1895,7 @@ DumpToFile(const char *folder_path, const char *file_name, const char *data,
 	if (file > 0)
 		FileClose(file);
 
-	return ok ? DIAGNOSTICS_SUCCESS : DIAGNOSTICS_ERROR;
+	return ok ? YB_DIAGNOSTICS_SUCCESS : YB_DIAGNOSTICS_ERROR;
 }
 
 /*
@@ -2052,7 +2121,7 @@ yb_cancel_query_diagnostics(PG_FUNCTION_ARGS)
 													NULL);
 	if (entry)
 	{
-		InsertBundlesIntoView(&entry->metadata, DIAGNOSTICS_CANCELLED,
+		InsertBundlesIntoView(&entry->metadata, YB_DIAGNOSTICS_CANCELLED,
 							  "Bundle was cancelled");
 
 		LWLockRelease(bundles_in_progress_lock);
