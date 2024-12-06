@@ -127,7 +127,8 @@ class MockMonitoredTask : public server::MonitoredTask {
 
   // Abort this task and return its value before it was successfully aborted. If the task entered
   // a different terminal state before we were able to abort it, return that state.
-  server::MonitoredTaskState AbortAndReturnPrevState(const Status& status) override {
+  server::MonitoredTaskState AbortAndReturnPrevState(
+      const Status& status, bool call_task_finisher) override {
     auto prev_state = state_.load();
     state_ = server::MonitoredTaskState::kAborted;
     return prev_state;
@@ -222,7 +223,7 @@ TEST_F(CatalogEntityInfoTest, TestTasks) {
   ASSERT_EQ(entity.NumTasks(), 2);
 
   // Abort all tasks and close.
-  entity.AbortTasksAndClose();
+  entity.AbortTasksAndClose(/* call_task_finisher */ true);
   ASSERT_EQ(task4->state(), server::MonitoredTaskState::kAborted);
   ASSERT_EQ(task5->state(), server::MonitoredTaskState::kAborted);
 

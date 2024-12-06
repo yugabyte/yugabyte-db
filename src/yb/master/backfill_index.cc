@@ -595,7 +595,8 @@ std::string BackfillTableJob::description() const {
   }
 }
 
-MonitoredTaskState BackfillTableJob::AbortAndReturnPrevState(const Status& status) {
+MonitoredTaskState BackfillTableJob::AbortAndReturnPrevState(
+    const Status& status, bool call_task_finisher) {
   auto old_state = state();
   while (!IsStateTerminal(old_state)) {
     if (state_.compare_exchange_strong(old_state,

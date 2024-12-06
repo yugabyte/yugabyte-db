@@ -1305,7 +1305,17 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
 
     // Abort any outstanding tasks. All CatalogEntities are orphaned below, so
     // it's important to end their tasks now.
-    AbortAndWaitForAllTasksUnlocked();
+    //
+    // N.B. This doesn't actually wait for anything at all.
+    // See https://github.com/yugabyte/yugabyte-db/issues/18634
+    //
+    // The async task framework provides a hook, the Finished method, for subclasses to perform
+    // additional actions when the task has finished its main work. This method is also called when
+    // a task is aborted. Some tasks ie. tablet snapshot tasks call catalog manager methods that
+    // acquire the mutex_. Because we don't use reentrant mutexes this deadlocks the server. So we
+    // pass a boolean parameter here to the async task framework to skip calling the Finished
+    // method.
+    AbortAndWaitForAllTasksUnlocked(/* call_task_finisher */ false);
 
     if (FLAGS_enable_ysql) {
       // Number of TS to wait for before creating the txn table.
@@ -12256,13 +12266,14 @@ void CatalogManager::AbortAndWaitForAllTasks() {
     tables = std::vector(std::begin(tables_it), std::end(tables_it));
     namespaces = namespace_names_mapper_.GetAll();
   }
-  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(tables);
-  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(namespaces);
+  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(tables, /* call_task_finisher */ true);
+  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(namespaces, /* call_task_finisher*/ true);
 }
 
-void CatalogManager::AbortAndWaitForAllTasksUnlocked() {
-  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(tables_->GetAllTables());
-  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(namespace_names_mapper_.GetAll());
+void CatalogManager::AbortAndWaitForAllTasksUnlocked(bool call_task_finisher) {
+  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(tables_->GetAllTables(), call_task_finisher);
+  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(
+      namespace_names_mapper_.GetAll(), call_task_finisher);
 }
 
 void CatalogManager::HandleNewTableId(const TableId& table_id) {
@@ -12281,7 +12292,7 @@ Status CatalogManager::ScheduleTask(std::shared_ptr<server::RunnableMonitoredTas
   // If we are not able to enqueue, abort the task.
   if (!s.ok()) {
     RETURN_NOT_OK(task->OnSubmitFailure());
-    task->AbortAndReturnPrevState(s);
+    task->AbortAndReturnPrevState(s, /* call_task_finisher */ true);
   }
   return s;
 }
