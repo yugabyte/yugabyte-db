@@ -387,6 +387,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   const std::string& lower_bound_key() const { return kv_store_.lower_bound_key; }
   const std::string& upper_bound_key() const { return kv_store_.upper_bound_key; }
 
+  docdb::KeyBounds MakeKeyBounds() const;
+
   const std::string& wal_dir() const { return wal_dir_; }
 
   Status set_namespace_id(const NamespaceId& namespace_id);
