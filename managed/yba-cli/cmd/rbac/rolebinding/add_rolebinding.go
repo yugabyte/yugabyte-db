@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
-	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/user"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/rbac/rbacutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -42,6 +42,8 @@ var addRoleBindingCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
+		rbacutil.CheckRBACEnablementOnYBA(authAPI, "RBAC: Role Binding", "Add")
+
 		userListRequest := authAPI.ListUsers()
 		email, err := cmd.Flags().GetString("email")
 		if err != nil {
@@ -50,7 +52,12 @@ var addRoleBindingCmd = &cobra.Command{
 
 		rUsersResponse, response, err := userListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "User", "Describe")
+			errMessage := util.ErrorFromHTTPResponse(
+				response,
+				err,
+				"RBAC: Role Binding",
+				"Add - List Users",
+			)
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
@@ -95,7 +102,7 @@ var addRoleBindingCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		resourceRoleDefinition := user.BuildResourceRoleDefinition(roleResourceDefinitionString)
+		resourceRoleDefinition := rbacutil.BuildResourceRoleDefinition(roleResourceDefinitionString)
 
 		roleResourceDefintionList = append(roleResourceDefintionList, resourceRoleDefinition...)
 
