@@ -514,6 +514,29 @@ CatalogTuplesMultiInsertWithInfo(Relation heapRel, TupleTableSlot **slot,
 	}
 }
 
+static void
+YBCatalogTupleUpdate(Relation heapRel, HeapTuple tup,
+					 CatalogIndexState indstate)
+{
+	HeapTuple oldtup = NULL;
+	bool has_indices = YBRelHasSecondaryIndices(heapRel);
+
+	Assert(HEAPTUPLE_YBCTID(tup));
+
+	if (has_indices)
+	{
+		YbFetchHeapTuple(heapRel, HEAPTUPLE_YBCTID(tup), &oldtup);
+		CatalogIndexDelete(indstate, oldtup);
+	}
+
+	YBCUpdateSysCatalogTuple(heapRel, oldtup, tup);
+	/* Update the local cache automatically */
+	YbSetSysCacheTuple(heapRel, tup);
+
+	if (has_indices)
+		CatalogIndexInsert(indstate, tup, false /* yb_shared_insert */);
+}
+
 /*
  * CatalogTupleUpdate - do heap and indexing work for updating a catalog tuple
  *
@@ -536,27 +559,7 @@ CatalogTupleUpdate(Relation heapRel, ItemPointer otid, HeapTuple tup)
 
 	if (IsYugaByteEnabled())
 	{
-		HeapTuple	oldtup = NULL;
-		bool		has_indices = YBRelHasSecondaryIndices(heapRel);
-
-		if (has_indices)
-		{
-			if (tup->t_ybctid)
-			{
-				YbFetchHeapTuple(heapRel, tup->t_ybctid, &oldtup);
-				CatalogIndexDelete(indstate, oldtup);
-			}
-			else
-				YBC_LOG_WARNING("ybctid missing in %s's tuple",
-								RelationGetRelationName(heapRel));
-		}
-
-		YBCUpdateSysCatalogTuple(heapRel, oldtup, tup);
-		/* Update the local cache automatically */
-		YbSetSysCacheTuple(heapRel, tup);
-
-		if (has_indices)
-			CatalogIndexInsert(indstate, tup, false /* yb_shared_insert */);
+		YBCatalogTupleUpdate(heapRel, tup, indstate);
 	}
 	else
 	{
@@ -584,27 +587,7 @@ CatalogTupleUpdateWithInfo(Relation heapRel, ItemPointer otid, HeapTuple tup,
 
 	if (IsYugaByteEnabled())
 	{
-		HeapTuple	oldtup = NULL;
-		bool		has_indices = YBRelHasSecondaryIndices(heapRel);
-
-		if (has_indices)
-		{
-			if (tup->t_ybctid)
-			{
-				YbFetchHeapTuple(heapRel, tup->t_ybctid, &oldtup);
-				CatalogIndexDelete(indstate, oldtup);
-			}
-			else
-				YBC_LOG_WARNING("ybctid missing in %s's tuple",
-								RelationGetRelationName(heapRel));
-		}
-
-		YBCUpdateSysCatalogTuple(heapRel, oldtup, tup);
-		/* Update the local cache automatically */
-		YbSetSysCacheTuple(heapRel, tup);
-
-		if (has_indices)
-			CatalogIndexInsert(indstate, tup, false /* yb_shared_insert */);
+		YBCatalogTupleUpdate(heapRel, tup, indstate);
 	}
 	else
 	{
