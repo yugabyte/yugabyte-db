@@ -1,19 +1,19 @@
-## yba rbac
+## yba rbac role-binding
 
-Manage YugabyteDB Anywhere RBAC (Role-Based Access Control)
+Manage YugabyteDB Anywhere RBAC role bindings
 
 ### Synopsis
 
-Manage YugabyteDB Anywhere RBAC (Role-Based Access Control)
+Manage YugabyteDB Anywhere RBAC role bindings
 
 ```
-yba rbac [flags]
+yba rbac role-binding [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help   help for rbac
+  -h, --help   help for role-binding
 ```
 
 ### Options inherited from parent commands
@@ -32,8 +32,9 @@ yba rbac [flags]
 
 ### SEE ALSO
 
-* [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
-* [yba rbac permission](yba_rbac_permission.md)	 - Manage YugabyteDB Anywhere RBAC permissions
-* [yba rbac role](yba_rbac_role.md)	 - Manage YugabyteDB Anywhere RBAC roles
-* [yba rbac role-binding](yba_rbac_role-binding.md)	 - Manage YugabyteDB Anywhere RBAC role bindings
+* [yba rbac](yba_rbac.md)	 - Manage YugabyteDB Anywhere RBAC (Role-Based Access Control)
+* [yba rbac role-binding add](yba_rbac_role-binding_add.md)	 - Add a YugabyteDB Anywhere user role binding
+* [yba rbac role-binding delete](yba_rbac_role-binding_delete.md)	 - Delete a YugabyteDB Anywhere user role binding
+* [yba rbac role-binding describe](yba_rbac_role-binding_describe.md)	 - Describe a YugabyteDB Anywhere RBAC role binding
+* [yba rbac role-binding list](yba_rbac_role-binding_list.md)	 - List YugabyteDB Anywhere role bindings
 

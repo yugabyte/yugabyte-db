@@ -27,7 +27,7 @@ var createUserCmd = &cobra.Command{
 	Use:     "create",
 	Short:   "Create a YugabyteDB Anywhere user",
 	Long:    "Create an user in YugabyteDB Anywhere",
-	Example: `yba user create `,
+	Example: `yba user create --email <email> --password <password> --role <role>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		emailFlag, err := cmd.Flags().GetString("email")
 		if err != nil {
@@ -111,7 +111,7 @@ var createUserCmd = &cobra.Command{
 					formatter.RedColor))
 		}
 
-		resourceRoleDefinition := buildResourceRoleDefinition(roleResourceDefinitionString)
+		resourceRoleDefinition := BuildResourceRoleDefinition(roleResourceDefinitionString)
 
 		req := ybaclient.UserRegistrationData{
 			Email:                   email,
@@ -197,7 +197,8 @@ func init() {
 			"resource-uuid=<resource-uuid1>,<resource-uuid2>,<resource-uuid3>")
 }
 
-func buildResourceRoleDefinition(
+// BuildResourceRoleDefinition - Build resource role definition
+func BuildResourceRoleDefinition(
 	roleResourceDefinitionStrings []string) []ybaclient.RoleResourceDefinition {
 	if len(roleResourceDefinitionStrings) == 0 {
 		return nil
@@ -206,8 +207,8 @@ func buildResourceRoleDefinition(
 
 	for _, roleResourceDefinitionString := range roleResourceDefinitionStrings {
 		roleBinding := map[string]string{}
-		for _, regionInfo := range strings.Split(roleResourceDefinitionString, util.Separator) {
-			kvp := strings.Split(regionInfo, "=")
+		for _, roleInfo := range strings.Split(roleResourceDefinitionString, util.Separator) {
+			kvp := strings.Split(roleInfo, "=")
 			if len(kvp) != 2 {
 				logrus.Fatalln(
 					formatter.Colorize(
@@ -242,61 +243,63 @@ func buildResourceRoleDefinition(
 					providerutil.ValueNotFoundForKeyError(key)
 				}
 			}
-			if _, ok := roleBinding["role-uuid"]; !ok {
-				logrus.Fatalln(
-					formatter.Colorize(
-						"Role UUID not specified in role resource definition description.\n",
-						formatter.RedColor))
-			}
+		}
+		if _, ok := roleBinding["role-uuid"]; !ok {
+			logrus.Fatalln(
+				formatter.Colorize(
+					"Role UUID not specified in role resource definition description.\n",
+					formatter.RedColor))
+		}
 
-			if _, ok := roleBinding["resource-type"]; !ok {
-				logrus.Fatalln(
-					formatter.Colorize(
-						"Resource type not specified in role resource definition description.\n",
-						formatter.RedColor))
-			}
+		if _, ok := roleBinding["resource-type"]; !ok {
+			logrus.Fatalln(
+				formatter.Colorize(
+					"Resource type not specified in role resource definition description.\n",
+					formatter.RedColor))
+		}
+		allowAll, err := strconv.ParseBool(roleBinding["allow-all"])
+		if err != nil {
+			errMessage := err.Error() + " Setting default as false\n"
+			logrus.Errorln(
+				formatter.Colorize(errMessage, formatter.YellowColor),
+			)
+			allowAll = false
+		}
+		resourceUUIDs := strings.Split(roleBinding["resource-uuid"], ",")
+		if len(resourceUUIDs) == 1 && resourceUUIDs[0] == "" {
+			resourceUUIDs = []string{}
+		}
+		if len(resourceUUIDs) == 0 {
+			allowAll = true
+		}
 
-			allowAll, err := strconv.ParseBool(roleBinding["allow-all"])
-			if err != nil {
-				errMessage := err.Error() + " Setting default as false\n"
-				logrus.Errorln(
-					formatter.Colorize(errMessage, formatter.YellowColor),
-				)
-				allowAll = false
+		resourceDefinition := ybaclient.ResourceDefinition{
+			AllowAll:        util.GetBoolPointer(allowAll),
+			ResourceType:    util.GetStringPointer(roleBinding["resource-type"]),
+			ResourceUUIDSet: &resourceUUIDs,
+		}
+		exists := false
+		for i, value := range res {
+			if strings.Compare(value.GetRoleUUID(), roleBinding["role-uuid"]) == 0 {
+				exists = true
+				valueResourceGroup := value.GetResourceGroup()
+				valueResourceDefinitionSet := valueResourceGroup.GetResourceDefinitionSet()
+				valueResourceDefinitionSet = append(valueResourceDefinitionSet, resourceDefinition)
+				valueResourceGroup.SetResourceDefinitionSet(valueResourceDefinitionSet)
+				value.SetResourceGroup(valueResourceGroup)
+				res[i] = value
+				break
 			}
-			resourceUUIDs := strings.Split(roleBinding["resource-uuid"], ",")
-			if len(resourceUUIDs) == 0 {
-				allowAll = true
+		}
+		if !exists {
+			resourceGroup := ybaclient.ResourceGroup{
+				ResourceDefinitionSet: []ybaclient.ResourceDefinition{resourceDefinition},
 			}
-
-			resourceDefinition := ybaclient.ResourceDefinition{
-				AllowAll:        util.GetBoolPointer(allowAll),
-				ResourceType:    util.GetStringPointer(roleBinding["resource-type"]),
-				ResourceUUIDSet: &resourceUUIDs,
+			roleResourceDefinition := ybaclient.RoleResourceDefinition{
+				RoleUUID:      roleBinding["role-uuid"],
+				ResourceGroup: &resourceGroup,
 			}
-			exists := false
-			for i, value := range res {
-				if strings.Compare(value.GetRoleUUID(), roleBinding["role-uuid"]) == 0 {
-					exists = true
-					valueResourceGroup := value.GetResourceGroup()
-					valueResourceDefinitionSet := valueResourceGroup.GetResourceDefinitionSet()
-					valueResourceDefinitionSet = append(valueResourceDefinitionSet, resourceDefinition)
-					valueResourceGroup.SetResourceDefinitionSet(valueResourceDefinitionSet)
-					value.SetResourceGroup(valueResourceGroup)
-					res[i] = value
-					break
-				}
-			}
-			if !exists {
-				resourceGroup := ybaclient.ResourceGroup{
-					ResourceDefinitionSet: []ybaclient.ResourceDefinition{resourceDefinition},
-				}
-				roleResourceDefinition := ybaclient.RoleResourceDefinition{
-					RoleUUID:      roleBinding["role-uuid"],
-					ResourceGroup: &resourceGroup,
-				}
-				res = append(res, roleResourceDefinition)
-			}
+			res = append(res, roleResourceDefinition)
 		}
 	}
 	return res

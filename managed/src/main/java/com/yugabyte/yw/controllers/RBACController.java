@@ -490,7 +490,8 @@ public class RBACController extends AuthenticatedController {
       notes = "YbaApi Internal.",
       value = "Set the role bindings of a user",
       nickname = "setRoleBinding",
-      response = RoleBinding.class)
+      response = RoleBinding.class,
+      responseContainer = "List")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "RoleBindingFormData",

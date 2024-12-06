@@ -1,19 +1,27 @@
-## yba rbac
+## yba rbac role-binding delete
 
-Manage YugabyteDB Anywhere RBAC (Role-Based Access Control)
+Delete a YugabyteDB Anywhere user role binding
 
 ### Synopsis
 
-Manage YugabyteDB Anywhere RBAC (Role-Based Access Control)
+Delete a role binding from a YugabyteDB Anywhere user
 
 ```
-yba rbac [flags]
+yba rbac role-binding delete [flags]
+```
+
+### Examples
+
+```
+yba rbac role-binding delete --uuid <role-binding-uuid> --email <email>
 ```
 
 ### Options
 
 ```
-  -h, --help   help for rbac
+  -u, --uuid string    [Required] UUID of the role binding to be deleted.
+  -e, --email string   [Required] Email of the user whose role binding you want to delete.
+  -h, --help           help for delete
 ```
 
 ### Options inherited from parent commands
@@ -32,8 +40,5 @@ yba rbac [flags]
 
 ### SEE ALSO
 
-* [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
-* [yba rbac permission](yba_rbac_permission.md)	 - Manage YugabyteDB Anywhere RBAC permissions
-* [yba rbac role](yba_rbac_role.md)	 - Manage YugabyteDB Anywhere RBAC roles
 * [yba rbac role-binding](yba_rbac_role-binding.md)	 - Manage YugabyteDB Anywhere RBAC role bindings
 
