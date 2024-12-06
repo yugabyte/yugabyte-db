@@ -51,7 +51,7 @@
 
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/pgsql_operation.h"
+#include "yb/docdb/key_bounds.h"
 
 #include "yb/dockv/reader_projection.h"
 
@@ -2362,6 +2362,10 @@ Result<docdb::EncodedPartitionBounds> RaftGroupMetadata::MakeEncodedPartitionBou
       .end_key = KeyBuffer(
           VERIFY_RESULT(partition_schema->GetEncodedPartitionKey(partition->partition_key_end()))),
   };
+}
+
+docdb::KeyBounds RaftGroupMetadata::MakeKeyBounds() const {
+  return docdb::KeyBounds(kv_store_.lower_bound_key, kv_store_.upper_bound_key);
 }
 
 } // namespace yb::tablet

@@ -392,6 +392,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   Result<docdb::EncodedPartitionBounds> MakeEncodedPartitionBounds() const;
 
+  docdb::KeyBounds MakeKeyBounds() const;
+
   const std::string& wal_dir() const { return wal_dir_; }
 
   Status set_namespace_id(const NamespaceId& namespace_id);
