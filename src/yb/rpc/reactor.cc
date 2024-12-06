@@ -307,7 +307,7 @@ Status Reactor::Init() {
 
   // Create Reactor thread.
   const std::string group_name = messenger_.name() + "_reactor";
-  return yb::Thread::Create(group_name, group_name, &Reactor::RunThread, this, &thread_);
+  return Thread::Create(group_name, group_name, &Reactor::RunThread, this, &thread_);
 }
 
 void Reactor::StartShutdown() {
@@ -542,7 +542,9 @@ void Reactor::AsyncHandler(ev::async &watcher, int revents) {
   }
 
   for (const auto &task : pending_tasks_being_processed_) {
+    tick_.fetch_add(1);
     task->Run(this);
+    tick_.fetch_add(1);
   }
 }
 
@@ -1034,6 +1036,10 @@ void Reactor::ReleaseLoop(struct ev_loop* loop) noexcept {
 void Reactor::AcquireLoop(struct ev_loop* loop) noexcept {
   auto reactor = static_cast<Reactor*>(ev_userdata(loop));
   IncrementGauge(reactor->messenger_.rpc_metrics()->busy_reactors);
+}
+
+ThreadIdForStack Reactor::tid_for_stack() const {
+  return thread_->tid_for_stack();
 }
 
 }  // namespace rpc
