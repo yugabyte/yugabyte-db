@@ -55,6 +55,7 @@ class ProxyBase;
 class ProxyCache;
 class ProxyContext;
 class Reactor;
+class ReactorMonitor;
 class ReactorTask;
 class ReceivedSidecars;
 class RpcCallParams;
