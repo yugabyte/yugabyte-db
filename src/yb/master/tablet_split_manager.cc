@@ -21,6 +21,7 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
+#include "yb/gutil/strings/human_readable.h"
 
 #include "yb/dockv/partition.h"
 #include "yb/common/schema.h"
@@ -677,7 +678,12 @@ class OutstandingSplitState {
   }
 
   void ProcessCandidates() {
-    VLOG(2) << Format("Processing $0 split candidates.", new_split_candidates_.size());
+    if (VLOG_IS_ON(4)) {
+      VLOG(4) << Format("Processing split candidates: $0", new_split_candidates_);
+    } else {
+      VLOG(2) << Format("Processing $0 split candidates", new_split_candidates_.size());
+    }
+
     // Add any new splits to the set of splits to schedule (while respecting the max number of
     // outstanding splits).
     if (!CanSplitMoreGlobal()) {
@@ -685,11 +691,19 @@ class OutstandingSplitState {
     }
 
     if (FLAGS_sort_automatic_tablet_splitting_candidates) {
-      auto threshold = FLAGS_tablet_split_min_size_ratio * largest_candidate_size_;
-      VLOG(3) << "Filtering out candidates smaller than " << threshold;
+      auto threshold = static_cast<uint64_t>(
+          FLAGS_tablet_split_min_size_ratio * largest_candidate_size_);
+      VLOG(3) << "Filtering out candidates smaller than "
+              << HumanReadableNumBytes::ToString(threshold);
       std::erase_if(
           new_split_candidates_,
-          [threshold](const auto& candidate) { return candidate.leader_sst_size < threshold; });
+          [threshold](const auto& candidate) {
+        if (candidate.leader_sst_size < threshold) {
+          VLOG(4) << "Rejected: " << candidate.ToString();
+          return true;
+        }
+        return false;
+      });
       sort(new_split_candidates_.begin(), new_split_candidates_.end(), LargestTabletFirst);
     }
     for (const auto& candidate : new_split_candidates_) {
@@ -723,6 +737,10 @@ class OutstandingSplitState {
   struct SplitCandidate {
     TabletInfoPtr tablet;
     uint64_t leader_sst_size;
+
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(tablet, leader_sst_size);
+    }
   };
   // New split candidates. The chosen candidates are eventually added to splits_to_schedule.
   std::vector<SplitCandidate> new_split_candidates_;
@@ -742,7 +760,7 @@ class OutstandingSplitState {
 
   void TrackTserverSplits(const TabletId& tablet_id, const TabletReplicaMap& split_replicas) {
     for (const auto& location : split_replicas) {
-      VLOG(4) << Format("Tracking location $0 for split of tablet $1", location.first, tablet_id);
+      VLOG(4) << Format("Tracking location T $1 P $0", location.first, tablet_id);
       ts_to_ongoing_splits_[location.first].insert(tablet_id);
     }
   }
