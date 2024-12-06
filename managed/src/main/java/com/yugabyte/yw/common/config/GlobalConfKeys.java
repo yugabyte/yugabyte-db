@@ -1518,6 +1518,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " than main Prometheus scrape period to complete",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> clusterConsistencyCheckParallelism =
+      new ConfKeyInfo<>(
+          "yb.health.consistency_check_parallelism",
+          ScopeType.GLOBAL,
+          "Max Number of Parallel cluster consistency checks",
+          "Max Number of Parallel cluster consistency checks",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> oidcGroupClaim =
       new ConfKeyInfo<>(
           "yb.security.oidc_group_claim",

@@ -18,6 +18,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -25,14 +26,17 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.alerts.MaintenanceService;
 import com.yugabyte.yw.common.alerts.SmtpData;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.metrics.MetricService;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -162,6 +166,8 @@ public class HealthChecker {
 
   private final MaintenanceService maintenanceService;
 
+  private final ClusterConsistencyChecker clusterConsistencyChecker;
+
   @Inject
   public HealthChecker(
       Environment environment,
@@ -176,7 +182,8 @@ public class HealthChecker {
       ApplicationLifecycle lifecycle,
       NodeUniverseManager nodeUniverseManager,
       FileHelperService fileHelperService,
-      MaintenanceService maintenanceService) {
+      MaintenanceService maintenanceService,
+      YBClientService ybClientService) {
     this(
         environment,
         config,
@@ -190,8 +197,10 @@ public class HealthChecker {
         nodeUniverseManager,
         createUniverseExecutor(platformExecutorFactory, runtimeConfigFactory.globalRuntimeConf()),
         createNodeExecutor(platformExecutorFactory, runtimeConfigFactory.globalRuntimeConf()),
+        createConsistencyCheckExecutor(platformExecutorFactory, confGetter),
         fileHelperService,
-        maintenanceService);
+        maintenanceService,
+        ybClientService);
   }
 
   HealthChecker(
@@ -207,8 +216,10 @@ public class HealthChecker {
       NodeUniverseManager nodeUniverseManager,
       ExecutorService universeExecutor,
       ExecutorService nodeExecutor,
+      ExecutorService consistencyCheckExecutor,
       FileHelperService fileHelperService,
-      MaintenanceService maintenanceService) {
+      MaintenanceService maintenanceService,
+      YBClientService ybClientService) {
     this.environment = environment;
     this.config = config;
     this.platformScheduler = platformScheduler;
@@ -223,6 +234,8 @@ public class HealthChecker {
     this.nodeUniverseManager = nodeUniverseManager;
     this.fileHelperService = fileHelperService;
     this.maintenanceService = maintenanceService;
+    this.clusterConsistencyChecker =
+        new ClusterConsistencyChecker(consistencyCheckExecutor, confGetter, ybClientService);
   }
 
   public void initialize() {
@@ -232,6 +245,11 @@ public class HealthChecker {
         Duration.ZERO /* initialDelay */,
         Duration.ofMillis(healthCheckIntervalMs()) /* interval */,
         this::scheduleRunner);
+    platformScheduler.schedule(
+        clusterConsistencyChecker.getClass().getSimpleName(),
+        Duration.ZERO /* initialDelay */,
+        Duration.ofMillis(healthCheckIntervalMs()) /* interval */,
+        clusterConsistencyChecker::processAll);
   }
 
   // The interval at which the checker will run.
@@ -319,6 +337,7 @@ public class HealthChecker {
         }
         if (shouldCollectNodeMetrics
             || checkName.equals(OPENED_FILE_DESCRIPTORS_CHECK)
+            || checkName.equals(UNEXPECTED_PROCESSES_CHECK)
             || checkName.equals(CLOCK_SYNC_CHECK)
             || checkName.equals(DDL_ATOMICITY_CHECK)) {
           if (checkName.equals(DDL_ATOMICITY_CHECK) && !checkResult) {
@@ -564,6 +583,21 @@ public class HealthChecker {
 
     return executorFactory.createFixedExecutor(
         "Health-Check-Node-Pool", numParallelism, namedThreadFactory);
+  }
+
+  private static ExecutorService createConsistencyCheckExecutor(
+      PlatformExecutorFactory executorFactory, RuntimeConfGetter confGetter) {
+    int numParallelism =
+        confGetter.getGlobalConf(GlobalConfKeys.clusterConsistencyCheckParallelism);
+
+    // Initialize the health check thread pool.
+    ThreadFactory namedThreadFactory =
+        new ThreadFactoryBuilder()
+            .setNameFormat("Health-Check-Cluster-Consistency-Pool-%d")
+            .build();
+
+    return executorFactory.createFixedExecutor(
+        "Health-Check-Cluster-Consistency-Pool", numParallelism, namedThreadFactory);
   }
 
   public CompletableFuture<Void> runHealthCheck(
@@ -814,6 +848,7 @@ public class HealthChecker {
     }
 
     List<NodeData> nodeReports = checkNodes(params, nodeMetadata);
+    addUnexpectedServersChecks(nodeReports, nodeMetadata, params);
 
     Details fullReport =
         new Details()
@@ -870,6 +905,81 @@ public class HealthChecker {
 
     metricService.setOkStatusMetric(
         buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, params.universe));
+  }
+
+  private void addUnexpectedServersChecks(
+      List<NodeData> nodeReports, List<NodeInfo> nodeMetadata, CheckSingleUniverseParams params) {
+    Set<String> checkedNodeIps =
+        nodeMetadata.stream().map(n -> n.nodeHost).collect(Collectors.toSet());
+    CheckClusterConsistency.CheckResult checkResult =
+        clusterConsistencyChecker.getUniverseCheckResult(params.universe.getUniverseUUID());
+    log.debug("Found check result: {}", checkResult);
+    if (checkResult != null) {
+      if (checkResult.getCheckTimestamp() + healthCheckIntervalMs() * 2
+          < System.currentTimeMillis()) {
+        log.error(
+            "Consistency check is too old ({}), ignoring",
+            new Date(checkResult.getCheckTimestamp()));
+        return;
+      }
+      for (String ip :
+          Sets.union(checkResult.getUnknownMasterIps(), checkResult.getUnknownTserverIps())) {
+        NodeDetails nodeDetails = params.universe.getNodeByAnyIP(ip);
+        if (nodeDetails != null && checkedNodeIps.contains(nodeDetails.cloudInfo.private_ip)) {
+          continue;
+        }
+        log.debug("Found ip with master/tserver running: {} node {}", ip, nodeDetails);
+        Optional<NodeInstance> nodeInstance = NodeInstance.maybeGet(nodeDetails.getNodeUuid());
+        NodeData nodeData =
+            new NodeData()
+                .setHasError(true)
+                .setHasWarning(false)
+                .setMetricsOnly(false)
+                .setMessage(UNEXPECTED_PROCESSES_CHECK)
+                .setNode(nodeDetails != null ? nodeDetails.cloudInfo.private_ip : ip);
+        if (nodeDetails != null) {
+          nodeData.setNodeName(nodeDetails.getNodeName());
+          List<NodeInstance> nodeInstances =
+              NodeInstance.listByUuids(Collections.singletonList(nodeDetails.azUuid));
+          if (nodeInstances.size() > 0) {
+            nodeData.setNodeIdentifier(nodeInstances.get(0).getDetails().instanceName);
+          } else {
+            nodeData.setNodeIdentifier(StringUtils.EMPTY);
+          }
+        } else {
+          nodeData.setNodeName(ip);
+        }
+        List<String> details = new ArrayList<>();
+        List<Details.Metric> metrics = new ArrayList<>();
+        if (checkResult.getUnknownTserverIps().contains(ip)) {
+          metrics.add(unexpectedProcessRunning(false, params.universe));
+          details.add("Tserver heartbeating to master");
+        }
+        if (checkResult.getUnknownMasterIps().contains(ip)) {
+          metrics.add(unexpectedProcessRunning(true, params.universe));
+          details.add("Master in raft group");
+        }
+        nodeData.setMetrics(metrics);
+        nodeData.setDetails(details);
+        nodeReports.add(nodeData);
+      }
+    }
+  }
+
+  private Details.Metric unexpectedProcessRunning(boolean master, Universe universe) {
+    String processName = master ? "Master" : "Tserver";
+    return new Details.Metric()
+        .setName(String.format("yb_node_unexpected_%s_running", processName.toLowerCase()))
+        .setHelp(String.format("%s is running on node (but should not)", processName))
+        .setValues(
+            Collections.singletonList(
+                new Details.MetricValue()
+                    .setValue(1d)
+                    .setLabels(
+                        Collections.singletonList(
+                            new Details.MetricLabel()
+                                .setName("universe_uuid")
+                                .setValue(universe.getUniverseUUID().toString())))));
   }
 
   private List<NodeData> checkNodes(CheckSingleUniverseParams params, List<NodeInfo> nodes) {
