@@ -426,19 +426,26 @@ HandleDocumentsStage(const bson_value_t *existingValue, Query *query,
 	}
 
 	/* Documents is an expression */
-	pgbsonelement documentsElement =
+	StringView documentsPath =
 	{
-		.path = "$documents",
-		.pathLength = 10,
-		.bsonValue = *existingValue
+		.string = "$documents",
+		.length = 10
 	};
+
 	pgbson_writer writer;
 	PgbsonWriterInit(&writer);
 
+	ParseAggregationExpressionContext parseContext = { 0 };
+	AggregationExpressionData expressionData;
+	memset(&expressionData, 0, sizeof(AggregationExpressionData));
+
+	ParseAggregationExpressionData(&expressionData, existingValue, &parseContext);
+
 	ExpressionVariableContext *variableContext = NULL;
 	bool isNullOnEmpty = false;
-	EvaluateExpressionToWriter(PgbsonInitEmpty(), &documentsElement, &writer,
-							   variableContext, isNullOnEmpty);
+	EvaluateAggregationExpressionDataToWriter(&expressionData, PgbsonInitEmpty(),
+											  documentsPath, &writer, variableContext,
+											  isNullOnEmpty);
 
 	/* Validate documents */
 	pgbson *targetBson = PgbsonWriterGetPgbson(&writer);
@@ -452,8 +459,8 @@ HandleDocumentsStage(const bson_value_t *existingValue, Query *query,
 	}
 
 	/* Create a distinct unwind - to expand arrays and such */
-	Const *unwindValue = MakeTextConst(documentsElement.path,
-									   documentsElement.pathLength);
+	Const *unwindValue = MakeTextConst(documentsPath.string,
+									   documentsPath.length);
 	List *args = list_make2(MakeBsonConst(targetBson), unwindValue);
 	FuncExpr *resultExpr = makeFuncExpr(
 		BsonLookupUnwindFunctionOid(), BsonTypeId(), args, InvalidOid,

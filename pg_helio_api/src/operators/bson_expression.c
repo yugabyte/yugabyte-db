@@ -54,9 +54,6 @@ typedef struct
 	/* The mongodb name of the operator (e.g. $literal) */
 	const char *operatorName;
 
-	/* A function pointer that will evaluate the operator against a document. */
-	LegacyEvaluateOperator legacyHandleOperatorFunc;
-
 	/* Function pointer to parse the aggregation expression. */
 	ParseAggregationExpressionFunc parseAggregationExpressionFunc;
 
@@ -87,9 +84,6 @@ extern bool EnableCollation;
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
-static void GetAndEvaluateOperator(pgbson *document, const char *operatorName,
-								   const bson_value_t *operatorValue,
-								   ExpressionResult *expressionResult);
 static bool EvaluateFieldPathAndWriteCore(bson_iter_t *document,
 										  const char *dottedPathExpression,
 										  uint32_t dottedPathExpressionLength,
@@ -100,18 +94,6 @@ static bool EvaluateFieldPathAndWrite(bson_value_t *value,
 									  uint32_t dottedPathExpressionLength,
 									  pgbson_element_writer *writer,
 									  bool isNullOnEmpty);
-static void EvaluateExpressionArrayToWriter(pgbson *document,
-											bson_iter_t *elementIterator,
-											pgbson_element_writer *writer,
-											ExpressionLifetimeTracker *tracker,
-											ExpressionVariableContext *variableContext,
-											bool isNullOnEmpty);
-static void EvaluateExpressionObjectToWriter(pgbson *document, const
-											 bson_value_t *expressionValue,
-											 pgbson_element_writer *writer,
-											 ExpressionLifetimeTracker *tracker,
-											 ExpressionVariableContext *variableContext,
-											 bool isNullOnEmpty);
 static void EvaluateAggregationExpressionDocumentToWriter(const
 														  AggregationExpressionData *data,
 														  pgbson *document,
@@ -182,327 +164,313 @@ static void CreateProjectionTreeStateForPartitionByFields(
  *  as it is binary searched on the key to find the handler.
  */
 static MongoOperatorExpression OperatorExpressions[] = {
-	{ "$_bucketInternal", NULL, &ParseDollarBucketInternal,
+	{ "$_bucketInternal", &ParseDollarBucketInternal,
 	  &HandlePreParsedDollarBucketInternal,
 	  INTERNAL_FEATURE_TYPE },
-	{ "$abs", NULL, &ParseDollarAbs, &HandlePreParsedDollarAbs,
+	{ "$abs", &ParseDollarAbs, &HandlePreParsedDollarAbs,
 	  FEATURE_AGG_OPERATOR_ABS },
-	{ "$accumulator", NULL, NULL, NULL, FEATURE_AGG_OPERATOR_ACCUMULATOR },
-	{ "$acos", NULL, &ParseDollarAcos, &HandlePreParsedDollarAcos,
+	{ "$accumulator", NULL, NULL, FEATURE_AGG_OPERATOR_ACCUMULATOR },
+	{ "$acos", &ParseDollarAcos, &HandlePreParsedDollarAcos,
 	  FEATURE_AGG_OPERATOR_ACOS },
-	{ "$acosh", NULL, &ParseDollarAcosh, &HandlePreParsedDollarAcosh,
+	{ "$acosh", &ParseDollarAcosh, &HandlePreParsedDollarAcosh,
 	  FEATURE_AGG_OPERATOR_ACOSH },
-	{ "$add", NULL, &ParseDollarAdd, &HandlePreParsedDollarAdd,
+	{ "$add", &ParseDollarAdd, &HandlePreParsedDollarAdd,
 	  FEATURE_AGG_OPERATOR_ADD },
-	{ "$addToSet", NULL, NULL, NULL, FEATURE_AGG_OPERATOR_ADDTOSET },
-	{ "$allElementsTrue", NULL, &ParseDollarAllElementsTrue,
+	{ "$addToSet", NULL, NULL, FEATURE_AGG_OPERATOR_ADDTOSET },
+	{ "$allElementsTrue", &ParseDollarAllElementsTrue,
 	  &HandlePreParsedDollarAllElementsTrue,
 	  FEATURE_AGG_OPERATOR_ALLELEMENTSTRUE },
-	{ "$and", NULL, &ParseDollarAnd, &HandlePreParsedDollarAnd,
+	{ "$and", &ParseDollarAnd, &HandlePreParsedDollarAnd,
 	  FEATURE_AGG_OPERATOR_AND },
-	{ "$anyElementTrue", NULL, &ParseDollarAnyElementTrue,
+	{ "$anyElementTrue", &ParseDollarAnyElementTrue,
 	  &HandlePreParsedDollarAnyElementTrue,
 	  FEATURE_AGG_OPERATOR_ANYELEMENTTRUE },
-	{ "$arrayElemAt", NULL, &ParseDollarArrayElemAt, &HandlePreParsedDollarArrayElemAt,
+	{ "$arrayElemAt", &ParseDollarArrayElemAt, &HandlePreParsedDollarArrayElemAt,
 	  FEATURE_AGG_OPERATOR_ARRAYELEMAT },
-	{ "$arrayToObject", NULL, &ParseDollarArrayToObject,
+	{ "$arrayToObject", &ParseDollarArrayToObject,
 	  &HandlePreParsedDollarArrayToObject,
 	  FEATURE_AGG_OPERATOR_ARRAYTOOBJECT },
-	{ "$asin", NULL, &ParseDollarAsin, &HandlePreParsedDollarAsin,
+	{ "$asin", &ParseDollarAsin, &HandlePreParsedDollarAsin,
 	  FEATURE_AGG_OPERATOR_ASIN },
-	{ "$asinh", NULL, &ParseDollarAsinh, &HandlePreParsedDollarAsinh,
+	{ "$asinh", &ParseDollarAsinh, &HandlePreParsedDollarAsinh,
 	  FEATURE_AGG_OPERATOR_ASINH },
-	{ "$atan", NULL, &ParseDollarAtan, &HandlePreParsedDollarAtan,
+	{ "$atan", &ParseDollarAtan, &HandlePreParsedDollarAtan,
 	  FEATURE_AGG_OPERATOR_ATAN },
-	{ "$atan2", NULL, &ParseDollarAtan2, &HandlePreParsedDollarAtan2,
+	{ "$atan2", &ParseDollarAtan2, &HandlePreParsedDollarAtan2,
 	  FEATURE_AGG_OPERATOR_ATAN2 },
-	{ "$atanh", NULL, &ParseDollarAtanh, &HandlePreParsedDollarAtanh,
+	{ "$atanh", &ParseDollarAtanh, &HandlePreParsedDollarAtanh,
 	  FEATURE_AGG_OPERATOR_ATANH },
-	{ "$avg", NULL, &ParseDollarAvg, &HandlePreParsedDollarAvg,
+	{ "$avg", &ParseDollarAvg, &HandlePreParsedDollarAvg,
 	  FEATURE_AGG_OPERATOR_AVG },
-	{ "$binarySize", NULL, &ParseDollarBinarySize, &HandlePreParsedDollarBinarySize,
+	{ "$binarySize", &ParseDollarBinarySize, &HandlePreParsedDollarBinarySize,
 	  FEATURE_AGG_OPERATOR_BINARYSIZE },
-	{ "$bitAnd", NULL, &ParseDollarBitAnd, &HandlePreParsedDollarBitAnd,
+	{ "$bitAnd", &ParseDollarBitAnd, &HandlePreParsedDollarBitAnd,
 	  FEATURE_AGG_OPERATOR_BITAND },
-	{ "$bitNot", NULL, &ParseDollarBitNot, &HandlePreParsedDollarBitNot,
+	{ "$bitNot", &ParseDollarBitNot, &HandlePreParsedDollarBitNot,
 	  FEATURE_AGG_OPERATOR_BITNOT },
-	{ "$bitOr", NULL, &ParseDollarBitOr, &HandlePreParsedDollarBitOr,
+	{ "$bitOr", &ParseDollarBitOr, &HandlePreParsedDollarBitOr,
 	  FEATURE_AGG_OPERATOR_BITOR },
-	{ "$bitXor", NULL, &ParseDollarBitXor, &HandlePreParsedDollarBitXor,
+	{ "$bitXor", &ParseDollarBitXor, &HandlePreParsedDollarBitXor,
 	  FEATURE_AGG_OPERATOR_BITXOR },
-	{ "$bsonSize", NULL, &ParseDollarBsonSize, &HandlePreParsedDollarBsonSize,
+	{ "$bsonSize", &ParseDollarBsonSize, &HandlePreParsedDollarBsonSize,
 	  FEATURE_AGG_OPERATOR_BSONSIZE },
-	{ "$ceil", NULL, &ParseDollarCeil, &HandlePreParsedDollarCeil,
+	{ "$ceil", &ParseDollarCeil, &HandlePreParsedDollarCeil,
 	  FEATURE_AGG_OPERATOR_CEIL },
-	{ "$cmp", NULL, &ParseDollarCmp, &HandlePreParsedDollarCmp,
+	{ "$cmp", &ParseDollarCmp, &HandlePreParsedDollarCmp,
 	  FEATURE_AGG_OPERATOR_CMP },
-	{ "$concat", NULL, &ParseDollarConcat, &HandlePreParsedDollarConcat,
+	{ "$concat", &ParseDollarConcat, &HandlePreParsedDollarConcat,
 	  FEATURE_AGG_OPERATOR_CONCAT },
-	{ "$concatArrays", NULL, &ParseDollarConcatArrays, &HandlePreParsedDollarConcatArrays,
+	{ "$concatArrays", &ParseDollarConcatArrays, &HandlePreParsedDollarConcatArrays,
 	  FEATURE_AGG_OPERATOR_CONCATARRAYS },
-	{ "$cond", NULL, &ParseDollarCond, &HandlePreParsedDollarCond,
+	{ "$cond", &ParseDollarCond, &HandlePreParsedDollarCond,
 	  FEATURE_AGG_OPERATOR_COND },
-	{ "$const", NULL, &ParseDollarLiteral, NULL, FEATURE_AGG_OPERATOR_CONST }, /* $const effectively same as $literal */
-	{ "$convert", NULL, &ParseDollarConvert, &HandlePreParsedDollarConvert,
+	{ "$const", &ParseDollarLiteral, NULL, FEATURE_AGG_OPERATOR_CONST }, /* $const effectively same as $literal */
+	{ "$convert", &ParseDollarConvert, &HandlePreParsedDollarConvert,
 	  FEATURE_AGG_OPERATOR_CONVERT },
-	{ "$cos", NULL, &ParseDollarCos, &HandlePreParsedDollarCos,
+	{ "$cos", &ParseDollarCos, &HandlePreParsedDollarCos,
 	  FEATURE_AGG_OPERATOR_COS },
-	{ "$cosh", NULL, &ParseDollarCosh, &HandlePreParsedDollarCosh,
+	{ "$cosh", &ParseDollarCosh, &HandlePreParsedDollarCosh,
 	  FEATURE_AGG_OPERATOR_COSH },
-	{ "$dateAdd", NULL, &ParseDollarDateAdd, &HandlePreParsedDollarDateAdd,
+	{ "$dateAdd", &ParseDollarDateAdd, &HandlePreParsedDollarDateAdd,
 	  FEATURE_AGG_OPERATOR_DATEADD },
-	{ "$dateDiff", NULL, &ParseDollarDateDiff, &HandlePreParsedDollarDateDiff,
+	{ "$dateDiff", &ParseDollarDateDiff, &HandlePreParsedDollarDateDiff,
 	  FEATURE_AGG_OPERATOR_DATEDIFF },
-	{ "$dateFromParts", NULL, &ParseDollarDateFromParts,
+	{ "$dateFromParts", &ParseDollarDateFromParts,
 	  &HandlePreParsedDollarDateFromParts, FEATURE_AGG_OPERATOR_DATEFROMPARTS },
-	{ "$dateFromString", NULL, &ParseDollarDateFromString,
+	{ "$dateFromString", &ParseDollarDateFromString,
 	  &HandlePreParsedDollarDateFromString, FEATURE_AGG_OPERATOR_DATEFROMSTRING },
-	{ "$dateSubtract", NULL, &ParseDollarDateSubtract, &HandlePreParsedDollarDateSubtract,
+	{ "$dateSubtract", &ParseDollarDateSubtract, &HandlePreParsedDollarDateSubtract,
 	  FEATURE_AGG_OPERATOR_DATESUBTRACT },
-	{ "$dateToParts", NULL, &ParseDollarDateToParts, &HandlePreParsedDollarDateToParts,
+	{ "$dateToParts", &ParseDollarDateToParts, &HandlePreParsedDollarDateToParts,
 	  FEATURE_AGG_OPERATOR_DATETOPARTS },
-	{ "$dateToString", NULL, &ParseDollarDateToString, &HandlePreParsedDollarDateToString,
+	{ "$dateToString", &ParseDollarDateToString, &HandlePreParsedDollarDateToString,
 	  FEATURE_AGG_OPERATOR_DATETOSTRING },
-	{ "$dateTrunc", NULL, &ParseDollarDateTrunc, &HandlePreParsedDollarDateTrunc,
+	{ "$dateTrunc", &ParseDollarDateTrunc, &HandlePreParsedDollarDateTrunc,
 	  FEATURE_AGG_OPERATOR_DATETRUNC },
-	{ "$dayOfMonth", NULL, &ParseDollarDayOfMonth, &HandlePreParsedDollarDayOfMonth,
+	{ "$dayOfMonth", &ParseDollarDayOfMonth, &HandlePreParsedDollarDayOfMonth,
 	  FEATURE_AGG_OPERATOR_DAYOFMONTH },
-	{ "$dayOfWeek", NULL, &ParseDollarDayOfWeek, &HandlePreParsedDollarDayOfWeek,
+	{ "$dayOfWeek", &ParseDollarDayOfWeek, &HandlePreParsedDollarDayOfWeek,
 	  FEATURE_AGG_OPERATOR_DAYOFWEEK },
-	{ "$dayOfYear", NULL, &ParseDollarDayOfYear, &HandlePreParsedDollarDayOfYear,
+	{ "$dayOfYear", &ParseDollarDayOfYear, &HandlePreParsedDollarDayOfYear,
 	  FEATURE_AGG_OPERATOR_DAYOFYEAR },
-	{ "$degreesToRadians", NULL, &ParseDollarDegreesToRadians,
+	{ "$degreesToRadians", &ParseDollarDegreesToRadians,
 	  &HandlePreParsedDollarDegreesToRadians,
 	  FEATURE_AGG_OPERATOR_DEGREESTORADIANS },
-	{ "$divide", NULL, &ParseDollarDivide, &HandlePreParsedDollarDivide,
+	{ "$divide", &ParseDollarDivide, &HandlePreParsedDollarDivide,
 	  FEATURE_AGG_OPERATOR_DIVIDE },
-	{ "$eq", NULL, &ParseDollarEq, &HandlePreParsedDollarEq, FEATURE_AGG_OPERATOR_EQ },
-	{ "$exp", NULL, &ParseDollarExp, &HandlePreParsedDollarExp,
+	{ "$eq", &ParseDollarEq, &HandlePreParsedDollarEq, FEATURE_AGG_OPERATOR_EQ },
+	{ "$exp", &ParseDollarExp, &HandlePreParsedDollarExp,
 	  FEATURE_AGG_OPERATOR_EXP },
-	{ "$filter", NULL, &ParseDollarFilter, &HandlePreParsedDollarFilter,
+	{ "$filter", &ParseDollarFilter, &HandlePreParsedDollarFilter,
 	  FEATURE_AGG_OPERATOR_FILTER },
-	{ "$first", NULL, &ParseDollarFirst, &HandlePreParsedDollarFirst,
+	{ "$first", &ParseDollarFirst, &HandlePreParsedDollarFirst,
 	  FEATURE_AGG_OPERATOR_FIRST },
-	{ "$firstN", NULL, &ParseDollarFirstN, &HandlePreParsedDollarFirstN,
+	{ "$firstN", &ParseDollarFirstN, &HandlePreParsedDollarFirstN,
 	  FEATURE_AGG_OPERATOR_FIRSTN },
-	{ "$floor", NULL, &ParseDollarFloor, &HandlePreParsedDollarFloor,
+	{ "$floor", &ParseDollarFloor, &HandlePreParsedDollarFloor,
 	  FEATURE_AGG_OPERATOR_FLOOR },
-	{ "$function", NULL, NULL, NULL, FEATURE_AGG_OPERATOR_FUNCTION },
-	{ "$getField", NULL, ParseDollarGetField, HandlePreParsedDollarGetField,
+	{ "$function", NULL, NULL, FEATURE_AGG_OPERATOR_FUNCTION },
+	{ "$getField", ParseDollarGetField, HandlePreParsedDollarGetField,
 	  FEATURE_AGG_OPERATOR_GETFIELD },
-	{ "$gt", NULL, &ParseDollarGt, &HandlePreParsedDollarGt, FEATURE_AGG_OPERATOR_GT },
-	{ "$gte", NULL, &ParseDollarGte, &HandlePreParsedDollarGte,
+	{ "$gt", &ParseDollarGt, &HandlePreParsedDollarGt, FEATURE_AGG_OPERATOR_GT },
+	{ "$gte", &ParseDollarGte, &HandlePreParsedDollarGte,
 	  FEATURE_AGG_OPERATOR_GTE },
-	{ "$hour", NULL, &ParseDollarHour, &HandlePreParsedDollarHour,
+	{ "$hour", &ParseDollarHour, &HandlePreParsedDollarHour,
 	  FEATURE_AGG_OPERATOR_HOUR },
-	{ "$ifNull", NULL, &ParseDollarIfNull, &HandlePreParsedDollarIfNull,
+	{ "$ifNull", &ParseDollarIfNull, &HandlePreParsedDollarIfNull,
 	  FEATURE_AGG_OPERATOR_IFNULL },
-	{ "$in", NULL, &ParseDollarIn, &HandlePreParsedDollarIn, FEATURE_AGG_OPERATOR_IN },
-	{ "$indexOfArray", NULL, &ParseDollarIndexOfArray, &HandlePreParsedDollarIndexOfArray,
+	{ "$in", &ParseDollarIn, &HandlePreParsedDollarIn, FEATURE_AGG_OPERATOR_IN },
+	{ "$indexOfArray", &ParseDollarIndexOfArray, &HandlePreParsedDollarIndexOfArray,
 	  FEATURE_AGG_OPERATOR_INDEXOFARRAY },
-	{ "$indexOfBytes", NULL, &ParseDollarIndexOfBytes, &HandlePreParsedDollarIndexOfBytes,
+	{ "$indexOfBytes", &ParseDollarIndexOfBytes, &HandlePreParsedDollarIndexOfBytes,
 	  FEATURE_AGG_OPERATOR_INDEXOFBYTES },
-	{ "$indexOfCP", NULL, &ParseDollarIndexOfCP, &HandlePreParsedDollarIndexOfCP,
+	{ "$indexOfCP", &ParseDollarIndexOfCP, &HandlePreParsedDollarIndexOfCP,
 	  FEATURE_AGG_OPERATOR_INDEXOFCP },
-	{ "$isArray", NULL, &ParseDollarIsArray, &HandlePreParsedDollarIsArray,
-	  FEATURE_AGG_OPERATOR_ISARRAY }, { "$isNumber", NULL, &ParseDollarIsNumber,
-										&HandlePreParsedDollarIsNumber,
-										FEATURE_AGG_OPERATOR_ISNUMBER },
-	{ "$isoDayOfWeek", NULL, &ParseDollarIsoDayOfWeek, &HandlePreParsedDollarIsoDayOfWeek,
+	{ "$isArray", &ParseDollarIsArray, &HandlePreParsedDollarIsArray,
+	  FEATURE_AGG_OPERATOR_ISARRAY },
+	{ "$isNumber", &ParseDollarIsNumber, &HandlePreParsedDollarIsNumber,
+	  FEATURE_AGG_OPERATOR_ISNUMBER },
+	{ "$isoDayOfWeek", &ParseDollarIsoDayOfWeek, &HandlePreParsedDollarIsoDayOfWeek,
 	  FEATURE_AGG_OPERATOR_ISODAYOFWEEK },
-	{ "$isoWeek", NULL, &ParseDollarIsoWeek, &HandlePreParsedDollarIsoWeek,
+	{ "$isoWeek", &ParseDollarIsoWeek, &HandlePreParsedDollarIsoWeek,
 	  FEATURE_AGG_OPERATOR_ISOWEEK },
-	{ "$isoWeekYear", NULL, &ParseDollarIsoWeekYear, &HandlePreParsedDollarIsoWeekYear,
+	{ "$isoWeekYear", &ParseDollarIsoWeekYear, &HandlePreParsedDollarIsoWeekYear,
 	  FEATURE_AGG_OPERATOR_ISOWEEKYEAR },
-	{ "$last", NULL, &ParseDollarLast, &HandlePreParsedDollarLast,
+	{ "$last", &ParseDollarLast, &HandlePreParsedDollarLast,
 	  FEATURE_AGG_OPERATOR_LAST },
-	{ "$lastN", NULL, &ParseDollarLastN, &HandlePreParsedDollarLastN,
+	{ "$lastN", &ParseDollarLastN, &HandlePreParsedDollarLastN,
 	  FEATURE_AGG_OPERATOR_LASTN },
-	{ "$let", NULL, &ParseDollarLet, &HandlePreParsedDollarLet,
+	{ "$let", &ParseDollarLet, &HandlePreParsedDollarLet,
 	  FEATURE_AGG_OPERATOR_LET },
-	{ "$literal", NULL, &ParseDollarLiteral, NULL, FEATURE_AGG_OPERATOR_LITERAL },
-	{ "$ln", NULL, &ParseDollarLn, &HandlePreParsedDollarLn, FEATURE_AGG_OPERATOR_LN },
-	{ "$log", NULL, &ParseDollarLog, &HandlePreParsedDollarLog,
+	{ "$literal", &ParseDollarLiteral, NULL, FEATURE_AGG_OPERATOR_LITERAL },
+	{ "$ln", &ParseDollarLn, &HandlePreParsedDollarLn, FEATURE_AGG_OPERATOR_LN },
+	{ "$log", &ParseDollarLog, &HandlePreParsedDollarLog,
 	  FEATURE_AGG_OPERATOR_LOG },
-	{ "$log10", NULL, &ParseDollarLog10, &HandlePreParsedDollarLog10,
+	{ "$log10", &ParseDollarLog10, &HandlePreParsedDollarLog10,
 	  FEATURE_AGG_OPERATOR_LOG10 },
-	{ "$lt", NULL, &ParseDollarLt, &HandlePreParsedDollarLt, FEATURE_AGG_OPERATOR_LT },
-	{ "$lte", NULL, &ParseDollarLte, &HandlePreParsedDollarLte,
+	{ "$lt", &ParseDollarLt, &HandlePreParsedDollarLt, FEATURE_AGG_OPERATOR_LT },
+	{ "$lte", &ParseDollarLte, &HandlePreParsedDollarLte,
 	  FEATURE_AGG_OPERATOR_LTE },
-	{ "$ltrim", NULL, &ParseDollarLtrim, &HandlePreParsedDollarLtrim,
+	{ "$ltrim", &ParseDollarLtrim, &HandlePreParsedDollarLtrim,
 	  FEATURE_AGG_OPERATOR_LTRIM },
-	{ "$makeArray", NULL, &ParseDollarMakeArray, &HandlePreParsedDollarMakeArray,
+	{ "$makeArray", &ParseDollarMakeArray, &HandlePreParsedDollarMakeArray,
 	  FEATURE_AGG_OPERATOR_MAKE_ARRAY },
-	{ "$map", NULL, &ParseDollarMap, &HandlePreParsedDollarMap,
+	{ "$map", &ParseDollarMap, &HandlePreParsedDollarMap,
 	  FEATURE_AGG_OPERATOR_MAP },
-	{ "$max", NULL, &ParseDollarMax, &HandlePreParsedDollarMax,
+	{ "$max", &ParseDollarMax, &HandlePreParsedDollarMax,
 	  FEATURE_AGG_OPERATOR_MAX },
-	{ "$maxN", NULL, &ParseDollarMaxN, &HandlePreParsedDollarMaxMinN,
+	{ "$maxN", &ParseDollarMaxN, &HandlePreParsedDollarMaxMinN,
 	  FEATURE_AGG_OPERATOR_MAXN },
-	{ "$mergeObjects", NULL, &ParseDollarMergeObjects, &HandlePreParsedDollarMergeObjects,
+	{ "$mergeObjects", &ParseDollarMergeObjects, &HandlePreParsedDollarMergeObjects,
 	  FEATURE_AGG_OPERATOR_MERGEOBJECTS },
-	{ "$meta", NULL, &ParseDollarMeta, &HandlePreParsedDollarMeta,
+	{ "$meta", &ParseDollarMeta, &HandlePreParsedDollarMeta,
 	  FEATURE_AGG_OPERATOR_META },
-	{ "$millisecond", NULL, &ParseDollarMillisecond, &HandlePreParsedDollarMillisecond,
+	{ "$millisecond", &ParseDollarMillisecond, &HandlePreParsedDollarMillisecond,
 	  FEATURE_AGG_OPERATOR_MILLISECOND },
-	{ "$min", NULL, &ParseDollarMin, &HandlePreParsedDollarMin,
+	{ "$min", &ParseDollarMin, &HandlePreParsedDollarMin,
 	  FEATURE_AGG_OPERATOR_MIN },
-	{ "$minN", NULL, &ParseDollarMinN, &HandlePreParsedDollarMaxMinN,
+	{ "$minN", &ParseDollarMinN, &HandlePreParsedDollarMaxMinN,
 	  FEATURE_AGG_OPERATOR_MINN },
-	{ "$minute", NULL, &ParseDollarMinute, &HandlePreParsedDollarMinute,
+	{ "$minute", &ParseDollarMinute, &HandlePreParsedDollarMinute,
 	  FEATURE_AGG_OPERATOR_MINUTE },
-	{ "$mod", NULL, &ParseDollarMod, &HandlePreParsedDollarMod,
+	{ "$mod", &ParseDollarMod, &HandlePreParsedDollarMod,
 	  FEATURE_AGG_OPERATOR_MOD },
-	{ "$month", NULL, &ParseDollarMonth, &HandlePreParsedDollarMonth,
+	{ "$month", &ParseDollarMonth, &HandlePreParsedDollarMonth,
 	  FEATURE_AGG_OPERATOR_MONTH },
-	{ "$multiply", NULL, &ParseDollarMultiply, &HandlePreParsedDollarMultiply,
+	{ "$multiply", &ParseDollarMultiply, &HandlePreParsedDollarMultiply,
 	  FEATURE_AGG_OPERATOR_MULTIPLY },
-	{ "$ne", NULL, &ParseDollarNe, &HandlePreParsedDollarNe, FEATURE_AGG_OPERATOR_NE },
-	{ "$not", NULL, &ParseDollarNot, &HandlePreParsedDollarNot,
+	{ "$ne", &ParseDollarNe, &HandlePreParsedDollarNe, FEATURE_AGG_OPERATOR_NE },
+	{ "$not", &ParseDollarNot, &HandlePreParsedDollarNot,
 	  FEATURE_AGG_OPERATOR_NOT },
-	{ "$objectToArray", NULL, &ParseDollarObjectToArray,
+	{ "$objectToArray", &ParseDollarObjectToArray,
 	  &HandlePreParsedDollarObjectToArray,
 	  FEATURE_AGG_OPERATOR_OBJECTTOARRAY },
-	{ "$or", NULL, &ParseDollarOr, &HandlePreParsedDollarOr, FEATURE_AGG_OPERATOR_OR },
-	{ "$pow", NULL, &ParseDollarPow, &HandlePreParsedDollarPow,
+	{ "$or", &ParseDollarOr, &HandlePreParsedDollarOr, FEATURE_AGG_OPERATOR_OR },
+	{ "$pow", &ParseDollarPow, &HandlePreParsedDollarPow,
 	  FEATURE_AGG_OPERATOR_POW },
-	{ "$push", NULL, NULL, NULL, FEATURE_AGG_OPERATOR_PUSH },
-	{ "$radiansToDegrees", NULL, &ParseDollarRadiansToDegrees,
+	{ "$push", NULL, NULL, FEATURE_AGG_OPERATOR_PUSH },
+	{ "$radiansToDegrees", &ParseDollarRadiansToDegrees,
 	  &HandlePreParsedDollarRadiansToDegrees,
 	  FEATURE_AGG_OPERATOR_RADIANSTODEGREES },
-	{ "$rand", NULL, &ParseDollarRand, &HandlePreParsedDollarRand,
+	{ "$rand", &ParseDollarRand, &HandlePreParsedDollarRand,
 	  FEATURE_AGG_OPERATOR_RAND },
-	{ "$range", NULL, &ParseDollarRange, &HandlePreParsedDollarRange,
+	{ "$range", &ParseDollarRange, &HandlePreParsedDollarRange,
 	  FEATURE_AGG_OPERATOR_RANGE },
-	{ "$reduce", NULL, &ParseDollarReduce, &HandlePreParsedDollarReduce,
+	{ "$reduce", &ParseDollarReduce, &HandlePreParsedDollarReduce,
 	  FEATURE_AGG_OPERATOR_REDUCE },
-	{ "$regexFind", NULL, &ParseDollarRegexFind, &HandlePreParsedDollarRegexFind,
+	{ "$regexFind", &ParseDollarRegexFind, &HandlePreParsedDollarRegexFind,
 	  FEATURE_AGG_OPERATOR_REGEXFIND },
-	{ "$regexFindAll", NULL, &ParseDollarRegexFindAll, &HandlePreParsedDollarRegexFindAll,
+	{ "$regexFindAll", &ParseDollarRegexFindAll, &HandlePreParsedDollarRegexFindAll,
 	  FEATURE_AGG_OPERATOR_REGEXFINDALL },
-	{ "$regexMatch", NULL, &ParseDollarRegexMatch, &HandlePreParsedDollarRegexMatch,
+	{ "$regexMatch", &ParseDollarRegexMatch, &HandlePreParsedDollarRegexMatch,
 	  FEATURE_AGG_OPERATOR_REGEXMATCH },
-	{ "$replaceAll", NULL, &ParseDollarReplaceAll, &HandlePreParsedDollarReplaceAll,
+	{ "$replaceAll", &ParseDollarReplaceAll, &HandlePreParsedDollarReplaceAll,
 	  FEATURE_AGG_OPERATOR_REPLACEALL },
-	{ "$replaceOne", NULL, &ParseDollarReplaceOne, &HandlePreParsedDollarReplaceOne,
+	{ "$replaceOne", &ParseDollarReplaceOne, &HandlePreParsedDollarReplaceOne,
 	  FEATURE_AGG_OPERATOR_REPLACEONE },
-	{ "$reverseArray", NULL, &ParseDollarReverseArray, HandlePreParsedDollarReverseArray,
+	{ "$reverseArray", &ParseDollarReverseArray, HandlePreParsedDollarReverseArray,
 	  FEATURE_AGG_OPERATOR_REVERSEARRAY },
-	{ "$round", NULL, &ParseDollarRound, &HandlePreParsedDollarRound,
+	{ "$round", &ParseDollarRound, &HandlePreParsedDollarRound,
 	  FEATURE_AGG_OPERATOR_ROUND },
-	{ "$rtrim", NULL, &ParseDollarRtrim, &HandlePreParsedDollarRtrim,
+	{ "$rtrim", &ParseDollarRtrim, &HandlePreParsedDollarRtrim,
 	  FEATURE_AGG_OPERATOR_RTRIM },
-	{ "$second", NULL, &ParseDollarSecond, &HandlePreParsedDollarSecond,
+	{ "$second", &ParseDollarSecond, &HandlePreParsedDollarSecond,
 	  FEATURE_AGG_OPERATOR_SECOND },
-	{ "$setDifference", NULL, &ParseDollarSetDifference,
+	{ "$setDifference", &ParseDollarSetDifference,
 	  &HandlePreParsedDollarSetDifference,
 	  FEATURE_AGG_OPERATOR_SETDIFFERENCE },
-	{ "$setEquals", NULL, &ParseDollarSetEquals, &HandlePreParsedDollarSetEquals,
+	{ "$setEquals", &ParseDollarSetEquals, &HandlePreParsedDollarSetEquals,
 	  FEATURE_AGG_OPERATOR_SETEQUALS },
-	{ "$setField", NULL, &ParseDollarSetField, &HandlePreParsedDollarSetField,
+	{ "$setField", &ParseDollarSetField, &HandlePreParsedDollarSetField,
 	  FEATURE_AGG_OPERATOR_SETFIELD },
-	{ "$setIntersection", NULL, &ParseDollarSetIntersection,
+	{ "$setIntersection", &ParseDollarSetIntersection,
 	  &HandlePreParsedDollarSetIntersection,
 	  FEATURE_AGG_OPERATOR_SETINTERSECTION },
-	{ "$setIsSubset", NULL, &ParseDollarSetIsSubset, &HandlePreParsedDollarSetIsSubset,
+	{ "$setIsSubset", &ParseDollarSetIsSubset, &HandlePreParsedDollarSetIsSubset,
 	  FEATURE_AGG_OPERATOR_SETISSUBSET },
-	{ "$setUnion", NULL, &ParseDollarSetUnion, &HandlePreParsedDollarSetUnion,
+	{ "$setUnion", &ParseDollarSetUnion, &HandlePreParsedDollarSetUnion,
 	  FEATURE_AGG_OPERATOR_SETUNION },
-	{ "$sin", NULL, &ParseDollarSin, &HandlePreParsedDollarSin,
+	{ "$sin", &ParseDollarSin, &HandlePreParsedDollarSin,
 	  FEATURE_AGG_OPERATOR_SIN },
-	{ "$sinh", NULL, &ParseDollarSinh, &HandlePreParsedDollarSinh,
+	{ "$sinh", &ParseDollarSinh, &HandlePreParsedDollarSinh,
 	  FEATURE_AGG_OPERATOR_SINH },
-	{ "$size", NULL, &ParseDollarSize, &HandlePreParsedDollarSize,
+	{ "$size", &ParseDollarSize, &HandlePreParsedDollarSize,
 	  FEATURE_AGG_OPERATOR_SIZE },
-	{ "$slice", NULL, &ParseDollarSlice, &HandlePreParsedDollarSlice,
+	{ "$slice", &ParseDollarSlice, &HandlePreParsedDollarSlice,
 	  FEATURE_AGG_OPERATOR_SLICE },
-	{ "$sortArray", NULL, &ParseDollarSortArray, &HandlePreParsedDollarSortArray,
+	{ "$sortArray", &ParseDollarSortArray, &HandlePreParsedDollarSortArray,
 	  FEATURE_AGG_OPERATOR_SORTARRAY },
-	{ "$split", NULL, &ParseDollarSplit, &HandlePreParsedDollarSplit,
+	{ "$split", &ParseDollarSplit, &HandlePreParsedDollarSplit,
 	  FEATURE_AGG_OPERATOR_SPLIT },
-	{ "$sqrt", NULL, &ParseDollarSqrt, &HandlePreParsedDollarSqrt,
+	{ "$sqrt", &ParseDollarSqrt, &HandlePreParsedDollarSqrt,
 	  FEATURE_AGG_OPERATOR_SQRT },
-	{ "$stdDevPop", NULL, NULL, NULL, FEATURE_AGG_OPERATOR_STDDEVPOP },
-	{ "$stdDevSamp", NULL, NULL, NULL, FEATURE_AGG_OPERATOR_STDDEVSAMP },
-	{ "$strLenBytes", NULL, &ParseDollarStrLenBytes, &HandlePreParsedDollarStrLenBytes,
+	{ "$stdDevPop", NULL, NULL, FEATURE_AGG_OPERATOR_STDDEVPOP },
+	{ "$stdDevSamp", NULL, NULL, FEATURE_AGG_OPERATOR_STDDEVSAMP },
+	{ "$strLenBytes", &ParseDollarStrLenBytes, &HandlePreParsedDollarStrLenBytes,
 	  FEATURE_AGG_OPERATOR_STRLENBYTES },
-	{ "$strLenCP", NULL, &ParseDollarStrLenCP, &HandlePreParsedDollarStrLenCP,
+	{ "$strLenCP", &ParseDollarStrLenCP, &HandlePreParsedDollarStrLenCP,
 	  FEATURE_AGG_OPERATOR_STRLENCP },
-	{ "$strcasecmp", NULL, &ParseDollarStrCaseCmp, &HandlePreParsedDollarStrCaseCmp,
+	{ "$strcasecmp", &ParseDollarStrCaseCmp, &HandlePreParsedDollarStrCaseCmp,
 	  FEATURE_AGG_OPERATOR_STRCASECMP },
-	{ "$substr", NULL, &ParseDollarSubstrBytes, &HandlePreParsedDollarSubstrBytes,
+	{ "$substr", &ParseDollarSubstrBytes, &HandlePreParsedDollarSubstrBytes,
 	  FEATURE_AGG_OPERATOR_SUBSTR }, /* MongoDB treats $substr the same as $substrBytes, including error messages */
-	{ "$substrBytes", NULL, &ParseDollarSubstrBytes, &HandlePreParsedDollarSubstrBytes,
+	{ "$substrBytes", &ParseDollarSubstrBytes, &HandlePreParsedDollarSubstrBytes,
 	  FEATURE_AGG_OPERATOR_SUBSTRBYTES },
-	{ "$substrCP", NULL, &ParseDollarSubstrCP, &HandlePreParsedDollarSubstrCP,
+	{ "$substrCP", &ParseDollarSubstrCP, &HandlePreParsedDollarSubstrCP,
 	  FEATURE_AGG_OPERATOR_SUBSTRCP },
-	{ "$subtract", NULL, &ParseDollarSubtract, &HandlePreParsedDollarSubtract,
+	{ "$subtract", &ParseDollarSubtract, &HandlePreParsedDollarSubtract,
 	  FEATURE_AGG_OPERATOR_SUBTRACT },
-	{ "$sum", NULL, &ParseDollarSum, &HandlePreParsedDollarSum,
+	{ "$sum", &ParseDollarSum, &HandlePreParsedDollarSum,
 	  FEATURE_AGG_OPERATOR_SUM },
-	{ "$switch", NULL, &ParseDollarSwitch, &HandlePreParsedDollarSwitch,
+	{ "$switch", &ParseDollarSwitch, &HandlePreParsedDollarSwitch,
 	  FEATURE_AGG_OPERATOR_SWITCH },
-	{ "$tan", NULL, &ParseDollarTan, &HandlePreParsedDollarTan,
+	{ "$tan", &ParseDollarTan, &HandlePreParsedDollarTan,
 	  FEATURE_AGG_OPERATOR_TAN },
-	{ "$tanh", NULL, &ParseDollarTanh, &HandlePreParsedDollarTanh,
+	{ "$tanh", &ParseDollarTanh, &HandlePreParsedDollarTanh,
 	  FEATURE_AGG_OPERATOR_TANH },
-	{ "$toBool", NULL, &ParseDollarToBool, &HandlePreParsedDollarToBool,
+	{ "$toBool", &ParseDollarToBool, &HandlePreParsedDollarToBool,
 	  FEATURE_AGG_OPERATOR_TOBOOL },
-	{ "$toDate", NULL, &ParseDollarToDate, &HandlePreParsedDollarToDate,
+	{ "$toDate", &ParseDollarToDate, &HandlePreParsedDollarToDate,
 	  FEATURE_AGG_OPERATOR_TODATE },
-	{ "$toDecimal", NULL, &ParseDollarToDecimal, &HandlePreParsedDollarToDecimal,
+	{ "$toDecimal", &ParseDollarToDecimal, &HandlePreParsedDollarToDecimal,
 	  FEATURE_AGG_OPERATOR_TODECIMAL },
-	{ "$toDouble", NULL, &ParseDollarToDouble, &HandlePreParsedDollarToDouble,
+	{ "$toDouble", &ParseDollarToDouble, &HandlePreParsedDollarToDouble,
 	  FEATURE_AGG_OPERATOR_TODOUBLE },
-	{ "$toHashedIndexKey", NULL, &ParseDollarToHashedIndexKey,
+	{ "$toHashedIndexKey", &ParseDollarToHashedIndexKey,
 	  &HandlePreParsedDollarToHashedIndexKey, FEATURE_AGG_OPERATOR_TOHASHEDINDEXKEY },
-	{ "$toInt", NULL, &ParseDollarToInt, &HandlePreParsedDollarToInt,
+	{ "$toInt", &ParseDollarToInt, &HandlePreParsedDollarToInt,
 	  FEATURE_AGG_OPERATOR_TOINT },
-	{ "$toLong", NULL, &ParseDollarToLong, &HandlePreParsedDollarToLong,
+	{ "$toLong", &ParseDollarToLong, &HandlePreParsedDollarToLong,
 	  FEATURE_AGG_OPERATOR_TOLONG },
-	{ "$toLower", NULL, &ParseDollarToLower, &HandlePreParsedDollarToLower,
+	{ "$toLower", &ParseDollarToLower, &HandlePreParsedDollarToLower,
 	  FEATURE_AGG_OPERATOR_TOLOWER },
-	{ "$toObjectId", NULL, &ParseDollarToObjectId, &HandlePreParsedDollarToObjectId,
+	{ "$toObjectId", &ParseDollarToObjectId, &HandlePreParsedDollarToObjectId,
 	  FEATURE_AGG_OPERATOR_TOOBJECTID },
-	{ "$toString", NULL, &ParseDollarToString, &HandlePreParsedDollarToString,
+	{ "$toString", &ParseDollarToString, &HandlePreParsedDollarToString,
 	  FEATURE_AGG_OPERATOR_TOSTRING },
-	{ "$toUpper", NULL, &ParseDollarToUpper, &HandlePreParsedDollarToUpper,
+	{ "$toUpper", &ParseDollarToUpper, &HandlePreParsedDollarToUpper,
 	  FEATURE_AGG_OPERATOR_TOUPPER },
-	{ "$trim", NULL, &ParseDollarTrim, &HandlePreParsedDollarTrim,
+	{ "$trim", &ParseDollarTrim, &HandlePreParsedDollarTrim,
 	  FEATURE_AGG_OPERATOR_TRIM },
-	{ "$trunc", NULL, &ParseDollarTrunc, &HandlePreParsedDollarTrunc,
+	{ "$trunc", &ParseDollarTrunc, &HandlePreParsedDollarTrunc,
 	  FEATURE_AGG_OPERATOR_TRUNC },
-	{ "$tsIncrement", NULL, &ParseDollarTsIncrement, &HandlePreParsedDollarTsIncrement,
+	{ "$tsIncrement", &ParseDollarTsIncrement, &HandlePreParsedDollarTsIncrement,
 	  FEATURE_AGG_OPERATOR_TSINCREMENT },
-	{ "$tsSecond", NULL, &ParseDollarTsSecond, &HandlePreParsedDollarTsSecond,
+	{ "$tsSecond", &ParseDollarTsSecond, &HandlePreParsedDollarTsSecond,
 	  FEATURE_AGG_OPERATOR_TSSECOND },
-	{ "$type", NULL, &ParseDollarType, &HandlePreParsedDollarType,
+	{ "$type", &ParseDollarType, &HandlePreParsedDollarType,
 	  FEATURE_AGG_OPERATOR_TYPE },
-	{ "$unsetField", NULL, &ParseDollarUnsetField, &HandlePreParsedDollarUnsetField,
+	{ "$unsetField", &ParseDollarUnsetField, &HandlePreParsedDollarUnsetField,
 	  FEATURE_AGG_OPERATOR_UNSETFIELD },
-	{ "$week", NULL, &ParseDollarWeek, &HandlePreParsedDollarWeek,
+	{ "$week", &ParseDollarWeek, &HandlePreParsedDollarWeek,
 	  FEATURE_AGG_OPERATOR_WEEK },
-	{ "$year", NULL, &ParseDollarYear, &HandlePreParsedDollarYear,
+	{ "$year", &ParseDollarYear, &HandlePreParsedDollarYear,
 	  FEATURE_AGG_OPERATOR_YEAR },
-	{ "$zip", NULL, &ParseDollarZip, &HandlePreParsedDollarZip, FEATURE_AGG_OPERATOR_ZIP }
+	{ "$zip", &ParseDollarZip, &HandlePreParsedDollarZip, FEATURE_AGG_OPERATOR_ZIP }
 };
 
 static int NumberOfOperatorExpressions = sizeof(OperatorExpressions) /
 										 sizeof(MongoOperatorExpression);
-
-/* The variable ROOT */
-static const StringView RootVariableName =
-{
-	.length = 4,
-	.string = "ROOT"
-};
-
-/* The variable REMOVE */
-static const StringView RemoveVariableName =
-{
-	.length = 6,
-	.string = "REMOVE"
-};
 
 static const StringView CurrentVariableName =
 {
@@ -946,413 +914,6 @@ bson_expression_map(PG_FUNCTION_ARGS)
 
 
 /*
- * Evaluates the expression described by expressionValue based on the input document.
- * If the expression evaluates to a value, writes it into the target writer at the specified field.
- */
-void
-EvaluateExpressionToWriter(pgbson *document, const pgbsonelement *expressionElement,
-						   pgbson_writer *writer,
-						   ExpressionVariableContext *variableContext, bool isNullOnEmpty)
-{
-	ExpressionLifetimeTracker tracker = { 0 };
-	if (expressionElement->bsonValue.value_type == BSON_TYPE_ARRAY)
-	{
-		pgbson_array_writer childArrayWriter;
-		pgbson_element_writer childArrayElementWriter;
-		bson_iter_t elementIterator;
-		bson_iter_init_from_data(&elementIterator,
-								 expressionElement->bsonValue.value.v_doc.data,
-								 expressionElement->bsonValue.value.v_doc.data_len);
-		PgbsonWriterStartArray(writer, expressionElement->path,
-							   expressionElement->pathLength, &childArrayWriter);
-		PgbsonInitArrayElementWriter(&childArrayWriter, &childArrayElementWriter);
-		EvaluateExpressionArrayToWriter(document, &elementIterator,
-										&childArrayElementWriter, &tracker,
-										variableContext, isNullOnEmpty);
-		PgbsonWriterEndArray(writer, &childArrayWriter);
-	}
-	else if (expressionElement->bsonValue.value_type == BSON_TYPE_DOCUMENT)
-	{
-		pgbson_element_writer objectElementWriter;
-		PgbsonInitObjectElementWriter(writer, &objectElementWriter,
-									  expressionElement->path,
-									  expressionElement->pathLength);
-		EvaluateExpressionObjectToWriter(document, &(expressionElement->bsonValue),
-										 &objectElementWriter, &tracker, variableContext,
-										 isNullOnEmpty);
-	}
-	else
-	{
-		pgbson_element_writer elementWriter;
-		PgbsonInitObjectElementWriter(writer, &elementWriter, expressionElement->path,
-									  expressionElement->pathLength);
-		ExpressionResult expressionResult = ExpressionResultCreateFromElementWriter(
-			&elementWriter, &tracker, variableContext);
-		EvaluateExpression(document, &(expressionElement->bsonValue), &expressionResult,
-						   isNullOnEmpty);
-	}
-
-	list_free_deep(tracker.itemsToFree);
-}
-
-
-/*
- *  Recursively evaluates expression of the form  <fieldName> :  { <field1> : <expression>, <field2>  : <expression>]
- *  e.g.,  "newField" :  { "id" : "$_id",  { "val" : {"a" : "b"}} }
- *
- *  Each element of the document can be one of the followings:
- *      1. an operator expression of the form  <operatorName> : <operatorExpression>
- *          e.g.,  $isArray : ["$a.b"]
- *      2. a general expression of the form  <fieldName> : <expression>, that needs to evaluated recursively.
- *
- *  Error cases:  If the expression specification has an operator (e.g., $isArray, $literal, $concatArray),
- *                it has to be the only field.
- *
- *          E.g.,  "expressionKey" : { $literal : 2.0}                      -> OK
- *          E.g.,  "expressionKey" : { $literal : 2.0, "a" : "b"}           -> NOT OK
- *          E.g.,  "expressionKey" : { "a" : 2.0, $isArray : "$b"}          -> NOT OK
- *          E.g.,  "expressionKey" : { $literal : 2.0, $isArray : "$b"}     -> NOT OK
- *          E.g.,  "expressionKey" : { $isArray : "$b"}                     -> OK
- *          E.g.,  "expressionKey" : { "c" : "$d", "a" : "b"}               -> OK
- *
- */
-void
-EvaluateExpressionObjectToWriter(pgbson *document, const bson_value_t *expressionValue,
-								 pgbson_element_writer *elementWriter,
-								 ExpressionLifetimeTracker *tracker,
-								 ExpressionVariableContext *variableContext,
-								 bool isNullOnEmpty)
-{
-	bson_iter_t elementIterator;
-	pgbson_writer childWriter;
-	pgbsonelement operatorElement;
-	bool hasElements = false;
-	const char *previousField = NULL;
-
-	bson_iter_init_from_data(&elementIterator,
-							 expressionValue->value.v_doc.data,
-							 expressionValue->value.v_doc.data_len);
-
-	/*
-	 *  Case 1:  The specification document contains an Operator in the first element
-	 *
-	 *  Note: "expressionKey" : { $isArray : "$b"}    is needed to be evaluated as
-	 *          either, "expressionKey" : true    (since, "expressionKey" : { true }  is not a valid document)
-	 *          or,     "expressionKey" : false
-	 *
-	 *      Hence, we don't start a document by writing "{".  GetAndEvaluateOperator() will take care
-	 *      if any document needs to be written .
-	 */
-	if (bson_iter_next(&elementIterator))
-	{
-		BsonIterToPgbsonElement(&elementIterator, &operatorElement);
-
-		/* If the field is an operator */
-		if (operatorElement.pathLength > 1 && operatorElement.path[0] == '$')
-		{
-			/*
-			 *  If first field is an operator, we should not see any more field in the spec document.
-			 *  e.g.,  throws error for this example => "expressionKey" : { $literal : 2.0, "a" : "b"}
-			 */
-			if (bson_iter_next(&elementIterator))
-			{
-				bool performOperatorCheck = false;
-				ReportOperatorExpressonSyntaxError(operatorElement.path, &elementIterator,
-												   performOperatorCheck);
-			}
-
-			ExpressionResult expressionResult = ExpressionResultCreateFromElementWriter(
-				elementWriter, tracker, variableContext);
-			GetAndEvaluateOperator(document, operatorElement.path,
-								   &operatorElement.bsonValue, &expressionResult);
-
-			return;
-		}
-
-		hasElements = true;
-	}
-
-	/*
-	 *  Case 2:  The specification document does not contain an Operator in the first element
-	 *
-	 *  Note:
-	 *  (1) We don't come here if the first field was an operator. We would have returned with
-	 *  a success or an error.
-	 *
-	 *  (2) Since, an operator was not found, we can start writing a document. However, we might
-	 *  be writing into an array or as the value of a field of an object.
-	 */
-
-	PgbsonElementWriterStartDocument(elementWriter, &childWriter);
-
-	if (hasElements)
-	{
-		/*
-		 *  bson_iter_next has already advanced to check for the operator, but didn't find one.
-		 *  We will continue with the do-while loop since we already have a non-oprator element
-		 *  at the current elementIterator.
-		 */
-		do {
-			/* throw error if we find an operator at any point */
-			bool performOperatorCheck = true;
-			ReportOperatorExpressonSyntaxError(previousField, &elementIterator,
-											   performOperatorCheck);
-
-			/* Recursively evaluate the general expression */
-			pgbsonelement element;
-			BsonIterToPgbsonElement(&elementIterator, &element);
-			EvaluateExpressionToWriter(document, &element, &childWriter, variableContext,
-									   isNullOnEmpty);
-
-			previousField = bson_iter_key(&elementIterator);
-		} while (bson_iter_next(&elementIterator));
-	}
-
-	PgbsonElementWriterEndDocument(elementWriter, &childWriter);
-}
-
-
-/*
- *  Recursively evaluates expression of the form  <fieldName> :  [<expression>, <expression>]
- *  e.g.,  "newField" :  [
- *                          "$_id",                     // Example 1: field
- *                          { "val" : ["$a", "$b"]},    // Example 2: document (has non-operator fields)
- *                          ["$a", { "a" : "$b"}],      // Example 3: array
- *                          { $literal: [1,2] }         // Example 4: document (has operator)
- *                      ]
- *
- *  Each element of the array can be one of the followings:
- *      Case 1. document expression that needs to be evaluated recursively  (e.g., the 2nd and 4th array element)
- *      Case 2. array of expression that needs to be evaluated recursively  (e.g., the 3rd array element)
- *      Case 3. an expression that can be evaluated directly since it doesn't hold an arrary or a document (e.g., the 1st array element)
- */
-void
-EvaluateExpressionArrayToWriter(pgbson *document, bson_iter_t *elementIterator,
-								pgbson_element_writer *elementWriter,
-								ExpressionLifetimeTracker *tracker,
-								ExpressionVariableContext *variableContext,
-								bool isNullOnEmpty)
-{
-	check_stack_depth();
-	CHECK_FOR_INTERRUPTS();
-
-	while (bson_iter_next(elementIterator))
-	{
-		/* Case 1 */
-		if (BSON_ITER_HOLDS_ARRAY(elementIterator))
-		{
-			pgbson_array_writer arrayELementWriter;
-			pgbson_element_writer arrayElementWriter;
-			bson_iter_t childObjIter;
-			PgbsonArrayWriterStartArray(elementWriter->arrayWriter,
-										&arrayELementWriter);
-			PgbsonInitArrayElementWriter(&arrayELementWriter, &arrayElementWriter);
-			if (bson_iter_recurse(elementIterator, &childObjIter))
-			{
-				EvaluateExpressionArrayToWriter(document, &childObjIter,
-												&arrayElementWriter, tracker,
-												variableContext, isNullOnEmpty);
-			}
-
-			PgbsonArrayWriterEndArray(elementWriter->arrayWriter,
-									  &arrayELementWriter);
-		}
-		else
-		{
-			const bson_value_t *currentElement = bson_iter_value(elementIterator);
-
-			pgbson_writer innerWriter;
-			pgbson_element_writer innerElementWriter;
-			PgbsonWriterInit(&innerWriter);
-			PgbsonInitObjectElementWriter(&innerWriter, &innerElementWriter, "", 0);
-
-			/* Case 2 */
-			if (BSON_ITER_HOLDS_DOCUMENT(elementIterator))
-			{
-				EvaluateExpressionObjectToWriter(document, currentElement,
-												 &innerElementWriter, tracker,
-												 variableContext,
-												 isNullOnEmpty);
-			}
-			/* Case 3 */
-			else
-			{
-				ExpressionResult expressionResult =
-					ExpressionResultCreateFromElementWriter(
-						&innerElementWriter, tracker, variableContext);
-				EvaluateExpression(document, currentElement, &expressionResult,
-								   isNullOnEmpty);
-			}
-
-			bson_value_t writtenValue = PgbsonElementWriterGetValue(&innerElementWriter);
-
-			/* For expressions nested in an array that evaluate to undefined we should write null. */
-			if (IsExpressionResultUndefined(&writtenValue))
-			{
-				PgbsonArrayWriterWriteNull(elementWriter->arrayWriter);
-			}
-			else
-			{
-				PgbsonArrayWriterWriteValue(elementWriter->arrayWriter, &writtenValue);
-			}
-
-			PgbsonWriterFree(&innerWriter);
-		}
-	}
-}
-
-
-/*
- * Evaluate the expression specified in expressionValue and set the result of the evaluation
- * in the <see cref="ExpressionResult" />
- */
-void
-EvaluateExpression(pgbson *document, const bson_value_t *expressionValue,
-				   ExpressionResult *expressionResult, bool isNullOnEmpty)
-{
-	switch (expressionValue->value_type)
-	{
-		case BSON_TYPE_UTF8:
-		{
-			const char *strValue = expressionValue->value.v_utf8.str;
-			uint32_t strLen = expressionValue->value.v_utf8.len;
-
-			if (strLen > 2 && (strncmp(strValue, "$$", 2) == 0))
-			{
-				StringView dottedExpression = {
-					.length = strLen - 2,
-					.string = strValue + 2
-				};
-
-				bool isDottedExpression = StringViewContains(&dottedExpression, '.');
-				StringView varName = dottedExpression;
-
-				if (isDottedExpression)
-				{
-					varName = StringViewFindPrefix(&dottedExpression, '.');
-				}
-
-				bson_value_t variableValue;
-				if (!ExpressionResultGetVariable(varName,
-												 expressionResult,
-												 document,
-												 &variableValue))
-				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION17276),
-									errmsg("Use of undefined variable: %s",
-										   CreateStringFromStringView(&varName))));
-				}
-
-				if (variableValue.value_type == BSON_TYPE_EOD)
-				{
-					return;
-				}
-
-				if (!isDottedExpression)
-				{
-					ExpressionResultSetValue(expressionResult, &variableValue);
-					return;
-				}
-
-				/* Evaluate dotted expression for a variable */
-				StringView varNameDottedSuffix = StringViewFindSuffix(
-					&dottedExpression, '.');
-				EvaluateFieldPathAndWrite(&variableValue,
-										  varNameDottedSuffix.string,
-										  varNameDottedSuffix.length,
-										  ExpressionResultGetElementWriter(
-											  expressionResult),
-										  isNullOnEmpty);
-
-				expressionResult->isFieldPathExpression = true;
-				ExpressionResultSetValueFromWriter(expressionResult);
-				return;
-			}
-			else if (strLen > 1 && strValue[0] == '$')
-			{
-				/* if the string starts with $ it's a special projection. Otherwise it's a const value.
-				 * field path expressions should be treated as $$CURRENT.<path> */
-				bson_value_t currentValue;
-
-				/* should always return true since current defaults to root if not defined. */
-				bool found PG_USED_FOR_ASSERTS_ONLY =
-					ExpressionResultGetVariable(CurrentVariableName,
-												expressionResult,
-												document,
-												&currentValue);
-
-				Assert(found);
-
-				EvaluateFieldPathAndWrite(&currentValue,
-										  strValue + 1,
-										  strLen - 1,
-										  ExpressionResultGetElementWriter(
-											  expressionResult),
-										  isNullOnEmpty);
-
-				expressionResult->isFieldPathExpression = true;
-				ExpressionResultSetValueFromWriter(expressionResult);
-			}
-			else
-			{
-				ExpressionResultSetValue(expressionResult, expressionValue);
-			}
-			break;
-		}
-
-		case BSON_TYPE_DOCUMENT:
-		{
-			/* Evaluate nested expressions/operators in the document. */
-			pgbson_element_writer *elementWriter =
-				ExpressionResultGetElementWriter(expressionResult);
-			EvaluateExpressionObjectToWriter(document, expressionValue,
-											 elementWriter,
-											 expressionResult->expressionResultPrivate.
-											 tracker,
-											 &expressionResult->expressionResultPrivate.
-											 variableContext,
-											 isNullOnEmpty);
-
-			ExpressionResultSetValueFromWriter(expressionResult);
-
-			break;
-		}
-
-		case BSON_TYPE_ARRAY:
-		{
-			bson_iter_t arrayIterator;
-			BsonValueInitIterator(expressionValue, &arrayIterator);
-
-			pgbson_array_writer childArrayWriter;
-			pgbson_element_writer childArrayElementWriter;
-			pgbson_element_writer *elementWriter = ExpressionResultGetElementWriter(
-				expressionResult);
-			PgbsonElementWriterStartArray(elementWriter, &childArrayWriter);
-			PgbsonInitArrayElementWriter(&childArrayWriter, &childArrayElementWriter);
-			EvaluateExpressionArrayToWriter(document, &arrayIterator,
-											&childArrayElementWriter,
-											expressionResult->expressionResultPrivate.
-											tracker,
-											&expressionResult->expressionResultPrivate.
-											variableContext,
-											isNullOnEmpty);
-			PgbsonElementWriterEndArray(elementWriter, &childArrayWriter);
-			ExpressionResultSetValueFromWriter(expressionResult);
-
-			break;
-		}
-
-		default:
-		{
-			/* if it's not any special case, it's a static value, append it to the document. */
-			ExpressionResultSetValue(expressionResult, expressionValue);
-			break;
-		}
-	}
-}
-
-
-/*
  * Parses the shared state for bson_expression_get
  */
 static void
@@ -1520,34 +1081,6 @@ ExpressionResultGetVariable(StringView variableName,
 		}
 
 		current = current->parent;
-	}
-
-	/* Not found, try static well known variables */
-	if (StringViewEquals(&variableName, &RootVariableName) &&
-		currentDocument != NULL)
-	{
-		*variableValue = ConvertPgbsonToBsonValue(currentDocument);
-		return true;
-	}
-
-	/* If we get here, $$CURRENT was not overriden, so we set $$CURRENT to $$ROOT
-	 * TODO: Remove this once we move to the new framework.
-	 */
-	if (StringViewEquals(&variableName, &CurrentVariableName))
-	{
-		*variableValue = ConvertPgbsonToBsonValue(currentDocument);
-		return true;
-	}
-
-	/* When variable name is $$REMOVE, we set the value to Bson EOD to represent a missing path expression. */
-	if (StringViewEquals(&variableName, &RemoveVariableName))
-	{
-		bson_value_t value = {
-			.value_type = BSON_TYPE_EOD
-		};
-
-		*variableValue = value;
-		return true;
 	}
 
 	return false;
@@ -1739,22 +1272,6 @@ InsertVariableToContextTable(const VariableData *variableElement, HTAB *hashTabl
 }
 
 
-/*
- * Helper function that creates a child expression result, evaluates the given expression into it and returns the value from the evaluation.
- */
-bson_value_t
-EvaluateExpressionAndGetValue(pgbson *doc, const bson_value_t *expression,
-							  ExpressionResult *expressionResult, bool isNullOnEmpty)
-{
-	ExpressionResult childExpressionResult =
-		ExpressionResultCreateChild(expressionResult);
-
-	EvaluateExpression(doc, expression, &childExpressionResult, isNullOnEmpty);
-
-	return childExpressionResult.value;
-}
-
-
 /* --------------------------------------------------------- */
 /* Private helper methods */
 /* --------------------------------------------------------- */
@@ -1778,100 +1295,6 @@ ReportOperatorExpressonSyntaxError(const char *fieldA, bson_iter_t *fieldBIter, 
 							"an expression operator specification must contain exactly one field, found 2 fields '%s' and '%s'.",
 							fieldA,
 							bson_iter_key(fieldBIter))));
-	}
-}
-
-
-/*
- * Given an expression of the form "field": { "$operator": <expression> }
- * Detects the operator from the first element and evaluates the expression into
- * a constant value for a specified document.
- * Supported operators are defined in OperatorExpressions[] above.
- */
-static void
-GetAndEvaluateOperator(pgbson *document,
-					   const char *operatorName,
-					   const bson_value_t *operatorValue,
-					   ExpressionResult *expressionResult)
-{
-	MongoOperatorExpression searchKey = {
-		.operatorName = operatorName,
-		.legacyHandleOperatorFunc = NULL
-	};
-
-	MongoOperatorExpression *pItem = (MongoOperatorExpression *) bsearch(&searchKey,
-																		 OperatorExpressions,
-																		 NumberOfOperatorExpressions,
-																		 sizeof(
-																			 MongoOperatorExpression),
-																		 CompareOperatorExpressionByName);
-
-	if (pItem == NULL)
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31325), errmsg(
-							"Unknown expression %s", searchKey.operatorName)));
-	}
-
-	if (pItem->parseAggregationExpressionFunc != NULL)
-	{
-		/* Support for the preparsed expression engine when an operator implements it and is nested in an operator that doesn't implement it. */
-		/* This is a temp workaround until all operators implement the new preparsed framework, once all operators move, this will be removed. */
-		AggregationExpressionData *expressionData =
-			palloc0(sizeof(AggregationExpressionData));
-		expressionData->kind = AggregationExpressionKind_Operator;
-
-		ParseAggregationExpressionContext parseContext = { 0 };
-		pItem->parseAggregationExpressionFunc(operatorValue, expressionData,
-											  &parseContext);
-
-		/* If it was not optimized to a constant when parsing, call the handler and free the arguments allocated memory. */
-		if (expressionData->kind == AggregationExpressionKind_Operator)
-		{
-			Assert(pItem->handlePreParsedOperatorFunc != NULL);
-
-			pItem->handlePreParsedOperatorFunc(document,
-											   expressionData->operator.arguments,
-											   expressionResult);
-
-			switch (expressionData->operator.argumentsKind)
-			{
-				case AggregationExpressionArgumentsKind_List:
-				{
-					FreeVariableLengthArgs(expressionData->operator.arguments);
-					break;
-				}
-
-				case AggregationExpressionArgumentsKind_Palloc:
-				{
-					pfree(expressionData->operator.arguments);
-					break;
-				}
-
-				default:
-				{
-					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
-										"Unexpected aggregation expression argument kind after evaluating a pre-parse operator.")));
-				}
-			}
-		}
-		else
-		{
-			bool isNullOnEmpty = false;
-			EvaluateAggregationExpressionData(expressionData, document, expressionResult,
-											  isNullOnEmpty);
-		}
-
-		pfree(expressionData);
-	}
-	else if (pItem->legacyHandleOperatorFunc != NULL)
-	{
-		pItem->legacyHandleOperatorFunc(document, operatorValue, expressionResult);
-	}
-	else
-	{
-		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
-						errmsg("Operator %s not implemented yet", operatorName),
-						errdetail_log("Operator %s not implemented yet", operatorName)));
 	}
 }
 
@@ -2241,284 +1664,6 @@ ExpressionResultGetElementWriter(ExpressionResult *context)
 }
 
 
-/* Handles an operator expression that takes  number of arguments in some range from min to max,
- * and parses the provided arguments and calls the hook functions provided in the context
- * in order to calculate the result depending on the operator. */
-void
-HandleRangedArgumentExpression(pgbson *doc,
-							   const bson_value_t *operatorValue,
-							   ExpressionResult *expressionResult,
-							   int minRequiredArgs,
-							   int maxRequiredArgs,
-							   const char *operatorName,
-							   ExpressionArgumentHandlingContext *context)
-{
-	Assert(maxRequiredArgs > minRequiredArgs);
-
-	bson_value_t result;
-	bool isNullOnEmpty = false;
-
-	if (operatorValue->value_type != BSON_TYPE_ARRAY)
-	{
-		if (minRequiredArgs != 1)
-		{
-			ThrowExpressionNumOfArgsOutsideRange(operatorName, minRequiredArgs,
-												 maxRequiredArgs, 1);
-		}
-
-		ExpressionResult childExpressionResult = ExpressionResultCreateChild(
-			expressionResult);
-		EvaluateExpression(doc, operatorValue, &childExpressionResult, isNullOnEmpty);
-		context->processElementFunc(&result,
-									&childExpressionResult.value,
-									childExpressionResult.isFieldPathExpression,
-									context->state);
-	}
-	else
-	{
-		int inputArrayLength = BsonDocumentValueCountKeys(operatorValue);
-
-		if (inputArrayLength < minRequiredArgs || inputArrayLength > maxRequiredArgs)
-		{
-			ThrowExpressionNumOfArgsOutsideRange(operatorName, minRequiredArgs,
-												 maxRequiredArgs, inputArrayLength);
-		}
-
-		bson_iter_t arrayIterator;
-		BsonValueInitIterator(operatorValue, &arrayIterator);
-
-		while (bson_iter_next(&arrayIterator))
-		{
-			const bson_value_t *expressionValue = bson_iter_value(&arrayIterator);
-
-			ExpressionResult childExpressionResult = ExpressionResultCreateChild(
-				expressionResult);
-			EvaluateExpression(doc, expressionValue, &childExpressionResult,
-							   isNullOnEmpty);
-
-			/* isFieldPathExpression is passed down in case it is needed for validation
-			 * as native mongo emits different error messages if the expression is
-			 * a field expression (expression writer) or a value expression. */
-
-			context->processElementFunc(&result,
-										&childExpressionResult.value,
-										childExpressionResult.isFieldPathExpression,
-										context->state);
-		}
-	}
-
-	if (context->processExpressionResultFunc != NULL)
-	{
-		context->processExpressionResultFunc(&result, context->state);
-	}
-
-	ExpressionResultSetValue(expressionResult, &result);
-}
-
-
-/* Handles an operator expression that takes any number of arguments,
- * and parses the provided arguments and calls the hook functions provided in the context
- * in order to calculate the result depending on the operator. */
-void
-HandleVariableArgumentExpression(pgbson *doc, const bson_value_t *operatorValue,
-								 ExpressionResult *expressionResult,
-								 bson_value_t *startValue,
-								 ExpressionArgumentHandlingContext *context)
-{
-	bson_value_t *result = startValue;
-	bool isNullOnEmpty = false;
-
-	if (operatorValue->value_type == BSON_TYPE_ARRAY)
-	{
-		bson_iter_t arrayIterator;
-		BsonValueInitIterator(operatorValue, &arrayIterator);
-
-		while (bson_iter_next(&arrayIterator))
-		{
-			const bson_value_t *expressionValue = bson_iter_value(&arrayIterator);
-
-			ExpressionResult childExpressionResult = ExpressionResultCreateChild(
-				expressionResult);
-			EvaluateExpression(doc, expressionValue, &childExpressionResult,
-							   isNullOnEmpty);
-
-			bson_value_t evaluatedValue = childExpressionResult.value;
-
-			/* isFieldPathExpression is passed down in case it is needed for validation
-			 * as native mongo emits different error messages if the expression is
-			 * a field expression (expression writer) or a value expression. */
-			bool continueEnumerating =
-				context->processElementFunc(result,
-											&evaluatedValue,
-											childExpressionResult.isFieldPathExpression,
-											context->state);
-
-			if (!continueEnumerating)
-			{
-				ExpressionResultSetValue(expressionResult, result);
-				return;
-			}
-		}
-	}
-	else
-	{
-		ExpressionResult childExpressionResult = ExpressionResultCreateChild(
-			expressionResult);
-		EvaluateExpression(doc, operatorValue, &childExpressionResult, isNullOnEmpty);
-
-		context->processElementFunc(result, &childExpressionResult.value,
-									childExpressionResult.isFieldPathExpression,
-									context->state);
-	}
-
-	if (context->processExpressionResultFunc != NULL)
-	{
-		context->processExpressionResultFunc(result, context->state);
-	}
-
-	ExpressionResultSetValue(expressionResult, result);
-}
-
-
-/* Handles an operator expression that takes a fixed number of arguments,
- * and validates that the number provided is exactly the expected one.
- * It calls the hook functions provided in the context in order to process arguments
- * and to calculate the result depending on the operator. */
-void
-HandleFixedArgumentExpression(pgbson *doc, const bson_value_t *operatorValue,
-							  ExpressionResult *expressionResult,
-							  int numberOfExpectedArgs,
-							  const char *operatorName,
-							  ExpressionArgumentHandlingContext *context)
-{
-	Assert(numberOfExpectedArgs > 0);
-	bool isNullOnEmpty = false;
-
-	bson_value_t result;
-	if (operatorValue->value_type != BSON_TYPE_ARRAY)
-	{
-		if (numberOfExpectedArgs > 1)
-		{
-			if (context->throwErrorInvalidNumberOfArgsFunc != NULL)
-			{
-				context->throwErrorInvalidNumberOfArgsFunc(operatorName,
-														   numberOfExpectedArgs, 1);
-				Assert(false); /* Should never be hit as the above function should always throw. */
-			}
-			else
-			{
-				ThrowExpressionTakesExactlyNArgs(operatorName,
-												 numberOfExpectedArgs, 1);
-			}
-		}
-
-		ExpressionResult childExpressionResult = ExpressionResultCreateChild(
-			expressionResult);
-		EvaluateExpression(doc, operatorValue, &childExpressionResult, isNullOnEmpty);
-
-		/* Here we will eval the expression and setup for the operator to be called,
-		 * Note that any processing of special terms like $$ROOT etc have been already
-		 * processed.
-		 * This the "legacy operator" processing flow.
-		 * We should migrate all operators to the newer style of (1) Parse,
-		 * and then later (2) Eval, where we try to do re-writing of expressions and
-		 * whatever process once before we do the Eval for each document.
-		 * This next call is the legacy operators processor */
-		context->processElementFunc(&result, &childExpressionResult.value,
-									childExpressionResult.isFieldPathExpression,
-									context->state);
-	}
-	else
-	{
-		int numArgs = 0;
-		bson_iter_t arrayIterator;
-
-		/* In order to match native mongo, we need to do this in 2 passes.
-		 * First pass to validate number of args is correct.
-		 * Second pass evaluate the expressions.
-		 * We need to do it in 2 different passes as if we evaluate
-		 * expressions in the first pass and a nested expression throws an error
-		 * we would report that error, rather than the wrong number of args error,
-		 * and native mongo's wrong number of args error always wins. */
-		numArgs = BsonDocumentValueCountKeys(operatorValue);
-
-		if (numArgs != numberOfExpectedArgs)
-		{
-			if (context->throwErrorInvalidNumberOfArgsFunc != NULL)
-			{
-				context->throwErrorInvalidNumberOfArgsFunc(operatorName,
-														   numberOfExpectedArgs, numArgs);
-				Assert(false); /* Should never be hit as the above function should always throw. */
-			}
-			else
-			{
-				ThrowExpressionTakesExactlyNArgs(operatorName,
-												 numberOfExpectedArgs, numArgs);
-			}
-		}
-
-		BsonValueInitIterator(operatorValue, &arrayIterator);
-
-		while (bson_iter_next(&arrayIterator))
-		{
-			const bson_value_t *value = bson_iter_value(&arrayIterator);
-			ExpressionResult childExpressionResult = ExpressionResultCreateChild(
-				expressionResult);
-			EvaluateExpression(doc, value, &childExpressionResult, isNullOnEmpty);
-
-			context->processElementFunc(&result, &childExpressionResult.value,
-										childExpressionResult.isFieldPathExpression,
-										context->state);
-		}
-	}
-
-	if (context->processExpressionResultFunc != NULL)
-	{
-		context->processExpressionResultFunc(&result, context->state);
-	}
-
-	/* If an operator doesn't provide a result should set the type to EOD, i.e: $arrayElemAt
-	 * An operator could set the result via a writer, so if it is set, don't override it. */
-	if (result.value_type != BSON_TYPE_EOD &&
-		!expressionResult->expressionResultPrivate.valueSet)
-	{
-		ExpressionResultSetValue(expressionResult, &result);
-	}
-}
-
-
-/* Hook function in order to process arguments for operators that take exactly two arguments.
- * Both operands are stored in the state.
- * It also sets if any operand is null or undefined and if any operand is a field expression.
- * This follows a function pointer contract, hence we need to return a bool. */
-bool
-ProcessDualArgumentElement(bson_value_t *result,
-						   const bson_value_t *currentElement,
-						   bool isFieldPathExpression, void *state)
-{
-	DualArgumentExpressionState *dualState = (DualArgumentExpressionState *) state;
-
-	bson_value_t element = *currentElement;
-
-	if (!dualState->isFirstProcessed)
-	{
-		dualState->firstArgument = element;
-		dualState->isFirstProcessed = true;
-	}
-	else
-	{
-		dualState->secondArgument = element;
-	}
-
-	dualState->hasFieldExpression = dualState->hasFieldExpression ||
-									isFieldPathExpression;
-
-	dualState->hasNullOrUndefined = dualState->hasNullOrUndefined ||
-									IsExpressionResultNullOrUndefined(currentElement);
-	return true;
-}
-
-
 /* Process elements for operators which take at most three arguments eg, $slice, $range */
 void
 ProcessThreeArgumentElement(const bson_value_t *currentElement,
@@ -2548,43 +1693,6 @@ ProcessThreeArgumentElement(const bson_value_t *currentElement,
 	threeArgState->hasNullOrUndefined = threeArgState->hasNullOrUndefined ||
 										IsExpressionResultNullOrUndefined(currentElement);
 	threeArgState->totalProcessedArgs++;
-}
-
-
-/* Process elements for operators which take at most four arguments eg, $indexOfBytes, $indexOfCP */
-bool
-ProcessFourArgumentElement(bson_value_t *result, const
-						   bson_value_t *currentElement,
-						   bool isFieldPathExpression, void *state)
-{
-	FourArgumentExpressionState *fourArgState = (FourArgumentExpressionState *) state;
-
-	if (fourArgState->totalProcessedArgs == 0)
-	{
-		fourArgState->firstArgument = *currentElement;
-	}
-	else if (fourArgState->totalProcessedArgs == 1)
-	{
-		fourArgState->secondArgument = *currentElement;
-	}
-	else if (fourArgState->totalProcessedArgs == 2)
-	{
-		fourArgState->thirdArgument = *currentElement;
-	}
-	else if (fourArgState->totalProcessedArgs == 3)
-	{
-		fourArgState->fourthArgument = *currentElement;
-	}
-	else
-	{
-		elog(ERROR,
-			 "The ProcessFourArgumentElement function requires a minimum of 1 argument and a maximum of 4 arguments, but you have passed %d arguments.",
-			 fourArgState->totalProcessedArgs + 1);
-	}
-	fourArgState->hasNullOrUndefined = fourArgState->hasNullOrUndefined ||
-									   IsExpressionResultNullOrUndefined(currentElement);
-	fourArgState->totalProcessedArgs++;
-	return true;
 }
 
 
@@ -2756,22 +1864,13 @@ EvaluateAggregationExpressionData(const AggregationExpressionData *expressionDat
 	{
 		case AggregationExpressionKind_Operator:
 		{
-			/* If the operator already supports the preparsed framework, use that to evaluate it.*/
-			if (expressionData->operator.handleExpressionFunc != NULL)
-			{
-				expressionData->operator.handleExpressionFunc(document,
-															  expressionData->operator.
-															  arguments,
-															  expressionResult);
-			}
-			else
-			{
-				expressionData->operator.legacyEvaluateOperatorFunc(document,
-																	&expressionData->
-																	operator.
-																	expressionValue,
-																	expressionResult);
-			}
+			/* We ensure it defines a handle function at the parsing layer. */
+			Assert(expressionData->operator.handleExpressionFunc != NULL);
+
+			expressionData->operator.handleExpressionFunc(document,
+														  expressionData->operator.
+														  arguments,
+														  expressionResult);
 
 			break;
 		}
@@ -2876,22 +1975,13 @@ EvaluateAggregationExpressionDataToWriter(const AggregationExpressionData *expre
 			ExpressionResult expressionResult = ExpressionResultCreateFromElementWriter(
 				&elementWriter, &tracker, variableContext);
 
-			/* If the operator already implements the preparsed framework, use that data to evaluate it. */
-			if (expressionData->operator.handleExpressionFunc != NULL)
-			{
-				expressionData->operator.handleExpressionFunc(document,
-															  expressionData->operator.
-															  arguments,
-															  &expressionResult);
-			}
-			else
-			{
-				expressionData->operator.legacyEvaluateOperatorFunc(document,
-																	&expressionData->
-																	operator.
-																	expressionValue,
-																	&expressionResult);
-			}
+			/* We ensure it defines a handle function at the parsing layer. */
+			Assert(expressionData->operator.handleExpressionFunc != NULL);
+
+			expressionData->operator.handleExpressionFunc(document,
+														  expressionData->operator.
+														  arguments,
+														  &expressionResult);
 
 			list_free_deep(tracker.itemsToFree);
 			break;
@@ -3160,10 +2250,6 @@ EvaluateAggregationExpressionSystemVariable(const AggregationExpressionData *dat
 											 document,
 											 &variableValue))
 			{
-				/*
-				 * Once expressions are moved to the new framework ExpressionResultGetVariable
-				 * won't handle $$CURRENT. $$CURRENT == $$ROOT default will get handled here.
-				 */
 				variableValue = ConvertPgbsonToBsonValue(document);
 			}
 
@@ -3307,7 +2393,6 @@ ParseDocumentAggregationExpressionData(const bson_value_t *value,
 		expressionData->kind = AggregationExpressionKind_Operator;
 		MongoOperatorExpression searchKey = {
 			.operatorName = operatorKey,
-			.legacyHandleOperatorFunc = NULL,
 			.handlePreParsedOperatorFunc = NULL,
 			.parseAggregationExpressionFunc = NULL,
 		};
@@ -3338,6 +2423,17 @@ ParseDocumentAggregationExpressionData(const bson_value_t *value,
 
 			if (expressionData->kind == AggregationExpressionKind_Operator)
 			{
+				if (pItem->handlePreParsedOperatorFunc == NULL)
+				{
+					ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+									errmsg(
+										"Operator %s doesn't specify a runtime handler function and doesn't resolve the operator evaluation at the parsing layer.",
+										searchKey.operatorName),
+									errdetail_log(
+										"Operator %s doesn't specify a runtime handler function and doesn't resolve the operator evaluation at the parsing layer.",
+										searchKey.operatorName)));
+				}
+
 				/* The parsed expression based on its behavior an arguments was converted to a constant, don't set
 				 * the handler function so that when we evaluate this expression against each document we just return the constant value. */
 				expressionData->operator.handleExpressionFunc =
@@ -3346,12 +2442,6 @@ ParseDocumentAggregationExpressionData(const bson_value_t *value,
 				Assert(expressionData->operator.argumentsKind !=
 					   AggregationExpressionArgumentsKind_Invalid);
 			}
-		}
-		else if (pItem->legacyHandleOperatorFunc != NULL)
-		{
-			expressionData->operator.legacyEvaluateOperatorFunc =
-				pItem->legacyHandleOperatorFunc;
-			expressionData->operator.expressionValue = *argument;
 		}
 		else
 		{

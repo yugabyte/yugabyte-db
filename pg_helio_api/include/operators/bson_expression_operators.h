@@ -71,47 +71,10 @@ typedef struct ExpressionResult
 	ExpressionResultPrivate expressionResultPrivate;
 } ExpressionResult;
 
-/* Hook function that is called for every evaluated expression
- * in the argument array for an operator, with the current accumulated result.
- * Return true to continue enumeration and false to return the current result. */
-typedef bool (*ProcessExpressionArgumentFunc)(bson_value_t *result,
-											  const bson_value_t *currentValue,
-											  bool isFieldPathExpression, void *state);
-
-/* Hook function that is called after all arguments are processed in case some
- * special processing is needed for the result before setting the expression result */
-typedef void (*ProcessExpressionResultFunc)(bson_value_t *result, void *state);
-
-/* There are some operators that throw a custom error code and message when the wrong
- * number of args is provided by the user. So this hook function is called if provided
- * when that is the case, if not provided, we throw the common error using ThrowExpressionTakesExactlyNArgs.
- * Note that this callback must always throw, if not an Assert will fail. */
-typedef void (*ThrowErrorInvalidNumberOfArgsFunc)(const char *operatorName, int
-												  requiredArgs, int providedArgs);
-
-/* The context that specifies the hook functions for a specific operator */
-typedef struct ExpressionArgumentHandlingContext
-{
-	/* Function called for every argument that needs special processing. */
-	ProcessExpressionArgumentFunc processElementFunc;
-
-	/* Function called after all arguments are processed. */
-	ProcessExpressionResultFunc processExpressionResultFunc;
-
-	/* Function called if the wrong number of args is parsed for the given operator. */
-	ThrowErrorInvalidNumberOfArgsFunc throwErrorInvalidNumberOfArgsFunc;
-
-	/* Custom state passed to the hook functions. */
-	void *state;
-} ExpressionArgumentHandlingContext;
-
 /* State for operators that have two arguments used to apply the
  * operation to the result. i.e: $divide, $substract. */
 typedef struct DualArgumentExpressionState
 {
-	/* Whether the first operand has been processed or not. */
-	bool isFirstProcessed;
-
 	/* The first argument. */
 	bson_value_t firstArgument;
 
@@ -206,16 +169,10 @@ pgbson_element_writer * ExpressionResultGetElementWriter(ExpressionResult *conte
 void ExpressionResultSetValue(ExpressionResult *expressionResult,
 							  const bson_value_t *value);
 void ExpressionResultSetValueFromWriter(ExpressionResult *expressionResult);
-void EvaluateExpression(pgbson *document, const bson_value_t *expressionElement,
-						ExpressionResult *expressionResult, bool isNullOnEmpty);
 void EvaluateAggregationExpressionData(const AggregationExpressionData *expressionData,
 									   pgbson *document,
 									   ExpressionResult *expressionResult, bool
 									   isNullOnEmpty);
-bson_value_t EvaluateExpressionAndGetValue(pgbson *doc, const
-										   bson_value_t *expression,
-										   ExpressionResult *expressionResult,
-										   bool isNullOnEmpty);
 ExpressionResult ExpressionResultCreateChild(ExpressionResult *parent);
 void ExpressionResultReset(ExpressionResult *expressionResult);
 void ExpressionResultSetConstantVariable(ExpressionResult *expressionResult, const
@@ -885,32 +842,8 @@ void * ParseRangeArgumentsForExpression(const bson_value_t *argumentValue,
 										ParseAggregationExpressionContext *context);
 List * ParseVariableArgumentsForExpression(const bson_value_t *value, bool *isConstant,
 										   ParseAggregationExpressionContext *context);
-void HandleVariableArgumentExpression(pgbson *doc,
-									  const bson_value_t *operatorValue,
-									  ExpressionResult *expressionResult,
-									  bson_value_t *startValue,
-									  ExpressionArgumentHandlingContext *context);
-void HandleRangedArgumentExpression(pgbson *doc,
-									const bson_value_t *operatorValue,
-									ExpressionResult *expressionResult,
-									int minRequiredArgs,
-									int maxRequiredArgs,
-									const char *operatorName,
-									ExpressionArgumentHandlingContext *context);
-void HandleFixedArgumentExpression(pgbson *doc,
-								   const bson_value_t *operatorValue,
-								   ExpressionResult *expressionResult,
-								   int numberOfExpectedArgs,
-								   const char *operatorName,
-								   ExpressionArgumentHandlingContext *context);
-bool ProcessDualArgumentElement(bson_value_t *result,
-								const bson_value_t *currentElement,
-								bool isFieldPathExpression, void *state);
-void ProcessThreeArgumentElement(const bson_value_t *currentElement,
-								 bool isFieldPathExpression, void *state);
-bool ProcessFourArgumentElement(bson_value_t *result, const
-								bson_value_t *currentElement,
-								bool isFieldPathExpression, void *state);
+void ProcessThreeArgumentElement(const bson_value_t *currentElement, bool
+								 isFieldPathExpression, void *state);
 StringView GetDateStringWithDefaultFormat(int64_t dateInMs, ExtensionTimezone timezone,
 										  DateStringFormatCase formatCase);
 StringView GetTimestampStringWithDefaultFormat(const bson_value_t *timeStampBsonElement,

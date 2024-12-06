@@ -178,9 +178,6 @@ typedef struct AggregationExpressionData
 			/* The function that evaluates the pre-parsed operator. */
 			HandlePreParsedOperatorFunc handleExpressionFunc;
 
-			/* Legacy function to evaluate an operator. Will remove once all expressions implement the pre-evaluated framework. */
-			LegacyEvaluateOperator legacyEvaluateOperatorFunc;
-
 			/* The return type for the operator which will help do validations or optimizations when parsing the expressions. */
 			bson_type_t returnType;
 
@@ -211,10 +208,6 @@ typedef struct ParseAggregationExpressionContext
 } ParseAggregationExpressionContext;
 
 
-void EvaluateExpressionToWriter(pgbson *document, const pgbsonelement *element,
-								pgbson_writer *writer,
-								ExpressionVariableContext *variableContext,
-								bool isNullOnEmpty);
 void EvaluateAggregationExpressionDataToWriter(const
 											   AggregationExpressionData *expressionData,
 											   pgbson *document, StringView path,
