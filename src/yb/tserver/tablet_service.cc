@@ -92,6 +92,7 @@
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/write_query.h"
 
+#include "yb/tserver/heartbeater.h"
 #include "yb/tserver/read_query.h"
 #include "yb/tserver/service_util.h"
 #include "yb/tserver/tablet_server.h"
@@ -2081,8 +2082,9 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   const std::string db_ver_tag = Format("[DB $0, V $1]", database_oid, catalog_version);
   uint64_t ts_catalog_version = 0;
   SCOPED_WAIT_STATUS(WaitForYSQLBackendsCatalogVersion);
+  bool first_run = true;
   Status s = Wait(
-      [catalog_version, database_oid, this, &ts_catalog_version]() -> Result<bool> {
+      [catalog_version, database_oid, this, &ts_catalog_version, &first_run]() -> Result<bool> {
         // TODO(jason): using the gflag to determine per-db mode may not work for initdb, so make
         // sure to handle that case if initdb ever goes through this codepath.
         bool perdb_mode = false;
@@ -2103,7 +2105,14 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
           server_->get_ysql_catalog_version(
               &ts_catalog_version, nullptr /* last_breaking_catalog_version */);
         }
-        return ts_catalog_version >= catalog_version;
+        if (ts_catalog_version >= catalog_version) {
+          return true;
+        }
+        if (first_run) {
+          first_run = false;
+          server_->heartbeater()->TriggerASAP();
+        }
+        return false;
       },
       modified_deadline,
       Format("Wait for tserver catalog version to reach $0", db_ver_tag));

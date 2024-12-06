@@ -698,10 +698,17 @@ Status ThreadJoiner::Join() {
 
   MonoDelta waited = MonoDelta::kZero;
   bool keep_trying = true;
+  int stack_trace_report_counter = -5;
   while (keep_trying) {
     if (waited >= warn_after_) {
       LOG(WARNING) << Format("Waited for $0 trying to join with $1 (tid $2)",
                              waited, thread_->name_, thread_->tid_);
+      if (++stack_trace_report_counter == 0) {
+        auto stack_trace = ThreadStack(thread_->tid_for_stack());
+        if (stack_trace.ok()) {
+          LOG(WARNING) << "Stack trace for " << thread_->tid_ << ":\n" << stack_trace->Symbolize();
+        }
+      }
     }
 
     auto remaining_before_giveup = give_up_after_;

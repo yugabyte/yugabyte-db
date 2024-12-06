@@ -2095,8 +2095,8 @@ class WaitQueue::Impl {
   TransactionStatusManager* const txn_status_manager_;
   const std::string& permanent_uuid_;
   WaitingTxnRegistry* const waiting_txn_registry_;
-  const std::shared_future<client::YBClient*>& client_future_;
-  const server::ClockPtr& clock_;
+  std::shared_future<client::YBClient*> client_future_;
+  server::ClockPtr clock_;
   std::unique_ptr<ThreadPoolToken> thread_pool_token_;
   ResumedWaiterRunner waiter_runner_;
   scoped_refptr<EventStats> pending_time_waiting_;

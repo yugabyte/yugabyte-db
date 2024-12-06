@@ -203,7 +203,7 @@ Status YBClient::Data::SyncLeaderMasterRpc(
                          const rpc::ResponseCallback& callback) {
         (proxy->*func)(req, resp, controller, callback);
       });
-  rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
+  RETURN_NOT_OK(rpcs_.RegisterAndStartStatus(rpc, rpc->RpcHandle()));
   auto result = rpc->synchronizer().Wait();
   if (attempts) {
     *attempts = rpc->num_attempts();

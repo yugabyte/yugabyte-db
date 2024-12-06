@@ -43,6 +43,11 @@ void BackgroundTask::SetInterval(std::chrono::milliseconds interval_msec) {
 
 // Wait for pending tasks and shut down
 void BackgroundTask::Shutdown() {
+  StartShutdown();
+  CompleteShutdown();
+}
+
+void BackgroundTask::StartShutdown() {
   {
     std::unique_lock lock(mutex_);
     if (closing_) {
@@ -52,6 +57,9 @@ void BackgroundTask::Shutdown() {
     closing_ = true;
   }
   YB_PROFILE(cond_.notify_one());
+}
+
+void BackgroundTask::CompleteShutdown() {
   CHECK_OK(ThreadJoiner(thread_.get()).Join());
 }
 

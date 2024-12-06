@@ -193,8 +193,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   void AbortReceived(const TabletId& status_tablet,
                      const Status& status,
-                     const tserver::AbortTransactionResponsePB& response,
-                     const RunningTransactionPtr& shared_self);
+                     const tserver::AbortTransactionResponsePB& response);
 
   TransactionMetadata metadata_;
   TransactionalBatchData last_batch_data_;

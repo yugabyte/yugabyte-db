@@ -24,19 +24,48 @@
 
 #include "yb/util/scope_exit.h"
 
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
 
 namespace {
 
-struct CacheEntry {
-  std::promise<Result<client::YBTablePtr>> promise;
-  std::shared_future<Result<client::YBTablePtr>> future;
-  master::GetTableSchemaResponsePB schema;
-
-  CacheEntry() : future(promise.get_future()) {
+class CacheEntry {
+ public:
+  CacheEntry() : future_(promise_.get_future()) {
   }
+
+  void SetValue(const Result<client::YBTablePtr>& value) {
+    promise_.set_value(value);
+    has_value_.store(true);
+  }
+
+  const Result<client::YBTablePtr>& Get() const {
+    return future_.get();
+  }
+
+  master::GetTableSchemaResponsePB& schema() {
+    return schema_;
+  }
+
+  bool Failed() const {
+    return has_value_.load() && !future_.get().ok();
+  }
+
+ private:
+  std::atomic<bool> has_value_{false};
+  std::promise<Result<client::YBTablePtr>> promise_;
+  std::shared_future<Result<client::YBTablePtr>> future_;
+  master::GetTableSchemaResponsePB schema_;
 };
+
+Result<client::YBTablePtr> CheckTableType(const Result<client::YBTablePtr>& result) {
+  RETURN_NOT_OK(result);
+  RSTATUS_DCHECK(
+      (**result).table_type() == client::YBTableType::PGSQL_TABLE_TYPE, RuntimeError,
+      "Wrong table type: $0", (**result).table_type());
+  return *result;
+}
+
+using CacheEntryPtr = std::shared_ptr<CacheEntry>;
 
 } // namespace
 
@@ -51,21 +80,21 @@ class PgTableCache::Impl {
       client::YBTablePtr* table,
       master::GetTableSchemaResponsePB* schema) {
     auto entry = GetEntry(table_id, include_hidden);
-    const auto& table_result = entry->future.get();
+    const auto& table_result = entry->Get();
     RETURN_NOT_OK(table_result);
     *table = *table_result;
-    *schema = entry->schema;
+    *schema = entry->schema();
     return Status::OK();
   }
 
   Result<client::YBTablePtr> Get(const TableId& table_id) {
-    return GetEntry(table_id)->future.get();
+    return GetEntry(table_id)->Get();
   }
 
   void Invalidate(const TableId& table_id) {
-    std::lock_guard lock(mutex_);
     const auto db_oid = CHECK_RESULT(GetPgsqlDatabaseOid(table_id));
     VLOG(2) << "Invalidate table " << table_id << " in table cache of database " << db_oid;
+    std::lock_guard lock(mutex_);
     auto iter = caches_.find(db_oid);
     if (iter != caches_.end()) {
       iter->second.first.erase(table_id);
@@ -120,67 +149,46 @@ class PgTableCache::Impl {
     return *client_future_.get();
   }
 
-  std::shared_ptr<CacheEntry> GetEntry(
+  CacheEntryPtr GetEntry(
       const TableId& table_id,
       master::IncludeHidden include_hidden = master::IncludeHidden::kFalse) {
     auto p = DoGetEntry(table_id);
     if (p.second) {
-      LoadEntry(table_id, include_hidden, p.first.get());
+      LoadEntry(table_id, include_hidden, p.first);
     }
     return p.first;
   }
 
-  std::pair<std::shared_ptr<CacheEntry>, bool> DoGetEntry(const TableId& table_id) {
-    std::lock_guard lock(mutex_);
+  std::pair<CacheEntryPtr, bool> DoGetEntry(const TableId& table_id) {
     const auto db_oid = CHECK_RESULT(GetPgsqlDatabaseOid(table_id));
+    std::lock_guard lock(mutex_);
     const auto iter = caches_.find(db_oid);
     auto& entry = iter != caches_.end() ? iter->second : caches_[db_oid];
     auto& cache = entry.first;
     auto it = cache.find(table_id);
     if (it != cache.end()) {
+      if (it->second->Failed()) {
+        it->second = std::make_shared<CacheEntry>();
+        return {it->second, true};
+      }
       return std::make_pair(it->second, false);
     }
     it = cache.emplace(table_id, std::make_shared<CacheEntry>()).first;
     return std::make_pair(it->second, true);
   }
 
-  Status OpenTable(
-      const TableId& table_id,
-      master::IncludeHidden include_hidden,
-      client::YBTablePtr* table,
-      master::GetTableSchemaResponsePB* schema) {
-    RETURN_NOT_OK(client().OpenTable(table_id, table, include_hidden, schema));
-    RSTATUS_DCHECK(
-        (**table).table_type() == client::YBTableType::PGSQL_TABLE_TYPE, RuntimeError,
-        "Wrong table type");
-    return Status::OK();
-  }
-
   void LoadEntry(
-      const TableId& table_id, master::IncludeHidden include_hidden, CacheEntry* entry) {
-    client::YBTablePtr table;
-    bool finished = false;
-    auto se = ScopeExit([entry, &finished] {
-      if (finished) {
-        return;
-      }
-      entry->promise.set_value(STATUS(InternalError, "Unexpected return"));
-    });
-    auto status = OpenTable(table_id, include_hidden, &table, &entry->schema);
-    if (!status.ok()) {
-      Invalidate(table_id);
-      entry->promise.set_value(std::move(status));
-      finished = true;
-      return;
-    }
+      const TableId& table_id, master::IncludeHidden include_hidden, const CacheEntryPtr& entry) {
+    auto callback = [entry](const Result<client::YBTablePtr>& result) {
+      entry->SetValue(CheckTableType(result));
+    };
 
-    entry->promise.set_value(table);
-    finished = true;
+    client().OpenTableAsync(table_id, callback, include_hidden, &entry->schema());
   }
 
   std::shared_future<client::YBClient*> client_future_;
   std::mutex mutex_;
-  using PgTableMap = std::unordered_map<TableId, std::shared_ptr<CacheEntry>>;
+  using PgTableMap = std::unordered_map<TableId, CacheEntryPtr>;
   std::unordered_map<uint32_t, std::pair<PgTableMap, CoarseTimePoint>> caches_ GUARDED_BY(mutex_);
   CoarseTimePoint last_cache_invalidation_ GUARDED_BY(mutex_);
 };
@@ -219,5 +227,4 @@ void PgTableCache::InvalidateDbTables(
   impl_->InvalidateDbTables(db_oids_updated, db_oids_deleted, invalidation_time);
 }
 
-}  // namespace tserver
-}  // namespace yb
+}  // namespace yb::tserver
