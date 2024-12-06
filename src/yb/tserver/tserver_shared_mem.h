@@ -185,12 +185,17 @@ class SharedExchangeThread {
     return exchange_;
   }
 
+  bool ReadyToShutdown() const {
+    return ready_to_complete_.load();
+  }
+
   void StartShutdown();
   void CompleteShutdown();
 
  private:
   SharedExchange exchange_;
-  scoped_refptr<Thread> thread_;
+  ThreadPtr thread_;
+  std::atomic<bool> ready_to_complete_{false};
 };
 
 struct SharedExchangeMessage {
