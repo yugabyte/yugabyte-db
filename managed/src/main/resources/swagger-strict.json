@@ -19349,54 +19349,6 @@
       }
     },
     "/api/v1/customers/{cUUID}/configs/{configUUID}" : {
-      "delete" : {
-        "description" : "",
-        "operationId" : "deleteCustomerConfig",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "configUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "default" : false,
-          "in" : "query",
-          "name" : "isDeleteBackups",
-          "required" : false,
-          "type" : "boolean"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPTask"
-            }
-          }
-        },
-        "responsesObject" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPTask"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Delete a customer configuration",
-        "tags" : [ "Customer Configuration" ]
-      },
       "put" : {
         "description" : "",
         "operationId" : "editCustomerConfig",

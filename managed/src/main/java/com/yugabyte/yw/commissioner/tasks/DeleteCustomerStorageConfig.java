@@ -9,7 +9,6 @@ import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
-import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
@@ -44,9 +43,6 @@ public class DeleteCustomerStorageConfig extends AbstractTaskBase {
     try {
       CustomerConfig customerConfig =
           customerConfigService.getOrBadRequest(params().customerUUID, params().configUUID);
-
-      Schedule.findAllScheduleWithCustomerConfig(params().configUUID)
-          .forEach(Schedule::stopSchedule);
 
       if (params().isDeleteBackups) {
         List<Backup> backupList =
