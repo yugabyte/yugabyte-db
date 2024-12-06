@@ -928,6 +928,23 @@ void Thread::FinishThread(void* arg) {
   CHECK_OK(ThreadSignalMaskBlock({GetStackTraceSignal()}));
 }
 
+Status Thread::SendSignal(ThreadIdForStack tid, int signal) {
+  // We use the raw syscall here instead of kill() to ensure that we don't accidentally
+  // send a signal to some other process in the case that the thread has exited and
+  // the TID been recycled.
+#if defined(__linux__)
+  int res = narrow_cast<int>(syscall(SYS_tgkill, getpid(), tid, signal));
+#else
+  int res = pthread_kill(tid, signal);
+#endif
+  if (res != 0) {
+    static const Status status = STATUS(
+        RuntimeError, "Unable to deliver signal: process may have exited");
+    return status;
+  }
+  return Status::OK();
+}
+
 CDSAttacher::CDSAttacher() {
   cds::threading::Manager::attachThread();
 }

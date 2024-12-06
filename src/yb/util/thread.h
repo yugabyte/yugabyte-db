@@ -257,6 +257,8 @@ class Thread : public RefCountedThreadSafe<Thread> {
   // This call is signal-safe.
   static Thread* current_thread() { return tls_; }
 
+  static Status SendSignal(ThreadIdForStack tid, int signal);
+
   // Returns a unique, stable identifier for this thread. Note that this is a static
   // method and thus can be used on any thread, including the main thread of the
   // process.
