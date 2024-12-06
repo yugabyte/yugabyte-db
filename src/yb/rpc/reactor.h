@@ -74,6 +74,7 @@
 #include "yb/util/net/socket.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/source_location.h"
+#include "yb/util/stack_trace.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {
@@ -216,6 +217,12 @@ class Reactor {
       Socket *socket, size_t receive_buffer_size, const Endpoint& remote,
       const ConnectionContextFactoryPtr& factory)
       EXCLUDES_REACTOR_THREAD;
+
+  size_t tick() const {
+    return tick_.load();
+  }
+
+  ThreadIdForStack tid_for_stack() const;
 
  private:
   friend class Connection;
@@ -399,6 +406,8 @@ class Reactor {
 
   // Tasks moved from pending_tasks_ that are currently being processed by AsyncHandler.
   ReactorTasks pending_tasks_being_processed_ GUARDED_BY_REACTOR_THREAD;
+
+  std::atomic<size_t> tick_{0};
 
   // ----------------------------------------------------------------------------------------------
   // A subsystem for proactively tracking stuck OutboundCalls where the callback has never been

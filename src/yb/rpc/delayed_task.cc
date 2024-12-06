@@ -151,7 +151,9 @@ void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
     func_(STATUS(Aborted, msg));
   } else {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "Execute";
+    reactor->tick_.fetch_add(1);
     func_(Status::OK());
+    reactor->tick_.fetch_add(1);
   }
   // Clear the function to remove all captured resources.
   func_.clear();
