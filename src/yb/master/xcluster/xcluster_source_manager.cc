@@ -70,7 +70,10 @@ Status XClusterSourceManager::Init() {
 }
 
 void XClusterSourceManager::Clear() {
-  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(GetAllOutboundGroups());
+  // todo(hsunder): This method is called while the catalog manager mutex is held during sys catalog
+  // reload. We may want to skip calling task callbacks here by passing false.
+  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(
+      GetAllOutboundGroups(), /* call_task_finisher */ true);
   {
     std::lock_guard l(outbound_replication_group_map_mutex_);
     outbound_replication_group_map_.clear();

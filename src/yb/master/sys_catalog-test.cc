@@ -842,7 +842,7 @@ TEST_F(SysCatalogTest, TestCatalogManagerTasksTracker) {
   ASSERT_EQ(master_->catalog_manager()->GetRecentTasks().size(), 0);
 
   // Cleanup tasks.
-  table->AbortTasksAndClose();
+  table->AbortTasksAndClose(/* call_task_finisher */ true);
 }
 
 // Test migration of the TableInfo namespace_name field.

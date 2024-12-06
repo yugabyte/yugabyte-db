@@ -45,8 +45,8 @@ class MultiStepMonitoredTask : public server::RunnableMonitoredTask {
 
   // Abort this task and return its state before it was successfully aborted. If the task
   // entered a different terminal state before we were able to abort it, return that state.
-  server::MonitoredTaskState AbortAndReturnPrevState(const Status& status) override
-      EXCLUDES(schedule_task_mutex_);
+  server::MonitoredTaskState AbortAndReturnPrevState(
+      const Status& status, bool call_task_finisher = true) override EXCLUDES(schedule_task_mutex_);
 
   // Schedule a group of tasks and invoke the callback when all tasks in the group complete.
   // group_completion_cb is invoked with the first bad status if any of the tasks failed or an

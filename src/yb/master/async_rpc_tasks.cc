@@ -12,6 +12,7 @@
 //
 
 #include "yb/master/async_rpc_tasks.h"
+
 #include <memory>
 
 #include "yb/common/common_types.pb.h"
@@ -277,7 +278,8 @@ MonoTime RetryingRpcTask::ComputeDeadline() {
 
 // Abort this task and return its value before it was successfully aborted. If the task entered
 // a different terminal state before we were able to abort it, return that state.
-MonitoredTaskState RetryingRpcTask::AbortAndReturnPrevState(const Status& status) {
+MonitoredTaskState RetryingRpcTask::AbortAndReturnPrevState(
+    const Status& status, bool call_task_finisher) {
   auto prev_state = state();
   while (!IsStateTerminal(prev_state)) {
     auto expected = prev_state;
@@ -285,7 +287,9 @@ MonitoredTaskState RetryingRpcTask::AbortAndReturnPrevState(const Status& status
       VLOG_WITH_PREFIX_AND_FUNC(1)
           << "Aborted with: " << status << ", prev state: " << AsString(prev_state);
       AbortIfScheduled();
-      Finished(status);
+      if (call_task_finisher) {
+        Finished(status);
+      }
       UnregisterAsyncTask();
       return prev_state;
     }

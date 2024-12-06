@@ -480,7 +480,8 @@ std::string BackendsCatalogVersionJob::description() const {
                                                                      num_lagging_backends));
 }
 
-MonitoredTaskState BackendsCatalogVersionJob::AbortAndReturnPrevState(const Status& status) {
+MonitoredTaskState BackendsCatalogVersionJob::AbortAndReturnPrevState(
+    const Status& status, bool call_task_finisher) {
   // At the time of writing D19621, there is no code path that reaches here.  This function is
   // implemented because it is needed for the superclass.
   LOG_WITH_PREFIX_AND_FUNC(DFATAL) << "should not reach here";
