@@ -38,6 +38,7 @@ import com.yugabyte.yw.common.customer.config.CustomerConfigUI;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
@@ -267,17 +268,22 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     CustomerTask customerTask = CustomerTask.findByTaskUUID(fakeTaskUUID);
     assertEquals(customerTask.getTargetUUID(), configUUID);
     fakeTaskUUID = buildTaskInfo(null, TaskType.DeleteDrConfig);
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
 
     // Set http context
     TestUtils.setFakeHttpContext(defaultUser);
 
-    ModelFactory.createScheduleBackup(defaultCustomer.getUuid(), UUID.randomUUID(), configUUID);
-    result = doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
-    assertOk(result);
-    customerTask = CustomerTask.findByTaskUUID(fakeTaskUUID);
-    assertEquals(customerTask.getTargetUUID(), configUUID);
-    assertAuditEntry(2, defaultCustomer.getUuid());
+    Schedule schedule =
+        ModelFactory.createScheduleBackup(defaultCustomer.getUuid(), UUID.randomUUID(), configUUID);
+    result =
+        assertPlatformException(
+            () -> doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
+    assertBadRequest(
+        result,
+        String.format(
+            "Backup config TEST11 is associated with the following backup schedules and can't be"
+                + " deleted: [%s]",
+            schedule.getScheduleName()));
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test

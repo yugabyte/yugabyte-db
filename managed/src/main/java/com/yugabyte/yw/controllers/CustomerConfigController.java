@@ -20,6 +20,9 @@ import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Schedule;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
@@ -35,8 +38,10 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -94,8 +99,13 @@ public class CustomerConfigController extends AuthenticatedController {
     return PlatformResults.withData(this.customerConfigService.getConfigMasked(customerConfig));
   }
 
+  @Deprecated
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.25.0.0")
   @ApiOperation(
       value = "Delete a customer configuration",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.25.0.0.</b></p>"
+              + "Use 'Delete a customer configuration V2' instead.",
       response = YBPTask.class,
       nickname = "deleteCustomerConfig")
   @AuthzPath({
@@ -118,11 +128,8 @@ public class CustomerConfigController extends AuthenticatedController {
                 + " is in progress.");
       }
 
-      // If storageConfig is used by DR, do not allow deletion.
-      if (customerConfig.isStorageConfigUsedForDr()) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "DR Config is associated with Configuration " + configUUID.toString());
-      }
+      preBackupConfigDeleteValidation(customerConfig);
+
       if (isDeleteBackups) {
         DeleteCustomerConfig.Params taskParams = new DeleteCustomerConfig.Params();
         taskParams.customerUUID = customerUUID;
@@ -184,11 +191,7 @@ public class CustomerConfigController extends AuthenticatedController {
                 + " is in progress.");
       }
 
-      // If storageConfig is used by DR, do not allow deletion.
-      if (customerConfig.isStorageConfigUsedForDr()) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "DR Config is associated with Configuration " + configUUID.toString());
-      }
+      preBackupConfigDeleteValidation(customerConfig);
 
       DeleteCustomerStorageConfig.Params taskParams = new DeleteCustomerStorageConfig.Params();
       taskParams.customerUUID = customerUUID;
@@ -349,5 +352,26 @@ public class CustomerConfigController extends AuthenticatedController {
     }
     CloudUtil cloudUtil = cloudUtilFactory.getCloudUtil(cloud);
     return PlatformResults.withData(cloudUtil.listBuckets(configData));
+  }
+
+  /** Don't allow storage config deletion if its in use by DR config or backup schedule. */
+  private void preBackupConfigDeleteValidation(CustomerConfig customerConfig) {
+    if (customerConfig.isStorageConfigUsedForDr()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "DR Config is associated with Configuration "
+              + customerConfig.getConfigUUID().toString());
+    }
+    List<Schedule> schedules =
+        Schedule.findAllScheduleWithCustomerConfig(customerConfig.getConfigUUID());
+    if (schedules != null && !schedules.isEmpty()) {
+      String error =
+          String.format(
+              "Backup config %s is associated with the following backup schedules and can't be"
+                  + " deleted: %s",
+              customerConfig.getConfigName(),
+              schedules.stream().map(Schedule::getScheduleName).collect(Collectors.joining(", ")));
+      throw new PlatformServiceException(BAD_REQUEST, error);
+    }
   }
 }
