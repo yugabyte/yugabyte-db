@@ -2639,6 +2639,52 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
+  @Test
+  public void testPartitionsWithConstraints() throws Exception {
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      // Create partitioned tables with a unique constraint
+      stmt.execute("CREATE TABLE part_uniq_const(v1 INT, v2 INT) PARTITION BY RANGE(v1);");
+      stmt.execute("CREATE TABLE part_uniq_const_50_100 PARTITION OF " +
+        "part_uniq_const FOR VALUES FROM (50) TO (100)");
+      stmt.execute("CREATE TABLE part_uniq_const_30_50 PARTITION OF " +
+        "part_uniq_const FOR VALUES FROM (30) TO (50);");
+      stmt.execute("CREATE TABLE part_uniq_const_default PARTITION OF part_uniq_const DEFAULT;");
+      stmt.execute("ALTER TABLE part_uniq_const ADD CONSTRAINT " +
+        "part_uniq_const_unique UNIQUE (v1, v2);");
+      stmt.execute("INSERT INTO part_uniq_const VALUES (51, 100), (31, 200), (1, 1000);");
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+    Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM part_uniq_const_default", new Row(1, 1000));
+      assertQuery(stmt, "SELECT * FROM part_uniq_const_50_100", new Row(51, 100));
+      assertQuery(stmt, "SELECT * FROM part_uniq_const_30_50", new Row(31, 200));
+
+      assertQuery(stmt,
+        "select tablename, indexname from pg_indexes where schemaname = 'public'",
+        new Row("part_uniq_const_30_50", "part_uniq_const_30_50_v1_v2_key"),
+        new Row("part_uniq_const_50_100", "part_uniq_const_50_100_v1_v2_key"),
+        new Row("part_uniq_const_default", "part_uniq_const_default_v1_v2_key")
+      );
+
+      assertQuery(stmt,
+        "select conname from pg_constraint where conrelid = 'part_uniq_const'::regclass::oid;",
+        new Row("part_uniq_const_unique")
+      );
+    }
+
+  }
+
   /**
    * Disabling geo partitioning tests when backups are run using YB Controller.
    * This is because yb-controller-cli currently doesn't support such backups

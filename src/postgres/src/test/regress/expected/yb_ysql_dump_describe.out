@@ -1,11 +1,15 @@
                                      List of relations
- Schema |                      Name                      |   Type   |        Owner
+ Schema |                      Name                      |   Type   |        Owner         
 --------+------------------------------------------------+----------+----------------------
  public | chat_user                                      | table    | yugabyte_test
  public | hash_tbl_pk_with_include_clause                | table    | yugabyte_test
  public | hash_tbl_pk_with_multiple_included_columns     | table    | yugabyte_test
  public | p1                                             | table    | yugabyte_test
  public | p2                                             | table    | yugabyte_test
+ public | part_uniq_const                                | table    | yugabyte_test
+ public | part_uniq_const_30_50                          | table    | yugabyte_test
+ public | part_uniq_const_50_100                         | table    | yugabyte_test
+ public | part_uniq_const_default                        | table    | yugabyte_test
  public | pre_split_range                                | table    | yugabyte_test
  public | range_tbl_pk_with_include_clause               | table    | yugabyte_test
  public | range_tbl_pk_with_multiple_included_columns    | table    | yugabyte_test
@@ -42,18 +46,18 @@
  public | tr1                                            | table    | yugabyte_test
  public | tr2                                            | table    | yugabyte_test
  public | uaccount                                       | table    | regress_rls_alice
-(41 rows)
+(45 rows)
 
           List of tablespaces
-    Name    |     Owner     | Location
+    Name    |     Owner     | Location 
 ------------+---------------+----------
- pg_default | postgres      |
- pg_global  | postgres      |
- tsp1       | yugabyte_test |
+ pg_default | postgres      | 
+ pg_global  | postgres      | 
+ tsp1       | yugabyte_test | 
 (3 rows)
 
                                          List of roles
-      Role name       |                         Attributes                         | Member of
+      Role name       |                         Attributes                         | Member of 
 ----------------------+------------------------------------------------------------+-----------
  postgres             | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
  regress_rls_alice    | Cannot login                                               | {}
@@ -66,56 +70,109 @@
  yugabyte_test        | Superuser, Create role, Create DB, Bypass RLS              | {}
 
       List of schemas
-   Name    |     Owner
+   Name    |     Owner     
 -----------+---------------
  hint_plan | yugabyte_test
  public    | postgres
 (2 rows)
 
                                      List of tablegroups
-     Name     |        Owner         | Access privileges | Description | Tablespace | Options
+     Name     |        Owner         | Access privileges | Description | Tablespace | Options 
 --------------+----------------------+-------------------+-------------+------------+---------
- grp1         | tablegroup_test_user |                   |             |            |
- grp2         | tablegroup_test_user |                   |             |            |
- grp_with_spc | tablegroup_test_user |                   |             | tsp1       |
+ grp1         | tablegroup_test_user |                   |             |            | 
+ grp2         | tablegroup_test_user |                   |             |            | 
+ grp_with_spc | tablegroup_test_user |                   |             | tsp1       | 
 (3 rows)
 
                                                                                                 List of tablegroup tables
-  Group Name  |     Group Owner      | Access privileges | Group Description | Group Tablespace | Group Options |                      Name                      | Type  |        Owner         | Rel Description | Size
+  Group Name  |     Group Owner      | Access privileges | Group Description | Group Tablespace | Group Options |                      Name                      | Type  |        Owner         | Rel Description | Size 
 --------------+----------------------+-------------------+-------------------+------------------+---------------+------------------------------------------------+-------+----------------------+-----------------+------
- grp1         | tablegroup_test_user |                   |                   |                  |               | tgroup_no_options_and_tgroup                   | table | tablegroup_test_user |                 |
- grp1         | tablegroup_test_user |                   |                   |                  |               | tgroup_after_options                           | table | tablegroup_test_user |                 |
- grp1         | tablegroup_test_user |                   |                   |                  |               | tgroup_in_between_options                      | table | tablegroup_test_user |                 |
- grp2         | tablegroup_test_user |                   |                   |                  |               | tgroup_options_tgroup_and_custom_colocation_id | table | tablegroup_test_user |                 |
- grp2         | tablegroup_test_user |                   |                   |                  |               | tgroup_one_option_and_tgroup                   | table | tablegroup_test_user |                 |
- grp2         | tablegroup_test_user |                   |                   |                  |               | tgroup_options_and_tgroup                      | table | tablegroup_test_user |                 |
- grp_with_spc | tablegroup_test_user |                   |                   | tsp1             |               | tgroup_with_spc                                | table | tablegroup_test_user |                 |
+ grp1         | tablegroup_test_user |                   |                   |                  |               | tgroup_no_options_and_tgroup                   | table | tablegroup_test_user |                 | 
+ grp1         | tablegroup_test_user |                   |                   |                  |               | tgroup_after_options                           | table | tablegroup_test_user |                 | 
+ grp1         | tablegroup_test_user |                   |                   |                  |               | tgroup_in_between_options                      | table | tablegroup_test_user |                 | 
+ grp2         | tablegroup_test_user |                   |                   |                  |               | tgroup_options_tgroup_and_custom_colocation_id | table | tablegroup_test_user |                 | 
+ grp2         | tablegroup_test_user |                   |                   |                  |               | tgroup_one_option_and_tgroup                   | table | tablegroup_test_user |                 | 
+ grp2         | tablegroup_test_user |                   |                   |                  |               | tgroup_options_and_tgroup                      | table | tablegroup_test_user |                 | 
+ grp_with_spc | tablegroup_test_user |                   |                   | tsp1             |               | tgroup_with_spc                                | table | tablegroup_test_user |                 | 
 (7 rows)
 
                  Table "public.p1"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- k      | integer |           | not null |
- v      | text    |           |          |
+ k      | integer |           | not null | 
+ v      | text    |           |          | 
 Indexes:
     "p1_pkey" PRIMARY KEY, lsm (k HASH)
     "c1" UNIQUE CONSTRAINT, lsm (v ASC)
 
                  Table "public.p2"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- k      | integer |           | not null |
- v      | text    |           |          |
+ k      | integer |           | not null | 
+ v      | text    |           |          | 
 Indexes:
     "p2_pkey" PRIMARY KEY, lsm (k HASH)
     "c2" UNIQUE CONSTRAINT, lsm (v HASH)
 
-     yb_get_range_split_clause
+     yb_get_range_split_clause      
 ------------------------------------
  SPLIT AT VALUES (('foo'), ('qux'))
 (1 row)
 
- num_tablets
+ num_tablets 
 -------------
           10
 (1 row)
+
+ schemaname |                  tablename                  |                    indexname                     | tablespace |                                                                                    indexdef                                                                                    
+------------+---------------------------------------------+--------------------------------------------------+------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ public     | tbl3                                        | tbl3_pkey                                        |            | CREATE UNIQUE INDEX tbl3_pkey ON public.tbl3 USING lsm (a ASC)
+ public     | tbl4                                        | tbl4_pkey                                        |            | CREATE UNIQUE INDEX tbl4_pkey ON public.tbl4 USING lsm (a HASH, b ASC)
+ public     | tbl5                                        | tbl5_pkey                                        |            | CREATE UNIQUE INDEX tbl5_pkey ON public.tbl5 USING lsm (a HASH)
+ public     | tbl6                                        | tbl6_pkey                                        |            | CREATE UNIQUE INDEX tbl6_pkey ON public.tbl6 USING lsm (a HASH)
+ public     | tbl7                                        | tbl7_pkey                                        |            | CREATE UNIQUE INDEX tbl7_pkey ON public.tbl7 USING lsm (b HASH, c ASC)
+ public     | tbl8                                        | tbl8_pkey                                        |            | CREATE UNIQUE INDEX tbl8_pkey ON public.tbl8 USING lsm (a HASH, d ASC)
+ public     | tbl8                                        | tbl8_idx                                         |            | CREATE INDEX tbl8_idx ON public.tbl8 USING lsm ((b, c) HASH)
+ public     | tbl8                                        | tbl8_idx2                                        |            | CREATE INDEX tbl8_idx2 ON public.tbl8 USING lsm (a HASH, b ASC)
+ public     | tbl8                                        | tbl8_idx3                                        |            | CREATE INDEX tbl8_idx3 ON public.tbl8 USING lsm (b ASC)
+ public     | tbl8                                        | tbl8_idx4                                        |            | CREATE INDEX tbl8_idx4 ON public.tbl8 USING lsm (b DESC)
+ public     | tbl8                                        | tbl8_idx5                                        |            | CREATE INDEX tbl8_idx5 ON public.tbl8 USING lsm (c HASH)
+ public     | tbl9                                        | tbl9_pkey                                        |            | CREATE UNIQUE INDEX tbl9_pkey ON public.tbl9 USING lsm ((a, b) HASH)
+ public     | tbl10                                       | tbl10_pkey                                       |            | CREATE UNIQUE INDEX tbl10_pkey ON public.tbl10 USING lsm ((a, c) HASH, b ASC)
+ public     | tbl11                                       | tbl11_pkey                                       |            | CREATE UNIQUE INDEX tbl11_pkey ON public.tbl11 USING lsm (a DESC, b ASC)
+ public     | tbl12                                       | tbl12_pkey                                       |            | CREATE UNIQUE INDEX tbl12_pkey ON public.tbl12 USING lsm (a ASC, d DESC, c DESC)
+ public     | tbl13                                       | tbl13_pkey                                       |            | CREATE UNIQUE INDEX tbl13_pkey ON public.tbl13 USING lsm ((b, c) HASH)
+ public     | rls_public                                  | rls_public_pkey                                  |            | CREATE UNIQUE INDEX rls_public_pkey ON public.rls_public USING lsm (k HASH)
+ public     | rls_private                                 | rls_private_pkey                                 |            | CREATE UNIQUE INDEX rls_private_pkey ON public.rls_private USING lsm (k HASH)
+ public     | chat_user                                   | chat_user_pkey                                   |            | CREATE UNIQUE INDEX chat_user_pkey ON public.chat_user USING lsm ("chatID" HASH)
+ public     | uaccount                                    | uaccount_pkey                                    |            | CREATE UNIQUE INDEX uaccount_pkey ON public.uaccount USING lsm (pguser ASC)
+ public     | th2                                         | th2_pkey                                         |            | CREATE UNIQUE INDEX th2_pkey ON public.th2 USING lsm (a HASH, b ASC)
+ public     | th3                                         | th3_pkey                                         |            | CREATE UNIQUE INDEX th3_pkey ON public.th3 USING lsm ((a, b) HASH)
+ public     | tr1                                         | tr1_pkey                                         |            | CREATE UNIQUE INDEX tr1_pkey ON public.tr1 USING lsm (a ASC)
+ public     | tr2                                         | tr2_pkey                                         |            | CREATE UNIQUE INDEX tr2_pkey ON public.tr2 USING lsm (a DESC, b ASC, c DESC)
+ public     | pre_split_range                             | pre_split_range_pkey                             |            | CREATE UNIQUE INDEX pre_split_range_pkey ON public.pre_split_range USING lsm (customer_id ASC)
+ public     | th2                                         | th2_c_b_idx                                      |            | CREATE INDEX th2_c_b_idx ON public.th2 USING lsm (c HASH, b DESC)
+ public     | th3                                         | th3_c_b_idx                                      |            | CREATE INDEX th3_c_b_idx ON public.th3 USING lsm ((c, b) HASH)
+ public     | tr2                                         | tr2_c_idx                                        |            | CREATE INDEX tr2_c_idx ON public.tr2 USING lsm (c DESC)
+ public     | tr2                                         | tr2_c_b_a_idx                                    |            | CREATE INDEX tr2_c_b_a_idx ON public.tr2 USING lsm (c ASC, b DESC, a ASC)
+ hint_plan  | hints                                       | hints_pkey                                       |            | CREATE UNIQUE INDEX hints_pkey ON hint_plan.hints USING lsm (id HASH)
+ hint_plan  | hints                                       | hints_norm_and_app                               |            | CREATE UNIQUE INDEX hints_norm_and_app ON hint_plan.hints USING lsm (norm_query_string HASH, application_name ASC)
+ public     | p1                                          | p1_pkey                                          |            | CREATE UNIQUE INDEX p1_pkey ON public.p1 USING lsm (k HASH)
+ public     | p1                                          | c1                                               |            | CREATE UNIQUE INDEX c1 ON public.p1 USING lsm (v ASC)
+ public     | p2                                          | p2_pkey                                          |            | CREATE UNIQUE INDEX p2_pkey ON public.p2 USING lsm (k HASH)
+ public     | p2                                          | c2                                               |            | CREATE UNIQUE INDEX c2 ON public.p2 USING lsm (v HASH)
+ public     | range_tbl_pk_with_include_clause            | range_tbl_pk_with_include_clause_pkey            |            | CREATE UNIQUE INDEX range_tbl_pk_with_include_clause_pkey ON public.range_tbl_pk_with_include_clause USING lsm (k1 ASC, k2 ASC) INCLUDE (v)
+ public     | range_tbl_pk_with_include_clause            | unique_idx_with_include_clause                   |            | CREATE UNIQUE INDEX unique_idx_with_include_clause ON public.range_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v)
+ public     | hash_tbl_pk_with_include_clause             | hash_tbl_pk_with_include_clause_pkey             |            | CREATE UNIQUE INDEX hash_tbl_pk_with_include_clause_pkey ON public.hash_tbl_pk_with_include_clause USING lsm ((k1, k2) HASH) INCLUDE (v)
+ public     | hash_tbl_pk_with_include_clause             | non_unique_idx_with_include_clause               |            | CREATE UNIQUE INDEX non_unique_idx_with_include_clause ON public.hash_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v)
+ public     | range_tbl_pk_with_multiple_included_columns | range_tbl_pk_with_multiple_included_columns_pkey |            | CREATE UNIQUE INDEX range_tbl_pk_with_multiple_included_columns_pkey ON public.range_tbl_pk_with_multiple_included_columns USING lsm (col1 ASC, col2 ASC) INCLUDE (col3, col4)
+ public     | hash_tbl_pk_with_multiple_included_columns  | hash_tbl_pk_with_multiple_included_columns_pkey  |            | CREATE UNIQUE INDEX hash_tbl_pk_with_multiple_included_columns_pkey ON public.hash_tbl_pk_with_multiple_included_columns USING lsm (col1 HASH, col2 ASC) INCLUDE (col3, col4)
+ public     | part_uniq_const_50_100                      | part_uniq_const_50_100_pkey                      |            | CREATE UNIQUE INDEX part_uniq_const_50_100_pkey ON public.part_uniq_const_50_100 USING lsm (v1 HASH, v3 ASC)
+ public     | part_uniq_const_30_50                       | part_uniq_const_30_50_pkey                       |            | CREATE UNIQUE INDEX part_uniq_const_30_50_pkey ON public.part_uniq_const_30_50 USING lsm (v1 HASH, v3 ASC)
+ public     | part_uniq_const_default                     | part_uniq_const_default_pkey                     |            | CREATE UNIQUE INDEX part_uniq_const_default_pkey ON public.part_uniq_const_default USING lsm (v1 HASH, v3 ASC)
+ public     | part_uniq_const_30_50                       | part_uniq_const_30_50_v1_v2_key                  |            | CREATE UNIQUE INDEX part_uniq_const_30_50_v1_v2_key ON public.part_uniq_const_30_50 USING lsm (v1 HASH, v2 ASC)
+ public     | part_uniq_const_50_100                      | part_uniq_const_50_100_v1_v2_key                 |            | CREATE UNIQUE INDEX part_uniq_const_50_100_v1_v2_key ON public.part_uniq_const_50_100 USING lsm (v1 HASH, v2 ASC)
+ public     | part_uniq_const_default                     | part_uniq_const_default_v1_v2_key                |            | CREATE UNIQUE INDEX part_uniq_const_default_v1_v2_key ON public.part_uniq_const_default USING lsm (v1 HASH, v2 ASC)
+ public     | part_uniq_const_50_100                      | part_uniq_const_50_100_v2_uniq                   |            | CREATE UNIQUE INDEX part_uniq_const_50_100_v2_uniq ON public.part_uniq_const_50_100 USING lsm (v2 ASC)
+(48 rows)
+

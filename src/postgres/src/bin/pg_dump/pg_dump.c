@@ -16338,7 +16338,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				appendPQExpBuffer(q, "\nSERVER %s", fmtId(srvname));
 		}
 
-		YbAppendReloptions3(q, true /* newline_before*/,
+		YbAppendReloptions3(q, true /* newline_before */,
 			tbinfo->reloptions, "",
 			tbinfo->toast_reloptions, "toast.",
 			yb_reloptions->data, "",
@@ -17169,10 +17169,17 @@ dumpConstraint(Archive *fout, ConstraintInfo *coninfo)
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 indxinfo->dobj.catId.oid, true);
 
-		const bool is_unique_index_constraint =
-			coninfo->contype == 'u' && indxinfo->indexdef;
-
 		/*
+		 * #13603 #24260 Postgres does not dump the CREATE INDEX separately for
+		 * constraints, losing information present in CREATE INDEX like index
+		 * type (ASC/HASH). This is acceptable for PG since it only
+		 * supports a specific INDEX type for constraints. However, YB supports
+		 * such index types for constraints.
+		 * To preserve this in a dump, YB emits the CREATE INDEX separately.
+		 * However, this causes an issue for partitioned tables, because
+		 * they do not support ALTER TABLE / ADD CONSTRAINT / USING INDEX,
+		 * so we do not emit this in that case.
+		 *
 		 * If the constraint type is unique and index definition (indexdef)
 		 * exists, it means a constraint exists for this table which is
 		 * backed by an unique index.
@@ -17180,7 +17187,11 @@ dumpConstraint(Archive *fout, ConstraintInfo *coninfo)
 		 * unique or non-unique index exists for a table. The indexdef
 		 * contains the full YSQL command to create the index.
 		 */
-		if (is_unique_index_constraint)
+		const bool dump_index_for_constraint =
+			(coninfo->contype == 'u' && indxinfo->indexdef) &&
+			indxinfo->parentidx == 0 &&
+			tbinfo->relkind != RELKIND_PARTITIONED_TABLE;
+		if (dump_index_for_constraint)
 		{
 			if (dopt->include_yb_metadata)
 			{
@@ -17215,12 +17226,9 @@ dumpConstraint(Archive *fout, ConstraintInfo *coninfo)
 							  coninfo->contype == 'p' ? "PRIMARY KEY" : "UNIQUE");
 
 			/*
-			 * If a table has an unique constraint with index definition,
-			 * then ALTER TABLE ADD CONSTRAINT UNIQUE command must append
-			 * the USING INDEX syntax followed by the unique index name in
-			 * order to attach the index as a constraint type.
+			 * See note on #13603 #24260 above.
 			 */
-			if (is_unique_index_constraint)
+			if (dump_index_for_constraint)
 			{
 				appendPQExpBuffer(q, "USING INDEX %s",
 								  indxinfo->dobj.name);

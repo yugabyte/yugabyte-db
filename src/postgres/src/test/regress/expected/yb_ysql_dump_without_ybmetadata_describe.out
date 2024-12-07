@@ -1,41 +1,44 @@
-           List of relations
- Schema | Name | Type  |     Owner
---------+------+-------+---------------
- public | p1   | table | yugabyte_test
- public | p2   | table | yugabyte_test
- public | p3   | table | yugabyte_test
-(3 rows)
+                    List of relations
+ Schema |          Name           | Type  |     Owner     
+--------+-------------------------+-------+---------------
+ public | p1                      | table | yugabyte_test
+ public | p2                      | table | yugabyte_test
+ public | p3                      | table | yugabyte_test
+ public | part_uniq_const         | table | yugabyte_test
+ public | part_uniq_const_30_50   | table | yugabyte_test
+ public | part_uniq_const_50_100  | table | yugabyte_test
+ public | part_uniq_const_default | table | yugabyte_test
+(7 rows)
 
-                              List of tablegroups
- Name |     Owner     | Access privileges | Description | Tablespace | Options
-------+---------------+-------------------+-------------+------------+---------
- t    | yugabyte_test |                   |             |            |
-(1 row)
+                          List of tablegroups
+ Name | Owner | Access privileges | Description | Tablespace | Options 
+------+-------+-------------------+-------------+------------+---------
+(0 rows)
 
                  Table "public.p1"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
- b      | integer |           |          |
- c      | integer |           |          |
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+ c      | integer |           |          | 
 Indexes:
     "c1" UNIQUE CONSTRAINT, lsm (a HASH, b ASC)
 
                  Table "public.p2"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
- b      | integer |           |          |
- c      | integer |           |          |
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+ c      | integer |           |          | 
 Indexes:
-    "c2" UNIQUE CONSTRAINT, lsm (a ASC, b ASC), tablegroup "t"
-Tablegroup: "t"
+    "c2" UNIQUE CONSTRAINT, lsm (a ASC, b ASC)
 
                  Table "public.p3"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
- a      | integer |           |          |
- b      | integer |           |          |
- c      | integer |           |          |
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+ c      | integer |           |          | 
 Indexes:
     "c3" UNIQUE CONSTRAINT, lsm ((a, b) HASH, c ASC)
+
