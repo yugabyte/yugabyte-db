@@ -399,3 +399,10 @@
     when: unattendedupgrade_file.stat.exists
   when: ansible_distribution == "Ubuntu"
   tags: yb-prebuilt-ami
+
+- name: Add prometheus user to yugabyte group
+  ansible.builtin.user:
+    name: prometheus
+    groups: yugabyte
+    append: true
+  become: yes
