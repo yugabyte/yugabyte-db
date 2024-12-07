@@ -948,8 +948,10 @@ VoyagerMigrateDataMetricsDetails:
       type: integer
     count_live_rows:
       type: integer
+      format: int64
     count_total_rows:
       type: integer
+      format: int64
     invocation_timestamp:
       type: string
 # MigrateSchemaTasks:
