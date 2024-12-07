@@ -5779,11 +5779,26 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 	TransactionId freezeXid = InvalidTransactionId;
 	RelFileNode newrnode;
 
+	/*
+	 * YB Note: this code that opens pg_class table was moved here from below.
+	 * Get a writable copy of the pg_class tuple for the given relation.
+	 */
+	pg_class = table_open(RelationRelationId, RowExclusiveLock);
+
 	if (!IsBinaryUpgrade || yb_binary_restore)
 	{
-		/* Allocate a new relfilenode */
-		newrelfilenode = GetNewRelFileNode(relation->rd_rel->reltablespace,
-										   NULL, persistence);
+		if (IsYugaByteEnabled())
+			/*
+			 * In YB, always use pg_class to check for OID collision. During
+			 * table rewrite a relfilenode is used by DocDB to construct a
+			 * table id in the same way as a regular table OID.
+			 */
+			newrelfilenode = GetNewRelFileNode(relation->rd_rel->reltablespace,
+											   pg_class, persistence);
+		else
+			/* Allocate a new relfilenode */
+			newrelfilenode = GetNewRelFileNode(relation->rd_rel->reltablespace,
+											   NULL, persistence);
 	}
 	else if (relation->rd_rel->relkind == RELKIND_INDEX)
 	{
@@ -5811,9 +5826,8 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 				 errmsg("unexpected request for new relfilenode in binary upgrade mode")));
 
 	/*
-	 * Get a writable copy of the pg_class tuple for the given relation.
+	 * YB Note: native PG code setup pg_class here, YB has moved that code up above.
 	 */
-	pg_class = table_open(RelationRelationId, RowExclusiveLock);
 
 	tuple = SearchSysCacheCopy1(RELOID,
 								ObjectIdGetDatum(RelationGetRelid(relation)));
