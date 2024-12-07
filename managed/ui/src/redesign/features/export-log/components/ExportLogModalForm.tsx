@@ -274,6 +274,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
           <YBLabel>{t('exportAuditLog.awsAccessKey')}</YBLabel>
           <YBInputField
             control={control}
+            rules={{ required: 'This field is required' }}
             name="config.accessKey"
             fullWidth
             disabled={isViewMode}
@@ -286,6 +287,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
           <YBLabel>{t('exportAuditLog.awsSecretKey')}</YBLabel>
           <YBInputField
             control={control}
+            rules={{ required: 'This field is required' }}
             name="config.secretKey"
             fullWidth
             disabled={isViewMode}
@@ -298,6 +300,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
           <YBLabel>{t('exportAuditLog.logGroup')}</YBLabel>
           <YBInputField
             control={control}
+            rules={{ required: 'This field is required' }}
             name="config.logGroup"
             fullWidth
             disabled={isViewMode}
@@ -310,6 +313,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
           <YBLabel>{t('exportAuditLog.logStream')}</YBLabel>
           <YBInputField
             control={control}
+            rules={{ required: 'This field is required' }}
             name="config.logStream"
             fullWidth
             disabled={isViewMode}
