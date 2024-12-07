@@ -5203,9 +5203,8 @@ Result<IsOperationDoneResult> CatalogManager::IsCreateTableDone(const TableInfoP
       GetTableSchemaRequestPB get_schema_req;
       GetTableSchemaResponsePB get_schema_resp;
       get_schema_req.mutable_table()->set_table_id(indexed_table_id);
-      const bool get_fully_applied_indexes = true;
       RETURN_NOT_OK(GetTableSchemaInternal(
-          &get_schema_req, &get_schema_resp, get_fully_applied_indexes));
+          &get_schema_req, &get_schema_resp, /* always_get_fully_applied_indexes= */ true));
 
       bool done = false;
       for (const auto& index : get_schema_resp.indexes()) {
@@ -5550,7 +5549,8 @@ Result<scoped_refptr<TableInfo>> CatalogManager::FindTableUnlocked(
     // We can't lookup YSQL table by name because Postgres concept of "schemas"
     // introduces ambiguity.
     if (namespace_info->database_type() == YQL_DATABASE_PGSQL) {
-      return STATUS(InvalidArgument, "Cannot lookup YSQL table by name");
+      return STATUS_FORMAT(
+          InvalidArgument, "Cannot lookup YSQL table $0 by name", table_identifier);
     }
 
     auto it = table_names_map_.find({namespace_info->id(), table_identifier.table_name()});
@@ -7619,28 +7619,27 @@ Result<NamespaceId> CatalogManager::GetTableNamespaceId(TableId table_id) {
 
 Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
                                       GetTableSchemaResponsePB* resp) {
+  return GetTableSchemaInternal(req, resp, /* always_get_fully_applied_indexes= */ false);
+}
+
+Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req,
+                                              GetTableSchemaResponsePB* resp,
+                                              bool always_get_fully_applied_indexes) {
   VLOG(1) << "Servicing GetTableSchema request for " << req->ShortDebugString();
 
   // Lookup the table and verify if it exists.
   TRACE("Looking up table");
-  scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
+  auto table = VERIFY_RESULT(FindTable(req->table()));
+  if (req->check_exists_only()) {
+    return Status::OK();
+  }
 
   // Due to differences in the way proxies handle version mismatch (pull for yql vs push for sql).
   // For YQL tables, we will return the "set of indexes" being applied instead of the ones
   // that are fully completed.
   // For PGSQL (and other) tables we want to return the fully applied schema.
-  const bool get_fully_applied_indexes = table->GetTableType() != TableType::YQL_TABLE_TYPE;
-  return GetTableSchemaInternal(req, resp, get_fully_applied_indexes);
-}
-
-Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req,
-                                              GetTableSchemaResponsePB* resp,
-                                              bool get_fully_applied_indexes) {
-  VLOG(1) << "Servicing GetTableSchema request for " << req->ShortDebugString();
-
-  // Lookup the table and verify if it exists.
-  TRACE("Looking up table");
-  scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
+  auto get_fully_applied_indexes =
+      always_get_fully_applied_indexes || table->GetTableType() != TableType::YQL_TABLE_TYPE;
 
   TRACE("Locking table");
   auto l = table->LockForRead();

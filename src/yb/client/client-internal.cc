@@ -1551,10 +1551,11 @@ GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
     : ClientMasterRpc(client, deadline),
       user_cb_(std::move(user_cb)),
       table_identifier_(table_identifier),
-      info_(DCHECK_NOTNULL(info)),
+      info_(info),
       resp_copy_(resp_copy) {
   req_.mutable_table()->CopyFrom(table_identifier_);
   req_.set_include_hidden(include_hidden);
+  req_.set_check_exists_only(info == nullptr);
 }
 
 GetTableSchemaRpc::~GetTableSchemaRpc() {
@@ -1567,14 +1568,16 @@ void GetTableSchemaRpc::CallRemoteMethod() {
 }
 
 string GetTableSchemaRpc::ToString() const {
-  return Substitute("GetTableSchemaRpc(table_identifier: $0, num_attempts: $1)",
-                    table_identifier_.ShortDebugString(), num_attempts());
+  return Substitute("GetTableSchemaRpc(table_identifier: $0, num_attempts: $1, check_only: $2)",
+                    table_identifier_.ShortDebugString(), num_attempts(), info_ == nullptr);
 }
 
 void GetTableSchemaRpc::ProcessResponse(const Status& status) {
   auto new_status = status;
   if (new_status.ok()) {
-    new_status = CreateTableInfoFromTableSchemaResp(resp_, info_);
+    if (info_) {
+      new_status = CreateTableInfoFromTableSchemaResp(resp_, info_);
+    }
     if (resp_copy_) {
       resp_copy_->Swap(&resp_);
     }
