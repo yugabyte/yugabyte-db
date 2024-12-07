@@ -1,5 +1,5 @@
                    List of relations
- Schema |         Name          | Type  |     Owner
+ Schema |         Name          | Type  |     Owner     
 --------+-----------------------+-------+---------------
  public | table1                | table | yugabyte_test
  public | table2                | table | yugabyte_test
@@ -7,17 +7,17 @@
 (3 rows)
 
           List of tablespaces
-    Name    |     Owner     | Location
+    Name    |     Owner     | Location 
 ------------+---------------+----------
- pg_default | postgres      |
- pg_global  | postgres      |
- tsp1       | yugabyte_test |
- tsp2       | yugabyte_test |
- tsp_unused | yugabyte_test |
+ pg_default | postgres      | 
+ pg_global  | postgres      | 
+ tsp1       | yugabyte_test | 
+ tsp2       | yugabyte_test | 
+ tsp_unused | yugabyte_test | 
 (5 rows)
 
                                      List of roles
-   Role name   |                         Attributes                         | Member of
+   Role name   |                         Attributes                         | Member of 
 ---------------+------------------------------------------------------------+-----------
  postgres      | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
  yb_db_admin   | No inheritance, Cannot login                               | {}
@@ -33,14 +33,21 @@
 (1 row)
 
                                    List of tablegroups
-      Name       |     Owner     | Access privileges | Description | Tablespace | Options
+      Name       |     Owner     | Access privileges | Description | Tablespace | Options 
 -----------------+---------------+-------------------+-------------+------------+---------
- grp_with_spc    | yugabyte_test |                   |             | tsp1       |
- grp_without_spc | yugabyte_test |                   |             |            |
+ grp_with_spc    | yugabyte_test |                   |             | tsp1       | 
+ grp_without_spc | yugabyte_test |                   |             |            | 
 (2 rows)
 
                                                                             List of tablegroup tables
-  Group Name  |  Group Owner  | Access privileges | Group Description | Group Tablespace | Group Options |         Name          | Type  |     Owner     | Rel Description | Size
+  Group Name  |  Group Owner  | Access privileges | Group Description | Group Tablespace | Group Options |         Name          | Type  |     Owner     | Rel Description | Size 
 --------------+---------------+-------------------+-------------------+------------------+---------------+-----------------------+-------+---------------+-----------------+------
- grp_with_spc | yugabyte_test |                   |                   | tsp1             |               | tbl_with_grp_with_spc | table | yugabyte_test |                 |
+ grp_with_spc | yugabyte_test |                   |                   | tsp1             |               | tbl_with_grp_with_spc | table | yugabyte_test |                 | 
 (1 row)
+
+ schemaname | tablename | indexname | tablespace |                         indexdef                         
+------------+-----------+-----------+------------+----------------------------------------------------------
+ public     | table1    | idx1      | tsp2       | CREATE INDEX idx1 ON public.table1 USING lsm (id HASH)
+ public     | table2    | idx2      | tsp1       | CREATE INDEX idx2 ON public.table2 USING lsm (name HASH)
+(2 rows)
+
