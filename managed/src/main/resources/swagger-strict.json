@@ -67,6 +67,7 @@
             "type" : "string"
           }
         },
+        "required" : [ "accessKey", "logGroup", "logStream", "region", "secretKey" ],
         "type" : "object"
       } ]
     },
