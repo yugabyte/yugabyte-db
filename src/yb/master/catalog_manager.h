@@ -546,7 +546,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                         GetTableSchemaResponsePB* resp) override;
   Status GetTableSchemaInternal(const GetTableSchemaRequestPB* req,
                                 GetTableSchemaResponsePB* resp,
-                                bool get_fully_applied_indexes = false);
+                                bool always_get_fully_applied_indexes);
 
   // Get the information about the specified tablegroup.
   Status GetTablegroupSchema(const GetTablegroupSchemaRequestPB* req,
