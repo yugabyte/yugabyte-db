@@ -228,14 +228,27 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   bool StartShutdown();
   void CompleteShutdown();
 
+  struct CreateYsqlSysTableData;
+
   // Create Postgres sys catalog table.
   // If a non-null value of change_meta_req is passed then it does not
   // add the ysql sys table into the raft metadata but adds it in the request
   // pb. The caller is then responsible for performing the ChangeMetadataOperation.
   Status CreateYsqlSysTable(
-      const CreateTableRequestPB* req, CreateTableResponsePB* resp, const LeaderEpoch& epoch,
+      const NamespaceInfo& ns, CreateYsqlSysTableData& data, const LeaderEpoch& epoch,
       tablet::ChangeMetadataRequestPB* change_meta_req = nullptr,
       SysCatalogWriter* writer = nullptr);
+
+  Status CreateYsqlSysTableInMemory(const NamespaceInfo& ns, CreateYsqlSysTableData& data)
+      REQUIRES(mutex_);
+
+  Status CompleteCreateYsqlSysTable(
+      CreateYsqlSysTableData& data, const LeaderEpoch& epoch,
+      tablet::ChangeMetadataRequestPB* change_meta_req, SysCatalogWriter* writer);
+
+  Status AddYsqlSysTableToSystemTablet(
+      const TabletInfoPtr& sys_catalog_tablet, CreateYsqlSysTableData& data,
+      TabletInfo::WriteLock& lock);
 
   Status ReplicatePgMetadataChange(const tablet::ChangeMetadataRequestPB* req);
 
@@ -251,7 +264,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Copy Postgres sys catalog tables into a new namespace.
   Status CopyPgsqlSysTables(
-      const NamespaceId& namespace_id, const std::vector<scoped_refptr<TableInfo>>& tables,
+      const NamespaceInfo& ns, const std::vector<TableInfoPtr>& tables,
       const LeaderEpoch& epoch);
 
   // Create a new Table with the specified attributes.
