@@ -995,7 +995,7 @@ const PeerMessageQueue::TrackedPeer* PeerMessageQueue::FindClosestPeerForBootstr
   const CloudInfoPB& src_cloud_info = remote_tracked_peer->cloud_info.value();
   // initializing rbs_source as the leader itself.
   LocalityLevel best_locality_level =
-      PlacementInfoConverter::GetLocalityLevel(src_cloud_info, local_peer_pb_.cloud_info());
+      TablespaceParser::GetLocalityLevel(src_cloud_info, local_peer_pb_.cloud_info());
   PeerMessageQueue::TrackedPeer* rbs_source = local_peer_;
   for (auto it = peers_map_.begin(); it != peers_map_.end(); it++) {
     // don't consider locality of remote_tracked_peer with itself
@@ -1018,7 +1018,7 @@ const PeerMessageQueue::TrackedPeer* PeerMessageQueue::FindClosestPeerForBootstr
     }
 
     auto cur_locality_level =
-        PlacementInfoConverter::GetLocalityLevel(src_cloud_info, it->second->cloud_info.value());
+        TablespaceParser::GetLocalityLevel(src_cloud_info, it->second->cloud_info.value());
     if (cur_locality_level > best_locality_level) {
       best_locality_level = cur_locality_level;
       rbs_source = it->second;
@@ -1067,7 +1067,7 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
     peer->needs_remote_bootstrap = false;
     if (PREDICT_FALSE(FLAGS_TEST_assert_remote_bootstrap_happens_from_same_zone)) {
       CHECK_EQ(
-          PlacementInfoConverter::GetLocalityLevel(
+          TablespaceParser::GetLocalityLevel(
               rbs_source->cloud_info.value(), peer->cloud_info.value()),
           LocalityLevel::kZone)
           << "Expected rbs source to be in same zone as new peer";

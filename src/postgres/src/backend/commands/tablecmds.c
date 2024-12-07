@@ -15549,7 +15549,19 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 		for (int i = 0; i < num_options; i++)
 		{
 			char *option = text_to_cstring(DatumGetTextP(options[i]));
-			YBCValidatePlacement(option);
+			const char *placement_str = "replica_placement=";
+			int placement_strlen = strlen(placement_str);
+			if (strncmp(option, placement_str, placement_strlen) == 0)
+			{
+				YBCValidatePlacement(option + placement_strlen,
+						/* check_satisfiable */ true);
+			}
+			else
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("expected replica_placement option. Got %s", option)));
+			}
 			pfree(option);
 		}
 	}

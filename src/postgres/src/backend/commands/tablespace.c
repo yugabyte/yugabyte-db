@@ -74,6 +74,7 @@
 #include "commands/seclabel.h"
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
+#include "commands/ybccmds.h"
 #include "common/file_perm.h"
 #include "miscadmin.h"
 #include "postmaster/bgwriter.h"
@@ -115,118 +116,12 @@ static bool destroy_tablespace_directories(Oid tablespaceoid, bool redo);
 void
 validatePlacementConfiguration(const char *value)
 {
-	if (value == NULL)
-	{
-		ereport(ERROR,(errmsg("placement configuration cannot be empty")));
-		return;
-	}
-
-	text *placement_info = cstring_to_text(value);
-	text *json_array = json_get_value(placement_info, "placement_blocks");
-	if (json_array == NULL)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("required key \"placement_blocks\" not found")));
-	}
-
-	const int length = get_json_array_length(json_array);
-	if (length < 1) {
-		ereport(ERROR,
-				(errmsg("invalid number of placement blocks %d", length)));
-		return;
-	}
-
-	bool* visited_priority = (bool*) alloca(sizeof(bool) * length);
-	memset(visited_priority, false, sizeof(bool) * length);
-	bool has_priority = false;
-
-	char *required_keys[4] = {"cloud", "region", "zone", "min_num_replicas"};
-	char *optional_keys[1] = {"leader_preference"};
-	int sum_min_replicas = 0;
-	for (int i = 0; i < length; ++i) {
-		text *json_element = get_json_array_element(json_array, i);
-
-		/*
-		*  Each element in the array is a placement configuration. Verify that
-		*  each such configuration contains all the keys in 'keys' and
-		*  contains no extraneous keys.
-		*/
-		validate_json_object_keys(json_element, required_keys, 4, optional_keys, 1);
-
-		/*
-		* Find the aggregate of min_num_replicas.
-		*/
-		const int min_replicas = json_get_int_value(json_element, required_keys[3]);
-		sum_min_replicas += min_replicas;
-
-		/*
-		* Make sure leader_preference is an integer greater than 0
-		*/
-		if (json_get_value(json_element, optional_keys[0]) != NULL)
-		{
-			int priority = json_get_int_value(json_element, optional_keys[0]);
-			/* Verify that priority is valid. */
-			if (priority < 1 || priority > length)
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("invalid value for \"leader_preference\" key"),
-						errdetail("The set of leader_preference values should "
-								  "consist of contiguous integers starting at 1."
-								  " Preference value %d is invalid.",
-							priority)));
-			}
-			has_priority = true;
-			visited_priority[priority - 1] = true;
-		}
-	}
-
-	/* Find the total replication factor */
-	int num_replicas = json_get_int_value(placement_info, "num_replicas");
-
-	/* Verify that num_replicas is valid. */
-	if (sum_min_replicas > num_replicas)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("invalid value for \"num_replicas\" key"),
-				errdetail("num_replicas=%d is lesser than the total of "
-						"min_num_replicas fields %d.", num_replicas,
-						sum_min_replicas)));
-	}
-	if (sum_min_replicas < num_replicas)
-	{
-		ereport(NOTICE,
-				(errmsg("num_replicas is %d, and the total min_num_replicas "
-						"fields is %d. The location of the additional %d "
-						"replicas among the specified zones will be decided "
-						"dynamically based on the cluster load", num_replicas,
-						sum_min_replicas, num_replicas - sum_min_replicas)));
-	}
-
-	/* Verify priority values are contiguous. */
-	if (has_priority)
-	{
-		bool reached_end = false;
-		for (int i = 0; i < length; ++i)
-		{
-			if (!visited_priority[i])
-			{
-				reached_end = true;
-			}
-			else if (reached_end)
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("invalid value for \"leader_preference\" key"),
-						errdetail("The set of leader_preference values should "
-								  "consist of contiguous integers starting at 1."
-								  " Preference value %d is missing.",
-								  i)));
-			}
-		}
-	}
+	/*
+	 * Do not validate that the current set of tservers can satisfy the placement
+	 * because some users add tservers after creating a tablespace (but
+	 * before creating any associated table).
+	 */
+	YBCValidatePlacement(value, /* check_satisfiable */ false);
 }
 
 /*

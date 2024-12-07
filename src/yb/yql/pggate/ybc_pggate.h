@@ -708,8 +708,9 @@ YbcStatus YBCPgActiveTransactions(YbcPgSessionTxnInfo *infos, size_t num_infos);
 bool YBCPgIsDdlMode();
 
 // System validation -------------------------------------------------------------------------------
-// Validate placement information
-YbcStatus YBCPgValidatePlacement(const char *placement_info);
+// Validate whether placement information is theoretically valid. If check_satisfiable is true,
+// also check whether the current set of tservers can satisfy the requested placement.
+YbcStatus YBCPgValidatePlacement(const char *placement_info, bool check_satisfiable);
 
 //--------------------------------------------------------------------------------------------------
 // Expressions.

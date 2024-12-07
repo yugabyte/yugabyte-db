@@ -117,7 +117,7 @@ extern void YbDropAndRecreateIndex(Oid indexOid, Oid relId, Relation oldRel,
 extern void YBCDropSequence(Oid sequence_oid);
 
 /*  System Validation -------------------------------------------------------------------------- */
-extern void YBCValidatePlacement(const char *placement_info);
+extern void YBCValidatePlacement(const char *placement_info, bool check_satisfiable);
 
 /*  Replication Slot Functions ------------------------------------------------------------------ */
 
