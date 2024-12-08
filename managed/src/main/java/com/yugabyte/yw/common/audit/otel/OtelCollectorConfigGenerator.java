@@ -8,8 +8,11 @@ import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat.MultilineConfig;
 import com.yugabyte.yw.common.yaml.SkipNullRepresenter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TelemetryProvider;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.audit.UniverseLogsExporterConfig;
@@ -24,8 +27,11 @@ import java.nio.file.Path;
 import java.util.*;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import lombok.AllArgsConstructor;
+import lombok.Data;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.yaml.snakeyaml.Yaml;
 import play.Environment;
 
@@ -71,6 +77,8 @@ public class OtelCollectorConfigGenerator {
       String logLinePrefix,
       Path path,
       int otelColMetricsPort) {
+    Customer customer = Customer.getOrBadRequest(provider.getCustomerUUID());
+    Universe universe = Universe.getOrBadRequest(nodeParams.getUniverseUUID());
     try (BufferedWriter writer = new BufferedWriter(new FileWriter(path.toFile()))) {
       Yaml yaml = new Yaml(new SkipNullRepresenter());
       OtelCollectorConfigFormat collectorConfigFormat = new OtelCollectorConfigFormat();
@@ -118,7 +126,13 @@ public class OtelCollectorConfigGenerator {
             .forEach(
                 config ->
                     appendExporter(
-                        collectorConfigFormat, config, currentProcessors, nodeParams.nodeName));
+                        customer,
+                        universe,
+                        collectorConfigFormat,
+                        config,
+                        currentProcessors,
+                        nodeParams.nodeName,
+                        logLinePrefix));
       }
 
       yaml.dump(collectorConfigFormat, writer);
@@ -240,15 +254,36 @@ public class OtelCollectorConfigGenerator {
     receiver.setStart_at("beginning");
     receiver.setStorage("file_storage/queue");
     receiver.setOperators(operators);
-    receiver.setAttributes(ImmutableMap.of("audit_log_type", logType));
+    receiver.setAttributes(ImmutableMap.of("yugabyte.audit_log_type", logType));
     return receiver;
   }
 
+  @Data
+  @AllArgsConstructor
+  public static class RenamePair {
+    private String before;
+    private String after;
+
+    private List<OtelCollectorConfigFormat.AttributeAction> getRenameAttributeActions() {
+      List<OtelCollectorConfigFormat.AttributeAction> renameActionsList = new ArrayList<>();
+      // Copy the attribute from existing attribute and delete the original one.
+      renameActionsList.add(
+          new OtelCollectorConfigFormat.AttributeAction(this.after, null, "upsert", this.before));
+      renameActionsList.add(
+          new OtelCollectorConfigFormat.AttributeAction(this.before, null, "delete", null));
+      return renameActionsList;
+    }
+  }
+
   private void appendExporter(
+      Customer customer,
+      Universe universe,
       OtelCollectorConfigFormat collectorConfig,
       UniverseLogsExporterConfig logsExporterConfig,
       List<String> currentProcessors,
-      String nodeName) {
+      String nodeName,
+      String logLinePrefix) {
+    NodeDetails nodeDetails = universe.getNode(nodeName);
     TelemetryProvider telemetryProvider =
         telemetryProviderService.getOrBadRequest(logsExporterConfig.getExporterUuid());
     Map<String, OtelCollectorConfigFormat.Exporter> exporters = collectorConfig.getExporters();
@@ -271,10 +306,10 @@ public class OtelCollectorConfigGenerator {
 
         // Add Datadog specific labels.
         attributeActions.add(
-            new OtelCollectorConfigFormat.AttributeAction("ddsource", "yugabyte", "upsert"));
+            new OtelCollectorConfigFormat.AttributeAction("ddsource", "yugabyte", "upsert", null));
         attributeActions.add(
             new OtelCollectorConfigFormat.AttributeAction(
-                "service", "yb-otel-collector", "upsert"));
+                "service", "yb-otel-collector", "upsert", null));
         break;
       case SPLUNK:
         SplunkConfig splunkConfig = (SplunkConfig) telemetryProvider.getConfig();
@@ -327,7 +362,67 @@ public class OtelCollectorConfigGenerator {
     }
 
     // Add some common collector labels.
-    attributeActions.add(new OtelCollectorConfigFormat.AttributeAction("host", nodeName, "upsert"));
+    attributeActions.add(
+        new OtelCollectorConfigFormat.AttributeAction("host", nodeName, "upsert", null));
+    attributeActions.add(
+        new OtelCollectorConfigFormat.AttributeAction(
+            "yugabyte.cloud",
+            StringUtils.defaultString(nodeDetails.cloudInfo.cloud, ""),
+            "upsert",
+            null));
+    attributeActions.add(
+        new OtelCollectorConfigFormat.AttributeAction(
+            "yugabyte.universe_uuid", universe.getUniverseUUID().toString(), "upsert", null));
+    attributeActions.add(
+        new OtelCollectorConfigFormat.AttributeAction(
+            "yugabyte.node_type",
+            universe.getCluster(nodeDetails.placementUuid).clusterType.toString(),
+            "upsert",
+            null));
+    attributeActions.add(
+        new OtelCollectorConfigFormat.AttributeAction(
+            "yugabyte.region",
+            StringUtils.defaultString(nodeDetails.cloudInfo.region, ""),
+            "upsert",
+            null));
+    attributeActions.add(
+        new OtelCollectorConfigFormat.AttributeAction(
+            "yugabyte.zone",
+            StringUtils.defaultString(nodeDetails.cloudInfo.az, ""),
+            "upsert",
+            null));
+    attributeActions.add(
+        new OtelCollectorConfigFormat.AttributeAction(
+            "yugabyte.purpose",
+            telemetryProvider.getConfig().getType().toString() + "_LOG_EXPORT",
+            "upsert",
+            null));
+
+    // Rename the attributes to organise under the key yugabyte.
+    List<RenamePair> renamePairs = new ArrayList<RenamePair>();
+    renamePairs.add(new RenamePair("log.file.name", "yugabyte.log.file.name"));
+    renamePairs.add(new RenamePair("log_level", "yugabyte.log_level"));
+    renamePairs.add(new RenamePair("audit_type", "yugabyte.audit_type"));
+    renamePairs.add(new RenamePair("statement_id", "yugabyte.statement_id"));
+    renamePairs.add(new RenamePair("substatement_id", "yugabyte.substatement_id"));
+    renamePairs.add(new RenamePair("class", "yugabyte.class"));
+    renamePairs.add(new RenamePair("command", "yugabyte.command"));
+    renamePairs.add(new RenamePair("object_type", "yugabyte.object_type"));
+    renamePairs.add(new RenamePair("object_name", "yugabyte.object_name"));
+    renamePairs.add(new RenamePair("statement", "yugabyte.statement"));
+    renamePairs.forEach(rp -> attributeActions.addAll(rp.getRenameAttributeActions()));
+
+    // Rename the log prefix extracted attributes to come under the key yugabyte.
+    AuditLogRegexGenerator.LogRegexResult regexResult =
+        auditLogRegexGenerator.generateAuditLogRegex(logLinePrefix, /*onlyPrefix*/ true);
+    regexResult
+        .getTokens()
+        .forEach(
+            token -> {
+              RenamePair rp =
+                  new RenamePair(token.getAttributeName(), token.getYugabyteAttributeName());
+              attributeActions.addAll(rp.getRenameAttributeActions());
+            });
 
     // Override or add tags from the exporter config.
     if (MapUtils.isNotEmpty(telemetryProvider.getTags())) {
@@ -336,7 +431,7 @@ public class OtelCollectorConfigGenerator {
               .map(
                   e ->
                       new OtelCollectorConfigFormat.AttributeAction(
-                          e.getKey(), e.getValue(), "upsert"))
+                          e.getKey(), e.getValue(), "upsert", null))
               .toList());
     }
 
@@ -347,7 +442,7 @@ public class OtelCollectorConfigGenerator {
               .map(
                   e ->
                       new OtelCollectorConfigFormat.AttributeAction(
-                          e.getKey(), e.getValue(), "upsert"))
+                          e.getKey(), e.getValue(), "upsert", null))
               .toList());
     }
 

@@ -8,7 +8,7 @@
 
 - name: Manage OpenTelemetry Collector
   hosts: "{{ yb_prebuilt_ami_host | default(instance_search_pattern) }}"
-  become: "{{ 'yes' if use_sudo|default(false) else '' }}"
+  become: "{{ 'yes' if use_sudo|default(false) else 'no' }}"
   become_method: "{{ 'sudo' if use_sudo|default(false) else '' }}"
   roles:
     - "manage_otel_collector"

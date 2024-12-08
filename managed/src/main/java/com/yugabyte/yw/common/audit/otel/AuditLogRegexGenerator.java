@@ -141,5 +141,9 @@ public class AuditLogRegexGenerator {
     public String getAttributeName() {
       return name().toLowerCase();
     }
+
+    public String getYugabyteAttributeName() {
+      return "yugabyte." + name().toLowerCase();
+    }
   }
 }
