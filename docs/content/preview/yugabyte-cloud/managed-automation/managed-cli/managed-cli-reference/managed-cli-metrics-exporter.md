@@ -57,7 +57,7 @@ Assign an export configuration to the specified cluster.
 ### create
 
 {{< warning >}}
-Deprecated 2024-11-30 and will be supported until 2025-2-28. Use `integration create` instead.
+Deprecated 2024-11-30 and will be supported until 2025-2-28. Use [integration create](../managed-cli-integration/#create) instead.
 {{< /warning >}}
 
 Create an export configuration.
@@ -73,7 +73,7 @@ Create an export configuration.
 ### delete
 
 {{< warning >}}
-Deprecated 2024-11-30 and will be supported until 2025-2-28. Use `integration delete` instead.
+Deprecated 2024-11-30 and will be supported until 2025-2-28. Use [integration delete](../managed-cli-integration/#delete) instead.
 {{< /warning >}}
 
 Delete a specified export configuration. You can't delete configurations that are in use by a cluster.
@@ -97,7 +97,7 @@ Describe a specified export configuration.
 ### list
 
 {{< warning >}}
-Deprecated 2024-11-30 and will be supported until 2025-2-28. Use `integration list` instead.
+Deprecated 2024-11-30 and will be supported until 2025-2-28. Use [integration list](../managed-cli-integration/#list) instead.
 {{< /warning >}}
 
 List the export configurations.
@@ -121,7 +121,7 @@ Remove the export configuration from the specified cluster.
 ### update
 
 {{< warning >}}
-Deprecated 2024-11-30 and will be supported until 2025-2-28. Use `integration` instead.
+Deprecated 2024-11-30 and will be supported until 2025-2-28. Use [integration](../managed-cli-integration/) instead.
 {{< /warning >}}
 
 Update an export configuration.
