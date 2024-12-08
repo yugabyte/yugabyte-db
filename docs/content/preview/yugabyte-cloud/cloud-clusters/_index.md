@@ -9,7 +9,7 @@ menu:
   preview_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: cloud-clusters
-    weight: 150
+    weight: 100
 type: indexpage
 showRightNav: true
 ---
