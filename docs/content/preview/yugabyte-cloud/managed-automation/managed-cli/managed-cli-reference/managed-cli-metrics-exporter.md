@@ -56,7 +56,9 @@ Assign an export configuration to the specified cluster.
 
 ### create
 
+{{< warning >}}
 Deprecated 2024-11-30 and will be supported until 2025-2-28. Use `integration create` instead.
+{{< /warning >}}
 
 Create an export configuration.
 
@@ -70,7 +72,9 @@ Create an export configuration.
 
 ### delete
 
+{{< warning >}}
 Deprecated 2024-11-30 and will be supported until 2025-2-28. Use `integration delete` instead.
+{{< /warning >}}
 
 Delete a specified export configuration. You can't delete configurations that are in use by a cluster.
 
@@ -80,7 +84,9 @@ Delete a specified export configuration. You can't delete configurations that ar
 
 ### describe
 
+{{< warning >}}
 Deprecated 2024-11-30 and will be supported until 2025-2-28.
+{{< /warning >}}
 
 Describe a specified export configuration.
 
@@ -90,7 +96,9 @@ Describe a specified export configuration.
 
 ### list
 
+{{< warning >}}
 Deprecated 2024-11-30 and will be supported until 2025-2-28. Use `integration list` instead.
+{{< /warning >}}
 
 List the export configurations.
 
@@ -112,7 +120,9 @@ Remove the export configuration from the specified cluster.
 
 ### update
 
+{{< warning >}}
 Deprecated 2024-11-30 and will be supported until 2025-2-28. Use `integration` instead.
+{{< /warning >}}
 
 Update an export configuration.
 
