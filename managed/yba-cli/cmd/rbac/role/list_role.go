@@ -14,6 +14,7 @@ import (
 	ybaclient "github.com/yugabyte/platform-go-client"
 
 	"github.com/spf13/viper"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/rbac/rbacutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -28,6 +29,8 @@ var listRoleCmd = &cobra.Command{
 	Example: `yba rbac role list`,
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
+		rbacutil.CheckRBACEnablementOnYBA(authAPI, "RBAC: Role", "List")
 
 		roleListRequest := authAPI.ListRoles()
 		// filter by roleType and/or by role code
