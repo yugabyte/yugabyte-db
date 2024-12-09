@@ -123,14 +123,13 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
     leader_status_ = s;
     return;
   }
-  if (PREDICT_FALSE(epoch_.leader_term != cstate.current_term())) {
+  if (epoch_.leader_term != cstate.current_term()) {
     // Normally we use LeaderNotReadyToServe to indicate that the leader has not replicated its
     // NO_OP entry or the previous leader's lease has not expired yet, and the handling logic is to
     // to retry on the same server.
-    leader_status_ = STATUS_SUBSTITUTE(
-        LeaderNotReadyToServe,
-        "Leader not yet ready to serve requests: "
-        "leader_ready_term_ = $0; cstate.current_term = $1",
+    leader_status_ = STATUS_FORMAT(
+        LeaderNotReadyToServe, "$0:leader_ready_term_ = $1; cstate.current_term = $2",
+        (epoch_.leader_term == -1 ? "yb-master leader is initializing" : "Leader term mismatch"),
         epoch_.leader_term, cstate.current_term());
     return;
   }

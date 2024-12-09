@@ -49,9 +49,10 @@
 
 #include "yb/rpc/acceptor.h"
 #include "yb/rpc/constants.h"
-#include "yb/rpc/reactor.h"
-#include "yb/rpc/reactor_thread_role.h"
 #include "yb/rpc/delayed_task.h"
+#include "yb/rpc/reactor.h"
+#include "yb/rpc/reactor_monitor.h"
+#include "yb/rpc/reactor_thread_role.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/rpc_service.h"
@@ -94,6 +95,10 @@ DEFINE_UNKNOWN_int64(outbound_rpc_memory_limit, 0, "Outbound RPC memory limit");
 DEPRECATE_FLAG(int32, rpc_queue_limit, "03_2024");
 
 DEFINE_NON_RUNTIME_int32(rpc_workers_limit, 1024, "Workers limit for rpc server");
+
+DEFINE_NON_RUNTIME_int32(rpc_reactor_task_timeout_ms, 0,
+    "Report if reactor task task takes longer that specified amount of milliseconds. "
+    "0 to disable monitoring.");
 
 DEFINE_UNKNOWN_int32(socket_receive_buffer_size, 0, "Socket receive buffer size, 0 to use default");
 
@@ -194,10 +199,13 @@ void Messenger::Shutdown() {
 
   std::vector<Reactor*> reactors;
   std::unique_ptr<Acceptor> acceptor;
+  std::unique_ptr<ReactorMonitor> reactor_monitor;
   {
     std::lock_guard guard(lock_);
 
     acceptor.swap(acceptor_);
+
+    reactor_monitor.swap(reactor_monitor_);
 
     for (const auto& reactor : reactors_) {
       reactors.push_back(reactor.get());
@@ -206,6 +214,11 @@ void Messenger::Shutdown() {
 
   if (acceptor) {
     acceptor->Shutdown();
+  }
+
+  if (reactor_monitor) {
+    reactor_monitor->Shutdown();
+    reactor_monitor.reset();
   }
 
   for (auto* reactor : reactors) {
@@ -614,6 +627,13 @@ Reactor* Messenger::RemoteToReactor(const Endpoint& remote, uint32_t idx) {
 
 Status Messenger::Init(const MessengerBuilder &bld) {
   reactors_.reserve(bld.num_reactors_);
+  ReactorMonitor* reactor_monitor = nullptr;
+  if (FLAGS_rpc_reactor_task_timeout_ms) {
+    std::lock_guard lock(lock_);
+    reactor_monitor_ = std::make_unique<ReactorMonitor>(
+        name_, FLAGS_rpc_reactor_task_timeout_ms * 1ms);
+    reactor_monitor = reactor_monitor_.get();
+  }
   for (int i = 0; i < bld.num_reactors_; ++i) {
     auto reactor = std::make_unique<Reactor>(this, i, bld);
     if (PREDICT_FALSE(FLAGS_TEST_rpc_reactor_index_for_init_failure_simulation == i)) {
@@ -621,6 +641,9 @@ Status Messenger::Init(const MessengerBuilder &bld) {
     }
     RETURN_NOT_OK(reactor->Init());
     reactors_.push_back(std::move(reactor));
+    if (reactor_monitor) {
+      reactor_monitor->Track(*reactors_.back());
+    }
   }
   return Status::OK();
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/rbac/rbacutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -39,6 +40,8 @@ var updateRoleCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
+		rbacutil.CheckRBACEnablementOnYBA(authAPI, "RBAC: Role", "Update")
 
 		name, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -174,6 +177,5 @@ func addPermissions(
 		}
 		rolePermissions = append(rolePermissions, r)
 	}
-
 	return rolePermissions
 }

@@ -395,6 +395,8 @@ class Messenger : public ProxyContext {
   // Number of outbound connections to create per each destination server address.
   int num_connections_to_server_;
 
+  std::unique_ptr<ReactorMonitor> reactor_monitor_ GUARDED_BY(lock_);
+
 #ifndef NDEBUG
   // This is so we can log where exactly a Messenger was instantiated to better diagnose a CHECK
   // failure in the destructor (ENG-2838). This can be removed when that is fixed.

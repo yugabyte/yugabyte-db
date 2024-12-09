@@ -67,6 +67,7 @@
             "type" : "string"
           }
         },
+        "required" : [ "accessKey", "logGroup", "logStream", "region", "secretKey" ],
         "type" : "object"
       } ]
     },
@@ -23822,7 +23823,10 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/RoleBinding"
+              "items" : {
+                "$ref" : "#/definitions/RoleBinding"
+              },
+              "type" : "array"
             }
           }
         },
@@ -23830,7 +23834,10 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/RoleBinding"
+              "items" : {
+                "$ref" : "#/definitions/RoleBinding"
+              },
+              "type" : "array"
             }
           }
         },

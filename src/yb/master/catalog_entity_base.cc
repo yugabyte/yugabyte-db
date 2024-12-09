@@ -63,7 +63,7 @@ void CatalogEntityWithTasks::AddTask(server::MonitoredTaskPtr task) {
   // We need to abort these tasks without holding the lock because when a task is destroyed it tries
   // to acquire the same lock to remove itself from pending_tasks_.
   if (abort_task) {
-    task->AbortAndReturnPrevState(STATUS(Expired, "Table closing"));
+    task->AbortAndReturnPrevState(STATUS(Expired, "Table closing"), /* call_task_finisher */ true);
   }
 }
 
@@ -82,15 +82,16 @@ bool CatalogEntityWithTasks::RemoveTask(const server::MonitoredTaskPtr& task) {
 // from the pending list.
 void CatalogEntityWithTasks::AbortTasks(
     const std::unordered_set<server::MonitoredTaskType>& tasks_to_ignore) {
-  AbortTasksAndCloseIfRequested(/* close */ false, tasks_to_ignore);
+  AbortTasksAndCloseIfRequested(/* close */ false, /* call_task_finisher */ true, tasks_to_ignore);
 }
 
-void CatalogEntityWithTasks::AbortTasksAndClose() {
-  AbortTasksAndCloseIfRequested(/* close */ true);
+void CatalogEntityWithTasks::AbortTasksAndClose(bool call_task_finisher) {
+  AbortTasksAndCloseIfRequested(/* close */ true, call_task_finisher);
 }
 
 void CatalogEntityWithTasks::AbortTasksAndCloseIfRequested(
-    bool close, const std::unordered_set<server::MonitoredTaskType>& tasks_to_ignore) {
+    bool close, bool call_task_finisher,
+    const std::unordered_set<server::MonitoredTaskType>& tasks_to_ignore) {
   std::vector<server::MonitoredTaskPtr> abort_tasks;
   {
     std::lock_guard l(mutex_);
@@ -113,7 +114,7 @@ void CatalogEntityWithTasks::AbortTasksAndCloseIfRequested(
     }
     VLOG_WITH_FUNC(1) << (close ? "Close and abort" : "Abort") << " task " << task.get() << " "
                       << task->description();
-    task->AbortAndReturnPrevState(status);
+    task->AbortAndReturnPrevState(status, call_task_finisher);
   }
 }
 
@@ -158,7 +159,7 @@ std::unordered_set<server::MonitoredTaskPtr> CatalogEntityWithTasks::GetTasks() 
 
 void CatalogEntityWithTasks::CloseAndWaitForAllTasksToAbort() {
   VLOG(1) << "Aborting tasks";
-  AbortTasksAndClose();
+  AbortTasksAndClose(/* call_task_finisher */ true);
   VLOG(1) << "Waiting on Aborting tasks";
   WaitTasksCompletion();
   VLOG(1) << "Waiting on Aborting tasks done";

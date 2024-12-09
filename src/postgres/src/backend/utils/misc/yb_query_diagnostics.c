@@ -46,6 +46,7 @@
 #include "executor/spi.h"
 #include "foreign/foreign.h"
 #include "funcapi.h"
+#include "parser/analyze.h"
 #include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "postmaster/bgworker.h"
@@ -56,14 +57,17 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
-#define QUERY_DIAGNOSTICS_HASH_MAX_SIZE 100	/* Maximum number of entries in the hash table */
-#define BIND_VAR_FILE "bind_variables.csv"
-#define PGSS_FILE "pg_stat_statements.csv"
-#define ASH_FILE "active_session_history.csv"
-#define EXPLAIN_PLAN_FILE "explain_plan.txt"
-#define SCHEMA_DETAILS_FILE "schema_details.txt"
+static const char *constants_and_bind_variables_file = "constants_and_bind_variables.csv";
+static const char *pgss_file = "pg_stat_statements.csv";
+static const char *ash_file = "active_session_history.csv";
+static const char *explain_plan_file = "explain_plan.txt";
+static const char *schema_details_file = "schema_details.txt";
+
 /* Separates schema details for different tables by 60 '=' */
-#define SCHEMA_DETAILS_SEPARATOR "============================================================"
+const char *schema_details_separator = "============================================================";
+
+/* Maximum number of entries in the hash table */
+#define QUERY_DIAGNOSTICS_HASH_MAX_SIZE 100
 
 /* Constants used for yb_query_diagnostics_status view */
 #define YB_QUERY_DIAGNOSTICS_STATUS_COLS 8
@@ -92,6 +96,7 @@ int yb_query_diagnostics_bg_worker_interval_ms;
 int yb_query_diagnostics_circular_buffer_size;
 
 /* Saved hook value in case of unload */
+static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
 static ExecutorStart_hook_type prev_ExecutorStart = NULL;
 static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
 
@@ -101,6 +106,7 @@ static volatile sig_atomic_t got_sighup = false;
 
 YbGetNormalizedQueryFuncPtr yb_get_normalized_query = NULL;
 TimestampTz *yb_pgss_last_reset_time;
+PgssFillInConstantLengths yb_qd_fill_in_constant_lengths = NULL;
 
 static HTAB *bundles_in_progress = NULL;
 static LWLock *bundles_in_progress_lock; /* protects bundles_in_progress hash table */
@@ -108,17 +114,19 @@ static YbQueryDiagnosticsBundles *bundles_completed = NULL;
 static const char *status_msg[] = {"Success", "In Progress", "Error", "Cancelled"};
 static bool current_query_sampled = false;
 
+static void YbQueryDiagnostics_post_parse_analyze(ParseState *pstate, Query *query,
+												  JumbleState *jstate);
 static void YbQueryDiagnostics_ExecutorStart(QueryDesc *queryDesc, int eflags);
 static void YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc);
 
 static void InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata);
 static void FetchParams(YbQueryDiagnosticsParams *params, FunctionCallInfo fcinfo);
 static void ConstructDiagnosticsPath(YbQueryDiagnosticsMetadata *metadata);
-static void FormatParams(StringInfo buf, const ParamListInfo params);
+static void FormatBindVariables(StringInfo buf, const ParamListInfo params);
+static void FormatConstants(StringInfo constants, const char *query, int constants_count,
+							int query_location, LocationLen *constant_locations);
 static int DumpToFile(const char *path, const char *file_name, const char *data, char *description);
 static void FlushAndCleanBundles();
-static void AccumulateBindVariables(YbQueryDiagnosticsEntry *entry,
-									const double totaltime_ms, const ParamListInfo params);
 static void AccumulateExplain(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *entry,
 							  bool explain_analyze, bool explain_dist, double totaltime_ms);
 static void YbQueryDiagnosticsBgWorkerSighup(SIGNAL_ARGS);
@@ -142,9 +150,8 @@ static void FinishBundleProcessing(YbQueryDiagnosticsMetadata *metadata,
 static int DumpBufferIfHalfFull(char *buffer, size_t max_len, const char *file_name,
 								 const char *folder_path, char *description, slock_t *mutex);
 
-/* Function used in gathering bind_variables data */
-static void AccumulateBindVariables(YbQueryDiagnosticsEntry *entry,
-									const double totaltime_ms, const ParamListInfo params);
+/* Function used in gathering bind_variables/constants data */
+static void AccumulateBindVariablesOrConstants(YbQueryDiagnosticsEntry *entry, StringInfo params);
 
 /* Functions used in gathering pg_stat_statements */
 static void PgssToString(int64 query_id, char *pgss_str, YbQueryDiagnosticsPgss pgss,
@@ -161,6 +168,9 @@ static void PrintTableName(Oid oid, StringInfo schema_details);
 void
 YbQueryDiagnosticsInstallHook(void)
 {
+	prev_post_parse_analyze_hook = post_parse_analyze_hook;
+	post_parse_analyze_hook = YbQueryDiagnostics_post_parse_analyze;
+
 	prev_ExecutorStart = ExecutorStart_hook;
 	ExecutorStart_hook = YbQueryDiagnostics_ExecutorStart;
 
@@ -555,10 +565,133 @@ YbSetPgssNormalizedQueryText(int64 query_id, const Size query_offset, int query_
 	LWLockRelease(bundles_in_progress_lock);
 }
 
+/*
+ * FormatBindVariables
+ *		Iterates over params and prints all of the bind variables in CSV fromat.
+ */
+static void
+FormatBindVariables(StringInfo buf, const ParamListInfo params)
+{
+	Oid			typoutput;
+	bool		typIsVarlena;
+	char	   *val;
+	bool		is_text;
+
+	MemoryContext oldcxt = CurrentMemoryContext;
+	MemoryContext cxt = AllocSetContextCreate(CurrentMemoryContext,
+											  "FormatBindVariables temporary context",
+											  ALLOCSET_DEFAULT_SIZES);
+
+	MemoryContextSwitchTo(cxt);
+	for (int i = 0; i < params->numParams; ++i)
+	{
+		if (params->params[i].isnull)
+			appendStringInfo(buf, "NULL");
+		else
+		{
+			getTypeOutputInfo(params->params[i].ptype,
+							  &typoutput, &typIsVarlena);
+			val = OidOutputFunctionCall(typoutput, params->params[i].value);
+
+			/* Check if the type is text-like (char, varchar, text) */
+			is_text = (params->params[i].ptype == TEXTOID ||
+					  params->params[i].ptype == VARCHAROID ||
+					  params->params[i].ptype == BPCHAROID);
+
+			if (i > 0)
+				appendStringInfoChar(buf, ',');
+
+			/* Append the value with quotes if it is a text-like type */
+			appendStringInfo(buf, is_text ? "'%s'" : "%s", val);
+
+			pfree(val);
+		}
+	}
+
+	MemoryContextSwitchTo(oldcxt);
+	MemoryContextDelete(cxt);
+}
+
+/*
+ * FormatConstants
+ *		Formats and copies the constants from the query into the constants buffer.
+ */
+static void
+FormatConstants(StringInfo constants, const char *query, int constants_count,
+				int query_location, LocationLen *constant_locations)
+{
+	int			i;
+	/* Offset from the start of the query string for the current constant */
+	int			offset;
+	/* Length (in bytes) of the current constant */
+	int			constant_len;
+
+	for (i = 0; i < constants_count; i++)
+	{
+		offset = constant_locations[i].location;
+		constant_len = constant_locations[i].length;
+
+		if (constant_len < 0)
+			continue;
+
+		/* Adjust recorded location if we're dealing with partial string */
+		offset -= query_location;
+
+		/* Copy the constant */
+		if (i > 0)
+			appendStringInfoChar(constants, ',');
+
+		appendBinaryStringInfo(constants, query + offset, constant_len);
+	}
+}
+
+static void
+YbQueryDiagnostics_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
+{
+	if (prev_post_parse_analyze_hook)
+		prev_post_parse_analyze_hook(pstate, query, jstate);
+
+	int64		query_id = query->queryId;
+	YbQueryDiagnosticsEntry *entry;
+
+	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
+
+	/*
+	 * This can slow down the query execution, even if the query is not being bundled.
+	 */
+	entry = (YbQueryDiagnosticsEntry *) hash_search(bundles_in_progress,
+													&query_id, HASH_FIND,
+													NULL);
+	if (entry)
+	{
+		if (jstate && jstate->clocations_count > 0)
+		{
+			int			query_location = query->stmt_location;
+
+			/*
+			 * Get constants' lengths (Postgres infrastructure only gives us locations).
+			 * Note this also ensures the items are sorted by location.
+			 */
+			yb_qd_fill_in_constant_lengths(jstate, pstate->p_sourcetext, query_location);
+
+			SpinLockAcquire(&entry->mutex);
+
+			entry->query_location = query_location;
+			entry->constants_count = jstate->clocations_count;
+			memcpy(entry->constant_locations, jstate->clocations,
+				   sizeof(LocationLen) * jstate->clocations_count);
+
+			SpinLockRelease(&entry->mutex);
+		}
+	}
+
+	LWLockRelease(bundles_in_progress_lock);
+}
+
 static void
 YbQueryDiagnostics_ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
-	uint64		query_id = queryDesc->plannedstmt->queryId;
+	int64		query_id = queryDesc->plannedstmt->queryId;
 	YbQueryDiagnosticsEntry *entry;
 
 	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
@@ -592,8 +725,7 @@ YbQueryDiagnostics_ExecutorStart(QueryDesc *queryDesc, int eflags)
 static void
 YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc)
 {
-	uint64		query_id = queryDesc->plannedstmt->queryId;
-	double 		totaltime_ms;
+	int64		query_id = queryDesc->plannedstmt->queryId;
 	YbQueryDiagnosticsEntry *entry;
 
 	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
@@ -608,11 +740,31 @@ YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc)
 
 	if (entry)
 	{
+		double 		totaltime_ms;
+
 		totaltime_ms = INSTR_TIME_GET_MILLISEC(queryDesc->totaltime->counter);
 
-		if (queryDesc->params &&
-			entry->metadata.params.bind_var_query_min_duration_ms <= totaltime_ms)
-			AccumulateBindVariables(entry, totaltime_ms, queryDesc->params);
+		if (entry->metadata.params.bind_var_query_min_duration_ms <= totaltime_ms)
+		{
+			StringInfoData buf;
+			initStringInfo(&buf);
+
+			/* For prepared statements, format bind variables in a CSV format */
+			if (queryDesc->params)
+				FormatBindVariables(&buf, queryDesc->params);
+
+			/* For non-prepared statements, format constants in a CSV format. */
+			if (entry->constants_count > 0)
+				FormatConstants(&buf, queryDesc->sourceText,
+								entry->constants_count,
+								entry->query_location,
+								entry->constant_locations);
+
+			appendStringInfo(&buf, ",%lf ms\n", totaltime_ms);
+			AccumulateBindVariablesOrConstants(entry, &buf);
+
+			pfree(buf.data);
+		}
 
 		AccumulatePgss(queryDesc, entry);
 
@@ -635,33 +787,24 @@ YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc)
 		standard_ExecutorEnd(queryDesc);
 }
 
+/*
+ * AccumulateBindVariablesOrConstants
+ *		Appends current query's bind variables/constants to the entry.
+ */
 static void
-AccumulateBindVariables(YbQueryDiagnosticsEntry *entry, const double totaltime_ms,
-						const ParamListInfo params)
+AccumulateBindVariablesOrConstants(YbQueryDiagnosticsEntry *entry, StringInfo params)
 {
-	/* Check if the bind_vars is already full */
 	SpinLockAcquire(&entry->mutex);
-	bool is_full = strlen(entry->bind_vars) == YB_QD_MAX_BIND_VARS_LEN - 1;
-	SpinLockRelease(&entry->mutex);
 
-	if (is_full)
-		return;
-
-	StringInfoData buf;
-	initStringInfo(&buf);
-	FormatParams(&buf, params);
-	appendStringInfo(&buf, "%lf\n", totaltime_ms);
-
-	SpinLockAcquire(&entry->mutex);
 	size_t		current_len = strlen(entry->bind_vars);
-	if (current_len + buf.len <= YB_QD_MAX_BIND_VARS_LEN - 1)
-	{
-		memcpy(entry->bind_vars + current_len, buf.data, buf.len);
-		entry->bind_vars[current_len + buf.len] = '\0'; /* Ensure null termination */
-	}
-	SpinLockRelease(&entry->mutex);
 
-	pfree(buf.data);
+	if (current_len + params->len <= YB_QD_MAX_BIND_VARS_LEN - 1)
+	{
+		memcpy(entry->bind_vars + current_len, params->data, params->len);
+		entry->bind_vars[current_len + params->len] = '\0'; /* Ensure null termination */
+	}
+
+	SpinLockRelease(&entry->mutex);
 }
 
 static void
@@ -782,42 +925,6 @@ AccumulateExplain(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *entry, bool exp
 	pfree(es);
 }
 
-
-/*
- * FormatParams
- *		Iterates over all of the params and prints them in CSV fromat.
- */
-static void
-FormatParams(StringInfo buf, const ParamListInfo params)
-{
-	MemoryContext oldcxt = CurrentMemoryContext;
-	MemoryContext cxt = AllocSetContextCreate(CurrentMemoryContext,
-													 "FormatParams temporary context",
-													 ALLOCSET_DEFAULT_SIZES);
-
-	MemoryContextSwitchTo(cxt);
-	for (int i = 0; i < params->numParams; ++i)
-	{
-		if (params->params[i].isnull)
-			appendStringInfo(buf, "NULL");
-		else
-		{
-			Oid			typoutput;
-			bool		typIsVarlena;
-			char	   *val;
-
-			getTypeOutputInfo(params->params[i].ptype,
-							  &typoutput, &typIsVarlena);
-			val = OidOutputFunctionCall(typoutput, params->params[i].value);
-
-			appendStringInfo(buf, "%s,", val);
-		}
-	}
-
-	MemoryContextSwitchTo(oldcxt);
-	MemoryContextDelete(cxt);
-}
-
 /*
  * InsertNewBundleInfo
  *		Adds the entry into bundles_in_progress hash table.
@@ -842,6 +949,9 @@ InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata)
 		MemSet(entry->bind_vars, 0, YB_QD_MAX_BIND_VARS_LEN);
 		MemSet(entry->explain_plan, 0, YB_QD_MAX_EXPLAIN_PLAN_LEN);
 		MemSet(entry->schema_oids, 0, sizeof(Oid) * YB_QD_MAX_SCHEMA_OIDS);
+		entry->query_location = 0;
+		entry->constants_count = 0;
+		MemSet(entry->constant_locations, 0, sizeof(LocationLen) * YB_QD_MAX_CONSTANTS);
 		SpinLockInit(&entry->mutex);
 		entry->pgss = (YbQueryDiagnosticsPgss) {.counters = {0}, .query_offset = 0, .query_len = 0};
 	}
@@ -977,7 +1087,7 @@ FlushAndCleanBundles()
 			 * while flushing to disk.
 			 */
 			status = DumpBufferIfHalfFull(entry->bind_vars, YB_QD_MAX_BIND_VARS_LEN,
-										  BIND_VAR_FILE, folder_path, description,
+										  constants_and_bind_variables_file, folder_path, description,
 										  &entry->mutex);
 
 			if (status == DIAGNOSTICS_ERROR)
@@ -988,7 +1098,7 @@ FlushAndCleanBundles()
 			}
 
 			status = DumpBufferIfHalfFull(entry->explain_plan, YB_QD_MAX_EXPLAIN_PLAN_LEN,
-										  EXPLAIN_PLAN_FILE, folder_path, description,
+										  explain_plan_file, folder_path, description,
 										  &entry->mutex);
 
 			if (status == DIAGNOSTICS_ERROR)
@@ -1008,11 +1118,11 @@ end_of_loop:
 	/* Handle expired entries */
 	for (int i = 0; i < expired_entries_index; i++)
 	{
-		YbQueryDiagnosticsEntry entry = expired_entries[i];
+		YbQueryDiagnosticsEntry *entry = &expired_entries[i];
 
 		char		description[YB_QD_DESCRIPTION_LEN];
 		int			status = DIAGNOSTICS_SUCCESS;
-		int			query_len = Min(entry.pgss.query_len, YB_QD_MAX_PGSS_QUERY_LEN);
+		int			query_len = Min(entry->pgss.query_len, YB_QD_MAX_PGSS_QUERY_LEN);
 		char		query_str[query_len + 1];
 
 		description[0] = '\0';
@@ -1026,8 +1136,8 @@ end_of_loop:
 		}
 
 		/* Dump bind variables */
-		status = DumpToFile(entry.metadata.path, BIND_VAR_FILE,
-							entry.bind_vars, description);
+		status = DumpToFile(entry->metadata.path, constants_and_bind_variables_file,
+							entry->bind_vars, description);
 
 		if (status == DIAGNOSTICS_ERROR)
 			goto remove_entry;
@@ -1042,7 +1152,7 @@ end_of_loop:
 		 * may still hold a non-zero garbage value until a new query is run
 		 * and query_len is updated.
 		 */
-		if (*yb_pgss_last_reset_time >= entry.metadata.start_time)
+		if (*yb_pgss_last_reset_time >= entry->metadata.start_time)
 			AppendToDescription(description, "pg_stat_statements was reset, " \
 													 "query string not available;");
 		else
@@ -1050,7 +1160,7 @@ end_of_loop:
 			if (yb_get_normalized_query)
 			{
 				/* Extract query string from pgss_query_texts.stat file */
-				yb_get_normalized_query(entry.pgss.query_offset, entry.pgss.query_len, query_str);
+				yb_get_normalized_query(entry->pgss.query_offset, entry->pgss.query_len, query_str);
 
 				if (query_str[0] == '\0')
 					AppendToDescription(description,
@@ -1060,18 +1170,17 @@ end_of_loop:
 
 		/* Convert pg_stat_statements data to string format */
 		char		pgss_str[YB_QD_MAX_PGSS_LEN];
-		PgssToString(entry.metadata.params.query_id, pgss_str, entry.pgss, query_str);
+		PgssToString(entry->metadata.params.query_id, pgss_str, entry->pgss, query_str);
 
 		/* Dump pg_stat_statements */
-		status = DumpToFile(entry.metadata.path, PGSS_FILE,
-							pgss_str, description);
+		status = DumpToFile(entry->metadata.path, pgss_file, pgss_str, description);
 
 		if (status == DIAGNOSTICS_ERROR)
 			goto remove_entry;
 
 		/* Dump explain plan */
-		status = DumpToFile(entry.metadata.path, EXPLAIN_PLAN_FILE,
-							entry.explain_plan, description);
+		status = DumpToFile(entry->metadata.path, explain_plan_file,
+							entry->explain_plan, description);
 
 		if (status == DIAGNOSTICS_ERROR)
 			goto remove_entry;
@@ -1080,22 +1189,23 @@ end_of_loop:
 		StringInfoData schema_details;
 		initStringInfo(&schema_details);
 
+		/* Fetch schema details for each schema oid */
 		for (int i = 0; i < YB_QD_MAX_SCHEMA_OIDS; i++)
 		{
-			if (entry.schema_oids[i] == InvalidOid)
+			if (entry->schema_oids[i] == InvalidOid)
 				break;
 
-			status = DescribeOneTable(entry.schema_oids[i], &schema_details,
-									  description);
+			status = DescribeOneTable(entry->schema_oids[i], &schema_details,
+									description);
 
 			if (status == DIAGNOSTICS_ERROR)
 				goto remove_entry;
 
-			appendStringInfo(&schema_details, "\n%s\n\n", SCHEMA_DETAILS_SEPARATOR);
+			appendStringInfo(&schema_details, "\n%s\n\n", schema_details_separator);
 		}
 
 		/* Dump schema details */
-		status = DumpToFile(entry.metadata.path, SCHEMA_DETAILS_FILE,
+		status = DumpToFile(entry->metadata.path, schema_details_file,
 							schema_details.data, description);
 
 		pfree(schema_details.data);
@@ -1104,19 +1214,17 @@ end_of_loop:
 			goto remove_entry;
 
 		/* Dump ASH */
-		if (yb_ash_enable_infra)
+		if (yb_enable_ash)
 		{
-			Assert(yb_enable_ash);
-
 			StringInfoData ash_buffer;
 			initStringInfo(&ash_buffer);
 
-			GetAshDataForQueryDiagnosticsBundle(entry.metadata.start_time,
-												BundleEndTime(&entry),
-												entry.metadata.params.query_id,
+			GetAshDataForQueryDiagnosticsBundle(entry->metadata.start_time,
+												BundleEndTime(entry),
+												entry->metadata.params.query_id,
 												&ash_buffer, description);
 
-			status = DumpToFile(entry.metadata.path, ASH_FILE,
+			status = DumpToFile(entry->metadata.path, ash_file,
 								ash_buffer.data, description);
 
 			pfree(ash_buffer.data);
@@ -1126,7 +1234,7 @@ end_of_loop:
 		}
 
 remove_entry:
-		FinishBundleProcessing(&entry.metadata, status, description);
+		FinishBundleProcessing(&entry->metadata, status, description);
 	}
 }
 

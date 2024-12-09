@@ -14,7 +14,7 @@ type: docs
 
 ## Prerequisites
 
-By default, xCluster Disaster Recovery is not enabled. To enable the feature, set the **Enable disaster recovery** Global Configuration option (config key `yb.xcluster.dr.enabled`) to true. Refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
+To set up or configure Disaster Recovery, you must be a Super Admin or Admin, or have a role with the Manage xCluster permission. For information on roles, refer to [Manage users](../../../administer-yugabyte-platform/anywhere-rbac/).
 
 ### Create universes
 
@@ -30,21 +30,13 @@ Ensure the universes have the following characteristics:
 
     PITR is used by DR during failover to restore the database to a consistent state. Note that if the DR replica universe already has PITR configured, that configuration is replaced by the DR configuration.
 
-    You can change the retention period for PITR used for DR by changing the following [runtime configuration](../../../administer-yugabyte-platform/manage-runtime-config/):
+Prepare your database and tables on the DR primary. Make sure the database and tables aren't already being used for xCluster replication; databases and tables can only be used in one replication at a time. The DR primary can be empty or have data. If the DR primary has a lot of data, the DR setup will take longer because the data must be copied in full to the DR replica before on-going asynchronous replication starts.
 
-    ```sh
-    yb.xcluster.transactional.pitr.default_retention_period
-    ```
+During DR setup in semi-automatic mode, create objects on the DR replica as well.
 
-    The default value is 3 days.
+DR performs a full copy of the data to be replicated on the DR primary, and restores data on the DR replica from the DR primary.
 
-- Neither universe is already being used for xCluster replication.
-
-Prepare your database and tables on the DR primary. The DR primary can be empty or have data. If the DR primary has a lot of data, the DR setup will take longer because the data must be copied in full to the DR replica before on-going asynchronous replication starts.
-
-On the DR replica, create a database with the same name as that on the DR primary. During initial DR setup, you don't need to create objects on the DR replica. DR performs a full copy of the data to be replicated on the DR primary, and automatically creates tables and objects, and restores data on the DR replica from the DR primary.
-
-After DR is configured, the DR replica will only be available for reads.
+After DR is configured, the DR replica is only be available for reads.
 
 ### Best practices
 
@@ -63,11 +55,15 @@ After DR is configured, the DR replica will only be available for reads.
 
 To set up disaster recovery for a universe, do the following:
 
-1. Navigate to your DR primary universe and select **xCluster Disaster Recovery**.
+1. Navigate to your DR primary universe **xCluster Disaster Recovery** tab, and select the replication configuration.
 
-1. Click **Configure & Enable Disaster Recovery**.
+1. Click **Configure & Enable Disaster Recovery** or, if DR has already been set up for a database, **Create Disaster Recovery Config**.
 
-1. Select the universe to use as the DR replica, then click **Next: Select Databases**.
+1. Enter a name for the DR configuration.
+
+1. Select the universe to use as the DR replica
+
+1. Click **Next: Select Databases**.
 
 1. Select the databases to be copied to the DR replica for disaster recovery.
 
@@ -78,6 +74,10 @@ To set up disaster recovery for a universe, do the following:
 1. If data needs to be copied, click **Next: Confirm Full Copy**, and select a storage configuration.
 
     The storage is used to transfer the data to the DR replica database. For information on how to configure storage, see [Configure backup storage](../../configure-backup-storage/).
+
+1. Click **Next: Configure PITR Settings**.
+
+    Set the retention period for PITR snapshots.
 
 1. Click **Next: Confirm Alert Threshold**.
 
@@ -137,19 +137,45 @@ The **xCluster Disaster Recovery** tab also lists all the tables in replication 
 
 - To find out the replication lag for a specific table, click the graph icon corresponding to that table.
 
-- To check if the replication has been properly configured for a table, check the status. If properly configured, the table's replication status is shown as _Operational_.
-
-    The status will be _Not Reported_ momentarily after the replication configuration is created until metrics are available for the replication configuration. This should take about 10 seconds.
-
-    If the replication lag increases beyond maximum acceptable lag defined during the replication setup or the lag is not being reported, the table's status is shown as _Warning_.
-
-    If the replication lag has increased so much that resuming or continuing replication cannot be accomplished via WAL logs but instead requires making another full copy from DR primary to DR replica, the status is shown as _Error: the table's replication stream is broken_, and [restarting the replication](#restart-replication) is required for those tables. If a lag alert is enabled on the replication, you are notified when the lag is behind the specified limit, in which case you may open the table on the replication view to check if any of these tables have their replication status as Error.
-
-    If YugabyteDB Anywhere is unable to obtain the status (for example, due to a heavy workload being run on the universe) the status for that table will be _UnableToFetch_. You may refresh the page to retry gathering information.
-
 - To delete a table from the replication, click **... > Remove Table**. This removes both the table and its index tables from replication. If you decide to remove an index table from the replication group, it does not remove its main table from the replication group.
 
-## Set up replication lag alerts
+- Use the search bar to filter the view by table name, database, size, and more.
+
+#### Status
+
+To check if the replication has been properly configured for a table, check the status. If properly configured, the table's replication status is shown as _Operational_.
+
+The status will be _Not Reported_ momentarily after the replication configuration is created until metrics are available for the replication configuration. This should take about 10 seconds.
+
+If the replication lag has increased so much that resuming or continuing replication cannot be accomplished via WAL logs but instead requires making another full copy from DR primary to DR replica, the status is shown as _Missing op ID_, and you must [restart replication](#restart-replication) for those tables. If a lag alert is enabled on the replication, you are notified when the lag is behind the [replication lag alert](#set-up-replication-lag-alerts) threshold; if the replication stream is not yet broken and the lag is due to some other issues, the status is shown as _Warning_.
+
+If YugabyteDB Anywhere is unable to obtain the status (for example, due to a heavy workload being run on the universe), the status for that table will be _Unable To Fetch_. You may refresh the page to retry gathering information.
+
+The table statuses are described in the following table.
+
+| Status | Description |
+| :--- | :--- |
+| In Progress | The table is undergoing changes, such as being added to or removed from replication. |
+| Bootstrapping | The table is undergoing a full copy; that is, being backed up from the DR primary and being restored to the DR replica. |
+| Validated | The table passes pre-checks and is eligible to be added to replication. |
+| Operational | The table is being replicated. |
+
+The following statuses [trigger an alert](#set-up-replication-lag-alerts).
+
+| Status | Description |
+| :--- | :--- |
+| Failed | The table failed to be added to replication. |
+| Warning | The table is in replication, but the replication lag is more than the [maximum acceptable lag](#set-up-replication-lag-alerts), or the lag is not being reported. |
+| Dropped From Source | The table was in replication, but dropped from the DR primary without first being [removed from replication](../disaster-recovery-tables/#remove-a-table-from-dr). If you are using Manual mode, you need to remove it manually from the configuration. In Semi-automatic mode, you don't need to remove it manually. |
+| Dropped From Target | The table was in replication, but was dropped from the DR replica without first being [removed from replication](../disaster-recovery-tables/#remove-a-table-from-dr). If you are using Manual mode, you need to remove it manually from the configuration. In Semi-automatic mode, you don't need to remove it manually. |
+| Extra Table On Source | The table is newly created on the DR primary but is not in replication yet. |
+| Extra Table On Target | The table is newly created on the DR replica but it is not in replication yet. |
+| Missing op ID | The replication is broken and cannot continue because the write-ahead-logs are garbage collected before they were replicated to the other universe and you will need to [restart replication](#restart-replication).|
+| Schema&nbsp;mismatch | The schema was updated on the table (on either of the universes) and replication is paused until the same schema change is made to the other universe. |
+| Missing table | For colocated tables, only the parent table is in the replication group; any child table that is part of the colocation will also be replicated. This status is displayed for a parent colocated table if a child table only exists on the DR primary. Create the same table on the DR replica. |
+| Auto flag config mismatch | Replication has stopped because one of the universes is running a version of YugabyteDB that is incompatible with the other. This can happen when upgrading universes that are in replication. Upgrade the other universe to the same version. |
+
+### Set up replication lag alerts
 
 Replication lag measures how far behind in time the DR replica lags the DR primary. In a failover scenario, the longer the lag, the more data is at risk of being lost.
 
@@ -171,17 +197,29 @@ To create an alert:
 
 1. Click **Save** when you are done.
 
-When DR is set up, YugabyteDB Anywhere automatically creates an alert for _YSQL Tables in DR/xCluster Config Inconsistent With Primary/Source_. This alert fires when tables are added or dropped from DR primary's databases under replication, but are not yet added or dropped from the DR configuration.
+When DR is set up, YugabyteDB automatically creates the alert _XCluster Config Tables are in bad state_. This alert fires when:
+
+- there is a table schema mismatch between DR primary and replica.
+- tables are added or dropped from either DR primary or replica, but have not been added or dropped from the other.
+
+When you receive an alert, navigate to the replication configuration [Tables tab](#tables) to see the table status.
+
+YugabyteDB Anywhere collects these metrics every 2 minutes, and fires the alert within 10 minutes of the error.
 
 For more information on alerting in YugabyteDB Anywhere, refer to [Alerts](../../../alerts-monitoring/alert/).
 
-## Add a database to an existing DR
+## Manage replication
 
-Note that, although you don't need to create objects on the DR replica during initial DR setup, when you add a new database to an existing DR configuration, you _do_ need to create the same objects on the DR replica. If DR primary and replica objects don't match, you won't be able to add the database to DR.
+### Add a database to an existing DR
+
+On the DR replica, create a database with the same name as that on the DR primary.
+
+- In [Manual mode](../#manual-mode), you don't need to create objects on the DR replica; DR performs a full copy of the data to be replicated on the DR primary, and automatically creates tables and objects, and restores data on the DR replica from the DR primary.
+- In [Semi-automatic mode](../#semi-automatic-mode), you need to create all objects (tables, indexes, and so on) on the DR replica exactly as they are on the DR primary _prior_ to setting up xCluster DR.
 
 To add a database to DR, do the following:
 
-1. Navigate to your DR primary universe and select **xCluster Disaster Recovery**.
+1. Navigate to your DR primary universe **xCluster Disaster Recovery** tab and select the replication configuration.
 
 1. Click **Actions > Select Databases and Tables**.
 
@@ -199,13 +237,13 @@ To add a database to DR, do the following:
 
 YugabyteDB Anywhere proceeds to copy the database to the DR replica. How long this takes depends mainly on the amount of data that needs to be copied.
 
-## Change the DR replica
+### Change the DR replica
 
 You can assign a different universe to act as the DR replica.
 
 To change the universe that is used as a DR replica, do the following:
 
-1. Navigate to your DR primary universe and select **xCluster Disaster Recovery**.
+1. Navigate to your DR primary universe **xCluster Disaster Recovery** tab and select the replication configuration.
 
 1. Click **Actions** and choose **Change DR Replica Universe**.
 
@@ -215,14 +253,13 @@ To change the universe that is used as a DR replica, do the following:
 
     This removes the current DR replica and sets up the new DR replica, with a full copy of the databases if needed.
 
-## Restart replication
+### Restart replication
 
 Some situations, such as extended network partitions between the DR primary and replica, can cause a permanent failure of replication due to WAL logs being no longer available on the DR primary.
 
 In these cases, restart replication as follows:
 
-1. Navigate to the universe **xCluster Disaster Recovery** tab.
-
+1. Navigate to your DR primary universe **xCluster Disaster Recovery** tab and select the replication configuration.
 1. Click **Actions** and choose **Advanced** and **Resync DR Replica**.
 1. Select the databases to be copied to the DR replica.
 1. Click **Next: Confirm Full Copy**.
@@ -230,10 +267,10 @@ In these cases, restart replication as follows:
 
 This performs a full copy of the databases involved from the DR primary to the DR replica.
 
-## Remove disaster recovery
+### Remove disaster recovery
 
 To remove disaster recovery for a universe, do the following:
 
-1. Navigate to your DR primary universe.
+1. Navigate to your DR primary universe **xCluster Disaster Recovery** tab and select the replication configuration you want to remove.
 
-1. On the **xCluster Disaster Recovery** tab, click **Actions** and choose **Remove Disaster Recovery**.
+1. Click **Actions** and choose **Remove Disaster Recovery**.

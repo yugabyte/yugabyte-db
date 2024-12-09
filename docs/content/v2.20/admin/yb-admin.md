@@ -523,7 +523,7 @@ Verify this in the Master UI by opening the **YB-Master UI** (`<master_host>:700
 
 Setting placement for tables is not supported for clusters with read-replicas or leader affinity policies enabled.
 
-Use this command to create custom placement policies only for YCQL tables or transaction status tables. For YSQL tables, use [Tablespaces](../../explore/ysql-language-features/tablespaces) instead.
+Use this command to create custom placement policies only for YCQL tables or transaction status tables. For YSQL tables, use [Tablespaces](../../explore/ysql-language-features/going-beyond-sql/tablespaces/) instead.
 {{< /note >}}
 
 #### create_transaction_table

@@ -1,11 +1,13 @@
 // Copyright (c) YugaByte, Inc.
 
+import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.name.Names;
 import com.nimbusds.oauth2.sdk.ParseException;
+import com.nimbusds.oauth2.sdk.auth.ClientAuthenticationMethod;
 import com.nimbusds.oauth2.sdk.http.HTTPRequest;
 import com.nimbusds.openid.connect.sdk.op.OIDCProviderMetadata;
 import com.typesafe.config.Config;
@@ -109,11 +111,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.validator.routines.DomainValidator;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.pac4j.core.client.Clients;
+import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.core.http.url.DefaultUrlResolver;
 import org.pac4j.oidc.client.OidcClient;
 import org.pac4j.oidc.config.OidcConfiguration;
+import org.pac4j.play.LogoutController;
 import org.pac4j.play.store.PlayCacheSessionStore;
-import org.pac4j.play.store.PlaySessionStore;
 import org.yb.perf_advisor.module.PerfAdvisor;
 import org.yb.perf_advisor.query.NodeManagerInterface;
 import play.Environment;
@@ -175,7 +178,7 @@ public class MainModule extends AbstractModule {
     bind(YBClientService.class).to(LocalYBClientService.class);
     bind(YsqlQueryExecutor.class).asEagerSingleton();
     bind(YcqlQueryExecutor.class).asEagerSingleton();
-    bind(PlaySessionStore.class).to(PlayCacheSessionStore.class);
+    bind(SessionStore.class).to(PlayCacheSessionStore.class);
     bind(ExecutorServiceProvider.class).to(DefaultExecutorServiceProvider.class);
     bind(NodeManagerInterface.class).to(PerfAdvisorNodeManager.class);
     bind(NodeAgentInstaller.class).to(NodeAgentInstallerImpl.class);
@@ -240,13 +243,18 @@ public class MainModule extends AbstractModule {
     bind(ReleasesUtils.class).asEagerSingleton();
     bind(ReleaseContainerFactory.class).asEagerSingleton();
 
+    // Destroy current session on SSO logout.
+    final LogoutController logoutController = new LogoutController();
+    logoutController.setDestroySession(true);
+    bind(LogoutController.class).toInstance(logoutController);
+
     requestStaticInjection(CertificateInfo.class);
     requestStaticInjection(HealthCheck.class);
     requestStaticInjection(AppConfigHelper.class);
   }
 
   @Provides
-  protected OidcClient<OidcConfiguration> provideOidcClient(
+  protected OidcClient provideOidcClient(
       RuntimeConfigFactory runtimeConfigFactory, CustomCAStoreManager customCAStoreManager) {
     com.typesafe.config.Config config = runtimeConfigFactory.globalRuntimeConf();
     String securityType = config.getString("yb.security.type");
@@ -275,11 +283,24 @@ public class MainModule extends AbstractModule {
       setProviderMetadata(config, oidcConfiguration);
       oidcConfiguration.setMaxClockSkew(3600);
       oidcConfiguration.setResponseType("code");
-      return new OidcClient<>(oidcConfiguration);
+      OIDCProviderMetadata metadata = oidcConfiguration.findProviderMetadata();
+      // Retain existing behaviour.
+      if (metadata
+          .getTokenEndpointAuthMethods()
+          .contains(ClientAuthenticationMethod.CLIENT_SECRET_POST)) {
+        oidcConfiguration.setClientAuthenticationMethod(
+            ClientAuthenticationMethod.CLIENT_SECRET_POST);
+      } else if (metadata
+          .getTokenEndpointAuthMethods()
+          .contains(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)) {
+        oidcConfiguration.setClientAuthenticationMethod(
+            ClientAuthenticationMethod.CLIENT_SECRET_BASIC);
+      }
+      return new OidcClient(oidcConfiguration);
     } else {
       log.warn("Client with empty OIDC configuration because yb.security.type={}", securityType);
       // todo: fail fast instead of relying on log?
-      return new OidcClient<>();
+      return new OidcClient();
     }
   }
 
@@ -288,9 +309,8 @@ public class MainModule extends AbstractModule {
     if (providerMetadata.isEmpty()) {
       String discoveryURI = config.getString("yb.security.discoveryURI");
       if (discoveryURI.isEmpty()) {
-        log.error("OIDC setup error: Both discoveryURL and provider metadata is empty");
-        // TODO(sbapat) throw. Though rest of the method is written to fail silently so do not
-        //  want to change that in this diff.
+        throw new PlatformServiceException(
+            BAD_REQUEST, "OIDC setup error: Both discoveryURL and provider metadata are empty!");
       } else {
         oidcConfiguration.setDiscoveryURI(discoveryURI);
       }
@@ -305,11 +325,12 @@ public class MainModule extends AbstractModule {
 
   @Provides
   protected org.pac4j.core.config.Config providePac4jConfig(
-      OidcClient<OidcConfiguration> oidcClient) {
+      OidcClient oidcClient, SessionStore sessionStore) {
     final Clients clients = new Clients("/api/v1/callback", oidcClient);
     clients.setUrlResolver(new DefaultUrlResolver(true));
     final org.pac4j.core.config.Config config = new org.pac4j.core.config.Config(clients);
     config.setHttpActionAdapter(new PlatformHttpActionAdapter());
+    config.setSessionStoreFactory(p -> sessionStore);
     return config;
   }
 }

@@ -4243,15 +4243,14 @@ InternalIterator* DBImpl::NewInternalIterator(const ReadOptions& read_options,
   return internal_iter;
 }
 
-template <bool kSkipLastEntry>
-std::unique_ptr<InternalIterator> DBImpl::NewInternalIndexIterator(
+template <typename IndexInternalIteratorType, bool kSkipLastEntry>
+std::unique_ptr<MergingIterator<IndexInternalIteratorType>> DBImpl::NewMergedIndexInternalIterator(
     const ReadOptions& read_options, ColumnFamilyData* cfd, SuperVersion* super_version) {
   SCOPED_WAIT_STATUS(RocksDB_NewIterator);
-  std::unique_ptr<InternalIterator> merge_iter;
-  MergeIteratorInHeapBuilder<IteratorWrapperBase<kSkipLastEntry>> merge_iter_builder(
-      cfd->internal_comparator().get());
+  MergeIteratorInHeapBuilder<IteratorWrapperBase<IndexInternalIteratorType, kSkipLastEntry>>
+      merge_iter_builder(cfd->internal_comparator().get());
   super_version->current->AddIndexIterators(read_options, env_options_, &merge_iter_builder);
-  merge_iter = merge_iter_builder.Finish();
+  auto merge_iter = merge_iter_builder.Finish();
 
   IterState* cleanup = new IterState(this, &mutex_, super_version);
   merge_iter->RegisterCleanup(CleanupIteratorState, cleanup, nullptr);
@@ -5068,39 +5067,53 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
   return nullptr;
 }
 
-std::unique_ptr<Iterator> DBImpl::NewIndexIterator(
+template <typename IndexIteratorType, typename IndexInternalIteratorType>
+std::unique_ptr<typename IndexIteratorType::Base> DBImpl::DoNewIndexIterator(
     const ReadOptions& read_options, SkipLastEntry skip_last_index_entry,
     ColumnFamilyHandle* column_family) {
   if (read_options.read_tier != kReadAllTier) {
-    return std::unique_ptr<Iterator>(NewErrorIterator(
-        STATUS(NotSupported, "Only ReadTier::kReadAllTier is supported for NewIndexIterator()")));
+    return std::unique_ptr<typename IndexIteratorType::Base>(
+        NewErrorIterator<typename IndexIteratorType::Base>(STATUS(
+            NotSupported, "Only ReadTier::kReadAllTier is supported for DoNewIndexIterator()")));
   }
   if (read_options.managed) {
-    return std::unique_ptr<Iterator>(NewErrorIterator(
-        STATUS(NotSupported, "Managed iterator is not supported for NewIndexIterator()")));
+    return std::unique_ptr<typename IndexIteratorType::Base>(
+        NewErrorIterator<typename IndexIteratorType::Base>(
+            STATUS(NotSupported, "Managed iterator is not supported for DoNewIndexIterator()")));
   }
   if (read_options.tailing) {
-    return std::unique_ptr<Iterator>(NewErrorIterator(
-        STATUS(NotSupported, "Tailing iterator is not supported for NewIndexIterator()")));
+    return std::unique_ptr<typename IndexIteratorType::Base>(
+        NewErrorIterator<typename IndexIteratorType::Base>(
+            STATUS(NotSupported, "Tailing iterator is not supported for DoNewIndexIterator()")));
   }
 
   auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
   auto cfd = cfh->cfd();
 
-  const auto latest_snapshot_number = versions_->LastSequence();
   SuperVersion* sv = cfd->GetReferencedSuperVersion(&mutex_);
-
-  const auto snapshot_number =
-      read_options.snapshot != nullptr
-          ? reinterpret_cast<const SnapshotImpl*>(read_options.snapshot)->number_
-          : latest_snapshot_number;
 
   auto internal_index_iter =
       skip_last_index_entry
-          ? NewInternalIndexIterator</* kSkipLastEntry = */ true>(read_options, cfd, sv)
-          : NewInternalIndexIterator</* kSkipLastEntry = */ false>(read_options, cfd, sv);
+          ? NewMergedIndexInternalIterator<IndexInternalIteratorType, /* kSkipLastEntry = */ true>(
+                read_options, cfd, sv)
+          : NewMergedIndexInternalIterator<IndexInternalIteratorType, /* kSkipLastEntry = */ false>(
+                read_options, cfd, sv);
 
-  return std::make_unique<IndexIterator>(std::move(internal_index_iter), latest_snapshot_number);
+  return std::make_unique<IndexIteratorType>(std::move(internal_index_iter));
+}
+
+std::unique_ptr<Iterator> DBImpl::NewIndexIterator(
+    const ReadOptions& read_options, SkipLastEntry skip_last_index_entry,
+    ColumnFamilyHandle* column_family) {
+  return DoNewIndexIterator<IndexIteratorImpl, InternalIterator>(
+      read_options, skip_last_index_entry, column_family);
+}
+
+std::unique_ptr<DataBlockAwareIndexIterator> DBImpl::NewDataBlockAwareIndexIterator(
+    const ReadOptions& read_options, SkipLastEntry skip_last_index_entry,
+    ColumnFamilyHandle* column_family) {
+  return DoNewIndexIterator<DataBlockAwareIndexIteratorImpl, DataBlockAwareIndexInternalIterator>(
+      read_options, skip_last_index_entry, column_family);
 }
 
 Status DBImpl::NewIterators(

@@ -582,7 +582,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // partitions are stale and returns ClientErrorCode::kTablePartitionListIsStale in that case.
   void LookupTabletById(const TabletId& tablet_id,
                         const std::shared_ptr<const YBTable>& table,
-                        master::IncludeInactive include_inactive,
+                        master::IncludeHidden include_hidden,
                         master::IncludeDeleted include_deleted,
                         CoarseTimePoint deadline,
                         LookupTabletCallback callback,
@@ -673,7 +673,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   void LookupByIdFailed(
       const TabletId& tablet_id,
       const std::shared_ptr<const YBTable>& table,
-      master::IncludeInactive include_inactive,
+      master::IncludeHidden include_hidden,
       master::IncludeDeleted include_deleted,
       const boost::optional<PartitionListVersion>& response_partition_list_version,
       int64_t request_no,
@@ -718,7 +718,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   bool DoLookupTabletById(
       const TabletId& tablet_id,
       const std::shared_ptr<const YBTable>& table,
-      master::IncludeInactive include_inactive,
+      master::IncludeHidden include_hidden,
       master::IncludeDeleted include_deleted,
       CoarseTimePoint deadline,
       UseCache use_cache,

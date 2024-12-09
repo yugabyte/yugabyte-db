@@ -1886,7 +1886,7 @@ Result<size_t> PgsqlReadOperation::Execute() {
     std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteSample());
   } else if (request_.has_vector_idx_options()) {
     std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteVectorSearch(
-        data_.doc_read_context, request_.vector_idx_options()));
+      data_.doc_read_context, request_.vector_idx_options()));
   } else if (request_.index_request().has_vector_idx_options()) {
     std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteVectorSearch(
         *data_.index_doc_read_context, request_.index_request().vector_idx_options()));
@@ -2135,8 +2135,9 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(
   RSTATUS_DCHECK(data_.vector_index, IllegalState, "Search vector when vector index is null");
 
   Slice vector_slice(options.vector().binary_value());
-  // TODO(vector_index) Use correct max_results
-  size_t max_results = std::min<size_t>(1000, options.prefetch_size());
+  // TODO(vector_index) Use correct max_results or use prefetch_size passed from options
+  // when paging is supported.
+  size_t max_results = 1000;
 
   auto result = VERIFY_RESULT(data_.vector_index->Search(vector_slice, max_results));
   // TODO(vector_index) Order keys by ybctid for fetching.

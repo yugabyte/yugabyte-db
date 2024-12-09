@@ -166,12 +166,17 @@ Status InitHashPartitionKey(
   // In order to represent a single ybctid or a batch of ybctids, we leverage the lower bound and
   // upper bounds to set hash codes and max hash codes.
 
-  bool has_paging_state =
-      request->has_paging_state() && request->paging_state().has_next_partition_key();
+  bool has_paging_state = request->paging_state().has_next_partition_key() ||
+      request->index_request().paging_state().has_next_partition_key();
   if (has_paging_state) {
     // If this is a subsequent query, use the partition key from the paging state. This is only
     // supported for forward scan.
-    SetPartitionKey(request->paging_state().next_partition_key(), request);
+    auto *paging_state = &request->paging_state();
+    if (request->has_index_request()) {
+      paging_state = &request->index_request().paging_state();
+    }
+
+    SetPartitionKey(paging_state->next_partition_key(), request);
 
     // Check that the paging state hash_code is within [ hash_code, max_hash_code ] bounds.
     if (schema.num_hash_key_columns() > 0 && !request->partition_key().empty()) {

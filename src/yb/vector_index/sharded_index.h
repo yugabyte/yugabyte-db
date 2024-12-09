@@ -45,6 +45,10 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
     return Status::OK();
   }
 
+  size_t MaxVectors() const override {
+    return indexes_[0]->MaxVectors();
+  }
+
   // Insert a vector into the current shard using round-robin.
   Status Insert(VectorId vertex_id, const Vector& vector) override {
     // It is okay to use relaxed memory order here as we only need an atomic increment and don't

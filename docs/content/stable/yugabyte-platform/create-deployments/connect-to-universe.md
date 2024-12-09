@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Connect to your YugabyteDB database from your desktop using the YugabyteDB [ysqlsh](../../../api/ysqlsh/) and [ycqlsh](../../../api/ycqlsh) client shells. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) and third-party tools to connect.
+Connect to your YugabyteDB database from your desktop using the YugabyteDB [ysqlsh](../../../api/ysqlsh/) and [ycqlsh](../../../api/ycqlsh/) client shells. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) and third-party tools to connect.
 
 You can connect to the database on a universe in the following ways:
 
@@ -239,7 +239,7 @@ To connect, follow the client's configuration steps for PostgreSQL or Cassandra,
 
 Your client may also require the use of the [universe certificate](#download-the-universe-certificate).
 
-For information on using popular third-party tools with YugabyteDB, see [GUI clients](/preview/integrations/tools/).
+For information on using popular third-party tools with YugabyteDB, see [Third party tools](/preview/integrations/tools/).
 
 ## Run workloads
 

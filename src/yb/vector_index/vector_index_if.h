@@ -55,6 +55,9 @@ class VectorIndexWriterIf {
   virtual Status Reserve(
       size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads) = 0;
 
+  // Returns the number of reserved vectors
+  virtual size_t MaxVectors() const = 0;
+
   virtual Status Insert(VectorId vertex_id, const Vector& vector) = 0;
 
   // Returns the vector with the given id, an empty vector if such VectorId does not exist, or

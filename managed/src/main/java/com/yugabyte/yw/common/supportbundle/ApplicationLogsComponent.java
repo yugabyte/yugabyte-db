@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 @Singleton
@@ -128,7 +129,10 @@ public class ApplicationLogsComponent implements SupportBundleComponent {
     SimpleDateFormat sdf = new SimpleDateFormat(applicationLogsSdfPattern);
     // Filters the log files whether it is between startDate and endDate
     for (String logFile : logFiles) {
-      Date fileDate = sdf.parse(logFile);
+      // Sometimes the files might be uncompressed already, check for those files too by stripping
+      // the extension from all files.
+      String logFileWithoutType = StringUtils.stripEnd(logFile, ".gz");
+      Date fileDate = sdf.parse(logFileWithoutType);
       if (supportBundleUtil.checkDateBetweenDates(fileDate, startDate, endDate)) {
         filteredLogFiles.add(logFile);
       }

@@ -118,21 +118,25 @@ std::vector<VertexWithDistance<DistanceResult>> BruteForcePreciseNearestNeighbor
 
 // Draft of a function that returns a pointer to a merged index
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-VectorIndexIfPtr<Vector, DistanceResult> Merge(
+Result<VectorIndexIfPtr<Vector, DistanceResult>> Merge(
     VectorIndexFactory<Vector, DistanceResult> index_factory,
     VectorIndexIfPtr<Vector, DistanceResult> index_a,
     VectorIndexIfPtr<Vector, DistanceResult> index_b) {
   VectorIndexIfPtr<Vector, DistanceResult> merged_index = index_factory();
-  // TODO(vector_index) we need a way to get the size of merging index
-  auto status_reserve = merged_index->Reserve(
-      10, std::thread::hardware_concurrency(), std::thread::hardware_concurrency());
+
+  size_t max_vectors_a = index_a->MaxVectors();
+  size_t max_vectors_b = index_b->MaxVectors();
+
+  RETURN_NOT_OK(merged_index->Reserve(
+      max_vectors_a + max_vectors_b, std::thread::hardware_concurrency(),
+      std::thread::hardware_concurrency()));
 
   for (const auto& [vertex_id, vector] : *index_a) {
-    auto status = merged_index->Insert(vertex_id, vector);
+    RETURN_NOT_OK(merged_index->Insert(vertex_id, vector));
   }
 
   for (const auto& [vertex_id, vector] : *index_b) {
-    auto status = merged_index->Insert(vertex_id, vector);
+    RETURN_NOT_OK(merged_index->Insert(vertex_id, vector));
   }
 
   return merged_index;

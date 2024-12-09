@@ -254,7 +254,8 @@ typedef struct YbPgMemTracker
 	Size stmt_max_mem_bytes;
 	/*
 	 * The initial base memory already allocated by PG and paggate at the
-	 * beginning of current statement
+	 * beginning of current statement.
+	 * NOTE: Only set if yb_run_with_explain_analyze is true.
 	 */
 	Size stmt_max_mem_base_bytes;
 

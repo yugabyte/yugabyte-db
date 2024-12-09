@@ -11,7 +11,7 @@ menu:
   preview_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: cloud-monitor
-    weight: 100
+    weight: 150
 type: indexpage
 showRightNav: true
 ---
@@ -31,16 +31,17 @@ Monitor database and cluster performance in real time. Access performance monito
 | [Slow queries](cloud-queries-slow/) | The cluster **YSQL Slow  Queries** tab shows queries run on the cluster, sorted by running time. Evaluate the slowest running YSQL queries that have been run on the cluster. |
 | [Performance&nbsp;advisor](cloud-advisor/) | Scan clusters for performance optimizations, including index and schema changes, and detect potentially hot nodes. |
 
-### Data analysis
+### Integrations
 
-Export database metrics and logs to third-party tools for analysis.
+Integrate with third-party tools such as Datadog, Grafana Cloud, and Sumo Logic to export database metrics and logs for analysis.
 
 | Feature | Description |
 | :--- | :--- |
-| [Metrics export](metrics-export/) | Export metrics to third-party monitoring tools such as Datadog, Grafana Cloud, and Sumo Logic. |
-| [Log export](logging-export/) | Export database PostgreSQL logs to third-party monitoring tools. |
+| [Integrations](managed-integrations/) | Set up links to third-party monitoring tools. |
+| [Metrics export](metrics-export/) | Export metrics to third-party monitoring tools. |
+| [Log export](logging-export/) | Export database PostgreSQL query and audit logs to third-party monitoring tools. |
 
-### Cluster properties
+### Cluster activity
 
 View cluster activity, node status, and database properties.
 

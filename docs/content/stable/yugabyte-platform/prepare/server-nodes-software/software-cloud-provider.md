@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-When deploying database clusters using a public cloud provider (AWS, GCP, or Azure), YugabyteDB Anywhere creates cloud VMs directly.
+When deploying database clusters using a public cloud provider (AWS, GCP, or Azure), YugabyteDB Anywhere (YBA) creates cloud VMs directly.
 
 You have two options for provisioning the operating system:
 

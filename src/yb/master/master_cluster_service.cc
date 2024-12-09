@@ -245,9 +245,7 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       // be invalid. We need to allow the leader to respond to the GetMasterRegistration request so
       // that the client can then invoke DumpSysCatalogEntries and WriteSysCatalogEntry RPCs.
       if (!l.leader_status().ok()) {
-        YB_LOG_EVERY_N_SECS(INFO, 1)
-            << "Patching role from leader to follower because of: " << l.leader_status()
-            << THROTTLE_MSG;
+        YB_LOG_EVERY_N_SECS(INFO, 5) << l.leader_status();
         role = PeerRole::FOLLOWER;
       }
     }

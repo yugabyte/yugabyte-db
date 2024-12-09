@@ -13,7 +13,7 @@ yba user create [flags]
 ### Examples
 
 ```
-yba user create 
+yba user create --email <email> --password <password> --role <role>
 ```
 
 ### Options

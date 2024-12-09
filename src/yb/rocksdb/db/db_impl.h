@@ -131,7 +131,9 @@ class DBImpl : public DB {
   std::unique_ptr<Iterator> NewIndexIterator(
       const ReadOptions& options, SkipLastEntry skip_last_index_entry,
       ColumnFamilyHandle* column_family) override;
-
+  std::unique_ptr<DataBlockAwareIndexIterator> NewDataBlockAwareIndexIterator(
+      const ReadOptions& options, SkipLastEntry skip_last_index_entry,
+      ColumnFamilyHandle* column_family) override;
   virtual Status NewIterators(
       const ReadOptions& options,
       const std::vector<ColumnFamilyHandle*>& column_families,
@@ -518,9 +520,14 @@ class DBImpl : public DB {
                                         Arena* arena);
 
   // TODO(index_iter): consider using arena.
-  template <bool kSkipLastEntry>
-  std::unique_ptr<InternalIterator> NewInternalIndexIterator(
+  template <typename IndexInternalIteratorType, bool kSkipLastEntry>
+  std::unique_ptr<MergingIterator<IndexInternalIteratorType>> NewMergedIndexInternalIterator(
       const ReadOptions&, ColumnFamilyData* cfd, SuperVersion* super_version);
+
+  template <typename IndexIteratorType, typename IndexInternalIteratorType>
+  std::unique_ptr<typename IndexIteratorType::Base> DoNewIndexIterator(
+      const ReadOptions& read_options, SkipLastEntry skip_last_index_entry,
+      ColumnFamilyHandle* column_family);
 
   // Except in DB::Open(), WriteOptionsFile can only be called when:
   // 1. WriteThread::Writer::EnterUnbatched() is used.

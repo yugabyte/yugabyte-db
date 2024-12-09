@@ -49,7 +49,7 @@ yugabyte=> \du
 
 ```output
                                      List of roles
-  Role name   |                         Attributes                         | Member of 
+  Role name   |                         Attributes                         | Member of
 --------------+------------------------------------------------------------+-----------
  postgres     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
  yb_db_admin  | No inheritance, Cannot login                               | {}

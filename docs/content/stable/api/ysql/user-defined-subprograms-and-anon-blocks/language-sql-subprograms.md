@@ -55,7 +55,7 @@ call s.p(17, 19, null::int[]);
 The _create procedure_ succeeds and the _call_ produces this result:
 
 ```output
-    r    
+    r
 ---------
  {17,19}
 ```
@@ -195,7 +195,7 @@ select s.f(1);
 This is the result"
 
 ```output
- f  
+ f
 ----
  19
 ```
@@ -268,7 +268,7 @@ select c1, c2 from s.f(3);
 This is the result:
 
 ```output
- c1 | c2 
+ c1 | c2
 ----+----
   7 | 57
 ```
@@ -362,7 +362,7 @@ from s0.my_subprogram_names(array['f']) as t(v);
 This is the result:
 
 ```output
-      func_name      
+      func_name
 ---------------------
  f
  my_subprogram_names
@@ -378,7 +378,7 @@ from s0.my_subprogram_names(array['p']) as t(v);
 This is the result:
 
 ```output
- proc_name 
+ proc_name
 -----------
  p
 ```
@@ -393,7 +393,7 @@ from s0.my_subprogram_names() as t(v);
 This is the result:
 
 ```output
-   subprogram_name   
+   subprogram_name
 ---------------------
  f
  my_subprogram_names
@@ -435,7 +435,7 @@ as $body$
                       else                       array['f', 'p']
                     end
                   )
-  order by schema, name;    
+  order by schema, name;
 $body$;
 ```
 
@@ -449,7 +449,7 @@ from s0.my_subprograms(array['f']);
 This is the result:
 
 ```output
- schema |      func_name      
+ schema |      func_name
 --------+---------------------
  s0     | my_subprogram_names
  s0     | my_subprograms
@@ -466,7 +466,7 @@ from s0.my_subprograms(array['p']);
 This is the result:
 
 ```output
- schema | proc_name 
+ schema | proc_name
 --------+-----------
  s2     | p
 ```
@@ -481,7 +481,7 @@ from s0.my_subprograms();
 This is the result:
 
 ```output
- schema |   subprogram_name   |   kind    
+ schema |   subprogram_name   |   kind
 --------+---------------------+-----------
  s0     | my_subprogram_names | function
  s0     | my_subprograms      | function
@@ -522,7 +522,7 @@ as $body$
                       else                       array['f', 'p']
                     end
                   )
-  order by schema, name;    
+  order by schema, name;
 $body$;
 ```
 
@@ -568,7 +568,7 @@ select k, v from s0.f();
 It runs without error and produces this result:
 
 ```output
- k |  v   
+ k |  v
 ---+------
  1 | dog
  2 | cat
@@ -628,7 +628,7 @@ from generate_series(13, 40, 7) with ordinality as s(v, k);
 This is the result:
 
 ```output
- k | v  
+ k | v
 ---+----
  1 | 13
  2 | 20
@@ -657,7 +657,7 @@ from s0.f() with ordinality as a(v, k, r);
 This is the result:
 
 ```output
- r |   k   | v  
+ r |   k   | v
 ---+-------+----
  1 | dog   | 13
  2 | cat   | 20
@@ -694,7 +694,7 @@ The _select_ statement has no _order by_ clause—and nor is this needed. (Notic
 ```plpgsql
  Computed Dimensions
  ———————————————————
- 
+
    length:   5.7
    width:    3.3
    height:   1.9
@@ -742,7 +742,7 @@ call s.p(null::bigint);
 This runs without error and produces the expected result:
 
 ```output
- n 
+ n
 ---
  6
 ```
@@ -797,7 +797,7 @@ call s.p(20, 45, null);
 This is the result:
 
 ```output
- outcome 
+ outcome
 ---------
  {28,39}
 ```
@@ -829,7 +829,7 @@ select 't2' as "table", k, v from s.t2;
 Here is the result of the final status query:
 
 ```output
- table | k | v  
+ table | k | v
 -------+---+----
  t1    | 1 | 17
  t2    | 1 | 42
@@ -898,7 +898,7 @@ order by mk, dk;
 This is the result of the final query, just as is expected:
 
 ```output
-  mv  |    dv    
+  mv  |    dv
 ------+----------
  mary | skiing
  mary | running
@@ -990,7 +990,7 @@ execute stmt_2(array[2, 4, 6]);
 This is the result:
 
 ```output
- k | v  
+ k | v
 ---+----
  2 |  4
  4 |  8
@@ -1006,7 +1006,7 @@ select k, v from s.f(in_list=>array[3, 5, 7]);
 This is the result:
 
 ```output
- k | v  
+ k | v
 ---+----
  3 |  6
  5 | 10

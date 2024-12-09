@@ -1896,16 +1896,16 @@ public class AsyncYBClient implements AutoCloseable {
    *
    * @param tabletIds the list of tablet ids to find the locations of its peers.
    * @param tableId (optional) table we would like this table's partition list version to return.
-   * @param includeInactive (optional) whether to include hidden tablets.
+   * @param includeHidden (optional) whether to include hidden tablets.
    * @param includeDeleted (optional) whether to include deleted tablets.
    * @return A deferred object containing the schema for the locations of tablet peers.
    */
   public Deferred<GetTabletLocationsResponse> getTabletLocations(
-      List<String> tabletIds, String tableId, boolean includeInactive, boolean includeDeleted) {
+      List<String> tabletIds, String tableId, boolean includeHidden, boolean includeDeleted) {
     checkIsClosed();
     GetTabletLocationsRequest request =
         new GetTabletLocationsRequest(
-            this.masterTable, tabletIds, tableId, includeInactive, includeDeleted);
+            this.masterTable, tabletIds, tableId, includeHidden, includeDeleted);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }

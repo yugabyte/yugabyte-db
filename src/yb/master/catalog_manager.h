@@ -228,14 +228,27 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   bool StartShutdown();
   void CompleteShutdown();
 
+  struct CreateYsqlSysTableData;
+
   // Create Postgres sys catalog table.
   // If a non-null value of change_meta_req is passed then it does not
   // add the ysql sys table into the raft metadata but adds it in the request
   // pb. The caller is then responsible for performing the ChangeMetadataOperation.
   Status CreateYsqlSysTable(
-      const CreateTableRequestPB* req, CreateTableResponsePB* resp, const LeaderEpoch& epoch,
+      const NamespaceInfo& ns, CreateYsqlSysTableData& data, const LeaderEpoch& epoch,
       tablet::ChangeMetadataRequestPB* change_meta_req = nullptr,
       SysCatalogWriter* writer = nullptr);
+
+  Status CreateYsqlSysTableInMemory(const NamespaceInfo& ns, CreateYsqlSysTableData& data)
+      REQUIRES(mutex_);
+
+  Status CompleteCreateYsqlSysTable(
+      CreateYsqlSysTableData& data, const LeaderEpoch& epoch,
+      tablet::ChangeMetadataRequestPB* change_meta_req, SysCatalogWriter* writer);
+
+  Status AddYsqlSysTableToSystemTablet(
+      const TabletInfoPtr& sys_catalog_tablet, CreateYsqlSysTableData& data,
+      TabletInfo::WriteLock& lock);
 
   Status ReplicatePgMetadataChange(const tablet::ChangeMetadataRequestPB* req);
 
@@ -251,7 +264,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Copy Postgres sys catalog tables into a new namespace.
   Status CopyPgsqlSysTables(
-      const NamespaceId& namespace_id, const std::vector<scoped_refptr<TableInfo>>& tables,
+      const NamespaceInfo& ns, const std::vector<TableInfoPtr>& tables,
       const LeaderEpoch& epoch);
 
   // Create a new Table with the specified attributes.
@@ -533,7 +546,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                         GetTableSchemaResponsePB* resp) override;
   Status GetTableSchemaInternal(const GetTableSchemaRequestPB* req,
                                 GetTableSchemaResponsePB* resp,
-                                bool get_fully_applied_indexes = false);
+                                bool always_get_fully_applied_indexes);
 
   // Get the information about the specified tablegroup.
   Status GetTablegroupSchema(const GetTablegroupSchemaRequestPB* req,
@@ -554,7 +567,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status GetTabletLocations(
       const TabletId& tablet_id,
       TabletLocationsPB* locs_pb,
-      IncludeInactive include_inactive) override;
+      IncludeHidden include_hidden) override;
 
   // Look up the locations of the given tablet. The locations
   // vector is overwritten (not appended to).
@@ -565,7 +578,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status GetTabletLocations(
       const TabletInfoPtr& tablet_info,
       TabletLocationsPB* locs_pb,
-      IncludeInactive include_inactive) override;
+      IncludeHidden include_hidden) override;
 
   // Returns the system tablet in catalog manager by the id.
   Result<std::shared_ptr<tablet::AbstractTablet>> GetSystemTablet(const TabletId& id) override;
@@ -2085,7 +2098,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   void ResetTasksTrackers();
   // Aborts all tasks belonging to 'tables' and waits for them to finish.
   void AbortAndWaitForAllTasks() EXCLUDES(mutex_);
-  void AbortAndWaitForAllTasksUnlocked() REQUIRES_SHARED(mutex_);
+  void AbortAndWaitForAllTasksUnlocked(bool call_task_finisher) REQUIRES_SHARED(mutex_);
 
   // Can be used to create background_tasks_ field for this master.
   // Used on normal master startup or when master comes out of the shell mode.
@@ -2149,7 +2162,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Is this table part of xCluster or CDCSDK?
   bool IsTablePartOfXRepl(const TableId& table_id) const REQUIRES_SHARED(mutex_);
 
-  bool IsTablePartOfCDCSDK(const TableId& table_id) const REQUIRES_SHARED(mutex_);
+  bool IsTablePartOfCDCSDK(const TableId& table_id, bool require_replication_slot = false) const
+      REQUIRES_SHARED(mutex_);
 
   bool IsPitrActive();
 

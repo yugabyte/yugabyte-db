@@ -30,7 +30,7 @@ The source for the application can be found in the [Using ORMs with YugabyteDB](
 
 This tutorial assumes that you have:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/quick-start/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
 - [Rust](https://www.rust-lang.org/tools/install) 1.31 or later.
 
 ## Clone the "orm-examples" repository
@@ -45,7 +45,7 @@ Build the REST API server (written using Diesel and Rocket) as follows:
 $ cargo build --release
 ```
 
-If you encounter a build failure, install [libpq](../../ysql-client-drivers/#libpq) and try again.
+If you encounter a build failure, install [libpq](../../../ysql-client-drivers/#libpq) and try again.
 
 ## Set up the database connection
 

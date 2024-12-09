@@ -57,7 +57,7 @@ void YsqlManager::LoadConfig(scoped_refptr<SysConfigInfo> config) {
 }
 
 void YsqlManager::SysCatalogLoaded(const LeaderEpoch& epoch) {
-  ysql_initdb_and_major_upgrade_helper_->SysCatalogLoaded(epoch);
+  ysql_catalog_config_.SysCatalogLoaded(epoch);
 }
 
 Result<bool> YsqlManager::StartRunningInitDbIfNeeded(const LeaderEpoch& epoch) {

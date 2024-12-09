@@ -13,24 +13,28 @@
 
 package org.yb.pgsql;
 
-import static org.yb.AssertionWrappers.*;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertGreaterThan;
+import static org.yb.AssertionWrappers.assertLessThan;
+import static org.yb.AssertionWrappers.assertTrue;
+import static org.yb.AssertionWrappers.fail;
 
-import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.sql.Timestamp;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import org.yb.YBTestRunner;
-
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.sql.Timestamp;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Scanner;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -42,6 +46,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.YBTestRunner;
 
 @RunWith(value = YBTestRunner.class)
 public class TestYbQueryDiagnostics extends BasePgSQLTest {
@@ -91,6 +96,9 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         "pg_stat_statements was reset, query string not available;";
     private static final String permissionDeniedWarning =
         "Failed to create query diagnostics directory, Permission denied;";
+    private static final String preparedStmt =
+        "PREPARE stmt(text, int, float) AS " +
+        "SELECT * FROM test_table1 WHERE a = $1 AND b = $2 AND c = $3";
 
     @Before
     public void setUp() throws Exception {
@@ -129,8 +137,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         try (Statement statement = connection.createStatement()) {
             /* Creating test table and filling dummy data */
             statement.execute("CREATE TABLE test_table1(a TEXT, b INT, c FLOAT)");
-            statement.execute("PREPARE stmt(TEXT, INT, FLOAT) AS SELECT * FROM test_table1 " +
-                                "WHERE a = $1 AND b = $2 AND c = $3;");
+            statement.execute(preparedStmt);
             statement.execute("EXECUTE stmt('var', 1, 1.1)");
         }
     }
@@ -149,6 +156,26 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         return resultSet.getString("queryid");
     }
 
+    private String extractQueryTextFromPgssFile(Statement statement, Path pgssPath)
+        throws Exception {
+        String queryText = null;
+
+        try (Scanner scanner = new Scanner(pgssPath)) {
+            // Skip header line
+            scanner.nextLine();
+
+            // Use comma as delimiter but keep quoted content together
+            scanner.useDelimiter(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)");
+
+            // Skip queryid (first column)
+            scanner.next();
+
+            // Get query text (second column) and remove surrounding quotes
+            queryText = scanner.next().replaceAll("^\"|\"$", "");
+        }
+
+        return queryText;
+    }
     /*
      * Generates a unique query ID.
      *
@@ -283,6 +310,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         }
         return separator.toString();
     }
+
     /*
      * Runs query diagnostics on the given query ID and parameters.
      */
@@ -553,6 +581,9 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                             "OPTIONS (schema_name 'public', table_name 'remote_test_table');");
     }
 
+    /*
+     * Tests the dumping of bind varaibles data in the case of a prepared statement.
+     */
     @Test
     public void checkBindVariablesData() throws Exception {
         int diagnosticsInterval = 2;
@@ -573,23 +604,152 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             statement.execute("EXECUTE stmt('var1', 1, 1.1)");
             statement.execute("EXECUTE stmt('var2', 2, 2.2)");
 
-            /*
-             * Thread sleeps for diagnosticsInterval + 1 sec to ensure that the bundle has expired
-            */
-            Thread.sleep((diagnosticsInterval + 1) * 1000);
+            waitForBundleCompletion(queryId, statement, diagnosticsInterval);
 
-            Path bindVarPath = bundleDataPath.resolve("bind_variables.csv");
+            /* Check constants_and_bind_variables.csv file */
+            Path bindVarPath = bundleDataPath.resolve("constants_and_bind_variables.csv");
 
-            assertTrue("Bind variables file does not exist", Files.exists(bindVarPath));
-            assertGreaterThan("bind_variables.csv file size is not greater than 0",
+            assertTrue("constants_and_bind_variables.csv does not exist",
+                       Files.exists(bindVarPath));
+            assertGreaterThan("constants_and_bind_variables.csv file size is not greater than 0",
                               Files.size(bindVarPath) , 0L);
 
             List<String> lines = Files.readAllLines(bindVarPath);
-            assertEquals("Number of lines in bind_variables.csv is not as expected",
+            assertEquals("Number of lines in constants_and_bind_variables.csv is not as expected",
                          lines.size(), 2);
-            assertTrue("bind_variables.csv does not contain expected data",
-                       lines.get(0).contains("var1,1,1.1") &&
-                       lines.get(1).contains("var2,2,2.2"));
+            assertTrue("constants_and_bind_variables.csv does not contain expected data",
+                       lines.get(0).contains("'var1',1,1.1") &&
+                       lines.get(1).contains("'var2',2,2.2"));
+
+            Path pgssPath = bundleDataPath.resolve("pg_stat_statements.csv");
+
+            assertTrue("pg_stat_statements.csv does not exist", Files.exists(pgssPath));
+            assertGreaterThan("pg_stat_statements.csv file is empty",
+                                Files.size(pgssPath) , 0L);
+
+            String queryText = extractQueryTextFromPgssFile(statement, pgssPath);
+            if (queryText == null)
+                fail("Query text not found in pg_stat_statements.csv");
+
+            LOG.info("Pgss query text: " + queryText);
+            assertTrue("pg_stat_statements query is incorrect",
+                       queryText.contains(preparedStmt));
+        }
+    }
+
+    /*
+     * Tests the dumping of bind variables data in the case of a non-prepared query.
+     */
+    @Test
+    public void checkConstantsData() throws Exception {
+        int diagnosticsInterval = 2;
+        QueryDiagnosticsParams params = new QueryDiagnosticsParams(
+            diagnosticsInterval,
+            100 /* explainSampleRate */,
+            true /* explainAnalyze */,
+            true /* explainDist */,
+            false /* explainDebug */,
+            0 /* bindVarQueryMinDuration */);
+        String query = "INSERT INTO test_table1 VALUES ('abcd', 2, 3)";
+        String expectedNormalizedQuery = "INSERT INTO test_table1 VALUES ($1, $2, $3)";
+        try (Statement statement = connection.createStatement()) {
+            statement.execute(query);
+
+            /* Run query diagnostics on the normal query */
+            String queryId = getQueryIdFromPgStatStatements(statement, "INSERT INTO test_table1%");
+            Path bundleDataPath = runQueryDiagnostics(statement, queryId, params);
+
+            statement.execute(query);
+
+            waitForBundleCompletion(queryId, statement, diagnosticsInterval);
+
+            /* Check constants_and_bind_variables.csv file */
+            Path bindVarPath = bundleDataPath.resolve("constants_and_bind_variables.csv");
+            assertTrue("constants_and_bind_variables.csv does not exist",
+                       Files.exists(bindVarPath));
+            assertGreaterThan("constants_and_bind_variables.csv file size is not greater than 0",
+                              Files.size(bindVarPath), 0L);
+
+            List<String> bindVarLines = Files.readAllLines(bindVarPath);
+            assertEquals("Number of lines in constants_and_bind_variables.csv is not as expected",
+                         bindVarLines.size(), 1);
+            assertTrue("constants_and_bind_variables.csv does not contain expected data",
+                       bindVarLines.get(0).contains("'abcd',2,3"));
+
+            Path pgssPath = bundleDataPath.resolve("pg_stat_statements.csv");
+
+            assertTrue("pg_stat_statements.csv does not exist", Files.exists(pgssPath));
+            assertGreaterThan("pg_stat_statements.csv file is empty",
+                                Files.size(pgssPath) , 0L);
+
+            String queryText = extractQueryTextFromPgssFile(statement, pgssPath);
+            if (queryText == null)
+                fail("Query text not found in pg_stat_statements.csv");
+
+            LOG.info("Pgss query text: " + queryText);
+            assertTrue("pg_stat_statements query is incorrect",
+                       queryText.contains(expectedNormalizedQuery));
+        }
+    }
+
+    /*
+     * Tests the dumping of bind variables and constants in the case of a
+     * prepared statement haveing hard coded values.
+     */
+    @Test
+    public void testMixedConstantsAndBindVariables() throws Exception {
+        int diagnosticsInterval = 2;
+        QueryDiagnosticsParams params = new QueryDiagnosticsParams(
+            diagnosticsInterval,
+            100 /* explainSampleRate */,
+            true /* explainAnalyze */,
+            true /* explainDist */,
+            false /* explainDebug */,
+            0 /* bindVarQueryMinDuration */);
+        String prepareQuery = "PREPARE stmt1(text, float) AS " +
+                              "SELECT * FROM test_table1 WHERE a = $1 AND b = 99 AND c = $2";
+        String executeQuery = "EXECUTE stmt1('abcd', 1.1)";
+        String expectedNormalizedQuery = "PREPARE stmt1(text, float) AS " +
+                              "SELECT * FROM test_table1 WHERE a = $1 AND b = $3 AND c = $2";
+        try (Statement statement = connection.createStatement()) {
+            statement.execute(prepareQuery);
+            statement.execute(executeQuery);
+
+            /* Run query diagnostics on the normal query */
+            String queryId = getQueryIdFromPgStatStatements(statement,
+                                                            "PREPARE stmt1(text, float)%");
+            Path bundleDataPath = runQueryDiagnostics(statement, queryId, params);
+
+            statement.execute(executeQuery);
+
+            waitForBundleCompletion(queryId, statement, diagnosticsInterval);
+
+            /* Check constants_and_bind_variables.csv file */
+            Path bindVarPath = bundleDataPath.resolve("constants_and_bind_variables.csv");
+            assertTrue("constants_and_bind_variables.csv does not exist",
+                       Files.exists(bindVarPath));
+            assertGreaterThan("constants_and_bind_variables.csv file size is not greater than 0",
+                              Files.size(bindVarPath), 0L);
+
+            List<String> bindVarLines = Files.readAllLines(bindVarPath);
+            assertEquals("Number of lines in constants_and_bind_variables.csv is not as expected",
+                         bindVarLines.size(), 1);
+            assertTrue("constants_and_bind_variables.csv does not contain expected data",
+                       bindVarLines.get(0).contains("'abcd',1.1"));
+
+            Path pgssPath = bundleDataPath.resolve("pg_stat_statements.csv");
+
+            assertTrue("pg_stat_statements.csv does not exist", Files.exists(pgssPath));
+            assertGreaterThan("pg_stat_statements.csv file is empty",
+                                Files.size(pgssPath) , 0L);
+
+            String queryText = extractQueryTextFromPgssFile(statement, pgssPath);
+            if (queryText == null)
+                fail("Query text not found in pg_stat_statements.csv");
+
+            LOG.info("Pgss query text: " + queryText);
+            assertTrue("pg_stat_statements query is incorrect",
+                        queryText.contains(expectedNormalizedQuery));
         }
     }
 
@@ -1032,7 +1192,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             }
 
             /* Bundle has expired */
-            Path bindVariablesPath = bundleDataPath.resolve("bind_variables.csv");
+            Path bindVariablesPath = bundleDataPath.resolve("constants_and_bind_variables.csv");
             assertTrue("Bind variables file does not exist", Files.exists(bindVariablesPath));
 
             Path explainPlanPath = bundleDataPath.resolve("explain_plan.txt");

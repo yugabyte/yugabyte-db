@@ -20,7 +20,7 @@ To understand how to use transactions when developing applications, see [Transac
 
 ## Text search
 
-YugabyteDB supports advanced text search schemes like similarity search, phonetic search, and full-text search, along with the standard pattern matching using the LIKE operator.
+YugabyteDB supports advanced text search schemes like similarity search, phonetic search, and full-text search, along with the standard pattern matching using the `LIKE` operator.
 
 {{<lead link="./transactions/acid-transactions-ysql">}}
 To understand build advanced search functionalities into your applications, see [Text search](./text-search/).
