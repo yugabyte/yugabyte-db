@@ -515,6 +515,10 @@ DEFINE_RUNTIME_bool(enable_tablet_split_of_cdcsdk_streamed_tables, true,
     "When set, it enables automatic tablet splitting for tables that are part of a "
     "CDCSDK stream");
 
+DEFINE_RUNTIME_bool(enable_tablet_split_of_replication_slot_streamed_tables, false,
+    "When set, it enables automatic tablet splitting for tables that are part of replication "
+    "slot's stream metadata");
+
 METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_live,
                            "Number of live tservers in the cluster", yb::MetricUnit::kUnits,
                            "The number of tablet servers that have responded or done a heartbeat "
@@ -3202,6 +3206,15 @@ Status CatalogManager::XReplValidateSplitCandidateTableUnlocked(const TableId& t
         NotSupported,
         "Tablet splitting is not supported for tables that are a part of"
         " a CDCSDK stream, table_id: $0",
+        table_id);
+  }
+
+  if (!FLAGS_enable_tablet_split_of_replication_slot_streamed_tables &&
+      IsTablePartOfCDCSDK(table_id, true /* require_replication_slot */)) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for tables that are a part of a replication slot, "
+        "table_id: $0",
         table_id);
   }
   return Status::OK();

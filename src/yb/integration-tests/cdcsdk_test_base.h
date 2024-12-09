@@ -54,6 +54,7 @@ DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 DECLARE_bool(TEST_stop_committed_op_id_updation);
 DECLARE_bool(cdc_send_null_before_image_if_not_exists);
+DECLARE_bool(enable_tablet_split_of_replication_slot_streamed_tables);
 
 namespace yb {
 using client::YBClient;
@@ -141,6 +142,9 @@ class CDCSDKTestBase : public YBTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = false;
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_replication_slot_streamed_tables) =
+        true;
 
     google::SetVLOGLevel("cdc*", 4);
     google::SetVLOGLevel("tablet*", 1);
