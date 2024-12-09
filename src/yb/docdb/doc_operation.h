@@ -21,6 +21,7 @@
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/read_operation_data.h"
 
+#include "yb/dockv/intent.h"
 #include "yb/util/monotime.h"
 #include "yb/util/ref_cnt_buffer.h"
 
@@ -53,7 +54,8 @@ using DocPathsToLock = boost::container::small_vector_base<RefCntPrefix>;
 
 YB_DEFINE_ENUM(GetDocPathsMode, (kLock)(kIntents)(kStrongReadIntents));
 YB_DEFINE_ENUM(DocOperationType,
-               (PGSQL_WRITE_OPERATION)(QL_WRITE_OPERATION)(REDIS_WRITE_OPERATION));
+               (PGSQL_WRITE_OPERATION)(QL_WRITE_OPERATION)(REDIS_WRITE_OPERATION)
+               (PGSQL_LOCK_OPERATION));
 YB_STRONGLY_TYPED_BOOL(SingleOperation);
 
 class DocOperation {
@@ -82,6 +84,10 @@ class DocOperation {
   virtual void ClearResponse() = 0;
 
   virtual std::string ToString() const = 0;
+
+  virtual dockv::IntentTypeSet GetIntentTypes(IsolationLevel isolation_level) const {
+    return dockv::GetIntentTypesForWrite(isolation_level);
+  }
 };
 
 template <DocOperationType OperationType, class RequestPB>

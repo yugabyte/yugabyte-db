@@ -17,6 +17,7 @@ package yb.docdb;
 import "yb/common/common.proto";
 import "yb/common/opid.proto";
 import "yb/common/transaction.proto";
+import "yb/dockv/dockv.proto";
 
 option java_package = "org.yb.docdb";
 
@@ -41,6 +42,12 @@ message ApplyExternalTransactionPB {
 message TableSchemaVersionPB {
   optional bytes table_id = 1;
   optional uint32 schema_version = 2;
+}
+
+message LockPairPB {
+  optional KeyValuePairPB lock = 1;
+  optional dockv.DocdbLockMode mode = 2;
+  optional bool is_lock = 3; // lock or unlock.
 }
 
 // A set of key/value pairs to be written into RocksDB.
@@ -73,6 +80,9 @@ message KeyValueWriteBatchPB {
 
   // Reserved for deprecated enable_replicate_transaction_status_table field.
   reserved 12;
+
+  // Advisory locks.
+  repeated LockPairPB lock_pairs = 13;
 }
 
 message PerDbFilterPB {
