@@ -22,6 +22,71 @@ public class R__Sync_System_Roles extends BaseJavaMigration {
     DB.execute(R__Sync_System_Roles::syncSystemRoles);
   }
 
+  public static void syncSystemRoles(UUID customerUUID) {
+    log.debug("Inside Migration R__Sync_System_Roles, customer UUID = {}.", customerUUID);
+    Map<String, String> predefinedSystemRolesMap = getPredefinedSystemRolesMap();
+    // For each of the defined built-in roles, verify that the DB also has the same permissions
+    // list.
+    for (String usersRole : predefinedSystemRolesMap.keySet()) {
+      String checkRoleSql = "SELECT * from Role WHERE name = ? AND customer_uuid = ?";
+      List<SqlRow> checkRoleOutput =
+          DB.sqlQuery(checkRoleSql).setParameter(usersRole).setParameter(customerUUID).findList();
+      java.sql.Timestamp currTimestamp = new java.sql.Timestamp(new Date().getTime());
+      if (checkRoleOutput.size() == 0) {
+        // Case 1: Probably the first time running this migration, or a new built-in role was
+        // added. Create this new role in the DB.
+        String insertRoleSql =
+            "INSERT INTO Role (role_uuid, customer_uuid, name, created_on, updated_on, "
+                + "role_type, permission_details, description) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?::json_alias, ?)";
+        DB.sqlUpdate(insertRoleSql)
+            .setParameter(UUID.randomUUID())
+            .setParameter(customerUUID)
+            .setParameter(usersRole)
+            .setParameter(currTimestamp)
+            .setParameter(currTimestamp)
+            .setParameter("System")
+            .setParameter(predefinedSystemRolesMap.get(usersRole))
+            .setParameter(getRoleDescription(usersRole))
+            .execute();
+        log.debug(
+            "Inside Migration R__Sync_System_Roles, inserted new role = {}, permissions = {}.",
+            usersRole,
+            predefinedSystemRolesMap.get(usersRole));
+      }
+      if (checkRoleOutput.size() == 1) {
+        // Case 2: Valid case when only one row exists for that built-in role in that customer.
+        if (!predefinedSystemRolesMap
+                .get(usersRole)
+                .equals(checkRoleOutput.get(0).getString("permission_details"))
+            || !getRoleDescription(usersRole)
+                .equals(checkRoleOutput.get(0).getString("description"))) {
+          // Update the permissions list and description in the DB if it doesn't match.
+          String updateRoleSql =
+              "UPDATE Role "
+                  + "set permission_details = ?::json_alias, updated_on = ?, description = ? "
+                  + "WHERE name = ? AND customer_uuid = ?";
+          DB.sqlUpdate(updateRoleSql)
+              .setParameter(predefinedSystemRolesMap.get(usersRole))
+              .setParameter(currTimestamp)
+              .setParameter(getRoleDescription(usersRole))
+              .setParameter(usersRole)
+              .setParameter(customerUUID)
+              .execute();
+          log.debug(
+              "Inside Migration R__Sync_System_Roles, updated existing role = {} with "
+                  + "existing permission_details = {}, existing description = {} to "
+                  + "new permission_details = {}, new description = {}.",
+              usersRole,
+              checkRoleOutput.get(0).getString("permission_details"),
+              checkRoleOutput.get(0).getString("description"),
+              predefinedSystemRolesMap.get(usersRole),
+              getRoleDescription(usersRole));
+        }
+      }
+    }
+  }
+
   public static void syncSystemRoles() {
     log.debug("Inside Migration R__Sync_System_Roles");
     String customersSql = "SELECT uuid from customer";
@@ -29,68 +94,7 @@ public class R__Sync_System_Roles extends BaseJavaMigration {
 
     // Check that the built-in roles updated permissions list is synced for each customer.
     for (UUID customerUUID : customerUUIDList) {
-      log.debug("Inside Migration R__Sync_System_Roles, customer UUID = {}.", customerUUID);
-      Map<String, String> predefinedSystemRolesMap = getPredefinedSystemRolesMap();
-      // For each of the defined built-in roles, verify that the DB also has the same permissions
-      // list.
-      for (String usersRole : predefinedSystemRolesMap.keySet()) {
-        String checkRoleSql = "SELECT * from Role WHERE name = ? AND customer_uuid = ?";
-        List<SqlRow> checkRoleOutput =
-            DB.sqlQuery(checkRoleSql).setParameter(usersRole).setParameter(customerUUID).findList();
-        java.sql.Timestamp currTimestamp = new java.sql.Timestamp(new Date().getTime());
-        if (checkRoleOutput.size() == 0) {
-          // Case 1: Probably the first time running this migration, or a new built-in role was
-          // added. Create this new role in the DB.
-          String insertRoleSql =
-              "INSERT INTO Role (role_uuid, customer_uuid, name, created_on, updated_on, "
-                  + "role_type, permission_details, description) "
-                  + "VALUES (?, ?, ?, ?, ?, ?, ?::json_alias, ?)";
-          DB.sqlUpdate(insertRoleSql)
-              .setParameter(UUID.randomUUID())
-              .setParameter(customerUUID)
-              .setParameter(usersRole)
-              .setParameter(currTimestamp)
-              .setParameter(currTimestamp)
-              .setParameter("System")
-              .setParameter(predefinedSystemRolesMap.get(usersRole))
-              .setParameter(getRoleDescription(usersRole))
-              .execute();
-          log.debug(
-              "Inside Migration R__Sync_System_Roles, inserted new role = {}, permissions = {}.",
-              usersRole,
-              predefinedSystemRolesMap.get(usersRole));
-        }
-        if (checkRoleOutput.size() == 1) {
-          // Case 2: Valid case when only one row exists for that built-in role in that customer.
-          if (!predefinedSystemRolesMap
-                  .get(usersRole)
-                  .equals(checkRoleOutput.get(0).getString("permission_details"))
-              || !getRoleDescription(usersRole)
-                  .equals(checkRoleOutput.get(0).getString("description"))) {
-            // Update the permissions list and description in the DB if it doesn't match.
-            String updateRoleSql =
-                "UPDATE Role "
-                    + "set permission_details = ?::json_alias, updated_on = ?, description = ? "
-                    + "WHERE name = ? AND customer_uuid = ?";
-            DB.sqlUpdate(updateRoleSql)
-                .setParameter(predefinedSystemRolesMap.get(usersRole))
-                .setParameter(currTimestamp)
-                .setParameter(getRoleDescription(usersRole))
-                .setParameter(usersRole)
-                .setParameter(customerUUID)
-                .execute();
-            log.debug(
-                "Inside Migration R__Sync_System_Roles, updated existing role = {} with "
-                    + "existing permission_details = {}, existing description = {} to "
-                    + "new permission_details = {}, new description = {}.",
-                usersRole,
-                checkRoleOutput.get(0).getString("permission_details"),
-                checkRoleOutput.get(0).getString("description"),
-                predefinedSystemRolesMap.get(usersRole),
-                getRoleDescription(usersRole));
-          }
-        }
-      }
+      syncSystemRoles(customerUUID);
     }
   }
 
