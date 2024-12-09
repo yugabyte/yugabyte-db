@@ -52,11 +52,11 @@ Conversely, if you are using EPCM on a universe, you cannot set any of the featu
 | [Batch nested loop join](#batched-nested-loop-join) | [yb_enable_batchednl](../../../reference/configuration/yb-tserver/#yb-enable-batchednl) | {{<release "2.20">}} | {{<release "2024.1">}} |
 | [Ascending indexing by default](#default-ascending-indexing) | [yb_use_hash_splitting_by_default](../../../reference/configuration/yb-tserver/#yb-use-hash-splitting-by-default) | {{<release "2024.1">}} | |
 | [YugabyteDB bitmap scan](#yugabytedb-bitmap-scan) | [yb_enable_bitmapscan](../../../reference/configuration/yb-tserver/#yb-enable-bitmapscan) | {{<release "2024.1.3">}} | v2024.2 |
+| [Efficient communication<br>between PostgreSQL and DocDB](#efficient-communication-between-postgresql-and-docdb) | [pg_client_use_shared_memory](../../../reference/configuration/yb-tserver/#pg-client-use-shared-memory) | | v2024.2  |
 
 | Planned Feature | Flag/Configuration Parameter | EA |
 | :--- | :--- | :--- |
-| Efficient communication<br>between PostgreSQL and DocDB | [pg_client_use_shared_memory](../../../reference/configuration/yb-tserver/#pg-client-use-shared-memory) | v2024.2  |
-| Parallel query | | Planned |
+| [Parallel query](#parallel-query) | | Planned |
 
 ### Released
 
@@ -121,15 +121,15 @@ Configuration parameter: `yb_enable_bitmapscan=true`
 
 Bitmap scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Bitmap scans can improve the performance of queries containing AND and OR conditions across several index scans. YugabyteDB bitmap scan provides feature compatibility and improved performance parity. For YugabyteDB relations to use a bitmap scan, the PostgreSQL parameter `enable_bitmapscan` must also be true (the default).
 
-### Planned
-
-The following features are planned for EPCM in future releases.
-
 #### Efficient communication between PostgreSQL and DocDB
 
 Configuration parameter: `pg_client_use_shared_memory=true`
 
 Enable more efficient communication between YB-TServer and PostgreSQL using shared memory. This feature provides improved performance parity.
+
+### Planned
+
+The following features are planned for EPCM in future releases.
 
 #### Parallel query
 
