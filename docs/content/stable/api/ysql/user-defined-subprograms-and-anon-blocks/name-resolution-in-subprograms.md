@@ -83,7 +83,7 @@ and
 select (select array_agg(k) from s.t where c1 = c3)::text as ks_2;
 ```
 
-The first finishes without error and produces this result: 
+The first finishes without error and produces this result:
 
 ```output
  {1,3}
@@ -143,7 +143,7 @@ select * from y.x order by 1;
 It runs without error and produces this result:
 
 ```output
- x  
+ x
 ----
  42
  43
@@ -211,7 +211,7 @@ select e, s::text from s.salaries_list() order by e;
 This is the result:
 
 ```output
-  e   |  s   
+  e   |  s
 ------+------
  Bert | 5000
  Fred | 5500
@@ -234,7 +234,7 @@ select e, s::text from s.salaries_list();
 This is the new result:
 
 ```output
-  e   |  s   
+  e   |  s
 ------+------
  Bert | 5000
  Fred | 5500

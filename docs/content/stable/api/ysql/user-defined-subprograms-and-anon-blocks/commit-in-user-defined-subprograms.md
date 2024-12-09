@@ -81,7 +81,7 @@ select k, v from s.t;
 Both the _create_ and the _call_ statements complete without error and the _select_ produces the expected result:
 
 ```output
- k | v  
+ k | v
 ---+----
  1 | 17
 ```

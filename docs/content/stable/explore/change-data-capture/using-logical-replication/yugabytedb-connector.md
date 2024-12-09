@@ -946,7 +946,7 @@ The following example shows the value portion of a change event that the connect
         "name": "YugabyteDB_server.public.customers.Envelope" --> 4
     },
     "payload": { --> 5
-        "before": null, --> 6 
+        "before": null, --> 6
         "after": { --> 7
             "id": 1,
             "first_name": "Anne",
@@ -1352,7 +1352,7 @@ For Debezium to specify the capture configuration, the value of `publication.aut
 
 ### Configuring YugabyteDB to allow replication with the Debezium connector host
 
-To enable Debezium to replicate YugabyteDB data, you must configure the database to permit replication with the host that runs the YugabyteDB connector. To specify the clients that are permitted to replicate with the database, add entries to the YugabyteDB host-based authentication file, `ysql_hba.conf`. For more information about the pg_hba.conf file, see the [YugabyteDB documentation](../../../../secure/authentication/host-based-authentication#ysql_hbaconf-file).
+To enable Debezium to replicate YugabyteDB data, you must configure the database to permit replication with the host that runs the YugabyteDB connector. To specify the clients that are permitted to replicate with the database, add entries to the YugabyteDB host-based authentication file, `ysql_hba.conf`. For more information about the pg_hba.conf file, see the [YugabyteDB documentation](../../../../secure/authentication/host-based-authentication/#ysql-hba-conf-file).
 
 Procedure
 
@@ -1364,7 +1364,7 @@ Procedure
 
 ### Supported YugabyteDB topologies
 
-As mentioned, YugabyteDB (for all versions > 2024.1.1) supports logical replication slots. The YugabyteDB connector can communicate with the server by connecting to any node using the [YugabyteDB Java driver](../../../../drivers-orms/java/yugabyte-jdbc-reference/). Should any node fail, the connector receives an error and restarts. Upon restart, the connector connects to any available node and continues streaming from that node.
+As mentioned in the beginning, YugabyteDB (for all versions > 2024.1.1) supports logical replication slots. The YugabyteDB connector can communicate with the server by connecting to any node using the [YugabyteDB Java driver](../../../../drivers-orms/java/yugabyte-jdbc-reference/). Should any node fail, the connector receives an error and restarts. Upon restart, the connector connects to any available node and continues streaming from that node.
 
 ### Setting up multiple connectors for same database server
 

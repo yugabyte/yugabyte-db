@@ -513,7 +513,7 @@ This is the result:
 ```output
  "division_by_zero" caught
  "division_by_zero" caught again, following "bare raise"
- 
+
  context: SQL statement "SELECT 1.0/0.0"                +
  PL/pgSQL function s.f() line 4 at PERFORM
 ```
@@ -692,13 +692,13 @@ exception
       call s.fallback(cause_fallback_failure);
     exception
       when others then
-        get stacked diagnostics err := returned_sqlstate, ctx := pg_exception_context; 
+        get stacked diagnostics err := returned_sqlstate, ctx := pg_exception_context;
         raise info 'Unexpected error: %', err;
         raise info '%', chr(10)||ctx;
     end;
   when others then
     -- Here only when preferred() fails in an unexpected way.
-    get stacked diagnostics err := returned_sqlstate, ctx := pg_exception_context; 
+    get stacked diagnostics err := returned_sqlstate, ctx := pg_exception_context;
     raise info 'Unexpected error: %', err;
     raise info '%', chr(10)||ctx;
 end;
@@ -750,7 +750,7 @@ This is the outcome:
 ```outcome
 INFO:  Regrettable but not unexpected: preferred() failed.
 INFO:  Unexpected error: 22012
-INFO:  
+INFO:
 PL/pgSQL function s.fallback(boolean) line 6 at RAISE
 SQL statement "CALL s.fallback(cause_fallback_failure)"
 PL/pgSQL function s.caller(boolean,boolean) line 10 at CALL
@@ -800,7 +800,7 @@ declare
   err  constant text not null := 'YB257';
   msg  constant text    not null :=
     'Bad name: "'||coalesce(proposed_name, '<NULL>')||'".'                    ||e'\n'||
-    'A name must have length() between 5 and 30, '                            ||e'\n'||              
+    'A name must have length() between 5 and 30, '                            ||e'\n'||
     'must contain only lower case ASCII(7) letters, digits, or underscores, ' ||e'\n'||
     'and must not start with a digit or an underscore. ';
   detail text not null := '';
@@ -822,12 +822,12 @@ begin
       case n1 = proposed_name
         when false then
            ok     := false;
-           detail := 'Name contains illegal character(s).'; 
+           detail := 'Name contains illegal character(s).';
         else
           case n2 = n1
             when false then
               ok     := false;
-              detail := 'Name starts with digit or underscore.'; 
+              detail := 'Name starts with digit or underscore.';
             else
               ok :=  true;
           end case;
@@ -906,10 +906,10 @@ Here's the output from using the first of these non-conformant names:
  Bad name: "<NULL>".                                                    +
  A name must have length() between 5 and 30,                            +
  must contain only lower case ASCII(7) letters, digits, or underscores, +
- and must not start with a digit or an underscore. 
- 
+ and must not start with a digit or an underscore.
+
  Name is null.
- 
+
  PL/pgSQL function s.check_name(text) line 43 at RAISE                  +
  SQL statement "CALL s.check_name(proposed_name)"                       +
  PL/pgSQL function s.check_name_outcome(text) line 3 at CALL
@@ -919,8 +919,8 @@ All of the remaining negative tests show the same second and subsequent _message
 
 ```output
  Bad name: "abcd".                                                      +
- ... 
- 
+ ...
+
  Name is too short or too long.
 ```
 
@@ -929,7 +929,7 @@ and:
 ```output
  Bad name: "catch$22".                                                  +
  ...
- 
+
  Name contains illegal character(s).
 ```
 
@@ -937,8 +937,8 @@ and:
 
 ```output
  Bad name: "42mouse".                                                   +
- ... 
- 
+ ...
+
  Name starts with digit or underscore.
 ```
 
@@ -946,8 +946,8 @@ and:
 
 ```output
  Bad name: "_elephant".                                                 +
- ... 
- 
+ ...
+
  Name starts with digit or underscore.
 ```
 
