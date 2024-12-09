@@ -67,7 +67,13 @@ To get started with migration assessment, do the following:
         export YUGABYTED_DB_CONN_STRING=<ysql-connection-parameters>
         ```
 
-        Provide the standard PostgreSQL connection parameters, including database, user name, host name, and port. For example, `postgresql://yugabyte:yugabyte@127.0.0.1:5433`
+        Provide the standard PostgreSQL connection parameters, including user name, host name, and port. For example, `postgresql://yugabyte:yugabyte@127.0.0.1:5433`
+
+        {{< note title="Note" >}}
+
+Stick to example format to enable migration in yugabyted UI, do not mention parameters like `dbname` in the connection string.
+
+        {{< /note >}}
 
 1. Assess migration - Voyager supports two primary modes for conducting migration assessments, depending on your access to the source database as follows:<br><br>
 
