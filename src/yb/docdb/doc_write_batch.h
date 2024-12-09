@@ -17,6 +17,7 @@
 
 #include "yb/common/constants.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/read_hybrid_time.h"
 
 #include "yb/docdb/doc_write_batch_cache.h"
@@ -151,6 +152,11 @@ struct DocWriteBatchEntry {
   std::string value;
 };
 
+struct DocLockBatchEntry {
+  DocWriteBatchEntry lock;
+  PgsqlLockRequestPB::PgsqlAdvisoryLockMode mode;
+};
+
 // The DocWriteBatch class is used to build a RocksDB write batch for a DocDB batch of operations
 // that may include a mix of write (set) or delete operations. It may read from RocksDB while
 // writing, and builds up an internal rocksdb::WriteBatch while handling the operations.
@@ -248,19 +254,15 @@ class DocWriteBatch {
       UserTimeMicros user_timestamp = dockv::ValueControlFields::kInvalidTimestamp);
 
   void Clear();
-  bool IsEmpty() const { return put_batch_.empty(); }
+  bool IsEmpty() const { return put_batch_.empty() && lock_batch_.empty(); }
 
-  size_t size() const { return put_batch_.size(); }
+  size_t size() const { return put_batch_.size() + lock_batch_.size(); }
 
   const std::vector<DocWriteBatchEntry>& key_value_pairs() const {
     return put_batch_;
   }
 
-  void MoveToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb);
-
-  // This method has worse performance comparing to MoveToWriteBatchPB and intented to be used in
-  // testing. Consider using MoveToWriteBatchPB in production code.
-  void TEST_CopyToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const;
+  void MoveToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const;
 
   // This is used in tests when measuring the number of seeks that a given update to this batch
   // performs. The internal seek count is reset.
@@ -278,6 +280,11 @@ class DocWriteBatch {
   DocWriteBatchEntry& AddRaw() {
     put_batch_.emplace_back();
     return put_batch_.back();
+  }
+
+  DocLockBatchEntry& AddLock() {
+    lock_batch_.emplace_back();
+    return lock_batch_.back();
   }
 
   void UpdateMaxValueTtl(const MonoDelta& ttl);
@@ -352,6 +359,7 @@ class DocWriteBatch {
   std::atomic<int64_t>* monotonic_counter_;
 
   std::vector<DocWriteBatchEntry> put_batch_;
+  std::vector<DocLockBatchEntry> lock_batch_;
 
   // Taken from internal_doc_iterator
   dockv::KeyBytes key_prefix_;

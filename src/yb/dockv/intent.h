@@ -21,6 +21,7 @@
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/dockv/dockv.pb.h"
 #include "yb/dockv/dockv_fwd.h"
 
 #include "yb/util/result.h"
@@ -126,6 +127,8 @@ struct ReadIntentTypeSets {
 [[nodiscard]] ReadIntentTypeSets GetIntentTypesForRead(IsolationLevel level, RowMarkType row_mark);
 
 [[nodiscard]] IntentTypeSet GetIntentTypesForWrite(IsolationLevel level);
+
+[[nodiscard]] IntentTypeSet GetIntentTypesForLock(DocdbLockMode mode);
 
 YB_STRONGLY_TYPED_BOOL(IsRowLock);
 

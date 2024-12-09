@@ -64,7 +64,7 @@ class YBSession;
 class YBStatusCallback;
 class YBTable;
 
-YB_DEFINE_ENUM(OpGroup, (kWrite)(kLeaderRead)(kConsistentPrefixRead));
+YB_DEFINE_ENUM(OpGroup, (kWrite)(kLock)(kLeaderRead)(kConsistentPrefixRead));
 
 // A write or read operation operates on a single table and partial row.
 // The YBOperation class itself allows the batcher to get to the
@@ -89,6 +89,7 @@ class YBOperation {
     // Postgresql opcodes.
     PGSQL_WRITE = 8,
     PGSQL_READ = 9,
+    PGSQL_LOCK = 10,
   };
   virtual ~YBOperation();
 
@@ -574,6 +575,31 @@ class YBPgsqlReadOp : public YBPgsqlOp {
   ReadHybridTime used_read_time_;
   // The tablet that served this operation.
   TabletId used_tablet_;
+};
+
+class YBPgsqlLockOp : public YBPgsqlOp {
+ public:
+  explicit YBPgsqlLockOp(const std::shared_ptr<YBTable>& table, rpc::Sidecars* sidecars);
+
+  bool read_only() const override { return false; };
+  bool returns_sidecar() override { return false; }
+  std::string ToString() const override;
+  bool succeeded() const override;
+  bool applied() override;
+
+  void SetHashCode(uint16_t hash_code) override;
+  Status GetPartitionKey(std::string* partition_key) const override;
+
+  PgsqlLockRequestPB* mutable_request() { return request_; }
+
+  static YBPgsqlLockOpPtr NewLock(const std::shared_ptr<YBTable>& table, rpc::Sidecars* sidecars);
+
+ private:
+  virtual Type type() const override { return PGSQL_LOCK; }
+  OpGroup group() override;
+
+  PgsqlLockRequestPB* request_;
+  std::unique_ptr<PgsqlLockRequestPB> request_holder_;
 };
 
 // This class is not thread-safe, though different YBNoOp objects on

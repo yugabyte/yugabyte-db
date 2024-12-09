@@ -1646,7 +1646,7 @@ Status Tablet::ApplyKeyValueRowOperations(
     docdb::ConsensusFrontiers* frontiers, HybridTime write_hybrid_time,
     HybridTime batch_hybrid_time, AlreadyAppliedToRegularDB already_applied_to_regular_db) {
   if (put_batch.write_pairs().empty() && put_batch.read_pairs().empty() &&
-      put_batch.apply_external_transactions().empty()) {
+      put_batch.lock_pairs().empty() && put_batch.apply_external_transactions().empty()) {
     return Status::OK();
   }
 
@@ -4000,11 +4000,12 @@ void Tablet::TEST_DocDBDumpToLog(IncludeIntents include_intents) {
   }
 }
 
-Result<size_t> Tablet::TEST_CountRegularDBRecords() {
-  if (!regular_db_) return 0;
+Result<size_t> Tablet::TEST_CountDBRecords(docdb::StorageDbType db_type) {
+  auto* db = db_type == docdb::StorageDbType::kRegular ? regular_db_.get() : intents_db_.get();
+  if (!db) return 0;
   rocksdb::ReadOptions read_opts;
   read_opts.query_id = rocksdb::kDefaultQueryId;
-  docdb::BoundedRocksDbIterator iter(regular_db_.get(), read_opts, &key_bounds_);
+  docdb::BoundedRocksDbIterator iter(db, read_opts, &key_bounds_);
 
   size_t result = 0;
   for (iter.SeekToFirst(); iter.Valid(); iter.Next()) {

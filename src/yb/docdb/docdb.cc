@@ -132,9 +132,11 @@ Result<DetermineKeysToLockResult<RefCntPrefix>> DetermineKeysToLock(
     }
     const auto require_read_snapshot = doc_op->RequireReadSnapshot();
     result.need_read_snapshot |= require_read_snapshot;
-    auto intent_types = dockv::GetIntentTypesForWrite(level);
+    auto intent_types = doc_op->GetIntentTypes(level);
     if (isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION &&
         require_read_snapshot) {
+      SCHECK_NE(doc_op->OpType(), DocOperationType::PGSQL_LOCK_OPERATION,
+                IllegalState, "LOCK operations shouldn't require read snapshot");
       intent_types = dockv::IntentTypeSet(
           {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite});
     }

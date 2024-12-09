@@ -181,6 +181,7 @@ enum class WriteQuery::ExecuteMode {
   kRedis,
   kCql,
   kPgsql,
+  kPgsqlLock,
 };
 
 WriteQuery::WriteQuery(
@@ -372,6 +373,9 @@ void WriteQuery::ExecuteDone(const Status& status) {
     case ExecuteMode::kPgsql:
       PgsqlExecuteDone(status);
       return;
+    case ExecuteMode::kPgsqlLock:
+      PgsqlLockExecuteDone(status);
+      return;
   }
   FATAL_INVALID_ENUM_VALUE(ExecuteMode, execute_mode_);
 }
@@ -394,6 +398,10 @@ Result<bool> WriteQuery::PrepareExecute() {
 
     if (!client_request_->pgsql_write_batch().empty()) {
       return PgsqlPrepareExecute();
+    }
+
+    if (!client_request_->pgsql_lock_batch().empty()) {
+      return PgsqlPrepareLock();
     }
 
     if (client_request_->has_write_batch() && client_request_->has_external_hybrid_time()) {
@@ -550,6 +558,45 @@ Result<bool> WriteQuery::PgsqlPrepareExecute() {
   return true;
 }
 
+Result<bool> WriteQuery::PgsqlPrepareLock() {
+  auto& write_batch = client_request_->write_batch();
+  // Transaction should be specified in the write batch.
+  // TODO(advisory-lock #24709) - virtual transaction if it's session level.
+  SCHECK(write_batch.has_transaction(), InvalidArgument, "No transaction found in write batch");
+
+  auto tablet = VERIFY_RESULT(tablet_safe());
+  RETURN_NOT_OK(InitExecute(ExecuteMode::kPgsqlLock));
+
+  const auto& pgsql_lock_batch = client_request_->pgsql_lock_batch();
+
+  SCHECK(!pgsql_lock_batch.empty(), InvalidArgument, "lock batch is empty");
+  auto& metadata = *tablet->metadata();
+  const auto table_info = VERIFY_RESULT(metadata.GetTableInfo(""));
+
+  doc_ops_.reserve(pgsql_lock_batch.size());
+
+  TransactionOperationContext txn_op_ctx;
+  VLOG_WITH_FUNC(2) << "transaction=" << write_batch.transaction().DebugString();
+  for (const auto& req : pgsql_lock_batch) {
+    VLOG_WITH_FUNC(4) << req.DebugString();
+    // TODO(advisory-lock #25195): Remove this check when supporting release lock.
+    SCHECK(req.is_lock(), InvalidArgument, "Unexpected unlock operation");
+    if (doc_ops_.empty()) {
+      txn_op_ctx = VERIFY_RESULT(tablet->CreateTransactionOperationContext(
+          write_batch.transaction(),
+          /* is_ysql_catalog_table */ false,
+          &write_batch.subtransaction()));
+    }
+    PgsqlResponsePB* resp = response_->add_pgsql_response_batch();
+    auto lock_op = std::make_unique<docdb::PgsqlLockOperation>(
+        req,
+        txn_op_ctx);
+    RETURN_NOT_OK(lock_op->Init(resp, table_info->doc_read_context));
+    doc_ops_.emplace_back(std::move(lock_op));
+  }
+  return true;
+}
+
 void WriteQuery::Execute(std::unique_ptr<WriteQuery> query) {
   auto* query_ptr = query.get();
   query_ptr->self_ = std::move(query);
@@ -574,12 +621,14 @@ void WriteQuery::Execute(std::unique_ptr<WriteQuery> query) {
 
 // The conflict management policy (as defined in conflict_resolution.h) to be used is determined
 // based on the following -
-//   1. For explicit row level locking, YSQL sets the "wait_policy" field which maps to a
-//      corresponding ConflictManagementPolicy as detailed in the WaitPolicy enum in common.proto.
+//   1. For explicit row level locking or advisory locks (is_advisory_lock_request == true):
+//      YSQL sets the "wait_policy" field which maps to a corresponding ConflictManagementPolicy
+//      as detailed in the WaitPolicy enum in common.proto.
 //   2. For everything else, either the WAIT_ON_CONFLICT or the FAIL_ON_CONFLICT policy is used
 //      based on whether wait queues are enabled or not.
 docdb::ConflictManagementPolicy GetConflictManagementPolicy(
-    const docdb::WaitQueue* wait_queue, const docdb::LWKeyValueWriteBatchPB& write_batch) {
+    const docdb::WaitQueue* wait_queue, const docdb::LWKeyValueWriteBatchPB& write_batch,
+    bool is_advisory_lock_request) {
   // Either write_batch.read_pairs is not empty or doc_ops is non empty. Both can't be non empty
   // together. This is because read_pairs is filled only in case of a read operation that has a
   // row mark or is part of a serializable txn.
@@ -590,7 +639,7 @@ docdb::ConflictManagementPolicy GetConflictManagementPolicy(
 
   auto conflict_management_policy = wait_queue ? docdb::WAIT_ON_CONFLICT : docdb::FAIL_ON_CONFLICT;
   const auto& pairs = write_batch.read_pairs();
-  if (!pairs.empty() && write_batch.has_wait_policy()) {
+  if ((is_advisory_lock_request || !pairs.empty()) && write_batch.has_wait_policy()) {
     switch (write_batch.wait_policy()) {
       case WAIT_BLOCK:
         if (wait_queue) {
@@ -621,6 +670,8 @@ docdb::ConflictManagementPolicy GetConflictManagementPolicy(
 Status WriteQuery::DoExecute() {
   auto tablet = VERIFY_RESULT(tablet_safe());
   auto& write_batch = *request().mutable_write_batch();
+  // Lock request must have non-empty pgsql_lock_batch.
+  bool is_advisory_lock_request = client_request_ && !client_request_->pgsql_lock_batch().empty();
   isolation_level_ = VERIFY_RESULT(tablet->GetIsolationLevelFromPB(write_batch));
   const RowMarkType row_mark_type = GetRowMarkTypeFromPB(write_batch);
   const auto& metadata = *tablet->metadata();
@@ -670,8 +721,11 @@ Status WriteQuery::DoExecute() {
   auto request_id = request().has_request_id() ? request().request_id() : -1;
 
   if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL) {
+    SCHECK(!is_advisory_lock_request, InvalidArgument,
+           "Unexpected advisory lock request with NON_TRANSACTIONAL isolation level");
     auto now = tablet->clock()->Now();
-    auto conflict_management_policy = GetConflictManagementPolicy(wait_queue, write_batch);
+    auto conflict_management_policy = GetConflictManagementPolicy(
+        wait_queue, write_batch, is_advisory_lock_request);
 
     {
       // TODO(#19498): Enable the below check if possible. Right now we can't enable it because the
@@ -715,7 +769,8 @@ Status WriteQuery::DoExecute() {
     }
   }
 
-  auto conflict_management_policy = GetConflictManagementPolicy(wait_queue, write_batch);
+  auto conflict_management_policy = GetConflictManagementPolicy(
+      wait_queue, write_batch, is_advisory_lock_request);
 
   // TODO(wait-queues): Ensure that wait_queue respects deadline() during conflict resolution.
   return docdb::ResolveTransactionConflicts(
@@ -999,6 +1054,7 @@ Result<bool> WriteQuery::ExecuteSchemaVersionCheck() {
   switch (execute_mode_) {
     case ExecuteMode::kSimple: FALLTHROUGH_INTENDED;
     case ExecuteMode::kRedis:
+    case ExecuteMode::kPgsqlLock:
       return true;
     case ExecuteMode::kCql:
       // For cql, the requests in client_request_->ql_write_batch() could have the field
@@ -1312,6 +1368,10 @@ void WriteQuery::PgsqlExecuteDone(const Status& status) {
 }
 
 void WriteQuery::SimpleExecuteDone(const Status& status) {
+  StartSynchronization(std::move(self_), status);
+}
+
+void WriteQuery::PgsqlLockExecuteDone(const Status& status) {
   StartSynchronization(std::move(self_), status);
 }
 

@@ -847,9 +847,11 @@ class DocPathProcessor {
 Result<IntentTypesContainer> GetWriteRequestIntents(
     const DocOperations& doc_ops, KeyBytes* buffer, PartialRangeKeyIntents partial,
     IsolationLevel isolation_level) {
+  bool is_lock_batch = !doc_ops.empty() &&
+      doc_ops[0]->OpType() == DocOperationType::PGSQL_LOCK_OPERATION;
   static const dockv::IntentTypeSet kStrongReadIntentTypeSet{dockv::IntentType::kStrongRead};
   dockv::IntentTypeSet intent_types;
-  if (isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
+  if (isolation_level != IsolationLevel::NON_TRANSACTIONAL && !is_lock_batch) {
     intent_types = dockv::GetIntentTypesForWrite(isolation_level);
   }
 
@@ -862,7 +864,7 @@ Result<IntentTypesContainer> GetWriteRequestIntents(
     RETURN_NOT_OK(doc_op->GetDocPaths(GetDocPathsMode::kIntents, &doc_paths, &op_isolation));
     RETURN_NOT_OK(processor(
         &doc_paths,
-        intent_types.None() ? dockv::GetIntentTypesForWrite(op_isolation) : intent_types));
+        intent_types.None() ? doc_op->GetIntentTypes(op_isolation) : intent_types));
 
     RETURN_NOT_OK(
         doc_op->GetDocPaths(GetDocPathsMode::kStrongReadIntents, &doc_paths, &op_isolation));

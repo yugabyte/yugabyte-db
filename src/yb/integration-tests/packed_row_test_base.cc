@@ -52,7 +52,8 @@ void CheckNumRecords(MiniCluster* cluster, size_t expected_num_records) {
     if (!peer->tablet()->regular_db()) {
       continue;
     }
-    auto count = ASSERT_RESULT(peer->tablet()->TEST_CountRegularDBRecords());
+    auto count = ASSERT_RESULT(peer->tablet()->TEST_CountDBRecords(
+        docdb::StorageDbType::kRegular));
     LOG(INFO) << peer->LogPrefix() << "records: " << count;
     ASSERT_EQ(count, expected_num_records);
   }

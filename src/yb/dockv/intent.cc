@@ -176,6 +176,16 @@ IntentTypeSet GetIntentTypesForWrite(IsolationLevel level) {
   return GetIntentTypes(level, /*is_for_write=*/true);
 }
 
+IntentTypeSet GetIntentTypesForLock(DocdbLockMode mode) {
+  switch (mode) {
+    case DocdbLockMode::DOCDB_LOCK_SHARE:
+      return IntentTypeSet({IntentType::kStrongRead});
+    case DocdbLockMode::DOCDB_LOCK_EXCLUSIVE:
+      return IntentTypeSet({IntentType::kStrongWrite, IntentType::kStrongRead});
+  }
+  FATAL_INVALID_ENUM_VALUE(DocdbLockMode, mode);
+}
+
 bool HasStrong(IntentTypeSet inp) {
   static const IntentTypeSet all_strong_intents{IntentType::kStrongRead, IntentType::kStrongWrite};
   return (inp & all_strong_intents).Any();
