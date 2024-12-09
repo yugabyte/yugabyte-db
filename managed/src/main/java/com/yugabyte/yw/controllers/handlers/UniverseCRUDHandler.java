@@ -2491,7 +2491,7 @@ public class UniverseCRUDHandler {
     if (null == primaryCluster
         || runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")
         || Util.compareYBVersions(
-                primaryCluster.userIntent.ybSoftwareVersion, "2024.1.0.0", "2.23.0.0", true)
+                primaryCluster.userIntent.ybSoftwareVersion, "2024.2.0.0", "2.25.0.0", true)
             < 0
         || !primaryCluster.userIntent.providerType.isVM()
         || primaryCluster.userIntent.dedicatedNodes) {
