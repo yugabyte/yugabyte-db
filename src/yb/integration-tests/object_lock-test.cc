@@ -146,20 +146,30 @@ void AcquireLockAsyncAt(
 }
 
 tserver::ReleaseObjectLockRequestPB ReleaseRequestFor(
-    const std::string& session_host_uuid, uint64_t session_id, uint64_t database_id,
-    uint64_t object_id) {
+    const std::string& session_host_uuid, std::optional<uint64_t> session_id,
+    std::optional<uint64_t> database_id, std::optional<uint64_t> object_id) {
   tserver::ReleaseObjectLockRequestPB req;
-  req.set_session_id(session_id);
   req.set_session_host_uuid(session_host_uuid);
+  if (!session_id) {
+    req.set_release_all_locks(true);
+    return req;
+  }
+  req.set_session_id(*session_id);
+  // TODO(Amit): Do we support specifiying db id but not object id?
+  if (!database_id || !object_id) {
+    req.set_release_all_locks(true);
+    return req;
+  }
   auto* lock = req.add_object_locks();
-  lock->set_database_oid(database_id);
-  lock->set_object_oid(object_id);
+  lock->set_database_oid(*database_id);
+  lock->set_object_oid(*object_id);
   return req;
 }
 
 Status ReleaseLockAt(
     tserver::TabletServerServiceProxy* proxy, const std::string& session_host_uuid,
-    uint64_t session_id, uint64_t database_id, uint64_t object_id) {
+    std::optional<uint64_t> session_id, std::optional<uint64_t> database_id,
+    std::optional<uint64_t> object_id) {
   tserver::ReleaseObjectLockResponsePB resp;
   rpc::RpcController controller = RpcController();
   auto req = ReleaseRequestFor(session_host_uuid, session_id, database_id, object_id);
@@ -358,6 +368,69 @@ TEST_F(ObjectLockTest, DDLLockWaitsAtMaster) {
   ASSERT_EQ(master_local_lock_manager->TEST_WaitingLocksSize(), 0);
   for (auto ts : cluster_->mini_tablet_servers()) {
     ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), 0);
+    ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_WaitingLocksSize(), 0);
+  }
+}
+
+TEST_F(ObjectLockTest, DDLLocksCleanupAtMaster) {
+  auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
+  constexpr uint64_t kNumHosts = 2;
+  constexpr uint64_t kNumSessions = 3;
+  constexpr uint64_t kNumObjectsPerSession = 3;
+
+  constexpr uint64_t kLocksPerHost = kNumSessions * kNumObjectsPerSession;
+  constexpr uint64_t kNumLocksTotal = kLocksPerHost * kNumHosts;
+  for (uint64_t object_id = 0; object_id < kNumLocksTotal; object_id++) {
+    auto host_idx = object_id / kLocksPerHost;
+    auto session_idx = (object_id / kNumObjectsPerSession) % kNumSessions;
+    ASSERT_OK(AcquireLockAt(
+        &master_proxy, TSUuid(host_idx), kSessionId + session_idx, kDatabaseID,
+        object_id, TableLockType::ACCESS_EXCLUSIVE));
+  }
+
+  // Waiting locks should not be cleaned up yet.
+  auto master_local_lock_manager = cluster_->mini_master()
+                                       ->master()
+                                       ->catalog_manager_impl()
+                                       ->object_lock_info_manager()
+                                       ->TEST_ts_local_lock_manager();
+  DumpMasterAndTServerLocks(cluster_.get(), "After taking locks");
+  const uint64_t kEntriesPerRequest = docdb::GetEntriesForLockType(ACCESS_EXCLUSIVE).size();
+  auto num_locks = kEntriesPerRequest * kNumHosts * kNumSessions * kNumObjectsPerSession;
+  ASSERT_EQ(master_local_lock_manager->TEST_GrantedLocksSize(), num_locks);
+  ASSERT_EQ(master_local_lock_manager->TEST_WaitingLocksSize(), 0);
+  for (auto ts : cluster_->mini_tablet_servers()) {
+    ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), num_locks);
+    ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_WaitingLocksSize(), 0);
+  }
+
+  // Release all locks taken from host-0, session-0
+  ASSERT_OK(ReleaseLockAt(&master_proxy, TSUuid(0), kSessionId, std::nullopt, std::nullopt));
+
+  DumpMasterAndTServerLocks(cluster_.get(), "After Releasing locks from host-0, session-0");
+  num_locks = kEntriesPerRequest * (kNumHosts * kNumSessions - 1) * kNumObjectsPerSession;
+  ASSERT_EQ(master_local_lock_manager->TEST_GrantedLocksSize(), num_locks);
+  ASSERT_EQ(master_local_lock_manager->TEST_WaitingLocksSize(), 0);
+  for (auto ts : cluster_->mini_tablet_servers()) {
+    ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), num_locks);
+    ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_WaitingLocksSize(), 0);
+  }
+
+  // Also, Release all locks taken from host-1
+  constexpr int kIncarnationId = 0;
+  cluster_->mini_master()
+      ->master()
+      ->catalog_manager_impl()
+      ->object_lock_info_manager()
+      ->ReleaseOldObjectLocks(TSUuid(1), kIncarnationId, /* wait */ true);
+
+  DumpMasterAndTServerLocks(
+      cluster_.get(), "After Releasing locks from host-0, session-0; and also from host-1");
+  num_locks = kEntriesPerRequest * ((kNumHosts - 1) * kNumSessions - 1) * kNumObjectsPerSession;
+  ASSERT_EQ(master_local_lock_manager->TEST_GrantedLocksSize(), num_locks);
+  ASSERT_EQ(master_local_lock_manager->TEST_WaitingLocksSize(), 0);
+  for (auto ts : cluster_->mini_tablet_servers()) {
+    ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), num_locks);
     ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_WaitingLocksSize(), 0);
   }
 }

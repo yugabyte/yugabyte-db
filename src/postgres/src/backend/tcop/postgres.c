@@ -4137,8 +4137,8 @@ static void YBRefreshCache()
 	if (xact_started)
 	{
 		ereport(ERROR,
-		        (errcode(ERRCODE_INTERNAL_ERROR),
-				        errmsg("Cannot refresh cache within a transaction")));
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("Cannot refresh cache within a transaction")));
 	}
 
 	if (yb_debug_log_catcache_events)
@@ -4229,7 +4229,7 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 	}
 	char *table_to_refresh = NULL;
 	const bool need_table_cache_refresh =
-	    YBTableSchemaVersionMismatchError(edata, &table_to_refresh);
+		YBTableSchemaVersionMismatchError(edata, &table_to_refresh);
 
 	/*
 	 * Get the latest syscatalog version from the master to check if we need
@@ -4417,7 +4417,7 @@ static CommandTag yb_parse_command_tag(const char *query_string)
 static bool yb_is_begin_transaction(CommandTag command_tag)
 {
 	return (command_tag == CMDTAG_BEGIN ||
-	        command_tag == CMDTAG_START_TRANSACTION);
+			command_tag == CMDTAG_START_TRANSACTION);
 }
 
 /*
@@ -4455,9 +4455,9 @@ static bool yb_is_dml_command(const char *query_string)
 
 	CommandTag command_tag = yb_parse_command_tag(query_string);
 	return (command_tag == CMDTAG_DELETE ||
-	        command_tag == CMDTAG_INSERT ||
-	        command_tag == CMDTAG_SELECT ||
-	        command_tag == CMDTAG_UPDATE);
+			command_tag == CMDTAG_INSERT ||
+			command_tag == CMDTAG_SELECT ||
+			command_tag == CMDTAG_UPDATE);
 }
 
 /*
@@ -5254,8 +5254,8 @@ yb_exec_execute_message_impl(const void* raw_ctx)
  */
 static void
 yb_exec_execute_message(long max_rows,
-                        const YBQueryRetryData *restart_data,
-                        MemoryContext exec_context)
+						const YBQueryRetryData *restart_data,
+						MemoryContext exec_context)
 {
 	YBExecuteMessageFunctorContext ctx = {
 		.portal_name = restart_data->portal_name,
@@ -5276,10 +5276,10 @@ yb_exec_execute_message(long max_rows,
 static void yb_report_cache_version_restart(const char* query, ErrorData *edata)
 {
 	ereport(LOG,
-	        (errmsg("Restarting statement due to catalog version mismatch:"
-	                "\nQuery: %s\nError: %s",
-	                query,
-	                edata->message)));
+			(errmsg("Restarting statement due to catalog version mismatch:"
+					"\nQuery: %s\nError: %s",
+					query,
+					edata->message)));
 }
 
 /*
@@ -5416,7 +5416,7 @@ PostgresMain(const char *dbname, const char *username)
 
 	SetProcessingMode(InitProcessing);
 
-    /* TODO(neil)
+	/* TODO(neil)
 	 * Once we have our system DB, remove the following code. It is a hack to help us getting
 	 * by for now.
 	 */
@@ -5946,11 +5946,11 @@ PostgresMain(const char *dbname, const char *username)
 		{
 			ConfigReloadPending = false;
 			/*
-			 * YB: Reloading postgres config file on a control connection can 
+			 * YB: Reloading postgres config file on a control connection can
 			 * have some repercussion, therefore adopting most safest option;
 			 * destroy the control connection which leads to failure of client
-			 * authentication and let client keep trying agin untill a new 
-			 * control connection is formed for authentication with updated 
+			 * authentication and let client keep trying agin untill a new
+			 * control connection is formed for authentication with updated
 			 * config file.
 			 * Control connection is identified if a connection receives a
 			 * Auth Passthrough Request ('A') packet.
@@ -6009,7 +6009,7 @@ PostgresMain(const char *dbname, const char *username)
 				PG_TRY();
 				{
 					if (!am_walsender || !exec_replication_command(query_string))
-                      yb_exec_simple_query(query_string, oldcontext);
+						yb_exec_simple_query(query_string, oldcontext);
 				}
 				PG_CATCH();
 				{
@@ -6081,10 +6081,10 @@ PostgresMain(const char *dbname, const char *username)
 					PG_TRY();
 					{
 						exec_parse_message(query_string,
-						                   stmt_name,
-						                   paramTypes,
-						                   numParams,
-						                   whereToSendOutput);
+										   stmt_name,
+										   paramTypes,
+										   numParams,
+										   whereToSendOutput);
 					}
 					PG_CATCH();
 					{
@@ -6167,11 +6167,11 @@ PostgresMain(const char *dbname, const char *username)
 						 * yet. (i.e. if portal is named or has params).
 						 */
 						bool can_retry =
-						    IsYugaByteEnabled() &&
-						    old_portal &&
-						    portal_name[0] == '\0' &&
-						    !old_portal->portalParams &&
-						    yb_check_retry_allowed(retry_data->query_string);
+							IsYugaByteEnabled() &&
+							old_portal &&
+							portal_name[0] == '\0' &&
+							!old_portal->portalParams &&
+							yb_check_retry_allowed(retry_data->query_string);
 
 
 						/* Stuff we might need for retrying below */
@@ -6192,8 +6192,8 @@ PostgresMain(const char *dbname, const char *username)
 								nformats = old_portal->tupDesc->natts;
 								formats  = (int16 *) palloc(nformats * sizeof(int16));
 								memcpy(formats,
-								       old_portal->formats,
-								       nformats * sizeof(int16));
+									   old_portal->formats,
+									   nformats * sizeof(int16));
 							}
 						}
 
@@ -6220,10 +6220,10 @@ PostgresMain(const char *dbname, const char *username)
 
 								/* 1. Redo Parse: Create Cached stmt (no output) */
 								exec_parse_message(query_string,
-								                   portal_name,
-								                   NULL /* param_types*/,
-								                   0 /* num_params */,
-								                   DestNone);
+												   portal_name,
+												   NULL /* param_types */,
+												   0 /* num_params */,
+												   DestNone);
 
 								/* 2. Redo the Bind step */
 								Portal portal;
@@ -6246,16 +6246,16 @@ PostgresMain(const char *dbname, const char *username)
 								MemoryContextSwitchTo(oldContext);
 
 								CachedPlan *cplan = GetCachedPlan(unnamed_stmt_psrc,
-								                                  params,
-								                                  false,
-								                                  NULL);
+																  params,
+																  false,
+																  NULL);
 
 								PortalDefineQuery(portal,
-								                  stmt_name,
-								                  query_string,
-								                  unnamed_stmt_psrc->commandTag,
-								                  cplan->stmt_list,
-								                  cplan);
+												  stmt_name,
+												  query_string,
+												  unnamed_stmt_psrc->commandTag,
+												  cplan->stmt_list,
+												  cplan);
 
 								/* Start portal */
 								PortalStart(portal, params, 0, InvalidSnapshot);
@@ -6806,10 +6806,10 @@ const char* RedactPasswordIfExists(const char* queryStr) {
 		return queryStr;
 
 	/* Copy the query string and convert to lower case. */
-  	redactedStr = pstrdup(queryStr);
+	redactedStr = pstrdup(queryStr);
 
-  	for (i = 0; redactedStr[i]; i++)
-    	redactedStr[i] = (char)pg_tolower((unsigned char)redactedStr[i]);
+	for (i = 0; redactedStr[i]; i++)
+		redactedStr[i] = (char)pg_tolower((unsigned char)redactedStr[i]);
 
 	/* Find index of password token. */
 	passwordToken = strstr(redactedStr, TOKEN_PASSWORD);

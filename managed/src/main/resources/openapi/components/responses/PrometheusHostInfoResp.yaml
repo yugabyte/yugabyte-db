@@ -3,3 +3,4 @@ content:
   application/json:
     schema:
       $ref: "../schemas/PrometheusHostInfo.yaml"
+x-yba-api-visibility: internal

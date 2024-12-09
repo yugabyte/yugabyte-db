@@ -27,7 +27,7 @@ You upgrade a universe in the following phases:
 
 ## Perform the upgrade
 
-{{< warning title="For YugabyteDB upgrades in YBA" >}}
+{{< warning title="For YugabyteDB upgrades in YugabyteDB Anywhere" >}}
 You can only upgrade from a stable version to another stable version, or from a preview version to another preview version. Optionally, you can set a runtime flag `yb.skip_version_checks`, to skip all YugabyteDB version checks during upgrades. For more information, contact {{% support-platform %}}.
 {{< /warning >}}
 
@@ -50,6 +50,8 @@ Currently, you cannot downgrade a universe to an older YugabyteDB release. For a
 1. Choose the **Rolling Upgrade** option.
 
     Select rolling upgrade to minimize application disruption (at the expense of a longer node-by-node iterative operation). Deselect this option if application downtime is not a concern, and you favor speed; the database cluster is taken offline to perform the upgrade.
+
+1. If you are performing a rolling upgrade and your universe supports [batched rolling restart](../edit-config-flags/#batched-rolling-restart), specify the maximum number of nodes to process per batch.
 
 1. If you are performing a rolling upgrade, specify the delay between node upgrades.
 
@@ -74,9 +76,9 @@ curl --location --request PUT '<YBA-url>/api/v1/customers/<customerID>/universes
      --header 'X-AUTH-YW-API-TOKEN: <YBA-api-auth-token>'
 ```
 
-To view your Customer ID and API Token, click the **Profile** icon in the top right corner of the YBA window.
+To view your Customer ID and API Token, click the **Profile** icon in the top right corner of the YugabyteDB Anywhere window.
 
-You can view your Universe ID from your YBA universe URL, as follows:
+You can view your Universe ID from your YugabyteDB Anywhere universe URL, as follows:
 
 ```sh
 https://<YB-Anywhere-IP-address>/universes/<universe-ID>

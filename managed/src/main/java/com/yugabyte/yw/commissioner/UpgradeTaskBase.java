@@ -615,7 +615,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         rollingUpgradeLambda.run(nodeList, processTypes);
       }
 
-      if (isYbcPresent) {
+      // Stop yb-controller only if master server on node is in active role.
+      if (isYbcPresent && activeRole) {
         createServerControlTasks(nodeList, ServerType.CONTROLLER, "stop")
             .setSubTaskGroupType(subGroupType);
       }
@@ -781,7 +782,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       nonRollingUpgradeLambda.run(nodes, Collections.singleton(processType));
     }
 
-    if (isYbcPresent) {
+    // Stop yb-controller only if master server on node is in active role.
+    if (isYbcPresent && activeRole) {
       createServerControlTasks(nodes, ServerType.CONTROLLER, "stop")
           .setSubTaskGroupType(subGroupType);
     }

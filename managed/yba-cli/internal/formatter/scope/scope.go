@@ -16,7 +16,6 @@ import (
 const (
 	defaultScopeListing = "table {{.UUID}}\t{{.Type}}\t{{.MutableScope}}"
 
-	typeHeader            = "Type"
 	mutableScopeHeader    = "Mutable Scope"
 	numberOfConfigsHeader = "Number of Configurations"
 )
@@ -80,7 +79,7 @@ func NewScopeContext() *Context {
 	scopeCtx := Context{}
 	scopeCtx.Header = formatter.SubHeaderContext{
 		"UUID":            formatter.UUIDHeader,
-		"Type":            typeHeader,
+		"Type":            formatter.TypeHeader,
 		"MutableScope":    mutableScopeHeader,
 		"NumberOfConfigs": numberOfConfigsHeader,
 	}

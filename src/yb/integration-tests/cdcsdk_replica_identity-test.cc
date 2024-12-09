@@ -1324,5 +1324,107 @@ TEST_F(
   CheckCount(FLAGS_ysql_enable_packed_row ? expected_count_with_packed_row : expected_count, count);
 }
 
+TEST_F(CDCSDKReplicaIdentityTest, TestBeforeImageForNullOnNullUpdates) {
+  ASSERT_OK(SetUpWithParams(1, 1, false, true));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT in
+  // that order.
+  const int expected_count[] = {0, 2, 2, 2, 0, 0, 6, 6};
+  int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+  ASSERT_OK(
+      conn.Execute("CREATE TABLE test_1 (id INT PRIMARY KEY, bigint_col BIGINT, text_col text)"));
+  ASSERT_OK(
+      conn.Execute("CREATE TABLE test_2 (id INT PRIMARY KEY, bigint_col BIGINT, text_col text)"));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE test_1 REPLICA IDENTITY FULL"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_2 REPLICA IDENTITY DEFAULT"));
+
+  auto table_1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test_1"));
+  auto table_2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test_2"));
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  // Perform INSERTs such that bigint_col is NULL.
+  ASSERT_OK(conn.Execute("INSERT INTO test_1 (id, text_col) VALUES (1, 'abc')"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_2 (id, text_col) VALUES (1, 'abc')"));
+
+  // Perform UPDATEs that set bigint_col to NULL.
+  ASSERT_OK(conn.Execute("UPDATE test_1 SET bigint_col = NULL WHERE id = 1;"));
+  ASSERT_OK(conn.Execute("UPDATE test_2 SET bigint_col = NULL WHERE id = 1;"));
+
+  // Perform DELETEs.
+  ASSERT_OK(conn.Execute("DELETE FROM test_1 WHERE id = 1"));
+  ASSERT_OK(conn.Execute("DELETE FROM test_2 WHERE id = 1"));
+
+  auto get_consistent_changes_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table_1.table_id(), table_2.table_id()}, 6, true /* init_virtual_wal */));
+
+  for (auto record : get_consistent_changes_resp.records) {
+    UpdateRecordCount(record, count);
+    if (record.row_message().op() == RowMessage_Op_UPDATE) {
+      if (record.row_message().table() == "test_1") {
+        ASSERT_EQ(record.row_message().old_tuple(0).pg_ql_value().int32_value(), 1);
+        // The next two assertions verify that old tuple for bigint_col is present but its value is
+        // NULL.
+        ASSERT_EQ(record.row_message().old_tuple(1).has_pg_ql_value(), true);
+        ASSERT_EQ(record.row_message().old_tuple(1).pg_ql_value().has_int64_value(), false);
+        ASSERT_EQ(record.row_message().old_tuple(2).pg_ql_value().string_value(), "abc");
+      }
+      ASSERT_EQ(record.row_message().new_tuple(0).pg_ql_value().int32_value(), 1);
+      // The next two assertions verify that new tuple for bigint_col is present but its value is
+      // NULL.
+      ASSERT_EQ(record.row_message().new_tuple(1).has_pg_ql_value(), true);
+      ASSERT_EQ(record.row_message().new_tuple(1).pg_ql_value().has_int64_value(), false);
+      ASSERT_EQ(record.row_message().new_tuple(2).pg_ql_value().string_value(), "abc");
+    } else if (record.row_message().op() == RowMessage_Op_DELETE) {
+      if (record.row_message().table() == "test_1") {
+        ASSERT_EQ(record.row_message().old_tuple(0).pg_ql_value().int32_value(), 1);
+        // The next two assertions verify that old tuple for bigint_col is present but its value is
+        // NULL.
+        ASSERT_EQ(record.row_message().old_tuple(1).has_pg_ql_value(), true);
+        ASSERT_EQ(record.row_message().old_tuple(1).pg_ql_value().has_int64_value(), false);
+        ASSERT_EQ(record.row_message().old_tuple(2).pg_ql_value().string_value(), "abc");
+      } else {
+        ASSERT_EQ(record.row_message().old_tuple(0).pg_ql_value().int32_value(), 1);
+      }
+    }
+  }
+  for (int i = 0; i < 8; i++) {
+    ASSERT_EQ(expected_count[i], count[i]);
+  }
+}
+
+TEST_F(CDCSDKReplicaIdentityTest, TestBeforeImageForNewlyAddedColumn) {
+  ASSERT_OK(SetUpWithParams(1, 1, false, true));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY FULL"));
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 2)"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table add column new_col int"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 3, new_col=4 WHERE key=1"));
+
+  auto get_consistent_changes_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, 2, true /* init_virtual_wal */));
+
+  for (auto record : get_consistent_changes_resp.records) {
+    if (record.row_message().op() == RowMessage_Op_UPDATE) {
+      // The next two assertions verify that old tuple for newly added column is present but its
+      // value is NULL.
+      ASSERT_EQ(record.row_message().old_tuple(2).has_pg_ql_value(), true);
+      ASSERT_EQ(record.row_message().old_tuple(2).pg_ql_value().has_int32_value(), false);
+      // Assert that the new tuple contains correct value for newly added column.
+      ASSERT_EQ(record.row_message().new_tuple(2).pg_ql_value().int32_value(), 4);
+    }
+  }
+}
+
 } // namespace cdc
 } // namespace yb

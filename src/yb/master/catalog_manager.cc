@@ -501,6 +501,10 @@ DEFINE_RUNTIME_bool(enable_tablet_split_of_cdcsdk_streamed_tables, true,
     "When set, it enables automatic tablet splitting for tables that are part of a "
     "CDCSDK stream");
 
+DEFINE_RUNTIME_bool(enable_tablet_split_of_replication_slot_streamed_tables, false,
+    "When set, it enables automatic tablet splitting for tables that are part of replication "
+    "slot's stream metadata");
+
 METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_live,
                            "Number of live tservers in the cluster", yb::MetricUnit::kUnits,
                            "The number of tablet servers that have responded or done a heartbeat "
@@ -1301,7 +1305,17 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
 
     // Abort any outstanding tasks. All CatalogEntities are orphaned below, so
     // it's important to end their tasks now.
-    AbortAndWaitForAllTasksUnlocked();
+    //
+    // N.B. This doesn't actually wait for anything at all.
+    // See https://github.com/yugabyte/yugabyte-db/issues/18634
+    //
+    // The async task framework provides a hook, the Finished method, for subclasses to perform
+    // additional actions when the task has finished its main work. This method is also called when
+    // a task is aborted. Some tasks ie. tablet snapshot tasks call catalog manager methods that
+    // acquire the mutex_. Because we don't use reentrant mutexes this deadlocks the server. So we
+    // pass a boolean parameter here to the async task framework to skip calling the Finished
+    // method.
+    AbortAndWaitForAllTasksUnlocked(/* call_task_finisher */ false);
 
     if (FLAGS_enable_ysql) {
       // Number of TS to wait for before creating the txn table.
@@ -2302,7 +2316,8 @@ Status CatalogManager::ValidateTableReplicationInfo(
 }
 
 Result<shared_ptr<TablespaceIdToReplicationInfoMap>> CatalogManager::GetYsqlTablespaceInfo() {
-  auto table_info = GetTableInfo(kPgTablespaceTableId);
+  auto table_info =
+      GetTableInfo(VERIFY_RESULT(GetVersionSpecificCatalogTableId(kPgTablespaceTableId)));
   if (table_info == nullptr) {
     return STATUS(InternalError, "pg_tablespace table info not found");
   }
@@ -2476,8 +2491,10 @@ Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablesp
                    << nsid << " with error: " << table_tablespace_status.ToString();
     }
 
-    const bool pg_yb_tablegroup_exists = VERIFY_RESULT(DoesTableExist(FindTableById(
-      GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid))));
+    const TableId tablegroup_table_id = VERIFY_RESULT(
+        GetVersionSpecificCatalogTableId(GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid)));
+    const bool pg_yb_tablegroup_exists =
+        VERIFY_RESULT(DoesTableExist(FindTableById(tablegroup_table_id)));
 
     // no pg_yb_tablegroup means we only need to check pg_class
     if (table_tablespace_status.ok() && !pg_yb_tablegroup_exists) {
@@ -3101,6 +3118,15 @@ Status CatalogManager::XReplValidateSplitCandidateTableUnlocked(const TableId& t
         " a CDCSDK stream, table_id: $0",
         table_id);
   }
+
+  if (!FLAGS_enable_tablet_split_of_replication_slot_streamed_tables &&
+      IsTablePartOfCDCSDK(table_id, true /* require_replication_slot */)) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for tables that are a part of a replication slot, "
+        "table_id: $0",
+        table_id);
+  }
   return Status::OK();
 }
 
@@ -3226,161 +3252,186 @@ Result<ColocationId> ConceiveColocationId(
 
 }  // namespace
 
-Status CatalogManager::CreateYsqlSysTable(
-    const CreateTableRequestPB* req, CreateTableResponsePB* resp, const LeaderEpoch& epoch,
-    tablet::ChangeMetadataRequestPB* change_meta_req, SysCatalogWriter* writer) {
-  LOG(INFO) << "CreateYsqlSysTable: " << req->name();
-  // Lookup the namespace and verify if it exists.
-  TRACE("Looking up namespace");
-  auto ns = VERIFY_RESULT(FindNamespace(req->namespace_()));
-  const NamespaceId& namespace_id = ns->id();
-  const NamespaceName& namespace_name = ns->name();
-
+struct CatalogManager::CreateYsqlSysTableData {
+  CreateTableRequestPB req;
+  CreateTableResponsePB resp;
   Schema schema;
-  RETURN_NOT_OK(SchemaFromPB(req->schema(), &schema));
-  // If the schema contains column ids, we are copying a Postgres table from one namespace to
-  // another. Anyway, validate the schema.
-  RETURN_NOT_OK(ValidateCreateTableSchema(schema, resp));
-  if (!schema.has_column_ids()) {
-    schema.InitColumnIdsByDefault();
-  }
-  schema.mutable_table_properties()->set_is_ysql_catalog_table(true);
-
-  // Verify no hash partition schema is specified.
-  if (req->partition_schema().has_hash_schema()) {
-    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA,
-                      STATUS(InvalidArgument,
-                             "PostgreSQL system catalog tables are non-partitioned"));
-  }
-
-  if (req->table_type() != TableType::PGSQL_TABLE_TYPE) {
-    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA,
-                      STATUS_FORMAT(
-                          InvalidArgument,
-                          "Expected table type to be PGSQL_TABLE_TYPE ($0), got $1 ($2)",
-                          PGSQL_TABLE_TYPE,
-                          TableType_Name(req->table_type())));
-
-  }
-
-  // Create partition schema and one partition.
   PartitionSchema partition_schema;
-  vector<Partition> partitions;
-  RETURN_NOT_OK(partition_schema.CreatePartitions(1, &partitions));
+  std::vector<Partition> partitions;
+  TransactionMetadata txn;
+  TableInfoPtr table;
+
+  Status InitRequest(
+      uint32_t database_oid, const TableId& table_id, const PersistentTableInfo& info) {
+    req.set_name(info.pb.name());
+    req.mutable_namespace_()->set_id(info.namespace_id());
+    req.set_table_type(PGSQL_TABLE_TYPE);
+    req.mutable_schema()->CopyFrom(info.schema());
+    req.set_is_pg_catalog_table(true);
+    req.set_table_id(table_id);
+
+    if (IsIndex(info.pb)) {
+      const uint32_t indexed_table_oid =
+        VERIFY_RESULT(GetPgsqlTableOid(GetIndexedTableId(info.pb)));
+      const TableId indexed_table_id = GetPgsqlTableId(database_oid, indexed_table_oid);
+
+      // Set index_info.
+      // Previously created INDEX wouldn't have the attribute index_info.
+      if (info.pb.has_index_info()) {
+        req.mutable_index_info()->CopyFrom(info.pb.index_info());
+        req.mutable_index_info()->set_indexed_table_id(indexed_table_id);
+      }
+
+      // Set deprecated field for index_info.
+      req.set_indexed_table_id(indexed_table_id);
+      req.set_is_local_index(PROTO_GET_IS_LOCAL(info.pb));
+      req.set_is_unique_index(PROTO_GET_IS_UNIQUE(info.pb));
+    }
+
+    return CompleteInit();
+  }
+
+  Status InitRequest(const CreateTableRequestPB& req_) {
+    req = req_;
+    return CompleteInit();
+  }
+
+  Status CompleteInit() {
+    LOG(INFO) << "CreateYsqlSysTable: " << req.name();
+
+    // Verify no hash partition schema is specified.
+    if (req.partition_schema().has_hash_schema()) {
+      return SetupError(resp.mutable_error(), MasterErrorPB::INVALID_SCHEMA,
+                        STATUS(InvalidArgument,
+                               "PostgreSQL system catalog tables are non-partitioned"));
+    }
+
+    if (req.table_type() != TableType::PGSQL_TABLE_TYPE) {
+      return SetupError(resp.mutable_error(), MasterErrorPB::INVALID_SCHEMA,
+                        STATUS_FORMAT(
+                            InvalidArgument,
+                            "Expected table type to be PGSQL_TABLE_TYPE ($0), got $1 ($2)",
+                            PGSQL_TABLE_TYPE,
+                            TableType_Name(req.table_type())));
+
+    }
+
+    RETURN_NOT_OK(SchemaFromPB(req.schema(), &schema));
+    // If the schema contains column ids, we are copying a Postgres table from one namespace to
+    // another. Anyway, validate the schema.
+    RETURN_NOT_OK(ValidateCreateTableSchema(schema, &resp));
+    if (!schema.has_column_ids()) {
+      schema.InitColumnIdsByDefault();
+    }
+    schema.mutable_table_properties()->set_is_ysql_catalog_table(true);
+
+    // Create partition schema and one partition.
+    RETURN_NOT_OK(partition_schema.CreatePartitions(1, &partitions));
+
+    // Tables with a transaction should be rolled back if the transaction does not get committed.
+    // Store this on the table persistent state until the transaction has been a verified success.
+    if (req.has_transaction() && FLAGS_enable_transactional_ddl_gc) {
+      txn = VERIFY_RESULT(TransactionMetadata::FromPB(req.transaction()));
+      RSTATUS_DCHECK(!txn.status_tablet.empty(), Corruption, "Given incomplete Transaction");
+    }
+
+    return Status::OK();
+  }
+};
+
+Status CatalogManager::CreateYsqlSysTableInMemory(
+    const NamespaceInfo& ns, CreateYsqlSysTableData& data) {
+  auto& table = data.table;
 
   // Create table info in memory.
-  scoped_refptr<TableInfo> table;
-  TabletInfoPtr sys_catalog_tablet;
-  {
-    LockGuard lock(mutex_);
-    TRACE("Acquired catalog manager lock");
+  TRACE("Acquired catalog manager lock");
 
-    // Verify that the table does not exist, or has been deleted.
-    table = tables_->FindTableOrNull(req->table_id());
-    if (table != nullptr && !table->is_deleted()) {
-      Status s = STATUS_SUBSTITUTE(AlreadyPresent,
-          "YSQL table '$0.$1' (ID: $2) already exists", ns->name(), table->name(), table->id());
-      LOG(WARNING) << "Found table: " << table->ToStringWithState()
-                   << ". Failed creating YSQL system table with error: "
-                   << s.ToString() << " Request:\n" << req->DebugString();
-      // Technically, client already knows table ID, but we set it anyway for unified handling of
-      // AlreadyPresent errors. See comment in CreateTable()
-      resp->set_table_id(table->id());
-      return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
-    }
-
-    RETURN_NOT_OK(CreateTableInMemory(
-        *req, schema, partition_schema, namespace_id, namespace_name, partitions,
-        /* colocated */ false, IsSystemObject::kTrue, /* index_info */ nullptr,
-        /* tablets */ nullptr, resp, &table));
-
-    sys_catalog_tablet = tablet_map_->find(kSysCatalogTabletId)->second;
+  // Verify that the table does not exist, or has been deleted.
+  table = tables_->FindTableOrNull(data.req.table_id());
+  if (table != nullptr && !table->is_deleted()) {
+    Status s = STATUS_SUBSTITUTE(AlreadyPresent,
+        "YSQL table '$0.$1' (ID: $2) already exists", ns.name(), table->name(), table->id());
+    LOG(WARNING) << "Found table: " << table->ToStringWithState()
+                 << ". Failed creating YSQL system table with error: "
+                 << s.ToString() << " Request:\n" << data.req.ShortDebugString();
+    // Technically, client already knows table ID, but we set it anyway for unified handling of
+    // AlreadyPresent errors. See comment in CreateTable()
+    data.resp.set_table_id(table->id());
+    return SetupError(data.resp.mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
   }
 
-  // Tables with a transaction should be rolled back if the transaction does not get committed.
-  // Store this on the table persistent state until the transaction has been a verified success.
-  TransactionMetadata txn;
-  if (req->has_transaction() && FLAGS_enable_transactional_ddl_gc) {
-    table->mutable_metadata()->mutable_dirty()->pb.mutable_transaction()->
-        CopyFrom(req->transaction());
-    txn = VERIFY_RESULT(TransactionMetadata::FromPB(req->transaction()));
-    RSTATUS_DCHECK(!txn.status_tablet.empty(), Corruption, "Given incomplete Transaction");
+  RETURN_NOT_OK(CreateTableInMemory(
+      data.req, data.schema, data.partition_schema, ns.id(), ns.name(), data.partitions,
+      /* colocated */ false, IsSystemObject::kTrue, /* index_info */ nullptr,
+      /* tablets */ nullptr, &data.resp, &table));
+
+  if (!data.txn.transaction_id.IsNil()) {
+    *table->mutable_metadata()->mutable_dirty()->pb.mutable_transaction() = data.req.transaction();
   }
 
-  {
-    auto tablet_lock = sys_catalog_tablet->LockForWrite();
-    tablet_lock.mutable_data()->pb.add_table_ids(table->id());
-    Status s;
-    if (!writer) {
-      s = sys_catalog_->Upsert(epoch, sys_catalog_tablet);
-    } else {
-      s = writer->Mutate<false>(QLWriteRequestPB::QL_STMT_UPDATE, sys_catalog_tablet);
-    }
+  return Status::OK();
+}
 
-    if (PREDICT_FALSE(!s.ok())) {
-      return AbortTableCreation(
-          table.get(), {}, s.CloneAndPrepend("An error occurred while inserting to sys-tablets: "),
-          resp);
-    }
-    RETURN_NOT_OK(table->AddTablet(sys_catalog_tablet));
-    // TODO(zdrudi): to handle the new format for the sys tablet, set the child table's parent table
-    // id and add to the tablet's in-memory list of hosted table ids.
-    tablet_lock.Commit();
-  }
-  TRACE("Inserted new table info into CatalogManager maps");
+Status CatalogManager::AddYsqlSysTableToSystemTablet(
+    const TabletInfoPtr& sys_catalog_tablet, CreateYsqlSysTableData& data,
+    TabletInfo::WriteLock& lock) {
+  lock.mutable_data()->pb.add_table_ids(data.table->id());
+  return data.table->AddTablet(sys_catalog_tablet);
+}
 
+Status CatalogManager::CompleteCreateYsqlSysTable(
+    CreateYsqlSysTableData& data, const LeaderEpoch& epoch,
+    tablet::ChangeMetadataRequestPB* change_meta_req, SysCatalogWriter* writer) {
   // Update the on-disk table state to "running".
-  table->mutable_metadata()->mutable_dirty()->pb.set_state(SysTablesEntryPB::RUNNING);
+  data.table->mutable_metadata()->mutable_dirty()->pb.set_state(SysTablesEntryPB::RUNNING);
 
   TEST_PAUSE_IF_FLAG(TEST_pause_before_upsert_ysql_sys_table);
   Status s;
   if (!writer) {
-    s = sys_catalog_->Upsert(epoch, table);
+    s = sys_catalog_->Upsert(epoch, data.table);
   } else {
     // The generation fence around sys catalog writes is bypassed here, but we go through it
     // above. Ideally we'd go through the check here as well but it's checked higher up in the sys
     // catalog API. Skipping the check here is safe because we're creating a new table as
     // opposed to overwriting an existing table.
-    s = writer->Mutate<false>(QLWriteRequestPB::QL_STMT_UPDATE, table);
+    s = writer->Mutate<false>(QLWriteRequestPB::QL_STMT_UPDATE, data.table);
   }
   if (PREDICT_FALSE(!s.ok())) {
     return AbortTableCreation(
-        table.get(), {}, s.CloneAndPrepend("An error occurred while inserting to sys-tablets: "),
-        resp);
+        data.table.get(), {},
+        s.CloneAndPrepend("An error occurred while inserting to sys-tablets: "), &data.resp);
   }
   TRACE("Wrote table to system table");
 
   // Commit the in-memory state.
-  table->mutable_metadata()->CommitMutation();
+  data.table->mutable_metadata()->CommitMutation();
 
   // Verify Transaction gets committed, which occurs after table create finishes.
-  if (req->has_transaction() && PREDICT_TRUE(FLAGS_enable_transactional_ddl_gc)) {
-    LOG(INFO) << "Enqueuing table for Transaction Verification: " << req->name();
-    ScheduleVerifyTablePgLayer(txn, table, epoch);
+  if (data.req.has_transaction() && PREDICT_TRUE(FLAGS_enable_transactional_ddl_gc)) {
+    LOG(INFO) << "Enqueuing table for Transaction Verification: " << data.req.name();
+    ScheduleVerifyTablePgLayer(data.txn, data.table, epoch);
   }
 
   tablet::ChangeMetadataRequestPB change_req;
-  tablet::TableInfoPB* add_table;
-  bool batching = true;
   if (!change_meta_req) {
     change_meta_req = &change_req;
-    batching = false;
   }
+  tablet::TableInfoPB* add_table;
 
   change_meta_req->set_tablet_id(kSysCatalogTabletId);
 
-  if (batching) {
+  if (writer) {
     add_table = change_meta_req->add_add_multiple_tables();
   } else {
     add_table = change_meta_req->mutable_add_table();
   }
   CatalogManagerUtil::FillTableInfoPB(
-      req->table_id(), req->name(), TableType::PGSQL_TABLE_TYPE, schema, /* schema_version */ 0,
-      partition_schema, add_table);
+      data.req.table_id(), data.req.name(), TableType::PGSQL_TABLE_TYPE, data.schema,
+      /* schema_version */ 0, data.partition_schema, add_table);
 
   // If not batched then perform change metadata operation now,
   // otherwise the caller is responsible for doing it.
-  if (!batching) {
+  if (!writer) {
     RETURN_NOT_OK(tablet::SyncReplicateChangeMetadataOperation(
         change_meta_req, sys_catalog_->tablet_peer().get(), epoch.leader_term));
   }
@@ -3390,6 +3441,35 @@ Status CatalogManager::CreateYsqlSysTable(
     initial_snapshot_writer_->AddMetadataChange(*change_meta_req);
   }
   return Status::OK();
+}
+
+Status CatalogManager::CreateYsqlSysTable(
+    const NamespaceInfo& ns, CreateYsqlSysTableData& data, const LeaderEpoch& epoch,
+    tablet::ChangeMetadataRequestPB* change_meta_req, SysCatalogWriter* writer) {
+  TabletInfoPtr sys_catalog_tablet;
+  {
+    LockGuard lock(mutex_);
+    RETURN_NOT_OK(CreateYsqlSysTableInMemory(ns, data));
+    sys_catalog_tablet = tablet_map_->find(kSysCatalogTabletId)->second;
+  }
+  {
+    auto tablet_lock = sys_catalog_tablet->LockForWrite();
+    auto s = AddYsqlSysTableToSystemTablet(sys_catalog_tablet, data, tablet_lock);
+    if (s.ok()) {
+      s = sys_catalog_->Upsert(epoch, sys_catalog_tablet);
+    }
+    if (PREDICT_FALSE(!s.ok())) {
+      return AbortTableCreation(
+          data.table.get(), {},
+          s.CloneAndPrepend("An error occurred while inserting to sys-tablets: "), &data.resp);
+    }
+    // TODO(zdrudi): to handle the new format for the sys tablet, set the child table's parent table
+    // id and add to the tablet's in-memory list of hosted table ids.
+    tablet_lock.Commit();
+  }
+  TRACE("Inserted new table info into CatalogManager maps");
+
+  return CompleteCreateYsqlSysTable(data, epoch, change_meta_req, writer);
 }
 
 Status CatalogManager::ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
@@ -3461,20 +3541,25 @@ Status CatalogManager::GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB*
   return Status::OK();
 }
 
-Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
+Status CatalogManager::CopyPgsqlSysTables(const NamespaceInfo& ns,
                                           const std::vector<scoped_refptr<TableInfo>>& tables,
                                           const LeaderEpoch& epoch) {
-  if (tables.empty()) return Status::OK();
-  const uint32_t database_oid = CHECK_RESULT(GetPgsqlDatabaseOid(namespace_id));
+  if (tables.empty()) {
+    return Status::OK();
+  }
+  const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(ns.id()));
   vector<TableId> source_table_ids;
   vector<TableId> target_table_ids;
   tablet::ChangeMetadataRequestPB change_meta_req;
-  bool batching = false;
-  auto writer = sys_catalog_->NewWriter(epoch.leader_term);
-  for (const auto& table : tables) {
-    CreateTableRequestPB table_req;
-    CreateTableResponsePB table_resp;
+  // No batching for initdb or if flag is not set.
+  auto batching = !initial_snapshot_writer_ && FLAGS_batch_ysql_system_tables_metadata;
+  std::vector<CreateYsqlSysTableData> table_datas;
+  if (batching) {
+    table_datas.reserve(tables.size());
+  }
+  auto writer = batching ? sys_catalog_->NewWriter(epoch.leader_term) : nullptr;
 
+  for (const auto& table : tables) {
     const uint32_t table_oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
     const TableId table_id = GetPgsqlTableId(database_oid, table_oid);
 
@@ -3486,52 +3571,50 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
       continue;
     }
 
-    table_req.set_name(l->pb.name());
-    table_req.mutable_namespace_()->set_id(namespace_id);
-    table_req.set_table_type(PGSQL_TABLE_TYPE);
-    table_req.mutable_schema()->CopyFrom(l->schema());
-    table_req.set_is_pg_catalog_table(true);
-    table_req.set_table_id(table_id);
-
-    if (IsIndex(l->pb)) {
-      const uint32_t indexed_table_oid =
-        VERIFY_RESULT(GetPgsqlTableOid(GetIndexedTableId(l->pb)));
-      const TableId indexed_table_id = GetPgsqlTableId(database_oid, indexed_table_oid);
-
-      // Set index_info.
-      // Previously created INDEX wouldn't have the attribute index_info.
-      if (l->pb.has_index_info()) {
-        table_req.mutable_index_info()->CopyFrom(l->pb.index_info());
-        table_req.mutable_index_info()->set_indexed_table_id(indexed_table_id);
-      }
-
-      // Set deprecated field for index_info.
-      table_req.set_indexed_table_id(indexed_table_id);
-      table_req.set_is_local_index(PROTO_GET_IS_LOCAL(l->pb));
-      table_req.set_is_unique_index(PROTO_GET_IS_UNIQUE(l->pb));
+    CreateYsqlSysTableData table_data;
+    if (batching) {
+      table_datas.emplace_back();
     }
+    auto& data = batching ? table_datas.back() : table_data;
 
-    // When we pass change_meta_req, we are deferring metadata change for the entire batch
-    // together in one go.
-    Status s;
-    // No batching for initdb or if flag is not set.
-    if (initial_snapshot_writer_ || !FLAGS_batch_ysql_system_tables_metadata) {
-      s = CreateYsqlSysTable(&table_req, &table_resp, epoch);
-      batching = false;
-    } else {
-      s = CreateYsqlSysTable(&table_req, &table_resp, epoch, &change_meta_req, writer.get());
-      batching = true;
+    Status status = data.InitRequest(database_oid, table_id, l.data());
+    if (status.ok() && !batching) {
+      status = CreateYsqlSysTable(ns, data, epoch);
     }
-    if (!s.ok()) {
-      return s.CloneAndPrepend(Substitute(
-          "Failure when creating PGSQL System Tables: $0", table_resp.error().ShortDebugString()));
+    if (!status.ok()) {
+      return status.CloneAndPrepend(Substitute(
+          "Failure when creating PGSQL System Tables: $0",
+          data.resp.error().ShortDebugString()));
     }
 
     source_table_ids.push_back(table->id());
     target_table_ids.push_back(table_id);
   }
 
-  if (batching) {
+  if (!table_datas.empty()) {
+    TabletInfoPtr sys_catalog_tablet;
+    {
+      LockGuard lock(mutex_);
+      for (auto& data : table_datas) {
+        RETURN_NOT_OK(CreateYsqlSysTableInMemory(ns, data));
+      }
+      sys_catalog_tablet = tablet_map_->find(kSysCatalogTabletId)->second;
+    }
+    {
+      auto tablet_lock = sys_catalog_tablet->LockForWrite();
+      for (auto& data : table_datas) {
+        RETURN_NOT_OK(AddYsqlSysTableToSystemTablet(sys_catalog_tablet, data, tablet_lock));
+      }
+      RETURN_NOT_OK(writer->Mutate<false>(
+          QLWriteRequestPB::QL_STMT_UPDATE, sys_catalog_tablet));
+
+      tablet_lock.Commit();
+    }
+
+    for (auto& data : table_datas) {
+      RETURN_NOT_OK(CompleteCreateYsqlSysTable(data, epoch, &change_meta_req, writer.get()));
+    }
+
     // Sync change metadata requests for the entire batch.
     RETURN_NOT_OK(tablet::SyncReplicateChangeMetadataOperation(
         &change_meta_req, sys_catalog_->tablet_peer().get(), epoch.leader_term));
@@ -3701,8 +3784,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   auto ns = VERIFY_RESULT(FindNamespace(orig_req->namespace_()));
 
   // If we're doing a ysql major catalog upgrade, then for a user table, we expect it to already
-  // exist. We will wire the PG15 catalog to it. For a PG catalog table, we expect it to be creating
-  // the new version's PG catalog, and so the table must not already exist.
+  // exist. We will wire the current version's catalog to it. For a PG catalog table, we expect it
+  // to be creating the new version's PG catalog, and so the table must not already exist.
   if (IsYsqlMajorCatalogUpgradeInProgress()) {
     LockGuard lock(mutex_);
     auto ns_lock = ns->LockForRead();
@@ -3730,7 +3813,14 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   if (is_pg_catalog_table) {
     // No batching for migration.
-    return CreateYsqlSysTable(orig_req, resp, epoch);
+    auto ns = VERIFY_RESULT(FindNamespace(orig_req->namespace_()));
+    CreateYsqlSysTableData data;
+    auto result = data.InitRequest(*orig_req);
+    if (result.ok()) {
+      result = CreateYsqlSysTable(*ns, data, epoch);
+    }
+    *resp = data.resp;
+    return result;
   }
 
   if (!orig_req->old_rewrite_table_id().empty()) {
@@ -4081,6 +4171,12 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         // Adding a table to an existing colocation tablet.
         if (is_vector_index) {
           tablets = VERIFY_RESULT(indexed_table->GetTablets());
+          auto options = req.index_info().vector_idx_options();
+          if (options.idx_type() != PgVectorIndexType::DUMMY &&
+              tablets.size() != 1) {
+            return STATUS(InvalidArgument,
+              "Copartitioned vector index must have only one tablet for now.");
+          }
         } else {
           auto tablet = tablegroup ?
               tablegroup->tablet() :
@@ -4549,7 +4645,7 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
       req, schema, partition_schema, namespace_id, namespace_name, colocated, index_info);
   const TableId& table_id = (*table)->id();
 
-  VLOG_WITH_PREFIX_AND_FUNC(2)
+  LOG_WITH_PREFIX_AND_FUNC(INFO)
       << "Table: " << (**table).ToString() << ", create_tablets: " << (tablets ? "YES" : "NO");
 
   auto table_map_checkout = tables_.CheckOut();
@@ -5136,9 +5232,8 @@ Result<IsOperationDoneResult> CatalogManager::IsCreateTableDone(const TableInfoP
       GetTableSchemaRequestPB get_schema_req;
       GetTableSchemaResponsePB get_schema_resp;
       get_schema_req.mutable_table()->set_table_id(indexed_table_id);
-      const bool get_fully_applied_indexes = true;
       RETURN_NOT_OK(GetTableSchemaInternal(
-          &get_schema_req, &get_schema_resp, get_fully_applied_indexes));
+          &get_schema_req, &get_schema_resp, /* always_get_fully_applied_indexes= */ true));
 
       bool done = false;
       for (const auto& index : get_schema_resp.indexes()) {
@@ -5483,7 +5578,8 @@ Result<scoped_refptr<TableInfo>> CatalogManager::FindTableUnlocked(
     // We can't lookup YSQL table by name because Postgres concept of "schemas"
     // introduces ambiguity.
     if (namespace_info->database_type() == YQL_DATABASE_PGSQL) {
-      return STATUS(InvalidArgument, "Cannot lookup YSQL table by name");
+      return STATUS_FORMAT(
+          InvalidArgument, "Cannot lookup YSQL table $0 by name", table_identifier);
     }
 
     auto it = table_names_map_.find({namespace_info->id(), table_identifier.table_name()});
@@ -5565,7 +5661,7 @@ Result<scoped_refptr<NamespaceInfo>> CatalogManager::FindNamespaceUnlocked(
                 ns_identifier.ShortDebugString(), MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
 }
 
-Result<scoped_refptr<NamespaceInfo>> CatalogManager::FindNamespace(
+Result<NamespaceInfoPtr> CatalogManager::FindNamespace(
     const NamespaceIdentifierPB& ns_identifier) const {
   SharedLock lock(mutex_);
   return FindNamespaceUnlocked(ns_identifier);
@@ -6156,7 +6252,7 @@ void CatalogManager::AcquireObjectLocks(
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"));
     return;
   }
-  object_lock_info_manager_->LockObject(req, resp, std::move(rpc));
+  object_lock_info_manager_->LockObject(*req, resp, std::move(rpc));
 }
 
 void CatalogManager::ReleaseObjectLocks(
@@ -6169,7 +6265,7 @@ void CatalogManager::ReleaseObjectLocks(
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"));
     return;
   }
-  object_lock_info_manager_->UnlockObject(req, resp, std::move(rpc));
+  object_lock_info_manager_->UnlockObject(*req, resp, std::move(rpc));
 }
 
 void CatalogManager::ExportObjectLockInfo(
@@ -7085,10 +7181,10 @@ Status ApplyAlterSteps(server::Clock* clock,
 }
 
 // Verifies that the request steps are to drop columns, the columns are not present in the YB
-// master's schema, and the columns being dropped were dropped previously in PG11. The PG restore
-// process created the table with a dummy column in this column's place, but we returned early from
-// CreateTable, whose existing schema doesn't have the dropped column.
-// For use only during a ysql major catalog upgrade.
+// master's schema, and the columns being dropped were dropped previously in the prior version. The
+// PG restore process created the table with a dummy column in this column's place, but we returned
+// early from CreateTable, whose existing schema doesn't have the dropped column. For use only
+// during a ysql major catalog upgrade.
 Status VerifyDroppedColumnsForUpgrade(
     const Schema& schema,
     const google::protobuf::RepeatedPtrField<AlterTableRequestPB::Step>& steps) {
@@ -7197,6 +7293,12 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   TRACE("Locking table");
   auto l = table->LockForWrite();
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
+
+  if (l->pb.state() == SysTablesEntryPB::PREPARING) {
+    return STATUS_EC_FORMAT(
+        TryAgain, MasterError(MasterErrorPB::TABLE_NOT_RUNNING), "Table $0 is not ready yet",
+        table->name());
+  }
 
   // If the table is already undergoing an alter operation, return failure.
   if (req->ysql_yb_ddl_rollback_enabled() && l->has_ysql_ddl_txn_verifier_state()) {
@@ -7546,28 +7648,27 @@ Result<NamespaceId> CatalogManager::GetTableNamespaceId(TableId table_id) {
 
 Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
                                       GetTableSchemaResponsePB* resp) {
+  return GetTableSchemaInternal(req, resp, /* always_get_fully_applied_indexes= */ false);
+}
+
+Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req,
+                                              GetTableSchemaResponsePB* resp,
+                                              bool always_get_fully_applied_indexes) {
   VLOG(1) << "Servicing GetTableSchema request for " << req->ShortDebugString();
 
   // Lookup the table and verify if it exists.
   TRACE("Looking up table");
-  scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
+  auto table = VERIFY_RESULT(FindTable(req->table()));
+  if (req->check_exists_only()) {
+    return Status::OK();
+  }
 
   // Due to differences in the way proxies handle version mismatch (pull for yql vs push for sql).
   // For YQL tables, we will return the "set of indexes" being applied instead of the ones
   // that are fully completed.
   // For PGSQL (and other) tables we want to return the fully applied schema.
-  const bool get_fully_applied_indexes = table->GetTableType() != TableType::YQL_TABLE_TYPE;
-  return GetTableSchemaInternal(req, resp, get_fully_applied_indexes);
-}
-
-Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req,
-                                              GetTableSchemaResponsePB* resp,
-                                              bool get_fully_applied_indexes) {
-  VLOG(1) << "Servicing GetTableSchema request for " << req->ShortDebugString();
-
-  // Lookup the table and verify if it exists.
-  TRACE("Looking up table");
-  scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
+  auto get_fully_applied_indexes =
+      always_get_fully_applied_indexes || table->GetTableType() != TableType::YQL_TABLE_TYPE;
 
   TRACE("Locking table");
   auto l = table->LockForRead();
@@ -8365,18 +8466,18 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
                                const scoped_refptr<NamespaceInfo>& ns, bool by_id) -> Status {
       Status return_status;
       if (is_ysql_major_upgrade_in_progress) {
-        // During a ysql major catalog upgrade, each system namespace (template1, template0,
+        // During a ysql major catalog upgrade, each *system* namespace (template1, template0,
         // postgres, yugabyte, and system_platform) is "created" twice: once by initdb, and then
         // once again after a DROP DATABASE that's part of upstream Postgres's dump and restore
-        // process. In both cases, the PG11 version of the namespace must already exist, and we re-
-        // use it. Therefore it's an error if ns is nullptr.
+        // process. In both cases, the namespace must already exist in DocDB for the prior version,
+        // and we reuse it. Therefore, it's an error if ns is nullptr.
         //
         // The first time through this process, ysql_next_major_version_state is NEXT_VER_RUNNING.
         // The second time, it's NEXT_VER_DELETED, as a means to work around the fact we're only
-        // effectively "dropping" and "recreating" the not-yet-in-use PG15 namespace.
+        // effectively "dropping" and "recreating" the not-yet-in-use current-version namespace.
         //
         // User-created namespaces are expected to be "created" once by pg_restore. In this case,
-        // the PG11 version of the namespace must already exist, and we will re-use it.
+        // again, the DocDB namespace already exists for the prior version, and we will re-use it.
         if (ns == nullptr) {
           std::string context;
           if (by_id) {
@@ -8422,8 +8523,8 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
       return Status::OK();
     };
 
-    // Verify that the namespace with same id does not already exist, except in the case of online
-    // PG11 -> PG15 upgrade, in which case it will be reused.
+    // Verify that the namespace with same id does not already exist, except in the case of ysql
+    // major catalog upgrade, in which case it will be reused.
     ns = FindPtrOrNull(namespace_ids_map_, req->namespace_id());
     RETURN_NOT_OK(check_ns_errors(ns, true /* by_id */));
 
@@ -8435,8 +8536,8 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
 
     // Add the new namespace.
 
-    // Create unique id for this new namespace, unless it already exists in the online PG11->PG15
-    // upgrade case.
+    // Create unique id for this new namespace, unless it already exists in the online ysql major
+    // version catalog upgrade case.
     if (!IsYsqlMajorCatalogUpgradeInProgress()) {
       NamespaceId new_id = !req->namespace_id().empty()
                                ? req->namespace_id()
@@ -8448,9 +8549,9 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     metadata->set_name(req->name());
     metadata->set_database_type(db_type);
     metadata->set_colocated(req->colocated());
-    // Note that during online PG11 -> PG15 upgrade, a namespace whose PG15 catalogs are being
-    // prepared will switch into state PREPARING. This is safe because DDLs are not allowed during
-    // the upgrade.
+    // Note that during online ysql major version catalog upgrade, a namespace whose current-version
+    // catalogs are being prepared will switch into state PREPARING. This is safe because DDLs are
+    // not allowed during the upgrade.
     metadata->set_state(SysNamespaceEntryPB::PREPARING);
 
     // For namespace created for a Postgres database, save the list of tables and indexes for
@@ -8468,29 +8569,30 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
           // The expectation is that we're copying "all" of the PG tables from the source namespace
           // to the target namespace. There are 3 situations in which we copy a namespace:
           //  1) initdb, during a clean install
-          //  2) initdb, running as part of a PG11 to PG15 upgrade
+          //  2) initdb, running as part of a ysql major catalog upgrade
           //  3) steady state in either case (post-universe-creation, or post-upgrade)
           //
           // What does "all" mean in these cases?
-          //  * In case #1, it means all PG tables, though they will all be PG15 catalog tables.
-          //  * In case #2, it means only PG15 system catalog tables, because PG11 catalog tables
-          //    and user tables (which do not have a version) have already been added to the
-          //    namespace previously.
-          //  * In case #3, it means all PG tables. Valid tables are either PG15 catalog tables or
-          //    user tables (which do not have a version). Any PG11 catalog tables are around just
-          //    because they have not been cleaned up yet.
+          //  * In case #1, it means all PG tables, though they will all be current-version catalog
+          //    tables.
+          //  * In case #2, it means only current-version system catalog tables, because prior-
+          //    version catalog tables and user tables (which do not have a version) have already
+          //    been added to the namespace previously.
+          //  * In case #3, it means all PG tables. Valid tables are either current-version catalog
+          //    tables, or user tables (which do not have a version). Any prior-version catalog
+          //    tables are around just because they haven't been cleaned up yet.
           //
-          // So in case #2, we must accept only PG15 catalog tables.
+          // So in case #2, we must accept only current-version catalog tables.
           const auto& table_id = table->id();
           if (IsPgsqlId(table_id) && CHECK_RESULT(GetPgsqlDatabaseOid(table_id)) == *source_oid) {
             if (IsYsqlMajorCatalogUpgradeInProgress()) {
-              if (!IsPg15CatalogId(table_id)) {
+              if (!IsCurrentVersionCatalogId(table_id)) {
                 continue;
               }
             } else {
-              // YB_TODO: Remove when we support cleanup of PG11 catalog tables after the YSQL
-              // major version upgrade.
-              if (IsPg11CatalogId(table_id)) {
+              // YB_TODO: Remove when we support cleanup of prior-version catalog tables after the
+              // YSQL major version upgrade.
+              if (IsPriorVersionCatalogId(table_id)) {
                 continue;
               }
             }
@@ -8655,26 +8757,23 @@ void CatalogManager::ProcessPendingNamespace(
     return;
   }
 
-  scoped_refptr<NamespaceInfo> ns;
-  {
-    LockGuard lock(mutex_);
-    ns = FindPtrOrNull(namespace_ids_map_, id);
-  }
-  if (ns == nullptr) {
+  auto ns_res = FindNamespaceById(id);
+  if (!ns_res.ok()) {
     LOG(WARNING) << Format(
-        "Pending namespace with id $0 not found in ids map, cannot finish namespace creation. ",
+        "Pending namespace with id $0 not found in ids map, cannot finish namespace creation",
         id);
     return;
   }
+  auto& ns = **ns_res;
 
   // Copy the system tables necessary to create this namespace.  This can be time-intensive.
-  Status status = CopyPgsqlSysTables(ns->id(), template_tables, epoch);
+  Status status = CopyPgsqlSysTables(ns, template_tables, epoch);
   // All work is done, change the namespace state regardless of success or failure.
-  auto ns_write_lock = ns->LockForWrite();
-  SysNamespaceEntryPB& metadata = ns->mutable_metadata()->mutable_dirty()->pb;
+  auto ns_write_lock = ns.LockForWrite();
+  SysNamespaceEntryPB& metadata = ns_write_lock.mutable_data()->pb;
   if (metadata.state() != SysNamespaceEntryPB::PREPARING) {
     LOG(DFATAL) << "Bad keyspace state (" << metadata.state() << "), abandoning creation work for "
-                << ns->ToString();
+                << ns.ToString();
     return;
   }
   auto cleanup = ScopeExit([this, &status, &ns_write_lock, &ns, &metadata] {
@@ -8692,7 +8791,7 @@ void CatalogManager::ProcessPendingNamespace(
     // Remove entry from the by-name map. For YSQL postgres clients cannot issue a DROP
     // DATABASE command at this point because postgres will not commit the metadata for this
     // database to its catalogs. So allow users to create a database with the same name.
-    namespace_names_mapper_[ns->database_type()].erase(ns->name());
+    namespace_names_mapper_[ns.database_type()].erase(ns.name());
   });
 
   if (!status.ok()) {
@@ -8702,24 +8801,24 @@ void CatalogManager::ProcessPendingNamespace(
 
   metadata.set_state(SysNamespaceEntryPB::RUNNING);
   metadata.set_ysql_next_major_version_state(SysNamespaceEntryPB::NEXT_VER_RUNNING);
-  status = sys_catalog_->Upsert(term, ns);
+  status = sys_catalog_->Upsert(term, &ns);
   if (!status.ok()) {
     status = status.CloneAndPrepend(Format(
         "An error occurred while modifying keyspace to $0 in sys-catalog", metadata.state()));
     return;
   }
   TRACE("Done processing keyspace");
-  LOG(INFO) << "Processed keyspace: " << ns->ToString();
+  LOG(INFO) << "Processed keyspace: " << ns.ToString();
   auto has_transaction = metadata.has_transaction();
   ns_write_lock.Commit();
   if (has_transaction) {
-    LOG(INFO) << "Enqueuing keyspace for Transaction Verification: " << ns->ToString();
-    ScheduleVerifyNamespacePgLayer(txn, ns, epoch);
+    LOG(INFO) << "Enqueuing keyspace for Transaction Verification: " << ns.ToString();
+    ScheduleVerifyNamespacePgLayer(txn, *ns_res, epoch);
   }
 }
 
 void CatalogManager::ScheduleVerifyNamespacePgLayer(
-    TransactionMetadata txn, scoped_refptr<NamespaceInfo> ns, const LeaderEpoch& epoch) {
+    TransactionMetadata txn, NamespaceInfoPtr ns, const LeaderEpoch& epoch) {
   auto when_done = [this, ns, epoch](Result<bool> result) {
     WARN_NOT_OK(VerifyNamespacePgLayer(ns, result, epoch), "VerifyNamespacePgLayer");
   };
@@ -9224,12 +9323,12 @@ Status CatalogManager::DeleteYsqlDBTables(
     for (const auto& table : tables_->GetAllTables()) {
       // In ysql major catalog upgrade mode, there are two possibilities:
       //  * To propagate database-level properties for certain databases in an upgrade, pg_upgrade
-      //    drops those databases and recreates them. We pretend to do so, but only delete the PG15
-      //    catalog tables, so the restore portion doesn't get confused.
-      //  * The rollback deletes all PG15 catalog tables in order to prepare for the next upgrade
-      //    attempt.
-      // In both cases, we delete only the PG15 catalog tables.
-      if (is_ysql_major_upgrade && !IsPg15CatalogId(table->id())) {
+      //    drops those databases and recreates them. We pretend to do so, but only delete the
+      //    current version's catalog tables, so the restore portion doesn't get confused.
+      //  * The rollback deletes all current-version catalog tables in order to prepare for the next
+      //    upgrade attempt.
+      // In both cases, we delete only the current version's catalog tables.
+      if (is_ysql_major_upgrade && !IsCurrentVersionCatalogId(table->id())) {
         continue;
       }
       if (table->namespace_id() != database->id()) {
@@ -9245,9 +9344,9 @@ Status CatalogManager::DeleteYsqlDBTables(
       // comment at the beginning of the for loop), because such tables are technically global
       // tables, not contained in template1.
       //
-      // During YSQL major catalog upgrade rollback, shared PG15 tables hosted in the template1
-      // namespace must be deleted so that we return to a clean state. This is safe because DDLs are
-      // disabled and there are no PG15 tservers connected.
+      // During YSQL major catalog upgrade rollback, shared tables for the current version hosted in
+      // the template1 namespace must be deleted so that we return to a clean state. This is safe
+      // because DDLs are disabled and there are no current-version tservers connected.
       if (is_ysql_major_upgrade) {
         if (l->pb.is_pg_shared_table() && !is_for_ysql_major_rollback) {
           continue;
@@ -9874,24 +9973,7 @@ Status CatalogManager::GetYsqlCatalogVersion(uint64_t* catalog_version,
 Status CatalogManager::GetYsqlDBCatalogVersion(uint32_t db_oid,
                                                uint64_t* catalog_version,
                                                uint64_t* last_breaking_version) {
-  // When a yb-master goes through the upgrade process from PG11 to PG15, the process begins before
-  // PG15 initdb has been run, so there is no PG15 pg_yb_catalog_version table at all. Even after
-  // PG15 initdb starts, no user-initiated DDLs are permitted during the upgrade, and no PG15
-  // tservers may start until initdb + pg_restore has occurred. Therefore, the PG11 catalog will be
-  // unchanged, and the fixed PG11 catalog version is the only relevant catalog version during the
-  // upgrade. Note that pg_restore will be the sole writer to the PG15 catalog during the upgrade,
-  // using one postgres process.
-  //
-  // After the entire cluster has been upgraded to PG15, to allow DDLs once again, restart the
-  // masters without the upgrade flag. A refinement would be to not require a restart to switch out
-  // of upgrade mode, in which case we might need to do a one-time bump of the PG15
-  // pg_yb_catalog_version number.
-  TableId table_id;
-  if (IsYsqlMajorCatalogUpgradeInProgress()) {
-    table_id = kPgYbCatalogVersionTableIdPg11;
-  } else {
-    table_id = kPgYbCatalogVersionTableId;
-  }
+  auto table_id = VERIFY_RESULT(GetVersionSpecificCatalogTableId(kPgYbCatalogVersionTableId));
   auto table_info = GetTableInfo(table_id);
   if (table_info != nullptr) {
     RETURN_NOT_OK(sys_catalog_->ReadYsqlDBCatalogVersion(table_id,
@@ -9921,13 +10003,7 @@ Status CatalogManager::GetYsqlDBCatalogVersion(uint32_t db_oid,
 }
 
 Status CatalogManager::GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap* versions) {
-  // See comment in GetYsqlDBCatalogVersion.
-  TableId table_id;
-  if (IsYsqlMajorCatalogUpgradeInProgress()) {
-    table_id = kPgYbCatalogVersionTableIdPg11;
-  } else {
-    table_id = kPgYbCatalogVersionTableId;
-  }
+  auto table_id = VERIFY_RESULT(GetVersionSpecificCatalogTableId(kPgYbCatalogVersionTableId));
   auto table_info = GetTableInfo(table_id);
   if (table_info != nullptr) {
     RETURN_NOT_OK(sys_catalog_->ReadYsqlAllDBCatalogVersions(table_id, versions));
@@ -10504,7 +10580,7 @@ Status CatalogManager::DeleteOrHideTabletsAndSendRequests(
     if (hide_only) {
       // Don't call table()->RemoveTablet for hidden tablets as they are needed to support
       // CLONE, PITR, SELECT AS-OF.
-      LOG(INFO) << "Hiding tablet " << tablet->tablet_id();
+      LOG(INFO) << "Hiding tablet" << tablet->tablet_id() << " with hide time:" << hide_hybrid_time;
       if (!tablet_lock->ListedAsHidden()) {
         marked_as_hidden.push_back(tablet);
       }
@@ -11668,7 +11744,7 @@ Result<shared_ptr<tablet::AbstractTablet>> CatalogManager::GetSystemTablet(const
 }
 
 Status CatalogManager::GetTabletLocations(
-    const TabletId& tablet_id, TabletLocationsPB* locs_pb, IncludeInactive include_inactive) {
+    const TabletId& tablet_id, TabletLocationsPB* locs_pb, IncludeHidden include_hidden) {
   TabletInfoPtr tablet_info;
   {
     SharedLock lock(mutex_);
@@ -11676,7 +11752,7 @@ Status CatalogManager::GetTabletLocations(
       return STATUS_SUBSTITUTE(NotFound, "Unknown tablet $0", tablet_id);
     }
   }
-  Status s = GetTabletLocations(tablet_info, locs_pb, include_inactive);
+  Status s = GetTabletLocations(tablet_info, locs_pb, include_hidden);
 
   auto num_replicas = GetNumTabletReplicas(tablet_info);
   if (num_replicas.ok() && *num_replicas > 0 &&
@@ -11692,11 +11768,9 @@ Status CatalogManager::GetTabletLocations(
 Status CatalogManager::GetTabletLocations(
     const TabletInfoPtr& tablet_info,
     TabletLocationsPB* locs_pb,
-    IncludeInactive include_inactive) {
+    IncludeHidden include_hidden_tablets) {
   DCHECK_EQ(locs_pb->replicas().size(), 0);
   locs_pb->mutable_replicas()->Clear();
-  // If include_inactive is set, include_hidden_tablets needs to be set to allow hidden tablets.
-  IncludeHidden include_hidden_tablets(include_inactive);
   return BuildLocationsForTablet(tablet_info, locs_pb, include_hidden_tablets);
 }
 
@@ -12192,13 +12266,14 @@ void CatalogManager::AbortAndWaitForAllTasks() {
     tables = std::vector(std::begin(tables_it), std::end(tables_it));
     namespaces = namespace_names_mapper_.GetAll();
   }
-  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(tables);
-  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(namespaces);
+  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(tables, /* call_task_finisher */ true);
+  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(namespaces, /* call_task_finisher*/ true);
 }
 
-void CatalogManager::AbortAndWaitForAllTasksUnlocked() {
-  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(tables_->GetAllTables());
-  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(namespace_names_mapper_.GetAll());
+void CatalogManager::AbortAndWaitForAllTasksUnlocked(bool call_task_finisher) {
+  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(tables_->GetAllTables(), call_task_finisher);
+  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(
+      namespace_names_mapper_.GetAll(), call_task_finisher);
 }
 
 void CatalogManager::HandleNewTableId(const TableId& table_id) {
@@ -12217,7 +12292,7 @@ Status CatalogManager::ScheduleTask(std::shared_ptr<server::RunnableMonitoredTas
   // If we are not able to enqueue, abort the task.
   if (!s.ok()) {
     RETURN_NOT_OK(task->OnSubmitFailure());
-    task->AbortAndReturnPrevState(s);
+    task->AbortAndReturnPrevState(s, /* call_task_finisher */ true);
   }
   return s;
 }
@@ -13110,7 +13185,15 @@ Result<TabletDeleteRetainerInfo> CatalogManager::GetDeleteRetainerInfoForTableDr
 void CatalogManager::MarkTabletAsHidden(
     SysTabletsEntryPB& tablet_pb, const HybridTime& hide_ht,
     const TabletDeleteRetainerInfo& delete_retainer) const {
-  tablet_pb.set_hide_hybrid_time(hide_ht.ToUint64());
+  // Update the hide time only if there isn't already a hide time.
+  // During a tablet split, a parent tablet may already have been marked hidden as a result of
+  // deactivating the parent tablet. In such cases the tablet may already have a hide time which
+  // should not be updated on any subsequent operation such as Drop table.
+  // Note that, PITR may bring back a parent tablet, but it does that by rewriting the
+  // SysTabletsEntryPB from the past which will have the hide_hybrid_time not set.
+  if (!tablet_pb.has_hide_hybrid_time()) {
+    tablet_pb.set_hide_hybrid_time(hide_ht.ToUint64());
+  }
   const auto retained_by_snapshot_schedules = delete_retainer.RetainedBySnapshotSchedules();
   if (!retained_by_snapshot_schedules.empty()) {
     *tablet_pb.mutable_retained_by_snapshot_schedules() = retained_by_snapshot_schedules;
@@ -13363,6 +13446,22 @@ Result<TSDescriptorPtr> CatalogManager::GetClosestLiveTserver(bool* local_ts) co
 
 bool CatalogManager::IsYsqlMajorCatalogUpgradeInProgress() const {
   return ysql_manager_->IsYsqlMajorCatalogUpgradeInProgress();
+}
+
+Result<TableId> CatalogManager::GetVersionSpecificCatalogTableId(const TableId& table_id) const {
+  if (!ysql_manager_->IsCurrentVersionCatalogEstablished()) {
+    // When a yb-master goes through the ysql major catalog upgrade process, the process begins
+    // before the current version's initdb and catalog upgrade have been run, so we can't depend on
+    // the existence of valid current-version catalog tables. We therefore utilize prior-version
+    // catalog tables while initdb and the catalog upgrade are in progress. Once we enter the
+    // MONITORING state, we switch to the current version's catalogs so that they can be exercised
+    // and tested.
+    uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_id));
+    uint32_t table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
+    return GetPgsqlTableIdPriorVersion(database_oid, table_oid);
+  } else {
+    return table_id;
+  }
 }
 
 bool CatalogManager::SkipCatalogVersionChecks() {

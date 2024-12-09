@@ -151,7 +151,8 @@ class TabletMetadataValidator::Impl final {
 
   Status Init();
   void ScheduleValidation(const tablet::RaftGroupMetadata& metadata);
-  void Shutdown();
+  void StartShutdown();
+  void CompleteShutdown();
 
  private:
   const std::string& LogPrefix() const {
@@ -424,14 +425,20 @@ bool TabletMetadataValidator::Impl::ScheduleTabletPropertiesValidation(
   return true;
 }
 
-void TabletMetadataValidator::Impl::Shutdown() {
+void TabletMetadataValidator::Impl::StartShutdown() {
   bool expected = false;
   if (!shutting_down_.compare_exchange_strong(expected, true)) {
     return;
   }
 
   if (validation_task_) {
-    validation_task_->Shutdown();
+    validation_task_->StartShutdown();
+  }
+}
+
+void TabletMetadataValidator::Impl::CompleteShutdown() {
+  if (validation_task_) {
+    validation_task_->CompleteShutdown();
   }
 }
 
@@ -545,8 +552,12 @@ void TabletMetadataValidator::ScheduleValidation(const tablet::RaftGroupMetadata
   impl_->ScheduleValidation(metadata);
 }
 
-void TabletMetadataValidator::Shutdown() {
-  impl_->Shutdown();
+void TabletMetadataValidator::StartShutdown() {
+  impl_->StartShutdown();
+}
+
+void TabletMetadataValidator::CompleteShutdown() {
+  impl_->CompleteShutdown();
 }
 
 } // namespace yb::tserver

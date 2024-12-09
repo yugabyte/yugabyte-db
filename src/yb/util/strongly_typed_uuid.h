@@ -86,6 +86,8 @@ namespace yb {
 template <class Tag>
 class StronglyTypedUuid {
  public:
+  StronglyTypedUuid() = default;
+
   // This is public so that we can construct a strongly-typed UUID value out of a regular one.
   // In that case we'll have to spell out the class name, which will enforce readability.
   explicit StronglyTypedUuid(const Uuid& uuid) : uuid_(uuid) {}

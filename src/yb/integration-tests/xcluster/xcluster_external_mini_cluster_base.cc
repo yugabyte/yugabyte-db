@@ -84,10 +84,6 @@ void XClusterExternalMiniClusterBase::AddCommonOptions() {
   // and rewriting metadata files quite a bit. Globally disabling fsync
   // speeds the test runtime up dramatically.
   setup_opts_.tserver_flags.push_back("--never_fsync");
-
-  auto vmodule = "--vmodule=xcluster*=4,xrepl*=4,cdc*=4";
-  setup_opts_.master_flags.push_back(vmodule);
-  setup_opts_.tserver_flags.push_back(vmodule);
 }
 
 Result<XClusterExternalMiniClusterBase::Cluster> XClusterExternalMiniClusterBase::CreateCluster(

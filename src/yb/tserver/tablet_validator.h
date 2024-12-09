@@ -35,7 +35,8 @@ class TabletMetadataValidator final {
   explicit TabletMetadataValidator(const std::string& log_prefix, TSTabletManager* tablet_manager);
 
   Status Init();
-  void Shutdown();
+  void StartShutdown();
+  void CompleteShutdown();
 
   // Checks if a tablet is a candidate for the validation.
   void ScheduleValidation(const tablet::RaftGroupMetadata& metadata);

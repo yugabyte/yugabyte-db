@@ -27,9 +27,11 @@ from typing import Set, Dict, Any, Optional, List, Union, DefaultDict, Tuple
 import ruamel.yaml
 
 from github import Github, GithubException
+from github.Artifact import Artifact
 
 from yugabyte.thirdparty_releases import (
-    DOWNLOAD_URL_PREFIX,
+    RELEASES_DOWNLOAD_URL,
+    RUN_ARTIFACT_DOWNLOAD_URL,
     get_archive_name_from_tag,
     ThirdPartyReleaseBase,
 )
@@ -42,6 +44,7 @@ from yugabyte.file_util import read_file
 from yugabyte.git_util import get_github_token, is_valid_git_sha
 from yugabyte.thirdparty_releases import (
     ReleaseGroup,
+    GitHubThirdPartyArtifact,
     GitHubThirdPartyRelease,
     SkipThirdPartyReleaseException,
 )
@@ -71,6 +74,8 @@ SHA_KEY = 'sha'
 # The top-level key under which we store metadata for third-party archives.
 ARCHIVES_KEY = 'archives'
 
+CHECKSUM_EXTENSION = '.sha256'
+
 
 @ruamel_yaml_object.register_class
 class MetadataItem(ThirdPartyReleaseBase):
@@ -94,7 +99,15 @@ class MetadataItem(ThirdPartyReleaseBase):
                 "Entire item: %s" % (sorted(unknown_fields), pprint.pformat(yaml_data)))
 
     def url(self) -> str:
-        return f'{DOWNLOAD_URL_PREFIX}{self.tag}/{get_archive_name_from_tag(self.tag)}'
+        if self.release_artifact_id:
+            return RUN_ARTIFACT_DOWNLOAD_URL.format(self.release_artifact_id)
+        return RELEASES_DOWNLOAD_URL.format(self.tag, get_archive_name_from_tag(self.tag))
+
+    def checksum_url(self) -> str:
+        if self.checksum_artifact_id:
+            return RUN_ARTIFACT_DOWNLOAD_URL.format(self.checksum_artifact_id)
+        return RELEASES_DOWNLOAD_URL.format(
+                self.tag, get_archive_name_from_tag(self.tag) + CHECKSUM_EXTENSION)
 
 
 def get_archive_metadata_file_path() -> str:
@@ -127,7 +140,69 @@ class MetadataUpdater:
         self.archive_metadata_path = get_archive_metadata_file_path()
         self.override_default_sha = override_default_sha
 
-    def update_archive_metadata_file(self) -> None:
+    def update_archive_metadata_file(self, thirdparty_pr: Optional[int]) -> None:
+        if thirdparty_pr:
+            self.update_archive_metadata_file_with_pr(thirdparty_pr)
+        else:
+            self.update_archive_metadata_file_for_release()
+
+    def update_archive_metadata_file_with_pr(self, thirdparty_pr: int) -> None:
+        yb_version = read_file(os.path.join(YB_SRC_ROOT, 'version.txt')).strip()
+
+        logging.info(f"Updating third-party archive metadata file in {self.archive_metadata_path} "
+                     f"using PR #{thirdparty_pr}")
+
+        github_client = Github(get_github_token(self.github_token_file_path))
+        repo = github_client.get_repo('yugabyte/yugabyte-db-thirdparty')
+
+        pr = repo.get_pull(thirdparty_pr)
+        *_, last_commit = pr.get_commits()
+
+        logging.info(f'Using commit {last_commit.sha}')
+        release_artifacts: Dict[str, Artifact] = {}
+        checksum_artifacts: Dict[str, Artifact] = {}
+        for run in repo.get_workflow_runs(head_sha=last_commit.sha):
+            for artifact in run.get_artifacts():  # type: ignore
+                if not artifact.expired:
+                    if artifact.name.endswith(CHECKSUM_EXTENSION):
+                        artifacts = checksum_artifacts
+                        key = artifact.name[:-len(CHECKSUM_EXTENSION)]
+                    else:
+                        artifacts = release_artifacts
+                        key = artifact.name
+                    if key in artifacts:
+                        logging.info(f'Found duplicate artifact: {artifact.name} ({artifact.id})')
+                        if artifact.created_at < artifacts[key].created_at:
+                            logging.info(f'Artifact is older, skipping')
+                            continue
+                        logging.info(f'Artifact is newer, using')
+                    else:
+                        logging.info(f'Found artifact: {artifact.name} ({artifact.id})')
+                    artifacts[key] = artifact
+
+        artifacts_to_use = [
+            (release_artifacts[name], checksum_artifacts[name])
+            for name in sorted(artifacts.keys())
+        ]
+        new_metadata: ThirdPartyArchivesYAML = {
+            SHA_KEY: last_commit.sha
+        }
+        archives: List[Dict[str, str]] = []
+        for release_artifact, checksum_artifact in artifacts_to_use:
+            release = GitHubThirdPartyArtifact(
+                release_artifact.name, last_commit.sha, release_artifact.id, checksum_artifact.id)
+            release_as_dict = release.as_dict()
+            # To reduce the size of diffs when updating third-party archives YAML file.
+            del release_as_dict[SHA_KEY]
+            archives.append(release_as_dict)
+        new_metadata[ARCHIVES_KEY] = archives
+
+        self.write_metadata_file(new_metadata)
+        logging.info(
+            f"Wrote information for {len(artifacts_to_use)} pre-built "
+            f"yugabyte-db-thirdparty archives to {self.archive_metadata_path}.")
+
+    def update_archive_metadata_file_for_release(self) -> None:
         yb_version = read_file(os.path.join(YB_SRC_ROOT, 'version.txt')).strip()
 
         logging.info(f"Updating third-party archive metadata file in {self.archive_metadata_path}")

@@ -1227,7 +1227,7 @@ Status PgApiImpl::DmlAppendTarget(PgStatement* handle, PgExpr* target) {
 }
 
 Status PgApiImpl::DmlAppendQual(PgStatement* handle, PgExpr* qual, bool is_primary) {
-  return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle)).AppendQual(qual, is_primary);
+  return VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle)).AppendQual(qual, is_primary);
 }
 
 Status PgApiImpl::DmlAppendColumnRef(PgStatement* handle, PgColumnRef* colref, bool is_primary) {
@@ -1550,8 +1550,8 @@ Status PgApiImpl::FetchRequestedYbctids(
   return select.Exec(exec_params);
 }
 
-Status PgApiImpl::DmlANNBindVector(PgStatement* handle, int vec_att_no, PgExpr* vector) {
-  return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle)).ANNBindVector(vec_att_no, vector);
+Status PgApiImpl::DmlANNBindVector(PgStatement* handle, PgExpr* vector) {
+  return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle)).ANNBindVector(vector);
 }
 
 Status PgApiImpl::DmlANNSetPrefetchSize(PgStatement* handle, int prefetch_size) {

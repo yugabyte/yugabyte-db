@@ -141,6 +141,11 @@ message PgVectorIdxOptionsPB {
   optional uint32 column_id = 4;
 }
 
+message PgVectorReadOptionsPB {
+  required QLValuePB vector = 1;
+  required int32 prefetch_size = 2;
+}
+
 message TablePropertiesPB {
   optional uint64 default_time_to_live = 1;
   optional bool contain_counters = 2;

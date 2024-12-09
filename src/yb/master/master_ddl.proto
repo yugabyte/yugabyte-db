@@ -191,6 +191,7 @@ message ListTablesResponsePB {
 message GetTableSchemaRequestPB {
   required TableIdentifierPB table = 1;
   optional bool include_hidden = 2;
+  optional bool check_exists_only = 3;
 }
 
 message GetTableSchemaResponsePB {

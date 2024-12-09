@@ -31,7 +31,7 @@ type: docs
 
 Yugabyte Psycopg2 smart driver is a Python driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2), with additional connection load balancing features.
 
-For more information on the YugabyteDB node-postgres smart driver, see the following:
+For more information on the YugabyteDB psycopg2 smart driver, see the following:
 
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
 - [CRUD operations](../yugabyte-psycopg2/)
@@ -65,14 +65,18 @@ Learn how to perform common tasks required for Python application development us
 
 The following connection properties need to be added to enable load balancing:
 
-- `load_balance` - enable cluster-aware load balancing by setting this property to `true`; disabled by default.
+- `load_balance` - enable cluster-aware load balancing by setting this property to one of the allowed values other than `false`; disabled by default.
 - `topology_keys` - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone`.
+
+By default, the driver refreshes the list of nodes every 300 seconds (5 minutes). You can change this value by including the `yb_servers_refresh_interval` parameter.
+
+For more information, see [Cluster-aware load balancing](../../smart-drivers/#cluster-aware-load-balancing).
 
 ### Use the driver
 
 To use the driver, pass new connection properties for load balancing in the connection string or in the dictionary.
 
-To enable uniform load balancing across all servers, you set the `load-balance` property to `true` in the Connection string or dictionary, as per the following examples:
+To enable uniform load balancing across all servers, you set the `load_balance` property to `true` or `any` in the connection string or dictionary, as per the following examples:
 
 - Connection String
 

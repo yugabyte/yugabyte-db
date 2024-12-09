@@ -26,6 +26,7 @@ DECLARE_int32(limit_auto_flag_promote_for_new_universe);
 DECLARE_bool(enable_xcluster_auto_flag_validation);
 DECLARE_uint32(auto_flags_apply_delay_ms);
 DECLARE_uint32(replication_failure_delay_exponent);
+DECLARE_int32(heartbeat_interval_ms);
 
 using namespace std::chrono_literals;
 
@@ -38,8 +39,12 @@ constexpr auto kExternalAutoFlagName = "enable_tablet_split_of_xcluster_replicat
 
 class XClusterUpgradeTest : public XClusterYcqlTestBase {
  public:
+  constexpr static auto kAutoFlagsApplyDelay = 4s;
+
   virtual Status SetUpWithParams() override {
     RETURN_NOT_OK(XClusterYcqlTestBase::SetUpWithParams());
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_flags_apply_delay_ms) = 2000;
+
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_xcluster_auto_flag_validation) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_failure_delay_exponent) = 10;  // 1s max backoff.
     return Status::OK();
@@ -79,6 +84,9 @@ class XClusterUpgradeTest : public XClusterYcqlTestBase {
     if (resp.has_error()) {
       return StatusFromPB(resp.error().status());
     }
+
+    SleepFor(kAutoFlagsApplyDelay);
+
     return resp;
   }
 
@@ -92,6 +100,9 @@ class XClusterUpgradeTest : public XClusterYcqlTestBase {
     if (resp.has_error()) {
       return StatusFromPB(resp.error().status());
     }
+
+    SleepFor(kAutoFlagsApplyDelay);
+
     return Status::OK();
   }
 
@@ -109,6 +120,8 @@ class XClusterUpgradeTest : public XClusterYcqlTestBase {
     }
 
     SCHECK(resp.flag_demoted(), InvalidArgument, "Flag not demoted");
+
+    SleepFor(kAutoFlagsApplyDelay);
 
     return Status::OK();
   }
@@ -278,7 +291,6 @@ TEST_F(XClusterUpgradeTest, DemoteSourceUniverseFlag) {
   ASSERT_OK(VerifyRowsMatch());
 
   ASSERT_OK(DemoteSingleAutoFlag(*producer_cluster(), kMasterProcessName, kExternalAutoFlagName));
-  SleepFor(FLAGS_auto_flags_apply_delay_ms * 1ms);
 
   ASSERT_OK(InsertRowsInProducer(kBatchSize, 2 * kBatchSize));
   ASSERT_OK(VerifyRowsMatch(producer_table_, kTimeout.ToSeconds()));

@@ -73,8 +73,9 @@ class VectorANN {
  public:
   explicit VectorANN(uint32_t dims) {}
 
-  // Creates a copy of the supplied vector and stores it internally.
-  virtual void Add(const Vector& vector, Slice val) = 0;
+  // Creates a copy of the supplied vector and stores it internally if the vector with the given
+  // vertex id does not exist and returns true, otherwise returns false.
+  virtual bool Add(VectorId vertex_id, Vector&& vector, Slice val) = 0;
 
   virtual std::vector<DocKeyWithDistance> GetTopKVectors(
       Vector query_vec, size_t k, double lb_distance, Slice lb_key, bool is_lb_inclusive) const = 0;

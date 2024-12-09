@@ -3,7 +3,7 @@ EXTVERSION = 0.4.4-yb-1.2
 
 MODULE_big = vector
 DATA = $(wildcard sql/*--*.sql)
-OBJS = src/ivfbuild.o src/ivfflat.o src/ivfinsert.o src/ivfkmeans.o src/ivfscan.o src/ivfutils.o src/ivfvacuum.o src/vector.o src/ybvector/ybvector.o src/ybvector/ybvectorwrite.o src/ybvector/ybvectorread.o src/ybvector/ybvectorutil.o src/ybvector/ybdummyann.o src/ybvector/yblocalann.o src/ybvector/ybhnsw.o
+OBJS = src/ivfbuild.o src/ivfflat.o src/ivfinsert.o src/ivfkmeans.o src/ivfscan.o src/ivfutils.o src/ivfvacuum.o src/vector.o src/ybvector/ybvector.o src/ybvector/ybvectorwrite.o src/ybvector/ybvectorread.o src/ybvector/ybvectorutil.o src/ybvector/ybdummyann.o src/ybvector/ybhnsw.o
 
 TESTS = $(wildcard test/sql/*.sql)
 REGRESS = $(patsubst test/sql/%.sql,%,$(TESTS))

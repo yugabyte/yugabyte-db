@@ -2435,10 +2435,10 @@ public class YBClient implements AutoCloseable {
    * @see AsyncYBClient#getTabletLocations(List<String>, String, boolean, boolean)
    */
   public GetTabletLocationsResponse getTabletLocations(
-      List<String> tabletIds, String tableId, boolean includeInactive, boolean includeDeleted)
+      List<String> tabletIds, String tableId, boolean includeHidden, boolean includeDeleted)
       throws Exception {
     Deferred<GetTabletLocationsResponse> d =
-        asyncClient.getTabletLocations(tabletIds, tableId, includeInactive, includeDeleted);
+        asyncClient.getTabletLocations(tabletIds, tableId, includeHidden, includeDeleted);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

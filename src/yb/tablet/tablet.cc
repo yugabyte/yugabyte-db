@@ -542,7 +542,7 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
   }
 
  private:
-  using MinSchemaVersionMap = std::unordered_map<Uuid, SchemaVersion, UuidHash>;
+  using MinSchemaVersionMap = std::unordered_map<Uuid, SchemaVersion>;
 
   void OldSchemaGC() {
     MinSchemaVersionMap table_id_to_min_schema_version;
@@ -944,7 +944,7 @@ Status Tablet::OpenKeyValueTablet() {
     rocksdb_options.block_based_table_mem_tracker->SetMetricEntity(tablet_metrics_entity_);
   }
 
-  key_bounds_ = docdb::KeyBounds(metadata()->lower_bound_key(), metadata()->upper_bound_key());
+  key_bounds_ = metadata()->MakeKeyBounds();
 
   // Install the history cleanup handler. Note that TabletRetentionPolicy is going to hold a raw ptr
   // to this tablet. So, we ensure that rocksdb_ is reset before this tablet gets destroyed.
@@ -1925,14 +1925,6 @@ Status Tablet::DoHandlePgsqlReadRequest(
       index_table_id = pgsql_read_request.index_request().table_id();
       if (pgsql_read_request.index_request().has_vector_idx_options()) {
         vector_index_table_id = index_table_id;
-      }
-    } else if (pgsql_read_request.has_vector_idx_options()) {
-      // TODO(vector_index) Temporary use index_doc_read_context to pass doc_read_context for
-      // indexed table. Should be changed when postgres will send all vector index queries in
-      // index_request.
-      if (table_info->index_info) {
-        index_table_id = table_info->index_info->indexed_table_id();
-        vector_index_table_id = table_info->table_id;
       }
     }
     auto index_doc_read_context = !index_table_id.empty()

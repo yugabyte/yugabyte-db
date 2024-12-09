@@ -49,19 +49,6 @@ YsqlInitDBAndMajorUpgradeHandler::YsqlInitDBAndMajorUpgradeHandler(
       sys_catalog_(sys_catalog),
       thread_pool_(thread_pool) {}
 
-void YsqlInitDBAndMajorUpgradeHandler::SysCatalogLoaded(const LeaderEpoch& epoch) {
-  // A new yb-master leader has started. If we were in the middle of the ysql major catalog upgrade
-  // (initdb, pg_upgrade, or rollback) then mark the major upgrade as failed. No action is taken if
-  // we are in the monitoring phase.
-  if (IsYsqlMajorCatalogUpgradeInProgress()) {
-    ERROR_NOT_OK(
-        ysql_catalog_config_.TransitionMajorCatalogUpgradeState(
-            YsqlMajorCatalogUpgradeInfoPB::FAILED, epoch,
-            STATUS(InternalError, "yb-master restarted during ysql major catalog upgrade")),
-        "Failed to set major version upgrade state to FAILED");
-  }
-}
-
 Status YsqlInitDBAndMajorUpgradeHandler::StartNewClusterGlobalInitDB(const LeaderEpoch& epoch) {
   SCHECK(
       !FLAGS_master_join_existing_universe, IllegalState,
@@ -197,11 +184,11 @@ Status YsqlInitDBAndMajorUpgradeHandler::RunMajorVersionUpgradeImpl(const Leader
 }
 
 // pg_upgrade does not migrate the catalog version table, so we have to explicitly copy the contents
-// of the pre-existing catalog table to the PG15 version of the table.
+// of the pre-existing catalog table to the current version's catalog version table.
 Status YsqlInitDBAndMajorUpgradeHandler::UpdateCatalogVersions(const LeaderEpoch& epoch) {
   RETURN_NOT_OK(sys_catalog_.DeleteAllYsqlCatalogTableRows({kPgYbCatalogVersionTableId},
                                                            epoch.leader_term));
-  RETURN_NOT_OK(sys_catalog_.CopyPgsqlTables({kPgYbCatalogVersionTableIdPg11},
+  RETURN_NOT_OK(sys_catalog_.CopyPgsqlTables({kPgYbCatalogVersionTableIdPriorVersion},
                                              {kPgYbCatalogVersionTableId}, epoch.leader_term));
   return Status::OK();
 }

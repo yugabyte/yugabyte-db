@@ -77,6 +77,8 @@ class YsqlManager : public YsqlManagerIf {
       const IsYsqlMajorCatalogUpgradeDoneRequestPB* req,
       IsYsqlMajorCatalogUpgradeDoneResponsePB* resp, rpc::RpcContext* rpc);
 
+  bool IsCurrentVersionCatalogEstablished() const;
+
   Status FinalizeYsqlMajorCatalogUpgrade(
       const FinalizeYsqlMajorCatalogUpgradeRequestPB* req,
       FinalizeYsqlMajorCatalogUpgradeResponsePB* resp, rpc::RpcContext* rpc,
@@ -91,6 +93,8 @@ class YsqlManager : public YsqlManagerIf {
       RollbackYsqlMajorCatalogVersionResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
 
+  Status CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch);
+
  private:
   Result<bool> StartRunningInitDbIfNeededInternal(const LeaderEpoch& epoch);
 
@@ -104,6 +108,8 @@ class YsqlManager : public YsqlManagerIf {
 
   // This is used for tracking that initdb has started running previously.
   std::atomic<bool> pg_proc_exists_{false};
+
+  bool advisory_locks_table_created_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(YsqlManager);
 };

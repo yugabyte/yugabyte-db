@@ -426,7 +426,7 @@ IndexPermissions NextPermission(IndexPermissions perm) {
 Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table,
     uint32_t current_version, const LeaderEpoch& epoch, bool respect_backfill_deferrals) {
-  DVLOG(3) << __PRETTY_FUNCTION__ << " " << yb::ToString(*indexed_table);
+  DVLOG(3) << __PRETTY_FUNCTION__ << " " << AsString(*indexed_table);
 
   const bool is_ysql_table = (indexed_table->GetTableType() == TableType::PGSQL_TABLE_TYPE);
   const bool defer_backfill = !is_ysql_table && GetAtomicFlag(&FLAGS_defer_index_backfill);
@@ -480,14 +480,10 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
       DCHECK(l.data().pb.backfill_jobs_size() == 1) << "For now we only expect to have up to 1 "
                                                         "outstanding backfill job.";
       const BackfillJobPB& backfill_job = l.data().pb.backfill_jobs(0);
-      VLOG(3) << "Found an in-progress backfill-job " << yb::ToString(backfill_job);
+      VLOG(3) << "Found an in-progress backfill-job " << AsString(backfill_job);
       // Do not allow for any other indexes to piggy back with this backfill.
-      indexes_to_backfill.clear();
+      indexes_to_backfill.assign(backfill_job.indexes().begin(), backfill_job.indexes().end());
       deferred_indexes.clear();
-      for (int i = 0; i < backfill_job.indexes_size(); i++) {
-        const IndexInfoPB& idx_pb = backfill_job.indexes(i);
-        indexes_to_backfill.push_back(idx_pb);
-      }
     }
   }
 
@@ -504,7 +500,7 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
       indexes_to_backfill.size() > 1) {
     LOG(INFO) << "Batching of non-deferred index-backfill(s) is disabled. Will be only backfilling "
                  "one index at a time.";
-    indexes_to_backfill.erase(indexes_to_backfill.begin() + 1, indexes_to_backfill.end());
+    indexes_to_backfill.resize(1);
   }
 
   // For YSQL online schema migration of indexes, instead of master driving the schema changes,
@@ -595,7 +591,8 @@ std::string BackfillTableJob::description() const {
   }
 }
 
-MonitoredTaskState BackfillTableJob::AbortAndReturnPrevState(const Status& status) {
+MonitoredTaskState BackfillTableJob::AbortAndReturnPrevState(
+    const Status& status, bool call_task_finisher) {
   auto old_state = state();
   while (!IsStateTerminal(old_state)) {
     if (state_.compare_exchange_strong(old_state,

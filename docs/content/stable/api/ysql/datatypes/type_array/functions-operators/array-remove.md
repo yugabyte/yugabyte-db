@@ -17,7 +17,7 @@ type: docs
 input value:       anyarray, anyelement
 return value:      anyarray
 ```
-**Note:** This function requires the array from which values are to be removed is one-dimensional. This restriction is understood in light of the fact that arrays are rectilinear—in other words, the geometry of an array whose dimensionality is two or more is fixed at creation time. For examples illustrating this rule, see [`array_fill()`](.././array-fill).
+**Note:** This function requires the array from which values are to be removed is one-dimensional. This restriction is understood in light of the fact that arrays are rectilinear—in other words, the geometry of an array whose dimensionality is two or more is fixed at creation time. For examples illustrating this rule, see [array_fill()](../array-fill).
 
 **Example:**
 ```plpgsql

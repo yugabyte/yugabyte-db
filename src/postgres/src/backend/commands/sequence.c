@@ -1021,7 +1021,11 @@ nextval_internal(Oid relid, bool check_permissions)
 		last_used_seq = elm;
 		relation_close(seqrel, NoLock);
 		if(YbIsClientYsqlConnMgr())
+		{
 			increment_sticky_object_count();
+			elog(LOG, "Incremented sticky object count for sequence %s",
+				 RelationGetRelationName(seqrel));
+		}
 		return first_val;
 	}
 

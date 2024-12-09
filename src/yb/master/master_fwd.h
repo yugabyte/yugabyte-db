@@ -126,12 +126,20 @@ using SnapshotScheduleRestorationPtr = std::shared_ptr<SnapshotScheduleRestorati
 
 YB_STRONGLY_TYPED_BOOL(RegisteredThroughHeartbeat);
 
+// Used to indicate whether inactive tablets should be included in Rpcs such as GetTableLocations.
+// Inactive tablets are parents of split children, that may no longer be allowed to
+// server user read-write requests. Inactive tablets could be hidden.
+// Since include_inactive allows both parent and child tablets to be returned, the returned tablet
+// list could have overlapping partition key ranges.
 YB_STRONGLY_TYPED_BOOL(IncludeInactive);
+
+// Used to indicate whether hidden tables/tablets should be included.
+YB_STRONGLY_TYPED_BOOL(IncludeHidden);
+
 YB_STRONGLY_TYPED_BOOL(IncludeDeleted);
 YB_STRONGLY_TYPED_BOOL(IsSystemObject);
 
-// Used to indicate whether hidden objects should be included.
-YB_STRONGLY_TYPED_BOOL(IncludeHidden);
+
 
 YB_DEFINE_ENUM(
     CollectFlag,

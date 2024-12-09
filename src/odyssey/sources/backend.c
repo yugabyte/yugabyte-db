@@ -367,6 +367,12 @@ static inline int od_backend_startup(od_server_t *server,
 				od_debug(&instance->logger, "startup", NULL, server,
 			 			 "name: %s, value: %s", name, value);
 
+			/* Parse the yb_logical_client_version to store it in server */
+			if (strlen(name) == 25 && strcmp("yb_logical_client_version", name) == 0) {
+				server->logical_client_version = atoi(value);
+				machine_msg_free(msg);
+				break;
+			}
 			/*
 			 * The parameters received during authentication are the initial set
 			 * of parameters that should be set on the transactional backend the

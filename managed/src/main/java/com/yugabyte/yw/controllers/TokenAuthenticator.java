@@ -29,10 +29,10 @@ import java.util.concurrent.CompletionStage;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
+import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
 import org.pac4j.play.PlayWebContext;
-import org.pac4j.play.store.PlaySessionStore;
 import play.libs.typedmap.TypedKey;
 import play.mvc.Action;
 import play.mvc.Http;
@@ -83,7 +83,7 @@ public class TokenAuthenticator extends Action.Simple {
 
   private final Config config;
 
-  private final PlaySessionStore sessionStore;
+  private final SessionStore sessionStore;
 
   private final UserService userService;
 
@@ -96,7 +96,7 @@ public class TokenAuthenticator extends Action.Simple {
   @Inject
   public TokenAuthenticator(
       Config config,
-      PlaySessionStore sessionStore,
+      SessionStore sessionStore,
       UserService userService,
       RuntimeConfGetter confGetter,
       RuntimeConfigCache runtimeConfigCache,
@@ -115,10 +115,10 @@ public class TokenAuthenticator extends Action.Simple {
     boolean useOAuth = confGetter.getGlobalConf(GlobalConfKeys.useOauth);
     Optional<Http.Cookie> cookieValue = request.getCookie(COOKIE_PLAY_SESSION);
     if (useOAuth) {
-      final PlayWebContext context = new PlayWebContext(request, sessionStore);
-      final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
+      final PlayWebContext context = new PlayWebContext(request);
+      final ProfileManager profileManager = new ProfileManager(context, sessionStore);
       if (profileManager.isAuthenticated()) {
-        CommonProfile profile = profileManager.get(true).get();
+        CommonProfile profile = profileManager.getProfile(CommonProfile.class).get();
         String emailAttr = confGetter.getGlobalConf(GlobalConfKeys.oidcEmailAttribute);
         String email;
         if (emailAttr.equals("")) {

@@ -85,6 +85,11 @@ struct od_client {
 	 * This refers to the actual client connected to the conn manager.
 	 */
 	od_client_t *yb_external_client;
+
+	/* logical client version of the client. This field is populated 
+	 * after successful authentication via auth backend.
+	 */
+	int64_t logical_client_version;
 };
 
 static const size_t OD_CLIENT_DEFAULT_HASHMAP_SZ = 420;
@@ -142,6 +147,7 @@ static inline void od_client_init(od_client_t *client)
 
 	client->yb_is_authenticating = false;
 	client->yb_external_client = NULL;
+	client->logical_client_version = 0;
 }
 
 static inline od_client_t *od_client_allocate(void)

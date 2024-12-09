@@ -29,6 +29,8 @@ DECLARE_int32(ysql_max_connections);
 DECLARE_string(ysql_conn_mgr_warmup_db);
 DECLARE_string(TEST_ysql_conn_mgr_dowarmup_all_pools_mode);
 DECLARE_bool(ysql_conn_mgr_superuser_sticky);
+DECLARE_bool(ysql_conn_mgr_version_matching);
+DECLARE_bool(ysql_conn_mgr_version_matching_connect_higher_version);
 
 // TODO(janand) : GH #17837  Find the optimum value for `ysql_conn_mgr_idle_time`.
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_idle_time, 60,
@@ -174,6 +176,13 @@ Status YsqlConnMgrWrapper::Start() {
 
   proc_->SetEnv("YB_YSQL_CONN_MGR_DOWARMUP_ALL_POOLS_MODE",
                 FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode);
+
+  proc_->SetEnv(
+      "YB_YSQL_CONN_MGR_VERSION_MATCHING", FLAGS_ysql_conn_mgr_version_matching ? "true" : "false");
+
+  proc_->SetEnv(
+      "YB_YSQL_CONN_MGR_VERSION_MATCHING_CONNECT_HIGHER_VERSION",
+      FLAGS_ysql_conn_mgr_version_matching_connect_higher_version ? "true" : "false");
 
   unsetenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
   if (FLAGS_enable_ysql_conn_mgr_stats) {

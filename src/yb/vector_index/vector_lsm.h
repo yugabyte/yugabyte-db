@@ -51,9 +51,9 @@ struct VectorLSMSearchOptions {
 
 template<IndexableVectorType Vector>
 struct VectorLSMInsertEntry {
-  VertexId vertex_id;
+  VectorId  vertex_id;
   KeyBuffer base_table_key;
-  Vector vector;
+  Vector    vector;
 };
 
 template<IndexableVectorType Vector,
@@ -79,12 +79,12 @@ struct VectorLSMTypes {
   using VertexWithDistance = vector_index::VertexWithDistance<DistanceResult>;
 };
 
-using BaseTableKeysBatch = std::vector<std::pair<VertexId, Slice>>;
+using BaseTableKeysBatch = std::vector<std::pair<VectorId, Slice>>;
 
 class VectorLSMKeyValueStorage {
  public:
   virtual Status StoreBaseTableKeys(const BaseTableKeysBatch& batch, HybridTime write_time) = 0;
-  virtual Result<KeyBuffer> ReadBaseTableKey(VertexId vertex_id) = 0;
+  virtual Result<KeyBuffer> ReadBaseTableKey(VectorId vertex_id) = 0;
 
   virtual ~VectorLSMKeyValueStorage() = default;
 };

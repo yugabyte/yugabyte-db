@@ -40,6 +40,7 @@ set(VECTOR_INDEX_SRCS
   hnsw_util.cc
   hnswlib_wrapper.cc
   usearch_wrapper.cc
+  vector_id.cc
   vector_lsm.cc
   vector_lsm_metadata.cc
   vectorann.cc
@@ -69,4 +70,4 @@ set(YB_TEST_LINK_LIBS
 
 ADD_YB_TEST(hnsw_util-test)
 ADD_YB_TEST(vector_lsm-test)
-ADD_YB_TEST(hnswlib_index_merge-test)
+ADD_YB_TEST(index_merge-test)

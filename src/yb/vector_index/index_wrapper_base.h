@@ -27,7 +27,7 @@ namespace yb::vector_index {
 template<class Impl, IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
  public:
-  Status Insert(VertexId vertex_id, const Vector& v) override {
+  Status Insert(VectorId vertex_id, const Vector& v) override {
     if (immutable_) {
       return STATUS_FORMAT(IllegalState, "Attempt to insert value to immutable vector");
     }

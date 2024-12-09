@@ -17,3 +17,4 @@ properties:
     description: If the Prometheus link in the browser should use the browser's FQDN or use prometheus url directly.
     type: boolean
     readOnly: true
+x-yba-api-visibility: internal

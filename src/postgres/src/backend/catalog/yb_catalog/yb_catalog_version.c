@@ -270,12 +270,9 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(
 	YBCPgExpr ybc_expr = YBCNewEvalExprCall(update_stmt, (Expr *) expr);
 
 	HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
-	yb_expr = YBCNewColumnRef(update_stmt,
-							  attnum,
-							  INT8OID,
-							  InvalidOid,
-							  &type_attrs);
-	HandleYBStatus(YbPgDmlAppendColumnRef(update_stmt, yb_expr, true));
+	yb_expr = YBCNewColumnRef(
+		update_stmt, attnum, INT8OID, InvalidOid, &type_attrs);
+	YbAppendPrimaryColumnRef(update_stmt, yb_expr);
 
 	/* If breaking change set the latest breaking version to the same expression. */
 	if (is_breaking_change)

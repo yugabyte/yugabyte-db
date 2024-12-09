@@ -68,7 +68,10 @@ public class CertsRotate extends UpgradeTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     super.createPrecheckTasks(universe);
-    addBasicPrecheckTasks();
+    // Skip running prechecks if Node2Node certs has expired
+    if (!CertificateHelper.checkNode2NodeCertsExpiry(universe)) {
+      addBasicPrecheckTasks();
+    }
     createCheckCertificateConfigTask(universe);
   }
 

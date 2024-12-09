@@ -1,13 +1,18 @@
 package org.yb.yugabyted;
 
-import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertTrue;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+
+import org.json.JSONObject;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertTrue;
 import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBDaemon;
 import org.yb.minicluster.MiniYugabytedClusterParameters;
@@ -15,7 +20,6 @@ import org.yb.minicluster.MiniYugabytedNodeConfigurations;
 import org.yb.minicluster.YugabytedTestUtils;
 
 import com.google.common.net.HostAndPort;
-import org.json.JSONObject;
 
 @RunWith(value = YBTestRunner.class)
 public class TestYugabytedSingleNode extends BaseYbdClientTest {
@@ -36,6 +40,7 @@ public class TestYugabytedSingleNode extends BaseYbdClientTest {
 
             clusterConfigurations.add(nodeConfigurations);
         }
+
     }
 
     @Test(timeout = 300000)
@@ -54,9 +59,12 @@ public class TestYugabytedSingleNode extends BaseYbdClientTest {
         JSONObject jsonObject = new JSONObject(jsonResponse);
         String actualClusterUuid = jsonObject.getString("cluster_uuid");
         LOG.info("Actual Cluster UUID: " + actualClusterUuid);
-        String baseDir = clusterConfigurations.get(0).baseDir;
+        String baseDir = clusterConfigurations.get(0).getBaseDir();
         // Assert Cluster UUIDs match
         assertEquals(expectedClusterUuid, actualClusterUuid);
+
+        // Check the ysql status
+        assertTrue(getYsqlStatus());
 
         // Assert YSQL and YCQL connection
         boolean isYsqlConnected = YugabytedTestUtils.testYsqlConnection(baseDir, host);
@@ -64,5 +72,34 @@ public class TestYugabytedSingleNode extends BaseYbdClientTest {
 
         assertTrue(isYsqlConnected);
         assertTrue(isYcqlConnected);
+    }
+
+
+    private Boolean getYsqlStatus() throws Exception {
+        String baseDir = clusterConfigurations.get(0).getBaseDir();
+        Boolean ysqlStatus = false;
+
+        List<String> statusCmd = YugabytedTestUtils.getYugabytedStatus(baseDir);
+        LOG.info("Yugabyted status cmd: " + statusCmd);
+        ProcessBuilder procBuilder =
+                new ProcessBuilder(statusCmd).redirectErrorStream(true);
+        Process proc = procBuilder.start();
+
+        try (BufferedReader reader =
+                    new BufferedReader(new InputStreamReader(proc.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                LOG.info("Yugabyted lines: " + line);
+                if (line.contains("YSQL Status") && !line.contains("Not Ready")) {
+                    ysqlStatus = true;
+                    return ysqlStatus;
+                }
+            }
+        }
+        int exitCode = proc.waitFor();
+        if (exitCode != 0) {
+            LOG.error("Status command failed with exit code: " + exitCode);
+        }
+        return ysqlStatus;
     }
 }

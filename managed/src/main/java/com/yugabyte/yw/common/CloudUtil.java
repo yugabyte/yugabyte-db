@@ -16,6 +16,7 @@ import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -48,6 +49,7 @@ public interface CloudUtil extends StorageUtil {
 
   public static final String KEY_LOCATION_SUFFIX = Util.KEY_LOCATION_SUFFIX;
   public static final String SUCCESS = "success";
+  public static final String YBDB_RELEASES = "ybdb_releases";
   int FILE_DOWNLOAD_BUFFER_SIZE = 8 * 1024;
 
   public static final String DUMMY_DATA = "dummy-text";
@@ -124,6 +126,16 @@ public interface CloudUtil extends StorageUtil {
   public default File downloadYbaBackup(
       CustomerConfigData configData, String backupDir, Path localDir) {
     return null;
+  }
+
+  public default boolean uploadYBDBRelease(
+      CustomerConfigData configData, File release, String backupDir, String version) {
+    return false;
+  }
+
+  public default Set<String> getRemoteReleaseVersions(
+      CustomerConfigData configData, String backupDir) {
+    return new HashSet<>();
   }
 
   public default RestorePreflightResponse

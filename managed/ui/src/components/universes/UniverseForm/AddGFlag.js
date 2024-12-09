@@ -150,8 +150,8 @@ const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus, disabledFlags
       <img alt="Warning" src={WarningIcon} width="24" />
       &nbsp;
       <span>
-        You can&apos;t change this flag because it was set using the Enhanced Postgres Compatibility
-        option.
+        You can&apos;t update the disabled fields because it was set using the Enhanced Postgres
+        Compatibility option.
       </span>
     </div>
   );

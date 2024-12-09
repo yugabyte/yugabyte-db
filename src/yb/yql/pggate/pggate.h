@@ -603,7 +603,7 @@ class PgApiImpl {
   Status FetchRequestedYbctids(PgStatement *handle, const PgExecParameters *exec_params,
                                ConstSliceVector ybctids);
 
-  Status DmlANNBindVector(PgStatement *handle, int vec_att_no, PgExpr *vector);
+  Status DmlANNBindVector(PgStatement *handle, PgExpr *vector);
 
   Status DmlANNSetPrefetchSize(PgStatement *handle, int prefetch_size);
 

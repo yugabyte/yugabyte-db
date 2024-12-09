@@ -34,7 +34,7 @@ namespace docdb {
 
 // Map from old cotable id to new cotable id.
 // Used to restore snapshot to a new database/tablegroup and update cotable ids in the frontiers.
-using CotableIdsMap = std::unordered_map<Uuid, Uuid, UuidHash>;
+using CotableIdsMap = std::unordered_map<Uuid, Uuid>;
 
 const int kDefaultGroupNo = 0;
 

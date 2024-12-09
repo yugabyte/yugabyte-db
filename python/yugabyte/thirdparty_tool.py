@@ -84,7 +84,7 @@ def main() -> None:
             print(compiler)
         return
 
-    if args.save_thirdparty_url_to_file:
+    if args.save_thirdparty_url_to_file or args.save_thirdparty_checksum_url_to_file:
         if not args.compiler_type:
             raise ValueError("Compiler type not specified")
 
@@ -102,6 +102,13 @@ def main() -> None:
             make_parent_dir(args.save_thirdparty_url_to_file)
             write_file(content=thirdparty_url,
                        output_file_path=args.save_thirdparty_url_to_file)
+
+        thirdparty_checksum_url = thirdparty_release.checksum_url()
+        logging.info(f"Checksum URL for the third-party dependencies: {thirdparty_checksum_url}")
+        if args.save_thirdparty_checksum_url_to_file:
+            make_parent_dir(args.save_thirdparty_checksum_url_to_file)
+            write_file(content=thirdparty_checksum_url,
+                       output_file_path=args.save_thirdparty_checksum_url_to_file)
 
 
 if __name__ == '__main__':

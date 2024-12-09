@@ -56,9 +56,11 @@ struct CompactionOptions;
 struct CompactRangeOptions;
 struct TableProperties;
 struct ExternalSstFileInfo;
-class WriteBatch;
+
+class DataBlockAwareIndexIterator;
 class Env;
 class EventListener;
+class WriteBatch;
 
 YB_STRONGLY_TYPED_BOOL(SkipLastEntry);
 
@@ -322,6 +324,17 @@ class DB {
   std::unique_ptr<Iterator> NewIndexIterator(
       const ReadOptions& options, SkipLastEntry skip_last_index_entry) {
     return NewIndexIterator(options, skip_last_index_entry, DefaultColumnFamily());
+  }
+
+  // Potentially slower (due to additional wrapper) version of index iterator but with access to
+  // data block.
+  virtual std::unique_ptr<DataBlockAwareIndexIterator> NewDataBlockAwareIndexIterator(
+      const ReadOptions& options, SkipLastEntry skip_last_index_entry,
+      ColumnFamilyHandle* column_family) = 0;
+
+  std::unique_ptr<DataBlockAwareIndexIterator> NewDataBlockAwareIndexIterator(
+      const ReadOptions& options, SkipLastEntry skip_last_index_entry) {
+    return NewDataBlockAwareIndexIterator(options, skip_last_index_entry, DefaultColumnFamily());
   }
 
   // Returns iterators from a consistent database state across multiple

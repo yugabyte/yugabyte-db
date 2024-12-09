@@ -16,10 +16,14 @@
 
 #include "yb/server/server_base_options.h"
 
+#include "yb/util/scope_exit.h"
+
 DECLARE_string(certs_dir);
 DECLARE_string(certs_for_client_dir);
 DECLARE_string(cert_node_filename);
 DECLARE_bool(use_client_to_server_encryption);
+
+using namespace std::literals;
 
 namespace yb {
 
@@ -41,14 +45,17 @@ Result<int> ProcessWrapper::Wait() {
 }
 
 void ProcessWrapper::Kill() {
-  int signal = SIGINT;
   // TODO(fizaa): Use SIGQUIT in asan build until GH #15168 is fixed.
 #ifdef ADDRESS_SANITIZER
-  signal = SIGQUIT;
+  Kill(SIGQUIT);
+#else
+  Kill(SIGINT);
 #endif
-  WARN_NOT_OK(proc_->Kill(signal), "Kill process failed");
 }
 
+void ProcessWrapper::Kill(int signal) {
+  WARN_NOT_OK(proc_->Kill(signal), "Kill process failed");
+}
 
 // ------------------------------------------------------------------------------------------------
 // ProcessWrapper: managing one instance of a child process
@@ -64,6 +71,9 @@ Status ProcessSupervisor::ExpectStateUnlocked(YbSubProcessState expected_state) 
 }
 
 void ProcessSupervisor::RunThread() {
+  auto se = ScopeExit([this] {
+    thread_finished_latch_.CountDown();
+  });
   std::string process_name = GetProcessName();
   while (true) {
     Result<int> wait_result = process_wrapper_->Wait();
@@ -139,12 +149,34 @@ Status ProcessSupervisor::Start() {
 }
 
 void ProcessSupervisor::Stop() {
+  LOG(INFO) << "Stopping " << GetProcessName();
   {
     std::lock_guard lock(mtx_);
     state_ = YbSubProcessState::kStopping;
     PrepareForStop();
     if (process_wrapper_) {
       process_wrapper_->Kill();
+    }
+  }
+  auto start = CoarseMonoClock::now();
+  for (;;) {
+    if (thread_finished_latch_.WaitFor(10s)) {
+      break;
+    }
+    auto passed = MonoDelta(CoarseMonoClock::now() - start);
+    bool force_kill = passed >= 1min;
+    auto message = Format(
+        "$0 did not gracefully exist after $1. $2.",
+        GetProcessName(), passed,
+        force_kill ? "Force killing it" : "Retry");
+    if (force_kill) {
+      LOG(DFATAL) << message;
+    } else {
+      LOG(WARNING) << message;
+    }
+    std::lock_guard lock(mtx_);
+    if (process_wrapper_) {
+      process_wrapper_->Kill(force_kill ? SIGQUIT : SIGINT);
     }
   }
   supervisor_thread_->Join();

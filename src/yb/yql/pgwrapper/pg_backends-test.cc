@@ -83,7 +83,6 @@ class PgBackendsTest : public LibPqTestBase {
           options->extra_master_flags.end(),
           {
             "--log_ysql_catalog_versions=true",
-            "--vmodule=ysql_backends_manager=2"
             ",master_heartbeat_service=2"
             ",transaction_coordinator=2"
             ",transaction_participant=2",
@@ -92,7 +91,6 @@ class PgBackendsTest : public LibPqTestBase {
           options->extra_tserver_flags.end(),
           {
             "--log_ysql_catalog_versions=true",
-            "--vmodule=tablet_service=2",
           });
     }
   }

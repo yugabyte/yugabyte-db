@@ -31,10 +31,9 @@
 #include "utils/timestamp.h"
 
 #define YbAshIsClientAddrSet() \
-	(yb_ash_enable_infra && !IsBootstrapProcessingMode() && !YBIsInitDbModeEnvVarSet())
+	(yb_enable_ash && !IsBootstrapProcessingMode() && !YBIsInitDbModeEnvVarSet())
 
 /* GUC variables */
-extern bool yb_ash_enable_infra;
 extern bool yb_enable_ash;
 extern int yb_ash_circular_buffer_size;
 extern int yb_ash_sampling_interval_ms;
@@ -61,9 +60,6 @@ extern void YbAshStoreSample(PGPROC *proc, int num_procs,
 							 int index);
 extern void YbAshFillSampleWeight(int samples_considered);
 
-extern bool yb_enable_ash_check_hook(bool *newval,
-									 void **extra,
-									 GucSource source);
 extern bool yb_ash_circular_buffer_size_check_hook(int *newval,
 												   void **extra,
 												   GucSource source);
@@ -72,6 +68,8 @@ extern void YbAshSetMetadata(void);
 extern void YbAshUnsetMetadata(void);
 
 extern void YbAshSetOneTimeMetadata(void);
+extern void YbAshSetMetadataForBgworkers(void);
+
 extern void GetAshDataForQueryDiagnosticsBundle(TimestampTz start_time, TimestampTz end_time,
 												int64 query_id, StringInfo output_buffer,
 												char *description);

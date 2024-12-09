@@ -1314,11 +1314,6 @@ deleteOneObject(const ObjectAddress *object, Relation *depRel, int flags)
 	InvokeObjectDropHookArg(object->classId, object->objectId,
 							object->objectSubId, flags);
 
-	 
-	/* Decrement sticky object count if the object being removed is a TEMP TABLE. */
-	if (YbIsClientYsqlConnMgr() && (*depRel)->rd_islocaltemp)
-		decrement_sticky_object_count();
-
 	/*
 	 * Close depRel if we are doing a drop concurrently.  The object deletion
 	 * subroutine will commit the current transaction, so we can't keep the
@@ -1453,7 +1448,7 @@ doDeletion(const ObjectAddress *object, int flags)
 
 					Relation index = RelationIdGetRelation(object->objectId);
 
-					if (IsYBRelation(index) && !YBIsCoveredByMainTable(index))
+					if (IsYBRelation(index) && !index->rd_index->indisprimary)
 						YBCDropIndex(index);
 
 					RelationClose(index);

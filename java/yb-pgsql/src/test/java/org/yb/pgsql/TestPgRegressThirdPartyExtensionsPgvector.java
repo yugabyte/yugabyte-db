@@ -23,7 +23,7 @@ import org.yb.YBTestRunner;
 public class TestPgRegressThirdPartyExtensionsPgvector extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
-    return 1800;
+    return 180;
   }
 
   @Test

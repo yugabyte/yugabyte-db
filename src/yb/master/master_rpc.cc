@@ -68,7 +68,7 @@ namespace {
 ////////////////////////////////////////////////////////////
 
 // An RPC for getting a Master server's registration.
-class GetMasterRegistrationRpc: public rpc::Rpc {
+class GetMasterRegistrationRpc : public rpc::Rpc {
  public:
 
   // Create a wrapper object for a retriable GetMasterRegistration RPC

@@ -293,7 +293,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
       CoarseTimePoint deadline,
       bool fetch_single_entry = false,
       int64_t* last_committed_index = nullptr,
-      HybridTime* consistent_stream_safe_time_footer = nullptr);
+      HybridTime* consistent_stream_safe_time_footer = nullptr,
+      bool* read_entire_wal = nullptr);
 
   void UpdateCDCConsumerOpId(const yb::OpId& op_id) override;
 

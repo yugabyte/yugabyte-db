@@ -145,7 +145,7 @@ class Semaphore {
 #endif
 
 YB_DEFINE_ENUM(SharedExchangeState,
-               (kIdle)(kRequestSent)(kResponseSent)(kShutdown));
+               (kIdle)(kRequestSent)(kProcessingRequest)(kResponseSent)(kShutdown));
 
 class SharedExchangeHeader {
  public:
@@ -205,7 +205,7 @@ class SharedExchangeHeader {
 
   void Respond(size_t size) {
     auto state = state_.load(std::memory_order_acquire);
-    if (state != SharedExchangeState::kRequestSent) {
+    if (state != SharedExchangeState::kProcessingRequest) {
       LOG_IF(DFATAL, state != SharedExchangeState::kShutdown)
           << "Respond in wrong state: " << AsString(state);
       return;
@@ -213,7 +213,7 @@ class SharedExchangeHeader {
 
     data_size_ = size;
     WARN_NOT_OK(
-        TransferState(SharedExchangeState::kRequestSent, SharedExchangeState::kResponseSent),
+        TransferState(SharedExchangeState::kProcessingRequest, SharedExchangeState::kResponseSent),
         "Transfer state failed");
     WARN_NOT_OK(response_semaphore_.Post(), "Respond failed");
   }
@@ -222,6 +222,8 @@ class SharedExchangeHeader {
     RETURN_NOT_OK(DoWait(
         SharedExchangeState::kRequestSent, std::chrono::system_clock::time_point::max(),
         &request_semaphore_));
+    RETURN_NOT_OK(TransferState(
+        SharedExchangeState::kRequestSent, SharedExchangeState::kProcessingRequest));
     return data_size_;
   }
 
@@ -474,6 +476,7 @@ SharedExchangeThread::SharedExchangeThread(
       }
       listener(*query_size);
     }
+    ready_to_complete_ = true;
   }, &thread_));
 }
 

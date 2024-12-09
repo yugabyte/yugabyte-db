@@ -31,6 +31,7 @@
 
 #include "storage/s_lock.h"
 #include "utils/guc.h"
+#include "utils/queryjumble.h"
 #include "utils/timestamp.h"
 
 #define YB_QD_MAX_BIND_VARS_LEN 2048
@@ -38,6 +39,7 @@
 #define YB_QD_MAX_PGSS_QUERY_LEN 1024
 #define YB_QD_DESCRIPTION_LEN 128
 #define YB_QD_MAX_SCHEMA_OIDS 10
+#define YB_QD_MAX_CONSTANTS 100
 
 /*
  * Currently, if the explain plan is larger than 16KB, we truncate it.
@@ -143,12 +145,27 @@ typedef struct YbQueryDiagnosticsEntry
 
 	/* Holds the schema oids until flushed to disc */
 	Oid			schema_oids[YB_QD_MAX_SCHEMA_OIDS];
+
+	/*
+	 * Identifies the starting position of the query within the source text,
+	 * equivalent to Query->stmt_location
+	 */
+	int			query_location;
+
+	/* Number of constants in the query */
+	int			constants_count;
+
+	/* Holds the locations of constants in the query */
+	LocationLen	constant_locations[YB_QD_MAX_CONSTANTS];
 } YbQueryDiagnosticsEntry;
 
 extern TimestampTz *yb_pgss_last_reset_time;
 
 typedef void (*YbGetNormalizedQueryFuncPtr)(Size query_offset, int query_len, char *normalized_query);
 extern YbGetNormalizedQueryFuncPtr yb_get_normalized_query;
+
+typedef void (*PgssFillInConstantLengths)(JumbleState *jstate, const char *query, int query_loc);
+extern PgssFillInConstantLengths yb_qd_fill_in_constant_lengths;
 
 extern void YbQueryDiagnosticsInstallHook(void);
 extern Size YbQueryDiagnosticsShmemSize(void);

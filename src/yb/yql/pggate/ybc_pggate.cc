@@ -136,6 +136,15 @@ DEFINE_NON_RUNTIME_bool(
     ysql_minimal_catalog_caches_preload, false,
     "Fill postgres' caches with system items only");
 
+DEFINE_RUNTIME_PREVIEW_bool(
+  ysql_conn_mgr_version_matching, false,
+  "If true, does selection of transactional backends based on logical client version");
+
+DEFINE_RUNTIME_PREVIEW_bool(
+    ysql_conn_mgr_version_matching_connect_higher_version, true,
+    "If ysql_conn_mgr_version_matching is enabled is enabled, then connect to higher version "
+    "server if this flag is set to true");
+
 DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
@@ -1372,8 +1381,8 @@ YBCStatus YBCPgDmlAssignColumn(YBCPgStatement handle,
   return ToYBCStatus(pgapi->DmlAssignColumn(handle, attr_num, attr_value));
 }
 
-YBCStatus YBCPgDmlANNBindVector(YBCPgStatement handle, int vec_att_no, YBCPgExpr vector) {
-  return ToYBCStatus(pgapi->DmlANNBindVector(handle, vec_att_no, vector));
+YBCStatus YBCPgDmlANNBindVector(YBCPgStatement handle, YBCPgExpr vector) {
+  return ToYBCStatus(pgapi->DmlANNBindVector(handle, vector));
 }
 
 YBCStatus YBCPgDmlANNSetPrefetchSize(YBCPgStatement handle, int prefetch_size) {
@@ -2028,6 +2037,7 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_catalog_preload_additional_table_list =
           FLAGS_ysql_catalog_preload_additional_table_list.c_str(),
       .ysql_use_relcache_file                   = &FLAGS_ysql_use_relcache_file,
+      .ysql_use_optimized_relcache_update       = &FLAGS_ysql_use_optimized_relcache_update,
       .ysql_enable_pg_per_database_oid_allocator =
           &FLAGS_ysql_enable_pg_per_database_oid_allocator,
       .ysql_enable_db_catalog_version_mode =
@@ -2044,6 +2054,9 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_conn_mgr_superuser_sticky = &FLAGS_ysql_conn_mgr_superuser_sticky,
       .TEST_ysql_log_perdb_allocated_new_objectid =
           &FLAGS_TEST_ysql_log_perdb_allocated_new_objectid,
+      .ysql_conn_mgr_version_matching = &FLAGS_ysql_conn_mgr_version_matching,
+      .ysql_conn_mgr_version_matching_connect_higher_version =
+          &FLAGS_ysql_conn_mgr_version_matching_connect_higher_version,
   };
   // clang-format on
   return &accessor;

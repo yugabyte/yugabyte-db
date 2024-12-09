@@ -1020,13 +1020,10 @@ index_create(Relation heapRelation,
 	Assert(indexRelationId == RelationGetRelid(indexRelation));
 
 	/*
-	 * Create index in YugaByte only if it is a secondary non-covered index. Primary key is
+	 * Create index in YugaByte only if it is a secondary index. Primary key is
 	 * an implicit part of the base table in YugaByte and doesn't need to be created.
 	 */
-	 IndexAmRoutine *amroutine =
-		GetIndexAmRoutineByAmId(indexInfo->ii_Am, true);
-	if (IsYBRelation(indexRelation) &&
-		!isprimary && !(amroutine && amroutine->yb_amiscoveredbymaintable))
+	if (IsYBRelation(indexRelation) && !isprimary)
 	{
 		YBCCreateIndex(indexRelationName,
 					   indexInfo,
@@ -3900,11 +3897,11 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 				 errmsg("cannot reindex temporary tables of other sessions")));
 
 	/*
-	 * YB covered indexes share the same storage as their tables, so it is not
+	 * YB pk indexes share the same storage as their tables, so it is not
 	 * possible to reindex them. However, this code-path may be internally
 	 * invoked by table rewrite, and we need to reset the index's reltuples.
 	 */
-	if (!is_yb_table_rewrite && YBIsCoveredByMainTable(iRel) &&
+	if (!is_yb_table_rewrite && iRel->rd_index->indisprimary &&
 		IsYBRelation(iRel))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -4256,7 +4253,7 @@ reindex_relation(Oid relid, int flags, ReindexParams *params, bool is_yb_table_r
 		Relation iRel = index_open(indexOid, AccessExclusiveLock);
 		if (IsYBRelation(iRel))
 		{
-			if (!is_yb_table_rewrite && !YBIsCoveredByMainTable(iRel))
+			if (!is_yb_table_rewrite && !iRel->rd_index->indisprimary)
 				/*
 				* Drop the old DocDB table associated with this index.
 				* This is only required for secondary indexes, because a

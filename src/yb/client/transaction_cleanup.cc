@@ -48,7 +48,7 @@ class TransactionCleanup : public std::enable_shared_from_this<TransactionCleanu
       client_->LookupTabletById(
           tablet_id,
           /* table =*/ nullptr,
-          master::IncludeInactive::kFalse,
+          master::IncludeHidden::kFalse,
           master::IncludeDeleted::kFalse,
           TransactionRpcDeadline(),
           std::bind(&TransactionCleanup::LookupTabletDone, this, _1, self),

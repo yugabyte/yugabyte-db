@@ -20,4 +20,4 @@
     x-yba-api-authz:
       noAuthz: true
     x-yba-api-since: 2024.2.0.0
-    x-yba-api-visibility: preview
+    x-yba-api-visibility: internal

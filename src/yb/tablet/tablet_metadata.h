@@ -387,6 +387,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   const std::string& lower_bound_key() const { return kv_store_.lower_bound_key; }
   const std::string& upper_bound_key() const { return kv_store_.upper_bound_key; }
 
+  docdb::KeyBounds MakeKeyBounds() const;
+
   const std::string& wal_dir() const { return wal_dir_; }
 
   Status set_namespace_id(const NamespaceId& namespace_id);
@@ -682,7 +684,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   bool UsePartialRangeKeyIntents() const;
 
   // versions is a map from table id to min schema version that should be kept for this table.
-  Status OldSchemaGC(const std::unordered_map<Uuid, SchemaVersion, UuidHash>& versions);
+  Status OldSchemaGC(const std::unordered_map<Uuid, SchemaVersion>& versions);
   void DisableSchemaGC();
   void EnableSchemaGC();
 

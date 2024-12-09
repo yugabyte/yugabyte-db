@@ -27,7 +27,6 @@ LABEL name="YugabyteDB" \
     vendor="Yugabyte Inc" \
     release=$RELEASE \
     version=$VERSION \
-    java_version=$JAVA_VERSION \
     summary="YugabytDB Image" \
     description="YugabyteDB is a free and open-source, distributed, relational, NewSQL database \
         management system designed to handle large amounts of data spanning across multiple \
@@ -98,6 +97,7 @@ RUN set -x ; \
 RUN $yum_install -y \
       bind-utils \
       diffutils \
+      gettext \
       glibc-all-langpacks \
       glibc-langpack-en \
       glibc-locale-source \
@@ -164,7 +164,7 @@ RUN mkdir /licenses && \
       -o /licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 # Install azcopy
-ARG AZV=10.20.1
+ARG AZV=10.25.0
 RUN set -x; \
     [[ "$(uname -m)" == "aarch64" ]] && arch='arm64' || arch='amd64'; \
     pkg_name="azcopy_linux_${arch}_${AZV}"; \

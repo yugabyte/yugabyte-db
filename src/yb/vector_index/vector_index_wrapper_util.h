@@ -28,15 +28,19 @@ namespace yb::vector_index {
 //   - DestinationVector: The vector type expected by the caller.
 //   - DestinationDistanceResult: The distance type expected by the caller.
 template<
-  IndexableVectorType SourceVector,
+  IndexableVectorType     SourceVector,
   ValidDistanceResultType SourceDistanceResult,
-  IndexableVectorType DestinationVector,
+  IndexableVectorType     DestinationVector,
   ValidDistanceResultType DestinationDistanceResult
 >
 class VectorIndexReaderAdapter
     : public VectorIndexReaderIf<DestinationVector, DestinationDistanceResult> {
  public:
   using Base = VectorIndexReaderIf<DestinationVector, DestinationDistanceResult>;
+  using DestinationIteratorValue = std::pair<VectorId, DestinationVector>;
+  using DestinationIterator      = AbstractIterator<DestinationIteratorValue>;
+  using SourceIteratorValue      = std::pair<VectorId, SourceVector>;
+  using SourceIterator           = PolymorphicIterator<SourceIteratorValue>;
 
   // Constructor takes the underlying vector index reader
   explicit VectorIndexReaderAdapter(
@@ -64,27 +68,20 @@ class VectorIndexReaderAdapter
     return destination_results;
   }
 
-  using DestinationIteratorValueType = std::pair<DestinationVector, VertexId>;
-  using SourceIteratorValueType = std::pair<SourceVector, VertexId>;
-
-  std::unique_ptr<AbstractIterator<DestinationIteratorValueType>> BeginImpl()
-      const override {
-    PolymorphicIterator <SourceIteratorValueType> source_begin_iterator =
-        source_reader_.begin();
+  std::unique_ptr<DestinationIterator> BeginImpl() const override {
+    SourceIterator source_begin_iterator = source_reader_.begin();
     return std::make_unique<VectorIteratorAdapter>(std::move(source_begin_iterator));
   }
 
-  std::unique_ptr<AbstractIterator<DestinationIteratorValueType>> EndImpl()
-      const override {
-    PolymorphicIterator<SourceIteratorValueType> source_end_iterator = source_reader_.end();
+  std::unique_ptr<DestinationIterator> EndImpl() const override {
+    SourceIterator source_end_iterator = source_reader_.end();
     return std::make_unique<VectorIteratorAdapter>(std::move(source_end_iterator));
   }
 
   DestinationDistanceResult Distance(
       const DestinationVector& lhs, const DestinationVector& rhs) const override {
     return static_cast<DestinationDistanceResult>(source_reader_.Distance(
-        vector_cast<SourceVector>(lhs),
-        vector_cast<SourceVector>(rhs)));
+        vector_cast<SourceVector>(lhs), vector_cast<SourceVector>(rhs)));
   }
 
   std::string IndexStatsStr() const override {
@@ -94,30 +91,28 @@ class VectorIndexReaderAdapter
  private:
   const VectorIndexReaderIf<SourceVector, SourceDistanceResult>& source_reader_;
 
-  class VectorIteratorAdapter
-      : public AbstractIterator<DestinationIteratorValueType> {
+  class VectorIteratorAdapter : public DestinationIterator {
    public:
-    VectorIteratorAdapter(
-        PolymorphicIterator<SourceIteratorValueType> source_iterator)
+    explicit VectorIteratorAdapter(SourceIterator&& source_iterator)
         : source_iterator_(std::move(source_iterator)) {}
 
    protected:
-    DestinationIteratorValueType Dereference() const override {
-      auto [source_vector_ptr, vertex_id] = *source_iterator_;
+    DestinationIteratorValue Dereference() const override {
+      auto [vertex_id, source_vector_ptr] = *source_iterator_;
       DestinationVector temp_casted_vector = vector_cast<DestinationVector>(source_vector_ptr);
-      return std::make_pair(temp_casted_vector, vertex_id);
+      return std::make_pair(vertex_id, temp_casted_vector);
     }
 
     void Next() override { ++source_iterator_; }
 
-    bool NotEquals(const AbstractIterator<DestinationIteratorValueType>& other)
+    bool NotEquals(const DestinationIterator& other)
         const override {
       const auto* other_adapter = down_cast<const VectorIteratorAdapter*>(&other);
       return source_iterator_ != other_adapter->source_iterator_;
     }
 
    private:
-    PolymorphicIterator<SourceIteratorValueType> source_iterator_;
+    SourceIterator source_iterator_;
   };
 };
 

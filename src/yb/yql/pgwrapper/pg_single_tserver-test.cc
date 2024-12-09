@@ -18,6 +18,8 @@
 
 #include "yb/consensus/log.h"
 
+#include "yb/gutil/strings/split.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
@@ -37,6 +39,7 @@
 #include "yb/util/to_stream.h"
 
 #include "yb/yql/pggate/pggate_flags.h"
+
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DEFINE_test_flag(int32, scan_tests_num_rows, 0,
@@ -734,6 +737,11 @@ TEST_F(PgSingleTServerTest, YB_DISABLE_TEST(PerfScanG7RangePK100Columns)) {
 
 YB_DEFINE_ENUM(OptionalPackedRowVersion, (kNone)(kV1)(kV2));
 
+std::string OptionalPackedRowVersionToString(
+    const testing::TestParamInfo<OptionalPackedRowVersion>& param_info) {
+  return AsString(param_info.param);
+}
+
 using FastBackwardScanParams = std::tuple<
     /* fast backward scan: on / off */ bool,
     /* with nulls: on / off */ bool,
@@ -748,36 +756,16 @@ std::string FastBackwardScanParamsToString(
     yb::AsString(std::get<2>(param_info.param)));
 }
 
-class PgFastBackwardScanTest
-    : public PgSingleTServerTest,
-      public testing::WithParamInterface<FastBackwardScanParams> {
-
- public:
-  PgFastBackwardScanTest()
-      : use_fast_backward_scan_(std::get<0>(GetParam())),
-        use_row_with_nulls_(std::get<1>(GetParam())),
-        use_packed_row_(std::get<2>(GetParam()) != OptionalPackedRowVersion::kNone),
-        use_packed_row_v2_(std::get<2>(GetParam()) == OptionalPackedRowVersion::kV2)
-  {}
-
+class PgFastBackwardScanTestBase : public PgSingleTServerTest {
  protected:
   enum class IntentsUsage { kRegularOnly, kIntentsOnly, kMixed };
 
-  friend std::ostream& operator<<(std::ostream& out, IntentsUsage usage) {
-    switch (usage) {
-      case IntentsUsage::kRegularOnly:
-        return (out << "regular only");
-      case IntentsUsage::kIntentsOnly:
-        return (out << "intents only");
-      case IntentsUsage::kMixed:
-        return (out << "mixed");
-    }
-    throw std::invalid_argument("usage");
-  }
+  explicit PgFastBackwardScanTestBase(OptionalPackedRowVersion packed_row_version)
+      : use_packed_row_(packed_row_version != OptionalPackedRowVersion::kNone),
+        use_packed_row_v2_(packed_row_version == OptionalPackedRowVersion::kV2)
+  {}
 
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_fast_backward_scan) = use_fast_backward_scan_;
-
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = use_packed_row_;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = use_packed_row_;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_packed_row_v2) = use_packed_row_v2_;
@@ -789,11 +777,12 @@ class PgFastBackwardScanTest
   }
 
   Status CreateDB(bool colocated) {
+    colocated_ = colocated;
     auto conn = VERIFY_RESULT(Connect());
     RETURN_NOT_OK(conn.ExecuteFormat("DROP DATABASE IF EXISTS $0", kDatabaseName));
     return conn.ExecuteFormat(
         "CREATE DATABASE $0 with COLOCATION = $1",
-        kDatabaseName, (colocated ? "true" : "false"));
+        kDatabaseName, (colocated_ ? "true" : "false"));
   }
 
   Status FetchAndValidate(
@@ -807,6 +796,42 @@ class PgFastBackwardScanTest
       SCHECK_EQ(result, expected_result, IllegalState, "Unexpected result");
     }
     return Status::OK();
+  }
+
+  friend std::ostream& operator<<(std::ostream& out, IntentsUsage usage) {
+    switch (usage) {
+      case IntentsUsage::kRegularOnly:
+        return out << "regular only";
+      case IntentsUsage::kIntentsOnly:
+        return out << "intents only";
+      case IntentsUsage::kMixed:
+        return out << "mixed";
+    }
+    FATAL_INVALID_ENUM_VALUE(IntentsUsage, usage);
+  }
+
+ protected:
+  const bool use_packed_row_;
+  const bool use_packed_row_v2_;
+  bool colocated_ = false;
+};
+
+class PgFastBackwardScanTest
+    : public PgFastBackwardScanTestBase,
+      public testing::WithParamInterface<FastBackwardScanParams> {
+
+ public:
+  PgFastBackwardScanTest()
+      : PgFastBackwardScanTestBase(std::get<2>(GetParam())),
+        use_fast_backward_scan_(std::get<0>(GetParam())),
+        use_row_with_nulls_(std::get<1>(GetParam()))
+  {}
+
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_fast_backward_scan) = use_fast_backward_scan_;
+
+    PgFastBackwardScanTestBase::SetUp();
   }
 
   void SimpleTest(const std::string& table_name, IntentsUsage intents_usage, bool with_nulls) {
@@ -968,8 +993,6 @@ class PgFastBackwardScanTest
  private:
   bool use_fast_backward_scan_;
   bool use_row_with_nulls_;
-  bool use_packed_row_;
-  bool use_packed_row_v2_;
 };
 
 INSTANTIATE_TEST_SUITE_P(
@@ -991,6 +1014,304 @@ TEST_P(PgFastBackwardScanTest, SimpleColocated) {
 
   ASSERT_OK(CreateDB(/* colocated */ true));
   RunSimpleTests();
+}
+
+class PgFastBackwardScanOnlyTest
+    : public PgFastBackwardScanTestBase,
+      public testing::WithParamInterface<OptionalPackedRowVersion> {
+
+ public:
+  PgFastBackwardScanOnlyTest() : PgFastBackwardScanTestBase(GetParam())
+  {}
+
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_fast_backward_scan) = true;
+
+    PgFastBackwardScanTestBase::SetUp();
+  }
+
+  void ColumnMultipleUpdateTest(const std::string& table_name, IntentsUsage intents_usage) {
+    // A helper to generate RangeObject for to cover requested keys.
+    auto keys = [](int min_key, int max_key = 0) {
+      return Range(min_key, max_key > 0 ? max_key + 1 : min_key + 1);
+    };
+    const auto kColumns = keys(1, 5);
+    const auto kKeys    = keys(1, 5);
+
+    constexpr auto kNumUpdateRows = NonTsanVsTsan(50, 20);
+
+    // Create database and setup a connection.
+    auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+
+    // Create table.
+    {
+      std::string stmt = "CREATE TABLE $0(h int, r int, ";
+      for (const auto i : kColumns) {
+        stmt += Format("c_$0 int, ", i);
+      }
+      stmt += "PRIMARY KEY(h, r asc))";
+      ASSERT_OK(conn.ExecuteFormat(stmt, table_name));
+    }
+
+    if (intents_usage == IntentsUsage::kIntentsOnly) {
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+    }
+
+    // Load data.
+    {
+      std::string stmt = "INSERT INTO $0 SELECT k_val, k_val";
+      for (const auto i : kColumns) {
+        stmt += Format(", $0", i);
+      }
+      stmt += Format(" FROM generate_series($0, $1) k_val;", *kKeys.begin(), (*kKeys.end()) - 1);
+      ASSERT_OK(conn.ExecuteFormat(stmt, table_name));
+    }
+
+    // A helper to get update value.
+    auto gen_column_value = [](int column, int base_value = 0, int multiplier = 100) {
+      return base_value + multiplier * column;
+    };
+
+    // A helper to generate column values for multiple updates.
+    auto gen_column_update = [&gen_column_value](int column, int base_value) {
+      return gen_column_value(column, base_value, 1000);
+    };
+
+    // A helper to check current rows
+    auto check_rows =
+      [&conn, &table_name, &kKeys, &kColumns,
+       &gen_column_value, &gen_column_update](int base_value = 0) -> Status {
+        for (const auto key : kKeys) {
+          const auto fetch_stmt = Format(
+              "SELECT * FROM $0 WHERE h = $1 ORDER BY r DESC", table_name, key);
+          const auto key_row = VERIFY_RESULT(conn.FetchAllAsString(fetch_stmt));
+
+          std::stringstream expected;
+          expected << key << DefaultColumnSeparator() << key;
+          for (const auto c : kColumns) {
+            expected << DefaultColumnSeparator();
+            if (base_value == 0 || ((key % 2) == 0)) {
+              expected << gen_column_value(c);
+            } else {
+              expected << gen_column_update(c, base_value);
+            }
+          }
+
+          SCHECK_EQ(expected.str(), key_row, IllegalState, "");
+        }
+        return Status::OK();
+      };
+
+    // Do some initial updates (one per column per row).
+    {
+      LOG(INFO) << "Inserting initial updates";
+      for (const auto k : kKeys) {
+        for (const auto i : kColumns) {
+          ASSERT_OK(conn.ExecuteFormat(
+              "UPDATE $0 SET c_$1 = $2 WHERE h = $3", table_name, i, gen_column_value(i), k));
+        }
+      }
+      ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+
+      // Check rows are expected.
+      ASSERT_OK(check_rows());
+    }
+
+    // A helper to update all columns for every odd keys.
+    auto update_columns_and_flush =
+        [this, &conn, &table_name, &kKeys, &kColumns, &gen_column_update](int base_value) {
+          for (const auto k : kKeys) {
+            // Would like to update only odd keys.
+            if ((k % 2) == 0) {
+              continue;
+            }
+            for (const auto i : kColumns) {
+              const auto stmt_template =
+                  Format("UPDATE $0 SET c_$1 = $$0 WHERE h = $2", table_name, i, k);
+              for (auto n = base_value; n < base_value + kNumUpdateRows; ++n) {
+                RETURN_NOT_OK(conn.ExecuteFormat(stmt_template, gen_column_update(i, n)));
+              }
+            }
+          }
+          return cluster_->FlushTablets(tablet::FlushMode::kSync);
+        };
+
+    // Insert multiple updates for several columns.
+    LOG(INFO) << "Inserting multiple updates part 1";
+    ASSERT_OK(update_columns_and_flush(100000));
+    ASSERT_OK(check_rows(100000 + kNumUpdateRows - 1));
+
+    if (intents_usage == IntentsUsage::kMixed) {
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+    }
+
+    // Insert more updates for these columns.
+    LOG(INFO) << "Inserting multiple updates part 2";
+    ASSERT_OK(update_columns_and_flush(200000));
+    ASSERT_OK(check_rows(200000 + kNumUpdateRows - 1));
+
+    // A helper to parse some metrics from explain (analyze, dist, debug) output.
+    static const auto read_request_pattern = "Storage Read Requests"s;
+    auto parse_metrics = [](const std::string& explain_result) {
+      static const auto metric_pattern = "Metric rocksdb_number_db_"s;
+      std::vector<std::string> metric_lines = strings::Split(
+          explain_result, DefaultRowSeparator(),
+          [](GStringPiece sp) {
+            return sp.starts_with(read_request_pattern) || sp.starts_with(metric_pattern);
+          }
+      );
+
+      // Using sorted order to be immutable to lines reordering in future.
+      std::map<std::string, uint64_t> metrics;
+      for (const auto& metric_kv : metric_lines) {
+        std::pair<std::string, std::string> kv_pair {
+            strings::Split(StripPrefixString(metric_kv, metric_pattern), ": ")};
+        metrics.insert(std::make_pair(kv_pair.first, atoi_kmgt(kv_pair.second)));
+      }
+      return metrics;
+    };
+
+    // A helper to generate limits for a particular key based on the data inserted earlier.
+    auto get_limits = [this, kNumColumns = kColumns.size()](size_t key) {
+      // Any negative or zero for max_prevs_to_avoid_seek means the same -- do not try Prev
+      // to seek backward, use Seek always.
+      const size_t max_prevs_to_avoid_seek =
+          std::max(0, ANNOTATE_UNPROTECTED_READ(FLAGS_max_prevs_to_avoid_seek));
+
+      // The minimal number of Prev calls cannot be less than 1 for the fast backward scan
+      // in either case, as it is required to make at least 1 Prev call to move to the previous
+      // record.
+      const size_t min_prevs_number = std::max(1UL, max_prevs_to_avoid_seek);
+
+      // Number of updates for each column in accordance with the test.
+      const size_t num_updates_per_columns = 1 + ((key % 2) == 0 ? 0 : 2 * kNumUpdateRows);
+
+      // Each column has it's own record for non-packed row case.
+      const size_t num_records_per_columns = (use_packed_row_ ? 0 : 1) + num_updates_per_columns;
+
+      // Number of Prev calls for columns.
+      size_t num_prev_for_columns = kNumColumns * num_records_per_columns;
+
+      // Ideally one Seek to locate a key after the one used in the query (see below).
+      size_t seek_min = 1;
+
+      // Too many column updates are expected, new mechanic will be used (Seek to a column
+      // in case if several Prev calls cannot move the cursor out of the current column).
+      if (min_prevs_number < num_records_per_columns) {
+        // Number of Prev calls per column should account the movement out of a column, hence
+        // adding 1 to the max allowed prevs.
+        num_prev_for_columns = kNumColumns * (min_prevs_number + 1);
+
+        // Will do a seek for every column.
+        seek_min += kNumColumns;
+
+        // In the worst case we would have one more Seek per column to move to the previous
+        // column after the Seek made due to a lot of updates and if doing Prevs reaches
+        // the limit. For the current test this could happen only when max_prevs_to_avoid_seek
+        // is turned off.
+        if (max_prevs_to_avoid_seek == 0) {
+          seek_min += kNumColumns;
+        }
+      }
+
+      // A number of Prev calls should account a movement out of the very first record (which is
+      // a packed row or inital row for non-packed case), and also 1 movement after the inital
+      // Seek call (which would be pointing to a key after right after the used key in a query).
+      // Hence additing 2 more to account these Prev calls.
+      const auto prev_max = num_prev_for_columns + 2;
+
+      // A Seek may fail if the key after the used one does not exist, in this case additional
+      // SeekToLast will be done and one Prev is omitted because SeekToLast already positions
+      // to the correct record. Also additional Seek could be done in case of colocated table
+      // to retrive table's tombstone time via GetTableTombstoneTime().
+      const auto prev_min = prev_max - 1;
+      const auto seek_max = seek_min + 1 + colocated_;
+
+      return std::unordered_map<std::string, std::pair<uint64_t, uint64_t>> {
+        {"seek", {seek_min, seek_max}},
+        {"prev", {prev_min, prev_max}}
+      };
+    };
+
+    // Do explain analyze for every row and check the numbers for seek and prev are expected.
+    // Unfortunately explain (analyze, dist, debug) does not return metrics for the intents db,
+    // thus checking the result of 'select *' is expected.
+    // TODO(fast-backward-scan) create GH for no statistics for intents and reference here.
+    if (intents_usage == IntentsUsage::kRegularOnly) {
+      for (const auto key : kKeys) {
+        const auto fetch_stmt = Format(
+            "EXPLAIN (ANALYZE, DIST, DEBUG) SELECT * FROM $0 WHERE h = $1 ORDER BY r DESC",
+            table_name, key);
+
+        auto metrics = parse_metrics(ASSERT_RESULT(conn.FetchAllAsString(fetch_stmt)));
+        LOG(INFO) << "Key " << key << " metics: " << AsString(metrics);
+
+        // The math works only for one request.
+        ASSERT_EQ(1, metrics[read_request_pattern]);
+
+        const auto limits = get_limits(key);
+        for (const auto& metric_limit : limits) {
+          LOG(INFO) << "Checking metric " << AsString(metric_limit);
+          auto metric_it = metrics.find(metric_limit.first);
+          ASSERT_TRUE(metric_it != metrics.end());
+          ASSERT_GE(metric_it->second, metric_limit.second.first);
+          ASSERT_LE(metric_it->second, metric_limit.second.second);
+        }
+      }
+    }
+
+    if (intents_usage != IntentsUsage::kRegularOnly) {
+      ASSERT_OK(conn.CommitTransaction());
+    }
+
+    LOG_WITH_FUNC(INFO) << "Done";
+  }
+
+  void RunTests() {
+    size_t table_counter = 0;
+
+    for (auto max_prevs : {100000, 3, 0, -1}) {
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_prevs_to_avoid_seek) = max_prevs;
+      std::this_thread::yield();
+      std::this_thread::sleep_for(1s);
+      for (auto intents_usage : {IntentsUsage::kRegularOnly,
+                                 IntentsUsage::kIntentsOnly,
+                                 IntentsUsage::kMixed}) {
+        const auto table_name = "ttable" + std::to_string(table_counter++);
+        LOG(INFO) << "Running column multiple test"
+                  << ": table_name = '" << table_name << "'"
+                  << ", packed_row = " << use_packed_row_
+                  << ", packed_row_v2 = " << use_packed_row_v2_
+                  << ", max_prevs_to_avoid_seek = " << max_prevs
+                  << ", intents_usage = " << intents_usage;
+
+        ColumnMultipleUpdateTest(table_name, intents_usage);
+        if (HasFailure()) {
+          return;
+        }
+      } // for (auto intents_usage... )
+    } // for (auto max_prevs... )
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    PgSingleTServerTest, PgFastBackwardScanOnlyTest,
+    ::testing::ValuesIn(kOptionalPackedRowVersionArray),
+    OptionalPackedRowVersionToString);
+
+
+TEST_P(PgFastBackwardScanOnlyTest, ColumnMultipleUpdates) {
+  ASSERT_OK(CreateDB(/* colocated */ false));
+  RunTests();
+}
+
+TEST_P(PgFastBackwardScanOnlyTest, ColumnMultipleUpdatesColocated) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_sst_files_soft_limit) = 256;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_sst_files_hard_limit) = 256;
+
+  ASSERT_OK(CreateDB(/* colocated */ true));
+  RunTests();
 }
 
 // Covers https://github.com/yugabyte/yugabyte-db/issues/24118.

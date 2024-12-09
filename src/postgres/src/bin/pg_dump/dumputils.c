@@ -490,7 +490,8 @@ do { \
 		CONVERT_PRIV('c', "CONNECT");
 		CONVERT_PRIV('T', "TEMPORARY");
 	}
-	else if (strcmp(type, "TABLESPACE") == 0)
+	else if (strcmp(type, "TABLESPACE") == 0 ||
+			 strcmp(type, "TABLEGROUP") == 0)  /* Yugabyte */
 		CONVERT_PRIV('C', "CREATE");
 	else if (strcmp(type, "TYPE") == 0 ||
 			 strcmp(type, "TYPES") == 0)

@@ -653,6 +653,7 @@ struct IndexState {
   FilteringIterator iter;
   const size_t ybbasectid_idx;
   uint64_t scanned_rows;
+  Status delayed_failure;
 };
 
 Result<FetchResult> FetchTableRow(
@@ -682,15 +683,16 @@ Result<FetchResult> FetchTableRow(
       index ? table_iter->FetchTuple(tuple_id, row) : table_iter->FetchNext(row));
   switch(fetch_result) {
     case FetchResult::NotFound: {
-      if (!index) {
-        break;
+      if (index && index->delayed_failure.ok()) {
+        const auto* fmt = FLAGS_TEST_ysql_suppress_ybctid_corruption_details
+            ? "ybctid not found in indexed table"
+            : "$0 not found in indexed table. Index table id is $1, row $2";
+        index->delayed_failure = STATUS_FORMAT(
+            Corruption, fmt,
+            DocKey::DebugSliceToString(tuple_id), table_id,
+            DocKey::DebugSliceToString(index->iter.impl().GetTupleId()));
       }
-      if (FLAGS_TEST_ysql_suppress_ybctid_corruption_details) {
-        return STATUS(Corruption, "ybctid not found in indexed table");
-      }
-      return STATUS_FORMAT(
-          Corruption, "ybctid $0 not found in indexed table. index table id is $1",
-          DocKey::DebugSliceToString(tuple_id), table_id);
+      break;
     }
     case FetchResult::FilteredOut:
       VLOG(1) << "Row filtered out by the condition";
@@ -1884,7 +1886,7 @@ Result<size_t> PgsqlReadOperation::Execute() {
     std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteSample());
   } else if (request_.has_vector_idx_options()) {
     std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteVectorSearch(
-        data_.doc_read_context, request_.vector_idx_options()));
+      data_.doc_read_context, request_.vector_idx_options()));
   } else if (request_.index_request().has_vector_idx_options()) {
     std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteVectorSearch(
         *data_.index_doc_read_context, request_.index_request().vector_idx_options()));
@@ -1900,6 +1902,9 @@ Result<size_t> PgsqlReadOperation::Execute() {
   }
   if (index_iter_) {
     restart_read_ht_->MakeAtLeast(VERIFY_RESULT(index_iter_->RestartReadHt()));
+  }
+  if (!restart_read_ht_->is_valid()) {
+    RETURN_NOT_OK(delayed_failure_);
   }
 
   // Versions of pggate < 2.17.1 are not capable of processing response protos that contain RPC
@@ -2038,11 +2043,9 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteVectorSearch(
   // Build the vectorann and then make an index_doc_read_context on the vectorann
   // to get the index iterator. Then do ExecuteBatchKeys on the index iterator.
   RSTATUS_DCHECK(options.has_vector(), InvalidArgument, "Query vector not provided");
-  RSTATUS_DCHECK(
-      doc_read_context.vector_idx_options.has_value(), IllegalState,
-      "Table does not have vector index");
 
-  if (doc_read_context.vector_idx_options->idx_type() == PgVectorIndexType::HNSW) {
+  if (doc_read_context.vector_idx_options.has_value() &&
+      doc_read_context.vector_idx_options->idx_type() == PgVectorIndexType::HNSW) {
     return std::tuple<size_t, bool>(VERIFY_RESULT(ExecuteVectorLSMSearch(
         doc_read_context, options)), false);
   }
@@ -2067,11 +2070,6 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteVectorSearch(
   // Vector should be the first value after the key.
   auto vector_col_id =
       doc_read_context.schema().column_id(doc_read_context.schema().num_key_columns());
-
-  if (request_.vector_idx_options().has_vector_column_id()) {
-    vector_col_id = request_.vector_idx_options().vector_column_id();
-  }
-
   index_doc_projection.Init(doc_read_context.schema(), {key_col_id, vector_col_id});
 
   FilteringIterator table_iter(&table_iter_);
@@ -2096,7 +2094,8 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteVectorSearch(
           *pointer_cast<const vector_index::YSQLVector*>(vec_value->binary_value().data()),
           vec_value->binary_value().size()));
       auto doc_iter = down_cast<DocRowwiseIterator*>(table_iter_.get());
-      ann_store->Add(vec, doc_iter->GetTupleId());
+      ann_store->Add(vector_index::VectorId::GenerateRandom(),
+                     std::move(vec), doc_iter->GetTupleId());
     }
   }
 
@@ -2136,8 +2135,9 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(
   RSTATUS_DCHECK(data_.vector_index, IllegalState, "Search vector when vector index is null");
 
   Slice vector_slice(options.vector().binary_value());
-  // TODO(vector_index) Use correct max_results
-  size_t max_results = std::min<size_t>(1000, options.prefetch_size());
+  // TODO(vector_index) Use correct max_results or use prefetch_size passed from options
+  // when paging is supported.
+  size_t max_results = 1000;
 
   auto result = VERIFY_RESULT(data_.vector_index->Search(vector_slice, max_results));
   // TODO(vector_index) Order keys by ybctid for fetching.
@@ -2265,6 +2265,9 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
 
   if (index_state) {
     scanned_index_rows_ += index_state->scanned_rows;
+    if (delayed_failure_.ok()) {
+      delayed_failure_ = index_state->delayed_failure;
+    }
   }
   return std::tuple<size_t, bool>{fetched_rows, has_paging_state};
 }

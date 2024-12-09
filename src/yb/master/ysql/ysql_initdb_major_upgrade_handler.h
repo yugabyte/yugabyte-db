@@ -37,8 +37,6 @@ class YsqlInitDBAndMajorUpgradeHandler {
 
   ~YsqlInitDBAndMajorUpgradeHandler() = default;
 
-  void SysCatalogLoaded(const LeaderEpoch& epoch);
-
   // Starts the global initdb procedure to create the initial universe level ysql sys catalog using
   // the initdb process.
   Status StartNewClusterGlobalInitDB(const LeaderEpoch& epoch);

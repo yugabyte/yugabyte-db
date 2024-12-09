@@ -102,7 +102,7 @@
 #include "yb/yql/cql/ql/ptree/pt_transaction.h"
 
 DECLARE_bool(cql_raise_index_where_clause_error);
-DECLARE_bool(ycql_suppress_group_by_error);
+DECLARE_bool(ycql_ignore_group_by_error);
 
 namespace yb {
 namespace ql {
@@ -2524,10 +2524,10 @@ group_clause:
     $$ = nullptr;
   }
   | GROUP_LA BY group_by_list {
-    if(!FLAGS_ycql_suppress_group_by_error)
+    if(!FLAGS_ycql_ignore_group_by_error)
       PARSER_UNSUPPORTED_MSG(@1,
         "This is not recommended but this error can be suppressed by setting " \
-        "ycql_suppress_group_by_error flag to false. When set to false, " \
+        "ycql_ignore_group_by_error flag to true. When set to true, " \
         "the error will be suppressed but the GROUP BY clause will be ignored.");
     $$ = $3;
   }

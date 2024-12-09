@@ -314,7 +314,7 @@ YbExecDoInsertIndexTuple(ResultRelInfo *resultRelInfo,
 	 * After updating INSERT ON CONFLICT batching map, PK is no longer
 	 * relevant from here on.
 	 */
-	if (isYBRelation && YBIsCoveredByMainTable(indexRelation))
+	if (isYBRelation && indexRelation->rd_index->indisprimary)
 		return deferredCheck;
 
 	/* Check whether to apply noDupErr to this index */
@@ -529,13 +529,13 @@ ExecInsertIndexTuples(ResultRelInfo *resultRelInfo,
 			   indexRelation->rd_index->indisready);
 
 		/*
-		 * No need to update YugaByte primary key or a covered index
-		 * since they are share the same storage as the base table.
+		 * No need to update YugaByte primary key which is intrinic part of
+		 * the base table.
 		 *
 		 * TODO(neil) The following YB check might not be needed due to later work on indexes.
 		 * We keep this check for now as this bugfix will be backported to ealier releases.
 		 */
-		if (isYBRelation && YBIsCoveredByMainTable(indexRelation))
+		if (isYBRelation && indexRelation->rd_index->indisprimary)
 			continue;
 
 		/* If the index is marked as read-only, ignore it */
@@ -591,7 +591,7 @@ YbExecDoDeleteIndexTuple(ResultRelInfo *resultRelInfo,
 	 */
 	FormIndexDatum(indexInfo, slot, estate, values, isnull);
 
-	if (!(IsYBRelation(heapRelation) && YBIsCoveredByMainTable(indexRelation)))
+	if (!(IsYBRelation(heapRelation) && indexRelation->rd_index->indisprimary))
 	{
 		MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 		yb_index_delete(indexRelation, /* index relation */
@@ -666,7 +666,7 @@ ExecDeleteIndexTuples(ResultRelInfo *resultRelInfo, Datum ybctid, HeapTuple tupl
 		 * - As a result, we don't need distinguish between Postgres and YugaByte here.
 		 *   I update this code only for clarity.
 		 */
-		if (isYBRelation && YBIsCoveredByMainTable(indexRelation))
+		if (isYBRelation && indexRelation->rd_index->indisprimary)
 			continue;
 
 		indexInfo = indexInfoArray[i];
@@ -723,7 +723,7 @@ YbExecDoUpdateIndexTuple(ResultRelInfo *resultRelInfo,
 	 * into the main table.
 	 */
 	Assert(IsYBRelation(indexRelation));
-	if (YBIsCoveredByMainTable(indexRelation))
+	if (indexRelation->rd_index->indisprimary)
 		return;
 
 	/*
@@ -809,13 +809,13 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 			list_member_oid(estate->yb_skip_entities.index_list,
 							RelationGetRelid(indexRelation)))
 			continue;
-
+		
 		Form_pg_index indexData = indexRelation->rd_index;
 		/*
 		 * Primary key is a part of the base relation in Yugabyte and does not
 		 * need to be updated here.
 		 */
-		if (YBIsCoveredByMainTable(indexRelation))
+		if (indexData->indisprimary)
 			continue;
 
 		indexInfo = indexInfoArray[i];

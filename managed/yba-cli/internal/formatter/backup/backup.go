@@ -36,8 +36,6 @@ const (
 	// StateHeader to display state
 	StateHeader      = "State"
 	expiryTimeHeader = "Expiry Time"
-	// CreateTimeHeader to display create time
-	CreateTimeHeader = "Create Time"
 	// CompletionTimeHeader to display completion time
 	CompletionTimeHeader = "Completion Time"
 	categoryHeader       = "Category"
@@ -112,7 +110,7 @@ func NewBackupContext() *Context {
 		"HasIncrementalBackups":    hasIncrementalBackupsHeader,
 		"State":                    StateHeader,
 		"ExpiryTime":               expiryTimeHeader,
-		"CreateTime":               CreateTimeHeader,
+		"CreateTime":               formatter.CreateTimeHeader,
 		"CompletionTime":           CompletionTimeHeader,
 		"KMSConfig":                formatter.KMSConfigHeader,
 		"Category":                 categoryHeader,

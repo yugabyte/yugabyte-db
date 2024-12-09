@@ -99,6 +99,10 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
     doc_mode_ = DocMode::kAny;
   }
 
+  bool TEST_use_fast_backward_scan() const {
+    return use_fast_backward_scan_;
+  }
+
  private:
   void InitIterator(
       BloomFilterMode bloom_filter_mode = BloomFilterMode::DONT_USE_BLOOM_FILTER,
