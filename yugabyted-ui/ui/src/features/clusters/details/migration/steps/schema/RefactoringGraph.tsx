@@ -1,7 +1,7 @@
 import React, { FC, useMemo, Fragment } from "react";
 import type { RefactoringCount } from "@app/api/src";
 import { useTranslation } from "react-i18next";
-import { YBTable, YBButton, YBTooltip } from "@app/components";
+import { YBTable, YBButton } from "@app/components";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import { Box, TableCell, TableRow, makeStyles } from "@material-ui/core";
 import type { UnsupportedSqlWithDetails, ErrorsAndSuggestionsDetails } from "@app/api/src";
@@ -311,25 +311,11 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
   const showRightArrowSidePanel = graphData.some(
     (item) => item.rightArrowSidePanel.mapReturnedArrayLength > 0
   );
-  const createCustomHeaderLabelRender =
-    (labelKey: string, tooltipKey?: string): () => React.ReactNode => {
-    return () => (
-      <Box display="inline-flex" alignItems="center">
-        {t(labelKey)}
-        {tooltipKey && (
-          <YBTooltip
-            title={t(tooltipKey)}
-            placement="top"
-            interactive
-          />
-        )}
-      </Box>
-    );
-  };
 
   const columns = [
     {
       name: "plusMinusExpansion",
+      label: " ",
       options: {
         sort: false,
         display: showPlusMinusExpansion,
@@ -349,8 +335,7 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
             >
               {expandedSuggestions[plusMinusExpansion.index] ? <MinusIcon /> : <PlusIcon />}
             </Box>
-          ),
-        customHeadLabelRender: () => null
+          )
       },
     },
     {
@@ -359,56 +344,51 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
       options: {
         sort: false,
         setCellHeaderProps: () => ({ style: { padding: "8px 30px" } }),
-        setCellProps: () => ({ style: { padding: "8px 30px", textTransform: "capitalize" } }),
-        customHeadLabelRender: createCustomHeaderLabelRender(
-          "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.objectType"
-        ),
+        setCellProps: () => ({ style: { padding: "8px 30px", textTransform: "capitalize" } })
       },
     },
     {
       name: "automaticDDLImport",
+      label: t(
+        "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.automaticDDLImport"
+      ),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 30px" } }),
         setCellProps: () => ({ style: { padding: "8px 30px" } }),
         customBodyRender: (count: number) => (
           <YBBadge text={count} variant={BadgeVariant.Success} />
-        ),
-        customHeadLabelRender: createCustomHeaderLabelRender(
-        "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.automaticDDLImport",
-        "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.automaticDDLImportTooltip"
-        ),
+        )
       },
     },
     {
       name: "invalidObjCount",
+      label: t(
+        "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.invalidObjectCount"
+      ),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 25px" } }),
         setCellProps: () => ({ style: { padding: "8px 30px" } }),
         customBodyRender: (count: number) => (
           <YBBadge text={count} variant={BadgeVariant.Warning} />
-        ),
-        customHeadLabelRender: createCustomHeaderLabelRender(
-        "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.invalidObjectCount",
-        "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.invalidObjectCountTooltip"
-        ),
+        )
       },
     },
     {
       name: "manualRefactoring",
+      label: t(
+        "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.manualRefactoring"
+      ),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 25px" } }),
         setCellProps: () => ({ style: { padding: "8px 30px" } }),
         customBodyRender: (count: number) => (
           <YBBadge text={count} variant={BadgeVariant.Warning} />
-        ),
-        customHeadLabelRender: createCustomHeaderLabelRender(
-        "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.manualRefactoring",
-        "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.manualRefactoringTooltip"
-        ),
+        )
       },
     },
     {
       name: "rightArrowSidePanel",
+      label: " ",
       options: {
         sort: false,
         display: showRightArrowSidePanel,
@@ -454,8 +434,7 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
             >
               <ArrowRightIcon />
             </Box>
-          ),
-        customHeadLabelRender: () => null, // No heading needed here
+          )
       },
     },
   ];
