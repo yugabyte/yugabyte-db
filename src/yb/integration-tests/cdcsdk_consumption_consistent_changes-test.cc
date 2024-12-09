@@ -800,8 +800,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCSDKConsistentStreamWithMan
   ASSERT_EQ(tablets.size(), 3);
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
-  int num_batches = 50;
-  int inserts_per_batch = 100;
+  int num_batches = 50 / kTimeMultiplier;
+  int inserts_per_batch = 100 / kTimeMultiplier;
 
   std::thread t1(
       [&]() -> void { PerformSingleAndMultiShardInserts(num_batches, inserts_per_batch, 20); });
