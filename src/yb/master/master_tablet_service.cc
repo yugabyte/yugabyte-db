@@ -214,7 +214,13 @@ void HandleUnsupportedMethod(const char* method_name, rpc::RpcContext* context) 
                              STATUS_FORMAT(NotSupported, "$0 Not Supported!", method_name));
 }
 
-} // namespace
+}  // namespace
+
+void MasterTabletServiceImpl::ListMasterServers(
+    const tserver::ListMasterServersRequestPB* req, tserver::ListMasterServersResponsePB* resp,
+    rpc::RpcContext context) {
+  HandleUnsupportedMethod("ListMasterServers", &context);
+}
 
 void MasterTabletServiceImpl::ListTablets(const tserver::ListTabletsRequestPB* req,
                                           tserver::ListTabletsResponsePB* resp,
