@@ -71,8 +71,7 @@ To get started with migration assessment, do the following:
 
         {{< note title="Note" >}}
 
-Stick to example format to enable migration in yugabyted UI, do not mention parameters like `dbname` in the connection string.
-
+Do not mention parameters like `dbname` in the connection string as the default `yugabyte` database is used to store the meta info for showing the migration in yugabyteD UI.
         {{< /note >}}
 
 1. Assess migration - Voyager supports two primary modes for conducting migration assessments, depending on your access to the source database as follows:<br><br>
