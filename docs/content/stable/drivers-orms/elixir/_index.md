@@ -38,4 +38,4 @@ To develop Elixir applications for YugabyteDB, you need the following:
 
 ## Next step
 
-[Basic application using Phoenix framework](phoenix/)
+- [Basic application using Phoenix framework](phoenix/)

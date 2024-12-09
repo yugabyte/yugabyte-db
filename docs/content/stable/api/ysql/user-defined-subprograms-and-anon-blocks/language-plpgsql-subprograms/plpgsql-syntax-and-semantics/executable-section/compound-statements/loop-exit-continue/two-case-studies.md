@@ -153,7 +153,7 @@ select s.split_string_test_results(' Mary’s most frequent typo: confusing “i
 This is the result:
 
 ```output
- Mary’s | most | frequent | typo | confusing | its | and | it’s | 
+ Mary’s | most | frequent | typo | confusing | its | and | it’s |
 ```
 
 The test demonstrates the main algorithm for this case study. It uses the _infinite loop_ statement like this:
@@ -253,14 +253,14 @@ select s.tokenized_lines();
 This is the result:
 
 ```output
- The            carrier’s      horse          was            the            
- laziest        horse          in             the            world          
- 
- pitchy         Ham            carrying       me             on             
- his            back           and            a              small 
+ The            carrier’s      horse          was            the
+ laziest        horse          in             the            world
+
+ pitchy         Ham            carrying       me             on
+ his            back           and            a              small
 ```
 
-## Case study #2: compose a string of a specified number of vowels from each text line in an array until a specified number of such vowel strings have been composed 
+## Case study #2: compose a string of a specified number of vowels from each text line in an array until a specified number of such vowel strings have been composed
 
 This case study doesn't use any kinds of _loop_ statement that case study #1 doesn't use. But it does use the _continue_ statement. Especially, it shows its use with a _label_ to abort the current iteration of an _inner_ loop and then to start the next iteration of an _outer_ loop. You might like to try to rewrite the code without using the _continue_ statement. You'll need to use an _if_ statement or a _case_ statement together with a dedicated guard variable. The result will be cluttered code that is also less efficient than the code that's shown here.
 
@@ -270,7 +270,7 @@ Suppose that you have a one-dimensional _text_ array where each successive eleme
 
 - Make the first line current.
 - Traverse the characters in the current line from the first one to (up to) the last one.
-- Inspect the current character. If it's a vowel, then note it. Otherwise skip it. 
+- Inspect the current character. If it's a vowel, then note it. Otherwise skip it.
 - Abandon the current line:
   - _either_ if it contains _Peggotty_
   - _or_ when the same vowel is noted twice in succession

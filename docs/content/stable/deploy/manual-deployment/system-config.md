@@ -25,11 +25,70 @@ In particular, the main YugabyteDB process, the YB-TServer, is multi-threaded. A
 
 YugabyteDB relies on clock synchronization to guarantee consistency in distributed transactions. chrony is the preferred NTP implementation for clock synchronization.
 
+### Install chrony
+
 To install chrony, run:
 
 ```sh
 $ sudo yum install -y chrony
 ```
+
+### Configure Precision Time Protocol
+
+{{<tags/feature/tp>}} Precision Time Protocol (PTP) is a network protocol designed for highly accurate time synchronization across devices in a network. PTP provides microsecond-level accuracy. PTP relies on a PTP Hardware Clock (PHC), a dedicated physical clock device that enhances time synchronization accuracy.
+
+Currently, PTP is only available for AWS. To check if your AWS instance supports PTP and PHC, see [AWS PTP Hardware Clock](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configure-ec2-ntp.html#connect-to-the-ptp-hardware-clock).
+
+Configure PTP using the `configure_ptp.sh` script in the bin directory of your YugabyteDB home directory as follows:
+
+```sh
+sudo bash ./bin/configure_ptp.sh
+```
+
+### Configure ClockBound
+
+{{<tags/feature/tp>}} [ClockBound](https://github.com/aws/clock-bound) is an open source daemon that allows you to compare timestamps to determine order for events and transactions, independent of an instance's geographic location. ClockBound provides a strict interval in which the reference time (true time) exists.
+
+Although optional, configuring ClockBound improves clock accuracy by several orders of magnitude. ClockBound requires chrony and can be used in conjunction with PTP.
+
+Configure ClockBound using the `configure_clockbound.sh` script in the bin directory of your YugabyteDB home directory as follows:
+
+```sh
+sudo bash ./bin/configure_clockbound.sh
+```
+
+After configuring ClockBound, you must configure the [YB-TServer](../start-tservers/) and [YB-Master](../start-masters/) servers with the `time_source=clockbound` flag.
+
+If the ClockBound agent is configured with PTP, use a more aggressive clock error estimate such as `clockbound_clock_error_estimate_usec=100`.
+
+### Verify ClockBound configuration
+
+Verify that ClockBound is configured properly using the following command:
+
+```sh
+systemctl status clockbound
+```
+
+A correctly configured ClockBound service reports no errors.  The following shows example output with PTP enabled:
+
+```sh
+● clockbound.service - ClockBound
+     Loaded: loaded (/usr/lib/systemd/system/clockbound.service; enabled; preset: disabled)
+     Active: active (running) since Wed 2024-10-16 23:49:38 UTC; 53s ago
+   Main PID: 92765 (clockbound)
+      Tasks: 3 (limit: 22143)
+     Memory: 4.1M
+        CPU: 18ms
+     CGroup: /system.slice/clockbound.service
+             └─92765 /usr/local/bin/clockbound --max-drift-rate 50 -r PHC0 -i eth0
+
+Oct 16 23:49:38 ip-172-199-76-70.ec2.internal systemd[1]: Started ClockBound.
+Oct 16 23:49:38 ip-172-199-76-70.ec2.internal clockbound[92765]: 2024-10-16T23:49:38.629593Z  INFO main ThreadId(01) /root/.cargo/registry/src/index.crates.io-6f17d22bba15001f/c>
+Oct 16 23:49:38 ip-172-199-76-70.ec2.internal clockbound[92765]: 2024-10-16T23:49:38.629874Z  INFO ThreadId(02) /root/.cargo/registry/src/index.crates.io-6f17d22bba15001f/clock->
+Oct 16 23:49:38 ip-172-199-76-70.ec2.internal clockbound[92765]: 2024-10-16T23:49:38.630045Z  INFO ThreadId(03) /root/.cargo/registry/src/index.crates.io-6f17d22bba15001f/clock->
+```
+
+</details>
 
 ## Set ulimits
 

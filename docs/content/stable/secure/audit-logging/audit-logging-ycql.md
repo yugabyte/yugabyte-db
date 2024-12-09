@@ -34,7 +34,7 @@ YCQL audit logging can be further customized using additional YB-TServer flags.
 
 ## Enable audit logging
 
-Audit logging for YCQL can be enabled by passing the `--ycql_enable_audit_log` flag to `yb-tserver`. The command to start the `yb-tserver` would look as follows:
+Audit logging for YCQL can be enabled by passing the `--ycql_enable_audit_log` flag to yb-tserver. The command to start the yb-tserver would look as follows:
 
 ```sh
 $ yb-tserver <options> --ycql_enable_audit_log=true
@@ -116,7 +116,7 @@ The available flags are described in the following table:
   </tr>
 </table>
 
-All the preceding flags are `runtime` flags, so they can be set without requiring `yb-tserver` restart.
+All the preceding flags are `runtime` flags, so they can be set without requiring yb-tserver restart.
 
 ### Statements being audited
 

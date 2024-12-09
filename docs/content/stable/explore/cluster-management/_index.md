@@ -15,7 +15,6 @@ type: indexpage
 ## Learn more
 
 {{<index/block>}}
-
   {{<index/item
       title="Point-in-time recovery"
       body="Restore the state of a cluster's data from a specific point in time."

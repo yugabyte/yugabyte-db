@@ -274,7 +274,7 @@ Steps for configuring the JDBC client for server authentication in a Kubernetes 
    ```sh
    $ kubectl create namespace yb-demo
    $ helm install yb-demo yugabytedb/yugabyte \
-   --version {{<yb-version version="preview" format="short">}} \
+   --version {{<yb-version version="stable" format="short">}} \
    --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
    resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
    replicas.master=1,replicas.tserver=1,tls.enabled=true --namespace yb-demo
@@ -287,7 +287,7 @@ Steps for configuring the JDBC client for server authentication in a Kubernetes 
     ```
 
     ```output
-    ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
+    ysqlsh (11.2-YB-{{<yb-version version="stable">}}-b0)
     SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
     Type "help" for help.
     ```

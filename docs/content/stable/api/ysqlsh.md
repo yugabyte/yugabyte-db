@@ -9,7 +9,7 @@ type: docs
 
 ## Overview
 
-The YugabyteDB SQL shell ysqlsh provides a CLI for interacting with YugabyteDB using [YSQL](../../api/ysql/). It enables you to:
+The YugabyteDB SQL shell (ysqlsh) provides a CLI for interacting with YugabyteDB using [YSQL](../../api/ysql/). It enables you to:
 
 - interactively enter SQL queries and see the query results
 - input from a file or the command line
@@ -30,16 +30,10 @@ To download and install a standalone version of ysqlsh, refer to [YugabyteDB cli
 ```
 
 ```output
-ysqlsh (11.2-YB-2.0.0.0-b0)
+ysqlsh (11.2-YB-{{<yb-version version="stable">}}-b0)
 Type "help" for help.
 
 yugabyte=#
-```
-
-Docker:
-
-```sh
-docker run -it yugabytedb/yugabyte-client:latest ysqlsh
 ```
 
 ### Online help
