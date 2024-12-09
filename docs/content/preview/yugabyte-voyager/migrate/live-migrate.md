@@ -848,4 +848,4 @@ DROP USER ybvoyager;
 - Truncating a table on the source database is not taken into account; you need to manually truncate tables on your YugabyteDB cluster.
 - Some Oracle data types are unsupported - User Defined Types (UDT), NCHAR, NVARCHAR, VARRAY, BLOB, CLOB, and NCLOB.
 - Case-sensitive table names or column names are partially supported. YugabyteDB Voyager converts them to case-insensitive names. For example, an "Accounts" table in a source Oracle database is migrated as `accounts` (case-insensitive) to a YugabyteDB database.
-- For Oracle source databases, table and column names with more than 30 characters are not supported.
+- For Oracle source databases, schema, table, and column names with more than 30 characters are not supported.
